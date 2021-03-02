@@ -7,7 +7,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
 	GEngineInstance::Initialize();
 	GEngineInstance::Start();
-	GEngineInstance::Stop();
+	GEngineInstance::Release();
 	
     return 0;
 }
