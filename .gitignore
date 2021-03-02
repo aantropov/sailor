@@ -39,5 +39,9 @@
 # Sailor Debug/Release folders
 sailor/Debug
 sailor/Release
+sailor/x64
+sailor/x86
 butler/Debug
 butler/Release
+butler/x64
+butler/x86
