@@ -10,7 +10,7 @@ namespace Sailor
 {
 	class GEngineInstance
 	{
-		
+
 	public:
 		
 		static void SAILOR_API Initialize();
@@ -22,11 +22,16 @@ namespace Sailor
 
 	protected:
 
-		static std::unique_ptr<AWindow> ViewportWindow;
-		
-		unsigned int FPS;
-		float ElapsedTime;
+		AWindow ViewportWindow;
+
+		unsigned int FPS = 0;
+		float ElapsedTime = 0.0f;
 
 		static GEngineInstance* Instance;
-	};	
+		
+	private:
+
+		GEngineInstance() = default;
+		~GEngineInstance() = default;
+	};
 }

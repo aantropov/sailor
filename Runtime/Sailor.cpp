@@ -4,7 +4,6 @@
 using namespace Sailor;
 
 GEngineInstance* GEngineInstance::Instance = nullptr;
-std::unique_ptr<AWindow> GEngineInstance::ViewportWindow;
 
 void GEngineInstance::Initialize()
 {
@@ -12,46 +11,51 @@ void GEngineInstance::Initialize()
 	{
 		return;
 	}
+
+	AConsoleWindow::Initialize(false);
+	
+#ifdef _DEBUG
+	AConsoleWindow::GetInstance().OpenWindow(L"Sailor Console");
+#endif
 	
 	Instance = new GEngineInstance();
-	Instance->ViewportWindow = std::make_unique<AWindow>();
-
-	Instance->ViewportWindow->Create(L"Sailor Viewport", 1024, 768);
+	Instance->ViewportWindow.Create(L"Sailor Viewport", 1024, 768);	
 }
 
 void GEngineInstance::Run()
 {
 	MSG msg;
 
-	ViewportWindow->SetActive(true);
-	ViewportWindow->SetRunning(true);
+	Instance->ViewportWindow.SetActive(true);
+	Instance->ViewportWindow.SetRunning(true);
 
 	float DeltaTime = 0.0f;
 	float BeginFrameTime = 0.0f;
 
-	while (ViewportWindow->IsRunning())
+	while (Instance->ViewportWindow.IsRunning())
 	{
-		while (PeekMessage(&msg, ViewportWindow->GetHWND(), 0, 0, PM_REMOVE))
+		AConsoleWindow::GetInstance().Update();
+		
+		while (PeekMessage(&msg, Instance->ViewportWindow.GetHWND(), 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
 			{
-				ViewportWindow->SetRunning(false);
+				Instance->ViewportWindow.SetRunning(false);
 				break;
 			}
 			DispatchMessage(&msg);
 		}
 
-		BeginFrameTime = (float)GetTickCount();
+		BeginFrameTime = GetTickCount();
 
 		if (GInput::IsKeyPressed(VK_ESCAPE))
 		{
 			break;
 		}
 
-		if (ViewportWindow->IsRunning() && ViewportWindow->IsActive())
+		if (Instance->ViewportWindow.IsRunning() && Instance->ViewportWindow.IsActive())
 		{
-
-			SwapBuffers(ViewportWindow->GetHDC());
+			SwapBuffers(Instance->ViewportWindow.GetHDC());
 
 			DeltaTime += GetTickCount() - BeginFrameTime;
 
@@ -63,29 +67,31 @@ void GEngineInstance::Run()
 				WCHAR buff[50];
 				wsprintf(buff, L"Sailor FPS: %u", Instance->FPS);
 
-				ViewportWindow->SetWindowTitle(buff);
+				Instance->ViewportWindow.SetWindowTitle(buff);
 				Instance->FPS = 0;
 				Instance->ElapsedTime = 0.0f;
 			}
 		}
 	}
-
-	ViewportWindow->SetActive(false);
-	ViewportWindow->SetRunning(false);
+	
+	Instance->ViewportWindow.SetActive(false);
+	Instance->ViewportWindow.SetRunning(false);
 }
 
 void GEngineInstance::Stop()
 {
-	ViewportWindow->SetActive(false);
+	Instance->ViewportWindow.SetActive(false);
 }
 
 void GEngineInstance::Release()
 {
+	AConsoleWindow::GetInstance().CloseWindow();
+	AConsoleWindow::GetInstance().Release();
 	delete Instance;
 }
 
 AWindow& GEngineInstance::GetViewportWindow()
 {
-	return *ViewportWindow;
+	return Instance->ViewportWindow;
 }
 

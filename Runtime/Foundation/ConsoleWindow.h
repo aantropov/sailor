@@ -4,49 +4,62 @@
 // This class redirects stdout to the current console window, if there is one.
 // It can also open a new console window on demand if the application is
 // started from windows but wants console output anyway.
-class ConsoleWindow {
+class AConsoleWindow
+{
 public:
 	// Setup singleton access.
-	static void setup(bool to_attach);
+	static void Initialize(bool bInShouldAttach);
+
 	// Remove singleton.
-	static void shutdown();
+	static void Release();
+
 	// Get singleton instance.
-	static ConsoleWindow& get();
+	static AConsoleWindow& GetInstance();
 
 	// Opens a new console window and redirects stdout to the new window.
-	void open_window(const char* title);
+	void OpenWindow(const wchar_t* Title);
+
 	// Closes the console window if open.
-	void close_window();
+	void CloseWindow();
 
 	// Fill a buffer with data read from the console window. If this
 	// returns 0 or a number less than `buffer_size`, there is no
 	// more to read right now.
-	unsigned int read(char* buffer, unsigned int buffer_size);
+	unsigned int Read(char* OutBuffer, unsigned int BufferSize);
 
 	// Call this every frame.
-	void update();
+	void Update();
 
 	// Returns true if the console window has been closed.
-	bool exit_requested();
+	bool IsExitRequested();
+	
 private:
-	ConsoleWindow(bool to_attach);
-	~ConsoleWindow();
+	
+	AConsoleWindow(bool bInShouldAttach);
+	~AConsoleWindow();
 
 	// Attach to default console window, if any.
-	void attach();
+	void Attach();
+	
 	// Close files and console window.
-	void free();
+	void Free();
 
 	// Write a unicode character to the console.
-	void write(wchar_t c);
+	void Write(wchar_t c);
 
-	static ConsoleWindow* __instance;
-	FILE* _stdout_file;
-	FILE* _stderr_file;
-	FILE* _stdin_file;
-	bool _attach;
+	static AConsoleWindow* Instance;
+	
+	FILE* stdout_file;
+	FILE* stderr_file;
+	FILE* stdin_file;
+	
+	bool bShouldAttach;
 
 	static const unsigned int LINE_BUFFER_SIZE = 256;
-	unsigned int _buffer_size; // Number of characters in the buffer.
-	wchar_t _buffer[LINE_BUFFER_SIZE]; // Buffer for unfinished lines.
+
+	// Number of characters in the buffer.
+	unsigned int BufferSize;
+
+	// Buffer for unfinished lines.
+	wchar_t Buffer[LINE_BUFFER_SIZE]; 
 };

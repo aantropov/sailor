@@ -7,44 +7,44 @@
 
 #include "Types.h"
 
-ConsoleWindow* ConsoleWindow::__instance = 0;
+AConsoleWindow* AConsoleWindow::Instance = 0;
 
-namespace {
+namespace
+{
 	volatile bool ConsoleExit = false; // This is set in case the console is signalled to close.
 }
 
-ConsoleWindow::ConsoleWindow(bool to_attach)
-	: _stdout_file(0)
-	, _stderr_file(0)
-	, _stdin_file(0)
-	, _buffer_size(0)
-	, _attach(to_attach)
+AConsoleWindow::AConsoleWindow(bool bInShouldAttach)
+	: stdout_file(0)
+	, stderr_file(0)
+	, stdin_file(0)
+	, BufferSize(0)
+	, bShouldAttach(bInShouldAttach)
 {
-	if (_attach)
-		attach();
-}
-
-ConsoleWindow::~ConsoleWindow()
-{
-	free();
-}
-
-void ConsoleWindow::setup(bool to_attach)
-{	
-	__instance = new ConsoleWindow(to_attach);
-}
-
-void ConsoleWindow::shutdown()
-{
-	if(__instance != nullptr)
+	if (bInShouldAttach)
 	{
-		delete __instance;
+		Attach();
 	}
 }
 
-ConsoleWindow& ConsoleWindow::get()
+AConsoleWindow::~AConsoleWindow()
 {
-	return *__instance;
+	Free();
+}
+
+void AConsoleWindow::Initialize(bool bInShouldAttach)
+{
+	Instance = new AConsoleWindow(bInShouldAttach);
+}
+
+void AConsoleWindow::Release()
+{
+	delete Instance;
+}
+
+AConsoleWindow& AConsoleWindow::GetInstance()
+{
+	return *Instance;
 }
 
 // Global handler for break and exit signals from the console.
@@ -58,72 +58,83 @@ BOOL WINAPI console_handler(DWORD signal) {
 		ConsoleExit = true;
 		// Sleep here to give application time to close down nicely. After this time
 		// ExitProcess will be called and force the application to stop immediately.
-		Sleep(10000);
+		Sleep(100);
 	}
 	return FALSE;
 }
 
-void ConsoleWindow::attach()
+void AConsoleWindow::Attach()
 {
 	// This weird print statement is needed here, because otherwise, GetConsoleScreenBufferInfo() will
 	// fail after AttachConsole. I don't know the reason for this weird Windows magic.
 	printf("");
 
 	if (AttachConsole(ATTACH_PARENT_PROCESS)) {
-		freopen_s(&_stdout_file, "CONOUT$", "wb", stdout);
-		freopen_s(&_stderr_file, "CONOUT$", "wb", stderr);
-		freopen_s(&_stdin_file, "CONIN$", "rb", stdin);
+		freopen_s(&stdout_file, "CONOUT$", "wb", stdout);
+		freopen_s(&stderr_file, "CONOUT$", "wb", stderr);
+		freopen_s(&stdin_file, "CONIN$", "rb", stdin);
 		SetConsoleCtrlHandler(console_handler, TRUE);
 	}
 }
 
-void ConsoleWindow::free()
+void AConsoleWindow::Free()
 {
-	if (_stdout_file != 0)
-		fclose(_stdout_file);
-	if (_stderr_file != 0)
-		fclose(_stderr_file);
-	if (_stdin_file != 0)
-		fclose(_stdin_file);
+	if (stdout_file != 0)
+	{
+		fclose(stdout_file);
+	}
+	
+	if (stderr_file != 0)
+	{
+		fclose(stderr_file);
+	}
+	
+	if (stdin_file != 0)
+	{
+		fclose(stdin_file);
+	}
 
-	_stdout_file = 0;
-	_stderr_file = 0;
-	_stdin_file = 0;
+	stdout_file = 0;
+	stderr_file = 0;
+	stdin_file = 0;
+	
 	FreeConsole();
 }
 
-bool ConsoleWindow::exit_requested() {
+bool AConsoleWindow::IsExitRequested() {
 	return _exit;
 }
 
-void ConsoleWindow::open_window(const char* title)
+void AConsoleWindow::OpenWindow(const wchar_t* Title)
 {
-	free();
+	Free();
 	BOOL result = AllocConsole();
 	SetConsoleCtrlHandler(console_handler, TRUE);
 
-	const wchar_t* wstr = UTF8_to_wchar(title).c_str();
-	SetConsoleTitleW(wstr);
+	SetConsoleTitleW(Title);
 
-	freopen_s(&_stdout_file, "CONOUT$", "wb", stdout);
-	freopen_s(&_stderr_file, "CONOUT$", "wb", stderr);
-	freopen_s(&_stdin_file, "CONIN$", "rb", stdin);
+	freopen_s(&stdout_file, "CONOUT$", "wb", stdout);
+	freopen_s(&stderr_file, "CONOUT$", "wb", stderr);
+	freopen_s(&stdin_file, "CONIN$", "rb", stdin);
 }
 
-void ConsoleWindow::close_window()
+void AConsoleWindow::CloseWindow()
 {
-	free();
-	if (_attach)
-		attach();
+	Free();
+	
+	if (bShouldAttach)
+	{
+		Attach();
+	}
 }
 
-void ConsoleWindow::write(wchar_t c)
+void AConsoleWindow::Write(wchar_t c)
 {
 	DWORD written;
 	WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), &c, 1, &written, 0);
 }
 
-void ConsoleWindow::update()
+void AConsoleWindow::Update()
 {
 	DWORD num_events;
 	BOOL result = GetNumberOfConsoleInputEvents(GetStdHandle(STD_INPUT_HANDLE), &num_events);
@@ -148,7 +159,7 @@ void ConsoleWindow::update()
 
 		// handle backspace
 		if (c == 8) {
-			if (_buffer_size == 0)
+			if (BufferSize == 0)
 				continue;
 
 			// determine location to the left of the cursor
@@ -170,39 +181,39 @@ void ConsoleWindow::update()
 			// move to character before
 			SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), info.dwCursorPosition);
 			// overwrite with space
-			write(' ');
+			Write(' ');
 			// move to character before
 			SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), info.dwCursorPosition);
 
-			--_buffer_size;
+			--BufferSize;
 			continue;
 		}
 		// ignore escape
 		if (c == 0x1b)
 			continue;
 
-		if (_buffer_size == LINE_BUFFER_SIZE)
+		if (BufferSize == LINE_BUFFER_SIZE)
 			continue;
 
 		// echo
 		if (c == 13) {
-			write(13);
-			write(10);
+			Write(13);
+			Write(10);
 		}
 		else
-			write(c);
+			Write(c);
 
-		_buffer[_buffer_size++] = c;
+		Buffer[BufferSize++] = c;
 	}
 }
 
-unsigned int ConsoleWindow::read(char* buffer, unsigned int buffer_size)
+unsigned int AConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
 {
 	// find EOL
 	static const unsigned int NO_POS = 0xffffffff;
 	unsigned eol_pos = NO_POS;
-	for (unsigned int i = 0; i < _buffer_size; ++i) {
-		if (_buffer[i] == 13) {
+	for (unsigned int i = 0; i < BufferSize; ++i) {
+		if (Buffer[i] == 13) {
 			eol_pos = i;
 			break;
 		}
@@ -210,7 +221,7 @@ unsigned int ConsoleWindow::read(char* buffer, unsigned int buffer_size)
 	if (eol_pos == NO_POS)
 		return 0;
 
-	char* out = buffer;
+	char* out = OutBuffer;
 	/*for (unsigned int i = 0; i < eol_pos; ++i) {
 		// crop if output string does not fit
 		if (buffer + buffer_size - out <= 4)
@@ -219,8 +230,8 @@ unsigned int ConsoleWindow::read(char* buffer, unsigned int buffer_size)
 	}*/
 
 	// adjust buffer
-	memmove(_buffer, _buffer + eol_pos + 1, _buffer_size - eol_pos - 1);
+	memmove(Buffer, Buffer + eol_pos + 1, BufferSize - eol_pos - 1);
 
-	_buffer_size -= eol_pos + 1;
-	return (unsigned)(out - buffer);
+	BufferSize -= eol_pos + 1;
+	return (unsigned)(out - OutBuffer);
 }
