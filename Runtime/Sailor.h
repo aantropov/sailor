@@ -14,7 +14,7 @@ namespace Sailor
 	public:
 		
 		static void SAILOR_API Initialize();
-		static void SAILOR_API Run();
+		static void SAILOR_API Start();
 		static void SAILOR_API Stop();
 		static void SAILOR_API Release();
 

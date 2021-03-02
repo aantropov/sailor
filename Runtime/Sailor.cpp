@@ -22,7 +22,7 @@ void GEngineInstance::Initialize()
 	Instance->ViewportWindow.Create(L"Sailor Viewport", 1024, 768);	
 }
 
-void GEngineInstance::Run()
+void GEngineInstance::Start()
 {
 	MSG msg;
 
