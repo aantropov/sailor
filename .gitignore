@@ -30,3 +30,14 @@
 *.exe
 *.out
 *.app
+
+# Microsoft Visual Studio
+/.vs
+*.pdb
+*.ilk
+
+# Sailor Debug/Release folders
+sailor/Debug
+sailor/Release
+butler/Debug
+butler/Release
