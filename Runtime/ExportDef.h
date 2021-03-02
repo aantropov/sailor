@@ -1,5 +1,7 @@
+#pragma once
+
 #ifndef _SAILOR_IMPORT_
-# define SAILOR_DECLSPEC __declspec(dllexport)
+# define SAILOR_API __declspec(dllexport)
 #else
-# define SAILOR_DECLSPEC __declspec(dllimport)
+# define SAILOR_API __declspec(dllimport)
 #endif

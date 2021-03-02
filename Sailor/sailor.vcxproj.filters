@@ -13,21 +13,51 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Runtime">
+      <UniqueIdentifier>{f13b37a3-712f-4cdd-8236-af56e0e0b44b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\Foundation">
+      <UniqueIdentifier>{2ba3f750-1987-4661-8170-8808d7cc56dd}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="framework.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\Runtime\ExportDef.h">
+      <Filter>Runtime</Filter>
     </ClInclude>
-    <ClInclude Include="pch.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\Runtime\Sailor.h">
+      <Filter>Runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Foundation\ConsoleWindow.h">
+      <Filter>Runtime\Foundation</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Foundation\Window.h">
+      <Filter>Runtime\Foundation</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Foundation\Input.h">
+      <Filter>Runtime\Foundation</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Types.h">
+      <Filter>Runtime</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="pch.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="..\Runtime\Foundation\ConsoleWindow.cpp">
+      <Filter>Runtime\Foundation</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Foundation\Window.cpp">
+      <Filter>Runtime\Foundation</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Foundation\Input.cpp">
+      <Filter>Runtime\Foundation</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Sailor.cpp">
+      <Filter>Runtime</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Types.cpp">
+      <Filter>Runtime</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
