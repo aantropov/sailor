@@ -4,7 +4,7 @@
 // This class redirects stdout to the current console window, if there is one.
 // It can also open a new console window on demand if the application is
 // started from windows but wants console output anyway.
-class AConsoleWindow
+class GConsoleWindow
 {
 public:
 	// Setup singleton access.
@@ -14,7 +14,7 @@ public:
 	static void Release();
 
 	// Get singleton instance.
-	static AConsoleWindow& GetInstance();
+	static GConsoleWindow& GetInstance();
 
 	// Opens a new console window and redirects stdout to the new window.
 	void OpenWindow(const wchar_t* Title);
@@ -35,8 +35,8 @@ public:
 	
 private:
 	
-	AConsoleWindow(bool bInShouldAttach);
-	~AConsoleWindow();
+	GConsoleWindow(bool bInShouldAttach);
+	~GConsoleWindow();
 
 	// Attach to default console window, if any.
 	void Attach();
@@ -47,7 +47,7 @@ private:
 	// Write a unicode character to the console.
 	void Write(wchar_t c);
 
-	static AConsoleWindow* Instance;
+	static GConsoleWindow* Instance;
 	
 	FILE* stdout_file;
 	FILE* stderr_file;

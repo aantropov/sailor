@@ -7,14 +7,14 @@
 
 #include "Types.h"
 
-AConsoleWindow* AConsoleWindow::Instance = 0;
+GConsoleWindow* GConsoleWindow::Instance = 0;
 
 namespace
 {
 	volatile bool ConsoleExit = false; // This is set in case the console is signalled to close.
 }
 
-AConsoleWindow::AConsoleWindow(bool bInShouldAttach)
+GConsoleWindow::GConsoleWindow(bool bInShouldAttach)
 	: stdout_file(0)
 	, stderr_file(0)
 	, stdin_file(0)
@@ -27,22 +27,22 @@ AConsoleWindow::AConsoleWindow(bool bInShouldAttach)
 	}
 }
 
-AConsoleWindow::~AConsoleWindow()
+GConsoleWindow::~GConsoleWindow()
 {
 	Free();
 }
 
-void AConsoleWindow::Initialize(bool bInShouldAttach)
+void GConsoleWindow::Initialize(bool bInShouldAttach)
 {
-	Instance = new AConsoleWindow(bInShouldAttach);
+	Instance = new GConsoleWindow(bInShouldAttach);
 }
 
-void AConsoleWindow::Release()
+void GConsoleWindow::Release()
 {
 	delete Instance;
 }
 
-AConsoleWindow& AConsoleWindow::GetInstance()
+GConsoleWindow& GConsoleWindow::GetInstance()
 {
 	return *Instance;
 }
@@ -63,7 +63,7 @@ BOOL WINAPI console_handler(DWORD signal) {
 	return FALSE;
 }
 
-void AConsoleWindow::Attach()
+void GConsoleWindow::Attach()
 {
 	// This weird print statement is needed here, because otherwise, GetConsoleScreenBufferInfo() will
 	// fail after AttachConsole. I don't know the reason for this weird Windows magic.
@@ -77,7 +77,7 @@ void AConsoleWindow::Attach()
 	}
 }
 
-void AConsoleWindow::Free()
+void GConsoleWindow::Free()
 {
 	if (stdout_file != 0)
 	{
@@ -101,11 +101,11 @@ void AConsoleWindow::Free()
 	FreeConsole();
 }
 
-bool AConsoleWindow::IsExitRequested() {
+bool GConsoleWindow::IsExitRequested() {
 	return _exit;
 }
 
-void AConsoleWindow::OpenWindow(const wchar_t* Title)
+void GConsoleWindow::OpenWindow(const wchar_t* Title)
 {
 	Free();
 	BOOL result = AllocConsole();
@@ -118,7 +118,7 @@ void AConsoleWindow::OpenWindow(const wchar_t* Title)
 	freopen_s(&stdin_file, "CONIN$", "rb", stdin);
 }
 
-void AConsoleWindow::CloseWindow()
+void GConsoleWindow::CloseWindow()
 {
 	Free();
 	
@@ -128,13 +128,13 @@ void AConsoleWindow::CloseWindow()
 	}
 }
 
-void AConsoleWindow::Write(wchar_t c)
+void GConsoleWindow::Write(wchar_t c)
 {
 	DWORD written;
 	WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), &c, 1, &written, 0);
 }
 
-void AConsoleWindow::Update()
+void GConsoleWindow::Update()
 {
 	DWORD num_events;
 	BOOL result = GetNumberOfConsoleInputEvents(GetStdHandle(STD_INPUT_HANDLE), &num_events);
@@ -207,7 +207,7 @@ void AConsoleWindow::Update()
 	}
 }
 
-unsigned int AConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
+unsigned int GConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
 {
 	// find EOL
 	static const unsigned int NO_POS = 0xffffffff;

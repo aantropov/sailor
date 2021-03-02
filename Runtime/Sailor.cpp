@@ -12,10 +12,10 @@ void GEngineInstance::Initialize()
 		return;
 	}
 
-	AConsoleWindow::Initialize(false);
+	GConsoleWindow::Initialize(false);
 	
 #ifdef _DEBUG
-	AConsoleWindow::GetInstance().OpenWindow(L"Sailor Console");
+	GConsoleWindow::GetInstance().OpenWindow(L"Sailor Console");
 #endif
 	
 	Instance = new GEngineInstance();
@@ -34,7 +34,7 @@ void GEngineInstance::Start()
 
 	while (Instance->ViewportWindow.IsRunning())
 	{
-		AConsoleWindow::GetInstance().Update();
+		GConsoleWindow::GetInstance().Update();
 		
 		while (PeekMessage(&msg, Instance->ViewportWindow.GetHWND(), 0, 0, PM_REMOVE))
 		{
@@ -85,8 +85,8 @@ void GEngineInstance::Stop()
 
 void GEngineInstance::Release()
 {
-	AConsoleWindow::GetInstance().CloseWindow();
-	AConsoleWindow::GetInstance().Release();
+	GConsoleWindow::GetInstance().CloseWindow();
+	GConsoleWindow::GetInstance().Release();
 	delete Instance;
 }
 
