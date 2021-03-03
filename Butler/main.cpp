@@ -5,9 +5,9 @@ using namespace Sailor;
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-	GEngineInstance::Initialize();
-	GEngineInstance::Start();
-	GEngineInstance::Release();
+	EngineInstance::Initialize();
+	EngineInstance::Start();
+	EngineInstance::Release();
 	
     return 0;
 }

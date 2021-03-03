@@ -160,6 +160,7 @@
     <ClInclude Include="..\Runtime\Foundation\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Foundation\Input.h" />
     <ClInclude Include="..\Runtime\Foundation\Window.h" />
+    <ClInclude Include="..\Runtime\LogMacros.h" />
     <ClInclude Include="..\Runtime\Sailor.h" />
     <ClInclude Include="..\Runtime\Types.h" />
   </ItemGroup>

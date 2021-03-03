@@ -5,25 +5,25 @@ namespace Sailor
 {
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	
-	enum class EKeyState
+	enum class KeyState
 	{
 		Up = 0,
 		Down,
 		Pressed
 	};
 
-	struct FInputState
+	struct InputState
 	{
-		EKeyState Keyboard[256];
-		EKeyState Mouse[3];
-		int CursorPosition[2];
+		KeyState keyboard[256];
+		KeyState mouse[3];
+		int cursorPosition[2];
 	};
 
-	class GInput
+	class Input
 	{
 	public:
 
-		GInput();
+		Input();
 		
 		static bool IsKeyDown(unsigned short int key);
 		static bool IsKeyPressed(unsigned short int key);
@@ -36,7 +36,7 @@ namespace Sailor
 
 	protected:
 
-		static FInputState RawState;
+		static InputState rawState;
 
 		friend LRESULT Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	};

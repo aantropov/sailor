@@ -2,13 +2,14 @@
 
 #include <memory>
 #include "ExportDef.h"
+#include "LogMacros.h"
 #include "Types.h"
 #include "Foundation/ConsoleWindow.h"
 #include "Foundation/Window.h"
 
 namespace Sailor
 {
-	class GEngineInstance
+	class EngineInstance
 	{
 
 	public:
@@ -18,20 +19,20 @@ namespace Sailor
 		static void SAILOR_API Stop();
 		static void SAILOR_API Release();
 
-		static AWindow& GetViewportWindow();
+		static Window& GetViewportWindow();
 
 	protected:
 
-		AWindow ViewportWindow;
+		Window viewportWindow;
 
 		unsigned int FPS = 0;
-		float ElapsedTime = 0.0f;
+		float elapsedTime = 0.0f;
 
-		static GEngineInstance* Instance;
+		static EngineInstance* instance;
 		
 	private:
 
-		GEngineInstance() = default;
-		~GEngineInstance() = default;
+		EngineInstance() = default;
+		~EngineInstance() = default;
 	};
 }

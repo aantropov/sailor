@@ -7,18 +7,18 @@
 
 #include "Types.h"
 
-GConsoleWindow* GConsoleWindow::Instance = 0;
+ConsoleWindow* ConsoleWindow::instance = 0;
 
 namespace
 {
 	volatile bool ConsoleExit = false; // This is set in case the console is signalled to close.
 }
 
-GConsoleWindow::GConsoleWindow(bool bInShouldAttach)
+ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
 	: stdout_file(0)
 	, stderr_file(0)
 	, stdin_file(0)
-	, BufferSize(0)
+	, bufferSize(0)
 	, bShouldAttach(bInShouldAttach)
 {
 	if (bInShouldAttach)
@@ -27,24 +27,24 @@ GConsoleWindow::GConsoleWindow(bool bInShouldAttach)
 	}
 }
 
-GConsoleWindow::~GConsoleWindow()
+ConsoleWindow::~ConsoleWindow()
 {
 	Free();
 }
 
-void GConsoleWindow::Initialize(bool bInShouldAttach)
+void ConsoleWindow::Initialize(bool bInShouldAttach)
 {
-	Instance = new GConsoleWindow(bInShouldAttach);
+	instance = new ConsoleWindow(bInShouldAttach);
 }
 
-void GConsoleWindow::Release()
+void ConsoleWindow::Release()
 {
-	delete Instance;
+	delete instance;
 }
 
-GConsoleWindow& GConsoleWindow::GetInstance()
+ConsoleWindow& ConsoleWindow::GetInstance()
 {
-	return *Instance;
+	return *instance;
 }
 
 // Global handler for break and exit signals from the console.
@@ -63,7 +63,7 @@ BOOL WINAPI console_handler(DWORD signal) {
 	return FALSE;
 }
 
-void GConsoleWindow::Attach()
+void ConsoleWindow::Attach()
 {
 	// This weird print statement is needed here, because otherwise, GetConsoleScreenBufferInfo() will
 	// fail after AttachConsole. I don't know the reason for this weird Windows magic.
@@ -77,7 +77,7 @@ void GConsoleWindow::Attach()
 	}
 }
 
-void GConsoleWindow::Free()
+void ConsoleWindow::Free()
 {
 	if (stdout_file != 0)
 	{
@@ -101,11 +101,11 @@ void GConsoleWindow::Free()
 	FreeConsole();
 }
 
-bool GConsoleWindow::IsExitRequested() {
+bool ConsoleWindow::IsExitRequested() {
 	return _exit;
 }
 
-void GConsoleWindow::OpenWindow(const wchar_t* Title)
+void ConsoleWindow::OpenWindow(const wchar_t* Title)
 {
 	Free();
 	BOOL result = AllocConsole();
@@ -118,7 +118,7 @@ void GConsoleWindow::OpenWindow(const wchar_t* Title)
 	freopen_s(&stdin_file, "CONIN$", "rb", stdin);
 }
 
-void GConsoleWindow::CloseWindow()
+void ConsoleWindow::CloseWindow()
 {
 	Free();
 	
@@ -128,13 +128,13 @@ void GConsoleWindow::CloseWindow()
 	}
 }
 
-void GConsoleWindow::Write(wchar_t c)
+void ConsoleWindow::Write(wchar_t c)
 {
 	DWORD written;
 	WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), &c, 1, &written, 0);
 }
 
-void GConsoleWindow::Update()
+void ConsoleWindow::Update()
 {
 	DWORD num_events;
 	BOOL result = GetNumberOfConsoleInputEvents(GetStdHandle(STD_INPUT_HANDLE), &num_events);
@@ -159,7 +159,7 @@ void GConsoleWindow::Update()
 
 		// handle backspace
 		if (c == 8) {
-			if (BufferSize == 0)
+			if (bufferSize == 0)
 				continue;
 
 			// determine location to the left of the cursor
@@ -185,14 +185,14 @@ void GConsoleWindow::Update()
 			// move to character before
 			SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), info.dwCursorPosition);
 
-			--BufferSize;
+			--bufferSize;
 			continue;
 		}
 		// ignore escape
 		if (c == 0x1b)
 			continue;
 
-		if (BufferSize == LINE_BUFFER_SIZE)
+		if (bufferSize == LINE_BUFFER_SIZE)
 			continue;
 
 		// echo
@@ -203,17 +203,17 @@ void GConsoleWindow::Update()
 		else
 			Write(c);
 
-		Buffer[BufferSize++] = c;
+		buffer[bufferSize++] = c;
 	}
 }
 
-unsigned int GConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
+unsigned int ConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
 {
 	// find EOL
 	static const unsigned int NO_POS = 0xffffffff;
 	unsigned eol_pos = NO_POS;
 	for (unsigned int i = 0; i < BufferSize; ++i) {
-		if (Buffer[i] == 13) {
+		if (buffer[i] == 13) {
 			eol_pos = i;
 			break;
 		}
@@ -230,7 +230,7 @@ unsigned int GConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
 	}*/
 
 	// adjust buffer
-	memmove(Buffer, Buffer + eol_pos + 1, BufferSize - eol_pos - 1);
+	memmove(buffer, buffer + eol_pos + 1, BufferSize - eol_pos - 1);
 
 	BufferSize -= eol_pos + 1;
 	return (unsigned)(out - OutBuffer);

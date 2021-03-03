@@ -3,95 +3,98 @@
 
 using namespace Sailor;
 
-GEngineInstance* GEngineInstance::Instance = nullptr;
+EngineInstance* EngineInstance::instance = nullptr;
 
-void GEngineInstance::Initialize()
+void EngineInstance::Initialize()
 {
-	if (Instance != nullptr)
+	if (instance != nullptr)
 	{
 		return;
 	}
 
-	GConsoleWindow::Initialize(false);
+	ConsoleWindow::Initialize(false);
 	
 #ifdef _DEBUG
-	GConsoleWindow::GetInstance().OpenWindow(L"Sailor Console");
+	ConsoleWindow::GetInstance().OpenWindow(L"Sailor Console");
 #endif
 	
-	Instance = new GEngineInstance();
-	Instance->ViewportWindow.Create(L"Sailor Viewport", 1024, 768);	
+	instance = new EngineInstance();
+	instance->viewportWindow.Create(L"Sailor Viewport", 1024, 768);
+	
+	SAILOR_LOG("Sailor Engine initialized");
 }
 
-void GEngineInstance::Start()
+void EngineInstance::Start()
 {
 	MSG msg;
 
-	Instance->ViewportWindow.SetActive(true);
-	Instance->ViewportWindow.SetRunning(true);
+	instance->viewportWindow.SetActive(true);
+	instance->viewportWindow.SetRunning(true);
 
-	float DeltaTime = 0.0f;
-	float BeginFrameTime = 0.0f;
+	float deltaTime = 0.0f;
+	float beginFrameTime = 0.0f;
 
-	while (Instance->ViewportWindow.IsRunning())
+	while (instance->viewportWindow.IsRunning())
 	{
-		GConsoleWindow::GetInstance().Update();
+		ConsoleWindow::GetInstance().Update();
 		
-		while (PeekMessage(&msg, Instance->ViewportWindow.GetHWND(), 0, 0, PM_REMOVE))
+		while (PeekMessage(&msg, instance->viewportWindow.GetHWND(), 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
 			{
-				Instance->ViewportWindow.SetRunning(false);
+				instance->viewportWindow.SetRunning(false);
 				break;
 			}
 			DispatchMessage(&msg);
 		}
 
-		BeginFrameTime = GetTickCount();
+		beginFrameTime = GetTickCount();
 
-		if (GInput::IsKeyPressed(VK_ESCAPE))
+		if (Input::IsKeyPressed(VK_ESCAPE))
 		{
 			break;
 		}
 
-		if (Instance->ViewportWindow.IsRunning() && Instance->ViewportWindow.IsActive())
+		if (instance->viewportWindow.IsRunning() && instance->viewportWindow.IsActive())
 		{
-			SwapBuffers(Instance->ViewportWindow.GetHDC());
+			SwapBuffers(instance->viewportWindow.GetHDC());
 
-			DeltaTime += GetTickCount() - BeginFrameTime;
+			deltaTime += GetTickCount() - beginFrameTime;
 
-			Instance->ElapsedTime += (float)(GetTickCount() - BeginFrameTime) / 1000.0f;
-			++Instance->FPS;
+			instance->elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
+			++instance->FPS;
 
-			if (Instance->ElapsedTime >= 1.0f)
+			if (instance->elapsedTime >= 1.0f)
 			{
-				WCHAR buff[50];
-				wsprintf(buff, L"Sailor FPS: %u", Instance->FPS);
+				WCHAR Buff[50];
+				wsprintf(Buff, L"Sailor FPS: %u", instance->FPS);
 
-				Instance->ViewportWindow.SetWindowTitle(buff);
-				Instance->FPS = 0;
-				Instance->ElapsedTime = 0.0f;
+				instance->viewportWindow.SetWindowTitle(Buff);
+				instance->FPS = 0;
+				instance->elapsedTime = 0.0f;
 			}
 		}
 	}
 	
-	Instance->ViewportWindow.SetActive(false);
-	Instance->ViewportWindow.SetRunning(false);
+	instance->viewportWindow.SetActive(false);
+	instance->viewportWindow.SetRunning(false);
 }
 
-void GEngineInstance::Stop()
+void EngineInstance::Stop()
 {
-	Instance->ViewportWindow.SetActive(false);
+	instance->viewportWindow.SetActive(false);
 }
 
-void GEngineInstance::Release()
+void EngineInstance::Release()
 {
-	GConsoleWindow::GetInstance().CloseWindow();
-	GConsoleWindow::GetInstance().Release();
-	delete Instance;
+	SAILOR_LOG("Sailor Engine Released");
+	ConsoleWindow::GetInstance().CloseWindow();
+	ConsoleWindow::GetInstance().Release();
+	delete instance;
 }
 
-AWindow& GEngineInstance::GetViewportWindow()
+Window& EngineInstance::GetViewportWindow()
 {
-	return Instance->ViewportWindow;
+	return instance->viewportWindow;
 }
 

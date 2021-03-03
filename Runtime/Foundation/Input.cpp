@@ -4,54 +4,54 @@
 
 using namespace Sailor;
 
-FInputState GInput::RawState;
+InputState Input::rawState;
 
-GInput::GInput()
+Input::Input()
 {
-	memset(&RawState, 1, sizeof(FInputState));
+	memset(&rawState, 1, sizeof(InputState));
 }
 
-bool GInput::IsKeyDown(unsigned short int  key)
+bool Input::IsKeyDown(unsigned short int  key)
 {
-	return (RawState.Keyboard[key] != EKeyState::Up);
+	return (rawState.keyboard[key] != KeyState::Up);
 }
 
-bool GInput::IsKeyPressed(unsigned short int  key)
+bool Input::IsKeyPressed(unsigned short int  key)
 {
-	bool pressed = (RawState.Keyboard[key] == EKeyState::Pressed);
-	RawState.Keyboard[key] = EKeyState::Down;
+	bool pressed = (rawState.keyboard[key] == KeyState::Pressed);
+	rawState.keyboard[key] = KeyState::Down;
 	return pressed;
 }
 
-bool GInput::IsButtonDown(unsigned short int  button)
+bool Input::IsButtonDown(unsigned short int  button)
 {
-	return (RawState.Keyboard[button] != EKeyState::Up);
+	return (rawState.keyboard[button] != KeyState::Up);
 }
 
-bool GInput::IsButtonClick(unsigned short int  button)
+bool Input::IsButtonClick(unsigned short int  button)
 {
-	bool pressed = (RawState.Keyboard[button] == EKeyState::Pressed);
-	RawState.Keyboard[button] = EKeyState::Down;
+	bool pressed = (rawState.keyboard[button] == KeyState::Pressed);
+	rawState.keyboard[button] = KeyState::Down;
 	return pressed;
 }
 
-void GInput::GetCursorPos(int* x, int* y)
+void Input::GetCursorPos(int* x, int* y)
 {
-	*x = RawState.CursorPosition[0];
-	*y = RawState.CursorPosition[1];
+	*x = rawState.cursorPosition[0];
+	*y = rawState.cursorPosition[1];
 }
 
-void GInput::SetCursorPos(int x, int y)
+void Input::SetCursorPos(int x, int y)
 {
 	POINT Pos = { x, y };
 	//ClientToScreen(URenderer::GetInstance()->GetHWND(), &pos);
 	::SetCursorPos(Pos.x, Pos.y);
 
-	RawState.CursorPosition[0] = x;
-	RawState.CursorPosition[1] = y;
+	rawState.cursorPosition[0] = x;
+	rawState.cursorPosition[1] = y;
 }
 
-void GInput::ShowCursor(bool visible)
+void Input::ShowCursor(bool visible)
 {
 	::ShowCursor(visible ? TRUE : FALSE);
 }

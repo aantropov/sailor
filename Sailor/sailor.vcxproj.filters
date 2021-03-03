@@ -39,6 +39,9 @@
     <ClInclude Include="..\Runtime\Types.h">
       <Filter>Runtime</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\LogMacros.h">
+      <Filter>Runtime</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

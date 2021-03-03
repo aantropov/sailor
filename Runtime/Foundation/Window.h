@@ -5,16 +5,16 @@
 
 namespace Sailor
 {
-	class AWindow
+	class Window
 	{
 		const std::string WindowClassName = "SailorViewport";
 
 		HINSTANCE g_hInstance = nullptr;
 		HWND      g_hWnd = nullptr;
-		HDC       g_hDC = nullptr;		
+		HDC       g_hDC = nullptr;
 
-		int Width = 1024;
-		int Height = 768;
+		int width = 1024;
+		int height = 768;
 
 		bool bIsFullscreen = false;
 		bool bIsActive = false;
@@ -22,8 +22,8 @@ namespace Sailor
 
 	public:
 
-		AWindow() = default;
-		~AWindow() = default;
+		Window() = default;
+		~Window() = default;
 
 		// Getters
 		bool IsActive() const { return bIsActive; }
@@ -42,17 +42,17 @@ namespace Sailor
 		HDC GetHDC() const { return g_hDC; }
 
 		//Getters for parameters
-		int GetWidth() const { return Width; }
-		int GetHeight() const { return Height; }
+		int GetWidth() const { return width; }
+		int GetHeight() const { return height; }
 
 		// Create window
-		bool Create(LPCWSTR title = L"Sailor", int Width = 1920, int Height = 1080, bool bIsFullScreen = false);
+		bool Create(LPCWSTR title = L"Sailor", int width = 1920, int height = 1080, bool bIsFullScreen = false);
 
 		// Destroy window
 		void Destroy();
 
 		// Set window size
-		void SetSize(int Width, int Height, bool bIsFullScreen = false);
+		void SetSize(int width, int height, bool bIsFullScreen = false);
 	};
 
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

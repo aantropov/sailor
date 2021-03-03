@@ -4,7 +4,7 @@
 // This class redirects stdout to the current console window, if there is one.
 // It can also open a new console window on demand if the application is
 // started from windows but wants console output anyway.
-class GConsoleWindow
+class ConsoleWindow
 {
 public:
 	// Setup singleton access.
@@ -14,7 +14,7 @@ public:
 	static void Release();
 
 	// Get singleton instance.
-	static GConsoleWindow& GetInstance();
+	static ConsoleWindow& GetInstance();
 
 	// Opens a new console window and redirects stdout to the new window.
 	void OpenWindow(const wchar_t* Title);
@@ -35,8 +35,8 @@ public:
 	
 private:
 	
-	GConsoleWindow(bool bInShouldAttach);
-	~GConsoleWindow();
+	ConsoleWindow(bool bInShouldAttach);
+	~ConsoleWindow();
 
 	// Attach to default console window, if any.
 	void Attach();
@@ -47,7 +47,7 @@ private:
 	// Write a unicode character to the console.
 	void Write(wchar_t c);
 
-	static GConsoleWindow* Instance;
+	static ConsoleWindow* instance;
 	
 	FILE* stdout_file;
 	FILE* stderr_file;
@@ -58,8 +58,8 @@ private:
 	static const unsigned int LINE_BUFFER_SIZE = 256;
 
 	// Number of characters in the buffer.
-	unsigned int BufferSize;
+	unsigned int bufferSize;
 
 	// Buffer for unfinished lines.
-	wchar_t Buffer[LINE_BUFFER_SIZE]; 
+	wchar_t buffer[LINE_BUFFER_SIZE]; 
 };

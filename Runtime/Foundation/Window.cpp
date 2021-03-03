@@ -5,11 +5,11 @@
 
 using namespace Sailor;
 
-bool AWindow::Create(LPCWSTR Title, int InWidth, int InHeight, bool InbIsFullScreen)
+bool Window::Create(LPCWSTR title, int inWidth, int inHeight, bool inbIsFullScreen)
 {
-	Width = InWidth;
-	Height = InHeight;
-	bIsFullscreen = InbIsFullScreen;
+	width = inWidth;
+	height = inHeight;
+	bIsFullscreen = inbIsFullScreen;
 
 	WNDCLASSEX            wcx;
 	PIXELFORMATDESCRIPTOR pfd;
@@ -41,19 +41,19 @@ bool AWindow::Create(LPCWSTR Title, int InWidth, int InHeight, bool InbIsFullScr
 	exStyle = WS_EX_APPWINDOW;
 
 	// Centrate window
-	x = (GetSystemMetrics(SM_CXSCREEN) - Width) / 2;
-	y = (GetSystemMetrics(SM_CYSCREEN) - Height) / 2;
+	x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
+	y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 
 	rect.left = x;
-	rect.right = x + Width;
+	rect.right = x + width;
 	rect.top = y;
-	rect.bottom = y + Height;
+	rect.bottom = y + height;
 
 	// Setup window size with styles
 	AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 
 	// Create window
-	g_hWnd = CreateWindowEx(exStyle, (LPCWSTR)WindowClassName.c_str(), Title, style, rect.left, rect.top,
+	g_hWnd = CreateWindowEx(exStyle, (LPCWSTR)WindowClassName.c_str(), title, style, rect.left, rect.top,
 		rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, g_hInstance, NULL);
 
 	if (!g_hWnd)
@@ -94,12 +94,13 @@ bool AWindow::Create(LPCWSTR Title, int InWidth, int InHeight, bool InbIsFullScr
 	// TODO: Init Vulkan
 	
 	// Set up window size
-	SetSize(Width, Height, bIsFullscreen);
+	SetSize(width, height, bIsFullscreen);
 
+	SAILOR_LOG("Window created");
 	return true;
 }
 
-void AWindow::SetSize(int width, int height, bool bInIsFullScreen)
+void Window::SetSize(int width, int height, bool bInIsFullScreen)
 {
 	RECT    rect;
 	DWORD   style, exStyle;
@@ -186,7 +187,7 @@ void AWindow::SetSize(int width, int height, bool bInIsFullScreen)
 	SetCursorPos(x + width / 2, y + height / 2);
 }
 
-void AWindow::Destroy()
+void Window::Destroy()
 {
 	// Restore window size
 	if (bIsFullscreen)
@@ -219,25 +220,25 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	case WM_MBUTTONDOWN:
 	case WM_MBUTTONUP:
 	{
-		GInput::RawState.CursorPosition[0] = (int)LOWORD(lParam);
-		GInput::RawState.CursorPosition[1] = (int)HIWORD(lParam);
+		Input::rawState.cursorPosition[0] = (int)LOWORD(lParam);
+		Input::rawState.cursorPosition[1] = (int)HIWORD(lParam);
 
 		if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP)
-			GInput::RawState.Keyboard[0] = (msg == WM_LBUTTONDOWN ? EKeyState::Pressed : EKeyState::Up);
+			Input::rawState.keyboard[0] = (msg == WM_LBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP)
-			GInput::RawState.Keyboard[1] = (msg == WM_RBUTTONDOWN ? EKeyState::Pressed : EKeyState::Up);
+			Input::rawState.keyboard[1] = (msg == WM_RBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP)
-			GInput::RawState.Keyboard[2] = (msg == WM_MBUTTONDOWN ? EKeyState::Pressed : EKeyState::Up);
+			Input::rawState.keyboard[2] = (msg == WM_MBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		return FALSE;
 	}
 
 	case WM_MOUSEMOVE:
 	{
-		GInput::RawState.CursorPosition[0] = (int)LOWORD(lParam);
-		GInput::RawState.CursorPosition[1] = (int)HIWORD(lParam);
+		Input::rawState.cursorPosition[0] = (int)LOWORD(lParam);
+		Input::rawState.cursorPosition[1] = (int)HIWORD(lParam);
 
 		return FALSE;
 	}
@@ -246,7 +247,7 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	case WM_SYSKEYDOWN:
 	{
 		if (wParam < 256 && (lParam & 0x40000000) == 0)
-			GInput::RawState.Keyboard[wParam] = EKeyState::Pressed;
+			Input::rawState.keyboard[wParam] = KeyState::Pressed;
 
 		return FALSE;
 	}
@@ -254,24 +255,24 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	case WM_SYSKEYUP:
 	{
 		if (wParam < 256)
-			GInput::RawState.Keyboard[wParam] = EKeyState::Up;
+			Input::rawState.keyboard[wParam] = KeyState::Up;
 
 		return FALSE;
 	}
 
 	case WM_SETFOCUS:
 	case WM_KILLFOCUS:
-		GEngineInstance::GetViewportWindow().SetActive(msg == WM_SETFOCUS);
+		EngineInstance::GetViewportWindow().SetActive(msg == WM_SETFOCUS);
 		return FALSE;
 
 	case WM_ACTIVATE:
-		GEngineInstance::GetViewportWindow().SetActive(LOWORD(wParam) == WA_INACTIVE);
+		EngineInstance::GetViewportWindow().SetActive(LOWORD(wParam) == WA_INACTIVE);
 		return FALSE;
 
 	case WM_CLOSE:
 	{
-		GEngineInstance::GetViewportWindow().SetActive(false);
-		GEngineInstance::GetViewportWindow().SetRunning(false);
+		EngineInstance::GetViewportWindow().SetActive(false);
+		EngineInstance::GetViewportWindow().SetRunning(false);
 
 		PostQuitMessage(0);
 		return FALSE;
@@ -281,7 +282,7 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	{
 	case SC_SCREENSAVE:
 	case SC_MONITORPOWER:
-		if (GEngineInstance::GetViewportWindow().IsFullscreen())
+		if (EngineInstance::GetViewportWindow().IsFullscreen())
 			return FALSE;
 		break;
 	case SC_KEYMENU:
