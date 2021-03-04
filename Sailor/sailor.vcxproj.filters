@@ -19,6 +19,9 @@
     <Filter Include="Runtime\Foundation">
       <UniqueIdentifier>{2ba3f750-1987-4661-8170-8808d7cc56dd}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\GfxDevice">
+      <UniqueIdentifier>{c9092454-50e1-4e43-ba17-1a868c268396}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\ExportDef.h">
@@ -42,6 +45,9 @@
     <ClInclude Include="..\Runtime\LogMacros.h">
       <Filter>Runtime</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\GfxDeviceVulkan.h">
+      <Filter>Runtime\GfxDevice</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -61,6 +67,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Types.cpp">
       <Filter>Runtime</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\GfxDeviceVulkan.cpp">
+      <Filter>Runtime\GfxDevice</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
