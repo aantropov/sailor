@@ -1,5 +1,6 @@
 #include "Sailor.h"
 #include "Foundation/Input.h"
+#include "GfxDevice/GfxDeviceVulkan.h"
 
 using namespace Sailor;
 
@@ -22,6 +23,7 @@ void EngineInstance::Initialize()
 	instance->viewportWindow.Create(L"Sailor Viewport", 1024, 768);
 	
 	SAILOR_LOG("Sailor Engine initialized");
+	SAILOR_LOG("Num supported Vulkan extensions: %d", GfxDeviceVulkan::GetNumSupportedExtensions());
 }
 
 void EngineInstance::Start()
