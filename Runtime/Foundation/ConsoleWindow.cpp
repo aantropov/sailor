@@ -11,7 +11,7 @@ ConsoleWindow* ConsoleWindow::instance = 0;
 
 namespace
 {
-	volatile bool ConsoleExit = false; // This is set in case the console is signalled to close.
+	volatile bool ñonsoleExit = false; // This is set in case the console is signalled to close.
 }
 
 ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
@@ -55,7 +55,7 @@ BOOL WINAPI console_handler(DWORD signal) {
 		if (FileLog::exists())
 			FileLog::get().flush();
 #endif
-		ConsoleExit = true;
+		ñonsoleExit = true;
 		// Sleep here to give application time to close down nicely. After this time
 		// ExitProcess will be called and force the application to stop immediately.
 		Sleep(100);
