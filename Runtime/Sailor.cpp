@@ -5,6 +5,8 @@
 using namespace Sailor;
 
 EngineInstance* EngineInstance::instance = nullptr;
+const std::string EngineInstance::ApplicationName = "SailorEngine";
+const std::string EngineInstance::EngineName = "Sailor";
 
 void EngineInstance::Initialize()
 {
@@ -21,9 +23,10 @@ void EngineInstance::Initialize()
 	
 	instance = new EngineInstance();
 	instance->viewportWindow.Create(L"Sailor Viewport", 1024, 768);
+
+	GfxDeviceVulkan::CreateInstance(&instance->viewportWindow);
 	
-	SAILOR_LOG("Sailor Engine initialized");
-	SAILOR_LOG("Num supported Vulkan extensions: %d", GfxDeviceVulkan::GetNumSupportedExtensions());
+	SAILOR_LOG("Sailor Engine initialized");	
 }
 
 void EngineInstance::Start()
@@ -87,11 +90,14 @@ void EngineInstance::Stop()
 	instance->viewportWindow.SetActive(false);
 }
 
-void EngineInstance::Release()
+void EngineInstance::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Released");
+	GfxDeviceVulkan::Shutdown();
+	
 	ConsoleWindow::GetInstance().CloseWindow();
 	ConsoleWindow::GetInstance().Release();
+	
 	delete instance;
 }
 

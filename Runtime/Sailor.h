@@ -13,11 +13,14 @@ namespace Sailor
 	{
 
 	public:
+
+		static const std::string ApplicationName;
+		static const std::string EngineName;
 		
 		static void SAILOR_API Initialize();
 		static void SAILOR_API Start();
 		static void SAILOR_API Stop();
-		static void SAILOR_API Release();
+		static void SAILOR_API Shutdown();
 
 		static Window& GetViewportWindow();
 
