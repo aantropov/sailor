@@ -8,6 +8,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	EngineInstance::Initialize();
 	EngineInstance::Start();
 	EngineInstance::Shutdown();
-	
+		
     return 0;
 }

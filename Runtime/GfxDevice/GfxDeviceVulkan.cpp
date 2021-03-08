@@ -33,6 +33,24 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 
 }
 
+void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
+{
+	createInfo = {};
+	createInfo.sType =
+		VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+
+	createInfo.messageSeverity =
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+
+	createInfo.messageType =
+		VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	createInfo.pfnUserCallback = VulkanDebugCallback;
+}
+
 void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledValidationLayers)
 {
 	if (instance != nullptr)
@@ -43,7 +61,7 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledVa
 
 	instance = new GfxDeviceVulkan();
 	instance->bIsEnabledValidationLayers = bInIsEnabledValidationLayers;
-	
+
 	SAILOR_LOG("Num supported Vulkan extensions: %d", GfxDeviceVulkan::GetNumSupportedExtensions());
 	PrintSupportedExtensions();
 
@@ -76,16 +94,24 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledVa
 	createInfo.enabledExtensionCount = extensions.size();
 
 	const std::vector<const char*> debugLayers = { "VK_LAYER_KHRONOS_validation" };
-	
-	if(instance->bIsEnabledValidationLayers)
+
+	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
+	if (instance->bIsEnabledValidationLayers)
 	{
 		createInfo.ppEnabledLayerNames = debugLayers.data();
 		createInfo.enabledLayerCount = debugLayers.size();
 
-		if(!CheckValidationLayerSupport(debugLayers))
+		PopulateDebugMessengerCreateInfo(debugCreateInfo);
+		createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+
+		if (!CheckValidationLayerSupport(debugLayers))
 		{
 			SAILOR_LOG("Not all debug layers are supported");
 		}
+	}
+	else
+	{
+		createInfo.enabledLayerCount = 0;
 	}
 
 	vkInstance = 0;
@@ -150,38 +176,29 @@ bool GfxDeviceVulkan::CheckValidationLayerSupport(const std::vector<const char*>
 	return true;
 }
 
-void GfxDeviceVulkan::SetupDebugCallback()
-{
-	if (!instance->bIsEnabledValidationLayers)
-	{
-		return;
-	}
-	
-	VkDebugUtilsMessengerCreateInfoEXT createInfo{ VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
-	createInfo.messageSeverity =
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
-		| VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-	createInfo.pfnUserCallback = VulkanDebugCallback;
-	createInfo.pUserData = nullptr; // Optional
-
-	CreateDebugUtilsMessengerEXT(vkInstance, &createInfo, nullptr, &debugMessenger);
-}
-
 void GfxDeviceVulkan::Shutdown()
 {
 	if (instance->bIsEnabledValidationLayers)
 	{
 		DestroyDebugUtilsMessengerEXT(vkInstance, debugMessenger, nullptr);
 	}
-	
+
 	vkDestroyInstance(vkInstance, nullptr);
 
 	delete(instance);
+}
+
+void GfxDeviceVulkan::SetupDebugCallback()
+{
+	if (!instance->bIsEnabledValidationLayers)
+	{
+		return;
+	}
+
+	VkDebugUtilsMessengerCreateInfoEXT createInfo;
+	PopulateDebugMessengerCreateInfo(createInfo);
+	
+	CreateDebugUtilsMessengerEXT(vkInstance, &createInfo, nullptr, &debugMessenger);
 }
 
 VkResult GfxDeviceVulkan::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
@@ -196,8 +213,8 @@ VkResult GfxDeviceVulkan::CreateDebugUtilsMessengerEXT(VkInstance instance, cons
 
 void GfxDeviceVulkan::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator)
 {
-	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance,"vkDestroyDebugUtilsMessengerEXT");
-	if (func != nullptr) 
+	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+	if (func != nullptr)
 	{
 		func(instance, debugMessenger, pAllocator);
 	}
