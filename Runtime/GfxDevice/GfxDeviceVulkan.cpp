@@ -27,8 +27,13 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
 	void* pUserData)
 {
-	std::cerr << "Validation layer: " << pCallbackData->pMessage <<
-		std::endl;
+
+	if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+	{
+		std::cerr << "!!! Validation layer: " << pCallbackData->pMessage << std::endl;
+	}
+
+	std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
 	return VK_FALSE;
 
 }
@@ -188,17 +193,60 @@ void GfxDeviceVulkan::Shutdown()
 	delete(instance);
 }
 
-void GfxDeviceVulkan::SetupDebugCallback()
+bool GfxDeviceVulkan::SetupDebugCallback()
 {
 	if (!instance->bIsEnabledValidationLayers)
 	{
-		return;
+		return false;
 	}
 
 	VkDebugUtilsMessengerCreateInfoEXT createInfo;
 	PopulateDebugMessengerCreateInfo(createInfo);
+
+	VK_CHECK(CreateDebugUtilsMessengerEXT(vkInstance, &createInfo, nullptr, &debugMessenger));
+
+	return true;
+}
+
+VkPhysicalDevice GfxDeviceVulkan::PickPhysicalDevice()
+{
+	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+
+	uint32_t deviceCount = 0;
+	VK_CHECK(vkEnumeratePhysicalDevices(vkInstance, &deviceCount, nullptr));
+
+	if (deviceCount == 0)
+	{
+		SAILOR_LOG("Failed to find GPUs with Vulkan support!");
+		return VK_NULL_HANDLE;
+	}
+
+	std::vector<VkPhysicalDevice> devices(deviceCount);
+	VK_CHECK(vkEnumeratePhysicalDevices(vkInstance, &deviceCount, devices.data()));
+
+	for (const auto& device : devices) 
+	{
+		if (IsDeviceSuitable(device)) 
+		{
+			physicalDevice = device;
+			break;
+		}
+	}
 	
-	CreateDebugUtilsMessengerEXT(vkInstance, &createInfo, nullptr, &debugMessenger);
+	if (physicalDevice == VK_NULL_HANDLE)
+	{
+		SAILOR_LOG("Failed to find a suitable GPU!");
+	}
+
+	return physicalDevice;
+}
+
+bool GfxDeviceVulkan::IsDeviceSuitable(VkPhysicalDevice device)
+{
+	VkPhysicalDeviceProperties deviceProperties;
+	vkGetPhysicalDeviceProperties(device, &deviceProperties);
+	
+	return true;
 }
 
 VkResult GfxDeviceVulkan::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)

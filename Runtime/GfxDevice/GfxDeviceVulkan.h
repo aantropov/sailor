@@ -19,8 +19,7 @@ namespace Sailor
 		static void PrintSupportedExtensions();
 
 		static bool CheckValidationLayerSupport(const std::vector<const char*>& validationLayers);
-		static void SetupDebugCallback();
-
+		
 	private:
 
 		GfxDeviceVulkan() = default;
@@ -32,7 +31,13 @@ namespace Sailor
 
 		static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
 		static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator);
+		
+		static bool SetupDebugCallback();
+		static VkPhysicalDevice PickPhysicalDevice();
 
+		static bool IsDeviceSuitable(VkPhysicalDevice device);
+
+		
 		bool bIsEnabledValidationLayers = false;
 	};
 }
