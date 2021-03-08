@@ -19,6 +19,7 @@ using namespace Sailor;
 
 GfxDeviceVulkan* GfxDeviceVulkan::instance = nullptr;
 VkInstance GfxDeviceVulkan::vkInstance = 0;
+VkDebugUtilsMessengerEXT GfxDeviceVulkan::debugMessenger = 0;
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -32,7 +33,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 
 }
 
-void GfxDeviceVulkan::CreateInstance(const Window* viewport)
+void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledValidationLayers)
 {
 	if (instance != nullptr)
 	{
@@ -40,6 +41,9 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport)
 		return;
 	}
 
+	instance = new GfxDeviceVulkan();
+	instance->bIsEnabledValidationLayers = bInIsEnabledValidationLayers;
+	
 	SAILOR_LOG("Num supported Vulkan extensions: %d", GfxDeviceVulkan::GetNumSupportedExtensions());
 	PrintSupportedExtensions();
 
@@ -51,7 +55,7 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport)
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.apiVersion = VK_API_VERSION_1_2;
 
-	const char* extensions[] =
+	std::vector<const char*> extensions =
 	{
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		"VK_KHR_win32_surface",
@@ -59,47 +63,44 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport)
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #endif
-#ifdef _DEBUG
-		VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
-#endif
 	};
+
+	if (instance->bIsEnabledValidationLayers)
+	{
+		extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+	}
 
 	VkInstanceCreateInfo createInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	createInfo.pApplicationInfo = &appInfo;
-	createInfo.ppEnabledExtensionNames = extensions;
-	createInfo.enabledExtensionCount = NUM_ELEMENTS(extensions);
+	createInfo.ppEnabledExtensionNames = extensions.data();
+	createInfo.enabledExtensionCount = extensions.size();
 
-#ifdef _DEBUG
-	const std::vector<const char*> debugLayers =
+	const std::vector<const char*> debugLayers = { "VK_LAYER_KHRONOS_validation" };
+	
+	if(instance->bIsEnabledValidationLayers)
 	{
-		"VK_LAYER_KHRONOS_validation"
-	};
+		createInfo.ppEnabledLayerNames = debugLayers.data();
+		createInfo.enabledLayerCount = debugLayers.size();
 
-	createInfo.ppEnabledLayerNames = debugLayers.data();
-	createInfo.enabledLayerCount = debugLayers.size();
-
-	if (!CheckValidationLayerSupport(debugLayers))
-	{
-		SAILOR_LOG("Not all debug layers are supported");
+		if(!CheckValidationLayerSupport(debugLayers))
+		{
+			SAILOR_LOG("Not all debug layers are supported");
+		}
 	}
-
-#endif
 
 	vkInstance = 0;
 	VK_CHECK(vkCreateInstance(&createInfo, 0, &vkInstance));
-	
+
 	SetupDebugCallback();
 	SAILOR_LOG("Vulkan initialized");
-	
-	// 
+
 	//vkCreateWin32SurfaceKHR
 }
 
 uint32_t GfxDeviceVulkan::GetNumSupportedExtensions()
 {
 	uint32_t extensionCount;
-	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount,
-		nullptr));
+	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr));
 	return extensionCount;
 }
 
@@ -151,10 +152,16 @@ bool GfxDeviceVulkan::CheckValidationLayerSupport(const std::vector<const char*>
 
 void GfxDeviceVulkan::SetupDebugCallback()
 {
+	if (!instance->bIsEnabledValidationLayers)
+	{
+		return;
+	}
+	
 	VkDebugUtilsMessengerCreateInfoEXT createInfo{ VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
 	createInfo.messageSeverity =
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
 		| VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
@@ -162,11 +169,36 @@ void GfxDeviceVulkan::SetupDebugCallback()
 	createInfo.pfnUserCallback = VulkanDebugCallback;
 	createInfo.pUserData = nullptr; // Optional
 
-	//TODO: Get proc addresses and init debug callbacks properly
-	//VK_CHECK(vkCreateDebugUtilsMessengerEXT(vkInstance, &createInfo, nullptr, nullptr));
+	CreateDebugUtilsMessengerEXT(vkInstance, &createInfo, nullptr, &debugMessenger);
 }
 
 void GfxDeviceVulkan::Shutdown()
 {
+	if (instance->bIsEnabledValidationLayers)
+	{
+		DestroyDebugUtilsMessengerEXT(vkInstance, debugMessenger, nullptr);
+	}
+	
 	vkDestroyInstance(vkInstance, nullptr);
+
+	delete(instance);
+}
+
+VkResult GfxDeviceVulkan::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
+{
+	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+	if (func != nullptr)
+	{
+		return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+	}
+	return VK_ERROR_EXTENSION_NOT_PRESENT;
+}
+
+void GfxDeviceVulkan::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator)
+{
+	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance,"vkDestroyDebugUtilsMessengerEXT");
+	if (func != nullptr) 
+	{
+		func(instance, debugMessenger, pAllocator);
+	}
 }

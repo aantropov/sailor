@@ -24,7 +24,15 @@ void EngineInstance::Initialize()
 	instance = new EngineInstance();
 	instance->viewportWindow.Create(L"Sailor Viewport", 1024, 768);
 
-	GfxDeviceVulkan::CreateInstance(&instance->viewportWindow);
+#ifdef _DEBUG
+	const bool bIsEnabledVulkanValidationLayers = true;
+#endif
+
+#ifndef _DEBUG
+	const bool bIsEnabledVulkanValidationLayers = false;
+#endif
+	
+	GfxDeviceVulkan::CreateInstance(&instance->viewportWindow, bIsEnabledVulkanValidationLayers);
 	
 	SAILOR_LOG("Sailor Engine initialized");	
 }
