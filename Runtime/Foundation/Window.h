@@ -40,6 +40,7 @@ namespace Sailor
 		// Getters for handles
 		HWND GetHWND() const { return g_hWnd; }
 		HDC GetHDC() const { return g_hDC; }
+		HINSTANCE GetHINSTANCE() const { return g_hInstance; }
 
 		//Getters for parameters
 		int GetWidth() const { return width; }

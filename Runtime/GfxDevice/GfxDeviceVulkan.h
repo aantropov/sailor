@@ -16,7 +16,9 @@ namespace Sailor
 		struct QueueFamilyIndices
 		{
 			std::optional<uint32_t> graphicsFamily;
-			bool IsComplete() const { return graphicsFamily.has_value(); }
+			std::optional<uint32_t> presentFamily;
+
+			bool IsComplete() const { return graphicsFamily.has_value() && presentFamily.has_value();; }
 
 		};
 
@@ -53,7 +55,10 @@ namespace Sailor
 		VkDebugUtilsMessengerEXT debugMessenger = 0;
 		VkPhysicalDevice mainPhysicalDevice = 0;
 		VkDevice device = 0;
-		VkQueue graphicsQueue = 0;
 		QueueFamilyIndices queueFamilies;
+		VkSurfaceKHR surface = 0;
+		VkQueue graphicsQueue = 0;
+		VkQueue presentQueue = 0;
+
 	};
 }
