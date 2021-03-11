@@ -43,7 +43,6 @@ namespace Sailor
 
 		static void GetRequiredDeviceExtensions(std::vector<const char*>& requiredDeviceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
 
-
 	private:
 
 		GfxDeviceVulkan() = default;
@@ -72,17 +71,26 @@ namespace Sailor
 
 		bool bIsEnabledValidationLayers = false;
 		VkInstance vkInstance = 0;
+
+		// Queuees
+		VkQueue graphicsQueue = 0;
+		VkQueue presentQueue = 0;
+
+		VkSurfaceKHR surface = 0;
+		
 		VkDebugUtilsMessengerEXT debugMessenger = 0;
+
 		VkPhysicalDevice mainPhysicalDevice = 0;
 		VkDevice device = 0;
 		QueueFamilyIndices queueFamilies;
-		VkSurfaceKHR surface = 0;
-		VkQueue graphicsQueue = 0;
-		VkQueue presentQueue = 0;
+
+		// Swapchain
 		VkSwapchainKHR swapChain = 0;
 		std::vector<VkImage> swapChainImages;
+		std::vector<VkImageView> swapChainImageViews;
 
-		VkSurfaceFormatKHR surfaceFormat;
+		// Choosen swapchain formats
+		VkSurfaceFormatKHR surfaceFormat;		
 		VkPresentModeKHR presentMode;
 		VkExtent2D extent;
 	};
