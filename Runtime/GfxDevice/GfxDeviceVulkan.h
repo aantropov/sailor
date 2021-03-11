@@ -41,15 +41,8 @@ namespace Sailor
 		static bool IsDeviceSuitable(VkPhysicalDevice device);
 		static int GetDeviceScore(VkPhysicalDevice device);
 
-		static QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device);
-
-		static SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device);
-
-		static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
-		static VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
-		static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* viewport);
-
 		static void GetRequiredDeviceExtensions(std::vector<const char*>& requiredDeviceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
+
 
 	private:
 
@@ -58,12 +51,22 @@ namespace Sailor
 
 		static GfxDeviceVulkan* instance;
 
+		static bool SetupDebugCallback();
 		static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
 		static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator);
 
-		static bool SetupDebugCallback();
 		static VkPhysicalDevice PickPhysicalDevice();
-		static void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
+
+		static QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device);
+		static SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device);
+
+		static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+		static VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+		static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* viewport);
+
+		void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
+		void CreateWin32Surface(const Window* viewport);
+		void CreateSwapchain(const Window* viewport);
 
 		__forceinline static VkInstance& GetVkInstance() { return instance->vkInstance; }
 
@@ -78,5 +81,9 @@ namespace Sailor
 		VkQueue presentQueue = 0;
 		VkSwapchainKHR swapChain = 0;
 		std::vector<VkImage> swapChainImages;
+
+		VkSurfaceFormatKHR surfaceFormat;
+		VkPresentModeKHR presentMode;
+		VkExtent2D extent;
 	};
 }

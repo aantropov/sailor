@@ -130,25 +130,83 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledVa
 	SetupDebugCallback();
 
 	// Create Win32 surface
+	instance->CreateWin32Surface(viewport);
+
+	// Pick & Create device
+	instance->mainPhysicalDevice = PickPhysicalDevice();
+	instance->CreateLogicalDevice(instance->mainPhysicalDevice);
+
+	// Create swapchain
+	instance->CreateSwapchain(viewport);
+
+	SAILOR_LOG("Vulkan initialized");
+}
+
+void GfxDeviceVulkan::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
+{
+	queueFamilies = FindQueueFamilies(physicalDevice);
+
+	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+	std::set<uint32_t> uniqueQueueFamilies = { queueFamilies.graphicsFamily.value(), queueFamilies.presentFamily.value() };
+
+	float queuePriority = 1.0f;
+
+	for (uint32_t queueFamily : uniqueQueueFamilies)
+	{
+		VkDeviceQueueCreateInfo queueCreateInfo{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
+		queueCreateInfo.queueFamilyIndex = queueFamily;
+		queueCreateInfo.queueCount = 1;
+		queueCreateInfo.pQueuePriorities = &queuePriority;
+		queueCreateInfos.push_back(queueCreateInfo);
+	}
+
+	VkPhysicalDeviceFeatures deviceFeatures{};
+	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
+
+	std::vector<const char*> deviceExtensions;
+	GetRequiredDeviceExtensions(deviceExtensions);
+
+	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+
+	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+	createInfo.pQueueCreateInfos = queueCreateInfos.data();
+	createInfo.pEnabledFeatures = &deviceFeatures;
+
+	// Compatibility with older Vulkan drivers
+	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
+	if (instance->bIsEnabledValidationLayers)
+	{
+		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+		createInfo.ppEnabledLayerNames = validationLayers.data();
+	}
+	else
+	{
+		createInfo.enabledLayerCount = 0;
+	}
+
+	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &instance->device));
+
+	// Create queues
+	vkGetDeviceQueue(device, queueFamilies.graphicsFamily.value(), 0, &graphicsQueue);
+	vkGetDeviceQueue(device, queueFamilies.presentFamily.value(), 0, &presentQueue);
+}
+
+void GfxDeviceVulkan::CreateWin32Surface(const Window* viewport)
+{
 	VkWin32SurfaceCreateInfoKHR createInfoWin32{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
 	createInfoWin32.hwnd = viewport->GetHWND();
 	createInfoWin32.hinstance = viewport->GetHINSTANCE();
-	VK_CHECK(vkCreateWin32SurfaceKHR(GetVkInstance(), &createInfoWin32, nullptr, &instance->surface));
+	VK_CHECK(vkCreateWin32SurfaceKHR(GetVkInstance(), &createInfoWin32, nullptr, &surface));
+}
 
-	// Create device
-	instance->mainPhysicalDevice = PickPhysicalDevice();
-	CreateLogicalDevice(instance->mainPhysicalDevice);
+void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
+{
+	SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(mainPhysicalDevice);
 
-	// Create queues
-	vkGetDeviceQueue(instance->device, instance->queueFamilies.graphicsFamily.value(), 0, &instance->graphicsQueue);
-	vkGetDeviceQueue(instance->device, instance->queueFamilies.presentFamily.value(), 0, &instance->presentQueue);
-
-	// Create swapchain
-	SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(instance->mainPhysicalDevice);
-
-	VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
-	VkPresentModeKHR presentMode = ÑhooseSwapPresentMode(swapChainSupport.presentModes);
-	VkExtent2D extent = ChooseSwapExtent(swapChainSupport.capabilities, viewport);
+	surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
+	presentMode = ÑhooseSwapPresentMode(swapChainSupport.presentModes);
+	extent = ChooseSwapExtent(swapChainSupport.capabilities, viewport);
 
 	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
 
@@ -158,7 +216,7 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledVa
 	}
 
 	VkSwapchainCreateInfoKHR createSwapChainInfo{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
-	createSwapChainInfo.surface = instance->surface;
+	createSwapChainInfo.surface = surface;
 	createSwapChainInfo.minImageCount = imageCount;
 	createSwapChainInfo.imageFormat = surfaceFormat.format;
 	createSwapChainInfo.imageColorSpace = surfaceFormat.colorSpace;
@@ -166,7 +224,7 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledVa
 	createSwapChainInfo.imageArrayLayers = 1;
 	createSwapChainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; //TODO: Use VK_IMAGE_USAGE_TRANSFER_DST_BIT for Post Processing
 
-	QueueFamilyIndices indices = FindQueueFamilies(instance->mainPhysicalDevice);
+	QueueFamilyIndices indices = FindQueueFamilies(mainPhysicalDevice);
 	uint32_t queueFamilyIndices[] = { indices.graphicsFamily.value(), indices.presentFamily.value() };
 
 	if (indices.graphicsFamily != indices.presentFamily)
@@ -189,15 +247,13 @@ void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledVa
 	createSwapChainInfo.clipped = VK_TRUE;
 	createSwapChainInfo.oldSwapchain = VK_NULL_HANDLE;
 
-	VK_CHECK(vkCreateSwapchainKHR(instance->device, &createSwapChainInfo, nullptr, &instance->swapChain));
+	VK_CHECK(vkCreateSwapchainKHR(device, &createSwapChainInfo, nullptr, &swapChain));
 
 	// Create Swapchain images
 
-	VK_CHECK(vkGetSwapchainImagesKHR(instance->device, instance->swapChain, &imageCount, nullptr));
-	instance->swapChainImages.resize(imageCount);
-	VK_CHECK(vkGetSwapchainImagesKHR(instance->device, instance->swapChain, &imageCount, instance->swapChainImages.data()));
-	
-	SAILOR_LOG("Vulkan initialized");
+	VK_CHECK(vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr));
+	swapChainImages.resize(imageCount);
+	VK_CHECK(vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data()));
 }
 
 uint32_t GfxDeviceVulkan::GetNumSupportedExtensions()
@@ -319,52 +375,6 @@ VkPhysicalDevice GfxDeviceVulkan::PickPhysicalDevice()
 	}
 
 	return physicalDevice;
-}
-
-void GfxDeviceVulkan::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
-{
-	instance->queueFamilies = FindQueueFamilies(physicalDevice);
-
-	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-	std::set<uint32_t> uniqueQueueFamilies = { instance->queueFamilies.graphicsFamily.value(), instance->queueFamilies.presentFamily.value() };
-
-	float queuePriority = 1.0f;
-
-	for (uint32_t queueFamily : uniqueQueueFamilies)
-	{
-		VkDeviceQueueCreateInfo queueCreateInfo{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
-		queueCreateInfo.queueFamilyIndex = queueFamily;
-		queueCreateInfo.queueCount = 1;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
-		queueCreateInfos.push_back(queueCreateInfo);
-	}
-
-	VkPhysicalDeviceFeatures deviceFeatures{};
-	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-
-	std::vector<const char*> deviceExtensions;
-	GetRequiredDeviceExtensions(deviceExtensions);
-
-	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-
-	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-	createInfo.pQueueCreateInfos = queueCreateInfos.data();
-	createInfo.pEnabledFeatures = &deviceFeatures;
-
-	// Compatibility with older Vulkan drivers
-	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-	if (instance->bIsEnabledValidationLayers)
-	{
-		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-		createInfo.ppEnabledLayerNames = validationLayers.data();
-	}
-	else
-	{
-		createInfo.enabledLayerCount = 0;
-	}
-
-	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &instance->device));
 }
 
 bool GfxDeviceVulkan::CheckDeviceExtensionSupport(VkPhysicalDevice device)
