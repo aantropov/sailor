@@ -66,6 +66,7 @@ namespace Sailor
 		void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		void CreateWin32Surface(const Window* viewport);
 		void CreateSwapchain(const Window* viewport);
+		void CreateGraphicsPipeline();
 
 		__forceinline static VkInstance& GetVkInstance() { return instance->vkInstance; }
 
