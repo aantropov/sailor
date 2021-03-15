@@ -16,11 +16,11 @@ void EngineInstance::Initialize()
 	}
 
 	ConsoleWindow::Initialize(false);
-	
+
 #ifdef _DEBUG
-	ConsoleWindow::GetInstance().OpenWindow(L"Sailor Console");
+	ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
 #endif
-	
+
 	instance = new EngineInstance();
 	instance->viewportWindow.Create(L"Sailor Viewport", 1024, 768);
 
@@ -30,11 +30,11 @@ void EngineInstance::Initialize()
 
 #ifndef _DEBUG
 	const bool bIsEnabledVulkanValidationLayers = false;
-#endif
-	
-	GfxDeviceVulkan::CreateInstance(&instance->viewportWindow, bIsEnabledVulkanValidationLayers);
-	
-	SAILOR_LOG("Sailor Engine initialized");	
+#endif 
+
+	GfxDeviceVulkan::Initialize(&instance->viewportWindow, bIsEnabledVulkanValidationLayers);
+
+	SAILOR_LOG("Sailor Engine initialized");
 }
 
 void EngineInstance::Start()
@@ -49,8 +49,8 @@ void EngineInstance::Start()
 
 	while (instance->viewportWindow.IsRunning())
 	{
-		ConsoleWindow::GetInstance().Update();
-		
+		ConsoleWindow::GetInstance()->Update();
+
 		while (PeekMessage(&msg, instance->viewportWindow.GetHWND(), 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
@@ -88,7 +88,7 @@ void EngineInstance::Start()
 			}
 		}
 	}
-	
+
 	instance->viewportWindow.SetActive(false);
 	instance->viewportWindow.SetRunning(false);
 }
@@ -102,10 +102,8 @@ void EngineInstance::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Released");
 	GfxDeviceVulkan::Shutdown();
-	
-	ConsoleWindow::GetInstance().CloseWindow();
-	ConsoleWindow::GetInstance().Release();
-	
+	ConsoleWindow::Shutdown();
+
 	delete instance;
 }
 

@@ -1,20 +1,16 @@
 #pragma once
 #include <cstdio>
 
+#include "Singleton.hpp"
+
 // This class redirects stdout to the current console window, if there is one.
 // It can also open a new console window on demand if the application is
 // started from windows but wants console output anyway.
-class ConsoleWindow
+class ConsoleWindow : public Singleton<ConsoleWindow>
 {
 public:
 	// Setup singleton access.
 	static void Initialize(bool bInShouldAttach);
-
-	// Remove singleton.
-	static void Release();
-
-	// Get singleton instance.
-	static ConsoleWindow& GetInstance();
 
 	// Opens a new console window and redirects stdout to the new window.
 	void OpenWindow(const wchar_t* Title);
@@ -32,11 +28,12 @@ public:
 
 	// Returns true if the console window has been closed.
 	bool IsExitRequested();
+
+	virtual ~ConsoleWindow() override;
 	
 private:
 	
 	ConsoleWindow(bool bInShouldAttach);
-	~ConsoleWindow();
 
 	// Attach to default console window, if any.
 	void Attach();
@@ -47,8 +44,6 @@ private:
 	// Write a unicode character to the console.
 	void Write(wchar_t c);
 
-	static ConsoleWindow* instance;
-	
 	FILE* stdout_file;
 	FILE* stderr_file;
 	FILE* stdin_file;

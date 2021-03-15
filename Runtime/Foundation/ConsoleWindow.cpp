@@ -7,8 +7,6 @@
 
 #include "Types.h"
 
-ConsoleWindow* ConsoleWindow::instance = 0;
-
 namespace
 {
 	volatile bool ñonsoleExit = false; // This is set in case the console is signalled to close.
@@ -27,24 +25,9 @@ ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
 	}
 }
 
-ConsoleWindow::~ConsoleWindow()
-{
-	Free();
-}
-
 void ConsoleWindow::Initialize(bool bInShouldAttach)
 {
 	instance = new ConsoleWindow(bInShouldAttach);
-}
-
-void ConsoleWindow::Release()
-{
-	delete instance;
-}
-
-ConsoleWindow& ConsoleWindow::GetInstance()
-{
-	return *instance;
 }
 
 // Global handler for break and exit signals from the console.
@@ -77,18 +60,23 @@ void ConsoleWindow::Attach()
 	}
 }
 
+ConsoleWindow::~ConsoleWindow()
+{
+	Free();
+}
+
 void ConsoleWindow::Free()
 {
 	if (stdout_file != 0)
 	{
 		fclose(stdout_file);
 	}
-	
+
 	if (stderr_file != 0)
 	{
 		fclose(stderr_file);
 	}
-	
+
 	if (stdin_file != 0)
 	{
 		fclose(stdin_file);
@@ -97,11 +85,12 @@ void ConsoleWindow::Free()
 	stdout_file = 0;
 	stderr_file = 0;
 	stdin_file = 0;
-	
+
 	FreeConsole();
 }
 
-bool ConsoleWindow::IsExitRequested() {
+bool ConsoleWindow::IsExitRequested()
+{
 	return _exit;
 }
 
@@ -121,7 +110,7 @@ void ConsoleWindow::OpenWindow(const wchar_t* Title)
 void ConsoleWindow::CloseWindow()
 {
 	Free();
-	
+
 	if (bShouldAttach)
 	{
 		Attach();

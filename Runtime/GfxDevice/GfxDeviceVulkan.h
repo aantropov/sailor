@@ -4,12 +4,13 @@
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+#include "Singleton.hpp"
 
 namespace Sailor
 {
 	class Window;
 
-	class GfxDeviceVulkan
+	class GfxDeviceVulkan : public Singleton<GfxDeviceVulkan>
 	{
 	public:
 
@@ -29,8 +30,7 @@ namespace Sailor
 			std::vector<VkPresentModeKHR> presentModes;
 		};
 
-		static void CreateInstance(const Window* viewport, bool bInIsEnabledValidationLayers);
-		static void Shutdown();
+		static void Initialize(const Window* viewport, bool bInIsEnabledValidationLayers);
 
 		static uint32_t GetNumSupportedExtensions();
 		static void PrintSupportedExtensions();
@@ -43,12 +43,9 @@ namespace Sailor
 
 		static void GetRequiredDeviceExtensions(std::vector<const char*>& requiredDeviceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
 
+		virtual ~GfxDeviceVulkan() override;
+
 	private:
-
-		GfxDeviceVulkan() = default;
-		~GfxDeviceVulkan() = default;
-
-		static GfxDeviceVulkan* instance;
 
 		static bool SetupDebugCallback();
 		static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
@@ -67,7 +64,7 @@ namespace Sailor
 		void CreateWin32Surface(const Window* viewport);
 		void CreateSwapchain(const Window* viewport);
 		void CreateGraphicsPipeline();
-
+		
 		__forceinline static VkInstance& GetVkInstance() { return instance->vkInstance; }
 
 		bool bIsEnabledValidationLayers = false;

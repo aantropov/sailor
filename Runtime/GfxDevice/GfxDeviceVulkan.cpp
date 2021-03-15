@@ -23,8 +23,6 @@ using namespace Sailor;
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
-GfxDeviceVulkan* GfxDeviceVulkan::instance = nullptr;
-
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -60,11 +58,9 @@ void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 
 void GfxDeviceVulkan::CreateGraphicsPipeline()
 {
-
-	
 }
 
-void GfxDeviceVulkan::CreateInstance(const Window* viewport, bool bInIsEnabledValidationLayers)
+void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValidationLayers)
 {
 	if (instance != nullptr)
 	{
@@ -335,7 +331,7 @@ bool GfxDeviceVulkan::CheckValidationLayerSupport(const std::vector<const char*>
 	return true;
 }
 
-void GfxDeviceVulkan::Shutdown()
+GfxDeviceVulkan::~GfxDeviceVulkan()
 {
 	if (instance->bIsEnabledValidationLayers)
 	{
@@ -346,13 +342,11 @@ void GfxDeviceVulkan::Shutdown()
 	{
 		vkDestroyImageView(instance->device, imageView, nullptr);
 	}
-	
+
 	vkDestroySwapchainKHR(instance->device, instance->swapChain, nullptr);
 	vkDestroyDevice(instance->device, nullptr);
 	vkDestroySurfaceKHR(GetVkInstance(), instance->surface, nullptr);
 	vkDestroyInstance(GetVkInstance(), nullptr);
-
-	delete(instance);
 }
 
 bool GfxDeviceVulkan::SetupDebugCallback()

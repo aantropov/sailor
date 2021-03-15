@@ -48,6 +48,9 @@
     <ClInclude Include="..\Runtime\GfxDevice\GfxDeviceVulkan.h">
       <Filter>Runtime\GfxDevice</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Singleton.hpp">
+      <Filter>Runtime</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
