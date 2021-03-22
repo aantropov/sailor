@@ -1,25 +1,17 @@
-#include "ShaderCache.h"
-
-#include <iostream>
+#include "ShaderCompiler.h"
 
 #include "AssetRegistry.h"
 #include <shaderc/shaderc.hpp>
-//#include <glslang/Public/ShaderLang.h>
 
 #ifdef _DEBUG
-#pragma comment(lib, "..//External//shaderc//Debug//OSDependentd.lib")
-#pragma comment(lib, "..//External//shaderc//Debug//HLSLd.lib")
-#pragma comment(lib, "..//External//shaderc//Debug//SPIRVd.lib")
-#pragma comment(lib, "..//External//shaderc//Debug//OGLCompilerd.lib")
-//#pragma comment(lib, "..//External//shaderc//Debug//shaderc.lib")
-#pragma comment(lib, "..//External//shaderc//Debug//glslangd.lib")
-//#pragma comment(lib, "..//External//shaderc//Debug//shaderc_combined.lib")
+#pragma comment(lib, "shaderc_combinedd.lib")
 #else
+#pragma comment(lib, "shaderc_combined.lib")
 #endif
 
-using namespace Sailor;
+using namespace Sailor::GfxDeviceVulkan::ShaderCompiler;
 
-std::vector<uint32_t> ShaderCache::CompileToSPIRV(const char* sPath)
+bool CompileToSPIRV(const string& source, const vector<string>& defines, const vector<string>& includes, vector<uint32_t>& outByteCode)
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
@@ -32,7 +24,7 @@ std::vector<uint32_t> ShaderCache::CompileToSPIRV(const char* sPath)
 
 	//shaderBytecode = { module.cbegin(), module.cend() };// not sure why sample code copy vector like this
 	//shaderc::Compiler::CompileGlslToSpv()
-	
+
 	/*
 	glslang::InitializeProcess();
 	glslang::TShader vShader(EShLanguage::EShLangAnyHit);
@@ -47,5 +39,5 @@ std::vector<uint32_t> ShaderCache::CompileToSPIRV(const char* sPath)
 	vShader.setStringsWithLengthsAndNames(srcs, lens, inputName, 1);
 
 	vShader.parse(&DefaultTBuiltInResource, 100, EProfile::EEsProfile, false, true, EShMessages::EShMsgDefault);*/
-	return { 0 };
+	return false;
 }

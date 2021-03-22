@@ -3,6 +3,11 @@
 
 using namespace Sailor;
 
+void AssetRegistry::Initialize()
+{
+	instance = new AssetRegistry();
+}
+
 bool AssetRegistry::ReadFile(const std::string& filename, std::vector<char>& buffer)
 {
 	std::ifstream file(filename, std::ios::ate | std::ios::binary);

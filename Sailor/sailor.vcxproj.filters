@@ -57,7 +57,7 @@
     <ClInclude Include="..\Runtime\AssetRegistry\AssetRegistry.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\ShaderCache.h">
+    <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
   </ItemGroup>
@@ -86,7 +86,7 @@
     <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\ShaderCache.cpp">
+    <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
   </ItemGroup>

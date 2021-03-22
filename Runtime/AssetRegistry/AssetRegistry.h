@@ -12,6 +12,7 @@ namespace Sailor
 	{
 	public:
 		
+		static void Initialize();		
 		static bool ReadFile(const std::string& filename, std::vector<char>& buffer);
 	};
 }
