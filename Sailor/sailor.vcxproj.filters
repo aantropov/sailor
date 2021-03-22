@@ -22,6 +22,9 @@
     <Filter Include="Runtime\GfxDevice">
       <UniqueIdentifier>{c9092454-50e1-4e43-ba17-1a868c268396}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\AssetRegistry">
+      <UniqueIdentifier>{743d5375-e41f-4249-944a-31c1edb7a9ce}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\ExportDef.h">
@@ -51,6 +54,12 @@
     <ClInclude Include="..\Runtime\Singleton.hpp">
       <Filter>Runtime</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\AssetRegistry.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\ShaderCache.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -73,6 +82,12 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\GfxDeviceVulkan.cpp">
       <Filter>Runtime\GfxDevice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\ShaderCache.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
