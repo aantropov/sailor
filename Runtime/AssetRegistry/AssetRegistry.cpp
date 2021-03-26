@@ -4,8 +4,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include "AssetInfo.h"
+#include "nlohmann_json/include/nlohmann/json.hpp"
 
 using namespace Sailor;
+using namespace nlohmann;
 
 void AssetRegistry::Initialize()
 {
@@ -28,9 +31,14 @@ bool AssetRegistry::ReadFile(const std::string& filename, std::vector<char>& buf
 
 	file.seekg(0);
 	file >> buffer.data();
-	
+
 	file.close();
 	return true;
+}
+
+void AssetRegistry::ScanContentFolder()
+{
+	ScanFolder(ContentRootFolder);
 }
 
 void AssetRegistry::LoadAll()
@@ -38,7 +46,7 @@ void AssetRegistry::LoadAll()
 	LoadAssetsInFolder(ContentRootFolder);
 }
 
-std::string removeExtension(const std::string& filename)
+std::string RemoveExtension(const std::string& filename)
 {
 	size_t lastdot = filename.find_last_of(".");
 	if (lastdot == std::string::npos)
@@ -46,7 +54,7 @@ std::string removeExtension(const std::string& filename)
 	return filename.substr(0, lastdot);
 }
 
-std::string getExtension(const std::string& filename)
+std::string GetExtension(const std::string& filename)
 {
 	size_t lastdot = filename.find_last_of(".");
 	if (lastdot == std::string::npos)
@@ -73,8 +81,8 @@ bool AssetRegistry::LoadAsset(const std::string& filePath, bool bShouldImport)
 {
 	std::cout << "Try load asset: " << filePath << std::endl;
 
-	const std::string assetFilePath = removeExtension(filePath) + MetaFileExtension;
-	const std::string extension = getExtension(filePath);
+	const std::string assetFilePath = RemoveExtension(filePath) + MetaFileExtension;
+	const std::string extension = GetExtension(filePath);
 
 	if (extension == MetaFileExtension)
 	{
@@ -98,14 +106,13 @@ bool AssetRegistry::LoadAsset(const std::string& filePath, bool bShouldImport)
 
 		json meta;
 		assetFile >> meta;
-		
+
 		assetToLoad->Deserialize(meta);
+		assetToLoad->Load(assetFilePath);
 
-		auto a = meta["guid"].get<std::string>();
-		
-		assetToLoad->Load();
+		assetFile.close();
 
-		assets[assetToLoad->guid] = assetToLoad;
+		loadedAssets[assetToLoad->GetGUID()] = assetToLoad;
 
 		return true;
 	}
@@ -115,7 +122,7 @@ bool AssetRegistry::LoadAsset(const std::string& filePath, bool bShouldImport)
 
 bool AssetRegistry::ImportFile(const std::string& filename)
 {
-	const std::string assetFilePath = removeExtension(filename) + MetaFileExtension;
+	const std::string assetFilePath = RemoveExtension(filename) + MetaFileExtension;
 	std::filesystem::remove(assetFilePath);
 	std::ofstream assetFile{ assetFilePath };
 
@@ -134,33 +141,59 @@ bool AssetRegistry::ImportFile(const std::string& filename)
 
 	assetFile << newMeta.dump();
 	assetFile.close();
-	
+
 	return true;
 }
 
-EAssetType AssetRegistry::GetAssetTypeByExtension(const std::string& extension)
+bool AssetRegistry::RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler)
 {
-	if (extension == "shader")
+	bool bAssigned = false;
+	for (const auto& extension : supportedExtensions)
 	{
-		return EAssetType::Shader;
+		if (assetInfoHandlers.find(extension) != assetInfoHandlers.end())
+		{
+			continue;
+		}
+
+		assetInfoHandlers[extension] = assetInfoHandler;
+		bAssigned = true;
 	}
-	return EAssetType::Data;
+
+	return bAssigned;
 }
 
-Asset* AssetRegistry::CreateAsset(EAssetType Type) const
+void AssetRegistry::ScanFolder(const std::string& folderPath)
+{
+	for (const auto& entry : std::filesystem::directory_iterator(folderPath))
+	{
+		if (entry.is_directory())
+		{
+			ScanFolder(entry.path().string());
+		}
+		else if (entry.is_regular_file())
+		{
+			if (GetExtension(entry.path().string()) == "asset")
+			{
+
+			}
+		}
+	}
+}
+
+AssetInfo* AssetRegistry::CreateAsset(EAssetType Type) const
 {
 	switch (Type)
 	{
 	case EAssetType::Shader:
-		return new Asset();
+		return new AssetInfo();
 	default:
-		return new Asset();
+		return new AssetInfo();
 	}
 }
 
 AssetRegistry::~AssetRegistry()
 {
-	for (auto& asset : assets)
+	for (auto& asset : loadedAssets)
 	{
 		delete asset.second;
 	}

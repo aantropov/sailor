@@ -60,6 +60,9 @@
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -87,6 +90,9 @@
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\AssetInfo.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
   </ItemGroup>

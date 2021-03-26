@@ -163,6 +163,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\AssetRegistry.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h" />
     <ClInclude Include="..\Runtime\ExportDef.h" />
@@ -176,6 +177,7 @@
     <ClInclude Include="..\Runtime\Types.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\Runtime\AssetRegistry\AssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp" />
     <ClCompile Include="..\Runtime\Foundation\ConsoleWindow.cpp" />
