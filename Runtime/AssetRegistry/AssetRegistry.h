@@ -2,31 +2,32 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
+#include "UID.h"
 #include "AssetInfo.h"
 #include "Singleton.hpp"
+#include "nlohmann_json/include/nlohmann/json.hpp"
+
+using namespace nlohmann;
 
 namespace Sailor
 {
-	typedef std::string GUID;
-	
 	class AssetInfo;
 	enum class EAssetType;
-	
+
 	class AssetRegistry : public Singleton<AssetRegistry>
 	{
-		const std::string ContentRootFolder = "..//Content//";
-		const std::string MetaFileExtension = ".asset";
-
-		std::unordered_map<GUID, AssetInfo*> loadedAssets;
+		std::unordered_map<UID, AssetInfo*> loadedAssets;
 		std::vector<std::string> filesToImport;
 
-		std::unordered_map<const std::string, IAssetInfoHandler*> assetInfoHandlers;
-		
+		std::unordered_map<std::string, class IAssetInfoHandler*> assetInfoHandlers;
+
 	public:
 
+		static const std::string ContentRootFolder;
+		static const std::string MetaFileExtension;
+
 		virtual ~AssetRegistry() override;
-		
+
 		static void Initialize();
 		static bool ReadFile(const std::string& filename, std::vector<char>& buffer);
 
@@ -41,11 +42,9 @@ namespace Sailor
 		static EAssetType GetAssetTypeByExtension(const std::string& extension);
 
 		bool RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler);
-		
+
 	protected:
 
 		void ScanFolder(const std::string& folderPath);
-		
-		AssetInfo* CreateAsset(EAssetType Type) const;
 	};
 }

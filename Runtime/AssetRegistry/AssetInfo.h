@@ -1,14 +1,17 @@
 #pragma once
 #include <string>
 #include "AssetRegistry.h"
+#include "UID.h"
+#include "Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
 using namespace nlohmann;
+namespace Sailor { class AssetInfo; }
 
 namespace ns
 {
-	void to_json(json& j, const Sailor::AssetInfo& p);
-	void from_json(const json& j, Sailor::AssetInfo& p);
+	void to_json(json& j, const class Sailor::AssetInfo& p);
+	void from_json(const json& j, class Sailor::AssetInfo& p);
 }
 
 namespace Sailor
@@ -19,15 +22,20 @@ namespace Sailor
 	public:
 
 		virtual ~AssetInfo() = default;
-		const GUID& GetGUID() const { return guid; }
+
+		const UID& GetUID() const { return uid; }
+		const std::string& GetFilePath() const { return filePath; }
 
 	protected:
 
 		std::string assetType = "none";
-		GUID guid;
+		std::string filePath;
 
-		friend void ns::to_json(json& j, const Sailor::AssetInfo& p);
-		friend void ns::from_json(const json& j, Sailor::AssetInfo& p);
+		UID uid;
+
+		friend void ns::to_json(json& j, const AssetInfo& p);
+		friend void ns::from_json(const json& j, AssetInfo& p);
+		friend class IAssetInfoHandler;
 	};
 
 	class IAssetInfoHandler
@@ -35,20 +43,22 @@ namespace Sailor
 
 	public:
 
-		virtual void Serialize(const AssetInfo* inInfo, json& outData) const = 0;
-		virtual void Deserialize(const json& inData, AssetInfo* outInfo) const = 0;
+		virtual void Serialize(const AssetInfo* inInfo, json& outData) const {}
+		virtual void Deserialize(const json& inData, AssetInfo* outInfo) const {}
 
-		virtual AssetInfo* ImportFile(const std::string& filePath) const = 0;
+		virtual AssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const { return nullptr; }
+		virtual AssetInfo* ImportFile(const std::string& filePath) const { return nullptr; }
 
 		virtual ~IAssetInfoHandler() = default;
 
 	protected:
 
-		std::vector<std::string> allowedExtensions;
+		std::vector<std::string> supportedExtensions;
 	};
 
-	class AssetInfoHandler : public Singleton<AssetInfoHandler>, public IAssetInfoHandler
+	class DefaultAssetInfoHandler : public Singleton<DefaultAssetInfoHandler>, public IAssetInfoHandler
 	{
+
 	public:
 
 		static void Initialize();
@@ -56,8 +66,9 @@ namespace Sailor
 		virtual void Serialize(const AssetInfo* inInfo, json& outData) const override;
 		virtual void Deserialize(const json& inData, AssetInfo* outInfo) const override;
 
+		virtual AssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const override;
 		virtual AssetInfo* ImportFile(const std::string& filePath) const override;
 
-		virtual ~AssetInfoHandler() = default;
+		virtual ~DefaultAssetInfoHandler() = default;
 	};
 }

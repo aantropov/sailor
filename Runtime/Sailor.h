@@ -3,7 +3,7 @@
 #include <memory>
 #include "ExportDef.h"
 #include "LogMacros.h"
-#include "Types.h"
+#include "Utils.h"
 #include "Foundation/ConsoleWindow.h"
 #include "Foundation/Window.h"
 

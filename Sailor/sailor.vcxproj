@@ -23,7 +23,7 @@
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{6d6b98f8-00ff-4088-80e9-7e6f5fcd5183}</ProjectGuid>
     <RootNamespace>sailor</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -42,8 +42,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -166,6 +166,7 @@
     <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\AssetRegistry.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h" />
+    <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
     <ClInclude Include="..\Runtime\ExportDef.h" />
     <ClInclude Include="..\Runtime\Foundation\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Foundation\Input.h" />
@@ -174,18 +175,19 @@
     <ClInclude Include="..\Runtime\LogMacros.h" />
     <ClInclude Include="..\Runtime\Sailor.h" />
     <ClInclude Include="..\Runtime\Singleton.hpp" />
-    <ClInclude Include="..\Runtime\Types.h" />
+    <ClInclude Include="..\Runtime\Utils.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\Runtime\AssetRegistry\AssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp" />
+    <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Foundation\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Foundation\Input.cpp" />
     <ClCompile Include="..\Runtime\Foundation\Window.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\GfxDeviceVulkan.cpp" />
     <ClCompile Include="..\Runtime\Sailor.cpp" />
-    <ClCompile Include="..\Runtime\Types.cpp" />
+    <ClCompile Include="..\Runtime\Utils.cpp" />
     <ClCompile Include="dllmain.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

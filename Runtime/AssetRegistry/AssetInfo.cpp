@@ -1,39 +1,68 @@
 #include "AssetInfo.h"
 #include "AssetRegistry.h"
+#include <combaseapi.h>
+#include <corecrt_io.h>
+#include <filesystem>
+#include <fstream>
+#include "Utils.h"
 
 using namespace Sailor;
 
 void ns::to_json(json& j, const Sailor::AssetInfo& p)
 {
-	j = json{ {"guid", p.GetGUID()} };
+	//j["uid"] = to_json(p.Getuid()} };
 }
 
 void ns::from_json(const json& j, Sailor::AssetInfo& p)
 {
-	j.at("guid").get_to(p.guid);
+	//j.at("uid").get_to(p.uid);
 }
 
-void AssetInfoHandler::Initialize()
+void DefaultAssetInfoHandler::Initialize()
 {
-	instance = new AssetInfoHandler();
+	instance = new DefaultAssetInfoHandler();
+	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(instance->supportedExtensions, instance);
 }
 
-void AssetInfoHandler::Serialize(const AssetInfo* inInfo, json& outData) const
+void DefaultAssetInfoHandler::Serialize(const AssetInfo* inInfo, json& outData) const
 {
 	ns::to_json(outData, *inInfo);
 }
 
-void AssetInfoHandler::Deserialize(const json& inData, AssetInfo* outInfo) const
+void DefaultAssetInfoHandler::Deserialize(const json& inData, AssetInfo* outInfo) const
 {
 	ns::from_json(inData, *outInfo);
 }
 
-AssetInfo* AssetInfoHandler::CreateNew() const
+AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filePath) const
 {
-	//
-	return new AssetInfo();
+	const std::string assetInfoFilePath = Utils::RemoveExtension(filePath) + AssetRegistry::MetaFileExtension;
+	std::filesystem::remove(assetInfoFilePath);
+	std::ofstream assetFile{ assetInfoFilePath };
+
+	json newMeta;
+	AssetInfo defaultObject;
+		
+	ns::to_json(newMeta, defaultObject);
+	ns::to_json(newMeta["uid"], UID::CreateNewUID());
+
+	assetFile << newMeta.dump();
+	assetFile.close();
+
+	return ImportAssetInfo(assetInfoFilePath);
 }
 
-AssetInfo* AssetInfoHandler::ImportFile(const std::string& filePath) const
+AssetInfo* DefaultAssetInfoHandler::ImportAssetInfo(const std::string& assetInfoPath) const
 {
+	AssetInfo* res = new AssetInfo();
+
+	std::ifstream assetFile(assetInfoPath);
+
+	json meta;
+	assetFile >> meta;
+	Deserialize(meta, res);
+
+	assetFile.close();
+
+	return res;
 }

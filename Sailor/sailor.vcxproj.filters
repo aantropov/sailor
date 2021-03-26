@@ -42,9 +42,6 @@
     <ClInclude Include="..\Runtime\Foundation\Input.h">
       <Filter>Runtime\Foundation</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Types.h">
-      <Filter>Runtime</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\LogMacros.h">
       <Filter>Runtime</Filter>
     </ClInclude>
@@ -63,6 +60,12 @@
     <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\UID.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Utils.h">
+      <Filter>Runtime</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -80,9 +83,6 @@
     <ClCompile Include="..\Runtime\Sailor.cpp">
       <Filter>Runtime</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Types.cpp">
-      <Filter>Runtime</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\GfxDeviceVulkan.cpp">
       <Filter>Runtime\GfxDevice</Filter>
     </ClCompile>
@@ -94,6 +94,12 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\AssetInfo.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Utils.cpp">
+      <Filter>Runtime</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

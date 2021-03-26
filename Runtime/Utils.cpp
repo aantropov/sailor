@@ -1,7 +1,6 @@
-#pragma once
-#include "Types.h"
+#include "Utils.h"
 
-std::string wchar_to_UTF8(const wchar_t* in)
+std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
 {
     std::string out;
     unsigned int codepoint = 0;
@@ -42,7 +41,7 @@ std::string wchar_to_UTF8(const wchar_t* in)
     return out;
 }
 
-std::wstring UTF8_to_wchar(const char* in)
+std::wstring Sailor::Utils::UTF8_to_wchar(const char* in)
 {
     std::wstring out;
     unsigned int codepoint;
@@ -74,4 +73,20 @@ std::wstring UTF8_to_wchar(const char* in)
         }
     }
     return out;
+}
+
+std::string Sailor::Utils::RemoveExtension(const std::string& filename)
+{
+	size_t lastdot = filename.find_last_of(".");
+	if (lastdot == std::string::npos)
+		return filename;
+	return filename.substr(0, lastdot);
+}
+
+std::string Sailor::Utils::GetExtension(const std::string& filename)
+{
+	size_t lastdot = filename.find_last_of(".");
+	if (lastdot == std::string::npos)
+		return std::string();
+	return filename.substr(lastdot, filename.size() - lastdot);
 }
