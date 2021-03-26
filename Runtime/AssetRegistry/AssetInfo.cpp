@@ -5,17 +5,18 @@
 #include <filesystem>
 #include <fstream>
 #include "Utils.h"
+#include <iostream>
 
 using namespace Sailor;
 
 void ns::to_json(json& j, const Sailor::AssetInfo& p)
 {
-	//j["uid"] = to_json(p.Getuid()} };
+	ns::to_json(j["uid"], p.GetUID());
 }
 
 void ns::from_json(const json& j, Sailor::AssetInfo& p)
 {
-	//j.at("uid").get_to(p.uid);
+	ns::from_json(j["uid"], p.uid);
 }
 
 void DefaultAssetInfoHandler::Initialize()
@@ -36,6 +37,8 @@ void DefaultAssetInfoHandler::Deserialize(const json& inData, AssetInfo* outInfo
 
 AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filePath) const
 {
+	std::cout << "Try import file: " << filePath << std::endl;
+
 	const std::string assetInfoFilePath = Utils::RemoveExtension(filePath) + AssetRegistry::MetaFileExtension;
 	std::filesystem::remove(assetInfoFilePath);
 	std::ofstream assetFile{ assetInfoFilePath };
@@ -54,6 +57,8 @@ AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filePath) cons
 
 AssetInfo* DefaultAssetInfoHandler::ImportAssetInfo(const std::string& assetInfoPath) const
 {
+	std::cout << "Try load asset info: " << assetInfoPath << std::endl;
+
 	AssetInfo* res = new AssetInfo();
 
 	std::ifstream assetFile(assetInfoPath);

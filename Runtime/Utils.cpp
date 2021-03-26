@@ -78,6 +78,7 @@ std::wstring Sailor::Utils::UTF8_to_wchar(const char* in)
 std::string Sailor::Utils::RemoveExtension(const std::string& filename)
 {
 	size_t lastdot = filename.find_last_of(".");
+	lastdot++;
 	if (lastdot == std::string::npos)
 		return filename;
 	return filename.substr(0, lastdot);
@@ -86,6 +87,7 @@ std::string Sailor::Utils::RemoveExtension(const std::string& filename)
 std::string Sailor::Utils::GetExtension(const std::string& filename)
 {
 	size_t lastdot = filename.find_last_of(".");
+	lastdot++;
 	if (lastdot == std::string::npos)
 		return std::string();
 	return filename.substr(lastdot, filename.size() - lastdot);

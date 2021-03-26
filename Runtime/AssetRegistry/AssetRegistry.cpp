@@ -10,12 +10,13 @@ using namespace Sailor;
 using namespace nlohmann;
 
 const std::string AssetRegistry::ContentRootFolder = "..//Content//";
-const std::string AssetRegistry::MetaFileExtension = ".asset";
+const std::string AssetRegistry::MetaFileExtension = "asset";
 
 void AssetRegistry::Initialize()
 {
 	instance = new AssetRegistry();
-	instance->LoadAll();
+	DefaultAssetInfoHandler::Initialize();
+	instance->ScanContentFolder();
 }
 
 bool AssetRegistry::ReadFile(const std::string& filename, std::vector<char>& buffer)
@@ -41,95 +42,6 @@ bool AssetRegistry::ReadFile(const std::string& filename, std::vector<char>& buf
 void AssetRegistry::ScanContentFolder()
 {
 	ScanFolder(ContentRootFolder);
-}
-
-void AssetRegistry::LoadAll()
-{
-	LoadAssetsInFolder(ContentRootFolder);
-}
-
-void AssetRegistry::LoadAssetsInFolder(const std::string& folderPath)
-{
-	for (const auto& entry : std::filesystem::directory_iterator(folderPath))
-	{
-		if (entry.is_directory())
-		{
-			LoadAssetsInFolder(entry.path().string());
-		}
-		else if (entry.is_regular_file())
-		{
-			LoadAsset(entry.path().string(), true);
-		}
-	}
-}
-
-bool AssetRegistry::LoadAsset(const std::string& filePath, bool bShouldImport)
-{
-	std::cout << "Try load asset: " << filePath << std::endl;
-
-	const std::string assetFilePath = Utils::RemoveExtension(filePath) + MetaFileExtension;
-	const std::string extension = Utils::GetExtension(filePath);
-
-	if (extension == MetaFileExtension)
-	{
-		return false;
-	}
-
-	if (!std::filesystem::exists(assetFilePath) && bShouldImport)
-	{
-		if (!ImportFile(filePath))
-		{
-			return false;
-		}
-	}
-
-	if (std::filesystem::exists(assetFilePath))
-	{
-		//TODO: Load asset				
-		/*auto assetToLoad = CreateAsset(GetAssetTypeByExtension(extension));
-
-		std::ifstream assetFile(assetFilePath);
-
-		json meta;
-		assetFile >> meta;
-
-		assetToLoad->Deserialize(meta);
-		assetToLoad->Load(assetFilePath);
-
-		assetFile.close();
-
-		loadedAssets[assetToLoad->Getuid()] = assetToLoad;
-		*/
-		return true;
-	}
-
-	return false;
-}
-
-bool AssetRegistry::ImportFile(const std::string& filename)
-{
-	/*
-	const std::string assetFilePath = RemoveExtension(filename) + MetaFileExtension;
-	std::filesystem::remove(assetFilePath);
-	std::ofstream assetFile{ assetFilePath };
-
-	::uid uid;
-	HRESULT hr = CoCreateuid(&uid);
-
-	char buffer[128];
-	sprintf_s(buffer, "{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
-		uid.Data1, uid.Data2, uid.Data3,
-		uid.Data4[0], uid.Data4[1], uid.Data4[2], uid.Data4[3],
-		uid.Data4[4], uid.Data4[5], uid.Data4[6], uid.Data4[7]);
-
-	json newMeta = {
-		{"uid", buffer}
-	};
-
-	assetFile << newMeta.dump();
-	assetFile.close();
-	*/
-	return true;
 }
 
 bool AssetRegistry::RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler)
@@ -159,9 +71,32 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 		}
 		else if (entry.is_regular_file())
 		{
-			if (Utils::GetExtension(entry.path().string()) == "asset")
-			{
+			const std::string file = entry.path().string();
+			const std::string extension = Utils::GetExtension(file);
 
+			if (extension != MetaFileExtension)
+			{
+				const std::string assetInfoFile = Utils::RemoveExtension(file) + MetaFileExtension;
+
+				IAssetInfoHandler* assetInfoHandler = DefaultAssetInfoHandler::GetInstance();
+
+				auto assetInfoHandlerIt = assetInfoHandlers.find(extension);
+				if (assetInfoHandlerIt != assetInfoHandlers.end())
+				{
+					assetInfoHandler = (*assetInfoHandlerIt).second;
+				}
+
+				AssetInfo* assetInfo = nullptr;
+				if (std::filesystem::exists(assetInfoFile))
+				{
+					assetInfo = assetInfoHandler->ImportAssetInfo(assetInfoFile);
+				}
+				else
+				{
+					assetInfo = assetInfoHandler->ImportFile(file);
+				}
+
+				loadedAssetInfos[assetInfo->GetUID()] = assetInfo;
 			}
 		}
 	}
@@ -169,7 +104,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 
 AssetRegistry::~AssetRegistry()
 {
-	for (auto& asset : loadedAssets)
+	for (auto& asset : loadedAssetInfos)
 	{
 		delete asset.second;
 	}

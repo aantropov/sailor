@@ -25,6 +25,11 @@ void UID::operator=(const UID& inUID)
 	uid = inUID.uid;
 }
 
+bool UID::operator==(const UID& rhs) const
+{
+	return uid == rhs.uid;
+}
+
 UID UID::CreateNewUID()
 {
 	UID newuid;

@@ -23,6 +23,7 @@ namespace Sailor
 		UID() = default;
 		UID(const UID& inUID) = default;
 		void operator=(const UID& inUID);
+		bool operator==(const UID& rhs) const;
 		virtual ~UID() = default;
 
 	protected:
