@@ -21,8 +21,8 @@ namespace Sailor
 
 	public:
 
-		static const std::string ContentRootFolder;
-		static const std::string MetaFileExtension;
+		static constexpr const char* ContentRootFolder = "..//Content//";
+		static constexpr const char* MetaFileExtension = "asset";
 
 		virtual ~AssetRegistry() override;
 

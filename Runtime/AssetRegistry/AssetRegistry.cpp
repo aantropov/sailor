@@ -10,9 +10,6 @@
 using namespace Sailor;
 using namespace nlohmann;
 
-const std::string AssetRegistry::ContentRootFolder = "..//Content//";
-const std::string AssetRegistry::MetaFileExtension = "asset";
-
 void AssetRegistry::Initialize()
 {
 	instance = new AssetRegistry();
