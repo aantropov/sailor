@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include "AssetInfo.h"
+#include "ShaderAssetInfo.h"
 #include "Utils.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
@@ -15,7 +16,10 @@ const std::string AssetRegistry::MetaFileExtension = "asset";
 void AssetRegistry::Initialize()
 {
 	instance = new AssetRegistry();
+
 	DefaultAssetInfoHandler::Initialize();
+	ShaderAssetInfoHandler::Initialize();
+
 	instance->ScanContentFolder();
 }
 
@@ -108,4 +112,7 @@ AssetRegistry::~AssetRegistry()
 	{
 		delete asset.second;
 	}
+
+	DefaultAssetInfoHandler::Shutdown();
+	ShaderAssetInfoHandler::Shutdown();
 }

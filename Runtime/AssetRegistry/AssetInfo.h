@@ -56,6 +56,7 @@ namespace Sailor
 		std::vector<std::string> supportedExtensions;
 	};
 
+	
 	class DefaultAssetInfoHandler : public Singleton<DefaultAssetInfoHandler>, public IAssetInfoHandler
 	{
 
