@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <ctime>
 #include "AssetRegistry.h"
 #include "UID.h"
 #include "Singleton.hpp"
@@ -21,12 +22,15 @@ namespace Sailor
 
 	public:
 
+		AssetInfo();
 		virtual ~AssetInfo() = default;
 
 		const UID& GetUID() const { return uid; }
 		const std::string& GetFilePath() const { return filePath; }
 
 	protected:
+
+		std::time_t creationTime;
 
 		std::string assetType = "none";
 		std::string filePath;

@@ -19,6 +19,11 @@ void ns::from_json(const json& j, Sailor::AssetInfo& p)
 	ns::from_json(j["uid"], p.uid);
 }
 
+AssetInfo::AssetInfo()
+{
+	creationTime = std::time(nullptr);
+}
+
 void DefaultAssetInfoHandler::Initialize()
 {
 	instance = new DefaultAssetInfoHandler();

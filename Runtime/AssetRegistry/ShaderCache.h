@@ -35,7 +35,7 @@ namespace Sailor
 
 		void Load();
 		void ClearAll();
-		void ClearOutdated();
+		void ClearExpired();
 
 	private:
 

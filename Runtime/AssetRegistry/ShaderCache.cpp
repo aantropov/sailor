@@ -22,3 +22,15 @@ void ShaderCache::Initialize()
 {
 	instance = new ShaderCache();
 }
+
+void ShaderCache::Load()
+{
+}
+
+void ShaderCache::ClearAll()
+{
+}
+
+void ShaderCache::ClearExpired()
+{
+}
