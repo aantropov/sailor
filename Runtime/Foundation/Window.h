@@ -22,38 +22,38 @@ namespace Sailor
 
 	public:
 
-		Window() = default;
-		~Window() = default;
+		SAILOR_API Window() = default;
+		SAILOR_API ~Window() = default;
 
 		// Getters
-		bool IsActive() const { return bIsActive; }
-		bool IsRunning() const { return bIsRunning; }
-		bool IsFullscreen() const { return bIsFullscreen; }
+		SAILOR_API bool IsActive() const { return bIsActive; }
+		SAILOR_API bool IsRunning() const { return bIsRunning; }
+		SAILOR_API bool IsFullscreen() const { return bIsFullscreen; }
 
 		// Setters
-		void SetActive(bool value) { bIsActive = value; }
-		void SetRunning(bool value) { bIsRunning = value; }
-		void SetFullscreen(bool value) { bIsFullscreen = value; }
+		SAILOR_API void SetActive(bool value) { bIsActive = value; }
+		SAILOR_API void SetRunning(bool value) { bIsRunning = value; }
+		SAILOR_API void SetFullscreen(bool value) { bIsFullscreen = value; }
 
-		void SetWindowTitle(LPCWSTR lString) { SetWindowText(g_hWnd, lString); }
+		SAILOR_API void SetWindowTitle(LPCWSTR lString) { SetWindowText(g_hWnd, lString); }
 
 		// Getters for handles
-		HWND GetHWND() const { return g_hWnd; }
-		HDC GetHDC() const { return g_hDC; }
-		HINSTANCE GetHINSTANCE() const { return g_hInstance; }
+		SAILOR_API HWND GetHWND() const { return g_hWnd; }
+		SAILOR_API HDC GetHDC() const { return g_hDC; }
+		SAILOR_API HINSTANCE GetHINSTANCE() const { return g_hInstance; }
 
 		//Getters for parameters
-		int GetWidth() const { return width; }
-		int GetHeight() const { return height; }
+		SAILOR_API int GetWidth() const { return width; }
+		SAILOR_API int GetHeight() const { return height; }
 
 		// Create window
-		bool Create(LPCWSTR title = L"Sailor", int width = 1920, int height = 1080, bool bIsFullScreen = false);
+		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int width = 1920, int height = 1080, bool bIsFullScreen = false);
 
 		// Destroy window
-		void Destroy();
+		SAILOR_API void Destroy();
 
 		// Set window size
-		void SetSize(int width, int height, bool bIsFullScreen = false);
+		SAILOR_API void SetSize(int width, int height, bool bIsFullScreen = false);
 	};
 
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

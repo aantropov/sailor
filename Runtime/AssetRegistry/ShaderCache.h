@@ -16,7 +16,9 @@ namespace Sailor
 {
 	struct ShaderCacheEntry
 	{
+		// Last time shader changed
 		std::time_t timestamp;
+
 		std::vector<std::string> compiledShaders;
 	};
 
@@ -28,27 +30,30 @@ namespace Sailor
 	public:
 
 		static constexpr const char* CacheRootFolder = "..//Cache//";
-		static constexpr const char* CacheFilePath = "..//Cache//ShaderCache.json";
+		static constexpr const char* Cachefilepath = "..//Cache//ShaderCache.json";
+		static constexpr const char* CachPrecompiledFolder = "..//Cache//";
 		static constexpr const char* CompiledShaderFileExtension = "spirv";
 
-		void Initialize();
+		SAILOR_API void Initialize();
 
-		void Load();
-		void ClearAll();
-		void ClearExpired();
+		SAILOR_API void Load();
+		SAILOR_API void ClearAll();
+		SAILOR_API void ClearExpired();
 
 	private:
 
 		ShaderCacheData cache;
+
+		bool bSavePrecompiledShaders = true;
 	};
 }
 
 namespace ns
 {
-	void to_json(json& j, const Sailor::ShaderCacheEntry& p);
-	void from_json(const json& j, Sailor::ShaderCacheEntry& p);
+	SAILOR_API void to_json(json& j, const Sailor::ShaderCacheEntry& p);
+	SAILOR_API void from_json(const json& j, Sailor::ShaderCacheEntry& p);
 
-	void to_json(json& j, const Sailor::ShaderCacheData& p);
-	void from_json(const json& j, Sailor::ShaderCacheData& p);
+	SAILOR_API void to_json(json& j, const Sailor::ShaderCacheData& p);
+	SAILOR_API void from_json(const json& j, Sailor::ShaderCacheData& p);
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdio>
-
+#include "Sailor.h"
 #include "Singleton.hpp"
 
 // This class redirects stdout to the current console window, if there is one.
@@ -10,13 +10,13 @@ class ConsoleWindow : public Singleton<ConsoleWindow>
 {
 public:
 	// Setup singleton access.
-	static void Initialize(bool bInShouldAttach);
+	static SAILOR_API void Initialize(bool bInShouldAttach);
 
 	// Opens a new console window and redirects stdout to the new window.
-	void OpenWindow(const wchar_t* Title);
+	SAILOR_API void OpenWindow(const wchar_t* Title);
 
 	// Closes the console window if open.
-	void CloseWindow();
+	SAILOR_API void CloseWindow();
 
 	// Fill a buffer with data read from the console window. If this
 	// returns 0 or a number less than `buffer_size`, there is no
@@ -24,25 +24,25 @@ public:
 	unsigned int Read(char* OutBuffer, unsigned int BufferSize);
 
 	// Call this every frame.
-	void Update();
+	SAILOR_API void Update();
 
 	// Returns true if the console window has been closed.
 	bool IsExitRequested();
 
-	virtual ~ConsoleWindow() override;
+	virtual SAILOR_API ~ConsoleWindow() override;
 	
 private:
 	
-	ConsoleWindow(bool bInShouldAttach);
+	SAILOR_API ConsoleWindow(bool bInShouldAttach);
 
 	// Attach to default console window, if any.
-	void Attach();
+	SAILOR_API void Attach();
 	
 	// Close files and console window.
-	void Free();
+	SAILOR_API void Free();
 
 	// Write a unicode character to the console.
-	void Write(wchar_t c);
+	SAILOR_API void Write(wchar_t c);
 
 	FILE* stdout_file;
 	FILE* stderr_file;

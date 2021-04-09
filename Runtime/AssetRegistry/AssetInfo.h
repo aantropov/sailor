@@ -11,8 +11,8 @@ namespace Sailor { class AssetInfo; }
 
 namespace ns
 {
-	void to_json(json& j, const class Sailor::AssetInfo& p);
-	void from_json(const json& j, class Sailor::AssetInfo& p);
+	SAILOR_API void to_json(json& j, const class Sailor::AssetInfo& p);
+	SAILOR_API void from_json(const json& j, class Sailor::AssetInfo& p);
 }
 
 namespace Sailor
@@ -25,15 +25,15 @@ namespace Sailor
 		AssetInfo();
 		virtual ~AssetInfo() = default;
 
-		const UID& GetUID() const { return uid; }
-		const std::string& GetFilePath() const { return filePath; }
+		SAILOR_API const UID& GetUID() const { return uid; }
+		SAILOR_API const std::string& Getfilepath() const { return filepath; }
 
 	protected:
 
 		std::time_t creationTime;
 
 		std::string assetType = "none";
-		std::string filePath;
+		std::string filepath;
 
 		UID uid;
 
@@ -47,13 +47,13 @@ namespace Sailor
 
 	public:
 
-		virtual void Serialize(const AssetInfo* inInfo, json& outData) const {}
-		virtual void Deserialize(const json& inData, AssetInfo* outInfo) const {}
+		virtual SAILOR_API void Serialize(const AssetInfo* inInfo, json& outData) const {}
+		virtual SAILOR_API void Deserialize(const json& inData, AssetInfo* outInfo) const {}
 
-		virtual AssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const { return nullptr; }
-		virtual AssetInfo* ImportFile(const std::string& filePath) const { return nullptr; }
+		virtual SAILOR_API AssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const { return nullptr; }
+		virtual SAILOR_API AssetInfo* ImportFile(const std::string& filepath) const { return nullptr; }
 
-		virtual ~IAssetInfoHandler() = default;
+		virtual SAILOR_API ~IAssetInfoHandler() = default;
 
 	protected:
 
@@ -66,14 +66,14 @@ namespace Sailor
 
 	public:
 
-		static void Initialize();
+		static SAILOR_API void Initialize();
 
-		virtual void Serialize(const AssetInfo* inInfo, json& outData) const override;
-		virtual void Deserialize(const json& inData, AssetInfo* outInfo) const override;
+		virtual SAILOR_API void Serialize(const AssetInfo* inInfo, json& outData) const override;
+		virtual SAILOR_API void Deserialize(const json& inData, AssetInfo* outInfo) const override;
 
-		virtual AssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const override;
-		virtual AssetInfo* ImportFile(const std::string& filePath) const override;
+		virtual SAILOR_API AssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const override;
+		virtual SAILOR_API AssetInfo* ImportFile(const std::string& filepath) const override;
 
-		virtual ~DefaultAssetInfoHandler() = default;
+		virtual SAILOR_API ~DefaultAssetInfoHandler() = default;
 	};
 }

@@ -72,12 +72,12 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 		}
 		else if (entry.is_regular_file())
 		{
-			const std::string file = entry.path().string();
-			const std::string extension = Utils::GetExtension(file);
+			const std::string filepath = entry.path().string();
+			const std::string extension = Utils::GetExtension(filepath);
 
 			if (extension != MetaFileExtension)
 			{
-				const std::string assetInfoFile = Utils::RemoveExtension(file) + MetaFileExtension;
+				const std::string assetInfoFile = Utils::RemoveExtension(filepath) + MetaFileExtension;
 
 				IAssetInfoHandler* assetInfoHandler = DefaultAssetInfoHandler::GetInstance();
 
@@ -94,13 +94,35 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 				}
 				else
 				{
-					assetInfo = assetInfoHandler->ImportFile(file);
+					assetInfo = assetInfoHandler->ImportFile(filepath);
 				}
-
+								
 				loadedAssetInfos[assetInfo->GetUID()] = assetInfo;
+				uids[filepath] = assetInfo->GetUID();				
 			}
 		}
 	}
+}
+
+AssetInfo* AssetRegistry::GetAssetInfo(const std::string& filepath) const
+{
+	auto it = uids.find(ContentRootFolder + filepath);
+	if (it != uids.end())
+	{
+		return GetAssetInfo(it->second);
+	}
+	return nullptr;
+
+}
+
+AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const
+{
+	auto it = loadedAssetInfos.find(uid);
+	if (it != loadedAssetInfos.end())
+	{
+		return it->second;
+	}
+	return nullptr;
 }
 
 AssetRegistry::~AssetRegistry()

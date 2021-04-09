@@ -1,5 +1,6 @@
 #pragma once
 #include <combaseapi.h>
+#include "Sailor.h"
 
 namespace Sailor
 {
@@ -23,16 +24,16 @@ namespace Sailor
 	{
 	public:
 
-		Input();
+		SAILOR_API Input();
 		
-		static bool IsKeyDown(unsigned short int key);
-		static bool IsKeyPressed(unsigned short int key);
-		static bool IsButtonDown(unsigned short int button);
-		static bool IsButtonClick(unsigned short int button);
+		static SAILOR_API bool IsKeyDown(unsigned short int key);
+		static SAILOR_API bool IsKeyPressed(unsigned short int key);
+		static SAILOR_API bool IsButtonDown(unsigned short int button);
+		static SAILOR_API bool IsButtonClick(unsigned short int button);
 
-		static void GetCursorPos(int* x, int* y);
-		static void SetCursorPos(int x, int y);
-		static void ShowCursor(bool visible);
+		static SAILOR_API void GetCursorPos(int* x, int* y);
+		static SAILOR_API void SetCursorPos(int x, int y);
+		static SAILOR_API void ShowCursor(bool visible);
 
 	protected:
 

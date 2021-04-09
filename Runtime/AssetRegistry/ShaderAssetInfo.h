@@ -19,13 +19,12 @@ namespace Sailor
 
 	public:
 
-		virtual ~ShaderAssetInfo() = default;
+		virtual SAILOR_API ~ShaderAssetInfo() = default;
 
 	protected:
 
 		friend void ns::to_json(json& j, const ShaderAssetInfo& p);
 		friend void ns::from_json(const json& j, ShaderAssetInfo& p);
-		friend class IAssetInfoHandler;
 	};
 	
 	class ShaderAssetInfoHandler : public Singleton<ShaderAssetInfoHandler>, public IAssetInfoHandler
@@ -33,14 +32,14 @@ namespace Sailor
 
 	public:
 
-		static void Initialize();
+		static SAILOR_API void Initialize();
 
-		virtual void Serialize(const AssetInfo* inInfo, json& outData) const override;
-		virtual void Deserialize(const json& inData, AssetInfo* outInfo) const override;
+		virtual SAILOR_API void Serialize(const AssetInfo* inInfo, json& outData) const override;
+		virtual SAILOR_API void Deserialize(const json& inData, AssetInfo* outInfo) const override;
+				
+		virtual SAILOR_API ShaderAssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const override;
+		virtual SAILOR_API ShaderAssetInfo* ImportFile(const std::string& filepath) const override;
 
-		virtual ShaderAssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const override;
-		virtual ShaderAssetInfo* ImportFile(const std::string& filePath) const override;
-
-		virtual ~ShaderAssetInfoHandler() = default;
+		virtual SAILOR_API ~ShaderAssetInfoHandler() = default;
 	};
 }

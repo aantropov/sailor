@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include "Sailor.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
 using namespace nlohmann;
@@ -7,8 +8,8 @@ namespace Sailor { class UID; }
 
 namespace ns
 {
-	void to_json(json& j, const class Sailor::UID& p);
-	void from_json(const json& j, class Sailor::UID& p);
+	SAILOR_API void to_json(json& j, const class Sailor::UID& p);
+	SAILOR_API void from_json(const json& j, class Sailor::UID& p);
 }
 
 namespace Sailor
@@ -17,14 +18,14 @@ namespace Sailor
 	{
 	public:
 
-		static UID CreateNewUID();
-		const std::string& ToString() const;
+		static SAILOR_API UID CreateNewUID();
+		SAILOR_API const std::string& ToString() const;
 
-		UID() = default;
-		UID(const UID& inUID) = default;
-		void operator=(const UID& inUID);
-		bool operator==(const UID& rhs) const;
-		virtual ~UID() = default;
+		SAILOR_API UID() = default;
+		SAILOR_API UID(const UID& inUID) = default;
+		SAILOR_API void operator=(const UID& inUID);
+		SAILOR_API bool operator==(const UID& rhs) const;
+		virtual SAILOR_API~UID() = default;
 
 	protected:
 
@@ -40,7 +41,7 @@ namespace std
 	template<>
 	struct hash<Sailor::UID>
 	{
-		std::size_t operator()(const Sailor::UID& p) const 
+		SAILOR_API std::size_t operator()(const Sailor::UID& p) const
 		{
 			std::hash<std::string> h;
 			return h(p.ToString());

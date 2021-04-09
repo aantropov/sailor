@@ -12,11 +12,13 @@ using namespace Sailor;
 void ns::to_json(json& j, const Sailor::AssetInfo& p)
 {
 	ns::to_json(j["uid"], p.GetUID());
+	j["filepath"] = p.Getfilepath();
 }
 
 void ns::from_json(const json& j, Sailor::AssetInfo& p)
 {
 	ns::from_json(j["uid"], p.uid);
+	p.filepath = j["filepath"].get<std::string>();
 }
 
 AssetInfo::AssetInfo()
@@ -40,24 +42,25 @@ void DefaultAssetInfoHandler::Deserialize(const json& inData, AssetInfo* outInfo
 	ns::from_json(inData, *outInfo);
 }
 
-AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filePath) const
+AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filepath) const
 {
-	std::cout << "Try import file: " << filePath << std::endl;
+	std::cout << "Try import file: " << filepath << std::endl;
 
-	const std::string assetInfoFilePath = Utils::RemoveExtension(filePath) + AssetRegistry::MetaFileExtension;
-	std::filesystem::remove(assetInfoFilePath);
-	std::ofstream assetFile{ assetInfoFilePath };
+	const std::string assetInfofilepath = Utils::RemoveExtension(filepath) + AssetRegistry::MetaFileExtension;
+	std::filesystem::remove(assetInfofilepath);
+	std::ofstream assetFile{ assetInfofilepath };
 
 	json newMeta;
 	AssetInfo defaultObject;
 		
 	ns::to_json(newMeta, defaultObject);
 	ns::to_json(newMeta["uid"], UID::CreateNewUID());
+	newMeta["filepath"] = filepath;
 
 	assetFile << newMeta.dump();
 	assetFile.close();
 
-	return ImportAssetInfo(assetInfoFilePath);
+	return ImportAssetInfo(assetInfofilepath);
 }
 
 AssetInfo* DefaultAssetInfoHandler::ImportAssetInfo(const std::string& assetInfoPath) const

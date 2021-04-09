@@ -1,4 +1,5 @@
 #pragma once
+#include "Sailor.h"
 
 template<typename T>
 class Singleton
@@ -7,13 +8,13 @@ protected:
 
     static T* instance;
 
-	Singleton() = default;
-    virtual ~Singleton() = default;
+	SAILOR_API Singleton() = default;
+    virtual SAILOR_API ~Singleton() = default;
 	
 public:
 
-    static T* GetInstance() { return instance; }
-    static void Shutdown() { delete instance; }
+    static SAILOR_API T* GetInstance() { return instance; }
+    static SAILOR_API void Shutdown() { delete instance; }
 };
 
 template<typename T>

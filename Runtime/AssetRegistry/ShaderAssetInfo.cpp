@@ -37,24 +37,25 @@ void ShaderAssetInfoHandler::Deserialize(const json& inData, AssetInfo* outInfo)
 	//ns::from_json(inData, dynamic_cast<ShaderAssetInfo&>(*outInfo));
 }
 
-ShaderAssetInfo* ShaderAssetInfoHandler::ImportFile(const std::string& filePath) const
+ShaderAssetInfo* ShaderAssetInfoHandler::ImportFile(const std::string& filepath) const
 {
-	std::cout << "Try import file: " << filePath << std::endl;
+	std::cout << "Try import file: " << filepath << std::endl;
 
-	const std::string assetInfoFilePath = Utils::RemoveExtension(filePath) + AssetRegistry::MetaFileExtension;
-	std::filesystem::remove(assetInfoFilePath);
-	std::ofstream assetFile{ assetInfoFilePath };
+	const std::string assetInfofilepath = Utils::RemoveExtension(filepath) + AssetRegistry::MetaFileExtension;
+	std::filesystem::remove(assetInfofilepath);
+	std::ofstream assetFile{ assetInfofilepath };
 
 	json newMeta;
 	ShaderAssetInfo defaultObject;
 
 	ns::to_json(newMeta, defaultObject);
 	ns::to_json(newMeta["uid"], UID::CreateNewUID());
+	newMeta["filepath"] = filepath;
 
 	assetFile << newMeta.dump();
 	assetFile.close();
 
-	return ImportAssetInfo(assetInfoFilePath);
+	return ImportAssetInfo(assetInfofilepath);
 }
 
 ShaderAssetInfo* ShaderAssetInfoHandler::ImportAssetInfo(const std::string& assetInfoPath) const
