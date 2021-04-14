@@ -28,7 +28,12 @@ void ns::from_json(const json& j, Sailor::GfxDeviceVulkan::Shader& p)
 {
 	p.glslVertex = j["glslVertex"].get<std::string>();
 	p.glslFragment = j["glslFragment"].get<std::string>();
-	p.glslCommon = j["glslCommon"].get<std::string>();
+
+	if (j.contains("glslCommon"))
+	{
+		p.glslCommon = j["glslCommon"].get<std::string>();
+	}
+	
 	p.defines = j["defines"].get<std::vector<std::string>>();
 	p.includes = j["includes"].get<std::vector<std::string>>();
 }
@@ -61,10 +66,15 @@ void ShaderCompiler::CreatePrecompiledShaders(const Sailor::UID& assetUID)
 		AssetRegistry::ReadFile(filepath, shaderText);
 
 		JSONtify(shaderText);
-			
-		json j_shader;
-		j_shader.parse(shaderText.c_str());
 
+		json j_shader;
+		if (j_shader.parse(shaderText.c_str()) == detail::value_t::discarded)
+		{
+			int a;
+		}
+
+		j_shader = json::parse(shaderText);
+		
 		Shader shader;
 		ns::from_json(j_shader, shader);
 	}
