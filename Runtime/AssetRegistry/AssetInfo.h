@@ -61,7 +61,7 @@ namespace Sailor
 	};
 
 	
-	class DefaultAssetInfoHandler : public Singleton<DefaultAssetInfoHandler>, public IAssetInfoHandler
+	class DefaultAssetInfoHandler final : public Singleton<DefaultAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:

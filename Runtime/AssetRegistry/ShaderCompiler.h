@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
+#include "ShaderCache.h"
 
 using namespace std;
 using namespace nlohmann;
@@ -17,25 +18,32 @@ namespace Sailor
 		{
 		public:
 
-			std::string glslCommon;
-
+			// Shader's code
 			std::string glslVertex;
 			std::string glslFragment;
+
+			// Library code
+			std::string glslCommon;
 
 			std::vector<std::string> includes;
 			std::vector<std::string> defines;
 		};
 
-		class ShaderCompiler
+		class ShaderCompiler final : Singleton<ShaderCompiler>
 		{
 		public:
 
+			static void Initialize();
+			
 			static bool SAILOR_API CompileToSPIRV(const string& source, const vector<string>& defines, const vector<string>& includes, vector<uint32_t>& outByteCode);
-
 			static SAILOR_API void CreatePrecompiledShaders(const UID& assetUID);
 
+			virtual SAILOR_API ~ShaderCompiler() = default;
+			
 		protected:
 
+			ShaderCache shaderCache;
+			
 			static SAILOR_API void JSONtify(std::string& shaderText);
 		};
 

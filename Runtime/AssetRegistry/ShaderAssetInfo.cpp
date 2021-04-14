@@ -21,7 +21,7 @@ void ShaderAssetInfoHandler::Initialize()
 {
 	instance = new ShaderAssetInfoHandler();
 
-	instance->supportedExtensions.push_back("shader");
+	instance->supportedExtensions.emplace_back("shader");
 	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(instance->supportedExtensions, instance);
 }
 

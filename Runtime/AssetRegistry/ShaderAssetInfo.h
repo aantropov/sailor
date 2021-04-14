@@ -14,7 +14,7 @@ namespace ns
 
 namespace Sailor
 {
-	class ShaderAssetInfo : public AssetInfo
+	class ShaderAssetInfo final : public AssetInfo
 	{
 
 	public:
@@ -27,7 +27,7 @@ namespace Sailor
 		friend void ns::from_json(const json& j, ShaderAssetInfo& p);
 	};
 	
-	class ShaderAssetInfoHandler : public Singleton<ShaderAssetInfoHandler>, public IAssetInfoHandler
+	class ShaderAssetInfoHandler final : public Singleton<ShaderAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:

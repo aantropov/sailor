@@ -14,27 +14,27 @@ using namespace Sailor;
 
 namespace Sailor
 {
-	struct ShaderCacheEntry
+	class ShaderCache
 	{
-		// Last time shader changed
-		std::time_t timestamp;
-
-		std::vector<std::string> compiledShaders;
-	};
-
-	typedef std::unordered_map<UID, ShaderCacheEntry*> ShaderCacheData;
-
-	class ShaderCache : Singleton<ShaderCache>
-	{
-
 	public:
 
-		static constexpr const char* CacheRootFolder = "..//Cache//";
-		static constexpr const char* Cachefilepath = "..//Cache//ShaderCache.json";
-		static constexpr const char* CachPrecompiledFolder = "..//Cache//";
-		static constexpr const char* CompiledShaderFileExtension = "spirv";
+		struct ShaderCacheEntry
+		{
+			UID uid;
 
-		SAILOR_API void Initialize();
+			// Last time shader changed
+			std::time_t timestamp;
+
+			std::vector<std::string> compiledPermutations;
+		};
+
+		typedef std::unordered_map<UID, ShaderCache::ShaderCacheEntry*> ShaderCacheData;
+
+		static constexpr const char* CacheRootFolder = "..//Cache//";
+		static constexpr const char* ShaderCacheFilepath = "..//Cache//ShaderCache.json";
+		static constexpr const char* PrecompiledShadersFolder = "..//Cache//PrecompiledShaders//";
+		static constexpr const char* CompiledShadersFolder = "..//Cache//CompiledShaders//";
+		static constexpr const char* CompiledShaderFileExtension = "spirv";
 
 		SAILOR_API void Load();
 		SAILOR_API void ClearAll();
@@ -50,10 +50,10 @@ namespace Sailor
 
 namespace ns
 {
-	SAILOR_API void to_json(json& j, const Sailor::ShaderCacheEntry& p);
-	SAILOR_API void from_json(const json& j, Sailor::ShaderCacheEntry& p);
+	SAILOR_API void to_json(json& j, const Sailor::ShaderCache::ShaderCacheEntry& p);
+	SAILOR_API void from_json(const json& j, Sailor::ShaderCache::ShaderCacheEntry& p);
 
-	SAILOR_API void to_json(json& j, const Sailor::ShaderCacheData& p);
-	SAILOR_API void from_json(const json& j, Sailor::ShaderCacheData& p);
+	SAILOR_API void to_json(json& j, const Sailor::ShaderCache::ShaderCacheData& p);
+	SAILOR_API void from_json(const json& j, Sailor::ShaderCache::ShaderCacheData& p);
 }
 

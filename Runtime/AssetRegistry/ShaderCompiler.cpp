@@ -22,6 +22,7 @@ using namespace Sailor::GfxDeviceVulkan;
 
 void ns::to_json(json& j, const Sailor::GfxDeviceVulkan::Shader& p)
 {
+	assert(false);
 }
 
 void ns::from_json(const json& j, Sailor::GfxDeviceVulkan::Shader& p)
@@ -36,6 +37,12 @@ void ns::from_json(const json& j, Sailor::GfxDeviceVulkan::Shader& p)
 	
 	p.defines = j["defines"].get<std::vector<std::string>>();
 	p.includes = j["includes"].get<std::vector<std::string>>();
+}
+
+void ShaderCompiler::Initialize()
+{
+	instance = new ShaderCompiler();
+	instance->shaderCache.Load();
 }
 
 void ShaderCompiler::JSONtify(std::string& shaderText)
@@ -70,13 +77,18 @@ void ShaderCompiler::CreatePrecompiledShaders(const Sailor::UID& assetUID)
 		json j_shader;
 		if (j_shader.parse(shaderText.c_str()) == detail::value_t::discarded)
 		{
-			int a;
+			SAILOR_LOG("Cannot parse shader asset file: %s", filepath);
+			return;
 		}
 
 		j_shader = json::parse(shaderText);
 		
 		Shader shader;
 		ns::from_json(j_shader, shader);
+	}
+	else
+	{
+		SAILOR_LOG("Cannot find shader asset info with UID: %s", assetUID);
 	}
 }
 
