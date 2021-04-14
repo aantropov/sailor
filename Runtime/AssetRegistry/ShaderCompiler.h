@@ -33,6 +33,10 @@ namespace Sailor
 			static bool SAILOR_API CompileToSPIRV(const string& source, const vector<string>& defines, const vector<string>& includes, vector<uint32_t>& outByteCode);
 
 			static SAILOR_API void CreatePrecompiledShaders(const UID& assetUID);
+
+		protected:
+
+			static SAILOR_API void JSONtify(std::string& shaderText);
 		};
 
 	}

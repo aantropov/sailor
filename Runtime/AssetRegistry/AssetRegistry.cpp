@@ -40,6 +40,28 @@ bool AssetRegistry::ReadFile(const std::string& filename, std::vector<char>& buf
 	return true;
 }
 
+bool AssetRegistry::ReadFile(const std::string& filename, std::string& text)
+{
+	constexpr auto readSize = std::size_t{ 4096 };
+	auto stream = std::ifstream{ filename.data() };
+	stream.exceptions(std::ios_base::badbit);
+
+	if (!stream.is_open())
+	{
+		return false;
+	}
+
+	text = std::string{};
+	auto buf = std::string(readSize, '\0');
+	while (stream.read(&buf[0], readSize)) 
+	{
+		text.append(buf, 0, stream.gcount());
+	}
+	text.append(buf, 0, stream.gcount());
+
+	return true;
+}
+
 void AssetRegistry::ScanContentFolder()
 {
 	ScanFolder(ContentRootFolder);
@@ -96,9 +118,9 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 				{
 					assetInfo = assetInfoHandler->ImportFile(filepath);
 				}
-								
+
 				loadedAssetInfos[assetInfo->GetUID()] = assetInfo;
-				uids[filepath] = assetInfo->GetUID();				
+				uids[filepath] = assetInfo->GetUID();
 			}
 		}
 	}

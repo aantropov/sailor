@@ -92,3 +92,32 @@ std::string Sailor::Utils::GetExtension(const std::string& filename)
 		return std::string();
 	return filename.substr(lastdot, filename.size() - lastdot);
 }
+
+std::vector<std::string> Sailor::Utils::SplitString(const std::string& str, const std::string& delimiter)
+{
+	std::vector<std::string> strings;
+
+	std::string::size_type pos = 0;
+	std::string::size_type prev = 0;
+	while ((pos = str.find(delimiter, prev)) != std::string::npos)
+	{
+		strings.push_back(str.substr(prev, pos - prev));
+		prev = pos + delimiter.size();
+	}
+
+	// To get the last substring (or only, if delimiter is not found)
+	strings.push_back(str.substr(prev));
+
+	return strings;
+}
+
+void Sailor::Utils::ReplaceAll(std::string& str, const std::string& from, const std::string& to)
+{
+	size_t start_pos = 0;
+	while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+		str.replace(start_pos, from.length(), to);
+
+		// Handles case where 'to' is a substring of 'from'
+		start_pos += to.length(); 
+	}
+}

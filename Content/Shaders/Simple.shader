@@ -1,7 +1,7 @@
 {
 "includes":["basic.shader"],
 
-"glslVertex":{
+"glslVertex":
 BEGIN_CODE
 	#version 450
 	#extension GL_ARB_separate_shader_objects : enable
@@ -28,9 +28,9 @@ BEGIN_CODE
 		fragColor = colors[gl_VertexIndex];
 	}
 END_CODE
-},
+,
 
-"glslFragment":{
+"glslFragment":
 BEGIN_CODE
 	#version 450
 	#extension GL_ARB_separate_shader_objects : enable
@@ -49,7 +49,7 @@ BEGIN_CODE
 	#endif
 	}
 END_CODE
-},
+,
 
 "defines":["TEST_DEFINE1","TEST_DEFINE2"]
 }

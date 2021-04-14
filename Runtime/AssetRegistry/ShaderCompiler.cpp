@@ -4,8 +4,10 @@
 #include "AssetRegistry.h"
 #include "ShaderAssetInfo.h"
 #include "ShaderCache.h"
+#include "Utils.h"
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 #include <shaderc/shaderc.hpp>
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
@@ -31,6 +33,23 @@ void ns::from_json(const json& j, Sailor::GfxDeviceVulkan::Shader& p)
 	p.includes = j["includes"].get<std::vector<std::string>>();
 }
 
+void ShaderCompiler::JSONtify(std::string& shaderText)
+{
+	static const std::string beginCodeTag{ "BEGIN_CODE" };
+	static const std::string endCodeTag{ "END_CODE" };
+
+	for (int i = 0; i < shaderText.size(); i++)
+	{
+		if (shaderText[i] == '\t' || shaderText[i] == '\n')
+		{
+			shaderText[i] = ' ';
+		}
+	}
+
+	Sailor::Utils::ReplaceAll(shaderText, beginCodeTag, std::string{ '\"' });
+	Sailor::Utils::ReplaceAll(shaderText, endCodeTag, std::string{ '\"' });
+}
+
 void ShaderCompiler::CreatePrecompiledShaders(const Sailor::UID& assetUID)
 {
 	if (ShaderAssetInfo* shaderAssetInfo = dynamic_cast<ShaderAssetInfo*>(AssetRegistry::GetInstance()->GetAssetInfo(assetUID)))
@@ -38,15 +57,16 @@ void ShaderCompiler::CreatePrecompiledShaders(const Sailor::UID& assetUID)
 		//ShaderCache::GetInstance()->Load
 		const std::string& filepath = shaderAssetInfo->Getfilepath();
 
-		std::ifstream assetFile{ filepath };
+		std::string shaderText;
+		AssetRegistry::ReadFile(filepath, shaderText);
 
-		json shaderJson;
-		assetFile >> shaderJson;
+		JSONtify(shaderText);
+			
+		json j_shader;
+		j_shader.parse(shaderText.c_str());
 
 		Shader shader;
-		ns::from_json(shaderJson, shader);
-
-		assetFile.close();
+		ns::from_json(j_shader, shader);
 	}
 }
 

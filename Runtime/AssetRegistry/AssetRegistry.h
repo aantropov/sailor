@@ -30,6 +30,7 @@ namespace Sailor
 
 		static SAILOR_API void Initialize();
 		static SAILOR_API bool ReadFile(const std::string& filename, std::vector<char>& buffer);
+		static SAILOR_API bool ReadFile(const std::string& filename, std::string& text);
 
 		SAILOR_API void ScanContentFolder();
 		
