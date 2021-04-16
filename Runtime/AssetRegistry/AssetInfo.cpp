@@ -12,7 +12,7 @@ using namespace Sailor;
 void ns::to_json(json& j, const Sailor::AssetInfo& p)
 {
 	ns::to_json(j["uid"], p.GetUID());
-	j["filepath"] = p.Getfilepath();
+	j["filepath"] = p.GetAssetFilepath();
 }
 
 void ns::from_json(const json& j, Sailor::AssetInfo& p)

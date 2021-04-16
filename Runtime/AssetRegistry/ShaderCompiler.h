@@ -1,9 +1,9 @@
 #pragma once
-#include "Sailor.h"
-#include <cstdint>
+#include "ExportDef.h"
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
+#include "Singleton.hpp"
 #include "ShaderCache.h"
 
 using namespace std;
@@ -12,46 +12,54 @@ using namespace nlohmann;
 namespace Sailor { class UID; }
 namespace Sailor
 {
-	namespace GfxDeviceVulkan
+	class Shader
 	{
-		class Shader
-		{
-		public:
+	public:
 
-			// Shader's code
-			std::string glslVertex;
-			std::string glslFragment;
+		// Shader's code
+		std::string glslVertex;
+		std::string glslFragment;
 
-			// Library code
-			std::string glslCommon;
+		// Library code
+		std::string glslCommon;
 
-			std::vector<std::string> includes;
-			std::vector<std::string> defines;
-		};
+		std::vector<std::string> includes;
+		std::vector<std::string> defines;
+	};
 
-		class ShaderCompiler final : Singleton<ShaderCompiler>
-		{
-		public:
+	class ShaderCompiler final : public Singleton<ShaderCompiler>
+	{
+	public:
 
-			static void Initialize();
-			
-			static bool SAILOR_API CompileToSPIRV(const string& source, const vector<string>& defines, const vector<string>& includes, vector<uint32_t>& outByteCode);
-			static SAILOR_API void CreatePrecompiledShaders(const UID& assetUID);
+		static SAILOR_API void Initialize();
 
-			virtual SAILOR_API ~ShaderCompiler() = default;
-			
-		protected:
+		static SAILOR_API void GeneratePrecompiledGLSLPermutations(const UID& assetUID, std::vector<std::string>& outPrecompiledShadersCode);
+		SAILOR_API std::weak_ptr<Shader> LoadShader(const UID& uid);
 
-			ShaderCache shaderCache;
-			
-			static SAILOR_API void JSONtify(std::string& shaderText);
-		};
+		virtual SAILOR_API ~ShaderCompiler() override = default;
+		
+	protected:
 
-	}
+		ShaderCache shaderCache;
+		std::unordered_map<UID, std::shared_ptr<Shader>> loadedShaders;
+
+		static SAILOR_API void GeneratePrecompiledGLSL(Shader* shader, std::string& outGLSLCode, const std::vector<std::string>& defines = {});
+		static SAILOR_API void ConvertRawShaderToJSON(const std::string& shaderText, std::string& outCodeInJSON);
+		static SAILOR_API bool ConvertFromJsonToGLSLCode(const std::string& shaderText, std::string& outPureGLSL);
+
+		static bool SAILOR_API CompileGLSLToSPIRV(const std::string& source, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<uint32_t>& outByteCode);
+
+	private:
+				
+		static constexpr char const* beginCodeTag = "BEGIN_CODE";
+		static constexpr char const* endCodeTag = "END_CODE";
+		static constexpr char const* endLineTag = " END_LINE ";
+	};
+
 }
 
 namespace ns
 {
-	SAILOR_API void to_json(json& j, const Sailor::GfxDeviceVulkan::Shader& p);
-	SAILOR_API void from_json(const json& j, Sailor::GfxDeviceVulkan::Shader& p);
+	SAILOR_API void to_json(json& j, const Sailor::Shader& p);
+	SAILOR_API void from_json(const json& j, Sailor::Shader& p);
 }

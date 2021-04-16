@@ -1,5 +1,5 @@
 #pragma once
-#include "Sailor.h"
+#include "ExportDef.h"
 
 template<typename T>
 class Singleton
@@ -13,7 +13,7 @@ protected:
 	
 public:
 
-    static SAILOR_API T* GetInstance() { return instance; }
+    __forceinline static SAILOR_API T* GetInstance() { return instance; }
     static SAILOR_API void Shutdown() { delete instance; }
 };
 

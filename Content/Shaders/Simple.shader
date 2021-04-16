@@ -1,6 +1,6 @@
 {
 "includes":["basic.shader"],
-
+"glslCommon":"",
 "glslVertex":
 BEGIN_CODE
 	#version 450
@@ -48,8 +48,7 @@ BEGIN_CODE
 		outColor = vec4(fragColor, 1.0);
 	#endif
 	}
-END_CODE
-,
+END_CODE,
 
 "defines":["TEST_DEFINE1","TEST_DEFINE2"]
 }

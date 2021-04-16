@@ -26,7 +26,7 @@ namespace Sailor
 		virtual ~AssetInfo() = default;
 
 		SAILOR_API const UID& GetUID() const { return uid; }
-		SAILOR_API const std::string& Getfilepath() const { return filepath; }
+		SAILOR_API const std::string& GetAssetFilepath() const { return filepath; }
 
 	protected:
 
@@ -74,6 +74,6 @@ namespace Sailor
 		virtual SAILOR_API AssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const override;
 		virtual SAILOR_API AssetInfo* ImportFile(const std::string& filepath) const override;
 
-		virtual SAILOR_API ~DefaultAssetInfoHandler() = default;
+		virtual SAILOR_API ~DefaultAssetInfoHandler() override = default;
 	};
 }

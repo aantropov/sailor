@@ -1,6 +1,7 @@
 #include "Sailor.h"
 
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/ShaderCompiler.h"
 #include "Foundation/Input.h"
 #include "GfxDevice/GfxDeviceVulkan.h"
 
@@ -35,7 +36,10 @@ void EngineInstance::Initialize()
 #endif 
 
 	GfxDeviceVulkan::Initialize(&instance->viewportWindow, bIsEnabledVulkanValidationLayers);
-	AssetRegistry::Initialize();
+	AssetRegistry::Initialize();	
+	ShaderCompiler::Initialize();
+
+	ShaderCompiler::GetInstance();
 	
 	SAILOR_LOG("Sailor Engine initialized");
 }
@@ -107,6 +111,7 @@ void EngineInstance::Shutdown()
 	AssetRegistry::Shutdown();
 	GfxDeviceVulkan::Shutdown();
 	ConsoleWindow::Shutdown();
+	ShaderCompiler::Shutdown();
 
 	delete instance;
 }

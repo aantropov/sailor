@@ -10,14 +10,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	EngineInstance::Initialize();
 
 	auto assetRegistry = AssetRegistry::GetInstance();
-
+	auto shaderCompiler= ShaderCompiler::GetInstance();
+	
 	if (auto shaderUID = assetRegistry->GetAssetInfo("Shaders\\Simple.shader"))
 	{
-		GfxDeviceVulkan::ShaderCompiler::CreatePrecompiledShaders(shaderUID->GetUID());
+		auto shader = ShaderCompiler::GetInstance()->LoadShader(shaderUID->GetUID());
+
+		std::vector<std::string> permutations;
+		ShaderCompiler::GetInstance()->GeneratePrecompiledGLSLPermutations(shaderUID->GetUID(), permutations);
 	}
 
 	EngineInstance::Start();
 	EngineInstance::Shutdown();
-		
-    return 0;
+
+	return 0;
 }

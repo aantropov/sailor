@@ -1,7 +1,7 @@
 #pragma once
 
-#include <memory>
 #include "ExportDef.h"
+#include <memory>
 #include "LogMacros.h"
 #include "Utils.h"
 #include "Foundation/ConsoleWindow.h"
