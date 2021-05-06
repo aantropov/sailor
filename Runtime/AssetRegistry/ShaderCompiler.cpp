@@ -43,6 +43,7 @@ void ShaderCompiler::Initialize()
 	m_pInstance = new ShaderCompiler();
 	m_pInstance->m_shaderCache.Initialize();
 	m_pInstance->m_shaderCache.LoadCache();
+	m_pInstance->m_shaderCache.ClearExpired();
 }
 
 ShaderCompiler::~ShaderCompiler()
@@ -104,7 +105,7 @@ void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::
 		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, EndLineTag, beginLocation, endLocation);
 	}
 
-	Utils::ReplaceAll(outCodeInJSON, BeginCodeTag, std::string{ '\"' } + BeginCodeTag);
+	Utils::ReplaceAll(outCodeInJSON, BeginCodeTag, std::string{ '\"' } +BeginCodeTag);
 	Utils::ReplaceAll(outCodeInJSON, EndCodeTag, EndCodeTag + std::string{ '\"' });
 	Utils::ReplaceAll(outCodeInJSON, std::string{ '\t' }, std::string{ ' ' });
 }
@@ -120,12 +121,40 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 	return true;
 }
 
-void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID, std::vector<std::string>& outPrecompiledShadersCode)
-{
-	std::weak_ptr<Shader> shader = m_pInstance->LoadShader(assetUID);
+void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID)
+{	
+	std::shared_ptr<Shader> pShader = m_pInstance->LoadShader(assetUID).lock();
 
-	std::string res;
-	GeneratePrecompiledGlsl(shader.lock().get(), res, { "VERTEX", "TEST_DEFINE1" });
+	const unsigned int NumPermutations = std::pow(2, pShader->m_defines.size());
+
+	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
+
+	SAILOR_LOG("Generate precompiled glsl code... %s %d", assetInfo->GetAssetFilepath(), NumPermutations);
+
+	if (m_pInstance->m_shaderCache.Contains(assetUID))
+	{
+		m_pInstance->m_shaderCache.Remove(assetUID);
+	}
+
+	for (int i = 1; i < NumPermutations; i++)
+	{
+		std::vector<std::string> defines;
+
+		for (int define = 0; define < pShader->m_defines.size(); define++)
+		{
+			if ((i >> define) & 1)
+			{
+				defines.push_back(pShader->m_defines[define]);
+			}
+		}
+
+		std::string res;
+		GeneratePrecompiledGlsl(pShader.get(), res, defines);
+
+		m_pInstance->m_shaderCache.AddSpirv(assetUID, i, "spirv", res);
+	}
+
+	m_pInstance->m_shaderCache.SaveCache();
 }
 
 std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)

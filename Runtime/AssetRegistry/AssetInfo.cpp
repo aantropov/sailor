@@ -39,7 +39,7 @@ std::time_t AssetInfo::GetAssetLastModificationTime() const
 
 AssetInfo* IAssetInfoHandler::ImportFile(const std::string& filepath) const
 {
-	std::cout << "Import file: " << filepath << std::endl;
+	SAILOR_LOG("Import file: %s", filepath.c_str());
 
 	const std::string assetInfoFilename = Utils::RemoveFileExtension(filepath) + AssetRegistry::MetaFileExtension;
 	std::filesystem::remove(assetInfoFilename);
@@ -59,7 +59,7 @@ AssetInfo* IAssetInfoHandler::ImportFile(const std::string& filepath) const
 
 AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) const
 {
-	std::cout << "Load asset info: " << assetInfoPath << std::endl;
+	SAILOR_LOG("Load asset info: %s", assetInfoPath.c_str());
 
 	AssetInfo* res = CreateAssetInfo();
 

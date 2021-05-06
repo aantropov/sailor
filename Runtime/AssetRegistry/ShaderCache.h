@@ -23,13 +23,15 @@ namespace Sailor
 		SAILOR_API void Initialize();
 		SAILOR_API void Shutdown();
 
-		SAILOR_API void AddSpirv(const UID& uid, unsigned int permutation);
+		SAILOR_API void AddSpirv(const UID& uid, unsigned int permutation, const std::string& spirv, const std::string& glsl = "");
 		SAILOR_API std::string GetSpirv(const UID& uid, unsigned int permutation);
 		
 		SAILOR_API void Remove(const UID& uid);
 
 		SAILOR_API bool Contains(UID uid) const;
 		SAILOR_API void LoadCache();
+		SAILOR_API void SaveCache() const;
+
 		SAILOR_API void ClearAll();
 		SAILOR_API void ClearExpired();
 

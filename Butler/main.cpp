@@ -15,9 +15,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	if (auto shaderUID = assetRegistry->GetAssetInfo("Shaders\\Simple.shader"))
 	{
 		auto shader = ShaderCompiler::GetInstance()->LoadShader(shaderUID->GetUID());
-
-		std::vector<std::string> permutations;
-		ShaderCompiler::GetInstance()->GeneratePrecompiledGlslPermutations(shaderUID->GetUID(), permutations);
+		ShaderCompiler::GetInstance()->GeneratePrecompiledGlslPermutations(shaderUID->GetUID());
 	}
 
 	EngineInstance::Start();

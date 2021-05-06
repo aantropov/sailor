@@ -1,6 +1,9 @@
 #include "ShaderCache.h"
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <sstream>
+#include <unordered_set>
 #include "AssetRegistry.h"
 
 using namespace Sailor;
@@ -101,8 +104,6 @@ void ShaderCache::Initialize()
 		assetFile << dataJson.dump();
 		assetFile.close();
 	}
-
-	std::filesystem::remove_all(PrecompiledShadersFolder);
 }
 
 void ShaderCache::Shutdown()
@@ -114,6 +115,17 @@ void ShaderCache::Shutdown()
 			delete entry;
 		}
 	}
+}
+
+void ShaderCache::SaveCache() const
+{
+	std::ofstream assetFile(ShaderCacheFilepath);
+
+	json cacheJson;
+	m_cache.Serialize(cacheJson);
+
+	assetFile << cacheJson.dump();
+	assetFile.close();
 }
 
 void ShaderCache::LoadCache()
@@ -135,21 +147,48 @@ void ShaderCache::ClearAll()
 
 void ShaderCache::ClearExpired()
 {
-	std::vector<UID> clearList;
-	for (const auto& entry : m_cache.m_data)
-	{
-		AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(entry.first);
+	std::vector<UID> expiredShaders;
+	std::unordered_set<std::string> whiteListSpirv;
 
-		if (bool bIsOutdated = entry.second[0]->m_timestamp < assetInfo->GetAssetLastModificationTime())
+	for (const auto& entries : m_cache.m_data)
+	{
+		AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(entries.first);
+
+		if (bool bIsOutdated = entries.second[0]->m_timestamp != assetInfo->GetAssetLastModificationTime())
 		{
-			clearList.push_back(entry.first);
+			expiredShaders.push_back(entries.first);
+		}
+		else
+		{
+			for (const auto& entry : entries.second)
+			{
+				//Convert to the same path format
+				auto filepath = std::filesystem::path(entry->GetCompiledFilepath());
+
+				whiteListSpirv.insert(filepath.string());
+
+				if (!std::filesystem::exists(filepath))
+				{
+					expiredShaders.push_back(entries.first);
+				}
+			}
 		}
 	}
 
-	for (const auto& uid : clearList)
+	for (const auto& uid : expiredShaders)
 	{
 		Remove(uid);
 	}
+
+	for (const auto& entry : std::filesystem::directory_iterator(CompiledShadersFolder))
+	{
+		if (entry.is_regular_file() && whiteListSpirv.find(entry.path().string()) == whiteListSpirv.end())
+		{
+			std::filesystem::remove(entry);
+		}
+	}
+
+	SaveCache();
 }
 
 void ShaderCache::Remove(const UID& uid)
@@ -173,5 +212,29 @@ void ShaderCache::Remove(const UID& uid)
 
 bool ShaderCache::Contains(UID uid) const
 {
-	return  m_cache.m_data.find(uid) != m_cache.m_data.end();
+	return m_cache.m_data.find(uid) != m_cache.m_data.end();
 }
+
+void ShaderCache::AddSpirv(const UID& uid, unsigned int permutation, const std::string& spirv, const std::string& glsl)
+{
+	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
+
+	ShaderCacheEntry* newEntry = new ShaderCacheEntry();
+	newEntry->m_permutation = permutation;
+	newEntry->m_UID = uid;
+	newEntry->m_timestamp = assetInfo->GetAssetLastModificationTime();
+
+	if (m_bSavePrecompiledShaders)
+	{
+		std::ofstream precompiled(newEntry->GetPrecompiledFilepath());
+		precompiled << glsl;
+		precompiled.close();
+	}
+
+	std::ofstream compiled(newEntry->GetCompiledFilepath());
+	compiled << spirv;
+	compiled.close();
+
+	m_cache.m_data[uid].push_back(newEntry);
+}
+
