@@ -30,11 +30,11 @@ namespace Sailor
 
 		SAILOR_API bool Contains(UID uid) const;
 		SAILOR_API void LoadCache();
-		SAILOR_API void SaveCache() const;
+		SAILOR_API void SaveCache(bool bForcely = false);
 
 		SAILOR_API void ClearAll();
 		SAILOR_API void ClearExpired();
-
+		
 	protected:
 
 		class ShaderCacheEntry final : IJsonSerializable
@@ -68,5 +68,6 @@ namespace Sailor
 		ShaderCacheData m_cache;
 
 		bool m_bSavePrecompiledShaders = true;
+		bool m_bIsDirty = false;
 	};
 }

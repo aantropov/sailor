@@ -104,10 +104,16 @@ void ShaderCache::Initialize()
 		assetFile << dataJson.dump();
 		assetFile.close();
 	}
+
+	LoadCache();
+	ClearExpired();
+	SaveCache();
 }
 
 void ShaderCache::Shutdown()
 {
+	SaveCache();
+
 	for (const auto& entries : m_cache.m_data)
 	{
 		for (const auto& entry : entries.second)
@@ -117,15 +123,20 @@ void ShaderCache::Shutdown()
 	}
 }
 
-void ShaderCache::SaveCache() const
+void ShaderCache::SaveCache(bool bForcely)
 {
-	std::ofstream assetFile(ShaderCacheFilepath);
+	if (bForcely || m_bIsDirty)
+	{
+		std::ofstream assetFile(ShaderCacheFilepath);
 
-	json cacheJson;
-	m_cache.Serialize(cacheJson);
+		json cacheJson;
+		m_cache.Serialize(cacheJson);
 
-	assetFile << cacheJson.dump();
-	assetFile.close();
+		assetFile << cacheJson.dump();
+		assetFile.close();
+
+		m_bIsDirty = false;
+	}
 }
 
 void ShaderCache::LoadCache()
@@ -137,12 +148,15 @@ void ShaderCache::LoadCache()
 	assetFile.close();
 
 	m_cache.Deserialize(dataJson);
+
+	m_bIsDirty = false;
 }
 
 void ShaderCache::ClearAll()
 {
 	std::filesystem::remove_all(PrecompiledShadersFolder);
 	std::filesystem::remove_all(CompiledShaderFileExtension);
+	std::filesystem::remove(ShaderCacheFilepath);
 }
 
 void ShaderCache::ClearExpired()
@@ -206,6 +220,7 @@ void ShaderCache::Remove(const UID& uid)
 			delete pEntry;
 		}
 
+		m_bIsDirty = true;
 		m_cache.m_data.erase(it);
 	}
 }
@@ -236,5 +251,7 @@ void ShaderCache::AddSpirv(const UID& uid, unsigned int permutation, const std::
 	compiled.close();
 
 	m_cache.m_data[uid].push_back(newEntry);
+
+	m_bIsDirty = true;
 }
 

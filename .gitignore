@@ -37,6 +37,7 @@
 *.ilk
 
 # Sailor Debug/Release folders
+Cache/
 sailor/Debug
 sailor/Release
 sailor/x64

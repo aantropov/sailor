@@ -41,9 +41,7 @@ void Shader::Deserialize(const nlohmann::json& inData)
 void ShaderCompiler::Initialize()
 {
 	m_pInstance = new ShaderCompiler();
-	m_pInstance->m_shaderCache.Initialize();
-	m_pInstance->m_shaderCache.LoadCache();
-	m_pInstance->m_shaderCache.ClearExpired();
+	m_pInstance->m_shaderCache.Initialize();	
 }
 
 ShaderCompiler::~ShaderCompiler()
@@ -129,14 +127,14 @@ void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID)
 
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
 
-	SAILOR_LOG("Generate precompiled glsl code... %s %d", assetInfo->GetAssetFilepath(), NumPermutations);
+	SAILOR_LOG("Generate precompiled glsl code for %s, Num permutations: %d ", assetInfo->GetAssetFilepath().c_str(), NumPermutations);
 
 	if (m_pInstance->m_shaderCache.Contains(assetUID))
 	{
 		m_pInstance->m_shaderCache.Remove(assetUID);
 	}
 
-	for (int i = 1; i < NumPermutations; i++)
+	for (int i = 0; i < NumPermutations; i++)
 	{
 		std::vector<std::string> defines;
 
