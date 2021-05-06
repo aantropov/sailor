@@ -23,18 +23,23 @@ namespace Sailor
 		SAILOR_API void Initialize();
 		SAILOR_API void Shutdown();
 
-		SAILOR_API void AddSpirv(const UID& uid, unsigned int permutation, const std::string& spirv, const std::string& glsl = "");
-		SAILOR_API std::string GetSpirv(const UID& uid, unsigned int permutation);
-		
+		SAILOR_API void CreatePrecompiledGlsl(const UID& uid, unsigned int permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl);
+		SAILOR_API void CacheSpirv(const UID& uid, unsigned int permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv);
+				
 		SAILOR_API void Remove(const UID& uid);
 
-		SAILOR_API bool Contains(UID uid) const;
+		SAILOR_API bool Contains(const UID& uid) const;
+		SAILOR_API bool IsExpired(const UID& uid) const;
+
 		SAILOR_API void LoadCache();
 		SAILOR_API void SaveCache(bool bForcely = false);
 
 		SAILOR_API void ClearAll();
 		SAILOR_API void ClearExpired();
 		
+		static SAILOR_API std::string GetCachedShaderFilepath(const UID& uid, int permutation, const std::string& shaderKind, bool bIsCompiledToSpirv);
+		SAILOR_API std::string LoadSpirv(const UID& uid, unsigned int permutation, enum class EShaderKind shaderKind);
+
 	protected:
 
 		class ShaderCacheEntry final : IJsonSerializable
@@ -46,9 +51,6 @@ namespace Sailor
 			// Last time shader changed
 			std::time_t m_timestamp;
 			unsigned int m_permutation;
-
-			std::string GetCompiledFilepath() const;
-			std::string GetPrecompiledFilepath() const;
 
 			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
 			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
@@ -62,12 +64,10 @@ namespace Sailor
 			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
 			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
 		};
-
+		
 	private:
 
 		ShaderCacheData m_cache;
-
-		bool m_bSavePrecompiledShaders = true;
 		bool m_bIsDirty = false;
 	};
 }

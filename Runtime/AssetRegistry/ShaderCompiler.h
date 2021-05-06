@@ -8,6 +8,12 @@
 
 namespace Sailor
 {
+	enum class EShaderKind
+	{
+		Vertex,
+		Fragment
+	};
+
 	class Shader : IJsonSerializable
 	{
 	public:
@@ -46,7 +52,7 @@ namespace Sailor
 		static SAILOR_API void ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON);
 		static SAILOR_API bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
 
-		static bool SAILOR_API CompileGlslToSpirv(const std::string& source, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<uint32_t>& outByteCode);
+		static bool SAILOR_API CompileGlslToSpirv(const std::string& source, const std::string& filename, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<uint32_t>& outByteCode);
 
 	private:
 

@@ -8,8 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
-#include <shaderc/shaderc.hpp>
 #include "nlohmann_json/include/nlohmann/json.hpp"
+#include <shaderc/shaderc.hpp>
 
 #ifdef _DEBUG
 #pragma comment(lib, "shaderc_combinedd.lib")
@@ -41,7 +41,7 @@ void Shader::Deserialize(const nlohmann::json& inData)
 void ShaderCompiler::Initialize()
 {
 	m_pInstance = new ShaderCompiler();
-	m_pInstance->m_shaderCache.Initialize();	
+	m_pInstance->m_shaderCache.Initialize();
 }
 
 ShaderCompiler::~ShaderCompiler()
@@ -61,12 +61,13 @@ void ShaderCompiler::GeneratePrecompiledGlsl(Shader* shader, std::string& outGLS
 	ConvertFromJsonToGlslCode(shader->m_glslFragment, fragmentGlsl);
 	ConvertFromJsonToGlslCode(shader->m_glslCommon, commonGlsl);
 
+	outGLSLCode += commonGlsl + "\n";
+
 	for (const auto& define : defines)
 	{
-		outGLSLCode += "#DEFINE " + define + "\n";
+		outGLSLCode += "#define " + define + "\n";
 	}
 
-	outGLSLCode += "\n" + commonGlsl + "\n";
 	outGLSLCode += "\n #ifdef VERTEX \n" + vertexGlsl + " \n #endif \n";
 	outGLSLCode += "\n #ifdef FRAGMENT \n" + fragmentGlsl + "\n #endif \n";
 }
@@ -120,7 +121,12 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 }
 
 void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID)
-{	
+{
+	if (!m_pInstance->m_shaderCache.IsExpired(assetUID))
+	{
+		return;
+	}
+
 	std::shared_ptr<Shader> pShader = m_pInstance->LoadShader(assetUID).lock();
 
 	const unsigned int NumPermutations = std::pow(2, pShader->m_defines.size());
@@ -134,22 +140,43 @@ void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID)
 		m_pInstance->m_shaderCache.Remove(assetUID);
 	}
 
-	for (int i = 0; i < NumPermutations; i++)
+	for (int permutation = 0; permutation < NumPermutations; permutation++)
 	{
+		SAILOR_LOG("Compiling shader %d, left: %d ...", permutation + 1, NumPermutations - permutation - 1);
+
 		std::vector<std::string> defines;
 
 		for (int define = 0; define < pShader->m_defines.size(); define++)
 		{
-			if ((i >> define) & 1)
+			if ((permutation >> define) & 1)
 			{
 				defines.push_back(pShader->m_defines[define]);
 			}
 		}
 
-		std::string res;
-		GeneratePrecompiledGlsl(pShader.get(), res, defines);
+		std::vector<std::string> vertexDefines = defines;
+		vertexDefines.push_back("VERTEX");
 
-		m_pInstance->m_shaderCache.AddSpirv(assetUID, i, "spirv", res);
+		std::vector<std::string> fragmentDefines = defines;
+		fragmentDefines.push_back("FRAGMENT");
+
+		std::string vertexGlsl;
+		std::string fragmentGlsl;
+		GeneratePrecompiledGlsl(pShader.get(), vertexGlsl, vertexDefines);
+		GeneratePrecompiledGlsl(pShader.get(), fragmentGlsl, fragmentDefines);
+
+		m_pInstance->m_shaderCache.CreatePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl);
+
+		std::vector<uint32_t> spirvVertexByteCode;
+		std::vector<uint32_t> spirvFragmentByteCode;
+
+		const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, ShaderCache::GetCachedShaderFilepath(assetUID, permutation, "VERTEX", false), EShaderKind::Vertex, {}, {}, spirvVertexByteCode);
+		const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, ShaderCache::GetCachedShaderFilepath(assetUID, permutation, "FRAGMENT", false), EShaderKind::Fragment, {}, {}, spirvFragmentByteCode);
+
+		if (bResultCompileVertexShader && bResultCompileFragmentShader)
+		{
+			m_pInstance->m_shaderCache.CacheSpirv(assetUID, permutation, spirvVertexByteCode, spirvFragmentByteCode);
+		}
 	}
 
 	m_pInstance->m_shaderCache.SaveCache();
@@ -195,18 +222,33 @@ std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
 	}
 }
 
-bool ShaderCompiler::CompileGlslToSpirv(const string& source, const vector<string>& defines, const vector<string>& includes, vector<uint32_t>& outByteCode)
+bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, const std::string& filename, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, std::vector<uint32_t>& outByteCode)
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
 
-	//shaderc::PreprocessedSourceCompilationResult preprocessed = compiler.PreprocessGlsl(shaderString, kind, fileName.c_str(), options);
-	//shaderString = { preprocessed.cbegin(), preprocessed.cend() };
+	options.SetSourceLanguage(shaderc_source_language_glsl);
+	/*shaderc::PreprocessedSourceCompilationResult preprocessed = compiler.PreprocessGlsl(source, shaderc_glsl_closesthit_shader, "", options);
+	std::string shaderString = { preprocessed.cbegin(), preprocessed.cend() };
+	*/
 
-	// compile
-	//shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(shaderString, kind, fileName.c_str(), options);
+	shaderc_shader_kind kind = shaderc_glsl_default_vertex_shader;
 
-	//shaderBytecode = { module.cbegin(), module.cend() };// not sure why sample code copy vector like this
+	if (shaderKind == EShaderKind::Fragment)
+	{
+		shaderc_shader_kind kind = shaderc_glsl_default_fragment_shader;
+	}
+
+	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, filename.c_str(), options);
+
+	if (module.GetCompilationStatus() != shaderc_compilation_status_success)
+	{
+		SAILOR_LOG("Failed to compile shader: %s", module.GetErrorMessage().c_str());
+		return false;
+	}
+
+	outByteCode = { module.cbegin(), module.cend() };
+
 	//shaderc::Compiler::CompileGlslToSpv()
 
 	/*
@@ -223,5 +265,5 @@ bool ShaderCompiler::CompileGlslToSpirv(const string& source, const vector<strin
 	vShader.setStringsWithLengthsAndNames(srcs, lens, inputName, 1);
 
 	vShader.parse(&DefaultTBuiltInResource, 100, EProfile::EEsProfile, false, true, EShMessages::EShMsgDefault);*/
-	return false;
+	return true;
 }

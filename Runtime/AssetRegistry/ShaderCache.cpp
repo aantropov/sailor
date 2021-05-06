@@ -8,20 +8,17 @@
 
 using namespace Sailor;
 
-std::string ShaderCache::ShaderCacheEntry::GetCompiledFilepath() const
+std::string ShaderCache::GetCachedShaderFilepath(const UID& uid, int permutation, const std::string& shaderKind, bool bIsCompiledToSpirv)
 {
 	std::string res;
 	std::stringstream stream;
-	stream << CompiledShadersFolder << m_UID.ToString() << m_permutation << "." << CompiledShaderFileExtension;
-	stream >> res;
-	return res;
-}
+	stream << (bIsCompiledToSpirv ? CompiledShadersFolder : PrecompiledShadersFolder)
+		<< uid.ToString()
+		<< shaderKind
+		<< permutation
+		<< "."
+		<< (bIsCompiledToSpirv ? CompiledShaderFileExtension : PrecompiledShaderFileExtension);
 
-std::string ShaderCache::ShaderCacheEntry::GetPrecompiledFilepath() const
-{
-	std::string res;
-	std::stringstream stream;
-	stream << PrecompiledShadersFolder << m_UID.ToString() << m_permutation << "." << PrecompiledShaderFileExtension;
 	stream >> res;
 	return res;
 }
@@ -166,9 +163,7 @@ void ShaderCache::ClearExpired()
 
 	for (const auto& entries : m_cache.m_data)
 	{
-		AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(entries.first);
-
-		if (bool bIsOutdated = entries.second[0]->m_timestamp != assetInfo->GetAssetLastModificationTime())
+		if (IsExpired(entries.first))
 		{
 			expiredShaders.push_back(entries.first);
 		}
@@ -177,14 +172,11 @@ void ShaderCache::ClearExpired()
 			for (const auto& entry : entries.second)
 			{
 				//Convert to the same path format
-				auto filepath = std::filesystem::path(entry->GetCompiledFilepath());
+				auto vertexFilepath = std::filesystem::path(GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, "VERTEX", true));
+				auto fragmentFilepath = std::filesystem::path(GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, "FRAGMENT", true));
 
-				whiteListSpirv.insert(filepath.string());
-
-				if (!std::filesystem::exists(filepath))
-				{
-					expiredShaders.push_back(entries.first);
-				}
+				whiteListSpirv.insert(vertexFilepath.string());
+				whiteListSpirv.insert(fragmentFilepath.string());
 			}
 		}
 	}
@@ -214,8 +206,10 @@ void ShaderCache::Remove(const UID& uid)
 
 		for (const auto& pEntry : entries.second)
 		{
-			std::filesystem::remove(pEntry->GetCompiledFilepath());
-			std::filesystem::remove(pEntry->GetPrecompiledFilepath());
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX", true));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT", true));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX", false));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT", false));
 
 			delete pEntry;
 		}
@@ -225,12 +219,53 @@ void ShaderCache::Remove(const UID& uid)
 	}
 }
 
-bool ShaderCache::Contains(UID uid) const
+bool ShaderCache::Contains(const UID& uid) const
 {
 	return m_cache.m_data.find(uid) != m_cache.m_data.end();
 }
 
-void ShaderCache::AddSpirv(const UID& uid, unsigned int permutation, const std::string& spirv, const std::string& glsl)
+bool ShaderCache::IsExpired(const UID& uid) const
+{
+	if (!Contains(uid))
+	{
+		return true;
+	}
+
+	const auto& entries = m_cache.m_data.at(uid);
+	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
+
+	if (bool bIsOutdated = entries[0]->m_timestamp != assetInfo->GetAssetLastModificationTime())
+	{
+		return true;
+	}
+	
+	for (const auto& entry : entries)
+	{
+		//Convert to the same path format
+		auto vertexFilepath = std::filesystem::path(GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, "VERTEX", true));
+		auto fragmentFilepath = std::filesystem::path(GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, "FRAGMENT", true));
+
+		if (!(std::filesystem::exists(vertexFilepath) && std::filesystem::exists(fragmentFilepath)))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void ShaderCache::CreatePrecompiledGlsl(const UID& uid, unsigned int permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl)
+{
+	std::ofstream vertexPrecompiled(GetCachedShaderFilepath(uid, permutation, "VERTEX", false));
+	vertexPrecompiled << vertexGlsl;
+	vertexPrecompiled.close();
+
+	std::ofstream fragmentPrecompiled(GetCachedShaderFilepath(uid, permutation, "FRAGMENT", false));
+	fragmentPrecompiled << fragmentGlsl;
+	fragmentPrecompiled.close();
+}
+
+void ShaderCache::CacheSpirv(const UID& uid, unsigned int permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv)
 {
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
 
@@ -239,16 +274,13 @@ void ShaderCache::AddSpirv(const UID& uid, unsigned int permutation, const std::
 	newEntry->m_UID = uid;
 	newEntry->m_timestamp = assetInfo->GetAssetLastModificationTime();
 
-	if (m_bSavePrecompiledShaders)
-	{
-		std::ofstream precompiled(newEntry->GetPrecompiledFilepath());
-		precompiled << glsl;
-		precompiled.close();
-	}
+	std::ofstream vertexCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, "VERTEX", true), std::ofstream::binary);
+	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.size() * sizeof(uint32_t));
+	vertexCompiled.close();
 
-	std::ofstream compiled(newEntry->GetCompiledFilepath());
-	compiled << spirv;
-	compiled.close();
+	std::ofstream fragmentCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, "FRAGMENT", true), std::ofstream::binary);
+	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.size() * sizeof(uint32_t));
+	fragmentCompiled.close();
 
 	m_cache.m_data[uid].push_back(newEntry);
 
