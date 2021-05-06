@@ -141,6 +141,7 @@ std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
 	{
 		return (std::time_t)result.st_mtime;
 	}
+	return 0;
 }
 
 void Sailor::Utils::FindAllOccurances(std::string& str, const std::string& substr, std::vector<size_t>& outLocations, size_t startPosition, size_t endLocation)

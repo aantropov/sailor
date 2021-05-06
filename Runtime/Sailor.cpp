@@ -20,9 +20,9 @@ void EngineInstance::Initialize()
 
 	ConsoleWindow::Initialize(false);
 
-#ifdef _DEBUG
+//#ifdef _DEBUG
 	ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
-#endif
+//#endif
 
 	m_pInstance = new EngineInstance();
 	m_pInstance->m_viewportWindow.Create(L"Sailor Viewport", 1024, 768);

@@ -142,7 +142,7 @@ void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID)
 
 	for (int permutation = 0; permutation < NumPermutations; permutation++)
 	{
-		SAILOR_LOG("Compiling shader %d, left: %d ...", permutation + 1, NumPermutations - permutation - 1);
+		SAILOR_LOG("Compiling shader %d/%d ...", permutation + 1, NumPermutations);
 
 		std::vector<std::string> defines;
 
