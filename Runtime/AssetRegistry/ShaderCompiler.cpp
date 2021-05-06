@@ -19,23 +19,23 @@
 
 using namespace Sailor;
 
-void ns::to_json(json& j, const Sailor::Shader& p)
+void Shader::Serialize(nlohmann::json& outData) const
 {
 	assert(false);
 }
 
-void ns::from_json(const json& j, Sailor::Shader& p)
+void Shader::Deserialize(const nlohmann::json& inData)
 {
-	p.m_glslVertex = j["glslVertex"].get<std::string>();
-	p.m_glslFragment = j["glslFragment"].get<std::string>();
+	m_glslVertex = inData["glslVertex"].get<std::string>();
+	m_glslFragment = inData["glslFragment"].get<std::string>();
 
-	if (j.contains("glslCommon"))
+	if (inData.contains("glslCommon"))
 	{
-		p.m_glslCommon = j["glslCommon"].get<std::string>();
+		m_glslCommon = inData["glslCommon"].get<std::string>();
 	}
 
-	p.m_defines = j["defines"].get<std::vector<std::string>>();
-	p.m_includes = j["includes"].get<std::vector<std::string>>();
+	m_defines = inData["defines"].get<std::vector<std::string>>();
+	m_includes = inData["includes"].get<std::vector<std::string>>();
 }
 
 void ShaderCompiler::Initialize()
@@ -44,7 +44,7 @@ void ShaderCompiler::Initialize()
 	m_pInstance->m_shaderCache.Load();
 }
 
-void ShaderCompiler::GeneratePrecompiledGLSL(Shader* shader, std::string& outGLSLCode, const std::vector<std::string>& defines)
+void ShaderCompiler::GeneratePrecompiledGlsl(Shader* shader, std::string& outGLSLCode, const std::vector<std::string>& defines)
 {
 	outGLSLCode.clear();
 
@@ -52,9 +52,9 @@ void ShaderCompiler::GeneratePrecompiledGLSL(Shader* shader, std::string& outGLS
 	std::string fragmentGLSL;
 	std::string commonGLSL;
 
-	ConvertFromJSONToGLSLCode(shader->m_glslVertex, vertexGLSL);
-	ConvertFromJSONToGLSLCode(shader->m_glslFragment, fragmentGLSL);
-	ConvertFromJSONToGLSLCode(shader->m_glslCommon, commonGLSL);
+	ConvertFromJsonToGlslCode(shader->m_glslVertex, vertexGLSL);
+	ConvertFromJsonToGlslCode(shader->m_glslFragment, fragmentGLSL);
+	ConvertFromJsonToGlslCode(shader->m_glslCommon, commonGLSL);
 
 	for (const auto& define : defines)
 	{
@@ -66,7 +66,7 @@ void ShaderCompiler::GeneratePrecompiledGLSL(Shader* shader, std::string& outGLS
 	outGLSLCode += "\n #ifdef FRAGMENT \n" + fragmentGLSL + "\n #endif \n";
 }
 
-void ShaderCompiler::ConvertRawShaderToJSON(const std::string& shaderText, std::string& outCodeInJSON)
+void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON)
 {
 	outCodeInJSON = shaderText;
 
@@ -103,7 +103,7 @@ void ShaderCompiler::ConvertRawShaderToJSON(const std::string& shaderText, std::
 	Utils::ReplaceAll(outCodeInJSON, std::string{ '\t' }, std::string{ ' ' });
 }
 
-bool ShaderCompiler::ConvertFromJSONToGLSLCode(const std::string& shaderText, std::string& outPureGLSL)
+bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL)
 {
 	outPureGLSL = shaderText;
 
@@ -114,12 +114,12 @@ bool ShaderCompiler::ConvertFromJSONToGLSLCode(const std::string& shaderText, st
 	return true;
 }
 
-void ShaderCompiler::GeneratePrecompiledGLSLPermutations(const UID& assetUID, std::vector<std::string>& outPrecompiledShadersCode)
+void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID, std::vector<std::string>& outPrecompiledShadersCode)
 {
 	std::weak_ptr<Shader> shader = m_pInstance->LoadShader(assetUID);
 
 	std::string res;
-	GeneratePrecompiledGLSL(shader.lock().get(), res, { "VERTEX", "TEST_DEFINE1" });
+	GeneratePrecompiledGlsl(shader.lock().get(), res, { "VERTEX", "TEST_DEFINE1" });
 }
 
 std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
@@ -139,7 +139,7 @@ std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
 
 		AssetRegistry::ReadFile(filepath, shaderText);
 
-		ConvertRawShaderToJSON(shaderText, codeInJSON);
+		ConvertRawShaderToJson(shaderText, codeInJSON);
 
 		json j_shader;
 		if (j_shader.parse(codeInJSON.c_str()) == detail::value_t::discarded)
@@ -151,7 +151,7 @@ std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
 		j_shader = json::parse(codeInJSON);
 
 		Shader* shader = new Shader();
-		ns::from_json(j_shader, *shader);
+		shader->Deserialize(j_shader);
 
 		return m_loadedShaders[uid] = shared_ptr<Shader>(shader);
 	}
@@ -162,7 +162,7 @@ std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
 	}
 }
 
-bool ShaderCompiler::CompileGLSLToSPIRV(const string& source, const vector<string>& defines, const vector<string>& includes, vector<uint32_t>& outByteCode)
+bool ShaderCompiler::CompileGlslToSpirv(const string& source, const vector<string>& defines, const vector<string>& includes, vector<uint32_t>& outByteCode)
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;

@@ -9,16 +9,16 @@
 
 using namespace Sailor;
 
-void ns::to_json(json& j, const Sailor::AssetInfo& p)
+void AssetInfo::Serialize(nlohmann::json& outData) const
 {
-	ns::to_json(j["uid"], p.GetUID());
-	j["filepath"] = p.GetAssetFilepath();
+	m_UID.Serialize(outData["uid"]);
+	outData["filepath"] = GetAssetFilepath();
 }
 
-void ns::from_json(const json& j, Sailor::AssetInfo& p)
+void AssetInfo::Deserialize(const nlohmann::json& inData)
 {
-	ns::from_json(j["uid"], p.uid);
-	p.m_filepath = j["filepath"].get<std::string>();
+	m_UID.Deserialize(inData["uid"]);
+	m_filepath = inData["filepath"].get<std::string>();
 }
 
 AssetInfo::AssetInfo()
@@ -32,16 +32,6 @@ void DefaultAssetInfoHandler::Initialize()
 	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
-void DefaultAssetInfoHandler::Serialize(const AssetInfo* inInfo, json& outData) const
-{
-	ns::to_json(outData, *inInfo);
-}
-
-void DefaultAssetInfoHandler::Deserialize(const json& inData, AssetInfo* outInfo) const
-{
-	ns::from_json(inData, *outInfo);
-}
-
 AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filepath) const
 {
 	std::cout << "Try import file: " << filepath << std::endl;
@@ -52,9 +42,10 @@ AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filepath) cons
 
 	json newMeta;
 	AssetInfo defaultObject;
-		
-	ns::to_json(newMeta, defaultObject);
-	ns::to_json(newMeta["uid"], UID::CreateNewUID());
+
+	defaultObject.Serialize(newMeta);
+	UID::CreateNewUID().Serialize(newMeta["uid"]);
+
 	newMeta["filepath"] = filepath;
 
 	assetFile << newMeta.dump();
@@ -73,7 +64,8 @@ AssetInfo* DefaultAssetInfoHandler::ImportAssetInfo(const std::string& assetInfo
 
 	json meta;
 	assetFile >> meta;
-	Deserialize(meta, res);
+
+	res->Deserialize(meta);
 
 	assetFile.close();
 

@@ -7,34 +7,12 @@
 
 using namespace Sailor;
 
-void ns::to_json(json& j, const Sailor::ShaderAssetInfo& p)
-{
-	ns::to_json(j,  static_cast<const Sailor::AssetInfo&>(p));
-}
-
-void ns::from_json(const json& j, Sailor::ShaderAssetInfo& p)
-{
-	ns::from_json(j, static_cast<Sailor::AssetInfo&>(p));
-}
-
 void ShaderAssetInfoHandler::Initialize()
 {
 	m_pInstance = new ShaderAssetInfoHandler();
 
 	m_pInstance->m_supportedExtensions.emplace_back("shader");
 	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
-}
-
-void ShaderAssetInfoHandler::Serialize(const AssetInfo* inInfo, json& outData) const
-{
-	DefaultAssetInfoHandler::GetInstance()->Serialize(inInfo, outData);
-	//ns::to_json(outData, dynamic_cast<const ShaderAssetInfo&>(*inInfo));
-}
-
-void ShaderAssetInfoHandler::Deserialize(const json& inData, AssetInfo* outInfo) const
-{
-	DefaultAssetInfoHandler::GetInstance()->Deserialize(inData, outInfo);
-	//ns::from_json(inData, dynamic_cast<ShaderAssetInfo&>(*outInfo));
 }
 
 ShaderAssetInfo* ShaderAssetInfoHandler::ImportFile(const std::string& filepath) const
@@ -48,8 +26,8 @@ ShaderAssetInfo* ShaderAssetInfoHandler::ImportFile(const std::string& filepath)
 	json newMeta;
 	ShaderAssetInfo defaultObject;
 
-	ns::to_json(newMeta, defaultObject);
-	ns::to_json(newMeta["uid"], UID::CreateNewUID());
+	defaultObject.Serialize(newMeta);
+	UID::CreateNewUID().Serialize(newMeta["uid"]);
 	newMeta["filepath"] = filepath;
 
 	assetFile << newMeta.dump();
@@ -63,12 +41,11 @@ ShaderAssetInfo* ShaderAssetInfoHandler::ImportAssetInfo(const std::string& asse
 	std::cout << "Try load asset info: " << assetInfoPath << std::endl;
 
 	ShaderAssetInfo* res = new ShaderAssetInfo();
-
 	std::ifstream assetFile(assetInfoPath);
 
 	json meta;
 	assetFile >> meta;
-	Deserialize(meta, res);
+	res->Deserialize(meta);
 
 	assetFile.close();
 

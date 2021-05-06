@@ -174,6 +174,7 @@
     <ClInclude Include="..\Runtime\Foundation\Input.h" />
     <ClInclude Include="..\Runtime\Foundation\Window.h" />
     <ClInclude Include="..\Runtime\GfxDevice\GfxDeviceVulkan.h" />
+    <ClInclude Include="..\Runtime\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\LogMacros.h" />
     <ClInclude Include="..\Runtime\Sailor.h" />
     <ClInclude Include="..\Runtime\Singleton.hpp" />
@@ -190,6 +191,7 @@
     <ClCompile Include="..\Runtime\Foundation\Input.cpp" />
     <ClCompile Include="..\Runtime\Foundation\Window.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\GfxDeviceVulkan.cpp" />
+    <ClCompile Include="..\Runtime\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\Sailor.cpp" />
     <ClCompile Include="..\Runtime\Utils.cpp" />
     <ClCompile Include="dllmain.cpp" />

@@ -72,6 +72,9 @@
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderAssetInfo.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\JsonSerializable.h">
+      <Filter>Runtime</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -112,6 +115,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderAssetInfo.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\JsonSerializable.cpp">
+      <Filter>Runtime</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

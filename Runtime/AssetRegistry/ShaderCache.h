@@ -7,25 +7,25 @@
 #include "Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
-namespace Sailor { class ShaderAssetInfo; }
-
-using namespace std;
-using namespace Sailor;
-
 namespace Sailor
 {
 	class ShaderCache
 	{
 	public:
 
-		struct ShaderCacheEntry
+		class ShaderCacheEntry : IJsonSerializable
 		{
-			UID uid;
+		public:
+
+			UID m_UID;
 
 			// Last time shader changed
 			std::time_t m_timestamp;
 
 			std::vector<std::string> m_compiledPermutations;
+
+			virtual SAILOR_API void Serialize(nlohmann::json& outData) const = 0;
+			virtual SAILOR_API void Deserialize(const nlohmann::json& inData) = 0;
 		};
 
 		typedef std::unordered_map<UID, ShaderCache::ShaderCacheEntry*> ShaderCacheData;
@@ -47,13 +47,3 @@ namespace Sailor
 		bool m_bSavePrecompiledShaders = true;
 	};
 }
-
-namespace ns
-{
-	SAILOR_API void to_json(json& j, const Sailor::ShaderCache::ShaderCacheEntry& p);
-	SAILOR_API void from_json(const json& j, Sailor::ShaderCache::ShaderCacheEntry& p);
-
-	SAILOR_API void to_json(json& j, const Sailor::ShaderCache::ShaderCacheData& p);
-	SAILOR_API void from_json(const json& j, Sailor::ShaderCache::ShaderCacheData& p);
-}
-

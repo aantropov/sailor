@@ -2,21 +2,14 @@
 
 using namespace Sailor;
 
-void ns::to_json(json& j, const Sailor::ShaderCache::ShaderCacheEntry& p)
+void ShaderCache::ShaderCacheEntry::Serialize(nlohmann::json& outData) const
 {
-
+	
 }
 
-void ns::from_json(const json& j, Sailor::ShaderCache::ShaderCacheEntry& p)
+void ShaderCache::ShaderCacheEntry::Deserialize(const nlohmann::json& inData)
 {
-}
-
-void ns::to_json(json& j, const Sailor::ShaderCache::ShaderCacheData& p)
-{
-}
-
-void ns::from_json(const json& j, Sailor::ShaderCache::ShaderCacheData& p)
-{
+	
 }
 
 void ShaderCache::Load()

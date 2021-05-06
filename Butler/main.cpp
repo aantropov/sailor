@@ -17,7 +17,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		auto shader = ShaderCompiler::GetInstance()->LoadShader(shaderUID->GetUID());
 
 		std::vector<std::string> permutations;
-		ShaderCompiler::GetInstance()->GeneratePrecompiledGLSLPermutations(shaderUID->GetUID(), permutations);
+		ShaderCompiler::GetInstance()->GeneratePrecompiledGlslPermutations(shaderUID->GetUID(), permutations);
 	}
 
 	EngineInstance::Start();

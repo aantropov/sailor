@@ -1,20 +1,14 @@
 #pragma once
 #include <string>
+#include "JsonSerializable.h"
 #include "Sailor.h"
-#include "nlohmann_json/include/nlohmann/json.hpp"
 
 using namespace nlohmann;
 namespace Sailor { class UID; }
 
-namespace ns
-{
-	SAILOR_API void to_json(json& j, const class Sailor::UID& p);
-	SAILOR_API void from_json(const json& j, class Sailor::UID& p);
-}
-
 namespace Sailor
 {
-	class UID
+	class UID : IJsonSerializable
 	{
 	public:
 
@@ -27,12 +21,12 @@ namespace Sailor
 		SAILOR_API bool operator==(const UID& rhs) const;
 		virtual SAILOR_API~UID() = default;
 
+		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
+		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
+
 	protected:
 
 		std::string m_UID;
-
-		friend void ns::to_json(json& j, const Sailor::UID& p);
-		friend void ns::from_json(const json& j, Sailor::UID& p);
 	};
 }
 

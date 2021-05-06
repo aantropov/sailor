@@ -5,14 +5,14 @@
 using namespace Sailor;
 using namespace nlohmann;
 
-void ns::to_json(json& j, const UID& p)
+void UID::Serialize(nlohmann::json& outData) const
 {
-	j = json{ {"uid", p.m_UID} };
+	outData = json{ {"uid", m_UID} };
 }
 
-void ns::from_json(const json& j, UID& p)
+void UID::Deserialize(const nlohmann::json& inData)
 {
-	j.at("uid").get_to<std::string>(p.m_UID);
+	inData.at("uid").get_to<std::string>(m_UID);
 }
 
 const std::string& UID::ToString() const
