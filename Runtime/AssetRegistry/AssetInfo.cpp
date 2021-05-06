@@ -12,18 +12,18 @@ using namespace Sailor;
 void AssetInfo::Serialize(nlohmann::json& outData) const
 {
 	m_UID.Serialize(outData["uid"]);
-	outData["filepath"] = GetAssetFilepath();
+	outData["filename"] = GetAssetFilepath();
 }
 
 void AssetInfo::Deserialize(const nlohmann::json& inData)
 {
 	m_UID.Deserialize(inData["uid"]);
-	m_filepath = inData["filepath"].get<std::string>();
+	m_filename = inData["filename"].get<std::string>();
 }
 
 AssetInfo::AssetInfo()
 {
-	m_creationTime = std::time(nullptr);
+	m_loadTime = std::time(nullptr);
 }
 
 void DefaultAssetInfoHandler::Initialize()
@@ -32,7 +32,7 @@ void DefaultAssetInfoHandler::Initialize()
 	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
-AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filepath) const
+AssetInfo* IAssetInfoHandler::ImportFile(const std::string& filepath) const
 {
 	std::cout << "Try import file: " << filepath << std::endl;
 
@@ -41,33 +41,44 @@ AssetInfo* DefaultAssetInfoHandler::ImportFile(const std::string& filepath) cons
 	std::ofstream assetFile{ assetInfofilepath };
 
 	json newMeta;
-	AssetInfo defaultObject;
-
-	defaultObject.Serialize(newMeta);
+	GetDefaultAssetInfoMeta(newMeta);
 	UID::CreateNewUID().Serialize(newMeta["uid"]);
-
-	newMeta["filepath"] = filepath;
+		
+	newMeta["filename"] = std::filesystem::path(filepath).filename().string();
 
 	assetFile << newMeta.dump();
 	assetFile.close();
-
-	return ImportAssetInfo(assetInfofilepath);
+	
+	return LoadAssetInfo(assetInfofilepath);
 }
 
-AssetInfo* DefaultAssetInfoHandler::ImportAssetInfo(const std::string& assetInfoPath) const
+AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) const
 {
 	std::cout << "Try load asset info: " << assetInfoPath << std::endl;
 
-	AssetInfo* res = new AssetInfo();
+	AssetInfo* res = CreateAssetInfo();
 
 	std::ifstream assetFile(assetInfoPath);
 
 	json meta;
 	assetFile >> meta;
-
+		
 	res->Deserialize(meta);
-
+	res->m_path = std::filesystem::path(assetInfoPath).remove_filename().string();
+	res->m_loadTime = std::time(nullptr);
+	
 	assetFile.close();
 
 	return res;
+}
+
+void DefaultAssetInfoHandler::GetDefaultAssetInfoMeta(nlohmann::json& outDefaultJson) const
+{
+	AssetInfo defaultObject;
+	defaultObject.Serialize(outDefaultJson);
+}
+
+AssetInfo* DefaultAssetInfoHandler::CreateAssetInfo() const
+{
+	return new AssetInfo();
 }

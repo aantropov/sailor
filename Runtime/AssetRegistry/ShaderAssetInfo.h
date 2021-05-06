@@ -20,8 +20,8 @@ namespace Sailor
 
 		static SAILOR_API void Initialize();
 
-		virtual SAILOR_API ShaderAssetInfo* ImportAssetInfo(const std::string& assetInfoPath) const override;
-		virtual SAILOR_API ShaderAssetInfo* ImportFile(const std::string& filepath) const override;
+		virtual SAILOR_API void GetDefaultAssetInfoMeta(nlohmann::json& outDefaultJson) const;
+		virtual SAILOR_API AssetInfo* CreateAssetInfo() const;
 
 		virtual SAILOR_API ~ShaderAssetInfoHandler() = default;
 	};

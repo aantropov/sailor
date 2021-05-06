@@ -112,7 +112,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 				AssetInfo* assetInfo = nullptr;
 				if (std::filesystem::exists(assetInfoFile))
 				{
-					assetInfo = assetInfoHandler->ImportAssetInfo(assetInfoFile);
+					assetInfo = assetInfoHandler->LoadAssetInfo(assetInfoFile);
 				}
 				else
 				{

@@ -15,39 +15,13 @@ void ShaderAssetInfoHandler::Initialize()
 	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
-ShaderAssetInfo* ShaderAssetInfoHandler::ImportFile(const std::string& filepath) const
+void ShaderAssetInfoHandler::GetDefaultAssetInfoMeta(nlohmann::json& outDefaultJson) const
 {
-	std::cout << "Try import file: " << filepath << std::endl;
-
-	const std::string assetInfofilepath = Utils::RemoveExtension(filepath) + AssetRegistry::MetaFileExtension;
-	std::filesystem::remove(assetInfofilepath);
-	std::ofstream assetFile{ assetInfofilepath };
-
-	json newMeta;
 	ShaderAssetInfo defaultObject;
-
-	defaultObject.Serialize(newMeta);
-	UID::CreateNewUID().Serialize(newMeta["uid"]);
-	newMeta["filepath"] = filepath;
-
-	assetFile << newMeta.dump();
-	assetFile.close();
-
-	return ImportAssetInfo(assetInfofilepath);
+	defaultObject.Serialize(outDefaultJson);
 }
 
-ShaderAssetInfo* ShaderAssetInfoHandler::ImportAssetInfo(const std::string& assetInfoPath) const
+AssetInfo* ShaderAssetInfoHandler::CreateAssetInfo() const
 {
-	std::cout << "Try load asset info: " << assetInfoPath << std::endl;
-
-	ShaderAssetInfo* res = new ShaderAssetInfo();
-	std::ifstream assetFile(assetInfoPath);
-
-	json meta;
-	assetFile >> meta;
-	res->Deserialize(meta);
-
-	assetFile.close();
-
-	return res;
+	return new ShaderAssetInfo();
 }

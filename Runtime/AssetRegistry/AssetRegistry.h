@@ -8,8 +8,6 @@
 #include "Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
-using namespace nlohmann;
-
 namespace Sailor
 {
 	class AssetInfo;
