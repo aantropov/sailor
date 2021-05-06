@@ -32,13 +32,18 @@ void DefaultAssetInfoHandler::Initialize()
 	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
+std::time_t AssetInfo::GetAssetLastModificationTime() const
+{
+	return Sailor::Utils::GetFileModificationTime(GetAssetFilepath());
+}
+
 AssetInfo* IAssetInfoHandler::ImportFile(const std::string& filepath) const
 {
 	std::cout << "Import file: " << filepath << std::endl;
 
-	const std::string assetInfofilepath = Utils::RemoveExtension(filepath) + AssetRegistry::MetaFileExtension;
-	std::filesystem::remove(assetInfofilepath);
-	std::ofstream assetFile{ assetInfofilepath };
+	const std::string assetInfoFilename = Utils::RemoveFileExtension(filepath) + AssetRegistry::MetaFileExtension;
+	std::filesystem::remove(assetInfoFilename);
+	std::ofstream assetFile{ assetInfoFilename };
 
 	json newMeta;
 	GetDefaultAssetInfoMeta(newMeta);
@@ -49,7 +54,7 @@ AssetInfo* IAssetInfoHandler::ImportFile(const std::string& filepath) const
 	assetFile << newMeta.dump();
 	assetFile.close();
 	
-	return LoadAssetInfo(assetInfofilepath);
+	return LoadAssetInfo(assetInfoFilename);
 }
 
 AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) const

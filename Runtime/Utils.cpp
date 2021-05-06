@@ -1,4 +1,13 @@
 #include "Utils.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#ifndef WIN32
+#include <unistd.h>
+#endif
+
+#ifdef WIN32
+#define stat _stat
+#endif
 
 std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
 {
@@ -75,7 +84,7 @@ std::wstring Sailor::Utils::UTF8_to_wchar(const char* in)
 	return out;
 }
 
-std::string Sailor::Utils::RemoveExtension(const std::string& filename)
+std::string Sailor::Utils::RemoveFileExtension(const std::string& filename)
 {
 	size_t lastdot = filename.find_last_of(".");
 	lastdot++;
@@ -84,7 +93,7 @@ std::string Sailor::Utils::RemoveExtension(const std::string& filename)
 	return filename.substr(0, lastdot);
 }
 
-std::string Sailor::Utils::GetExtension(const std::string& filename)
+std::string Sailor::Utils::GetFileExtension(const std::string& filename)
 {
 	size_t lastdot = filename.find_last_of(".");
 	lastdot++;
@@ -122,6 +131,15 @@ void Sailor::Utils::ReplaceAll(std::string& str, const std::string& from, const 
 
 		size_t maxJump = std::string::npos - endLocation;
 		endLocation += min(maxJump, to.length() - from.length());
+	}
+}
+
+std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
+{
+	struct stat result;
+	if (stat(filepath.c_str(), &result) == 0)
+	{
+		return (std::time_t)result.st_mtime;
 	}
 }
 

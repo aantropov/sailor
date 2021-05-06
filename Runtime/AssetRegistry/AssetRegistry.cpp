@@ -53,7 +53,7 @@ bool AssetRegistry::ReadFile(const std::string& filename, std::string& text)
 
 	text = std::string{};
 	auto buf = std::string(readSize, '\0');
-	while (stream.read(&buf[0], readSize)) 
+	while (stream.read(&buf[0], readSize))
 	{
 		text.append(buf, 0, stream.gcount());
 	}
@@ -95,11 +95,11 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 		else if (entry.is_regular_file())
 		{
 			const std::string filepath = entry.path().string();
-			const std::string extension = Utils::GetExtension(filepath);
+			const std::string extension = Utils::GetFileExtension(filepath);
 
 			if (extension != MetaFileExtension)
 			{
-				const std::string assetInfoFile = Utils::RemoveExtension(filepath) + MetaFileExtension;
+				const std::string assetInfoFile = Utils::RemoveFileExtension(filepath) + MetaFileExtension;
 
 				IAssetInfoHandler* assetInfoHandler = DefaultAssetInfoHandler::GetInstance();
 
@@ -134,7 +134,6 @@ AssetInfo* AssetRegistry::GetAssetInfo(const std::string& filepath) const
 		return GetAssetInfo(it->second);
 	}
 	return nullptr;
-
 }
 
 AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const

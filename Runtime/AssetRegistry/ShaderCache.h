@@ -13,7 +13,29 @@ namespace Sailor
 	{
 	public:
 
-		class ShaderCacheEntry : IJsonSerializable
+		static constexpr const char* CacheRootFolder = "..//Cache//";
+		static constexpr const char* ShaderCacheFilepath = "..//Cache//ShaderCache.json";
+		static constexpr const char* PrecompiledShadersFolder = "..//Cache//PrecompiledShaders//";
+		static constexpr const char* CompiledShadersFolder = "..//Cache//CompiledShaders//";
+		static constexpr const char* CompiledShaderFileExtension = "spirv";
+		static constexpr const char* PrecompiledShaderFileExtension = "glsl";
+
+		SAILOR_API void Initialize();
+		SAILOR_API void Shutdown();
+
+		SAILOR_API void AddSpirv(const UID& uid, unsigned int permutation);
+		SAILOR_API std::string GetSpirv(const UID& uid, unsigned int permutation);
+		
+		SAILOR_API void Remove(const UID& uid);
+
+		SAILOR_API bool Contains(UID uid) const;
+		SAILOR_API void LoadCache();
+		SAILOR_API void ClearAll();
+		SAILOR_API void ClearExpired();
+
+	protected:
+
+		class ShaderCacheEntry final : IJsonSerializable
 		{
 		public:
 
@@ -21,24 +43,23 @@ namespace Sailor
 
 			// Last time shader changed
 			std::time_t m_timestamp;
+			unsigned int m_permutation;
 
-			std::vector<std::string> m_compiledPermutations;
+			std::string GetCompiledFilepath() const;
+			std::string GetPrecompiledFilepath() const;
 
-			virtual SAILOR_API void Serialize(nlohmann::json& outData) const = 0;
-			virtual SAILOR_API void Deserialize(const nlohmann::json& inData) = 0;
+			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
+			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
 		};
 
-		typedef std::unordered_map<UID, ShaderCache::ShaderCacheEntry*> ShaderCacheData;
+		class ShaderCacheData final : IJsonSerializable
+		{
+		public:
+			std::unordered_map<UID, std::vector<ShaderCache::ShaderCacheEntry*>> m_data;
 
-		static constexpr const char* CacheRootFolder = "..//Cache//";
-		static constexpr const char* ShaderCacheFilepath = "..//Cache//ShaderCache.json";
-		static constexpr const char* PrecompiledShadersFolder = "..//Cache//PrecompiledShaders//";
-		static constexpr const char* CompiledShadersFolder = "..//Cache//CompiledShaders//";
-		static constexpr const char* CompiledShaderFileExtension = "spirv";
-
-		SAILOR_API void Load();
-		SAILOR_API void ClearAll();
-		SAILOR_API void ClearExpired();
+			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
+			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
+		};
 
 	private:
 

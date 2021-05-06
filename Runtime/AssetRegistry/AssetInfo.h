@@ -19,6 +19,7 @@ namespace Sailor
 
 		SAILOR_API const UID& GetUID() const { return m_UID; }
 		SAILOR_API std::string GetAssetFilepath() const { return m_path + m_filename; }
+		SAILOR_API std::time_t GetAssetLastModificationTime() const;
 
 		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;

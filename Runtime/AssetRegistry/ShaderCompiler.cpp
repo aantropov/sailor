@@ -41,29 +41,35 @@ void Shader::Deserialize(const nlohmann::json& inData)
 void ShaderCompiler::Initialize()
 {
 	m_pInstance = new ShaderCompiler();
-	m_pInstance->m_shaderCache.Load();
+	m_pInstance->m_shaderCache.Initialize();
+	m_pInstance->m_shaderCache.LoadCache();
+}
+
+ShaderCompiler::~ShaderCompiler()
+{
+	m_pInstance->m_shaderCache.Shutdown();
 }
 
 void ShaderCompiler::GeneratePrecompiledGlsl(Shader* shader, std::string& outGLSLCode, const std::vector<std::string>& defines)
 {
 	outGLSLCode.clear();
 
-	std::string vertexGLSL;
-	std::string fragmentGLSL;
-	std::string commonGLSL;
+	std::string vertexGlsl;
+	std::string fragmentGlsl;
+	std::string commonGlsl;
 
-	ConvertFromJsonToGlslCode(shader->m_glslVertex, vertexGLSL);
-	ConvertFromJsonToGlslCode(shader->m_glslFragment, fragmentGLSL);
-	ConvertFromJsonToGlslCode(shader->m_glslCommon, commonGLSL);
+	ConvertFromJsonToGlslCode(shader->m_glslVertex, vertexGlsl);
+	ConvertFromJsonToGlslCode(shader->m_glslFragment, fragmentGlsl);
+	ConvertFromJsonToGlslCode(shader->m_glslCommon, commonGlsl);
 
 	for (const auto& define : defines)
 	{
 		outGLSLCode += "#DEFINE " + define + "\n";
 	}
 
-	outGLSLCode += "\n" + commonGLSL + "\n";
-	outGLSLCode += "\n #ifdef VERTEX \n" + vertexGLSL + " \n #endif \n";
-	outGLSLCode += "\n #ifdef FRAGMENT \n" + fragmentGLSL + "\n #endif \n";
+	outGLSLCode += "\n" + commonGlsl + "\n";
+	outGLSLCode += "\n #ifdef VERTEX \n" + vertexGlsl + " \n #endif \n";
+	outGLSLCode += "\n #ifdef FRAGMENT \n" + fragmentGlsl + "\n #endif \n";
 }
 
 void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON)

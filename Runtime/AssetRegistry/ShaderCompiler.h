@@ -35,7 +35,7 @@ namespace Sailor
 		static SAILOR_API void GeneratePrecompiledGlslPermutations(const UID& assetUID, std::vector<std::string>& outPrecompiledShadersCode);
 		SAILOR_API std::weak_ptr<Shader> LoadShader(const UID& uid);
 
-		virtual SAILOR_API ~ShaderCompiler() override = default;
+		virtual SAILOR_API ~ShaderCompiler() override;
 
 	protected:
 
