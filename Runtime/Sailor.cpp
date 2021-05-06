@@ -1,7 +1,7 @@
 #include "Sailor.h"
-
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
+#include "Foundation/ConsoleWindow.h"
 #include "Foundation/Input.h"
 #include "GfxDevice/GfxDeviceVulkan.h"
 

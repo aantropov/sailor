@@ -1,10 +1,8 @@
 #pragma once
 
 #include "ExportDef.h"
-#include <memory>
 #include "LogMacros.h"
 #include "Utils.h"
-#include "Foundation/ConsoleWindow.h"
 #include "Foundation/Window.h"
 
 namespace Sailor

@@ -13,7 +13,7 @@ protected:
 	
 public:
 
-    __forceinline static SAILOR_API T* GetInstance() { return m_pInstance; }
+    static SAILOR_API T* GetInstance() { return m_pInstance; }
     static SAILOR_API void Shutdown() { delete m_pInstance; }
 };
 

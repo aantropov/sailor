@@ -15,10 +15,6 @@ namespace Sailor
 
 	class AssetRegistry final : public Singleton<AssetRegistry>
 	{
-		std::unordered_map<UID, AssetInfo*> m_loadedAssetInfos;
-		std::unordered_map<std::string, UID> m_UIDs;
-		std::unordered_map<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
-
 	public:
 
 		static constexpr const char* ContentRootFolder = "..//Content//";
@@ -35,10 +31,14 @@ namespace Sailor
 		SAILOR_API AssetInfo* GetAssetInfo(UID uid) const;
 		SAILOR_API AssetInfo* GetAssetInfo(const std::string& filepath) const;
 
-		SAILOR_API bool RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler);
+		SAILOR_API bool RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, class IAssetInfoHandler* assetInfoHandler);
 
 	protected:
 
 		void ScanFolder(const std::string& folderPath);
+
+		std::unordered_map<UID, AssetInfo*> m_loadedAssetInfos;
+		std::unordered_map<std::string, UID> m_UIDs;
+		std::unordered_map<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
 	};
 }

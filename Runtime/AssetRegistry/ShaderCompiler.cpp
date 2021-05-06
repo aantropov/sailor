@@ -93,7 +93,7 @@ void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::
 
 		std::vector<size_t> endls;
 		Utils::FindAllOccurances(outCodeInJSON, std::string{ '\n' }, endls, beginLocation, endLocation);
-		shift += endls.size() * (strlen(EndLineTag) - 1);
+		shift += endls.size() * size_t(strlen(EndLineTag) - 1);
 
 		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, EndLineTag, beginLocation, endLocation);
 	}

@@ -34,7 +34,7 @@ void DefaultAssetInfoHandler::Initialize()
 
 AssetInfo* IAssetInfoHandler::ImportFile(const std::string& filepath) const
 {
-	std::cout << "Try import file: " << filepath << std::endl;
+	std::cout << "Import file: " << filepath << std::endl;
 
 	const std::string assetInfofilepath = Utils::RemoveExtension(filepath) + AssetRegistry::MetaFileExtension;
 	std::filesystem::remove(assetInfofilepath);
@@ -54,7 +54,7 @@ AssetInfo* IAssetInfoHandler::ImportFile(const std::string& filepath) const
 
 AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) const
 {
-	std::cout << "Try load asset info: " << assetInfoPath << std::endl;
+	std::cout << "Load asset info: " << assetInfoPath << std::endl;
 
 	AssetInfo* res = CreateAssetInfo();
 
