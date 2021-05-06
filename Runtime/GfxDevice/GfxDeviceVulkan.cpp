@@ -62,14 +62,14 @@ void GfxDeviceVulkan::CreateGraphicsPipeline()
 
 void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValidationLayers)
 {
-	if (instance != nullptr)
+	if (m_pInstance != nullptr)
 	{
 		SAILOR_LOG("Vulkan already initialized!");
 		return;
 	}
 
-	instance = new GfxDeviceVulkan();
-	instance->bIsEnabledValidationLayers = bInIsEnabledValidationLayers;
+	m_pInstance = new GfxDeviceVulkan();
+	m_pInstance->bIsEnabledValidationLayers = bInIsEnabledValidationLayers;
 
 	SAILOR_LOG("Num supported Vulkan extensions: %d", GfxDeviceVulkan::GetNumSupportedExtensions());
 	PrintSupportedExtensions();
@@ -93,7 +93,7 @@ void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValida
 #endif
 	};
 
-	if (instance->bIsEnabledValidationLayers)
+	if (m_pInstance->bIsEnabledValidationLayers)
 	{
 		extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 	}
@@ -106,7 +106,7 @@ void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValida
 	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
-	if (instance->bIsEnabledValidationLayers)
+	if (m_pInstance->bIsEnabledValidationLayers)
 	{
 		createInfo.ppEnabledLayerNames = validationLayers.data();
 		createInfo.enabledLayerCount = validationLayers.size();
@@ -130,24 +130,24 @@ void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValida
 	SetupDebugCallback();
 
 	// Create Win32 surface
-	instance->CreateWin32Surface(viewport);
+	m_pInstance->CreateWin32Surface(viewport);
 
 	// Pick & Create device
-	instance->mainPhysicalDevice = PickPhysicalDevice();
-	instance->CreateLogicalDevice(instance->mainPhysicalDevice);
+	m_pInstance->m_mainPhysicalDevice = PickPhysicalDevice();
+	m_pInstance->CreateLogicalDevice(m_pInstance->m_mainPhysicalDevice);
 
 	// Create swapchain
-	instance->CreateSwapchain(viewport);
+	m_pInstance->CreateSwapchain(viewport);
 
 	SAILOR_LOG("Vulkan initialized");
 }
 
 void GfxDeviceVulkan::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 {
-	queueFamilies = FindQueueFamilies(physicalDevice);
+	m_queueFamilies = FindQueueFamilies(physicalDevice);
 
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-	std::set<uint32_t> uniqueQueueFamilies = { queueFamilies.graphicsFamily.value(), queueFamilies.presentFamily.value() };
+	std::set<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(), m_queueFamilies.m_presentFamily.value() };
 
 	float queuePriority = 1.0f;
 
@@ -175,7 +175,7 @@ void GfxDeviceVulkan::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	// Compatibility with older Vulkan drivers
 	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-	if (instance->bIsEnabledValidationLayers)
+	if (m_pInstance->bIsEnabledValidationLayers)
 	{
 		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 		createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -185,11 +185,11 @@ void GfxDeviceVulkan::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		createInfo.enabledLayerCount = 0;
 	}
 
-	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &instance->device));
+	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &m_pInstance->m_device));
 
 	// Create queues
-	vkGetDeviceQueue(device, queueFamilies.graphicsFamily.value(), 0, &graphicsQueue);
-	vkGetDeviceQueue(device, queueFamilies.presentFamily.value(), 0, &presentQueue);
+	vkGetDeviceQueue(m_device, m_queueFamilies.m_graphicsFamily.value(), 0, &m_graphicsQueue);
+	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &m_presentQueue);
 }
 
 void GfxDeviceVulkan::CreateWin32Surface(const Window* viewport)
@@ -197,37 +197,37 @@ void GfxDeviceVulkan::CreateWin32Surface(const Window* viewport)
 	VkWin32SurfaceCreateInfoKHR createInfoWin32{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
 	createInfoWin32.hwnd = viewport->GetHWND();
 	createInfoWin32.hinstance = viewport->GetHINSTANCE();
-	VK_CHECK(vkCreateWin32SurfaceKHR(GetVkInstance(), &createInfoWin32, nullptr, &surface));
+	VK_CHECK(vkCreateWin32SurfaceKHR(GetVkInstance(), &createInfoWin32, nullptr, &m_surface));
 }
 
 void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
 {
-	SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(mainPhysicalDevice);
+	SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(m_mainPhysicalDevice);
 
-	surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
-	presentMode = ÑhooseSwapPresentMode(swapChainSupport.presentModes);
-	extent = ChooseSwapExtent(swapChainSupport.capabilities, viewport);
+	m_surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.m_formats);
+	m_presentMode = ÑhooseSwapPresentMode(swapChainSupport.m_presentModes);
+	m_extent = ChooseSwapExtent(swapChainSupport.m_capabilities, viewport);
 
-	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+	uint32_t imageCount = swapChainSupport.m_capabilities.minImageCount + 1;
 
-	if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount)
+	if (swapChainSupport.m_capabilities.maxImageCount > 0 && imageCount > swapChainSupport.m_capabilities.maxImageCount)
 	{
-		imageCount = swapChainSupport.capabilities.maxImageCount;
+		imageCount = swapChainSupport.m_capabilities.maxImageCount;
 	}
 
 	VkSwapchainCreateInfoKHR createSwapChainInfo{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
-	createSwapChainInfo.surface = surface;
+	createSwapChainInfo.surface = m_surface;
 	createSwapChainInfo.minImageCount = imageCount;
-	createSwapChainInfo.imageFormat = surfaceFormat.format;
-	createSwapChainInfo.imageColorSpace = surfaceFormat.colorSpace;
-	createSwapChainInfo.imageExtent = extent;
+	createSwapChainInfo.imageFormat = m_surfaceFormat.format;
+	createSwapChainInfo.imageColorSpace = m_surfaceFormat.colorSpace;
+	createSwapChainInfo.imageExtent = m_extent;
 	createSwapChainInfo.imageArrayLayers = 1;
 	createSwapChainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; //TODO: Use VK_IMAGE_USAGE_TRANSFER_DST_BIT for Post Processing
 
-	QueueFamilyIndices indices = FindQueueFamilies(mainPhysicalDevice);
-	uint32_t queueFamilyIndices[] = { indices.graphicsFamily.value(), indices.presentFamily.value() };
+	QueueFamilyIndices indices = FindQueueFamilies(m_mainPhysicalDevice);
+	uint32_t queueFamilyIndices[] = { indices.m_graphicsFamily.value(), indices.m_presentFamily.value() };
 
-	if (indices.graphicsFamily != indices.presentFamily)
+	if (indices.m_graphicsFamily != indices.m_presentFamily)
 	{
 		createSwapChainInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
 		createSwapChainInfo.queueFamilyIndexCount = 2;
@@ -240,29 +240,29 @@ void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
 		createSwapChainInfo.pQueueFamilyIndices = nullptr; // Optional
 	}
 
-	createSwapChainInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+	createSwapChainInfo.preTransform = swapChainSupport.m_capabilities.currentTransform;
 	createSwapChainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
-	createSwapChainInfo.presentMode = presentMode;
+	createSwapChainInfo.presentMode = m_presentMode;
 	createSwapChainInfo.clipped = VK_TRUE;
 	createSwapChainInfo.oldSwapchain = VK_NULL_HANDLE;
 
-	VK_CHECK(vkCreateSwapchainKHR(device, &createSwapChainInfo, nullptr, &swapChain));
+	VK_CHECK(vkCreateSwapchainKHR(m_device, &createSwapChainInfo, nullptr, &m_swapChain));
 
 	// Create Swapchain images & image views
 
-	VK_CHECK(vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr));
-	swapChainImages.resize(imageCount);
-	VK_CHECK(vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data()));
+	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapChain, &imageCount, nullptr));
+	m_swapChainImages.resize(imageCount);
+	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapChain, &imageCount, m_swapChainImages.data()));
 
-	swapChainImageViews.resize(swapChainImages.size());
+	m_swapChainImageViews.resize(m_swapChainImages.size());
 
-	for (size_t i = 0; i < swapChainImages.size(); i++)
+	for (size_t i = 0; i < m_swapChainImages.size(); i++)
 	{
 		VkImageViewCreateInfo createInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-		createInfo.image = swapChainImages[i];
+		createInfo.image = m_swapChainImages[i];
 		createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		createInfo.format = surfaceFormat.format;
+		createInfo.format = m_surfaceFormat.format;
 
 		createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 		createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -275,7 +275,7 @@ void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
 		createInfo.subresourceRange.baseArrayLayer = 0;
 		createInfo.subresourceRange.layerCount = 1;
 
-		VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]));
+		VK_CHECK(vkCreateImageView(m_device, &createInfo, nullptr, &m_swapChainImageViews[i]));
 	}
 }
 
@@ -333,25 +333,25 @@ bool GfxDeviceVulkan::CheckValidationLayerSupport(const std::vector<const char*>
 
 GfxDeviceVulkan::~GfxDeviceVulkan()
 {
-	if (instance->bIsEnabledValidationLayers)
+	if (m_pInstance->bIsEnabledValidationLayers)
 	{
-		DestroyDebugUtilsMessengerEXT(GetVkInstance(), instance->debugMessenger, nullptr);
+		DestroyDebugUtilsMessengerEXT(GetVkInstance(), m_pInstance->m_debugMessenger, nullptr);
 	}
 
-	for (const auto& imageView : instance->swapChainImageViews)
+	for (const auto& imageView : m_pInstance->m_swapChainImageViews)
 	{
-		vkDestroyImageView(instance->device, imageView, nullptr);
+		vkDestroyImageView(m_pInstance->m_device, imageView, nullptr);
 	}
 
-	vkDestroySwapchainKHR(instance->device, instance->swapChain, nullptr);
-	vkDestroyDevice(instance->device, nullptr);
-	vkDestroySurfaceKHR(GetVkInstance(), instance->surface, nullptr);
+	vkDestroySwapchainKHR(m_pInstance->m_device, m_pInstance->m_swapChain, nullptr);
+	vkDestroyDevice(m_pInstance->m_device, nullptr);
+	vkDestroySurfaceKHR(GetVkInstance(), m_pInstance->m_surface, nullptr);
 	vkDestroyInstance(GetVkInstance(), nullptr);
 }
 
 bool GfxDeviceVulkan::SetupDebugCallback()
 {
-	if (!instance->bIsEnabledValidationLayers)
+	if (!m_pInstance->bIsEnabledValidationLayers)
 	{
 		return false;
 	}
@@ -359,7 +359,7 @@ bool GfxDeviceVulkan::SetupDebugCallback()
 	VkDebugUtilsMessengerCreateInfoEXT createInfo;
 	PopulateDebugMessengerCreateInfo(createInfo);
 
-	VK_CHECK(CreateDebugUtilsMessengerEXT(GetVkInstance(), &createInfo, nullptr, &instance->debugMessenger));
+	VK_CHECK(CreateDebugUtilsMessengerEXT(GetVkInstance(), &createInfo, nullptr, &m_pInstance->m_debugMessenger));
 
 	return true;
 }
@@ -434,7 +434,7 @@ bool GfxDeviceVulkan::IsDeviceSuitable(VkPhysicalDevice device)
 	if (extensionsSupported)
 	{
 		SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(device);
-		swapChainFits = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+		swapChainFits = !swapChainSupport.m_formats.empty() && !swapChainSupport.m_presentModes.empty();
 	}
 
 	return indices.IsComplete() && extensionsSupported && swapChainFits;
@@ -482,15 +482,15 @@ GfxDeviceVulkan::QueueFamilyIndices GfxDeviceVulkan::FindQueueFamilies(VkPhysica
 	{
 		if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
 		{
-			indices.graphicsFamily = i;
+			indices.m_graphicsFamily = i;
 		}
 
 		VkBool32 presentSupport = false;
-		vkGetPhysicalDeviceSurfaceSupportKHR(device, i, instance->surface, &presentSupport);
+		vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_pInstance->m_surface, &presentSupport);
 
 		if (presentSupport)
 		{
-			indices.presentFamily = i;
+			indices.m_presentFamily = i;
 		}
 
 		i++;
@@ -503,24 +503,24 @@ GfxDeviceVulkan::SwapChainSupportDetails GfxDeviceVulkan::QuerySwapChainSupport(
 {
 	SwapChainSupportDetails details;
 
-	VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, instance->surface, &details.capabilities));
+	VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, m_pInstance->m_surface, &details.m_capabilities));
 
 	uint32_t formatCount;
-	VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device, instance->surface, &formatCount, nullptr));
+	VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_pInstance->m_surface, &formatCount, nullptr));
 
 	if (formatCount != 0)
 	{
-		details.formats.resize(formatCount);
-		VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device, instance->surface, &formatCount, details.formats.data()));
+		details.m_formats.resize(formatCount);
+		VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_pInstance->m_surface, &formatCount, details.m_formats.data()));
 	}
 
 	uint32_t presentModeCount;
-	VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, instance->surface, &presentModeCount, nullptr));
+	VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_pInstance->m_surface, &presentModeCount, nullptr));
 
 	if (presentModeCount != 0)
 	{
-		details.presentModes.resize(presentModeCount);
-		VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, instance->surface, &presentModeCount, details.presentModes.data()));
+		details.m_presentModes.resize(presentModeCount);
+		VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_pInstance->m_surface, &presentModeCount, details.m_presentModes.data()));
 	}
 
 	return details;

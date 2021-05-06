@@ -17,14 +17,14 @@ namespace Sailor
 	public:
 
 		// Shader's code
-		std::string glslVertex;
-		std::string glslFragment;
+		std::string m_glslVertex;
+		std::string m_glslFragment;
 
 		// Library code
-		std::string glslCommon;
+		std::string m_glslCommon;
 
-		std::vector<std::string> includes;
-		std::vector<std::string> defines;
+		std::vector<std::string> m_includes;
+		std::vector<std::string> m_defines;
 	};
 
 	class ShaderCompiler final : public Singleton<ShaderCompiler>
@@ -37,23 +37,23 @@ namespace Sailor
 		SAILOR_API std::weak_ptr<Shader> LoadShader(const UID& uid);
 
 		virtual SAILOR_API ~ShaderCompiler() override = default;
-		
+
 	protected:
 
-		ShaderCache shaderCache;
-		std::unordered_map<UID, std::shared_ptr<Shader>> loadedShaders;
+		ShaderCache m_shaderCache;
+		std::unordered_map<UID, std::shared_ptr<Shader>> m_loadedShaders;
 
 		static SAILOR_API void GeneratePrecompiledGLSL(Shader* shader, std::string& outGLSLCode, const std::vector<std::string>& defines = {});
 		static SAILOR_API void ConvertRawShaderToJSON(const std::string& shaderText, std::string& outCodeInJSON);
-		static SAILOR_API bool ConvertFromJsonToGLSLCode(const std::string& shaderText, std::string& outPureGLSL);
+		static SAILOR_API bool ConvertFromJSONToGLSLCode(const std::string& shaderText, std::string& outPureGLSL);
 
 		static bool SAILOR_API CompileGLSLToSPIRV(const std::string& source, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<uint32_t>& outByteCode);
 
 	private:
-				
-		static constexpr char const* beginCodeTag = "BEGIN_CODE";
-		static constexpr char const* endCodeTag = "END_CODE";
-		static constexpr char const* endLineTag = " END_LINE ";
+
+		static constexpr char const* BeginCodeTag = "BEGIN_CODE";
+		static constexpr char const* EndCodeTag = "END_CODE";
+		static constexpr char const* EndLineTag = " END_LINE ";
 	};
 
 }

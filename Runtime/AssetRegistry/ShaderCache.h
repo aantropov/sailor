@@ -23,9 +23,9 @@ namespace Sailor
 			UID uid;
 
 			// Last time shader changed
-			std::time_t timestamp;
+			std::time_t m_timestamp;
 
-			std::vector<std::string> compiledPermutations;
+			std::vector<std::string> m_compiledPermutations;
 		};
 
 		typedef std::unordered_map<UID, ShaderCache::ShaderCacheEntry*> ShaderCacheData;
@@ -42,9 +42,9 @@ namespace Sailor
 
 	private:
 
-		ShaderCacheData cache;
+		ShaderCacheData m_cache;
 
-		bool bSavePrecompiledShaders = true;
+		bool m_bSavePrecompiledShaders = true;
 	};
 }
 

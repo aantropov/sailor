@@ -26,14 +26,14 @@ namespace Sailor
 		virtual ~AssetInfo() = default;
 
 		SAILOR_API const UID& GetUID() const { return uid; }
-		SAILOR_API const std::string& GetAssetFilepath() const { return filepath; }
+		SAILOR_API const std::string& GetAssetFilepath() const { return m_filepath; }
 
 	protected:
 
-		std::time_t creationTime;
+		std::time_t m_creationTime;
 
-		std::string assetType = "none";
-		std::string filepath;
+		std::string m_assetType = "none";
+		std::string m_filepath;
 
 		UID uid;
 
@@ -57,7 +57,7 @@ namespace Sailor
 
 	protected:
 
-		std::vector<std::string> supportedExtensions;
+		std::vector<std::string> m_supportedExtensions;
 	};
 
 	

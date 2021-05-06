@@ -4,41 +4,41 @@
 
 using namespace Sailor;
 
-InputState Input::rawState;
+InputState Input::m_rawState;
 
 Input::Input()
 {
-	memset(&rawState, 1, sizeof(InputState));
+	memset(&m_rawState, 1, sizeof(InputState));
 }
 
 bool Input::IsKeyDown(unsigned short int  key)
 {
-	return (rawState.keyboard[key] != KeyState::Up);
+	return (m_rawState.keyboard[key] != KeyState::Up);
 }
 
 bool Input::IsKeyPressed(unsigned short int  key)
 {
-	bool pressed = (rawState.keyboard[key] == KeyState::Pressed);
-	rawState.keyboard[key] = KeyState::Down;
+	bool pressed = (m_rawState.keyboard[key] == KeyState::Pressed);
+	m_rawState.keyboard[key] = KeyState::Down;
 	return pressed;
 }
 
 bool Input::IsButtonDown(unsigned short int  button)
 {
-	return (rawState.keyboard[button] != KeyState::Up);
+	return (m_rawState.keyboard[button] != KeyState::Up);
 }
 
 bool Input::IsButtonClick(unsigned short int  button)
 {
-	bool pressed = (rawState.keyboard[button] == KeyState::Pressed);
-	rawState.keyboard[button] = KeyState::Down;
+	bool pressed = (m_rawState.keyboard[button] == KeyState::Pressed);
+	m_rawState.keyboard[button] = KeyState::Down;
 	return pressed;
 }
 
 void Input::GetCursorPos(int* x, int* y)
 {
-	*x = rawState.cursorPosition[0];
-	*y = rawState.cursorPosition[1];
+	*x = m_rawState.cursorPosition[0];
+	*y = m_rawState.cursorPosition[1];
 }
 
 void Input::SetCursorPos(int x, int y)
@@ -47,8 +47,8 @@ void Input::SetCursorPos(int x, int y)
 	//ClientToScreen(URenderer::GetInstance()->GetHWND(), &pos);
 	::SetCursorPos(Pos.x, Pos.y);
 
-	rawState.cursorPosition[0] = x;
-	rawState.cursorPosition[1] = y;
+	m_rawState.cursorPosition[0] = x;
+	m_rawState.cursorPosition[1] = y;
 }
 
 void Input::ShowCursor(bool visible)

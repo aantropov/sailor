@@ -6,16 +6,16 @@ class Singleton
 {
 protected:
 
-    static T* instance;
+    static T* m_pInstance;
 
 	SAILOR_API Singleton() = default;
     virtual SAILOR_API ~Singleton() = default;
 	
 public:
 
-    __forceinline static SAILOR_API T* GetInstance() { return instance; }
-    static SAILOR_API void Shutdown() { delete instance; }
+    __forceinline static SAILOR_API T* GetInstance() { return m_pInstance; }
+    static SAILOR_API void Shutdown() { delete m_pInstance; }
 };
 
 template<typename T>
-T* Singleton<T>::instance = nullptr;
+T* Singleton<T>::m_pInstance = nullptr;

@@ -37,7 +37,7 @@ namespace Sailor
 
 	protected:
 
-		static InputState rawState;
+		static InputState m_rawState;
 
 		friend LRESULT Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	};

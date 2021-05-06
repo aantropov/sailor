@@ -18,18 +18,18 @@ void ns::to_json(json& j, const Sailor::AssetInfo& p)
 void ns::from_json(const json& j, Sailor::AssetInfo& p)
 {
 	ns::from_json(j["uid"], p.uid);
-	p.filepath = j["filepath"].get<std::string>();
+	p.m_filepath = j["filepath"].get<std::string>();
 }
 
 AssetInfo::AssetInfo()
 {
-	creationTime = std::time(nullptr);
+	m_creationTime = std::time(nullptr);
 }
 
 void DefaultAssetInfoHandler::Initialize()
 {
-	instance = new DefaultAssetInfoHandler();
-	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(instance->supportedExtensions, instance);
+	m_pInstance = new DefaultAssetInfoHandler();
+	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
 void DefaultAssetInfoHandler::Serialize(const AssetInfo* inInfo, json& outData) const

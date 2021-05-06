@@ -19,10 +19,10 @@ void ns::from_json(const json& j, Sailor::ShaderAssetInfo& p)
 
 void ShaderAssetInfoHandler::Initialize()
 {
-	instance = new ShaderAssetInfoHandler();
+	m_pInstance = new ShaderAssetInfoHandler();
 
-	instance->supportedExtensions.emplace_back("shader");
-	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(instance->supportedExtensions, instance);
+	m_pInstance->m_supportedExtensions.emplace_back("shader");
+	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
 void ShaderAssetInfoHandler::Serialize(const AssetInfo* inInfo, json& outData) const

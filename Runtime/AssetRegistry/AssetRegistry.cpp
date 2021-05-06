@@ -12,12 +12,12 @@ using namespace nlohmann;
 
 void AssetRegistry::Initialize()
 {
-	instance = new AssetRegistry();
+	m_pInstance = new AssetRegistry();
 
 	DefaultAssetInfoHandler::Initialize();
 	ShaderAssetInfoHandler::Initialize();
 
-	instance->ScanContentFolder();
+	m_pInstance->ScanContentFolder();
 }
 
 bool AssetRegistry::ReadFile(const std::string& filename, std::vector<char>& buffer)
@@ -72,12 +72,12 @@ bool AssetRegistry::RegisterAssetInfoHandler(const std::vector<std::string>& sup
 	bool bAssigned = false;
 	for (const auto& extension : supportedExtensions)
 	{
-		if (assetInfoHandlers.find(extension) != assetInfoHandlers.end())
+		if (m_assetInfoHandlers.find(extension) != m_assetInfoHandlers.end())
 		{
 			continue;
 		}
 
-		assetInfoHandlers[extension] = assetInfoHandler;
+		m_assetInfoHandlers[extension] = assetInfoHandler;
 		bAssigned = true;
 	}
 
@@ -103,8 +103,8 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 
 				IAssetInfoHandler* assetInfoHandler = DefaultAssetInfoHandler::GetInstance();
 
-				auto assetInfoHandlerIt = assetInfoHandlers.find(extension);
-				if (assetInfoHandlerIt != assetInfoHandlers.end())
+				auto assetInfoHandlerIt = m_assetInfoHandlers.find(extension);
+				if (assetInfoHandlerIt != m_assetInfoHandlers.end())
 				{
 					assetInfoHandler = (*assetInfoHandlerIt).second;
 				}
@@ -119,8 +119,8 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 					assetInfo = assetInfoHandler->ImportFile(filepath);
 				}
 
-				loadedAssetInfos[assetInfo->GetUID()] = assetInfo;
-				uids[filepath] = assetInfo->GetUID();
+				m_loadedAssetInfos[assetInfo->GetUID()] = assetInfo;
+				m_UIDs[filepath] = assetInfo->GetUID();
 			}
 		}
 	}
@@ -128,8 +128,8 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 
 AssetInfo* AssetRegistry::GetAssetInfo(const std::string& filepath) const
 {
-	auto it = uids.find(ContentRootFolder + filepath);
-	if (it != uids.end())
+	auto it = m_UIDs.find(ContentRootFolder + filepath);
+	if (it != m_UIDs.end())
 	{
 		return GetAssetInfo(it->second);
 	}
@@ -139,8 +139,8 @@ AssetInfo* AssetRegistry::GetAssetInfo(const std::string& filepath) const
 
 AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const
 {
-	auto it = loadedAssetInfos.find(uid);
-	if (it != loadedAssetInfos.end())
+	auto it = m_loadedAssetInfos.find(uid);
+	if (it != m_loadedAssetInfos.end())
 	{
 		return it->second;
 	}
@@ -149,7 +149,7 @@ AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const
 
 AssetRegistry::~AssetRegistry()
 {
-	for (auto& asset : loadedAssetInfos)
+	for (auto& asset : m_loadedAssetInfos)
 	{
 		delete asset.second;
 	}

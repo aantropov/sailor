@@ -9,16 +9,16 @@ namespace Sailor
 	{
 		const std::string WindowClassName = "SailorViewport";
 
-		HINSTANCE g_hInstance = nullptr;
-		HWND      g_hWnd = nullptr;
-		HDC       g_hDC = nullptr;
+		HINSTANCE m_hInstance = nullptr;
+		HWND      m_hWnd = nullptr;
+		HDC       m_hDC = nullptr;
 
-		int width = 1024;
-		int height = 768;
+		int m_width = 1024;
+		int m_height = 768;
 
-		bool bIsFullscreen = false;
-		bool bIsActive = false;
-		bool bIsRunning = false;
+		bool m_bIsFullscreen = false;
+		bool m_bIsActive = false;
+		bool m_bIsRunning = false;
 
 	public:
 
@@ -26,25 +26,25 @@ namespace Sailor
 		SAILOR_API ~Window() = default;
 
 		// Getters
-		SAILOR_API bool IsActive() const { return bIsActive; }
-		SAILOR_API bool IsRunning() const { return bIsRunning; }
-		SAILOR_API bool IsFullscreen() const { return bIsFullscreen; }
+		SAILOR_API bool IsActive() const { return m_bIsActive; }
+		SAILOR_API bool IsRunning() const { return m_bIsRunning; }
+		SAILOR_API bool IsFullscreen() const { return m_bIsFullscreen; }
 
 		// Setters
-		SAILOR_API void SetActive(bool value) { bIsActive = value; }
-		SAILOR_API void SetRunning(bool value) { bIsRunning = value; }
-		SAILOR_API void SetFullscreen(bool value) { bIsFullscreen = value; }
+		SAILOR_API void SetActive(bool value) { m_bIsActive = value; }
+		SAILOR_API void SetRunning(bool value) { m_bIsRunning = value; }
+		SAILOR_API void SetFullscreen(bool value) { m_bIsFullscreen = value; }
 
-		SAILOR_API void SetWindowTitle(LPCWSTR lString) { SetWindowText(g_hWnd, lString); }
+		SAILOR_API void SetWindowTitle(LPCWSTR lString) { SetWindowText(m_hWnd, lString); }
 
 		// Getters for handles
-		SAILOR_API HWND GetHWND() const { return g_hWnd; }
-		SAILOR_API HDC GetHDC() const { return g_hDC; }
-		SAILOR_API HINSTANCE GetHINSTANCE() const { return g_hInstance; }
+		SAILOR_API HWND GetHWND() const { return m_hWnd; }
+		SAILOR_API HDC GetHDC() const { return m_hDC; }
+		SAILOR_API HINSTANCE GetHINSTANCE() const { return m_hInstance; }
 
 		//Getters for parameters
-		SAILOR_API int GetWidth() const { return width; }
-		SAILOR_API int GetHeight() const { return height; }
+		SAILOR_API int GetWidth() const { return m_width; }
+		SAILOR_API int GetHeight() const { return m_height; }
 
 		// Create window
 		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int width = 1920, int height = 1080, bool bIsFullScreen = false);

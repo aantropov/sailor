@@ -26,22 +26,22 @@ void ns::to_json(json& j, const Sailor::Shader& p)
 
 void ns::from_json(const json& j, Sailor::Shader& p)
 {
-	p.glslVertex = j["glslVertex"].get<std::string>();
-	p.glslFragment = j["glslFragment"].get<std::string>();
+	p.m_glslVertex = j["glslVertex"].get<std::string>();
+	p.m_glslFragment = j["glslFragment"].get<std::string>();
 
 	if (j.contains("glslCommon"))
 	{
-		p.glslCommon = j["glslCommon"].get<std::string>();
+		p.m_glslCommon = j["glslCommon"].get<std::string>();
 	}
 
-	p.defines = j["defines"].get<std::vector<std::string>>();
-	p.includes = j["includes"].get<std::vector<std::string>>();
+	p.m_defines = j["defines"].get<std::vector<std::string>>();
+	p.m_includes = j["includes"].get<std::vector<std::string>>();
 }
 
 void ShaderCompiler::Initialize()
 {
-	instance = new ShaderCompiler();
-	instance->shaderCache.Load();
+	m_pInstance = new ShaderCompiler();
+	m_pInstance->m_shaderCache.Load();
 }
 
 void ShaderCompiler::GeneratePrecompiledGLSL(Shader* shader, std::string& outGLSLCode, const std::vector<std::string>& defines)
@@ -52,9 +52,9 @@ void ShaderCompiler::GeneratePrecompiledGLSL(Shader* shader, std::string& outGLS
 	std::string fragmentGLSL;
 	std::string commonGLSL;
 
-	ConvertFromJsonToGLSLCode(shader->glslVertex, vertexGLSL);
-	ConvertFromJsonToGLSLCode(shader->glslFragment, fragmentGLSL);
-	ConvertFromJsonToGLSLCode(shader->glslCommon, commonGLSL);
+	ConvertFromJSONToGLSLCode(shader->m_glslVertex, vertexGLSL);
+	ConvertFromJSONToGLSLCode(shader->m_glslFragment, fragmentGLSL);
+	ConvertFromJSONToGLSLCode(shader->m_glslCommon, commonGLSL);
 
 	for (const auto& define : defines)
 	{
@@ -75,59 +75,59 @@ void ShaderCompiler::ConvertRawShaderToJSON(const std::string& shaderText, std::
 	vector<size_t> beginCodeTagLocations;
 	vector<size_t> endCodeTagLocations;
 
-	Utils::FindAllOccurances(outCodeInJSON, std::string(beginCodeTag), beginCodeTagLocations);
-	Utils::FindAllOccurances(outCodeInJSON, std::string(endCodeTag), endCodeTagLocations);
+	Utils::FindAllOccurances(outCodeInJSON, std::string(BeginCodeTag), beginCodeTagLocations);
+	Utils::FindAllOccurances(outCodeInJSON, std::string(EndCodeTag), endCodeTagLocations);
 
 	if (beginCodeTagLocations.size() != endCodeTagLocations.size())
 	{
 		//assert(beginCodeTagLocations.size() == endCodeTagLocations.size());
-		SAILOR_LOG("Cannot convert from JSON to GLSL shader's code (doesn't match num of begin/end tags): %s", shaderText);
+		SAILOR_LOG("Cannot convert from JSON to GLSL shader's code (doesn't match num of begin/end tags): %s", shaderText.c_str());
 		return;
 	}
-	
+
 	int shift = 0;
 	for (size_t i = 0; i < beginCodeTagLocations.size(); i++)
 	{
-		size_t beginLocation = beginCodeTagLocations[i] + shift;
-		size_t endLocation = endCodeTagLocations[i] + shift;
+		const size_t beginLocation = beginCodeTagLocations[i] + shift;
+		const size_t endLocation = endCodeTagLocations[i] + shift;
 
 		std::vector<size_t> endls;
 		Utils::FindAllOccurances(outCodeInJSON, std::string{ '\n' }, endls, beginLocation, endLocation);
-		shift += endls.size() * (strlen(endLineTag) - 1);
+		shift += endls.size() * (strlen(EndLineTag) - 1);
 
-		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, endLineTag, beginLocation, endLocation);
+		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, EndLineTag, beginLocation, endLocation);
 	}
 
-	Utils::ReplaceAll(outCodeInJSON, beginCodeTag, std::string{ '\"' } + beginCodeTag);
-	Utils::ReplaceAll(outCodeInJSON, endCodeTag, endCodeTag + std::string{ '\"' });
+	Utils::ReplaceAll(outCodeInJSON, BeginCodeTag, std::string{ '\"' } + BeginCodeTag);
+	Utils::ReplaceAll(outCodeInJSON, EndCodeTag, EndCodeTag + std::string{ '\"' });
 	Utils::ReplaceAll(outCodeInJSON, std::string{ '\t' }, std::string{ ' ' });
 }
 
-bool ShaderCompiler::ConvertFromJsonToGLSLCode(const std::string& shaderText, std::string& outPureGLSL)
+bool ShaderCompiler::ConvertFromJSONToGLSLCode(const std::string& shaderText, std::string& outPureGLSL)
 {
 	outPureGLSL = shaderText;
 
-	Utils::ReplaceAll(outPureGLSL, endLineTag, std::string{ '\n' });
-	Utils::ReplaceAll(outPureGLSL, beginCodeTag, std::string{ ' ' });
-	Utils::ReplaceAll(outPureGLSL, endCodeTag, std::string{ ' ' });
+	Utils::ReplaceAll(outPureGLSL, EndLineTag, std::string{ '\n' });
+	Utils::ReplaceAll(outPureGLSL, BeginCodeTag, std::string{ ' ' });
+	Utils::ReplaceAll(outPureGLSL, EndCodeTag, std::string{ ' ' });
 
 	return true;
 }
 
 void ShaderCompiler::GeneratePrecompiledGLSLPermutations(const UID& assetUID, std::vector<std::string>& outPrecompiledShadersCode)
 {
-	std::weak_ptr<Shader> shader = instance->LoadShader(assetUID);
+	std::weak_ptr<Shader> shader = m_pInstance->LoadShader(assetUID);
 
 	std::string res;
-	GeneratePrecompiledGLSL(shader.lock().get(), res, {"VERTEX", "TEST_DEFINE1"});
+	GeneratePrecompiledGLSL(shader.lock().get(), res, { "VERTEX", "TEST_DEFINE1" });
 }
 
 std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
 {
 	if (ShaderAssetInfo* shaderAssetInfo = dynamic_cast<ShaderAssetInfo*>(AssetRegistry::GetInstance()->GetAssetInfo(uid)))
 	{
-		const auto& loadedShader = loadedShaders.find(uid);
-		if (loadedShader != loadedShaders.end())
+		const auto& loadedShader = m_loadedShaders.find(uid);
+		if (loadedShader != m_loadedShaders.end())
 		{
 			return loadedShader->second;
 		}
@@ -139,7 +139,7 @@ std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
 
 		AssetRegistry::ReadFile(filepath, shaderText);
 
-		ConvertRawShaderToJSON(shaderText, codeInJSON);				
+		ConvertRawShaderToJSON(shaderText, codeInJSON);
 
 		json j_shader;
 		if (j_shader.parse(codeInJSON.c_str()) == detail::value_t::discarded)
@@ -153,7 +153,7 @@ std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
 		Shader* shader = new Shader();
 		ns::from_json(j_shader, *shader);
 
-		return loadedShaders[uid] = shared_ptr<Shader>(shader);
+		return m_loadedShaders[uid] = shared_ptr<Shader>(shader);
 	}
 	else
 	{

@@ -17,18 +17,18 @@ namespace Sailor
 
 		struct QueueFamilyIndices
 		{
-			std::optional<uint32_t> graphicsFamily;
-			std::optional<uint32_t> presentFamily;
+			std::optional<uint32_t> m_graphicsFamily;
+			std::optional<uint32_t> m_presentFamily;
 
-			SAILOR_API bool IsComplete() const { return graphicsFamily.has_value() && presentFamily.has_value();; }
+			SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value();; }
 
 		};
 
 		struct SwapChainSupportDetails
 		{
-			VkSurfaceCapabilitiesKHR capabilities;
-			std::vector<VkSurfaceFormatKHR> formats;
-			std::vector<VkPresentModeKHR> presentModes;
+			VkSurfaceCapabilitiesKHR m_capabilities;
+			std::vector<VkSurfaceFormatKHR> m_formats;
+			std::vector<VkPresentModeKHR> m_presentModes;
 		};
 
 		static SAILOR_API void Initialize(const Window* viewport, bool bInIsEnabledValidationLayers);
@@ -66,31 +66,31 @@ namespace Sailor
 		SAILOR_API void CreateSwapchain(const Window* viewport);
 		SAILOR_API void CreateGraphicsPipeline();
 		
-		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return instance->vkInstance; }
+		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return m_pInstance->m_vkInstance; }
 
 		bool bIsEnabledValidationLayers = false;
-		VkInstance vkInstance = 0;
+		VkInstance m_vkInstance = 0;
 
 		// Queuees
-		VkQueue graphicsQueue = 0;
-		VkQueue presentQueue = 0;
+		VkQueue m_graphicsQueue = 0;
+		VkQueue m_presentQueue = 0;
 
-		VkSurfaceKHR surface = 0;
+		VkSurfaceKHR m_surface = 0;
 		
-		VkDebugUtilsMessengerEXT debugMessenger = 0;
+		VkDebugUtilsMessengerEXT m_debugMessenger = 0;
 
-		VkPhysicalDevice mainPhysicalDevice = 0;
-		VkDevice device = 0;
-		QueueFamilyIndices queueFamilies;
+		VkPhysicalDevice m_mainPhysicalDevice = 0;
+		VkDevice m_device = 0;
+		QueueFamilyIndices m_queueFamilies;
 
 		// Swapchain
-		VkSwapchainKHR swapChain = 0;
-		std::vector<VkImage> swapChainImages;
-		std::vector<VkImageView> swapChainImageViews;
+		VkSwapchainKHR m_swapChain = 0;
+		std::vector<VkImage> m_swapChainImages;
+		std::vector<VkImageView> m_swapChainImageViews;
 
 		// Choosen swapchain formats
-		VkSurfaceFormatKHR surfaceFormat;		
-		VkPresentModeKHR presentMode;
-		VkExtent2D extent;
+		VkSurfaceFormatKHR m_surfaceFormat;		
+		VkPresentModeKHR m_presentMode;
+		VkExtent2D m_extent;
 	};
 }

@@ -7,13 +7,13 @@
 
 using namespace Sailor;
 
-EngineInstance* EngineInstance::instance = nullptr;
+EngineInstance* EngineInstance::m_pInstance = nullptr;
 const std::string EngineInstance::ApplicationName = "SailorEngine";
 const std::string EngineInstance::EngineName = "Sailor";
 
 void EngineInstance::Initialize()
 {
-	if (instance != nullptr)
+	if (m_pInstance != nullptr)
 	{
 		return;
 	}
@@ -24,8 +24,8 @@ void EngineInstance::Initialize()
 	ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
 #endif
 
-	instance = new EngineInstance();
-	instance->viewportWindow.Create(L"Sailor Viewport", 1024, 768);
+	m_pInstance = new EngineInstance();
+	m_pInstance->m_viewportWindow.Create(L"Sailor Viewport", 1024, 768);
 
 #ifdef _DEBUG
 	const bool bIsEnabledVulkanValidationLayers = true;
@@ -35,7 +35,7 @@ void EngineInstance::Initialize()
 	const bool bIsEnabledVulkanValidationLayers = false;
 #endif 
 
-	GfxDeviceVulkan::Initialize(&instance->viewportWindow, bIsEnabledVulkanValidationLayers);
+	GfxDeviceVulkan::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
 	AssetRegistry::Initialize();	
 	ShaderCompiler::Initialize();
 
@@ -48,21 +48,21 @@ void EngineInstance::Start()
 {
 	MSG msg;
 
-	instance->viewportWindow.SetActive(true);
-	instance->viewportWindow.SetRunning(true);
+	m_pInstance->m_viewportWindow.SetActive(true);
+	m_pInstance->m_viewportWindow.SetRunning(true);
 
 	float deltaTime = 0.0f;
 	float beginFrameTime = 0.0f;
 
-	while (instance->viewportWindow.IsRunning())
+	while (m_pInstance->m_viewportWindow.IsRunning())
 	{
 		ConsoleWindow::GetInstance()->Update();
 
-		while (PeekMessage(&msg, instance->viewportWindow.GetHWND(), 0, 0, PM_REMOVE))
+		while (PeekMessage(&msg, m_pInstance->m_viewportWindow.GetHWND(), 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
 			{
-				instance->viewportWindow.SetRunning(false);
+				m_pInstance->m_viewportWindow.SetRunning(false);
 				break;
 			}
 			DispatchMessage(&msg);
@@ -75,34 +75,34 @@ void EngineInstance::Start()
 			break;
 		}
 
-		if (instance->viewportWindow.IsRunning() && instance->viewportWindow.IsActive())
+		if (m_pInstance->m_viewportWindow.IsRunning() && m_pInstance->m_viewportWindow.IsActive())
 		{
-			SwapBuffers(instance->viewportWindow.GetHDC());
+			SwapBuffers(m_pInstance->m_viewportWindow.GetHDC());
 
 			deltaTime += GetTickCount() - beginFrameTime;
 
-			instance->elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
-			++instance->FPS;
+			m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
+			++m_pInstance->m_FPS;
 
-			if (instance->elapsedTime >= 1.0f)
+			if (m_pInstance->m_elapsedTime >= 1.0f)
 			{
 				WCHAR Buff[50];
-				wsprintf(Buff, L"Sailor FPS: %u", instance->FPS);
+				wsprintf(Buff, L"Sailor FPS: %u", m_pInstance->m_FPS);
 
-				instance->viewportWindow.SetWindowTitle(Buff);
-				instance->FPS = 0;
-				instance->elapsedTime = 0.0f;
+				m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
+				m_pInstance->m_FPS = 0;
+				m_pInstance->m_elapsedTime = 0.0f;
 			}
 		}
 	}
 
-	instance->viewportWindow.SetActive(false);
-	instance->viewportWindow.SetRunning(false);
+	m_pInstance->m_viewportWindow.SetActive(false);
+	m_pInstance->m_viewportWindow.SetRunning(false);
 }
 
 void EngineInstance::Stop()
 {
-	instance->viewportWindow.SetActive(false);
+	m_pInstance->m_viewportWindow.SetActive(false);
 }
 
 void EngineInstance::Shutdown()
@@ -113,11 +113,11 @@ void EngineInstance::Shutdown()
 	ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
 
-	delete instance;
+	delete m_pInstance;
 }
 
 Window& EngineInstance::GetViewportWindow()
 {
-	return instance->viewportWindow;
+	return m_pInstance->m_viewportWindow;
 }
 

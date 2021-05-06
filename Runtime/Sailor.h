@@ -26,12 +26,12 @@ namespace Sailor
 
 	protected:
 
-		Window viewportWindow;
+		Window m_viewportWindow;
 
-		unsigned int FPS = 0;
-		float elapsedTime = 0.0f;
+		unsigned int m_FPS = 0;
+		float m_elapsedTime = 0.0f;
 
-		static EngineInstance* instance;
+		static EngineInstance* m_pInstance;
 		
 	private:
 

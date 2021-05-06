@@ -7,27 +7,27 @@ using namespace nlohmann;
 
 void ns::to_json(json& j, const UID& p)
 {
-	j = json{ {"uid", p.uid} };
+	j = json{ {"uid", p.m_UID} };
 }
 
 void ns::from_json(const json& j, UID& p)
 {
-	j.at("uid").get_to<std::string>(p.uid);
+	j.at("uid").get_to<std::string>(p.m_UID);
 }
 
 const std::string& UID::ToString() const
 {
-	return uid;
+	return m_UID;
 }
 
 void UID::operator=(const UID& inUID)
 {
-	uid = inUID.uid;
+	m_UID = inUID.m_UID;
 }
 
 bool UID::operator==(const UID& rhs) const
 {
-	return uid == rhs.uid;
+	return m_UID == rhs.m_UID;
 }
 
 UID UID::CreateNewUID()
@@ -43,6 +43,6 @@ UID UID::CreateNewUID()
 		win32.Data4[0], win32.Data4[1], win32.Data4[2], win32.Data4[3],
 		win32.Data4[4], win32.Data4[5], win32.Data4[6], win32.Data4[7]);
 
-	newuid.uid = std::string(buffer);
+	newuid.m_UID = std::string(buffer);
 	return newuid;
 }

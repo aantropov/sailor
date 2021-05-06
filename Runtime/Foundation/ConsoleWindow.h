@@ -44,17 +44,17 @@ private:
 	// Write a unicode character to the console.
 	SAILOR_API void Write(wchar_t c);
 
-	FILE* stdout_file;
-	FILE* stderr_file;
-	FILE* stdin_file;
+	FILE* m_stdout_file;
+	FILE* m_stderr_file;
+	FILE* m_stdin_file;
 	
-	bool bShouldAttach;
+	bool m_bShouldAttach;
 
 	static const unsigned int LINE_BUFFER_SIZE = 256;
 
 	// Number of characters in the buffer.
-	unsigned int bufferSize;
+	unsigned int m_bufferSize;
 
 	// Buffer for unfinished lines.
-	wchar_t buffer[LINE_BUFFER_SIZE]; 
+	wchar_t m_buffer[LINE_BUFFER_SIZE]; 
 };

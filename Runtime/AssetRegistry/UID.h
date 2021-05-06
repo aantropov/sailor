@@ -29,7 +29,7 @@ namespace Sailor
 
 	protected:
 
-		std::string uid;
+		std::string m_UID;
 
 		friend void ns::to_json(json& j, const Sailor::UID& p);
 		friend void ns::from_json(const json& j, Sailor::UID& p);

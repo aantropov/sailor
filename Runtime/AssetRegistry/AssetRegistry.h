@@ -17,9 +17,9 @@ namespace Sailor
 
 	class AssetRegistry final : public Singleton<AssetRegistry>
 	{
-		std::unordered_map<UID, AssetInfo*> loadedAssetInfos;
-		std::unordered_map<std::string, UID> uids;
-		std::unordered_map<std::string, class IAssetInfoHandler*> assetInfoHandlers;
+		std::unordered_map<UID, AssetInfo*> m_loadedAssetInfos;
+		std::unordered_map<std::string, UID> m_UIDs;
+		std::unordered_map<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
 
 	public:
 

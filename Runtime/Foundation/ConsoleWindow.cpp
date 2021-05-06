@@ -12,11 +12,11 @@ namespace
 }
 
 ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
-	: stdout_file(0)
-	, stderr_file(0)
-	, stdin_file(0)
-	, bufferSize(0)
-	, bShouldAttach(bInShouldAttach)
+	: m_stdout_file(0)
+	, m_stderr_file(0)
+	, m_stdin_file(0)
+	, m_bufferSize(0)
+	, m_bShouldAttach(bInShouldAttach)
 {
 	if (bInShouldAttach)
 	{
@@ -26,7 +26,7 @@ ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
 
 void ConsoleWindow::Initialize(bool bInShouldAttach)
 {
-	instance = new ConsoleWindow(bInShouldAttach);
+	m_pInstance = new ConsoleWindow(bInShouldAttach);
 }
 
 // Global handler for break and exit signals from the console.
@@ -52,9 +52,9 @@ void ConsoleWindow::Attach()
 	printf("");
 
 	if (AttachConsole(ATTACH_PARENT_PROCESS)) {
-		freopen_s(&stdout_file, "CONOUT$", "wb", stdout);
-		freopen_s(&stderr_file, "CONOUT$", "wb", stderr);
-		freopen_s(&stdin_file, "CONIN$", "rb", stdin);
+		freopen_s(&m_stdout_file, "CONOUT$", "wb", stdout);
+		freopen_s(&m_stderr_file, "CONOUT$", "wb", stderr);
+		freopen_s(&m_stdin_file, "CONIN$", "rb", stdin);
 		SetConsoleCtrlHandler(console_handler, TRUE);
 	}
 }
@@ -66,24 +66,24 @@ ConsoleWindow::~ConsoleWindow()
 
 void ConsoleWindow::Free()
 {
-	if (stdout_file != 0)
+	if (m_stdout_file != 0)
 	{
-		fclose(stdout_file);
+		fclose(m_stdout_file);
 	}
 
-	if (stderr_file != 0)
+	if (m_stderr_file != 0)
 	{
-		fclose(stderr_file);
+		fclose(m_stderr_file);
 	}
 
-	if (stdin_file != 0)
+	if (m_stdin_file != 0)
 	{
-		fclose(stdin_file);
+		fclose(m_stdin_file);
 	}
 
-	stdout_file = 0;
-	stderr_file = 0;
-	stdin_file = 0;
+	m_stdout_file = 0;
+	m_stderr_file = 0;
+	m_stdin_file = 0;
 
 	FreeConsole();
 }
@@ -101,16 +101,16 @@ void ConsoleWindow::OpenWindow(const wchar_t* Title)
 
 	SetConsoleTitleW(Title);
 
-	freopen_s(&stdout_file, "CONOUT$", "wb", stdout);
-	freopen_s(&stderr_file, "CONOUT$", "wb", stderr);
-	freopen_s(&stdin_file, "CONIN$", "rb", stdin);
+	freopen_s(&m_stdout_file, "CONOUT$", "wb", stdout);
+	freopen_s(&m_stderr_file, "CONOUT$", "wb", stderr);
+	freopen_s(&m_stdin_file, "CONIN$", "rb", stdin);
 }
 
 void ConsoleWindow::CloseWindow()
 {
 	Free();
 
-	if (bShouldAttach)
+	if (m_bShouldAttach)
 	{
 		Attach();
 	}
@@ -147,7 +147,7 @@ void ConsoleWindow::Update()
 
 		// handle backspace
 		if (c == 8) {
-			if (bufferSize == 0)
+			if (m_bufferSize == 0)
 				continue;
 
 			// determine location to the left of the cursor
@@ -173,14 +173,14 @@ void ConsoleWindow::Update()
 			// move to character before
 			SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), info.dwCursorPosition);
 
-			--bufferSize;
+			--m_bufferSize;
 			continue;
 		}
 		// ignore escape
 		if (c == 0x1b)
 			continue;
 
-		if (bufferSize == LINE_BUFFER_SIZE)
+		if (m_bufferSize == LINE_BUFFER_SIZE)
 			continue;
 
 		// echo
@@ -191,7 +191,7 @@ void ConsoleWindow::Update()
 		else
 			Write(c);
 
-		buffer[bufferSize++] = c;
+		m_buffer[m_bufferSize++] = c;
 	}
 }
 
@@ -201,7 +201,7 @@ unsigned int ConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
 	static const unsigned int NO_POS = 0xffffffff;
 	unsigned eol_pos = NO_POS;
 	for (unsigned int i = 0; i < BufferSize; ++i) {
-		if (buffer[i] == 13) {
+		if (m_buffer[i] == 13) {
 			eol_pos = i;
 			break;
 		}
@@ -218,7 +218,7 @@ unsigned int ConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
 	}*/
 
 	// adjust buffer
-	memmove(buffer, buffer + eol_pos + 1, BufferSize - eol_pos - 1);
+	memmove(m_buffer, m_buffer + eol_pos + 1, BufferSize - eol_pos - 1);
 
 	BufferSize -= eol_pos + 1;
 	return (unsigned)(out - OutBuffer);
