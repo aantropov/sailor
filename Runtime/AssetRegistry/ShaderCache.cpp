@@ -89,6 +89,9 @@ void ShaderCache::ShaderCacheData::Deserialize(const nlohmann::json& inData)
 
 void ShaderCache::Initialize()
 {
+	std::filesystem::create_directory(CompiledShadersFolder);
+	std::filesystem::create_directory(PrecompiledShadersFolder);
+	
 	auto shaderCacheFilePath = std::filesystem::path(ShaderCacheFilepath);
 	if (!std::filesystem::exists(ShaderCacheFilepath))
 	{
@@ -238,7 +241,7 @@ bool ShaderCache::IsExpired(const UID& uid) const
 	{
 		return true;
 	}
-	
+
 	for (const auto& entry : entries)
 	{
 		//Convert to the same path format
@@ -254,15 +257,18 @@ bool ShaderCache::IsExpired(const UID& uid) const
 	return false;
 }
 
-void ShaderCache::CreatePrecompiledGlsl(const UID& uid, unsigned int permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl)
+void ShaderCache::SavePrecompiledGlsl(const UID& uid, unsigned int permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const
 {
-	std::ofstream vertexPrecompiled(GetCachedShaderFilepath(uid, permutation, "VERTEX", false));
-	vertexPrecompiled << vertexGlsl;
-	vertexPrecompiled.close();
+	if (m_bSavePrecompiledGlsl)
+	{
+		std::ofstream vertexPrecompiled(GetCachedShaderFilepath(uid, permutation, "VERTEX", false));
+		vertexPrecompiled << vertexGlsl;
+		vertexPrecompiled.close();
 
-	std::ofstream fragmentPrecompiled(GetCachedShaderFilepath(uid, permutation, "FRAGMENT", false));
-	fragmentPrecompiled << fragmentGlsl;
-	fragmentPrecompiled.close();
+		std::ofstream fragmentPrecompiled(GetCachedShaderFilepath(uid, permutation, "FRAGMENT", false));
+		fragmentPrecompiled << fragmentGlsl;
+		fragmentPrecompiled.close();
+	}
 }
 
 void ShaderCache::CacheSpirv(const UID& uid, unsigned int permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv)

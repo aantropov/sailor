@@ -8,8 +8,12 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <iostream>
+
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include <shaderc/shaderc.hpp>
+#include <thread>
+#include <mutex>
 
 #ifdef _DEBUG
 #pragma comment(lib, "shaderc_combinedd.lib")
@@ -91,7 +95,7 @@ void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::
 		return;
 	}
 
-	int shift = 0;
+	size_t shift = 0;
 	for (size_t i = 0; i < beginCodeTagLocations.size(); i++)
 	{
 		const size_t beginLocation = beginCodeTagLocations[i] + shift;
@@ -104,7 +108,7 @@ void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::
 		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, EndLineTag, beginLocation, endLocation);
 	}
 
-	Utils::ReplaceAll(outCodeInJSON, BeginCodeTag, std::string{ '\"' } +BeginCodeTag);
+	Utils::ReplaceAll(outCodeInJSON, BeginCodeTag, std::string{ '\"' } + BeginCodeTag);
 	Utils::ReplaceAll(outCodeInJSON, EndCodeTag, EndCodeTag + std::string{ '\"' });
 	Utils::ReplaceAll(outCodeInJSON, std::string{ '\t' }, std::string{ ' ' });
 }
@@ -120,7 +124,7 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 	return true;
 }
 
-void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID)
+void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 {
 	if (!m_pInstance->m_shaderCache.IsExpired(assetUID))
 	{
@@ -129,55 +133,87 @@ void ShaderCompiler::GeneratePrecompiledGlslPermutations(const UID& assetUID)
 
 	std::shared_ptr<Shader> pShader = m_pInstance->LoadShader(assetUID).lock();
 
-	const unsigned int NumPermutations = std::pow(2, pShader->m_defines.size());
+	const unsigned int NumPermutations = (unsigned int)std::pow(2, pShader->m_defines.size());
 
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
-
-	SAILOR_LOG("Generate precompiled glsl code for %s, Num permutations: %d ", assetInfo->GetAssetFilepath().c_str(), NumPermutations);
 
 	if (m_pInstance->m_shaderCache.Contains(assetUID))
 	{
 		m_pInstance->m_shaderCache.Remove(assetUID);
 	}
 
-	for (int permutation = 0; permutation < NumPermutations; permutation++)
+	const unsigned int MaxThreads = 12;
+	const unsigned int NumActiveThreads = min(NumPermutations, MaxThreads);
+	const unsigned int PermutationsPerThread = min(NumPermutations, NumPermutations / NumActiveThreads);
+
+	std::mutex logMutex;
+	std::mutex saveToCacheMutex;
+	std::array<std::thread, MaxThreads> threadsPool;
+
+	SAILOR_LOG("Compiling shader: %s Num threads: %d Num permutations: %d", assetInfo->GetAssetFilepath().c_str(), NumActiveThreads, NumPermutations);
+
+	for (int i = 0; i < NumActiveThreads; i++)
 	{
-		SAILOR_LOG("Compiling shader %d/%d ...", permutation + 1, NumPermutations);
+		const unsigned int start = i * PermutationsPerThread;
+		const unsigned int end = i == NumActiveThreads - 1 ? NumPermutations : min(NumPermutations, start + PermutationsPerThread);
 
-		std::vector<std::string> defines;
-
-		for (int define = 0; define < pShader->m_defines.size(); define++)
+		threadsPool[i] = std::thread([&logMutex, start, end, &pShader, &assetUID, &saveToCacheMutex]()
 		{
-			if ((permutation >> define) & 1)
+			logMutex.lock();
+			std::cout << "Start compiling shaders " << start << " to " << end << endl;
+			logMutex.unlock();
+
+			for (unsigned int permutation = start; permutation < end; permutation++)
 			{
-				defines.push_back(pShader->m_defines[define]);
+				std::vector<std::string> defines;
+
+				for (int define = 0; define < pShader->m_defines.size(); define++)
+				{
+					if ((permutation >> define) & 1)
+					{
+						defines.push_back(pShader->m_defines[define]);
+					}
+				}
+
+				std::vector<std::string> vertexDefines = defines;
+				vertexDefines.push_back("VERTEX");
+
+				std::vector<std::string> fragmentDefines = defines;
+				fragmentDefines.push_back("FRAGMENT");
+
+				std::string vertexGlsl;
+				std::string fragmentGlsl;
+				GeneratePrecompiledGlsl(pShader.get(), vertexGlsl, vertexDefines);
+				GeneratePrecompiledGlsl(pShader.get(), fragmentGlsl, fragmentDefines);
+
+				m_pInstance->m_shaderCache.SavePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl);
+
+				std::vector<uint32_t> spirvVertexByteCode;
+				std::vector<uint32_t> spirvFragmentByteCode;
+
+				const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, ShaderCache::GetCachedShaderFilepath(assetUID, permutation, "VERTEX", false), EShaderKind::Vertex, {}, {}, spirvVertexByteCode);
+				const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, ShaderCache::GetCachedShaderFilepath(assetUID, permutation, "FRAGMENT", false), EShaderKind::Fragment, {}, {}, spirvFragmentByteCode);
+
+				if (bResultCompileVertexShader && bResultCompileFragmentShader)
+				{
+					saveToCacheMutex.lock();
+					m_pInstance->m_shaderCache.CacheSpirv(assetUID, permutation, spirvVertexByteCode, spirvFragmentByteCode);
+					saveToCacheMutex.unlock();
+				}
 			}
-		}
 
-		std::vector<std::string> vertexDefines = defines;
-		vertexDefines.push_back("VERTEX");
-
-		std::vector<std::string> fragmentDefines = defines;
-		fragmentDefines.push_back("FRAGMENT");
-
-		std::string vertexGlsl;
-		std::string fragmentGlsl;
-		GeneratePrecompiledGlsl(pShader.get(), vertexGlsl, vertexDefines);
-		GeneratePrecompiledGlsl(pShader.get(), fragmentGlsl, fragmentDefines);
-
-		m_pInstance->m_shaderCache.CreatePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl);
-
-		std::vector<uint32_t> spirvVertexByteCode;
-		std::vector<uint32_t> spirvFragmentByteCode;
-
-		const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, ShaderCache::GetCachedShaderFilepath(assetUID, permutation, "VERTEX", false), EShaderKind::Vertex, {}, {}, spirvVertexByteCode);
-		const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, ShaderCache::GetCachedShaderFilepath(assetUID, permutation, "FRAGMENT", false), EShaderKind::Fragment, {}, {}, spirvFragmentByteCode);
-
-		if (bResultCompileVertexShader && bResultCompileFragmentShader)
-		{
-			m_pInstance->m_shaderCache.CacheSpirv(assetUID, permutation, spirvVertexByteCode, spirvFragmentByteCode);
-		}
+			logMutex.lock();
+			std::cout << "Compiled " << start << " to " << end << endl;
+			logMutex.unlock();
+		});
 	}
+
+	for (int i = 0; i < NumActiveThreads; i++)
+	{
+		threadsPool[i].join();
+	}
+
+	SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
 
 	m_pInstance->m_shaderCache.SaveCache();
 }
