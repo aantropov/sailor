@@ -152,7 +152,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 
 	SAILOR_LOG("Compiling shader: %s Num threads: %d Num permutations: %d", assetInfo->GetAssetFilepath().c_str(), NumActiveThreads, NumPermutations);
 
-	for (int i = 0; i < NumActiveThreads; i++)
+	for (unsigned int i = 0; i < NumActiveThreads; i++)
 	{
 		const unsigned int start = i * PermutationsPerThread;
 		const unsigned int end = i == NumActiveThreads - 1 ? NumPermutations : min(NumPermutations, start + PermutationsPerThread);
@@ -160,7 +160,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 		threadsPool[i] = std::thread([&logMutex, start, end, &pShader, &assetUID, &saveToCacheMutex]()
 		{
 			logMutex.lock();
-			std::cout << "Start compiling shaders " << start << " to " << end << endl;
+			std::cout << "Start compiling shaders from " << start << " to " << end << endl;
 			logMutex.unlock();
 
 			for (unsigned int permutation = start; permutation < end; permutation++)
@@ -208,7 +208,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 		});
 	}
 
-	for (int i = 0; i < NumActiveThreads; i++)
+	for (unsigned int i = 0; i < NumActiveThreads; i++)
 	{
 		threadsPool[i].join();
 	}
