@@ -251,11 +251,9 @@ std::weak_ptr<Shader> ShaderCompiler::LoadShader(const UID& uid)
 
 		return m_loadedShaders[uid] = shared_ptr<Shader>(shader);
 	}
-	else
-	{
-		SAILOR_LOG("Cannot find shader asset info with UID: %s", uid.ToString().c_str());
-		return std::weak_ptr<Shader>();
-	}
+
+	SAILOR_LOG("Cannot find shader asset info with UID: %s", uid.ToString().c_str());
+	return std::weak_ptr<Shader>();
 }
 
 bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, const std::string& filename, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, std::vector<uint32_t>& outByteCode)
@@ -264,9 +262,6 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, const std::st
 	shaderc::CompileOptions options;
 
 	options.SetSourceLanguage(shaderc_source_language_glsl);
-	/*shaderc::PreprocessedSourceCompilationResult preprocessed = compiler.PreprocessGlsl(source, shaderc_glsl_closesthit_shader, "", options);
-	std::string shaderString = { preprocessed.cbegin(), preprocessed.cend() };
-	*/
 
 	shaderc_shader_kind kind = shaderc_glsl_default_vertex_shader;
 
@@ -285,21 +280,5 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, const std::st
 
 	outByteCode = { module.cbegin(), module.cend() };
 
-	//shaderc::Compiler::CompileGlslToSpv()
-
-	/*
-	glslang::InitializeProcess();
-	glslang::TShader vShader(EShLanguage::EShLangAnyHit);
-
-	std::vector<char> vShaderSrc;
-	AssetRegistry::ReadFile(sPath, vShaderSrc);
-
-	const char* srcs[] = { vShaderSrc.data() };
-	const int   lens[] = { vShaderSrc.size() };
-
-	const char* inputName[]{ "shaderSource" };
-	vShader.setStringsWithLengthsAndNames(srcs, lens, inputName, 1);
-
-	vShader.parse(&DefaultTBuiltInResource, 100, EProfile::EEsProfile, false, true, EShMessages::EShMsgDefault);*/
 	return true;
 }

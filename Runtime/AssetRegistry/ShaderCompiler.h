@@ -60,5 +60,4 @@ namespace Sailor
 		static constexpr char const* EndCodeTag = "END_CODE";
 		static constexpr char const* EndLineTag = " END_LINE ";
 	};
-
 }
