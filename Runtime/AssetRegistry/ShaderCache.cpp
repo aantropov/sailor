@@ -89,6 +89,7 @@ void ShaderCache::ShaderCacheData::Deserialize(const nlohmann::json& inData)
 
 void ShaderCache::Initialize()
 {
+	std::filesystem::create_directory(CacheRootFolder);
 	std::filesystem::create_directory(CompiledShadersFolder);
 	std::filesystem::create_directory(PrecompiledShadersFolder);
 	

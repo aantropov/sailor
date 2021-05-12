@@ -21,7 +21,6 @@ namespace Sailor
 			std::optional<uint32_t> m_presentFamily;
 
 			SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value();; }
-
 		};
 
 		struct SwapChainSupportDetails
@@ -31,7 +30,7 @@ namespace Sailor
 			std::vector<VkPresentModeKHR> m_presentModes;
 		};
 
-		static SAILOR_API void Initialize(const Window* viewport, bool bInIsEnabledValidationLayers);
+		static SAILOR_API void Initialize(const Window* pViewport, bool bInIsEnabledValidationLayers);
 
 		static SAILOR_API uint32_t GetNumSupportedExtensions();
 		static SAILOR_API void PrintSupportedExtensions();
@@ -59,11 +58,11 @@ namespace Sailor
 
 		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
 		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
-		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* viewport);
+		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* pViewport);
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
-		SAILOR_API void CreateWin32Surface(const Window* viewport);
-		SAILOR_API void CreateSwapchain(const Window* viewport);
+		SAILOR_API void CreateWin32Surface(const Window* pViewport);
+		SAILOR_API void CreateSwapchain(const Window* pViewport);
 		SAILOR_API void CreateGraphicsPipeline();
 		
 		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return m_pInstance->m_vkInstance; }

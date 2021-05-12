@@ -13,7 +13,7 @@ public:
 	static SAILOR_API void Initialize(bool bInShouldAttach);
 
 	// Opens a new console window and redirects stdout to the new window.
-	SAILOR_API void OpenWindow(const wchar_t* Title);
+	SAILOR_API void OpenWindow(const wchar_t* pTitle);
 
 	// Closes the console window if open.
 	SAILOR_API void CloseWindow();
@@ -21,7 +21,7 @@ public:
 	// Fill a buffer with data read from the console window. If this
 	// returns 0 or a number less than `buffer_size`, there is no
 	// more to read right now.
-	unsigned int Read(char* OutBuffer, unsigned int BufferSize);
+	unsigned int Read(char* pOutBuffer, unsigned int bufferSize);
 
 	// Call this every frame.
 	SAILOR_API void Update();

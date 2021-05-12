@@ -15,9 +15,9 @@ namespace Sailor
 
 	struct InputState
 	{
-		KeyState keyboard[256];
-		KeyState mouse[3];
-		int cursorPosition[2];
+		KeyState m_keyboard[256];
+		KeyState m_mouse[3];
+		int m_cursorPosition[2];
 	};
 
 	class Input
@@ -31,7 +31,7 @@ namespace Sailor
 		static SAILOR_API bool IsButtonDown(unsigned short int button);
 		static SAILOR_API bool IsButtonClick(unsigned short int button);
 
-		static SAILOR_API void GetCursorPos(int* x, int* y);
+		static SAILOR_API void GetCursorPos(int* pOutX, int* pOutY);
 		static SAILOR_API void SetCursorPos(int x, int y);
 		static SAILOR_API void ShowCursor(bool visible);
 

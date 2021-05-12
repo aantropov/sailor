@@ -220,25 +220,25 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	case WM_MBUTTONDOWN:
 	case WM_MBUTTONUP:
 	{
-		Input::m_rawState.cursorPosition[0] = (int)LOWORD(lParam);
-		Input::m_rawState.cursorPosition[1] = (int)HIWORD(lParam);
+		Input::m_rawState.m_cursorPosition[0] = (int)LOWORD(lParam);
+		Input::m_rawState.m_cursorPosition[1] = (int)HIWORD(lParam);
 
 		if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP)
-			Input::m_rawState.keyboard[0] = (msg == WM_LBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
+			Input::m_rawState.m_keyboard[0] = (msg == WM_LBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP)
-			Input::m_rawState.keyboard[1] = (msg == WM_RBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
+			Input::m_rawState.m_keyboard[1] = (msg == WM_RBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP)
-			Input::m_rawState.keyboard[2] = (msg == WM_MBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
+			Input::m_rawState.m_keyboard[2] = (msg == WM_MBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		return FALSE;
 	}
 
 	case WM_MOUSEMOVE:
 	{
-		Input::m_rawState.cursorPosition[0] = (int)LOWORD(lParam);
-		Input::m_rawState.cursorPosition[1] = (int)HIWORD(lParam);
+		Input::m_rawState.m_cursorPosition[0] = (int)LOWORD(lParam);
+		Input::m_rawState.m_cursorPosition[1] = (int)HIWORD(lParam);
 
 		return FALSE;
 	}
@@ -247,7 +247,7 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	case WM_SYSKEYDOWN:
 	{
 		if (wParam < 256 && (lParam & 0x40000000) == 0)
-			Input::m_rawState.keyboard[wParam] = KeyState::Pressed;
+			Input::m_rawState.m_keyboard[wParam] = KeyState::Pressed;
 
 		return FALSE;
 	}
@@ -255,7 +255,7 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	case WM_SYSKEYUP:
 	{
 		if (wParam < 256)
-			Input::m_rawState.keyboard[wParam] = KeyState::Up;
+			Input::m_rawState.m_keyboard[wParam] = KeyState::Up;
 
 		return FALSE;
 	}
