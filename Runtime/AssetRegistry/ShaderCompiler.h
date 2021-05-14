@@ -14,7 +14,7 @@ namespace Sailor
 		Fragment
 	};
 
-	class Shader : IJsonSerializable
+	class ShaderAsset : IJsonSerializable
 	{
 	public:
 
@@ -39,20 +39,26 @@ namespace Sailor
 		static SAILOR_API void Initialize();
 
 		static SAILOR_API void CompileAllPermutations(const UID& assetUID);
-		SAILOR_API std::weak_ptr<Shader> LoadShader(const UID& uid);
+		SAILOR_API std::weak_ptr<ShaderAsset> LoadShaderAsset(const UID& uid);
+
+		static SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, std::vector<char>& outVertexByteCode, std::vector<char>& outFragmentByteCode);
 
 		virtual SAILOR_API ~ShaderCompiler() override;
 
 	protected:
 
 		ShaderCache m_shaderCache;
-		std::unordered_map<UID, std::shared_ptr<Shader>> m_loadedShaders;
+		std::unordered_map<UID, std::shared_ptr<ShaderAsset>> m_loadedShaders;
 
-		static SAILOR_API void GeneratePrecompiledGlsl(Shader* shader, std::string& outGLSLCode, const std::vector<std::string>& defines = {});
+		static SAILOR_API void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const std::vector<std::string>& defines = {});
 		static SAILOR_API void ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON);
 		static SAILOR_API bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
 
-		static bool SAILOR_API CompileGlslToSpirv(const std::string& source, const std::string& filename, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<uint32_t>& outByteCode);
+		static SAILOR_API void ForceCompilePermutation(const UID& assetUID, unsigned int permutation);
+		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, const std::string& filename, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<char>& outByteCode);
+		
+		static SAILOR_API unsigned int GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines);
+		static SAILOR_API std::vector<std::string> GetDefines(const std::vector<std::string>& defines, unsigned int permutation);
 
 	private:
 

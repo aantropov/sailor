@@ -14,8 +14,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	
 	if (auto shaderUID = assetRegistry->GetAssetInfo("Shaders\\Simple.shader"))
 	{
-		auto shader = ShaderCompiler::GetInstance()->LoadShader(shaderUID->GetUID());
 		ShaderCompiler::GetInstance()->CompileAllPermutations(shaderUID->GetUID());
+
+		//ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), "TEST_DEFINE1",);
 	}
 
 	EngineInstance::Start();

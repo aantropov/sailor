@@ -43,6 +43,8 @@ namespace Sailor
 
 		static SAILOR_API void GetRequiredDeviceExtensions(std::vector<const char*>& requiredDeviceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
 
+		static SAILOR_API VkShaderModule CreateShaderModule(const std::vector<char>& inCode);
+
 		virtual SAILOR_API ~GfxDeviceVulkan() override;
 
 	private:

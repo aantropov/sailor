@@ -6,6 +6,7 @@
 #include "UID.h"
 #include "Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
+#include <mutex>
 
 namespace Sailor
 {
@@ -24,19 +25,20 @@ namespace Sailor
 		SAILOR_API void Shutdown();
 
 		SAILOR_API void SavePrecompiledGlsl(const UID& uid, unsigned int permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const;
-		SAILOR_API void CacheSpirv(const UID& uid, unsigned int permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv);
-				
+		SAILOR_API void CacheSpirv_ThreadSafe(const UID& uid, unsigned int permutation, const std::vector<char>& vertexSpirv, const std::vector<char>& fragmentSpirv);
+		SAILOR_API bool GetSpirvCode(const UID& uid, unsigned int permutation, std::vector<char>& vertexSpirv, std::vector<char>& fragmentSpirv) const;
+
 		SAILOR_API void Remove(const UID& uid);
 
 		SAILOR_API bool Contains(const UID& uid) const;
-		SAILOR_API bool IsExpired(const UID& uid) const;
+		SAILOR_API bool IsExpired(const UID& uid, unsigned int permutation) const;
 
 		SAILOR_API void LoadCache();
 		SAILOR_API void SaveCache(bool bForcely = false);
 
 		SAILOR_API void ClearAll();
 		SAILOR_API void ClearExpired();
-		
+
 		static SAILOR_API std::string GetCachedShaderFilepath(const UID& uid, int permutation, const std::string& shaderKind, bool bIsCompiledToSpirv);
 		SAILOR_API std::string LoadSpirv(const UID& uid, unsigned int permutation, enum class EShaderKind shaderKind);
 
@@ -64,7 +66,11 @@ namespace Sailor
 			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
 			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
 		};
-		
+
+		std::mutex m_saveToCacheMutex;
+
+		SAILOR_API void Remove(const ShaderCache::ShaderCacheEntry* entry);
+
 	private:
 
 		ShaderCacheData m_cache;

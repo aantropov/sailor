@@ -58,6 +58,11 @@ void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 
 void GfxDeviceVulkan::CreateGraphicsPipeline()
 {
+//	auto vertShaderCode = AssetRegistry::("shaders/vert.spv");
+	//auto fragShaderCode = readFile("shaders/frag.spv");
+
+	//VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+	//VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
 }
 
 void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValidationLayers)
@@ -138,6 +143,8 @@ void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValida
 
 	// Create swapchain
 	m_pInstance->CreateSwapchain(viewport);
+
+	m_pInstance->CreateGraphicsPipeline();
 
 	SAILOR_LOG("Vulkan initialized");
 }
@@ -584,4 +591,17 @@ void GfxDeviceVulkan::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebug
 	{
 		func(instance, debugMessenger, pAllocator);
 	}
+}
+
+VkShaderModule GfxDeviceVulkan::CreateShaderModule(const std::vector<char>& code) 
+{
+	VkShaderModuleCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = code.size();
+	createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+	VkShaderModule shaderModule;
+	VK_CHECK(vkCreateShaderModule(m_pInstance->m_device, &createInfo, nullptr, &shaderModule));
+
+	return shaderModule;
 }
