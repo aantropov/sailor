@@ -90,7 +90,7 @@ void ConsoleWindow::Free()
 
 bool ConsoleWindow::IsExitRequested()
 {
-	return _exit;
+	return _exit != nullptr;
 }
 
 void ConsoleWindow::OpenWindow(const wchar_t* Title)

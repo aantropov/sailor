@@ -181,15 +181,15 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 	std::mutex logMutex;
 	std::array<std::thread, MaxThreads> threadsPool;
 
-	const unsigned int NumActiveThreads = min(permutationsToCompile.size(), MaxThreads);
-	const unsigned int PermutationsPerThread = min(permutationsToCompile.size(), permutationsToCompile.size() / NumActiveThreads);
+	const unsigned int NumActiveThreads = min((unsigned int)permutationsToCompile.size(), MaxThreads);
+	const unsigned int PermutationsPerThread = (unsigned int)min(permutationsToCompile.size(), permutationsToCompile.size() / NumActiveThreads);
 
-	SAILOR_LOG("Compiling shader: %s Num threads: %d Num permutations: %d", assetInfo->GetAssetFilepath().c_str(), NumActiveThreads, permutationsToCompile.size());
+	SAILOR_LOG("Compiling shader: %s Num threads: %d Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), NumActiveThreads, permutationsToCompile.size());
 
 	for (unsigned int i = 0; i < NumActiveThreads; i++)
 	{
 		const unsigned int start = i * PermutationsPerThread;
-		const unsigned int end = i == NumActiveThreads - 1 ? permutationsToCompile.size() : min(permutationsToCompile.size(), start + PermutationsPerThread);
+		const unsigned int end = (unsigned int)(i == NumActiveThreads - 1 ? permutationsToCompile.size() : min(permutationsToCompile.size(), start + PermutationsPerThread));
 
 		threadsPool[i] = std::thread([&logMutex, start, end, &pShader, &assetUID, &permutationsToCompile]()
 			{

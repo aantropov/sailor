@@ -68,7 +68,7 @@ void EngineInstance::Start()
 			DispatchMessage(&msg);
 		}
 
-		beginFrameTime = GetTickCount();
+		beginFrameTime = (float)GetTickCount();
 
 		if (Input::IsKeyPressed(VK_ESCAPE))
 		{
