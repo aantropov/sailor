@@ -21,7 +21,7 @@ public:
 	// Fill a buffer with data read from the console window. If this
 	// returns 0 or a number less than `buffer_size`, there is no
 	// more to read right now.
-	unsigned int Read(char* pOutBuffer, unsigned int bufferSize);
+	uint32_t Read(char* pOutBuffer, uint32_t bufferSize);
 
 	// Call this every frame.
 	SAILOR_API void Update();
@@ -50,10 +50,10 @@ private:
 	
 	bool m_bShouldAttach;
 
-	static const unsigned int LINE_BUFFER_SIZE = 256;
+	static const uint32_t LINE_BUFFER_SIZE = 256;
 
 	// Number of characters in the buffer.
-	unsigned int m_bufferSize;
+	uint32_t m_bufferSize;
 
 	// Buffer for unfinished lines.
 	wchar_t m_buffer[LINE_BUFFER_SIZE]; 

@@ -172,9 +172,11 @@
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
     <ClInclude Include="..\Runtime\ExportDef.h" />
     <ClInclude Include="..\Runtime\Foundation\ConsoleWindow.h" />
+    <ClInclude Include="..\Runtime\Foundation\Filesystem.h" />
     <ClInclude Include="..\Runtime\Foundation\Input.h" />
     <ClInclude Include="..\Runtime\Foundation\Window.h" />
     <ClInclude Include="..\Runtime\GfxDevice\GfxDeviceVulkan.h" />
+    <ClInclude Include="..\Runtime\JobSystem\Jobsystem.h" />
     <ClInclude Include="..\Runtime\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\LogMacros.h" />
     <ClInclude Include="..\Runtime\Sailor.h" />
@@ -189,9 +191,11 @@
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Foundation\ConsoleWindow.cpp" />
+    <ClCompile Include="..\Runtime\Foundation\Filesystem.cpp" />
     <ClCompile Include="..\Runtime\Foundation\Input.cpp" />
     <ClCompile Include="..\Runtime\Foundation\Window.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\GfxDeviceVulkan.cpp" />
+    <ClCompile Include="..\Runtime\JobSystem\Jobsystem.cpp" />
     <ClCompile Include="..\Runtime\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\Sailor.cpp" />
     <ClCompile Include="..\Runtime\Utils.cpp" />

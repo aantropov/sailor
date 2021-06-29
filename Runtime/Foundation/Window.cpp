@@ -5,7 +5,7 @@
 
 using namespace Sailor;
 
-bool Window::Create(LPCWSTR title, int inWidth, int inHeight, bool inbIsFullScreen)
+bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen)
 {
 	m_width = inWidth;
 	m_height = inHeight;
@@ -100,7 +100,7 @@ bool Window::Create(LPCWSTR title, int inWidth, int inHeight, bool inbIsFullScre
 	return true;
 }
 
-void Window::SetSize(int width, int height, bool bInIsFullScreen)
+void Window::SetSize(int32_t width, int32_t height, bool bInIsFullScreen)
 {
 	RECT    rect;
 	DWORD   style, exStyle;
@@ -220,8 +220,8 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	case WM_MBUTTONDOWN:
 	case WM_MBUTTONUP:
 	{
-		Input::m_rawState.m_cursorPosition[0] = (int)LOWORD(lParam);
-		Input::m_rawState.m_cursorPosition[1] = (int)HIWORD(lParam);
+		Input::m_rawState.m_cursorPosition[0] = (int32_t)LOWORD(lParam);
+		Input::m_rawState.m_cursorPosition[1] = (int32_t)HIWORD(lParam);
 
 		if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP)
 			Input::m_rawState.m_keyboard[0] = (msg == WM_LBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
@@ -237,8 +237,8 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 
 	case WM_MOUSEMOVE:
 	{
-		Input::m_rawState.m_cursorPosition[0] = (int)LOWORD(lParam);
-		Input::m_rawState.m_cursorPosition[1] = (int)HIWORD(lParam);
+		Input::m_rawState.m_cursorPosition[0] = (int32_t)LOWORD(lParam);
+		Input::m_rawState.m_cursorPosition[1] = (int32_t)HIWORD(lParam);
 
 		return FALSE;
 	}

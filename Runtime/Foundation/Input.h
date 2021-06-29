@@ -6,7 +6,7 @@ namespace Sailor
 {
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	
-	enum class KeyState
+	enum class KeyState : uint8_t
 	{
 		Up = 0,
 		Down,
@@ -17,7 +17,7 @@ namespace Sailor
 	{
 		KeyState m_keyboard[256];
 		KeyState m_mouse[3];
-		int m_cursorPosition[2];
+		int32_t m_cursorPosition[2];
 	};
 
 	class Input
@@ -26,14 +26,14 @@ namespace Sailor
 
 		SAILOR_API Input();
 		
-		static SAILOR_API bool IsKeyDown(unsigned short int key);
-		static SAILOR_API bool IsKeyPressed(unsigned short int key);
-		static SAILOR_API bool IsButtonDown(unsigned short int button);
-		static SAILOR_API bool IsButtonClick(unsigned short int button);
+		static SAILOR_API bool IsKeyDown(uint32_t key);
+		static SAILOR_API bool IsKeyPressed(uint32_t key);
+		static SAILOR_API bool IsButtonDown(uint32_t button);
+		static SAILOR_API bool IsButtonClick(uint32_t button);
 
-		static SAILOR_API void GetCursorPos(int* pOutX, int* pOutY);
-		static SAILOR_API void SetCursorPos(int x, int y);
-		static SAILOR_API void ShowCursor(bool visible);
+		static SAILOR_API void GetCursorPos(int32_t* pOutX, int32_t* pOutY);
+		static SAILOR_API void SetCursorPos(int32_t x, int32_t y);
+		static SAILOR_API void ShowCursor(bool bIsVisible);
 
 	protected:
 

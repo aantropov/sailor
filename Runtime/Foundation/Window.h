@@ -43,17 +43,17 @@ namespace Sailor
 		SAILOR_API HINSTANCE GetHINSTANCE() const { return m_hInstance; }
 
 		//Getters for parameters
-		SAILOR_API int GetWidth() const { return m_width; }
-		SAILOR_API int GetHeight() const { return m_height; }
+		SAILOR_API int32_t GetWidth() const { return m_width; }
+		SAILOR_API int32_t GetHeight() const { return m_height; }
 
 		// Create window
-		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int width = 1920, int height = 1080, bool bIsFullScreen = false);
+		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false);
 
 		// Destroy window
 		SAILOR_API void Destroy();
 
 		// Set window size
-		SAILOR_API void SetSize(int width, int height, bool bIsFullScreen = false);
+		SAILOR_API void SetSize(int32_t width, int32_t height, bool bIsFullScreen = false);
 	};
 
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

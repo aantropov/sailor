@@ -20,7 +20,7 @@ namespace Sailor
 			std::optional<uint32_t> m_graphicsFamily;
 			std::optional<uint32_t> m_presentFamily;
 
-			SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value();; }
+			SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value(); }
 		};
 
 		struct SwapChainSupportDetails
@@ -39,7 +39,7 @@ namespace Sailor
 		static SAILOR_API bool CheckValidationLayerSupport(const std::vector<const char*>& validationLayers);
 
 		static SAILOR_API bool IsDeviceSuitable(VkPhysicalDevice device);
-		static SAILOR_API int GetDeviceScore(VkPhysicalDevice device);
+		static SAILOR_API int32_t GetDeviceScore(VkPhysicalDevice device);
 
 		static SAILOR_API void GetRequiredDeviceExtensions(std::vector<const char*>& requiredDeviceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
 

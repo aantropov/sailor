@@ -10,6 +10,10 @@ protected:
 
 	SAILOR_API Singleton() = default;
     virtual SAILOR_API ~Singleton() = default;
+
+    SAILOR_API Singleton(Singleton&& move) = delete;
+    SAILOR_API Singleton(Singleton& copy) = delete;
+    SAILOR_API Singleton& operator =(Singleton& rhs) = delete;
 	
 public:
 

@@ -10,7 +10,7 @@
 
 using namespace Sailor;
 
-std::string ShaderCache::GetCachedShaderFilepath(const UID& uid, int permutation, const std::string& shaderKind, bool bIsCompiledToSpirv)
+std::string ShaderCache::GetCachedShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind, bool bIsCompiledToSpirv)
 {
 	std::string res;
 	std::stringstream stream;
@@ -38,7 +38,7 @@ void ShaderCache::ShaderCacheEntry::Deserialize(const nlohmann::json& inData)
 	m_UID.Deserialize(inData["uid"]);
 
 	m_timestamp = inData["timestamp"].get<std::time_t>();
-	m_permutation = inData["permutation"].get<unsigned int>(); ;
+	m_permutation = inData["permutation"].get<uint32_t>(); ;
 }
 
 void ShaderCache::ShaderCacheData::Serialize(nlohmann::json& outData) const
@@ -260,7 +260,7 @@ bool ShaderCache::Contains(const UID& uid) const
 	return m_cache.m_data.find(uid) != m_cache.m_data.end();
 }
 
-void ShaderCache::SavePrecompiledGlsl(const UID& uid, unsigned int permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const
+void ShaderCache::SavePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const
 {
 	if (m_bSavePrecompiledGlsl)
 	{
@@ -274,7 +274,7 @@ void ShaderCache::SavePrecompiledGlsl(const UID& uid, unsigned int permutation, 
 	}
 }
 
-void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, unsigned int permutation, const std::vector<char>& vertexSpirv, const std::vector<char>& fragmentSpirv)
+void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<char>& vertexSpirv, const std::vector<char>& fragmentSpirv)
 {
 	m_saveToCacheMutex.lock();
 
@@ -308,7 +308,7 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, unsigned int permutation
 	m_saveToCacheMutex.unlock();
 }
 
-bool ShaderCache::GetSpirvCode(const UID& uid, unsigned int permutation, std::vector<char>& vertexSpirv, std::vector<char>& fragmentSpirv) const
+bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<char>& vertexSpirv, std::vector<char>& fragmentSpirv) const
 {
 	if (IsExpired(uid, permutation))
 	{
@@ -328,7 +328,7 @@ bool ShaderCache::GetSpirvCode(const UID& uid, unsigned int permutation, std::ve
 	return true;
 }
 
-bool ShaderCache::IsExpired(const UID& uid, unsigned int permutation) const
+bool ShaderCache::IsExpired(const UID& uid, uint32_t permutation) const
 {
 	if (!Contains(uid))
 	{

@@ -25,6 +25,9 @@
     <Filter Include="Runtime\AssetRegistry">
       <UniqueIdentifier>{743d5375-e41f-4249-944a-31c1edb7a9ce}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\Jobsystem">
+      <UniqueIdentifier>{204ddbe7-3034-430c-8a5a-73c2f95bc940}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\ExportDef.h">
@@ -75,6 +78,12 @@
     <ClInclude Include="..\Runtime\JsonSerializable.h">
       <Filter>Runtime</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Foundation\Filesystem.h">
+      <Filter>Runtime\Foundation</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\JobSystem\Jobsystem.h">
+      <Filter>Runtime\Jobsystem</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -118,6 +127,12 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\JsonSerializable.cpp">
       <Filter>Runtime</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Foundation\Filesystem.cpp">
+      <Filter>Runtime\Foundation</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\JobSystem\Jobsystem.cpp">
+      <Filter>Runtime\Jobsystem</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

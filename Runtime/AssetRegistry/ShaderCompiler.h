@@ -54,11 +54,11 @@ namespace Sailor
 		static SAILOR_API void ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON);
 		static SAILOR_API bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
 
-		static SAILOR_API void ForceCompilePermutation(const UID& assetUID, unsigned int permutation);
+		static SAILOR_API void ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
 		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, const std::string& filename, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<char>& outByteCode);
 		
-		static SAILOR_API unsigned int GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines);
-		static SAILOR_API std::vector<std::string> GetDefines(const std::vector<std::string>& defines, unsigned int permutation);
+		static SAILOR_API uint32_t GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines);
+		static SAILOR_API std::vector<std::string> GetDefines(const std::vector<std::string>& defines, uint32_t permutation);
 
 	private:
 

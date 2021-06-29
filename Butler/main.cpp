@@ -5,7 +5,7 @@
 
 using namespace Sailor;
 
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 {
 	EngineInstance::Initialize();
 

@@ -124,7 +124,7 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 	return true;
 }
 
-void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, unsigned int permutation)
+void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permutation)
 {
 	auto pShader = m_pInstance->LoadShaderAsset(assetUID).lock();
 	const auto defines = GetDefines(pShader->m_defines, permutation);
@@ -158,13 +158,13 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 {
 	std::shared_ptr<ShaderAsset> pShader = m_pInstance->LoadShaderAsset(assetUID).lock();
 
-	const unsigned int NumPermutations = (unsigned int)std::pow(2, pShader->m_defines.size());
+	const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->m_defines.size());
 
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
 
 	std::vector<int> permutationsToCompile;
 
-	for (unsigned int permutation = 0; permutation < NumPermutations; permutation++)
+	for (uint32_t permutation = 0; permutation < NumPermutations; permutation++)
 	{
 		if (m_pInstance->m_shaderCache.IsExpired(assetUID, permutation))
 		{
@@ -177,19 +177,19 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 		return;
 	}
 
-	const unsigned int MaxThreads = 12;
+	const uint32_t MaxThreads = 12;
 	std::mutex logMutex;
 	std::array<std::thread, MaxThreads> threadsPool;
 
-	const unsigned int NumActiveThreads = min((unsigned int)permutationsToCompile.size(), MaxThreads);
-	const unsigned int PermutationsPerThread = (unsigned int)min(permutationsToCompile.size(), permutationsToCompile.size() / NumActiveThreads);
+	const uint32_t NumActiveThreads = min((uint32_t)permutationsToCompile.size(), MaxThreads);
+	const uint32_t PermutationsPerThread = (uint32_t)min(permutationsToCompile.size(), permutationsToCompile.size() / NumActiveThreads);
 
 	SAILOR_LOG("Compiling shader: %s Num threads: %d Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), NumActiveThreads, permutationsToCompile.size());
 
-	for (unsigned int i = 0; i < NumActiveThreads; i++)
+	for (uint32_t i = 0; i < NumActiveThreads; i++)
 	{
-		const unsigned int start = i * PermutationsPerThread;
-		const unsigned int end = (unsigned int)(i == NumActiveThreads - 1 ? permutationsToCompile.size() : min(permutationsToCompile.size(), start + PermutationsPerThread));
+		const uint32_t start = i * PermutationsPerThread;
+		const uint32_t end = (uint32_t)(i == NumActiveThreads - 1 ? permutationsToCompile.size() : min(permutationsToCompile.size(), start + PermutationsPerThread));
 
 		threadsPool[i] = std::thread([&logMutex, start, end, &pShader, &assetUID, &permutationsToCompile]()
 			{
@@ -197,7 +197,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 				std::cout << "Start compiling shaders from " << start << " to " << end << endl;
 				logMutex.unlock();
 
-				for (unsigned int permutationIndex = start; permutationIndex < end; permutationIndex++)
+				for (uint32_t permutationIndex = start; permutationIndex < end; permutationIndex++)
 				{
 					ForceCompilePermutation(assetUID, permutationsToCompile[permutationIndex]);
 				}
@@ -208,7 +208,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 			});
 	}
 
-	for (unsigned int i = 0; i < NumActiveThreads; i++)
+	for (uint32_t i = 0; i < NumActiveThreads; i++)
 	{
 		threadsPool[i].join();
 	}
@@ -283,10 +283,10 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, const std::st
 	return true;
 }
 
-unsigned int ShaderCompiler::GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines)
+uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines)
 {
-	unsigned int res = 0;
-	for (int i = 0; i < defines.size(); i++)
+	uint32_t res = 0;
+	for (int32_t i = 0; i < defines.size(); i++)
 	{
 		if (defines[i] == actualDefines[i])
 		{
@@ -296,11 +296,11 @@ unsigned int ShaderCompiler::GetPermutation(const std::vector<std::string>& defi
 	return res;
 }
 
-std::vector<std::string> ShaderCompiler::GetDefines(const std::vector<std::string>& defines, unsigned int permutation)
+std::vector<std::string> ShaderCompiler::GetDefines(const std::vector<std::string>& defines, uint32_t permutation)
 {
 	std::vector<std::string> res;
 
-	for (int define = 0; define < defines.size(); define++)
+	for (int32_t define = 0; define < defines.size(); define++)
 	{
 		if ((permutation >> define) & 1)
 		{
@@ -315,7 +315,7 @@ void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::st
 {
 	if (auto pShader = m_pInstance->LoadShaderAsset(assetUID).lock())
 	{
-		unsigned int permutation = GetPermutation(pShader->m_defines, defines);
+		uint32_t permutation = GetPermutation(pShader->m_defines, defines);
 
 		if (m_pInstance->m_shaderCache.IsExpired(assetUID, permutation))
 		{

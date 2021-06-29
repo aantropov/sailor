@@ -129,7 +129,7 @@ void ConsoleWindow::Update()
 	if (!result)
 		return;
 
-	for (unsigned int i = 0; i < num_events; ++i) {
+	for (uint32_t i = 0; i < num_events; ++i) {
 		INPUT_RECORD ir;
 		DWORD was_read;
 		result = ReadConsoleInputW(GetStdHandle(STD_INPUT_HANDLE), &ir, 1, &was_read);
@@ -195,12 +195,12 @@ void ConsoleWindow::Update()
 	}
 }
 
-unsigned int ConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
+uint32_t ConsoleWindow::Read(char* OutBuffer, uint32_t BufferSize)
 {
 	// find EOL
-	static const unsigned int NO_POS = 0xffffffff;
+	static const uint32_t NO_POS = 0xffffffff;
 	unsigned eol_pos = NO_POS;
-	for (unsigned int i = 0; i < BufferSize; ++i) {
+	for (uint32_t i = 0; i < BufferSize; ++i) {
 		if (m_buffer[i] == 13) {
 			eol_pos = i;
 			break;
@@ -210,7 +210,7 @@ unsigned int ConsoleWindow::Read(char* OutBuffer, unsigned int BufferSize)
 		return 0;
 
 	char* out = OutBuffer;
-	/*for (unsigned int i = 0; i < eol_pos; ++i) {
+	/*for (uint32_t i = 0; i < eol_pos; ++i) {
 		// crop if output string does not fit
 		if (buffer + buffer_size - out <= 4)
 			break;

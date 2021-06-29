@@ -26,7 +26,7 @@ namespace Sailor
 
 		Window m_viewportWindow;
 
-		unsigned int m_FPS = 0;
+		uint32_t m_FPS = 0;
 		float m_elapsedTime = 0.0f;
 
 		static EngineInstance* m_pInstance;

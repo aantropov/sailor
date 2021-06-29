@@ -12,7 +12,7 @@
 std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
 {
 	std::string out;
-	unsigned int codepoint = 0;
+	uint32_t codepoint = 0;
 	for (in; *in != 0; ++in)
 	{
 		if (*in >= 0xd800 && *in <= 0xdbff)
@@ -53,7 +53,7 @@ std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
 std::wstring Sailor::Utils::UTF8_to_wchar(const char* in)
 {
 	std::wstring out;
-	unsigned int codepoint;
+	uint32_t codepoint;
 	while (*in != 0)
 	{
 		unsigned char ch = static_cast<unsigned char>(*in);
