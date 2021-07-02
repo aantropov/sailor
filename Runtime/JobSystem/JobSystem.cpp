@@ -113,7 +113,7 @@ Scheduler::Scheduler()
 		m_workerThreads.emplace_back(new WorkerThread(this, threadName));
 	}
 
-	SAILOR_LOG("Initialize JobSystem. Cores count: %zd, Threads count: %zd", coresCount, m_workerThreads.size());
+	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Threads count: %d", coresCount, m_workerThreads.size());
 }
 
 Scheduler::~Scheduler()

@@ -17,9 +17,6 @@ namespace Sailor
 		{
 		public:
 
-			template<class TResult>
-			SAILOR_API void GetResult(TResult& outResult) const {}
-
 			virtual SAILOR_API float GetProgress() { return 0.0f; }
 			virtual SAILOR_API bool IsFinished() const { return false; }
 
@@ -38,7 +35,7 @@ namespace Sailor
 			std::atomic<uint32_t> m_numBlockers;
 			std::vector<IJob*> m_dependencies;
 			std::string m_name;
-			
+
 			friend class JobSystem;
 			friend class WorkerThread;
 		};
@@ -102,17 +99,17 @@ namespace Sailor
 			bool TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob);
 
 			void NotifyWorkerThread(bool bNotifyAllThreads = false);
-						
-		protected:						
+
+		protected:
 
 			Scheduler();
-			
+
 			std::mutex m_queueMutex;
 			std::condition_variable m_refresh;
 
 			std::list<std::shared_ptr<Job>> m_pJobsQueue;
 			std::atomic<uint32_t> m_bNumAvailiableJobs;
-			
+
 			std::vector<WorkerThread*> m_workerThreads;
 			std::atomic_bool m_bIsTerminating;
 

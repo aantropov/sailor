@@ -164,7 +164,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
 
-	std::vector<int> permutationsToCompile;
+	std::vector<uint32_t> permutationsToCompile;
 
 	for (uint32_t permutation = 0; permutation < NumPermutations; permutation++)
 	{
@@ -193,7 +193,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 	{
 		auto job = scheduler->CreateJob("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
 		{
-			SAILOR_LOG("Start compiling shader %zd", permutationsToCompile[i]);
+			SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
 			ForceCompilePermutation(assetUID, permutationsToCompile[i]);
 		});
 

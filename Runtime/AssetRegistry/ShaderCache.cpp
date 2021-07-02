@@ -276,7 +276,7 @@ void ShaderCache::SavePrecompiledGlsl(const UID& uid, uint32_t permutation, cons
 
 void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<char>& vertexSpirv, const std::vector<char>& fragmentSpirv)
 {
-	m_saveToCacheMutex.lock();
+	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
 
@@ -304,8 +304,6 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 	}
 
 	m_bIsDirty = true;
-
-	m_saveToCacheMutex.unlock();
 }
 
 bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<char>& vertexSpirv, std::vector<char>& fragmentSpirv) const
