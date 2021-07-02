@@ -187,7 +187,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 	{
 		SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
 		m_pInstance->m_shaderCache.SaveCache();
-	});
+	}, JobSystem::EThreadType::FileSystem);
 
 	for (uint32_t i = 0; i < permutationsToCompile.size(); i++)
 	{

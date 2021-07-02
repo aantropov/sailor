@@ -42,9 +42,9 @@ void IJob::Complete()
 	}
 }
 
-Job::Job(const std::string& name, const std::function<void()>& function) : IJob(name)
+Job::Job(const std::string& name, const std::function<void()>& function, EThreadType thread) : IJob(name, thread)
 {
-	m_function = function;	
+	m_function = function;
 }
 
 bool Job::IsReadyToStart() const
@@ -62,11 +62,12 @@ void Job::Execute()
 	m_function();
 }
 
-WorkerThread::WorkerThread(Scheduler* scheduler, const std::string& threadName)
+WorkerThread::WorkerThread(Scheduler* scheduler, const std::string& threadName, uint8_t allowedJobs)
 {
 	m_threadName = threadName;
 	m_scheduler = scheduler;
 	m_pThread = std::make_unique<std::thread>(&WorkerThread::Process, this);
+	m_allowedJobs = allowedJobs;
 }
 
 void WorkerThread::Join() const
@@ -81,7 +82,7 @@ void WorkerThread::Process()
 	{
 		std::unique_lock<std::mutex> lk(threadExecutionMutex);
 		m_scheduler->m_refresh.wait(lk, [this] { return  m_scheduler->TryFetchNextAvailiableJob(m_pJob) || (bool)m_scheduler->m_bIsTerminating; });
-		
+
 		if (m_pJob)
 		{
 			m_scheduler->NotifyWorkerThread();
@@ -90,7 +91,7 @@ void WorkerThread::Process()
 			m_pJob->Complete();
 			m_pJob = nullptr;
 		}
-		
+
 		lk.unlock();
 	}
 }
@@ -105,12 +106,18 @@ Scheduler::Scheduler()
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numThreads = max(1, coresCount - 2);
 
-	m_workerThreads.emplace_back(new WorkerThread(this, "Rendering Thread"));
+	m_workerThreads.emplace_back(new WorkerThread(this, "Rendering Thread", (uint8_t)EThreadType::Rendering));
 
 	for (uint32_t i = 0; i < numThreads; i++)
 	{
 		std::string threadName = std::string("Worker Thread ") + std::to_string(i);
-		m_workerThreads.emplace_back(new WorkerThread(this, threadName));
+		uint8_t jobMask = (uint8_t)EThreadType::Worker;
+		if (i == 0)
+		{
+			jobMask |= (uint8_t)EThreadType::FileSystem;
+		}
+
+		m_workerThreads.emplace_back(new WorkerThread(this, threadName, jobMask));
 	}
 
 	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Threads count: %d", coresCount, m_workerThreads.size());
@@ -133,9 +140,9 @@ Scheduler::~Scheduler()
 	m_workerThreads.clear();
 }
 
-std::shared_ptr<Job> Scheduler::CreateJob(const std::string& name, const std::function<void()>& lambda)
+std::shared_ptr<Job> Scheduler::CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread)
 {
-	return std::make_shared<Job>(name, lambda);
+	return std::make_shared<Job>(name, lambda, thread);
 }
 
 uint32_t Scheduler::GetNumWorkerThreads() const
@@ -159,7 +166,12 @@ bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob)
 
 	if (!m_pJobsQueue.empty())
 	{
-		auto result = std::find_if(m_pJobsQueue.cbegin(), m_pJobsQueue.cend(), [&](std::shared_ptr<Job> job) { return job->IsReadyToStart(); });
+		const auto result = std::find_if(m_pJobsQueue.cbegin(), m_pJobsQueue.cend(),
+			[&](const std::shared_ptr<Job>& job)
+		{
+			return job->IsReadyToStart();
+		});
+
 		if (result != m_pJobsQueue.cend())
 		{
 			pOutJob = *result;

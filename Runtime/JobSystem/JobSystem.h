@@ -13,6 +13,14 @@ namespace Sailor
 		class WorkerThread;
 		class Scheduler;
 
+		enum class EThreadType : uint8_t
+		{
+			System = 0,
+			Rendering = 1,
+			Worker = 2,
+			FileSystem = 4
+		};
+
 		class IJob
 		{
 		public:
@@ -30,14 +38,13 @@ namespace Sailor
 
 		protected:
 
-			IJob(const std::string& name) : m_numBlockers(0), m_name(name) {}
+			IJob(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_thread(thread) {}
 
 			std::atomic<uint32_t> m_numBlockers;
 			std::vector<IJob*> m_dependencies;
 			std::string m_name;
 
-			friend class JobSystem;
-			friend class WorkerThread;
+			EThreadType m_thread;
 		};
 
 		class Job : public IJob
@@ -50,7 +57,7 @@ namespace Sailor
 			virtual bool IsFinished() const override;
 			virtual void Execute() override;
 
-			Job(const std::string& name, const std::function<void()>& function);
+			Job(const std::string& name, const std::function<void()>& function, EThreadType thread);
 
 		protected:
 
@@ -62,7 +69,7 @@ namespace Sailor
 		{
 		public:
 
-			WorkerThread(Scheduler* scheduler, const std::string& threadName);
+			WorkerThread(Scheduler* scheduler, const std::string& threadName, uint8_t allowedJobs);
 			virtual ~WorkerThread() = default;
 
 			void ForcelyAssignJob(const std::shared_ptr<Job>& pJob);
@@ -80,7 +87,7 @@ namespace Sailor
 			std::atomic_bool m_bIsBusy;
 			std::shared_ptr<Job> m_pJob;
 
-			friend class IJob;
+			uint8_t m_allowedJobs;
 		};
 
 		class Scheduler final : public Singleton<Scheduler>
@@ -93,7 +100,7 @@ namespace Sailor
 
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 
-			static SAILOR_API std::shared_ptr<Job> CreateJob(const std::string& name, const std::function<void()>& lambda);
+			static SAILOR_API std::shared_ptr<Job> CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread = EThreadType::Worker);
 			SAILOR_API void Run(const std::shared_ptr<Job>& pJob);
 
 			bool TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob);
@@ -108,12 +115,10 @@ namespace Sailor
 			std::condition_variable m_refresh;
 
 			std::list<std::shared_ptr<Job>> m_pJobsQueue;
-			std::atomic<uint32_t> m_bNumAvailiableJobs;
 
 			std::vector<WorkerThread*> m_workerThreads;
 			std::atomic_bool m_bIsTerminating;
 
-			friend class IJob;
 			friend class WorkerThread;
 		};
 	}
