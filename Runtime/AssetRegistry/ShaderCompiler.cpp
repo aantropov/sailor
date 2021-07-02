@@ -15,6 +15,8 @@
 #include <thread>
 #include <mutex>
 
+#include "JobSystem/JobSystem.h"
+
 #ifdef _DEBUG
 #pragma comment(lib, "shaderc_combinedd.lib")
 #else
@@ -85,8 +87,8 @@ void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::
 	vector<size_t> beginCodeTagLocations;
 	vector<size_t> endCodeTagLocations;
 
-	Utils::FindAllOccurances(outCodeInJSON, std::string(BeginCodeTag), beginCodeTagLocations);
-	Utils::FindAllOccurances(outCodeInJSON, std::string(EndCodeTag), endCodeTagLocations);
+	Utils::FindAllOccurances(outCodeInJSON, std::string(JsonBeginCodeTag), beginCodeTagLocations);
+	Utils::FindAllOccurances(outCodeInJSON, std::string(JsonEndCodeTag), endCodeTagLocations);
 
 	if (beginCodeTagLocations.size() != endCodeTagLocations.size())
 	{
@@ -103,13 +105,13 @@ void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::
 
 		std::vector<size_t> endls;
 		Utils::FindAllOccurances(outCodeInJSON, std::string{ '\n' }, endls, beginLocation, endLocation);
-		shift += endls.size() * size_t(strlen(EndLineTag) - 1);
+		shift += endls.size() * size_t(strlen(JsonEndLineTag) - 1);
 
-		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, EndLineTag, beginLocation, endLocation);
+		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, JsonEndLineTag, beginLocation, endLocation);
 	}
 
-	Utils::ReplaceAll(outCodeInJSON, BeginCodeTag, std::string{ '\"' } + BeginCodeTag);
-	Utils::ReplaceAll(outCodeInJSON, EndCodeTag, EndCodeTag + std::string{ '\"' });
+	Utils::ReplaceAll(outCodeInJSON, JsonBeginCodeTag, std::string{ '\"' } + JsonBeginCodeTag);
+	Utils::ReplaceAll(outCodeInJSON, JsonEndCodeTag, JsonEndCodeTag + std::string{ '\"' });
 	Utils::ReplaceAll(outCodeInJSON, std::string{ '\t' }, std::string{ ' ' });
 }
 
@@ -117,9 +119,9 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 {
 	outPureGLSL = shaderText;
 
-	Utils::ReplaceAll(outPureGLSL, EndLineTag, std::string{ '\n' });
-	Utils::ReplaceAll(outPureGLSL, BeginCodeTag, std::string{ ' ' });
-	Utils::ReplaceAll(outPureGLSL, EndCodeTag, std::string{ ' ' });
+	Utils::ReplaceAll(outPureGLSL, JsonEndLineTag, std::string{ '\n' });
+	Utils::ReplaceAll(outPureGLSL, JsonBeginCodeTag, std::string{ ' ' });
+	Utils::ReplaceAll(outPureGLSL, JsonEndCodeTag, std::string{ ' ' });
 
 	return true;
 }
@@ -172,50 +174,33 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 		}
 	}
 
-	if (permutationsToCompile.size() == 0)
+	if (permutationsToCompile.empty())
 	{
 		return;
 	}
 
-	const uint32_t MaxThreads = 12;
-	std::mutex logMutex;
-	std::array<std::thread, MaxThreads> threadsPool;
+	auto scheduler = JobSystem::Scheduler::GetInstance();
 
-	const uint32_t NumActiveThreads = min((uint32_t)permutationsToCompile.size(), MaxThreads);
-	const uint32_t PermutationsPerThread = (uint32_t)min(permutationsToCompile.size(), permutationsToCompile.size() / NumActiveThreads);
+	SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.size());
 
-	SAILOR_LOG("Compiling shader: %s Num threads: %d Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), NumActiveThreads, permutationsToCompile.size());
-
-	for (uint32_t i = 0; i < NumActiveThreads; i++)
+	auto saveCacheJob = scheduler->CreateJob("Save Shader Cache", [=]()
 	{
-		const uint32_t start = i * PermutationsPerThread;
-		const uint32_t end = (uint32_t)(i == NumActiveThreads - 1 ? permutationsToCompile.size() : min(permutationsToCompile.size(), start + PermutationsPerThread));
+		SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
+		m_pInstance->m_shaderCache.SaveCache();
+	});
 
-		threadsPool[i] = std::thread([&logMutex, start, end, &pShader, &assetUID, &permutationsToCompile]()
-			{
-				logMutex.lock();
-				std::cout << "Start compiling shaders from " << start << " to " << end << endl;
-				logMutex.unlock();
-
-				for (uint32_t permutationIndex = start; permutationIndex < end; permutationIndex++)
-				{
-					ForceCompilePermutation(assetUID, permutationsToCompile[permutationIndex]);
-				}
-
-				logMutex.lock();
-				std::cout << "Compiled " << start << " to " << end << endl;
-				logMutex.unlock();
-			});
-	}
-
-	for (uint32_t i = 0; i < NumActiveThreads; i++)
+	for (uint32_t i = 0; i < permutationsToCompile.size(); i++)
 	{
-		threadsPool[i].join();
+		auto job = scheduler->CreateJob("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
+		{
+			SAILOR_LOG("Start compiling shader %zd", permutationsToCompile[i]);
+			ForceCompilePermutation(assetUID, permutationsToCompile[i]);
+		});
+
+		saveCacheJob->Wait(job);
+		scheduler->Run(job);
 	}
-
-	SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
-
-	m_pInstance->m_shaderCache.SaveCache();
+	scheduler->Run(saveCacheJob);
 }
 
 std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)

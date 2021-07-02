@@ -9,4 +9,3 @@ void ns::from_json(const nlohmann::json& j, class Sailor::IJsonSerializable& p)
 {
 	p.Deserialize(j);
 }
-

@@ -39,6 +39,7 @@ namespace Sailor
 		static SAILOR_API void Initialize();
 
 		static SAILOR_API void CompileAllPermutations(const UID& assetUID);
+
 		SAILOR_API std::weak_ptr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
 		static SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, std::vector<char>& outVertexByteCode, std::vector<char>& outFragmentByteCode);
@@ -56,14 +57,14 @@ namespace Sailor
 
 		static SAILOR_API void ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
 		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, const std::string& filename, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<char>& outByteCode);
-		
+
 		static SAILOR_API uint32_t GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines);
 		static SAILOR_API std::vector<std::string> GetDefines(const std::vector<std::string>& defines, uint32_t permutation);
 
 	private:
 
-		static constexpr char const* BeginCodeTag = "BEGIN_CODE";
-		static constexpr char const* EndCodeTag = "END_CODE";
-		static constexpr char const* EndLineTag = " END_LINE ";
+		static constexpr char const* JsonBeginCodeTag = "BEGIN_CODE";
+		static constexpr char const* JsonEndCodeTag = "END_CODE";
+		static constexpr char const* JsonEndLineTag = " END_LINE ";
 	};
 }

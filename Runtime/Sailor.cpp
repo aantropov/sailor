@@ -4,6 +4,7 @@
 #include "Foundation/ConsoleWindow.h"
 #include "Foundation/Input.h"
 #include "GfxDevice/GfxDeviceVulkan.h"
+#include "JobSystem/JobSystem.h"
 
 using namespace Sailor;
 
@@ -20,9 +21,9 @@ void EngineInstance::Initialize()
 
 	ConsoleWindow::Initialize(false);
 
-//#ifdef _DEBUG
+	//#ifdef _DEBUG
 	ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
-//#endif
+	//#endif
 
 	m_pInstance = new EngineInstance();
 	m_pInstance->m_viewportWindow.Create(L"Sailor Viewport", 1024, 768);
@@ -36,11 +37,12 @@ void EngineInstance::Initialize()
 #endif 
 
 	GfxDeviceVulkan::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
-	AssetRegistry::Initialize();	
+	AssetRegistry::Initialize();
 	ShaderCompiler::Initialize();
+	JobSystem::Scheduler::Initialize();
 
 	ShaderCompiler::GetInstance();
-	
+
 	SAILOR_LOG("Sailor Engine initialized");
 }
 
@@ -112,6 +114,7 @@ void EngineInstance::Shutdown()
 	GfxDeviceVulkan::Shutdown();
 	ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
+	JobSystem::Scheduler::Shutdown();
 
 	delete m_pInstance;
 }
@@ -121,3 +124,4 @@ Window& EngineInstance::GetViewportWindow()
 	return m_pInstance->m_viewportWindow;
 }
 
+std::mutex m_logMutex;
