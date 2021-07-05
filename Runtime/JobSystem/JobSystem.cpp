@@ -3,13 +3,14 @@
 #include <fcntl.h>
 #include <conio.h>
 #include <mutex>
+#include <set>
 #include <string>
 #include "Utils.h"
 
 using namespace Sailor;
 using namespace Sailor::JobSystem;
 
-void IJob::Wait(std::weak_ptr<IJob> job)
+void IJob::Wait(const std::weak_ptr<IJob>& job)
 {
 	job.lock()->m_dependencies.emplace_back(this);
 	++m_numBlockers;
@@ -25,20 +26,21 @@ void IJob::WaitAll(const std::vector<std::weak_ptr<IJob>>& jobs)
 
 void IJob::Complete()
 {
-	uint32_t numUnlockedJobs = 0;
+	std::unordered_map<EThreadType, uint32_t> threadTypesToRefresh;
+
 	for (auto& job : m_dependencies)
 	{
 		if (--job->m_numBlockers == 0)
 		{
-			numUnlockedJobs++;
+			threadTypesToRefresh[job->GetThreadType()]++;
 		}
 	}
 
 	m_dependencies.clear();
 
-	if (numUnlockedJobs > 0)
+	for (auto& threadType : threadTypesToRefresh)
 	{
-		Scheduler::GetInstance()->NotifyWorkerThread(numUnlockedJobs > 1);
+		Scheduler::GetInstance()->NotifyWorkerThread(threadType.first, threadType.second > 1);
 	}
 }
 
@@ -62,12 +64,19 @@ void Job::Execute()
 	m_function();
 }
 
-WorkerThread::WorkerThread(Scheduler* scheduler, const std::string& threadName, uint8_t allowedJobs)
+WorkerThread::WorkerThread(
+	std::string threadName,
+	EThreadType threadType,
+	std::condition_variable& refresh,
+	std::mutex& mutex,
+	std::list<std::shared_ptr<Job>>& pJobsQueue) :
+	m_threadName(std::move(threadName)),
+	m_threadType(threadType),
+	m_refresh(refresh),
+	m_mutex(mutex),
+	m_pJobsQueue(pJobsQueue)
 {
-	m_threadName = threadName;
-	m_scheduler = scheduler;
 	m_pThread = std::make_unique<std::thread>(&WorkerThread::Process, this);
-	m_allowedJobs = allowedJobs;
 }
 
 void WorkerThread::Join() const
@@ -77,19 +86,21 @@ void WorkerThread::Join() const
 
 void WorkerThread::Process()
 {
+	Scheduler* scheduler = Scheduler::GetInstance();
+
 	std::mutex threadExecutionMutex;
-	while (!m_scheduler->m_bIsTerminating)
+	while (!scheduler->m_bIsTerminating)
 	{
 		std::unique_lock<std::mutex> lk(threadExecutionMutex);
-		m_scheduler->m_refresh.wait(lk, [this] { return  m_scheduler->TryFetchNextAvailiableJob(m_pJob) || (bool)m_scheduler->m_bIsTerminating; });
+		m_refresh.wait(lk, [this, scheduler] { return  scheduler->TryFetchNextAvailiableJob(m_pJob, m_threadType) || (bool)scheduler->m_bIsTerminating; });
 
 		if (m_pJob)
 		{
-			m_scheduler->NotifyWorkerThread();
-
 			m_pJob->Execute();
 			m_pJob->Complete();
 			m_pJob = nullptr;
+
+			scheduler->NotifyWorkerThread(m_threadType);
 		}
 
 		lk.unlock();
@@ -99,34 +110,49 @@ void WorkerThread::Process()
 void Scheduler::Initialize()
 {
 	m_pInstance = new Scheduler();
-}
 
-Scheduler::Scheduler()
-{
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numThreads = max(1, coresCount - 2);
 
-	m_workerThreads.emplace_back(new WorkerThread(this, "Rendering Thread", (uint8_t)EThreadType::Rendering));
+	WorkerThread* newRenderingThread = new WorkerThread(
+		"Rendering Thread",
+		EThreadType::Rendering,
+		m_pInstance->m_refreshCondVar[(uint32_t)EThreadType::Rendering],
+		m_pInstance->m_queueMutex[(uint32_t)EThreadType::Rendering],
+		m_pInstance->m_pJobsQueue[(uint32_t)EThreadType::Rendering]);
+
+	m_pInstance->m_workerThreads.emplace_back(newRenderingThread);
+
+	WorkerThread* newFilesystemThread = new WorkerThread(
+		"Filesystem Thread",
+		EThreadType::FileSystem,
+		m_pInstance->m_refreshCondVar[(uint32_t)EThreadType::FileSystem],
+		m_pInstance->m_queueMutex[(uint32_t)EThreadType::FileSystem],
+		m_pInstance->m_pJobsQueue[(uint32_t)EThreadType::FileSystem]);
+
+	m_pInstance->m_workerThreads.emplace_back(newFilesystemThread);
 
 	for (uint32_t i = 0; i < numThreads; i++)
 	{
-		std::string threadName = std::string("Worker Thread ") + std::to_string(i);
-		uint8_t jobMask = (uint8_t)EThreadType::Worker;
-		if (i == 0)
-		{
-			jobMask |= (uint8_t)EThreadType::FileSystem;
-		}
+		const std::string threadName = std::string("Worker Thread ") + std::to_string(i);
+		WorkerThread* newThread = new WorkerThread(threadName, EThreadType::Worker,
+			m_pInstance->m_refreshCondVar[(uint32_t)EThreadType::Worker],
+			m_pInstance->m_queueMutex[(uint32_t)EThreadType::Worker],
+			m_pInstance->m_pJobsQueue[(uint32_t)EThreadType::Worker]);
 
-		m_workerThreads.emplace_back(new WorkerThread(this, threadName, jobMask));
+		m_pInstance->m_workerThreads.emplace_back(newThread);
 	}
 
-	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Threads count: %d", coresCount, m_workerThreads.size());
+	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Threads count: %zd", coresCount, m_pInstance->m_workerThreads.size());
 }
 
 Scheduler::~Scheduler()
 {
 	m_bIsTerminating = true;
-	NotifyWorkerThread(true);
+
+	NotifyWorkerThread(EThreadType::Worker, true);
+	NotifyWorkerThread(EThreadType::FileSystem, true);
+	NotifyWorkerThread(EThreadType::Rendering, true);
 
 	for (auto& worker : m_workerThreads)
 	{
@@ -153,29 +179,53 @@ uint32_t Scheduler::GetNumWorkerThreads() const
 void Scheduler::Run(const std::shared_ptr<Job>& pJob)
 {
 	{
-		const std::lock_guard<std::mutex> lock(m_queueMutex);
-		m_pJobsQueue.push_back(pJob);
+		std::mutex* pOutMutex;
+		std::list<std::shared_ptr<Job>>* pOutQueue;
+		std::condition_variable* pOutCondVar;
+
+		GetThreadSyncVarsByThreadType(pJob->GetThreadType(), pOutMutex, pOutQueue, pOutCondVar);
+
+		const std::lock_guard<std::mutex> lock(*pOutMutex);
+		pOutQueue->push_back(pJob);
 	}
 
-	NotifyWorkerThread();
+	NotifyWorkerThread(pJob->GetThreadType());
 }
 
-bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob)
+void Scheduler::GetThreadSyncVarsByThreadType(
+	EThreadType threadType,
+	std::mutex*& pOutMutex,
+	std::list<std::shared_ptr<Job>>*& pOutQueue,
+	std::condition_variable*& pOutCondVar)
 {
-	const std::lock_guard<std::mutex> lock(m_queueMutex);
 
-	if (!m_pJobsQueue.empty())
+	pOutMutex = &m_queueMutex[(uint32_t)threadType];
+	pOutQueue = &m_pJobsQueue[(uint32_t)threadType];
+	pOutCondVar = &m_refreshCondVar[(uint32_t)threadType];
+}
+
+bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob, EThreadType threadType)
+{
+	std::mutex* pOutMutex;
+	std::list<std::shared_ptr<Job>>* pOutQueue;
+	std::condition_variable* pOutCondVar;
+
+	GetThreadSyncVarsByThreadType(threadType, pOutMutex, pOutQueue, pOutCondVar);
+
+	const std::lock_guard<std::mutex> lock(*pOutMutex);
+
+	if (!(*pOutQueue).empty())
 	{
-		const auto result = std::find_if(m_pJobsQueue.cbegin(), m_pJobsQueue.cend(),
+		const auto result = std::find_if((*pOutQueue).cbegin(), (*pOutQueue).cend(),
 			[&](const std::shared_ptr<Job>& job)
 		{
 			return job->IsReadyToStart();
 		});
 
-		if (result != m_pJobsQueue.cend())
+		if (result != (*pOutQueue).cend())
 		{
 			pOutJob = *result;
-			m_pJobsQueue.erase(result);
+			(*pOutQueue).erase(result);
 
 			return true;
 		}
@@ -184,14 +234,20 @@ bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob)
 	return false;
 }
 
-void Scheduler::NotifyWorkerThread(bool bNotifyAllThreads)
+void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads)
 {
+	std::mutex* pOutMutex;
+	std::list<std::shared_ptr<Job>>* pOutQueue;
+	std::condition_variable* pOutCondVar;
+
+	GetThreadSyncVarsByThreadType(threadType, pOutMutex, pOutQueue, pOutCondVar);
+
 	if (bNotifyAllThreads)
 	{
-		m_refresh.notify_all();
+		pOutCondVar->notify_all();
 	}
 	else
 	{
-		m_refresh.notify_one();
+		pOutCondVar->notify_one();
 	}
 }

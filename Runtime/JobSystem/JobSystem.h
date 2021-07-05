@@ -15,10 +15,9 @@ namespace Sailor
 
 		enum class EThreadType : uint8_t
 		{
-			System = 0,
-			Rendering = 1,
-			Worker = 2,
-			FileSystem = 4
+			Rendering = 0,
+			Worker = 1,
+			FileSystem = 2
 		};
 
 		class IJob
@@ -28,36 +27,38 @@ namespace Sailor
 			virtual SAILOR_API float GetProgress() { return 0.0f; }
 			virtual SAILOR_API bool IsFinished() const { return false; }
 
-			virtual void Complete();
-			virtual void Execute() = 0;
+			virtual SAILOR_API void Complete();
+			virtual SAILOR_API void Execute() = 0;
 
 			virtual SAILOR_API ~IJob() = default;
 
-			void Wait(std::weak_ptr<IJob> job);
-			void WaitAll(const std::vector<std::weak_ptr<IJob>>& jobs);
+			SAILOR_API void Wait(const std::weak_ptr<IJob>& job);
+			SAILOR_API void WaitAll(const std::vector<std::weak_ptr<IJob>>& jobs);
+
+			EThreadType GetThreadType() const { return m_threadType; }
 
 		protected:
 
-			IJob(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_thread(thread) {}
+			SAILOR_API IJob(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_threadType(thread) {}
 
 			std::atomic<uint32_t> m_numBlockers;
 			std::vector<IJob*> m_dependencies;
 			std::string m_name;
 
-			EThreadType m_thread;
+			EThreadType m_threadType;
 		};
 
 		class Job : public IJob
 		{
 		public:
 
-			virtual ~Job() = default;
+			virtual SAILOR_API ~Job() = default;
 
-			bool IsReadyToStart() const;
-			virtual bool IsFinished() const override;
-			virtual void Execute() override;
+			SAILOR_API bool IsReadyToStart() const;
+			virtual SAILOR_API bool IsFinished() const override;
+			virtual SAILOR_API void Execute() override;
 
-			Job(const std::string& name, const std::function<void()>& function, EThreadType thread);
+			SAILOR_API Job(const std::string& name, const std::function<void()>& function, EThreadType thread);
 
 		protected:
 
@@ -69,17 +70,26 @@ namespace Sailor
 		{
 		public:
 
-			WorkerThread(Scheduler* scheduler, const std::string& threadName, uint8_t allowedJobs);
-			virtual ~WorkerThread() = default;
+			SAILOR_API WorkerThread(
+				std::string threadName,
+				EThreadType threadType,
+				std::condition_variable& refresh,
+				std::mutex& mutex,
+				std::list<std::shared_ptr<Job>>& pJobsQueue);
 
-			void ForcelyAssignJob(const std::shared_ptr<Job>& pJob);
 
-			void Process();
-			void Join() const;
+			virtual SAILOR_API ~WorkerThread() = default;
+
+			SAILOR_API WorkerThread(WorkerThread&& move) = delete;
+			SAILOR_API WorkerThread(WorkerThread& copy) = delete;
+			SAILOR_API WorkerThread& operator =(WorkerThread& rhs) = delete;
+
+			SAILOR_API void ForcelyAssignJob(const std::shared_ptr<Job>& pJob);
+
+			SAILOR_API void Process();
+			SAILOR_API void Join() const;
 
 		protected:
-
-			Scheduler* m_scheduler;
 
 			std::string m_threadName;
 			std::unique_ptr<std::thread> m_pThread;
@@ -87,7 +97,12 @@ namespace Sailor
 			std::atomic_bool m_bIsBusy;
 			std::shared_ptr<Job> m_pJob;
 
-			uint8_t m_allowedJobs;
+			EThreadType m_threadType;
+
+			// Assigned from scheduler
+			std::condition_variable& m_refresh;
+			std::mutex& m_mutex;
+			std::list<std::shared_ptr<Job>>& m_pJobsQueue;
 		};
 
 		class Scheduler final : public Singleton<Scheduler>
@@ -96,26 +111,32 @@ namespace Sailor
 
 			static SAILOR_API void Initialize();
 
-			virtual ~Scheduler() override;
+			virtual SAILOR_API ~Scheduler() override;
 
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 
 			static SAILOR_API std::shared_ptr<Job> CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread = EThreadType::Worker);
 			SAILOR_API void Run(const std::shared_ptr<Job>& pJob);
 
-			bool TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob);
+			SAILOR_API bool TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob, EThreadType threadType);
 
-			void NotifyWorkerThread(bool bNotifyAllThreads = false);
+			SAILOR_API void NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads = false);
 
 		protected:
 
-			Scheduler();
+			SAILOR_API void GetThreadSyncVarsByThreadType(
+				EThreadType threadType,
+				std::mutex*& pOutMutex,
+				std::list<std::shared_ptr<Job>>*& pOutQueue,
+				std::condition_variable*& pOutCondVar);
 
-			std::mutex m_queueMutex;
-			std::condition_variable m_refresh;
+			SAILOR_API Scheduler() = default;
 
-			std::list<std::shared_ptr<Job>> m_pJobsQueue;
+			std::mutex m_queueMutex[3];
+			std::condition_variable m_refreshCondVar[3];
+			std::list<std::shared_ptr<Job>> m_pJobsQueue[3];
 
+			std::atomic<uint32_t> m_numBusyThreads;
 			std::vector<WorkerThread*> m_workerThreads;
 			std::atomic_bool m_bIsTerminating;
 
