@@ -3,11 +3,13 @@
 #include <sys/stat.h>
 #ifndef WIN32
 #include <unistd.h>
-#endif
-
-#ifdef WIN32
 #define stat _stat
 #endif
+
+#include <algorithm> 
+#include <functional> 
+#include <cctype>
+#include <locale>
 
 std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
 {
@@ -134,6 +136,20 @@ void Sailor::Utils::ReplaceAll(std::string& str, const std::string& from, const 
 	}
 }
 
+void Sailor::Utils::Erase(std::string& str, const std::string& substr, size_t startPosition, size_t endLocation)
+{
+	while ((startPosition = str.find(substr, startPosition)) < endLocation)
+	{
+		str = str.erase(startPosition, substr.length());
+
+		// Handles case where 'to' is a substring of 'from'
+		startPosition += substr.length();
+
+		size_t maxJump = std::string::npos - endLocation;
+		endLocation += min(maxJump, substr.length());
+	}
+}
+
 std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
 {
 	struct stat result;
@@ -152,4 +168,11 @@ void Sailor::Utils::FindAllOccurances(std::string& str, const std::string& subst
 		outLocations.push_back(pos);
 		pos = str.find(substr, pos + 1);
 	}
+}
+
+void Sailor::Utils::Trim(std::string& s)
+{
+	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+		return !std::isspace(ch);
+	}));
 }

@@ -23,8 +23,36 @@ namespace Sailor
 		virtual SAILOR_API ~AssetRegistry() override;
 
 		static SAILOR_API void Initialize();
-		static SAILOR_API bool ReadFile(const std::string& filename, std::vector<char>& buffer);
-		static SAILOR_API bool ReadFile(const std::string& filename, std::string& text);
+
+		template<typename T>
+		static bool ReadBinaryFile(const std::string& filename, std::vector<T>& buffer)
+		{
+			std::ifstream file(filename, std::ios::ate | std::ios::binary);
+			file.unsetf(std::ios::skipws);
+
+			if (!file.is_open())
+			{
+				return false;
+			}
+
+			size_t fileSize = (size_t)file.tellg();
+			buffer.clear();
+
+			size_t mod = fileSize % sizeof(T);
+			size_t size = fileSize / sizeof(T) + (mod ? 1 : 0);
+			buffer.resize(size);
+			
+			//buffer.resize(fileSize / sizeof(T));
+
+			file.seekg(0, std::ios::beg);
+			file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
+
+			file.close();
+			return true;
+		}
+
+		
+		static SAILOR_API bool ReadAllTextFile(const std::string& filename, std::string& text);
 
 		SAILOR_API void ScanContentFolder();
 		

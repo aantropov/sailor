@@ -20,27 +20,7 @@ void AssetRegistry::Initialize()
 	m_pInstance->ScanContentFolder();
 }
 
-bool AssetRegistry::ReadFile(const std::string& filename, std::vector<char>& buffer)
-{
-	std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-	if (!file.is_open())
-	{
-		return false;
-	}
-
-	size_t fileSize = (size_t)file.tellg();
-	buffer.clear();
-	buffer.reserve(fileSize);
-
-	file.seekg(0);
-	file >> buffer.data();
-
-	file.close();
-	return true;
-}
-
-bool AssetRegistry::ReadFile(const std::string& filename, std::string& text)
+bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& text)
 {
 	constexpr auto readSize = std::size_t{ 4096 };
 	auto stream = std::ifstream{ filename.data() };

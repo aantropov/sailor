@@ -274,7 +274,7 @@ void ShaderCache::SavePrecompiledGlsl(const UID& uid, uint32_t permutation, cons
 	}
 }
 
-void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<char>& vertexSpirv, const std::vector<char>& fragmentSpirv)
+void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv)
 {
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
@@ -291,11 +291,11 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 	newEntry->m_timestamp = assetInfo->GetAssetLastModificationTime();
 
 	std::ofstream vertexCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, "VERTEX", true), std::ofstream::binary);
-	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.size() * sizeof(char));
+	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.size() * sizeof(uint32_t));
 	vertexCompiled.close();
 
 	std::ofstream fragmentCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, "FRAGMENT", true), std::ofstream::binary);
-	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.size() * sizeof(char));
+	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.size() * sizeof(uint32_t));
 	fragmentCompiled.close();
 
 	if (!bAlreadyContains)
@@ -306,7 +306,7 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 	m_bIsDirty = true;
 }
 
-bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<char>& vertexSpirv, std::vector<char>& fragmentSpirv) const
+bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<uint32_t>& vertexSpirv, std::vector<uint32_t>& fragmentSpirv) const
 {
 	if (IsExpired(uid, permutation))
 	{
@@ -320,8 +320,8 @@ bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, std::vector
 	std::string vertexFilepath = GetCachedShaderFilepath((*it)->m_UID, (*it)->m_permutation, "VERTEX", true);
 	std::string fragmentFilepath = GetCachedShaderFilepath((*it)->m_UID, (*it)->m_permutation, "FRAGMENT", true);
 
-	AssetRegistry::ReadFile(vertexFilepath, vertexSpirv);
-	AssetRegistry::ReadFile(fragmentFilepath, fragmentSpirv);
+	AssetRegistry::ReadBinaryFile(vertexFilepath, vertexSpirv);
+	AssetRegistry::ReadBinaryFile(fragmentFilepath, fragmentSpirv);
 
 	return true;
 }

@@ -14,7 +14,8 @@ namespace Sailor
 	class GfxDeviceVulkan : public Singleton<GfxDeviceVulkan>
 	{
 	public:
-
+		const int MAX_FRAMES_IN_FLIGHT = 2;
+		
 		struct QueueFamilyIndices
 		{
 			std::optional<uint32_t> m_graphicsFamily;
@@ -43,12 +44,16 @@ namespace Sailor
 
 		static SAILOR_API void GetRequiredDeviceExtensions(std::vector<const char*>& requiredDeviceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
 
-		static SAILOR_API VkShaderModule CreateShaderModule(const std::vector<char>& inCode);
+		static SAILOR_API VkShaderModule CreateShaderModule(const std::vector<uint32_t>& inCode);
 
 		virtual SAILOR_API ~GfxDeviceVulkan() override;
 
+		void SAILOR_API DrawFrame();
+	
 	private:
 
+		size_t m_currentFrame = 0;
+		
 		static SAILOR_API bool SetupDebugCallback();
 		static SAILOR_API VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
 		static SAILOR_API void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator);
@@ -66,18 +71,32 @@ namespace Sailor
 		SAILOR_API void CreateWin32Surface(const Window* pViewport);
 		SAILOR_API void CreateSwapchain(const Window* pViewport);
 		SAILOR_API void CreateGraphicsPipeline();
-		
+		SAILOR_API void CreateRenderPass();
+		SAILOR_API void CreateFramebuffers();
+		SAILOR_API void CreateCommandPool();
+		SAILOR_API void CreateCommandBuffers();
+		SAILOR_API void CreateFrameSyncSemaphores();
+
 		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return m_pInstance->m_vkInstance; }
 
 		bool bIsEnabledValidationLayers = false;
 		VkInstance m_vkInstance = 0;
+
+		// Command pool
+		VkCommandPool m_commandPool;
+		std::vector<VkCommandBuffer> m_commandBuffers;
+
+		// Render Pass
+		VkRenderPass m_renderPass = 0;
+		VkPipelineLayout m_pipelineLayout = 0;
+		VkPipeline m_graphicsPipeline = 0;
 
 		// Queuees
 		VkQueue m_graphicsQueue = 0;
 		VkQueue m_presentQueue = 0;
 
 		VkSurfaceKHR m_surface = 0;
-		
+
 		VkDebugUtilsMessengerEXT m_debugMessenger = 0;
 
 		VkPhysicalDevice m_mainPhysicalDevice = 0;
@@ -88,10 +107,18 @@ namespace Sailor
 		VkSwapchainKHR m_swapChain = 0;
 		std::vector<VkImage> m_swapChainImages;
 		std::vector<VkImageView> m_swapChainImageViews;
+		std::vector<VkFramebuffer> m_swapChainFramebuffers;
+		VkExtent2D m_swapChainExtent;
 
 		// Choosen swapchain formats
-		VkSurfaceFormatKHR m_surfaceFormat;		
+		VkSurfaceFormatKHR m_surfaceFormat;
 		VkPresentModeKHR m_presentMode;
-		VkExtent2D m_extent;
+
+		// Frame sync
+		std::vector<VkSemaphore> m_imageAvailableSemaphores;
+		std::vector<VkSemaphore> m_renderFinishedSemaphores;
+		std::vector<VkFence> m_syncFences;
+		std::vector<VkFence> m_syncImages;
+		size_t currentFrame = 0;
 	};
 }

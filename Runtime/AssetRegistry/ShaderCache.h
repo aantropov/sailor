@@ -25,8 +25,8 @@ namespace Sailor
 		SAILOR_API void Shutdown();
 
 		SAILOR_API void SavePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const;
-		SAILOR_API void CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<char>& vertexSpirv, const std::vector<char>& fragmentSpirv);
-		SAILOR_API bool GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<char>& vertexSpirv, std::vector<char>& fragmentSpirv) const;
+		SAILOR_API void CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv);
+		SAILOR_API bool GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<uint32_t>& vertexSpirv, std::vector<uint32_t>& fragmentSpirv) const;
 
 		SAILOR_API void Remove(const UID& uid);
 
@@ -75,6 +75,6 @@ namespace Sailor
 
 		ShaderCacheData m_cache;
 		bool m_bIsDirty = false;
-		bool m_bSavePrecompiledGlsl = false;
+		bool m_bSavePrecompiledGlsl = true;
 	};
 }

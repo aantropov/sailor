@@ -74,8 +74,8 @@ void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& o
 		outGLSLCode += "#define " + define + "\n";
 	}
 
-	outGLSLCode += "\n #ifdef VERTEX \n" + vertexGlsl + " \n #endif \n";
-	outGLSLCode += "\n #ifdef FRAGMENT \n" + fragmentGlsl + "\n #endif \n";
+	outGLSLCode += "\n#ifdef VERTEX\n" + vertexGlsl + "\n#endif\n";
+	outGLSLCode += "\n#ifdef FRAGMENT\n" + fragmentGlsl + "\n#endif\n";
 }
 
 void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON)
@@ -120,8 +120,10 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 	outPureGLSL = shaderText;
 
 	Utils::ReplaceAll(outPureGLSL, JsonEndLineTag, std::string{ '\n' });
-	Utils::ReplaceAll(outPureGLSL, JsonBeginCodeTag, std::string{ ' ' });
-	Utils::ReplaceAll(outPureGLSL, JsonEndCodeTag, std::string{ ' ' });
+	Utils::Erase(outPureGLSL, JsonBeginCodeTag);
+	Utils::Erase(outPureGLSL, JsonEndCodeTag);
+
+	Utils::Trim(outPureGLSL);
 
 	return true;
 }
@@ -144,11 +146,11 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 
 	m_pInstance->m_shaderCache.SavePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl);
 
-	std::vector<char> spirvVertexByteCode;
-	std::vector<char> spirvFragmentByteCode;
+	std::vector<uint32_t> spirvVertexByteCode;
+	std::vector<uint32_t> spirvFragmentByteCode;
 
-	const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, ShaderCache::GetCachedShaderFilepath(assetUID, permutation, "VERTEX", false), EShaderKind::Vertex, {}, {}, spirvVertexByteCode);
-	const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, ShaderCache::GetCachedShaderFilepath(assetUID, permutation, "FRAGMENT", false), EShaderKind::Fragment, {}, {}, spirvFragmentByteCode);
+	const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, EShaderKind::Vertex, {}, {}, spirvVertexByteCode);
+	const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, EShaderKind::Fragment, {}, {}, spirvFragmentByteCode);
 
 	if (bResultCompileVertexShader && bResultCompileFragmentShader)
 	{
@@ -207,8 +209,7 @@ std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 {
 	if (ShaderAssetInfo* shaderAssetInfo = dynamic_cast<ShaderAssetInfo*>(AssetRegistry::GetInstance()->GetAssetInfo(uid)))
 	{
-		const auto& loadedShader = m_loadedShaders.find(uid);
-		if (loadedShader != m_loadedShaders.end())
+		if (const auto& loadedShader = m_loadedShaders.find(uid); loadedShader != m_loadedShaders.end())
 		{
 			return loadedShader->second;
 		}
@@ -218,7 +219,7 @@ std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 		std::string shaderText;
 		std::string codeInJSON;
 
-		AssetRegistry::ReadFile(filepath, shaderText);
+		AssetRegistry::ReadAllTextFile(filepath, shaderText);
 
 		ConvertRawShaderToJson(shaderText, codeInJSON);
 
@@ -241,21 +242,15 @@ std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 	return std::weak_ptr<ShaderAsset>();
 }
 
-bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, const std::string& filename, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, std::vector<char>& outByteCode)
+bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, std::vector<uint32_t>& outByteCode)
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
 
 	options.SetSourceLanguage(shaderc_source_language_glsl);
-
-	shaderc_shader_kind kind = shaderc_glsl_default_vertex_shader;
-
-	if (shaderKind == EShaderKind::Fragment)
-	{
-		shaderc_shader_kind kind = shaderc_glsl_default_fragment_shader;
-	}
-
-	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, filename.c_str(), options);
+	options.SetOptimizationLevel(shaderc_optimization_level_size);
+	shaderc_shader_kind kind = shaderKind == EShaderKind::Fragment ? shaderc_glsl_fragment_shader : shaderc_glsl_vertex_shader;
+	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, "shaderc_s", "main", options);
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status_success)
 	{
@@ -264,7 +259,6 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, const std::st
 	}
 
 	outByteCode = { module.cbegin(), module.cend() };
-
 	return true;
 }
 
@@ -273,6 +267,11 @@ uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines,
 	uint32_t res = 0;
 	for (int32_t i = 0; i < defines.size(); i++)
 	{
+		if (i >= actualDefines.size())
+		{
+			break;
+		}
+
 		if (defines[i] == actualDefines[i])
 		{
 			res += 1 << i;
@@ -296,7 +295,7 @@ std::vector<std::string> ShaderCompiler::GetDefines(const std::vector<std::strin
 	return res;
 }
 
-void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, std::vector<char>& outVertexByteCode, std::vector<char>& outFragmentByteCode)
+void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, std::vector<uint32_t>& outVertexByteCode, std::vector<uint32_t>& outFragmentByteCode)
 {
 	if (auto pShader = m_pInstance->LoadShaderAsset(assetUID).lock())
 	{

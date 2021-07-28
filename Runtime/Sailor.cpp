@@ -36,9 +36,9 @@ void EngineInstance::Initialize()
 	const bool bIsEnabledVulkanValidationLayers = false;
 #endif 
 
-	GfxDeviceVulkan::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
 	AssetRegistry::Initialize();
 	ShaderCompiler::Initialize();
+	GfxDeviceVulkan::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
 	JobSystem::Scheduler::Initialize();
 
 	ShaderCompiler::GetInstance();
@@ -79,8 +79,9 @@ void EngineInstance::Start()
 
 		if (m_pInstance->m_viewportWindow.IsRunning() && m_pInstance->m_viewportWindow.IsActive())
 		{
-			SwapBuffers(m_pInstance->m_viewportWindow.GetHDC());
-
+			GfxDeviceVulkan::GetInstance()->DrawFrame();
+			//SwapBuffers(m_pInstance->m_viewportWindow.GetHDC());
+			
 			deltaTime += GetTickCount() - beginFrameTime;
 
 			m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
