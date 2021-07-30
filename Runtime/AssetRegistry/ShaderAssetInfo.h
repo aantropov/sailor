@@ -20,7 +20,7 @@ namespace Sailor
 
 		static SAILOR_API void Initialize();
 
-		virtual SAILOR_API void GetDefaultAssetInfoMeta(nlohmann::json& outDefaultJson) const;
+		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual SAILOR_API AssetInfo* CreateAssetInfo() const;
 
 		virtual SAILOR_API ~ShaderAssetInfoHandler() = default;

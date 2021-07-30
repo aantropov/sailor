@@ -18,8 +18,13 @@ namespace Sailor
 		virtual ~AssetInfo() = default;
 
 		SAILOR_API const UID& GetUID() const { return m_UID; }
-		SAILOR_API std::string GetAssetFilepath() const { return m_path + m_filename; }
+		SAILOR_API std::string GetAssetFilepath() const { return m_folder + m_assetFilename; }
+		SAILOR_API std::string GetMetaFilepath() const;
+
 		SAILOR_API std::time_t GetAssetLastModificationTime() const;
+		SAILOR_API std::time_t GetMetaLastModificationTime() const;
+
+		SAILOR_API bool IsExpired() const;
 
 		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
@@ -27,9 +32,8 @@ namespace Sailor
 	protected:
 
 		std::time_t m_loadTime;
-		std::string m_path;
-		
-		std::string m_filename;
+		std::string m_folder;
+		std::string m_assetFilename;
 		UID m_UID;
 
 		friend class IAssetInfoHandler;
@@ -40,16 +44,17 @@ namespace Sailor
 
 	public:
 
-		virtual SAILOR_API void GetDefaultAssetInfoMeta(nlohmann::json& outDefaultJson) const = 0;
-		virtual SAILOR_API AssetInfo* CreateAssetInfo() const = 0;
-		
-		virtual SAILOR_API AssetInfo* LoadAssetInfo(const std::string& assetInfoPath) const;
-		virtual SAILOR_API AssetInfo* ImportFile(const std::string& filepath) const;
+		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const = 0;
+
+		virtual SAILOR_API AssetInfo* LoadAssetInfo(const std::string& metaPath) const;
+		virtual SAILOR_API AssetInfo* ImportAsset(const std::string& filepath) const;
+		virtual SAILOR_API void ReloadAssetInfo(AssetInfo* assetInfo) const;
 
 		virtual SAILOR_API ~IAssetInfoHandler() = default;
 
 	protected:
 
+		virtual SAILOR_API AssetInfo* CreateAssetInfo() const = 0;
 		std::vector<std::string> m_supportedExtensions;
 	};
 
@@ -60,9 +65,9 @@ namespace Sailor
 
 		static SAILOR_API void Initialize();
 
-		virtual SAILOR_API void GetDefaultAssetInfoMeta(nlohmann::json& outDefaultJson) const;
+		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual SAILOR_API AssetInfo* CreateAssetInfo() const;
-		
+
 		virtual SAILOR_API ~DefaultAssetInfoHandler() override = default;
 	};
 }

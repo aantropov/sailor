@@ -78,9 +78,6 @@
     <ClInclude Include="..\Runtime\JsonSerializable.h">
       <Filter>Runtime</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Foundation\Filesystem.h">
-      <Filter>Runtime\Foundation</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h">
       <Filter>Runtime\Jobsystem</Filter>
     </ClInclude>
@@ -127,9 +124,6 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\JsonSerializable.cpp">
       <Filter>Runtime</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\Foundation\Filesystem.cpp">
-      <Filter>Runtime\Foundation</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp">
       <Filter>Runtime\Jobsystem</Filter>

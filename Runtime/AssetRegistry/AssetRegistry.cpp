@@ -89,18 +89,40 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 					assetInfoHandler = (*assetInfoHandlerIt).second;
 				}
 
+				auto uid = m_UIDs.find(filepath);
+				if (uid != m_UIDs.end())
+				{
+					auto assetInfoIt = m_loadedAssetInfo.find(uid->second);
+					if (assetInfoIt != m_loadedAssetInfo.end())
+					{
+						AssetInfo* assetInfo = assetInfoIt->second;
+						if (assetInfo->IsExpired())
+						{
+							SAILOR_LOG("Reload asset info: %s", assetInfoFile.c_str());
+							assetInfoHandler->ReloadAssetInfo(assetInfo);							
+						}
+						continue;
+					}
+
+					// Meta were delete
+					m_UIDs.erase(uid);
+				}
+
 				AssetInfo* assetInfo = nullptr;
 				if (std::filesystem::exists(assetInfoFile))
 				{
+					SAILOR_LOG("Load asset info: %s", assetInfoFile.c_str());
 					assetInfo = assetInfoHandler->LoadAssetInfo(assetInfoFile);
 				}
 				else
 				{
-					assetInfo = assetInfoHandler->ImportFile(filepath);
+					SAILOR_LOG("Import new asset: %s", filepath.c_str());
+					assetInfo = assetInfoHandler->ImportAsset(filepath);
 				}
 
-				m_loadedAssetInfos[assetInfo->GetUID()] = assetInfo;
+				m_loadedAssetInfo[assetInfo->GetUID()] = assetInfo;
 				m_UIDs[filepath] = assetInfo->GetUID();
+
 			}
 		}
 	}
@@ -118,8 +140,8 @@ AssetInfo* AssetRegistry::GetAssetInfo(const std::string& filepath) const
 
 AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const
 {
-	auto it = m_loadedAssetInfos.find(uid);
-	if (it != m_loadedAssetInfos.end())
+	auto it = m_loadedAssetInfo.find(uid);
+	if (it != m_loadedAssetInfo.end())
 	{
 		return it->second;
 	}
@@ -128,7 +150,7 @@ AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const
 
 AssetRegistry::~AssetRegistry()
 {
-	for (auto& asset : m_loadedAssetInfos)
+	for (auto& asset : m_loadedAssetInfo)
 	{
 		delete asset.second;
 	}

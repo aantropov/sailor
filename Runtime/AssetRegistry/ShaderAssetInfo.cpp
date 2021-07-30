@@ -15,7 +15,7 @@ void ShaderAssetInfoHandler::Initialize()
 	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
-void ShaderAssetInfoHandler::GetDefaultAssetInfoMeta(nlohmann::json& outDefaultJson) const
+void ShaderAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const
 {
 	ShaderAssetInfo defaultObject;
 	defaultObject.Serialize(outDefaultJson);

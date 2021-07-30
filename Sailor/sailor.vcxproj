@@ -172,7 +172,6 @@
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
     <ClInclude Include="..\Runtime\ExportDef.h" />
     <ClInclude Include="..\Runtime\Foundation\ConsoleWindow.h" />
-    <ClInclude Include="..\Runtime\Foundation\Filesystem.h" />
     <ClInclude Include="..\Runtime\Foundation\Input.h" />
     <ClInclude Include="..\Runtime\Foundation\Window.h" />
     <ClInclude Include="..\Runtime\GfxDevice\GfxDeviceVulkan.h" />
@@ -191,7 +190,6 @@
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Foundation\ConsoleWindow.cpp" />
-    <ClCompile Include="..\Runtime\Foundation\Filesystem.cpp" />
     <ClCompile Include="..\Runtime\Foundation\Input.cpp" />
     <ClCompile Include="..\Runtime\Foundation\Window.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\GfxDeviceVulkan.cpp" />
