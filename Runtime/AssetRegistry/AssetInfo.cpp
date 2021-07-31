@@ -68,17 +68,17 @@ AssetInfo* IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) cons
 	json newMeta;
 	GetDefaultMetaJson(newMeta);
 	UID::CreateNewUID().Serialize(newMeta["uid"]);
-		
+
 	newMeta["filename"] = std::filesystem::path(assetFilepath).filename().string();
 
 	assetFile << newMeta.dump();
 	assetFile.close();
-	
+
 	return LoadAssetInfo(assetInfoFilename);
 }
 
 AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) const
-{	
+{
 	AssetInfo* res = CreateAssetInfo();
 	res->m_folder = std::filesystem::path(assetInfoPath).remove_filename().string();
 	// Temp to pass asset filename to Reload Asset Info
@@ -92,7 +92,7 @@ AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) co
 void IAssetInfoHandler::ReloadAssetInfo(AssetInfo* assetInfo) const
 {
 	std::ifstream assetFile(assetInfo->GetMetaFilepath());
-	
+
 	json meta;
 	assetFile >> meta;
 
@@ -100,6 +100,11 @@ void IAssetInfoHandler::ReloadAssetInfo(AssetInfo* assetInfo) const
 	assetInfo->m_loadTime = std::time(nullptr);
 
 	assetFile.close();
+
+	for (IAssetInfoHandlerListener* listener : m_listeners)
+	{
+		//listener->OnAssetInfoUpdated(assetInfo);
+	}
 }
 
 void DefaultAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

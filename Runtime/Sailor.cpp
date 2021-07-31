@@ -81,7 +81,7 @@ void EngineInstance::Start()
 		{
 			GfxDeviceVulkan::GetInstance()->DrawFrame();
 			//SwapBuffers(m_pInstance->m_viewportWindow.GetHDC());
-			
+
 			deltaTime += GetTickCount() - beginFrameTime;
 
 			m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;

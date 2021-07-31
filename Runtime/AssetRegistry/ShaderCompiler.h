@@ -4,6 +4,7 @@
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Singleton.hpp"
+#include "AssetInfo.h"
 #include "ShaderCache.h"
 
 namespace Sailor
@@ -32,7 +33,7 @@ namespace Sailor
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
 	};
 
-	class ShaderCompiler final : public Singleton<ShaderCompiler>
+	class ShaderCompiler final : public Singleton<ShaderCompiler>, public IAssetInfoHandlerListener
 	{
 	public:
 
@@ -47,6 +48,8 @@ namespace Sailor
 		virtual SAILOR_API ~ShaderCompiler() override;
 
 		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, std::vector<uint32_t>& outByteCode);
+
+		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfo* assetInfo) override;
 
 	protected:
 

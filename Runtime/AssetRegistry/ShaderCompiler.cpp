@@ -48,6 +48,7 @@ void ShaderCompiler::Initialize()
 {
 	m_pInstance = new ShaderCompiler();
 	m_pInstance->m_shaderCache.Initialize();
+	ShaderAssetInfoHandler::GetInstance()->Subscribe(m_pInstance);
 }
 
 ShaderCompiler::~ShaderCompiler()
@@ -240,6 +241,11 @@ std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 
 	SAILOR_LOG("Cannot find shader asset info with UID: %s", uid.ToString().c_str());
 	return std::weak_ptr<ShaderAsset>();
+}
+
+void ShaderCompiler::OnAssetInfoUpdated(AssetInfo* assetInfo)
+{
+	ShaderCompiler::GetInstance()->CompileAllPermutations(assetInfo->GetUID());
 }
 
 bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, std::vector<uint32_t>& outByteCode)
