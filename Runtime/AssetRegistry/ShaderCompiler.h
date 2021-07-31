@@ -29,6 +29,10 @@ namespace Sailor
 		std::vector<std::string> m_includes;
 		std::vector<std::string> m_defines;
 
+		SAILOR_API bool ContainsFragment() const { return !m_glslFragment.empty(); }
+		SAILOR_API bool ContainsVertex() const { return !m_glslVertex.empty(); }
+		SAILOR_API bool ContainsCommon() const { return !m_glslCommon.empty(); }
+
 		virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
 	};
@@ -61,7 +65,7 @@ namespace Sailor
 		static SAILOR_API bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
 
 		static SAILOR_API void ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
-		
+
 		static SAILOR_API uint32_t GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines);
 		static SAILOR_API std::vector<std::string> GetDefines(const std::vector<std::string>& defines, uint32_t permutation);
 

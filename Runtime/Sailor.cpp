@@ -36,10 +36,11 @@ void EngineInstance::Initialize()
 	const bool bIsEnabledVulkanValidationLayers = false;
 #endif 
 
+	JobSystem::Scheduler::Initialize();
+
 	AssetRegistry::Initialize();
 	ShaderCompiler::Initialize();
 	GfxDeviceVulkan::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
-	JobSystem::Scheduler::Initialize();
 
 	ShaderCompiler::GetInstance();
 

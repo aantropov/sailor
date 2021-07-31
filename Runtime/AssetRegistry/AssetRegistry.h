@@ -59,6 +59,19 @@ namespace Sailor
 		SAILOR_API AssetInfo* GetAssetInfo(UID uid) const;
 		SAILOR_API AssetInfo* GetAssetInfo(const std::string& assetFilepath) const;
 
+		template<class TAssetInfo>
+		void GetAllAssetInfos(std::vector<UID>& outAssetInfos) const
+		{
+			outAssetInfos.clear();
+			for (const auto& assetInfo : m_loadedAssetInfo)
+			{
+				if (dynamic_cast<TAssetInfo*>(assetInfo.second))
+				{
+					outAssetInfos.push_back(assetInfo.first);
+				}
+			}
+		}
+
 		SAILOR_API bool RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, class IAssetInfoHandler* pAssetInfoHandler);
 
 	protected:

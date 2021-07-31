@@ -32,16 +32,30 @@ void ShaderAsset::Serialize(nlohmann::json& outData) const
 
 void ShaderAsset::Deserialize(const nlohmann::json& inData)
 {
-	m_glslVertex = inData["glslVertex"].get<std::string>();
-	m_glslFragment = inData["glslFragment"].get<std::string>();
+	if (inData.contains("glslVertex"))
+	{
+		m_glslVertex = inData["glslVertex"].get<std::string>();
+	}
+
+	if (inData.contains("glslFragment"))
+	{
+		m_glslFragment = inData["glslFragment"].get<std::string>();
+	}
 
 	if (inData.contains("glslCommon"))
 	{
 		m_glslCommon = inData["glslCommon"].get<std::string>();
 	}
 
-	m_defines = inData["defines"].get<std::vector<std::string>>();
-	m_includes = inData["includes"].get<std::vector<std::string>>();
+	if (inData.contains("defines"))
+	{
+		m_defines = inData["defines"].get<std::vector<std::string>>();
+	}
+
+	if (inData.contains("includes"))
+	{
+		m_includes = inData["includes"].get<std::vector<std::string>>();
+	}
 }
 
 void ShaderCompiler::Initialize()
@@ -49,6 +63,14 @@ void ShaderCompiler::Initialize()
 	m_pInstance = new ShaderCompiler();
 	m_pInstance->m_shaderCache.Initialize();
 	ShaderAssetInfoHandler::GetInstance()->Subscribe(m_pInstance);
+
+	std::vector<UID> shaderAssetInfos;
+	AssetRegistry::GetInstance()->GetAllAssetInfos<ShaderAssetInfo>(shaderAssetInfos);
+
+	for (const auto& uid : shaderAssetInfos)
+	{
+		CompileAllPermutations(uid);
+	}
 }
 
 ShaderCompiler::~ShaderCompiler()
@@ -162,10 +184,16 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 {
 	std::shared_ptr<ShaderAsset> pShader = m_pInstance->LoadShaderAsset(assetUID).lock();
+	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
+
+	if (!pShader->ContainsFragment() || !pShader->ContainsVertex())
+	{
+		SAILOR_LOG("Skip shader compilation (missing fragment/vertex module): %s", assetInfo->GetAssetFilepath().c_str());
+
+		return;
+	}
 
 	const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->m_defines.size());
-
-	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
 
 	std::vector<uint32_t> permutationsToCompile;
 
@@ -256,7 +284,7 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind s
 	options.SetSourceLanguage(shaderc_source_language_glsl);
 	options.SetOptimizationLevel(shaderc_optimization_level_size);
 	shaderc_shader_kind kind = shaderKind == EShaderKind::Fragment ? shaderc_glsl_fragment_shader : shaderc_glsl_vertex_shader;
-	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, "shaderc_s", "main", options);
+	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, source.c_str(), "main", options);
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status_success)
 	{
