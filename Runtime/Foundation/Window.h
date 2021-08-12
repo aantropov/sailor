@@ -5,6 +5,8 @@
 
 namespace Sailor
 {
+	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 	class Window
 	{
 		const std::string WindowClassName = "SailorViewport";
@@ -19,6 +21,7 @@ namespace Sailor
 		bool m_bIsFullscreen = false;
 		bool m_bIsActive = false;
 		bool m_bIsRunning = false;
+		bool m_bIsIconic = false;
 
 	public:
 
@@ -29,6 +32,7 @@ namespace Sailor
 		SAILOR_API bool IsActive() const { return m_bIsActive; }
 		SAILOR_API bool IsRunning() const { return m_bIsRunning; }
 		SAILOR_API bool IsFullscreen() const { return m_bIsFullscreen; }
+		SAILOR_API bool IsIconic() const { return m_bIsIconic; }
 
 		// Setters
 		SAILOR_API void SetActive(bool value) { m_bIsActive = value; }
@@ -54,7 +58,12 @@ namespace Sailor
 
 		// Set window size
 		SAILOR_API void SetSize(int32_t width, int32_t height, bool bIsFullScreen = false);
+
+	private:
+
+		SAILOR_API void SetIsIconic(bool value) { m_bIsIconic = value; }
+
+		friend LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	};
 
-	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 }

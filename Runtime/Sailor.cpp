@@ -80,7 +80,7 @@ void EngineInstance::Start()
 
 		if (m_pInstance->m_viewportWindow.IsRunning() && m_pInstance->m_viewportWindow.IsActive())
 		{
-			GfxDeviceVulkan::GetInstance()->DrawFrame();
+			GfxDeviceVulkan::GetInstance()->DrawFrame(&m_pInstance->m_viewportWindow);
 			//SwapBuffers(m_pInstance->m_viewportWindow.GetHDC());
 
 			deltaTime += GetTickCount() - beginFrameTime;

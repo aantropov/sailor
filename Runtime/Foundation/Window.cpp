@@ -13,7 +13,7 @@ bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIs
 
 	WNDCLASSEX            wcx;
 	PIXELFORMATDESCRIPTOR pfd;
-	RECT                  rect;	
+	RECT                  rect;
 	DWORD                 style, exStyle;
 	int                   x, y, format;
 
@@ -37,7 +37,7 @@ bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIs
 	}
 
 	// Window styles
-	style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+	style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_OVERLAPPED;
 	exStyle = WS_EX_APPWINDOW;
 
 	// Centrate window
@@ -92,7 +92,7 @@ bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIs
 	}
 
 	// TODO: Init Vulkan
-	
+
 	// Set up window size
 	SetSize(m_width, m_height, m_bIsFullscreen);
 
@@ -213,6 +213,11 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 {
 	switch (msg)
 	{
+	case WM_SIZE:
+	{
+		EngineInstance::GetViewportWindow().SetIsIconic(wParam == SIZE_MINIMIZED);
+		return FALSE;
+	}
 	case WM_LBUTTONDOWN:
 	case WM_LBUTTONUP:
 	case WM_RBUTTONDOWN:

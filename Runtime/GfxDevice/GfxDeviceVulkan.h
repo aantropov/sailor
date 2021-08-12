@@ -48,7 +48,7 @@ namespace Sailor
 
 		virtual SAILOR_API ~GfxDeviceVulkan() override;
 
-		void SAILOR_API DrawFrame();
+		void SAILOR_API DrawFrame(const Window* pViewport);
 	
 	private:
 
@@ -70,6 +70,7 @@ namespace Sailor
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		SAILOR_API void CreateWin32Surface(const Window* pViewport);
 		SAILOR_API void CreateSwapchain(const Window* pViewport);
+		SAILOR_API void RecreateSwapchain(const Window* pViewport);
 		SAILOR_API void CreateGraphicsPipeline();
 		SAILOR_API void CreateRenderPass();
 		SAILOR_API void CreateFramebuffers();
@@ -77,6 +78,8 @@ namespace Sailor
 		SAILOR_API void CreateCommandBuffers();
 		SAILOR_API void CreateFrameSyncSemaphores();
 
+		SAILOR_API void CleanupSwapChain();
+		
 		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return m_pInstance->m_vkInstance; }
 
 		bool bIsEnabledValidationLayers = false;

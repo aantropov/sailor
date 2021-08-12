@@ -91,7 +91,7 @@ void GfxDeviceVulkan::CreateRenderPass()
 	dependency.srcAccessMask = 0;
 	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	
+
 	VkRenderPassCreateInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 	renderPassInfo.attachmentCount = 1;
@@ -100,7 +100,7 @@ void GfxDeviceVulkan::CreateRenderPass()
 	renderPassInfo.pSubpasses = &subpass;
 	renderPassInfo.dependencyCount = 1;
 	renderPassInfo.pDependencies = &dependency;
-	
+
 	VK_CHECK(vkCreateRenderPass(m_device, &renderPassInfo, nullptr, &m_renderPass));
 
 }
@@ -123,20 +123,36 @@ void GfxDeviceVulkan::CreateFrameSyncSemaphores()
 	m_renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 	m_syncFences.resize(MAX_FRAMES_IN_FLIGHT);
 	m_syncImages.resize(m_swapChainImages.size(), VK_NULL_HANDLE);
-	
+
 	VkSemaphoreCreateInfo semaphoreInfo{};
 	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
 	VkFenceCreateInfo fenceInfo{};
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-	
+
 	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
 		VK_CHECK(vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]));
 		VK_CHECK(vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]));
 		VK_CHECK(vkCreateFence(m_device, &fenceInfo, nullptr, &m_syncFences[i]));
 	}
+}
+
+void GfxDeviceVulkan::RecreateSwapchain(const Window* pViewport)
+{
+	while (pViewport->IsIconic())
+	{
+		return;
+	}
+
+	vkDeviceWaitIdle(m_pInstance->m_device);
+
+	m_pInstance->CreateSwapchain(pViewport);
+	m_pInstance->CreateRenderPass();
+	m_pInstance->CreateGraphicsPipeline();
+	m_pInstance->CreateFramebuffers();
+	m_pInstance->CreateCommandBuffers();
 }
 
 VkShaderModule g_testFragShader;
@@ -399,7 +415,7 @@ void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValida
 	m_pInstance->CreateCommandPool();
 	m_pInstance->CreateCommandBuffers();
 	m_pInstance->CreateFrameSyncSemaphores();
-	
+
 	SAILOR_LOG("Vulkan initialized");
 }
 
@@ -546,8 +562,8 @@ void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
 	createSwapChainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	createSwapChainInfo.presentMode = m_presentMode;
-	createSwapChainInfo.clipped = VK_TRUE;
-	createSwapChainInfo.oldSwapchain = VK_NULL_HANDLE;
+	createSwapChainInfo.clipped = VK_TRUE;	
+	createSwapChainInfo.oldSwapchain = m_swapChain;
 
 	VK_CHECK(vkCreateSwapchainKHR(m_device, &createSwapChainInfo, nullptr, &m_swapChain));
 
@@ -633,10 +649,36 @@ bool GfxDeviceVulkan::CheckValidationLayerSupport(const std::vector<const char*>
 	return true;
 }
 
+void GfxDeviceVulkan::CleanupSwapChain()
+{
+	for (auto framebuffer : m_swapChainFramebuffers)
+	{
+		vkDestroyFramebuffer(m_device, framebuffer, nullptr);
+	}
+
+	vkFreeCommandBuffers(m_pInstance->m_device, m_pInstance->m_commandPool, static_cast<uint32_t>(m_pInstance->m_commandBuffers.size()), m_pInstance->m_commandBuffers.data());
+
+	vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
+	vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+	vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+
+	for (const auto& imageView : m_swapChainImageViews)
+	{
+		vkDestroyImageView(m_device, imageView, nullptr);
+	}
+
+	vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
+}
+
 GfxDeviceVulkan::~GfxDeviceVulkan()
 {
 	vkDeviceWaitIdle(m_device);
-	
+
+	CleanupSwapChain();
+
+	vkDestroyShaderModule(m_device, g_testFragShader, nullptr);
+	vkDestroyShaderModule(m_device, g_testVertShader, nullptr);
+
 	if (bIsEnabledValidationLayers)
 	{
 		DestroyDebugUtilsMessengerEXT(GetVkInstance(), m_debugMessenger, nullptr);
@@ -644,51 +686,44 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 
 	vkDestroyCommandPool(m_device, m_commandPool, nullptr);
 
-	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
 		vkDestroySemaphore(m_device, m_renderFinishedSemaphores[i], nullptr);
 		vkDestroySemaphore(m_device, m_imageAvailableSemaphores[i], nullptr);
 		vkDestroyFence(m_device, m_syncFences[i], nullptr);
 	}
-	
-	for (auto framebuffer : m_swapChainFramebuffers)
-	{
-		vkDestroyFramebuffer(m_device, framebuffer, nullptr);
-	}
 
-	for (const auto& imageView : m_swapChainImageViews)
-	{
-		vkDestroyImageView(m_device, imageView, nullptr);
-	}
-
-	vkDestroyShaderModule(m_device, g_testFragShader, nullptr);
-	vkDestroyShaderModule(m_device, g_testVertShader, nullptr);
-
-	vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
-	vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
-	vkDestroyRenderPass(m_device, m_renderPass, nullptr);
-
-	vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
 	vkDestroyDevice(m_device, nullptr);
 	vkDestroySurfaceKHR(GetVkInstance(), m_surface, nullptr);
 	vkDestroyInstance(GetVkInstance(), nullptr);
 }
 
-void GfxDeviceVulkan::DrawFrame()
+void GfxDeviceVulkan::DrawFrame(const Window* pViewport)
 {
 	vkWaitForFences(m_device, 1, &m_syncFences[currentFrame], VK_TRUE, UINT64_MAX);
-		
+
 	uint32_t imageIndex;
-	vkAcquireNextImageKHR(m_device, m_swapChain, UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+	VkResult result = vkAcquireNextImageKHR(m_device, m_swapChain, UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+	if (result == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		RecreateSwapchain(pViewport);
+		return;
+	}
+	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+	{
+		SAILOR_LOG("Failed to acquire swap chain image!");
+		return;
+	}
 
 	// Check if a previous frame is using this image (i.e. there is its fence to wait on)
-	if (m_syncImages[imageIndex] != VK_NULL_HANDLE) 
+	if (m_syncImages[imageIndex] != VK_NULL_HANDLE)
 	{
 		vkWaitForFences(m_device, 1, &m_syncImages[imageIndex], VK_TRUE, UINT64_MAX);
 	}
 	// Mark the image as now being in use by this frame
 	m_syncImages[imageIndex] = m_syncFences[currentFrame];
-		
+
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -720,7 +755,20 @@ void GfxDeviceVulkan::DrawFrame()
 	presentInfo.pImageIndices = &imageIndex;
 	presentInfo.pResults = nullptr; // Optional
 
-	vkQueuePresentKHR(m_presentQueue, &presentInfo);
+	result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
+
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	{
+		m_pInstance->RecreateSwapchain(pViewport);
+	}
+	else if (result != VK_SUCCESS)
+	{
+		SAILOR_LOG("Failed to present swap chain image!");
+		return;
+	}
+
+	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
 	//vkQueueWaitIdle(m_presentQueue);
 
 	m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
