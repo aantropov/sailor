@@ -1,6 +1,6 @@
 #pragma once
 #include <nlohmann_json/include/nlohmann/json.hpp>
-#include "ExportDef.h"
+#include "Defines.h"
 
 namespace Sailor
 {

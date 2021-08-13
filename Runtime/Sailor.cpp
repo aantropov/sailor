@@ -13,11 +13,15 @@ const std::string EngineInstance::ApplicationName = "SailorEngine";
 const std::string EngineInstance::EngineName = "Sailor";
 
 void EngineInstance::Initialize()
-{
+{	
+	EASY_FUNCTION()
+
 	if (m_pInstance != nullptr)
 	{
 		return;
 	}
+
+	profiler::startListen();
 
 	ConsoleWindow::Initialize(false);
 
@@ -54,11 +58,13 @@ void EngineInstance::Start()
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
-	//std::shared_ptr<Sailor::JobSystem::Job> renderingJob;
+	std::shared_ptr<Sailor::JobSystem::Job> renderingJob;
 
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{
 		ConsoleWindow::GetInstance()->Update();
+
+		EASY_BLOCK("Process window's messages");
 
 		while (PeekMessage(&msg, m_pInstance->m_viewportWindow.GetHWND(), 0, 0, PM_REMOVE))
 		{
@@ -70,6 +76,8 @@ void EngineInstance::Start()
 			DispatchMessage(&msg);
 		}
 
+		EASY_END_BLOCK;
+
 		if (Input::IsKeyPressed(VK_ESCAPE))
 		{
 			break;
@@ -77,8 +85,12 @@ void EngineInstance::Start()
 
 		if (m_pInstance->m_viewportWindow.IsRunning())// && m_pInstance->m_viewportWindow.IsActive())
 		{
+			EASY_BLOCK("Draw frame");
+
 			//renderingJob = JobSystem::Scheduler::CreateJob("Draw Frame",
-				//[]() {
+			//	[]() {
+
+				EASY_FUNCTION();
 
 				float beginFrameTime = (float)GetTickCount();
 				float deltaTime = GetTickCount() - beginFrameTime;
@@ -87,9 +99,13 @@ void EngineInstance::Start()
 
 				m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
 				++m_pInstance->m_FPS;
-			//}, Sailor::JobSystem::EThreadType::Rendering);
+				//}, Sailor::JobSystem::EThreadType::Rendering);
 			//JobSystem::Scheduler::GetInstance()->Run(renderingJob);
+
+			EASY_END_BLOCK;
 		}
+
+		EASY_BLOCK("Track FPS");
 
 		if (m_pInstance->m_elapsedTime >= 1.0f)
 		{
@@ -100,7 +116,11 @@ void EngineInstance::Start()
 			m_pInstance->m_FPS = 0;
 			m_pInstance->m_elapsedTime = 0.0f;
 		}
+
+		EASY_END_BLOCK;
 	}
+
+	GfxDeviceVulkan::WaitIdle();
 
 	m_pInstance->m_viewportWindow.SetActive(false);
 	m_pInstance->m_viewportWindow.SetRunning(false);

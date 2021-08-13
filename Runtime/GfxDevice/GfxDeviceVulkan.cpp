@@ -335,6 +335,8 @@ void GfxDeviceVulkan::CreateFramebuffers()
 
 void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValidationLayers)
 {
+	EASY_FUNCTION();
+
 	if (m_pInstance != nullptr)
 	{
 		SAILOR_LOG("Vulkan already initialized!");
@@ -704,6 +706,11 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 	vkDestroyDevice(m_device, nullptr);
 	vkDestroySurfaceKHR(GetVkInstance(), m_surface, nullptr);
 	vkDestroyInstance(GetVkInstance(), nullptr);
+}
+
+void GfxDeviceVulkan::WaitIdle()
+{
+	vkQueueWaitIdle(m_pInstance->m_presentQueue);
 }
 
 void GfxDeviceVulkan::DrawFrame(Window* pViewport)

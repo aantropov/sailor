@@ -33,6 +33,8 @@ namespace Sailor
 
 			virtual SAILOR_API ~IJob() = default;
 
+			SAILOR_API const std::string& GetName() const { return m_name; }
+
 			SAILOR_API void Wait(const std::weak_ptr<IJob>& job);
 			SAILOR_API void WaitAll(const std::vector<std::weak_ptr<IJob>>& jobs);
 

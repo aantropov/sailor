@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ExportDef.h"
+#include "Defines.h"
 #include "LogMacros.h"
 #include "Utils.h"
 #include "Foundation/Window.h"

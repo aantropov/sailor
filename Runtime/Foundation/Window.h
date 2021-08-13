@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ExportDef.h"
+#include "Defines.h"
 #include <wtypes.h>
 #include <atomic>
 

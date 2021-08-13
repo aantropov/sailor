@@ -27,6 +27,8 @@ void IJob::WaitAll(const std::vector<std::weak_ptr<IJob>>& jobs)
 
 void IJob::Complete()
 {
+	EASY_FUNCTION();
+
 	std::unordered_map<EThreadType, uint32_t> threadTypesToRefresh;
 
 	for (auto& job : m_dependencies)
@@ -64,6 +66,7 @@ bool Job::IsFinished() const
 
 void Job::Execute()
 {
+	EASY_FUNCTION();
 	m_function();
 }
 
@@ -84,11 +87,15 @@ WorkerThread::WorkerThread(
 
 void WorkerThread::Join() const
 {
+	EASY_FUNCTION();
 	m_pThread->join();
 }
 
 void WorkerThread::Process()
 {
+	Sailor::Utils::SetThreadName(m_threadName);
+	DWORD randomColorHex = Sailor::Utils::GetRandomColorHex();
+
 	Scheduler* scheduler = Scheduler::GetInstance();
 
 	std::mutex threadExecutionMutex;
@@ -96,14 +103,18 @@ void WorkerThread::Process()
 	{
 		std::unique_lock<std::mutex> lk(threadExecutionMutex);
 		m_refresh.wait(lk, [this, scheduler] { return  scheduler->TryFetchNextAvailiableJob(m_pJob, m_threadType) || (bool)scheduler->m_bIsTerminating; });
-
+				
 		if (m_pJob)
 		{
+			EASY_BLOCK(m_pJob->GetName(), randomColorHex);
+
 			m_pJob->Execute();
 			m_pJob->Complete();
 			m_pJob = nullptr;
 
 			scheduler->NotifyWorkerThread(m_threadType);
+
+			EASY_END_BLOCK;
 		}
 
 		lk.unlock();
@@ -112,6 +123,8 @@ void WorkerThread::Process()
 
 void Scheduler::Initialize()
 {
+	EASY_FUNCTION();
+
 	m_pInstance = new Scheduler();
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
@@ -181,6 +194,8 @@ uint32_t Scheduler::GetNumWorkerThreads() const
 
 void Scheduler::Run(const std::shared_ptr<Job>& pJob)
 {
+	EASY_FUNCTION();
+
 	{
 		std::mutex* pOutMutex;
 		std::list<std::shared_ptr<Job>>* pOutQueue;
@@ -201,6 +216,7 @@ void Scheduler::GetThreadSyncVarsByThreadType(
 	std::list<std::shared_ptr<Job>>*& pOutQueue,
 	std::condition_variable*& pOutCondVar)
 {
+	EASY_FUNCTION();
 
 	pOutMutex = &m_queueMutex[(uint32_t)threadType];
 	pOutQueue = &m_pJobsQueue[(uint32_t)threadType];
@@ -209,6 +225,8 @@ void Scheduler::GetThreadSyncVarsByThreadType(
 
 bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob, EThreadType threadType)
 {
+	EASY_FUNCTION();
+
 	std::mutex* pOutMutex;
 	std::list<std::shared_ptr<Job>>* pOutQueue;
 	std::condition_variable* pOutCondVar;
@@ -239,6 +257,8 @@ bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob, EThread
 
 void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads)
 {
+	EASY_FUNCTION();
+
 	std::mutex* pOutMutex;
 	std::list<std::shared_ptr<Job>>* pOutQueue;
 	std::condition_variable* pOutCondVar;

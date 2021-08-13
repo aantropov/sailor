@@ -12,6 +12,8 @@ using namespace Sailor;
 
 std::string ShaderCache::GetCachedShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind, bool bIsCompiledToSpirv)
 {
+	EASY_FUNCTION();
+
 	std::string res;
 	std::stringstream stream;
 	stream << (bIsCompiledToSpirv ? CompiledShadersFolder : PrecompiledShadersFolder)
@@ -91,6 +93,8 @@ void ShaderCache::ShaderCacheData::Deserialize(const nlohmann::json& inData)
 
 void ShaderCache::Initialize()
 {
+	EASY_FUNCTION();
+
 	std::filesystem::create_directory(CacheRootFolder);
 	std::filesystem::create_directory(CompiledShadersFolder);
 	std::filesystem::create_directory(PrecompiledShadersFolder);
@@ -128,6 +132,8 @@ void ShaderCache::Shutdown()
 
 void ShaderCache::SaveCache(bool bForcely)
 {
+	EASY_FUNCTION();
+
 	if (bForcely || m_bIsDirty)
 	{
 		std::ofstream assetFile(ShaderCacheFilepath);
@@ -144,6 +150,8 @@ void ShaderCache::SaveCache(bool bForcely)
 
 void ShaderCache::LoadCache()
 {
+	EASY_FUNCTION();
+
 	std::ifstream assetFile(ShaderCacheFilepath);
 
 	json dataJson;
@@ -164,6 +172,8 @@ void ShaderCache::ClearAll()
 
 void ShaderCache::ClearExpired()
 {
+	EASY_FUNCTION();
+
 	std::vector<UID> expiredShaders;
 	std::unordered_set<std::string> whiteListSpirv;
 	std::vector<const ShaderCacheEntry*> blackListEntry;
@@ -209,6 +219,8 @@ void ShaderCache::ClearExpired()
 
 void ShaderCache::Remove(const ShaderCacheEntry* pEntry)
 {
+	EASY_FUNCTION();
+
 	auto it = m_cache.m_data.find(pEntry->m_UID);
 	if (it != m_cache.m_data.end())
 	{
@@ -235,6 +247,8 @@ void ShaderCache::Remove(const ShaderCacheEntry* pEntry)
 
 void ShaderCache::Remove(const UID& uid)
 {
+	EASY_FUNCTION();
+
 	auto it = m_cache.m_data.find(uid);
 	if (it != m_cache.m_data.end())
 	{
@@ -262,6 +276,8 @@ bool ShaderCache::Contains(const UID& uid) const
 
 void ShaderCache::SavePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const
 {
+	EASY_FUNCTION();
+
 	if (m_bSavePrecompiledGlsl)
 	{
 		std::ofstream vertexPrecompiled(GetCachedShaderFilepath(uid, permutation, "VERTEX", false));
@@ -276,6 +292,8 @@ void ShaderCache::SavePrecompiledGlsl(const UID& uid, uint32_t permutation, cons
 
 void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv)
 {
+	EASY_FUNCTION();
+
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
@@ -308,6 +326,8 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 
 bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<uint32_t>& vertexSpirv, std::vector<uint32_t>& fragmentSpirv) const
 {
+	EASY_FUNCTION();
+
 	if (IsExpired(uid, permutation))
 	{
 		return false;

@@ -49,6 +49,9 @@ namespace Sailor
 		virtual SAILOR_API ~GfxDeviceVulkan() override;
 
 		void SAILOR_API DrawFrame(Window* pViewport);
+
+		static SAILOR_API void WaitIdle();
+
 	
 	private:
 

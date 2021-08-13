@@ -23,7 +23,7 @@
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{6d6b98f8-00ff-4088-80e9-7e6f5fcd5183}</ProjectGuid>
     <RootNamespace>sailor</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -43,12 +43,12 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -79,14 +79,14 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)\Binaries\$(Configuration)\</OutDir>
-    <IncludePath>$(VULKAN_SDK)\Include\;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\Runtime\;$(SolutionDir)\External\</IncludePath>
-    <LibraryPath>$(LibraryPath)</LibraryPath>
+    <IncludePath>$(VULKAN_SDK)\Include\;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\Runtime\;$(SolutionDir)\External\;$(SolutionDir)\External\easy_profiler\include\</IncludePath>
+    <LibraryPath>$(SolutionDir)\External\easy_profiler\lib\;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)\Binaries\$(Configuration)\</OutDir>
-    <IncludePath>$(VULKAN_SDK)\Include\;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\Runtime\;$(SolutionDir)\External\</IncludePath>
-    <LibraryPath>$(LibraryPath)</LibraryPath>
+    <IncludePath>$(VULKAN_SDK)\Include\;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\Runtime\;$(SolutionDir)\External\;$(SolutionDir)\External\easy_profiler\include\</IncludePath>
+    <LibraryPath>$(SolutionDir)\External\easy_profiler\lib\;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -131,6 +131,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -140,6 +141,9 @@
       <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /b /y  /v $(SolutionDir)\External\easy_profiler\bin\easy_profiler.dll  $(SolutionDir)\Binaries\$(Configuration)\easy_profiler.dll</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -152,6 +156,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -162,6 +167,9 @@
       <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib\</AdditionalLibraryDirectories>
       <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /b /y  /v $(SolutionDir)\External\easy_profiler\bin\easy_profiler.dll  $(SolutionDir)\Binaries\$(Configuration)\easy_profiler.dll</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h" />
@@ -170,7 +178,7 @@
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCache.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
-    <ClInclude Include="..\Runtime\ExportDef.h" />
+    <ClInclude Include="..\Runtime\Defines.h" />
     <ClInclude Include="..\Runtime\Foundation\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Foundation\Input.h" />
     <ClInclude Include="..\Runtime\Foundation\Window.h" />

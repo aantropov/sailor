@@ -1,5 +1,5 @@
 #pragma once
-#include "ExportDef.h"
+#include "Defines.h"
 
 template<typename T>
 class Singleton

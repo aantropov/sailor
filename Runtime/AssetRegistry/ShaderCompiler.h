@@ -1,5 +1,5 @@
 #pragma once
-#include "ExportDef.h"
+#include "Defines.h"
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>

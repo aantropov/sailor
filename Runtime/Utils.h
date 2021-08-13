@@ -14,13 +14,19 @@ namespace Sailor
 		SAILOR_API std::string RemoveFileExtension(const std::string& filename);
 		SAILOR_API std::string GetFileExtension(const std::string& filename);
 		SAILOR_API std::time_t GetFileModificationTime(const std::string& filepath);
-		
-		SAILOR_API std::vector<std::string> SplitString(const std::string& str, const std::string& delimiter);	
+
+		SAILOR_API std::vector<std::string> SplitString(const std::string& str, const std::string& delimiter);
 		SAILOR_API void ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPos = 0, size_t endPos = std::string::npos);
 		SAILOR_API void Erase(std::string& str, const std::string& substr, size_t startPos = 0, size_t endPos = std::string::npos);
 
 		SAILOR_API void FindAllOccurances(std::string& str, const std::string& substr, std::vector<size_t>& outLocations, size_t startPos = 0, size_t endPos = std::string::npos);
 
 		SAILOR_API void Trim(std::string& s);
+
+		SAILOR_API void SetThreadName(uint32_t dwThreadID, const std::string& threadName);
+		SAILOR_API void SetThreadName(const std::string& threadName);
+		SAILOR_API void SetThreadName(std::thread* thread, const std::string& threadName);
+
+		SAILOR_API DWORD GetRandomColorHex();
 	}
 }
