@@ -1,7 +1,5 @@
 #include "Input.h"
 
-#include <combaseapi.h>
-
 using namespace Sailor;
 
 InputState Input::m_rawState;

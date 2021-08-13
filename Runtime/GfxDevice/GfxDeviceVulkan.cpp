@@ -139,20 +139,24 @@ void GfxDeviceVulkan::CreateFrameSyncSemaphores()
 	}
 }
 
-void GfxDeviceVulkan::RecreateSwapchain(const Window* pViewport)
+bool GfxDeviceVulkan::RecreateSwapchain(Window* pViewport)
 {
-	while (pViewport->IsIconic())
+	if (pViewport->GetWidth() == 0 || pViewport->GetHeight() == 0)
 	{
-		return;
+		return false;
 	}
 
 	vkDeviceWaitIdle(m_pInstance->m_device);
+
+	CleanupSwapChain();
 
 	m_pInstance->CreateSwapchain(pViewport);
 	m_pInstance->CreateRenderPass();
 	m_pInstance->CreateGraphicsPipeline();
 	m_pInstance->CreateFramebuffers();
 	m_pInstance->CreateCommandBuffers();
+
+	return true;
 }
 
 VkShaderModule g_testFragShader;
@@ -562,13 +566,16 @@ void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
 	createSwapChainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	createSwapChainInfo.presentMode = m_presentMode;
-	createSwapChainInfo.clipped = VK_TRUE;	
-	createSwapChainInfo.oldSwapchain = m_swapChain;
+	createSwapChainInfo.clipped = VK_TRUE;
+
+	VkSwapchainKHR oldSwapchain = m_swapChain;
+	createSwapChainInfo.oldSwapchain = oldSwapchain;
 
 	VK_CHECK(vkCreateSwapchainKHR(m_device, &createSwapChainInfo, nullptr, &m_swapChain));
 
-	// Create Swapchain images & image views
+	vkDestroySwapchainKHR(m_device, oldSwapchain, nullptr);
 
+	// Create Swapchain images & image views
 	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapChain, &imageCount, nullptr));
 	m_swapChainImages.resize(imageCount);
 	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapChain, &imageCount, m_swapChainImages.data()));
@@ -651,7 +658,7 @@ bool GfxDeviceVulkan::CheckValidationLayerSupport(const std::vector<const char*>
 
 void GfxDeviceVulkan::CleanupSwapChain()
 {
-	for (auto framebuffer : m_swapChainFramebuffers)
+	for (const auto& framebuffer : m_swapChainFramebuffers)
 	{
 		vkDestroyFramebuffer(m_device, framebuffer, nullptr);
 	}
@@ -666,8 +673,6 @@ void GfxDeviceVulkan::CleanupSwapChain()
 	{
 		vkDestroyImageView(m_device, imageView, nullptr);
 	}
-
-	vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
 }
 
 GfxDeviceVulkan::~GfxDeviceVulkan()
@@ -675,6 +680,9 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 	vkDeviceWaitIdle(m_device);
 
 	CleanupSwapChain();
+
+	vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
+	m_swapChain = 0;
 
 	vkDestroyShaderModule(m_device, g_testFragShader, nullptr);
 	vkDestroyShaderModule(m_device, g_testVertShader, nullptr);
@@ -698,9 +706,9 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 	vkDestroyInstance(GetVkInstance(), nullptr);
 }
 
-void GfxDeviceVulkan::DrawFrame(const Window* pViewport)
+void GfxDeviceVulkan::DrawFrame(Window* pViewport)
 {
-	vkWaitForFences(m_device, 1, &m_syncFences[currentFrame], VK_TRUE, UINT64_MAX);
+	vkWaitForFences(m_device, 1, &m_syncFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
 	uint32_t imageIndex;
 	VkResult result = vkAcquireNextImageKHR(m_device, m_swapChain, UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
@@ -722,7 +730,7 @@ void GfxDeviceVulkan::DrawFrame(const Window* pViewport)
 		vkWaitForFences(m_device, 1, &m_syncImages[imageIndex], VK_TRUE, UINT64_MAX);
 	}
 	// Mark the image as now being in use by this frame
-	m_syncImages[imageIndex] = m_syncFences[currentFrame];
+	m_syncImages[imageIndex] = m_syncFences[m_currentFrame];
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -740,8 +748,8 @@ void GfxDeviceVulkan::DrawFrame(const Window* pViewport)
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
-	vkResetFences(m_device, 1, &m_syncFences[currentFrame]);
-	VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_syncFences[currentFrame]));
+	vkResetFences(m_device, 1, &m_syncFences[m_currentFrame]);
+	VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_syncFences[m_currentFrame]));
 
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -757,8 +765,9 @@ void GfxDeviceVulkan::DrawFrame(const Window* pViewport)
 
 	result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
 
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || bIsFramebufferResizedThisFrame)
 	{
+		bIsFramebufferResizedThisFrame = false;
 		m_pInstance->RecreateSwapchain(pViewport);
 	}
 	else if (result != VK_SUCCESS)
@@ -766,8 +775,6 @@ void GfxDeviceVulkan::DrawFrame(const Window* pViewport)
 		SAILOR_LOG("Failed to present swap chain image!");
 		return;
 	}
-
-	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
 	//vkQueueWaitIdle(m_presentQueue);
 

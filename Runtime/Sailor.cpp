@@ -54,8 +54,7 @@ void EngineInstance::Start()
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
-	float deltaTime = 0.0f;
-	float beginFrameTime = 0.0f;
+	//std::shared_ptr<Sailor::JobSystem::Job> renderingJob;
 
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{
@@ -71,32 +70,35 @@ void EngineInstance::Start()
 			DispatchMessage(&msg);
 		}
 
-		beginFrameTime = (float)GetTickCount();
-
 		if (Input::IsKeyPressed(VK_ESCAPE))
 		{
 			break;
 		}
 
-		if (m_pInstance->m_viewportWindow.IsRunning() && m_pInstance->m_viewportWindow.IsActive())
+		if (m_pInstance->m_viewportWindow.IsRunning())// && m_pInstance->m_viewportWindow.IsActive())
 		{
-			GfxDeviceVulkan::GetInstance()->DrawFrame(&m_pInstance->m_viewportWindow);
-			//SwapBuffers(m_pInstance->m_viewportWindow.GetHDC());
+			//renderingJob = JobSystem::Scheduler::CreateJob("Draw Frame",
+				//[]() {
 
-			deltaTime += GetTickCount() - beginFrameTime;
+				float beginFrameTime = (float)GetTickCount();
+				float deltaTime = GetTickCount() - beginFrameTime;
 
-			m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
-			++m_pInstance->m_FPS;
+				GfxDeviceVulkan::GetInstance()->DrawFrame(&m_pInstance->m_viewportWindow);
 
-			if (m_pInstance->m_elapsedTime >= 1.0f)
-			{
-				WCHAR Buff[50];
-				wsprintf(Buff, L"Sailor FPS: %u", m_pInstance->m_FPS);
+				m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
+				++m_pInstance->m_FPS;
+			//}, Sailor::JobSystem::EThreadType::Rendering);
+			//JobSystem::Scheduler::GetInstance()->Run(renderingJob);
+		}
 
-				m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
-				m_pInstance->m_FPS = 0;
-				m_pInstance->m_elapsedTime = 0.0f;
-			}
+		if (m_pInstance->m_elapsedTime >= 1.0f)
+		{
+			WCHAR Buff[50];
+			wsprintf(Buff, L"Sailor FPS: %u", m_pInstance->m_FPS);
+
+			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
+			m_pInstance->m_FPS = 0;
+			m_pInstance->m_elapsedTime = 0.0f;
 		}
 	}
 

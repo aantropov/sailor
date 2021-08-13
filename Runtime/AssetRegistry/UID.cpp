@@ -1,5 +1,4 @@
 #include "UID.h"
-#include <combaseapi.h>
 #include <corecrt_io.h>
 
 using namespace Sailor;

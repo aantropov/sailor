@@ -1,5 +1,4 @@
 #pragma once
-#include <combaseapi.h>
 #include "Sailor.h"
 
 namespace Sailor

@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <fcntl.h>
 #include <conio.h>
+#include <algorithm>
 #include <mutex>
 #include <set>
 #include <string>
@@ -42,6 +43,8 @@ void IJob::Complete()
 	{
 		Scheduler::GetInstance()->NotifyWorkerThread(threadType.first, threadType.second > 1);
 	}
+
+	m_bIsFinished = true;
 }
 
 Job::Job(const std::string& name, const std::function<void()>& function, EThreadType thread) : IJob(name, thread)

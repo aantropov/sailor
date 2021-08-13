@@ -94,13 +94,13 @@ bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIs
 	// TODO: Init Vulkan
 
 	// Set up window size
-	SetSize(m_width, m_height, m_bIsFullscreen);
+	ChangeWindowSize(m_width, m_height, m_bIsFullscreen);
 
 	SAILOR_LOG("Window created");
 	return true;
 }
 
-void Window::SetSize(int32_t width, int32_t height, bool bInIsFullScreen)
+void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScreen)
 {
 	RECT    rect;
 	DWORD   style, exStyle;
@@ -148,7 +148,7 @@ void Window::SetSize(int32_t width, int32_t height, bool bInIsFullScreen)
 	}
 	else
 	{ //Window
-		style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+		style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_OVERLAPPEDWINDOW;
 		exStyle = WS_EX_APPWINDOW;
 
 		// Centralize window
@@ -187,6 +187,24 @@ void Window::SetSize(int32_t width, int32_t height, bool bInIsFullScreen)
 	SetCursorPos(x + width / 2, y + height / 2);
 }
 
+void Window::RecalculateWindowSize()
+{	
+	if (IsIconic())
+	{
+		m_width = 0;
+		m_height = 0;
+		return;
+	}
+
+	RECT rect;
+
+	if (GetWindowRect(m_hWnd, &rect))
+	{
+		m_width = rect.right - rect.left;
+		m_height = rect.bottom - rect.top;
+	}
+}
+
 void Window::Destroy()
 {
 	// Restore window size
@@ -209,6 +227,11 @@ void Window::Destroy()
 		UnregisterClassA((LPCSTR)WindowClassName.c_str(), m_hInstance);
 }
 
+bool Window::IsIconic() const
+{
+	return ::IsIconic(m_hWnd);
+}
+
 LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
@@ -216,6 +239,7 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	case WM_SIZE:
 	{
 		EngineInstance::GetViewportWindow().SetIsIconic(wParam == SIZE_MINIMIZED);
+		EngineInstance::GetViewportWindow().RecalculateWindowSize();
 		return FALSE;
 	}
 	case WM_LBUTTONDOWN:

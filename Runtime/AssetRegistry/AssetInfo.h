@@ -79,8 +79,8 @@ namespace Sailor
 
 		static SAILOR_API void Initialize();
 
-		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
-		virtual SAILOR_API AssetInfo* CreateAssetInfo() const;
+		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const override;
+		virtual SAILOR_API AssetInfo* CreateAssetInfo() const override;
 
 		virtual SAILOR_API ~DefaultAssetInfoHandler() override = default;
 	};

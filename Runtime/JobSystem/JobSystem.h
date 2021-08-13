@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <functional>
 #include <mutex>
+#include <atomic>
 #include <thread>
 #include "Sailor.h"
 #include "Singleton.hpp"
@@ -41,6 +42,7 @@ namespace Sailor
 
 			SAILOR_API IJob(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_threadType(thread) {}
 
+			std::atomic_bool m_bIsFinished = false;
 			std::atomic<uint32_t> m_numBlockers;
 			std::vector<IJob*> m_dependencies;
 			std::string m_name;
@@ -63,7 +65,6 @@ namespace Sailor
 		protected:
 
 			std::function<void()> m_function;
-			std::atomic_bool m_bIsFinished = false;
 		};
 
 		class WorkerThread

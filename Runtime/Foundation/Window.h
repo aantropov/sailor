@@ -2,6 +2,7 @@
 
 #include "ExportDef.h"
 #include <wtypes.h>
+#include <atomic>
 
 namespace Sailor
 {
@@ -18,10 +19,10 @@ namespace Sailor
 		int m_width = 1024;
 		int m_height = 768;
 
-		bool m_bIsFullscreen = false;
-		bool m_bIsActive = false;
-		bool m_bIsRunning = false;
-		bool m_bIsIconic = false;
+		std::atomic<bool> m_bIsFullscreen = false;
+		std::atomic<bool> m_bIsActive = false;
+		std::atomic<bool> m_bIsRunning = false;
+		std::atomic<bool> m_bIsIconic = false;
 
 	public:
 
@@ -32,17 +33,17 @@ namespace Sailor
 		SAILOR_API bool IsActive() const { return m_bIsActive; }
 		SAILOR_API bool IsRunning() const { return m_bIsRunning; }
 		SAILOR_API bool IsFullscreen() const { return m_bIsFullscreen; }
-		SAILOR_API bool IsIconic() const { return m_bIsIconic; }
+		SAILOR_API bool IsIconic() const;
 
 		// Setters
 		SAILOR_API void SetActive(bool value) { m_bIsActive = value; }
 		SAILOR_API void SetRunning(bool value) { m_bIsRunning = value; }
 		SAILOR_API void SetFullscreen(bool value) { m_bIsFullscreen = value; }
-
 		SAILOR_API void SetWindowTitle(LPCWSTR lString) { SetWindowText(m_hWnd, lString); }
 
 		// Getters for handles
 		SAILOR_API HWND GetHWND() const { return m_hWnd; }
+
 		SAILOR_API HDC GetHDC() const { return m_hDC; }
 		SAILOR_API HINSTANCE GetHINSTANCE() const { return m_hInstance; }
 
@@ -52,12 +53,11 @@ namespace Sailor
 
 		// Create window
 		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false);
-
-		// Destroy window
 		SAILOR_API void Destroy();
 
-		// Set window size
-		SAILOR_API void SetSize(int32_t width, int32_t height, bool bIsFullScreen = false);
+		// Window size
+		SAILOR_API void RecalculateWindowSize();
+		SAILOR_API void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false);
 
 	private:
 

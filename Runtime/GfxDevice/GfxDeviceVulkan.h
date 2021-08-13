@@ -48,12 +48,10 @@ namespace Sailor
 
 		virtual SAILOR_API ~GfxDeviceVulkan() override;
 
-		void SAILOR_API DrawFrame(const Window* pViewport);
+		void SAILOR_API DrawFrame(Window* pViewport);
 	
 	private:
 
-		size_t m_currentFrame = 0;
-		
 		static SAILOR_API bool SetupDebugCallback();
 		static SAILOR_API VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
 		static SAILOR_API void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator);
@@ -70,7 +68,7 @@ namespace Sailor
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		SAILOR_API void CreateWin32Surface(const Window* pViewport);
 		SAILOR_API void CreateSwapchain(const Window* pViewport);
-		SAILOR_API void RecreateSwapchain(const Window* pViewport);
+		SAILOR_API bool RecreateSwapchain(Window* pViewport);
 		SAILOR_API void CreateGraphicsPipeline();
 		SAILOR_API void CreateRenderPass();
 		SAILOR_API void CreateFramebuffers();
@@ -122,6 +120,8 @@ namespace Sailor
 		std::vector<VkSemaphore> m_renderFinishedSemaphores;
 		std::vector<VkFence> m_syncFences;
 		std::vector<VkFence> m_syncImages;
-		size_t currentFrame = 0;
+		size_t m_currentFrame = 0;
+
+		std::atomic<bool> bIsFramebufferResizedThisFrame = false;
 	};
 }
