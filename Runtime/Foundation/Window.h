@@ -23,6 +23,7 @@ namespace Sailor
 		std::atomic<bool> m_bIsActive = false;
 		std::atomic<bool> m_bIsRunning = false;
 		std::atomic<bool> m_bIsIconic = false;
+		std::atomic<bool> m_bIsVsyncRequested = false;
 
 	public:
 
@@ -50,9 +51,10 @@ namespace Sailor
 		//Getters for parameters
 		SAILOR_API int32_t GetWidth() const { return m_width; }
 		SAILOR_API int32_t GetHeight() const { return m_height; }
+		SAILOR_API bool IsVsyncRequested() const { return m_bIsVsyncRequested; }
 
 		// Create window
-		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false);
+		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false);
 		SAILOR_API void Destroy();
 
 		// Window size

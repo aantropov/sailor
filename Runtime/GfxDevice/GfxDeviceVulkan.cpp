@@ -529,7 +529,7 @@ void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
 	SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(m_mainPhysicalDevice);
 
 	m_surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.m_formats);
-	m_presentMode = ÑhooseSwapPresentMode(swapChainSupport.m_presentModes);
+	m_presentMode = ÑhooseSwapPresentMode(swapChainSupport.m_presentModes, viewport->IsVsyncRequested());
 	m_swapChainExtent = ChooseSwapExtent(swapChainSupport.m_capabilities, viewport);
 
 	uint32_t imageCount = swapChainSupport.m_capabilities.minImageCount + 1;
@@ -978,11 +978,17 @@ VkSurfaceFormatKHR GfxDeviceVulkan::ChooseSwapSurfaceFormat(const std::vector<Vk
 	return availableFormats[0];
 }
 
-VkPresentModeKHR GfxDeviceVulkan::ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
+VkPresentModeKHR GfxDeviceVulkan::ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync)
 {
+	if (bVSync)
+	{
+		return VK_PRESENT_MODE_FIFO_KHR;
+	}
+
 	for (const auto& availablePresentMode : availablePresentModes)
 	{
-		if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
+		if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR ||
+			availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
 		{
 			return availablePresentMode;
 		}

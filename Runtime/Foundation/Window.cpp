@@ -5,8 +5,9 @@
 
 using namespace Sailor;
 
-bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen)
+bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested)
 {
+	m_bIsVsyncRequested = bIsVsyncRequested;
 	m_width = inWidth;
 	m_height = inHeight;
 	m_bIsFullscreen = inbIsFullScreen;

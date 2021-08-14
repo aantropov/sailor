@@ -65,7 +65,7 @@ namespace Sailor
 		static SAILOR_API SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device);
 
 		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
-		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
 		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* pViewport);
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
