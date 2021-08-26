@@ -125,7 +125,7 @@ void Sailor::Utils::SetThreadName(std::thread* thread, const std::string& thread
 
 std::string Sailor::Utils::RemoveFileExtension(const std::string& filename)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	size_t lastdot = filename.find_last_of(".");
 	lastdot++;
 	if (lastdot == std::string::npos)
@@ -135,7 +135,7 @@ std::string Sailor::Utils::RemoveFileExtension(const std::string& filename)
 
 std::string Sailor::Utils::GetFileExtension(const std::string& filename)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	size_t lastdot = filename.find_last_of(".");
 	lastdot++;
 	if (lastdot == std::string::npos)
@@ -145,7 +145,7 @@ std::string Sailor::Utils::GetFileExtension(const std::string& filename)
 
 std::vector<std::string> Sailor::Utils::SplitString(const std::string& str, const std::string& delimiter)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	std::vector<std::string> strings;
 
 	std::string::size_type pos = 0;
@@ -164,7 +164,7 @@ std::vector<std::string> Sailor::Utils::SplitString(const std::string& str, cons
 
 void Sailor::Utils::ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPosition, size_t endLocation)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	while ((startPosition = str.find(from, startPosition)) < endLocation)
 	{
 		str.replace(startPosition, from.length(), to);
@@ -179,7 +179,7 @@ void Sailor::Utils::ReplaceAll(std::string& str, const std::string& from, const 
 
 void Sailor::Utils::Erase(std::string& str, const std::string& substr, size_t startPosition, size_t endLocation)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	while ((startPosition = str.find(substr, startPosition)) < endLocation)
 	{
 		str = str.erase(startPosition, substr.length());
@@ -194,7 +194,7 @@ void Sailor::Utils::Erase(std::string& str, const std::string& substr, size_t st
 
 std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	struct stat result;
 	if (stat(filepath.c_str(), &result) == 0)
 	{
@@ -205,7 +205,7 @@ std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
 
 void Sailor::Utils::FindAllOccurances(std::string& str, const std::string& substr, std::vector<size_t>& outLocations, size_t startPosition, size_t endLocation)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	size_t pos = str.find(substr, startPosition);
 	while (pos < endLocation)
 	{
@@ -216,7 +216,7 @@ void Sailor::Utils::FindAllOccurances(std::string& str, const std::string& subst
 
 void Sailor::Utils::Trim(std::string& s)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
 		return !std::isspace(ch);
 	}));

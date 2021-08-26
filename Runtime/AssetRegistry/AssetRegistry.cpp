@@ -12,7 +12,7 @@ using namespace nlohmann;
 
 void AssetRegistry::Initialize()
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	m_pInstance = new AssetRegistry();
 
@@ -24,7 +24,7 @@ void AssetRegistry::Initialize()
 
 bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& text)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	constexpr auto readSize = std::size_t{ 4096 };
 	auto stream = std::ifstream{ filename.data() };
@@ -48,14 +48,14 @@ bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& te
 
 void AssetRegistry::ScanContentFolder()
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	ScanFolder(ContentRootFolder);
 }
 
 bool AssetRegistry::RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	bool bAssigned = false;
 	for (const auto& extension : supportedExtensions)
@@ -74,7 +74,7 @@ bool AssetRegistry::RegisterAssetInfoHandler(const std::vector<std::string>& sup
 
 void AssetRegistry::ScanFolder(const std::string& folderPath)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	for (const auto& entry : std::filesystem::directory_iterator(folderPath))
 	{
@@ -150,7 +150,7 @@ AssetInfo* AssetRegistry::GetAssetInfo(const std::string& filepath) const
 
 AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	auto it = m_loadedAssetInfo.find(uid);
 	if (it != m_loadedAssetInfo.end())

@@ -64,7 +64,7 @@ void EngineInstance::Start()
 	{
 		ConsoleWindow::GetInstance()->Update();
 
-		EASY_BLOCK("Process window's messages");
+		SAILOR_PROFILE_BLOCK("Process window's messages");
 
 		while (PeekMessage(&msg, m_pInstance->m_viewportWindow.GetHWND(), 0, 0, PM_REMOVE))
 		{
@@ -76,7 +76,7 @@ void EngineInstance::Start()
 			DispatchMessage(&msg);
 		}
 
-		EASY_END_BLOCK;
+		SAILOR_PROFILE_END_BLOCK();
 
 		if (Input::IsKeyPressed(VK_ESCAPE))
 		{
@@ -85,12 +85,12 @@ void EngineInstance::Start()
 
 		if (m_pInstance->m_viewportWindow.IsRunning())// && m_pInstance->m_viewportWindow.IsActive())
 		{
-			EASY_BLOCK("Draw frame");
+			SAILOR_PROFILE_BLOCK("Draw frame");
 
 			//renderingJob = JobSystem::Scheduler::CreateJob("Draw Frame",
 			//	[]() {
 
-				EASY_FUNCTION();
+				SAILOR_PROFILE_FUNCTION();
 
 				float beginFrameTime = (float)GetTickCount();
 				float deltaTime = GetTickCount() - beginFrameTime;
@@ -102,10 +102,10 @@ void EngineInstance::Start()
 				//}, Sailor::JobSystem::EThreadType::Rendering);
 			//JobSystem::Scheduler::GetInstance()->Run(renderingJob);
 
-			EASY_END_BLOCK;
+			SAILOR_PROFILE_END_BLOCK();
 		}
 
-		EASY_BLOCK("Track FPS");
+		SAILOR_PROFILE_BLOCK("Track FPS");
 
 		if (m_pInstance->m_elapsedTime >= 1.0f)
 		{
@@ -117,7 +117,7 @@ void EngineInstance::Start()
 			m_pInstance->m_elapsedTime = 0.0f;
 		}
 
-		EASY_END_BLOCK;
+		SAILOR_PROFILE_END_BLOCK();
 	}
 
 	GfxDeviceVulkan::WaitIdle();

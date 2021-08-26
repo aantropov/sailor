@@ -335,7 +335,7 @@ void GfxDeviceVulkan::CreateFramebuffers()
 
 void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValidationLayers)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	if (m_pInstance != nullptr)
 	{

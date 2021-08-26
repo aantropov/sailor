@@ -26,7 +26,7 @@ ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
 
 void ConsoleWindow::Initialize(bool bInShouldAttach)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	m_pInstance = new ConsoleWindow(bInShouldAttach);
 }

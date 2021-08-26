@@ -60,7 +60,7 @@ void ShaderAsset::Deserialize(const nlohmann::json& inData)
 
 void ShaderCompiler::Initialize()
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	m_pInstance = new ShaderCompiler();
 	m_pInstance->m_shaderCache.Initialize();
@@ -82,7 +82,7 @@ ShaderCompiler::~ShaderCompiler()
 
 void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const std::vector<std::string>& defines)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	outGLSLCode.clear();
 
@@ -107,7 +107,7 @@ void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& o
 
 void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	outCodeInJSON = shaderText;
 
@@ -146,7 +146,7 @@ void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::
 
 bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	outPureGLSL = shaderText;
 
@@ -161,7 +161,7 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 
 void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permutation)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	auto pShader = m_pInstance->LoadShaderAsset(assetUID).lock();
 	const auto defines = GetDefines(pShader->m_defines, permutation);
@@ -193,7 +193,7 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 
 void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	std::shared_ptr<ShaderAsset> pShader = m_pInstance->LoadShaderAsset(assetUID).lock();
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
@@ -248,7 +248,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 
 std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	if (ShaderAssetInfo* shaderAssetInfo = dynamic_cast<ShaderAssetInfo*>(AssetRegistry::GetInstance()->GetAssetInfo(uid)))
 	{
@@ -292,7 +292,7 @@ void ShaderCompiler::OnAssetInfoUpdated(AssetInfo* assetInfo)
 
 bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, std::vector<uint32_t>& outByteCode)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
@@ -314,7 +314,7 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind s
 
 uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	uint32_t res = 0;
 	for (int32_t i = 0; i < defines.size(); i++)
@@ -334,7 +334,7 @@ uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines,
 
 std::vector<std::string> ShaderCompiler::GetDefines(const std::vector<std::string>& defines, uint32_t permutation)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	std::vector<std::string> res;
 
@@ -351,7 +351,7 @@ std::vector<std::string> ShaderCompiler::GetDefines(const std::vector<std::strin
 
 void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, std::vector<uint32_t>& outVertexByteCode, std::vector<uint32_t>& outFragmentByteCode)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	if (auto pShader = m_pInstance->LoadShaderAsset(assetUID).lock())
 	{

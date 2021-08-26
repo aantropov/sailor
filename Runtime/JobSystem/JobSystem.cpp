@@ -27,7 +27,7 @@ void IJob::WaitAll(const std::vector<std::weak_ptr<IJob>>& jobs)
 
 void IJob::Complete()
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	std::unordered_map<EThreadType, uint32_t> threadTypesToRefresh;
 
@@ -66,7 +66,7 @@ bool Job::IsFinished() const
 
 void Job::Execute()
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	m_function();
 }
 
@@ -87,7 +87,7 @@ WorkerThread::WorkerThread(
 
 void WorkerThread::Join() const
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 	m_pThread->join();
 }
 
@@ -106,7 +106,7 @@ void WorkerThread::Process()
 				
 		if (m_pJob)
 		{
-			EASY_BLOCK(m_pJob->GetName(), randomColorHex);
+			SAILOR_PROFILE_BLOCK(m_pJob->GetName(), randomColorHex);
 
 			m_pJob->Execute();
 			m_pJob->Complete();
@@ -114,7 +114,7 @@ void WorkerThread::Process()
 
 			scheduler->NotifyWorkerThread(m_threadType);
 
-			EASY_END_BLOCK;
+			SAILOR_PROFILE_END_BLOCK();
 		}
 
 		lk.unlock();
@@ -123,7 +123,7 @@ void WorkerThread::Process()
 
 void Scheduler::Initialize()
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	m_pInstance = new Scheduler();
 
@@ -194,7 +194,7 @@ uint32_t Scheduler::GetNumWorkerThreads() const
 
 void Scheduler::Run(const std::shared_ptr<Job>& pJob)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	{
 		std::mutex* pOutMutex;
@@ -216,7 +216,7 @@ void Scheduler::GetThreadSyncVarsByThreadType(
 	std::list<std::shared_ptr<Job>>*& pOutQueue,
 	std::condition_variable*& pOutCondVar)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	pOutMutex = &m_queueMutex[(uint32_t)threadType];
 	pOutQueue = &m_pJobsQueue[(uint32_t)threadType];
@@ -225,7 +225,7 @@ void Scheduler::GetThreadSyncVarsByThreadType(
 
 bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob, EThreadType threadType)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	std::mutex* pOutMutex;
 	std::list<std::shared_ptr<Job>>* pOutQueue;
@@ -257,7 +257,7 @@ bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob, EThread
 
 void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads)
 {
-	EASY_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
 	std::mutex* pOutMutex;
 	std::list<std::shared_ptr<Job>>* pOutQueue;
