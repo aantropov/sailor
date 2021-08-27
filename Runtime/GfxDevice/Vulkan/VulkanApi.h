@@ -97,7 +97,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkInstance m_vkInstance = 0;
 
 		// Command pool
-		VkCommandPool m_commandPool;
+		TRefPtr<class VulkanCommandPool> m_commandPool;
 		std::vector<TRefPtr<class VulkanCommandBuffer>> m_commandBuffers;
 
 		// Render Pass

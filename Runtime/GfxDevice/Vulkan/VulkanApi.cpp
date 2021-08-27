@@ -101,13 +101,7 @@ void VulkanApi::CreateRenderPass()
 void VulkanApi::CreateCommandPool()
 {
 	QueueFamilyIndices queueFamilyIndices = FindQueueFamilies(m_mainPhysicalDevice);
-
-	VkCommandPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolInfo.queueFamilyIndex = queueFamilyIndices.m_graphicsFamily.value();
-	poolInfo.flags = 0; // Optional
-
-	VK_CHECK(vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool));
+	m_commandPool = TRefPtr<VulkanCommandPool>(m_device, queueFamilyIndices.m_graphicsFamily.value());
 }
 
 void VulkanApi::CreateFrameSyncSemaphores()
@@ -416,7 +410,7 @@ void VulkanApi::Initialize(const Window* viewport, bool bInIsEnabledValidationLa
 	m_pInstance->CreateFrameSyncSemaphores();
 
 	SAILOR_LOG("Vulkan initialized");
-}
+	}
 
 void VulkanApi::CreateCommandBuffers()
 {
@@ -682,7 +676,7 @@ VulkanApi::~VulkanApi()
 		DestroyDebugUtilsMessengerEXT(GetVkInstance(), m_debugMessenger, nullptr);
 	}
 
-	vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+	m_commandPool.Clear();
 
 	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{

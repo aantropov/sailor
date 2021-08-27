@@ -102,6 +102,9 @@
     <ClInclude Include="..\Runtime\Core\RefPtr.hpp">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.hpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

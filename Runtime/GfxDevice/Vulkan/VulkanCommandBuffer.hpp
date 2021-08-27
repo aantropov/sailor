@@ -1,6 +1,7 @@
 #pragma once
 #include "RHI/RHIResource.h"
 #include "VulkanApi.h"
+#include "GfxDevice/Vulkan/VulkanCommandPool.hpp"
 
 using namespace Sailor::RHI;
 
@@ -14,14 +15,14 @@ namespace Sailor::GfxDevice::Vulkan
 		const VkCommandBuffer* GetHandle() const { return &m_commandBuffer; }
 		operator VkCommandBuffer() const { return m_commandBuffer; }
 
-		VulkanCommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY) :
+		VulkanCommandBuffer(VkDevice device, TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY) :
 			m_device(device),
 			m_level(level),
 			m_commandPool(commandPool)
 		{
 			VkCommandBufferAllocateInfo allocateInfo = {};
 			allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-			allocateInfo.commandPool = commandPool;
+			allocateInfo.commandPool = *commandPool;
 			allocateInfo.level = level;
 			allocateInfo.commandBufferCount = 1;
 
@@ -32,14 +33,14 @@ namespace Sailor::GfxDevice::Vulkan
 		{
 			if (m_commandBuffer)
 			{
-				vkFreeCommandBuffers(m_device, m_commandPool, 1, &m_commandBuffer);
+				vkFreeCommandBuffers(m_device, *m_commandPool, 1, &m_commandBuffer);
 			}
 		}
 
 	protected:
 
 		VkDevice m_device;
-		VkCommandPool m_commandPool;
+		TRefPtr <VulkanCommandPool> m_commandPool;
 		VkCommandBuffer m_commandBuffer;
 		VkCommandBufferLevel m_level;
 	};

@@ -35,9 +35,9 @@ namespace Sailor
 	{
 	public:
 
-		TRefPtr() : m_pRawPtr(nullptr) 
+		TRefPtr()
 		{
-			static_assert(std::is_base_of<TRefBase, T>);
+			static_assert(std::is_base_of<TRefBase, T>::value);
 		}
 
 		explicit TRefPtr(T* Ptr)
@@ -53,11 +53,13 @@ namespace Sailor
 		TRefPtr& operator=(T* Ptr)
 		{
 			AssignRawPtr(Ptr);
+			return *this;
 		}
 
 		TRefPtr& operator=(const TRefPtr<T>& Ptr)
 		{
 			AssignRawPtr(reinterpret_cast<T*>(Ptr.m_pRawPtr));
+			return *this;
 		}
 
 		template<typename... TArgs>
