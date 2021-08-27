@@ -7,11 +7,11 @@
 #include "Sailor.h"
 #include "Singleton.hpp"
 
-namespace Sailor
-{
-	class Window;
+class Sailor::Window;
 
-	class GfxDeviceVulkan : public Singleton<GfxDeviceVulkan>
+namespace Sailor::GfxDevice::Vulkan
+{
+	class GfxApi : public Singleton<GfxApi>
 	{
 	public:
 		const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -46,7 +46,7 @@ namespace Sailor
 
 		static SAILOR_API VkShaderModule CreateShaderModule(const std::vector<uint32_t>& inCode);
 
-		virtual SAILOR_API ~GfxDeviceVulkan() override;
+		virtual SAILOR_API ~GfxApi() override;
 
 		void SAILOR_API DrawFrame(Window* pViewport);
 

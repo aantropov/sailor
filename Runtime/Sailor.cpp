@@ -1,9 +1,9 @@
 #include "Sailor.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
-#include "Foundation/ConsoleWindow.h"
-#include "Foundation/Input.h"
-#include "GfxDevice/GfxDeviceVulkan.h"
+#include "Platform/Win/ConsoleWindow.h"
+#include "Platform/Win/Input.h"
+#include "GfxDevice/Vulkan/GfxDeviceVulkan.h"
 #include "JobSystem/JobSystem.h"
 
 using namespace Sailor;
@@ -14,14 +14,16 @@ const std::string EngineInstance::EngineName = "Sailor";
 
 void EngineInstance::Initialize()
 {	
-	EASY_FUNCTION()
+	SAILOR_PROFILE_FUNCTION()
 
 	if (m_pInstance != nullptr)
 	{
 		return;
 	}
 
+#ifdef BUILD_WITH_EASY_PROFILER
 	profiler::startListen();
+#endif
 
 	ConsoleWindow::Initialize(false);
 
@@ -44,7 +46,7 @@ void EngineInstance::Initialize()
 
 	AssetRegistry::Initialize();
 	ShaderCompiler::Initialize();
-	GfxDeviceVulkan::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
+	GfxDevice::Vulkan::GfxApi::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
 
 	ShaderCompiler::GetInstance();
 
@@ -95,7 +97,7 @@ void EngineInstance::Start()
 				float beginFrameTime = (float)GetTickCount();
 				float deltaTime = GetTickCount() - beginFrameTime;
 
-				GfxDeviceVulkan::GetInstance()->DrawFrame(&m_pInstance->m_viewportWindow);
+				GfxDevice::Vulkan::GfxApi::GetInstance()->DrawFrame(&m_pInstance->m_viewportWindow);
 
 				m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
 				++m_pInstance->m_FPS;
@@ -120,7 +122,7 @@ void EngineInstance::Start()
 		SAILOR_PROFILE_END_BLOCK();
 	}
 
-	GfxDeviceVulkan::WaitIdle();
+	GfxDevice::Vulkan::GfxApi::WaitIdle();
 
 	m_pInstance->m_viewportWindow.SetActive(false);
 	m_pInstance->m_viewportWindow.SetRunning(false);
@@ -135,7 +137,7 @@ void EngineInstance::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Released");
 	AssetRegistry::Shutdown();
-	GfxDeviceVulkan::Shutdown();
+	GfxDevice::Vulkan::GfxApi::Shutdown();
 	ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
 	JobSystem::Scheduler::Shutdown();

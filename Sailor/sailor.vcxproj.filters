@@ -16,37 +16,34 @@
     <Filter Include="Runtime">
       <UniqueIdentifier>{f13b37a3-712f-4cdd-8236-af56e0e0b44b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Runtime\Foundation">
-      <UniqueIdentifier>{2ba3f750-1987-4661-8170-8808d7cc56dd}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Runtime\GfxDevice">
-      <UniqueIdentifier>{c9092454-50e1-4e43-ba17-1a868c268396}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Runtime\AssetRegistry">
       <UniqueIdentifier>{743d5375-e41f-4249-944a-31c1edb7a9ce}</UniqueIdentifier>
     </Filter>
     <Filter Include="Runtime\Jobsystem">
       <UniqueIdentifier>{204ddbe7-3034-430c-8a5a-73c2f95bc940}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\RHI">
+      <UniqueIdentifier>{35d82da9-5486-431e-9c95-d548da0ee596}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\Platform">
+      <UniqueIdentifier>{c4e0e853-b4ec-4661-9e22-a337e7149438}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\Platform\Win">
+      <UniqueIdentifier>{1c4b6dba-7224-49e7-a4ec-698a2b6500bb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\GfxDevice">
+      <UniqueIdentifier>{6358c04d-e453-43f1-8bc7-b5c8499fdf8f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\GfxDevice\Vulkan">
+      <UniqueIdentifier>{3169d8cc-1eb9-4f23-a67e-c35395774073}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
       <Filter>Runtime</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Foundation\ConsoleWindow.h">
-      <Filter>Runtime\Foundation</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Foundation\Window.h">
-      <Filter>Runtime\Foundation</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Foundation\Input.h">
-      <Filter>Runtime\Foundation</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\LogMacros.h">
       <Filter>Runtime</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\GfxDeviceVulkan.h">
-      <Filter>Runtime\GfxDevice</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Singleton.hpp">
       <Filter>Runtime</Filter>
@@ -81,25 +78,28 @@
     <ClInclude Include="..\Runtime\Defines.h">
       <Filter>Runtime</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\RHIResource.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Platform\Win\ConsoleWindow.h">
+      <Filter>Runtime\Platform\Win</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Platform\Win\Input.h">
+      <Filter>Runtime\Platform\Win</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Platform\Win\Window.h">
+      <Filter>Runtime\Platform\Win</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Foundation\ConsoleWindow.cpp">
-      <Filter>Runtime\Foundation</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\Foundation\Window.cpp">
-      <Filter>Runtime\Foundation</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\Foundation\Input.cpp">
-      <Filter>Runtime\Foundation</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\Sailor.cpp">
       <Filter>Runtime</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\GfxDeviceVulkan.cpp">
-      <Filter>Runtime\GfxDevice</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
@@ -127,6 +127,18 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp">
       <Filter>Runtime\Jobsystem</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Platform\Win\ConsoleWindow.cpp">
+      <Filter>Runtime\Platform\Win</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Platform\Win\Input.cpp">
+      <Filter>Runtime\Platform\Win</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Platform\Win\Window.cpp">
+      <Filter>Runtime\Platform\Win</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

@@ -3,7 +3,7 @@
 #include "Defines.h"
 #include "LogMacros.h"
 #include "Utils.h"
-#include "Foundation/Window.h"
+#include "Platform/Win/Window.h"
 
 namespace Sailor
 {

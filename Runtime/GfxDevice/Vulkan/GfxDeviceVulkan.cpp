@@ -14,7 +14,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
 
-using namespace Sailor;
+using namespace Sailor::GfxDevice::Vulkan;
 
 #define VK_CHECK(call) \
 	do { \
@@ -60,7 +60,7 @@ void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 	createInfo.pfnUserCallback = VulkanDebugCallback;
 }
 
-void GfxDeviceVulkan::CreateRenderPass()
+void GfxApi::CreateRenderPass()
 {
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format = m_pInstance->m_surfaceFormat.format;
@@ -105,7 +105,7 @@ void GfxDeviceVulkan::CreateRenderPass()
 
 }
 
-void GfxDeviceVulkan::CreateCommandPool()
+void GfxApi::CreateCommandPool()
 {
 	QueueFamilyIndices queueFamilyIndices = FindQueueFamilies(m_mainPhysicalDevice);
 
@@ -117,7 +117,7 @@ void GfxDeviceVulkan::CreateCommandPool()
 	VK_CHECK(vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool));
 }
 
-void GfxDeviceVulkan::CreateFrameSyncSemaphores()
+void GfxApi::CreateFrameSyncSemaphores()
 {
 	m_imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 	m_renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -139,7 +139,7 @@ void GfxDeviceVulkan::CreateFrameSyncSemaphores()
 	}
 }
 
-bool GfxDeviceVulkan::RecreateSwapchain(Window* pViewport)
+bool GfxApi::RecreateSwapchain(Window* pViewport)
 {
 	if (pViewport->GetWidth() == 0 || pViewport->GetHeight() == 0)
 	{
@@ -162,7 +162,7 @@ bool GfxDeviceVulkan::RecreateSwapchain(Window* pViewport)
 VkShaderModule g_testFragShader;
 VkShaderModule g_testVertShader;
 
-void GfxDeviceVulkan::CreateGraphicsPipeline()
+void GfxApi::CreateGraphicsPipeline()
 {
 	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfo("Shaders\\Simple.shader"))
 	{
@@ -310,7 +310,7 @@ void GfxDeviceVulkan::CreateGraphicsPipeline()
 	}
 }
 
-void GfxDeviceVulkan::CreateFramebuffers()
+void GfxApi::CreateFramebuffers()
 {
 	m_swapChainFramebuffers.resize(m_swapChainImageViews.size());
 
@@ -333,7 +333,7 @@ void GfxDeviceVulkan::CreateFramebuffers()
 	}
 }
 
-void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValidationLayers)
+void GfxApi::Initialize(const Window* viewport, bool bInIsEnabledValidationLayers)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -343,10 +343,10 @@ void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValida
 		return;
 	}
 
-	m_pInstance = new GfxDeviceVulkan();
+	m_pInstance = new GfxApi();
 	m_pInstance->bIsEnabledValidationLayers = bInIsEnabledValidationLayers;
 
-	SAILOR_LOG("Num supported Vulkan extensions: %d", GfxDeviceVulkan::GetNumSupportedExtensions());
+	SAILOR_LOG("Num supported Vulkan extensions: %d", GfxApi::GetNumSupportedExtensions());
 	PrintSupportedExtensions();
 
 	// Create Vulkan instance
@@ -425,7 +425,7 @@ void GfxDeviceVulkan::Initialize(const Window* viewport, bool bInIsEnabledValida
 	SAILOR_LOG("Vulkan initialized");
 }
 
-void GfxDeviceVulkan::CreateCommandBuffers()
+void GfxApi::CreateCommandBuffers()
 {
 	m_commandBuffers.resize(m_swapChainFramebuffers.size());
 
@@ -466,7 +466,7 @@ void GfxDeviceVulkan::CreateCommandBuffers()
 	}
 }
 
-void GfxDeviceVulkan::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
+void GfxApi::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 {
 	m_queueFamilies = FindQueueFamilies(physicalDevice);
 
@@ -516,7 +516,7 @@ void GfxDeviceVulkan::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &m_presentQueue);
 }
 
-void GfxDeviceVulkan::CreateWin32Surface(const Window* viewport)
+void GfxApi::CreateWin32Surface(const Window* viewport)
 {
 	VkWin32SurfaceCreateInfoKHR createInfoWin32{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
 	createInfoWin32.hwnd = viewport->GetHWND();
@@ -524,7 +524,7 @@ void GfxDeviceVulkan::CreateWin32Surface(const Window* viewport)
 	VK_CHECK(vkCreateWin32SurfaceKHR(GetVkInstance(), &createInfoWin32, nullptr, &m_surface));
 }
 
-void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
+void GfxApi::CreateSwapchain(const Window* viewport)
 {
 	SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(m_mainPhysicalDevice);
 
@@ -606,14 +606,14 @@ void GfxDeviceVulkan::CreateSwapchain(const Window* viewport)
 	}
 }
 
-uint32_t GfxDeviceVulkan::GetNumSupportedExtensions()
+uint32_t GfxApi::GetNumSupportedExtensions()
 {
 	uint32_t extensionCount;
 	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr));
 	return extensionCount;
 }
 
-void GfxDeviceVulkan::PrintSupportedExtensions()
+void GfxApi::PrintSupportedExtensions()
 {
 	uint32_t extensionNum = GetNumSupportedExtensions();
 
@@ -628,7 +628,7 @@ void GfxDeviceVulkan::PrintSupportedExtensions()
 	}
 }
 
-bool GfxDeviceVulkan::CheckValidationLayerSupport(const std::vector<const char*>& validationLayers)
+bool GfxApi::CheckValidationLayerSupport(const std::vector<const char*>& validationLayers)
 {
 	uint32_t layerCount;
 	VK_CHECK(vkEnumerateInstanceLayerProperties(&layerCount, nullptr));
@@ -658,7 +658,7 @@ bool GfxDeviceVulkan::CheckValidationLayerSupport(const std::vector<const char*>
 	return true;
 }
 
-void GfxDeviceVulkan::CleanupSwapChain()
+void GfxApi::CleanupSwapChain()
 {
 	for (const auto& framebuffer : m_swapChainFramebuffers)
 	{
@@ -677,7 +677,7 @@ void GfxDeviceVulkan::CleanupSwapChain()
 	}
 }
 
-GfxDeviceVulkan::~GfxDeviceVulkan()
+GfxApi::~GfxApi()
 {
 	vkDeviceWaitIdle(m_device);
 
@@ -708,12 +708,12 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 	vkDestroyInstance(GetVkInstance(), nullptr);
 }
 
-void GfxDeviceVulkan::WaitIdle()
+void GfxApi::WaitIdle()
 {
 	vkQueueWaitIdle(m_pInstance->m_presentQueue);
 }
 
-void GfxDeviceVulkan::DrawFrame(Window* pViewport)
+void GfxApi::DrawFrame(Window* pViewport)
 {
 	vkWaitForFences(m_device, 1, &m_syncFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -788,7 +788,7 @@ void GfxDeviceVulkan::DrawFrame(Window* pViewport)
 	m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-bool GfxDeviceVulkan::SetupDebugCallback()
+bool GfxApi::SetupDebugCallback()
 {
 	if (!m_pInstance->bIsEnabledValidationLayers)
 	{
@@ -803,7 +803,7 @@ bool GfxDeviceVulkan::SetupDebugCallback()
 	return true;
 }
 
-VkPhysicalDevice GfxDeviceVulkan::PickPhysicalDevice()
+VkPhysicalDevice GfxApi::PickPhysicalDevice()
 {
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 
@@ -842,7 +842,7 @@ VkPhysicalDevice GfxDeviceVulkan::PickPhysicalDevice()
 	return physicalDevice;
 }
 
-bool GfxDeviceVulkan::CheckDeviceExtensionSupport(VkPhysicalDevice device)
+bool GfxApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 {
 	uint32_t extensionCount;
 	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
@@ -863,7 +863,7 @@ bool GfxDeviceVulkan::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 	return requiredExtensions.empty();
 }
 
-bool GfxDeviceVulkan::IsDeviceSuitable(VkPhysicalDevice device)
+bool GfxApi::IsDeviceSuitable(VkPhysicalDevice device)
 {
 	QueueFamilyIndices indices = FindQueueFamilies(device);
 
@@ -879,7 +879,7 @@ bool GfxDeviceVulkan::IsDeviceSuitable(VkPhysicalDevice device)
 	return indices.IsComplete() && extensionsSupported && swapChainFits;
 }
 
-int GfxDeviceVulkan::GetDeviceScore(VkPhysicalDevice device)
+int GfxApi::GetDeviceScore(VkPhysicalDevice device)
 {
 	VkPhysicalDeviceProperties deviceProperties;
 	VkPhysicalDeviceFeatures deviceFeatures;
@@ -906,7 +906,7 @@ int GfxDeviceVulkan::GetDeviceScore(VkPhysicalDevice device)
 	return score;
 }
 
-GfxDeviceVulkan::QueueFamilyIndices GfxDeviceVulkan::FindQueueFamilies(VkPhysicalDevice device)
+GfxApi::QueueFamilyIndices GfxApi::FindQueueFamilies(VkPhysicalDevice device)
 {
 	QueueFamilyIndices indices;
 
@@ -938,7 +938,7 @@ GfxDeviceVulkan::QueueFamilyIndices GfxDeviceVulkan::FindQueueFamilies(VkPhysica
 	return indices;
 }
 
-GfxDeviceVulkan::SwapChainSupportDetails GfxDeviceVulkan::QuerySwapChainSupport(VkPhysicalDevice device)
+GfxApi::SwapChainSupportDetails GfxApi::QuerySwapChainSupport(VkPhysicalDevice device)
 {
 	SwapChainSupportDetails details;
 
@@ -965,7 +965,7 @@ GfxDeviceVulkan::SwapChainSupportDetails GfxDeviceVulkan::QuerySwapChainSupport(
 	return details;
 }
 
-VkSurfaceFormatKHR GfxDeviceVulkan::ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
+VkSurfaceFormatKHR GfxApi::ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
 {
 	for (const auto& availableFormat : availableFormats)
 	{
@@ -978,7 +978,7 @@ VkSurfaceFormatKHR GfxDeviceVulkan::ChooseSwapSurfaceFormat(const std::vector<Vk
 	return availableFormats[0];
 }
 
-VkPresentModeKHR GfxDeviceVulkan::ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync)
+VkPresentModeKHR GfxApi::ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync)
 {
 	if (bVSync)
 	{
@@ -997,7 +997,7 @@ VkPresentModeKHR GfxDeviceVulkan::ÑhooseSwapPresentMode(const std::vector<VkPres
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D GfxDeviceVulkan::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* viewport)
+VkExtent2D GfxApi::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* viewport)
 {
 	if (capabilities.currentExtent.width != UINT32_MAX)
 	{
@@ -1012,7 +1012,7 @@ VkExtent2D GfxDeviceVulkan::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& cap
 	return actualExtent;
 }
 
-VkResult GfxDeviceVulkan::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
+VkResult GfxApi::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
 {
 	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
 	if (func != nullptr)
@@ -1022,7 +1022,7 @@ VkResult GfxDeviceVulkan::CreateDebugUtilsMessengerEXT(VkInstance instance, cons
 	return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
 
-void GfxDeviceVulkan::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator)
+void GfxApi::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator)
 {
 	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
 	if (func != nullptr)
@@ -1031,7 +1031,7 @@ void GfxDeviceVulkan::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebug
 	}
 }
 
-VkShaderModule GfxDeviceVulkan::CreateShaderModule(const std::vector<uint32_t>& code)
+VkShaderModule GfxApi::CreateShaderModule(const std::vector<uint32_t>& code)
 {
 	VkShaderModuleCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
