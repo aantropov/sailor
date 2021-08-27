@@ -2,18 +2,18 @@
 #include "Defines.h"
 
 template<typename T>
-class Singleton
+class TSingleton
 {
 protected:
 
 	static T* m_pInstance;
 
-	SAILOR_API Singleton() = default;
-	virtual SAILOR_API ~Singleton() = default;
+	SAILOR_API TSingleton() = default;
+	virtual SAILOR_API ~TSingleton() = default;
 
-	Singleton(Singleton&& move) = delete;
-	Singleton(Singleton& copy) = delete;
-	Singleton& operator =(Singleton& rhs) = delete;
+	TSingleton(TSingleton&& move) = delete;
+	TSingleton(TSingleton& copy) = delete;
+	TSingleton& operator =(TSingleton& rhs) = delete;
 	
 public:
 
@@ -22,4 +22,4 @@ public:
 };
 
 template<typename T>
-T* Singleton<T>::m_pInstance = nullptr;
+T* TSingleton<T>::m_pInstance = nullptr;

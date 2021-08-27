@@ -6,7 +6,7 @@
 // This class redirects stdout to the current console window, if there is one.
 // It can also open a new console window on demand if the application is
 // started from windows but wants console output anyway.
-class ConsoleWindow : public Singleton<ConsoleWindow>
+class ConsoleWindow : public TSingleton<ConsoleWindow>
 {
 public:
 	// Setup singleton access.

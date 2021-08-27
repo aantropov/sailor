@@ -37,7 +37,7 @@ namespace Sailor
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
 	};
 
-	class ShaderCompiler final : public Singleton<ShaderCompiler>, public IAssetInfoHandlerListener
+	class ShaderCompiler final : public TSingleton<ShaderCompiler>, public IAssetInfoHandlerListener
 	{
 	public:
 

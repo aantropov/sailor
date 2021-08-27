@@ -108,7 +108,7 @@ namespace Sailor
 			std::list<std::shared_ptr<Job>>& m_pJobsQueue;
 		};
 
-		class Scheduler final : public Singleton<Scheduler>
+		class Scheduler final : public TSingleton<Scheduler>
 		{
 		public:
 

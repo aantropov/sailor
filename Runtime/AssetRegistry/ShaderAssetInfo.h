@@ -13,7 +13,7 @@ namespace Sailor
 		virtual SAILOR_API ~ShaderAssetInfo() = default;
 	};
 	
-	class ShaderAssetInfoHandler final : public Singleton<ShaderAssetInfoHandler>, public IAssetInfoHandler
+	class ShaderAssetInfoHandler final : public TSingleton<ShaderAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:

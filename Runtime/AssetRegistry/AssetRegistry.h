@@ -13,7 +13,7 @@ namespace Sailor
 	class AssetInfo;
 	enum class EAssetType;
 
-	class AssetRegistry final : public Singleton<AssetRegistry>
+	class AssetRegistry final : public TSingleton<AssetRegistry>
 	{
 	public:
 

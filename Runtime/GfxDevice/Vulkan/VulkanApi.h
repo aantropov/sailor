@@ -20,7 +20,7 @@ class Sailor::Window;
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanApi : public Singleton<VulkanApi>
+	class VulkanApi : public TSingleton<VulkanApi>
 	{
 	public:
 		const int MAX_FRAMES_IN_FLIGHT = 2;

@@ -72,7 +72,7 @@ namespace Sailor
 		std::vector<IAssetInfoHandlerListener*> m_listeners;
 	};
 
-	class DefaultAssetInfoHandler final : public Singleton<DefaultAssetInfoHandler>, public IAssetInfoHandler
+	class DefaultAssetInfoHandler final : public TSingleton<DefaultAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
