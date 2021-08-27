@@ -3,7 +3,7 @@
 #include "AssetRegistry/ShaderCompiler.h"
 #include "Platform/Win/ConsoleWindow.h"
 #include "Platform/Win/Input.h"
-#include "GfxDevice/Vulkan/GfxDeviceVulkan.h"
+#include "GfxDevice/Vulkan/VulkanApi.h"
 #include "JobSystem/JobSystem.h"
 
 using namespace Sailor;

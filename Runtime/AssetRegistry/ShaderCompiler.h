@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
-#include "Singleton.hpp"
+#include "Core/Singleton.hpp"
 #include "AssetInfo.h"
 #include "ShaderCache.h"
 

@@ -5,7 +5,7 @@
 #include <atomic>
 #include <thread>
 #include "Sailor.h"
-#include "Singleton.hpp"
+#include "Core/Singleton.hpp"
 
 namespace Sailor
 {

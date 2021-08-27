@@ -3,8 +3,8 @@
 #include <ctime>
 #include "AssetRegistry.h"
 #include "UID.h"
-#include "Singleton.hpp"
-#include "JsonSerializable.h"
+#include "Core/Singleton.hpp"
+#include "Core/JsonSerializable.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
 namespace Sailor

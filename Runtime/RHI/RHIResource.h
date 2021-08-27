@@ -5,6 +5,7 @@ namespace Sailor::RHI
 	class RHIResource
 	{
 	public:
+
 	protected:
 
 		RHIResource() = default;
@@ -17,7 +18,7 @@ namespace Sailor::RHI
 		RHIResource& operator =(RHIResource& rhs) = delete;
 	};
 
-	class RHICommandBuffer : public RHIResource
+	class RHICommandList : public RHIResource
 	{
 	public:
 

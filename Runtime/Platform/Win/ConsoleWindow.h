@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdio>
 #include "Sailor.h"
-#include "Singleton.hpp"
+#include "Core/Singleton.hpp"
 
 // This class redirects stdout to the current console window, if there is one.
 // It can also open a new console window on demand if the application is

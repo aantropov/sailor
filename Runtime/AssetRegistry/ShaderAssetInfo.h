@@ -1,6 +1,6 @@
 #pragma once
 #include "AssetInfo.h"
-#include "Singleton.hpp"
+#include "Core/Singleton.hpp"
 
 using namespace std;
 

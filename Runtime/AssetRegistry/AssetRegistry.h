@@ -5,7 +5,7 @@
 #include "UID.h"
 #include "Sailor.h"
 #include "AssetInfo.h"
-#include "Singleton.hpp"
+#include "Core/Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
 namespace Sailor

@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include "JsonSerializable.h"
+#include "Core/JsonSerializable.h"
 #include "Sailor.h"
 
 using namespace nlohmann;

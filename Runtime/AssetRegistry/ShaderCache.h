@@ -4,7 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include "UID.h"
-#include "Singleton.hpp"
+#include "Core/Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include <mutex>
 
