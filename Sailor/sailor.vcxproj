@@ -179,7 +179,7 @@
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
     <ClInclude Include="..\Runtime\Defines.h" />
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h" />
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h" />
     <ClInclude Include="..\Runtime\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\LogMacros.h" />
@@ -198,7 +198,7 @@
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCache.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp" />
     <ClCompile Include="..\Runtime\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win\ConsoleWindow.cpp" />
