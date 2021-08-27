@@ -45,7 +45,7 @@ namespace Sailor
 			AssignRawPtr(Ptr);
 		}
 
-		TRefPtr(TRefPtr<T>& Ptr)
+		TRefPtr(const TRefPtr<T>& Ptr)
 		{
 			AssignRawPtr(reinterpret_cast<T*>(Ptr.m_pRawPtr));
 		}
@@ -55,7 +55,7 @@ namespace Sailor
 			AssignRawPtr(Ptr);
 		}
 
-		TRefPtr& operator=(TRefPtr<T>& Ptr)
+		TRefPtr& operator=(const TRefPtr<T>& Ptr)
 		{
 			AssignRawPtr(reinterpret_cast<T*>(Ptr.m_pRawPtr));
 		}
@@ -83,12 +83,12 @@ namespace Sailor
 
 		operator bool() const { return m_pRawPtr != nullptr; }
 
-		bool operator==(TRefPtr<T>& Rhs) const
+		bool operator==(const TRefPtr<T>& Rhs) const
 		{
 			return m_pRawPtr == Rhs->m_pRawPtr;
 		}
 
-		bool operator!=(TRefPtr<T>& Rhs) const
+		bool operator!=(const TRefPtr<T>& Rhs) const
 		{
 			return m_pRawPtr != Rhs->m_pRawPtr;
 		}

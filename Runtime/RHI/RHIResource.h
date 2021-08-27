@@ -2,7 +2,7 @@
 
 namespace Sailor::RHI
 {
-	class RHIResource
+	class RHIResource : public TRefBase
 	{
 	public:
 

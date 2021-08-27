@@ -5,6 +5,7 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 #include "Sailor.h"
+#include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
 
 #define VK_CHECK(call) \
@@ -97,7 +98,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// Command pool
 		VkCommandPool m_commandPool;
-		std::vector<std::unique_ptr<class VulkanCommandBuffer>> m_commandBuffers;
+		std::vector<TRefPtr<class VulkanCommandBuffer>> m_commandBuffers;
 
 		// Render Pass
 		VkRenderPass m_renderPass = 0;

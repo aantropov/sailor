@@ -28,7 +28,7 @@ namespace Sailor::GfxDevice::Vulkan
 			VK_CHECK(vkAllocateCommandBuffers(device, &allocateInfo, &m_commandBuffer));
 		}
 
-		~VulkanCommandBuffer()
+		virtual ~VulkanCommandBuffer() override
 		{
 			if (m_commandBuffer)
 			{

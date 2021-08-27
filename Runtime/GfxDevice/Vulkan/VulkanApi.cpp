@@ -422,7 +422,7 @@ void VulkanApi::CreateCommandBuffers()
 {
 	for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
 	{
-		m_commandBuffers.push_back(std::make_unique<VulkanCommandBuffer>(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
+		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 
 	for (size_t i = 0; i < m_commandBuffers.size(); i++)
