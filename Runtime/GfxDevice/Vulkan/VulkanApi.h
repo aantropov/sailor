@@ -130,10 +130,10 @@ namespace Sailor::GfxDevice::Vulkan
 		VkPresentModeKHR m_presentMode;
 
 		// Frame sync
-		std::vector<VkSemaphore> m_imageAvailableSemaphores;
-		std::vector<VkSemaphore> m_renderFinishedSemaphores;
-		std::vector<VkFence> m_syncFences;
-		std::vector<VkFence> m_syncImages;
+		std::vector<TRefPtr<class VulkanSemaphore>> m_imageAvailableSemaphores;
+		std::vector<TRefPtr<VulkanSemaphore>> m_renderFinishedSemaphores;
+		std::vector<TRefPtr<class VulkanFence>> m_syncFences;
+		std::vector<TRefPtr<VulkanFence>> m_syncImages;
 		size_t m_currentFrame = 0;
 
 		std::atomic<bool> bIsFramebufferResizedThisFrame = false;
