@@ -90,9 +90,6 @@
     <ClInclude Include="..\Runtime\Platform\Win\Window.h">
       <Filter>Runtime\Platform\Win</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.hpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
@@ -102,7 +99,10 @@
     <ClInclude Include="..\Runtime\Core\RefPtr.hpp">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.hpp">
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
   </ItemGroup>
@@ -151,6 +151,12 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp">
       <Filter>Runtime\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

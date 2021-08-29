@@ -13,7 +13,7 @@
 #include "Sailor.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
-#include "VulkanCommandBuffer.hpp"
+#include "VulkanCommandBuffer.h"
 
 using namespace Sailor::GfxDevice::Vulkan;
 

@@ -183,8 +183,8 @@
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
     <ClInclude Include="..\Runtime\Defines.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h" />
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.hpp" />
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.hpp" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.h" />
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h" />
     <ClInclude Include="..\Runtime\LogMacros.h" />
     <ClInclude Include="..\Runtime\Platform\Win\ConsoleWindow.h" />
@@ -203,6 +203,8 @@
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win\Input.cpp" />

@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <cassert>
 #include <vulkan/vulkan_core.h>
 #include "Sailor.h"
 #include "Core/RefPtr.hpp"
