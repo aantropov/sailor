@@ -25,27 +25,27 @@ namespace Sailor
 
 		TRefBase* m_pRawPtr = nullptr;
 
-		TRefPtrCounter& GetRefCounter() const { return m_pRawPtr->RefCounter; }
+		TRefPtrCounter& GetRefCounter() const noexcept { return m_pRawPtr->RefCounter; }
 
 		virtual ~TRefPtrBase() = default;
 	};
 
 	template<typename T>
-	class TRefPtr : public TRefPtrBase
+	class TRefPtr final : public TRefPtrBase
 	{
 	public:
 
-		TRefPtr()
+		TRefPtr() noexcept
 		{
 			static_assert(std::is_base_of<TRefBase, T>::value);
 		}
 
-		explicit TRefPtr(T* Ptr)
+		explicit TRefPtr(T* Ptr) noexcept
 		{
 			AssignRawPtr(Ptr);
 		}
 
-		TRefPtr(const TRefPtr<T>& Ptr)
+		TRefPtr(const TRefPtr<T>& Ptr) noexcept
 		{
 			AssignRawPtr(reinterpret_cast<T*>(Ptr.m_pRawPtr));
 		}
@@ -65,6 +65,7 @@ namespace Sailor
 		template<typename... TArgs>
 		TRefPtr(TArgs... args)
 		{
+			static_assert(std::is_base_of<TRefBase, T>::value);
 			AssignRawPtr(new T(args...));
 		}
 
@@ -75,15 +76,15 @@ namespace Sailor
 			return *this;
 		}
 
-		T* operator->() { return reinterpret_cast<T*>(m_pRawPtr); }
+		T* operator->()  noexcept { return reinterpret_cast<T*>(m_pRawPtr); }
 		const T* operator->() const { return reinterpret_cast<T*>(m_pRawPtr); }
 
-		T& operator*() { return *reinterpret_cast<T*>(m_pRawPtr); }
+		T& operator*()  noexcept { return *reinterpret_cast<T*>(m_pRawPtr); }
 		const T& operator*() const { return *reinterpret_cast<T*>(m_pRawPtr); }
 
-		bool IsShared() const { return GetRefCounter() > 1; }
+		bool IsShared() const  noexcept { return GetRefCounter() > 1; }
 
-		operator bool() const { return m_pRawPtr != nullptr; }
+		operator bool() const  noexcept { return m_pRawPtr != nullptr; }
 
 		bool operator==(const TRefPtr<T>& Rhs) const
 		{
@@ -95,7 +96,7 @@ namespace Sailor
 			return m_pRawPtr != Rhs->m_pRawPtr;
 		}
 
-		void Clear()
+		void Clear() noexcept
 		{
 			AssignRawPtr(nullptr);
 		}
