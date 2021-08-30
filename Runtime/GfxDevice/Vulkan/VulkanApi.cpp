@@ -18,6 +18,7 @@
 #include "VulkanCommandPool.h"
 #include "VulkanSemaphore.h"
 #include "VulkanFence.h"
+#include "VulkanQueue.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -106,7 +107,7 @@ void VulkanApi::CreateRenderPass()
 void VulkanApi::CreateCommandPool()
 {
 	QueueFamilyIndices queueFamilyIndices = FindQueueFamilies(m_mainPhysicalDevice);
-	m_commandPool = TRefPtr<VulkanCommandPool>(m_device, queueFamilyIndices.m_graphicsFamily.value());
+	m_commandPool = MakeRefPtr<VulkanCommandPool>(m_device, queueFamilyIndices.m_graphicsFamily.value());
 }
 
 void VulkanApi::CreateFrameSyncSemaphores()
@@ -115,9 +116,9 @@ void VulkanApi::CreateFrameSyncSemaphores()
 
 	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
-		m_imageAvailableSemaphores.push_back(TRefPtr<VulkanSemaphore>(m_device));
-		m_renderFinishedSemaphores.push_back(TRefPtr<VulkanSemaphore>(m_device));
-		m_syncFences.push_back(TRefPtr<VulkanFence>(m_device, VK_FENCE_CREATE_SIGNALED_BIT));
+		m_imageAvailableSemaphores.push_back(MakeRefPtr<VulkanSemaphore>(m_device));
+		m_renderFinishedSemaphores.push_back(MakeRefPtr<VulkanSemaphore>(m_device));
+		m_syncFences.push_back(MakeRefPtr<VulkanFence>(m_device, VK_FENCE_CREATE_SIGNALED_BIT));
 	}
 }
 
@@ -411,7 +412,7 @@ void VulkanApi::CreateCommandBuffers()
 {
 	for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
 	{
-		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
+		m_commandBuffers.push_back(MakeRefPtr<VulkanCommandBuffer>(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 
 	for (size_t i = 0; i < m_commandBuffers.size(); i++)
@@ -489,8 +490,13 @@ void VulkanApi::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &m_pInstance->m_device));
 
 	// Create queues
-	vkGetDeviceQueue(m_device, m_queueFamilies.m_graphicsFamily.value(), 0, &m_graphicsQueue);
-	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &m_presentQueue);
+	VkQueue graphicsQueue;
+	vkGetDeviceQueue(m_device, m_queueFamilies.m_graphicsFamily.value(), 0, &graphicsQueue);
+	m_graphicsQueue = MakeRefPtr<VulkanQueue>(graphicsQueue, m_queueFamilies.m_graphicsFamily.value(), 0);
+
+	VkQueue presentQueue;
+	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &presentQueue);
+	m_presentQueue = MakeRefPtr<VulkanQueue>(presentQueue, m_queueFamilies.m_presentFamily.value(), 0);
 }
 
 void VulkanApi::CreateWin32Surface(const Window* viewport)
@@ -677,6 +683,9 @@ VulkanApi::~VulkanApi()
 	m_syncImages.clear();
 	m_syncFences.clear();
 
+	m_graphicsQueue.Clear();
+	m_presentQueue.Clear();
+
 	vkDestroyDevice(m_device, nullptr);
 	vkDestroySurfaceKHR(GetVkInstance(), m_surface, nullptr);
 	vkDestroyInstance(GetVkInstance(), nullptr);
@@ -684,7 +693,7 @@ VulkanApi::~VulkanApi()
 
 void VulkanApi::WaitIdle()
 {
-	vkQueueWaitIdle(m_pInstance->m_presentQueue);
+	m_pInstance->m_presentQueue->WaitIdle();
 }
 
 void VulkanApi::DrawFrame(Window* pViewport)
@@ -732,7 +741,8 @@ void VulkanApi::DrawFrame(Window* pViewport)
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
 	m_syncFences[m_currentFrame]->Reset();
-	VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, *m_syncFences[m_currentFrame]));
+	//VK_CHECK(vkQueueSubmit(*m_graphicsQueue, 1, &submitInfo, *m_syncFences[m_currentFrame]));
+	VK_CHECK(m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
 
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -746,7 +756,7 @@ void VulkanApi::DrawFrame(Window* pViewport)
 	presentInfo.pImageIndices = &imageIndex;
 	presentInfo.pResults = nullptr; // Optional
 
-	result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
+	result = m_presentQueue->Present(presentInfo);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || bIsFramebufferResizedThisFrame)
 	{

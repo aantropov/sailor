@@ -13,6 +13,14 @@ class Sailor::Window;
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	class VulkanCommandBuffer;
+	class VulkanCommandPool;
+	class VulkanQueue;
+	class VulkanDevice;
+	class VulkanFence;
+	class VulkanSemaphore;
+	class VulkanRenderPass;
+	class VulkanSwapchain;
 
 #define VK_CHECK(call) \
 	do { \
@@ -99,8 +107,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VkInstance m_vkInstance = 0;
 
 		// Command pool
-		TRefPtr<class VulkanCommandPool> m_commandPool;
-		std::vector<TRefPtr<class VulkanCommandBuffer>> m_commandBuffers;
+		TRefPtr<VulkanCommandPool> m_commandPool;
+		std::vector<TRefPtr<VulkanCommandBuffer>> m_commandBuffers;
 
 		// Render Pass
 		VkRenderPass m_renderPass = 0;
@@ -108,8 +116,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VkPipeline m_graphicsPipeline = 0;
 
 		// Queuees
-		VkQueue m_graphicsQueue = 0;
-		VkQueue m_presentQueue = 0;
+		TRefPtr<VulkanQueue> m_graphicsQueue;
+		TRefPtr<VulkanQueue> m_presentQueue;
 
 		VkSurfaceKHR m_surface = 0;
 
@@ -131,9 +139,9 @@ namespace Sailor::GfxDevice::Vulkan
 		VkPresentModeKHR m_presentMode;
 
 		// Frame sync
-		std::vector<TRefPtr<class VulkanSemaphore>> m_imageAvailableSemaphores;
+		std::vector<TRefPtr<VulkanSemaphore>> m_imageAvailableSemaphores;
 		std::vector<TRefPtr<VulkanSemaphore>> m_renderFinishedSemaphores;
-		std::vector<TRefPtr<class VulkanFence>> m_syncFences;
+		std::vector<TRefPtr<VulkanFence>> m_syncFences;
 		std::vector<TRefPtr<VulkanFence>> m_syncImages;
 		size_t m_currentFrame = 0;
 
