@@ -1,13 +1,10 @@
 #pragma once
-#include "RHI/RHIResource.h"
 #include "VulkanApi.h"
 #include "Core/RefPtr.hpp"
 
-using namespace Sailor::RHI;
-
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanCommandPool : public Sailor::RHI::RHIResource
+	class VulkanCommandPool final : public TRefBase
 	{
 
 	public:

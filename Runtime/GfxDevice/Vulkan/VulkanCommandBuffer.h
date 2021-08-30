@@ -1,14 +1,11 @@
 #pragma once
-#include "RHI/RHIResource.h"
 #include "VulkanApi.h"
-
-using namespace Sailor::RHI;
 
 namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanCommandPool;
 
-	class VulkanCommandBuffer : public Sailor::RHI::RHIResource
+	class VulkanCommandBuffer final : public TRefBase
 	{
 
 	public:

@@ -1,13 +1,10 @@
 #pragma once
-#include "RHI/RHIResource.h"
 #include "VulkanSemaphore.h"
 #include "VulkanCommandBuffer.h"
 
-using namespace Sailor::RHI;
-
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanFence : public Sailor::RHI::RHIResource
+	class VulkanFence final : public TRefBase
 	{
 
 	public:
