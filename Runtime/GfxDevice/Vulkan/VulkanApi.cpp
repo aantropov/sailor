@@ -1,4 +1,4 @@
-#include "VulkanApi.h"
+#include "GfxDevice/Vulkan/VulkanApi.h"
 #include <wtypes.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
@@ -11,12 +11,15 @@
 #include <optional>
 #include <set>
 #include "Sailor.h"
+#include "Platform/Win/Window.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
 #include "VulkanCommandBuffer.h"
+#include "VulkanCommandPool.h"
 #include "VulkanSemaphore.h"
 #include "VulkanFence.h"
 
+using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
@@ -970,7 +973,7 @@ VkPresentModeKHR VulkanApi::ÑhooseSwapPresentMode(const std::vector<VkPresentMod
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D VulkanApi::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* viewport)
+VkExtent2D VulkanApi::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Sailor::Window* viewport)
 {
 	if (capabilities.currentExtent.width != UINT32_MAX)
 	{

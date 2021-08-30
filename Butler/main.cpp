@@ -1,3 +1,5 @@
+struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
+
 #include <wtypes.h>
 #include "Sailor.h"
 #include "AssetRegistry/ShaderCompiler.h"

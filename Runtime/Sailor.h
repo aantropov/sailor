@@ -1,5 +1,4 @@
 #pragma once
-
 #include "Defines.h"
 #include "LogMacros.h"
 #include "Utils.h"

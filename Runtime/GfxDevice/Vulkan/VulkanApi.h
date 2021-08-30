@@ -9,6 +9,11 @@
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
 
+class Sailor::Window;
+
+namespace Sailor::GfxDevice::Vulkan
+{
+
 #define VK_CHECK(call) \
 	do { \
 		VkResult result_ = call; \
@@ -18,15 +23,11 @@
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
 
-class Sailor::Window;
-
-namespace Sailor::GfxDevice::Vulkan
-{
 	class VulkanApi : public TSingleton<VulkanApi>
 	{
 	public:
 		const int MAX_FRAMES_IN_FLIGHT = 2;
-		
+
 		struct QueueFamilyIndices
 		{
 			std::optional<uint32_t> m_graphicsFamily;
@@ -63,7 +64,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		static SAILOR_API void WaitIdle();
 
-	
+
 	private:
 
 		static SAILOR_API bool SetupDebugCallback();
@@ -91,7 +92,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateFrameSyncSemaphores();
 
 		SAILOR_API void CleanupSwapChain();
-		
+
 		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return m_pInstance->m_vkInstance; }
 
 		bool bIsEnabledValidationLayers = false;

@@ -1,9 +1,10 @@
-#include "VulkanCommandBuffer.h"
 #include "VulkanCommandPool.h"
+#include "VulkanCommandBuffer.h"
+#include "Core/RefPtr.hpp"
 
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanCommandBuffer::VulkanCommandBuffer(VkDevice device, TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level) :
+VulkanCommandBuffer::VulkanCommandBuffer(VkDevice device, Sailor::TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level) :
 	m_device(device),
 	m_level(level),
 	m_commandPool(commandPool)

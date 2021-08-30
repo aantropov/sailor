@@ -1,12 +1,13 @@
 #pragma once
 #include "RHI/RHIResource.h"
 #include "VulkanApi.h"
-#include "GfxDevice/Vulkan/VulkanCommandPool.h"
 
 using namespace Sailor::RHI;
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	class VulkanCommandPool;
+
 	class VulkanCommandBuffer : public Sailor::RHI::RHIResource
 	{
 
@@ -15,7 +16,7 @@ namespace Sailor::GfxDevice::Vulkan
 		const VkCommandBuffer* GetHandle() const { return &m_commandBuffer; }
 		operator VkCommandBuffer() const { return m_commandBuffer; }
 
-		VulkanCommandBuffer(VkDevice device, TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		VulkanCommandBuffer(VkDevice device, class TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
 		virtual ~VulkanCommandBuffer() override;
 

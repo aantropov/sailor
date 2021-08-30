@@ -1,9 +1,12 @@
 #include "Utils.h"
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <processthreadsapi.h>
+
 #ifndef WIN32
 #include <unistd.h>
 #define stat _stat
+#include <ntverp.h>
 #endif
 
 #include <algorithm> 
@@ -98,29 +101,45 @@ DWORD Sailor::Utils::GetRandomColorHex()
 
 void Sailor::Utils::SetThreadName(uint32_t dwThreadID, const std::string& threadName)
 {
+#if VER_PRODUCTBUILD > 9600
+	// Windows 10+ SDK code goes here
 	HRESULT r;
 	r = SetThreadDescription(
 		reinterpret_cast<HANDLE>(dwThreadID),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
+
+#else
+	// Windows 8.1- SDK code goes here
+#endif
+
 }
 
 void Sailor::Utils::SetThreadName(const std::string& threadName)
 {
+#if VER_PRODUCTBUILD > 9600
 	HRESULT r;
 	r = SetThreadDescription(
 		GetCurrentThread(),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
+#else
+	// Windows 8.1- SDK code goes here
+#endif
 }
 
 void Sailor::Utils::SetThreadName(std::thread* thread, const std::string& threadName)
 {
+#if VER_PRODUCTBUILD > 9600
+
 	HRESULT r;
 	r = SetThreadDescription(
 		(HANDLE)thread->native_handle(),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
+#else
+	// Windows 8.1- SDK code goes here
+#endif
 }
 
 std::string Sailor::Utils::RemoveFileExtension(const std::string& filename)
