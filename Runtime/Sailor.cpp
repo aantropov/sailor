@@ -97,7 +97,7 @@ void EngineInstance::Start()
 				float beginFrameTime = (float)GetTickCount();
 				float deltaTime = GetTickCount() - beginFrameTime;
 
-				GfxDevice::Vulkan::VulkanApi::GetInstance()->DrawFrame(&m_pInstance->m_viewportWindow);
+				GfxDevice::Vulkan::VulkanApi::DrawFrame(&m_pInstance->m_viewportWindow);
 
 				m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
 				++m_pInstance->m_FPS;
