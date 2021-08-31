@@ -20,6 +20,7 @@
 #include "VulkanFence.h"
 #include "VulkanQueue.h"
 #include "VulkanSwapchain.h"
+#include "VulkanRenderPass.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -62,47 +63,8 @@ void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 
 void VulkanApi::CreateRenderPass()
 {
-	VkAttachmentDescription colorAttachment{};
-	colorAttachment.format = m_pInstance->m_swapchain->GetImageFormat();
-	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-	// store
-	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-
-	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-	VkAttachmentReference colorAttachmentRef{};
-	colorAttachmentRef.attachment = 0;
-	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-	VkSubpassDescription subpass{};
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &colorAttachmentRef;
-
-	VkSubpassDependency dependency{};
-	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	dependency.dstSubpass = 0;
-	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.srcAccessMask = 0;
-	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-	VkRenderPassCreateInfo renderPassInfo{};
-	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassInfo.attachmentCount = 1;
-	renderPassInfo.pAttachments = &colorAttachment;
-	renderPassInfo.subpassCount = 1;
-	renderPassInfo.pSubpasses = &subpass;
-	renderPassInfo.dependencyCount = 1;
-	renderPassInfo.pDependencies = &dependency;
-
-	VK_CHECK(vkCreateRenderPass(m_device, &renderPassInfo, nullptr, &m_renderPass));
-
+	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
+	m_renderPass = CreateRenderPass(m_device, m_pInstance->m_swapchain->GetImageFormat(), depthFormat);
 }
 
 void VulkanApi::CreateCommandPool()
@@ -284,7 +246,7 @@ void VulkanApi::CreateGraphicsPipeline()
 
 		pipelineInfo.layout = m_pipelineLayout;
 
-		pipelineInfo.renderPass = m_renderPass;
+		pipelineInfo.renderPass = *m_renderPass;
 		pipelineInfo.subpass = 0;
 
 		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
@@ -308,7 +270,7 @@ void VulkanApi::CreateFramebuffers()
 
 		VkFramebufferCreateInfo framebufferInfo{};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-		framebufferInfo.renderPass = m_renderPass;
+		framebufferInfo.renderPass = *m_renderPass;
 		framebufferInfo.attachmentCount = 1;
 		framebufferInfo.pAttachments = attachments;
 		framebufferInfo.width = m_swapchain->GetExtent().width;
@@ -429,7 +391,7 @@ void VulkanApi::CreateCommandBuffers()
 
 		VkRenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = m_renderPass;
+		renderPassInfo.renderPass = *m_renderPass;
 		renderPassInfo.framebuffer = m_swapChainFramebuffers[i];
 		renderPassInfo.renderArea.offset = { 0, 0 };
 		renderPassInfo.renderArea.extent = m_swapchain->GetExtent();
@@ -590,7 +552,8 @@ void VulkanApi::CleanupSwapChain()
 
 	vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
-	vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+
+	m_renderPass.Clear();
 
 	for (const auto& imageView : m_swapchain->GetImageViews())
 	{
@@ -967,4 +930,160 @@ VkShaderModule VulkanApi::CreateShaderModule(const std::vector<uint32_t>& code)
 	VK_CHECK(vkCreateShaderModule(m_pInstance->m_device, &createInfo, nullptr, &shaderModule));
 
 	return shaderModule;
+}
+
+VkAttachmentDescription VulkanApi::GetDefaultColorAttachment(VkFormat imageFormat)
+{
+	VkAttachmentDescription colorAttachment = {};
+	colorAttachment.format = imageFormat;
+	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	return colorAttachment;
+}
+
+VkAttachmentDescription VulkanApi::GetDefaultDepthAttachment(VkFormat depthFormat)
+{
+	VkAttachmentDescription depthAttachment = {};
+	depthAttachment.format = depthFormat;
+	depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	return depthAttachment;
+}
+
+TRefPtr<VulkanRenderPass> VulkanApi::CreateRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat)
+{
+	VkAttachmentReference colorAttachmentRef = {};
+	colorAttachmentRef.attachment = 0;
+	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference depthAttachmentRef = {};
+	depthAttachmentRef.attachment = 1;
+	depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VulkanSubpassDescription subpass = {};
+	subpass.m_pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.m_colorAttachments.emplace_back(colorAttachmentRef);
+	//subpass.m_depthStencilAttachments.emplace_back(depthAttachmentRef);
+
+	// image layout transition
+	VkSubpassDependency colorDependency = {};
+	colorDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	colorDependency.dstSubpass = 0;
+	colorDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	colorDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	colorDependency.srcAccessMask = 0;
+	colorDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	colorDependency.dependencyFlags = 0;
+
+	// depth buffer is shared between swap chain images
+	VkSubpassDependency depthDependency = {};
+	depthDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	depthDependency.dstSubpass = 0;
+	depthDependency.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	depthDependency.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	depthDependency.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	depthDependency.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	depthDependency.dependencyFlags = 0;
+
+	return TRefPtr<VulkanRenderPass>::Make(device,
+		std::vector<VkAttachmentDescription> {	GetDefaultColorAttachment(imageFormat)/*,	GetDefaultDepthAttachment(depthFormat)*/ },
+		std::vector<VulkanSubpassDescription> { subpass },
+		std::vector<VkSubpassDependency> { colorDependency /*, depthDependency */ });
+}
+
+TRefPtr<VulkanRenderPass> VulkanApi::CreateMSSRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples)
+{
+	if (samples == VK_SAMPLE_COUNT_1_BIT)
+	{
+		return CreateRenderPass(device, imageFormat, depthFormat);
+	}
+
+	// First attachment is multisampled target.
+	VkAttachmentDescription colorAttachment = {};
+	colorAttachment.format = imageFormat;
+	colorAttachment.samples = samples;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	// Second attachment is the resolved image which will be presented.
+	VkAttachmentDescription resolveAttachment = {};
+	resolveAttachment.format = imageFormat;
+	resolveAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	resolveAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	resolveAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	resolveAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	resolveAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	resolveAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	resolveAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	// Multisampled depth attachment. It won't be resolved.
+	VkAttachmentDescription depthAttachment = {};
+	depthAttachment.format = depthFormat;
+	depthAttachment.samples = samples;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	std::vector<VkAttachmentDescription> attachments{ colorAttachment, resolveAttachment, depthAttachment };
+
+	VkAttachmentReference colorAttachmentRef = {};
+	colorAttachmentRef.attachment = 0;
+	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference resolveAttachmentRef = {};
+	resolveAttachmentRef.attachment = 1;
+	resolveAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference depthAttachmentRef = {};
+	depthAttachmentRef.attachment = 2;
+	depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VulkanSubpassDescription subpass;
+	subpass.m_pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.m_colorAttachments.emplace_back(colorAttachmentRef);
+	subpass.m_resolveAttachments.emplace_back(resolveAttachmentRef);
+	subpass.m_depthStencilAttachments.emplace_back(depthAttachmentRef);
+
+	std::vector<VulkanSubpassDescription> subpasses{ subpass };
+
+	VkSubpassDependency dependency = {};
+	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass = 0;
+	dependency.srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	dependency.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	VkSubpassDependency dependency2 = {};
+	dependency2.srcSubpass = 0;
+	dependency2.dstSubpass = VK_SUBPASS_EXTERNAL;
+	dependency2.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency2.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependency2.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	dependency2.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+	dependency2.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	std::vector<VkSubpassDependency> dependencies{ dependency, dependency2 };
+
+	return TRefPtr<VulkanRenderPass>::Make(device, attachments, subpasses, dependencies);
 }

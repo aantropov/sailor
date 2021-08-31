@@ -79,12 +79,18 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
 		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
+		static SAILOR_API VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
+		static SAILOR_API VkAttachmentDescription GetDefaultDepthAttachment(VkFormat depthFormat);
+
+		static SAILOR_API TRefPtr<VulkanRenderPass> CreateRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat);
+		static SAILOR_API TRefPtr<VulkanRenderPass> CreateMSSRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
+
 	private:
 
 		static SAILOR_API bool SetupDebugCallback();
 		static SAILOR_API VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
 		static SAILOR_API void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator);
-		
+
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice();
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
@@ -110,7 +116,9 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<TRefPtr<VulkanCommandBuffer>> m_commandBuffers;
 
 		// Render Pass
-		VkRenderPass m_renderPass = 0;
+		TRefPtr<VulkanRenderPass> m_renderPass;
+		
+		// Pipeline
 		VkPipelineLayout m_pipelineLayout = 0;
 		VkPipeline m_graphicsPipeline = 0;
 
