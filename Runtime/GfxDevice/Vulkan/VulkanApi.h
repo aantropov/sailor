@@ -21,6 +21,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanSemaphore;
 	class VulkanRenderPass;
 	class VulkanSwapchain;
+	class VulkanSurface;
 
 #define VK_CHECK(call) \
 	do { \
@@ -30,26 +31,25 @@ namespace Sailor::GfxDevice::Vulkan
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
+	struct QueueFamilyIndices
+	{
+		std::optional<uint32_t> m_graphicsFamily;
+		std::optional<uint32_t> m_presentFamily;
+
+		SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value(); }
+	};
+
+	struct SwapChainSupportDetails
+	{
+		VkSurfaceCapabilitiesKHR m_capabilities;
+		std::vector<VkSurfaceFormatKHR> m_formats;
+		std::vector<VkPresentModeKHR> m_presentModes;
+	};
 
 	class VulkanApi : public TSingleton<VulkanApi>
 	{
 	public:
 		const int MAX_FRAMES_IN_FLIGHT = 2;
-
-		struct QueueFamilyIndices
-		{
-			std::optional<uint32_t> m_graphicsFamily;
-			std::optional<uint32_t> m_presentFamily;
-
-			SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value(); }
-		};
-
-		struct SwapChainSupportDetails
-		{
-			VkSurfaceCapabilitiesKHR m_capabilities;
-			std::vector<VkSurfaceFormatKHR> m_formats;
-			std::vector<VkPresentModeKHR> m_presentModes;
-		};
 
 		static SAILOR_API void Initialize(const Window* pViewport, bool bIsDebug);
 
@@ -72,21 +72,20 @@ namespace Sailor::GfxDevice::Vulkan
 
 		static SAILOR_API void WaitIdle();
 
+		static SAILOR_API QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device);
+		static SAILOR_API SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device);
+
+		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
+		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
 	private:
 
 		static SAILOR_API bool SetupDebugCallback();
 		static SAILOR_API VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
 		static SAILOR_API void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator);
-
+		
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice();
-
-		static SAILOR_API QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device);
-		static SAILOR_API SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device);
-
-		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
-		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
-		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, const Window* pViewport);
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		SAILOR_API void CreateWin32Surface(const Window* pViewport);
@@ -119,7 +118,7 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanQueue> m_graphicsQueue;
 		TRefPtr<VulkanQueue> m_presentQueue;
 
-		VkSurfaceKHR m_surface = 0;
+		TRefPtr<VulkanSurface> m_surface;
 
 		VkDebugUtilsMessengerEXT m_debugMessenger = 0;
 
@@ -128,15 +127,8 @@ namespace Sailor::GfxDevice::Vulkan
 		QueueFamilyIndices m_queueFamilies;
 
 		// Swapchain
-		VkSwapchainKHR m_swapChain = 0;
-		std::vector<VkImage> m_swapChainImages;
-		std::vector<VkImageView> m_swapChainImageViews;
+		TRefPtr<VulkanSwapchain> m_swapchain;
 		std::vector<VkFramebuffer> m_swapChainFramebuffers;
-		VkExtent2D m_swapChainExtent;
-
-		// Choosen swapchain formats
-		VkSurfaceFormatKHR m_surfaceFormat;
-		VkPresentModeKHR m_presentMode;
 
 		// Frame sync
 		std::vector<TRefPtr<VulkanSemaphore>> m_imageAvailableSemaphores;

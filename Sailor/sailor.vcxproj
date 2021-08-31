@@ -185,8 +185,12 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDevice.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanFence.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanQueue.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanRenderPass.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSemaphore.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.h" />
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h" />
     <ClInclude Include="..\Runtime\LogMacros.h" />
     <ClInclude Include="..\Runtime\Platform\Win\ConsoleWindow.h" />
@@ -207,8 +211,12 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDevice.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanFence.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanQueue.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanRenderPass.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSemaphore.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win\Input.cpp" />

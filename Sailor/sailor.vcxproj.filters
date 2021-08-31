@@ -111,6 +111,18 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSemaphore.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDevice.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanRenderPass.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanQueue.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -168,6 +180,18 @@
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSemaphore.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDevice.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanRenderPass.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanQueue.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>

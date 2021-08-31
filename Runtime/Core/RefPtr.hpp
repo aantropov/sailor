@@ -35,13 +35,21 @@ namespace Sailor
 	{
 	public:
 
+		template<typename... TArgs>
+		static TRefPtr<T> Make(TArgs... args) noexcept
+		{
+			static_assert(std::is_base_of<TRefBase, T>::value);
+			return TRefPtr<T>(new T(args...));
+		}
+
 		TRefPtr() noexcept
 		{
 			static_assert(std::is_base_of<TRefBase, T>::value);
 		}
 
-		explicit TRefPtr(T* Ptr) noexcept
+		TRefPtr(T* Ptr) noexcept
 		{
+			static_assert(std::is_base_of<TRefBase, T>::value);
 			AssignRawPtr(Ptr);
 		}
 
@@ -63,18 +71,13 @@ namespace Sailor
 		}
 
 		template<typename... TArgs>
-		TRefPtr(TArgs... args)
-		{
-			static_assert(std::is_base_of<TRefBase, T>::value);
-			AssignRawPtr(new T(args...));
-		}
-
-		template<typename... TArgs>
 		TRefPtr& operator=(TArgs... args)
 		{
 			AssignRawPtr(new T(args...));
 			return *this;
 		}
+
+		T* GetRawPtr() const noexcept { return reinterpret_cast<T*>(m_pRawPtr); }
 
 		T* operator->()  noexcept { return reinterpret_cast<T*>(m_pRawPtr); }
 		const T* operator->() const { return reinterpret_cast<T*>(m_pRawPtr); }
@@ -141,5 +144,5 @@ namespace Sailor
 				m_pRawPtr = nullptr;
 			}
 		}
-	};
+	};	
 }
