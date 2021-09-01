@@ -36,6 +36,6 @@ VkResult VulkanQueue::Present(const VkPresentInfoKHR& info)
 
 VkResult VulkanQueue::WaitIdle()
 {
-	//std::scoped_lock<std::mutex> guard(m_mutex);
+	std::scoped_lock<std::mutex> guard(m_mutex);
 	return vkQueueWaitIdle(m_queue);
 }
