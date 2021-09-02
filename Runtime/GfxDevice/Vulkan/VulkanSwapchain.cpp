@@ -2,10 +2,22 @@
 #include "VulkanSwapchain.h"
 #include "VulkanFence.h"
 #include "VulkanSemaphore.h"
+#include "VulkanImage.h"
+#include "VulkanImageView.h"
 #include "Core/RefPtr.hpp"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
+
+VulkanSwapchainImage::VulkanSwapchainImage(VkImage image, VkDevice device) : VulkanImage(image, device)
+{
+}
+
+VulkanSwapchainImage::~VulkanSwapchainImage()
+{
+	m_vulkanData.m_deviceMemory = 0;
+	m_vulkanData.m_image = VK_NULL_HANDLE;
+}
 
 VulkanSurface::VulkanSurface(VkSurfaceKHR surface, VkInstance instance) :
 	m_surface(surface),
@@ -20,7 +32,6 @@ VulkanSurface::~VulkanSurface()
 		vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 	}
 }
-
 
 VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain) :
 	m_device(device),
@@ -79,32 +90,32 @@ VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice devic
 
 	oldSwapchain.Clear();
 
+	std::vector<VkImage> vkSwapchainImages;
+
 	// Create Swapchain images & image views
 	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, nullptr));
-	m_swapchainImages.resize(imageCount);
-	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, m_swapchainImages.data()));
+	vkSwapchainImages.resize(imageCount);
+	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, vkSwapchainImages.data()));
 
-	m_swapchainImageViews.resize(m_swapchainImages.size());
-
-	for (size_t i = 0; i < m_swapchainImages.size(); i++)
+	for (size_t i = 0; i < vkSwapchainImages.size(); i++)
 	{
-		VkImageViewCreateInfo createInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-		createInfo.image = m_swapchainImages[i];
-		createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		createInfo.format = m_surfaceFormat.format;
+		m_swapchainImages.push_back(TRefPtr<VulkanSwapchainImage>::Make(vkSwapchainImages[i], m_device));
+		m_swapchainImageViews.push_back(TRefPtr<VulkanImageView>::Make(m_swapchainImages[i]));
 
-		createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-		createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-		createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-		createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		m_swapchainImageViews[i]->m_format = m_surfaceFormat.format;
 
-		createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		createInfo.subresourceRange.baseMipLevel = 0;
-		createInfo.subresourceRange.levelCount = 1;
-		createInfo.subresourceRange.baseArrayLayer = 0;
-		createInfo.subresourceRange.layerCount = 1;
+		m_swapchainImageViews[i]->m_components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		m_swapchainImageViews[i]->m_components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		m_swapchainImageViews[i]->m_components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		m_swapchainImageViews[i]->m_components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
-		VK_CHECK(vkCreateImageView(m_device, &createInfo, nullptr, &m_swapchainImageViews[i]));
+		m_swapchainImageViews[i]->m_subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		m_swapchainImageViews[i]->m_subresourceRange.baseMipLevel = 0;
+		m_swapchainImageViews[i]->m_subresourceRange.levelCount = 1;
+		m_swapchainImageViews[i]->m_subresourceRange.baseArrayLayer = 0;
+		m_swapchainImageViews[i]->m_subresourceRange.layerCount = 1;
+
+		m_swapchainImageViews[i]->Initialize(m_device);
 	}
 }
 

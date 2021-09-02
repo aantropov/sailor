@@ -1,12 +1,13 @@
 #pragma once
 #include "Core/RefPtr.hpp"
+#include "VulkanImage.h"
 #include "VulkanApi.h"
 
 namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanFence;
 	class VulkanSemaphore;
-	//class VulkanImageView;
+	class VulkanImageView;
 
 	class VulkanSurface : public TRefBase
 	{
@@ -22,11 +23,20 @@ namespace Sailor::GfxDevice::Vulkan
 		VkInstance m_instance;
 	};
 
+	class VulkanSwapchainImage : public VulkanImage
+	{
+	public:
+		VulkanSwapchainImage(VkImage image, VkDevice device);
+
+	protected:
+		virtual ~VulkanSwapchainImage();
+	};
+
 	class VulkanSwapchain final : public TRefBase
 	{
 	public:
 
-		VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain = nullptr);
+		VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain);
 
 		operator VkSwapchainKHR() const { return m_swapchain; }
 
@@ -34,8 +44,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		const VkExtent2D& GetExtent() const { return m_swapchainExtent; }
 
-		std::vector<VkImageView>& GetImageViews() { return m_swapchainImageViews; }
-		const std::vector<VkImageView>& GetImageViews() const { return m_swapchainImageViews; }
+		std::vector<TRefPtr<VulkanImageView>>& GetImageViews() { return m_swapchainImageViews; }
+		const std::vector<TRefPtr<VulkanImageView>>& GetImageViews() const { return m_swapchainImageViews; }
 
 		VkResult AcquireNextImage(uint64_t timeout, TRefPtr<VulkanSemaphore> semaphore, TRefPtr<VulkanFence> fence, uint32_t& imageIndex);
 
@@ -50,9 +60,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkSurfaceFormatKHR m_surfaceFormat;
 		VkPresentModeKHR m_presentMode;
 
-		std::vector<VkImage> m_swapchainImages;
-		std::vector<VkImageView> m_swapchainImageViews;
-
-		//std::vector<TRefPtr<VulkanImageView>> m_imageViews;
+		std::vector<TRefPtr<VulkanSwapchainImage>> m_swapchainImages;
+		std::vector<TRefPtr<VulkanImageView>> m_swapchainImageViews;
 	};
 }

@@ -20,6 +20,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanSemaphore.h"
 #include "VulkanFence.h"
 #include "VulkanQueue.h"
+#include "VulkanImage.h"
+#include "VulkanImageView.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -285,14 +287,14 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 void VulkanDevice::CreateFramebuffers()
 {
-	std::vector<VkImageView>& swapChainImageViews = m_swapchain->GetImageViews();
+	std::vector<TRefPtr<VulkanImageView>>& swapChainImageViews = m_swapchain->GetImageViews();
 
 	m_swapChainFramebuffers.resize(swapChainImageViews.size());
 
 	for (size_t i = 0; i < swapChainImageViews.size(); i++)
 	{
 		VkImageView attachments[] = {
-			swapChainImageViews[i]
+			*swapChainImageViews[i]
 		};
 
 		VkFramebufferCreateInfo framebufferInfo{};
@@ -439,11 +441,6 @@ void VulkanDevice::CleanupSwapChain()
 	vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
 
 	m_renderPass.Clear();
-
-	for (const auto& imageView : m_swapchain->GetImageViews())
-	{
-		vkDestroyImageView(m_device, imageView, nullptr);
-	}
 }
 
 void VulkanDevice::WaitIdlePresentQueue()

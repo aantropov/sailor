@@ -53,9 +53,15 @@ namespace Sailor
 			AssignRawPtr(Ptr);
 		}
 
+		template<class R>
+		TRefPtr(const TRefPtr<R>& Ptr) noexcept
+		{
+			AssignRawPtr(Ptr.GetRawPtr());
+		}
+
 		TRefPtr(const TRefPtr<T>& Ptr) noexcept
 		{
-			AssignRawPtr(reinterpret_cast<T*>(Ptr.m_pRawPtr));
+			AssignRawPtr(Ptr.GetRawPtr());
 		}
 
 		TRefPtr& operator=(T* Ptr)
@@ -66,24 +72,24 @@ namespace Sailor
 
 		TRefPtr& operator=(const TRefPtr<T>& Ptr)
 		{
-			AssignRawPtr(reinterpret_cast<T*>(Ptr.m_pRawPtr));
+			AssignRawPtr(Ptr.m_pRawPtr);
 			return *this;
 		}
 
-		template<typename... TArgs>
-		TRefPtr& operator=(TArgs... args)
+		T* GetRawPtr() const noexcept { return static_cast<T*>(m_pRawPtr); }
+
+		T* operator->()  noexcept { return static_cast<T*>(m_pRawPtr); }
+		const T* operator->() const { return static_cast<T*>(m_pRawPtr); }
+
+		T& operator*()  noexcept { return *static_cast<T*>(m_pRawPtr); }
+		const T& operator*() const { return *static_cast<T*>(m_pRawPtr); }
+
+		template<class R>
+		TRefPtr& operator=(const TRefPtr<R>& Ptr)
 		{
-			AssignRawPtr(new T(args...));
+			AssignRawPtr(static_cast<TRefBase*>(Ptr.m_pRawPtr));
 			return *this;
 		}
-
-		T* GetRawPtr() const noexcept { return reinterpret_cast<T*>(m_pRawPtr); }
-
-		T* operator->()  noexcept { return reinterpret_cast<T*>(m_pRawPtr); }
-		const T* operator->() const { return reinterpret_cast<T*>(m_pRawPtr); }
-
-		T& operator*()  noexcept { return *reinterpret_cast<T*>(m_pRawPtr); }
-		const T& operator*() const { return *reinterpret_cast<T*>(m_pRawPtr); }
 
 		bool IsShared() const  noexcept { return GetRefCounter() > 1; }
 
@@ -113,7 +119,7 @@ namespace Sailor
 
 	private:
 
-		void AssignRawPtr(T* Ptr)
+		void AssignRawPtr(TRefBase* Ptr)
 		{
 			if (m_pRawPtr == Ptr)
 			{

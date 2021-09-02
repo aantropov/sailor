@@ -18,6 +18,8 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanRenderPass;
 	class VulkanSurface;
 	class VulkanDevice;
+	class VulkanImageView;
+	class VulkanImage;
 
 #define VK_CHECK(call) \
 	do { \
@@ -75,6 +77,9 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API void GetRequiredDeviceExtensions(std::vector<const char*>& requiredDeviceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
 
 		//static SAILOR_API VkShaderModule CreateShaderModule(const std::vector<uint32_t>& inCode);
+
+		static SAILOR_API VkImageAspectFlags ComputeAspectFlagsForFormat(VkFormat format);
+		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(VkDevice device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
 
 	private:
 

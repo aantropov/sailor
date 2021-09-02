@@ -54,7 +54,7 @@ namespace Sailor
 		SAILOR_API bool IsVsyncRequested() const { return m_bIsVsyncRequested; }
 
 		// Create window
-		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false);
+		SAILOR_API bool Initialize(LPCWSTR title = L"Sailor", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false);
 		SAILOR_API void Destroy();
 
 		// Window size

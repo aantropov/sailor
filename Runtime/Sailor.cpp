@@ -32,7 +32,7 @@ void EngineInstance::Initialize()
 	//#endif
 
 	m_pInstance = new EngineInstance();
-	m_pInstance->m_viewportWindow.Create(L"Sailor Viewport", 1024, 768);
+	m_pInstance->m_viewportWindow.Initialize(L"Sailor Viewport", 1024, 768);
 
 #ifdef _DEBUG
 	const bool bIsEnabledVulkanValidationLayers = true;

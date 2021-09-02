@@ -26,6 +26,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		operator VkRenderPass() const { return m_renderPass; }
 
+		VkDevice GetDevice() const { return m_device; }
+
 		VkSampleCountFlagBits GetMaxMSSamples() const { return m_maxMsSamples; }
 
 	protected:
