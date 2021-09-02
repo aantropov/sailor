@@ -14,6 +14,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanRenderPass;
 	class VulkanSwapchain;
 	class VulkanSurface;
+	class VulkanFramebuffer;
 
 	class VulkanDevice final : public TRefBase
 	{
@@ -68,7 +69,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// Swapchain
 		TRefPtr<VulkanSwapchain> m_swapchain;
-		std::vector<VkFramebuffer> m_swapChainFramebuffers;
+		std::vector<TRefPtr<VulkanFramebuffer>> m_swapChainFramebuffers;
 
 		// Frame sync
 		std::vector<TRefPtr<VulkanSemaphore>> m_imageAvailableSemaphores;

@@ -22,6 +22,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanQueue.h"
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
+#include "VulkanFrameBuffer.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -293,20 +294,12 @@ void VulkanDevice::CreateFramebuffers()
 
 	for (size_t i = 0; i < swapChainImageViews.size(); i++)
 	{
-		VkImageView attachments[] = {
-			*swapChainImageViews[i]
-		};
-
-		VkFramebufferCreateInfo framebufferInfo{};
-		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-		framebufferInfo.renderPass = *m_renderPass;
-		framebufferInfo.attachmentCount = 1;
-		framebufferInfo.pAttachments = attachments;
-		framebufferInfo.width = m_swapchain->GetExtent().width;
-		framebufferInfo.height = m_swapchain->GetExtent().height;
-		framebufferInfo.layers = 1;
-
-		VK_CHECK(vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_swapChainFramebuffers[i]));
+		m_swapChainFramebuffers[i] = TRefPtr<VulkanFramebuffer>::Make(
+			m_renderPass,
+			std::vector<TRefPtr<VulkanImageView>>{ swapChainImageViews[i] },
+			m_swapchain->GetExtent().width,
+			m_swapchain->GetExtent().height,
+			1);
 	}
 }
 
@@ -330,7 +323,7 @@ void VulkanDevice::CreateCommandBuffers()
 		VkRenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 		renderPassInfo.renderPass = *m_renderPass;
-		renderPassInfo.framebuffer = m_swapChainFramebuffers[i];
+		renderPassInfo.framebuffer = *m_swapChainFramebuffers[i];
 		renderPassInfo.renderArea.offset = { 0, 0 };
 		renderPassInfo.renderArea.extent = m_swapchain->GetExtent();
 
@@ -430,11 +423,7 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 
 void VulkanDevice::CleanupSwapChain()
 {
-	for (const auto& framebuffer : m_swapChainFramebuffers)
-	{
-		vkDestroyFramebuffer(m_device, framebuffer, nullptr);
-	}
-
+	m_swapChainFramebuffers.clear();
 	m_commandBuffers.clear();
 
 	vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
