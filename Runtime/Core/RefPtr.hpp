@@ -39,43 +39,38 @@ namespace Sailor
 		template<typename... TArgs>
 		static TRefPtr<T> Make(TArgs... args) noexcept
 		{
-			static_assert(std::is_base_of<TRefBase, T>::value);
 			return TRefPtr<T>(new T(args...));
 		}
 
-		TRefPtr() noexcept
-		{
-			static_assert(std::is_base_of<TRefBase, T>::value);
-		}
+		TRefPtr() noexcept = default;
 
 		TRefPtr(T* Ptr) noexcept
 		{
-			static_assert(std::is_base_of<TRefBase, T>::value);
 			AssignRawPtr(Ptr);
 		}
 
 		template<typename R,
 			typename = std::enable_if_t<
 			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TRefPtr(const TRefPtr<R>& Ptr) noexcept
+			TRefPtr(const TRefPtr<R>& pRefPtr) noexcept
 		{
-			AssignRawPtr(Ptr.GetRawPtr());
+			AssignRawPtr(pRefPtr.GetRawPtr());
 		}
 
-		TRefPtr(const TRefPtr<T>& Ptr) noexcept
+		TRefPtr(const TRefPtr<T>& pRawPtr) noexcept
 		{
-			AssignRawPtr(Ptr.GetRawPtr());
+			AssignRawPtr(pRawPtr.GetRawPtr());
 		}
 
-		TRefPtr& operator=(T* Ptr)
+		TRefPtr& operator=(T* pRawPtr)
 		{
-			AssignRawPtr(Ptr);
+			AssignRawPtr(pRawPtr);
 			return *this;
 		}
 
-		TRefPtr& operator=(const TRefPtr<T>& Ptr)
+		TRefPtr& operator=(const TRefPtr<T>& pRefPtr)
 		{
-			AssignRawPtr(Ptr.m_pRawPtr);
+			AssignRawPtr(pRefPtr.m_pRawPtr);
 			return *this;
 		}
 
@@ -88,9 +83,9 @@ namespace Sailor
 		const T& operator*() const { return *static_cast<T*>(m_pRawPtr); }
 
 		template<class R>
-		TRefPtr& operator=(const TRefPtr<R>& Ptr)
+		TRefPtr& operator=(const TRefPtr<R>& pRefPtr)
 		{
-			AssignRawPtr(static_cast<TRefBase*>(Ptr.m_pRawPtr));
+			AssignRawPtr(static_cast<TRefBase*>(pRefPtr.m_pRawPtr));
 			return *this;
 		}
 
@@ -98,14 +93,14 @@ namespace Sailor
 
 		operator bool() const  noexcept { return m_pRawPtr != nullptr; }
 
-		bool operator==(const TRefPtr<T>& Rhs) const
+		bool operator==(const TRefPtr<T>& pRhs) const
 		{
-			return m_pRawPtr == Rhs->m_pRawPtr;
+			return m_pRawPtr == pRhs->m_pRawPtr;
 		}
 
-		bool operator!=(const TRefPtr<T>& Rhs) const
+		bool operator!=(const TRefPtr<T>& pRhs) const
 		{
-			return m_pRawPtr != Rhs->m_pRawPtr;
+			return m_pRawPtr != pRhs->m_pRawPtr;
 		}
 
 		void Clear() noexcept
@@ -122,9 +117,9 @@ namespace Sailor
 
 	private:
 
-		void AssignRawPtr(TRefBase* Ptr)
+		void AssignRawPtr(TRefBase* pRawPtr)
 		{
-			if (m_pRawPtr == Ptr)
+			if (m_pRawPtr == pRawPtr)
 			{
 				return;
 			}
@@ -134,7 +129,7 @@ namespace Sailor
 				DecrementRefCounter();
 			}
 
-			if (m_pRawPtr = Ptr)
+			if (m_pRawPtr = pRawPtr)
 			{
 				IncrementRefCounter();
 			}
@@ -153,5 +148,5 @@ namespace Sailor
 				m_pRawPtr = nullptr;
 			}
 		}
-	};	
+	};
 }

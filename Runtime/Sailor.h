@@ -2,6 +2,8 @@
 #include "Defines.h"
 #include "LogMacros.h"
 #include "Utils.h"
+#include "Core/SharedPtr.hpp"
+#include "Core/WeakPtr.hpp"
 #include "Platform/Win/Window.h"
 
 namespace Sailor

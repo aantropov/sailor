@@ -20,6 +20,14 @@ namespace Sailor
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), ((TSmartPtrBase)pDerivedPtr).pControlBlock);
 		}
 
+		template<typename R,
+			typename = std::enable_if_t<
+			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
+			TWeakPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
+		{
+			AssignRawPtr(static_cast<T*>(pDerivedPtr.GetRawPtr()), pDerivedPtr.m_pControlBlock);
+		}
+
 		TWeakPtr(const TWeakPtr<T>& pWeakPtr) noexcept
 		{
 			AssignRawPtr(pWeakPtr.m_pRawPtr, pWeakPtr.m_pControlBlock);

@@ -60,7 +60,7 @@ void EngineInstance::Start()
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
-	std::shared_ptr<Sailor::JobSystem::Job> renderingJob;
+	TSharedPtr<Sailor::JobSystem::Job> renderingJob;
 
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{

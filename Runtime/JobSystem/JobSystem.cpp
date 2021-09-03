@@ -11,13 +11,13 @@
 using namespace Sailor;
 using namespace Sailor::JobSystem;
 
-void IJob::Wait(const std::weak_ptr<IJob>& job)
+void IJob::Wait(const TWeakPtr<IJob>& job)
 {
-	job.lock()->m_dependencies.emplace_back(this);
+	job.Lock()->m_dependencies.emplace_back(this);
 	++m_numBlockers;
 }
 
-void IJob::WaitAll(const std::vector<std::weak_ptr<IJob>>& jobs)
+void IJob::WaitAll(const std::vector<TWeakPtr<IJob>>& jobs)
 {
 	for (const auto& job : jobs)
 	{
@@ -75,7 +75,7 @@ WorkerThread::WorkerThread(
 	EThreadType threadType,
 	std::condition_variable& refresh,
 	std::mutex& mutex,
-	std::list<std::shared_ptr<Job>>& pJobsQueue) :
+	std::list<TSharedPtr<Job>>& pJobsQueue) :
 	m_threadName(std::move(threadName)),
 	m_threadType(threadType),
 	m_refresh(refresh),
@@ -182,9 +182,9 @@ Scheduler::~Scheduler()
 	m_workerThreads.clear();
 }
 
-std::shared_ptr<Job> Scheduler::CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread)
+TSharedPtr<Job> Scheduler::CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread)
 {
-	return std::make_shared<Job>(name, lambda, thread);
+	return TSharedPtr<Job>::Make(name, lambda, thread);
 }
 
 uint32_t Scheduler::GetNumWorkerThreads() const
@@ -192,13 +192,13 @@ uint32_t Scheduler::GetNumWorkerThreads() const
 	return static_cast<uint32_t>(m_workerThreads.size());
 }
 
-void Scheduler::Run(const std::shared_ptr<Job>& pJob)
+void Scheduler::Run(const TSharedPtr<Job>& pJob)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	{
 		std::mutex* pOutMutex;
-		std::list<std::shared_ptr<Job>>* pOutQueue;
+		std::list<TSharedPtr<Job>>* pOutQueue;
 		std::condition_variable* pOutCondVar;
 
 		GetThreadSyncVarsByThreadType(pJob->GetThreadType(), pOutMutex, pOutQueue, pOutCondVar);
@@ -213,7 +213,7 @@ void Scheduler::Run(const std::shared_ptr<Job>& pJob)
 void Scheduler::GetThreadSyncVarsByThreadType(
 	EThreadType threadType,
 	std::mutex*& pOutMutex,
-	std::list<std::shared_ptr<Job>>*& pOutQueue,
+	std::list<TSharedPtr<Job>>*& pOutQueue,
 	std::condition_variable*& pOutCondVar)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -223,12 +223,12 @@ void Scheduler::GetThreadSyncVarsByThreadType(
 	pOutCondVar = &m_refreshCondVar[(uint32_t)threadType];
 }
 
-bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob, EThreadType threadType)
+bool Scheduler::TryFetchNextAvailiableJob(TSharedPtr<Job>& pOutJob, EThreadType threadType)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	std::mutex* pOutMutex;
-	std::list<std::shared_ptr<Job>>* pOutQueue;
+	std::list<TSharedPtr<Job>>* pOutQueue;
 	std::condition_variable* pOutCondVar;
 
 	GetThreadSyncVarsByThreadType(threadType, pOutMutex, pOutQueue, pOutCondVar);
@@ -238,7 +238,7 @@ bool Scheduler::TryFetchNextAvailiableJob(std::shared_ptr<Job>& pOutJob, EThread
 	if (!(*pOutQueue).empty())
 	{
 		const auto result = std::find_if((*pOutQueue).cbegin(), (*pOutQueue).cend(),
-			[&](const std::shared_ptr<Job>& job)
+			[&](const TSharedPtr<Job>& job)
 		{
 			return job->IsReadyToStart();
 		});
@@ -260,7 +260,7 @@ void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThread
 	SAILOR_PROFILE_FUNCTION();
 
 	std::mutex* pOutMutex;
-	std::list<std::shared_ptr<Job>>* pOutQueue;
+	std::list<TSharedPtr<Job>>* pOutQueue;
 	std::condition_variable* pOutCondVar;
 
 	GetThreadSyncVarsByThreadType(threadType, pOutMutex, pOutQueue, pOutCondVar);

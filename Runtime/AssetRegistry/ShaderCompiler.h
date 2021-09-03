@@ -4,6 +4,8 @@
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Singleton.hpp"
+#include "Core/SharedPtr.hpp"
+#include "Core/WeakPtr.hpp"
 #include "AssetInfo.h"
 #include "ShaderCache.h"
 
@@ -45,7 +47,7 @@ namespace Sailor
 
 		static SAILOR_API void CompileAllPermutations(const UID& assetUID);
 
-		SAILOR_API std::weak_ptr<ShaderAsset> LoadShaderAsset(const UID& uid);
+		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
 		static SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, std::vector<uint32_t>& outVertexByteCode, std::vector<uint32_t>& outFragmentByteCode);
 
@@ -58,7 +60,7 @@ namespace Sailor
 	protected:
 
 		ShaderCache m_shaderCache;
-		std::unordered_map<UID, std::shared_ptr<ShaderAsset>> m_loadedShaders;
+		std::unordered_map<UID, TSharedPtr<ShaderAsset>> m_loadedShaders;
 
 		static SAILOR_API void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const std::vector<std::string>& defines = {});
 		static SAILOR_API void ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON);

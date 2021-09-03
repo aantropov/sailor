@@ -163,7 +163,7 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto pShader = m_pInstance->LoadShaderAsset(assetUID).lock();
+	auto pShader = m_pInstance->LoadShaderAsset(assetUID).Lock();
 	const auto defines = GetDefines(pShader->m_defines, permutation);
 
 	std::vector<std::string> vertexDefines = defines;
@@ -174,8 +174,8 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 
 	std::string vertexGlsl;
 	std::string fragmentGlsl;
-	GeneratePrecompiledGlsl(pShader.get(), vertexGlsl, vertexDefines);
-	GeneratePrecompiledGlsl(pShader.get(), fragmentGlsl, fragmentDefines);
+	GeneratePrecompiledGlsl(pShader.GetRawPtr(), vertexGlsl, vertexDefines);
+	GeneratePrecompiledGlsl(pShader.GetRawPtr(), fragmentGlsl, fragmentDefines);
 
 	m_pInstance->m_shaderCache.SavePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl);
 
@@ -195,7 +195,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::shared_ptr<ShaderAsset> pShader = m_pInstance->LoadShaderAsset(assetUID).lock();
+	TSharedPtr<ShaderAsset> pShader = m_pInstance->LoadShaderAsset(assetUID).Lock();
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
 
 	if (!pShader->ContainsFragment() || !pShader->ContainsVertex())
@@ -246,7 +246,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 	scheduler->Run(saveCacheJob);
 }
 
-std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
+TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -270,7 +270,7 @@ std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 		if (j_shader.parse(codeInJSON.c_str()) == detail::value_t::discarded)
 		{
 			SAILOR_LOG("Cannot parse shader asset file: %s", filepath.c_str());
-			return weak_ptr<ShaderAsset>();
+			return TWeakPtr<ShaderAsset>();
 		}
 
 		j_shader = json::parse(codeInJSON);
@@ -278,11 +278,11 @@ std::weak_ptr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 		ShaderAsset* shader = new ShaderAsset();
 		shader->Deserialize(j_shader);
 
-		return m_loadedShaders[uid] = shared_ptr<ShaderAsset>(shader);
+		return m_loadedShaders[uid] = TSharedPtr<ShaderAsset>(shader);
 	}
 
 	SAILOR_LOG("Cannot find shader asset info with UID: %s", uid.ToString().c_str());
-	return std::weak_ptr<ShaderAsset>();
+	return TWeakPtr<ShaderAsset>();
 }
 
 void ShaderCompiler::OnAssetInfoUpdated(AssetInfo* assetInfo)
@@ -353,7 +353,7 @@ void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::st
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (auto pShader = m_pInstance->LoadShaderAsset(assetUID).lock())
+	if (auto pShader = m_pInstance->LoadShaderAsset(assetUID).Lock())
 	{
 		uint32_t permutation = GetPermutation(pShader->m_defines, defines);
 

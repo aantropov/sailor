@@ -6,7 +6,10 @@
 namespace Sailor
 {
 	using TSmartPtrCounter = std::atomic<uint32_t>;
-	
+
+	template<typename>
+	class TWeakPtr;
+
 	class TSmartPtrControlBlock
 	{
 	public:
@@ -43,7 +46,7 @@ namespace Sailor
 		template<typename R,
 			typename = std::enable_if_t<
 			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TSharedPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
+			TSharedPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
 		{
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.GetRawPtr()), ((TSmartPtrBase)pDerivedPtr).pControlBlock);
 		}
@@ -76,7 +79,7 @@ namespace Sailor
 		template<typename R,
 			typename = std::enable_if_t<
 			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TSharedPtr& operator=(const TSharedPtr<R>& pDerivedPtr)
+			TSharedPtr& operator=(const TSharedPtr<R>& pDerivedPtr)
 		{
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.GetRawPtr()), pDerivedPtr.m_pControlBlock);
 			return *this;
@@ -156,7 +159,7 @@ namespace Sailor
 		}
 
 		friend class TSharedPtr;
-		
+
 		template<typename>
 		friend class TWeakPtr;
 	};
