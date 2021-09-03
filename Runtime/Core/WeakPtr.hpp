@@ -17,7 +17,7 @@ namespace Sailor
 			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 			TWeakPtr(const TWeakPtr<R>& pDerivedPtr) noexcept
 		{
-			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), ((TSmartPtrBase)pDerivedPtr).pControlBlock);
+			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.pControlBlock);
 		}
 
 		template<typename R,
@@ -25,7 +25,7 @@ namespace Sailor
 			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 			TWeakPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
 		{
-			AssignRawPtr(static_cast<T*>(pDerivedPtr.GetRawPtr()), pDerivedPtr.m_pControlBlock);
+			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 		}
 
 		TWeakPtr(const TWeakPtr<T>& pWeakPtr) noexcept
@@ -35,7 +35,7 @@ namespace Sailor
 
 		TWeakPtr(const TSharedPtr<T>& pSharedPtr) noexcept
 		{
-			AssignRawPtr(pSharedPtr.GetRawPtr(), pSharedPtr.m_pControlBlock);
+			AssignRawPtr(pSharedPtr.m_pRawPtr, pSharedPtr.m_pControlBlock);
 		}
 
 		TWeakPtr& operator=(const TWeakPtr<T>& pDerivedPtr)

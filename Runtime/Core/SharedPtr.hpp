@@ -48,7 +48,7 @@ namespace Sailor
 			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 			TSharedPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
 		{
-			AssignRawPtr(static_cast<T*>(pDerivedPtr.GetRawPtr()), ((TSmartPtrBase)pDerivedPtr).pControlBlock);
+			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.pControlBlock);
 		}
 
 		TSharedPtr(const TSharedPtr<T>& pSharedPtr) noexcept
@@ -81,7 +81,7 @@ namespace Sailor
 			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 			TSharedPtr& operator=(const TSharedPtr<R>& pDerivedPtr)
 		{
-			AssignRawPtr(static_cast<T*>(pDerivedPtr.GetRawPtr()), pDerivedPtr.m_pControlBlock);
+			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 			return *this;
 		}
 
