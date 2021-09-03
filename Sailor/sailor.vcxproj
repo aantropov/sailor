@@ -23,7 +23,7 @@
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{6d6b98f8-00ff-4088-80e9-7e6f5fcd5183}</ProjectGuid>
     <RootNamespace>sailor</RootNamespace>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -43,14 +43,14 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -180,7 +180,9 @@
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\Core\RefPtr.hpp" />
+    <ClInclude Include="..\Runtime\Core\SharedPtr.hpp" />
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
+    <ClInclude Include="..\Runtime\Core\WeakPtr.hpp" />
     <ClInclude Include="..\Runtime\Defines.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h" />

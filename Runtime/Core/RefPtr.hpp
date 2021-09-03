@@ -1,10 +1,11 @@
 #pragma once
 #include "Defines.h"
 #include <atomic>
+#include <type_traits>
 
 namespace Sailor
 {
-	using TRefPtrCounter = std::atomic<uint32_t>;
+	using TSmartPtrCounter = std::atomic<uint32_t>;
 	class TRefPtrBase;
 
 	class TRefBase
@@ -15,7 +16,7 @@ namespace Sailor
 
 	protected:
 
-		TRefPtrCounter RefCounter = 0;
+		TSmartPtrCounter RefCounter = 0;
 		friend class TRefPtrBase;
 	};
 
@@ -25,7 +26,7 @@ namespace Sailor
 
 		TRefBase* m_pRawPtr = nullptr;
 
-		TRefPtrCounter& GetRefCounter() const noexcept { return m_pRawPtr->RefCounter; }
+		TSmartPtrCounter& GetRefCounter() const noexcept { return m_pRawPtr->RefCounter; }
 
 		virtual ~TRefPtrBase() = default;
 	};
@@ -53,7 +54,9 @@ namespace Sailor
 			AssignRawPtr(Ptr);
 		}
 
-		template<class R>
+		template<typename R,
+			typename = std::enable_if_t<
+			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 		TRefPtr(const TRefPtr<R>& Ptr) noexcept
 		{
 			AssignRawPtr(Ptr.GetRawPtr());
