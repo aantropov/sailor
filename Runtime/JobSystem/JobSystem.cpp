@@ -8,6 +8,7 @@
 #include <string>
 #include "Utils.h"
 
+using namespace std;
 using namespace Sailor;
 using namespace Sailor::JobSystem;
 
@@ -128,7 +129,7 @@ void Scheduler::Initialize()
 	m_pInstance = new Scheduler();
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
-	const unsigned numThreads = max(1, coresCount - 2);
+	const unsigned numThreads = std::max(1u, coresCount - 2u);
 
 	WorkerThread* newRenderingThread = new WorkerThread(
 		"Rendering Thread",

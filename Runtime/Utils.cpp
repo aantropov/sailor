@@ -192,7 +192,7 @@ void Sailor::Utils::ReplaceAll(std::string& str, const std::string& from, const 
 		startPosition += to.length();
 
 		size_t maxJump = std::string::npos - endLocation;
-		endLocation += min(maxJump, to.length() - from.length());
+		endLocation += std::min(maxJump, to.length() - from.length());
 	}
 }
 
@@ -207,7 +207,7 @@ void Sailor::Utils::Erase(std::string& str, const std::string& substr, size_t st
 		startPosition += substr.length();
 
 		size_t maxJump = std::string::npos - endLocation;
-		endLocation += min(maxJump, substr.length());
+		endLocation += std::min(maxJump, substr.length());
 	}
 }
 

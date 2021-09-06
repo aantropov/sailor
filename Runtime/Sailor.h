@@ -5,6 +5,7 @@
 #include "Core/SharedPtr.hpp"
 #include "Core/WeakPtr.hpp"
 #include "Platform/Win/Window.h"
+#include <glm/glm/glm.hpp>
 
 namespace Sailor
 {
