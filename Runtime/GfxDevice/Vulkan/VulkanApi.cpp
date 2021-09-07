@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <vector>
 #include <set>
+#include <glm/glm/glm.hpp>
 #include "Sailor.h"
 #include "Platform/Win/Window.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -13,8 +14,10 @@
 #include "VulkanRenderPass.h"
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
+#include "RHI/RHIResource.h"
 
 using namespace Sailor;
+using namespace Sailor::RHI;
 using namespace Sailor::GfxDevice::Vulkan;
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
@@ -628,11 +631,33 @@ VkImageAspectFlags VulkanApi::ComputeAspectFlagsForFormat(VkFormat format)
 TRefPtr<VulkanImageView> VulkanApi::CreateImageView(VkDevice device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags)
 {
 	image->Initialize();
-	
+
 	//image->Bind(nullptr, 0);
 
 	TRefPtr<VulkanImageView> imageView = TRefPtr<VulkanImageView>::Make(image, aspectFlags);
 	imageView->Initialize(device);
 
 	return imageView;
+}
+
+VkVertexInputBindingDescription RHIVertexFactoryPositionColor::GetBindingDescription()
+{
+	VkVertexInputBindingDescription bindingDescription{};
+	return bindingDescription;
+}
+
+std::array<VkVertexInputAttributeDescription, 2> RHIVertexFactoryPositionColor::GetAttributeDescriptions()
+{
+	std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+	attributeDescriptions[0].binding = 0;
+	attributeDescriptions[0].location = 0;
+	attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+	attributeDescriptions[0].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_position);
+
+	attributeDescriptions[1].binding = 0;
+	attributeDescriptions[1].location = 1;
+	attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_color);
+
+	return attributeDescriptions;
 }

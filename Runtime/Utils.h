@@ -29,4 +29,10 @@ namespace Sailor
 
 		SAILOR_API DWORD GetRandomColorHex();
 	}
+
+	template<typename Class, typename Member> 
+	constexpr size_t OffsetOf(Member Class::* member)
+	{
+		return (char*)&((Class*)nullptr->*member) - (char*)nullptr;
+	}
 }

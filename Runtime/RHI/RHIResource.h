@@ -1,8 +1,16 @@
 #pragma once
 #include "Core/RefPtr.hpp"
+#include <glm/glm/glm.hpp>
 
 namespace Sailor::RHI
 {
+	class RHIVertex
+	{
+	public:
+		glm::vec2 m_position;
+		glm::vec3 m_color;
+	};
+
 	class RHIResource : public TRefBase
 	{
 	public:
