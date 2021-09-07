@@ -89,6 +89,8 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API VkImageAspectFlags ComputeAspectFlagsForFormat(VkFormat format);
 		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(VkDevice device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
 
+		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
+
 	private:
 
 		static SAILOR_API uint32_t GetNumSupportedExtensions();

@@ -45,6 +45,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateCommandBuffers();
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
+		SAILOR_API void CreateVertexBuffer();
 
 		// Command pool
 		TRefPtr<VulkanCommandPool> m_commandPool;
@@ -63,7 +64,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		TRefPtr<VulkanSurface> m_surface;
 
-		VkPhysicalDevice m_mainPhysicalDevice = 0;
+		VkPhysicalDevice m_physicalDevice = 0;
 		VkDevice m_device = 0;
 		QueueFamilyIndices m_queueFamilies;
 
@@ -77,6 +78,9 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<TRefPtr<VulkanFence>> m_syncFences;
 		std::vector<TRefPtr<VulkanFence>> m_syncImages;
 		size_t m_currentFrame = 0;
+
+		VkBuffer m_vertexBuffer;
+		VkDeviceMemory m_vertexBufferMemory;
 
 		std::atomic<bool> bIsFramebufferResizedThisFrame = false;
 	};

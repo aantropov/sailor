@@ -23,12 +23,21 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
 #include "VulkanFrameBuffer.h"
+#include "RHI/RHIResource.h"
 
 using namespace Sailor;
+using namespace Sailor::RHI;
 using namespace Sailor::GfxDevice::Vulkan;
 
 VkShaderModule g_testFragShader;
 VkShaderModule g_testVertShader;
+
+const std::vector<RHIVertex> g_vertices = 
+{
+	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.3f, 1.0f, 0.0f}},
+	{{-0.5f, 0.5f}, {0.0f, 0.0f, 5.0f}}
+};
 
 VulkanDevice::VulkanDevice(const Window* pViewport)
 {
@@ -36,8 +45,8 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	CreateWin32Surface(pViewport);
 
 	// Pick & Create device
-	m_mainPhysicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
-	CreateLogicalDevice(m_mainPhysicalDevice);
+	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
+	CreateLogicalDevice(m_physicalDevice);
 
 	// Create swapchain
 	CreateSwapchain(pViewport);
@@ -47,6 +56,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	CreateGraphicsPipeline();
 	CreateFramebuffers();
 	CreateCommandPool();
+	CreateVertexBuffer();
 	CreateCommandBuffers();
 	CreateFrameSyncSemaphores();
 }
@@ -58,6 +68,9 @@ VulkanDevice::~VulkanDevice()
 	CleanupSwapChain();
 
 	m_swapchain.Clear();
+
+	vkDestroyBuffer(m_device, m_vertexBuffer, nullptr);
+	vkFreeMemory(m_device, m_vertexBufferMemory, nullptr);
 
 	vkDestroyShaderModule(m_device, g_testFragShader, nullptr);
 	vkDestroyShaderModule(m_device, g_testVertShader, nullptr);
@@ -89,7 +102,7 @@ void VulkanDevice::CreateRenderPass()
 
 void VulkanDevice::CreateCommandPool()
 {
-	QueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_mainPhysicalDevice, m_surface);
+	QueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
 	m_commandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_graphicsFamily.value());
 }
 
@@ -123,6 +136,36 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 	CreateCommandBuffers();
 
 	return true;
+}
+
+void VulkanDevice::CreateVertexBuffer()
+{
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = sizeof(g_vertices[0]) * g_vertices.size();
+	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VK_CHECK(vkCreateBuffer(m_device, &bufferInfo, nullptr, &m_vertexBuffer));
+
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(m_device, m_vertexBuffer, &memRequirements);
+
+	VkMemoryAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memRequirements.size;
+	allocInfo.memoryTypeIndex = VulkanApi::FindMemoryByType(m_physicalDevice, 
+		memRequirements.memoryTypeBits, 
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &m_vertexBufferMemory));
+
+	vkBindBufferMemory(m_device, m_vertexBuffer, m_vertexBufferMemory, 0);
+
+	void* data;
+	vkMapMemory(m_device, m_vertexBufferMemory, 0, bufferInfo.size, 0, &data);
+	memcpy(data, g_vertices.data(), (size_t)bufferInfo.size);
+	vkUnmapMemory(m_device, m_vertexBufferMemory);
 }
 
 VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint32_t>& code)
@@ -307,7 +350,6 @@ void VulkanDevice::CreateFramebuffers()
 	}
 }
 
-
 void VulkanDevice::CreateCommandBuffers()
 {
 	for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
@@ -337,7 +379,12 @@ void VulkanDevice::CreateCommandBuffers()
 
 		vkCmdBeginRenderPass(*m_commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 		vkCmdBindPipeline(*m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
-		vkCmdDraw(*m_commandBuffers[i], 3, 1, 0, 0);
+
+		VkBuffer vertexBuffers[] = { m_vertexBuffer };
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(*m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
+
+		vkCmdDraw(*m_commandBuffers[i], static_cast<uint32_t>(g_vertices.size()), 1, 0, 0);
 		vkCmdEndRenderPass(*m_commandBuffers[i]);
 
 		VK_CHECK(vkEndCommandBuffer(*m_commandBuffers[i]));
@@ -415,7 +462,7 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 	TRefPtr<VulkanSwapchain> oldSwapchain = m_swapchain;
 	m_swapchain.Clear();
 
-	m_swapchain = TRefPtr<VulkanSwapchain>::Make(m_mainPhysicalDevice,
+	m_swapchain = TRefPtr<VulkanSwapchain>::Make(m_physicalDevice,
 		m_device,
 		m_surface,
 		viewport->GetWidth(),
@@ -423,7 +470,6 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 		viewport->IsVsyncRequested(),
 		oldSwapchain);
 }
-
 
 void VulkanDevice::CleanupSwapChain()
 {

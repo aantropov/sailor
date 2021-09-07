@@ -630,7 +630,7 @@ VkImageAspectFlags VulkanApi::ComputeAspectFlagsForFormat(VkFormat format)
 
 TRefPtr<VulkanImageView> VulkanApi::CreateImageView(VkDevice device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags)
 {
-	image->Initialize();
+	image->Compile();
 
 	//image->Bind(nullptr, 0);
 
@@ -643,6 +643,9 @@ TRefPtr<VulkanImageView> VulkanApi::CreateImageView(VkDevice device, TRefPtr<Vul
 VkVertexInputBindingDescription RHIVertexFactoryPositionColor::GetBindingDescription()
 {
 	VkVertexInputBindingDescription bindingDescription{};
+	bindingDescription.binding = 0;
+	bindingDescription.stride = sizeof(RHIVertex);
+	bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	return bindingDescription;
 }
 
@@ -660,4 +663,23 @@ std::array<VkVertexInputAttributeDescription, 2> RHIVertexFactoryPositionColor::
 	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_color);
 
 	return attributeDescriptions;
+}
+
+uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
+{
+	VkPhysicalDeviceMemoryProperties memProperties;
+	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) 
+	{
+		if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+		{
+			return i;
+		}
+	}
+
+	SAILOR_LOG("Cannot find GPU memory!");
+	assert(false);
+
+	return 0;
 }

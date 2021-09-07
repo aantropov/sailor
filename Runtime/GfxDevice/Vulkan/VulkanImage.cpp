@@ -56,7 +56,7 @@ VkResult VulkanImage::Bind(VkDeviceMemory deviceMemory, VkDeviceSize memoryOffse
 	return result;
 }
 
-void VulkanImage::Initialize()
+void VulkanImage::Compile()
 {
 	if (m_vulkanData.m_image != VK_NULL_HANDLE)
 	{

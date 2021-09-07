@@ -29,7 +29,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		operator VkImage() const { return m_vulkanData.m_image; }
 
-		void Initialize();
+		void Compile();
 		VkResult Bind(VkDeviceMemory deviceMemory, VkDeviceSize memoryOffset);
 
 	protected:
