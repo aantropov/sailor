@@ -25,14 +25,14 @@ void EngineInstance::Initialize()
 	profiler::startListen();
 #endif
 
-	ConsoleWindow::Initialize(false);
+	Win32::ConsoleWindow::Initialize(false);
 
 	//#ifdef _DEBUG
-	ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
+	Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
 	//#endif
 
 	m_pInstance = new EngineInstance();
-	m_pInstance->m_viewportWindow.Create(L"Sailor Viewport", 1024, 768);
+	m_pInstance->m_viewportWindow.Create(L"Sailor Viewport", L"SailorViewport", 1024, 768);
 
 #ifdef _DEBUG
 	const bool bIsEnabledVulkanValidationLayers = true;
@@ -55,8 +55,6 @@ void EngineInstance::Initialize()
 
 void EngineInstance::Start()
 {
-	MSG msg;
-
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
@@ -64,21 +62,8 @@ void EngineInstance::Start()
 
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{
-		ConsoleWindow::GetInstance()->Update();
-
-		SAILOR_PROFILE_BLOCK("Process window's messages");
-
-		while (PeekMessage(&msg, m_pInstance->m_viewportWindow.GetHWND(), 0, 0, PM_REMOVE))
-		{
-			if (msg.message == WM_QUIT)
-			{
-				m_pInstance->m_viewportWindow.SetRunning(false);
-				break;
-			}
-			DispatchMessage(&msg);
-		}
-
-		SAILOR_PROFILE_END_BLOCK();
+		Win32::ConsoleWindow::GetInstance()->Update();
+		Win32::Window::ProcessWin32Msgs();
 
 		if (Input::IsKeyPressed(VK_ESCAPE))
 		{
@@ -138,14 +123,14 @@ void EngineInstance::Shutdown()
 	SAILOR_LOG("Sailor Engine Released");
 	AssetRegistry::Shutdown();
 	GfxDevice::Vulkan::VulkanApi::Shutdown();
-	ConsoleWindow::Shutdown();
+	Win32::ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
 	JobSystem::Scheduler::Shutdown();
 
 	delete m_pInstance;
 }
 
-Window& EngineInstance::GetViewportWindow()
+Win32::Window& EngineInstance::GetViewportWindow()
 {
 	return m_pInstance->m_viewportWindow;
 }

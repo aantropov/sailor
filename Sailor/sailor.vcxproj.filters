@@ -22,9 +22,6 @@
     <Filter Include="Runtime\Jobsystem">
       <UniqueIdentifier>{204ddbe7-3034-430c-8a5a-73c2f95bc940}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Runtime\RHI">
-      <UniqueIdentifier>{35d82da9-5486-431e-9c95-d548da0ee596}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Runtime\Platform">
       <UniqueIdentifier>{c4e0e853-b4ec-4661-9e22-a337e7149438}</UniqueIdentifier>
     </Filter>
@@ -39,6 +36,9 @@
     </Filter>
     <Filter Include="Runtime\Core">
       <UniqueIdentifier>{74f5adc3-d8b2-4f2b-a3b1-184191c1f8e4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\RHI">
+      <UniqueIdentifier>{35d82da9-5486-431e-9c95-d548da0ee596}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

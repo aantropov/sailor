@@ -38,6 +38,6 @@ namespace Sailor
 
 		static InputState m_rawState;
 
-		friend LRESULT Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+		friend LRESULT Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	};
 }

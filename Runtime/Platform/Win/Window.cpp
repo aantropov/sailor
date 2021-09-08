@@ -1,12 +1,17 @@
 #include <string>
+#include <cassert>
 #include "Window.h"
 #include "Input.h"
 #include "Sailor.h"
 
 using namespace Sailor;
+using namespace Sailor::Win32;
 
-bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested)
+std::unordered_map<HWND, Window*> Window::g_windows;
+
+bool Window::Create(LPCWSTR title, LPCWSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested)
 {
+	m_windowClassName = className;
 	m_bIsVsyncRequested = bIsVsyncRequested;
 	m_width = inWidth;
 	m_height = inHeight;
@@ -26,7 +31,7 @@ bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIs
 	wcx.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 	wcx.lpfnWndProc = reinterpret_cast<WNDPROC>(WindowProc);
 	wcx.hInstance = m_hInstance;
-	wcx.lpszClassName = (LPCWSTR)WindowClassName.c_str();
+	wcx.lpszClassName = className;
 	wcx.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	wcx.hCursor = LoadCursor(NULL, IDC_ARROW);
 
@@ -54,7 +59,7 @@ bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIs
 	AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 
 	// Create window
-	m_hWnd = CreateWindowEx(exStyle, (LPCWSTR)WindowClassName.c_str(), title, style, rect.left, rect.top,
+	m_hWnd = CreateWindowEx(exStyle, (LPCWSTR)m_windowClassName.c_str(), title, style, rect.left, rect.top,
 		rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, m_hInstance, NULL);
 
 	if (!m_hWnd)
@@ -63,6 +68,8 @@ bool Window::Create(LPCWSTR title, int32_t inWidth, int32_t inHeight, bool inbIs
 		sprintf_s(message, "CreateWindowEx fail (%d)", GetLastError());
 		return false;
 	}
+
+	g_windows.insert({ m_hWnd, this });
 
 	// ïGet window descriptor
 	m_hDC = GetDC(m_hWnd);
@@ -188,8 +195,27 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	SetCursorPos(x + width / 2, y + height / 2);
 }
 
+void Sailor::Win32::Window::ProcessWin32Msgs()
+{
+	SAILOR_PROFILE_FUNCTION()
+
+	MSG msg;
+	for (auto& it : Window::g_windows)
+	{
+		while (PeekMessage(&msg, it.first, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT)
+			{
+				it.second->SetRunning(false);
+				break;
+			}
+			DispatchMessage(&msg);
+		}
+	}
+}
+
 void Window::RecalculateWindowSize()
-{	
+{
 	if (IsIconic())
 	{
 		m_width = 0;
@@ -225,7 +251,9 @@ void Window::Destroy()
 
 	// Release window class
 	if (m_hInstance)
-		UnregisterClassA((LPCSTR)WindowClassName.c_str(), m_hInstance);
+		UnregisterClass((LPCWSTR)m_windowClassName.c_str(), m_hInstance);
+
+	g_windows[m_hWnd] = nullptr;
 }
 
 bool Window::IsIconic() const
@@ -233,14 +261,21 @@ bool Window::IsIconic() const
 	return ::IsIconic(m_hWnd);
 }
 
-LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	auto windowIterator = Window::g_windows.find(hWnd);
+	Window* pWindow = nullptr;
+	if (windowIterator != Window::g_windows.end())
+	{
+		pWindow = (*windowIterator).second;
+	}
+
 	switch (msg)
 	{
 	case WM_SIZE:
 	{
-		EngineInstance::GetViewportWindow().SetIsIconic(wParam == SIZE_MINIMIZED);
-		EngineInstance::GetViewportWindow().RecalculateWindowSize();
+		pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);
+		pWindow->RecalculateWindowSize();
 		return FALSE;
 	}
 	case WM_LBUTTONDOWN:
@@ -292,17 +327,17 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 
 	case WM_SETFOCUS:
 	case WM_KILLFOCUS:
-		EngineInstance::GetViewportWindow().SetActive(msg == WM_SETFOCUS);
+		pWindow->SetActive(msg == WM_SETFOCUS);
 		return FALSE;
 
 	case WM_ACTIVATE:
-		EngineInstance::GetViewportWindow().SetActive(LOWORD(wParam) == WA_INACTIVE);
+		pWindow->SetActive(LOWORD(wParam) == WA_INACTIVE);
 		return FALSE;
 
 	case WM_CLOSE:
 	{
-		EngineInstance::GetViewportWindow().SetActive(false);
-		EngineInstance::GetViewportWindow().SetRunning(false);
+		pWindow->SetActive(false);
+		pWindow->SetRunning(false);
 
 		PostQuitMessage(0);
 		return FALSE;
@@ -312,7 +347,7 @@ LRESULT CALLBACK Sailor::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	{
 	case SC_SCREENSAVE:
 	case SC_MONITORPOWER:
-		if (EngineInstance::GetViewportWindow().IsFullscreen())
+		if (pWindow->IsFullscreen())
 			return FALSE;
 		break;
 	case SC_KEYMENU:

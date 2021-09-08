@@ -22,11 +22,11 @@ namespace Sailor
 		static void SAILOR_API Stop();
 		static void SAILOR_API Shutdown();
 
-		static Window& GetViewportWindow();
+		static Win32::Window& GetViewportWindow();
 
 	protected:
 
-		Window m_viewportWindow;
+		Win32::Window m_viewportWindow;
 
 		uint32_t m_FPS = 0;
 		float m_elapsedTime = 0.0f;

@@ -26,6 +26,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "RHI/RHIResource.h"
 
 using namespace Sailor;
+using namespace Sailor::Win32;
 using namespace Sailor::RHI;
 using namespace Sailor::GfxDevice::Vulkan;
 

@@ -2,7 +2,8 @@
 #include "VulkanApi.h"
 #include "Core/RefPtr.hpp"
 
-class Sailor::Window;
+class Sailor::Win32::Window;
+
 namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanCommandBuffer;
@@ -23,21 +24,21 @@ namespace Sailor::GfxDevice::Vulkan
 		
 		operator VkDevice() const { return m_device; }
 
-		VulkanDevice(const Window* pViewport);
+		VulkanDevice(const Win32::Window* pViewport);
 		virtual ~VulkanDevice();
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		void SAILOR_API DrawFrame(Window* pViewport);
+		void SAILOR_API DrawFrame(Win32::Window* pViewport);
 		
 		TRefPtr<VulkanSurface> SAILOR_API GetSurface() const;
 
 	protected:
 		
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
-		SAILOR_API void CreateWin32Surface(const Window* pViewport);
-		SAILOR_API void CreateSwapchain(const Window* pViewport);
-		SAILOR_API bool RecreateSwapchain(Window* pViewport);
+		SAILOR_API void CreateWin32Surface(const Win32::Window* pViewport);
+		SAILOR_API void CreateSwapchain(const Win32::Window* pViewport);
+		SAILOR_API bool RecreateSwapchain(Win32::Window* pViewport);
 		SAILOR_API void CreateGraphicsPipeline();
 		SAILOR_API void CreateRenderPass();
 		SAILOR_API void CreateFramebuffers();

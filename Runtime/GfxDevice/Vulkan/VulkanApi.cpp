@@ -17,6 +17,7 @@
 #include "RHI/RHIResource.h"
 
 using namespace Sailor;
+using namespace Sailor::Win32;
 using namespace Sailor::RHI;
 using namespace Sailor::GfxDevice::Vulkan;
 

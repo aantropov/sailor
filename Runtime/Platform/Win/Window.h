@@ -2,22 +2,23 @@
 
 #include "Defines.h"
 #include <wtypes.h>
+#include <unordered_map>
 #include <atomic>
 
-namespace Sailor
+namespace Sailor::Win32
 {
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 	class Window
 	{
-		const std::string WindowClassName = "SailorViewport";
-
 		HINSTANCE m_hInstance = nullptr;
 		HWND      m_hWnd = nullptr;
 		HDC       m_hDC = nullptr;
 
 		int m_width = 1024;
 		int m_height = 768;
+		
+		std::wstring m_windowClassName;
 
 		std::atomic<bool> m_bIsFullscreen = false;
 		std::atomic<bool> m_bIsActive = false;
@@ -54,16 +55,20 @@ namespace Sailor
 		SAILOR_API bool IsVsyncRequested() const { return m_bIsVsyncRequested; }
 
 		// Create window
-		SAILOR_API bool Create(LPCWSTR title = L"Sailor", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false);
+		SAILOR_API bool Create(LPCWSTR title = L"Sailor", LPCWSTR className = L"SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false);
 		SAILOR_API void Destroy();
 
 		// Window size
 		SAILOR_API void RecalculateWindowSize();
 		SAILOR_API void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false);
 
+		SAILOR_API static void ProcessWin32Msgs();
+
 	private:
 
 		SAILOR_API void SetIsIconic(bool value) { m_bIsIconic = value; }
+
+		static std::unordered_map<HWND, Window*> g_windows;
 
 		friend LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	};

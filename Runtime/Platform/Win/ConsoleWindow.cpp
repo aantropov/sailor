@@ -6,6 +6,8 @@
 #include <string>
 #include "Utils.h"
 
+using namespace Sailor::Win32;
+
 namespace
 {
 	volatile bool ñonsoleExit = false; // This is set in case the console is signalled to close.

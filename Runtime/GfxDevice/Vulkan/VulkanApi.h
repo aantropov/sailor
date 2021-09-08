@@ -11,7 +11,8 @@
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
 
-class Sailor::Window;
+class Sailor::Win32::Window;
+using namespace Sailor::Win32;
 
 namespace Sailor::GfxDevice::Vulkan
 {
