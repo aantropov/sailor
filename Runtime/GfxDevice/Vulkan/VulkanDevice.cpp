@@ -33,9 +33,9 @@ using namespace Sailor::GfxDevice::Vulkan;
 VkShaderModule g_testFragShader;
 VkShaderModule g_testVertShader;
 
-const std::vector<RHIVertex> g_vertices = 
+const std::vector<RHIVertex> g_vertices =
 {
-	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
 	{{0.5f, 0.5f}, {0.3f, 1.0f, 0.0f}},
 	{{-0.5f, 0.5f}, {0.0f, 0.0f, 5.0f}}
 };
@@ -77,6 +77,7 @@ VulkanDevice::~VulkanDevice()
 	vkDestroyShaderModule(m_device, g_testVertShader, nullptr);
 
 	m_commandPool.Clear();
+	m_transferCommandPool.Clear();
 	m_renderFinishedSemaphores.clear();
 	m_imageAvailableSemaphores.clear();
 	m_syncImages.clear();
@@ -103,8 +104,9 @@ void VulkanDevice::CreateRenderPass()
 
 void VulkanDevice::CreateCommandPool()
 {
-	QueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
+	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
 	m_commandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_graphicsFamily.value());
+	m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_transferFamily.value());
 }
 
 void VulkanDevice::CreateFrameSyncSemaphores()
@@ -141,11 +143,15 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 
 void VulkanDevice::CreateVertexBuffer()
 {
+	uint32_t queueFamilies[] = { m_queueFamilies.m_graphicsFamily.value(), m_queueFamilies.m_transferFamily.value() };
+
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.size = sizeof(g_vertices[0]) * g_vertices.size();
 	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	bufferInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+	bufferInfo.queueFamilyIndexCount = 2;
+	bufferInfo.pQueueFamilyIndices = queueFamilies;
 
 	VK_CHECK(vkCreateBuffer(m_device, &bufferInfo, nullptr, &m_vertexBuffer));
 
@@ -155,8 +161,8 @@ void VulkanDevice::CreateVertexBuffer()
 	VkMemoryAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocInfo.allocationSize = memRequirements.size;
-	allocInfo.memoryTypeIndex = VulkanApi::FindMemoryByType(m_physicalDevice, 
-		memRequirements.memoryTypeBits, 
+	allocInfo.memoryTypeIndex = VulkanApi::FindMemoryByType(m_physicalDevice,
+		memRequirements.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &m_vertexBufferMemory));
@@ -215,7 +221,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		
+
 		vertexInputInfo.vertexBindingDescriptionCount = 1;
 		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
 		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
@@ -397,7 +403,9 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	m_queueFamilies = VulkanApi::FindQueueFamilies(physicalDevice, m_surface);
 
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-	std::set<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(), m_queueFamilies.m_presentFamily.value() };
+	std::set<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(),
+		m_queueFamilies.m_presentFamily.value(),
+		m_queueFamilies.m_transferFamily.value() };
 
 	float queuePriority = 1.0f;
 
@@ -445,6 +453,10 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkQueue presentQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &presentQueue);
 	m_presentQueue = TRefPtr<VulkanQueue>::Make(presentQueue, m_queueFamilies.m_presentFamily.value(), 0);
+
+	VkQueue transferQueue;
+	vkGetDeviceQueue(m_device, m_queueFamilies.m_transferFamily.value(), 0, &transferQueue);
+	m_transferQueue = TRefPtr<VulkanQueue>::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
 }
 
 void VulkanDevice::CreateWin32Surface(const Window* viewport)

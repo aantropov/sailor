@@ -30,12 +30,13 @@ namespace Sailor::GfxDevice::Vulkan
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
-	struct QueueFamilyIndices
+	struct VulkanQueueFamilyIndices
 	{
 		std::optional<uint32_t> m_graphicsFamily;
 		std::optional<uint32_t> m_presentFamily;
+		std::optional<uint32_t> m_transferFamily;
 
-		SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value(); }
+		SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value() && m_transferFamily.has_value(); }
 	};
 
 	struct SwapChainSupportDetails
@@ -68,7 +69,7 @@ namespace Sailor::GfxDevice::Vulkan
 		bool SAILOR_API IsEnabledValidationLayers() const { return bIsEnabledValidationLayers; }
 		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return m_pInstance->m_vkInstance; }
 
-		static SAILOR_API QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface);
+		static SAILOR_API VulkanQueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface);
 		static SAILOR_API SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface);
 
 		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

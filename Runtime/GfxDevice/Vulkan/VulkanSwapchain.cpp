@@ -59,7 +59,7 @@ VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice devic
 	createSwapChainInfo.imageArrayLayers = 1;
 	createSwapChainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; //TODO: Use VK_IMAGE_USAGE_TRANSFER_DST_BIT for Post Processing
 
-	QueueFamilyIndices indices = VulkanApi::FindQueueFamilies(physicalDevice, surface);
+	VulkanQueueFamilyIndices indices = VulkanApi::FindQueueFamilies(physicalDevice, surface);
 	uint32_t queueFamilyIndices[] = { indices.m_graphicsFamily.value(), indices.m_presentFamily.value() };
 
 	if (indices.m_graphicsFamily != indices.m_presentFamily)

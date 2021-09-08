@@ -267,9 +267,9 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(TRefPtr<VulkanSurface> surface)
 	return physicalDevice;
 }
 
-QueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface)
+VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface)
 {
-	QueueFamilyIndices indices;
+	VulkanQueueFamilyIndices indices;
 
 	uint32_t queueFamilyCount = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
@@ -283,6 +283,12 @@ QueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, TRefPtr
 		if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
 		{
 			indices.m_graphicsFamily = i;
+		}
+
+		if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0 && 
+			(queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT))
+		{
+			indices.m_transferFamily = i;
 		}
 
 		VkBool32 presentSupport = false;
@@ -397,7 +403,7 @@ bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 
 bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface)
 {
-	QueueFamilyIndices indices = FindQueueFamilies(device, surface);
+	VulkanQueueFamilyIndices indices = FindQueueFamilies(device, surface);
 
 	bool extensionsSupported = CheckDeviceExtensionSupport(device);
 

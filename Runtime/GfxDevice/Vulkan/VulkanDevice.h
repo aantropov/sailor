@@ -50,6 +50,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// Command pool
 		TRefPtr<VulkanCommandPool> m_commandPool;
+		TRefPtr<VulkanCommandPool> m_transferCommandPool;
+
 		std::vector<TRefPtr<VulkanCommandBuffer>> m_commandBuffers;
 
 		// Render Pass
@@ -62,12 +64,13 @@ namespace Sailor::GfxDevice::Vulkan
 		// Queuees
 		TRefPtr<VulkanQueue> m_graphicsQueue;
 		TRefPtr<VulkanQueue> m_presentQueue;
+		TRefPtr<VulkanQueue> m_transferQueue;
 
 		TRefPtr<VulkanSurface> m_surface;
 
 		VkPhysicalDevice m_physicalDevice = 0;
 		VkDevice m_device = 0;
-		QueueFamilyIndices m_queueFamilies;
+		VulkanQueueFamilyIndices m_queueFamilies;
 
 		// Swapchain
 		TRefPtr<VulkanSwapchain> m_swapchain;
