@@ -17,6 +17,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanSurface;
 	class VulkanFramebuffer;
 	class VulkanDeviceMemory;
+	class VulkanBuffer;
 
 	class VulkanDevice final : public TRefBase
 	{
@@ -38,6 +39,9 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer() const;
 
 		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer) const;
+
+		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
+
 
 	protected:
 		
@@ -89,7 +93,7 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<TRefPtr<VulkanFence>> m_syncImages;
 		size_t m_currentFrame = 0;
 
-		VkBuffer m_vertexBuffer;
+		TRefPtr<VulkanBuffer> m_vertexBuffer;
 		TRefPtr<VulkanDeviceMemory> m_vertexBufferMemory;
 
 		std::atomic<bool> bIsFramebufferResizedThisFrame = false;

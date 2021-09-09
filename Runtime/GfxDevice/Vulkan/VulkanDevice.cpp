@@ -25,6 +25,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanFrameBuffer.h"
 #include "RHI/RHIResource.h"
 #include "VulkanDeviceMemory.h"
+#include "VulkanBuffer.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -71,7 +72,7 @@ VulkanDevice::~VulkanDevice()
 
 	m_swapchain.Clear();
 
-	vkDestroyBuffer(m_device, m_vertexBuffer, nullptr);
+	m_vertexBuffer.Clear();
 	m_vertexBufferMemory.Clear();
 
 	vkDestroyShaderModule(m_device, g_testFragShader, nullptr);
@@ -159,27 +160,16 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 
 void VulkanDevice::CreateVertexBuffer()
 {
-	uint32_t queueFamilies[] = { m_queueFamilies.m_graphicsFamily.value(), m_queueFamilies.m_transferFamily.value() };
+	m_vertexBuffer = TRefPtr<VulkanBuffer>::Make(TRefPtr<VulkanDevice>(this),
+		sizeof(g_vertices[0]) * g_vertices.size(),
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		VK_SHARING_MODE_CONCURRENT);
 
-	VkBufferCreateInfo bufferInfo{};
-	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = sizeof(g_vertices[0]) * g_vertices.size();
-	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	bufferInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
-	bufferInfo.queueFamilyIndexCount = 2;
-	bufferInfo.pQueueFamilyIndices = queueFamilies;
-
-	VK_CHECK(vkCreateBuffer(m_device, &bufferInfo, nullptr, &m_vertexBuffer));
-	
-	VkMemoryRequirements memRequirements;
-	vkGetBufferMemoryRequirements(m_device, m_vertexBuffer, &memRequirements);
-
-	m_vertexBufferMemory = TRefPtr<VulkanDeviceMemory>::Make(TRefPtr<VulkanDevice>(this), memRequirements,
+	m_vertexBufferMemory = TRefPtr<VulkanDeviceMemory>::Make(TRefPtr<VulkanDevice>(this), m_vertexBuffer->GetMemoryRequirements(),
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, nullptr);
 
-	vkBindBufferMemory(m_device, m_vertexBuffer, *m_vertexBufferMemory, 0);
-	
-	m_vertexBufferMemory->Copy(0, (size_t)bufferInfo.size, g_vertices.data());
+	m_vertexBuffer->Bind(m_vertexBufferMemory, 0);
+	m_vertexBufferMemory->Copy(0, sizeof(RHIVertex) * g_vertices.size(), g_vertices.data());
 }
 
 VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint32_t>& code)
@@ -394,7 +384,7 @@ void VulkanDevice::CreateCommandBuffers()
 		vkCmdBeginRenderPass(*m_commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 		vkCmdBindPipeline(*m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
 
-		VkBuffer vertexBuffers[] = { m_vertexBuffer };
+		VkBuffer vertexBuffers[] = { *m_vertexBuffer };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(*m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
 

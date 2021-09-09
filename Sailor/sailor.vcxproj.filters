@@ -141,6 +141,12 @@
     <ClInclude Include="..\Runtime\Core\WeakPtr.hpp">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDeviceMemory.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -222,6 +228,12 @@
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanImageView.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDeviceMemory.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
