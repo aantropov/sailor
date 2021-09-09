@@ -24,6 +24,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanImageView.h"
 #include "VulkanFrameBuffer.h"
 #include "RHI/RHIResource.h"
+#include "VulkanDeviceMemory.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -71,7 +72,7 @@ VulkanDevice::~VulkanDevice()
 	m_swapchain.Clear();
 
 	vkDestroyBuffer(m_device, m_vertexBuffer, nullptr);
-	vkFreeMemory(m_device, m_vertexBufferMemory, nullptr);
+	m_vertexBufferMemory.Clear();
 
 	vkDestroyShaderModule(m_device, g_testFragShader, nullptr);
 	vkDestroyShaderModule(m_device, g_testVertShader, nullptr);
@@ -169,25 +170,16 @@ void VulkanDevice::CreateVertexBuffer()
 	bufferInfo.pQueueFamilyIndices = queueFamilies;
 
 	VK_CHECK(vkCreateBuffer(m_device, &bufferInfo, nullptr, &m_vertexBuffer));
-
+	
 	VkMemoryRequirements memRequirements;
 	vkGetBufferMemoryRequirements(m_device, m_vertexBuffer, &memRequirements);
 
-	VkMemoryAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = memRequirements.size;
-	allocInfo.memoryTypeIndex = VulkanApi::FindMemoryByType(m_physicalDevice,
-		memRequirements.memoryTypeBits,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	m_vertexBufferMemory = TRefPtr<VulkanDeviceMemory>::Make(TRefPtr<VulkanDevice>(this), memRequirements,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, nullptr);
 
-	VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &m_vertexBufferMemory));
-
-	vkBindBufferMemory(m_device, m_vertexBuffer, m_vertexBufferMemory, 0);
-
-	void* data;
-	vkMapMemory(m_device, m_vertexBufferMemory, 0, bufferInfo.size, 0, &data);
-	memcpy(data, g_vertices.data(), (size_t)bufferInfo.size);
-	vkUnmapMemory(m_device, m_vertexBufferMemory);
+	vkBindBufferMemory(m_device, m_vertexBuffer, *m_vertexBufferMemory, 0);
+	
+	m_vertexBufferMemory->Copy(0, (size_t)bufferInfo.size, g_vertices.data());
 }
 
 VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint32_t>& code)

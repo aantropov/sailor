@@ -16,6 +16,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanSwapchain;
 	class VulkanSurface;
 	class VulkanFramebuffer;
+	class VulkanDeviceMemory;
 
 	class VulkanDevice final : public TRefBase
 	{
@@ -89,7 +90,7 @@ namespace Sailor::GfxDevice::Vulkan
 		size_t m_currentFrame = 0;
 
 		VkBuffer m_vertexBuffer;
-		VkDeviceMemory m_vertexBufferMemory;
+		TRefPtr<VulkanDeviceMemory> m_vertexBufferMemory;
 
 		std::atomic<bool> bIsFramebufferResizedThisFrame = false;
 	};
