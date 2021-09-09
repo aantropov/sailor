@@ -25,7 +25,7 @@ namespace Sailor::GfxDevice::Vulkan
 		/// Vulkan VkImageView handle
 		operator VkImageView() const { return m_vulkanData.m_imageView; }
 
-		void Initialize(VkDevice device);
+		void Compile(TRefPtr<VulkanDevice> device);
 
 	protected:
 		virtual ~VulkanImageView();
@@ -33,7 +33,7 @@ namespace Sailor::GfxDevice::Vulkan
 		struct VulkanData
 		{
 			VkImageView m_imageView = VK_NULL_HANDLE;
-			VkDevice m_device;
+			TRefPtr<VulkanDevice> m_device;
 
 			~VulkanData();
 		};

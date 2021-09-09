@@ -26,7 +26,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanSwapchainImage : public VulkanImage
 	{
 	public:
-		VulkanSwapchainImage(VkImage image, VkDevice device);
+		VulkanSwapchainImage(VkImage image, TRefPtr<VulkanDevice> device);
 
 	protected:
 		virtual ~VulkanSwapchainImage();
@@ -36,7 +36,7 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain);
+		VulkanSwapchain(VkPhysicalDevice physicalDevice, TRefPtr<VulkanDevice> device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain);
 
 		operator VkSwapchainKHR() const { return m_swapchain; }
 
@@ -52,7 +52,7 @@ namespace Sailor::GfxDevice::Vulkan
 	protected:
 		virtual ~VulkanSwapchain();
 
-		VkDevice m_device;
+		TRefPtr<VulkanDevice> m_device;
 		TRefPtr<VulkanSurface> m_surface;
 		VkSwapchainKHR m_swapchain = 0;
 

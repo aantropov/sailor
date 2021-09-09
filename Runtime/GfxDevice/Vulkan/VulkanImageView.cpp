@@ -1,5 +1,6 @@
 #include "VulkanImageView.h"
 #include "VulkanImage.h"
+#include "VulkanDevice.h"
 #include "Core/RefPtr.hpp"
 
 using namespace Sailor;
@@ -9,9 +10,10 @@ VulkanImageView::VulkanData::~VulkanData()
 {
 	if (m_imageView)
 	{
-		vkDestroyImageView(m_device, m_imageView, nullptr);
+		vkDestroyImageView(*m_device, m_imageView, nullptr);
 		m_imageView = VK_NULL_HANDLE;
 	}
+	m_device.Clear();
 }
 
 VulkanImageView::VulkanImageView(TRefPtr<VulkanImage> image) :
@@ -43,7 +45,7 @@ VulkanImageView::~VulkanImageView()
 {
 }
 
-void VulkanImageView::Initialize(VkDevice device)
+void VulkanImageView::Compile(TRefPtr<VulkanDevice> device)
 {
 	if (m_vulkanData.m_imageView != VK_NULL_HANDLE)
 	{
@@ -64,9 +66,9 @@ void VulkanImageView::Initialize(VkDevice device)
 
 	/*if (m_image)
 	{
-		m_image->Initialize();
+		m_image->Compile();
 		info.image = *m_image;
 	}*/
 
-	VK_CHECK(vkCreateImageView(m_vulkanData.m_device, &info, nullptr, &m_vulkanData.m_imageView));
+	VK_CHECK(vkCreateImageView(*m_vulkanData.m_device, &info, nullptr, &m_vulkanData.m_imageView));
 }

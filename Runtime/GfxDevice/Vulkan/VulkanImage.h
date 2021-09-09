@@ -11,7 +11,7 @@ namespace Sailor::GfxDevice::Vulkan
 	public:
 
 		VulkanImage();
-		VulkanImage(VkImage image, VkDevice device);
+		VulkanImage(VkImage image, TRefPtr<VulkanDevice> device);
 
 		/// VkImageCreateInfo settings
 		VkImageCreateFlags m_flags = 0;
@@ -39,7 +39,7 @@ namespace Sailor::GfxDevice::Vulkan
 		struct VulkanData
 		{
 			VkImage m_image = VK_NULL_HANDLE;
-			VkDevice m_device;
+			TRefPtr<VulkanDevice> m_device;
 
 			VkDeviceMemory m_deviceMemory = 0;
 			VkDeviceSize m_memoryOffset = 0;

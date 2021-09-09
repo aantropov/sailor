@@ -21,6 +21,8 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDevice;
 	class VulkanImageView;
 	class VulkanImage;
+	class VulkanBuffer;
+	class VulkanDeviceMemory;
 
 #define VK_CHECK(call) \
 	do { \
@@ -82,6 +84,9 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API TRefPtr<VulkanRenderPass> CreateRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat);
 		static SAILOR_API TRefPtr<VulkanRenderPass> CreateMSSRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
 
+		static SAILOR_API void CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode,
+			TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory);
+
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(TRefPtr<VulkanSurface> surface);
 
 		static SAILOR_API void GetRequiredExtensions(std::vector<const char*>& requiredDeviceExtensions, std::vector<const char*>& requiredInstanceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
@@ -89,7 +94,7 @@ namespace Sailor::GfxDevice::Vulkan
 		//static SAILOR_API VkShaderModule CreateShaderModule(const std::vector<uint32_t>& inCode);
 
 		static SAILOR_API VkImageAspectFlags ComputeAspectFlagsForFormat(VkFormat format);
-		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(VkDevice device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
+		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
 
 		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 

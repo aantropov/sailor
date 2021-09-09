@@ -4,12 +4,13 @@
 #include "VulkanSemaphore.h"
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
+#include "VulkanDevice.h"
 #include "Core/RefPtr.hpp"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanSwapchainImage::VulkanSwapchainImage(VkImage image, VkDevice device) : VulkanImage(image, device)
+VulkanSwapchainImage::VulkanSwapchainImage(VkImage image, TRefPtr<VulkanDevice> device) : VulkanImage(image, device)
 {
 }
 
@@ -33,7 +34,7 @@ VulkanSurface::~VulkanSurface()
 	}
 }
 
-VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain) :
+VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, TRefPtr<VulkanDevice> device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain) :
 	m_device(device),
 	m_surface(surface)
 {
@@ -86,16 +87,16 @@ VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice devic
 		createSwapChainInfo.oldSwapchain = *oldSwapchain;
 	}
 
-	VK_CHECK(vkCreateSwapchainKHR(m_device, &createSwapChainInfo, nullptr, &m_swapchain));
+	VK_CHECK(vkCreateSwapchainKHR(*m_device, &createSwapChainInfo, nullptr, &m_swapchain));
 
 	oldSwapchain.Clear();
 
 	std::vector<VkImage> vkSwapchainImages;
 
 	// Create Swapchain images & image views
-	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, nullptr));
+	VK_CHECK(vkGetSwapchainImagesKHR(*m_device, m_swapchain, &imageCount, nullptr));
 	vkSwapchainImages.resize(imageCount);
-	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, vkSwapchainImages.data()));
+	VK_CHECK(vkGetSwapchainImagesKHR(*m_device, m_swapchain, &imageCount, vkSwapchainImages.data()));
 
 	for (size_t i = 0; i < vkSwapchainImages.size(); i++)
 	{
@@ -115,7 +116,7 @@ VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, VkDevice devic
 		m_swapchainImageViews[i]->m_subresourceRange.baseArrayLayer = 0;
 		m_swapchainImageViews[i]->m_subresourceRange.layerCount = 1;
 
-		m_swapchainImageViews[i]->Initialize(m_device);
+		m_swapchainImageViews[i]->Compile(m_device);
 	}
 }
 
@@ -126,13 +127,14 @@ VulkanSwapchain::~VulkanSwapchain()
 
 	if (m_swapchain)
 	{
-		vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
+		vkDestroySwapchainKHR(*m_device, m_swapchain, nullptr);
 	}
+	m_device.Clear();
 }
 
 VkResult VulkanSwapchain::AcquireNextImage(uint64_t timeout, TRefPtr<VulkanSemaphore> semaphore, TRefPtr<VulkanFence> fence, uint32_t& imageIndex)
 {
-	return vkAcquireNextImageKHR(m_device,
+	return vkAcquireNextImageKHR(*m_device,
 		m_swapchain,
 		timeout,
 		semaphore ? (VkSemaphore)*semaphore : VK_NULL_HANDLE,

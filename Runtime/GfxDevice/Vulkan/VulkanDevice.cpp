@@ -474,7 +474,7 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 	m_swapchain.Clear();
 
 	m_swapchain = TRefPtr<VulkanSwapchain>::Make(m_physicalDevice,
-		m_device,
+		TRefPtr<VulkanDevice>(this),
 		m_surface,
 		viewport->GetWidth(),
 		viewport->GetHeight(),

@@ -9,9 +9,10 @@ void VulkanImage::VulkanData::Clear()
 {
 	if (m_image)
 	{
-		vkDestroyImage(m_device, m_image, nullptr);
+		vkDestroyImage(*m_device, m_image, nullptr);
 		m_image = VK_NULL_HANDLE;
 	}
+	m_device.Clear();
 }
 
 VulkanImage::VulkanImage()
@@ -39,7 +40,7 @@ VulkanImage::~VulkanImage()
 	m_vulkanData.Clear();
 }
 
-VulkanImage::VulkanImage(VkImage image, VkDevice device)
+VulkanImage::VulkanImage(VkImage image, TRefPtr<VulkanDevice> device)
 {
 	m_vulkanData.m_image = image;
 	m_vulkanData.m_device = device;
@@ -47,7 +48,7 @@ VulkanImage::VulkanImage(VkImage image, VkDevice device)
 
 VkResult VulkanImage::Bind(VkDeviceMemory deviceMemory, VkDeviceSize memoryOffset)
 {
-	VkResult result = vkBindImageMemory(m_vulkanData.m_device, m_vulkanData.m_image, deviceMemory, memoryOffset);
+	VkResult result = vkBindImageMemory(*m_vulkanData.m_device, m_vulkanData.m_image, deviceMemory, memoryOffset);
 	if (result == VK_SUCCESS)
 	{
 		m_vulkanData.m_deviceMemory = deviceMemory;
@@ -80,5 +81,5 @@ void VulkanImage::Compile()
 	info.pQueueFamilyIndices = m_queueFamilyIndices.data();
 	info.initialLayout = m_initialLayout;
 
-	VK_CHECK(vkCreateImage(m_vulkanData.m_device, &info, nullptr, &m_vulkanData.m_image));
+	VK_CHECK(vkCreateImage(*m_vulkanData.m_device, &info, nullptr, &m_vulkanData.m_image));
 }

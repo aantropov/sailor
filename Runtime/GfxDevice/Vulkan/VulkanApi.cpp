@@ -14,6 +14,8 @@
 #include "VulkanRenderPass.h"
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
+#include "VulkanDeviceMemory.h"
+#include "VulkanBuffer.h"
 #include "RHI/RHIResource.h"
 
 using namespace Sailor;
@@ -636,14 +638,14 @@ VkImageAspectFlags VulkanApi::ComputeAspectFlagsForFormat(VkFormat format)
 	}
 }
 
-TRefPtr<VulkanImageView> VulkanApi::CreateImageView(VkDevice device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags)
+TRefPtr<VulkanImageView> VulkanApi::CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags)
 {
 	image->Compile();
 
 	//image->Bind(nullptr, 0);
 
 	TRefPtr<VulkanImageView> imageView = TRefPtr<VulkanImageView>::Make(image, aspectFlags);
-	imageView->Initialize(device);
+	imageView->Compile(device);
 
 	return imageView;
 }
@@ -690,4 +692,20 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 	assert(false);
 
 	return 0;
+}
+
+void VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode,
+	TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory)
+{
+	outBuffer = TRefPtr<VulkanBuffer>::Make(device,
+	in_size,
+	in_usage,
+	in_sharingMode);
+
+	outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(device,
+		outBuffer->GetMemoryRequirements(),
+		outBuffer->m_usage,
+		nullptr);
+
+	outBuffer->Bind(outDeviceMemory, 0);
 }
