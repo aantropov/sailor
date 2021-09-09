@@ -16,6 +16,7 @@
 #include "VulkanImageView.h"
 #include "VulkanDeviceMemory.h"
 #include "VulkanBuffer.h"
+#include "VulkanCommandBuffer.h"
 #include "RHI/RHIResource.h"
 
 using namespace Sailor;
@@ -287,7 +288,7 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, T
 			indices.m_graphicsFamily = i;
 		}
 
-		if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0 && 
+		if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0 &&
 			(queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT))
 		{
 			indices.m_transferFamily = i;
@@ -680,7 +681,7 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 	VkPhysicalDeviceMemoryProperties memProperties;
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
 
-	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) 
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
 	{
 		if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
 		{
@@ -694,18 +695,34 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 	return 0;
 }
 
-void VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode, 
+void VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode,
 	VkMemoryPropertyFlags properties, TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory)
 {
-	outBuffer = TRefPtr<VulkanBuffer>::Make(device,
-	size,
-	usage,
-	sharingMode);
-
-	outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(device,
-		outBuffer->GetMemoryRequirements(),
-		properties,
-		nullptr);
-
+	outBuffer = TRefPtr<VulkanBuffer>::Make(device, size, usage, sharingMode);
+	outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(device, outBuffer->GetMemoryRequirements(), properties, nullptr);
 	outBuffer->Bind(outDeviceMemory, 0);
+}
+
+void VulkanApi::CopyBuffer(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
+{
+	auto cmdBuffer = device->CreateCommandBuffer();
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	vkBeginCommandBuffer(*cmdBuffer, &beginInfo);
+
+	VkBufferCopy copyRegion{};
+	copyRegion.srcOffset = 0; // Optional
+	copyRegion.dstOffset = 0; // Optional
+	copyRegion.size = size;
+	vkCmdCopyBuffer(*cmdBuffer, *src, *dst, 1, &copyRegion);
+
+	vkEndCommandBuffer(*cmdBuffer);
+
+	device->SubmitCommandBuffer(cmdBuffer);
+
+	// TODO: implement dependencies to avoid remove resource that in use
+	device->WaitIdle();
 }

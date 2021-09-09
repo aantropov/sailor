@@ -160,16 +160,32 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 
 void VulkanDevice::CreateVertexBuffer()
 {
+	VkDeviceSize bufferSize = sizeof(g_vertices[0]) * g_vertices.size();
+
+	TRefPtr<VulkanBuffer> stagingBuffer;
+	TRefPtr<VulkanDeviceMemory> stagingBufferMemory;
+
 	VulkanApi::CreateBuffer(
 		TRefPtr<VulkanDevice>(this),
-		sizeof(g_vertices[0]) * g_vertices.size(),
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		bufferSize,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VK_SHARING_MODE_CONCURRENT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		stagingBuffer,
+		stagingBufferMemory);
+
+	stagingBufferMemory->Copy(0, sizeof(RHIVertex) * g_vertices.size(), g_vertices.data());
+
+	VulkanApi::CreateBuffer(
+		TRefPtr<VulkanDevice>(this),
+		bufferSize,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		VK_SHARING_MODE_CONCURRENT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		m_vertexBuffer,
 		m_vertexBufferMemory);
 
-	m_vertexBufferMemory->Copy(0, sizeof(RHIVertex) * g_vertices.size(), g_vertices.data());
+	VulkanApi::CopyBuffer(TRefPtr<VulkanDevice>(this), stagingBuffer, m_vertexBuffer, bufferSize);
 }
 
 VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint32_t>& code)
