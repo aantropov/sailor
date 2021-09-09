@@ -27,11 +27,16 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanDevice(const Win32::Window* pViewport);
 		virtual ~VulkanDevice();
 
+		SAILOR_API VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
+
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
 		void SAILOR_API DrawFrame(Win32::Window* pViewport);
 		
-		TRefPtr<VulkanSurface> SAILOR_API GetSurface() const;
+		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
+		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer() const;
+
+		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer) const;
 
 	protected:
 		

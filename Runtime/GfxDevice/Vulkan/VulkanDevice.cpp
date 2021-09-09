@@ -96,6 +96,21 @@ TRefPtr<VulkanSurface> VulkanDevice::GetSurface() const
 	return m_surface;
 }
 
+TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer() const
+{
+	return TRefPtr<VulkanCommandBuffer>::Make(m_device, m_commandPool);
+}
+
+void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer) const
+{
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = { commandBuffer->GetHandle() };
+
+	VK_CHECK(m_graphicsQueue->Submit(submitInfo));
+}
+
 void VulkanDevice::CreateRenderPass()
 {
 	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
@@ -422,7 +437,8 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
 	std::vector<const char*> deviceExtensions;
-	VulkanApi::GetRequiredDeviceExtensions(deviceExtensions);
+	std::vector<const char*> instanceExtensions;
+	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
 	createInfo.ppEnabledExtensionNames = deviceExtensions.data();

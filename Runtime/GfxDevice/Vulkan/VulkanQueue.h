@@ -17,8 +17,8 @@ namespace Sailor::GfxDevice::Vulkan
 		uint32_t QueueFamilyIndex() const { return m_queueFamilyIndex; }
 		uint32_t QueueIndex() const { return m_queueIndex; }
 
-		VkResult Submit(const std::vector<VkSubmitInfo>& submitInfos, TRefPtr<VulkanFence> fence = nullptr);
-		VkResult Submit(const VkSubmitInfo& submitInfo, TRefPtr<VulkanFence> fence = nullptr);
+		VkResult Submit(const std::vector<VkSubmitInfo>& submitInfos, TRefPtr<VulkanFence> fence = nullptr) const;
+		VkResult Submit(const VkSubmitInfo& submitInfo, TRefPtr<VulkanFence> fence = nullptr) const;
 		VkResult Present(const VkPresentInfoKHR& info);
 		VkResult WaitIdle();
 
@@ -35,6 +35,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkQueue m_queue;
 		uint32_t m_queueFamilyIndex;
 		uint32_t m_queueIndex;
-		std::mutex m_mutex;
+		
+		mutable std::mutex m_mutex;
 	};
 }
