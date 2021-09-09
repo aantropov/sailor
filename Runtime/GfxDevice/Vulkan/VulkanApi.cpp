@@ -389,7 +389,8 @@ bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 	VK_CHECK(vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data()));
 
 	std::vector<const char*> deviceExtensions;
-	GetRequiredDeviceExtensions(deviceExtensions);
+	std::vector<const char*> instanceExtensions;
+	GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
 	std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 

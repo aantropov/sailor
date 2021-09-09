@@ -84,7 +84,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(TRefPtr<VulkanSurface> surface);
 
-		static SAILOR_API void GetRequiredDeviceExtensions(std::vector<const char*>& requiredDeviceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
+		static SAILOR_API void GetRequiredExtensions(std::vector<const char*>& requiredDeviceExtensions, std::vector<const char*>& requiredInstanceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
 
 		//static SAILOR_API VkShaderModule CreateShaderModule(const std::vector<uint32_t>& inCode);
 
