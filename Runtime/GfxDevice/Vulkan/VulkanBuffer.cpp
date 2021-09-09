@@ -30,17 +30,18 @@ bool VulkanBuffer::Compile(TRefPtr<VulkanDevice> device)
 
 	const auto& queues = device->GetQueueFamilies();
 
+	uint32_t queueFamily[] = { queues.m_graphicsFamily.value() };
+	uint32_t queueFamilies[] = { queues.m_graphicsFamily.value(), queues.m_transferFamily.value() };
+
 	if (m_sharingMode == VK_SHARING_MODE_CONCURRENT)
 	{
-		uint32_t queueFamilies[] = { queues.m_graphicsFamily.value(), queues.m_transferFamily.value() };
 		bufferInfo.queueFamilyIndexCount = 2;
 		bufferInfo.pQueueFamilyIndices = queueFamilies;
 	}
 	else
 	{
-		uint32_t queueFamilies[] = { queues.m_graphicsFamily.value() };
 		bufferInfo.queueFamilyIndexCount = 1;
-		bufferInfo.pQueueFamilyIndices = queueFamilies;
+		bufferInfo.pQueueFamilyIndices = queueFamily;
 	}
 
 	VK_CHECK(vkCreateBuffer(*m_device, &bufferInfo, nullptr, &m_buffer));

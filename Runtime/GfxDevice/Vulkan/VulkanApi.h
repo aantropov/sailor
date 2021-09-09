@@ -84,7 +84,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API TRefPtr<VulkanRenderPass> CreateRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat);
 		static SAILOR_API TRefPtr<VulkanRenderPass> CreateMSSRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
 
-		static SAILOR_API void CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode,
+		static SAILOR_API void CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode, VkMemoryPropertyFlags properties,
 			TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory);
 
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(TRefPtr<VulkanSurface> surface);

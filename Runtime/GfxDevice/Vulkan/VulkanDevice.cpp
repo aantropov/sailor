@@ -160,15 +160,15 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 
 void VulkanDevice::CreateVertexBuffer()
 {
-	m_vertexBuffer = TRefPtr<VulkanBuffer>::Make(TRefPtr<VulkanDevice>(this),
+	VulkanApi::CreateBuffer(
+		TRefPtr<VulkanDevice>(this),
 		sizeof(g_vertices[0]) * g_vertices.size(),
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-		VK_SHARING_MODE_CONCURRENT);
+		VK_SHARING_MODE_CONCURRENT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		m_vertexBuffer,
+		m_vertexBufferMemory);
 
-	m_vertexBufferMemory = TRefPtr<VulkanDeviceMemory>::Make(TRefPtr<VulkanDevice>(this), m_vertexBuffer->GetMemoryRequirements(),
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, nullptr);
-
-	m_vertexBuffer->Bind(m_vertexBufferMemory, 0);
 	m_vertexBufferMemory->Copy(0, sizeof(RHIVertex) * g_vertices.size(), g_vertices.data());
 }
 

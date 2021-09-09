@@ -694,17 +694,17 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 	return 0;
 }
 
-void VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode,
-	TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory)
+void VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode, 
+	VkMemoryPropertyFlags properties, TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory)
 {
 	outBuffer = TRefPtr<VulkanBuffer>::Make(device,
-	in_size,
-	in_usage,
-	in_sharingMode);
+	size,
+	usage,
+	sharingMode);
 
 	outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(device,
 		outBuffer->GetMemoryRequirements(),
-		outBuffer->m_usage,
+		properties,
 		nullptr);
 
 	outBuffer->Bind(outDeviceMemory, 0);
