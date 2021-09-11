@@ -86,6 +86,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		static SAILOR_API void CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode, VkMemoryPropertyFlags properties,
 			TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory);
+		static SAILOR_API TRefPtr<VulkanBuffer> CreateBufferImmediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
+
 		static SAILOR_API void CopyBuffer(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size);
 
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(TRefPtr<VulkanSurface> surface);

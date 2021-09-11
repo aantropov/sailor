@@ -35,11 +35,17 @@ using namespace Sailor::GfxDevice::Vulkan;
 VkShaderModule g_testFragShader;
 VkShaderModule g_testVertShader;
 
-const std::vector<RHIVertex> g_vertices =
+const std::vector<RHIVertex> g_testVertices =
 {
 	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.3f, 1.0f, 0.0f}},
-	{{-0.5f, 0.5f}, {0.0f, 0.0f, 5.0f}}
+	{{0.5f, -0.5f}, {0.3f, 1.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 0.5f}},
+	{{-0.5f, 0.5f}, {0.0f, 1.0f, 1.0f}}
+};
+
+const std::vector<uint32_t> g_testIndices =
+{
+	0, 1, 2, 2, 3, 0
 };
 
 VulkanDevice::VulkanDevice(const Window* pViewport)
@@ -73,7 +79,7 @@ VulkanDevice::~VulkanDevice()
 	m_swapchain.Clear();
 
 	m_vertexBuffer.Clear();
-	m_vertexBufferMemory.Clear();
+	m_indexBuffer.Clear();
 
 	vkDestroyShaderModule(m_device, g_testFragShader, nullptr);
 	vkDestroyShaderModule(m_device, g_testVertShader, nullptr);
@@ -160,32 +166,18 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 
 void VulkanDevice::CreateVertexBuffer()
 {
-	VkDeviceSize bufferSize = sizeof(g_vertices[0]) * g_vertices.size();
+	VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
+	VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
 
-	TRefPtr<VulkanBuffer> stagingBuffer;
-	TRefPtr<VulkanDeviceMemory> stagingBufferMemory;
-
-	VulkanApi::CreateBuffer(
-		TRefPtr<VulkanDevice>(this),
+	m_vertexBuffer = VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice>(this),
+		reinterpret_cast<void const*>(&g_testVertices[0]),
 		bufferSize,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_SHARING_MODE_CONCURRENT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		stagingBuffer,
-		stagingBufferMemory);
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
-	stagingBufferMemory->Copy(0, sizeof(RHIVertex) * g_vertices.size(), g_vertices.data());
-
-	VulkanApi::CreateBuffer(
-		TRefPtr<VulkanDevice>(this),
-		bufferSize,
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-		VK_SHARING_MODE_CONCURRENT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		m_vertexBuffer,
-		m_vertexBufferMemory);
-
-	VulkanApi::CopyBuffer(TRefPtr<VulkanDevice>(this), stagingBuffer, m_vertexBuffer, bufferSize);
+	m_indexBuffer = VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice>(this),
+		reinterpret_cast<void const*>(&g_testIndices[0]),
+		indexBufferSize,
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 }
 
 VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint32_t>& code)
@@ -403,8 +395,9 @@ void VulkanDevice::CreateCommandBuffers()
 		VkBuffer vertexBuffers[] = { *m_vertexBuffer };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(*m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
+		vkCmdBindIndexBuffer(*m_commandBuffers[i], *m_indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-		vkCmdDraw(*m_commandBuffers[i], static_cast<uint32_t>(g_vertices.size()), 1, 0, 0);
+		vkCmdDrawIndexed(*m_commandBuffers[i], static_cast<uint32_t>(g_testIndices.size()), 1, 0, 0, 0);
 		vkCmdEndRenderPass(*m_commandBuffers[i]);
 
 		VK_CHECK(vkEndCommandBuffer(*m_commandBuffers[i]));

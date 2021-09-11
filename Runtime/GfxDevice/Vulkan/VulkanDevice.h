@@ -94,7 +94,7 @@ namespace Sailor::GfxDevice::Vulkan
 		size_t m_currentFrame = 0;
 
 		TRefPtr<VulkanBuffer> m_vertexBuffer;
-		TRefPtr<VulkanDeviceMemory> m_vertexBufferMemory;
+		TRefPtr<VulkanBuffer> m_indexBuffer;
 
 		std::atomic<bool> bIsFramebufferResizedThisFrame = false;
 	};

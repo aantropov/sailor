@@ -703,6 +703,40 @@ void VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, Vk
 	outBuffer->Bind(outDeviceMemory, 0);
 }
 
+TRefPtr<VulkanBuffer> VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
+{
+	TRefPtr<VulkanBuffer> stagingBuffer;
+	TRefPtr<VulkanDeviceMemory> stagingBufferMemory;
+
+	TRefPtr<VulkanBuffer> resBuffer;
+	TRefPtr<VulkanDeviceMemory> resBufferMemory;
+
+	VulkanApi::CreateBuffer(
+		device,
+		size,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_SHARING_MODE_CONCURRENT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		stagingBuffer,
+		stagingBufferMemory);
+
+	stagingBufferMemory->Copy(0, size, pData);
+
+	VulkanApi::CreateBuffer(
+		device,
+		size,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
+		VK_SHARING_MODE_CONCURRENT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		resBuffer,
+		resBufferMemory);
+
+	VulkanApi::CopyBuffer(device, stagingBuffer, resBuffer, size);
+	device->WaitIdle();
+
+	return resBuffer;
+}
+
 void VulkanApi::CopyBuffer(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
 {
 	auto cmdBuffer = device->CreateCommandBuffer();
