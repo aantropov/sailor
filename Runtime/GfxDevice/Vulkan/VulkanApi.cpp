@@ -732,8 +732,6 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice> dev
 		resBufferMemory);
 
 	VulkanApi::CopyBuffer(device, stagingBuffer, resBuffer, size);
-	device->WaitIdle();
-
 	return resBuffer;
 }
 
