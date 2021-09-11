@@ -109,6 +109,11 @@ TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer() const
 	return TRefPtr<VulkanCommandBuffer>::Make(m_device, m_commandPool);
 }
 
+TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateTransferCommandBuffer() const
+{
+	return TRefPtr<VulkanCommandBuffer>::Make(m_device, m_transferCommandPool);
+}
+
 void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer) const
 {
 	VkSubmitInfo submitInfo{};
@@ -116,7 +121,14 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = { commandBuffer->GetHandle() };
 
-	VK_CHECK(m_graphicsQueue->Submit(submitInfo));
+	if (*commandBuffer->GetCommandPool() == *m_transferCommandPool)
+	{
+		VK_CHECK(m_transferQueue->Submit(submitInfo));
+	}
+	else
+	{
+		VK_CHECK(m_graphicsQueue->Submit(submitInfo));
+	}
 }
 
 void VulkanDevice::CreateRenderPass()

@@ -737,7 +737,7 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice> dev
 
 void VulkanApi::CopyBuffer(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
 {
-	auto cmdBuffer = device->CreateCommandBuffer();
+	auto cmdBuffer = device->CreateTransferCommandBuffer();
 
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;

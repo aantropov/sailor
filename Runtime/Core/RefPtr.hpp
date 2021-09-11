@@ -95,7 +95,7 @@ namespace Sailor
 
 		bool operator==(const TRefPtr<T>& pRhs) const
 		{
-			return m_pRawPtr == pRhs->m_pRawPtr;
+			return m_pRawPtr == pRhs->GetRawPtr();
 		}
 
 		bool operator!=(const TRefPtr<T>& pRhs) const

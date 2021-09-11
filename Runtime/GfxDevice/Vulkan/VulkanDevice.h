@@ -37,11 +37,11 @@ namespace Sailor::GfxDevice::Vulkan
 		
 		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
 		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer() const;
+		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateTransferCommandBuffer() const;
 
 		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer) const;
 
 		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
-
 
 	protected:
 		
