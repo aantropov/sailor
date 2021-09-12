@@ -27,8 +27,8 @@ namespace Sailor::GfxDevice::Vulkan
 		operator VkDevice() const { return m_device; }
 
 		VulkanDevice(const Win32::Window* pViewport);
-		void Shutdown();
 		virtual ~VulkanDevice();
+		void Shutdown();
 
 		SAILOR_API VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
 

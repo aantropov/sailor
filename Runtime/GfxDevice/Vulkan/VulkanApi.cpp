@@ -705,7 +705,7 @@ void VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, Vk
 	outBuffer->Bind(outDeviceMemory, 0);
 }
 
-TRefPtr<VulkanBuffer> VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
+TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
 	TRefPtr<VulkanBuffer> stagingBuffer;
 	TRefPtr<VulkanDeviceMemory> stagingBufferMemory;
@@ -733,11 +733,11 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice> dev
 		resBuffer,
 		resBufferMemory);
 
-	VulkanApi::CopyBuffer(device, stagingBuffer, resBuffer, size);
+	VulkanApi::CopyBuffer_Immediate(device, stagingBuffer, resBuffer, size);
 	return resBuffer;
 }
 
-void VulkanApi::CopyBuffer(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
+void VulkanApi::CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
 {
 	auto fence = TRefPtr<VulkanFence>::Make(device);
 

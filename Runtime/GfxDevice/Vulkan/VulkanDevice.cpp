@@ -180,12 +180,12 @@ void VulkanDevice::CreateVertexBuffer()
 	VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
 	VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
 
-	m_vertexBuffer = VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice>(this),
+	m_vertexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
 		reinterpret_cast<void const*>(&g_testVertices[0]),
 		bufferSize,
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
-	m_indexBuffer = VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice>(this),
+	m_indexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
 		reinterpret_cast<void const*>(&g_testIndices[0]),
 		indexBufferSize,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT);

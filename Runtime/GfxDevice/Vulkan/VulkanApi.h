@@ -78,28 +78,26 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
 		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
+		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(TRefPtr<VulkanSurface> surface);
+		static SAILOR_API void GetRequiredExtensions(std::vector<const char*>& requiredDeviceExtensions, std::vector<const char*>& requiredInstanceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
+
 		static SAILOR_API VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
 		static SAILOR_API VkAttachmentDescription GetDefaultDepthAttachment(VkFormat depthFormat);
 
 		static SAILOR_API TRefPtr<VulkanRenderPass> CreateRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat);
 		static SAILOR_API TRefPtr<VulkanRenderPass> CreateMSSRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
+		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
+		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
 		static SAILOR_API void CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode, VkMemoryPropertyFlags properties,
 			TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory);
-		static SAILOR_API TRefPtr<VulkanBuffer> CreateBufferImmediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
-		static SAILOR_API void CopyBuffer(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size);
-
-		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(TRefPtr<VulkanSurface> surface);
-
-		static SAILOR_API void GetRequiredExtensions(std::vector<const char*>& requiredDeviceExtensions, std::vector<const char*>& requiredInstanceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
-
-		//static SAILOR_API VkShaderModule CreateShaderModule(const std::vector<uint32_t>& inCode);
+		//Immediate context
+		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
+		static SAILOR_API void CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size);
+		//Immediate context
 
 		static SAILOR_API VkImageAspectFlags ComputeAspectFlagsForFormat(VkFormat format);
-		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
-
-		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
 	private:
 
