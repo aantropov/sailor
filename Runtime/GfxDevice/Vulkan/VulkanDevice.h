@@ -27,6 +27,7 @@ namespace Sailor::GfxDevice::Vulkan
 		operator VkDevice() const { return m_device; }
 
 		VulkanDevice(const Win32::Window* pViewport);
+		void Shutdown();
 		virtual ~VulkanDevice();
 
 		SAILOR_API VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
@@ -36,7 +37,7 @@ namespace Sailor::GfxDevice::Vulkan
 		void SAILOR_API DrawFrame(Win32::Window* pViewport);
 
 		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
-		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer(bool bOnlyTransferQueue = false) const;
+		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer(bool bOnlyTransferQueue = false);
 
 		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer, TRefPtr<VulkanFence> fence = nullptr) const;
 

@@ -1,7 +1,7 @@
 #pragma once
 #include "VulkanApi.h"
 #include <vulkan/vulkan.h>
- 
+
 namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanDeviceMemory;

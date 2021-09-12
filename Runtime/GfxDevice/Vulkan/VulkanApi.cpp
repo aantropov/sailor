@@ -16,6 +16,7 @@
 #include "VulkanImageView.h"
 #include "VulkanDeviceMemory.h"
 #include "VulkanBuffer.h"
+#include "VulkanFence.h"
 #include "VulkanCommandBuffer.h"
 #include "RHI/RHIResource.h"
 
@@ -212,6 +213,7 @@ VulkanApi::~VulkanApi()
 		DestroyDebugUtilsMessengerEXT(GetVkInstance(), m_debugMessenger, nullptr);
 	}
 
+	m_device->Shutdown();
 	m_device.Clear();
 	vkDestroyInstance(GetVkInstance(), nullptr);
 }
@@ -737,24 +739,13 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBufferImmediate(TRefPtr<VulkanDevice> dev
 
 void VulkanApi::CopyBuffer(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
 {
+	auto fence = TRefPtr<VulkanFence>::Make(device);
+
 	auto cmdBuffer = device->CreateCommandBuffer(true);
+	cmdBuffer->BeginCommandList();
+	cmdBuffer->CopyBuffer(src, dst, size);
+	cmdBuffer->EndCommandList();
+	device->SubmitCommandBuffer(cmdBuffer, fence);
 
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-	vkBeginCommandBuffer(*cmdBuffer, &beginInfo);
-
-	VkBufferCopy copyRegion{};
-	copyRegion.srcOffset = 0; // Optional
-	copyRegion.dstOffset = 0; // Optional
-	copyRegion.size = size;
-	vkCmdCopyBuffer(*cmdBuffer, *src, *dst, 1, &copyRegion);
-
-	vkEndCommandBuffer(*cmdBuffer);
-
-	device->SubmitCommandBuffer(cmdBuffer);
-
-	// TODO: implement dependencies to avoid remove resource that in use
-	device->WaitIdle();
+	fence->Wait();
 }

@@ -72,6 +72,14 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 
 VulkanDevice::~VulkanDevice()
 {
+	vkDestroyDevice(m_device, nullptr);
+
+	m_surface.Clear();
+}
+
+void VulkanDevice::Shutdown()
+{
+	//Clear dependencies
 	WaitIdle();
 
 	CleanupSwapChain();
@@ -93,10 +101,6 @@ VulkanDevice::~VulkanDevice()
 
 	m_graphicsQueue.Clear();
 	m_presentQueue.Clear();
-
-	vkDestroyDevice(m_device, nullptr);
-
-	m_surface.Clear();
 }
 
 TRefPtr<VulkanSurface> VulkanDevice::GetSurface() const
@@ -104,9 +108,9 @@ TRefPtr<VulkanSurface> VulkanDevice::GetSurface() const
 	return m_surface;
 }
 
-TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue) const
+TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue)
 {
-	return TRefPtr<VulkanCommandBuffer>::Make(m_device, bOnlyTransferQueue ? m_transferCommandPool : m_commandPool);
+	return TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), bOnlyTransferQueue ? m_transferCommandPool : m_commandPool);
 }
 
 void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer, TRefPtr<VulkanFence> fence) const
@@ -147,7 +151,7 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 	{
 		m_imageAvailableSemaphores.push_back(TRefPtr<VulkanSemaphore>::Make(m_device));
 		m_renderFinishedSemaphores.push_back(TRefPtr<VulkanSemaphore>::Make(m_device));
-		m_syncFences.push_back(TRefPtr<VulkanFence>::Make(m_device, VK_FENCE_CREATE_SIGNALED_BIT));
+		m_syncFences.push_back(TRefPtr<VulkanFence>::Make(TRefPtr<VulkanDevice>(this), VK_FENCE_CREATE_SIGNALED_BIT));
 	}
 }
 
@@ -373,7 +377,7 @@ void VulkanDevice::CreateCommandBuffers()
 {
 	for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
 	{
-		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>::Make(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
+		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 
 	for (size_t i = 0; i < m_commandBuffers.size(); i++)
