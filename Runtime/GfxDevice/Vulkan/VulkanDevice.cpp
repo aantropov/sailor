@@ -382,12 +382,7 @@ void VulkanDevice::CreateCommandBuffers()
 
 	for (size_t i = 0; i < m_commandBuffers.size(); i++)
 	{
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = 0; // Optional
-		beginInfo.pInheritanceInfo = nullptr; // Optional
-
-		VK_CHECK(vkBeginCommandBuffer(*m_commandBuffers[i], &beginInfo));
+		m_commandBuffers[i]->BeginCommandList();
 
 		VkRenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -411,7 +406,7 @@ void VulkanDevice::CreateCommandBuffers()
 		vkCmdDrawIndexed(*m_commandBuffers[i], static_cast<uint32_t>(g_testIndices.size()), 1, 0, 0, 0);
 		vkCmdEndRenderPass(*m_commandBuffers[i]);
 
-		VK_CHECK(vkEndCommandBuffer(*m_commandBuffers[i]));
+		m_commandBuffers[i]->EndCommandList();
 	}
 }
 

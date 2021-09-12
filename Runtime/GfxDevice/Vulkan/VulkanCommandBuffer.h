@@ -22,7 +22,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		virtual ~VulkanCommandBuffer() override;
 
-		void BeginCommandList();
+		void BeginCommandList(VkCommandBufferUsageFlags flags = 0);
 		void EndCommandList();
 
 		void CopyBuffer(TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);

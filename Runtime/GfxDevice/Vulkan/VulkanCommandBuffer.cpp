@@ -36,13 +36,13 @@ TRefPtr<VulkanCommandPool> VulkanCommandBuffer::GetCommandPool() const
 	return m_commandPool;
 }
 
-void VulkanCommandBuffer::BeginCommandList()
+void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 {
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.flags = flags;
 
-	vkBeginCommandBuffer(m_commandBuffer, &beginInfo);
+	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
 }
 
 void VulkanCommandBuffer::CopyBuffer(TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
@@ -56,5 +56,5 @@ void VulkanCommandBuffer::CopyBuffer(TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanB
 
 void VulkanCommandBuffer::EndCommandList()
 {
-	vkEndCommandBuffer(m_commandBuffer);
+	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
 }

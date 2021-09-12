@@ -742,7 +742,7 @@ void VulkanApi::CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<Vulka
 	auto fence = TRefPtr<VulkanFence>::Make(device);
 
 	auto cmdBuffer = device->CreateCommandBuffer(true);
-	cmdBuffer->BeginCommandList();
+	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer(src, dst, size);
 	cmdBuffer->EndCommandList();
 	device->SubmitCommandBuffer(cmdBuffer, fence);
