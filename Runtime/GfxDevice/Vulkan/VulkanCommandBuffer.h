@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanApi.h"
+
 namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanCommandPool;
@@ -11,7 +12,7 @@ namespace Sailor::GfxDevice::Vulkan
 		const VkCommandBuffer* GetHandle() const { return &m_commandBuffer; }
 		operator VkCommandBuffer() const { return m_commandBuffer; }
 
-		TRefPtr <VulkanCommandPool> GetCommandPool() const { return m_commandPool; }
+		TRefPtr<VulkanCommandPool> GetCommandPool() const;
 
 		VulkanCommandBuffer(VkDevice device, class TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 

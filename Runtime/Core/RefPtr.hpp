@@ -44,7 +44,7 @@ namespace Sailor
 
 		TRefPtr() noexcept = default;
 
-		TRefPtr(T* Ptr) noexcept
+		TRefPtr(TRefBase* Ptr) noexcept
 		{
 			AssignRawPtr(Ptr);
 		}

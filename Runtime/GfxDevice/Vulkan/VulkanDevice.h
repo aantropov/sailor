@@ -23,7 +23,7 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 
 	public:
-		
+
 		operator VkDevice() const { return m_device; }
 
 		VulkanDevice(const Win32::Window* pViewport);
@@ -34,17 +34,16 @@ namespace Sailor::GfxDevice::Vulkan
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
 		void SAILOR_API DrawFrame(Win32::Window* pViewport);
-		
-		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
-		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer() const;
-		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateTransferCommandBuffer() const;
 
-		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer) const;
+		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
+		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer(bool bOnlyTransferQueue = false) const;
+
+		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer, TRefPtr<VulkanFence> fence = nullptr) const;
 
 		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
 
 	protected:
-		
+
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		SAILOR_API void CreateWin32Surface(const Win32::Window* pViewport);
 		SAILOR_API void CreateSwapchain(const Win32::Window* pViewport);

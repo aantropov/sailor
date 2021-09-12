@@ -104,17 +104,12 @@ TRefPtr<VulkanSurface> VulkanDevice::GetSurface() const
 	return m_surface;
 }
 
-TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer() const
+TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue) const
 {
-	return TRefPtr<VulkanCommandBuffer>::Make(m_device, m_commandPool);
+	return TRefPtr<VulkanCommandBuffer>::Make(m_device, bOnlyTransferQueue ? m_transferCommandPool : m_commandPool);
 }
 
-TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateTransferCommandBuffer() const
-{
-	return TRefPtr<VulkanCommandBuffer>::Make(m_device, m_transferCommandPool);
-}
-
-void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer) const
+void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer, TRefPtr<VulkanFence> fence) const
 {
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -123,11 +118,11 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 
 	if (*commandBuffer->GetCommandPool() == *m_transferCommandPool)
 	{
-		VK_CHECK(m_transferQueue->Submit(submitInfo));
+		VK_CHECK(m_transferQueue->Submit(submitInfo, fence));
 	}
 	else
 	{
-		VK_CHECK(m_graphicsQueue->Submit(submitInfo));
+		VK_CHECK(m_graphicsQueue->Submit(submitInfo, fence));
 	}
 }
 

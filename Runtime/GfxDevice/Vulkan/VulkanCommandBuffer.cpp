@@ -1,7 +1,8 @@
-#include "VulkanCommandPool.h"
 #include "VulkanCommandBuffer.h"
+#include "VulkanCommandPool.h"
 #include "Core/RefPtr.hpp"
 
+using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
 VulkanCommandBuffer::VulkanCommandBuffer(VkDevice device, Sailor::TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level) :
@@ -26,3 +27,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	}
 }
 
+TRefPtr<VulkanCommandPool> VulkanCommandBuffer::GetCommandPool() const
+{
+	return m_commandPool;
+}
