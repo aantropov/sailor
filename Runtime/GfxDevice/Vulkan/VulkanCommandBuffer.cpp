@@ -79,12 +79,11 @@ void VulkanCommandBuffer::BeginRenderPass(TRefPtr<VulkanRenderPass> renderPass, 
 
 void VulkanCommandBuffer::BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> buffers, std::vector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
 {
-	std::vector<VkBuffer> vertexBuffers;
-	vertexBuffers.reserve(buffers.size());
+	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(alloca(buffers.size() * sizeof(VkBuffer)));
 
 	for (int i = 0; i < buffers.size(); i++)
 	{
-		vertexBuffers.push_back(*buffers[i]);
+		vertexBuffers[i] = *buffers[i];
 	}
 
 	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
