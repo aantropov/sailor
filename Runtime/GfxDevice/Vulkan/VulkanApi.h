@@ -84,8 +84,8 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
 		static SAILOR_API VkAttachmentDescription GetDefaultDepthAttachment(VkFormat depthFormat);
 
-		static SAILOR_API TRefPtr<VulkanRenderPass> CreateRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat);
-		static SAILOR_API TRefPtr<VulkanRenderPass> CreateMSSRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
+		static SAILOR_API TRefPtr<VulkanRenderPass> CreateRenderPass(TRefPtr<VulkanDevice> device, VkFormat imageFormat, VkFormat depthFormat);
+		static SAILOR_API TRefPtr<VulkanRenderPass> CreateMSSRenderPass(TRefPtr<VulkanDevice> device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
 		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
 		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 

@@ -16,18 +16,18 @@ namespace Sailor::GfxDevice::Vulkan
 
 		TRefPtr<VulkanRenderPass> GetRenderPass() { return m_renderPass; }
 
-		std::vector<TRefPtr<VulkanImageView>>& getAttachments() { return m_attachments; }
-		const std::vector<TRefPtr<VulkanImageView>>& getAttachments() const { return m_attachments; }
+		std::vector<TRefPtr<VulkanImageView>>& GetAttachments() { return m_attachments; }
+		const std::vector<TRefPtr<VulkanImageView>>& GetAttachments() const { return m_attachments; }
 
-		uint32_t width() const { return m_width; }
-		uint32_t height() const { return m_height; }
-		uint32_t layers() const { return m_layers; }
+		uint32_t GetWidth() const { return m_width; }
+		uint32_t GetHeight() const { return m_height; }
+		uint32_t GetLayers() const { return m_layers; }
 
 	protected:
 		virtual ~VulkanFramebuffer();
 
 		VkFramebuffer m_framebuffer;
-		VkDevice m_device;
+		TRefPtr<VulkanDevice> m_device;
 
 		TRefPtr<VulkanRenderPass> m_renderPass;
 		std::vector<TRefPtr<VulkanImageView>> m_attachments;

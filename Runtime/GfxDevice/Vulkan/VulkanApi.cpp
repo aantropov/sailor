@@ -499,7 +499,7 @@ VkAttachmentDescription VulkanApi::GetDefaultDepthAttachment(VkFormat depthForma
 	return depthAttachment;
 }
 
-TRefPtr<VulkanRenderPass> VulkanApi::CreateRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat)
+TRefPtr<VulkanRenderPass> VulkanApi::CreateRenderPass(TRefPtr<VulkanDevice> device, VkFormat imageFormat, VkFormat depthFormat)
 {
 	VkAttachmentReference colorAttachmentRef = {};
 	colorAttachmentRef.attachment = 0;
@@ -540,7 +540,7 @@ TRefPtr<VulkanRenderPass> VulkanApi::CreateRenderPass(VkDevice device, VkFormat 
 		std::vector<VkSubpassDependency> { colorDependency /*, depthDependency */ });
 }
 
-TRefPtr<VulkanRenderPass> VulkanApi::CreateMSSRenderPass(VkDevice device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples)
+TRefPtr<VulkanRenderPass> VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice> device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples)
 {
 	if (samples == VK_SAMPLE_COUNT_1_BIT)
 	{

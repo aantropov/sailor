@@ -4,6 +4,8 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	class VulkanFramebuffer;
+
 	struct VulkanSubpassDescription
 	{
 		VkSubpassDescriptionFlags m_flags = 0;
@@ -19,15 +21,14 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanRenderPass(VkDevice device,
+		VulkanRenderPass(TRefPtr<VulkanDevice> device,
 			const std::vector<VkAttachmentDescription>& attachments,
 			const std::vector<VulkanSubpassDescription>& subpasses,
 			const std::vector<VkSubpassDependency>& dependencies);
 
 		operator VkRenderPass() const { return m_renderPass; }
 
-		VkDevice GetDevice() const { return m_device; }
-
+		TRefPtr<VulkanDevice> GetDevice() const;
 		VkSampleCountFlagBits GetMaxMSSamples() const { return m_maxMsSamples; }
 
 	protected:
@@ -36,6 +37,6 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VkRenderPass m_renderPass;
 		VkSampleCountFlagBits m_maxMsSamples;
-		VkDevice m_device;
+		TRefPtr<VulkanDevice> m_device;
 	};
 }

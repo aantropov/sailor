@@ -1,6 +1,7 @@
 #include "VulkanFramebuffer.h"
 #include "VulkanRenderPass.h"
 #include "VulkanImageView.h"
+#include "VulkanDevice.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -30,13 +31,13 @@ VulkanFramebuffer::VulkanFramebuffer(TRefPtr<VulkanRenderPass> renderPass, const
 	framebufferInfo.height = height;
 	framebufferInfo.layers = layers;
 
-	VK_CHECK(vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_framebuffer));
+	VK_CHECK(vkCreateFramebuffer(*m_device, &framebufferInfo, nullptr, &m_framebuffer));
 }
 
 VulkanFramebuffer::~VulkanFramebuffer()
 {
 	if (m_framebuffer)
 	{
-		vkDestroyFramebuffer(m_device, m_framebuffer, nullptr);
+		vkDestroyFramebuffer(*m_device, m_framebuffer, nullptr);
 	}
 }

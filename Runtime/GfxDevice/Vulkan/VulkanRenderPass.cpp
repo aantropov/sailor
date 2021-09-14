@@ -1,8 +1,11 @@
 #include "VulkanRenderPass.h"
+#include "VulkanFramebuffer.h"
+#include "VulkanDevice.h"
+#include "Core/RefPtr.hpp"
 
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanRenderPass::VulkanRenderPass(VkDevice device,
+VulkanRenderPass::VulkanRenderPass(TRefPtr<VulkanDevice> device,
 	const std::vector<VkAttachmentDescription>& attachments,
 	const std::vector<VulkanSubpassDescription>& subpasses,
 	const std::vector<VkSubpassDependency>& dependencies) :
@@ -40,13 +43,18 @@ VulkanRenderPass::VulkanRenderPass(VkDevice device,
 	renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
 	renderPassInfo.pDependencies = dependencies.data();
 
-	VK_CHECK(vkCreateRenderPass(m_device, &renderPassInfo, nullptr, &m_renderPass));
+	VK_CHECK(vkCreateRenderPass(*m_device, &renderPassInfo, nullptr, &m_renderPass));
+}
+
+TRefPtr<VulkanDevice> VulkanRenderPass::GetDevice() const 
+{
+	return m_device; 
 }
 
 VulkanRenderPass::~VulkanRenderPass()
 {
 	if (m_renderPass)
 	{
-		vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+		vkDestroyRenderPass(*m_device, m_renderPass, nullptr);
 	}
 }

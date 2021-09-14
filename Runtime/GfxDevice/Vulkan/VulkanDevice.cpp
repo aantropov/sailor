@@ -133,7 +133,7 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 void VulkanDevice::CreateRenderPass()
 {
 	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
-	m_renderPass = VulkanApi::CreateRenderPass(m_device, m_swapchain->GetImageFormat(), depthFormat);
+	m_renderPass = VulkanApi::CreateRenderPass(TRefPtr<VulkanDevice>(this), m_swapchain->GetImageFormat(), depthFormat);
 }
 
 void VulkanDevice::CreateCommandPool()
@@ -383,29 +383,16 @@ void VulkanDevice::CreateCommandBuffers()
 	for (size_t i = 0; i < m_commandBuffers.size(); i++)
 	{
 		m_commandBuffers[i]->BeginCommandList();
+		{
+			m_commandBuffers[i]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[i], m_swapchain->GetExtent());
 
-		VkRenderPassBeginInfo renderPassInfo{};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = *m_renderPass;
-		renderPassInfo.framebuffer = *m_swapChainFramebuffers[i];
-		renderPassInfo.renderArea.offset = { 0, 0 };
-		renderPassInfo.renderArea.extent = m_swapchain->GetExtent();
+			vkCmdBindPipeline(*m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
 
-		VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
-		renderPassInfo.clearValueCount = 1;
-		renderPassInfo.pClearValues = &clearColor;
-
-		vkCmdBeginRenderPass(*m_commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-		vkCmdBindPipeline(*m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
-
-		VkBuffer vertexBuffers[] = { *m_vertexBuffer };
-		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(*m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(*m_commandBuffers[i], *m_indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-		vkCmdDrawIndexed(*m_commandBuffers[i], static_cast<uint32_t>(g_testIndices.size()), 1, 0, 0, 0);
-		vkCmdEndRenderPass(*m_commandBuffers[i]);
-
+			m_commandBuffers[i]->BindVertexBuffers({ m_vertexBuffer });
+			m_commandBuffers[i]->BindIndexBuffer(m_indexBuffer);
+			m_commandBuffers[i]->DrawIndexed(m_indexBuffer);
+			m_commandBuffers[i]->EndRenderPass();
+		}
 		m_commandBuffers[i]->EndCommandList();
 	}
 }

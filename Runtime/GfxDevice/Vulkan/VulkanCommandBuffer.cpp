@@ -2,6 +2,9 @@
 #include "VulkanCommandPool.h"
 #include "VulkanBuffer.h"
 #include "VulkanDevice.h"
+#include "VulkanRenderPass.h"
+#include "VulkanFramebuffer.h"
+#include "VulkanBuffer.h"
 #include "Core/RefPtr.hpp"
 
 using namespace Sailor;
@@ -57,4 +60,47 @@ void VulkanCommandBuffer::CopyBuffer(TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanB
 void VulkanCommandBuffer::EndCommandList()
 {
 	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
+}
+
+void VulkanCommandBuffer::BeginRenderPass(TRefPtr<VulkanRenderPass> renderPass, TRefPtr<VulkanFramebuffer> frameBuffer, VkExtent2D extent, VkOffset2D offset, VkClearValue clearColor)
+{
+	VkRenderPassBeginInfo renderPassInfo{};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassInfo.renderPass = *renderPass;
+	renderPassInfo.framebuffer = *frameBuffer;
+	renderPassInfo.renderArea.offset = offset;
+	renderPassInfo.renderArea.extent = extent;
+
+	renderPassInfo.clearValueCount = 1;
+	renderPassInfo.pClearValues = &clearColor;
+
+	vkCmdBeginRenderPass(m_commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
+
+void VulkanCommandBuffer::BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> buffers, std::vector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
+{
+	std::vector<VkBuffer> vertexBuffers;
+	vertexBuffers.reserve(buffers.size());
+
+	for (int i = 0; i < buffers.size(); i++)
+	{
+		vertexBuffers.push_back(*buffers[i]);
+	}
+
+	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
+}
+
+void VulkanCommandBuffer::BindIndexBuffer(TRefPtr<VulkanBuffer> indexBuffer)
+{
+	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+}
+
+void VulkanCommandBuffer::DrawIndexed(TRefPtr<VulkanBuffer> indexBuffer)
+{
+	vkCmdDrawIndexed(m_commandBuffer, indexBuffer->m_size / sizeof(uint32_t), 1, 0, 0, 0);
+}
+
+void VulkanCommandBuffer::EndRenderPass()
+{
+	vkCmdEndRenderPass(m_commandBuffer);
 }
