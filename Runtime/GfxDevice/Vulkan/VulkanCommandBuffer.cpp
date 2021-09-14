@@ -79,14 +79,16 @@ void VulkanCommandBuffer::BeginRenderPass(TRefPtr<VulkanRenderPass> renderPass, 
 
 void VulkanCommandBuffer::BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> buffers, std::vector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
 {
-	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(alloca(buffers.size() * sizeof(VkBuffer)));
-
+	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(_malloca(buffers.size() * sizeof(VkBuffer)));
+	
 	for (int i = 0; i < buffers.size(); i++)
 	{
 		vertexBuffers[i] = *buffers[i];
 	}
 
 	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
+
+	_freea(vertexBuffers);
 }
 
 void VulkanCommandBuffer::BindIndexBuffer(TRefPtr<VulkanBuffer> indexBuffer)
@@ -96,7 +98,7 @@ void VulkanCommandBuffer::BindIndexBuffer(TRefPtr<VulkanBuffer> indexBuffer)
 
 void VulkanCommandBuffer::DrawIndexed(TRefPtr<VulkanBuffer> indexBuffer)
 {
-	vkCmdDrawIndexed(m_commandBuffer, indexBuffer->m_size / sizeof(uint32_t), 1, 0, 0, 0);
+	vkCmdDrawIndexed(m_commandBuffer, (uint32_t)indexBuffer->m_size / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
 void VulkanCommandBuffer::EndRenderPass()
