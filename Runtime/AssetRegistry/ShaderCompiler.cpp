@@ -240,7 +240,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 			ForceCompilePermutation(assetUID, permutationsToCompile[i]);
 		});
 
-		saveCacheJob->Wait(job);
+		saveCacheJob->Join(job);
 		scheduler->Run(job);
 	}
 	scheduler->Run(saveCacheJob);

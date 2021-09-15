@@ -12,17 +12,17 @@ using namespace std;
 using namespace Sailor;
 using namespace Sailor::JobSystem;
 
-void IJob::Wait(const TWeakPtr<IJob>& job)
+void IJob::Join(const TWeakPtr<IJob>& job)
 {
 	job.Lock()->m_dependencies.emplace_back(this);
 	++m_numBlockers;
 }
 
-void IJob::WaitAll(const std::vector<TWeakPtr<IJob>>& jobs)
+void IJob::Join(const std::vector<TWeakPtr<IJob>>& jobs)
 {
 	for (const auto& job : jobs)
 	{
-		Wait(job);
+		Join(job);
 	}
 }
 

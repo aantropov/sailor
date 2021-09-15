@@ -3,6 +3,7 @@
 #include <glm/glm/glm.hpp>
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
+#include "Jobsystem/JobSystem.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 
 namespace Sailor
@@ -14,7 +15,7 @@ namespace Sailor
 		static SAILOR_API void Initialize(class Window const* pViewport, bool bIsDebug);
 		SAILOR_API ~Renderer() override;
 
-		bool SAILOR_API IsRunning() const { return m_bIsRunning; }
+		bool SAILOR_API IsRunning() const;
 		void SAILOR_API RunRenderLoop();
 		void SAILOR_API StopRenderLoop();
 
@@ -24,10 +25,7 @@ namespace Sailor
 
 		void SAILOR_API RenderLoop_RenderThread();
 		
-		std::condition_variable m_renderLoopStopped;
-		std::mutex m_renderLoopActive;
-		
-		std::atomic<bool> m_bIsRunning = false;
+		TSharedPtr<class JobSystem::Job> m_renderingJob;
 		std::atomic<bool> m_bForceStop = false;
 		std::atomic<uint32_t> m_smoothFps = 0u;
 

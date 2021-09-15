@@ -27,9 +27,8 @@ void Renderer::RunRenderLoop()
 {
 	m_bForceStop = false;
 
-	TSharedPtr<Sailor::JobSystem::Job> renderingJob = JobSystem::Scheduler::CreateJob("Rendering Loop",
+	m_renderingJob = JobSystem::Scheduler::CreateJob("Rendering Loop",
 		[this]() {
-		m_bIsRunning = true;
 		while (!m_bForceStop)
 		{
 			static float totalFramesCount = 0.0f;
@@ -46,7 +45,7 @@ void Renderer::RunRenderLoop()
 
 			if (totalTime > 1000)
 			{
-				m_smoothFps = (float)totalFramesCount;
+				m_smoothFps = (uint32_t)totalFramesCount;
 				totalFramesCount = 0;
 				totalTime = 0;
 			}
@@ -55,18 +54,20 @@ void Renderer::RunRenderLoop()
 		}
 		GfxDevice::Vulkan::VulkanApi::WaitIdle();
 		m_bForceStop = false;
-		m_renderLoopStopped.notify_all();
 	}, Sailor::JobSystem::EThreadType::Rendering);
 
-	JobSystem::Scheduler::GetInstance()->Run(renderingJob);
+	JobSystem::Scheduler::GetInstance()->Run(m_renderingJob);
 }
 
 void Renderer::StopRenderLoop()
 {
 	m_bForceStop = true;
-	std::unique_lock<std::mutex> lk(m_renderLoopActive);
-	m_renderLoopStopped.wait(lk);
-	m_bIsRunning = false;
+	m_renderingJob->Wait();
+}
+
+bool Renderer::IsRunning() const
+{
+	return !m_renderingJob->IsFinished() && !m_renderingJob->IsReadyToStart();
 }
 
 void Renderer::RenderLoop_RenderThread()
