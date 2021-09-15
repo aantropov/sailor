@@ -90,6 +90,7 @@ void EngineInstance::Start()
 			WCHAR Buff[50];
 			wsprintf(Buff, L"Sailor GPU FPS: %u, CPU FPS: %u", Renderer::GetInstance()->GetSmoothFps(), (uint32_t)totalFramesCount);
 			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
+			m_pInstance->m_FPS = totalFramesCount;
 
 			totalFramesCount = 0;
 			totalTime = 0;
