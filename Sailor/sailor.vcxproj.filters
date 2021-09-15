@@ -147,6 +147,9 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDeviceMemory.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\Renderer.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -235,6 +238,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDeviceMemory.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\Renderer.cpp">
+      <Filter>Runtime\RHI</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

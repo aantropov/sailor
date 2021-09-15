@@ -15,8 +15,8 @@ namespace Sailor::Win32
 		HWND      m_hWnd = nullptr;
 		HDC       m_hDC = nullptr;
 
-		int m_width = 1024;
-		int m_height = 768;
+		std::atomic<int> m_width = 1024;
+		std::atomic<int> m_height = 768;
 		
 		std::wstring m_windowClassName;
 
@@ -68,7 +68,7 @@ namespace Sailor::Win32
 
 		SAILOR_API void SetIsIconic(bool value) { m_bIsIconic = value; }
 
-		static std::unordered_map<HWND, Window*> g_windows;
+		static std::vector<Window*> g_windows;
 
 		friend LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	};

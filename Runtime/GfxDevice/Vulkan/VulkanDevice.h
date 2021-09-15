@@ -34,7 +34,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		void SAILOR_API DrawFrame(Win32::Window* pViewport);
+		void SAILOR_API DrawFrame(const Win32::Window* pViewport);
 
 		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
 		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer(bool bOnlyTransferQueue = false);
@@ -48,7 +48,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		SAILOR_API void CreateWin32Surface(const Win32::Window* pViewport);
 		SAILOR_API void CreateSwapchain(const Win32::Window* pViewport);
-		SAILOR_API bool RecreateSwapchain(Win32::Window* pViewport);
+		SAILOR_API bool RecreateSwapchain(const Win32::Window* pViewport);
 		SAILOR_API void CreateGraphicsPipeline();
 		SAILOR_API void CreateRenderPass();
 		SAILOR_API void CreateFramebuffers();

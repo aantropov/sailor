@@ -204,6 +204,7 @@
     <ClInclude Include="..\Runtime\Platform\Win\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Platform\Win\Input.h" />
     <ClInclude Include="..\Runtime\Platform\Win\Window.h" />
+    <ClInclude Include="..\Runtime\RHI\Renderer.h" />
     <ClInclude Include="..\Runtime\RHI\RHIResource.h" />
     <ClInclude Include="..\Runtime\Sailor.h" />
     <ClInclude Include="..\Runtime\Utils.h" />
@@ -235,6 +236,7 @@
     <ClCompile Include="..\Runtime\Platform\Win\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win\Input.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win\Window.cpp" />
+    <ClCompile Include="..\Runtime\RHI\Renderer.cpp" />
     <ClCompile Include="..\Runtime\Sailor.cpp" />
     <ClCompile Include="..\Runtime\Utils.cpp" />
     <ClCompile Include="dllmain.cpp" />

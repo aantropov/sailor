@@ -5,6 +5,7 @@
 #include "Platform/Win/Input.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "JobSystem/JobSystem.h"
+#include "RHI/Renderer.h"
 
 using namespace Sailor;
 
@@ -13,13 +14,13 @@ const std::string EngineInstance::ApplicationName = "SailorEngine";
 const std::string EngineInstance::EngineName = "Sailor";
 
 void EngineInstance::Initialize()
-{	
+{
 	SAILOR_PROFILE_FUNCTION()
 
-	if (m_pInstance != nullptr)
-	{
-		return;
-	}
+		if (m_pInstance != nullptr)
+		{
+			return;
+		}
 
 #ifdef BUILD_WITH_EASY_PROFILER
 	profiler::startListen();
@@ -46,8 +47,7 @@ void EngineInstance::Initialize()
 
 	AssetRegistry::Initialize();
 	ShaderCompiler::Initialize();
-	GfxDevice::Vulkan::VulkanApi::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
-
+	Renderer::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
 	ShaderCompiler::GetInstance();
 
 	SAILOR_LOG("Sailor Engine initialized");
@@ -58,8 +58,9 @@ void EngineInstance::Start()
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
-	TSharedPtr<Sailor::JobSystem::Job> renderingJob;
+	Renderer::GetInstance()->RunRenderLoop();
 
+	float timeToUpdateFps = 0.0f;
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{
 		Win32::ConsoleWindow::GetInstance()->Update();
@@ -70,44 +71,34 @@ void EngineInstance::Start()
 			break;
 		}
 
-		if (m_pInstance->m_viewportWindow.IsRunning())// && m_pInstance->m_viewportWindow.IsActive())
+		static float totalFramesCount = 0.0f;
+		static float totalTime = 0.0f;
+
+		const float beginFrameTime = (float)GetTickCount();
+		
+		SAILOR_PROFILE_BLOCK("Frame");
+		Sleep(100);
+		SAILOR_PROFILE_END_BLOCK();
+
+		totalTime += (float)GetTickCount() - beginFrameTime;
+		totalFramesCount++;
+
+		if (totalTime > 1000)
 		{
-			SAILOR_PROFILE_BLOCK("Draw frame");
+			SAILOR_PROFILE_BLOCK("Track FPS");
 
-			//renderingJob = JobSystem::Scheduler::CreateJob("Draw Frame",
-			//	[]() {
+			WCHAR Buff[50];
+			wsprintf(Buff, L"Sailor GPU FPS: %u, CPU FPS: %u", Renderer::GetInstance()->GetSmoothFps(), (uint32_t)totalFramesCount);
+			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
 
-				SAILOR_PROFILE_FUNCTION();
-
-				float beginFrameTime = (float)GetTickCount();
-				float deltaTime = GetTickCount() - beginFrameTime;
-
-				GfxDevice::Vulkan::VulkanApi::DrawFrame(&m_pInstance->m_viewportWindow);
-
-				m_pInstance->m_elapsedTime += (float)(GetTickCount() - beginFrameTime) / 1000.0f;
-				++m_pInstance->m_FPS;
-				//}, Sailor::JobSystem::EThreadType::Rendering);
-			//JobSystem::Scheduler::GetInstance()->Run(renderingJob);
+			totalFramesCount = 0;
+			totalTime = 0;
 
 			SAILOR_PROFILE_END_BLOCK();
 		}
-
-		SAILOR_PROFILE_BLOCK("Track FPS");
-
-		if (m_pInstance->m_elapsedTime >= 1.0f)
-		{
-			WCHAR Buff[50];
-			wsprintf(Buff, L"Sailor FPS: %u", m_pInstance->m_FPS);
-
-			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
-			m_pInstance->m_FPS = 0;
-			m_pInstance->m_elapsedTime = 0.0f;
-		}
-
-		SAILOR_PROFILE_END_BLOCK();
 	}
 
-	GfxDevice::Vulkan::VulkanApi::WaitIdle();
+	Renderer::GetInstance()->StopRenderLoop();
 
 	m_pInstance->m_viewportWindow.SetActive(false);
 	m_pInstance->m_viewportWindow.SetRunning(false);
@@ -121,11 +112,11 @@ void EngineInstance::Stop()
 void EngineInstance::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Released");
+	JobSystem::Scheduler::Shutdown();
 	AssetRegistry::Shutdown();
-	GfxDevice::Vulkan::VulkanApi::Shutdown();
+	Renderer::Shutdown();
 	Win32::ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
-	JobSystem::Scheduler::Shutdown();
 
 	delete m_pInstance;
 }

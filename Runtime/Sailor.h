@@ -29,7 +29,6 @@ namespace Sailor
 		Win32::Window m_viewportWindow;
 
 		uint32_t m_FPS = 0;
-		float m_elapsedTime = 0.0f;
 
 		static EngineInstance* m_pInstance;
 		

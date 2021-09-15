@@ -155,7 +155,7 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 	}
 }
 
-bool VulkanDevice::RecreateSwapchain(Window* pViewport)
+bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 {
 	if (pViewport->GetWidth() == 0 || pViewport->GetHeight() == 0)
 	{
@@ -505,7 +505,7 @@ void VulkanDevice::WaitIdle()
 	vkDeviceWaitIdle(m_device);
 }
 
-void VulkanDevice::DrawFrame(Window* pViewport)
+void VulkanDevice::DrawFrame(Window const* pViewport)
 {
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();

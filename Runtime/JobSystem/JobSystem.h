@@ -37,6 +37,7 @@ namespace Sailor
 
 			SAILOR_API void Wait(const TWeakPtr<IJob>& job);
 			SAILOR_API void WaitAll(const std::vector<TWeakPtr<IJob>>& jobs);
+			SAILOR_API void Wait();
 
 			EThreadType GetThreadType() const { return m_threadType; }
 
@@ -48,6 +49,9 @@ namespace Sailor
 			std::atomic<uint32_t> m_numBlockers;
 			std::vector<IJob*> m_dependencies;
 			std::string m_name;
+			
+			std::condition_variable m_jobFinished;
+			std::mutex m_jobIsExecuting;
 
 			EThreadType m_threadType;
 		};

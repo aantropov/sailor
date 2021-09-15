@@ -48,6 +48,14 @@ void IJob::Complete()
 	}
 
 	m_bIsFinished = true;
+
+	m_jobFinished.notify_all();
+}
+
+void IJob::Wait()
+{
+	std::unique_lock<std::mutex> lk(m_jobIsExecuting);
+	m_jobFinished.wait(lk);
 }
 
 Job::Job(const std::string& name, const std::function<void()>& function, EThreadType thread) : IJob(name, thread)

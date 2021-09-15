@@ -7,7 +7,7 @@
 using namespace Sailor;
 using namespace Sailor::Win32;
 
-std::unordered_map<HWND, Window*> Window::g_windows;
+std::vector<Window*> Window::g_windows;
 
 bool Window::Create(LPCWSTR title, LPCWSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested)
 {
@@ -69,7 +69,7 @@ bool Window::Create(LPCWSTR title, LPCWSTR className, int32_t inWidth, int32_t i
 		return false;
 	}
 
-	g_windows.insert({ m_hWnd, this });
+	g_windows.push_back(this);
 
 	// ÔGet window descriptor
 	m_hDC = GetDC(m_hWnd);
@@ -200,13 +200,13 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 	SAILOR_PROFILE_FUNCTION()
 
 	MSG msg;
-	for (auto& it : Window::g_windows)
+	for (int i = 0; i < g_windows.size(); i++)
 	{
-		while (PeekMessage(&msg, it.first, 0, 0, PM_REMOVE))
+		while (PeekMessage(&msg, g_windows[i]->GetHWND(), 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
 			{
-				it.second->SetRunning(false);
+				g_windows[i]->SetRunning(false);
 				break;
 			}
 			DispatchMessage(&msg);
@@ -253,7 +253,7 @@ void Window::Destroy()
 	if (m_hInstance)
 		UnregisterClass((LPCWSTR)m_windowClassName.c_str(), m_hInstance);
 
-	g_windows[m_hWnd] = nullptr;
+	g_windows.erase(std::remove(g_windows.begin(), g_windows.end(), this));
 }
 
 bool Window::IsIconic() const
@@ -263,11 +263,14 @@ bool Window::IsIconic() const
 
 LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	auto windowIterator = Window::g_windows.find(hWnd);
+	auto windowIterator = std::find_if(Window::g_windows.begin(),
+		Window::g_windows.end(),
+		[hWnd](Window* pWindow) { return pWindow->GetHWND() == hWnd; });
+
 	Window* pWindow = nullptr;
 	if (windowIterator != Window::g_windows.end())
 	{
-		pWindow = (*windowIterator).second;
+		pWindow = *windowIterator;
 	}
 
 	switch (msg)
