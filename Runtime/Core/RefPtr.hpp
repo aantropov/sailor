@@ -44,22 +44,10 @@ namespace Sailor
 
 		TRefPtr() noexcept = default;
 
+		// Raw pointers
 		TRefPtr(TRefBase* Ptr) noexcept
 		{
 			AssignRawPtr(Ptr);
-		}
-
-		template<typename R,
-			typename = std::enable_if_t<
-			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-			TRefPtr(const TRefPtr<R>& pRefPtr) noexcept
-		{
-			AssignRawPtr(pRefPtr.GetRawPtr());
-		}
-
-		TRefPtr(const TRefPtr<T>& pRawPtr) noexcept
-		{
-			AssignRawPtr(pRawPtr.GetRawPtr());
 		}
 
 		TRefPtr& operator=(T* pRawPtr)
@@ -68,9 +56,40 @@ namespace Sailor
 			return *this;
 		}
 
-		TRefPtr& operator=(const TRefPtr<T>& pRefPtr)
+		// Basic copy/assignment
+		TRefPtr(const TRefPtr<T>& pRefPtr) noexcept
 		{
 			AssignRawPtr(pRefPtr.m_pRawPtr);
+		}
+
+		TRefPtr(TRefPtr<T>&& pRefPtr) noexcept
+		{
+			Swap(std::move(pRefPtr));
+		}
+
+		TRefPtr& operator=(TRefPtr<T> pRefPtr) noexcept
+		{
+			Swap(std::move(pRefPtr));
+			return *this;
+		}
+
+		// Other types copy/assignment
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || !std::is_same_v<T, R>>>
+		TRefPtr(const TRefPtr<R>& pRefPtr) noexcept
+		{
+			AssignRawPtr(pRefPtr.GetRawPtr());
+		}
+
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || !std::is_same_v<T, R>>>
+		TRefPtr(TRefPtr<R>&& pRefPtr) noexcept
+		{
+			Swap(std::move(pRefPtr));
+		}
+
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || !std::is_same_v<T, R>>>
+		TRefPtr& operator=(TRefPtr<R> pRefPtr) noexcept
+		{
+			Swap(std::move(pRefPtr));
 			return *this;
 		}
 
@@ -81,13 +100,6 @@ namespace Sailor
 
 		T& operator*()  noexcept { return *static_cast<T*>(m_pRawPtr); }
 		const T& operator*() const { return *static_cast<T*>(m_pRawPtr); }
-
-		template<class R>
-		TRefPtr& operator=(const TRefPtr<R>& pRefPtr)
-		{
-			AssignRawPtr(static_cast<TRefBase*>(pRefPtr.m_pRawPtr));
-			return *this;
-		}
 
 		bool IsShared() const  noexcept { return GetRefCounter() > 1; }
 
@@ -147,6 +159,24 @@ namespace Sailor
 				delete m_pRawPtr;
 				m_pRawPtr = nullptr;
 			}
+		}
+
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || std::is_same_v<T, R>>>
+		void Swap(TRefPtr<R>&& pRefPtr)
+		{
+			if (m_pRawPtr == pRefPtr.m_pRawPtr)
+			{
+				pRefPtr.m_pRawPtr = nullptr;
+				return;
+			}
+
+			if (m_pRawPtr != nullptr)
+			{
+				DecrementRefCounter();
+			}
+
+			m_pRawPtr = pRefPtr.m_pRawPtr;
+			pRefPtr.m_pRawPtr = nullptr;
 		}
 	};
 }
