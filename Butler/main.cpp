@@ -22,6 +22,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 	}
 	*/
 	EngineInstance::Start();
+	EngineInstance::Stop();
 	EngineInstance::Shutdown();
 
 	return 0;

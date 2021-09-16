@@ -137,9 +137,9 @@ void VulkanApi::Initialize(const Window* viewport, bool bInIsEnabledValidationLa
 	SAILOR_LOG("Vulkan initialized");
 }
 
-void VulkanApi::DrawFrame(const Window* pViewport)
+void VulkanApi::DrawFrame()
 {
-	m_pInstance->m_device->DrawFrame(pViewport);
+	m_pInstance->m_device->DrawFrame();
 }
 
 void VulkanApi::WaitIdle()

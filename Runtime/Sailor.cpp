@@ -65,9 +65,11 @@ void EngineInstance::Start()
 	{
 		Win32::ConsoleWindow::GetInstance()->Update();
 		Win32::Window::ProcessWin32Msgs();
-
+		Renderer::GetInstance()->FixLostDevice();
+		
 		if (Input::IsKeyPressed(VK_ESCAPE))
 		{
+			Stop();
 			break;
 		}
 
@@ -97,9 +99,7 @@ void EngineInstance::Start()
 
 			SAILOR_PROFILE_END_BLOCK();
 		}
-	}
-
-	Renderer::GetInstance()->StopRenderLoop();
+	}	
 
 	m_pInstance->m_viewportWindow.SetActive(false);
 	m_pInstance->m_viewportWindow.SetRunning(false);
@@ -108,17 +108,20 @@ void EngineInstance::Start()
 void EngineInstance::Stop()
 {
 	m_pInstance->m_viewportWindow.SetActive(false);
+	
+	Renderer::GetInstance()->StopRenderLoop();
 }
 
 void EngineInstance::Shutdown()
 {
-	SAILOR_LOG("Sailor Engine Released");
+	SAILOR_LOG("Sailor Engine Releasing");
+
 	JobSystem::Scheduler::Shutdown();
 	AssetRegistry::Shutdown();
 	Renderer::Shutdown();
 	Win32::ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
-
+		
 	delete m_pInstance;
 }
 

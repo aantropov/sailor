@@ -68,6 +68,8 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	CreateVertexBuffer();
 	CreateCommandBuffers();
 	CreateFrameSyncSemaphores();
+
+	m_bIsSwapChainOutdated = false;
 }
 
 VulkanDevice::~VulkanDevice()
@@ -172,6 +174,7 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 	CreateFramebuffers();
 	CreateCommandBuffers();
 
+	m_bIsSwapChainOutdated = false;
 	return true;
 }
 
@@ -505,8 +508,22 @@ void VulkanDevice::WaitIdle()
 	vkDeviceWaitIdle(m_device);
 }
 
-void VulkanDevice::DrawFrame(Window const* pViewport)
+void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 {
+	if (IsSwapChainOutdated())
+	{
+		RecreateSwapchain(pViewport);
+	}
+}
+
+void VulkanDevice::DrawFrame()
+{
+	// Wait while we recreate swapchain from main thread to sync with Win32Api
+	if(m_bIsSwapChainOutdated)
+	{
+		return;
+	}
+	
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();
 
@@ -515,7 +532,7 @@ void VulkanDevice::DrawFrame(Window const* pViewport)
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
-		RecreateSwapchain(pViewport);
+		m_bIsSwapChainOutdated = true;
 		return;
 	}
 	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
@@ -566,10 +583,9 @@ void VulkanDevice::DrawFrame(Window const* pViewport)
 
 	result = m_presentQueue->Present(presentInfo);
 
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || bIsFramebufferResizedThisFrame)
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 	{
-		bIsFramebufferResizedThisFrame = false;
-		RecreateSwapchain(pViewport);
+		m_bIsSwapChainOutdated = true;
 	}
 	else if (result != VK_SUCCESS)
 	{

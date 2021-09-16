@@ -34,7 +34,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		void SAILOR_API DrawFrame(const Win32::Window* pViewport);
+		void SAILOR_API DrawFrame();
+
+		bool SAILOR_API IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 
 		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
 		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer(bool bOnlyTransferQueue = false);
@@ -43,6 +45,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
 
+		SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
+	
 	protected:
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
@@ -96,6 +100,6 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanBuffer> m_vertexBuffer;
 		TRefPtr<VulkanBuffer> m_indexBuffer;
 
-		std::atomic<bool> bIsFramebufferResizedThisFrame = false;
+		std::atomic<bool> m_bIsSwapChainOutdated = true;
 	};
 }

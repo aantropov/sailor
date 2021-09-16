@@ -147,9 +147,9 @@ namespace Sailor
 			}
 		}
 
-		void IncrementRefCounter()
+		void IncrementRefCounter() const
 		{
-			GetRefCounter()++;
+			++GetRefCounter();
 		}
 
 		void DecrementRefCounter()

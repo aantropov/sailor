@@ -24,6 +24,8 @@ namespace Sailor::Win32
 		std::atomic<bool> m_bIsActive = false;
 		std::atomic<bool> m_bIsRunning = false;
 		std::atomic<bool> m_bIsIconic = false;
+		std::atomic<bool> m_bIsResizing = false;
+		std::atomic<bool> m_bIsMaximizedOrMinimized = false;
 		std::atomic<bool> m_bIsVsyncRequested = false;
 
 	public:
@@ -32,6 +34,7 @@ namespace Sailor::Win32
 		SAILOR_API ~Window() = default;
 
 		// Getters
+		SAILOR_API bool IsResizing() const { return m_bIsResizing; }
 		SAILOR_API bool IsActive() const { return m_bIsActive; }
 		SAILOR_API bool IsRunning() const { return m_bIsRunning; }
 		SAILOR_API bool IsFullscreen() const { return m_bIsFullscreen; }
