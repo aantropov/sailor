@@ -64,7 +64,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API void Initialize(const Window* pViewport, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
 
-		static void SAILOR_API DrawFrame();
+		static bool SAILOR_API DrawFrame();
 		static void SAILOR_API WaitIdle();
 		SAILOR_API TRefPtr<VulkanDevice> GetMainDevice() const;
 

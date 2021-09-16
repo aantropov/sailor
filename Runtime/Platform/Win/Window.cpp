@@ -275,33 +275,11 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 	switch (msg)
 	{
-
 	case WM_SIZE:
 	{
 		pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);
-		pWindow->m_bIsResizing = true;
 		pWindow->RecalculateWindowSize();
-		if (wParam == SIZE_MINIMIZED || wParam == SIZE_MAXIMIZED)
-		{
-			pWindow->m_bIsMaximizedOrMinimized = true;
-			pWindow->m_bIsResizing = false;
-		}
-
-		if (wParam == SIZE_RESTORED && pWindow->m_bIsMaximizedOrMinimized)
-		{
-			pWindow->m_bIsMaximizedOrMinimized = false;
-			pWindow->m_bIsResizing = false;
-		}
-	}
-
-	case WM_SIZING:
-	{
 		return FALSE;
-	}
-
-	case WM_EXITSIZEMOVE:
-	{
-		pWindow->m_bIsResizing = false;
 	}
 	case WM_LBUTTONDOWN:
 	case WM_LBUTTONUP:

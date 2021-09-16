@@ -516,12 +516,12 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	}
 }
 
-void VulkanDevice::DrawFrame()
+bool VulkanDevice::DrawFrame()
 {
 	// Wait while we recreate swapchain from main thread to sync with Win32Api
 	if(m_bIsSwapChainOutdated)
 	{
-		return;
+		return false;
 	}
 	
 	// Wait while GPU is finishing frame
@@ -533,12 +533,12 @@ void VulkanDevice::DrawFrame()
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
 		m_bIsSwapChainOutdated = true;
-		return;
+		return false;
 	}
 	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
 	{
 		SAILOR_LOG("Failed to acquire swap chain image!");
-		return;
+		return false;
 	}
 
 	// Check if a previous frame is using this image (i.e. there is its fence to wait on)
@@ -590,11 +590,10 @@ void VulkanDevice::DrawFrame()
 	else if (result != VK_SUCCESS)
 	{
 		SAILOR_LOG("Failed to present swap chain image!");
-		return;
+		return false;
 	}
 
-	//vkQueueWaitIdle(m_presentQueue);
-
 	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
+	return true;
 }
 

@@ -25,7 +25,6 @@ namespace Sailor::Win32
 		std::atomic<bool> m_bIsRunning = false;
 		std::atomic<bool> m_bIsIconic = false;
 		std::atomic<bool> m_bIsResizing = false;
-		std::atomic<bool> m_bIsMaximizedOrMinimized = false;
 		std::atomic<bool> m_bIsVsyncRequested = false;
 
 	public:

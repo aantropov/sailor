@@ -45,17 +45,22 @@ void Renderer::RunRenderLoop()
 				SAILOR_PROFILE_BLOCK("Render Frame");
 
 				const float beginFrameTime = (float)GetTickCount();
-				
-				GfxDevice::Vulkan::VulkanApi::DrawFrame();
 
-				totalTime += (float)GetTickCount() - beginFrameTime;
-				totalFramesCount++;
-
-				if (totalTime > 1000)
+				if (GfxDevice::Vulkan::VulkanApi::DrawFrame())
 				{
-					m_smoothFps = (uint32_t)totalFramesCount;
-					totalFramesCount = 0;
-					totalTime = 0;
+					totalTime += (float)GetTickCount() - beginFrameTime;
+					totalFramesCount++;
+
+					if (totalTime > 1000)
+					{
+						m_smoothFps = (uint32_t)totalFramesCount;
+						totalFramesCount = 0;
+						totalTime = 0;
+					}
+				}
+				else
+				{
+					m_smoothFps = 0;
 				}
 
 				SAILOR_PROFILE_END_BLOCK();

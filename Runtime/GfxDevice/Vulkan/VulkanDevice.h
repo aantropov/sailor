@@ -34,7 +34,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		void SAILOR_API DrawFrame();
+		bool SAILOR_API DrawFrame();
 
 		bool SAILOR_API IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 
