@@ -37,9 +37,9 @@ namespace Sailor
 	public:
 
 		template<typename... TArgs>
-		static TRefPtr<T> Make(TArgs... args) noexcept
+		static TRefPtr<T> Make(TArgs&& ... args) noexcept
 		{
-			return TRefPtr<T>(new T(args...));
+			return TRefPtr<T>(new T(std::forward<TArgs>(args)...));
 		}
 
 		TRefPtr() noexcept = default;
