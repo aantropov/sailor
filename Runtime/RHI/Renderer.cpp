@@ -24,7 +24,7 @@ Renderer::~Renderer()
 	GfxDevice::Vulkan::VulkanApi::Shutdown();
 }
 
-void Renderer::FixLostDevice()
+void Renderer::FixLostDevice() const
 {
 	GfxDevice::Vulkan::VulkanApi::GetInstance()->GetMainDevice()->FixLostDevice(m_pViewport);
 }
@@ -46,7 +46,7 @@ void Renderer::RunRenderLoop()
 
 				const float beginFrameTime = (float)GetTickCount();
 
-				if (GfxDevice::Vulkan::VulkanApi::DrawFrame())
+				if (GfxDevice::Vulkan::VulkanApi::PresentFrame())
 				{
 					totalTime += (float)GetTickCount() - beginFrameTime;
 					totalFramesCount++;

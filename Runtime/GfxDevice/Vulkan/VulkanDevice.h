@@ -34,7 +34,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		bool SAILOR_API DrawFrame();
+		bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
+			const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
+			const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
 
 		bool SAILOR_API IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 

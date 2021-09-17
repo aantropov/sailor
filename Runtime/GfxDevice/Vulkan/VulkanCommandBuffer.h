@@ -39,8 +39,11 @@ namespace Sailor::GfxDevice::Vulkan
 		void BindIndexBuffer(TRefPtr<VulkanBuffer> indexBuffer);
 		void DrawIndexed(TRefPtr<VulkanBuffer> indexBuffer);
 
+		void Execute(TRefPtr<VulkanCommandBuffer> secondaryCommandBuffer);
 		void CopyBuffer(TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
 
+		void Reset();
+	
 	protected:
 
 		TRefPtr<VulkanDevice> m_device;

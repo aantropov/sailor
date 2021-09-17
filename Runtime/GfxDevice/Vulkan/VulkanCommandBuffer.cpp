@@ -105,3 +105,13 @@ void VulkanCommandBuffer::EndRenderPass()
 {
 	vkCmdEndRenderPass(m_commandBuffer);
 }
+
+void VulkanCommandBuffer::Reset()
+{
+	vkResetCommandBuffer(m_commandBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+}
+
+void VulkanCommandBuffer::Execute(TRefPtr<VulkanCommandBuffer> secondaryCommandBuffer)
+{
+	vkCmdExecuteCommands(m_commandBuffer, 1, secondaryCommandBuffer->GetHandle());
+}

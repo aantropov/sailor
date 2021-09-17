@@ -141,8 +141,8 @@ void VulkanDevice::CreateRenderPass()
 void VulkanDevice::CreateCommandPool()
 {
 	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	m_commandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_graphicsFamily.value());
-	m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_transferFamily.value());
+	m_commandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 }
 
 void VulkanDevice::CreateFrameSyncSemaphores()
@@ -383,7 +383,7 @@ void VulkanDevice::CreateCommandBuffers()
 		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 
-	for (size_t i = 0; i < m_commandBuffers.size(); i++)
+	/*for (size_t i = 0; i < m_commandBuffers.size(); i++)
 	{
 		m_commandBuffers[i]->BeginCommandList();
 		{
@@ -397,7 +397,7 @@ void VulkanDevice::CreateCommandBuffers()
 			m_commandBuffers[i]->EndRenderPass();
 		}
 		m_commandBuffers[i]->EndCommandList();
-	}
+	}*/
 }
 
 void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
@@ -516,14 +516,16 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	}
 }
 
-bool VulkanDevice::DrawFrame()
+bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
+								const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
+								const std::vector<TRefPtr<VulkanSemaphore>>* semaphoresToWait)
 {
 	// Wait while we recreate swapchain from main thread to sync with Win32Api
-	if(m_bIsSwapChainOutdated)
+	if (m_bIsSwapChainOutdated)
 	{
 		return false;
 	}
-	
+
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();
 
@@ -553,14 +555,60 @@ bool VulkanDevice::DrawFrame()
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-	VkSemaphore waitSemaphores[] = { *m_imageAvailableSemaphores[m_currentFrame] };
+	//////////////////////////////////////////////////
+	m_commandBuffers[imageIndex]->BeginCommandList();
+	{
+		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent());
+
+		if (secondaryCommandBuffers)
+		{
+			for (auto cmdBuffer : *secondaryCommandBuffers)
+			{
+				m_commandBuffers[imageIndex]->Execute(cmdBuffer);
+			}
+		}		
+
+		vkCmdBindPipeline(*m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
+		m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
+		m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
+		m_commandBuffers[imageIndex]->DrawIndexed(m_indexBuffer);
+
+		m_commandBuffers[imageIndex]->EndRenderPass();
+	}
+	m_commandBuffers[imageIndex]->EndCommandList();
+	
+	std::vector<VkSemaphore> waitSemaphores;
+	if (semaphoresToWait)
+	{
+		waitSemaphores.reserve(semaphoresToWait->size() + 1);
+		for (auto semaphore : *semaphoresToWait)
+		{
+			waitSemaphores.push_back(*semaphore);
+		}
+	}
+
+	waitSemaphores.push_back(*m_imageAvailableSemaphores[m_currentFrame]);
+
+	std::vector<VkCommandBuffer> commandBuffers;
+	if (primaryCommandBuffers)
+	{
+		commandBuffers.reserve(primaryCommandBuffers->size() + 1);
+		for (auto cmdBuffer : *primaryCommandBuffers)
+		{
+			commandBuffers.push_back(*cmdBuffer);
+		}
+	}
+
+	commandBuffers.push_back(*m_commandBuffers[imageIndex]->GetHandle());
+	///////////////////////////////////////////////////
+
 	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = waitSemaphores;
+	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
+	submitInfo.pWaitSemaphores = &waitSemaphores[0];
 	submitInfo.pWaitDstStageMask = waitStages;
 
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = m_commandBuffers[imageIndex]->GetHandle();
+	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+	submitInfo.pCommandBuffers = &commandBuffers[0];
 
 	VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[m_currentFrame] };
 	submitInfo.signalSemaphoreCount = 1;

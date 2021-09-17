@@ -137,9 +137,11 @@ void VulkanApi::Initialize(const Window* viewport, bool bInIsEnabledValidationLa
 	SAILOR_LOG("Vulkan initialized");
 }
 
-bool VulkanApi::DrawFrame()
+bool VulkanApi::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
+	const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
+	const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores)
 {
-	return m_pInstance->m_device->DrawFrame();
+	return m_pInstance->m_device->PresentFrame(primaryCommandBuffers, secondaryCommandBuffers, waitSemaphores);
 }
 
 void VulkanApi::WaitIdle()

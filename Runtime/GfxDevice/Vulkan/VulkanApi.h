@@ -23,7 +23,9 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanImage;
 	class VulkanBuffer;
 	class VulkanDeviceMemory;
-
+	class VulkanCommandBuffer;
+	class VulkanSemaphore;
+	
 #define VK_CHECK(call) \
 	do { \
 		VkResult result_ = call; \
@@ -64,7 +66,10 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API void Initialize(const Window* pViewport, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
 
-		static bool SAILOR_API DrawFrame();
+		static bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
+			const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
+			const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
+		
 		static void SAILOR_API WaitIdle();
 		SAILOR_API TRefPtr<VulkanDevice> GetMainDevice() const;
 
