@@ -41,7 +41,7 @@ namespace Sailor
 			size_t mod = fileSize % sizeof(T);
 			size_t size = fileSize / sizeof(T) + (mod ? 1 : 0);
 			buffer.resize(size);
-			
+
 			//buffer.resize(fileSize / sizeof(T));
 
 			file.seekg(0, std::ios::beg);
@@ -51,11 +51,23 @@ namespace Sailor
 			return true;
 		}
 
-		
+
 		static SAILOR_API bool ReadAllTextFile(const std::string& filename, std::string& text);
 
 		SAILOR_API void ScanContentFolder();
-		
+
+		template<typename TAssetInfo>
+		TAssetInfo* GetAssetInfo(UID uid) const
+		{
+			return 	dynamic_cast<TAssetInfo*>(GetAssetInfo(uid));
+		}
+
+		template<typename TAssetInfo>
+		TAssetInfo* GetAssetInfo(const std::string& assetFilepath) const
+		{
+			return 	dynamic_cast<TAssetInfo*>(GetAssetInfo(assetFilepath));
+		}
+
 		SAILOR_API AssetInfo* GetAssetInfo(UID uid) const;
 		SAILOR_API AssetInfo* GetAssetInfo(const std::string& assetFilepath) const;
 

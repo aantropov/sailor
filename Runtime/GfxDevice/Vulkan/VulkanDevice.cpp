@@ -1,3 +1,4 @@
+#include "AssetRegistry/ShaderAssetInfo.h"
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
 #include <set>
@@ -26,14 +27,15 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "RHI/RHIResource.h"
 #include "VulkanDeviceMemory.h"
 #include "VulkanBuffer.h"
+#include "VulkanShaderModule.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
 using namespace Sailor::RHI;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VkShaderModule g_testFragShader;
-VkShaderModule g_testVertShader;
+TRefPtr<VulkanShaderStage> g_testFragShader;
+TRefPtr<VulkanShaderStage> g_testVertShader;
 
 const std::vector<RHIVertex> g_testVertices =
 {
@@ -91,8 +93,8 @@ void VulkanDevice::Shutdown()
 	m_vertexBuffer.Clear();
 	m_indexBuffer.Clear();
 
-	vkDestroyShaderModule(m_device, g_testFragShader, nullptr);
-	vkDestroyShaderModule(m_device, g_testVertShader, nullptr);
+	g_testFragShader.Clear();
+	g_testVertShader.Clear();
 
 	m_commandPool.Clear();
 	m_transferCommandPool.Clear();
@@ -194,45 +196,27 @@ void VulkanDevice::CreateVertexBuffer()
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 }
 
-VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint32_t>& code)
-{
-	VkShaderModuleCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = code.size() * 4;
-	createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-	VkShaderModule shaderModule;
-	VK_CHECK(vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule));
-
-	return shaderModule;
-}
-
 void VulkanDevice::CreateGraphicsPipeline()
 {
-	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfo("Shaders\\Simple.shader"))
+	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfo<ShaderAssetInfo>("Shaders\\Simple.shader"))
 	{
 		std::vector<uint32_t> vertCode;
 		std::vector<uint32_t> fragCode;
 
 		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode);
 
-		g_testVertShader = CreateShaderModule(m_device, vertCode);
-		g_testFragShader = CreateShaderModule(m_device, fragCode);
-
+		g_testVertShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", TRefPtr<VulkanDevice>(this), vertCode);
+		g_testVertShader->Compile();
+		
+		g_testFragShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", TRefPtr<VulkanDevice>(this), fragCode);
+		g_testFragShader->Compile();
+		
 		VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-		vertShaderStageInfo.module = g_testVertShader;
-		vertShaderStageInfo.pName = "main";
-		vertShaderStageInfo.flags = 0;
-
+		g_testVertShader->Apply(vertShaderStageInfo);
+		
 		VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-		fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-		fragShaderStageInfo.module = g_testFragShader;
-		fragShaderStageInfo.pName = "main";
-		fragShaderStageInfo.flags = 0;
-
+		g_testFragShader->Apply(fragShaderStageInfo);
+		
 		VkPipelineShaderStageCreateInfo shaderStages[] = { fragShaderStageInfo, vertShaderStageInfo };
 
 		auto bindingDescription = RHIVertexFactoryPositionColor::GetBindingDescription();

@@ -179,8 +179,8 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 
 	m_pInstance->m_shaderCache.SavePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl);
 
-	std::vector<uint32_t> spirvVertexByteCode;
-	std::vector<uint32_t> spirvFragmentByteCode;
+	ByteCode spirvVertexByteCode;
+	ByteCode spirvFragmentByteCode;
 
 	const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, EShaderKind::Vertex, {}, {}, spirvVertexByteCode);
 	const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, EShaderKind::Fragment, {}, {}, spirvFragmentByteCode);
@@ -290,7 +290,7 @@ void ShaderCompiler::OnAssetInfoUpdated(AssetInfo* assetInfo)
 	ShaderCompiler::GetInstance()->CompileAllPermutations(assetInfo->GetUID());
 }
 
-bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, std::vector<uint32_t>& outByteCode)
+bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, ByteCode& outByteCode)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -349,7 +349,7 @@ std::vector<std::string> ShaderCompiler::GetDefines(const std::vector<std::strin
 	return res;
 }
 
-void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, std::vector<uint32_t>& outVertexByteCode, std::vector<uint32_t>& outFragmentByteCode)
+void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, ByteCode& outVertexByteCode, ByteCode& outFragmentByteCode)
 {
 	SAILOR_PROFILE_FUNCTION();
 
