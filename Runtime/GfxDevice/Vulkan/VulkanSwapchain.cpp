@@ -16,8 +16,8 @@ VulkanSwapchainImage::VulkanSwapchainImage(VkImage image, TRefPtr<VulkanDevice> 
 
 VulkanSwapchainImage::~VulkanSwapchainImage()
 {
-	m_vulkanData.m_deviceMemory = 0;
-	m_vulkanData.m_image = VK_NULL_HANDLE;
+	m_deviceMemory = 0;
+	m_image = VK_NULL_HANDLE;
 }
 
 VulkanSurface::VulkanSurface(VkSurfaceKHR surface, VkInstance instance) :

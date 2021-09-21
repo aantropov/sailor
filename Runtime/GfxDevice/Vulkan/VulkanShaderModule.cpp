@@ -42,7 +42,7 @@ void VulkanShaderModule::Compile()
 {
 	if (m_shaderModule)
 	{
-		Release();
+		return;
 	}
 
 	VkShaderModuleCreateInfo createInfo{};

@@ -1,3 +1,4 @@
+#include <vector>
 #include "VulkanApi.h"
 #include "VulkanImage.h"
 #include "VulkanDevice.h"
@@ -5,7 +6,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-void VulkanImage::VulkanData::Clear()
+VulkanImage::~VulkanImage()
 {
 	if (m_image)
 	{
@@ -35,31 +36,26 @@ VulkanImage::VulkanImage()
 	}
 }
 
-VulkanImage::~VulkanImage()
-{
-	m_vulkanData.Clear();
-}
-
 VulkanImage::VulkanImage(VkImage image, TRefPtr<VulkanDevice> device)
 {
-	m_vulkanData.m_image = image;
-	m_vulkanData.m_device = device;
+	m_image = image;
+	m_device = device;
 }
 
 VkResult VulkanImage::Bind(VkDeviceMemory deviceMemory, VkDeviceSize memoryOffset)
 {
-	VkResult result = vkBindImageMemory(*m_vulkanData.m_device, m_vulkanData.m_image, deviceMemory, memoryOffset);
+	VkResult result = vkBindImageMemory(*m_device, m_image, deviceMemory, memoryOffset);
 	if (result == VK_SUCCESS)
 	{
-		m_vulkanData.m_deviceMemory = deviceMemory;
-		m_vulkanData.m_memoryOffset = memoryOffset;
+		m_deviceMemory = deviceMemory;
+		m_memoryOffset = memoryOffset;
 	}
 	return result;
 }
 
-void VulkanImage::Compile()
+void VulkanImage::Compile() noexcept
 {
-	if (m_vulkanData.m_image != VK_NULL_HANDLE)
+	if (m_image != VK_NULL_HANDLE)
 	{
 		return;
 	}
@@ -81,5 +77,5 @@ void VulkanImage::Compile()
 	info.pQueueFamilyIndices = m_queueFamilyIndices.data();
 	info.initialLayout = m_initialLayout;
 
-	VK_CHECK(vkCreateImage(*m_vulkanData.m_device, &info, nullptr, &m_vulkanData.m_image));
+	VK_CHECK(vkCreateImage(*m_device, &info, nullptr, &m_image));
 }

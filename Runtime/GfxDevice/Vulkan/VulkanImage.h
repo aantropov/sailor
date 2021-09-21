@@ -27,27 +27,20 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<uint32_t> m_queueFamilyIndices;
 		VkImageLayout m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		operator VkImage() const { return m_vulkanData.m_image; }
+		operator VkImage() const { return m_image; }
 
-		void Compile();
+		void Compile() noexcept;
 		VkResult Bind(VkDeviceMemory deviceMemory, VkDeviceSize memoryOffset);
 
 	protected:
 
 		virtual ~VulkanImage();
 
-		struct VulkanData
-		{
-			VkImage m_image = VK_NULL_HANDLE;
-			TRefPtr<VulkanDevice> m_device;
+		VkImage m_image = VK_NULL_HANDLE;
+		TRefPtr<VulkanDevice> m_device;
 
-			VkDeviceMemory m_deviceMemory = 0;
-			VkDeviceSize m_memoryOffset = 0;
-			VkDeviceSize m_size = 0;
-
-			void Clear();
-		};
-
-		VulkanData m_vulkanData;
+		VkDeviceMemory m_deviceMemory = 0;
+		VkDeviceSize m_memoryOffset = 0;
+		VkDeviceSize m_size = 0;
 	};
 }

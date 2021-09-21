@@ -6,7 +6,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanImageView::VulkanData::~VulkanData()
+VulkanImageView::~VulkanImageView()
 {
 	if (m_imageView)
 	{
@@ -41,18 +41,14 @@ VulkanImageView::VulkanImageView(TRefPtr<VulkanImage> image, VkImageAspectFlags 
 	m_subresourceRange.layerCount = image->m_arrayLayers;
 }
 
-VulkanImageView::~VulkanImageView()
-{
-}
-
 void VulkanImageView::Compile(TRefPtr<VulkanDevice> device)
 {
-	if (m_vulkanData.m_imageView != VK_NULL_HANDLE)
+	if (m_imageView != VK_NULL_HANDLE)
 	{
 		return;
 	}
 
-	m_vulkanData.m_device = device;
+	m_device = device;
 
 	VkImageViewCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -70,5 +66,5 @@ void VulkanImageView::Compile(TRefPtr<VulkanDevice> device)
 		info.image = *m_image;
 	}*/
 
-	VK_CHECK(vkCreateImageView(*m_vulkanData.m_device, &info, nullptr, &m_vulkanData.m_imageView));
+	VK_CHECK(vkCreateImageView(*m_device, &info, nullptr, &m_imageView));
 }

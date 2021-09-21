@@ -23,21 +23,15 @@ namespace Sailor::GfxDevice::Vulkan
 		VkImageSubresourceRange m_subresourceRange;
 
 		/// Vulkan VkImageView handle
-		operator VkImageView() const { return m_vulkanData.m_imageView; }
+		operator VkImageView() const { return m_imageView; }
 
 		void Compile(TRefPtr<VulkanDevice> device);
 
-	protected:
 		virtual ~VulkanImageView();
 
-		struct VulkanData
-		{
-			VkImageView m_imageView = VK_NULL_HANDLE;
-			TRefPtr<VulkanDevice> m_device;
-
-			~VulkanData();
-		};
-
-		VulkanData m_vulkanData;
+	protected:
+		
+		VkImageView m_imageView = VK_NULL_HANDLE;
+		TRefPtr<VulkanDevice> m_device;
 	};
 }

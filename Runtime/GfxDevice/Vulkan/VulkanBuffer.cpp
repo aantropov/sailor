@@ -1,18 +1,19 @@
-#include "VulkanDevice.h"
-#include "VulkanDeviceMemory.h"
 #include "VulkanBuffer.h"
 #include "Core/RefPtr.hpp"
+#include <vulkan/vulkan.h>
+#include "VulkanDevice.h"
+#include "VulkanDeviceMemory.h"
 
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanBuffer::VulkanBuffer(VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode) :
-	m_size(in_size),
-	m_usage(in_usage),
-	m_sharingMode(in_sharingMode)
+VulkanBuffer::VulkanBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
+	m_size(size),
+	m_usage(usage),
+	m_sharingMode(sharingMode)
 {}
 
-VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode) :
-	VulkanBuffer(in_size, in_usage, in_sharingMode)
+VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
+	VulkanBuffer(size, usage, sharingMode)
 {
 	Compile(device);
 }
