@@ -34,6 +34,20 @@ void VulkanStateViewport::Apply(VkGraphicsPipelineCreateInfo& state) const
 	state.pViewportState = &m_viewportState;
 }
 
+VulkanStateDynamicViewport::VulkanStateDynamicViewport() : m_viewportState{}
+{
+	m_viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	m_viewportState.viewportCount = 1;
+	m_viewportState.pViewports = nullptr;
+	m_viewportState.scissorCount = 1;
+	m_viewportState.pScissors = nullptr;
+}
+
+void VulkanStateDynamicViewport::Apply(VkGraphicsPipelineCreateInfo& state) const
+{
+	state.pViewportState = &m_viewportState;
+}
+
 VulkanStateVertexDescription::VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const std::vector<VkVertexInputAttributeDescription> attributes) :
 	m_bindingDescription(binding), m_attributeDescriptions(std::move(attributes)), m_vertexInput{}
 {
@@ -133,19 +147,17 @@ void VulkanStateColorBlending::Apply(struct VkGraphicsPipelineCreateInfo& state)
 
 VulkanStateDynamic::VulkanStateDynamic() : m_dynamicState{}
 {
-	VkDynamicState dynamicStates[] = {
-	VK_DYNAMIC_STATE_VIEWPORT,
-	VK_DYNAMIC_STATE_LINE_WIDTH
-	};
-
+	m_dynamicStates.push_back(VK_DYNAMIC_STATE_VIEWPORT);
+	m_dynamicStates.push_back(VK_DYNAMIC_STATE_SCISSOR);
+	
 	m_dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
 	m_dynamicState.dynamicStateCount = 2;
-	m_dynamicState.pDynamicStates = dynamicStates;
+	m_dynamicState.pDynamicStates = m_dynamicStates.data();
 }
 
 void VulkanStateDynamic::Apply(struct VkGraphicsPipelineCreateInfo& state) const
 {
-	state.pDynamicState = nullptr;
+	state.pDynamicState = &m_dynamicState;
 }
 
 void VulkanStateDepthStencil::Apply(struct VkGraphicsPipelineCreateInfo& state) const

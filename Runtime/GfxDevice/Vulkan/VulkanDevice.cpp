@@ -98,6 +98,9 @@ void VulkanDevice::Shutdown()
 	g_testFragShader.Clear();
 	g_testVertShader.Clear();
 
+	m_graphicsPipeline.Clear();
+	m_pipelineLayout.Clear();
+	
 	m_commandPool.Clear();
 	m_transferCommandPool.Clear();
 	m_renderFinishedSemaphores.clear();
@@ -174,7 +177,6 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 	CreateSwapchain(pViewport);
 	CreateRenderPass();
-	CreateGraphicsPipeline();
 	CreateFramebuffers();
 	CreateCommandBuffers();
 
@@ -213,7 +215,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		auto attributeDescriptions = RHIVertexFactoryPositionColor::GetAttributeDescriptions();
 		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = new VulkanStateVertexDescription(RHIVertexFactoryPositionColor::GetBindingDescription(), vector{ attributeDescriptions[0], attributeDescriptions[1] });
 		const TRefPtr<VulkanStateInputAssembly> pInputAssembly = new VulkanStateInputAssembly();
-		const TRefPtr<VulkanStateViewport> pStateViewport = new VulkanStateViewport(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height);
+		const TRefPtr<VulkanStateDynamicViewport> pStateViewport = new VulkanStateDynamicViewport();
 		const TRefPtr<VulkanStateRasterization> pStateRasterizer = new VulkanStateRasterization();
 
 		const TRefPtr<VulkanStateDynamic> pDynamicState = new VulkanStateDynamic();
@@ -379,10 +381,6 @@ void VulkanDevice::CleanupSwapChain()
 {
 	m_swapChainFramebuffers.clear();
 	m_commandBuffers.clear();
-
-	m_graphicsPipeline.Clear();
-	m_pipelineLayout.Clear();
-
 	m_renderPass.Clear();
 }
 
@@ -442,8 +440,10 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
+		
 	//////////////////////////////////////////////////
+	TRefPtr<VulkanStateViewport> pStateViewport = new VulkanStateViewport(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height);
+	
 	m_commandBuffers[imageIndex]->BeginCommandList();
 	{
 		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent());
@@ -456,7 +456,10 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 			}
 		}
 
-		vkCmdBindPipeline(*m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, *m_graphicsPipeline);
+		vkCmdBindPipeline(*m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, *m_graphicsPipeline);		
+		m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
+		m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
+		
 		m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
 		m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
 		m_commandBuffers[imageIndex]->DrawIndexed(m_indexBuffer);

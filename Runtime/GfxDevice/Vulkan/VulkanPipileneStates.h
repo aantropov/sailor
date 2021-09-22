@@ -7,7 +7,7 @@
 namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanPipelineState : public RHI::RHIResource, public RHI::IRHIStateModifier<VkGraphicsPipelineCreateInfo> {};
-	
+
 	class VulkanStateViewport : public VulkanPipelineState
 	{
 	public:
@@ -17,10 +17,24 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
+		const VkViewport& GetViewport() const { return m_viewport; }
+		const VkRect2D& GetScissor() const { return m_scissor; }
+
 	private:
 
 		VkViewport m_viewport;
 		VkRect2D m_scissor;
+		VkPipelineViewportStateCreateInfo m_viewportState;
+	};
+
+	class VulkanStateDynamicViewport : public VulkanPipelineState
+	{
+	public:
+		VulkanStateDynamicViewport();
+
+		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+	private:
+
 		VkPipelineViewportStateCreateInfo m_viewportState;
 	};
 
@@ -84,8 +98,8 @@ namespace Sailor::GfxDevice::Vulkan
 			VkBlendFactor            dstAlphaBlendFactor,
 			VkBlendOp                alphaBlendOp,
 			VkColorComponentFlags    colorWriteMask);
-		
-			void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+
+		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 
@@ -102,6 +116,7 @@ namespace Sailor::GfxDevice::Vulkan
 	private:
 
 		VkPipelineDynamicStateCreateInfo m_dynamicState;
+		std::vector<VkDynamicState> m_dynamicStates;
 	};
 
 	class VulkanStateDepthStencil : public VulkanPipelineState

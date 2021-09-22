@@ -5,6 +5,7 @@
 #include "VulkanRenderPass.h"
 #include "VulkanFramebuffer.h"
 #include "VulkanBuffer.h"
+#include "VulkanPipileneStates.h"
 #include "Core/RefPtr.hpp"
 
 using namespace Sailor;
@@ -80,7 +81,7 @@ void VulkanCommandBuffer::BeginRenderPass(TRefPtr<VulkanRenderPass> renderPass, 
 void VulkanCommandBuffer::BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> buffers, std::vector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
 {
 	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(_malloca(buffers.size() * sizeof(VkBuffer)));
-	
+
 	for (int i = 0; i < buffers.size(); i++)
 	{
 		vertexBuffers[i] = *buffers[i];
@@ -114,4 +115,14 @@ void VulkanCommandBuffer::Reset()
 void VulkanCommandBuffer::Execute(TRefPtr<VulkanCommandBuffer> secondaryCommandBuffer)
 {
 	vkCmdExecuteCommands(m_commandBuffer, 1, secondaryCommandBuffer->GetHandle());
+}
+
+void VulkanCommandBuffer::SetViewport(TRefPtr<const VulkanStateViewport> viewport)
+{
+	vkCmdSetViewport(m_commandBuffer, 0, 1, &viewport->GetViewport());
+}
+
+void VulkanCommandBuffer::SetScissor(TRefPtr<const VulkanStateViewport> viewport)
+{
+	vkCmdSetScissor(m_commandBuffer, 0, 1, &viewport->GetScissor());
 }
