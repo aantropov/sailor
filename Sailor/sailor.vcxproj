@@ -188,6 +188,7 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDescriptors.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDevice.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDeviceMemory.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanFence.h" />
@@ -224,6 +225,7 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDescriptors.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDevice.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDeviceMemory.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanFence.cpp" />
