@@ -16,13 +16,13 @@ VulkanPipelineLayout::VulkanPipelineLayout() :
 
 VulkanPipelineLayout::VulkanPipelineLayout(
 	TRefPtr<VulkanDevice> pDevice,
-	const std::vector<VkDescriptorSetLayout>& descriptorsSet,
-	const std::vector<VkPushConstantRange>& pushConstantRanges,
+	std::vector<VkDescriptorSetLayout> descriptorsSet,
+	std::vector<VkPushConstantRange> pushConstantRanges,
 	VkPipelineLayoutCreateFlags flags) :
-	m_pDevice(pDevice),
 	m_flags(flags),
-	m_descriptionSetLayouts(descriptorsSet),
-	m_pushConstantRanges(pushConstantRanges)
+	m_descriptionSetLayouts(std::move(descriptorsSet)),
+	m_pushConstantRanges(std::move(pushConstantRanges)),
+	m_pDevice(std::move(pDevice))
 {
 
 }
@@ -48,8 +48,7 @@ void VulkanPipelineLayout::Compile()
 	}
 
 	//TODO Compile all description sets
-
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo;
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.flags = m_flags;
 	pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(m_descriptionSetLayouts.size());
@@ -63,14 +62,14 @@ void VulkanPipelineLayout::Compile()
 
 VulkanPipeline::VulkanPipeline(TRefPtr<VulkanDevice> pDevice,
 	TRefPtr<VulkanPipelineLayout> pipelineLayout,
-	const std::vector<TRefPtr<VulkanShaderStage>>& shaderStages,
-	const std::vector<TRefPtr<VulkanPipelineState>>& pipelineStates,
-	uint32_t subpass) :	
-	m_stages(shaderStages),
-	m_pDevice(std::move(pDevice)),
-	m_pipelineStates(pipelineStates),
+	std::vector<TRefPtr<VulkanShaderStage>> shaderStages,
+	std::vector<TRefPtr<VulkanPipelineState>> pipelineStates,
+	uint32_t subpass) :
+	m_stages(std::move(shaderStages)),
+	m_pipelineStates(std::move(pipelineStates)),
 	m_layout(std::move(pipelineLayout)),
-	m_subpass(subpass)
+	m_subpass(subpass),
+	m_pDevice(std::move(pDevice))
 {
 }
 
@@ -102,7 +101,9 @@ void VulkanPipeline::Compile()
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 	pipelineInfo.pNext = nullptr;
 
-	auto shaderStageCreateInfo = reinterpret_cast<VkPipelineShaderStageCreateInfo*>(_malloca(m_stages.size() * sizeof(VkPipelineShaderStageCreateInfo)));
+	const size_t stackArraySize = m_stages.size() * sizeof(VkPipelineShaderStageCreateInfo);
+	auto shaderStageCreateInfo = reinterpret_cast<VkPipelineShaderStageCreateInfo*>(_malloca(stackArraySize));
+	memset(shaderStageCreateInfo, 0, stackArraySize);
 
 	for (size_t i = 0; i < m_stages.size(); ++i)
 	{
@@ -115,7 +116,7 @@ void VulkanPipeline::Compile()
 	pipelineInfo.pStages = shaderStageCreateInfo;
 
 	ApplyStates(pipelineInfo);
-	
+
 	VK_CHECK(vkCreateGraphicsPipelines(*m_pDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline));
 	_freea(shaderStageCreateInfo);
 }

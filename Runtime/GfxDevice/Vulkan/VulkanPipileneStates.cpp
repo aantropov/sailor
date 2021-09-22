@@ -10,6 +10,7 @@ VulkanStateViewport::VulkanStateViewport(float width, float height) :
 }
 
 VulkanStateViewport::VulkanStateViewport(float x, float y, float width, float height, VkOffset2D scissorOffset, VkExtent2D scissorExtent, float minDepth, float maxDepth)
+	: m_viewport{}, m_scissor{}, m_viewportState{}
 {
 	m_viewport.x = x;
 	m_viewport.y = y;
@@ -34,7 +35,7 @@ void VulkanStateViewport::Apply(VkGraphicsPipelineCreateInfo& state) const
 }
 
 VulkanStateVertexDescription::VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const std::vector<VkVertexInputAttributeDescription> attributes) :
-	m_bindingDescription(binding), m_attributeDescriptions(std::move(attributes))
+	m_bindingDescription(binding), m_attributeDescriptions(std::move(attributes)), m_vertexInput{}
 {
 	m_vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	m_vertexInput.vertexBindingDescriptionCount = 1;
@@ -48,7 +49,9 @@ void VulkanStateVertexDescription::Apply(VkGraphicsPipelineCreateInfo& state) co
 	state.pVertexInputState = &m_vertexInput;
 }
 
-VulkanStateInputAssembly::VulkanStateInputAssembly(VkPrimitiveTopology topology, bool bPrimitiveRestartEnable)
+VulkanStateInputAssembly::VulkanStateInputAssembly(VkPrimitiveTopology topology, bool bPrimitiveRestartEnable) :
+	m_inputAssembly{}
+
 {
 	m_inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
 	m_inputAssembly.topology = topology;
@@ -60,7 +63,8 @@ void VulkanStateInputAssembly::Apply(struct VkGraphicsPipelineCreateInfo& state)
 	state.pInputAssemblyState = &m_inputAssembly;
 }
 
-VulkanStateRasterization::VulkanStateRasterization()
+VulkanStateRasterization::VulkanStateRasterization() :
+	m_rasterizer{}
 {
 	m_rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	m_rasterizer.depthClampEnable = VK_FALSE;
@@ -81,7 +85,7 @@ void VulkanStateRasterization::Apply(struct VkGraphicsPipelineCreateInfo& state)
 	state.pRasterizationState = &m_rasterizer;
 }
 
-VulkanStateMultisample::VulkanStateMultisample()
+VulkanStateMultisample::VulkanStateMultisample() : m_multisampling{}
 {
 	m_multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	m_multisampling.sampleShadingEnable = VK_FALSE;
