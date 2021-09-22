@@ -1,6 +1,8 @@
 #include <vector>
 #include "VulkanApi.h"
-#include "VulkanGraphicsPipeline.h"
+#include "VulkanPipeline.h"
+
+#include "VulkanPipileneStates.h"
 #include "VulkanShaderModule.h"
 #include "VulkanRenderPass.h"
 
@@ -59,43 +61,38 @@ void VulkanPipelineLayout::Compile()
 	VK_CHECK(vkCreatePipelineLayout(*m_pDevice, &pipelineLayoutInfo, nullptr, &m_pipelineLayout));
 }
 
-VulkanGraphicsPipeline::VulkanGraphicsPipeline(TRefPtr<VulkanDevice> pDevice,
+VulkanPipeline::VulkanPipeline(TRefPtr<VulkanDevice> pDevice,
 	TRefPtr<VulkanPipelineLayout> pipelineLayout,
 	const std::vector<TRefPtr<VulkanShaderStage>>& shaderStages,
-	//const GraphicsPipelineState& pipelineStates, 
-	uint32_t subpass) :
-	m_pDevice(pDevice),
+	const std::vector<TRefPtr<VulkanPipelineState>>& pipelineStates,
+	uint32_t subpass) :	
 	m_stages(shaderStages),
-	//m_pipelineStates(pipelineStates),
-	m_layout(pipelineLayout),
+	m_pDevice(std::move(pDevice)),
+	m_pipelineStates(pipelineStates),
+	m_layout(std::move(pipelineLayout)),
 	m_subpass(subpass)
 {
 }
 
-VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
+VulkanPipeline::~VulkanPipeline()
 {
 	Release();
 }
 
-void VulkanGraphicsPipeline::Release()
+
+void VulkanPipeline::Release()
 {
 	vkDestroyPipeline(*m_pDevice, m_pipeline, nullptr);
 }
 
-void VulkanGraphicsPipeline::Compile()
+void VulkanPipeline::Compile()
 {
-	// compile shaders if required
-	// compile Vulkan objects
 	m_layout->Compile();
 
 	for (auto& shaderStage : m_stages)
 	{
 		shaderStage->Compile();
 	}
-
-	//GraphicsPipelineStates combined_pipelineStates = context.defaultPipelineStates;
-	//combined_pipelineStates.insert(combined_pipelineStates.end(), pipelineStates.begin(), pipelineStates.end());
-	//combined_pipelineStates.insert(combined_pipelineStates.end(), context.overridePipelineStates.begin(), context.overridePipelineStates.end());
 
 	VkGraphicsPipelineCreateInfo pipelineInfo = {};
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -117,11 +114,17 @@ void VulkanGraphicsPipeline::Compile()
 	pipelineInfo.stageCount = static_cast<uint32_t>(m_stages.size());
 	pipelineInfo.pStages = shaderStageCreateInfo;
 
-	/*for (auto pipelineState : pipelineStates)
-	{
-		pipelineState->apply(context, pipelineInfo);
-	}*/
-
+	ApplyStates(pipelineInfo);
+	
 	VK_CHECK(vkCreateGraphicsPipelines(*m_pDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline));
 	_freea(shaderStageCreateInfo);
+}
+
+
+void VulkanPipeline::ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const
+{
+	for (auto pipelineState : m_pipelineStates)
+	{
+		pipelineState->Apply(pipelineInfo);
+	}
 }

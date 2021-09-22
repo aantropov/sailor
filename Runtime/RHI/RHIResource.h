@@ -29,7 +29,6 @@ namespace Sailor::RHI
 
 	private:
 
-		RHIResource(RHIResource&& move) = delete;
 		RHIResource(RHIResource& copy) = delete;
 		RHIResource& operator =(RHIResource& rhs) = delete;
 	};
@@ -38,9 +37,15 @@ namespace Sailor::RHI
 	{
 	public:
 
-	//	RHICommandBuffer(Device* device, CommandPool* commandPool, VkCommandBufferLevel level);
-	//	virtual ~RHICommandBuffer() override;
+		//	RHICommandBuffer(Device* device, CommandPool* commandPool, VkCommandBufferLevel level);
+		//	virtual ~RHICommandBuffer() override;
 	};
 
-
+	template<typename TState>
+	class IRHIStateModifier
+	{
+	public:
+		virtual void Apply(TState& State) const = 0;
+		virtual ~IRHIStateModifier() = default;
+	};
 };

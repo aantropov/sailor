@@ -1,3 +1,4 @@
+#include "VulkanPipileneStates.h"
 #include "AssetRegistry/ShaderAssetInfo.h"
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
@@ -28,6 +29,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanDeviceMemory.h"
 #include "VulkanBuffer.h"
 #include "VulkanShaderModule.h"
+#include "VulkanPipeline.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -206,140 +208,42 @@ void VulkanDevice::CreateGraphicsPipeline()
 		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode);
 
 		g_testVertShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", TRefPtr<VulkanDevice>(this), vertCode);
-		g_testVertShader->Compile();
-		
 		g_testFragShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", TRefPtr<VulkanDevice>(this), fragCode);
-		g_testFragShader->Compile();
-		
-		VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-		g_testVertShader->Apply(vertShaderStageInfo);
-		
-		VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-		g_testFragShader->Apply(fragShaderStageInfo);
-		
-		VkPipelineShaderStageCreateInfo shaderStages[] = { fragShaderStageInfo, vertShaderStageInfo };
 
-		auto bindingDescription = RHIVertexFactoryPositionColor::GetBindingDescription();
 		auto attributeDescriptions = RHIVertexFactoryPositionColor::GetAttributeDescriptions();
+		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = new VulkanStateVertexDescription(RHIVertexFactoryPositionColor::GetBindingDescription(), vector{ attributeDescriptions[0], attributeDescriptions[1] });
+		const TRefPtr<VulkanStateInputAssembly> pInputAssembly = new VulkanStateInputAssembly();
+		const TRefPtr<VulkanStateViewport> pStateViewport = new VulkanStateViewport(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height);
+		const TRefPtr<VulkanStateRasterization> pStateRasterizer = new VulkanStateRasterization();
 
-		VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+		const TRefPtr<VulkanStateDynamic> pDynamicState = new VulkanStateDynamic();
+		const TRefPtr<VulkanStateDepthStencil> pDepthStencil = new VulkanStateDepthStencil();
+		const TRefPtr<VulkanStateColorBlending> pColorBlending = new VulkanStateColorBlending(false,
+			VK_BLEND_FACTOR_ONE,
+			VK_BLEND_FACTOR_ZERO,
+			VK_BLEND_OP_ADD,
+			VK_BLEND_FACTOR_ONE,
+			VK_BLEND_FACTOR_ZERO,
+			VK_BLEND_OP_ADD,
+			VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
 
-		vertexInputInfo.vertexBindingDescriptionCount = 1;
-		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+		const TRefPtr<VulkanStateMultisample> pMultisample = new VulkanStateMultisample();
 
-		VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-		inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-		inputAssembly.primitiveRestartEnable = VK_FALSE;
+		m_pipelineLayout = TRefPtr<VulkanPipelineLayout>::Make(TRefPtr<VulkanDevice>(this),
+			std::vector<VkDescriptorSetLayout>(),
+			std::vector<VkPushConstantRange>(),
+			0);
 
-		VkViewport viewport{};
-		viewport.x = 0.0f;
-		viewport.y = 0.0f;
-		viewport.width = (float)m_swapchain->GetExtent().width;
-		viewport.height = (float)m_swapchain->GetExtent().height;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
+		std::vector<TRefPtr<VulkanPipelineState>> states = { pStateViewport, pVertexDescription, pInputAssembly, pStateRasterizer, pDynamicState, pDepthStencil, pColorBlending, pMultisample };
 
-		VkRect2D scissor{};
-		scissor.offset = { 0, 0 };
-		scissor.extent = m_swapchain->GetExtent();
+		m_graphicsPipeline = TRefPtr<VulkanPipeline>::Make(TRefPtr<VulkanDevice>(this),
+			m_pipelineLayout,
+			std::vector{ g_testVertShader, g_testFragShader },
+			states,
+			0);
 
-		VkPipelineViewportStateCreateInfo viewportState{};
-		viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-		viewportState.viewportCount = 1;
-		viewportState.pViewports = &viewport;
-		viewportState.scissorCount = 1;
-		viewportState.pScissors = &scissor;
-
-		VkPipelineRasterizationStateCreateInfo rasterizer{};
-		rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-		rasterizer.depthClampEnable = VK_FALSE;
-		rasterizer.rasterizerDiscardEnable = VK_FALSE;
-		rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterizer.lineWidth = 1.0f;
-		rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-		rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-
-		rasterizer.depthBiasEnable = VK_FALSE;
-		rasterizer.depthBiasConstantFactor = 0.0f; // Optional
-		rasterizer.depthBiasClamp = 0.0f; // Optional
-		rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
-
-		VkPipelineMultisampleStateCreateInfo multisampling{};
-		multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-		multisampling.sampleShadingEnable = VK_FALSE;
-		multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-		multisampling.minSampleShading = 1.0f; // Optional
-		multisampling.pSampleMask = nullptr; // Optional
-		multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
-		multisampling.alphaToOneEnable = VK_FALSE; // Optional
-
-		VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-		colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-		colorBlendAttachment.blendEnable = VK_FALSE;
-		colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
-		colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
-		colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD; // Optional
-		colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
-		colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
-		colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
-
-		VkPipelineColorBlendStateCreateInfo colorBlending{};
-		colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-		colorBlending.logicOpEnable = VK_FALSE;
-		colorBlending.logicOp = VK_LOGIC_OP_COPY; // Optional
-		colorBlending.attachmentCount = 1;
-		colorBlending.pAttachments = &colorBlendAttachment;
-		colorBlending.blendConstants[0] = 0.0f; // Optional
-		colorBlending.blendConstants[1] = 0.0f; // Optional
-		colorBlending.blendConstants[2] = 0.0f; // Optional
-		colorBlending.blendConstants[3] = 0.0f; // Optional
-
-		VkDynamicState dynamicStates[] = {
-			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_LINE_WIDTH
-		};
-
-		VkPipelineDynamicStateCreateInfo dynamicState{};
-		dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-		dynamicState.dynamicStateCount = 2;
-		dynamicState.pDynamicStates = dynamicStates;
-
-		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		pipelineLayoutInfo.setLayoutCount = 0; // Optional
-		pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
-		pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-		pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
-
-		VK_CHECK(vkCreatePipelineLayout(m_device, &pipelineLayoutInfo, nullptr, &m_pipelineLayout));
-
-		VkGraphicsPipelineCreateInfo pipelineInfo{};
-		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipelineInfo.stageCount = 2;
-		pipelineInfo.pStages = shaderStages;
-
-		pipelineInfo.pVertexInputState = &vertexInputInfo;
-		pipelineInfo.pInputAssemblyState = &inputAssembly;
-		pipelineInfo.pViewportState = &viewportState;
-		pipelineInfo.pRasterizationState = &rasterizer;
-		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = nullptr; // Optional
-		pipelineInfo.pColorBlendState = &colorBlending;
-		pipelineInfo.pDynamicState = nullptr; // Optional
-
-		pipelineInfo.layout = m_pipelineLayout;
-
-		pipelineInfo.renderPass = *m_renderPass;
-		pipelineInfo.subpass = 0;
-
-		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
-		pipelineInfo.basePipelineIndex = -1; // Optional		
-
-		VK_CHECK(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_graphicsPipeline));
+		m_graphicsPipeline->m_renderPass = m_renderPass;
+		m_graphicsPipeline->Compile();
 	}
 }
 
@@ -476,8 +380,8 @@ void VulkanDevice::CleanupSwapChain()
 	m_swapChainFramebuffers.clear();
 	m_commandBuffers.clear();
 
-	vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
-	vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+	m_graphicsPipeline.Clear();
+	m_pipelineLayout.Clear();
 
 	m_renderPass.Clear();
 }
@@ -501,8 +405,8 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 }
 
 bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
-								const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
-								const std::vector<TRefPtr<VulkanSemaphore>>* semaphoresToWait)
+	const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
+	const std::vector<TRefPtr<VulkanSemaphore>>* semaphoresToWait)
 {
 	// Wait while we recreate swapchain from main thread to sync with Win32Api
 	if (m_bIsSwapChainOutdated)
@@ -550,9 +454,9 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 			{
 				m_commandBuffers[imageIndex]->Execute(cmdBuffer);
 			}
-		}		
+		}
 
-		vkCmdBindPipeline(*m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
+		vkCmdBindPipeline(*m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, *m_graphicsPipeline);
 		m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
 		m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
 		m_commandBuffers[imageIndex]->DrawIndexed(m_indexBuffer);
@@ -560,7 +464,7 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 		m_commandBuffers[imageIndex]->EndRenderPass();
 	}
 	m_commandBuffers[imageIndex]->EndCommandList();
-	
+
 	std::vector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait)
 	{

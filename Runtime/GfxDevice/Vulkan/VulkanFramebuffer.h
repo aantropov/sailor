@@ -7,7 +7,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDevice;
 	class VulkanImageView;
 
-	class VulkanFramebuffer : public TRefBase
+	class VulkanFramebuffer : public RHI::RHIResource
 	{
 	public:
 		VulkanFramebuffer(TRefPtr<VulkanRenderPass> renderPass, const std::vector<TRefPtr<VulkanImageView>>& attachments, uint32_t width, uint32_t height, uint32_t layers);

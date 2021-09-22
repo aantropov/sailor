@@ -9,7 +9,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanSemaphore;
 	class VulkanImageView;
 
-	class VulkanSurface : public TRefBase
+	class VulkanSurface : public RHI::RHIResource
 	{
 	public:
 		VulkanSurface(VkSurfaceKHR surface, VkInstance instance);
@@ -32,7 +32,7 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual ~VulkanSwapchainImage();
 	};
 
-	class VulkanSwapchain final : public TRefBase
+	class VulkanSwapchain final : public RHI::RHIResource
 	{
 	public:
 

@@ -1,9 +1,10 @@
 #pragma once
 #include "VulkanApi.h"
+#include "RHI/RHIResource.h"
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanSemaphore final : public TRefBase
+	class VulkanSemaphore final : public RHI::RHIResource
 	{
 
 	public:

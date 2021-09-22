@@ -5,10 +5,11 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	class VulkanPipelineState;
 	class VulkanShaderStage;
 	class VulkanRenderPass;
 
-	class VulkanPipelineLayout : public TRefBase
+	class VulkanPipelineLayout : public RHI::RHIResource
 	{
 	public:
 
@@ -21,6 +22,7 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<VkPushConstantRange> m_pushConstantRanges;
 
 		/// Vulkan VkPipelineLayout handle
+		VkPipelineLayout* GetHandle() { return &m_pipelineLayout; }
 		operator VkPipelineLayout() const { return m_pipelineLayout; }
 
 		void Compile();
@@ -28,26 +30,26 @@ namespace Sailor::GfxDevice::Vulkan
 
 	protected:
 
-		virtual ~VulkanPipelineLayout();
+		virtual ~VulkanPipelineLayout() override;
 		TRefPtr<VulkanDevice> m_pDevice;
 		VkPipelineLayout m_pipelineLayout;
 	};
 
-	class VulkanGraphicsPipeline : public TRefBase
+	class VulkanPipeline : public RHI::RHIResource
 	{
 	public:
 
-		VulkanGraphicsPipeline() = default;
+		VulkanPipeline() = default;
 
-		VulkanGraphicsPipeline(TRefPtr<VulkanDevice> pDevice,
+		VulkanPipeline(TRefPtr<VulkanDevice> pDevice,
 			TRefPtr<VulkanPipelineLayout> pipelineLayout,
 			const std::vector<TRefPtr<VulkanShaderStage>>& shaderStages,
-			//const GraphicsPipelineState& pipelineStates, 
+			const std::vector<TRefPtr<VulkanPipelineState>>& pipelineStates,
 			uint32_t subpass = 0);
 
 		/// VkGraphicsPipelineCreateInfo settings
 		std::vector<TRefPtr<VulkanShaderStage>> m_stages;
-		//std::vector<GraphicsPipelineState> pipelineStates;
+		std::vector<TRefPtr<VulkanPipelineState>> m_pipelineStates;
 		TRefPtr<VulkanPipelineLayout> m_layout;
 		TRefPtr<VulkanRenderPass> m_renderPass;
 		uint32_t m_subpass;
@@ -58,8 +60,9 @@ namespace Sailor::GfxDevice::Vulkan
 		operator VkPipeline() const { return m_pipeline; }
 
 	protected:
-
-		virtual ~VulkanGraphicsPipeline();
+		
+		void ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const;		
+		virtual ~VulkanPipeline();
 
 		VkPipeline m_pipeline;
 		TRefPtr<VulkanDevice> m_pDevice;

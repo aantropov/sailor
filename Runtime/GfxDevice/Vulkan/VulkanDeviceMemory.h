@@ -1,5 +1,4 @@
 #pragma once
-
 #include <map>
 #include "Core/RefPtr.hpp"
 #include "VulkanDevice.h"
@@ -8,7 +7,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanBuffer;
 
-	class VulkanDeviceMemory final : public TRefBase
+	class VulkanDeviceMemory final : public RHI::RHIResource
 	{
 	public:
 		VulkanDeviceMemory(TRefPtr<VulkanDevice> device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, void* pNextAllocInfo = nullptr);

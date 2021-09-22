@@ -1,6 +1,7 @@
 #pragma once
 #include "VulkanApi.h"
 #include "Core/RefPtr.hpp"
+#include "RHI/RHIResource.h"
 
 class Sailor::Win32::Window;
 
@@ -18,8 +19,10 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanFramebuffer;
 	class VulkanDeviceMemory;
 	class VulkanBuffer;
+	class VulkanPipeline;
+	class VulkanPipelineLayout;
 
-	class VulkanDevice final : public TRefBase
+	class VulkanDevice final : public RHI::RHIResource
 	{
 
 	public:
@@ -74,8 +77,8 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanRenderPass> m_renderPass;
 
 		// Pipeline
-		VkPipelineLayout m_pipelineLayout = 0;
-		VkPipeline m_graphicsPipeline = 0;
+		TRefPtr<VulkanPipelineLayout> m_pipelineLayout = 0;
+		TRefPtr<VulkanPipeline> m_graphicsPipeline = 0;
 
 		// Queuees
 		TRefPtr<VulkanQueue> m_graphicsQueue;

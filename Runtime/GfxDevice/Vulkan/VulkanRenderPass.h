@@ -1,6 +1,7 @@
 #pragma once
 #include "VulkanApi.h"
 #include "Core/RefPtr.hpp"
+#include "RHI/RHIResource.h"
 
 namespace Sailor::GfxDevice::Vulkan
 {
@@ -17,7 +18,7 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<uint32_t> m_preserveAttachments;
 	};
 
-	class VulkanRenderPass final : public TRefBase
+	class VulkanRenderPass final : public RHI::RHIResource
 	{
 	public:
 

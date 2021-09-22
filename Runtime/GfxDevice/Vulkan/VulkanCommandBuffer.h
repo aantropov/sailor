@@ -1,6 +1,7 @@
 #pragma once
 #include "VulkanApi.h"
 #include "Core/RefPtr.hpp"
+#include "RHI/RHIResource.h"
 
 namespace Sailor::GfxDevice::Vulkan
 {
@@ -10,7 +11,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanRenderPass;
 	class VulkanFramebuffer;
 
-	class VulkanCommandBuffer final : public TRefBase
+	class VulkanCommandBuffer final : public RHI::RHIResource
 	{
 
 	public:

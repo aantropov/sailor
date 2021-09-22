@@ -9,7 +9,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanShaderModule;
 
-	class VulkanShaderStage : public TRefBase
+	class VulkanShaderStage : public RHI::RHIResource, public RHI::IRHIStateModifier<VkPipelineShaderStageCreateInfo>
 	{
 	public:
 		VulkanShaderStage() = default;
@@ -22,11 +22,11 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanShaderModule> m_module;
 		std::string m_entryPointName;
 
-		void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const;
+		virtual void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const override;
 		void Compile();
 	};
 
-	class VulkanShaderModule : public TRefBase
+	class VulkanShaderModule : public RHI::RHIResource
 	{
 	public:
 
