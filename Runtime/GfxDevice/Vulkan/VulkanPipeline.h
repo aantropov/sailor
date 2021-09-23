@@ -15,13 +15,13 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VulkanPipelineLayout();
 		VulkanPipelineLayout(TRefPtr<VulkanDevice> pDevice,
-			std::vector<VkDescriptorSetLayout> descriptorsSet,
+			std::vector<TRefPtr<VulkanDescriptorSetLayout>> descriptorsSet,
 			std::vector<VkPushConstantRange> pushConstantRanges,
 			VkPipelineLayoutCreateFlags flags = 0);
 
 		/// VkPipelineLayoutCreateInfo settings
 		VkPipelineLayoutCreateFlags m_flags = 0;
-		std::vector<VkDescriptorSetLayout> m_descriptionSetLayouts;
+		std::vector<TRefPtr<VulkanDescriptorSetLayout>> m_descriptionSetLayouts;
 		std::vector<VkPushConstantRange> m_pushConstantRanges;
 
 		/// Vulkan VkPipelineLayout handle

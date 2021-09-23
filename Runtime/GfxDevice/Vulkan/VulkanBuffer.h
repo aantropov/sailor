@@ -15,7 +15,6 @@ namespace Sailor::GfxDevice::Vulkan
 		const VkBuffer* GetHandle() const { return &m_buffer; }
 		operator VkBuffer() const { return m_buffer; }
 
-		VulkanBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode);
 		VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode);
 
 		/// VkBufferCreateInfo settings
@@ -24,10 +23,13 @@ namespace Sailor::GfxDevice::Vulkan
 		VkBufferUsageFlags m_usage;
 		VkSharingMode m_sharingMode;
 
-		bool Compile(TRefPtr<VulkanDevice> device);
+		void Compile();
+		void Release();
+
 		VkResult Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset);
 		VkMemoryRequirements GetMemoryRequirements() const;
 
+		TRefPtr<VulkanDeviceMemory> GetMemoryDevice() { return m_deviceMemory; }
 		virtual ~VulkanBuffer() override;
 
 	protected:

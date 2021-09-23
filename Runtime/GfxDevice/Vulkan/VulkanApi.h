@@ -25,7 +25,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDeviceMemory;
 	class VulkanCommandBuffer;
 	class VulkanSemaphore;
-	
+
 #define VK_CHECK(call) \
 	do { \
 		VkResult result_ = call; \
@@ -69,7 +69,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
 			const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
 			const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
-		
+
 		static void SAILOR_API WaitIdle();
 		SAILOR_API TRefPtr<VulkanDevice> GetMainDevice() const;
 
@@ -94,11 +94,17 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
 		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
-		static SAILOR_API void CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode, VkMemoryPropertyFlags properties,
-			TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory);
+		static SAILOR_API VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
+			uint32_t              binding = 0,
+			VkDescriptorType      descriptorType = VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			uint32_t              descriptorCount = 1,
+			VkShaderStageFlags    stageFlags = VK_SHADER_STAGE_ALL,
+			const VkSampler* pImmutableSamplers = nullptr);
+
+		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
 		//Immediate context
-		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize in_size, VkBufferUsageFlags in_usage, VkSharingMode in_sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
+		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 		static SAILOR_API void CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size);
 		//Immediate context
 

@@ -699,47 +699,40 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 	return 0;
 }
 
-void VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode,
-	VkMemoryPropertyFlags properties, TRefPtr<VulkanBuffer>& outBuffer, TRefPtr<VulkanDeviceMemory>& outDeviceMemory)
+TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode)
 {
-	outBuffer = TRefPtr<VulkanBuffer>::Make(device, size, usage, sharingMode);
-	outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(device, outBuffer->GetMemoryRequirements(), properties, nullptr);
+	TRefPtr<VulkanBuffer> outBuffer = TRefPtr<VulkanBuffer>::Make(device, size, usage, sharingMode);
+	TRefPtr<VulkanDeviceMemory> outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(device, outBuffer->GetMemoryRequirements(), properties, nullptr);
 	outBuffer->Bind(outDeviceMemory, 0);
+	return outBuffer;
 }
 
 TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
 	TRefPtr<VulkanBuffer> stagingBuffer;
-	TRefPtr<VulkanDeviceMemory> stagingBufferMemory;
-
 	TRefPtr<VulkanBuffer> resBuffer;
-	TRefPtr<VulkanDeviceMemory> resBufferMemory;
 
-	VulkanApi::CreateBuffer(
+	stagingBuffer = VulkanApi::CreateBuffer(
 		device,
 		size,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_SHARING_MODE_CONCURRENT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		stagingBuffer,
-		stagingBufferMemory);
+		VK_SHARING_MODE_CONCURRENT);
 
-	stagingBufferMemory->Copy(0, size, pData);
+	stagingBuffer->GetMemoryDevice()->Copy(0, size, pData);
 
-	VulkanApi::CreateBuffer(
+	resBuffer = VulkanApi::CreateBuffer(
 		device,
 		size,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
-		VK_SHARING_MODE_CONCURRENT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		resBuffer,
-		resBufferMemory);
+		VK_SHARING_MODE_CONCURRENT);
 
 	VulkanApi::CopyBuffer_Immediate(device, stagingBuffer, resBuffer, size);
 	return resBuffer;
 }
 
-void VulkanApi::CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
+void VulkanApi::CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer> src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
 {
 	auto fence = TRefPtr<VulkanFence>::Make(device);
 
@@ -750,4 +743,16 @@ void VulkanApi::CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<Vulka
 	device->SubmitCommandBuffer(cmdBuffer, fence);
 
 	fence->Wait();
+}
+
+VkDescriptorSetLayoutBinding VulkanApi::CreateDescriptorSetLayoutBinding(uint32_t binding, VkDescriptorType descriptorType, uint32_t descriptorCount, VkShaderStageFlags stageFlags, const VkSampler* pImmutableSamplers)
+{
+	VkDescriptorSetLayoutBinding layoutBinding{};
+	layoutBinding.binding = binding;
+	layoutBinding.descriptorType = descriptorType;
+	layoutBinding.descriptorCount = descriptorCount;
+	layoutBinding.stageFlags = stageFlags;
+	layoutBinding.pImmutableSamplers = pImmutableSamplers;
+
+	return layoutBinding;
 }

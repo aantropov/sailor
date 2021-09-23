@@ -7,6 +7,7 @@ class Sailor::Win32::Window;
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	class VulkanDescriptorSetLayout;
 	class VulkanCommandBuffer;
 	class VulkanCommandPool;
 	class VulkanQueue;
@@ -76,10 +77,6 @@ namespace Sailor::GfxDevice::Vulkan
 		// Render Pass
 		TRefPtr<VulkanRenderPass> m_renderPass;
 
-		// Pipeline
-		TRefPtr<VulkanPipelineLayout> m_pipelineLayout = 0;
-		TRefPtr<VulkanPipeline> m_graphicsPipeline = 0;
-
 		// Queuees
 		TRefPtr<VulkanQueue> m_graphicsQueue;
 		TRefPtr<VulkanQueue> m_presentQueue;
@@ -101,10 +98,16 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<TRefPtr<VulkanFence>> m_syncFences;
 		std::vector<TRefPtr<VulkanFence>> m_syncImages;
 		size_t m_currentFrame = 0;
+				
+		std::atomic<bool> m_bIsSwapChainOutdated = true;
+
+		// Custom testing code
+		TRefPtr<VulkanPipelineLayout> m_pipelineLayout = nullptr;
+		TRefPtr<VulkanPipeline> m_graphicsPipeline = nullptr;
+		TRefPtr<VulkanDescriptorSetLayout> m_descriptorSetLayout = nullptr;
 
 		TRefPtr<VulkanBuffer> m_vertexBuffer;
 		TRefPtr<VulkanBuffer> m_indexBuffer;
-
-		std::atomic<bool> m_bIsSwapChainOutdated = true;
+		TRefPtr<VulkanBuffer> m_uniformBuffer;
 	};
 }

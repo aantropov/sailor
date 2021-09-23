@@ -19,6 +19,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #define SAILOR_PROFILE_BLOCK(Msg, ...) EASY_BLOCK(Msg, __VA_ARGS__)
 #define SAILOR_PROFILE_END_BLOCK() EASY_END_BLOCK
 
+#define GLM_FORCE_RADIANS
+
 #ifndef _WINDEF_
 typedef unsigned long DWORD;
 #endif

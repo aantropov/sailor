@@ -1,7 +1,6 @@
-#include "VulkanPipileneStates.h"
-#include "AssetRegistry/ShaderAssetInfo.h"
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
+#include <chrono>
 #include <set>
 #include <assert.h>
 #include <map>
@@ -10,11 +9,17 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <wtypes.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
-#include "VulkanDevice.h"
+
+#include "glm/glm/glm.hpp"
+#include "glm/glm/gtc/matrix_transform.hpp"
+
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
-#include "Platform/Win/Window.h"
+#include "AssetRegistry/ShaderAssetInfo.h"
+
+#include "VulkanDevice.h"
 #include "VulkanApi.h"
+#include "Platform/Win/Window.h"
 #include "VulkanRenderPass.h"
 #include "VulkanSwapchain.h"
 #include "VulkanCommandBuffer.h"
@@ -30,6 +35,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanBuffer.h"
 #include "VulkanShaderModule.h"
 #include "VulkanPipeline.h"
+#include "VulkanDescriptors.h"
+#include "VulkanPipileneStates.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -94,13 +101,15 @@ void VulkanDevice::Shutdown()
 
 	m_vertexBuffer.Clear();
 	m_indexBuffer.Clear();
+	m_uniformBuffer.Clear();
 
 	g_testFragShader.Clear();
 	g_testVertShader.Clear();
 
+	m_descriptorSetLayout.Clear();
 	m_graphicsPipeline.Clear();
 	m_pipelineLayout.Clear();
-	
+
 	m_commandPool.Clear();
 	m_transferCommandPool.Clear();
 	m_renderFinishedSemaphores.clear();
@@ -186,8 +195,9 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 void VulkanDevice::CreateVertexBuffer()
 {
-	VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
-	VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
+	const VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
+	const VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
+	const VkDeviceSize uniformBufferSize = sizeof(RHI::UBOTransform);
 
 	m_vertexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
 		reinterpret_cast<void const*>(&g_testVertices[0]),
@@ -198,6 +208,11 @@ void VulkanDevice::CreateVertexBuffer()
 		reinterpret_cast<void const*>(&g_testIndices[0]),
 		indexBufferSize,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+
+	m_uniformBuffer = VulkanApi::CreateBuffer(TRefPtr<VulkanDevice>(this),
+		uniformBufferSize,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 }
 
 void VulkanDevice::CreateGraphicsPipeline()
@@ -231,8 +246,10 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		const TRefPtr<VulkanStateMultisample> pMultisample = new VulkanStateMultisample();
 
+		m_descriptorSetLayout = TRefPtr<VulkanDescriptorSetLayout>::Make(TRefPtr<VulkanDevice>(this), std::vector{ VulkanApi::CreateDescriptorSetLayoutBinding() });
+
 		m_pipelineLayout = TRefPtr<VulkanPipelineLayout>::Make(TRefPtr<VulkanDevice>(this),
-			std::vector<VkDescriptorSetLayout>(),
+			std::vector{ m_descriptorSetLayout },
 			std::vector<VkPushConstantRange>(),
 			0);
 
@@ -415,6 +432,18 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();
 
+	static auto startTime = std::chrono::high_resolution_clock::now();
+	const auto currentTime = std::chrono::high_resolution_clock::now();
+	const float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+	UBOTransform ubo{};
+	ubo.m_model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.m_view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.m_projection = glm::perspective(glm::radians(45.0f), m_swapchain->GetExtent().width / (float)m_swapchain->GetExtent().height, 0.1f, 10.0f);
+	ubo.m_projection[1][1] *= -1;
+
+	m_uniformBuffer->GetMemoryDevice()->Copy(0, sizeof(ubo), &ubo);
+
 	uint32_t imageIndex;
 	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], TRefPtr<VulkanFence>(), imageIndex);
 
@@ -440,10 +469,10 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		
+
 	//////////////////////////////////////////////////
 	TRefPtr<VulkanStateViewport> pStateViewport = new VulkanStateViewport(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height);
-	
+
 	m_commandBuffers[imageIndex]->BeginCommandList();
 	{
 		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent());
@@ -456,10 +485,10 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 			}
 		}
 
-		vkCmdBindPipeline(*m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, *m_graphicsPipeline);		
+		vkCmdBindPipeline(*m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, *m_graphicsPipeline);
 		m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
 		m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
-		
+
 		m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
 		m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
 		m_commandBuffers[imageIndex]->DrawIndexed(m_indexBuffer);

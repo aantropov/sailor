@@ -6,22 +6,25 @@
 
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanBuffer::VulkanBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
+VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
 	m_size(size),
 	m_usage(usage),
-	m_sharingMode(sharingMode)
-{}
-
-VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
-	VulkanBuffer(size, usage, sharingMode)
+	m_sharingMode(sharingMode),
+	m_device(device)
 {
-	Compile(device);
+	Compile();
 }
 
-bool VulkanBuffer::Compile(TRefPtr<VulkanDevice> device)
+void VulkanBuffer::Release()
 {
-	m_device = device;
+	if (m_buffer)
+	{
+		vkDestroyBuffer(*m_device, m_buffer, nullptr);
+	}	
+}
 
+void VulkanBuffer::Compile()
+{
 	VkBufferCreateInfo bufferInfo = {};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.flags = m_flags;
@@ -29,7 +32,7 @@ bool VulkanBuffer::Compile(TRefPtr<VulkanDevice> device)
 	bufferInfo.usage = m_usage;
 	bufferInfo.sharingMode = m_sharingMode;
 
-	const auto& queues = device->GetQueueFamilies();
+	const auto& queues = m_device->GetQueueFamilies();
 
 	uint32_t queueFamily[] = { queues.m_graphicsFamily.value() };
 	uint32_t queueFamilies[] = { queues.m_graphicsFamily.value(), queues.m_transferFamily.value() };
@@ -46,19 +49,11 @@ bool VulkanBuffer::Compile(TRefPtr<VulkanDevice> device)
 	}
 
 	VK_CHECK(vkCreateBuffer(*m_device, &bufferInfo, nullptr, &m_buffer));
-
-	return true;
 }
 
 VulkanBuffer::~VulkanBuffer()
 {
-	if (m_buffer)
-	{
-		vkDestroyBuffer(*m_device, m_buffer, nullptr);
-	}
-
-	m_device.Clear();
-	m_deviceMemory.Clear();
+	Release();
 }
 
 VkMemoryRequirements VulkanBuffer::GetMemoryRequirements() const
