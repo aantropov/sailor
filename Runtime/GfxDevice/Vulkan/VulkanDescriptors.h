@@ -28,10 +28,17 @@ namespace Sailor::GfxDevice::Vulkan
 		VkDescriptorSetLayout m_descriptorSetLayout{};
 	};
 
-	class VulkanDescriptorSet : public RHI::RHIResource
+	class VulkanDescriptorPool : public RHI::RHIResource
 	{
 	public:
+		VulkanDescriptorPool(TRefPtr<VulkanDevice> pDevice, uint32_t maxSets, const std::vector<VkDescriptorPoolSize>& descriptorPoolSizes);
 
+		operator VkDescriptorPool() const { return m_descriptorPool; }
+	
 	protected:
+		virtual ~VulkanDescriptorPool();
+
+		VkDescriptorPool m_descriptorPool;
+		TRefPtr<VulkanDevice> m_device;
 	};
 }

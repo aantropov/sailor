@@ -7,6 +7,7 @@ class Sailor::Win32::Window;
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	class VulkanDescriptorPool;
 	class VulkanDescriptorSetLayout;
 	class VulkanCommandBuffer;
 	class VulkanCommandPool;
@@ -74,6 +75,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		std::vector<TRefPtr<VulkanCommandBuffer>> m_commandBuffers;
 
+		TRefPtr<VulkanDescriptorPool> m_descriptorPool;
+		
 		// Render Pass
 		TRefPtr<VulkanRenderPass> m_renderPass;
 

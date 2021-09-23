@@ -11,7 +11,8 @@ using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
 VulkanPipelineLayout::VulkanPipelineLayout() :
-	m_flags(0)
+	m_flags(0),
+	m_pipelineLayout(nullptr)
 {
 }
 
@@ -23,7 +24,8 @@ VulkanPipelineLayout::VulkanPipelineLayout(
 	m_flags(flags),
 	m_descriptionSetLayouts(std::move(descriptorsSet)),
 	m_pushConstantRanges(std::move(pushConstantRanges)),
-	m_pDevice(std::move(pDevice))
+	m_pDevice(std::move(pDevice)),
+	m_pipelineLayout(nullptr)
 {
 }
 

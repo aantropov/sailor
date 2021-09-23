@@ -65,10 +65,10 @@ namespace Sailor::GfxDevice::Vulkan
 
 		static SAILOR_API void Initialize(const Window* pViewport, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
-
+	
 		static bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
-			const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
-			const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
+		                                    const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
+		                                    const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
 
 		static void SAILOR_API WaitIdle();
 		SAILOR_API TRefPtr<VulkanDevice> GetMainDevice() const;
@@ -101,6 +101,8 @@ namespace Sailor::GfxDevice::Vulkan
 			VkShaderStageFlags    stageFlags = VK_SHADER_STAGE_ALL,
 			const VkSampler* pImmutableSamplers = nullptr);
 
+		static SAILOR_API VkDescriptorPoolSize CreateDescriptorPoolSize(VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uint32_t count = 1);
+				
 		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
 		//Immediate context

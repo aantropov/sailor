@@ -756,3 +756,11 @@ VkDescriptorSetLayoutBinding VulkanApi::CreateDescriptorSetLayoutBinding(uint32_
 
 	return layoutBinding;
 }
+
+VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, uint32_t count)
+{
+	VkDescriptorPoolSize poolSize{};
+	poolSize.type = type;
+	poolSize.descriptorCount = static_cast<uint32_t>(count);	
+	return poolSize;
+}

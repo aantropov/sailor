@@ -157,8 +157,10 @@ void VulkanDevice::CreateRenderPass()
 void VulkanDevice::CreateCommandPool()
 {
 	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	m_commandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-	m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(m_device, queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	m_commandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(m_device), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(m_device), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+
+	m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(m_device, )
 }
 
 void VulkanDevice::CreateFrameSyncSemaphores()
@@ -188,7 +190,7 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 	CreateRenderPass();
 	CreateFramebuffers();
 	CreateCommandBuffers();
-
+	
 	m_bIsSwapChainOutdated = false;
 	return true;
 }
@@ -305,6 +307,8 @@ void VulkanDevice::CreateCommandBuffers()
 		}
 		m_commandBuffers[i]->EndCommandList();
 	}*/
+
+	m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, VulkanApi::CreateDescriptorPoolSize());
 }
 
 void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
@@ -398,6 +402,7 @@ void VulkanDevice::CleanupSwapChain()
 {
 	m_swapChainFramebuffers.clear();
 	m_commandBuffers.clear();
+	m_descriptorPool.Clear();
 	m_renderPass.Clear();
 }
 
