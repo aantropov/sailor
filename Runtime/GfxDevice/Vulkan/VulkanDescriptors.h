@@ -2,6 +2,7 @@
 #include "VulkanApi.h"
 #include "Core/RefPtr.hpp"
 #include "VulkanDevice.h"
+#include "RHI/RHIResource.h"
 
 namespace Sailor::GfxDevice::Vulkan
 {
@@ -34,11 +35,37 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanDescriptorPool(TRefPtr<VulkanDevice> pDevice, uint32_t maxSets, const std::vector<VkDescriptorPoolSize>& descriptorPoolSizes);
 
 		operator VkDescriptorPool() const { return m_descriptorPool; }
-	
+
 	protected:
 		virtual ~VulkanDescriptorPool();
 
 		VkDescriptorPool m_descriptorPool;
 		TRefPtr<VulkanDevice> m_device;
+	};
+
+	class VulkanDescriptorSet : public RHI::RHIResource
+	{
+	public:
+		VulkanDescriptorSet() = default;
+		VulkanDescriptorSet(TRefPtr<VulkanDevice> pDevice,
+			TRefPtr<VulkanDescriptorPool> pool,
+			TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout);//, const Descriptors& in_descriptors);
+
+		/// VkDescriptorSetAllocateInfo settings
+		TRefPtr<VulkanDescriptorSetLayout> setLayout;
+		//Descriptors descriptors;
+
+		void Compile();
+		void Release();
+
+		operator VkDescriptorSet() const { return m_descriptorSet; }
+
+	protected:
+		~VulkanDescriptorSet() override;
+
+		TRefPtr<VulkanDevice> m_device{};
+		VkDescriptorSet m_descriptorSet{};
+		TRefPtr<VulkanDescriptorPool> m_descriptorPool{};
+		TRefPtr<VulkanDescriptorSetLayout> m_descriptorSetLayout{};
 	};
 }

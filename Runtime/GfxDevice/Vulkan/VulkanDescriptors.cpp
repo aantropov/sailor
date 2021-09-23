@@ -25,7 +25,7 @@ void VulkanDescriptorSetLayout::Compile()
 
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = m_descriptorSetLayoutBindings.size();
+	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings.size();
 	layoutInfo.pBindings = m_descriptorSetLayoutBindings.data();
 
 	VK_CHECK(vkCreateDescriptorSetLayout(*m_device, &layoutInfo, nullptr, &m_descriptorSetLayout));
@@ -61,5 +61,45 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
 	{
 		vkDestroyDescriptorPool(*m_device, m_descriptorPool, nullptr);
 	}
+}
+
+VulkanDescriptorSet::VulkanDescriptorSet(TRefPtr<VulkanDevice> pDevice, TRefPtr<VulkanDescriptorPool> pool, TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout) :
+	m_device(pDevice),
+	m_descriptorPool(pool),
+	m_descriptorSetLayout(descriptorSetLayout)
+{
+}
+
+void VulkanDescriptorSet::Compile()
+{
+	if (m_descriptorSet)
+	{
+		return;
+	}
+
+	m_descriptorSetLayout->Compile();
+
+	VkDescriptorSetLayout vkdescriptorSetLayout = *m_descriptorSetLayout;
+
+	VkDescriptorSetAllocateInfo descriptSetAllocateInfo = {};
+	descriptSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptSetAllocateInfo.descriptorPool = *m_descriptorPool;
+	descriptSetAllocateInfo.descriptorSetCount = 1;
+	descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
+
+	VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
+}
+
+void VulkanDescriptorSet::Release()
+{
+	if (m_descriptorSet)
+	{
+		vkFreeDescriptorSets(*m_device, *m_descriptorPool, 1, &m_descriptorSet);
+	}
+}
+
+VulkanDescriptorSet::~VulkanDescriptorSet()
+{
+	Release();
 }
 

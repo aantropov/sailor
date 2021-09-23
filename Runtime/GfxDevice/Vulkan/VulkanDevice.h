@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanApi.h"
+#include "VulkanDescriptors.h"
 #include "Core/RefPtr.hpp"
 #include "RHI/RHIResource.h"
 
@@ -9,6 +10,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanDescriptorPool;
 	class VulkanDescriptorSetLayout;
+	class VulkanDescriptorSet;
 	class VulkanCommandBuffer;
 	class VulkanCommandPool;
 	class VulkanQueue;
@@ -112,5 +114,6 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanBuffer> m_vertexBuffer;
 		TRefPtr<VulkanBuffer> m_indexBuffer;
 		TRefPtr<VulkanBuffer> m_uniformBuffer;
+		TRefPtr<VulkanDescriptorSet> m_descriptorSet;
 	};
 }

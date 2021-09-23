@@ -157,10 +157,8 @@ void VulkanDevice::CreateRenderPass()
 void VulkanDevice::CreateCommandPool()
 {
 	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	m_commandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(m_device), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-	m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(m_device), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-
-	m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(m_device, )
+	m_commandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 }
 
 void VulkanDevice::CreateFrameSyncSemaphores()
@@ -292,23 +290,9 @@ void VulkanDevice::CreateCommandBuffers()
 		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 
-	/*for (size_t i = 0; i < m_commandBuffers.size(); i++)
-	{
-		m_commandBuffers[i]->BeginCommandList();
-		{
-			m_commandBuffers[i]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[i], m_swapchain->GetExtent());
-
-			vkCmdBindPipeline(*m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
-
-			m_commandBuffers[i]->BindVertexBuffers({ m_vertexBuffer });
-			m_commandBuffers[i]->BindIndexBuffer(m_indexBuffer);
-			m_commandBuffers[i]->DrawIndexed(m_indexBuffer);
-			m_commandBuffers[i]->EndRenderPass();
-		}
-		m_commandBuffers[i]->EndCommandList();
-	}*/
-
-	m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, VulkanApi::CreateDescriptorPoolSize());
+	auto descriptors = vector{ VulkanApi::CreateDescriptorPoolSize() };
+	m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptors);
+	m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), m_descriptorPool, m_descriptorSetLayout);
 }
 
 void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
@@ -403,6 +387,7 @@ void VulkanDevice::CleanupSwapChain()
 	m_swapChainFramebuffers.clear();
 	m_commandBuffers.clear();
 	m_descriptorPool.Clear();
+	m_descriptorSet.Clear();
 	m_renderPass.Clear();
 }
 
@@ -476,7 +461,7 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
 	//////////////////////////////////////////////////
-	TRefPtr<VulkanStateViewport> pStateViewport = new VulkanStateViewport(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height);
+	TRefPtr<VulkanStateViewport> pStateViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 
 	m_commandBuffers[imageIndex]->BeginCommandList();
 	{
