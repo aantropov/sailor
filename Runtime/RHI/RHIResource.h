@@ -13,9 +13,9 @@ namespace Sailor::RHI
 
 	struct UBOTransform
 	{
-		glm::mat4 m_model;
-		glm::mat4 m_view;
-		glm::mat4 m_projection;
+		alignas(16) glm::mat4 m_model;
+		alignas(16) glm::mat4 m_view;
+		alignas(16) glm::mat4 m_projection;
 	};
 
 	class RHIResource : public TRefBase

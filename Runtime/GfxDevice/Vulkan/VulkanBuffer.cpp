@@ -12,7 +12,6 @@ VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBu
 	m_sharingMode(sharingMode),
 	m_device(device)
 {
-	Compile();
 }
 
 void VulkanBuffer::Release()

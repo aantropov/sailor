@@ -19,7 +19,7 @@ namespace Sailor
 		void SAILOR_API RunRenderLoop();
 		void SAILOR_API StopRenderLoop();
 
-		void SAILOR_API FixLostDevice() const;
+		void SAILOR_API FixLostDevice();
 
 		uint32_t SAILOR_API GetSmoothFps() const { return m_smoothFps.load(); }
 

@@ -1,5 +1,6 @@
 #include <vector>
 #include "VulkanApi.h"
+#include "VulkanBuffer.h"
 #include "VulkanDescriptors.h"
 
 using namespace Sailor;
@@ -63,10 +64,14 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
 	}
 }
 
-VulkanDescriptorSet::VulkanDescriptorSet(TRefPtr<VulkanDevice> pDevice, TRefPtr<VulkanDescriptorPool> pool, TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout) :
+VulkanDescriptorSet::VulkanDescriptorSet(TRefPtr<VulkanDevice> pDevice, 
+	TRefPtr<VulkanDescriptorPool> pool, 
+	TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout, 
+	std::vector<TRefPtr<VulkanDescriptor>> descriptors) :
 	m_device(pDevice),
 	m_descriptorPool(pool),
-	m_descriptorSetLayout(descriptorSetLayout)
+	m_descriptorSetLayout(descriptorSetLayout),
+	m_descriptors(std::move(descriptors))
 {
 }
 
@@ -88,6 +93,15 @@ void VulkanDescriptorSet::Compile()
 	descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
 
 	VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
+
+	VkWriteDescriptorSet descriptorWrite{};
+	for (auto descriptor : m_descriptors)
+	{
+		descriptor->Apply(descriptorWrite);
+	}
+	descriptorWrite.dstSet = m_descriptorSet;
+
+	vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
 }
 
 void VulkanDescriptorSet::Release()
@@ -103,3 +117,43 @@ VulkanDescriptorSet::~VulkanDescriptorSet()
 	Release();
 }
 
+VulkanDescriptor::VulkanDescriptor(uint32_t dstBinding, uint32_t dstArrayElement, VkDescriptorType descriptorType) :
+	m_dstBinding(dstBinding),
+	m_dstArrayElement(dstArrayElement),
+	m_descriptorType(descriptorType)
+{}
+
+void VulkanDescriptor::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
+{
+	memset(&writeDescriptorSet, 0, sizeof(writeDescriptorSet));
+
+	writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptorSet.dstBinding = m_dstBinding;
+	writeDescriptorSet.dstArrayElement = m_dstArrayElement;
+	writeDescriptorSet.descriptorType = m_descriptorType;
+}
+
+VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
+	uint32_t dstArrayElement,
+	TRefPtr<VulkanBuffer> buffer,
+	uint32_t offset,
+	uint32_t range) :
+	m_buffer(buffer),
+	m_offset(offset),
+	m_range(range),
+	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+{
+	m_bufferInfo.buffer = *buffer;
+	m_bufferInfo.offset = m_offset;
+	m_bufferInfo.range = m_range;
+}
+
+void VulkanDescriptorBuffer::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
+{
+	VulkanDescriptor::Apply(writeDescriptorSet);
+
+	writeDescriptorSet.descriptorCount = 1;
+	writeDescriptorSet.pBufferInfo = &m_bufferInfo;
+	writeDescriptorSet.pImageInfo = nullptr; // Optional
+	writeDescriptorSet.pTexelBufferView = nullptr; // Optional
+}

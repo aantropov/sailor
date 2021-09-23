@@ -54,6 +54,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
 
+		SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport);
 		SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
 	
 	protected:

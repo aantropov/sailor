@@ -386,7 +386,6 @@ VkExtent2D VulkanApi::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilit
 	return actualExtent;
 }
 
-
 bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 {
 	uint32_t extensionCount;
@@ -702,6 +701,8 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode)
 {
 	TRefPtr<VulkanBuffer> outBuffer = TRefPtr<VulkanBuffer>::Make(device, size, usage, sharingMode);
+	outBuffer->Compile();
+
 	TRefPtr<VulkanDeviceMemory> outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(device, outBuffer->GetMemoryRequirements(), properties, nullptr);
 	outBuffer->Bind(outDeviceMemory, 0);
 	return outBuffer;

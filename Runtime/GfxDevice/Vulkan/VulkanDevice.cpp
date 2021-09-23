@@ -73,9 +73,9 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 
 	// Create graphics
 	CreateRenderPass();
-	CreateGraphicsPipeline();
 	CreateFramebuffers();
 	CreateCommandPool();
+	CreateGraphicsPipeline();
 	CreateVertexBuffer();
 	CreateCommandBuffers();
 	CreateFrameSyncSemaphores();
@@ -106,10 +106,13 @@ void VulkanDevice::Shutdown()
 	g_testFragShader.Clear();
 	g_testVertShader.Clear();
 
+	m_descriptorPool.Clear();
+	m_descriptorSet.Clear();
 	m_descriptorSetLayout.Clear();
 	m_graphicsPipeline.Clear();
 	m_pipelineLayout.Clear();
 
+	m_commandBuffers.clear();
 	m_commandPool.Clear();
 	m_transferCommandPool.Clear();
 	m_renderFinishedSemaphores.clear();
@@ -187,8 +190,7 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 	CreateSwapchain(pViewport);
 	CreateRenderPass();
 	CreateFramebuffers();
-	CreateCommandBuffers();
-	
+
 	m_bIsSwapChainOutdated = false;
 	return true;
 }
@@ -197,7 +199,6 @@ void VulkanDevice::CreateVertexBuffer()
 {
 	const VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
 	const VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
-	const VkDeviceSize uniformBufferSize = sizeof(RHI::UBOTransform);
 
 	m_vertexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
 		reinterpret_cast<void const*>(&g_testVertices[0]),
@@ -208,17 +209,19 @@ void VulkanDevice::CreateVertexBuffer()
 		reinterpret_cast<void const*>(&g_testIndices[0]),
 		indexBufferSize,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-	m_uniformBuffer = VulkanApi::CreateBuffer(TRefPtr<VulkanDevice>(this),
-		uniformBufferSize,
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 }
 
 void VulkanDevice::CreateGraphicsPipeline()
 {
 	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfo<ShaderAssetInfo>("Shaders\\Simple.shader"))
 	{
+		const VkDeviceSize uniformBufferSize = sizeof(RHI::UBOTransform);
+
+		m_uniformBuffer = VulkanApi::CreateBuffer(TRefPtr<VulkanDevice>(this),
+			uniformBufferSize,
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
 		std::vector<uint32_t> vertCode;
 		std::vector<uint32_t> fragCode;
 
@@ -263,6 +266,13 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		m_graphicsPipeline->m_renderPass = m_renderPass;
 		m_graphicsPipeline->Compile();
+
+		auto descriptorSizes = vector{ VulkanApi::CreateDescriptorPoolSize() };
+		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>{ TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UBOTransform)) };
+
+		m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);
+		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), m_descriptorPool, m_descriptorSetLayout, descriptors);
+		m_descriptorSet->Compile();
 	}
 }
 
@@ -289,10 +299,6 @@ void VulkanDevice::CreateCommandBuffers()
 	{
 		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
-
-	auto descriptors = vector{ VulkanApi::CreateDescriptorPoolSize() };
-	m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptors);
-	m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), m_descriptorPool, m_descriptorSetLayout);
 }
 
 void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
@@ -385,9 +391,6 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 void VulkanDevice::CleanupSwapChain()
 {
 	m_swapChainFramebuffers.clear();
-	m_commandBuffers.clear();
-	m_descriptorPool.Clear();
-	m_descriptorSet.Clear();
 	m_renderPass.Clear();
 }
 
@@ -401,12 +404,15 @@ void VulkanDevice::WaitIdle()
 	vkDeviceWaitIdle(m_device);
 }
 
+bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
+{
+	return IsSwapChainOutdated() || (m_swapchain && (pViewport->GetWidth() != m_swapchain->GetExtent().width ||
+		pViewport->GetHeight() != m_swapchain->GetExtent().height));
+}
+
 void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 {
-	if (IsSwapChainOutdated())
-	{
-		RecreateSwapchain(pViewport);
-	}
+	RecreateSwapchain(pViewport);
 }
 
 bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
@@ -429,7 +435,9 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	UBOTransform ubo{};
 	ubo.m_model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 	ubo.m_view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.m_projection = glm::perspective(glm::radians(45.0f), m_swapchain->GetExtent().width / (float)m_swapchain->GetExtent().height, 0.1f, 10.0f);
+
+	float aspect = m_swapchain->GetExtent().width / (float)m_swapchain->GetExtent().height;
+	ubo.m_projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 10.0f);
 	ubo.m_projection[1][1] *= -1;
 
 	m_uniformBuffer->GetMemoryDevice()->Copy(0, sizeof(ubo), &ubo);
@@ -475,12 +483,13 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 			}
 		}
 
-		vkCmdBindPipeline(*m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, *m_graphicsPipeline);
+		m_commandBuffers[imageIndex]->BindPipeline(m_graphicsPipeline);
 		m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
 		m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
 
 		m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
 		m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
+		m_commandBuffers[imageIndex]->BindDescriptorSet(m_pipelineLayout, m_descriptorSet);
 		m_commandBuffers[imageIndex]->DrawIndexed(m_indexBuffer);
 
 		m_commandBuffers[imageIndex]->EndRenderPass();
@@ -552,6 +561,7 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	}
 
 	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
+
 	return true;
 }
 

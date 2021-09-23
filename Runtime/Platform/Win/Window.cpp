@@ -278,7 +278,10 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	case WM_SIZE:
 	{
 		pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);
-		pWindow->RecalculateWindowSize();
+		//pWindow->RecalculateWindowSize();
+		pWindow->m_width = LOWORD(lParam);
+		pWindow->m_height = HIWORD(lParam);
+
 		return FALSE;
 	}
 	case WM_LBUTTONDOWN:

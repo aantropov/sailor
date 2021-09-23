@@ -43,21 +43,55 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanDevice> m_device;
 	};
 
+	class VulkanDescriptor : public RHI::RHIResource, public RHI::IRHIStateModifier<VkWriteDescriptorSet>
+	{
+	public:
+
+		VulkanDescriptor(uint32_t dstBinding, uint32_t dstArrayElement, VkDescriptorType descriptorType);
+		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+
+	protected:
+		uint32_t m_dstBinding;
+		uint32_t m_dstArrayElement;
+		VkDescriptorType m_descriptorType;
+	};
+
+	class VulkanDescriptorBuffer : public VulkanDescriptor
+	{
+	public:
+		VulkanDescriptorBuffer(uint32_t dstBinding,
+			uint32_t dstArrayElement,
+			TRefPtr<VulkanBuffer> buffer,
+			uint32_t offset = 0,
+			uint32_t range = VK_WHOLE_SIZE);
+
+		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+
+	protected:
+
+		TRefPtr<VulkanBuffer> m_buffer;
+		uint32_t m_offset;
+		uint32_t m_range;
+		VkDescriptorBufferInfo m_bufferInfo;
+	};
+
 	class VulkanDescriptorSet : public RHI::RHIResource
 	{
 	public:
 		VulkanDescriptorSet() = default;
 		VulkanDescriptorSet(TRefPtr<VulkanDevice> pDevice,
 			TRefPtr<VulkanDescriptorPool> pool,
-			TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout);//, const Descriptors& in_descriptors);
+			TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout,
+			std::vector<TRefPtr<VulkanDescriptor>> descriptors);
 
 		/// VkDescriptorSetAllocateInfo settings
 		TRefPtr<VulkanDescriptorSetLayout> setLayout;
-		//Descriptors descriptors;
+		std::vector<TRefPtr<VulkanDescriptor>> m_descriptors;
 
 		void Compile();
 		void Release();
 
+		VkDescriptorSet* GetHandle() { return &m_descriptorSet; }
 		operator VkDescriptorSet() const { return m_descriptorSet; }
 
 	protected:

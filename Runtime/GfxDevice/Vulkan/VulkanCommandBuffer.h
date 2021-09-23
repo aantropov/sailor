@@ -11,6 +11,9 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDevice;
 	class VulkanRenderPass;
 	class VulkanFramebuffer;
+	class VulkanPipelineLayout;
+	class VulkanPipeline;
+	class VulkanDescriptorSet;
 
 	class VulkanCommandBuffer final : public RHI::RHIResource
 	{
@@ -39,6 +42,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> buffers, std::vector <VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
 		void BindIndexBuffer(TRefPtr<VulkanBuffer> indexBuffer);
+		void BindDescriptorSet(TRefPtr<VulkanPipelineLayout> pipelineLayout, TRefPtr<VulkanDescriptorSet> descriptorSet);
+		void BindPipeline(TRefPtr<VulkanPipeline> pipeline);
+
 		void DrawIndexed(TRefPtr<VulkanBuffer> indexBuffer);
 
 		void Execute(TRefPtr<VulkanCommandBuffer> secondaryCommandBuffer);

@@ -24,9 +24,14 @@ Renderer::~Renderer()
 	GfxDevice::Vulkan::VulkanApi::Shutdown();
 }
 
-void Renderer::FixLostDevice() const
+void Renderer::FixLostDevice()
 {
-	GfxDevice::Vulkan::VulkanApi::GetInstance()->GetMainDevice()->FixLostDevice(m_pViewport);
+	if (GfxDevice::Vulkan::VulkanApi::GetInstance()->GetMainDevice()->ShouldFixLostDevice(m_pViewport))
+	{
+		StopRenderLoop();
+		GfxDevice::Vulkan::VulkanApi::GetInstance()->GetMainDevice()->FixLostDevice(m_pViewport);
+		RunRenderLoop();
+	}
 }
 
 void Renderer::RunRenderLoop()

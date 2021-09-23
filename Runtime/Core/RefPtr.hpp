@@ -37,9 +37,9 @@ namespace Sailor
 	public:
 
 		template<typename... TArgs>
-		static TRefPtr<T> Make(TArgs&& ... args) noexcept
+		static TRefPtr Make(TArgs&& ... args) noexcept
 		{
-			return TRefPtr<T>(new T(std::forward<TArgs>(args)...));
+			return TRefPtr(new T(std::forward<TArgs>(args)...));
 		}
 
 		TRefPtr() noexcept = default;
@@ -57,36 +57,36 @@ namespace Sailor
 		}
 
 		// Basic copy/assignment
-		TRefPtr(const TRefPtr<T>& pRefPtr) noexcept
+		TRefPtr(const TRefPtr& pRefPtr) noexcept
 		{
 			AssignRawPtr(pRefPtr.m_pRawPtr);
 		}
 
-		TRefPtr(TRefPtr<T>&& pRefPtr) noexcept
+		TRefPtr(TRefPtr&& pRefPtr) noexcept
 		{
 			Swap(std::move(pRefPtr));
 		}
 
-		TRefPtr& operator=(TRefPtr<T> pRefPtr) noexcept
+		TRefPtr& operator=(TRefPtr pRefPtr) noexcept
 		{
 			Swap(std::move(pRefPtr));
 			return *this;
 		}
 
 		// Other types copy/assignment
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || !std::is_same_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 		TRefPtr(const TRefPtr<R>& pRefPtr) noexcept
 		{
 			AssignRawPtr(pRefPtr.GetRawPtr());
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || !std::is_same_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 		TRefPtr(TRefPtr<R>&& pRefPtr) noexcept
 		{
 			Swap(std::move(pRefPtr));
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || !std::is_same_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 		TRefPtr& operator=(TRefPtr<R> pRefPtr) noexcept
 		{
 			Swap(std::move(pRefPtr));
@@ -105,12 +105,12 @@ namespace Sailor
 
 		operator bool() const  noexcept { return m_pRawPtr != nullptr; }
 
-		bool operator==(const TRefPtr<T>& pRhs) const
+		bool operator==(const TRefPtr& pRhs) const
 		{
 			return m_pRawPtr == pRhs->GetRawPtr();
 		}
 
-		bool operator!=(const TRefPtr<T>& pRhs) const
+		bool operator!=(const TRefPtr& pRhs) const
 		{
 			return m_pRawPtr != pRhs->m_pRawPtr;
 		}
@@ -178,5 +178,6 @@ namespace Sailor
 			m_pRawPtr = pRefPtr.m_pRawPtr;
 			pRefPtr.m_pRawPtr = nullptr;
 		}
+		friend class TRefPtr;
 	};
 }

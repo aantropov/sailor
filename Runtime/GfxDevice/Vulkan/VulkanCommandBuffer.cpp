@@ -5,7 +5,9 @@
 #include "VulkanRenderPass.h"
 #include "VulkanFramebuffer.h"
 #include "VulkanBuffer.h"
+#include "VulkanPipeline.h"
 #include "VulkanPipileneStates.h"
+#include "VulkanDescriptors.h"
 #include "Core/RefPtr.hpp"
 
 using namespace Sailor;
@@ -95,6 +97,16 @@ void VulkanCommandBuffer::BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> b
 void VulkanCommandBuffer::BindIndexBuffer(TRefPtr<VulkanBuffer> indexBuffer)
 {
 	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+}
+
+void VulkanCommandBuffer::BindDescriptorSet(TRefPtr<VulkanPipelineLayout> pipelineLayout, TRefPtr<VulkanDescriptorSet> descriptorSet)
+{
+	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, 1, descriptorSet->GetHandle(), 0, nullptr);
+}
+
+void VulkanCommandBuffer::BindPipeline(TRefPtr<VulkanPipeline> pipeline)
+{
+	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 }
 
 void VulkanCommandBuffer::DrawIndexed(TRefPtr<VulkanBuffer> indexBuffer)
