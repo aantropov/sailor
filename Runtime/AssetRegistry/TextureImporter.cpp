@@ -31,7 +31,6 @@ TextureImporter::~TextureImporter()
 
 void TextureImporter::OnAssetInfoUpdated(AssetInfo* assetInfo)
 {
-	int a;
 }
 
 bool TextureImporter::LoadTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height)

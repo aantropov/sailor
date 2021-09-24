@@ -34,7 +34,7 @@ UID UID::CreateNewUID()
 	UID newuid;
 
 	::GUID win32;
-	HRESULT hr = CoCreateGuid(&win32);
+	CoCreateGuid(&win32);
 
 	char buffer[128];
 	sprintf_s(buffer, "{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
