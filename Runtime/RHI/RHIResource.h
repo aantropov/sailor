@@ -33,12 +33,12 @@ namespace Sailor::RHI
 		RHIResource& operator =(RHIResource& rhs) = delete;
 	};
 
-	class RHICommandList : public RHIResource
+	class IRHIExplicitInit
 	{
 	public:
 
-		//	RHICommandBuffer(Device* device, CommandPool* commandPool, VkCommandBufferLevel level);
-		//	virtual ~RHICommandBuffer() override;
+		virtual void Compile() = 0;
+		virtual void Release() = 0;
 	};
 
 	template<typename TState>

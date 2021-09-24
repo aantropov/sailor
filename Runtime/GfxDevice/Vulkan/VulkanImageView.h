@@ -9,11 +9,11 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDevice;
 	class VulkanImage;
 
-	class VulkanImageView : public RHI::RHIResource
+	class VulkanImageView : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 	public:
-		VulkanImageView(TRefPtr<VulkanImage> image);
-		VulkanImageView(TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
+		VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image);
+		VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
 
 		/// VkImageViewCreateInfo settings
 		VkImageViewCreateFlags m_flags = 0;
@@ -26,7 +26,8 @@ namespace Sailor::GfxDevice::Vulkan
 		/// Vulkan VkImageView handle
 		operator VkImageView() const { return m_imageView; }
 
-		void Compile(TRefPtr<VulkanDevice> device);
+		virtual void Compile() override;
+		virtual void Release() override;
 
 		virtual ~VulkanImageView();
 

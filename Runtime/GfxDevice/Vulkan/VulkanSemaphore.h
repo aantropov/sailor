@@ -13,8 +13,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		operator VkSemaphore() const { return m_semaphore; }
 
-		VkPipelineStageFlags& pipelineStageFlags() { return m_pipelineStageFlags; }
-		const VkPipelineStageFlags& pipelineStageFlags() const { return m_pipelineStageFlags; }
+		VkPipelineStageFlags& PipelineStageFlags() { return m_pipelineStageFlags; }
+		const VkPipelineStageFlags& PipelineStageFlags() const { return m_pipelineStageFlags; }
 		const VkSemaphore* GetHandle() const { return &m_semaphore; }
 
 	protected:

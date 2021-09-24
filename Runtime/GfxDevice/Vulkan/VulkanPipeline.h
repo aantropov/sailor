@@ -9,7 +9,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanShaderStage;
 	class VulkanRenderPass;
 
-	class VulkanPipelineLayout : public RHI::RHIResource
+	class VulkanPipelineLayout : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 	public:
 
@@ -28,8 +28,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VkPipelineLayout* GetHandle() { return &m_pipelineLayout; }
 		operator VkPipelineLayout() const { return m_pipelineLayout; }
 
-		void Compile();
-		void Release();
+		virtual void Compile() override;
+		virtual void Release() override;
 
 	protected:
 

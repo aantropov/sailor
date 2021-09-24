@@ -7,7 +7,7 @@ using namespace Sailor;
 namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanDevice;
-	class VulkanImage : public RHI::RHIResource
+	class VulkanImage : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 	public:
 
@@ -30,7 +30,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		operator VkImage() const { return m_image; }
 
-		void Compile() noexcept;
+		virtual void Compile() override;
+		virtual void Release() override;
+
 		VkResult Bind(VkDeviceMemory deviceMemory, VkDeviceSize memoryOffset);
 
 	protected:

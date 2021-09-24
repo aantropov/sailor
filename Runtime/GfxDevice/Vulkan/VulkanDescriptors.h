@@ -6,7 +6,7 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanDescriptorSetLayout : public RHI::RHIResource
+	class VulkanDescriptorSetLayout : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 	public:
 		VulkanDescriptorSetLayout(TRefPtr<VulkanDevice> pDevice, std::vector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings);
@@ -20,8 +20,8 @@ namespace Sailor::GfxDevice::Vulkan
 		/// Vulkan VkDescriptorSetLayout handle
 		operator VkDescriptorSetLayout() const { return m_descriptorSetLayout; }
 
-		void Compile();
-		void Release();
+		virtual void Compile() override;
+		virtual void Release() override;
 
 	protected:
 
@@ -75,7 +75,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkDescriptorBufferInfo m_bufferInfo;
 	};
 
-	class VulkanDescriptorSet : public RHI::RHIResource
+	class VulkanDescriptorSet : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 	public:
 		VulkanDescriptorSet() = default;
@@ -88,8 +88,8 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanDescriptorSetLayout> setLayout;
 		std::vector<TRefPtr<VulkanDescriptor>> m_descriptors;
 
-		void Compile();
-		void Release();
+		virtual void Compile() override;
+		virtual void Release() override;
 
 		VkDescriptorSet* GetHandle() { return &m_descriptorSet; }
 		operator VkDescriptorSet() const { return m_descriptorSet; }

@@ -101,7 +101,7 @@ VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, TRefPtr<Vulkan
 	for (size_t i = 0; i < vkSwapchainImages.size(); i++)
 	{
 		m_swapchainImages.push_back(TRefPtr<VulkanSwapchainImage>::Make(vkSwapchainImages[i], m_device));
-		m_swapchainImageViews.push_back(TRefPtr<VulkanImageView>::Make(m_swapchainImages[i]));
+		m_swapchainImageViews.push_back(TRefPtr<VulkanImageView>::Make(m_device, m_swapchainImages[i]));
 
 		m_swapchainImageViews[i]->m_format = m_surfaceFormat.format;
 
@@ -116,7 +116,7 @@ VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, TRefPtr<Vulkan
 		m_swapchainImageViews[i]->m_subresourceRange.baseArrayLayer = 0;
 		m_swapchainImageViews[i]->m_subresourceRange.layerCount = 1;
 
-		m_swapchainImageViews[i]->Compile(m_device);
+		m_swapchainImageViews[i]->Compile();
 	}
 }
 

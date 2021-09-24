@@ -9,7 +9,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanShaderModule;
 
-	class VulkanShaderStage : public RHI::RHIResource, public RHI::IRHIStateModifier<VkPipelineShaderStageCreateInfo>
+	class VulkanShaderStage : public RHI::RHIResource, public RHI::IRHIExplicitInit, public RHI::IRHIStateModifier<VkPipelineShaderStageCreateInfo>
 	{
 	public:
 		VulkanShaderStage() = default;
@@ -23,10 +23,11 @@ namespace Sailor::GfxDevice::Vulkan
 		std::string m_entryPointName;
 
 		virtual void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const override;
-		void Compile();
+		virtual void Compile() override;
+		virtual void Release() override {}
 	};
 
-	class VulkanShaderModule : public RHI::RHIResource
+	class VulkanShaderModule : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 	public:
 
@@ -37,8 +38,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		ShaderCompiler::ByteCode m_byteCode;
 
-		void Compile();
-		void Release();
+		virtual void Compile() override;
+		virtual void Release() override;
 
 	protected:
 

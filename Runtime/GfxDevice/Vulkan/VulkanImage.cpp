@@ -6,14 +6,18 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanImage::~VulkanImage()
+void VulkanImage::Release()
 {
 	if (m_image)
 	{
 		vkDestroyImage(*m_device, m_image, nullptr);
 		m_image = VK_NULL_HANDLE;
 	}
-	m_device.Clear();
+}
+
+VulkanImage::~VulkanImage()
+{
+	Release();
 }
 
 VulkanImage::VulkanImage()
@@ -53,7 +57,7 @@ VkResult VulkanImage::Bind(VkDeviceMemory deviceMemory, VkDeviceSize memoryOffse
 	return result;
 }
 
-void VulkanImage::Compile() noexcept
+void VulkanImage::Compile()
 {
 	if (m_image != VK_NULL_HANDLE)
 	{

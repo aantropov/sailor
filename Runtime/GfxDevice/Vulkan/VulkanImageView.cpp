@@ -6,18 +6,23 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanImageView::~VulkanImageView()
+void VulkanImageView::Release()
 {
 	if (m_imageView)
 	{
 		vkDestroyImageView(*m_device, m_imageView, nullptr);
 		m_imageView = VK_NULL_HANDLE;
 	}
-	m_device.Clear();
 }
 
-VulkanImageView::VulkanImageView(TRefPtr<VulkanImage> image) :
-	m_image(image)
+VulkanImageView::~VulkanImageView()
+{
+	Release();
+}
+
+VulkanImageView::VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image) :
+	m_image(image),
+	m_device(device)
 {
 	m_viewType = VK_IMAGE_VIEW_TYPE_2D;
 
@@ -29,8 +34,10 @@ VulkanImageView::VulkanImageView(TRefPtr<VulkanImage> image) :
 	m_subresourceRange.layerCount = image->m_arrayLayers;
 }
 
-VulkanImageView::VulkanImageView(TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags) :
-	m_image(image)
+VulkanImageView::VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags) :
+	m_image(image),
+	m_device(device)
+
 {
 	m_viewType = VK_IMAGE_VIEW_TYPE_2D;
 	m_format = image->m_format;
@@ -41,14 +48,12 @@ VulkanImageView::VulkanImageView(TRefPtr<VulkanImage> image, VkImageAspectFlags 
 	m_subresourceRange.layerCount = image->m_arrayLayers;
 }
 
-void VulkanImageView::Compile(TRefPtr<VulkanDevice> device)
+void VulkanImageView::Compile()
 {
 	if (m_imageView != VK_NULL_HANDLE)
 	{
 		return;
 	}
-
-	m_device = device;
 
 	VkImageViewCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;

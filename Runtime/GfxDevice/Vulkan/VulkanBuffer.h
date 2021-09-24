@@ -7,7 +7,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanDeviceMemory;
 
-	class VulkanBuffer final : public RHI::RHIResource
+	class VulkanBuffer final : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 
 	public:
@@ -23,8 +23,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VkBufferUsageFlags m_usage;
 		VkSharingMode m_sharingMode;
 
-		void Compile();
-		void Release();
+		virtual void Compile() override;
+		virtual void Release() override;
 
 		VkResult Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset);
 		VkMemoryRequirements GetMemoryRequirements() const;

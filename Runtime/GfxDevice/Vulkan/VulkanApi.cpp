@@ -648,8 +648,8 @@ TRefPtr<VulkanImageView> VulkanApi::CreateImageView(TRefPtr<VulkanDevice> device
 
 	//image->Bind(nullptr, 0);
 
-	TRefPtr<VulkanImageView> imageView = TRefPtr<VulkanImageView>::Make(image, aspectFlags);
-	imageView->Compile(device);
+	TRefPtr<VulkanImageView> imageView = TRefPtr<VulkanImageView>::Make(device, image, aspectFlags);
+	imageView->Compile();
 
 	return imageView;
 }
