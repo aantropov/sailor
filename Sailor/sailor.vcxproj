@@ -23,7 +23,7 @@
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{6d6b98f8-00ff-4088-80e9-7e6f5fcd5183}</ProjectGuid>
     <RootNamespace>sailor</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -43,7 +43,7 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -177,6 +177,8 @@
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderAssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCache.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h" />
+    <ClInclude Include="..\Runtime\AssetRegistry\TextureAssetInfo.h" />
+    <ClInclude Include="..\Runtime\AssetRegistry\TextureImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\Core\RefPtr.hpp" />
@@ -219,6 +221,8 @@
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderAssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCache.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp" />
+    <ClCompile Include="..\Runtime\AssetRegistry\TextureAssetInfo.cpp" />
+    <ClCompile Include="..\Runtime\AssetRegistry\TextureImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp" />

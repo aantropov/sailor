@@ -1,6 +1,7 @@
 #include "Sailor.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
+#include "AssetRegistry/TextureImporter.h"
 #include "Platform/Win/ConsoleWindow.h"
 #include "Platform/Win/Input.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
@@ -46,6 +47,7 @@ void EngineInstance::Initialize()
 	JobSystem::Scheduler::Initialize();
 
 	AssetRegistry::Initialize();
+	TextureImporter::Initialize();
 	ShaderCompiler::Initialize();
 	Renderer::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
 	ShaderCompiler::GetInstance();
