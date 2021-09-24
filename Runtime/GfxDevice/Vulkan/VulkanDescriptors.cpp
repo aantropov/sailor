@@ -136,8 +136,8 @@ void VulkanDescriptor::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
 VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
 	uint32_t dstArrayElement,
 	TRefPtr<VulkanBuffer> buffer,
-	uint32_t offset,
-	uint32_t range) :
+	VkDeviceSize offset,
+	VkDeviceSize range) :
 	m_buffer(buffer),
 	m_offset(offset),
 	m_range(range),

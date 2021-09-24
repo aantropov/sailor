@@ -62,16 +62,16 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanDescriptorBuffer(uint32_t dstBinding,
 			uint32_t dstArrayElement,
 			TRefPtr<VulkanBuffer> buffer,
-			uint32_t offset = 0,
-			uint32_t range = VK_WHOLE_SIZE);
+			VkDeviceSize offset = 0,
+			VkDeviceSize range = VK_WHOLE_SIZE);
 
 		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
 
 	protected:
 
 		TRefPtr<VulkanBuffer> m_buffer;
-		uint32_t m_offset;
-		uint32_t m_range;
+		VkDeviceSize m_offset;
+		VkDeviceSize m_range;
 		VkDescriptorBufferInfo m_bufferInfo;
 	};
 
