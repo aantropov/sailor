@@ -49,13 +49,20 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void Execute(TRefPtr<VulkanCommandBuffer> secondaryCommandBuffer);
 		void CopyBuffer(TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
+		void CopyBufferToImage(TRefPtr<VulkanBuffer> src, TRefPtr<VulkanImage> image, uint32_t width, uint32_t height);
 
 		void SetViewport(TRefPtr<const VulkanStateViewport> viewport);
 		void SetScissor(TRefPtr<const VulkanStateViewport> viewport);
 
+		void ImageMemoryBarrier(TRefPtr<VulkanImage> image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+
+		void ClearDependencies();
 		void Reset();
 
 	protected:
+
+		std::vector<TRefPtr<VulkanBuffer>> m_bufferDependencies;
+		std::vector<TRefPtr<VulkanImage>> m_imageDependencies;
 
 		TRefPtr<VulkanDevice> m_device;
 		TRefPtr<VulkanCommandPool> m_commandPool;

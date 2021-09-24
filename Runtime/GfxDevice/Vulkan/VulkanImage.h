@@ -7,11 +7,13 @@ using namespace Sailor;
 namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanDevice;
+	class VulkanDeviceMemory;
+
 	class VulkanImage : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 	public:
 
-		VulkanImage();
+		VulkanImage(TRefPtr<VulkanDevice> device);
 		VulkanImage(VkImage image, TRefPtr<VulkanDevice> device);
 
 		/// VkImageCreateInfo settings
@@ -33,7 +35,10 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual void Compile() override;
 		virtual void Release() override;
 
-		VkResult Bind(VkDeviceMemory deviceMemory, VkDeviceSize memoryOffset);
+		VkResult Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset);
+		VkMemoryRequirements GetMemoryRequirements() const;
+
+		TRefPtr<VulkanDeviceMemory> GetMemoryDevice() { return m_deviceMemory; }
 
 	protected:
 
@@ -42,8 +47,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VkImage m_image = nullptr;
 		TRefPtr<VulkanDevice> m_device;
 
-		VkDeviceMemory m_deviceMemory = 0;
-		VkDeviceSize m_memoryOffset = 0;
+		TRefPtr<VulkanDeviceMemory> m_deviceMemory;
+		VkDeviceSize m_memoryOffset = 0; 
 		VkDeviceSize m_size = 0;
 	};
 }

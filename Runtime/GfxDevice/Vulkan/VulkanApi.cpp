@@ -746,6 +746,67 @@ void VulkanApi::CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<Vulka
 	fence->Wait();
 }
 
+TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
+	TRefPtr<VulkanDevice> device,
+	const void* pData,
+	VkDeviceSize size,
+	VkExtent3D extent,
+	VkImageType type,
+	VkFormat format,
+	VkImageTiling tiling,
+	VkImageUsageFlags usage,
+	VkSharingMode sharingMode)
+{
+	TRefPtr<VulkanBuffer> stagingBuffer;
+
+	stagingBuffer = VulkanApi::CreateBuffer(
+		device,
+		size,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		sharingMode);
+
+	stagingBuffer->GetMemoryDevice()->Copy(0, size, pData);
+
+	TRefPtr<VulkanImage> res = new VulkanImage(device);
+
+	res->m_extent = extent;
+	res->m_imageType = type;
+	res->m_format = format;
+	res->m_tiling = tiling;
+	res->m_usage = usage;
+	res->m_mipLevels = 1;
+	res->m_samples = VK_SAMPLE_COUNT_1_BIT;
+	res->m_arrayLayers = 1;
+	res->m_sharingMode = sharingMode;
+	res->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	res->m_flags = 0;
+
+	res->Compile();
+
+	TRefPtr<VulkanDeviceMemory> outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(
+		device,
+		res->GetMemoryRequirements(),
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		nullptr);
+
+	res->Bind(outDeviceMemory, 0);
+
+	auto fence = TRefPtr<VulkanFence>::Make(device);
+
+	auto cmdBuffer = device->CreateCommandBuffer();
+	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	cmdBuffer->ImageMemoryBarrier(res, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	cmdBuffer->CopyBufferToImage(stagingBuffer, res, static_cast<uint32_t>(extent.width), static_cast<uint32_t>(extent.height));
+	cmdBuffer->ImageMemoryBarrier(res, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	cmdBuffer->EndCommandList();
+	device->SubmitCommandBuffer(cmdBuffer, fence);
+
+	fence->Wait();
+
+	return res;
+}
+
 VkDescriptorSetLayoutBinding VulkanApi::CreateDescriptorSetLayoutBinding(uint32_t binding, VkDescriptorType descriptorType, uint32_t descriptorCount, VkShaderStageFlags stageFlags, const VkSampler* pImmutableSamplers)
 {
 	VkDescriptorSetLayoutBinding layoutBinding{};
@@ -762,6 +823,6 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 {
 	VkDescriptorPoolSize poolSize{};
 	poolSize.type = type;
-	poolSize.descriptorCount = static_cast<uint32_t>(count);	
+	poolSize.descriptorCount = static_cast<uint32_t>(count);
 	return poolSize;
 }

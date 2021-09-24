@@ -65,10 +65,10 @@ namespace Sailor::GfxDevice::Vulkan
 
 		static SAILOR_API void Initialize(const Window* pViewport, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
-	
+
 		static bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
-		                                    const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
-		                                    const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
+			const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
+			const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
 
 		static void SAILOR_API WaitIdle();
 		SAILOR_API TRefPtr<VulkanDevice> GetMainDevice() const;
@@ -102,12 +102,23 @@ namespace Sailor::GfxDevice::Vulkan
 			const VkSampler* pImmutableSamplers = nullptr);
 
 		static SAILOR_API VkDescriptorPoolSize CreateDescriptorPoolSize(VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uint32_t count = 1);
-				
+
 		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
 		//Immediate context
 		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 		static SAILOR_API void CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size);
+
+		static SAILOR_API TRefPtr<VulkanImage> CreateImage_Immediate(
+			TRefPtr<VulkanDevice> device,
+			const void* pData,
+			VkDeviceSize size,
+			VkExtent3D extent,
+			VkImageType type = VK_IMAGE_TYPE_2D,
+			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB,
+			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
+			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE);
 		//Immediate context
 
 		static SAILOR_API VkImageAspectFlags ComputeAspectFlagsForFormat(VkFormat format);

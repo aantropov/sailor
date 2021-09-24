@@ -5,6 +5,7 @@
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
 #include "VulkanDevice.h"
+#include "VulkanDeviceMemory.h"
 #include "Core/RefPtr.hpp"
 
 using namespace Sailor;

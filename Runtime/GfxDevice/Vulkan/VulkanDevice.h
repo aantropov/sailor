@@ -116,5 +116,7 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanBuffer> m_indexBuffer;
 		TRefPtr<VulkanBuffer> m_uniformBuffer;
 		TRefPtr<VulkanDescriptorSet> m_descriptorSet;
+
+		TRefPtr<VulkanImage> m_image;
 	};
 }

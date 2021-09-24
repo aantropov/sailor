@@ -16,6 +16,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
 #include "AssetRegistry/ShaderAssetInfo.h"
+#include "AssetRegistry/TextureImporter.h"
+#include "AssetRegistry/TextureAssetInfo.h"
 
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
@@ -273,6 +275,20 @@ void VulkanDevice::CreateGraphicsPipeline()
 		m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);
 		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), m_descriptorPool, m_descriptorSetLayout, descriptors);
 		m_descriptorSet->Compile();
+
+		if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>("Textures\\VulkanLogo.png"))
+		{
+			TextureImporter::ByteCode data;
+			int32_t width;
+			int32_t height;
+
+			TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height);
+			m_image = VulkanApi::CreateImage_Immediate(
+				TRefPtr<VulkanDevice>(this),
+				data.data(),
+				data.size() * sizeof(uint8_t),
+				VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 });
+		}
 	}
 }
 
