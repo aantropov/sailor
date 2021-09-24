@@ -1,6 +1,7 @@
 #include "VulkanCommandPool.h"
 #include "VulkanDevice.h"
 
+using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
 void VulkanCommandPool::Reset(VkCommandPoolResetFlags flags) const

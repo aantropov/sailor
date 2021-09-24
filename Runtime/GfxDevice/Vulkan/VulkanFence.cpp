@@ -2,6 +2,7 @@
 #include "VulkanDevice.h"
 #include "Core/RefPtr.hpp"
 
+using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
 VulkanFence::VulkanFence(TRefPtr<VulkanDevice> device, VkFenceCreateFlags flags) :

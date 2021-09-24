@@ -1,6 +1,9 @@
 #include <string>
 #include <cassert>
 #include "Window.h"
+
+#include <algorithm>
+
 #include "Input.h"
 #include "Sailor.h"
 
@@ -243,15 +246,21 @@ void Window::Destroy()
 
 	// Release window context
 	if (m_hDC)
+	{
 		ReleaseDC(m_hWnd, m_hDC);
+	}
 
 	// Destroy window
 	if (m_hWnd)
+	{
 		DestroyWindow(m_hWnd);
+	}
 
 	// Release window class
 	if (m_hInstance)
+	{
 		UnregisterClass((LPCWSTR)m_windowClassName.c_str(), m_hInstance);
+	}
 
 	g_windows.erase(std::remove(g_windows.begin(), g_windows.end(), this));
 }

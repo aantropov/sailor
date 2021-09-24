@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iostream>
 
+using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
 VulkanDeviceMemory::VulkanDeviceMemory(TRefPtr<VulkanDevice> device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, void* pNextAllocInfo) :

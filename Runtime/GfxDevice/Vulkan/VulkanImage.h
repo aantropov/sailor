@@ -37,9 +37,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 	protected:
 
-		virtual ~VulkanImage();
+		virtual ~VulkanImage() override;
 
-		VkImage m_image = VK_NULL_HANDLE;
+		VkImage m_image = nullptr;
 		TRefPtr<VulkanDevice> m_device;
 
 		VkDeviceMemory m_deviceMemory = 0;

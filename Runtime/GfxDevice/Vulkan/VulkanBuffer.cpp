@@ -4,6 +4,7 @@
 #include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"
 
+using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
 VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
