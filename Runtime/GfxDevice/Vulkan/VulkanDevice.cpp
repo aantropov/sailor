@@ -87,6 +87,8 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	CreateCommandBuffers();
 	CreateFrameSyncSemaphores();
 
+	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
+
 	m_bIsSwapChainOutdated = false;
 }
 
@@ -348,6 +350,8 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	}
 
 	VkPhysicalDeviceFeatures deviceFeatures{};
+	deviceFeatures.samplerAnisotropy = VK_TRUE;
+
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
 	std::vector<const char*> deviceExtensions;

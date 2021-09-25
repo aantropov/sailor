@@ -1,6 +1,7 @@
 #pragma once
 #include "VulkanApi.h"
 #include "VulkanDescriptors.h"
+#include "VulkanSamplers.h"
 #include "Core/RefPtr.hpp"
 #include "RHI/RHIResource.h"
 
@@ -25,6 +26,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanBuffer;
 	class VulkanPipeline;
 	class VulkanPipelineLayout;
+	class VulkanSampler;
 
 	class VulkanDevice final : public RHI::RHIResource
 	{
@@ -110,6 +112,8 @@ namespace Sailor::GfxDevice::Vulkan
 		size_t m_currentFrame = 0;
 				
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
+
+		VulkanSamplers m_samplers;
 
 		// Custom testing code
 		TRefPtr<VulkanPipelineLayout> m_pipelineLayout = nullptr;

@@ -42,3 +42,36 @@ VulkanSampler::~VulkanSampler()
 {
 	vkDestroySampler(*m_device, m_textureSampler, nullptr);
 }
+
+void VulkanSamplers::Initialize(TRefPtr<VulkanDevice> pDevice)
+{
+	m_nearestFiltrationRepeat = TRefPtr<VulkanSampler>::Make(pDevice,
+		VkFilter::VK_FILTER_NEAREST,
+		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		true,
+		8.0f);
+
+	m_nearestFiltrationClamp = TRefPtr<VulkanSampler>::Make(pDevice,
+		VkFilter::VK_FILTER_NEAREST,
+		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		true,
+		8.0f);
+
+	m_nearestFiltrationRepeat = TRefPtr<VulkanSampler>::Make(pDevice,
+		VkFilter::VK_FILTER_NEAREST,
+		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		true,
+		8.0f);
+
+	m_linearFiltrationClamp = TRefPtr<VulkanSampler>::Make(pDevice,
+		VkFilter::VK_FILTER_LINEAR,
+		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		true,
+		8.0f);
+
+	m_linearFiltrationRepeat = TRefPtr<VulkanSampler>::Make(pDevice,
+		VkFilter::VK_FILTER_LINEAR,
+		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
+		true,
+		8.0f);
+}
