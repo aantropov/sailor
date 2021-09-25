@@ -31,8 +31,6 @@ VulkanImage::~VulkanImage()
 VulkanImage::VulkanImage(TRefPtr<VulkanDevice> device) :
 	m_device(device)
 {
-	m_imageType = VK_IMAGE_TYPE_2D;
-	m_format = VK_FORMAT_R8G8B8A8_SRGB;
 }
 
 VulkanImage::VulkanImage(VkImage image, TRefPtr<VulkanDevice> device)

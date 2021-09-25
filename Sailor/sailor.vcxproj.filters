@@ -168,6 +168,9 @@
     <ClInclude Include="..\Runtime\AssetRegistry\TextureImporter.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -277,6 +280,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\TextureImporter.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

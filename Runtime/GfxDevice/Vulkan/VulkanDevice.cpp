@@ -70,6 +70,11 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
 	CreateLogicalDevice(m_physicalDevice);
 
+	// Calculate max anisotropy
+	VkPhysicalDeviceProperties properties{};
+	vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
+	m_maxAllowedAnisotropy = properties.limits.maxSamplerAnisotropy;
+
 	// Create swapchain
 	CreateSwapchain(pViewport);
 
@@ -111,6 +116,8 @@ void VulkanDevice::Shutdown()
 	m_descriptorPool.Clear();
 	m_descriptorSet.Clear();
 	m_descriptorSetLayout.Clear();
+	m_image.Clear();
+	m_imageView.Clear();
 	m_graphicsPipeline.Clear();
 	m_pipelineLayout.Clear();
 
@@ -288,6 +295,9 @@ void VulkanDevice::CreateGraphicsPipeline()
 				data.data(),
 				data.size() * sizeof(uint8_t),
 				VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 });
+
+			m_imageView = new VulkanImageView(TRefPtr<VulkanDevice>(this), m_image);
+			m_imageView->Compile();
 		}
 	}
 }

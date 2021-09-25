@@ -19,7 +19,7 @@ namespace Sailor::GfxDevice::Vulkan
 		/// VkImageCreateInfo settings
 		VkImageCreateFlags m_flags = 0;
 		VkImageType m_imageType = VK_IMAGE_TYPE_2D;
-		VkFormat m_format = VK_FORMAT_UNDEFINED;
+		VkFormat m_format = VK_FORMAT_R8G8B8A8_SRGB;
 		VkExtent3D m_extent = { 0, 0, 0 };
 		uint32_t m_mipLevels = 0;
 		uint32_t m_arrayLayers = 0;
@@ -48,7 +48,7 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanDevice> m_device;
 
 		TRefPtr<VulkanDeviceMemory> m_deviceMemory;
-		VkDeviceSize m_memoryOffset = 0; 
+		VkDeviceSize m_memoryOffset = 0;
 		VkDeviceSize m_size = 0;
 	};
 }

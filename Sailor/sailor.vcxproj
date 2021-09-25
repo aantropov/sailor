@@ -204,6 +204,7 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanPipileneStates.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanQueue.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanRenderPass.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSemaphore.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanShaderModule.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.h" />
@@ -243,6 +244,7 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanPipileneStates.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanQueue.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanRenderPass.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSemaphore.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanShaderModule.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.cpp" />

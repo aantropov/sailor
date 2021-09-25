@@ -57,6 +57,8 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport);
 		SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
 	
+		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_maxAllowedAnisotropy; };
+
 	protected:
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
@@ -71,6 +73,8 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
 		SAILOR_API void CreateVertexBuffer();
+
+		float m_maxAllowedAnisotropy = 0;
 
 		// Command pool
 		TRefPtr<VulkanCommandPool> m_commandPool;
@@ -118,5 +122,6 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanDescriptorSet> m_descriptorSet;
 
 		TRefPtr<VulkanImage> m_image;
+		TRefPtr<VulkanImageView> m_imageView;
 	};
 }

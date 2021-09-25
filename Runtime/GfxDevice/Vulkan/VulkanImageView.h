@@ -32,7 +32,7 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual ~VulkanImageView();
 
 	protected:
-		
+
 		VkImageView m_imageView = VK_NULL_HANDLE;
 		TRefPtr<VulkanDevice> m_device;
 	};

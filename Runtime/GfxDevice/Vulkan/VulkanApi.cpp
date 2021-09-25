@@ -421,7 +421,10 @@ bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, TRefPtr<VulkanSurface>
 		swapChainFits = !swapChainSupport.m_formats.empty() && !swapChainSupport.m_presentModes.empty();
 	}
 
-	return indices.IsComplete() && extensionsSupported && swapChainFits;
+	VkPhysicalDeviceFeatures supportedFeatures;
+	vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
+
+	return indices.IsComplete() && extensionsSupported && swapChainFits && supportedFeatures.samplerAnisotropy;
 }
 
 int VulkanApi::GetDeviceScore(VkPhysicalDevice device)
