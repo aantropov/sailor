@@ -26,6 +26,9 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 		void Initialize(TRefPtr<VulkanDevice> pDevice);
 
+		TRefPtr<VulkanSampler> GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode) const;
+
+	private:
 		TRefPtr<VulkanSampler> m_nearestFiltrationRepeat;
 		TRefPtr<VulkanSampler> m_nearestFiltrationClamp;
 

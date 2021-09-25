@@ -75,3 +75,17 @@ void VulkanSamplers::Initialize(TRefPtr<VulkanDevice> pDevice)
 		true,
 		8.0f);
 }
+
+TRefPtr<VulkanSampler> VulkanSamplers::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode) const
+{
+	TRefPtr<VulkanSampler> a = m_nearestFiltrationClamp;
+	TRefPtr<VulkanSampler> b = m_linearFiltrationClamp;
+
+	if(clampingMode == RHI::ETextureClamping::Repeat)
+	{
+		a = m_nearestFiltrationRepeat;
+		b = m_linearFiltrationRepeat;
+	}
+
+	return filtration == RHI::ETextureFiltration::Nearest ? a : b;
+}

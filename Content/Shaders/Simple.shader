@@ -43,8 +43,7 @@ layout(location = 0) out vec4 outColor;
 
 void main() 
 {
-    outColor = fragColor;
-    outColor = texture(textureSampler, fragTexcoord);
+    outColor = fragColor * texture(textureSampler, fragTexcoord);
 }
 END_CODE,
 

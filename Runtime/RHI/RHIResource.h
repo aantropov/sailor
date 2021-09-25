@@ -4,6 +4,19 @@
 
 namespace Sailor::RHI
 {
+	enum class ETextureFiltration : uint8_t
+	{
+		Nearest = 0,
+		Linear,
+		Bicubic
+	};
+
+	enum class ETextureClamping : uint8_t
+	{
+		Clamp = 0,
+		Repeat
+	};
+
 	class RHIVertex
 	{
 	public:

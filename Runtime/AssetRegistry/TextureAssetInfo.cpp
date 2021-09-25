@@ -10,15 +10,27 @@ using namespace Sailor;
 void TextureAssetInfo::Serialize(nlohmann::json& outData) const
 {
 	AssetInfo::Serialize(outData);
-	outData["generate_mips"] = bGenerateMips;
+	outData["generate_mips"] = m_bShouldGenerateMips;
+	outData["clamping"] = (uint8_t)m_clamping;
+	outData["filtration"] = (uint8_t)m_filtration;
 }
 
 void TextureAssetInfo::Deserialize(const nlohmann::json& outData)
 {
 	AssetInfo::Deserialize(outData);
+	if (outData.contains("clamping"))
+	{
+		m_clamping = (RHI::ETextureClamping)outData["clamping"].get<uint8_t>();
+	}
+
+	if (outData.contains("filtration"))
+	{
+		m_filtration = (RHI::ETextureFiltration)outData["filtration"].get<uint8_t>();
+	}
+
 	if (outData.contains("generate_mips"))
 	{
-		bGenerateMips = outData["generate_mips"].get<bool>();
+		m_bShouldGenerateMips = outData["generate_mips"].get<bool>();
 	}
 }
 

@@ -225,23 +225,6 @@ void VulkanDevice::CreateVertexBuffer()
 
 void VulkanDevice::CreateGraphicsPipeline()
 {
-	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>("Textures\\VulkanLogo.png"))
-	{
-		TextureImporter::ByteCode data;
-		int32_t width;
-		int32_t height;
-
-		TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height);
-		m_image = VulkanApi::CreateImage_Immediate(
-			TRefPtr<VulkanDevice>(this),
-			data.data(),
-			data.size() * sizeof(uint8_t),
-			VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 });
-
-		m_imageView = new VulkanImageView(TRefPtr<VulkanDevice>(this), m_image);
-		m_imageView->Compile();
-	}
-
 	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfo<ShaderAssetInfo>("Shaders\\Simple.shader"))
 	{
 		const VkDeviceSize uniformBufferSize = sizeof(RHI::UBOTransform);
@@ -303,6 +286,25 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		m_graphicsPipeline->m_renderPass = m_renderPass;
 		m_graphicsPipeline->Compile();
+	}
+
+	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>("Textures\\VulkanLogo.png"))
+	{
+		TextureImporter::ByteCode data;
+		int32_t width;
+		int32_t height;
+
+		TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height);
+		m_image = VulkanApi::CreateImage_Immediate(
+			TRefPtr<VulkanDevice>(this),
+			data.data(),
+			data.size() * sizeof(uint8_t),
+			VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 });
+
+		data.clear();
+
+		m_imageView = new VulkanImageView(TRefPtr<VulkanDevice>(this), m_image);
+		m_imageView->Compile();
 
 		auto descriptorSizes = vector
 		{
@@ -313,14 +315,14 @@ void VulkanDevice::CreateGraphicsPipeline()
 		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>
 		{
 			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UBOTransform)),
-			TRefPtr<VulkanDescriptorImage>::Make(1, 0, m_samplers.m_linearFiltrationClamp, m_imageView)
-
+			TRefPtr<VulkanDescriptorImage>::Make(1, 0, m_samplers.GetSampler(textureUID->GetFiltration(), textureUID->GetClamping()), m_imageView)
 		};
 
 		m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);
 		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), m_descriptorPool, m_descriptorSetLayout, descriptors);
 		m_descriptorSet->Compile();
 	}
+
 }
 
 void VulkanDevice::CreateFramebuffers()
