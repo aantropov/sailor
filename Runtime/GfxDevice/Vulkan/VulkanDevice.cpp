@@ -50,10 +50,10 @@ TRefPtr<VulkanShaderStage> g_testVertShader;
 
 const std::vector<RHIVertex> g_testVertices =
 {
-	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, -0.5f}, {0.3f, 1.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.0f, 0.0f, 0.5f}},
-	{{-0.5f, 0.5f}, {0.0f, 1.0f, 1.0f}}
+	{{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
+	{{0.5f, -0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
+	{{0.5f, 0.5f}, {1.0f, 1.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
+	{{-0.5f, 0.5f}, {1.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}}
 };
 
 const std::vector<uint32_t> g_testIndices =
@@ -75,6 +75,9 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
 	m_maxAllowedAnisotropy = properties.limits.maxSamplerAnisotropy;
 
+	// Cache samplers
+	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
+
 	// Create swapchain
 	CreateSwapchain(pViewport);
 
@@ -86,8 +89,6 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	CreateVertexBuffer();
 	CreateCommandBuffers();
 	CreateFrameSyncSemaphores();
-
-	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
 
 	m_bIsSwapChainOutdated = false;
 }
@@ -224,6 +225,23 @@ void VulkanDevice::CreateVertexBuffer()
 
 void VulkanDevice::CreateGraphicsPipeline()
 {
+	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>("Textures\\VulkanLogo.png"))
+	{
+		TextureImporter::ByteCode data;
+		int32_t width;
+		int32_t height;
+
+		TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height);
+		m_image = VulkanApi::CreateImage_Immediate(
+			TRefPtr<VulkanDevice>(this),
+			data.data(),
+			data.size() * sizeof(uint8_t),
+			VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 });
+
+		m_imageView = new VulkanImageView(TRefPtr<VulkanDevice>(this), m_image);
+		m_imageView->Compile();
+	}
+
 	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfo<ShaderAssetInfo>("Shaders\\Simple.shader"))
 	{
 		const VkDeviceSize uniformBufferSize = sizeof(RHI::UBOTransform);
@@ -241,8 +259,10 @@ void VulkanDevice::CreateGraphicsPipeline()
 		g_testVertShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", TRefPtr<VulkanDevice>(this), vertCode);
 		g_testFragShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", TRefPtr<VulkanDevice>(this), fragCode);
 
-		auto attributeDescriptions = RHIVertexFactoryPositionColor::GetAttributeDescriptions();
-		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = new VulkanStateVertexDescription(RHIVertexFactoryPositionColor::GetBindingDescription(), vector{ attributeDescriptions[0], attributeDescriptions[1] });
+		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = new VulkanStateVertexDescription(
+			RHIVertexFactory<RHI::RHIVertex>::GetBindingDescription(),
+			RHIVertexFactory<RHI::RHIVertex>::GetAttributeDescriptions());
+
 		const TRefPtr<VulkanStateInputAssembly> pInputAssembly = new VulkanStateInputAssembly();
 		const TRefPtr<VulkanStateDynamicViewport> pStateViewport = new VulkanStateDynamicViewport();
 		const TRefPtr<VulkanStateRasterization> pStateRasterizer = new VulkanStateRasterization();
@@ -260,7 +280,13 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		const TRefPtr<VulkanStateMultisample> pMultisample = new VulkanStateMultisample();
 
-		m_descriptorSetLayout = TRefPtr<VulkanDescriptorSetLayout>::Make(TRefPtr<VulkanDevice>(this), std::vector{ VulkanApi::CreateDescriptorSetLayoutBinding() });
+		m_descriptorSetLayout = TRefPtr<VulkanDescriptorSetLayout>::Make(
+			TRefPtr<VulkanDevice>(this),
+			std::vector
+			{
+				VulkanApi::CreateDescriptorSetLayoutBinding(0, VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL),
+				VulkanApi::CreateDescriptorSetLayoutBinding(1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_ALL)
+			});
 
 		m_pipelineLayout = TRefPtr<VulkanPipelineLayout>::Make(TRefPtr<VulkanDevice>(this),
 			std::vector{ m_descriptorSetLayout },
@@ -278,29 +304,22 @@ void VulkanDevice::CreateGraphicsPipeline()
 		m_graphicsPipeline->m_renderPass = m_renderPass;
 		m_graphicsPipeline->Compile();
 
-		auto descriptorSizes = vector{ VulkanApi::CreateDescriptorPoolSize() };
-		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>{ TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UBOTransform)) };
+		auto descriptorSizes = vector
+		{
+			VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1),
+			VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1)
+		};
+
+		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>
+		{
+			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UBOTransform)),
+			TRefPtr<VulkanDescriptorImage>::Make(1, 0, m_samplers.m_linearFiltrationClamp, m_imageView)
+
+		};
 
 		m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);
 		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), m_descriptorPool, m_descriptorSetLayout, descriptors);
 		m_descriptorSet->Compile();
-
-		if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>("Textures\\VulkanLogo.png"))
-		{
-			TextureImporter::ByteCode data;
-			int32_t width;
-			int32_t height;
-
-			TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height);
-			m_image = VulkanApi::CreateImage_Immediate(
-				TRefPtr<VulkanDevice>(this),
-				data.data(),
-				data.size() * sizeof(uint8_t),
-				VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 });
-
-			m_imageView = new VulkanImageView(TRefPtr<VulkanDevice>(this), m_image);
-			m_imageView->Compile();
-		}
 	}
 }
 

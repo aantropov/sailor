@@ -6,6 +6,9 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	class VulkanSampler;
+	class VulkanImageView;
+
 	class VulkanDescriptorSetLayout : public RHI::RHIResource, public RHI::IRHIExplicitInit
 	{
 	public:
@@ -73,6 +76,25 @@ namespace Sailor::GfxDevice::Vulkan
 		VkDeviceSize m_offset;
 		VkDeviceSize m_range;
 		VkDescriptorBufferInfo m_bufferInfo;
+	};
+
+	class VulkanDescriptorImage : public VulkanDescriptor
+	{
+	public:
+		VulkanDescriptorImage(uint32_t dstBinding,
+			uint32_t dstArrayElement,
+			TRefPtr<VulkanSampler> sampler,
+			TRefPtr<VulkanImageView> imageView,
+			VkImageLayout imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+
+	protected:
+
+		TRefPtr<VulkanSampler> m_sampler;
+		TRefPtr<VulkanImageView> m_imageView;
+		VkImageLayout m_imageLayout;
+		VkDescriptorImageInfo m_imageInfo{};
 	};
 
 	class VulkanDescriptorSet : public RHI::RHIResource, public RHI::IRHIExplicitInit

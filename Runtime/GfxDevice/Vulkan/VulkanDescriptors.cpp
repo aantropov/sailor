@@ -2,6 +2,8 @@
 #include "VulkanApi.h"
 #include "VulkanBuffer.h"
 #include "VulkanDescriptors.h"
+#include "VulkanImageView.h"
+#include "VulkanSamplers.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -64,9 +66,9 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
 	}
 }
 
-VulkanDescriptorSet::VulkanDescriptorSet(TRefPtr<VulkanDevice> pDevice, 
-	TRefPtr<VulkanDescriptorPool> pool, 
-	TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout, 
+VulkanDescriptorSet::VulkanDescriptorSet(TRefPtr<VulkanDevice> pDevice,
+	TRefPtr<VulkanDescriptorPool> pool,
+	TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout,
 	std::vector<TRefPtr<VulkanDescriptor>> descriptors) :
 	m_device(pDevice),
 	m_descriptorPool(pool),
@@ -94,14 +96,17 @@ void VulkanDescriptorSet::Compile()
 
 	VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
 
-	VkWriteDescriptorSet descriptorWrite{};
-	for (auto descriptor : m_descriptors)
-	{
-		descriptor->Apply(descriptorWrite);
-	}
-	descriptorWrite.dstSet = m_descriptorSet;
+	VkWriteDescriptorSet* descriptorsWrite = reinterpret_cast<VkWriteDescriptorSet*>(_malloca(m_descriptors.size() * sizeof(VkWriteDescriptorSet)));
 
-	vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
+	for (uint32_t i = 0; i < m_descriptors.size(); i++)
+	{
+		m_descriptors[i]->Apply(descriptorsWrite[i]);
+		descriptorsWrite[i].dstSet = m_descriptorSet;
+	}
+
+	vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(m_descriptors.size()), descriptorsWrite, 0, nullptr);
+
+	_freea(descriptorsWrite);
 }
 
 void VulkanDescriptorSet::Release()
@@ -156,4 +161,27 @@ void VulkanDescriptorBuffer::Apply(VkWriteDescriptorSet& writeDescriptorSet) con
 	writeDescriptorSet.pBufferInfo = &m_bufferInfo;
 	writeDescriptorSet.pImageInfo = nullptr; // Optional
 	writeDescriptorSet.pTexelBufferView = nullptr; // Optional
+}
+
+VulkanDescriptorImage::VulkanDescriptorImage(uint32_t dstBinding,
+	uint32_t dstArrayElement,
+	TRefPtr<VulkanSampler> sampler,
+	TRefPtr<VulkanImageView> imageView,
+	VkImageLayout imageLayout) :
+	m_sampler(sampler),
+	m_imageView(imageView),
+	m_imageLayout(imageLayout),
+	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+{
+	m_imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	m_imageInfo.imageView = *m_imageView;
+	m_imageInfo.sampler = *m_sampler;
+}
+
+void VulkanDescriptorImage::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
+{
+	VulkanDescriptor::Apply(writeDescriptorSet);
+
+	writeDescriptorSet.descriptorCount = 1;
+	writeDescriptorSet.pImageInfo = &m_imageInfo;
 }

@@ -8,7 +8,8 @@ namespace Sailor::RHI
 	{
 	public:
 		glm::vec2 m_position;
-		glm::vec3 m_color;
+		glm::vec2 m_texcoord;
+		glm::vec4 m_color;
 	};
 
 	struct UBOTransform

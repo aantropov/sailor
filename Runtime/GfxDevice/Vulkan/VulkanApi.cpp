@@ -657,7 +657,7 @@ TRefPtr<VulkanImageView> VulkanApi::CreateImageView(TRefPtr<VulkanDevice> device
 	return imageView;
 }
 
-VkVertexInputBindingDescription RHIVertexFactoryPositionColor::GetBindingDescription()
+VkVertexInputBindingDescription RHIVertexFactory<RHI::RHIVertex>::GetBindingDescription()
 {
 	VkVertexInputBindingDescription bindingDescription{};
 	bindingDescription.binding = 0;
@@ -666,9 +666,10 @@ VkVertexInputBindingDescription RHIVertexFactoryPositionColor::GetBindingDescrip
 	return bindingDescription;
 }
 
-std::array<VkVertexInputAttributeDescription, 2> RHIVertexFactoryPositionColor::GetAttributeDescriptions()
+std::vector<VkVertexInputAttributeDescription> RHIVertexFactory<RHI::RHIVertex>::GetAttributeDescriptions()
 {
-	std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+	std::vector<VkVertexInputAttributeDescription> attributeDescriptions(3);
+
 	attributeDescriptions[0].binding = 0;
 	attributeDescriptions[0].location = 0;
 	attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
@@ -676,8 +677,13 @@ std::array<VkVertexInputAttributeDescription, 2> RHIVertexFactoryPositionColor::
 
 	attributeDescriptions[1].binding = 0;
 	attributeDescriptions[1].location = 1;
-	attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_color);
+	attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
+	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_texcoord);
+
+	attributeDescriptions[2].binding = 0;
+	attributeDescriptions[2].location = 2;
+	attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	attributeDescriptions[2].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_color);
 
 	return attributeDescriptions;
 }

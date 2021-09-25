@@ -50,12 +50,13 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<VkPresentModeKHR> m_presentModes;
 	};
 
-	class RHIVertexFactoryPositionColor
+	template<typename TRHIVertex = RHI::RHIVertex>
+	class RHIVertexFactory
 	{
 	public:
 
 		static SAILOR_API VkVertexInputBindingDescription GetBindingDescription();
-		static SAILOR_API std::array<VkVertexInputAttributeDescription, 2> GetAttributeDescriptions();
+		static SAILOR_API std::vector<VkVertexInputAttributeDescription> GetAttributeDescriptions();
 	};
 
 	class VulkanApi : public TSingleton<VulkanApi>
