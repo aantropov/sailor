@@ -171,6 +171,12 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\ModelAssetInfo.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\ModelImporter.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -283,6 +289,12 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\ModelAssetInfo.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\ModelImporter.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

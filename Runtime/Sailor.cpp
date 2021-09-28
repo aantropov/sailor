@@ -2,6 +2,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
 #include "AssetRegistry/TextureImporter.h"
+#include "AssetRegistry/ModelImporter.h"
 #include "Platform/Win/ConsoleWindow.h"
 #include "Platform/Win/Input.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
@@ -49,6 +50,7 @@ void EngineInstance::Initialize()
 	AssetRegistry::Initialize();
 	TextureImporter::Initialize();
 	ShaderCompiler::Initialize();
+	ModelImporter::Initialize();
 	Renderer::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
 	ShaderCompiler::GetInstance();
 

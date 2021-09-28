@@ -5,6 +5,7 @@
 #include "AssetInfo.h"
 #include "ShaderAssetInfo.h"
 #include "TextureAssetInfo.h"
+#include "ModelAssetInfo.h"
 #include "Utils.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
@@ -18,9 +19,10 @@ void AssetRegistry::Initialize()
 	m_pInstance = new AssetRegistry();
 
 	DefaultAssetInfoHandler::Initialize();
-	ShaderAssetInfoHandler::Initialize();
 	TextureAssetInfoHandler::Initialize();
-	
+	ShaderAssetInfoHandler::Initialize();
+	ModelAssetInfoHandler::Initialize();
+
 	m_pInstance->ScanContentFolder();
 }
 

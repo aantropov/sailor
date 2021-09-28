@@ -176,6 +176,8 @@
   <ItemGroup>
     <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\AssetRegistry.h" />
+    <ClInclude Include="..\Runtime\AssetRegistry\ModelAssetInfo.h" />
+    <ClInclude Include="..\Runtime\AssetRegistry\ModelImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderAssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCache.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h" />
@@ -221,6 +223,8 @@
   <ItemGroup>
     <ClCompile Include="..\Runtime\AssetRegistry\AssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp" />
+    <ClCompile Include="..\Runtime\AssetRegistry\ModelAssetInfo.cpp" />
+    <ClCompile Include="..\Runtime\AssetRegistry\ModelImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderAssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCache.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp" />

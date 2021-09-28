@@ -7,3 +7,6 @@
 [submodule "External/stb"]
 	path = External/stb
 	url = https://github.com/nothings/stb.git
+[submodule "External/tiny_obj_loader"]
+	path = External/tiny_obj_loader
+	url = https://github.com/tinyobjloader/tinyobjloader.git

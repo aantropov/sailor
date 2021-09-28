@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/RefPtr.hpp"
 #include <glm/glm/glm.hpp>
+#include <glm/glm/gtx/hash.hpp>
 
 namespace Sailor::RHI
 {
@@ -23,6 +24,13 @@ namespace Sailor::RHI
 		glm::vec3 m_position;
 		glm::vec2 m_texcoord;
 		glm::vec4 m_color;
+
+		bool operator==(const RHIVertex& other) const 
+		{
+			return m_position == other.m_position && 
+				m_color == other.m_color && 
+				m_texcoord == other.m_texcoord;
+		}
 	};
 
 	struct UBOTransform
@@ -63,3 +71,15 @@ namespace Sailor::RHI
 		virtual ~IRHIStateModifier() = default;
 	};
 };
+
+namespace std {
+	template<> struct hash<Sailor::RHI::RHIVertex> 
+	{
+		size_t operator()(Sailor::RHI::RHIVertex const& vertex) const 
+		{
+			return ((hash<glm::vec3>()(vertex.m_position) ^
+				(hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^
+				(hash<glm::vec2>()(vertex.m_texcoord) << 1);
+		}
+	};
+}
