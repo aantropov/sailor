@@ -36,7 +36,7 @@ namespace Sailor::GfxDevice::Vulkan
 			TRefPtr<VulkanFramebuffer> frameBuffer,
 			VkExtent2D extent,
 			VkOffset2D offset = { 0,0 },
-			VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} });
+			VkClearValue clearColor = VulkanApi::DefaultClearColor);
 
 		void EndRenderPass();
 

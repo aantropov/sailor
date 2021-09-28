@@ -58,8 +58,10 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport);
 		SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
-	
+
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_maxAllowedAnisotropy; };
+
+		SAILOR_API VkFormat GetDepthFormat() const;	
 
 	protected:
 
@@ -85,7 +87,7 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<TRefPtr<VulkanCommandBuffer>> m_commandBuffers;
 
 		TRefPtr<VulkanDescriptorPool> m_descriptorPool;
-		
+
 		// Render Pass
 		TRefPtr<VulkanRenderPass> m_renderPass;
 
@@ -110,7 +112,7 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<TRefPtr<VulkanFence>> m_syncFences;
 		std::vector<TRefPtr<VulkanFence>> m_syncImages;
 		size_t m_currentFrame = 0;
-				
+
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
 
 		VulkanSamplers m_samplers;

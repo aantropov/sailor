@@ -122,9 +122,11 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanStateDepthStencil : public VulkanPipelineState
 	{
 	public:
-		VulkanStateDepthStencil() = default;
+		VulkanStateDepthStencil(bool bEnableDepthTest = true, bool bEnableZWrite = true, VkCompareOp depthOp = VkCompareOp::VK_COMPARE_OP_LESS);
 		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
+
+		VkPipelineDepthStencilStateCreateInfo m_depthStencil{};
 	};
 }

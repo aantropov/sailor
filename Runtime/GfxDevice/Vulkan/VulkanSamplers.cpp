@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "VulkanSamplers.h"
 #include "VulkanDevice.h"
 #include "Core/RefPtr.hpp"

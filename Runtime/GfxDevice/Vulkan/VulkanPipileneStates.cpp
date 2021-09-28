@@ -160,8 +160,22 @@ void VulkanStateDynamic::Apply(struct VkGraphicsPipelineCreateInfo& state) const
 	state.pDynamicState = &m_dynamicState;
 }
 
+VulkanStateDepthStencil::VulkanStateDepthStencil(bool bEnableDepthTest, bool bEnableZWrite, VkCompareOp depthOp)
+{
+	m_depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	m_depthStencil.depthTestEnable = bEnableDepthTest;
+	m_depthStencil.depthWriteEnable = bEnableZWrite;
+	m_depthStencil.depthCompareOp = depthOp;
+
+	// Min depth -> closier
+	m_depthStencil.depthBoundsTestEnable = VK_FALSE;
+	m_depthStencil.minDepthBounds = 0.0f; // Optional
+	m_depthStencil.maxDepthBounds = 1.0f; // Optional
+}
+
 void VulkanStateDepthStencil::Apply(struct VkGraphicsPipelineCreateInfo& state) const
 {
-	state.pDepthStencilState = nullptr;
+
+	state.pDepthStencilState = &m_depthStencil;
 }
 

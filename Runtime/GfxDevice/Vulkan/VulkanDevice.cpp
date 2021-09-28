@@ -50,15 +50,21 @@ TRefPtr<VulkanShaderStage> g_testVertShader;
 
 const std::vector<RHIVertex> g_testVertices =
 {
-	{{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
-	{{0.5f, -0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
-	{{0.5f, 0.5f}, {1.0f, 1.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
-	{{-0.5f, 0.5f}, {1.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}}
+	{{-0.5f, -0.5f, 0.0f}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
+	{{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
+	{{0.5f, 0.5f, 0.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
+	{{-0.5f, 0.5f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}},
+
+	{{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
+	{{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
+	{{0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
+	{{-0.5f, 0.5f, -0.5f}, {1.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}}
 };
 
 const std::vector<uint32_t> g_testIndices =
 {
-	0, 1, 2, 2, 3, 0
+	0, 1, 2, 2, 3, 0,
+	4, 5, 6, 6, 7, 4
 };
 
 VulkanDevice::VulkanDevice(const Window* pViewport)
@@ -78,13 +84,14 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	// Cache samplers
 	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
 
-	// Create swapchain
+	CreateCommandPool();
+
+	// Create swapchain	CreateCommandPool();
 	CreateSwapchain(pViewport);
 
 	// Create graphics
 	CreateRenderPass();
 	CreateFramebuffers();
-	CreateCommandPool();
 	CreateGraphicsPipeline();
 	CreateVertexBuffer();
 	CreateCommandBuffers();
@@ -141,6 +148,16 @@ TRefPtr<VulkanSurface> VulkanDevice::GetSurface() const
 	return m_surface;
 }
 
+VkFormat VulkanDevice::GetDepthFormat() const
+{
+	return VulkanApi::SelectFormatByFeatures(
+		m_physicalDevice,
+		{ VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT },
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+	);
+}
+
 TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue)
 {
 	return TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), bOnlyTransferQueue ? m_transferCommandPool : m_commandPool);
@@ -165,7 +182,7 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 
 void VulkanDevice::CreateRenderPass()
 {
-	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
+	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
 	m_renderPass = VulkanApi::CreateRenderPass(TRefPtr<VulkanDevice>(this), m_swapchain->GetImageFormat(), depthFormat);
 }
 
@@ -335,7 +352,7 @@ void VulkanDevice::CreateFramebuffers()
 	{
 		m_swapChainFramebuffers[i] = TRefPtr<VulkanFramebuffer>::Make(
 			m_renderPass,
-			std::vector<TRefPtr<VulkanImageView>>{ swapChainImageViews[i] },
+			std::vector<TRefPtr<VulkanImageView>>{ swapChainImageViews[i], m_swapchain->GetDepthBufferView() },
 			m_swapchain->GetExtent().width,
 			m_swapchain->GetExtent().height,
 			1);
@@ -430,9 +447,8 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 	TRefPtr<VulkanSwapchain> oldSwapchain = m_swapchain;
 	m_swapchain.Clear();
 
-	m_swapchain = TRefPtr<VulkanSwapchain>::Make(m_physicalDevice,
+	m_swapchain = TRefPtr<VulkanSwapchain>::Make(
 		TRefPtr<VulkanDevice>(this),
-		m_surface,
 		viewport->GetWidth(),
 		viewport->GetHeight(),
 		viewport->IsVsyncRequested(),

@@ -35,11 +35,11 @@ VulkanSurface::~VulkanSurface()
 	}
 }
 
-VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, TRefPtr<VulkanDevice> device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain) :
+VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain) :
 	m_device(device),
-	m_surface(surface)
+	m_surface(device->GetSurface())
 {
-	SwapChainSupportDetails swapChainSupport = VulkanApi::QuerySwapChainSupport(physicalDevice, surface);
+	SwapChainSupportDetails swapChainSupport = VulkanApi::QuerySwapChainSupport(device->GetPhysicalDevice(), m_surface);
 
 	m_surfaceFormat = VulkanApi::ChooseSwapSurfaceFormat(swapChainSupport.m_formats);
 	m_presentMode = VulkanApi::ÑhooseSwapPresentMode(swapChainSupport.m_presentModes, bIsVSync);
@@ -61,7 +61,7 @@ VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, TRefPtr<Vulkan
 	createSwapChainInfo.imageArrayLayers = 1;
 	createSwapChainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; //TODO: Use VK_IMAGE_USAGE_TRANSFER_DST_BIT for Post Processing
 
-	VulkanQueueFamilyIndices indices = VulkanApi::FindQueueFamilies(physicalDevice, surface);
+	VulkanQueueFamilyIndices indices = VulkanApi::FindQueueFamilies(device->GetPhysicalDevice(), m_surface);
 	uint32_t queueFamilyIndices[] = { indices.m_graphicsFamily.value(), indices.m_presentFamily.value() };
 
 	if (indices.m_graphicsFamily != indices.m_presentFamily)
@@ -119,6 +119,25 @@ VulkanSwapchain::VulkanSwapchain(VkPhysicalDevice physicalDevice, TRefPtr<Vulkan
 
 		m_swapchainImageViews[i]->Compile();
 	}
+
+	VkFormat depthFormat = device->GetDepthFormat();
+
+	m_depthBuffer = new VulkanImage(m_device);
+	m_depthBuffer->m_extent = VkExtent3D{ m_swapchainExtent.width, m_swapchainExtent.height, 1 };
+	m_depthBuffer->m_format = depthFormat;
+	m_depthBuffer->m_imageType = VkImageType::VK_IMAGE_TYPE_2D;
+	m_depthBuffer->m_tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
+	m_depthBuffer->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	m_depthBuffer->m_mipLevels = 1;
+	m_depthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	m_depthBuffer->m_arrayLayers = 1;
+	m_depthBuffer->m_samples = VK_SAMPLE_COUNT_1_BIT;
+
+	m_depthBuffer->Compile();
+
+	m_depthBuffer->Bind(TRefPtr<VulkanDeviceMemory>::Make(m_device, m_depthBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
+	m_depthBufferView = TRefPtr<VulkanImageView>::Make(m_device, m_depthBuffer, VulkanApi::ComputeAspectFlagsForFormat(depthFormat));
+	m_depthBufferView->Compile();
 }
 
 VulkanSwapchain::~VulkanSwapchain()

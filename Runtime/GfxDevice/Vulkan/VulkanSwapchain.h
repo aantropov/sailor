@@ -36,13 +36,15 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanSwapchain(VkPhysicalDevice physicalDevice, TRefPtr<VulkanDevice> device, TRefPtr<VulkanSurface> surface, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain);
+		VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain);
 
 		operator VkSwapchainKHR() const { return m_swapchain; }
 
 		VkFormat GetImageFormat() const { return m_surfaceFormat.format; }
 
 		const VkExtent2D& GetExtent() const { return m_swapchainExtent; }
+
+		TRefPtr<VulkanImageView> GetDepthBufferView() const { return m_depthBufferView; }
 
 		std::vector<TRefPtr<VulkanImageView>>& GetImageViews() { return m_swapchainImageViews; }
 		const std::vector<TRefPtr<VulkanImageView>>& GetImageViews() const { return m_swapchainImageViews; }
@@ -62,5 +64,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		std::vector<TRefPtr<VulkanSwapchainImage>> m_swapchainImages;
 		std::vector<TRefPtr<VulkanImageView>> m_swapchainImageViews;
+
+		TRefPtr<VulkanImage> m_depthBuffer;
+		TRefPtr<VulkanImageView> m_depthBufferView;
 	};
 }

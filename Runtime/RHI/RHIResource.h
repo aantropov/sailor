@@ -20,7 +20,7 @@ namespace Sailor::RHI
 	class RHIVertex
 	{
 	public:
-		glm::vec2 m_position;
+		glm::vec3 m_position;
 		glm::vec2 m_texcoord;
 		glm::vec4 m_color;
 	};

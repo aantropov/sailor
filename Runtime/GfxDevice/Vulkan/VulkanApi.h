@@ -63,6 +63,8 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 		static constexpr int MaxFramesInFlight = 2;
+		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 1.0f, 0 };
+		static constexpr VkClearValue DefaultClearColor{ {0.0f,0.0f,0.0f,0.0f} };
 
 		static SAILOR_API void Initialize(const Window* pViewport, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
@@ -78,6 +80,10 @@ namespace Sailor::GfxDevice::Vulkan
 		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return m_pInstance->m_vkInstance; }
 
 		static SAILOR_API VulkanQueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface);
+
+		static SAILOR_API VkFormat SelectFormatByFeatures(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+		static SAILOR_API bool HasStencilComponent(VkFormat format);
+
 		static SAILOR_API SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface);
 
 		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

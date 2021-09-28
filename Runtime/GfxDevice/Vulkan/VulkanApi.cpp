@@ -516,7 +516,7 @@ TRefPtr<VulkanRenderPass> VulkanApi::CreateRenderPass(TRefPtr<VulkanDevice> devi
 	VulkanSubpassDescription subpass = {};
 	subpass.m_pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpass.m_colorAttachments.emplace_back(colorAttachmentRef);
-	//subpass.m_depthStencilAttachments.emplace_back(depthAttachmentRef);
+	subpass.m_depthStencilAttachments.emplace_back(depthAttachmentRef);
 
 	// image layout transition
 	VkSubpassDependency colorDependency = {};
@@ -539,9 +539,9 @@ TRefPtr<VulkanRenderPass> VulkanApi::CreateRenderPass(TRefPtr<VulkanDevice> devi
 	depthDependency.dependencyFlags = 0;
 
 	return TRefPtr<VulkanRenderPass>::Make(device,
-		std::vector<VkAttachmentDescription> {	GetDefaultColorAttachment(imageFormat)/*,	GetDefaultDepthAttachment(depthFormat)*/ },
+		std::vector<VkAttachmentDescription> {	GetDefaultColorAttachment(imageFormat), GetDefaultDepthAttachment(depthFormat) },
 		std::vector<VulkanSubpassDescription> { subpass },
-		std::vector<VkSubpassDependency> { colorDependency /*, depthDependency */ });
+		std::vector<VkSubpassDependency> { colorDependency, depthDependency });
 }
 
 TRefPtr<VulkanRenderPass> VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice> device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples)
@@ -629,6 +629,30 @@ TRefPtr<VulkanRenderPass> VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice> d
 	return TRefPtr<VulkanRenderPass>::Make(device, attachments, subpasses, dependencies);
 }
 
+bool VulkanApi::HasStencilComponent(VkFormat format)
+{
+	return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
+}
+
+VkFormat VulkanApi::SelectFormatByFeatures(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
+{
+	for (VkFormat format : candidates)
+	{
+		VkFormatProperties props;
+		vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+
+		if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+			return format;
+		}
+		else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+			return format;
+		}
+	}
+
+	SAILOR_LOG("Failed to find supported format!");
+	return VkFormat::VK_FORMAT_UNDEFINED;
+}
+
 VkImageAspectFlags VulkanApi::ComputeAspectFlagsForFormat(VkFormat format)
 {
 	if (format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT)
@@ -648,9 +672,6 @@ VkImageAspectFlags VulkanApi::ComputeAspectFlagsForFormat(VkFormat format)
 TRefPtr<VulkanImageView> VulkanApi::CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags)
 {
 	image->Compile();
-
-	//image->Bind(nullptr, 0);
-
 	TRefPtr<VulkanImageView> imageView = TRefPtr<VulkanImageView>::Make(device, image, aspectFlags);
 	imageView->Compile();
 
@@ -672,7 +693,7 @@ std::vector<VkVertexInputAttributeDescription> RHIVertexFactory<RHI::RHIVertex>:
 
 	attributeDescriptions[0].binding = 0;
 	attributeDescriptions[0].location = 0;
-	attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+	attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 	attributeDescriptions[0].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_position);
 
 	attributeDescriptions[1].binding = 0;
@@ -775,7 +796,10 @@ TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		sharingMode);
 
-	stagingBuffer->GetMemoryDevice()->Copy(0, size, pData);
+	if (pData != nullptr && size > 0)
+	{
+		stagingBuffer->GetMemoryDevice()->Copy(0, size, pData);
+	}
 
 	TRefPtr<VulkanImage> res = new VulkanImage(device);
 
