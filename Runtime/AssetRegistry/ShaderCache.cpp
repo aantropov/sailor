@@ -374,7 +374,7 @@ bool ShaderCache::IsExpired(const UID& uid, uint32_t permutation) const
 
 	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
 
-	return (*it)->m_timestamp < assetInfo->GetAssetLastModificationTime();
+	return assetInfo ? (*it)->m_timestamp < assetInfo->GetAssetLastModificationTime() : true;
 }
 
 
