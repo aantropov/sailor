@@ -39,6 +39,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkMemoryRequirements GetMemoryRequirements() const;
 
 		TRefPtr<VulkanDeviceMemory> GetMemoryDevice() { return m_deviceMemory; }
+		TRefPtr<VulkanDevice> GetDevice() const { return m_device; }
 
 	protected:
 

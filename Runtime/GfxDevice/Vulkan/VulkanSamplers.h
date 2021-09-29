@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include "VulkanSemaphore.h"
 #include "RHI/RHIResource.h"
 #include "Core/RefPtr.hpp"
@@ -11,7 +12,7 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanSampler(TRefPtr<VulkanDevice> pDevice, VkFilter filter, VkSamplerAddressMode addressMode, bool bIsAnisotropyEnabled = true, float maxAnisotropy = 8);
+		VulkanSampler(TRefPtr<VulkanDevice> pDevice, VkFilter filter, VkSamplerAddressMode addressMode, bool bUseMips = true, bool bIsAnisotropyEnabled = true, float maxAnisotropy = 8);
 		~VulkanSampler();
 
 		operator VkSampler() const { return m_textureSampler; }
@@ -26,13 +27,10 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 		void Initialize(TRefPtr<VulkanDevice> pDevice);
 
-		TRefPtr<VulkanSampler> GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode) const;
+		TRefPtr<VulkanSampler> GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const;
 
 	private:
-		TRefPtr<VulkanSampler> m_nearestFiltrationRepeat;
-		TRefPtr<VulkanSampler> m_nearestFiltrationClamp;
 
-		TRefPtr<VulkanSampler> m_linearFiltrationClamp;
-		TRefPtr<VulkanSampler> m_linearFiltrationRepeat;
+		std::array<TRefPtr<VulkanSampler>, 8> m_samplers;
 	};
 }

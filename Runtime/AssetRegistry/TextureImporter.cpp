@@ -33,7 +33,7 @@ void TextureImporter::OnAssetInfoUpdated(AssetInfo* assetInfo)
 {
 }
 
-bool TextureImporter::LoadTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height)
+bool TextureImporter::LoadTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -46,6 +46,7 @@ bool TextureImporter::LoadTexture(UID uid, ByteCode& decodedData, int32_t& width
 		decodedData.resize(imageSize);
 		memcpy(decodedData.data(), pixels, imageSize);
 
+		mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
 		stbi_image_free(pixels);
 		return true;
 	}

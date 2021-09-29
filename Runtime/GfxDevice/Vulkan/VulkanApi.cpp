@@ -780,6 +780,7 @@ TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
 	const void* pData,
 	VkDeviceSize size,
 	VkExtent3D extent,
+	uint32_t mipLevels,
 	VkImageType type,
 	VkFormat format,
 	VkImageTiling tiling,
@@ -807,7 +808,7 @@ TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
 	res->m_format = format;
 	res->m_tiling = tiling;
 	res->m_usage = usage;
-	res->m_mipLevels = 1;
+	res->m_mipLevels = mipLevels;
 	res->m_samples = VK_SAMPLE_COUNT_1_BIT;
 	res->m_arrayLayers = 1;
 	res->m_sharingMode = sharingMode;
@@ -830,7 +831,15 @@ TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->ImageMemoryBarrier(res, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 	cmdBuffer->CopyBufferToImage(stagingBuffer, res, static_cast<uint32_t>(extent.width), static_cast<uint32_t>(extent.height));
-	cmdBuffer->ImageMemoryBarrier(res, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	
+	if (res->m_mipLevels == 1)
+	{
+		cmdBuffer->ImageMemoryBarrier(res, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+	else
+	{
+		cmdBuffer->GenerateMipMaps(res);
+	}
 	cmdBuffer->EndCommandList();
 	device->SubmitCommandBuffer(cmdBuffer, fence);
 

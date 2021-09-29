@@ -170,6 +170,19 @@ VkFormat VulkanDevice::GetDepthFormat() const
 	);
 }
 
+bool VulkanDevice::IsMipsSupported(VkFormat format) const
+{
+	VkFormatProperties formatProperties;
+	vkGetPhysicalDeviceFormatProperties(m_physicalDevice, format, &formatProperties);
+
+	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) 
+	{
+		return false;
+	}
+
+	return true;
+}
+
 TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue)
 {
 	return TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), bOnlyTransferQueue ? m_transferCommandPool : m_commandPool);
@@ -327,13 +340,15 @@ void VulkanDevice::CreateGraphicsPipeline()
 		TextureImporter::ByteCode data;
 		int32_t width;
 		int32_t height;
+		uint32_t mipLevels;
 
-		TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height);
+		TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height, mipLevels);
 		m_image = VulkanApi::CreateImage_Immediate(
 			TRefPtr<VulkanDevice>(this),
 			data.data(),
 			data.size() * sizeof(uint8_t),
-			VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 });
+			VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 },
+			mipLevels);
 
 		data.clear();
 
@@ -349,7 +364,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>
 		{
 			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UBOTransform)),
-			TRefPtr<VulkanDescriptorImage>::Make(1, 0, m_samplers.GetSampler(textureUID->GetFiltration(), textureUID->GetClamping()), m_imageView)
+			TRefPtr<VulkanDescriptorImage>::Make(1, 0, m_samplers.GetSampler(textureUID->GetFiltration(), textureUID->GetClamping(), m_image->m_mipLevels), m_imageView)
 		};
 
 		m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);

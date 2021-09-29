@@ -56,6 +56,10 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void ImageMemoryBarrier(TRefPtr<VulkanImage> image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 
+		void Blit(TRefPtr<VulkanImage> srcImage, VkImageLayout srcImageLayout, TRefPtr<VulkanImage> dstImage, VkImageLayout dstImageLayout,
+			uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter);
+
+		void GenerateMipMaps(TRefPtr<VulkanImage> image);
 		void ClearDependencies();
 		void Reset();
 

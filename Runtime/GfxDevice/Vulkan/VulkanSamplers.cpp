@@ -9,6 +9,7 @@ using namespace Sailor::GfxDevice::Vulkan;
 VulkanSampler::VulkanSampler(TRefPtr<VulkanDevice> pDevice,
 	VkFilter filter,
 	VkSamplerAddressMode addressMode,
+	bool bUseMips,
 	bool bIsAnisotropyEnabled,
 	float maxAnisotropy) :
 	m_device(pDevice)
@@ -34,7 +35,7 @@ VulkanSampler::VulkanSampler(TRefPtr<VulkanDevice> pDevice,
 	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	samplerInfo.mipLodBias = 0.0f;
 	samplerInfo.minLod = 0.0f;
-	samplerInfo.maxLod = 0.0f;
+	samplerInfo.maxLod = bUseMips ? 64.0f : 0.0f;
 
 	VK_CHECK(vkCreateSampler(*m_device, &samplerInfo, nullptr, &m_textureSampler));
 }
@@ -46,47 +47,26 @@ VulkanSampler::~VulkanSampler()
 
 void VulkanSamplers::Initialize(TRefPtr<VulkanDevice> pDevice)
 {
-	m_nearestFiltrationRepeat = TRefPtr<VulkanSampler>::Make(pDevice,
-		VkFilter::VK_FILTER_NEAREST,
-		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		true,
-		8.0f);
+	for (uint32_t i = 0; i < 8; i++)
+	{
+		bool bUseMips = (i & 1);
+		VkFilter filter = (i >> 1) & 1 ? VkFilter::VK_FILTER_NEAREST : VkFilter::VK_FILTER_LINEAR;
+		VkSamplerAddressMode addressing = (i >> 2) & 1 ? VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT : VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 
-	m_nearestFiltrationClamp = TRefPtr<VulkanSampler>::Make(pDevice,
-		VkFilter::VK_FILTER_NEAREST,
-		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		true,
-		8.0f);
-
-	m_nearestFiltrationRepeat = TRefPtr<VulkanSampler>::Make(pDevice,
-		VkFilter::VK_FILTER_NEAREST,
-		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		true,
-		8.0f);
-
-	m_linearFiltrationClamp = TRefPtr<VulkanSampler>::Make(pDevice,
-		VkFilter::VK_FILTER_LINEAR,
-		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		true,
-		8.0f);
-
-	m_linearFiltrationRepeat = TRefPtr<VulkanSampler>::Make(pDevice,
-		VkFilter::VK_FILTER_LINEAR,
-		VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
-		true,
-		8.0f);
+		m_samplers[i] = TRefPtr<VulkanSampler>::Make(pDevice,
+			filter,
+			addressing,
+			bUseMips,
+			true,
+			8.0f);
+	}
 }
 
-TRefPtr<VulkanSampler> VulkanSamplers::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode) const
+TRefPtr<VulkanSampler> VulkanSamplers::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const
 {
-	TRefPtr<VulkanSampler> a = m_nearestFiltrationClamp;
-	TRefPtr<VulkanSampler> b = m_linearFiltrationClamp;
+	uint8_t index = bHasMipMaps ? 1 : 0;
+	index += clampingMode == RHI::ETextureClamping::Repeat ? 2 : 0;
+	index += filtration == RHI::ETextureFiltration::Nearest ? 4 : 0;
 
-	if(clampingMode == RHI::ETextureClamping::Repeat)
-	{
-		a = m_nearestFiltrationRepeat;
-		b = m_linearFiltrationRepeat;
-	}
-
-	return filtration == RHI::ETextureFiltration::Nearest ? a : b;
+	return m_samplers[index];
 }

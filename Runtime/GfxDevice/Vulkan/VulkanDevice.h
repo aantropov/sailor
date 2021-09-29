@@ -62,6 +62,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_maxAllowedAnisotropy; };
 
 		SAILOR_API VkFormat GetDepthFormat() const;	
+		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 
 	protected:
 

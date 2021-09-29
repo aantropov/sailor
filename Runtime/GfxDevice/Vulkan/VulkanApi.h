@@ -121,10 +121,11 @@ namespace Sailor::GfxDevice::Vulkan
 			const void* pData,
 			VkDeviceSize size,
 			VkExtent3D extent,
+			uint32_t mipLevels = 1,
 			VkImageType type = VK_IMAGE_TYPE_2D,
 			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB,
 			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
-			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE);
 		//Immediate context
 
