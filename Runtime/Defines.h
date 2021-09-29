@@ -22,6 +22,9 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
+#define GLM_GTC_quaternion
+#define GLM_GTX_rotate_vector
+#define GLM_FORCE_RIGHT_HANDED
 //#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 
 #ifndef _WINDEF_

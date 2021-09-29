@@ -86,7 +86,7 @@ VulkanStateRasterization::VulkanStateRasterization() :
 	m_rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 	m_rasterizer.lineWidth = 1.0f;
 	m_rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-	m_rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	m_rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
 
 	m_rasterizer.depthBiasEnable = VK_FALSE;
 	m_rasterizer.depthBiasConstantFactor = 0.0f; // Optional

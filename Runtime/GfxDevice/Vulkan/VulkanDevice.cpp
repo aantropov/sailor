@@ -11,6 +11,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <vulkan/vulkan_win32.h>
 
 #include "glm/glm/glm.hpp"
+#include "glm/glm/gtc/quaternion.hpp"
+#include "glm/glm/common.hpp"
 #include "glm/glm/gtc/matrix_transform.hpp"
 
 #include "AssetRegistry/AssetRegistry.h"
@@ -40,6 +42,10 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanDescriptors.h"
 #include "VulkanPipileneStates.h"
 
+#include "Platform/Win/Input.h"
+#include "Winuser.h"
+
+using namespace glm;
 using namespace Sailor;
 using namespace Sailor::Win32;
 using namespace Sailor::RHI;
@@ -492,6 +498,11 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	RecreateSwapchain(pViewport);
 }
 
+int64 time_ms()
+{
+	return (int64)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
 	const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
 	const std::vector<TRefPtr<VulkanSemaphore>>* semaphoresToWait)
@@ -505,19 +516,81 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();
 
-	static auto startTime = std::chrono::high_resolution_clock::now();
-	const auto currentTime = std::chrono::high_resolution_clock::now();
-	const float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+	///////////////////////////////////
+	static int64 startTime = time_ms();
+	static int64 lastTime = time_ms();
+	const int64 currentTime = time_ms();
+	const float time = (float)time_ms();
+	const float deltaTime = (time_ms() - lastTime) / 1000.0f;
+	lastTime = currentTime;
+
+	const glm::vec3 Zero = glm::vec3(0, 0, 0);
+	const glm::vec3 One = glm::vec3(1, 1, 1);
+	const glm::vec3 Up = glm::vec3(0, 0, 1);
+	const glm::vec3 Down = glm::vec3(0, 0, -1);
+	const glm::vec3 Forward = glm::vec3(0, 1, 0);
+	const glm::vec3 Back = glm::vec3(0, -1, 0);
+	const glm::vec3 Left = glm::vec3(-1, 0, 0);
+	const glm::vec3 Right = glm::vec3(1, 0, 0);
+
+	static glm::vec3 cameraPosition = Forward * -10.0f;
+	static glm::vec3 cameraViewDir = Forward;
+
+	const float sensitivity = 20;
+
+	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
+	if (Sailor::Input::IsKeyDown('A'))
+		delta += -cross(cameraViewDir, Up);
+
+	if (Sailor::Input::IsKeyDown('D'))
+		delta += cross(cameraViewDir, Up);
+
+	if (Sailor::Input::IsKeyDown('W'))
+		delta += cameraViewDir;
+
+	if (Sailor::Input::IsKeyDown('S'))
+		delta += -cameraViewDir;
+
+	if (glm::length(delta) > 0)
+		cameraPosition += glm::normalize(delta) * sensitivity * deltaTime;
+
+	static glm::vec2 lastMousePos{ 0,0 };
+
+	int32_t mouseX = 0;
+	int32_t mouseY = 0;
+	Input::GetCursorPos(&mouseX, &mouseY);
+
+	glm::vec2 currentMousePos{ mouseX,mouseY };
+
+	glm::vec2 mouseDelta = currentMousePos - lastMousePos;
+	lastMousePos = currentMousePos;
+
+	if (glm::length(mouseDelta) > 0.0f)
+	{
+		//mouseDelta.x /= 1024.0f;
+		//mouseDelta.y /= 768.0f;
+
+		SAILOR_LOG("delta: %.2f, %.2f", mouseDelta.x, mouseDelta.y);
+
+		const float degreesPerPixels = 1.0f;
+
+		glm::quat hRotation = angleAxis(glm::radians(degreesPerPixels * mouseDelta.x), Up);
+		//glm::quat vRotation = inverse(angleAxis(glm::radians(degreesPerPixels * mouseDelta.y), cross(cameraViewDir, Up)));
+
+		//cameraViewDir = vRotation * cameraViewDir;
+		//cameraViewDir = hRotation * cameraViewDir;
+	}
 
 	UBOTransform ubo{};
-	ubo.m_model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.m_view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.m_model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), Up);
+	ubo.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Up);
 
 	float aspect = m_swapchain->GetExtent().width / (float)m_swapchain->GetExtent().height;
-	ubo.m_projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 10.0f);
-	ubo.m_projection[1][1] *= -1;
+	ubo.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 1000.0f);
 
 	m_uniformBuffer->GetMemoryDevice()->Copy(0, sizeof(ubo), &ubo);
+
+	/////////////////////////////////////////
 
 	uint32_t imageIndex;
 	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], TRefPtr<VulkanFence>(), imageIndex);
@@ -563,7 +636,6 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 		m_commandBuffers[imageIndex]->BindPipeline(m_graphicsPipeline);
 		m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
 		m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
-
 		m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
 		m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
 		m_commandBuffers[imageIndex]->BindDescriptorSet(m_pipelineLayout, m_descriptorSet);
