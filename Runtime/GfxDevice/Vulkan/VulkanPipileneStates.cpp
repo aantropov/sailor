@@ -99,15 +99,21 @@ void VulkanStateRasterization::Apply(struct VkGraphicsPipelineCreateInfo& state)
 	state.pRasterizationState = &m_rasterizer;
 }
 
-VulkanStateMultisample::VulkanStateMultisample() : m_multisampling{}
+VulkanStateMultisample::VulkanStateMultisample(VkSampleCountFlagBits samples) : m_multisampling{}
 {
 	m_multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	m_multisampling.sampleShadingEnable = VK_FALSE;
-	m_multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	m_multisampling.rasterizationSamples = samples;
 	m_multisampling.minSampleShading = 1.0f; // Optional
 	m_multisampling.pSampleMask = nullptr; // Optional
 	m_multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
 	m_multisampling.alphaToOneEnable = VK_FALSE; // Optional
+
+#ifdef SAILOR_MSAA_IMPACTS_TEXTURE_SAMPLING
+	m_multisampling.sampleShadingEnable = VK_TRUE; 
+	m_multisampling.minSampleShading = 0.2f;
+#endif
+
 }
 
 void VulkanStateMultisample::Apply(struct VkGraphicsPipelineCreateInfo& state) const

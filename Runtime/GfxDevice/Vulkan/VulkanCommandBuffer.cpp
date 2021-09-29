@@ -113,12 +113,15 @@ void VulkanCommandBuffer::BeginRenderPass(TRefPtr<VulkanRenderPass> renderPass, 
 	renderPassInfo.renderArea.offset = offset;
 	renderPassInfo.renderArea.extent = extent;
 
-	std::array<VkClearValue, 2> clearValues;
-	clearValues[0].color = clearColor.color;
-	clearValues[1].depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+	bool bMSSA = frameBuffer->GetAttachments().size() == 3;
 
-	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-	renderPassInfo.pClearValues = clearValues.data();
+	std::array<VkClearValue, 3> clearValues;
+	clearValues[0].color = clearColor.color;
+	clearValues[1].color = clearColor.color;
+	clearValues[2].depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+
+	renderPassInfo.clearValueCount = bMSSA ? 3U : 2U;
+	renderPassInfo.pClearValues = bMSSA ? clearValues.data() : &clearValues.data()[1];
 
 	vkCmdBeginRenderPass(m_commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }

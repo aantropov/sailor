@@ -80,7 +80,7 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanStateMultisample();
+		VulkanStateMultisample(VkSampleCountFlagBits samples);
 		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:

@@ -45,6 +45,7 @@ namespace Sailor::GfxDevice::Vulkan
 		const VkExtent2D& GetExtent() const { return m_swapchainExtent; }
 
 		TRefPtr<VulkanImageView> GetDepthBufferView() const { return m_depthBufferView; }
+		TRefPtr<VulkanImageView> GetColorBufferView() const { return m_colorBufferView; }
 
 		std::vector<TRefPtr<VulkanImageView>>& GetImageViews() { return m_swapchainImageViews; }
 		const std::vector<TRefPtr<VulkanImageView>>& GetImageViews() const { return m_swapchainImageViews; }
@@ -64,6 +65,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		std::vector<TRefPtr<VulkanSwapchainImage>> m_swapchainImages;
 		std::vector<TRefPtr<VulkanImageView>> m_swapchainImageViews;
+
+		TRefPtr<VulkanImage> m_colorBuffer;
+		TRefPtr<VulkanImageView> m_colorBufferView;
 
 		TRefPtr<VulkanImage> m_depthBuffer;
 		TRefPtr<VulkanImageView> m_depthBufferView;

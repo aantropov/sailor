@@ -63,6 +63,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
 
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_maxAllowedAnisotropy; };
+		SAILOR_API VkSampleCountFlagBits GetMaxAllowedMSAASamples() const { return m_maxAllowedMSAASamples; };
 
 		SAILOR_API VkFormat GetDepthFormat() const;
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
@@ -83,6 +84,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateVertexBuffer();
 
 		float m_maxAllowedAnisotropy = 0;
+		VkSampleCountFlagBits m_maxAllowedMSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
 		// Command pool
 		TRefPtr<VulkanCommandPool> m_commandPool;
