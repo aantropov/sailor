@@ -40,6 +40,9 @@
     <Filter Include="Runtime\RHI">
       <UniqueIdentifier>{35d82da9-5486-431e-9c95-d548da0ee596}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\Math">
+      <UniqueIdentifier>{a8fee1ec-103d-48d0-b93b-f726495399f4}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
@@ -176,6 +179,9 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\AssetRegistry\ModelImporter.h">
       <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Math\Math.h">
+      <Filter>Runtime\Math</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

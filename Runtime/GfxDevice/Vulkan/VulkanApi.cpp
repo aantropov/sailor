@@ -4,7 +4,6 @@
 #include <assert.h>
 #include <vector>
 #include <set>
-#include <glm/glm/glm.hpp>
 #include "Sailor.h"
 #include "Platform/Win/Window.h"
 #include "AssetRegistry/AssetRegistry.h"

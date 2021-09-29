@@ -35,19 +35,20 @@ void TextureImporter::OnAssetInfoUpdated(AssetInfo* assetInfo)
 
 bool TextureImporter::LoadTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height)
 {
-	SAILOR_PROFILE_FUNCTION()
+	SAILOR_PROFILE_FUNCTION();
 
-		if (TextureAssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>(uid))
-		{
-			int32_t texChannels = 0;
+	if (TextureAssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>(uid))
+	{
+		int32_t texChannels = 0;
 
-			stbi_uc* pixels = stbi_load(assetInfo->GetAssetFilepath().c_str(), &width, &height, &texChannels, STBI_rgb_alpha);
-			uint32_t imageSize = (uint32_t)width * height * 4;
-			decodedData.resize(imageSize);
-			memcpy(decodedData.data(), pixels, imageSize);
+		stbi_uc* pixels = stbi_load(assetInfo->GetAssetFilepath().c_str(), &width, &height, &texChannels, STBI_rgb_alpha);
+		uint32_t imageSize = (uint32_t)width * height * 4;
+		decodedData.resize(imageSize);
+		memcpy(decodedData.data(), pixels, imageSize);
 
-			stbi_image_free(pixels);
-			return true;
-		}
+		stbi_image_free(pixels);
+		return true;
+	}
+
 	return false;
 }

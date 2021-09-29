@@ -27,7 +27,7 @@ layout(location = 1) out vec2 fragTexcoord;
 void main() 
 {
     gl_Position = transform.projection * transform.view * transform.model * vec4(inPosition, 1.0);
-    fragColor = inColor;
+    fragColor = 1 - inColor * gl_Position.z / 1000;
     fragTexcoord = inTexcoord;
 }
 END_CODE,

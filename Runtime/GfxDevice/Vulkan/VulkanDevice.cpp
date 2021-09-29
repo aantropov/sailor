@@ -9,18 +9,15 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <wtypes.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
-
-#include "glm/glm/glm.hpp"
-#include "glm/glm/gtc/quaternion.hpp"
-#include "glm/glm/common.hpp"
-#include "glm/glm/gtc/matrix_transform.hpp"
-
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/ShaderCompiler.h"
 #include "AssetRegistry/ShaderAssetInfo.h"
 #include "AssetRegistry/TextureImporter.h"
 #include "AssetRegistry/TextureAssetInfo.h"
-
+#include "AssetRegistry/ModelImporter.h"
+#include "AssetRegistry/ModelAssetInfo.h"
+#include "Math/Math.h"
+#include "RHI/RHIResource.h"
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
 #include "Platform/Win/Window.h"
@@ -34,7 +31,6 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
 #include "VulkanFrameBuffer.h"
-#include "RHI/RHIResource.h"
 #include "VulkanDeviceMemory.h"
 #include "VulkanBuffer.h"
 #include "VulkanShaderModule.h"
@@ -54,7 +50,7 @@ using namespace Sailor::GfxDevice::Vulkan;
 TRefPtr<VulkanShaderStage> g_testFragShader;
 TRefPtr<VulkanShaderStage> g_testVertShader;
 
-const std::vector<RHIVertex> g_testVertices =
+std::vector<RHIVertex> g_testVertices =
 {
 	{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
 	{{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
@@ -67,7 +63,7 @@ const std::vector<RHIVertex> g_testVertices =
 	{{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}}
 };
 
-const std::vector<uint32_t> g_testIndices =
+std::vector<uint32_t> g_testIndices =
 {
    0, 1, 2,    // side 1
 	2, 1, 3,
@@ -242,6 +238,11 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 void VulkanDevice::CreateVertexBuffer()
 {
+	if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfo<ModelAssetInfo>("Models\\Sponza\\sponza.obj"))
+	{
+		ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
+	}
+
 	const VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
 	const VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
 
@@ -524,26 +525,17 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	const float deltaTime = (time_ms() - lastTime) / 1000.0f;
 	lastTime = currentTime;
 
-	const glm::vec3 Zero = glm::vec3(0, 0, 0);
-	const glm::vec3 One = glm::vec3(1, 1, 1);
-	const glm::vec3 Up = glm::vec3(0, 0, 1);
-	const glm::vec3 Down = glm::vec3(0, 0, -1);
-	const glm::vec3 Forward = glm::vec3(0, 1, 0);
-	const glm::vec3 Back = glm::vec3(0, -1, 0);
-	const glm::vec3 Left = glm::vec3(-1, 0, 0);
-	const glm::vec3 Right = glm::vec3(1, 0, 0);
+	static glm::vec3 cameraPosition = Math::vec3_Forward * -10.0f;
+	static glm::vec3 cameraViewDir = Math::vec3_Forward;
 
-	static glm::vec3 cameraPosition = Forward * -10.0f;
-	static glm::vec3 cameraViewDir = Forward;
-
-	const float sensitivity = 20;
+	const float sensitivity = 500;
 
 	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
 	if (Sailor::Input::IsKeyDown('A'))
-		delta += -cross(cameraViewDir, Up);
+		delta += -cross(cameraViewDir, Math::vec3_Up);
 
 	if (Sailor::Input::IsKeyDown('D'))
-		delta += cross(cameraViewDir, Up);
+		delta += cross(cameraViewDir, Math::vec3_Up);
 
 	if (Sailor::Input::IsKeyDown('W'))
 		delta += cameraViewDir;
@@ -554,39 +546,39 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	if (glm::length(delta) > 0)
 		cameraPosition += glm::normalize(delta) * sensitivity * deltaTime;
 
-	static glm::vec2 lastMousePos{ 0,0 };
+	static vec2 mouseDelta{};
+	glm::ivec2 mousePosition{};
+	Input::GetCursorPos(&mousePosition.x, &mousePosition.y);
 
-	int32_t mouseX = 0;
-	int32_t mouseY = 0;
-	Input::GetCursorPos(&mouseX, &mouseY);
+	static glm::ivec2 lastMousePosition = mousePosition;
+	mouseDelta += mousePosition - lastMousePosition;
+	lastMousePosition = mousePosition;
 
-	glm::vec2 currentMousePos{ mouseX,mouseY };
+	vec2 thisFrameShift = 5.0f * mouseDelta * deltaTime;
 
-	glm::vec2 mouseDelta = currentMousePos - lastMousePos;
-	lastMousePos = currentMousePos;
+	mouseDelta.x -= thisFrameShift.x;
+	mouseDelta.y -= thisFrameShift.y;
 
-	if (glm::length(mouseDelta) > 0.0f)
+	if (glm::length(mouseDelta) > 0.0f && Input::IsKeyDown(VK_LBUTTON))
 	{
-		//mouseDelta.x /= 1024.0f;
-		//mouseDelta.y /= 768.0f;
-
-		SAILOR_LOG("delta: %.2f, %.2f", mouseDelta.x, mouseDelta.y);
+		//SAILOR_LOG("delta: %.2f, %.2f", mouseDelta.x, mouseDelta.y);
 
 		const float degreesPerPixels = 1.0f;
 
-		glm::quat hRotation = angleAxis(glm::radians(degreesPerPixels * mouseDelta.x), Up);
-		//glm::quat vRotation = inverse(angleAxis(glm::radians(degreesPerPixels * mouseDelta.y), cross(cameraViewDir, Up)));
+		glm::quat hRotation = angleAxis(-glm::radians(degreesPerPixels * thisFrameShift.x), Math::vec3_Up);
+		glm::quat vRotation = angleAxis(glm::radians(degreesPerPixels * thisFrameShift.y), cross(Math::vec3_Up, cameraViewDir));
 
-		//cameraViewDir = vRotation * cameraViewDir;
-		//cameraViewDir = hRotation * cameraViewDir;
+		cameraViewDir = vRotation * cameraViewDir;
+		cameraViewDir = hRotation * cameraViewDir;
 	}
 
 	UBOTransform ubo{};
-	ubo.m_model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), Up);
-	ubo.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Up);
+	ubo.m_model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), Math::vec3_Up);
+	ubo.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Math::vec3_Up);
 
 	float aspect = m_swapchain->GetExtent().width / (float)m_swapchain->GetExtent().height;
-	ubo.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 1000.0f);
+	ubo.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 10000.0f);
+	ubo.m_projection[1][1] *= -1;
 
 	m_uniformBuffer->GetMemoryDevice()->Copy(0, sizeof(ubo), &ubo);
 
