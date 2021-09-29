@@ -1,6 +1,6 @@
 #pragma once
 #include <array>
-#include "VulkanSemaphore.h"
+#include <vulkan/vulkan.h>
 #include "RHI/RHIResource.h"
 #include "Core/RefPtr.hpp"
 

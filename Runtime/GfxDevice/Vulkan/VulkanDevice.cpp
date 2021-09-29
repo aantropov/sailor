@@ -175,7 +175,7 @@ bool VulkanDevice::IsMipsSupported(VkFormat format) const
 	VkFormatProperties formatProperties;
 	vkGetPhysicalDeviceFormatProperties(m_physicalDevice, format, &formatProperties);
 
-	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) 
+	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
 	{
 		return false;
 	}
@@ -188,12 +188,37 @@ TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer(bool bOnlyTransfe
 	return TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), bOnlyTransferQueue ? m_transferCommandPool : m_commandPool);
 }
 
-void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer, TRefPtr<VulkanFence> fence) const
+void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer,
+	TRefPtr<VulkanFence> fence,
+	std::vector<TRefPtr<VulkanSemaphore>> signalSemaphores,
+	std::vector<TRefPtr<VulkanSemaphore>> waitSemaphores) const
 {
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = { commandBuffer->GetHandle() };
+
+	VkSemaphore* waits = reinterpret_cast<VkSemaphore*>(_malloca(waitSemaphores.size() * sizeof(VkSemaphore)));
+	VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.size() * sizeof(VkPipelineStageFlags)));
+	VkSemaphore* signals = reinterpret_cast<VkSemaphore*>(_malloca(signalSemaphores.size() * sizeof(VkSemaphore)));
+
+	for (uint32_t i = 0; i < waitSemaphores.size(); i++)
+	{
+		waits[i] = *waitSemaphores[i];
+		waitStages[i] = waitSemaphores[i]->PipelineStageFlags();
+	}
+
+	for (uint32_t i = 0; i < signalSemaphores.size(); i++)
+	{
+		signals[i] = *signalSemaphores[i];
+	}
+
+	submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
+	submitInfo.pSignalSemaphores = &signals[0];
+
+	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
+	submitInfo.pWaitSemaphores = &waits[0];
+	submitInfo.pWaitDstStageMask = &waitStages[0];
 
 	if (*commandBuffer->GetCommandPool() == *m_transferCommandPool)
 	{
@@ -203,6 +228,10 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 	{
 		VK_CHECK(m_graphicsQueue->Submit(submitInfo, fence));
 	}
+
+	_freea(waits);
+	_freea(signals);
+	_freea(waitStages);
 }
 
 void VulkanDevice::CreateRenderPass()
@@ -224,8 +253,8 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 
 	for (size_t i = 0; i < VulkanApi::MaxFramesInFlight; i++)
 	{
-		m_imageAvailableSemaphores.push_back(TRefPtr<VulkanSemaphore>::Make(m_device));
-		m_renderFinishedSemaphores.push_back(TRefPtr<VulkanSemaphore>::Make(m_device));
+		m_imageAvailableSemaphores.push_back(TRefPtr<VulkanSemaphore>::Make(TRefPtr<VulkanDevice>(this)));
+		m_renderFinishedSemaphores.push_back(TRefPtr<VulkanSemaphore>::Make(TRefPtr<VulkanDevice>(this)));
 		m_syncFences.push_back(TRefPtr<VulkanFence>::Make(TRefPtr<VulkanDevice>(this), VK_FENCE_CREATE_SIGNALED_BIT));
 	}
 }
@@ -364,7 +393,11 @@ void VulkanDevice::CreateGraphicsPipeline()
 		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>
 		{
 			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UBOTransform)),
-			TRefPtr<VulkanDescriptorImage>::Make(1, 0, m_samplers.GetSampler(textureUID->GetFiltration(), textureUID->GetClamping(), m_image->m_mipLevels), m_imageView)
+			TRefPtr<VulkanDescriptorImage>::Make(1, 0,
+				m_samplers.GetSampler(textureUID->GetFiltration(),
+				textureUID->GetClamping(),
+				m_image->m_mipLevels),
+				m_imageView)
 		};
 
 		m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);

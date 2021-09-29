@@ -24,7 +24,7 @@ VulkanSampler::VulkanSampler(TRefPtr<VulkanDevice> pDevice,
 	samplerInfo.addressModeW = addressMode;
 
 	samplerInfo.anisotropyEnable = bIsAnisotropyEnabled;
-	samplerInfo.maxAnisotropy = std::min(maxAnisotropy, m_device->GetMaxAllowedAnisotropy());
+	samplerInfo.maxAnisotropy = min(maxAnisotropy, m_device->GetMaxAllowedAnisotropy());
 
 	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;
@@ -50,8 +50,8 @@ void VulkanSamplers::Initialize(TRefPtr<VulkanDevice> pDevice)
 	for (uint32_t i = 0; i < 8; i++)
 	{
 		bool bUseMips = (i & 1);
-		VkFilter filter = (i >> 1) & 1 ? VkFilter::VK_FILTER_NEAREST : VkFilter::VK_FILTER_LINEAR;
-		VkSamplerAddressMode addressing = (i >> 2) & 1 ? VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT : VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		VkSamplerAddressMode addressing = (i >> 1) & 1 ? VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT : VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		VkFilter filter = (i >> 2) & 1 ? VkFilter::VK_FILTER_NEAREST : VkFilter::VK_FILTER_LINEAR;
 
 		m_samplers[i] = TRefPtr<VulkanSampler>::Make(pDevice,
 			filter,

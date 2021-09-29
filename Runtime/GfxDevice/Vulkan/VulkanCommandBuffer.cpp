@@ -193,11 +193,12 @@ void VulkanCommandBuffer::SetScissor(TRefPtr<const VulkanStateViewport> viewport
 void VulkanCommandBuffer::Blit(TRefPtr<VulkanImage> srcImage, VkImageLayout srcImageLayout, TRefPtr<VulkanImage> dstImage, VkImageLayout dstImageLayout,
 	uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter)
 {
+	vkCmdBlitImage(m_commandBuffer, *srcImage, srcImageLayout, *dstImage, dstImageLayout, regionCount, pRegions, filter);
 }
 
 void VulkanCommandBuffer::GenerateMipMaps(TRefPtr<VulkanImage> image)
 {
-	if (image->GetDevice()->IsMipsSupported(image->m_format))
+	if (!image->GetDevice()->IsMipsSupported(image->m_format))
 	{
 		SAILOR_LOG("Blit is not supported");
 	}

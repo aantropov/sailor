@@ -52,7 +52,10 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
 		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer(bool bOnlyTransferQueue = false);
 
-		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer, TRefPtr<VulkanFence> fence = nullptr) const;
+		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer,
+			TRefPtr<VulkanFence> fence = nullptr,
+			std::vector<TRefPtr<VulkanSemaphore>> signalSemaphores = {},
+			std::vector<TRefPtr<VulkanSemaphore>> waitSemaphores = {}) const;
 
 		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
 
@@ -61,7 +64,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_maxAllowedAnisotropy; };
 
-		SAILOR_API VkFormat GetDepthFormat() const;	
+		SAILOR_API VkFormat GetDepthFormat() const;
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 
 	protected:

@@ -1,5 +1,7 @@
 #pragma once
 #include "VulkanApi.h"
+#include "VulkanDevice.h"
+#include "Core/RefPtr.hpp"
 #include "RHI/RHIResource.h"
 
 namespace Sailor::GfxDevice::Vulkan
@@ -9,7 +11,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 	public:
 
-		VulkanSemaphore(VkDevice device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, void* pNextCreateInfo = nullptr);
+		VulkanSemaphore(TRefPtr<VulkanDevice> device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, void* pNextCreateInfo = nullptr);
 
 		operator VkSemaphore() const { return m_semaphore; }
 
@@ -23,6 +25,6 @@ namespace Sailor::GfxDevice::Vulkan
 		VkSemaphore m_semaphore;
 		VkPipelineStageFlags m_pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
-		VkDevice m_device;
+		TRefPtr<VulkanDevice> m_device;
 	};
 }
