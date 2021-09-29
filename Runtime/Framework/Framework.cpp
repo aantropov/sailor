@@ -19,6 +19,11 @@ void FrameState::AddCommandBuffer(TRefPtr<RHI::RHIResource> commandBuffer)
 	SAILOR_PROFILE_FUNCTION();
 }
 
+void FrameState::Clear()
+{
+	m_updateResourcesCommandBuffers.clear();
+}
+
 void Framework::Initialize()
 {
 	m_pInstance = new Framework;
@@ -34,7 +39,7 @@ void Framework::ProcessCpuFrame(const FrameInputState& currentInputState)
 	const float beginFrameTime = (float)GetTickCount();
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
-	Sleep(20);
+	Sleep(1);
 	SAILOR_PROFILE_END_BLOCK();
 
 	totalTime += (float)GetTickCount() - beginFrameTime;

@@ -18,8 +18,11 @@ namespace Sailor
 		SAILOR_API FrameState() = default;
 		SAILOR_API virtual ~FrameState() = default;
 
+		SAILOR_API const FrameInputState& GetInputState() const { return m_inputState; }
 		SAILOR_API void SetInputState(const FrameInputState& currentInputState, const FrameInputState& previousInputState);
 		SAILOR_API void AddCommandBuffer(TRefPtr<RHI::RHIResource> commandBuffer);
+
+		SAILOR_API void Clear();
 
 	protected:
 
@@ -41,7 +44,11 @@ namespace Sailor
 
 	private:
 
-		std::array<FrameState, 2> m_frames;
+		FrameState* m_previousFrame;
+		FrameState* m_currentFrame;
+		FrameState* m_freeFrame;
+
+		std::array<FrameState, 3> m_frames;
 		std::atomic<uint32_t> m_smoothFps = 0u;
 	};
 }
