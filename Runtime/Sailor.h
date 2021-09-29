@@ -4,7 +4,7 @@
 #include "Utils.h"
 #include "Core/SharedPtr.hpp"
 #include "Core/WeakPtr.hpp"
-#include "Platform/Win/Window.h"
+#include "Platform/Win32/Window.h"
 #include <glm/glm/glm.hpp>
 
 namespace Sailor
@@ -27,8 +27,6 @@ namespace Sailor
 	protected:
 
 		Win32::Window m_viewportWindow;
-
-		uint32_t m_FPS = 0;
 
 		static EngineInstance* m_pInstance;
 		

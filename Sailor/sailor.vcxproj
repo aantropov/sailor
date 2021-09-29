@@ -190,6 +190,7 @@
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
     <ClInclude Include="..\Runtime\Core\WeakPtr.hpp" />
     <ClInclude Include="..\Runtime\Defines.h" />
+    <ClInclude Include="..\Runtime\Framework\Framework.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h" />
@@ -213,9 +214,9 @@
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h" />
     <ClInclude Include="..\Runtime\LogMacros.h" />
     <ClInclude Include="..\Runtime\Math\Math.h" />
-    <ClInclude Include="..\Runtime\Platform\Win\ConsoleWindow.h" />
-    <ClInclude Include="..\Runtime\Platform\Win\Input.h" />
-    <ClInclude Include="..\Runtime\Platform\Win\Window.h" />
+    <ClInclude Include="..\Runtime\Platform\Win32\ConsoleWindow.h" />
+    <ClInclude Include="..\Runtime\Platform\Win32\Input.h" />
+    <ClInclude Include="..\Runtime\Platform\Win32\Window.h" />
     <ClInclude Include="..\Runtime\RHI\Renderer.h" />
     <ClInclude Include="..\Runtime\RHI\RHIResource.h" />
     <ClInclude Include="..\Runtime\Sailor.h" />
@@ -233,6 +234,7 @@
     <ClCompile Include="..\Runtime\AssetRegistry\TextureImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />
+    <ClCompile Include="..\Runtime\Framework\Framework.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.cpp" />
@@ -254,9 +256,9 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanShaderModule.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp" />
-    <ClCompile Include="..\Runtime\Platform\Win\ConsoleWindow.cpp" />
-    <ClCompile Include="..\Runtime\Platform\Win\Input.cpp" />
-    <ClCompile Include="..\Runtime\Platform\Win\Window.cpp" />
+    <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp" />
+    <ClCompile Include="..\Runtime\Platform\Win32\Input.cpp" />
+    <ClCompile Include="..\Runtime\Platform\Win32\Window.cpp" />
     <ClCompile Include="..\Runtime\RHI\Renderer.cpp" />
     <ClCompile Include="..\Runtime\Sailor.cpp" />
     <ClCompile Include="..\Runtime\Utils.cpp" />

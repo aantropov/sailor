@@ -1,7 +1,7 @@
 #pragma once
 #include "Sailor.h"
 
-namespace Sailor
+namespace Sailor::Win32
 {
 	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

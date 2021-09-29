@@ -1,6 +1,7 @@
 #include "Input.h"
 
 using namespace Sailor;
+using namespace Sailor::Win32;
 
 InputState Input::m_rawState;
 

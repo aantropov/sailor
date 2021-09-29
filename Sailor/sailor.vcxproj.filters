@@ -25,9 +25,6 @@
     <Filter Include="Runtime\Platform">
       <UniqueIdentifier>{c4e0e853-b4ec-4661-9e22-a337e7149438}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Runtime\Platform\Win">
-      <UniqueIdentifier>{1c4b6dba-7224-49e7-a4ec-698a2b6500bb}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Runtime\GfxDevice">
       <UniqueIdentifier>{6358c04d-e453-43f1-8bc7-b5c8499fdf8f}</UniqueIdentifier>
     </Filter>
@@ -42,6 +39,12 @@
     </Filter>
     <Filter Include="Runtime\Math">
       <UniqueIdentifier>{a8fee1ec-103d-48d0-b93b-f726495399f4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\Framework">
+      <UniqueIdentifier>{fdc87901-fb01-4592-bfeb-c831946fcd25}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\Platform\Win32">
+      <UniqueIdentifier>{1c4b6dba-7224-49e7-a4ec-698a2b6500bb}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -83,15 +86,6 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Platform\Win\ConsoleWindow.h">
-      <Filter>Runtime\Platform\Win</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Platform\Win\Input.h">
-      <Filter>Runtime\Platform\Win</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Platform\Win\Window.h">
-      <Filter>Runtime\Platform\Win</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h">
       <Filter>Runtime\Core</Filter>
@@ -183,6 +177,18 @@
     <ClInclude Include="..\Runtime\Math\Math.h">
       <Filter>Runtime\Math</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Framework\Framework.h">
+      <Filter>Runtime\Framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Platform\Win32\ConsoleWindow.h">
+      <Filter>Runtime\Platform\Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Platform\Win32\Input.h">
+      <Filter>Runtime\Platform\Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Platform\Win32\Window.h">
+      <Filter>Runtime\Platform\Win32</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -217,15 +223,6 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\Platform\Win\ConsoleWindow.cpp">
-      <Filter>Runtime\Platform\Win</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\Platform\Win\Input.cpp">
-      <Filter>Runtime\Platform\Win</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\Platform\Win\Window.cpp">
-      <Filter>Runtime\Platform\Win</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp">
       <Filter>Runtime\Core</Filter>
@@ -301,6 +298,18 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\ModelImporter.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp">
+      <Filter>Runtime\Platform\Win32</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Platform\Win32\Input.cpp">
+      <Filter>Runtime\Platform\Win32</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Platform\Win32\Window.cpp">
+      <Filter>Runtime\Platform\Win32</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Framework\Framework.cpp">
+      <Filter>Runtime\Framework</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

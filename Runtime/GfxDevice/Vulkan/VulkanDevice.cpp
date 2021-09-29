@@ -20,7 +20,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "RHI/RHIResource.h"
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
-#include "Platform/Win/Window.h"
+#include "Platform/Win32/Window.h"
 #include "VulkanRenderPass.h"
 #include "VulkanSwapchain.h"
 #include "VulkanCommandBuffer.h"
@@ -38,7 +38,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanDescriptors.h"
 #include "VulkanPipileneStates.h"
 
-#include "Platform/Win/Input.h"
+#include "Platform/Win32/Input.h"
 #include "Winuser.h"
 
 using namespace glm;
@@ -531,16 +531,16 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	const float sensitivity = 500;
 
 	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
-	if (Sailor::Input::IsKeyDown('A'))
+	if (Sailor::Win32::Input::IsKeyDown('A'))
 		delta += -cross(cameraViewDir, Math::vec3_Up);
 
-	if (Sailor::Input::IsKeyDown('D'))
+	if (Sailor::Win32::Input::IsKeyDown('D'))
 		delta += cross(cameraViewDir, Math::vec3_Up);
 
-	if (Sailor::Input::IsKeyDown('W'))
+	if (Sailor::Win32::Input::IsKeyDown('W'))
 		delta += cameraViewDir;
 
-	if (Sailor::Input::IsKeyDown('S'))
+	if (Sailor::Win32::Input::IsKeyDown('S'))
 		delta += -cameraViewDir;
 
 	if (glm::length(delta) > 0)

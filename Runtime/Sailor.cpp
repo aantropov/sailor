@@ -3,11 +3,12 @@
 #include "AssetRegistry/ShaderCompiler.h"
 #include "AssetRegistry/TextureImporter.h"
 #include "AssetRegistry/ModelImporter.h"
-#include "Platform/Win/ConsoleWindow.h"
-#include "Platform/Win/Input.h"
+#include "Platform/Win32/ConsoleWindow.h"
+#include "Platform/Win32/Input.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "JobSystem/JobSystem.h"
 #include "RHI/Renderer.h"
+#include "Framework/Framework.h"
 
 using namespace Sailor;
 
@@ -53,6 +54,7 @@ void EngineInstance::Initialize()
 	ModelImporter::Initialize();
 	Renderer::Initialize(&m_pInstance->m_viewportWindow, bIsEnabledVulkanValidationLayers);
 	ShaderCompiler::GetInstance();
+	Framework::Initialize();
 
 	SAILOR_LOG("Sailor Engine initialized");
 }
@@ -76,30 +78,19 @@ void EngineInstance::Start()
 			Stop();
 			break;
 		}
-
-		static float totalFramesCount = 0.0f;
-		static float totalTime = 0.0f;
-
-		const float beginFrameTime = (float)GetTickCount();
 		
-		SAILOR_PROFILE_BLOCK("Frame");
-		Sleep(100);
-		SAILOR_PROFILE_END_BLOCK();
+		Framework::GetInstance()->ProcessCpuFrame(Input::GetInputState());
 
-		totalTime += (float)GetTickCount() - beginFrameTime;
-		totalFramesCount++;
-
-		if (totalTime > 1000)
+		static float totalTime = 0.0f;
+		if ((float)GetTickCount() - totalTime > 1000)
 		{
 			SAILOR_PROFILE_BLOCK("Track FPS");
 
 			WCHAR Buff[50];
-			wsprintf(Buff, L"Sailor GPU FPS: %u, CPU FPS: %u", Renderer::GetInstance()->GetSmoothFps(), (uint32_t)totalFramesCount);
+			wsprintf(Buff, L"Sailor GPU FPS: %u, CPU FPS: %u", Renderer::GetInstance()->GetSmoothFps(), (uint32_t)Framework::GetInstance()->GetSmoothFps());
 			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
-			m_pInstance->m_FPS = (uint32_t)totalFramesCount;
 
-			totalFramesCount = 0;
-			totalTime = 0;
+			totalTime = (float)GetTickCount();
 
 			SAILOR_PROFILE_END_BLOCK();
 		}
@@ -121,6 +112,7 @@ void EngineInstance::Shutdown()
 	SAILOR_LOG("Sailor Engine Releasing");
 
 	JobSystem::Scheduler::Shutdown();
+	Framework::Shutdown();
 	AssetRegistry::Shutdown();
 	Renderer::Shutdown();
 	Win32::ConsoleWindow::Shutdown();
