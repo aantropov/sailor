@@ -55,12 +55,12 @@ std::time_t AssetInfo::GetMetaLastModificationTime() const
 
 std::string AssetInfo::GetMetaFilepath() const
 {
-	return Utils::RemoveFileExtension(m_assetFilename) + AssetRegistry::MetaFileExtension;
+	return m_assetFilename + "." + AssetRegistry::MetaFileExtension;
 }
 
 AssetInfo* IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) const
 {
-	const std::string assetInfoFilename = Utils::RemoveFileExtension(assetFilepath) + AssetRegistry::MetaFileExtension;
+	const std::string assetInfoFilename = AssetRegistry::GetMetaFilePath(assetFilepath);
 	std::filesystem::remove(assetInfoFilename);
 	std::ofstream assetFile{ assetInfoFilename };
 
@@ -81,7 +81,7 @@ AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) co
 	AssetInfo* res = CreateAssetInfo();
 	res->m_folder = std::filesystem::path(assetInfoPath).remove_filename().string();
 	// Temp to pass asset filename to Reload Asset Info
-	res->m_assetFilename = std::filesystem::path(assetInfoPath).string();
+	res->m_assetFilename = std::filesystem::path(assetInfoPath.substr(0, assetInfoPath.size() - strlen(AssetRegistry::MetaFileExtension) - 1)).string();
 
 	ReloadAssetInfo(res);
 

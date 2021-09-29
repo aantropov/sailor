@@ -76,6 +76,11 @@ bool AssetRegistry::RegisterAssetInfoHandler(const std::vector<std::string>& sup
 	return bAssigned;
 }
 
+std::string AssetRegistry::GetMetaFilePath(const std::string& assetFilePath)
+{
+	return assetFilePath + "." + MetaFileExtension;
+}
+
 void AssetRegistry::ScanFolder(const std::string& folderPath)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -93,7 +98,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 
 			if (extension != MetaFileExtension)
 			{
-				const std::string assetInfoFile = Utils::RemoveFileExtension(filepath) + MetaFileExtension;
+				const std::string assetInfoFile = GetMetaFilePath(filepath);
 
 				IAssetInfoHandler* assetInfoHandler = DefaultAssetInfoHandler::GetInstance();
 
@@ -113,7 +118,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 						if (assetInfo->IsExpired())
 						{
 							SAILOR_LOG("Reload asset info: %s", assetInfoFile.c_str());
-							assetInfoHandler->ReloadAssetInfo(assetInfo);							
+							assetInfoHandler->ReloadAssetInfo(assetInfo);
 						}
 						continue;
 					}
@@ -173,4 +178,6 @@ AssetRegistry::~AssetRegistry()
 
 	DefaultAssetInfoHandler::Shutdown();
 	ShaderAssetInfoHandler::Shutdown();
+	TextureAssetInfoHandler::Shutdown();
+	ModelAssetInfoHandler::Shutdown();
 }

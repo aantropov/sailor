@@ -85,6 +85,7 @@ namespace Sailor
 		}
 
 		SAILOR_API bool RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, class IAssetInfoHandler* pAssetInfoHandler);
+		static SAILOR_API std::string GetMetaFilePath(const std::string& assetFilePath);
 
 	protected:
 
