@@ -5,7 +5,7 @@
 
 using namespace Sailor;
 
-void Renderer::Initialize(Window const* pViewport, bool bIsDebug)
+void Renderer::Initialize(Window const* pViewport, RHI::EMSAASamples msaaSamples, bool bIsDebug)
 {
 	if (m_pInstance != nullptr)
 	{
@@ -16,7 +16,7 @@ void Renderer::Initialize(Window const* pViewport, bool bIsDebug)
 	m_pInstance = new Renderer();
 	m_pInstance->m_pViewport = pViewport;
 
-	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, bIsDebug);
+	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
 }
 
 Renderer::~Renderer()

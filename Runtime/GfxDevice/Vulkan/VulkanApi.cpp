@@ -60,7 +60,7 @@ void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 	createInfo.pfnUserCallback = VulkanDebugCallback;
 }
 
-void VulkanApi::Initialize(const Window* viewport, bool bInIsEnabledValidationLayers)
+void VulkanApi::Initialize(const Window* viewport, RHI::EMSAASamples msaaSamples, bool bInIsEnabledValidationLayers)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -131,7 +131,7 @@ void VulkanApi::Initialize(const Window* viewport, bool bInIsEnabledValidationLa
 
 	SetupDebugCallback();
 
-	m_pInstance->m_device = TRefPtr<VulkanDevice>::Make(viewport);
+	m_pInstance->m_device = TRefPtr<VulkanDevice>::Make(viewport, msaaSamples);
 
 	SAILOR_LOG("Vulkan initialized");
 }

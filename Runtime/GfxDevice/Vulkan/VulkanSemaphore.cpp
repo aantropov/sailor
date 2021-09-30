@@ -1,5 +1,8 @@
+#include "Core/RefPtr.hpp"
+#include "VulkanDevice.h"
 #include "VulkanSemaphore.h"
 
+using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
 VulkanSemaphore::VulkanSemaphore(TRefPtr<VulkanDevice> device, VkPipelineStageFlags pipelineStageFlags, void* pNextCreateInfo) :

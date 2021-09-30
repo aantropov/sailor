@@ -18,6 +18,17 @@ namespace Sailor::RHI
 		Repeat
 	};
 
+	enum class EMSAASamples : uint8_t
+	{
+		Samples_1 = 1,
+		Samples_2 = 2,
+		Samples_4 = 4,
+		Samples_8 = 8,
+		Samples_16 = 16,
+		Samples_32 = 32,
+		Samples_64 = 64
+	};
+
 	class RHIVertex
 	{
 	public:

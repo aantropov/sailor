@@ -91,7 +91,7 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 	return VK_SAMPLE_COUNT_1_BIT;
 }
 
-VulkanDevice::VulkanDevice(const Window* pViewport)
+VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMSAASamples requestMsaa)
 {
 	// Create Win32 surface
 	CreateWin32Surface(pViewport);
@@ -105,6 +105,10 @@ VulkanDevice::VulkanDevice(const Window* pViewport)
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
 	m_maxAllowedAnisotropy = properties.limits.maxSamplerAnisotropy;
 	m_maxAllowedMSAASamples = CalculateMaxAllowedMSAASamples(properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts);
+	m_currentMSAASamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMSAASamples));
+
+	SAILOR_LOG("m_maxAllowedAnisotropy = %.2f", m_maxAllowedAnisotropy);
+	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMSAASamples, m_currentMSAASamples);
 
 	// Cache samplers
 	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
@@ -250,7 +254,7 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 void VulkanDevice::CreateRenderPass()
 {
 	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
-	m_renderPass = VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice>(this), m_swapchain->GetImageFormat(), depthFormat, m_maxAllowedMSAASamples);
+	m_renderPass = VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice>(this), m_swapchain->GetImageFormat(), depthFormat, (VkSampleCountFlagBits)m_currentMSAASamples);
 }
 
 void VulkanDevice::CreateCommandPool()
@@ -350,7 +354,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 			VK_BLEND_OP_ADD,
 			VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
 
-		const TRefPtr<VulkanStateMultisample> pMultisample = new VulkanStateMultisample(GetMaxAllowedMSAASamples());
+		const TRefPtr<VulkanStateMultisample> pMultisample = new VulkanStateMultisample(GetCurrentMSAASamples());
 
 		m_descriptorSetLayout = TRefPtr<VulkanDescriptorSetLayout>::Make(
 			TRefPtr<VulkanDevice>(this),
@@ -425,16 +429,22 @@ void VulkanDevice::CreateFramebuffers()
 
 	m_swapChainFramebuffers.resize(swapChainImageViews.size());
 
+	std::vector<TRefPtr<VulkanImageView>> attachments;
+
+	uint8_t swapchainIndex = 1;
+	if ((VkSampleCountFlagBits)m_currentMSAASamples != VK_SAMPLE_COUNT_1_BIT)
+	{
+		attachments = { m_swapchain->GetColorBufferView(), nullptr, m_swapchain->GetDepthBufferView() };
+	}
+	else
+	{
+		swapchainIndex = 0;
+		attachments = { nullptr, m_swapchain->GetDepthBufferView() };
+	}
+
 	for (size_t i = 0; i < swapChainImageViews.size(); i++)
 	{
-		std::vector<TRefPtr<VulkanImageView>> attachments;
-		if (m_maxAllowedMSAASamples != VK_SAMPLE_COUNT_1_BIT)
-		{
-			attachments = { m_swapchain->GetColorBufferView() };
-		}
-		attachments.push_back(swapChainImageViews[i]);
-		attachments.push_back(m_swapchain->GetDepthBufferView());
-		
+		attachments[swapchainIndex] = swapChainImageViews[i];
 		m_swapChainFramebuffers[i] = TRefPtr<VulkanFramebuffer>::Make(
 			m_renderPass,
 			attachments,

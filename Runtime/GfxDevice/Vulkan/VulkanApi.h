@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <vulkan/vulkan_core.h>
 #include "Sailor.h"
+#include "RHI/RHIResource.h"
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
 
@@ -66,7 +67,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 1.0f, 0 };
 		static constexpr VkClearValue DefaultClearColor{ {0.0f,0.0f,0.0f,0.0f} };
 
-		static SAILOR_API void Initialize(const Window* pViewport, bool bIsDebug);
+		static SAILOR_API void Initialize(const Window* pViewport, RHI::EMSAASamples msaaSamples, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
 
 		static bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
