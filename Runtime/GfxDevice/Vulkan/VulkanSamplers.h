@@ -8,7 +8,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanDevice;
 
-	class VulkanSampler : public RHI::RHIResource
+	class VulkanSampler : public RHI::Resource
 	{
 	public:
 

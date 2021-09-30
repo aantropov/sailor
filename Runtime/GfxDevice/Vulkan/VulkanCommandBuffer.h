@@ -15,7 +15,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanPipeline;
 	class VulkanDescriptorSet;
 
-	class VulkanCommandBuffer final : public RHI::RHIResource
+	class VulkanCommandBuffer final : public RHI::Resource
 	{
 
 	public:

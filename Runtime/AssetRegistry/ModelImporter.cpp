@@ -33,7 +33,7 @@ void ModelImporter::OnAssetInfoUpdated(AssetInfo* assetInfo)
 {
 }
 
-bool ModelImporter::LoadModel(UID uid, std::vector<RHI::RHIVertex>& outVertices, std::vector<uint32_t>& outIndices)
+bool ModelImporter::LoadModel(UID uid, std::vector<RHI::Vertex>& outVertices, std::vector<uint32_t>& outIndices)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -51,13 +51,13 @@ bool ModelImporter::LoadModel(UID uid, std::vector<RHI::RHIVertex>& outVertices,
 			return false;
 		}
 
-		std::unordered_map<RHI::RHIVertex, uint32_t> uniqueVertices{};
+		std::unordered_map<RHI::Vertex, uint32_t> uniqueVertices{};
 
 		for (const auto& shape : shapes)
 		{
 			for (const auto& index : shape.mesh.indices)
 			{
-				RHI::RHIVertex vertex{};
+				RHI::Vertex vertex{};
 
 				vertex.m_position = {
 				attrib.vertices[3 * index.vertex_index + 0],

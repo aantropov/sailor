@@ -14,7 +14,7 @@ void FrameState::SetInputState(const FrameInputState& currentInputState, const F
 	m_mouseDelta.y = currentInputState.m_cursorPosition[1] - previousInputState.m_cursorPosition[1];
 }
 
-void FrameState::AddCommandBuffer(TRefPtr<RHI::RHIResource> commandBuffer)
+void FrameState::AddCommandBuffer(TRefPtr<RHI::Resource> commandBuffer)
 {
 	SAILOR_PROFILE_FUNCTION();
 }
@@ -33,13 +33,15 @@ void Framework::ProcessCpuFrame(const FrameInputState& currentInputState)
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	m_frame.SetInputState(currentInputState, m_previousFrame.GetInputState());
+
 	static float totalFramesCount = 0.0f;
 	static float totalTime = 0.0f;
 
 	const float beginFrameTime = (float)GetTickCount();
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
-	Sleep(1);
+	Sleep(10);
 	SAILOR_PROFILE_END_BLOCK();
 
 	totalTime += (float)GetTickCount() - beginFrameTime;

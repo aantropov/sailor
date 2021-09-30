@@ -7,7 +7,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanDeviceMemory;
 
-	class VulkanBuffer final : public RHI::RHIResource, public RHI::IRHIExplicitInit
+	class VulkanBuffer final : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 
 	public:

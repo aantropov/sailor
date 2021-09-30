@@ -52,7 +52,7 @@ void EngineInstance::Initialize()
 	TextureImporter::Initialize();
 	ShaderCompiler::Initialize();
 	ModelImporter::Initialize();
-	Renderer::Initialize(&m_pInstance->m_viewportWindow, RHI::EMSAASamples::Samples_4, bIsEnabledVulkanValidationLayers);
+	Renderer::Initialize(&m_pInstance->m_viewportWindow, RHI::EMsaaSamples::Samples_4, bIsEnabledVulkanValidationLayers);
 	ShaderCompiler::GetInstance();
 	Framework::Initialize();
 
@@ -81,8 +81,8 @@ void EngineInstance::Start()
 		
 		Framework::GetInstance()->ProcessCpuFrame(Input::GetInputState());
 
-		static float totalTime = 0.0f;
-		if ((float)GetTickCount() - totalTime > 1000)
+		static float updateInterval = 0.0f;
+		if ((float)GetTickCount() - updateInterval > 1000)
 		{
 			SAILOR_PROFILE_BLOCK("Track FPS");
 
@@ -90,7 +90,7 @@ void EngineInstance::Start()
 			wsprintf(Buff, L"Sailor GPU FPS: %u, CPU FPS: %u", Renderer::GetInstance()->GetSmoothFps(), (uint32_t)Framework::GetInstance()->GetSmoothFps());
 			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
 
-			totalTime = (float)GetTickCount();
+			updateInterval = (float)GetTickCount();
 
 			SAILOR_PROFILE_END_BLOCK();
 		}

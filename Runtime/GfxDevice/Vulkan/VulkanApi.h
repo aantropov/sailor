@@ -51,8 +51,8 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<VkPresentModeKHR> m_presentModes;
 	};
 
-	template<typename TRHIVertex = RHI::RHIVertex>
-	class RHIVertexFactory
+	template<typename TVertex = RHI::Vertex>
+	class VertexFactory
 	{
 	public:
 
@@ -67,7 +67,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 1.0f, 0 };
 		static constexpr VkClearValue DefaultClearColor{ {0.0f,0.0f,0.0f,0.0f} };
 
-		static SAILOR_API void Initialize(const Window* pViewport, RHI::EMSAASamples msaaSamples, bool bIsDebug);
+		static SAILOR_API void Initialize(const Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
 
 		static bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,

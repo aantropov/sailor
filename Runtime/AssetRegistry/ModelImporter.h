@@ -10,7 +10,7 @@
 
 namespace Sailor::RHI
 {
-	class RHIVertex;
+	class Vertex;
 }
 
 namespace Sailor
@@ -25,7 +25,7 @@ namespace Sailor
 
 		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfo* assetInfo) override;
 
-		bool SAILOR_API LoadModel(UID uid, std::vector<RHI::RHIVertex>& outVertices, std::vector<uint32_t>& outIndices);
+		bool SAILOR_API LoadModel(UID uid, std::vector<RHI::Vertex>& outVertices, std::vector<uint32_t>& outIndices);
 
 	private:
 

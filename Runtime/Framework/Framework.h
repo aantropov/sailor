@@ -20,7 +20,7 @@ namespace Sailor
 
 		SAILOR_API const FrameInputState& GetInputState() const { return m_inputState; }
 		SAILOR_API void SetInputState(const FrameInputState& currentInputState, const FrameInputState& previousInputState);
-		SAILOR_API void AddCommandBuffer(TRefPtr<RHI::RHIResource> commandBuffer);
+		SAILOR_API void AddCommandBuffer(TRefPtr<RHI::Resource> commandBuffer);
 
 		SAILOR_API void Clear();
 
@@ -30,7 +30,7 @@ namespace Sailor
 		glm::ivec2 m_mouseDelta;
 		FrameInputState m_inputState;
 
-		std::vector<TRefPtr<RHI::RHIResource>> m_updateResourcesCommandBuffers;
+		std::vector<TRefPtr<RHI::Resource>> m_updateResourcesCommandBuffers;
 	};
 
 	class Framework : public TSingleton<Framework>
@@ -44,11 +44,8 @@ namespace Sailor
 
 	private:
 
-		FrameState* m_previousFrame;
-		FrameState* m_currentFrame;
-		FrameState* m_freeFrame;
-
-		std::array<FrameState, 3> m_frames;
+		FrameState m_frame;
+		FrameState m_previousFrame;
 		std::atomic<uint32_t> m_smoothFps = 0u;
 	};
 }

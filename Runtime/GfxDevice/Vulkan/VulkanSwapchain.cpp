@@ -121,7 +121,7 @@ VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, u
 	}
 
 	// We need color buffer only for resolving MSAA samples
-	if (device->GetCurrentMSAASamples() != 1)
+	if (device->GetCurrentMsaaSamples() != 1)
 	{
 		m_colorBuffer = TRefPtr<VulkanImage>::Make(m_device);
 		m_colorBuffer->m_extent = VkExtent3D{ m_swapchainExtent.width, m_swapchainExtent.height, 1 };
@@ -132,7 +132,7 @@ VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, u
 		m_colorBuffer->m_mipLevels = 1;
 		m_colorBuffer->m_usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		m_colorBuffer->m_arrayLayers = 1;
-		m_colorBuffer->m_samples = device->GetCurrentMSAASamples();
+		m_colorBuffer->m_samples = device->GetCurrentMsaaSamples();
 		m_colorBuffer->Compile();
 
 		m_colorBuffer->Bind(TRefPtr<VulkanDeviceMemory>::Make(m_device, m_colorBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
@@ -151,7 +151,7 @@ VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, u
 	m_depthBuffer->m_mipLevels = 1;
 	m_depthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	m_depthBuffer->m_arrayLayers = 1;
-	m_depthBuffer->m_samples = device->GetCurrentMSAASamples();
+	m_depthBuffer->m_samples = device->GetCurrentMsaaSamples();
 
 	m_depthBuffer->Compile();
 

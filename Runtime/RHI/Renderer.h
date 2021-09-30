@@ -12,7 +12,7 @@ namespace Sailor
 	{
 	public:
 
-		static SAILOR_API void Initialize(class Window const* pViewport, RHI::EMSAASamples msaaSamples, bool bIsDebug);
+		static SAILOR_API void Initialize(class Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API ~Renderer() override;
 
 		bool SAILOR_API IsRunning() const;

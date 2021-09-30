@@ -5,7 +5,7 @@
 
 using namespace Sailor;
 
-void Renderer::Initialize(Window const* pViewport, RHI::EMSAASamples msaaSamples, bool bIsDebug)
+void Renderer::Initialize(Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	if (m_pInstance != nullptr)
 	{

@@ -7,7 +7,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanBuffer;
 
-	class VulkanDeviceMemory final : public RHI::RHIResource
+	class VulkanDeviceMemory final : public RHI::Resource
 	{
 	public:
 		VulkanDeviceMemory(TRefPtr<VulkanDevice> device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, void* pNextAllocInfo = nullptr);

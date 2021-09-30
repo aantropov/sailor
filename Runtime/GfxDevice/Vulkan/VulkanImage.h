@@ -9,7 +9,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDevice;
 	class VulkanDeviceMemory;
 
-	class VulkanImage : public RHI::RHIResource, public RHI::IRHIExplicitInit
+	class VulkanImage : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
 

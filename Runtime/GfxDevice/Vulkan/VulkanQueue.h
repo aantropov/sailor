@@ -8,7 +8,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	class VulkanFence;
 
-	class VulkanQueue final : public RHI::RHIResource
+	class VulkanQueue final : public RHI::Resource
 	{
 
 	public:

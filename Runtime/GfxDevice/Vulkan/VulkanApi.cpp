@@ -60,7 +60,7 @@ void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 	createInfo.pfnUserCallback = VulkanDebugCallback;
 }
 
-void VulkanApi::Initialize(const Window* viewport, RHI::EMSAASamples msaaSamples, bool bInIsEnabledValidationLayers)
+void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples, bool bInIsEnabledValidationLayers)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -677,33 +677,33 @@ TRefPtr<VulkanImageView> VulkanApi::CreateImageView(TRefPtr<VulkanDevice> device
 	return imageView;
 }
 
-VkVertexInputBindingDescription RHIVertexFactory<RHI::RHIVertex>::GetBindingDescription()
+VkVertexInputBindingDescription VertexFactory<RHI::Vertex>::GetBindingDescription()
 {
 	VkVertexInputBindingDescription bindingDescription{};
 	bindingDescription.binding = 0;
-	bindingDescription.stride = sizeof(RHIVertex);
+	bindingDescription.stride = sizeof(RHI::Vertex);
 	bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	return bindingDescription;
 }
 
-std::vector<VkVertexInputAttributeDescription> RHIVertexFactory<RHI::RHIVertex>::GetAttributeDescriptions()
+std::vector<VkVertexInputAttributeDescription> VertexFactory<RHI::Vertex>::GetAttributeDescriptions()
 {
 	std::vector<VkVertexInputAttributeDescription> attributeDescriptions(3);
 
 	attributeDescriptions[0].binding = 0;
 	attributeDescriptions[0].location = 0;
 	attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	attributeDescriptions[0].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_position);
+	attributeDescriptions[0].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_position);
 
 	attributeDescriptions[1].binding = 0;
 	attributeDescriptions[1].location = 1;
 	attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
-	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_texcoord);
+	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_texcoord);
 
 	attributeDescriptions[2].binding = 0;
 	attributeDescriptions[2].location = 2;
 	attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-	attributeDescriptions[2].offset = (uint32_t)Sailor::OffsetOf(&RHIVertex::m_color);
+	attributeDescriptions[2].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_color);
 
 	return attributeDescriptions;
 }

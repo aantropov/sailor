@@ -6,7 +6,7 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanPipelineState : public RHI::RHIResource, public RHI::IRHIStateModifier<VkGraphicsPipelineCreateInfo> {};
+	class VulkanPipelineState : public RHI::Resource, public RHI::IStateModifier<VkGraphicsPipelineCreateInfo> {};
 
 	class VulkanStateViewport : public VulkanPipelineState
 	{

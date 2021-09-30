@@ -9,7 +9,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanSampler;
 	class VulkanImageView;
 
-	class VulkanDescriptorSetLayout : public RHI::RHIResource, public RHI::IRHIExplicitInit
+	class VulkanDescriptorSetLayout : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
 		VulkanDescriptorSetLayout(TRefPtr<VulkanDevice> pDevice, std::vector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings);
@@ -32,7 +32,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkDescriptorSetLayout m_descriptorSetLayout{};
 	};
 
-	class VulkanDescriptorPool : public RHI::RHIResource
+	class VulkanDescriptorPool : public RHI::Resource
 	{
 	public:
 		VulkanDescriptorPool(TRefPtr<VulkanDevice> pDevice, uint32_t maxSets, const std::vector<VkDescriptorPoolSize>& descriptorPoolSizes);
@@ -46,7 +46,7 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanDevice> m_device;
 	};
 
-	class VulkanDescriptor : public RHI::RHIResource, public RHI::IRHIStateModifier<VkWriteDescriptorSet>
+	class VulkanDescriptor : public RHI::Resource, public RHI::IStateModifier<VkWriteDescriptorSet>
 	{
 	public:
 
@@ -97,7 +97,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkDescriptorImageInfo m_imageInfo{};
 	};
 
-	class VulkanDescriptorSet : public RHI::RHIResource, public RHI::IRHIExplicitInit
+	class VulkanDescriptorSet : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
 		VulkanDescriptorSet() = default;

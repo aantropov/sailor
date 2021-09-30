@@ -6,7 +6,7 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanSemaphore final : public RHI::RHIResource
+	class VulkanSemaphore final : public RHI::Resource
 	{
 
 	public:

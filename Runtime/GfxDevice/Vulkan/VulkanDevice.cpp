@@ -50,7 +50,7 @@ using namespace Sailor::GfxDevice::Vulkan;
 TRefPtr<VulkanShaderStage> g_testFragShader;
 TRefPtr<VulkanShaderStage> g_testVertShader;
 
-std::vector<RHIVertex> g_testVertices =
+std::vector<Vertex> g_testVertices =
 {
 	{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
 	{{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
@@ -91,7 +91,7 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 	return VK_SAMPLE_COUNT_1_BIT;
 }
 
-VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMSAASamples requestMsaa)
+VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsaa)
 {
 	// Create Win32 surface
 	CreateWin32Surface(pViewport);
@@ -104,11 +104,11 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMSAASamples requestMsa
 	VkPhysicalDeviceProperties properties{};
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
 	m_maxAllowedAnisotropy = properties.limits.maxSamplerAnisotropy;
-	m_maxAllowedMSAASamples = CalculateMaxAllowedMSAASamples(properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts);
-	m_currentMSAASamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMSAASamples));
+	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts);
+	m_currentMsaaSamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMsaaSamples));
 
 	SAILOR_LOG("m_maxAllowedAnisotropy = %.2f", m_maxAllowedAnisotropy);
-	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMSAASamples, m_currentMSAASamples);
+	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMsaaSamples, m_currentMsaaSamples);
 
 	// Cache samplers
 	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
@@ -254,7 +254,7 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 void VulkanDevice::CreateRenderPass()
 {
 	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
-	m_renderPass = VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice>(this), m_swapchain->GetImageFormat(), depthFormat, (VkSampleCountFlagBits)m_currentMSAASamples);
+	m_renderPass = VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice>(this), m_swapchain->GetImageFormat(), depthFormat, (VkSampleCountFlagBits)m_currentMsaaSamples);
 }
 
 void VulkanDevice::CreateCommandPool()
@@ -320,7 +320,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 {
 	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfo<ShaderAssetInfo>("Shaders\\Simple.shader"))
 	{
-		const VkDeviceSize uniformBufferSize = sizeof(RHI::UBOTransform);
+		const VkDeviceSize uniformBufferSize = sizeof(RHI::UboTransform);
 
 		m_uniformBuffer = VulkanApi::CreateBuffer(TRefPtr<VulkanDevice>(this),
 			uniformBufferSize,
@@ -336,8 +336,8 @@ void VulkanDevice::CreateGraphicsPipeline()
 		g_testFragShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", TRefPtr<VulkanDevice>(this), fragCode);
 
 		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = new VulkanStateVertexDescription(
-			RHIVertexFactory<RHI::RHIVertex>::GetBindingDescription(),
-			RHIVertexFactory<RHI::RHIVertex>::GetAttributeDescriptions());
+			VertexFactory<RHI::Vertex>::GetBindingDescription(),
+			VertexFactory<RHI::Vertex>::GetAttributeDescriptions());
 
 		const TRefPtr<VulkanStateInputAssembly> pInputAssembly = new VulkanStateInputAssembly();
 		const TRefPtr<VulkanStateDynamicViewport> pStateViewport = new VulkanStateDynamicViewport();
@@ -354,7 +354,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 			VK_BLEND_OP_ADD,
 			VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
 
-		const TRefPtr<VulkanStateMultisample> pMultisample = new VulkanStateMultisample(GetCurrentMSAASamples());
+		const TRefPtr<VulkanStateMultisample> pMultisample = new VulkanStateMultisample(GetCurrentMsaaSamples());
 
 		m_descriptorSetLayout = TRefPtr<VulkanDescriptorSetLayout>::Make(
 			TRefPtr<VulkanDevice>(this),
@@ -409,7 +409,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>
 		{
-			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UBOTransform)),
+			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UboTransform)),
 			TRefPtr<VulkanDescriptorImage>::Make(1, 0,
 				m_samplers.GetSampler(textureUID->GetFiltration(),
 				textureUID->GetClamping(),
@@ -432,7 +432,7 @@ void VulkanDevice::CreateFramebuffers()
 	std::vector<TRefPtr<VulkanImageView>> attachments;
 
 	uint8_t swapchainIndex = 1;
-	if ((VkSampleCountFlagBits)m_currentMSAASamples != VK_SAMPLE_COUNT_1_BIT)
+	if ((VkSampleCountFlagBits)m_currentMsaaSamples != VK_SAMPLE_COUNT_1_BIT)
 	{
 		attachments = { m_swapchain->GetColorBufferView(), nullptr, m_swapchain->GetDepthBufferView() };
 	}
@@ -654,7 +654,7 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 		cameraViewDir = hRotation * cameraViewDir;
 	}
 
-	UBOTransform ubo{};
+	UboTransform ubo{};
 	ubo.m_model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), Math::vec3_Up);
 	ubo.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Math::vec3_Up);
 

@@ -18,7 +18,7 @@ namespace Sailor::RHI
 		Repeat
 	};
 
-	enum class EMSAASamples : uint8_t
+	enum class EMsaaSamples : uint8_t
 	{
 		Samples_1 = 1,
 		Samples_2 = 2,
@@ -29,14 +29,14 @@ namespace Sailor::RHI
 		Samples_64 = 64
 	};
 
-	class RHIVertex
+	class Vertex
 	{
 	public:
 		glm::vec3 m_position;
 		glm::vec2 m_texcoord;
 		glm::vec4 m_color;
 
-		bool operator==(const RHIVertex& other) const 
+		bool operator==(const Vertex& other) const 
 		{
 			return m_position == other.m_position && 
 				m_color == other.m_color && 
@@ -44,29 +44,29 @@ namespace Sailor::RHI
 		}
 	};
 
-	struct UBOTransform
+	struct UboTransform
 	{
 		alignas(16) glm::mat4 m_model;
 		alignas(16) glm::mat4 m_view;
 		alignas(16) glm::mat4 m_projection;
 	};
 
-	class RHIResource : public TRefBase
+	class Resource : public TRefBase
 	{
 	public:
 
 	protected:
 
-		RHIResource() = default;
-		virtual ~RHIResource() = default;
+		Resource() = default;
+		virtual ~Resource() = default;
 
 	private:
 
-		RHIResource(RHIResource& copy) = delete;
-		RHIResource& operator =(RHIResource& rhs) = delete;
+		Resource(Resource& copy) = delete;
+		Resource& operator =(Resource& rhs) = delete;
 	};
 
-	class IRHIExplicitInit
+	class IExplicitInitialization
 	{
 	public:
 
@@ -75,18 +75,18 @@ namespace Sailor::RHI
 	};
 
 	template<typename TState>
-	class IRHIStateModifier
+	class IStateModifier
 	{
 	public:
 		virtual void Apply(TState& State) const = 0;
-		virtual ~IRHIStateModifier() = default;
+		virtual ~IStateModifier() = default;
 	};
 };
 
 namespace std {
-	template<> struct hash<Sailor::RHI::RHIVertex> 
+	template<> struct hash<Sailor::RHI::Vertex> 
 	{
-		size_t operator()(Sailor::RHI::RHIVertex const& vertex) const 
+		size_t operator()(Sailor::RHI::Vertex const& vertex) const 
 		{
 			return ((hash<glm::vec3>()(vertex.m_position) ^
 				(hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^

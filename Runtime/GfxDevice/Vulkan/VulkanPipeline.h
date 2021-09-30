@@ -9,7 +9,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanShaderStage;
 	class VulkanRenderPass;
 
-	class VulkanPipelineLayout : public RHI::RHIResource, public RHI::IRHIExplicitInit
+	class VulkanPipelineLayout : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
 
@@ -38,7 +38,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkPipelineLayout m_pipelineLayout;
 	};
 
-	class VulkanPipeline : public RHI::RHIResource
+	class VulkanPipeline : public RHI::Resource
 	{
 	public:
 

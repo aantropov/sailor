@@ -18,7 +18,7 @@ namespace Sailor::GfxDevice::Vulkan
 		std::vector<uint32_t> m_preserveAttachments;
 	};
 
-	class VulkanRenderPass final : public RHI::RHIResource
+	class VulkanRenderPass final : public RHI::Resource
 	{
 	public:
 
