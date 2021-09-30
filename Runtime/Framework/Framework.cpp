@@ -3,15 +3,31 @@
 #include "Defines.h"
 #include "Platform/Win32/Input.h"
 #include "Math.h"
+#include "Utils.h"
 
 using namespace Sailor;
 
-void FrameState::SetInputState(const FrameInputState& currentInputState, const FrameInputState& previousInputState)
+FrameState::FrameState() :
+	m_currentTime(0.0f),
+	m_deltaTime(0.0f),
+	m_mouseDelta(0.0f, 0.0f)
+{
+}
+
+FrameState::FrameState(float time, const FrameInputState& currentInputState, const FrameState* previousFrame)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_inputState = currentInputState;
-	m_mouseDelta.x = currentInputState.m_cursorPosition[0] - previousInputState.m_cursorPosition[0];
-	m_mouseDelta.y = currentInputState.m_cursorPosition[1] - previousInputState.m_cursorPosition[1];
+	m_currentTime = time;
+	m_mouseDelta = glm::ivec2(0, 0);
+	m_deltaTime = 0;
+
+	if (previousFrame != nullptr)
+	{
+		m_mouseDelta = currentInputState.GetCursorPos() - previousFrame->GetInputState().GetCursorPos();
+		m_deltaTime = time - previousFrame->GetTime();
+		m_inputState.TrackForChanges(previousFrame->GetInputState());
+	}
 }
 
 void FrameState::AddCommandBuffer(TRefPtr<RHI::Resource> commandBuffer)
@@ -19,38 +35,31 @@ void FrameState::AddCommandBuffer(TRefPtr<RHI::Resource> commandBuffer)
 	SAILOR_PROFILE_FUNCTION();
 }
 
-void FrameState::Clear()
-{
-	m_updateResourcesCommandBuffers.clear();
-}
-
 void Framework::Initialize()
 {
-	m_pInstance = new Framework;
+	if (m_pInstance == nullptr)
+	{
+		m_pInstance = new Framework();
+	}
 }
 
-void Framework::ProcessCpuFrame(const FrameInputState& currentInputState)
+void Framework::ProcessCpuFrame(FrameState& currentInputState)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_frame.SetInputState(currentInputState, m_previousFrame.GetInputState());
-
-	static float totalFramesCount = 0.0f;
-	static float totalTime = 0.0f;
-
-	const float beginFrameTime = (float)GetTickCount();
+	static uint32_t totalFramesCount = 0U;
+	static int64_t totalTime = 0;
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
-	Sleep(10);
+	
 	SAILOR_PROFILE_END_BLOCK();
 
-	totalTime += (float)GetTickCount() - beginFrameTime;
 	totalFramesCount++;
 
-	if (totalTime > 1000)
+	if (Utils::GetCurrentTimeMicro() - totalTime > 1000000)
 	{
-		m_smoothFps = (uint32_t)totalFramesCount;
+		m_smoothFps = totalFramesCount;
 		totalFramesCount = 0;
-		totalTime = 0;
+		totalTime = Utils::GetCurrentTimeMicro();
 	}
 }

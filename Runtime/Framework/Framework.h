@@ -15,17 +15,18 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API FrameState() = default;
+		SAILOR_API FrameState();
+		SAILOR_API FrameState(float time, const FrameInputState& currentInputState, const FrameState* previousFrame = nullptr);
 		SAILOR_API virtual ~FrameState() = default;
 
 		SAILOR_API const FrameInputState& GetInputState() const { return m_inputState; }
-		SAILOR_API void SetInputState(const FrameInputState& currentInputState, const FrameInputState& previousInputState);
+		SAILOR_API float GetTime() const { return m_currentTime; }
+		SAILOR_API float GetDelta() const { return m_deltaTime; }
 		SAILOR_API void AddCommandBuffer(TRefPtr<RHI::Resource> commandBuffer);
-
-		SAILOR_API void Clear();
 
 	protected:
 
+		float m_currentTime;
 		float m_deltaTime;
 		glm::ivec2 m_mouseDelta;
 		FrameInputState m_inputState;
@@ -38,14 +39,16 @@ namespace Sailor
 	public:
 
 		static SAILOR_API void Initialize();
-		SAILOR_API void ProcessCpuFrame(const FrameInputState& currentInputState);
+		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
 
 		uint32_t SAILOR_API GetSmoothFps() const { return m_smoothFps.load(); }
 
-	private:
+		~Framework() override = default;
 
-		FrameState m_frame;
-		FrameState m_previousFrame;
+	protected:
+
+		Framework() = default;
+
 		std::atomic<uint32_t> m_smoothFps = 0u;
 	};
 }

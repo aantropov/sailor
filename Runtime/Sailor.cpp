@@ -72,17 +72,21 @@ void EngineInstance::Start()
 		Win32::ConsoleWindow::GetInstance()->Update();
 		Win32::Window::ProcessWin32Msgs();
 		Renderer::GetInstance()->FixLostDevice();
-		
-		if (Input::IsKeyPressed(VK_ESCAPE))
+
+		if (GlobalInput::GetInputState().IsKeyPressed(VK_ESCAPE))
 		{
 			Stop();
 			break;
 		}
-		
-		Framework::GetInstance()->ProcessCpuFrame(Input::GetInputState());
 
-		static float updateInterval = 0.0f;
-		if ((float)GetTickCount() - updateInterval > 1000)
+		FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
+		FrameState currentFrame(Utils::GetCurrentTimeMs() / 1000.0f, inputState);
+
+		Framework::GetInstance()->ProcessCpuFrame(currentFrame);
+		Renderer::GetInstance()->PushFrame(currentFrame);
+
+		static int64_t updateInterval = 0;
+		if (Utils::GetCurrentTimeMicro() - updateInterval > 1000000)
 		{
 			SAILOR_PROFILE_BLOCK("Track FPS");
 
@@ -90,11 +94,11 @@ void EngineInstance::Start()
 			wsprintf(Buff, L"Sailor GPU FPS: %u, CPU FPS: %u", Renderer::GetInstance()->GetSmoothFps(), (uint32_t)Framework::GetInstance()->GetSmoothFps());
 			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
 
-			updateInterval = (float)GetTickCount();
+			updateInterval = Utils::GetCurrentTimeMicro();
 
 			SAILOR_PROFILE_END_BLOCK();
 		}
-	}	
+	}
 
 	m_pInstance->m_viewportWindow.SetActive(false);
 	m_pInstance->m_viewportWindow.SetRunning(false);
@@ -103,7 +107,7 @@ void EngineInstance::Start()
 void EngineInstance::Stop()
 {
 	m_pInstance->m_viewportWindow.SetActive(false);
-	
+
 	Renderer::GetInstance()->StopRenderLoop();
 }
 
@@ -117,7 +121,7 @@ void EngineInstance::Shutdown()
 	Renderer::Shutdown();
 	Win32::ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
-		
+
 	delete m_pInstance;
 }
 

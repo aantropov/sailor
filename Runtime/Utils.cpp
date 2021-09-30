@@ -240,3 +240,18 @@ void Sailor::Utils::Trim(std::string& s)
 		return !std::isspace(ch);
 	}));
 }
+
+int64_t Sailor::Utils::GetCurrentTimeMs()
+{
+	return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+int64_t Sailor::Utils::GetCurrentTimeMicro()
+{
+	return (int64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+int64_t Sailor::Utils::GetCurrentTimeNano()
+{
+	return (int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}

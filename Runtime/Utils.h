@@ -28,6 +28,10 @@ namespace Sailor
 		SAILOR_API void SetThreadName(std::thread* thread, const std::string& threadName);
 
 		SAILOR_API DWORD GetRandomColorHex();
+
+		SAILOR_API int64_t GetCurrentTimeMs();
+		SAILOR_API int64_t GetCurrentTimeMicro();
+		SAILOR_API int64_t GetCurrentTimeNano();
 	}
 
 	template<typename Class, typename Member> 

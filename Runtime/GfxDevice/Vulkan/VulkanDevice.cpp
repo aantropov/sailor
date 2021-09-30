@@ -613,24 +613,23 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	const float sensitivity = 500;
 
 	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
-	if (Sailor::Win32::Input::IsKeyDown('A'))
+	if (Sailor::Win32::GlobalInput::GetInputState().IsKeyDown('A'))
 		delta += -cross(cameraViewDir, Math::vec3_Up);
 
-	if (Sailor::Win32::Input::IsKeyDown('D'))
+	if (Sailor::Win32::GlobalInput::GetInputState().IsKeyDown('D'))
 		delta += cross(cameraViewDir, Math::vec3_Up);
 
-	if (Sailor::Win32::Input::IsKeyDown('W'))
+	if (Sailor::Win32::GlobalInput::GetInputState().IsKeyDown('W'))
 		delta += cameraViewDir;
 
-	if (Sailor::Win32::Input::IsKeyDown('S'))
+	if (Sailor::Win32::GlobalInput::GetInputState().IsKeyDown('S'))
 		delta += -cameraViewDir;
 
 	if (glm::length(delta) > 0)
 		cameraPosition += glm::normalize(delta) * sensitivity * deltaTime;
 
 	static vec2 mouseDelta{};
-	glm::ivec2 mousePosition{};
-	Input::GetCursorPos(&mousePosition.x, &mousePosition.y);
+	glm::ivec2 mousePosition = GlobalInput::GetInputState().GetCursorPos();
 
 	static glm::ivec2 lastMousePosition = mousePosition;
 	mouseDelta += mousePosition - lastMousePosition;
@@ -641,7 +640,7 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	mouseDelta.x -= thisFrameShift.x;
 	mouseDelta.y -= thisFrameShift.y;
 
-	if (glm::length(mouseDelta) > 0.0f && Input::IsKeyDown(VK_LBUTTON))
+	if (glm::length(mouseDelta) > 0.0f && GlobalInput::GetInputState().IsKeyDown(VK_LBUTTON))
 	{
 		//SAILOR_LOG("delta: %.2f, %.2f", mouseDelta.x, mouseDelta.y);
 

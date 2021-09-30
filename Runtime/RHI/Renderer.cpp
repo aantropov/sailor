@@ -1,3 +1,4 @@
+#include <mutex>
 #include "Renderer.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "GfxDevice/Vulkan/VulkanDevice.h"
@@ -34,33 +35,79 @@ void Renderer::FixLostDevice()
 	}
 }
 
+void Renderer::PushFrame(const FrameState& frame)
+{
+	if (m_numFrames >= MaxFramesInQueue)
+	{
+		std::unique_lock<std::mutex> lk(m_waitFinishRendering);
+		m_onPopFrame.wait(lk, [this]() { return GetNumFrames() < MaxFramesInQueue; });
+	}
+
+	{
+		std::scoped_lock(m_queueMutex);
+		m_frames[m_numFrames] = frame;
+		m_numFrames++;
+	}
+
+	m_onPushFrame.notify_one();
+}
+
+bool Renderer::TryPopFrame(FrameState& frame)
+{
+	if (GetNumFrames() == 0)
+	{
+		return false;
+	}
+
+	{
+		std::scoped_lock(m_queueMutex);
+		frame = m_frames[m_numFrames - 1];
+		m_numFrames--;
+	}
+
+	m_onPopFrame.notify_one();
+
+	return true;
+}
+
 void Renderer::RunRenderLoop()
 {
 	m_bForceStop = false;
 
 	m_renderingJob = JobSystem::Scheduler::CreateJob("Rendering Loop",
 		[this]() {
+
+		std::mutex threadExecutionMutex;
 		while (!this->m_bForceStop)
 		{
+			FrameState frame;
+			if (!TryPopFrame(frame))
+			{
+				std::unique_lock<std::mutex> lk(threadExecutionMutex);
+				m_onPushFrame.wait(lk, [this, &frame]() {return TryPopFrame(frame) || this->m_bForceStop; });
+
+				if (this->m_bForceStop)
+				{
+					break;
+				}
+			}
+
 			if (!m_pViewport->IsIconic())
 			{
-				static float totalFramesCount = 0.0f;
-				static float totalTime = 0.0f;
+				static uint32_t totalFramesCount = 0U;
+				static int64_t totalTime = 0U;
 
 				SAILOR_PROFILE_BLOCK("Render Frame");
 
-				const float beginFrameTime = (float)GetTickCount();
-
 				if (GfxDevice::Vulkan::VulkanApi::PresentFrame())
 				{
-					totalTime += (float)GetTickCount() - beginFrameTime;
 					totalFramesCount++;
 
-					if (totalTime > 1000)
+					if (Utils::GetCurrentTimeMicro() - totalTime > 1000000)
 					{
-						m_smoothFps = (uint32_t)totalFramesCount;
+						m_smoothFps = totalFramesCount;
 						totalFramesCount = 0;
-						totalTime = 0;
+						totalTime = Utils::GetCurrentTimeMicro();
 					}
 				}
 				else
@@ -73,6 +120,11 @@ void Renderer::RunRenderLoop()
 			else
 			{
 				m_smoothFps = 0;
+			}
+
+			if (m_numFrames >= MaxFramesInQueue)
+			{
+				m_onPopFrame.notify_one();
 			}
 		}
 		GfxDevice::Vulkan::VulkanApi::WaitIdle();
@@ -90,6 +142,7 @@ void Renderer::StopRenderLoop()
 	}
 
 	m_bForceStop = true;
+	m_onPushFrame.notify_one();
 	m_renderingJob->Wait();
 }
 
