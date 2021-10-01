@@ -16,6 +16,7 @@ namespace Sailor
 	class Renderer : public TSingleton<Renderer>
 	{
 	public:
+		static constexpr uint32_t MaxFramesInQueue = 2;
 
 		static SAILOR_API void Initialize(class Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API ~Renderer() override;

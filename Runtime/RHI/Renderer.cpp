@@ -42,7 +42,7 @@ bool Renderer::PushFrame(const FrameState& frame)
 {
 	SAILOR_PROFILE_BLOCK("Wait for render thread");
 
-	if (m_bForceStop || JobSystem::Scheduler::GetInstance()->GetNumRenderingJobs() > 2)
+	if (m_bForceStop || JobSystem::Scheduler::GetInstance()->GetNumRenderingJobs() > MaxFramesInQueue)
 	{
 		return false;
 	}
