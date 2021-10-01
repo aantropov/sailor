@@ -64,9 +64,10 @@ void EngineInstance::Start()
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
-	Renderer::GetInstance()->RunRenderLoop();
-
 	float timeToUpdateFps = 0.0f;
+	FrameState lastProcessedCpuFrame;
+	bool bCanCreateNewFrame = true;
+
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{
 		Win32::ConsoleWindow::GetInstance()->Update();
@@ -79,11 +80,14 @@ void EngineInstance::Start()
 			break;
 		}
 
-		FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-		FrameState currentFrame(Utils::GetCurrentTimeMs() / 1000.0f, inputState);
+		if (bCanCreateNewFrame)
+		{
+			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
+			lastProcessedCpuFrame = FrameState(Utils::GetCurrentTimeMs() / 1000.0f, inputState);
+			Framework::GetInstance()->ProcessCpuFrame(lastProcessedCpuFrame);
+		}
 
-		Framework::GetInstance()->ProcessCpuFrame(currentFrame);
-		Renderer::GetInstance()->PushFrame(currentFrame);
+		bCanCreateNewFrame = Renderer::GetInstance()->PushFrame(lastProcessedCpuFrame);
 
 		static int64_t updateInterval = 0;
 		if (Utils::GetCurrentTimeMicro() - updateInterval > 1000000)
@@ -107,8 +111,6 @@ void EngineInstance::Start()
 void EngineInstance::Stop()
 {
 	m_pInstance->m_viewportWindow.SetActive(false);
-
-	Renderer::GetInstance()->StopRenderLoop();
 }
 
 void EngineInstance::Shutdown()

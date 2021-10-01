@@ -128,6 +128,8 @@ void ConsoleWindow::Write(wchar_t c)
 
 void ConsoleWindow::Update()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	DWORD num_events;
 	BOOL result = GetNumberOfConsoleInputEvents(GetStdHandle(STD_INPUT_HANDLE), &num_events);
 	if (!result)

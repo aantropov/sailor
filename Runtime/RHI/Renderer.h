@@ -22,8 +22,6 @@ namespace Sailor
 
 		void SAILOR_API FixLostDevice();
 
-		void SAILOR_API WaitIdle();
-
 		bool SAILOR_API PushFrame(const FrameState& frame);
 
 		uint32_t SAILOR_API GetNumFrames() const { return m_numFrames.load(); }
@@ -31,9 +29,6 @@ namespace Sailor
 
 	protected:
 
-		std::mutex queueMutex;
-
-		TSharedPtr<class JobSystem::Job> m_renderingJob;
 		std::atomic<bool> m_bForceStop = false;
 		std::atomic<uint32_t> m_smoothFps = 0u;
 		std::atomic<uint32_t> m_numFrames = 0u;

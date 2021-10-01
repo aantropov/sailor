@@ -581,11 +581,6 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	RecreateSwapchain(pViewport);
 }
 
-int64 time_ms()
-{
-	return (int64)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
 bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
 	const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
 	const std::vector<TRefPtr<VulkanSemaphore>>* semaphoresToWait)
@@ -600,11 +595,11 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	m_syncFences[m_currentFrame]->Wait();
 
 	///////////////////////////////////
-	static int64 startTime = time_ms();
-	static int64 lastTime = time_ms();
-	const int64 currentTime = time_ms();
-	const float time = (float)time_ms();
-	const float deltaTime = (time_ms() - lastTime) / 1000.0f;
+	static int64 startTime = Utils::GetCurrentTimeMs();
+	static int64 lastTime = Utils::GetCurrentTimeMs();
+	const int64 currentTime = Utils::GetCurrentTimeMs();
+	const float time = (float)Utils::GetCurrentTimeMs();
+	const float deltaTime = (Utils::GetCurrentTimeMs() - lastTime) / 1000.0f;
 	lastTime = currentTime;
 
 	static glm::vec3 cameraPosition = Math::vec3_Forward * -10.0f;

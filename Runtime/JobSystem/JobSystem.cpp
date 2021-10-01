@@ -46,18 +46,15 @@ void IJob::Complete()
 	}
 
 	m_bIsFinished = true;
-	m_jobFinished.notify_all();
+	m_onComplete.notify_all();
 }
 
 void IJob::Wait()
 {
-	if (!IsExecuting())
-	{
-		return;
-	}
+	SAILOR_PROFILE_FUNCTION();
 
-	std::unique_lock<std::mutex> lk(m_jobIsExecuting);
-	m_jobFinished.wait(lk);
+	std::unique_lock<std::mutex> lk(m_waitMutex);
+	m_onComplete.wait(lk);
 }
 
 Job::Job(const std::string& name, const std::function<void()>& function, EThreadType thread) : IJob(name, thread)
@@ -68,21 +65,6 @@ Job::Job(const std::string& name, const std::function<void()>& function, EThread
 bool Job::IsReadyToStart() const
 {
 	return !m_bIsStarted && !m_bIsFinished && m_numBlockers == 0 && m_function != nullptr;
-}
-
-bool Job::IsStarted() const
-{
-	return m_bIsStarted;
-}
-
-bool Job::IsFinished() const
-{
-	return m_bIsFinished;
-}
-
-bool Job::IsExecuting() const
-{
-	return m_bIsStarted && !m_bIsFinished;
 }
 
 void Job::Execute()
@@ -292,4 +274,9 @@ void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThread
 	{
 		pOutCondVar->notify_one();
 	}
+}
+
+uint32_t Scheduler::GetNumRenderingJobs() const
+{
+	return (uint32_t)m_pJobsQueue[(uint32_t)EThreadType::Rendering].size();
 }

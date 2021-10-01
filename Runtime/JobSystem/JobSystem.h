@@ -26,9 +26,9 @@ namespace Sailor
 		public:
 
 			virtual SAILOR_API float GetProgress() { return 0.0f; }
-			virtual SAILOR_API bool IsFinished() const { return false; }
-			virtual SAILOR_API bool IsExecuting() const { return false; }
-			virtual SAILOR_API bool IsStarted() const { return false; }
+			virtual SAILOR_API bool IsFinished() const { return m_bIsFinished; }
+			virtual SAILOR_API bool IsExecuting() const { return m_bIsStarted && !m_bIsFinished; }
+			virtual SAILOR_API bool IsStarted() const { return m_bIsStarted; }
 
 			virtual SAILOR_API void Complete();
 			virtual SAILOR_API void Execute() = 0;
@@ -44,9 +44,6 @@ namespace Sailor
 			// Lock this thread while job is executing
 			SAILOR_API void Wait();
 
-			// Lock this thread while job is not started
-			SAILOR_API void WaitForStart();
-
 			EThreadType GetThreadType() const { return m_threadType; }
 
 		protected:
@@ -57,15 +54,14 @@ namespace Sailor
 
 			std::atomic<bool> m_bIsFinished = false;
 			std::atomic<bool> m_bIsStarted = false;
+			std::atomic<bool> m_bIsInQueue = false;
+
 			std::atomic<uint32_t> m_numBlockers;
 			std::vector<IJob*> m_dependencies;
 			std::string m_name;
 
-			std::condition_variable m_jobFinished;
-			std::mutex m_jobIsExecuting;
-
-			std::mutex m_jobStartedMutex;
-			std::unique_lock<std::mutex> m_jobStarted;
+			std::condition_variable m_onComplete;
+			std::mutex m_waitMutex;
 
 			EThreadType m_threadType;
 		};
@@ -77,9 +73,6 @@ namespace Sailor
 			virtual SAILOR_API ~Job() = default;
 
 			SAILOR_API bool IsReadyToStart() const;
-			virtual SAILOR_API bool IsFinished() const override;
-			virtual SAILOR_API bool IsExecuting() const override;
-			virtual SAILOR_API bool IsStarted() const override;
 
 			virtual SAILOR_API void Execute() override;
 			SAILOR_API Job(const std::string& name, const std::function<void()>& function, EThreadType thread);
@@ -137,6 +130,7 @@ namespace Sailor
 			virtual SAILOR_API ~Scheduler() override;
 
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
+			uint32_t SAILOR_API GetNumRenderingJobs() const;
 
 			static SAILOR_API TSharedPtr<Job> CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread = EThreadType::Worker);
 			SAILOR_API void Run(const TSharedPtr<Job>& pJob);
