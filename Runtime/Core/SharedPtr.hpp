@@ -31,9 +31,9 @@ namespace Sailor
 	public:
 
 		template<typename... TArgs>
-		static TSharedPtr<T> Make(TArgs... args) noexcept
+		static TSharedPtr<T> Make(TArgs&&... args) noexcept
 		{
-			return TSharedPtr<T>(new T(args...));
+			return TSharedPtr<T>(new T(std::forward<TArgs>(args)...));
 		}
 
 		TSharedPtr() noexcept { }
