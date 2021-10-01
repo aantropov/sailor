@@ -29,128 +29,69 @@ void Renderer::FixLostDevice()
 {
 	if (GfxDevice::Vulkan::VulkanApi::GetInstance()->GetMainDevice()->ShouldFixLostDevice(m_pViewport))
 	{
-		StopRenderLoop();
+		WaitIdle();
 		GfxDevice::Vulkan::VulkanApi::GetInstance()->GetMainDevice()->FixLostDevice(m_pViewport);
-		RunRenderLoop();
 	}
 }
 
-void Renderer::PushFrame(const FrameState& frame)
+bool Renderer::PushFrame(const FrameState& frame)
 {
-	if (m_numFrames >= MaxFramesInQueue)
+	SAILOR_PROFILE_FUNCTION();
+
+	std::scoped_lock<std::mutex> lk(queueMutex);
+
+	if (m_renderingJob)
 	{
-		std::unique_lock<std::mutex> lk(m_waitFinishRendering);
-		m_onPopFrame.wait(lk, [this]() { return GetNumFrames() < MaxFramesInQueue; });
+		m_renderingJob->Wait();
 	}
 
-	{
-		std::scoped_lock(m_queueMutex);
-		m_frames[m_numFrames] = frame;
-		m_numFrames++;
-	}
-
-	m_onPushFrame.notify_one();
-}
-
-bool Renderer::TryPopFrame(FrameState& frame)
-{
-	if (GetNumFrames() == 0)
+	if (m_bForceStop)
 	{
 		return false;
 	}
 
-	{
-		std::scoped_lock(m_queueMutex);
-		frame = m_frames[m_numFrames - 1];
-		m_numFrames--;
-	}
-
-	m_onPopFrame.notify_one();
-
-	return true;
-}
-
-void Renderer::RunRenderLoop()
-{
-	m_bForceStop = false;
-
-	m_renderingJob = JobSystem::Scheduler::CreateJob("Rendering Loop",
+	m_renderingJob = JobSystem::Scheduler::CreateJob("Render Frame",
 		[this]() {
 
-		std::mutex threadExecutionMutex;
-		while (!this->m_bForceStop)
+		if (!m_pViewport->IsIconic())
 		{
-			FrameState frame;
-			if (!TryPopFrame(frame))
+			static uint32_t totalFramesCount = 0U;
+			static int64_t totalTime = 0U;
+
+			SAILOR_PROFILE_BLOCK("Present Frame");
+
+			if (GfxDevice::Vulkan::VulkanApi::PresentFrame())
 			{
-				std::unique_lock<std::mutex> lk(threadExecutionMutex);
-				m_onPushFrame.wait(lk, [this, &frame]() {return TryPopFrame(frame) || this->m_bForceStop; });
+				totalFramesCount++;
 
-				if (this->m_bForceStop)
+				if (Utils::GetCurrentTimeMicro() - totalTime > 1000000)
 				{
-					break;
+					m_smoothFps = totalFramesCount;
+					totalFramesCount = 0;
+					totalTime = Utils::GetCurrentTimeMicro();
 				}
-			}
-
-			if (!m_pViewport->IsIconic())
-			{
-				static uint32_t totalFramesCount = 0U;
-				static int64_t totalTime = 0U;
-
-				SAILOR_PROFILE_BLOCK("Render Frame");
-
-				if (GfxDevice::Vulkan::VulkanApi::PresentFrame())
-				{
-					totalFramesCount++;
-
-					if (Utils::GetCurrentTimeMicro() - totalTime > 1000000)
-					{
-						m_smoothFps = totalFramesCount;
-						totalFramesCount = 0;
-						totalTime = Utils::GetCurrentTimeMicro();
-					}
-				}
-				else
-				{
-					m_smoothFps = 0;
-				}
-
-				SAILOR_PROFILE_END_BLOCK();
 			}
 			else
 			{
 				m_smoothFps = 0;
 			}
 
-			if (m_numFrames >= MaxFramesInQueue)
-			{
-				m_onPopFrame.notify_one();
-			}
+			SAILOR_PROFILE_END_BLOCK();
 		}
-		GfxDevice::Vulkan::VulkanApi::WaitIdle();
-		m_bForceStop = false;
+		else
+		{
+			m_smoothFps = 0;
+		}
+
 	}, Sailor::JobSystem::EThreadType::Rendering);
 
 	JobSystem::Scheduler::GetInstance()->Run(m_renderingJob);
+
+	return true;
 }
 
-void Renderer::StopRenderLoop()
+void Renderer::WaitIdle()
 {
-	if (!IsRunning())
-	{
-		return;
-	}
-
-	m_bForceStop = true;
-	m_onPushFrame.notify_one();
 	m_renderingJob->Wait();
-}
-
-bool Renderer::IsRunning() const
-{
-	return !m_renderingJob->IsFinished();
-}
-
-void Renderer::RenderLoop_RenderThread()
-{
+	GfxDevice::Vulkan::VulkanApi::WaitIdle();
 }

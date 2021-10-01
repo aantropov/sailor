@@ -27,6 +27,8 @@ namespace Sailor
 
 			virtual SAILOR_API float GetProgress() { return 0.0f; }
 			virtual SAILOR_API bool IsFinished() const { return false; }
+			virtual SAILOR_API bool IsExecuting() const { return false; }
+			virtual SAILOR_API bool IsStarted() const { return false; }
 
 			virtual SAILOR_API void Complete();
 			virtual SAILOR_API void Execute() = 0;
@@ -42,19 +44,28 @@ namespace Sailor
 			// Lock this thread while job is executing
 			SAILOR_API void Wait();
 
+			// Lock this thread while job is not started
+			SAILOR_API void WaitForStart();
+
 			EThreadType GetThreadType() const { return m_threadType; }
 
 		protected:
 
-			SAILOR_API IJob(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_threadType(thread) {}
+			SAILOR_API IJob(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_threadType(thread)
+			{
+			}
 
-			std::atomic_bool m_bIsFinished = false;
+			std::atomic<bool> m_bIsFinished = false;
+			std::atomic<bool> m_bIsStarted = false;
 			std::atomic<uint32_t> m_numBlockers;
 			std::vector<IJob*> m_dependencies;
 			std::string m_name;
-			
+
 			std::condition_variable m_jobFinished;
 			std::mutex m_jobIsExecuting;
+
+			std::mutex m_jobStartedMutex;
+			std::unique_lock<std::mutex> m_jobStarted;
 
 			EThreadType m_threadType;
 		};
@@ -67,8 +78,10 @@ namespace Sailor
 
 			SAILOR_API bool IsReadyToStart() const;
 			virtual SAILOR_API bool IsFinished() const override;
-			virtual SAILOR_API void Execute() override;
+			virtual SAILOR_API bool IsExecuting() const override;
+			virtual SAILOR_API bool IsStarted() const override;
 
+			virtual SAILOR_API void Execute() override;
 			SAILOR_API Job(const std::string& name, const std::function<void()>& function, EThreadType thread);
 
 		protected:

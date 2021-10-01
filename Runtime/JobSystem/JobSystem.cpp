@@ -28,8 +28,6 @@ void IJob::Join(const std::vector<TWeakPtr<IJob>>& jobs)
 
 void IJob::Complete()
 {
-	SAILOR_PROFILE_FUNCTION();
-
 	std::unordered_map<EThreadType, uint32_t> threadTypesToRefresh;
 
 	for (auto& job : m_dependencies)
@@ -48,12 +46,16 @@ void IJob::Complete()
 	}
 
 	m_bIsFinished = true;
-
 	m_jobFinished.notify_all();
 }
 
 void IJob::Wait()
 {
+	if (!IsExecuting())
+	{
+		return;
+	}
+
 	std::unique_lock<std::mutex> lk(m_jobIsExecuting);
 	m_jobFinished.wait(lk);
 }
@@ -65,7 +67,12 @@ Job::Job(const std::string& name, const std::function<void()>& function, EThread
 
 bool Job::IsReadyToStart() const
 {
-	return !m_bIsFinished && m_numBlockers == 0 && m_function != nullptr;
+	return !m_bIsStarted && !m_bIsFinished && m_numBlockers == 0 && m_function != nullptr;
+}
+
+bool Job::IsStarted() const
+{
+	return m_bIsStarted;
 }
 
 bool Job::IsFinished() const
@@ -73,9 +80,14 @@ bool Job::IsFinished() const
 	return m_bIsFinished;
 }
 
+bool Job::IsExecuting() const
+{
+	return m_bIsStarted && !m_bIsFinished;
+}
+
 void Job::Execute()
 {
-	SAILOR_PROFILE_FUNCTION();
+	m_bIsStarted = true;
 	m_function();
 }
 
@@ -103,7 +115,7 @@ void WorkerThread::Join() const
 void WorkerThread::Process()
 {
 	Sailor::Utils::SetThreadName(m_threadName);
-	DWORD randomColorHex = Sailor::Utils::GetRandomColorHex();
+	EASY_THREAD_SCOPE(m_threadName.c_str());
 
 	Scheduler* scheduler = Scheduler::GetInstance();
 
@@ -112,10 +124,10 @@ void WorkerThread::Process()
 	{
 		std::unique_lock<std::mutex> lk(threadExecutionMutex);
 		m_refresh.wait(lk, [this, scheduler] { return  scheduler->TryFetchNextAvailiableJob(m_pJob, m_threadType) || (bool)scheduler->m_bIsTerminating; });
-				
+
 		if (m_pJob)
 		{
-			SAILOR_PROFILE_BLOCK(m_pJob->GetName(), randomColorHex);
+			SAILOR_PROFILE_BLOCK(m_pJob->GetName());
 
 			m_pJob->Execute();
 			m_pJob->Complete();
@@ -132,8 +144,6 @@ void WorkerThread::Process()
 
 void Scheduler::Initialize()
 {
-	SAILOR_PROFILE_FUNCTION();
-
 	m_pInstance = new Scheduler();
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
