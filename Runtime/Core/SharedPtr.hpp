@@ -36,35 +36,54 @@ namespace Sailor
 			return TSharedPtr<T>(new T(std::forward<TArgs>(args)...));
 		}
 
-		TSharedPtr() noexcept { }
+		TSharedPtr() noexcept = default;
 
+		// Raw pointers
 		TSharedPtr(T* Ptr) noexcept
 		{
 			AssignRawPtr(Ptr, new TSmartPtrControlBlock());
 		}
 
-		template<typename R,
-			typename = std::enable_if_t<
-			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-			TSharedPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
+		TSharedPtr& operator=(T* pRawPtr)
 		{
-			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.pControlBlock);
+			AssignRawPtr(pRawPtr, new TSmartPtrControlBlock());
+			return *this;
 		}
 
-		TSharedPtr(const TSharedPtr<T>& pSharedPtr) noexcept
+		// Basic copy/assignment
+		TSharedPtr(const TSharedPtr& pSharedPtr) noexcept
 		{
 			AssignRawPtr(pSharedPtr.m_pRawPtr, pSharedPtr.m_pControlBlock);
 		}
 
-		TSharedPtr& operator=(T* Ptr)
+		TSharedPtr(TSharedPtr&& pSharedPtr) noexcept
 		{
-			AssignRawPtr(Ptr, new TSmartPtrControlBlock());
+			Swap(std::move(pSharedPtr));
+		}
+
+		TSharedPtr& operator=(TSharedPtr pSharedPtr) noexcept
+		{
+			Swap(std::move(pSharedPtr));
 			return *this;
 		}
 
-		TSharedPtr& operator=(const TSharedPtr<T>& pDerivedPtr)
+		// Other types copy/assignment
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
+		TSharedPtr(const TSharedPtr<R>& pDerivedPtr) noexcept
 		{
-			AssignRawPtr(pDerivedPtr.m_pRawPtr, pDerivedPtr.m_pControlBlock);
+			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.pControlBlock);
+		}
+
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
+		TSharedPtr(TSharedPtr<R>&& pSharedPtr) noexcept
+		{
+			Swap(std::move(pSharedPtr));
+		}
+
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
+		TSharedPtr& operator=(TSharedPtr<R> pSharedPtr) noexcept
+		{
+			Swap(std::move(pSharedPtr));
 			return *this;
 		}
 
@@ -76,25 +95,16 @@ namespace Sailor
 		T& operator*()  noexcept { return *m_pRawPtr; }
 		const T& operator*() const { return *m_pRawPtr; }
 
-		template<typename R,
-			typename = std::enable_if_t<
-			std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-			TSharedPtr& operator=(const TSharedPtr<R>& pDerivedPtr)
-		{
-			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
-			return *this;
-		}
-
 		bool IsShared() const  noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 1; }
 
 		operator bool() const  noexcept { return m_pRawPtr != nullptr; }
 
-		bool operator==(const TSharedPtr<T>& pRhs) const
+		bool operator==(const TSharedPtr& pRhs) const
 		{
 			return m_pRawPtr == pRhs->m_pRawPtr;
 		}
 
-		bool operator!=(const TSharedPtr<T>& pRhs) const
+		bool operator!=(const TSharedPtr& pRhs) const
 		{
 			return m_pRawPtr != pRhs->m_pRawPtr;
 		}
@@ -156,6 +166,28 @@ namespace Sailor
 					m_pControlBlock = nullptr;
 				}
 			}
+		}
+
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || std::is_same_v<T, R>>>
+		void Swap(TSharedPtr<R>&& pSharedPtr)
+		{
+			if (m_pRawPtr == static_cast<T*>(pSharedPtr.m_pRawPtr))
+			{
+				pSharedPtr.m_pRawPtr = nullptr;
+				pSharedPtr.m_pControlBlock = nullptr;
+				return;
+			}
+
+			if (m_pRawPtr)
+			{
+				DecrementRefCounter();
+			}
+
+			m_pRawPtr = pSharedPtr.m_pRawPtr;
+			m_pControlBlock = pSharedPtr.m_pControlBlock;
+
+			pSharedPtr.m_pRawPtr = nullptr;
+			pSharedPtr.m_pControlBlock = nullptr;
 		}
 
 		friend class TSharedPtr;

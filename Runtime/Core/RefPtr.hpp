@@ -45,9 +45,9 @@ namespace Sailor
 		TRefPtr() noexcept = default;
 
 		// Raw pointers
-		TRefPtr(TRefBase* Ptr) noexcept
+		TRefPtr(TRefBase* pRawPtr) noexcept
 		{
-			AssignRawPtr(Ptr);
+			AssignRawPtr(pRawPtr);
 		}
 
 		TRefPtr& operator=(T* pRawPtr)
@@ -170,7 +170,7 @@ namespace Sailor
 				return;
 			}
 
-			if (m_pRawPtr != nullptr)
+			if (m_pRawPtr)
 			{
 				DecrementRefCounter();
 			}
