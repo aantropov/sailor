@@ -4,6 +4,7 @@
 #include <wtypes.h>
 #include <unordered_map>
 #include <atomic>
+#include "Math/Math.h"
 
 namespace Sailor::Win32
 {
@@ -61,6 +62,8 @@ namespace Sailor::Win32
 		SAILOR_API void Destroy();
 
 		// Window size
+		SAILOR_API glm::ivec2 GetCenterPointScreen() const;
+		SAILOR_API glm::ivec2 GetCenterPointClient() const;
 		SAILOR_API void RecalculateWindowSize();
 		SAILOR_API void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false);
 

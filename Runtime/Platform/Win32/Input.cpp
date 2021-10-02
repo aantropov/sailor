@@ -58,11 +58,7 @@ GlobalInput::GlobalInput()
 
 void GlobalInput::SetCursorPos(int32_t x, int32_t y)
 {
-	POINT Pos = { x, y };
-	//ClientToScreen(URenderer::GetInstance()->GetHWND(), &pos);
-	::SetCursorPos(Pos.x, Pos.y);
-	m_rawState.m_cursorPosition[0] = x;
-	m_rawState.m_cursorPosition[1] = y;
+	::SetCursorPos(x, y);
 }
 
 void GlobalInput::ShowCursor(bool bIsVisible)

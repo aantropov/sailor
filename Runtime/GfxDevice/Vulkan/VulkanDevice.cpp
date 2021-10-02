@@ -40,6 +40,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 
 #include "Platform/Win32/Input.h"
 #include "Winuser.h"
+#include "Framework/Framework.h"
 
 using namespace glm;
 using namespace Sailor;
@@ -581,7 +582,7 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	RecreateSwapchain(pViewport);
 }
 
-bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
+bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
 	const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
 	const std::vector<TRefPtr<VulkanSemaphore>>* semaphoresToWait)
 {
@@ -595,61 +596,44 @@ bool VulkanDevice::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>*
 	m_syncFences[m_currentFrame]->Wait();
 
 	///////////////////////////////////
-	static int64 startTime = Utils::GetCurrentTimeMs();
-	static int64 lastTime = Utils::GetCurrentTimeMs();
-	const int64 currentTime = Utils::GetCurrentTimeMs();
-	const float time = (float)Utils::GetCurrentTimeMs();
-	const float deltaTime = (Utils::GetCurrentTimeMs() - lastTime) / 1000.0f;
-	lastTime = currentTime;
-
 	static glm::vec3 cameraPosition = Math::vec3_Forward * -10.0f;
 	static glm::vec3 cameraViewDir = Math::vec3_Forward;
 
 	const float sensitivity = 500;
 
 	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
-	if (Sailor::Win32::GlobalInput::GetInputState().IsKeyDown('A'))
+	if (state.GetInputState().IsKeyDown('A'))
 		delta += -cross(cameraViewDir, Math::vec3_Up);
 
-	if (Sailor::Win32::GlobalInput::GetInputState().IsKeyDown('D'))
+	if (state.GetInputState().IsKeyDown('D'))
 		delta += cross(cameraViewDir, Math::vec3_Up);
 
-	if (Sailor::Win32::GlobalInput::GetInputState().IsKeyDown('W'))
+	if (state.GetInputState().IsKeyDown('W'))
 		delta += cameraViewDir;
 
-	if (Sailor::Win32::GlobalInput::GetInputState().IsKeyDown('S'))
+	if (state.GetInputState().IsKeyDown('S'))
 		delta += -cameraViewDir;
 
 	if (glm::length(delta) > 0)
-		cameraPosition += glm::normalize(delta) * sensitivity * deltaTime;
+		cameraPosition += glm::normalize(delta) * sensitivity * state.GetDeltaTime();
 
-	static vec2 mouseDelta{};
-	glm::ivec2 mousePosition = GlobalInput::GetInputState().GetCursorPos();
+	const float speed = 10.0f;
+	
+	vec2 shift{};
+	shift.x += (state.GetMouseDeltaToCenterViewport().x) * state.GetDeltaTime() * speed;
+	shift.y += (state.GetMouseDeltaToCenterViewport().y) * state.GetDeltaTime() * speed;
 
-	static glm::ivec2 lastMousePosition = mousePosition;
-	mouseDelta += mousePosition - lastMousePosition;
-	lastMousePosition = mousePosition;
-
-	vec2 thisFrameShift = 5.0f * mouseDelta * deltaTime;
-
-	mouseDelta.x -= thisFrameShift.x;
-	mouseDelta.y -= thisFrameShift.y;
-
-	if (glm::length(mouseDelta) > 0.0f && GlobalInput::GetInputState().IsKeyDown(VK_LBUTTON))
+	if (glm::length(shift) > 0.0f && state.GetInputState().IsKeyDown(VK_LBUTTON))
 	{
-		//SAILOR_LOG("delta: %.2f, %.2f", mouseDelta.x, mouseDelta.y);
-
-		const float degreesPerPixels = 1.0f;
-
-		glm::quat hRotation = angleAxis(-glm::radians(degreesPerPixels * thisFrameShift.x), Math::vec3_Up);
-		glm::quat vRotation = angleAxis(glm::radians(degreesPerPixels * thisFrameShift.y), cross(Math::vec3_Up, cameraViewDir));
+		glm::quat hRotation = angleAxis(-glm::radians(shift.x), Math::vec3_Up);
+		glm::quat vRotation = angleAxis(glm::radians(shift.y), cross(Math::vec3_Up, cameraViewDir));
 
 		cameraViewDir = vRotation * cameraViewDir;
 		cameraViewDir = hRotation * cameraViewDir;
 	}
 
 	UboTransform ubo{};
-	ubo.m_model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), Math::vec3_Up);
+	ubo.m_model = glm::rotate(glm::mat4(1.0f), state.GetTime() * glm::radians(90.0f), Math::vec3_Up);
 	ubo.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Math::vec3_Up);
 
 	float aspect = m_swapchain->GetExtent().width / (float)m_swapchain->GetExtent().height;

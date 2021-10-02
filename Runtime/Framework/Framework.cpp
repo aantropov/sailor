@@ -4,33 +4,36 @@
 #include "Platform/Win32/Input.h"
 #include "Math.h"
 #include "Utils.h"
+#include "GfxDevice/Vulkan/VulkanCommandBuffer.h"
 
 using namespace Sailor;
 
 FrameState::FrameState() :
-	m_currentTime(0.0f),
-	m_deltaTime(0.0f),
+	m_currentTime(0),
+	m_deltaTimeSeconds(0.0f),
 	m_mouseDelta(0.0f, 0.0f)
 {
 }
 
-FrameState::FrameState(float time, const FrameInputState& currentInputState, const FrameState* previousFrame)
+FrameState::FrameState(int64_t timeMs, const FrameInputState& currentInputState, const ivec2& centerPointViewport, const FrameState* previousFrame)
 {
 	SAILOR_PROFILE_FUNCTION();
+
 	m_inputState = currentInputState;
-	m_currentTime = time;
+	m_currentTime = timeMs;
 	m_mouseDelta = glm::ivec2(0, 0);
-	m_deltaTime = 0;
+	m_deltaTimeSeconds = 0;
+	m_mouseDeltaToCenter = m_inputState.GetCursorPos() - centerPointViewport;
 
 	if (previousFrame != nullptr)
 	{
 		m_mouseDelta = currentInputState.GetCursorPos() - previousFrame->GetInputState().GetCursorPos();
-		m_deltaTime = time - previousFrame->GetTime();
+		m_deltaTimeSeconds = (m_currentTime - previousFrame->GetTime()) / 1000.0f;
 		m_inputState.TrackForChanges(previousFrame->GetInputState());
 	}
 }
 
-void FrameState::AddCommandBuffer(TRefPtr<RHI::Resource> commandBuffer)
+void FrameState::AddCommandBuffer(TRefPtr<GfxDevice::Vulkan::VulkanCommandBuffer> commandBuffer)
 {
 	SAILOR_PROFILE_FUNCTION();
 }
@@ -51,7 +54,7 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 	static int64_t totalTime = 0;
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
-	
+	CpuFrame();
 	SAILOR_PROFILE_END_BLOCK();
 
 	totalFramesCount++;
@@ -62,4 +65,8 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 		totalFramesCount = 0;
 		totalTime = Utils::GetCurrentTimeMicro();
 	}
+}
+
+void Framework::CpuFrame()
+{
 }

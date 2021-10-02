@@ -5,6 +5,7 @@
 #include "Core/RefPtr.hpp"
 #include "RHI/RHIResource.h"
 
+class Sailor::FrameState;
 class Sailor::Win32::Window;
 
 namespace Sailor::GfxDevice::Vulkan
@@ -43,7 +44,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
+		bool SAILOR_API PresentFrame(const FrameState& state, const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
 			const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
 			const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
 

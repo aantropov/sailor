@@ -18,6 +18,7 @@
 #include "VulkanFence.h"
 #include "VulkanCommandBuffer.h"
 #include "RHI/RHIResource.h"
+#include "Framework/Framework.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -136,11 +137,11 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	SAILOR_LOG("Vulkan initialized");
 }
 
-bool VulkanApi::PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
+bool VulkanApi::PresentFrame(const FrameState& state, const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
 	const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
 	const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores)
 {
-	return m_pInstance->m_device->PresentFrame(primaryCommandBuffers, secondaryCommandBuffers, waitSemaphores);
+	return m_pInstance->m_device->PresentFrame(state, primaryCommandBuffers, secondaryCommandBuffers, waitSemaphores);
 }
 
 void VulkanApi::WaitIdle()

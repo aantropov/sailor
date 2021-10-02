@@ -217,6 +217,20 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 	}
 }
 
+glm::ivec2 Window::GetCenterPointScreen() const
+{
+	glm::ivec2 centerClient = GetCenterPointClient();
+	POINT point{ centerClient.x, centerClient.y };
+	::ClientToScreen(m_hWnd, &point);
+
+	return ivec2(point.x, point.y);
+}
+
+glm::ivec2 Window::GetCenterPointClient() const
+{
+	return ivec2(m_width / 2, m_height / 2);
+}
+
 void Window::RecalculateWindowSize()
 {
 	if (IsIconic())
@@ -319,7 +333,6 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 		GlobalInput::m_rawState.m_cursorPosition[0] = (int32_t)LOWORD(lParam);
 		GlobalInput::m_rawState.m_cursorPosition[1] = (int32_t)HIWORD(lParam);
-
 		return FALSE;
 	}
 

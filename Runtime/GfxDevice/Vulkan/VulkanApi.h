@@ -12,8 +12,14 @@
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
 
-class Sailor::Win32::Window;
+namespace Sailor
+{
+	class Win32::Window;
+	class FrameState;
+}
+
 using namespace Sailor::Win32;
+using namespace Sailor;
 
 namespace Sailor::GfxDevice::Vulkan
 {
@@ -70,7 +76,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API void Initialize(const Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
 
-		static bool SAILOR_API PresentFrame(const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
+		static bool SAILOR_API PresentFrame(const FrameState& state, const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
 			const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
 			const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
 

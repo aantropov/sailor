@@ -267,7 +267,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 		ConvertRawShaderToJson(shaderText, codeInJSON);
 
 		json j_shader;
-		if (j_shader.parse(codeInJSON.c_str()) == detail::value_t::discarded)
+		if (j_shader.parse(codeInJSON.c_str()) == nlohmann::detail::value_t::discarded)
 		{
 			SAILOR_LOG("Cannot parse shader asset file: %s", filepath.c_str());
 			return TWeakPtr<ShaderAsset>();

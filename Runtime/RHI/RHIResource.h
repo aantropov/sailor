@@ -36,12 +36,18 @@ namespace Sailor::RHI
 		glm::vec2 m_texcoord;
 		glm::vec4 m_color;
 
-		bool operator==(const Vertex& other) const 
+		bool operator==(const Vertex& other) const
 		{
-			return m_position == other.m_position && 
-				m_color == other.m_color && 
+			return m_position == other.m_position &&
+				m_color == other.m_color &&
 				m_texcoord == other.m_texcoord;
 		}
+	};
+
+	struct UboFrameData
+	{
+		alignas(4) float m_currentTime;
+		alignas(4) float m_deltaTime;
 	};
 
 	struct UboTransform
@@ -84,9 +90,9 @@ namespace Sailor::RHI
 };
 
 namespace std {
-	template<> struct hash<Sailor::RHI::Vertex> 
+	template<> struct hash<Sailor::RHI::Vertex>
 	{
-		size_t operator()(Sailor::RHI::Vertex const& vertex) const 
+		size_t operator()(Sailor::RHI::Vertex const& vertex) const
 		{
 			return ((hash<glm::vec3>()(vertex.m_position) ^
 				(hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^

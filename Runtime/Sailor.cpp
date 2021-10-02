@@ -65,7 +65,8 @@ void EngineInstance::Start()
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
 	float timeToUpdateFps = 0.0f;
-	FrameState lastProcessedCpuFrame;
+	FrameState currentFrame;
+	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
 
 	while (m_pInstance->m_viewportWindow.IsRunning())
@@ -83,11 +84,17 @@ void EngineInstance::Start()
 		if (bCanCreateNewFrame)
 		{
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-			lastProcessedCpuFrame = FrameState(Utils::GetCurrentTimeMs() / 1000.0f, inputState);
-			Framework::GetInstance()->ProcessCpuFrame(lastProcessedCpuFrame);
+			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, m_pInstance->m_viewportWindow.GetCenterPointClient(), &lastFrame);
+			Framework::GetInstance()->ProcessCpuFrame(currentFrame);
+
+			ivec2 centerPosition = m_pInstance->m_viewportWindow.GetCenterPointScreen();
+			GlobalInput::SetCursorPos(centerPosition.x, centerPosition.y);
 		}
 
-		bCanCreateNewFrame = Renderer::GetInstance()->PushFrame(lastProcessedCpuFrame);
+		if (bCanCreateNewFrame = Renderer::GetInstance()->PushFrame(currentFrame))
+		{
+			lastFrame = currentFrame;
+		}
 
 		static int64_t updateInterval = 0;
 		if (Utils::GetCurrentTimeMicro() - updateInterval > 1000000)
