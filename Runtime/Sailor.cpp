@@ -83,12 +83,15 @@ void EngineInstance::Start()
 
 		if (bCanCreateNewFrame)
 		{
+			if (GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON))
+			{
+				ivec2 centerPosition = m_pInstance->m_viewportWindow.GetCenterPointScreen();
+				GlobalInput::SetCursorPos(centerPosition.x, centerPosition.y);
+			}
+
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
 			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, m_pInstance->m_viewportWindow.GetCenterPointClient(), &lastFrame);
 			Framework::GetInstance()->ProcessCpuFrame(currentFrame);
-
-			ivec2 centerPosition = m_pInstance->m_viewportWindow.GetCenterPointScreen();
-			GlobalInput::SetCursorPos(centerPosition.x, centerPosition.y);
 		}
 
 		if (bCanCreateNewFrame = Renderer::GetInstance()->PushFrame(currentFrame))
