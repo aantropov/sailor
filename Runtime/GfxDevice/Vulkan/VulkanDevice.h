@@ -1,8 +1,10 @@
 #pragma once
+#include <unordered_map>
 #include "VulkanApi.h"
 #include "VulkanDescriptors.h"
 #include "VulkanSamplers.h"
 #include "Core/RefPtr.hpp"
+#include "Core/UniquePtr.hpp"
 #include "RHI/RHIResource.h"
 
 class Sailor::FrameState;
@@ -28,6 +30,14 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanPipeline;
 	class VulkanPipelineLayout;
 	class VulkanSampler;
+
+	// Thread independent resources
+	struct ThreadContext
+	{
+		TRefPtr<VulkanCommandPool> m_commandPool;
+		TRefPtr<VulkanCommandPool> m_transferCommandPool;
+		TRefPtr<VulkanDescriptorPool> m_descriptorPool;
+	};
 
 	class VulkanDevice final : public RHI::Resource
 	{
@@ -56,7 +66,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer,
 			TRefPtr<VulkanFence> fence = nullptr,
 			std::vector<TRefPtr<VulkanSemaphore>> signalSemaphores = {},
-			std::vector<TRefPtr<VulkanSemaphore>> waitSemaphores = {}) const;
+			std::vector<TRefPtr<VulkanSemaphore>> waitSemaphores = {});
 
 		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
 
@@ -70,7 +80,11 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API VkFormat GetDepthFormat() const;
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 
+		SAILOR_API ThreadContext& GetThreadContext();
+
 	protected:
+
+		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		SAILOR_API void CreateWin32Surface(const Win32::Window* pViewport);
@@ -79,7 +93,6 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateGraphicsPipeline();
 		SAILOR_API void CreateRenderPass();
 		SAILOR_API void CreateFramebuffers();
-		SAILOR_API void CreateCommandPool();
 		SAILOR_API void CreateCommandBuffers();
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
@@ -89,13 +102,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkSampleCountFlagBits m_maxAllowedMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
-		// Command pool
-		TRefPtr<VulkanCommandPool> m_commandPool;
-		TRefPtr<VulkanCommandPool> m_transferCommandPool;
-
 		std::vector<TRefPtr<VulkanCommandBuffer>> m_commandBuffers;
-
-		TRefPtr<VulkanDescriptorPool> m_descriptorPool;
 
 		// Render Pass
 		TRefPtr<VulkanRenderPass> m_renderPass;
@@ -138,5 +145,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		TRefPtr<VulkanImage> m_image;
 		TRefPtr<VulkanImageView> m_imageView;
+
+		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 	};
 }

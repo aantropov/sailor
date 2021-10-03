@@ -6,6 +6,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <map>
 #include <vector>
 #include <optional>
+#include <unordered_map>
 #include <wtypes.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
@@ -114,8 +115,6 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	// Cache samplers
 	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
 
-	CreateCommandPool();
-
 	// Create swapchain	CreateCommandPool();
 	CreateSwapchain(pViewport);
 
@@ -153,7 +152,6 @@ void VulkanDevice::Shutdown()
 	g_testFragShader.Clear();
 	g_testVertShader.Clear();
 
-	m_descriptorPool.Clear();
 	m_descriptorSet.Clear();
 	m_descriptorSetLayout.Clear();
 	m_image.Clear();
@@ -162,8 +160,12 @@ void VulkanDevice::Shutdown()
 	m_pipelineLayout.Clear();
 
 	m_commandBuffers.clear();
-	m_commandPool.Clear();
-	m_transferCommandPool.Clear();
+
+	for (auto& pair : m_threadContext)
+	{
+		pair.second.Clear();
+	}
+
 	m_renderFinishedSemaphores.clear();
 	m_imageAvailableSemaphores.clear();
 	m_syncImages.clear();
@@ -171,6 +173,18 @@ void VulkanDevice::Shutdown()
 
 	m_graphicsQueue.Clear();
 	m_presentQueue.Clear();
+}
+
+ThreadContext& VulkanDevice::GetThreadContext()
+{
+	const auto threadId = GetCurrentThreadId();
+	auto res = m_threadContext.find(threadId);
+	if (res != m_threadContext.end())
+	{
+		return *(*res).second;
+	}
+
+	return *(m_threadContext[threadId] = CreateThreadContext());
 }
 
 TRefPtr<VulkanSurface> VulkanDevice::GetSurface() const
@@ -203,13 +217,14 @@ bool VulkanDevice::IsMipsSupported(VkFormat format) const
 
 TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue)
 {
-	return TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), bOnlyTransferQueue ? m_transferCommandPool : m_commandPool);
+	return TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this),
+		bOnlyTransferQueue ? GetThreadContext().m_transferCommandPool : GetThreadContext().m_commandPool);
 }
 
 void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer,
 	TRefPtr<VulkanFence> fence,
 	std::vector<TRefPtr<VulkanSemaphore>> signalSemaphores,
-	std::vector<TRefPtr<VulkanSemaphore>> waitSemaphores) const
+	std::vector<TRefPtr<VulkanSemaphore>> waitSemaphores)
 {
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -238,7 +253,7 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 	submitInfo.pWaitSemaphores = &waits[0];
 	submitInfo.pWaitDstStageMask = &waitStages[0];
 
-	if (*commandBuffer->GetCommandPool() == *m_transferCommandPool)
+	if (*commandBuffer->GetCommandPool() == *GetThreadContext().m_transferCommandPool)
 	{
 		VK_CHECK(m_transferQueue->Submit(submitInfo, fence));
 	}
@@ -258,11 +273,23 @@ void VulkanDevice::CreateRenderPass()
 	m_renderPass = VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice>(this), m_swapchain->GetImageFormat(), depthFormat, (VkSampleCountFlagBits)m_currentMsaaSamples);
 }
 
-void VulkanDevice::CreateCommandPool()
+TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 {
+	TUniquePtr<ThreadContext> context = TUniquePtr<ThreadContext>::Make();
+
 	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	m_commandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-	m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	context->m_commandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	context->m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+
+	auto descriptorSizes = vector
+	{
+		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1),
+		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1)
+	};
+
+	context->m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);
+
+	return context;
 }
 
 void VulkanDevice::CreateFrameSyncSemaphores()
@@ -336,17 +363,17 @@ void VulkanDevice::CreateGraphicsPipeline()
 		g_testVertShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", TRefPtr<VulkanDevice>(this), vertCode);
 		g_testFragShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", TRefPtr<VulkanDevice>(this), fragCode);
 
-		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = new VulkanStateVertexDescription(
+		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = TRefPtr<VulkanStateVertexDescription>::Make(
 			VertexFactory<RHI::Vertex>::GetBindingDescription(),
 			VertexFactory<RHI::Vertex>::GetAttributeDescriptions());
 
-		const TRefPtr<VulkanStateInputAssembly> pInputAssembly = new VulkanStateInputAssembly();
-		const TRefPtr<VulkanStateDynamicViewport> pStateViewport = new VulkanStateDynamicViewport();
-		const TRefPtr<VulkanStateRasterization> pStateRasterizer = new VulkanStateRasterization();
+		const TRefPtr<VulkanStateInputAssembly> pInputAssembly = TRefPtr<VulkanStateInputAssembly>::Make();
+		const TRefPtr<VulkanStateDynamicViewport> pStateViewport = TRefPtr<VulkanStateDynamicViewport>::Make();
+		const TRefPtr<VulkanStateRasterization> pStateRasterizer = TRefPtr<VulkanStateRasterization>::Make();
 
-		const TRefPtr<VulkanStateDynamic> pDynamicState = new VulkanStateDynamic();
-		const TRefPtr<VulkanStateDepthStencil> pDepthStencil = new VulkanStateDepthStencil();
-		const TRefPtr<VulkanStateColorBlending> pColorBlending = new VulkanStateColorBlending(false,
+		const TRefPtr<VulkanStateDynamic> pDynamicState = TRefPtr<VulkanStateDynamic>::Make();
+		const TRefPtr<VulkanStateDepthStencil> pDepthStencil = TRefPtr<VulkanStateDepthStencil>::Make();
+		const TRefPtr<VulkanStateColorBlending> pColorBlending = TRefPtr<VulkanStateColorBlending>::Make(false,
 			VK_BLEND_FACTOR_ONE,
 			VK_BLEND_FACTOR_ZERO,
 			VK_BLEND_OP_ADD,
@@ -355,7 +382,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 			VK_BLEND_OP_ADD,
 			VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
 
-		const TRefPtr<VulkanStateMultisample> pMultisample = new VulkanStateMultisample(GetCurrentMsaaSamples());
+		const TRefPtr<VulkanStateMultisample> pMultisample = TRefPtr<VulkanStateMultisample>::Make(GetCurrentMsaaSamples());
 
 		m_descriptorSetLayout = TRefPtr<VulkanDescriptorSetLayout>::Make(
 			TRefPtr<VulkanDevice>(this),
@@ -402,12 +429,6 @@ void VulkanDevice::CreateGraphicsPipeline()
 		m_imageView = new VulkanImageView(TRefPtr<VulkanDevice>(this), m_image);
 		m_imageView->Compile();
 
-		auto descriptorSizes = vector
-		{
-			VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1),
-			VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1)
-		};
-
 		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>
 		{
 			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UboTransform)),
@@ -418,8 +439,8 @@ void VulkanDevice::CreateGraphicsPipeline()
 				m_imageView)
 		};
 
-		m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);
-		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), m_descriptorPool, m_descriptorSetLayout, descriptors);
+
+		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), GetThreadContext().m_descriptorPool, m_descriptorSetLayout, descriptors);
 		m_descriptorSet->Compile();
 	}
 }
@@ -459,7 +480,7 @@ void VulkanDevice::CreateCommandBuffers()
 {
 	for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
 	{
-		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
+		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), GetThreadContext().m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 }
 
@@ -618,7 +639,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefP
 		cameraPosition += glm::normalize(delta) * sensitivity * state.GetDeltaTime();
 
 	const float speed = 10.0f;
-	
+
 	vec2 shift{};
 	shift.x += (state.GetMouseDeltaToCenterViewport().x) * state.GetDeltaTime() * speed;
 	shift.y += (state.GetMouseDeltaToCenterViewport().y) * state.GetDeltaTime() * speed;

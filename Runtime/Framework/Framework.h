@@ -2,6 +2,7 @@
 #include <array>
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
+#include "Core/UniquePtr.hpp"
 #include "RHI/RHIResource.h"
 #include "Platform/Win32/Input.h"
 
@@ -51,7 +52,7 @@ namespace Sailor
 			FrameInputState m_inputState;
 		};
 
-		std::unique_ptr<FrameData> m_pData;
+		TUniquePtr<FrameData> m_pData;
 
 		std::vector<TRefPtr<class GfxDevice::Vulkan::VulkanCommandBuffer>> m_updateResourcesCommandBuffers;
 	};

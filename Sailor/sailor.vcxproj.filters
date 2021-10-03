@@ -46,6 +46,9 @@
     <Filter Include="Runtime\Platform\Win32">
       <UniqueIdentifier>{1c4b6dba-7224-49e7-a4ec-698a2b6500bb}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\Memory">
+      <UniqueIdentifier>{b78f6e51-d07c-4f95-95ae-8ce4402e727f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
@@ -188,6 +191,12 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\Platform\Win32\Window.h">
       <Filter>Runtime\Platform\Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\Mesh.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Core\UniquePtr.hpp">
+      <Filter>Runtime\Core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

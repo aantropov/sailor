@@ -10,7 +10,7 @@ using namespace Sailor;
 
 FrameState::FrameState() noexcept
 {
-	m_pData = std::make_unique<FrameData>();
+	m_pData = TUniquePtr<FrameData>::Make();
 }
 
 FrameState::FrameState(int64_t timeMs, const FrameInputState& currentInputState, const ivec2& centerPointViewport, const FrameState* previousFrame) noexcept
@@ -35,7 +35,7 @@ FrameState::FrameState(int64_t timeMs, const FrameInputState& currentInputState,
 FrameState::FrameState(const FrameState& frameState) noexcept :
 	FrameState()
 {
-	m_pData = std::make_unique<FrameData>(*frameState.m_pData);
+	m_pData = TUniquePtr<FrameData>::Make(*frameState.m_pData);
 }
 
 FrameState::FrameState(FrameState&& frameState) noexcept

@@ -6,6 +6,7 @@
 #include <thread>
 #include "Sailor.h"
 #include "Core/Singleton.hpp"
+#include "Core/UniquePtr.hpp"
 
 namespace Sailor
 {
@@ -108,7 +109,7 @@ namespace Sailor
 		protected:
 
 			std::string m_threadName;
-			std::unique_ptr<std::thread> m_pThread;
+			TUniquePtr<std::thread> m_pThread;
 
 			std::atomic_bool m_bIsBusy;
 			TSharedPtr<Job> m_pJob;

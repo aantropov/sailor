@@ -85,7 +85,7 @@ WorkerThread::WorkerThread(
 	m_mutex(mutex),
 	m_pJobsQueue(pJobsQueue)
 {
-	m_pThread = std::make_unique<std::thread>(&WorkerThread::Process, this);
+	m_pThread = TUniquePtr<std::thread>::Make(&WorkerThread::Process, this);
 }
 
 void WorkerThread::Join() const
