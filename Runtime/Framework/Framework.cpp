@@ -8,29 +8,45 @@
 
 using namespace Sailor;
 
-FrameState::FrameState() :
-	m_currentTime(0),
-	m_deltaTimeSeconds(0.0f),
-	m_mouseDelta(0.0f, 0.0f)
+FrameState::FrameState() noexcept
 {
+	m_pData = std::make_unique<FrameData>();
 }
 
-FrameState::FrameState(int64_t timeMs, const FrameInputState& currentInputState, const ivec2& centerPointViewport, const FrameState* previousFrame)
+FrameState::FrameState(int64_t timeMs, const FrameInputState& currentInputState, const ivec2& centerPointViewport, const FrameState* previousFrame) noexcept
+	: FrameState()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_inputState = currentInputState;
-	m_currentTime = timeMs;
-	m_mouseDelta = glm::ivec2(0, 0);
-	m_deltaTimeSeconds = 0;
-	m_mouseDeltaToCenter = m_inputState.GetCursorPos() - centerPointViewport;
+	m_pData->m_inputState = currentInputState;
+	m_pData->m_currentTime = timeMs;
+	m_pData->m_mouseDelta = glm::ivec2(0, 0);
+	m_pData->m_deltaTimeSeconds = 0;
+	m_pData->m_mouseDeltaToCenter = m_pData->m_inputState.GetCursorPos() - centerPointViewport;
 
 	if (previousFrame != nullptr)
 	{
-		m_mouseDelta = currentInputState.GetCursorPos() - previousFrame->GetInputState().GetCursorPos();
-		m_deltaTimeSeconds = (m_currentTime - previousFrame->GetTime()) / 1000.0f;
-		m_inputState.TrackForChanges(previousFrame->GetInputState());
+		m_pData->m_mouseDelta = currentInputState.GetCursorPos() - previousFrame->GetInputState().GetCursorPos();
+		m_pData->m_deltaTimeSeconds = (m_pData->m_currentTime - previousFrame->GetTime()) / 1000.0f;
+		m_pData->m_inputState.TrackForChanges(previousFrame->GetInputState());
 	}
+}
+
+FrameState::FrameState(const FrameState& frameState) noexcept :
+	FrameState()
+{
+	m_pData = std::make_unique<FrameData>(*frameState.m_pData);
+}
+
+FrameState::FrameState(FrameState&& frameState) noexcept
+{
+	m_pData = std::move(frameState.m_pData);
+}
+
+FrameState& FrameState::operator=(FrameState frameState)
+{
+	m_pData = std::move(frameState.m_pData);
+	return *this;
 }
 
 void FrameState::AddCommandBuffer(TRefPtr<GfxDevice::Vulkan::VulkanCommandBuffer> commandBuffer)
