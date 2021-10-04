@@ -67,19 +67,23 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 	SAILOR_PROFILE_FUNCTION();
 
 	static uint32_t totalFramesCount = 0U;
-	static int64_t totalTime = 0;
+	static Utils::AccurateTimer timer;
+
+	timer.Start();
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
 	CpuFrame();
 	SAILOR_PROFILE_END_BLOCK();
 
+	timer.Stop();
+
 	totalFramesCount++;
 
-	if (Utils::GetCurrentTimeMicro() - totalTime > 1000000)
+	if (timer.ResultAccumulatedMs() > 1000)
 	{
-		m_smoothFps = totalFramesCount;
+		m_pureFps = totalFramesCount;
 		totalFramesCount = 0;
-		totalTime = Utils::GetCurrentTimeMicro();
+		timer.Clear();
 	}
 }
 

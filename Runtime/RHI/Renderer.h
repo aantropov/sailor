@@ -26,12 +26,12 @@ namespace Sailor
 		bool SAILOR_API PushFrame(const FrameState& frame);
 
 		uint32_t SAILOR_API GetNumFrames() const { return m_numFrames.load(); }
-		uint32_t SAILOR_API GetSmoothFps() const { return m_smoothFps.load(); }
+		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
 	protected:
 
 		std::atomic<bool> m_bForceStop = false;
-		std::atomic<uint32_t> m_smoothFps = 0u;
+		std::atomic<uint32_t> m_pureFps = 0u;
 		std::atomic<uint32_t> m_numFrames = 0u;
 
 		class Window const* m_pViewport;

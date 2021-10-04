@@ -638,7 +638,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefP
 	if (glm::length(delta) > 0)
 		cameraPosition += glm::normalize(delta) * sensitivity * state.GetDeltaTime();
 
-	const float speed = 10.0f;
+	const float speed = 50.0f;
 
 	vec2 shift{};
 	shift.x += (state.GetMouseDeltaToCenterViewport().x) * state.GetDeltaTime() * speed;

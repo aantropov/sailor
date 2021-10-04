@@ -56,25 +56,28 @@ bool Renderer::PushFrame(const FrameState& frame)
 
 		do
 		{
+			static Utils::AccurateTimer timer;
 			static uint32_t totalFramesCount = 0U;
-			static int64_t totalTime = 0U;
-
+			
 			SAILOR_PROFILE_BLOCK("Present Frame");
+
+			timer.Start();
 
 			if (GfxDevice::Vulkan::VulkanApi::PresentFrame(frame))
 			{
 				totalFramesCount++;
+				timer.Stop();
 
-				if (Utils::GetCurrentTimeMicro() - totalTime > 1000000)
+				if (timer.ResultAccumulatedMs() > 1000)
 				{
-					m_smoothFps = totalFramesCount;
+					m_pureFps = totalFramesCount;
 					totalFramesCount = 0;
-					totalTime = Utils::GetCurrentTimeMicro();
+					timer.Clear();
 				}
 			}
 			else
 			{
-				m_smoothFps = 0;
+				m_pureFps = 0;
 			}
 
 			SAILOR_PROFILE_END_BLOCK();

@@ -13,6 +13,10 @@
 #include <functional> 
 #include <cctype>
 
+#include <windows.h>
+
+using namespace Sailor::Utils;
+
 std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
 {
 	std::string out;
@@ -254,4 +258,45 @@ int64_t Sailor::Utils::GetCurrentTimeMicro()
 int64_t Sailor::Utils::GetCurrentTimeNano()
 {
 	return (int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+void Sailor::Utils::AccurateTimer::Start()
+{
+	LARGE_INTEGER li;
+	if (!QueryPerformanceFrequency(&li))
+	{
+		SAILOR_LOG("QueryPerformanceFrequency failed!");
+	}
+
+	m_pcFrequence = double(li.QuadPart) / 1000.0;
+
+	QueryPerformanceCounter(&li);
+	m_counterStart = li.QuadPart;
+}
+
+void Sailor::Utils::AccurateTimer::Stop()
+{
+	LARGE_INTEGER li;
+	QueryPerformanceCounter(&li);
+	m_counterEnd = li.QuadPart;
+
+	m_counterAcc += m_counterEnd - m_counterStart;
+}
+
+int64_t Sailor::Utils::AccurateTimer::ResultMs() const
+{
+	return int64_t(double(m_counterEnd - m_counterStart) / m_pcFrequence);
+}
+
+int64_t Sailor::Utils::AccurateTimer::ResultAccumulatedMs() const
+{
+	return int64_t((double)m_counterAcc / m_pcFrequence);
+}
+
+void Sailor::Utils::AccurateTimer::Clear()
+{
+	m_counterStart = 0;
+	m_counterEnd = 0;
+	m_counterAcc = 0;
+	m_pcFrequence = 0.0;
 }

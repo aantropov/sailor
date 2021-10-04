@@ -32,9 +32,25 @@ namespace Sailor
 		SAILOR_API int64_t GetCurrentTimeMs();
 		SAILOR_API int64_t GetCurrentTimeMicro();
 		SAILOR_API int64_t GetCurrentTimeNano();
+
+		struct SAILOR_API AccurateTimer
+		{
+			int64_t m_counterStart = 0;
+			int64_t m_counterEnd = 0;
+			int64_t m_counterAcc = 0;
+			double m_pcFrequence = 0.0;
+
+			void Start();
+			void Stop();
+
+			int64_t ResultMs() const;
+			int64_t ResultAccumulatedMs() const;
+
+			void Clear();
+		};
 	}
 
-	template<typename Class, typename Member> 
+	template<typename Class, typename Member>
 	constexpr size_t OffsetOf(Member Class::* member)
 	{
 		return (char*)&((Class*)nullptr->*member) - (char*)nullptr;

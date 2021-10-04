@@ -66,13 +66,13 @@ namespace Sailor
 		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
 		SAILOR_API void CpuFrame();
 
-		uint32_t SAILOR_API GetSmoothFps() const { return m_smoothFps.load(); }
+		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
 		~Framework() override = default;
 
 	protected:
 
 		Framework() = default;
-		std::atomic<uint32_t> m_smoothFps = 0u;
+		std::atomic<uint32_t> m_pureFps = 0u;
 	};
 }

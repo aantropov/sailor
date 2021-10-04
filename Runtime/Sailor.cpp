@@ -64,13 +64,16 @@ void EngineInstance::Start()
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
-	float timeToUpdateFps = 0.0f;
+	uint32_t frameCounter = 0U;
+	Utils::AccurateTimer timer;
 	FrameState currentFrame;
 	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
 
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{
+		timer.Start();
+
 		Win32::ConsoleWindow::GetInstance()->Update();
 		Win32::Window::ProcessWin32Msgs();
 		Renderer::GetInstance()->FixLostDevice();
@@ -97,18 +100,26 @@ void EngineInstance::Start()
 		if (bCanCreateNewFrame = Renderer::GetInstance()->PushFrame(currentFrame))
 		{
 			lastFrame = currentFrame;
-		}
 
-		static int64_t updateInterval = 0;
-		if (Utils::GetCurrentTimeMicro() - updateInterval > 1000000)
+			//Frame succesfully pushed
+			frameCounter++;
+		}
+		
+		timer.Stop();
+
+		if (timer.ResultAccumulatedMs() > 1000)
 		{
 			SAILOR_PROFILE_BLOCK("Track FPS");
 
 			WCHAR Buff[50];
-			wsprintf(Buff, L"Sailor GPU FPS: %u, CPU FPS: %u", Renderer::GetInstance()->GetSmoothFps(), (uint32_t)Framework::GetInstance()->GetSmoothFps());
+			wsprintf(Buff, L"Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u", frameCounter,
+				Renderer::GetInstance()->GetSmoothFps(), 
+				(uint32_t)Framework::GetInstance()->GetSmoothFps());
+
 			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
 
-			updateInterval = Utils::GetCurrentTimeMicro();
+			frameCounter = 0U;
+			timer.Clear();
 
 			SAILOR_PROFILE_END_BLOCK();
 		}
