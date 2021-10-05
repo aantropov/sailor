@@ -18,15 +18,16 @@ const std::string EngineInstance::EngineName = "Sailor";
 
 void EngineInstance::Initialize()
 {
-	SAILOR_PROFILE_FUNCTION()
+	SAILOR_PROFILE_FUNCTION();
 
-		if (m_pInstance != nullptr)
-		{
-			return;
-		}
+	if (m_pInstance != nullptr)
+	{
+		return;
+	}
 
 #ifdef BUILD_WITH_EASY_PROFILER
 	profiler::startListen();
+	EASY_MAIN_THREAD;
 #endif
 
 	Win32::ConsoleWindow::Initialize(false);
@@ -104,7 +105,7 @@ void EngineInstance::Start()
 			//Frame succesfully pushed
 			frameCounter++;
 		}
-		
+
 		timer.Stop();
 
 		if (timer.ResultAccumulatedMs() > 1000)
@@ -113,7 +114,7 @@ void EngineInstance::Start()
 
 			WCHAR Buff[50];
 			wsprintf(Buff, L"Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u", frameCounter,
-				Renderer::GetInstance()->GetSmoothFps(), 
+				Renderer::GetInstance()->GetSmoothFps(),
 				(uint32_t)Framework::GetInstance()->GetSmoothFps());
 
 			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
