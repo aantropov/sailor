@@ -153,7 +153,6 @@ void VulkanDevice::Shutdown()
 	g_testVertShader.Clear();
 
 	m_descriptorSet.Clear();
-	m_descriptorSetLayout.Clear();
 	m_image.Clear();
 	m_imageView.Clear();
 	m_graphicsPipeline.Clear();
@@ -358,7 +357,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		std::vector<uint32_t> vertCode;
 		std::vector<uint32_t> fragCode;
 
-		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode);
+		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode, true);
 
 		g_testVertShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", TRefPtr<VulkanDevice>(this), vertCode);
 		g_testFragShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", TRefPtr<VulkanDevice>(this), fragCode);
@@ -384,16 +383,10 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		const TRefPtr<VulkanStateMultisample> pMultisample = TRefPtr<VulkanStateMultisample>::Make(GetCurrentMsaaSamples());
 
-		m_descriptorSetLayout = TRefPtr<VulkanDescriptorSetLayout>::Make(
-			TRefPtr<VulkanDevice>(this),
-			std::vector
-			{
-				VulkanApi::CreateDescriptorSetLayoutBinding(0, VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL),
-				VulkanApi::CreateDescriptorSetLayoutBinding(1, VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_ALL)
-			});
+		auto descriptorSetLayouts = VulkanApi::CreateDescriptorSetLayouts(TRefPtr<VulkanDevice>(this), { vertCode , fragCode });
 
 		m_pipelineLayout = TRefPtr<VulkanPipelineLayout>::Make(TRefPtr<VulkanDevice>(this),
-			std::vector{ m_descriptorSetLayout },
+			descriptorSetLayouts,
 			std::vector<VkPushConstantRange>(),
 			0);
 
@@ -439,8 +432,11 @@ void VulkanDevice::CreateGraphicsPipeline()
 				m_imageView)
 		};
 
+		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), 
+			GetThreadContext().m_descriptorPool, 
+			m_pipelineLayout->m_descriptionSetLayouts[0], 
+			descriptors);
 
-		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), GetThreadContext().m_descriptorPool, m_descriptorSetLayout, descriptors);
 		m_descriptorSet->Compile();
 	}
 }

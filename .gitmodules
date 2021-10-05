@@ -10,3 +10,6 @@
 [submodule "External/tiny_obj_loader"]
 	path = External/tiny_obj_loader
 	url = https://github.com/tinyobjloader/tinyobjloader.git
+[submodule "External/spirv_reflect"]
+	path = External/spirv_reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect.git

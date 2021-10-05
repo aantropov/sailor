@@ -136,7 +136,6 @@ namespace Sailor::GfxDevice::Vulkan
 		// Custom testing code
 		TRefPtr<VulkanPipelineLayout> m_pipelineLayout = nullptr;
 		TRefPtr<VulkanPipeline> m_graphicsPipeline = nullptr;
-		TRefPtr<VulkanDescriptorSetLayout> m_descriptorSetLayout = nullptr;
 
 		TRefPtr<VulkanBuffer> m_vertexBuffer;
 		TRefPtr<VulkanBuffer> m_indexBuffer;

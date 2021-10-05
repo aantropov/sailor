@@ -4,6 +4,7 @@
 #include "VulkanDescriptors.h"
 #include "VulkanImageView.h"
 #include "VulkanSamplers.h"
+#include "AssetRegistry/ShaderCompiler.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;

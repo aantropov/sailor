@@ -50,11 +50,11 @@ namespace Sailor
 
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
-		static SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, ByteCode& outVertexByteCode, ByteCode& outFragmentByteCode);
+		static SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, ByteCode& outVertexByteCode, ByteCode& outFragmentByteCode, bool bIsDebug);
 
 		virtual SAILOR_API ~ShaderCompiler() override;
 
-		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, ByteCode& outByteCode);
+		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, ByteCode& outByteCode, bool bIsDebug);
 
 		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfo* assetInfo) override;
 

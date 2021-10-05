@@ -1,5 +1,9 @@
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include <vulkan/vulkan.h>
+#include <unordered_map>
+#include <spirv_reflect/spirv_reflect.h>
+#include <spirv_reflect/spirv_reflect.c>
+
 #include "LogMacros.h"
 #include <assert.h>
 #include <vector>
@@ -17,6 +21,7 @@
 #include "VulkanBuffer.h"
 #include "VulkanFence.h"
 #include "VulkanCommandBuffer.h"
+#include "VulkanDescriptors.h"
 #include "RHI/RHIResource.h"
 #include "Framework/Framework.h"
 
@@ -868,4 +873,93 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 	poolSize.type = type;
 	poolSize.descriptorCount = static_cast<uint32_t>(count);
 	return poolSize;
+}
+
+std::vector<std::vector<VkDescriptorSetLayoutBinding>> GetDescriptorSetLayoutBindings(const std::vector<Sailor::ShaderCompiler::ByteCode>& code)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	std::vector<SpvReflectShaderModule> modules;
+	modules.resize(code.size());
+
+	uint32_t descriptorSetsCount = 0;
+
+	for (uint32_t i = 0; i < code.size(); i++)
+	{
+		SpvReflectShaderModule& module = modules[i];
+
+		SpvReflectResult result = spvReflectCreateShaderModule(code[i].size() * sizeof(code[i][0]), &code[i][0], &module);
+		assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+		uint32_t count = 0;
+		result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);
+		assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+		descriptorSetsCount = max(descriptorSetsCount, count);
+	}
+
+	std::vector<std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding>> bindings;
+	bindings.resize(descriptorSetsCount);
+
+	for (SpvReflectShaderModule& module : modules)
+	{
+		uint32_t count = 0;
+		SpvReflectResult result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);
+		assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+		std::vector<SpvReflectDescriptorSet*> sets(count);
+		result = spvReflectEnumerateDescriptorSets(&module, &count, sets.data());
+		assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+		for (size_t i_set = 0; i_set < sets.size(); ++i_set)
+		{
+			const SpvReflectDescriptorSet& reflSet = *(sets[i_set]);
+			std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding>& binding = bindings[i_set];
+
+			for (uint32_t i_binding = 0; i_binding < reflSet.binding_count; ++i_binding)
+			{
+				const SpvReflectDescriptorBinding& reflBinding = *(reflSet.bindings[i_binding]);
+
+				VkDescriptorSetLayoutBinding& layoutBinding = binding[reflBinding.binding] = {};
+				layoutBinding.binding = reflBinding.binding;
+				layoutBinding.descriptorType = static_cast<VkDescriptorType>(reflBinding.descriptor_type);
+				layoutBinding.descriptorCount = 1;
+
+				for (uint32_t i_dim = 0; i_dim < reflBinding.array.dims_count; ++i_dim)
+				{
+					layoutBinding.descriptorCount *= reflBinding.array.dims[i_dim];
+				}
+
+				layoutBinding.stageFlags = static_cast<VkShaderStageFlagBits>(module.shader_stage);
+			}
+		}
+		spvReflectDestroyShaderModule(&module);
+	}
+
+	std::vector<std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
+	descriptorSets.resize(descriptorSetsCount);
+
+	for (uint32_t i = 0; i < descriptorSetsCount; i++)
+	{
+		for (auto& binding : bindings[i])
+		{
+			descriptorSets[i].push_back(std::move(binding.second));
+		}
+	}
+
+	return descriptorSets;
+}
+
+std::vector<TRefPtr<VulkanDescriptorSetLayout>> VulkanApi::CreateDescriptorSetLayouts(TRefPtr<VulkanDevice> device, const std::vector<ShaderCompiler::ByteCode>& code)
+{
+	std::vector<std::vector<VkDescriptorSetLayoutBinding>> layouts = GetDescriptorSetLayoutBindings(code);
+	std::vector<TRefPtr<VulkanDescriptorSetLayout>> res;
+	res.resize(layouts.size());
+
+	for (uint32_t i = 0; i < layouts.size(); i++)
+	{
+		res[i] = TRefPtr<VulkanDescriptorSetLayout>::Make(device, std::move(layouts[i]));
+	}
+
+	return res;
 }

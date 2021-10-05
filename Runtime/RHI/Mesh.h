@@ -13,7 +13,9 @@ namespace Sailor::RHI
 	{
 	public:
 
-		void Initialize();
+		void Compile(const std::vector<Vertex> vertices, const std::vector<Vertex> indices);
+		
+		bool IsReady() const;
 
 	protected:
 
