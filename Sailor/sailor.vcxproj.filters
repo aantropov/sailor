@@ -198,6 +198,9 @@
     <ClInclude Include="..\Runtime\Core\UniquePtr.hpp">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\Memory.h">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -319,6 +322,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Framework\Framework.cpp">
       <Filter>Runtime\Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Memory\Memory.cpp">
+      <Filter>Runtime\Memory</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
