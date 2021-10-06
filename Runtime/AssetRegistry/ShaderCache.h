@@ -5,8 +5,9 @@
 #include <unordered_map>
 #include "UID.h"
 #include "Core/Singleton.hpp"
-#include "nlohmann_json/include/nlohmann/json.hpp"
+#include <nlohmann_json/include/nlohmann/json.hpp>
 #include <mutex>
+#include <filesystem>
 
 namespace Sailor
 {
@@ -42,9 +43,9 @@ namespace Sailor
 		SAILOR_API void ClearAll();
 		SAILOR_API void ClearExpired();
 
-		static SAILOR_API std::string GetPrecompiledShaderFilename(const UID& uid, int32_t permutation, const std::string& shaderKind);
-		static SAILOR_API std::string GetCachedShaderFilename(const UID& uid, int32_t permutation, const std::string& shaderKind);
-		static SAILOR_API std::string GetShaderFilepath(const std::string& folder, const std::string& filename);
+		static SAILOR_API std::filesystem::path GetPrecompiledShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
+		static SAILOR_API std::filesystem::path GetCachedShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
+		static SAILOR_API std::filesystem::path GetCachedShaderWithDebugFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
 
 	protected:
 

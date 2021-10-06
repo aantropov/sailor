@@ -25,6 +25,15 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const override;
 		virtual void Compile() override;
 		virtual void Release() override {}
+
+		const std::vector<std::vector<VkDescriptorSetLayoutBinding>>& GetDescriptorSetLayoutBindings() const { return m_layoutBindings; }
+
+	protected:
+
+		void ReflectDescriptorSetBindings(const ShaderCompiler::ByteCode& code);
+
+		std::vector<std::vector<VkDescriptorSetLayoutBinding>> m_layoutBindings;
+
 	};
 
 	class VulkanShaderModule : public RHI::Resource, public RHI::IExplicitInitialization

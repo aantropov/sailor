@@ -24,8 +24,8 @@ namespace Sailor
 
 		static SAILOR_API void Initialize();
 
-		template<typename T>
-		static bool ReadBinaryFile(const std::string& filename, std::vector<T>& buffer)
+		template<typename TBinaryType, typename TFilepath>
+		static bool ReadBinaryFile(const TFilepath& filename, std::vector<TBinaryType>& buffer)
 		{
 			std::ifstream file(filename, std::ios::ate | std::ios::binary);
 			file.unsetf(std::ios::skipws);
@@ -38,8 +38,8 @@ namespace Sailor
 			size_t fileSize = (size_t)file.tellg();
 			buffer.clear();
 
-			size_t mod = fileSize % sizeof(T);
-			size_t size = fileSize / sizeof(T) + (mod ? 1 : 0);
+			size_t mod = fileSize % sizeof(TBinaryType);
+			size_t size = fileSize / sizeof(TBinaryType) + (mod ? 1 : 0);
 			buffer.resize(size);
 
 			//buffer.resize(fileSize / sizeof(T));
@@ -50,7 +50,6 @@ namespace Sailor
 			file.close();
 			return true;
 		}
-
 
 		static SAILOR_API bool ReadAllTextFile(const std::string& filename, std::string& text);
 

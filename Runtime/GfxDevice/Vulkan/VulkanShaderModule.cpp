@@ -1,6 +1,9 @@
 #include "VulkanShaderModule.h"
 #include "AssetRegistry/ShaderCompiler.h"
 
+#include <spirv_reflect/spirv_reflect.h>
+#include <spirv_reflect/spirv_reflect.c>
+
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
@@ -28,8 +31,70 @@ void VulkanShaderStage::Apply(VkPipelineShaderStageCreateInfo& stageInfo) const
 
 void VulkanShaderStage::Compile()
 {
-	m_module->Compile();
+	if ((VkShaderModule)*m_module == nullptr)
+	{
+		m_module->Compile();
+		ReflectDescriptorSetBindings(m_module->m_byteCode);
+	}
 }
+
+void VulkanShaderStage::ReflectDescriptorSetBindings(const ShaderCompiler::ByteCode& code)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	SpvReflectShaderModule module;
+
+	SpvReflectResult result = spvReflectCreateShaderModule(code.size() * sizeof(code[0]), &code[0], &module);
+	assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+	uint32_t count = 0;
+	result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);
+	assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+	std::vector<std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding>> bindings;
+	bindings.resize(count);
+
+	std::vector<SpvReflectDescriptorSet*> sets(count);
+	result = spvReflectEnumerateDescriptorSets(&module, &count, sets.data());
+	assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+	for (size_t i_set = 0; i_set < sets.size(); ++i_set)
+	{
+		const SpvReflectDescriptorSet& reflSet = *(sets[i_set]);
+		std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding>& binding = bindings[i_set];
+
+		for (uint32_t i_binding = 0; i_binding < reflSet.binding_count; ++i_binding)
+		{
+			const SpvReflectDescriptorBinding& reflBinding = *(reflSet.bindings[i_binding]);
+
+			VkDescriptorSetLayoutBinding& layoutBinding = binding[reflBinding.binding] = {};
+			layoutBinding.binding = reflBinding.binding;
+			layoutBinding.descriptorType = static_cast<VkDescriptorType>(reflBinding.descriptor_type);
+			layoutBinding.descriptorCount = 1;
+
+			for (uint32_t i_dim = 0; i_dim < reflBinding.array.dims_count; ++i_dim)
+			{
+				layoutBinding.descriptorCount *= reflBinding.array.dims[i_dim];
+			}
+
+			layoutBinding.stageFlags = static_cast<VkShaderStageFlagBits>(module.shader_stage);
+		}
+	}
+
+	spvReflectDestroyShaderModule(&module);
+
+	m_layoutBindings.clear();
+	m_layoutBindings.resize(count);
+
+	for (uint32_t i = 0; i < count; i++)
+	{
+		for (auto& binding : bindings[i])
+		{
+			m_layoutBindings[i].push_back(std::move(binding.second));
+		}
+	}
+}
+
 
 VulkanShaderModule::VulkanShaderModule(TRefPtr<VulkanDevice> pDevice, const ShaderCompiler::ByteCode& spirv) : m_pDevice(pDevice), m_byteCode(spirv) {}
 

@@ -362,6 +362,9 @@ void VulkanDevice::CreateGraphicsPipeline()
 		g_testVertShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", TRefPtr<VulkanDevice>(this), vertCode);
 		g_testFragShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", TRefPtr<VulkanDevice>(this), fragCode);
 
+		g_testVertShader->Compile();
+		g_testFragShader->Compile();
+
 		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = TRefPtr<VulkanStateVertexDescription>::Make(
 			VertexFactory<RHI::Vertex>::GetBindingDescription(),
 			VertexFactory<RHI::Vertex>::GetAttributeDescriptions());
@@ -383,7 +386,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		const TRefPtr<VulkanStateMultisample> pMultisample = TRefPtr<VulkanStateMultisample>::Make(GetCurrentMsaaSamples());
 
-		auto descriptorSetLayouts = VulkanApi::CreateDescriptorSetLayouts(TRefPtr<VulkanDevice>(this), { vertCode , fragCode });
+		auto descriptorSetLayouts = VulkanApi::CreateDescriptorSetLayouts(TRefPtr<VulkanDevice>(this), { g_testVertShader , g_testFragShader });
 
 		m_pipelineLayout = TRefPtr<VulkanPipelineLayout>::Make(TRefPtr<VulkanDevice>(this),
 			descriptorSetLayouts,

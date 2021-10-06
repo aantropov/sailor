@@ -33,6 +33,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDeviceMemory;
 	class VulkanCommandBuffer;
 	class VulkanSemaphore;
+	class VulkanShaderStage;
 	class VulkanDescriptorSetLayout;
 
 #define VK_CHECK(call) \
@@ -110,7 +111,8 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
 		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
-		static SAILOR_API std::vector<TRefPtr<VulkanDescriptorSetLayout>> CreateDescriptorSetLayouts(TRefPtr<VulkanDevice> device, const std::vector<Sailor::ShaderCompiler::ByteCode>& code);
+		static SAILOR_API std::vector<TRefPtr<VulkanDescriptorSetLayout>> CreateDescriptorSetLayouts(TRefPtr<VulkanDevice> device, 
+			const std::vector<TRefPtr<VulkanShaderStage>>& shaders);
 
 		static SAILOR_API VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
 			uint32_t              binding = 0,
