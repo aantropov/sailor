@@ -16,8 +16,37 @@ namespace Sailor::Memory
 	{
 	public:
 
-		static SAILOR_API void* Allocate(size_t size);
-		static SAILOR_API void Free(void* pData);
+		static SAILOR_API void* Allocate(size_t size, HeapAllocator* context = nullptr);
+		static SAILOR_API void Free(void* pData, HeapAllocator* context = nullptr);
+	};
+
+	template<uint32_t stackSize = 1024>
+	class StackAllocator
+	{
+	protected:
+		uint8_t m_stack[stackSize];
+		uint32_t m_index = 0;
+
+	public:
+
+		static void* Allocate(size_t size, StackAllocator* context = nullptr)
+		{
+			void* res = (void*)(&context->m_stack[context->m_index + sizeof(uint32_t)]);
+			*((uint32_t*)&context->m_stack[context->m_index]) = (uint32_t)size;
+			context->m_index += (uint32_t)(size + sizeof(uint32_t));
+			return res;
+		}
+
+		static void Free(void* pData, StackAllocator* context = nullptr)
+		{
+			uint32_t size = *(uint32_t*)(((uint8_t*)pData - sizeof(uint32_t)));
+
+			// we can only remove the objects that are placed on the top of the stack
+			if (&((uint8_t*)pData)[size] == &context->m_stack[context->m_index])
+			{
+				context->m_index -= size;
+			}
+		}
 	};
 
 	template<typename TDataType, typename TPtrType>
@@ -32,18 +61,18 @@ namespace Sailor::Memory
 		return sizeof(*from);
 	}
 
-	template<typename TDataType, typename TPtrType>
-	TDataType Allocate(size_t size)
+	template<typename TDataType, typename TPtrType, typename TAllocator = HeapAllocator>
+	TDataType Allocate(size_t size, TAllocator* context = nullptr)
 	{
 		TDataType newObj{};
-		newObj.m_ptr = static_cast<TPtrType>(HeapAllocator::Allocate(size));
+		newObj.m_ptr = static_cast<TPtrType>(TAllocator::Allocate(size, context));
 		return newObj;
 	}
 
-	template<typename TDataType, typename TPtrType>
-	void Free(TDataType& ptr)
+	template<typename TDataType, typename TPtrType, typename TAllocator = HeapAllocator>
+	void Free(TDataType& ptr, TAllocator* context = nullptr)
 	{
-		HeapAllocator::Free(ptr.m_ptr);
+		TAllocator::Free(ptr.m_ptr, context);
 		ptr.Clear();
 	}
 }

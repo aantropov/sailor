@@ -3,7 +3,7 @@
 
 namespace Sailor::Memory
 {
-	template<typename TPtrType = void*, typename TBlockAllocator = HeapAllocator, uint32_t blockSize = 1024>
+	template<typename TPtrType = void*, typename TAllocator = HeapAllocator, uint32_t blockSize = 1024>
 	class TMemoryBlockAllocator
 	{
 	public:
@@ -70,7 +70,7 @@ namespace Sailor::Memory
 			friend class TMemoryBlockAllocator;
 			friend class MemoryBlock;
 
-			friend void Sailor::Memory::Free<TData, TPtrType>(TData& ptr);
+			friend void Sailor::Memory::Free<TData, TPtrType, TAllocator>(TData& ptr, TAllocator* allocator);
 		};
 
 		class MemoryBlock
@@ -136,6 +136,8 @@ namespace Sailor::Memory
 				return InvalidIndex;
 			}
 
+			size_t GetTotalSize() const { return m_size; }
+
 			bool IsEmpty() const { return m_freeSpace == m_size; }
 
 			MemoryBlock(size_t size) :
@@ -144,13 +146,13 @@ namespace Sailor::Memory
 				m_freeSpaceLayout({ {0, size} })
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
-				m_ptr = Sailor::Memory::Allocate<TData, TPtrType>(size);
+				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TAllocator>(size, m_allocator);
 			}
 
-			~MemoryBlock()
+				~MemoryBlock()
 			{
 				//std::cout << "Free Block " << (int32_t)m_size << std::endl;
-				Sailor::Memory::Free<TData, TPtrType>(m_ptr);
+				Sailor::Memory::Free<TData, TPtrType, TAllocator>(m_ptr, m_allocator);
 			}
 
 		private:
@@ -159,7 +161,10 @@ namespace Sailor::Memory
 			size_t m_size;
 			size_t m_freeSpace;
 
+			TAllocator* m_allocator;
 			std::list<std::pair<size_t, size_t>> m_freeSpaceLayout;
+
+			friend class TMemoryBlockAllocator;
 		};
 
 		TData Allocate(size_t size)
@@ -178,7 +183,7 @@ namespace Sailor::Memory
 			for (auto block : m_memoryBlocks)
 			{
 				block->~MemoryBlock();
-				TBlockAllocator::Free(block);
+				TAllocator::Free(block, &m_allocator);
 			}
 		}
 
@@ -195,18 +200,22 @@ namespace Sailor::Memory
 			}
 
 			auto block = AllocateBlock(size);
+
 			m_memoryBlocks.push_back(block);
 
-			m_totalSpace += size;
+			m_totalSpace += block->GetTotalSize();
 
 			return block;
 		}
 
-		MemoryBlock* AllocateBlock(size_t requestSize) const
+		MemoryBlock* AllocateBlock(size_t requestSize)
 		{
 			auto size = (size_t)std::max((uint32_t)requestSize, (uint32_t)blockSize);
-			auto block = static_cast<MemoryBlock*>(TBlockAllocator::Allocate(sizeof(MemoryBlock)));
-			new (block) MemoryBlock(size);
+
+			auto block = static_cast<MemoryBlock*>(TAllocator::Allocate(sizeof(MemoryBlock), &m_allocator));
+			block->m_allocator = &m_allocator;
+
+			new (block) MemoryBlock(requestSize);
 
 			return block;
 		}
@@ -217,11 +226,13 @@ namespace Sailor::Memory
 			{
 				m_totalSpace -= block->m_size;
 				block->~MemoryBlock();
-				TBlockAllocator::Free(block);
+				TAllocator::Free(block, &m_allocator);
 				return true;
 			}
 			return false;
 		}
+
+		TAllocator m_allocator;
 
 		size_t m_totalSpace = 0;
 		std::list<MemoryBlock*> m_memoryBlocks;
