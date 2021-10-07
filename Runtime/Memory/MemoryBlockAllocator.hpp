@@ -3,8 +3,9 @@
 
 namespace Sailor::Memory
 {
-	template<typename TPtrType = void*, typename TAllocator = HeapAllocator, uint32_t blockSize = 1024>
-	class TMemoryBlockAllocator
+	template<typename TPtrType = void*, typename TAllocator = HeapAllocator, uint32_t blockSize = 1024,
+		uint32_t averageElementSize = 64>
+		class TMemoryBlockAllocator
 	{
 	public:
 
@@ -85,6 +86,7 @@ namespace Sailor::Memory
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
 				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TAllocator>(size, m_allocator);
+				m_freeSpaceLayout.reserve(blockSize / averageElementSize);
 			}
 
 			~MemoryBlock()
@@ -116,23 +118,20 @@ namespace Sailor::Memory
 				memoryBlock.m_size = 0;
 			}
 
-			TData Allocate(size_t size)
+			TData Allocate(size_t indexInLayout, size_t size)
 			{
 				//std::cout << "Acquire " << (int32_t)size << std::endl;
+				assert(indexInLayout != InvalidIndex);
 
-				size_t offset = FindPlace(size);
+				auto& freeSpace = m_freeSpaceLayout[indexInLayout];
+				freeSpace.first += size;
+				freeSpace.second -= size;
 
-				assert(offset != InvalidIndex);
+				size_t offset = freeSpace.first;
 
-				// todo: optimize from O(n) to O(logN)
-				for (auto& freeSpace : m_freeSpaceLayout)
+				if (freeSpace.second == 0)
 				{
-					if (freeSpace.first == offset)
-					{
-						freeSpace.first += size;
-						freeSpace.second -= size;
-						break;
-					}
+					m_freeSpaceLayout.erase(m_freeSpaceLayout.begin() + indexInLayout);
 				}
 
 				m_freeSpace -= size;
@@ -152,7 +151,6 @@ namespace Sailor::Memory
 
 				// todo: optimize from O(n) to O(logN)
 				// place element in the front of list
-				auto placeToPush = std::begin(m_freeSpaceLayout);
 				for (auto it = std::begin(m_freeSpaceLayout); it != std::end(m_freeSpaceLayout); it++)
 				{
 					auto& freeSpace = *it;
@@ -161,20 +159,12 @@ namespace Sailor::Memory
 						freeSpace.first = ptr.m_offset;
 						freeSpace.second += ptr.m_size;
 
-						//std::stable_sort(it, std::end(m_freeSpaceLayout), [](auto lhs, auto rhs) { return lhs.second < rhs.second; });
-
 						ptr.Clear();
 						return;
 					}
-					else if (ptr.m_size < freeSpace.second)
-					{
-						placeToPush = it;
-					}
 				}
 
-				placeToPush++;
-				m_freeSpaceLayout.insert(placeToPush, { ptr.m_offset, ptr.m_size });
-				//std::stable_sort(placeToPush, std::end(m_freeSpaceLayout), [](auto lhs, auto rhs) { return lhs.second < rhs.second; });
+				m_freeSpaceLayout.push_back({ ptr.m_offset, ptr.m_size });
 				ptr.Clear();
 			}
 
@@ -186,11 +176,11 @@ namespace Sailor::Memory
 				}
 
 				// optimize to O(logn)
-				for (auto& offset : m_freeSpaceLayout)
+				for (size_t i = 0; i != m_freeSpaceLayout.size(); i++)
 				{
-					if (offset.second >= size)
+					if (m_freeSpaceLayout[i].second >= size)
 					{
-						return offset.first;
+						return i;
 					}
 				}
 
@@ -220,8 +210,9 @@ namespace Sailor::Memory
 
 		TData Allocate(size_t size)
 		{
-			auto& block = FindMemoryBlock(size);
-			return block.Allocate(size);
+			size_t layoutIndex;
+			auto& block = FindMemoryBlock(size, layoutIndex);
+			return block.Allocate(layoutIndex, size);
 		}
 
 		void Free(TData& data)
@@ -235,25 +226,19 @@ namespace Sailor::Memory
 		virtual ~TMemoryBlockAllocator()
 		{
 			m_memoryBlocks.clear();
-			return;
-
-			for (auto& block : m_memoryBlocks)
-			{
-				//block->~MemoryBlock();
-				//TBlockAllocator::Free(block, &m_blockAllocator);
-			}
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_memoryBlocks[index]; }
 
 	private:
 
-		MemoryBlock& FindMemoryBlock(size_t size)
+		MemoryBlock& FindMemoryBlock(size_t size, size_t& layoutIndex)
 		{
 			for (int32_t index = (int32_t)(m_memoryBlocks.size() - 1); index >= 0; index--)
 			{
 				auto& block = m_memoryBlocks[(uint32_t)index];
-				if (block.FindPlace(size) != InvalidIndex)
+				layoutIndex = block.FindPlace(size);
+				if (layoutIndex != InvalidIndex)
 				{
 					return block;
 				}
@@ -264,6 +249,7 @@ namespace Sailor::Memory
 			m_totalSpace += block.GetTotalSize();
 			m_memoryBlocks.push_back(std::move(block));
 
+			layoutIndex = 0;
 			return m_memoryBlocks[m_memoryBlocks.size() - 1];
 		}
 
@@ -283,8 +269,6 @@ namespace Sailor::Memory
 			if (block->IsEmpty())
 			{
 				m_totalSpace -= block->m_size;
-				//block->~MemoryBlock();
-				//TBlockAllocator::Free(block, &m_blockAllocator);
 				m_memoryBlocks.remove(*block);
 				return true;
 			}
