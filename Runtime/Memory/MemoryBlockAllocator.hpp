@@ -286,7 +286,7 @@ namespace Sailor::Memory
 			return occupation > border;
 		}
 
-		void FindMemoryBlock(size_t size, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex)
+		void FindMemoryBlock(size_t size, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex) const
 		{
 			for (int32_t index = (int32_t)(m_layout.size() - 1); index >= 0; index--)
 			{
