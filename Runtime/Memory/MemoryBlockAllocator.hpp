@@ -3,7 +3,9 @@
 
 namespace Sailor::Memory
 {
-	template<typename TPtrType = void*, typename TAllocator = HeapAllocator, uint32_t blockSize = 1024,
+	template<typename TPtrType = void*,
+		typename TAllocator = HeapAllocator,
+		uint32_t blockSize = 1024,
 		uint32_t averageElementSize = 64>
 		class TMemoryBlockAllocator
 	{
@@ -17,7 +19,7 @@ namespace Sailor::Memory
 
 			TData() = default;
 
-			TData(size_t offset, size_t size, TPtrType ptr, TMemoryBlockAllocator* allocator, size_t blockIndex) :
+			TData(size_t offset, size_t size, TPtrType ptr, TMemoryBlockAllocator* allocator, uint32_t blockIndex) :
 				m_offset(offset),
 				m_size(size),
 				m_ptr(ptr),
@@ -66,7 +68,7 @@ namespace Sailor::Memory
 			}
 
 			TMemoryBlockAllocator* m_allocator;
-			size_t m_blockIndex;
+			uint32_t m_blockIndex;
 
 			friend class TMemoryBlockAllocator;
 			friend class MemoryBlock;
@@ -79,22 +81,22 @@ namespace Sailor::Memory
 		public:
 
 			MemoryBlock(size_t size) :
-				m_size(size),
-				m_freeSpace(size),
-				m_freeSpaceLayout({ {0, size} }),
-				m_index(InvalidIndex)
+				m_blockSize(size),
+				m_emptySpace(size),
+				m_layout({ {0, size} }),
+				m_blockIndex(InvalidIndex)
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
-				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TAllocator>(size, m_allocator);
-				m_freeSpaceLayout.reserve(blockSize / averageElementSize);
+				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TAllocator>(size, m_dataAllocator);
+				m_layout.reserve(blockSize / averageElementSize);
 			}
 
 			~MemoryBlock()
 			{
 				//std::cout << "Free Block " << (int32_t)m_size << std::endl;
-				if (m_index != InvalidIndex)
+				if (m_blockIndex != InvalidIndex)
 				{
-					Sailor::Memory::Free<TData, TPtrType, TAllocator>(m_ptr, m_allocator);
+					Sailor::Memory::Free<TData, TPtrType, TAllocator>(m_ptr, m_dataAllocator);
 				}
 			}
 
@@ -104,38 +106,37 @@ namespace Sailor::Memory
 			MemoryBlock(MemoryBlock&& memoryBlock)
 			{
 				m_ptr = memoryBlock.m_ptr;
-				m_size = memoryBlock.m_size;
-				m_freeSpace = memoryBlock.m_freeSpace;
-				m_index = memoryBlock.m_index;
+				m_blockSize = memoryBlock.m_blockSize;
+				m_emptySpace = memoryBlock.m_emptySpace;
+				m_blockIndex = memoryBlock.m_blockIndex;
+				m_dataAllocator = memoryBlock.m_dataAllocator;
 				m_owner = memoryBlock.m_owner;
-				m_allocator = memoryBlock.m_allocator;
-				m_freeSpaceLayout = std::move(memoryBlock.m_freeSpaceLayout);
+				m_layout = std::move(memoryBlock.m_layout);
 
-				memoryBlock.m_allocator = nullptr;
+				memoryBlock.m_dataAllocator = nullptr;
 				memoryBlock.m_owner = nullptr;
-				memoryBlock.m_index = InvalidIndex;
-				memoryBlock.m_freeSpace = 0;
-				memoryBlock.m_size = 0;
+				memoryBlock.m_blockIndex = InvalidIndex;
+				memoryBlock.m_emptySpace = 0;
+				memoryBlock.m_blockSize = 0;
 			}
 
-			TData Allocate(size_t indexInLayout, size_t size)
+			TData Allocate(uint32_t layoutIndex, size_t size)
 			{
 				//std::cout << "Acquire " << (int32_t)size << std::endl;
-				assert(indexInLayout != InvalidIndex);
+				assert(layoutIndex != InvalidIndex);
 
-				auto& freeSpace = m_freeSpaceLayout[indexInLayout];
-				freeSpace.first += size;
-				freeSpace.second -= size;
+				auto& emptySpace = m_layout[layoutIndex];
+				size_t offset = emptySpace.first;
+				emptySpace.first += size;
+				emptySpace.second -= size;
 
-				size_t offset = freeSpace.first;
-
-				if (freeSpace.second == 0)
+				if (emptySpace.second == 0)
 				{
-					m_freeSpaceLayout.erase(m_freeSpaceLayout.begin() + indexInLayout);
+					m_layout.erase(m_layout.begin() + layoutIndex);
 				}
 
-				m_freeSpace -= size;
-				return TData(offset, size, m_ptr.m_ptr, m_owner, m_index);
+				m_emptySpace -= size;
+				return TData(offset, size, m_ptr.m_ptr, m_owner, m_blockIndex);
 			}
 
 			void Free(TData& ptr)
@@ -147,11 +148,11 @@ namespace Sailor::Memory
 					return;
 				}
 
-				m_freeSpace += ptr.m_size;
+				m_emptySpace += ptr.m_size;
 
 				// todo: optimize from O(n) to O(logN)
 				// place element in the front of list
-				for (auto it = std::begin(m_freeSpaceLayout); it != std::end(m_freeSpaceLayout); it++)
+				/*for (auto it = std::begin(m_freeSpaceLayout); it != std::end(m_freeSpaceLayout); it++)
 				{
 					auto& freeSpace = *it;
 					if (ptr.m_offset + ptr.m_size == freeSpace.first)
@@ -162,23 +163,23 @@ namespace Sailor::Memory
 						ptr.Clear();
 						return;
 					}
-				}
+				}*/
 
-				m_freeSpaceLayout.push_back({ ptr.m_offset, ptr.m_size });
+				m_layout.push_back({ ptr.m_offset, ptr.m_size });
 				ptr.Clear();
 			}
 
-			size_t FindPlace(size_t size) const
+			uint32_t FindLocationInLayout(size_t size) const
 			{
-				if (size > m_freeSpace)
+				if (size > m_emptySpace)
 				{
 					return InvalidIndex;
 				}
 
 				// optimize to O(logn)
-				for (size_t i = 0; i != m_freeSpaceLayout.size(); i++)
+				for (uint32_t i = 0; i != (uint32_t)m_layout.size(); i++)
 				{
-					if (m_freeSpaceLayout[i].second >= size)
+					if (m_layout[i].second >= size)
 					{
 						return i;
 					}
@@ -187,19 +188,22 @@ namespace Sailor::Memory
 				return InvalidIndex;
 			}
 
-			size_t GetTotalSize() const { return m_size; }
-
-			bool IsEmpty() const { return m_freeSpace == m_size; }
+			size_t GetBlockSize() const { return m_blockSize; }
+			float GetOccupation() const { return 1.0f - (float)m_emptySpace / m_blockSize; }
+			
+			bool IsFull() const { return m_emptySpace == 0; }
+			bool IsEmpty() const { return m_emptySpace == m_blockSize; }
 
 		private:
 
 			TData m_ptr;
-			size_t m_size;
-			size_t m_freeSpace;
-			size_t m_index{ InvalidIndex };
+			size_t m_blockSize;
+			size_t m_emptySpace;
+			uint32_t m_blockIndex{ InvalidIndex };
 			TMemoryBlockAllocator* m_owner;
-			TAllocator* m_allocator;
-			std::vector<std::pair<size_t, size_t>> m_freeSpaceLayout;
+			TAllocator* m_dataAllocator;
+
+			std::vector<std::pair<size_t, size_t>> m_layout;
 
 			friend class TMemoryBlockAllocator;
 		};
@@ -210,74 +214,100 @@ namespace Sailor::Memory
 
 		TData Allocate(size_t size)
 		{
-			size_t layoutIndex;
-			auto& block = FindMemoryBlock(size, layoutIndex);
-			return block.Allocate(layoutIndex, size);
+			uint32_t layoutIndex;
+			uint32_t blockLayoutIndex;
+			FindMemoryBlock(size, layoutIndex, blockLayoutIndex);
+
+			const auto blockIndex = m_layout[layoutIndex];
+			auto& block = m_blocks[blockIndex];
+			auto res = block.Allocate(blockLayoutIndex, size);
+
+			if (HeuristicToSkipFullyBlocks(block.GetOccupation()))
+			{
+				if (m_layout.size() == 1)
+				{
+					m_layout.clear();
+				}
+				else
+				{
+					std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
+					m_layout.pop_back();
+				}
+			}
+			return res;
 		}
 
 		void Free(TData& data)
 		{
 			if (data.m_ptr)
 			{
-				m_memoryBlocks[data.m_blockIndex].Free(data);
+				const uint32_t index = data.m_blockIndex;
+				const float prevOccupation = m_blocks[index].GetOccupation();
+				m_blocks[index].Free(data);
+				const float currentOccupation = m_blocks[index].GetOccupation();
+
+				if (HeuristicToSkipFullyBlocks(prevOccupation) && !HeuristicToSkipFullyBlocks(currentOccupation))
+				{
+					m_layout.push_back(index);
+				}
 			}
 		}
 
 		virtual ~TMemoryBlockAllocator()
 		{
-			m_memoryBlocks.clear();
+			m_blocks.clear();
+			m_layout.clear();
 		}
 
-		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_memoryBlocks[index]; }
+		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }
 
 	private:
 
-		MemoryBlock& FindMemoryBlock(size_t size, size_t& layoutIndex)
+		bool HeuristicToSkipFullyBlocks(float occupation) const
 		{
-			for (int32_t index = (int32_t)(m_memoryBlocks.size() - 1); index >= 0; index--)
+			const float border = 1.0f - (float)averageElementSize / blockSize;
+			return occupation > border;
+		}
+
+		void FindMemoryBlock(size_t size, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex)
+		{
+			for (int32_t index = (int32_t)(m_layout.size() - 1); index >= 0; index--)
 			{
-				auto& block = m_memoryBlocks[(uint32_t)index];
-				layoutIndex = block.FindPlace(size);
-				if (layoutIndex != InvalidIndex)
+				auto& block = m_blocks[m_layout[index]];
+				if (InvalidIndex != (outBlockLayoutIndex = block.FindLocationInLayout(size)))
 				{
-					return block;
+					outLayoutIndex = index;
+					return;
 				}
 			}
 
-			auto block = AllocateBlock(size);
-			block.m_index = m_memoryBlocks.size();
-			m_totalSpace += block.GetTotalSize();
-			m_memoryBlocks.push_back(std::move(block));
-
-			layoutIndex = 0;
-			return m_memoryBlocks[m_memoryBlocks.size() - 1];
-		}
-
-		MemoryBlock AllocateBlock(size_t requestSize)
-		{
-			auto size = (size_t)std::max((uint32_t)requestSize, (uint32_t)blockSize);
-			MemoryBlock block = MemoryBlock(size);
-
+			// Create new block
+			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)blockSize));
 			block.m_owner = this;
-			block.m_allocator = &m_allocator;
-
-			return block;
+			block.m_dataAllocator = &m_dataAllocator;
+			block.m_blockIndex = (uint32_t)m_blocks.size();
+			outLayoutIndex = (uint32_t)m_layout.size();
+			outBlockLayoutIndex = 0;
+			m_layout.push_back(block.m_blockIndex);
+			m_usedDataSpace += block.GetBlockSize();
+			m_blocks.push_back(std::move(block));
 		}
 
-		bool FreeBlock(MemoryBlock* block) const
+		bool FreeBlock(MemoryBlock& block) const
 		{
-			if (block->IsEmpty())
+			if (block.IsEmpty())
 			{
-				m_totalSpace -= block->m_size;
-				m_memoryBlocks.remove(*block);
+				m_usedDataSpace -= block.m_size;
+				m_blocks.remove(block);
 				return true;
 			}
 			return false;
 		}
 
-		TAllocator m_allocator;
+		TAllocator m_dataAllocator;
 
-		size_t m_totalSpace = 0;
-		std::vector<MemoryBlock> m_memoryBlocks;
+		size_t m_usedDataSpace = 0;
+		std::vector<MemoryBlock> m_blocks;
+		std::vector<uint32_t> m_layout;
 	};
 }

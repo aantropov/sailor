@@ -8,7 +8,7 @@
 
 #include "Defines.h"
 
-#define InvalidIndex std::numeric_limits<size_t>::max()
+#define InvalidIndex std::numeric_limits<uint32_t>::max()
 
 namespace Sailor::Memory
 {
