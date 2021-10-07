@@ -1,5 +1,6 @@
 #pragma once
 #include "Memory.h"
+#include <algorithm>
 
 namespace Sailor::Memory
 {
@@ -98,6 +99,8 @@ namespace Sailor::Memory
 				{
 					Sailor::Memory::Free<TData, TPtrType, TAllocator>(m_ptr, m_dataAllocator);
 				}
+
+				m_layout.clear();
 			}
 
 			MemoryBlock(const MemoryBlock& memoryBlock) = delete;
@@ -132,11 +135,36 @@ namespace Sailor::Memory
 
 				if (emptySpace.second == 0)
 				{
-					m_layout.erase(m_layout.begin() + layoutIndex);
+					if (m_layout.size() == 1)
+					{
+						m_layout.clear();
+					}
+					else
+					{
+						std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
+						m_layout.pop_back();
+					}
 				}
+
+				//RemoveSegmentation();
 
 				m_emptySpace -= size;
 				return TData(offset, size, m_ptr.m_ptr, m_owner, m_blockIndex);
+			}
+
+			void RemoveSegmentation()
+			{
+				std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.first < rhs.first; });
+				for (uint32_t i = (uint32_t)m_layout.size() - 1; i > 0; i--)
+				{
+					if (m_layout[i].first == m_layout[i - 1].first + m_layout[i - 1].second)
+					{
+						m_layout[i - 1].second += m_layout[i].second;
+
+						std::iter_swap(m_layout.begin() + i, m_layout.end() - 1);
+						m_layout.pop_back();
+					}
+				}
 			}
 
 			void Free(TData& ptr)
@@ -150,36 +178,25 @@ namespace Sailor::Memory
 
 				m_emptySpace += ptr.m_size;
 
-				// todo: optimize from O(n) to O(logN)
-				// place element in the front of list
-				/*for (auto it = std::begin(m_freeSpaceLayout); it != std::end(m_freeSpaceLayout); it++)
-				{
-					auto& freeSpace = *it;
-					if (ptr.m_offset + ptr.m_size == freeSpace.first)
-					{
-						freeSpace.first = ptr.m_offset;
-						freeSpace.second += ptr.m_size;
-
-						ptr.Clear();
-						return;
-					}
-				}*/
-
 				m_layout.push_back({ ptr.m_offset, ptr.m_size });
+
+				//RemoveSegmentation();
+
 				ptr.Clear();
 			}
 
-			uint32_t FindLocationInLayout(size_t size) const
+			uint32_t FindLocationInLayout(size_t size)
 			{
 				if (size > m_emptySpace)
 				{
 					return InvalidIndex;
 				}
 
-				// optimize to O(logn)
+				//std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.second > rhs.second; });
+
 				for (uint32_t i = 0; i != (uint32_t)m_layout.size(); i++)
 				{
-					if (m_layout[i].second >= size)
+					if (size <= m_layout[i].second)
 					{
 						return i;
 					}
@@ -190,7 +207,7 @@ namespace Sailor::Memory
 
 			size_t GetBlockSize() const { return m_blockSize; }
 			float GetOccupation() const { return 1.0f - (float)m_emptySpace / m_blockSize; }
-			
+
 			bool IsFull() const { return m_emptySpace == 0; }
 			bool IsEmpty() const { return m_emptySpace == m_blockSize; }
 
@@ -222,7 +239,7 @@ namespace Sailor::Memory
 			auto& block = m_blocks[blockIndex];
 			auto res = block.Allocate(blockLayoutIndex, size);
 
-			if (HeuristicToSkipFullyBlocks(block.GetOccupation()))
+			if (HeuristicToSkipBlocks(block.GetOccupation()))
 			{
 				if (m_layout.size() == 1)
 				{
@@ -246,7 +263,7 @@ namespace Sailor::Memory
 				m_blocks[index].Free(data);
 				const float currentOccupation = m_blocks[index].GetOccupation();
 
-				if (HeuristicToSkipFullyBlocks(prevOccupation) && !HeuristicToSkipFullyBlocks(currentOccupation))
+				if (HeuristicToSkipBlocks(prevOccupation) && !HeuristicToSkipBlocks(currentOccupation))
 				{
 					m_layout.push_back(index);
 				}
@@ -263,7 +280,7 @@ namespace Sailor::Memory
 
 	private:
 
-		bool HeuristicToSkipFullyBlocks(float occupation) const
+		bool HeuristicToSkipBlocks(float occupation) const
 		{
 			const float border = 1.0f - (float)averageElementSize / blockSize;
 			return occupation > border;

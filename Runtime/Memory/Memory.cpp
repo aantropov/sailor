@@ -52,14 +52,14 @@ void Sailor::Memory::TestPerformance()
 
 	{
 		{
-			std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 8192>::TData> currentObjs;
+			std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096>::TData> currentObjs;
 			currentObjs.resize(ALLOCATIONS_COUNT);
 
 			heapTimer.Start();
 
 			for (int n = 0; n <= ITERATIONS_COUNT; ++n)
 			{
-				Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 8192> heapAllocator;
+				Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096> heapAllocator;
 			
 				for (uint32 i = 0; i < objs.size(); ++i)
 					currentObjs[i] = heapAllocator.Allocate(objs[i].second);
