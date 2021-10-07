@@ -79,7 +79,7 @@ namespace Sailor::Memory
 
 			TData Allocate(size_t size)
 			{
-				//std::cout << "Acquire " << (int32_t)size << std::endl;
+				std::cout << "Acquire " << (int32_t)size << std::endl;
 
 				size_t offset = FindPlace(size);
 
@@ -102,7 +102,7 @@ namespace Sailor::Memory
 
 			void Free(TData& ptr)
 			{
-				//std::cout << "Release " << (int32_t)ptr.m_size << std::endl;
+				std::cout << "Release " << (int32_t)ptr.m_size << std::endl;
 
 				m_freeSpace += ptr.m_size;
 
@@ -145,13 +145,13 @@ namespace Sailor::Memory
 				m_freeSpace(size),
 				m_freeSpaceLayout({ {0, size} })
 			{
-				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
+				std::cout << "Allocate Block " << (int32_t)size << std::endl;
 				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TAllocator>(size, m_allocator);
 			}
 
-				~MemoryBlock()
+			~MemoryBlock()
 			{
-				//std::cout << "Free Block " << (int32_t)m_size << std::endl;
+				std::cout << "Free Block " << (int32_t)m_size << std::endl;
 				Sailor::Memory::Free<TData, TPtrType, TAllocator>(m_ptr, m_allocator);
 			}
 
@@ -166,6 +166,10 @@ namespace Sailor::Memory
 
 			friend class TMemoryBlockAllocator;
 		};
+
+		TMemoryBlockAllocator() = default;
+		TMemoryBlockAllocator(const TMemoryBlockAllocator&) = delete;
+		TMemoryBlockAllocator& operator= (const TMemoryBlockAllocator&) = delete;
 
 		TData Allocate(size_t size)
 		{
@@ -215,7 +219,7 @@ namespace Sailor::Memory
 			auto block = static_cast<MemoryBlock*>(TAllocator::Allocate(sizeof(MemoryBlock), &m_allocator));
 			block->m_allocator = &m_allocator;
 
-			new (block) MemoryBlock(requestSize);
+			new (block) MemoryBlock(size);
 
 			return block;
 		}
