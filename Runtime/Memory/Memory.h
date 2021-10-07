@@ -52,7 +52,7 @@ namespace Sailor::Memory
 	template<typename TDataType, typename TPtrType>
 	TPtrType GetAddress(TDataType& pData)
 	{
-		return reinterpret_cast<TPtrType>(&((uint8_t*)(pData.m_ptr))[pData.m_offset]);
+		return reinterpret_cast<TPtrType>(&(((uint8_t*)(pData.m_ptr))[pData.m_offset]));
 	}
 
 	template<typename TPtrType>

@@ -3,7 +3,7 @@
 
 namespace Sailor::Memory
 {
-	template<typename TPtrType = void*, typename TAllocator = HeapAllocator, uint32_t blockSize = 1024>
+	template<typename TPtrType = void*, typename TAllocator = HeapAllocator, uint32_t blockSize = 1024, typename TBlockAllocator = StackAllocator<2048>>
 	class TMemoryBlockAllocator
 	{
 	public:
@@ -114,7 +114,7 @@ namespace Sailor::Memory
 						freeSpace.first = ptr.m_offset;
 						freeSpace.second += ptr.m_size;
 						ptr.Clear();
-						break;
+						return;
 					}
 				}
 
@@ -216,7 +216,7 @@ namespace Sailor::Memory
 		{
 			auto size = (size_t)std::max((uint32_t)requestSize, (uint32_t)blockSize);
 
-			auto block = static_cast<MemoryBlock*>(TAllocator::Allocate(sizeof(MemoryBlock), &m_allocator));
+			auto block = static_cast<MemoryBlock*>(TBlockAllocator::Allocate(sizeof(MemoryBlock), &m_blockAllocator));
 			block->m_allocator = &m_allocator;
 
 			new (block) MemoryBlock(size);
@@ -230,13 +230,14 @@ namespace Sailor::Memory
 			{
 				m_totalSpace -= block->m_size;
 				block->~MemoryBlock();
-				TAllocator::Free(block, &m_allocator);
+				TBlockAllocator::Free(block, &m_blockAllocator);
 				return true;
 			}
 			return false;
 		}
 
 		TAllocator m_allocator;
+		TBlockAllocator m_blockAllocator;
 
 		size_t m_totalSpace = 0;
 		std::list<MemoryBlock*> m_memoryBlocks;
