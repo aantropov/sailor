@@ -290,6 +290,10 @@ int64_t Sailor::Utils::AccurateTimer::ResultMs() const
 
 int64_t Sailor::Utils::AccurateTimer::ResultAccumulatedMs() const
 {
+	if (m_pcFrequence == 0.0)
+	{
+		return 0;
+	}
 	return int64_t((double)m_counterAcc / m_pcFrequence);
 }
 

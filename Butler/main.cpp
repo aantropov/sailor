@@ -2,8 +2,10 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 
 #include <wtypes.h>
 #include "Sailor.h"
+#include <iostream>
 #include "AssetRegistry/ShaderCompiler.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Memory/MemoryBlockAllocator.hpp"
 
 using namespace Sailor;
 

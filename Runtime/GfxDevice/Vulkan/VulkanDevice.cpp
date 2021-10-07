@@ -326,7 +326,7 @@ void VulkanDevice::CreateVertexBuffer()
 {
 	if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfo<ModelAssetInfo>("Models\\Sponza\\sponza.obj"))
 	{
-		ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
+		//ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
 	}
 
 	const VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();

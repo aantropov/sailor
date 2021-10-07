@@ -9,6 +9,7 @@
 #include "JobSystem/JobSystem.h"
 #include "RHI/Renderer.h"
 #include "Framework/Framework.h"
+#include "Memory/MemoryBlockAllocator.hpp"
 
 using namespace Sailor;
 
@@ -62,6 +63,8 @@ void EngineInstance::Initialize()
 
 void EngineInstance::Start()
 {
+	Memory::TestPerformance();
+
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
@@ -70,6 +73,7 @@ void EngineInstance::Start()
 	FrameState currentFrame;
 	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
+
 
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{

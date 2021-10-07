@@ -75,4 +75,6 @@ namespace Sailor::Memory
 		TAllocator::Free(ptr.m_ptr, context);
 		ptr.Clear();
 	}
+
+	void SAILOR_API TestPerformance();
 }
