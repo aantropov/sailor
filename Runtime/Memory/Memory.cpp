@@ -25,7 +25,7 @@ void Sailor::Memory::TestPerformance()
 	static const uint32 MAX_SIZE = 32;
 
 	static const uint32 STACK_ITERATIONS_COUNT = 10000;
-	static const uint32 STACK_ALLOCATIONS_COUNT = 10;
+	static const uint32 STACK_ALLOCATIONS_COUNT = 3;
 
 	std::vector<std::pair<void*, size_t> > objs;
 	objs.resize(ALLOCATIONS_COUNT);
@@ -49,94 +49,72 @@ void Sailor::Memory::TestPerformance()
 	Utils::AccurateTimer mallocTimer;
 	Utils::AccurateTimer allocaTimer;
 
-
 	{
+		std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096>::TData> currentObjs;
+		currentObjs.resize(ALLOCATIONS_COUNT);
+
+		heapTimer.Start();
+
+		for (int n = 0; n <= ITERATIONS_COUNT; ++n)
 		{
-			std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096>::TData> currentObjs;
-			currentObjs.resize(ALLOCATIONS_COUNT);
+			Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096> heapAllocator;
 
-			heapTimer.Start();
+			for (uint32 i = 0; i < objs.size(); ++i)
+				currentObjs[i] = heapAllocator.Allocate(objs[i].second);
 
-			for (int n = 0; n <= ITERATIONS_COUNT; ++n)
-			{
-				Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096> heapAllocator;
-			
-				for (uint32 i = 0; i < objs.size(); ++i)
-					currentObjs[i] = heapAllocator.Allocate(objs[i].second);
-				
-				for (uint32 i = 0; i < objs.size(); ++i)
-					heapAllocator.Free(currentObjs[i]);
+			for (uint32 i = 0; i < objs.size(); ++i)
+				heapAllocator.Free(currentObjs[i]);
 
-			}
-
-			heapTimer.Stop();
 		}
 
-		mallocTimer.Start();
+		heapTimer.Stop();
+	}
+
+	mallocTimer.Start();
+	for (int n = 0; n <= ITERATIONS_COUNT; ++n)
+	{
+		for (uint32 i = 0; i < objs.size(); ++i)
+			objs[i].first = malloc(objs[i].second);
+		for (uint32 i = 0; i < objs.size(); ++i)
+			free(objs[i].first);
+	}
+	mallocTimer.Stop();
+	
+
+	/*
+	allocaTimer.Start();
+	{
+		objs.resize(STACK_ALLOCATIONS_COUNT);
+		for (int n = 0; n <= STACK_ITERATIONS_COUNT; ++n)
+		{
+			for (uint32 i = 0; i < objs.size(); ++i)
+				objs[i].first = _malloca(objs[i].second);
+			for (uint32 i = 0; i < objs.size(); ++i)
+				_freea(objs[i].first);
+		}
+	}
+	allocaTimer.Stop();
+
+	stackTimer.Start();
+	{
+		std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>>::TData> currentObjs;
+		currentObjs.resize(STACK_ALLOCATIONS_COUNT);
+
+		Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>> stackAllocator;
 		for (int n = 0; n <= ITERATIONS_COUNT; ++n)
 		{
 			for (uint32 i = 0; i < objs.size(); ++i)
-				objs[i].first = malloc(objs[i].second);
+				currentObjs[i] = stackAllocator.Allocate(objs[i].second);
 			for (uint32 i = 0; i < objs.size(); ++i)
-				free(objs[i].first);
+				stackAllocator.Free(currentObjs[i]);
 		}
-		mallocTimer.Stop();
-			
-
-		/*
-		{
-			std::vector<std::pair<Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 524288, Memory::StackAllocator<4096>>::TData, size_t> > currentObjs;
-			currentObjs.resize(ALLOCATIONS_COUNT);
-
-			hybridTimer.Start();
-			for (int n = 0; n <= ITERATIONS_COUNT; ++n)
-			{
-				Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 524288, Memory::StackAllocator<4096>> hybridAllocator;
-
-				for (uint32 i = 0; i < objs.size(); ++i)
-					currentObjs[i].first = hybridAllocator.Allocate(objs[i].second);
-				for (uint32 i = 0; i < objs.size(); ++i)
-					hybridAllocator.Free(currentObjs[i].first);
-			}
-			hybridTimer.Stop();
-		}
-
-		/*
-		allocaTimer.Start();
-		{
-			objs.resize(STACK_ALLOCATIONS_COUNT);
-			for (int n = 0; n <= STACK_ITERATIONS_COUNT; ++n)
-			{
-				for (uint32 i = 0; i < objs.size(); ++i)
-					objs[i].first = _alloca(objs[i].second);
-				for (uint32 i = 0; i < objs.size(); ++i)
-					_freea(objs[i].first);
-			}
-		}
-		allocaTimer.Stop();
-
-		stackTimer.Start();
-		{
-			std::vector<std::pair<Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>, 256>::TData, size_t> > objs;
-			objs.resize(STACK_ALLOCATIONS_COUNT);
-
-			Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>, 256> stackAllocator;
-			for (int n = 0; n <= ITERATIONS_COUNT; ++n)
-			{
-				for (uint32 i = 0; i < objs.size(); ++i)
-					objs[i].first = stackAllocator.Allocate(objs[i].second);
-				for (uint32 i = 0; i < objs.size(); ++i)
-					stackAllocator.Free(objs[i].first);
-			}
-		}
-		stackTimer.Stop();
-		*/
-
-		//printf("allocAllocator %lld ms\n", allocaTimer.ResultAccumulatedMs());
-		//printf("stackAllocator %lld ms\n", stackTimer.ResultAccumulatedMs());
-
-		printf("mallocAllocator %lld ms\n", mallocTimer.ResultAccumulatedMs());
-		printf("heapAllocator %lld ms\n", heapTimer.ResultAccumulatedMs());
-		printf("hybridTimer %lld ms\n", hybridTimer.ResultAccumulatedMs());
 	}
+	stackTimer.Stop();
+	*/
+
+	printf("allocAllocator %lld ms\n", allocaTimer.ResultAccumulatedMs());
+	printf("stackAllocator %lld ms\n", stackTimer.ResultAccumulatedMs());
+
+	printf("mallocAllocator %lld ms\n", mallocTimer.ResultAccumulatedMs());
+	printf("heapAllocator %lld ms\n", heapTimer.ResultAccumulatedMs());
 }

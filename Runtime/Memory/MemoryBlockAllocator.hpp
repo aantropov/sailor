@@ -88,7 +88,7 @@ namespace Sailor::Memory
 				m_blockIndex(InvalidIndex)
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
-				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TAllocator>(size, m_dataAllocator);
+				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TAllocator>(size, &m_owner->m_dataAllocator);
 				m_layout.reserve(blockSize / averageElementSize);
 			}
 
@@ -97,7 +97,7 @@ namespace Sailor::Memory
 				//std::cout << "Free Block " << (int32_t)m_size << std::endl;
 				if (m_blockIndex != InvalidIndex)
 				{
-					Sailor::Memory::Free<TData, TPtrType, TAllocator>(m_ptr, m_dataAllocator);
+					Sailor::Memory::Free<TData, TPtrType, TAllocator>(m_ptr, &m_owner->m_dataAllocator);
 				}
 
 				m_layout.clear();
@@ -112,11 +112,9 @@ namespace Sailor::Memory
 				m_blockSize = memoryBlock.m_blockSize;
 				m_emptySpace = memoryBlock.m_emptySpace;
 				m_blockIndex = memoryBlock.m_blockIndex;
-				m_dataAllocator = memoryBlock.m_dataAllocator;
 				m_owner = memoryBlock.m_owner;
 				m_layout = std::move(memoryBlock.m_layout);
 
-				memoryBlock.m_dataAllocator = nullptr;
 				memoryBlock.m_owner = nullptr;
 				memoryBlock.m_blockIndex = InvalidIndex;
 				memoryBlock.m_emptySpace = 0;
@@ -185,7 +183,7 @@ namespace Sailor::Memory
 				ptr.Clear();
 			}
 
-			uint32_t FindLocationInLayout(size_t size)
+			uint32_t FindLocationInLayout(size_t size) const
 			{
 				if (size > m_emptySpace)
 				{
@@ -218,7 +216,6 @@ namespace Sailor::Memory
 			size_t m_emptySpace;
 			uint32_t m_blockIndex{ InvalidIndex };
 			TMemoryBlockAllocator* m_owner;
-			TAllocator* m_dataAllocator;
 
 			std::vector<std::pair<size_t, size_t>> m_layout;
 
@@ -286,7 +283,7 @@ namespace Sailor::Memory
 			return occupation > border;
 		}
 
-		void FindMemoryBlock(size_t size, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex) const
+		void FindMemoryBlock(size_t size, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex)
 		{
 			for (int32_t index = (int32_t)(m_layout.size() - 1); index >= 0; index--)
 			{
@@ -301,7 +298,6 @@ namespace Sailor::Memory
 			// Create new block
 			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)blockSize));
 			block.m_owner = this;
-			block.m_dataAllocator = &m_dataAllocator;
 			block.m_blockIndex = (uint32_t)m_blocks.size();
 			outLayoutIndex = (uint32_t)m_layout.size();
 			outBlockLayoutIndex = 0;
