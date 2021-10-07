@@ -64,7 +64,6 @@ void Sailor::Memory::TestPerformance()
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				heapAllocator.Free(currentObjs[i]);
-
 		}
 
 		heapTimer.Stop();

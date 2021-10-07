@@ -81,11 +81,12 @@ namespace Sailor::Memory
 		{
 		public:
 
-			MemoryBlock(size_t size) :
+			MemoryBlock(size_t size, TMemoryBlockAllocator* owner) :
 				m_blockSize(size),
 				m_emptySpace(size),
 				m_layout({ {0, size} }),
-				m_blockIndex(InvalidIndex)
+				m_blockIndex(InvalidIndex),
+				m_owner(owner)
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
 				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TAllocator>(size, &m_owner->m_dataAllocator);
@@ -144,7 +145,7 @@ namespace Sailor::Memory
 					}
 				}
 
-				//RemoveSegmentation();
+				RemoveSegmentation();
 
 				m_emptySpace -= size;
 				return TData(offset, size, m_ptr.m_ptr, m_owner, m_blockIndex);
@@ -178,7 +179,7 @@ namespace Sailor::Memory
 
 				m_layout.push_back({ ptr.m_offset, ptr.m_size });
 
-				//RemoveSegmentation();
+				RemoveSegmentation();
 
 				ptr.Clear();
 			}
@@ -296,8 +297,7 @@ namespace Sailor::Memory
 			}
 
 			// Create new block
-			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)blockSize));
-			block.m_owner = this;
+			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)blockSize), this);
 			block.m_blockIndex = (uint32_t)m_blocks.size();
 			outLayoutIndex = (uint32_t)m_layout.size();
 			outBlockLayoutIndex = 0;
