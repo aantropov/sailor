@@ -154,7 +154,7 @@ namespace Sailor::Memory
 			void RemoveSegmentation()
 			{
 				std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.first < rhs.first; });
-				for (uint32_t i = (uint32_t)m_layout.size() - 1; i > 0; i--)
+				for (int32_t i = (int32_t)m_layout.size() - 1; i > 0; i--)
 				{
 					if (m_layout[i].first == m_layout[i - 1].first + m_layout[i - 1].second)
 					{

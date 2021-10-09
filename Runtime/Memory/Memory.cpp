@@ -7,12 +7,12 @@
 using namespace Sailor;
 using namespace Sailor::Memory;
 
-void* HeapAllocator::Allocate(size_t size, HeapAllocator*)
+void* HeapAllocator::Allocate(size_t size)
 {
 	return malloc(size);
 }
 
-void HeapAllocator::Free(void* pData, HeapAllocator*)
+void HeapAllocator::Free(void* pData, size_t size)
 {
 	free(pData);
 }
@@ -78,7 +78,7 @@ void Sailor::Memory::TestPerformance()
 			free(objs[i].first);
 	}
 	mallocTimer.Stop();
-	
+
 
 	/*
 	allocaTimer.Start();

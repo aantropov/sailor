@@ -16,8 +16,8 @@ namespace Sailor::Memory
 	{
 	public:
 
-		static SAILOR_API void* Allocate(size_t size, HeapAllocator* context = nullptr);
-		static SAILOR_API void Free(void* pData, HeapAllocator* context = nullptr);
+		SAILOR_API void* Allocate(size_t size);
+		SAILOR_API void Free(void* pData, size_t size);
 	};
 
 	template<uint32_t stackSize = 1024>
@@ -29,22 +29,19 @@ namespace Sailor::Memory
 
 	public:
 
-		static void* Allocate(size_t size, StackAllocator* context = nullptr)
+		SAILOR_API void* Allocate(size_t size)
 		{
-			void* res = (void*)(&context->m_stack[context->m_index + sizeof(uint32_t)]);
-			*((uint32_t*)&context->m_stack[context->m_index]) = (uint32_t)size;
-			context->m_index += (uint32_t)(size + sizeof(uint32_t));
+			void* res = (void*)(&m_stack[m_index]);
+			m_index += (uint32_t)(size);
 			return res;
 		}
 
-		static void Free(void* pData, StackAllocator* context = nullptr)
+		SAILOR_API void Free(void* pData, size_t size)
 		{
-			uint32_t size = *(uint32_t*)(((uint8_t*)pData - sizeof(uint32_t)));
-
 			// we can only remove the objects that are placed on the top of the stack
-			if (&((uint8_t*)pData)[size] == &context->m_stack[context->m_index])
+			if (&((uint8_t*)pData)[(uint32_t)size] == &m_stack[m_index])
 			{
-				context->m_index -= size;
+				m_index -= (uint32_t)size;
 			}
 		}
 	};
@@ -62,17 +59,17 @@ namespace Sailor::Memory
 	}
 
 	template<typename TDataType, typename TPtrType, typename TAllocator = HeapAllocator>
-	TDataType Allocate(size_t size, TAllocator* context = nullptr)
+	TDataType Allocate(size_t size, TAllocator* allocator)
 	{
 		TDataType newObj{};
-		newObj.m_ptr = static_cast<TPtrType>(TAllocator::Allocate(size, context));
+		newObj.m_ptr = static_cast<TPtrType>(allocator->Allocate(size));
 		return newObj;
 	}
 
 	template<typename TDataType, typename TPtrType, typename TAllocator = HeapAllocator>
-	void Free(TDataType& ptr, TAllocator* context = nullptr)
+	void Free(TDataType& ptr, TAllocator* allocator)
 	{
-		TAllocator::Free(ptr.m_ptr, context);
+		allocator->Free(ptr.m_ptr, ptr.m_size);
 		ptr.Clear();
 	}
 
