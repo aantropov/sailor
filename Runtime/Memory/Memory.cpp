@@ -19,16 +19,16 @@ void HeapAllocator::Free(void* pData, size_t size)
 
 void Sailor::Memory::TestPerformance()
 {
-	static const uint32 ITERATIONS_COUNT = 10;
-	static const uint32 ALLOCATIONS_COUNT = 1000000;
-	static const uint32 ALLOCATOR_SIZE = 1024 * 1024 * 32;
-	static const uint32 MAX_SIZE = 32;
+	static const uint32 IterationsCount = 10;
+	static const uint32 AllocationsCount = 1000000;
+	static const uint32 AllocatorSize = 1024 * 1024 * 32;
+	static const uint32 MaxSize = 32;
 
-	static const uint32 STACK_ITERATIONS_COUNT = 10000;
-	static const uint32 STACK_ALLOCATIONS_COUNT = 3;
+	static const uint32 StackIterationsCount = 1000;
+	static const uint32 StackAllocationsCount = 30;
 
 	std::vector<std::pair<void*, size_t> > objs;
-	objs.resize(ALLOCATIONS_COUNT);
+	objs.resize(AllocationsCount);
 
 	srand(0);
 
@@ -36,7 +36,7 @@ void Sailor::Memory::TestPerformance()
 
 	for (uint32 i = 0; i < objs.size(); ++i)
 	{
-		objs[i].second = rand() % MAX_SIZE + 1;
+		objs[i].second = rand() % MaxSize + 1;
 		sumSize += objs[i].second;
 	}
 
@@ -51,11 +51,11 @@ void Sailor::Memory::TestPerformance()
 
 	{
 		std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096>::TData> currentObjs;
-		currentObjs.resize(ALLOCATIONS_COUNT);
+		currentObjs.resize(AllocationsCount);
 
 		heapTimer.Start();
 
-		for (int n = 0; n <= ITERATIONS_COUNT; ++n)
+		for (int n = 0; n <= IterationsCount; ++n)
 		{
 			Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096> heapAllocator;
 
@@ -70,7 +70,7 @@ void Sailor::Memory::TestPerformance()
 	}
 
 	mallocTimer.Start();
-	for (int n = 0; n <= ITERATIONS_COUNT; ++n)
+	for (int n = 0; n <= IterationsCount; ++n)
 	{
 		for (uint32 i = 0; i < objs.size(); ++i)
 			objs[i].first = malloc(objs[i].second);
@@ -79,15 +79,13 @@ void Sailor::Memory::TestPerformance()
 	}
 	mallocTimer.Stop();
 
-
-	/*
 	allocaTimer.Start();
 	{
-		objs.resize(STACK_ALLOCATIONS_COUNT);
-		for (int n = 0; n <= STACK_ITERATIONS_COUNT; ++n)
+		objs.resize(StackAllocationsCount);
+		for (int n = 0; n <= StackIterationsCount; ++n)
 		{
 			for (uint32 i = 0; i < objs.size(); ++i)
-				objs[i].first = _malloca(objs[i].second);
+				objs[i].first = _alloca(objs[i].second);
 			for (uint32 i = 0; i < objs.size(); ++i)
 				_freea(objs[i].first);
 		}
@@ -97,19 +95,20 @@ void Sailor::Memory::TestPerformance()
 	stackTimer.Start();
 	{
 		std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>>::TData> currentObjs;
-		currentObjs.resize(STACK_ALLOCATIONS_COUNT);
+		currentObjs.resize(StackAllocationsCount);
 
-		Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>> stackAllocator;
-		for (int n = 0; n <= ITERATIONS_COUNT; ++n)
+		for (int n = 0; n <= StackIterationsCount; ++n)
 		{
+			Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>> stackAllocator;
+
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = stackAllocator.Allocate(objs[i].second);
+
 			for (uint32 i = 0; i < objs.size(); ++i)
 				stackAllocator.Free(currentObjs[i]);
 		}
 	}
 	stackTimer.Stop();
-	*/
 
 	printf("allocAllocator %lld ms\n", allocaTimer.ResultAccumulatedMs());
 	printf("stackAllocator %lld ms\n", stackTimer.ResultAccumulatedMs());

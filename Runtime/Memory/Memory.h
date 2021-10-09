@@ -8,8 +8,6 @@
 
 #include "Defines.h"
 
-#define InvalidIndex std::numeric_limits<uint32_t>::max()
-
 namespace Sailor::Memory
 {
 	class HeapAllocator
@@ -47,9 +45,9 @@ namespace Sailor::Memory
 	};
 
 	template<typename TDataType, typename TPtrType>
-	TPtrType GetAddress(TDataType& pData)
+	void GetAddress(TDataType& pData, TPtrType& outPtr)
 	{
-		return reinterpret_cast<TPtrType>(&(((uint8_t*)(pData.m_ptr))[pData.m_offset]));
+		outPtr = reinterpret_cast<TPtrType>(&(((uint8_t*)(pData.m_ptr))[pData.m_offset]));
 	}
 
 	template<typename TPtrType>

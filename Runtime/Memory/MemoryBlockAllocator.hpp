@@ -44,12 +44,16 @@ namespace Sailor::Memory
 
 			const TPtrType operator*() const
 			{
-				return Sailor::Memory::GetAddress<TData, TPtrType>(*this);
+				TPtrType res;
+				Sailor::Memory::GetAddress<TData, TPtrType>(*this, res);
+				return res;
 			}
 
 			TPtrType operator*()
 			{
-				return Sailor::Memory::GetAddress<TData, TPtrType>(*this);
+				TPtrType res;
+				Sailor::Memory::GetAddress<TData, TPtrType>(*this, res);
+				return res;
 			}
 
 			void Free()
@@ -278,6 +282,8 @@ namespace Sailor::Memory
 
 	private:
 
+		static constexpr uint32_t InvalidIndex = (uint32_t)-1;
+
 		bool HeuristicToSkipBlocks(float occupation) const
 		{
 			const float border = 1.0f - (float)averageElementSize / blockSize;
@@ -289,7 +295,7 @@ namespace Sailor::Memory
 			for (int32_t index = (int32_t)(m_layout.size() - 1); index >= 0; index--)
 			{
 				auto& block = m_blocks[m_layout[index]];
-				if (InvalidIndex != (outBlockLayoutIndex = block.FindLocationInLayout(size)))
+				if (-1 != (outBlockLayoutIndex = block.FindLocationInLayout(size)))
 				{
 					outLayoutIndex = index;
 					return;
@@ -297,7 +303,7 @@ namespace Sailor::Memory
 			}
 
 			// Create new block
-			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)blockSize), this);
+			MemoryBlock block = MemoryBlock((size_t)max((uint32_t)size, (uint32_t)blockSize), this);
 			block.m_blockIndex = (uint32_t)m_blocks.size();
 			outLayoutIndex = (uint32_t)m_layout.size();
 			outBlockLayoutIndex = 0;

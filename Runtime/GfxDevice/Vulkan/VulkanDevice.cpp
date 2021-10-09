@@ -42,6 +42,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "Platform/Win32/Input.h"
 #include "Winuser.h"
 #include "Framework/Framework.h"
+#include "Memory/MemoryBlockAllocator.hpp"
 
 using namespace glm;
 using namespace Sailor;
@@ -114,6 +115,18 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 
 	// Cache samplers
 	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
+
+	// Cache memory requirements
+	{
+		TRefPtr<VulkanBuffer> stagingBuffer = TRefPtr<VulkanBuffer>::Make(TRefPtr<VulkanDevice>(this),
+			1024,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_SHARING_MODE_CONCURRENT);
+
+		stagingBuffer->Compile();
+		m_memoryRequirements_StagingBuffer = stagingBuffer->GetMemoryRequirements();
+		stagingBuffer.Clear();
+	}
 
 	// Create swapchain	CreateCommandPool();
 	CreateSwapchain(pViewport);
