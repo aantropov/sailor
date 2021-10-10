@@ -66,7 +66,7 @@ void Sailor::Memory::TestPerformance()
 	Utils::AccurateTimer allocaTimer;
 
 	{
-		std::vector<Memory::TBlockAllocator<Memory::GlobalHeapAllocator, 4096>::TData> currentObjs;
+		std::vector<Memory::TBlockAllocator<Memory::GlobalHeapAllocator, 4096>::TMemoryPtr> currentObjs;
 		currentObjs.resize(AllocationsCount);
 
 		heapTimer.Start();
@@ -110,7 +110,7 @@ void Sailor::Memory::TestPerformance()
 
 	stackTimer.Start();
 	{
-		std::vector<Memory::TBlockAllocator<Memory::GlobalStackAllocator<4096>>::TData> currentObjs;
+		std::vector<Memory::TBlockAllocator<Memory::GlobalStackAllocator<4096>>::TMemoryPtr> currentObjs;
 		currentObjs.resize(StackAllocationsCount);
 
 		for (int n = 0; n <= StackIterationsCount; ++n)

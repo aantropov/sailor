@@ -4,12 +4,36 @@
 #include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"
 #include "Memory/Memory.h"
+#include "Memory/MemoryBlockAllocator.hpp"
 
 namespace Sailor::Memory
 {
-	using VulkanDeviceMemoryPtr = TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>;
+	class VulkanDeviceMemoryPtr
+	{
+	public:
 
-	class VulkanStagingAllocator
+		VulkanDeviceMemoryPtr() = default;
+		VulkanDeviceMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory) : m_deviceMemory(deviceMemory) {}
+		VulkanDeviceMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory, size_t offset, size_t size) :
+			m_deviceMemory(deviceMemory), m_offset(offset), m_size(size) {}
+
+		VulkanDeviceMemoryPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>& rhs)
+		{
+			m_deviceMemory = rhs;
+			return *this;
+		}
+
+		operator bool()
+		{
+			return m_deviceMemory;
+		}
+
+		TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> m_deviceMemory{};
+		size_t m_offset{};
+		size_t m_size{};
+	};
+
+	class GlobalVulkanHostAllocator
 	{
 	protected:
 
@@ -23,62 +47,97 @@ namespace Sailor::Memory
 			auto memoryRequirements = device->GetMemoryRequirements_StagingBuffer();
 			memoryRequirements.size = size;
 
-			VulkanDeviceMemoryPtr deviceMemory = (VulkanDeviceMemoryPtr)TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>::Make(device,
+			VulkanDeviceMemoryPtr memPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>::Make(device,
 				memoryRequirements,
-				memoryProperties);
+				memoryProperties),
+				0,
+				size);
 
-			return deviceMemory;
+			return memPtr;
 		}
 
 		SAILOR_API void Free(VulkanDeviceMemoryPtr pData, size_t size)
 		{
-			pData.Clear();
+			pData.m_deviceMemory.Clear();
+			pData.m_offset = pData.m_size = 0;
 		}
 	};
+
+	template<typename TDataType, typename TPtrType = VulkanDeviceMemoryPtr>
+	inline VulkanDeviceMemoryPtr GetPointer(TDataType& pData)
+	{
+		VulkanDeviceMemoryPtr ptr(pData.m_ptr);
+		ptr.m_offset = pData.m_offset;
+		ptr.m_size = pData.m_size;
+
+		return ptr;
+	}
+
+	template<>
+	VulkanDeviceMemoryPtr GetPointer<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& pStartBlock, size_t offset, size_t size)
+	{
+		VulkanDeviceMemoryPtr ptr(pStartBlock);
+		ptr.m_offset = offset;
+		ptr.m_size = size;
+		return ptr;
+	}
 
 	template<>
 	VulkanDeviceMemoryPtr Shift<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& ptr, size_t offset)
 	{
-		return nullptr;
+		VulkanDeviceMemoryPtr memPtr(ptr);
+		memPtr.m_offset += offset;
+		return memPtr;
 	}
 
 	template<>
-	uint32_t SizeOf<VulkanDeviceMemoryPtr>()
+	uint32_t SizeOf<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& ptr)
 	{
-		return 16;
+		return (uint32_t)ptr.m_size;
 	}
 
 	template<>
-	uint32_t OffsetAlignment<VulkanDeviceMemoryPtr>(VulkanDeviceMemoryPtr from)
+	uint32_t OffsetAlignment<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& from)
 	{
-		return (uint32_t)from->GetMemoryRequirements().alignment;
+		return (uint32_t)from.m_deviceMemory->GetMemoryRequirements().alignment;
 	}
 
 	template<>
 	uint8_t* GetAddress<VulkanDeviceMemoryPtr>(VulkanDeviceMemoryPtr ptr)
 	{
-		// todo store ptr to data
 		return nullptr;
 	}
 
-	template<typename TPtrType = VulkanDeviceMemoryPtr>
-	size_t Size(VulkanDeviceMemoryPtr from)
+	template<typename TMemoryPtr, typename TPtrType = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanHostAllocator>
+	TMemoryPtr Allocate(size_t size, GlobalVulkanHostAllocator* allocator)
 	{
-		return from->GetMemoryRequirements().size;
-	}
-
-	template<typename TDataType, typename TPtrType = VulkanDeviceMemoryPtr, typename TBlockAllocator = VulkanStagingAllocator>
-	TDataType Allocate(size_t size, VulkanStagingAllocator* allocator)
-	{
-		TDataType newObj{};
+		TMemoryPtr newObj{};
 		newObj.m_ptr = allocator->Allocate(size);
 		return newObj;
 	}
 
-	template<typename TDataType, typename TPtrType = VulkanDeviceMemoryPtr, typename TBlockAllocator = VulkanStagingAllocator>
-	void Free(TDataType& ptr, VulkanStagingAllocator* allocator)
+	template<typename TMemoryPtr, typename TPtrType = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanHostAllocator>
+	void Free(TMemoryPtr& ptr, GlobalVulkanHostAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
 		ptr.Clear();
+	}
+
+	template<>
+	inline bool Align<VulkanDeviceMemoryPtr>(size_t sizeToEmplace, size_t alignment, const VulkanDeviceMemoryPtr& startPtr, size_t blockSize, uint32_t& alignmentOffset)
+	{
+		// try to carve out _Size bytes on boundary _Bound
+		alignmentOffset = static_cast<uint32_t>(((uint32_t)startPtr.m_offset) & (alignment - 1));
+		if (alignmentOffset != 0)
+		{
+			alignmentOffset = (uint32_t)(alignment - alignmentOffset); // number of bytes to skip
+		}
+
+		if (blockSize < alignmentOffset || blockSize - alignmentOffset < sizeToEmplace)
+		{
+			return false;
+		}
+
+		return true;
 	}
 }

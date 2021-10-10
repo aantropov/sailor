@@ -57,27 +57,21 @@ namespace Sailor::Memory
 	}
 
 	template<typename TPtrType>
-	inline uint32_t SizeOf()
+	inline uint32_t SizeOf(const TPtrType& ptr)
 	{
 		return sizeof(typename std::remove_pointer<TPtrType>::type);
 	}
 
 	template<typename TPtrType>
-	inline uint32_t OffsetAlignment(TPtrType from)
+	inline uint32_t OffsetAlignment(const TPtrType& from)
 	{
 		return alignof(typename std::remove_pointer<TPtrType>::type);
 	}
 
-	template<typename TDataType, typename TPtrType>
-	inline TPtrType GetAlignedPointer(TDataType& pData)
+	template<typename TPtrType>
+	inline TPtrType GetPointer(const TPtrType& pStartBlock, size_t offset, size_t size)
 	{
-		return Shift(pData.m_ptr, pData.m_offset + pData.m_alignmentOffset);
-	}
-
-	template<typename TDataType, typename TPtrType>
-	inline TPtrType GetPointer(TDataType& pData)
-	{
-		return Shift(pData.m_ptr, pData.m_offset);
+		return Shift(pStartBlock, offset);
 	}
 
 	template<typename TDataType, typename TPtrType, typename TBlockAllocator = GlobalHeapAllocator>

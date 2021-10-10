@@ -21,13 +21,6 @@ void Renderer::Initialize(Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	m_pInstance->m_pViewport = pViewport;
 
 	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
-	
-	/*
-	Memory::TBlockAllocator<Memory::VulkanDeviceMemoryPtr, Memory::VulkanStagingAllocator, 1024, 128> allocator;
-	auto a = allocator.Allocate(512);
-	a.Free();
-	auto b = allocator.Allocate(513);
-	*/
 }
 
 Renderer::~Renderer()

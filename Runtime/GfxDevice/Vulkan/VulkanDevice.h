@@ -79,10 +79,10 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API const VkMemoryRequirements& GetMemoryRequirements_StagingBuffer() const { return m_memoryRequirements_StagingBuffer; }
 		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_minUboOffsetAlignment; }
 
-		template<typename TData>
-		VkDeviceSize GetUboOffsetAlignment(TData) const
+		template<typename TMemoryPtr>
+		VkDeviceSize GetUboOffsetAlignment(TMemoryPtr) const
 		{
-			VkDeviceSize dynamicAlignment = sizeof(TData);
+			VkDeviceSize dynamicAlignment = sizeof(TMemoryPtr);
 			if (m_minUboOffsetAlignment > 0)
 			{
 				dynamicAlignment = (dynamicAlignment + m_minUboOffsetAlignment - 1) & ~(m_minUboOffsetAlignment - 1);

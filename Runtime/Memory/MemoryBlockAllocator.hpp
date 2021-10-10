@@ -4,20 +4,16 @@
 
 namespace Sailor::Memory
 {
-	template<typename TGlobalAllocator = GlobalHeapAllocator,
-		uint32_t blockSize = 1024,
-		uint32_t averageElementSize = 64,
-		typename TPtrType = void*>
+	template<typename TGlobalAllocator = GlobalHeapAllocator, uint32_t blockSize = 1024, uint32_t averageElementSize = 64, typename TPtrType = void*>
+	class TBlockAllocator;
 
-		class TBlockAllocator;
-
-	class TDataBase
+	class TMemoryPtrBase
 	{
 	public:
 
-		TDataBase() = default;
+		TMemoryPtrBase() = default;
 
-		TDataBase(size_t offset, size_t alignmentOffset, size_t size, uint32_t blockIndex) :
+		TMemoryPtrBase(size_t offset, size_t alignmentOffset, size_t size, uint32_t blockIndex) :
 			m_offset(offset),
 			m_size(size),
 			m_alignmentOffset(alignmentOffset),
@@ -34,7 +30,7 @@ namespace Sailor::Memory
 			m_offset += offset;
 		}
 
-		size_t Offset(const TDataBase& from, const TDataBase& to)
+		size_t Offset(const TMemoryPtrBase& from, const TMemoryPtrBase& to)
 		{
 			return (size_t)(to.m_offset - from.m_offset - from.m_size - from.m_alignmentOffset);
 		}
@@ -59,26 +55,26 @@ namespace Sailor::Memory
 
 		class MemoryBlock;
 
-		class TData : public TDataBase
+		class TMemoryPtr : public TMemoryPtrBase
 		{
 		public:
 
-			TData() : TDataBase(), m_allocator{ nullptr }, m_ptr{} {}
+			TMemoryPtr() : TMemoryPtrBase(), m_allocator{ nullptr }, m_ptr{} {}
 
-			TData(size_t offset, size_t alignmentOffset, size_t size, TPtrType ptr, TBlockAllocator* allocator, uint32_t blockIndex) :
-				TDataBase(offset, alignmentOffset, size, blockIndex),
+			TMemoryPtr(size_t offset, size_t alignmentOffset, size_t size, TPtrType ptr, TBlockAllocator* allocator, uint32_t blockIndex) :
+				TMemoryPtrBase(offset, alignmentOffset, size, blockIndex),
 				m_ptr(ptr),
 				m_allocator(allocator)
 			{}
 
-			const TPtrType operator*() const { return Memory::GetAlignedPointer<TData, TPtrType>(*this); }
-			TPtrType operator*() { return Memory::GetAlignedPointer<TData, TPtrType>(*this); }
+			const TPtrType operator*() const { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
+			TPtrType operator*() { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
 
 			void Free() { m_allocator->Free(*this); }
 
 			virtual void Clear() override
 			{
-				TDataBase::Clear();
+				TMemoryPtrBase::Clear();
 				m_ptr = nullptr;
 				m_allocator = nullptr;
 			}
@@ -91,7 +87,7 @@ namespace Sailor::Memory
 			friend class TBlockAllocator<>;
 			friend class TBlockAllocator::MemoryBlock;
 
-			friend void Sailor::Memory::Free<TData, TPtrType, TGlobalAllocator>(TData& ptr, TGlobalAllocator* allocator);
+			friend void Sailor::Memory::Free<TMemoryPtr, TPtrType, TGlobalAllocator>(TMemoryPtr& ptr, TGlobalAllocator* allocator);
 		};
 
 		class MemoryBlock
@@ -106,7 +102,7 @@ namespace Sailor::Memory
 				m_owner(owner)
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
-				m_ptr = Sailor::Memory::Allocate<TData, TPtrType, TGlobalAllocator>(size, &m_owner->m_dataAllocator);
+				m_ptr = Sailor::Memory::Allocate<TMemoryPtr, TPtrType, TGlobalAllocator>(size, &m_owner->m_dataAllocator);
 				m_layout.reserve(blockSize / averageElementSize);
 			}
 
@@ -115,7 +111,7 @@ namespace Sailor::Memory
 				//std::cout << "Free Block " << (int32_t)m_size << std::endl;
 				if (m_blockIndex != InvalidIndex)
 				{
-					Sailor::Memory::Free<TData, TPtrType, TGlobalAllocator>(m_ptr, &m_owner->m_dataAllocator);
+					Sailor::Memory::Free<TMemoryPtr, TPtrType, TGlobalAllocator>(m_ptr, &m_owner->m_dataAllocator);
 				}
 
 				m_layout.clear();
@@ -139,7 +135,7 @@ namespace Sailor::Memory
 				memoryBlock.m_blockSize = 0;
 			}
 
-			TData Allocate(uint32_t layoutIndex, size_t size, uint32_t alignmentOffset)
+			TMemoryPtr Allocate(uint32_t layoutIndex, size_t size, uint32_t alignmentOffset)
 			{
 				//std::cout << "Acquire " << (int32_t)size << std::endl;
 				assert(layoutIndex != InvalidIndex);
@@ -159,7 +155,7 @@ namespace Sailor::Memory
 				RemoveSegmentation();
 
 				m_emptySpace -= (size + alignmentOffset);
-				return TData(offset, alignmentOffset, size, m_ptr.m_ptr, m_owner, m_blockIndex);
+				return TMemoryPtr(offset, alignmentOffset, size, m_ptr.m_ptr, m_owner, m_blockIndex);
 			}
 
 			void RemoveSegmentation()
@@ -177,7 +173,7 @@ namespace Sailor::Memory
 				}
 			}
 
-			void Free(TData& ptr)
+			void Free(TMemoryPtr& ptr)
 			{
 				//std::cout << "Release " << (int32_t)ptr.m_size << std::endl;
 
@@ -205,7 +201,7 @@ namespace Sailor::Memory
 				//std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.second > rhs.second; });
 				for (uint32_t i = 0; i != (uint32_t)m_layout.size(); i++)
 				{
-					if (Align(size, alignment, Memory::Shift(GetAlignedPointer<TData, TPtrType>(m_ptr), m_layout[i].first), m_layout[i].second, alignmentOffset))
+					if (Align(size, alignment, Memory::Shift(*m_ptr, m_layout[i].first), m_layout[i].second, alignmentOffset))
 					{
 						layoutIndex = i;
 						return true;
@@ -223,7 +219,7 @@ namespace Sailor::Memory
 
 		private:
 
-			TData m_ptr;
+			TMemoryPtr m_ptr;
 			size_t m_blockSize;
 			size_t m_emptySpace;
 			uint32_t m_blockIndex{ InvalidIndex };
@@ -239,13 +235,13 @@ namespace Sailor::Memory
 		TBlockAllocator& operator= (const TBlockAllocator&) = delete;
 
 		template<typename TDataType>
-		TData Allocate(uint32_t count)
+		TMemoryPtr Allocate(uint32_t count)
 		{
 			size_t size = count * sizeof(TDataType);
 			return Allocate(size, alignof(TDataType));
 		}
 
-		TData Allocate(size_t size, size_t alignment)
+		TMemoryPtr Allocate(size_t size, size_t alignment)
 		{
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;
@@ -264,7 +260,7 @@ namespace Sailor::Memory
 			return res;
 		}
 
-		void Free(TData& data)
+		void Free(TMemoryPtr& data)
 		{
 			if (data.m_ptr)
 			{
