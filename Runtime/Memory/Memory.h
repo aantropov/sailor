@@ -10,7 +10,7 @@
 
 namespace Sailor::Memory
 {
-	class HeapAllocator
+	class GlobalHeapAllocator
 	{
 	public:
 
@@ -19,7 +19,7 @@ namespace Sailor::Memory
 	};
 
 	template<uint32_t stackSize = 1024>
-	class StackAllocator
+	class GlobalStackAllocator
 	{
 	protected:
 		uint8_t m_stack[stackSize];
@@ -80,7 +80,7 @@ namespace Sailor::Memory
 		return Shift(pData.m_ptr, pData.m_offset);
 	}
 
-	template<typename TDataType, typename TPtrType, typename TBlockAllocator = HeapAllocator>
+	template<typename TDataType, typename TPtrType, typename TBlockAllocator = GlobalHeapAllocator>
 	TDataType Allocate(size_t size, TBlockAllocator* allocator)
 	{
 		TDataType newObj{};
@@ -88,7 +88,7 @@ namespace Sailor::Memory
 		return newObj;
 	}
 
-	template<typename TDataType, typename TPtrType, typename TBlockAllocator = HeapAllocator>
+	template<typename TDataType, typename TPtrType, typename TBlockAllocator = GlobalHeapAllocator>
 	void Free(TDataType& ptr, TBlockAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
@@ -96,12 +96,12 @@ namespace Sailor::Memory
 	}
 
 	template<typename TPtrType>
-	inline bool Align(size_t sizeToEmplace, const TPtrType& startPtr, size_t blockSize, uint32_t& alignmentOffset)
+	inline bool Align(size_t sizeToEmplace, size_t alignment, const TPtrType& startPtr, size_t blockSize, uint32_t& alignmentOffset)
 	{
 		uint8_t* ptr = GetAddress(startPtr);
 		void* alignedPtr = ptr;
 
-		if (std::align((size_t)OffsetAlignment<TPtrType>(startPtr), sizeToEmplace, alignedPtr, blockSize))
+		if (std::align(alignment, sizeToEmplace, alignedPtr, blockSize))
 		{
 			alignmentOffset = (uint32_t)(reinterpret_cast<uint8_t*>(alignedPtr) - ptr);
 			return true;

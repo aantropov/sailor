@@ -4,10 +4,11 @@
 
 namespace Sailor::Memory
 {
-	template<typename TPtrType = void*,
-		typename TGlobalAllocator = HeapAllocator,
+	template<typename TGlobalAllocator = GlobalHeapAllocator,
 		uint32_t blockSize = 1024,
-		uint32_t averageElementSize = 64>
+		uint32_t averageElementSize = 64,
+		typename TPtrType = void*>
+
 		class TBlockAllocator;
 
 	class TDataBase
@@ -51,7 +52,7 @@ namespace Sailor::Memory
 		friend class TBlockAllocator<>;
 	};
 
-	template<typename TPtrType, typename TGlobalAllocator, uint32_t blockSize, uint32_t averageElementSize>
+	template<typename TGlobalAllocator, uint32_t blockSize, uint32_t averageElementSize, typename TPtrType>
 	class TBlockAllocator
 	{
 	public:
@@ -194,7 +195,7 @@ namespace Sailor::Memory
 				ptr.Clear();
 			}
 
-			bool FindLocationInLayout(size_t size, uint32_t& layoutIndex, uint32_t& alignmentOffset)
+			bool FindLocationInLayout(size_t size, size_t alignment, uint32_t& layoutIndex, uint32_t& alignmentOffset)
 			{
 				if (size > m_emptySpace)
 				{
@@ -204,7 +205,7 @@ namespace Sailor::Memory
 				//std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.second > rhs.second; });
 				for (uint32_t i = 0; i != (uint32_t)m_layout.size(); i++)
 				{
-					if (Align(size, Memory::Shift(GetAlignedPointer<TData, TPtrType>(m_ptr), m_layout[i].first), m_layout[i].second, alignmentOffset))
+					if (Align(size, alignment, Memory::Shift(GetAlignedPointer<TData, TPtrType>(m_ptr), m_layout[i].first), m_layout[i].second, alignmentOffset))
 					{
 						layoutIndex = i;
 						return true;
@@ -237,12 +238,19 @@ namespace Sailor::Memory
 		TBlockAllocator(const TBlockAllocator&) = delete;
 		TBlockAllocator& operator= (const TBlockAllocator&) = delete;
 
-		TData Allocate(size_t size)
+		template<typename TPointer>
+		TData Allocate(uint32_t count)
+		{
+			size_t size = count * Memory::SizeOf<TPointer>();
+			return Allocate(size, alignof(std::remove_pointer(TPointer)));
+		}
+
+		TData Allocate(size_t size, size_t alignment)
 		{
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;
 			uint32_t alignmentOffset;
-			FindMemoryBlock(size, layoutIndex, blockLayoutIndex, alignmentOffset);
+			FindMemoryBlock(size, alignment, layoutIndex, blockLayoutIndex, alignmentOffset);
 
 			const auto blockIndex = m_layout[layoutIndex];
 			auto& block = m_blocks[blockIndex];
@@ -290,12 +298,12 @@ namespace Sailor::Memory
 			return occupation > border;
 		}
 
-		void FindMemoryBlock(size_t size, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex, uint32_t& outAlignedOffset)
+		void FindMemoryBlock(size_t size, size_t alignment, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex, uint32_t& outAlignedOffset)
 		{
 			for (int32_t index = (int32_t)(m_layout.size() - 1); index >= 0; index--)
 			{
 				auto& block = m_blocks[m_layout[index]];
-				if (block.FindLocationInLayout(size, outBlockLayoutIndex, outAlignedOffset))
+				if (block.FindLocationInLayout(size, alignment, outBlockLayoutIndex, outAlignedOffset))
 				{
 					outLayoutIndex = index;
 					return;
@@ -306,7 +314,7 @@ namespace Sailor::Memory
 			MemoryBlock block = MemoryBlock((size_t)max((uint32_t)size, (uint32_t)blockSize), this);
 			block.m_blockIndex = (uint32_t)m_blocks.size();
 			outLayoutIndex = (uint32_t)m_layout.size();
-			block.FindLocationInLayout(size, outBlockLayoutIndex, outAlignedOffset);
+			block.FindLocationInLayout(size, alignment, outBlockLayoutIndex, outAlignedOffset);
 			m_layout.push_back(block.m_blockIndex);
 			m_usedDataSpace += block.GetBlockSize();
 			m_blocks.push_back(std::move(block));

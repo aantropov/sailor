@@ -7,21 +7,21 @@
 using namespace Sailor;
 using namespace Sailor::Memory;
 
-void* HeapAllocator::Allocate(size_t size)
+void* GlobalHeapAllocator::Allocate(size_t size)
 {
 	return malloc(size);
 }
 
-void HeapAllocator::Free(void* pData, size_t size)
+void GlobalHeapAllocator::Free(void* pData, size_t size)
 {
 	free(pData);
 }
 
 void Sailor::Memory::TestPerformance()
 {
-//	std::vector<Memory::BlockAllocator::TBlockAllocator<uint32_t*, Memory::HeapAllocator, 512>::TData> currentObjs;
+	std::vector<Memory::TBlockAllocator<Memory::GlobalStackAllocator<256>, 64>> allocator;
 	
-//	return;
+	return;
 
 	static const uint32 IterationsCount = 10;
 	static const uint32 AllocationsCount = 1000000;
@@ -54,17 +54,17 @@ void Sailor::Memory::TestPerformance()
 	Utils::AccurateTimer allocaTimer;
 
 	{
-		std::vector<Memory::TBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096>::TData> currentObjs;
+		std::vector<Memory::TBlockAllocator<Memory::GlobalHeapAllocator, 4096>::TData> currentObjs;
 		currentObjs.resize(AllocationsCount);
 
 		heapTimer.Start();
 
 		for (int n = 0; n <= IterationsCount; ++n)
 		{
-			Memory::TBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096> heapAllocator;
+			Memory::TBlockAllocator<Memory::GlobalHeapAllocator, 4096> heapAllocator;
 
 			for (uint32 i = 0; i < objs.size(); ++i)
-				currentObjs[i] = heapAllocator.Allocate(objs[i].second);
+				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 0);
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				heapAllocator.Free(currentObjs[i]);
@@ -98,15 +98,15 @@ void Sailor::Memory::TestPerformance()
 
 	stackTimer.Start();
 	{
-		std::vector<Memory::TBlockAllocator<uint32_t*, Memory::StackAllocator<4096>>::TData> currentObjs;
+		std::vector<Memory::TBlockAllocator<Memory::GlobalStackAllocator<4096>>::TData> currentObjs;
 		currentObjs.resize(StackAllocationsCount);
 
 		for (int n = 0; n <= StackIterationsCount; ++n)
 		{
-			Memory::TBlockAllocator<uint32_t*, Memory::StackAllocator<4096>> stackAllocator;
+			Memory::TBlockAllocator<Memory::GlobalStackAllocator<4096>> stackAllocator;
 
 			for (uint32 i = 0; i < objs.size(); ++i)
-				currentObjs[i] = stackAllocator.Allocate(objs[i].second);
+				currentObjs[i] = stackAllocator.Allocate(objs[i].second, 0);
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				stackAllocator.Free(currentObjs[i]);
