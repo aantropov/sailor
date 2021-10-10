@@ -44,16 +44,40 @@ namespace Sailor::Memory
 		}
 	};
 
-	template<typename TDataType, typename TPtrType>
-	void GetAddress(TDataType& pData, TPtrType& outPtr)
+	template<typename TPtrType>
+	inline uint8_t* GetAddress(TPtrType ptr)
 	{
-		outPtr = reinterpret_cast<TPtrType>(&(((uint8_t*)(pData.m_ptr))[pData.m_offset]));
+		return reinterpret_cast<uint8_t*>(ptr);
 	}
 
 	template<typename TPtrType>
-	size_t Size(TPtrType from)
+	inline TPtrType Shift(const TPtrType& ptr, size_t offset)
 	{
-		return sizeof(*from);
+		return reinterpret_cast<TPtrType>(&(GetAddress(ptr)[offset]));
+	}
+
+	template<typename TPtrType>
+	inline uint32_t SizeOf()
+	{
+		return sizeof(typename std::remove_pointer<TPtrType>::type);
+	}
+
+	template<typename TPtrType>
+	inline uint32_t OffsetAlignment(TPtrType from)
+	{
+		return alignof(typename std::remove_pointer<TPtrType>::type);
+	}
+
+	template<typename TDataType, typename TPtrType>
+	inline TPtrType GetAlignedPointer(TDataType& pData)
+	{
+		return Shift(pData.m_ptr, pData.m_offset + pData.m_alignmentOffset);
+	}
+
+	template<typename TDataType, typename TPtrType>
+	inline TPtrType GetPointer(TDataType& pData)
+	{
+		return Shift(pData.m_ptr, pData.m_offset);
 	}
 
 	template<typename TDataType, typename TPtrType, typename TAllocator = HeapAllocator>
@@ -69,6 +93,20 @@ namespace Sailor::Memory
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
 		ptr.Clear();
+	}
+
+	template<typename TPtrType>
+	inline bool Align(size_t sizeToEmplace, const TPtrType& startPtr, size_t blockSize, uint32_t& alignmentOffset)
+	{
+		uint8_t* ptr = GetAddress(startPtr);
+		void* alignedPtr = ptr;
+
+		if (std::align((size_t)OffsetAlignment<TPtrType>(startPtr), sizeToEmplace, alignedPtr, blockSize))
+		{
+			alignmentOffset = (uint32_t)(reinterpret_cast<uint8_t*>(alignedPtr) - ptr);
+			return true;
+		}
+		return false;
 	}
 
 	void SAILOR_API TestPerformance();

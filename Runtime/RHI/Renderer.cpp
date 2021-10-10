@@ -3,6 +3,9 @@
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "GfxDevice/Vulkan/VulkanDevice.h"
 #include "JobSystem/JobSystem.h"
+#include "Memory/MemoryBlockAllocator.hpp"
+#include "GfxDevice/Vulkan/VulkanDeviceMemory.h"
+#include "GfxDevice/Vulkan/VulkanMemory.hpp"
 
 using namespace Sailor;
 
@@ -18,6 +21,12 @@ void Renderer::Initialize(Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	m_pInstance->m_pViewport = pViewport;
 
 	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
+	/*
+	Memory::TMemoryBlockAllocator<Memory::VulkanDeviceMemoryPtr, Memory::VulkanStagingAllocator, 1024, 128> allocator;
+	auto a = allocator.Allocate(512);
+	a.Free();
+	auto b = allocator.Allocate(513);
+	*/
 }
 
 Renderer::~Renderer()
@@ -58,7 +67,7 @@ bool Renderer::PushFrame(const FrameState& frame)
 		{
 			static Utils::AccurateTimer timer;
 			static uint32_t totalFramesCount = 0U;
-			
+
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
 			timer.Start();

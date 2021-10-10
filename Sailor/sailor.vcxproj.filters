@@ -204,6 +204,9 @@
     <ClInclude Include="..\Runtime\Memory\MemoryBlockAllocator.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.hpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

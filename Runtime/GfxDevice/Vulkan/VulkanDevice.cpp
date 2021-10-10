@@ -118,6 +118,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 
 	// Cache memory requirements
 	{
+		m_minUboOffsetAlignment = properties.limits.minUniformBufferOffsetAlignment;
 		TRefPtr<VulkanBuffer> stagingBuffer = TRefPtr<VulkanBuffer>::Make(TRefPtr<VulkanDevice>(this),
 			1024,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
