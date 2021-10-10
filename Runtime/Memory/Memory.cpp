@@ -17,11 +17,23 @@ void GlobalHeapAllocator::Free(void* pData, size_t size)
 	free(pData);
 }
 
+struct Allignment
+{
+	uint64_t test;
+	uint64_t test2;
+	uint64_t test3;
+};
 void Sailor::Memory::TestPerformance()
 {
-	std::vector<Memory::TBlockAllocator<Memory::GlobalStackAllocator<256>, 64>> allocator;
+	/*
+	Memory::TBlockAllocator<Memory::GlobalStackAllocator<256>, 64, 4> allocator;
 	
-	return;
+	auto b = allocator.Allocate(1, 1);
+	memset(*b, 2, b.m_size);
+
+	auto c = allocator.Allocate(sizeof(Allignment), 1);
+	memset(*c, 3, c.m_size);
+	*/
 
 	static const uint32 IterationsCount = 10;
 	static const uint32 AllocationsCount = 1000000;
@@ -64,7 +76,7 @@ void Sailor::Memory::TestPerformance()
 			Memory::TBlockAllocator<Memory::GlobalHeapAllocator, 4096> heapAllocator;
 
 			for (uint32 i = 0; i < objs.size(); ++i)
-				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 0);
+				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 1);
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				heapAllocator.Free(currentObjs[i]);
@@ -106,7 +118,7 @@ void Sailor::Memory::TestPerformance()
 			Memory::TBlockAllocator<Memory::GlobalStackAllocator<4096>> stackAllocator;
 
 			for (uint32 i = 0; i < objs.size(); ++i)
-				currentObjs[i] = stackAllocator.Allocate(objs[i].second, 0);
+				currentObjs[i] = stackAllocator.Allocate(objs[i].second, 1);
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				stackAllocator.Free(currentObjs[i]);

@@ -199,7 +199,7 @@ namespace Sailor::Memory
 			{
 				if (size > m_emptySpace)
 				{
-					return InvalidIndex;
+					return false;
 				}
 
 				//std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.second > rhs.second; });
@@ -238,11 +238,11 @@ namespace Sailor::Memory
 		TBlockAllocator(const TBlockAllocator&) = delete;
 		TBlockAllocator& operator= (const TBlockAllocator&) = delete;
 
-		template<typename TPointer>
+		template<typename TDataType>
 		TData Allocate(uint32_t count)
 		{
-			size_t size = count * Memory::SizeOf<TPointer>();
-			return Allocate(size, alignof(std::remove_pointer(TPointer)));
+			size_t size = count * sizeof(TDataType);
+			return Allocate(size, alignof(TDataType));
 		}
 
 		TData Allocate(size_t size, size_t alignment)
