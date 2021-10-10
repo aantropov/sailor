@@ -2,6 +2,7 @@
 #include "VulkanApi.h"
 #include <vulkan/vulkan.h>
 #include "RHI/RHIResource.h"
+#include "VulkanMemory.hpp"
 
 namespace Sailor::GfxDevice::Vulkan
 {
@@ -26,6 +27,7 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual void Compile() override;
 		virtual void Release() override;
 
+		VkResult Bind(Memory::VulkanDeviceMemoryPtr ptr);
 		VkResult Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset);
 		VkMemoryRequirements GetMemoryRequirements() const;
 

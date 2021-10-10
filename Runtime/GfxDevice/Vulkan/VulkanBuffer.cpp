@@ -63,6 +63,11 @@ VkMemoryRequirements VulkanBuffer::GetMemoryRequirements() const
 	return memRequirements;
 }
 
+VkResult VulkanBuffer::Bind(Memory::VulkanDeviceMemoryPtr ptr)
+{
+	return Bind(ptr.m_deviceMemory, ptr.m_offset);
+}
+
 VkResult VulkanBuffer::Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset)
 {
 	VkResult result = vkBindBufferMemory(*m_device, m_buffer, *deviceMemory, memoryOffset);

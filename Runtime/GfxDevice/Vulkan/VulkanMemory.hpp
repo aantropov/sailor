@@ -74,7 +74,7 @@ namespace Sailor::Memory
 	}
 
 	template<>
-	VulkanDeviceMemoryPtr GetPointer<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& pStartBlock, size_t offset, size_t size)
+	inline VulkanDeviceMemoryPtr GetPointer<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& pStartBlock, size_t offset, size_t size)
 	{
 		VulkanDeviceMemoryPtr ptr(pStartBlock);
 		ptr.m_offset = offset;
@@ -83,7 +83,7 @@ namespace Sailor::Memory
 	}
 
 	template<>
-	VulkanDeviceMemoryPtr Shift<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& ptr, size_t offset)
+	inline VulkanDeviceMemoryPtr Shift<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& ptr, size_t offset)
 	{
 		VulkanDeviceMemoryPtr memPtr(ptr);
 		memPtr.m_offset += offset;
@@ -91,19 +91,19 @@ namespace Sailor::Memory
 	}
 
 	template<>
-	uint32_t SizeOf<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& ptr)
+	inline uint32_t SizeOf<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& ptr)
 	{
 		return (uint32_t)ptr.m_size;
 	}
 
 	template<>
-	uint32_t OffsetAlignment<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& from)
+	inline uint32_t OffsetAlignment<VulkanDeviceMemoryPtr>(const VulkanDeviceMemoryPtr& from)
 	{
 		return (uint32_t)from.m_deviceMemory->GetMemoryRequirements().alignment;
 	}
 
 	template<>
-	uint8_t* GetAddress<VulkanDeviceMemoryPtr>(VulkanDeviceMemoryPtr ptr)
+	inline uint8_t* GetAddress<VulkanDeviceMemoryPtr>(VulkanDeviceMemoryPtr ptr)
 	{
 		return nullptr;
 	}

@@ -5,7 +5,6 @@
 #include "JobSystem/JobSystem.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "GfxDevice/Vulkan/VulkanDeviceMemory.h"
-#include "GfxDevice/Vulkan/VulkanMemory.hpp"
 
 using namespace Sailor;
 
