@@ -80,16 +80,16 @@ namespace Sailor::Memory
 		return Shift(pData.m_ptr, pData.m_offset);
 	}
 
-	template<typename TDataType, typename TPtrType, typename TAllocator = HeapAllocator>
-	TDataType Allocate(size_t size, TAllocator* allocator)
+	template<typename TDataType, typename TPtrType, typename TBlockAllocator = HeapAllocator>
+	TDataType Allocate(size_t size, TBlockAllocator* allocator)
 	{
 		TDataType newObj{};
 		newObj.m_ptr = static_cast<TPtrType>(allocator->Allocate(size));
 		return newObj;
 	}
 
-	template<typename TDataType, typename TPtrType, typename TAllocator = HeapAllocator>
-	void Free(TDataType& ptr, TAllocator* allocator)
+	template<typename TDataType, typename TPtrType, typename TBlockAllocator = HeapAllocator>
+	void Free(TDataType& ptr, TBlockAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
 		ptr.Clear();

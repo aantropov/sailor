@@ -67,7 +67,7 @@ namespace Sailor::Memory
 		return from->GetMemoryRequirements().size;
 	}
 
-	template<typename TDataType, typename TPtrType = VulkanDeviceMemoryPtr, typename TAllocator = VulkanStagingAllocator>
+	template<typename TDataType, typename TPtrType = VulkanDeviceMemoryPtr, typename TBlockAllocator = VulkanStagingAllocator>
 	TDataType Allocate(size_t size, VulkanStagingAllocator* allocator)
 	{
 		TDataType newObj{};
@@ -75,7 +75,7 @@ namespace Sailor::Memory
 		return newObj;
 	}
 
-	template<typename TDataType, typename TPtrType = VulkanDeviceMemoryPtr, typename TAllocator = VulkanStagingAllocator>
+	template<typename TDataType, typename TPtrType = VulkanDeviceMemoryPtr, typename TBlockAllocator = VulkanStagingAllocator>
 	void Free(TDataType& ptr, VulkanStagingAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);

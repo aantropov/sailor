@@ -19,6 +19,10 @@ void HeapAllocator::Free(void* pData, size_t size)
 
 void Sailor::Memory::TestPerformance()
 {
+//	std::vector<Memory::BlockAllocator::TBlockAllocator<uint32_t*, Memory::HeapAllocator, 512>::TData> currentObjs;
+	
+//	return;
+
 	static const uint32 IterationsCount = 10;
 	static const uint32 AllocationsCount = 1000000;
 	static const uint32 AllocatorSize = 1024 * 1024 * 32;
@@ -50,14 +54,14 @@ void Sailor::Memory::TestPerformance()
 	Utils::AccurateTimer allocaTimer;
 
 	{
-		std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096>::TData> currentObjs;
+		std::vector<Memory::TBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096>::TData> currentObjs;
 		currentObjs.resize(AllocationsCount);
 
 		heapTimer.Start();
 
 		for (int n = 0; n <= IterationsCount; ++n)
 		{
-			Memory::TMemoryBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096> heapAllocator;
+			Memory::TBlockAllocator<uint32_t*, Memory::HeapAllocator, 4096> heapAllocator;
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = heapAllocator.Allocate(objs[i].second);
@@ -94,12 +98,12 @@ void Sailor::Memory::TestPerformance()
 
 	stackTimer.Start();
 	{
-		std::vector<Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>>::TData> currentObjs;
+		std::vector<Memory::TBlockAllocator<uint32_t*, Memory::StackAllocator<4096>>::TData> currentObjs;
 		currentObjs.resize(StackAllocationsCount);
 
 		for (int n = 0; n <= StackIterationsCount; ++n)
 		{
-			Memory::TMemoryBlockAllocator<uint32_t*, Memory::StackAllocator<4096>> stackAllocator;
+			Memory::TBlockAllocator<uint32_t*, Memory::StackAllocator<4096>> stackAllocator;
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = stackAllocator.Allocate(objs[i].second);
