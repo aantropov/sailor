@@ -20,6 +20,9 @@ void Renderer::Initialize(Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	m_pInstance->m_pViewport = pViewport;
 
 	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
+	auto instance = GfxDevice::Vulkan::VulkanApi::GetInstance();
+	instance->GetMainDevice()->CreateVertexBuffer();
+	instance->GetMainDevice()->CreateGraphicsPipeline();
 }
 
 Renderer::~Renderer()

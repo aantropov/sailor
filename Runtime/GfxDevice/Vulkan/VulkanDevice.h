@@ -96,6 +96,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API ThreadContext& GetThreadContext();
 
+		SAILOR_API void CreateGraphicsPipeline();
+		SAILOR_API void CreateVertexBuffer();
+
 	protected:
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
@@ -104,13 +107,11 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateWin32Surface(const Win32::Window* pViewport);
 		SAILOR_API void CreateSwapchain(const Win32::Window* pViewport);
 		SAILOR_API bool RecreateSwapchain(const Win32::Window* pViewport);
-		SAILOR_API void CreateGraphicsPipeline();
 		SAILOR_API void CreateRenderPass();
 		SAILOR_API void CreateFramebuffers();
 		SAILOR_API void CreateCommandBuffers();
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
-		SAILOR_API void CreateVertexBuffer();
 
 		float m_maxAllowedAnisotropy = 0;
 		VkSampleCountFlagBits m_maxAllowedMsaaSamples = VK_SAMPLE_COUNT_1_BIT;

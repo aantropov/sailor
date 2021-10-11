@@ -135,8 +135,6 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	// Create graphics
 	CreateRenderPass();
 	CreateFramebuffers();
-	CreateGraphicsPipeline();
-	CreateVertexBuffer();
 	CreateCommandBuffers();
 	CreateFrameSyncSemaphores();
 
