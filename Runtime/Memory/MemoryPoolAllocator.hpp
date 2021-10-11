@@ -4,8 +4,10 @@
 
 namespace Sailor::Memory
 {
-	template<typename TGlobalAllocator, uint32_t blockSize, uint32_t averageElementSize, typename TPtr>
-	class TBlockAllocator
+	class TPoolAllocatorBase {};
+
+	template<typename TGlobalAllocator, typename TPtr>
+	class TPoolAllocator : public TPoolAllocatorBase
 	{
 	public:
 
@@ -13,21 +15,19 @@ namespace Sailor::Memory
 		{
 		public:
 
-			MemoryBlock(size_t size, TBlockAllocator* owner) :
+			MemoryBlock(size_t size, TPoolAllocator* owner) :
 				m_blockSize(size),
 				m_emptySpace(size),
 				m_layout({ {0, size} }),
 				m_blockIndex(InvalidIndex),
 				m_owner(owner)
 			{
-				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
 				m_ptr = Sailor::Memory::Allocate<TMemoryPtr<TPtr>, TPtr, TGlobalAllocator>(size, &m_owner->m_dataAllocator);
-				m_layout.reserve(m_blockSize / averageElementSize);
+				m_layout.reserve(4);
 			}
 
 			~MemoryBlock()
 			{
-				//std::cout << "Free Block " << (int32_t)m_size << std::endl;
 				if (m_blockIndex != InvalidIndex)
 				{
 					Sailor::Memory::Free<TMemoryPtr<TPtr>, TPtr, TGlobalAllocator>(m_ptr, &m_owner->m_dataAllocator);
@@ -56,7 +56,6 @@ namespace Sailor::Memory
 
 			TMemoryPtr<TPtr> Allocate(uint32_t layoutIndex, size_t size, uint32_t alignmentOffset)
 			{
-				//std::cout << "Acquire " << (int32_t)size << std::endl;
 				assert(layoutIndex != InvalidIndex);
 
 				auto& emptySpace = m_layout[layoutIndex];
@@ -99,8 +98,6 @@ namespace Sailor::Memory
 
 			void Free(TMemoryPtr<TPtr>& ptr)
 			{
-				//std::cout << "Release " << (int32_t)ptr.m_size << std::endl;
-
 				if (!ptr.m_ptr)
 				{
 					return;
@@ -122,7 +119,6 @@ namespace Sailor::Memory
 					return false;
 				}
 
-				//std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.second > rhs.second; });
 				for (uint32_t i = 0; i != (uint32_t)m_layout.size(); i++)
 				{
 					if (Align(size, alignment, Memory::Shift(*m_ptr, m_layout[i].first), m_layout[i].second, alignmentOffset))
@@ -147,26 +143,30 @@ namespace Sailor::Memory
 			size_t m_blockSize;
 			size_t m_emptySpace;
 			uint32_t m_blockIndex{ InvalidIndex };
-			TBlockAllocator* m_owner;
+			TPoolAllocator* m_owner;
 
 			std::vector<std::pair<size_t, size_t>> m_layout;
 
-			friend class TBlockAllocator;
+			friend class TPoolAllocator;
 		};
 
-		TBlockAllocator() = default;
-		TBlockAllocator(const TBlockAllocator&) = delete;
-		TBlockAllocator& operator= (const TBlockAllocator&) = delete;
+		TPoolAllocator(size_t startBlockSize = 4, size_t elementSize = 1) : m_startBlockSize(startBlockSize), m_elementSize(elementSize) {}
+		TPoolAllocator(const TPoolAllocator&) = delete;
+		TPoolAllocator& operator= (const TPoolAllocator&) = delete;
 
 		template<typename TDataType>
 		TMemoryPtr<TPtr> Allocate(uint32_t count)
 		{
+			assert(sizeof(TDataType) == m_elementSize);
+
 			size_t size = count * sizeof(TDataType);
 			return Allocate(size, alignof(TDataType));
 		}
 
 		TMemoryPtr<TPtr> Allocate(size_t size, size_t alignment)
 		{
+			assert(size % m_elementSize == 0);
+
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;
 			uint32_t alignmentOffset;
@@ -176,7 +176,7 @@ namespace Sailor::Memory
 			auto& block = m_blocks[blockIndex];
 			auto res = block.Allocate(blockLayoutIndex, size, alignmentOffset);
 
-			if (HeuristicToSkipBlocks(block.GetOccupation()))
+			if (block.IsEmpty())
 			{
 				std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
 				m_layout.pop_back();
@@ -189,18 +189,15 @@ namespace Sailor::Memory
 			if (data.m_ptr)
 			{
 				const uint32_t index = data.m_blockIndex;
-				const float prevOccupation = m_blocks[index].GetOccupation();
-				m_blocks[index].Free(data);
-				const float currentOccupation = m_blocks[index].GetOccupation();
-
-				if (HeuristicToSkipBlocks(prevOccupation) && !HeuristicToSkipBlocks(currentOccupation))
+				if (!m_blocks[index].IsFull())
 				{
 					m_layout.push_back(index);
 				}
+				m_blocks[index].Free(data);
 			}
 		}
 
-		virtual ~TBlockAllocator()
+		virtual ~TPoolAllocator()
 		{
 			m_blocks.clear();
 			m_layout.clear();
@@ -211,12 +208,6 @@ namespace Sailor::Memory
 	private:
 
 		static constexpr uint32_t InvalidIndex = (uint32_t)-1;
-
-		bool HeuristicToSkipBlocks(float occupation) const
-		{
-			const float border = 1.0f - (float)averageElementSize / blockSize;
-			return occupation > border;
-		}
 
 		void FindMemoryBlock(size_t size, size_t alignment, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex, uint32_t& outAlignedOffset)
 		{
@@ -231,7 +222,7 @@ namespace Sailor::Memory
 			}
 
 			// Create new block
-			MemoryBlock block = MemoryBlock((size_t)max((uint32_t)size, (uint32_t)blockSize), this);
+			MemoryBlock block = MemoryBlock((size_t)max((uint32_t)size, (uint32_t)(m_startBlockSize * pow(2, m_blocks.size()))), this);
 			block.m_blockIndex = (uint32_t)m_blocks.size();
 			outLayoutIndex = (uint32_t)m_layout.size();
 			block.FindLocationInLayout(size, alignment, outBlockLayoutIndex, outAlignedOffset);
@@ -253,6 +244,8 @@ namespace Sailor::Memory
 
 		TGlobalAllocator m_dataAllocator;
 
+		size_t m_startBlockSize;
+		size_t m_elementSize = 1;
 		size_t m_usedDataSpace = 0;
 		std::vector<MemoryBlock> m_blocks;
 		std::vector<uint32_t> m_layout;

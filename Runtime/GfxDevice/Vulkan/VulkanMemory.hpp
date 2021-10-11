@@ -63,7 +63,7 @@ namespace Sailor::Memory
 		}
 	};
 
-	template<typename TDataType, typename TPtrType = VulkanDeviceMemoryPtr>
+	template<typename TDataType, typename TPtr = VulkanDeviceMemoryPtr>
 	inline VulkanDeviceMemoryPtr GetPointer(TDataType& pData)
 	{
 		VulkanDeviceMemoryPtr ptr(pData.m_ptr);
@@ -108,7 +108,7 @@ namespace Sailor::Memory
 		return nullptr;
 	}
 
-	template<typename TMemoryPtr, typename TPtrType = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanHostAllocator>
+	template<typename TMemoryPtr, typename TPtr = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanHostAllocator>
 	TMemoryPtr Allocate(size_t size, GlobalVulkanHostAllocator* allocator)
 	{
 		TMemoryPtr newObj{};
@@ -116,7 +116,7 @@ namespace Sailor::Memory
 		return newObj;
 	}
 
-	template<typename TMemoryPtr, typename TPtrType = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanHostAllocator>
+	template<typename TMemoryPtr, typename TPtr = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanHostAllocator>
 	void Free(TMemoryPtr& ptr, GlobalVulkanHostAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);

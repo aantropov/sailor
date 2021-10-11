@@ -744,13 +744,14 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDe
 TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
 	Memory::TBlockAllocator<Memory::GlobalVulkanHostAllocator, 2048, 128, Memory::VulkanDeviceMemoryPtr> allocator;
-	auto data = allocator.Allocate(size, 1);
+	allocator.Allocate(168, 8);
+	auto data = allocator.Allocate(size, 16);
 
 	TRefPtr<VulkanBuffer> stagingBuffer = TRefPtr<VulkanBuffer>::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
 	stagingBuffer->Bind(*data);
 
-	stagingBuffer->GetMemoryDevice()->Copy(data.m_offset, data.m_size, pData);
+	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, data.m_size, pData);
 
 	TRefPtr<VulkanBuffer> resBuffer = VulkanApi::CreateBuffer(
 		device,
@@ -761,7 +762,7 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> de
 
 	VulkanApi::CopyBuffer_Immediate(device, stagingBuffer, resBuffer, size);
 
-	data.Free();
+	allocator.Free(data);
 	return resBuffer;
 }
 
