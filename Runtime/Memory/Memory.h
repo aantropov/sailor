@@ -52,6 +52,9 @@ namespace Sailor::Memory
 	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
 	class TMultiPoolAllocator;
 
+	template<typename TPtr = void*>
+	class TMemoryPtr;
+
 	template<typename TPtr>
 	inline uint8_t* GetAddress(TPtr ptr)
 	{
@@ -111,7 +114,7 @@ namespace Sailor::Memory
 		return false;
 	}
 
-	template<typename TPtr = void*>
+	template<typename TPtr>
 	class TMemoryPtr
 	{
 	public:

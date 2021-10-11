@@ -207,6 +207,12 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.hpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\MemoryPoolAllocator.hpp">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\MemoryMultiPoolAllocator.hpp">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

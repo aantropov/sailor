@@ -218,6 +218,8 @@
     <ClInclude Include="..\Runtime\Math\Math.h" />
     <ClInclude Include="..\Runtime\Memory\Memory.h" />
     <ClInclude Include="..\Runtime\Memory\MemoryBlockAllocator.hpp" />
+    <ClInclude Include="..\Runtime\Memory\MemoryMultiPoolAllocator.hpp" />
+    <ClInclude Include="..\Runtime\Memory\MemoryPoolAllocator.hpp" />
     <ClInclude Include="..\Runtime\Platform\Win32\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Input.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Window.h" />

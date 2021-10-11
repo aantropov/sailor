@@ -35,13 +35,14 @@ void Sailor::Memory::TestPerformance()
 
 	for (uint32 i = 0; i < objs.size(); ++i)
 	{
-		objs[i].second = MaxSize;// rand() % MaxSize + 1;
+		objs[i].second = rand() % MaxSize + 1;
 		sumSize += objs[i].second;
 	}
 
 	printf("Total alloc memory size: %.2f Mb\n\n", (float)((double)(sumSize / 1024) / 1024.0));
 
 	Utils::AccurateTimer poolAllocatorTimer;
+	Utils::AccurateTimer multiPoolAllocatorTimer;
 	Utils::AccurateTimer blockAllocatorTimer;
 	Utils::AccurateTimer mallocTimer;
 
@@ -79,11 +80,31 @@ void Sailor::Memory::TestPerformance()
 		std::vector<Memory::TMemoryPtr<void*>> currentObjs;
 		currentObjs.resize(AllocationsCount);
 
-		poolAllocatorTimer.Start();
+		multiPoolAllocatorTimer.Start();
 
 		for (int n = 0; n <= IterationsCount; ++n)
 		{
 			Memory::TMultiPoolAllocator heapAllocator;
+
+			for (uint32 i = 0; i < objs.size(); ++i)
+				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 1);
+
+			for (uint32 i = 0; i < objs.size(); ++i)
+				heapAllocator.Free(currentObjs[i]);
+		}
+
+		multiPoolAllocatorTimer.Stop();
+	}
+
+	{
+		std::vector<Memory::TMemoryPtr<void*>> currentObjs;
+		currentObjs.resize(AllocationsCount);
+
+		poolAllocatorTimer.Start();
+
+		for (int n = 0; n <= IterationsCount; ++n)
+		{
+			Memory::TPoolAllocator heapAllocator(4096, 32);
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 1);
@@ -98,4 +119,5 @@ void Sailor::Memory::TestPerformance()
 	printf("mallocAllocator %lld ms\n", mallocTimer.ResultAccumulatedMs());
 	printf("blockAllocator %lld ms\n", blockAllocatorTimer.ResultAccumulatedMs());
 	printf("poolAllocator %lld ms\n", poolAllocatorTimer.ResultAccumulatedMs());
+	printf("multiPoolAllocator %lld ms\n", multiPoolAllocatorTimer.ResultAccumulatedMs());
 }

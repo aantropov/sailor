@@ -152,12 +152,14 @@ namespace Sailor::Memory
 
 		TPoolAllocator(size_t startBlockSize = 4, size_t elementSize = 1) : m_startBlockSize(startBlockSize), m_elementSize(elementSize) {}
 		TPoolAllocator(const TPoolAllocator&) = delete;
+		TPoolAllocator(TPoolAllocator&&) = default;
 		TPoolAllocator& operator= (const TPoolAllocator&) = delete;
+		TPoolAllocator& operator= (TPoolAllocator&&) = default;
 
 		template<typename TDataType>
 		TMemoryPtr<TPtr> Allocate(uint32_t count)
 		{
-			assert(sizeof(TDataType) == m_elementSize);
+			//assert(sizeof(TDataType) == m_elementSize);
 
 			size_t size = count * sizeof(TDataType);
 			return Allocate(size, alignof(TDataType));
@@ -165,7 +167,7 @@ namespace Sailor::Memory
 
 		TMemoryPtr<TPtr> Allocate(size_t size, size_t alignment)
 		{
-			assert(size % m_elementSize == 0);
+			//assert(size % m_elementSize == 0);
 
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;
