@@ -52,11 +52,20 @@ void Sailor::Memory::TestPerformance()
 	{
 		for (uint32 i = 0; i < objs.size(); ++i)
 			objs[i].first = malloc(objs[i].second);
+
+		mallocTimer.Stop();
+
+		std::random_device rd;
+		std::mt19937 g(rd());
+		//std::shuffle(objs.begin(), objs.end(), g);
+
+		mallocTimer.Start();
 		for (uint32 i = 0; i < objs.size(); ++i)
 			free(objs[i].first);
 	}
 	mallocTimer.Stop();
 
+	size_t maxSizeBlock = 0;
 	{
 		std::vector<Memory::TMemoryPtr<void*>> currentObjs;
 		currentObjs.resize(AllocationsCount);
@@ -72,9 +81,11 @@ void Sailor::Memory::TestPerformance()
 
 			blockAllocatorTimer.Stop();
 
+			maxSizeBlock = heapAllocator.GetOccupiedSpace();
+
 			std::random_device rd;
 			std::mt19937 g(rd());
-		//	std::shuffle(currentObjs.begin(), currentObjs.end(), g);
+			//std::shuffle(currentObjs.begin(), currentObjs.end(), g);
 
 			blockAllocatorTimer.Start();
 
@@ -102,7 +113,7 @@ void Sailor::Memory::TestPerformance()
 
 			std::random_device rd;
 			std::mt19937 g(rd());
-			std::shuffle(currentObjs.begin(), currentObjs.end(), g);
+			//std::shuffle(currentObjs.begin(), currentObjs.end(), g);
 
 			multiPoolAllocatorTimer.Start();
 
@@ -112,10 +123,11 @@ void Sailor::Memory::TestPerformance()
 
 		multiPoolAllocatorTimer.Stop();
 	}
+
+	size_t maxSizePool = 0;
 	{
 		std::vector<Memory::TMemoryPtr<void*>> currentObjs;
 		currentObjs.resize(AllocationsCount);
-
 
 		for (int n = 0; n <= IterationsCount; ++n)
 		{
@@ -125,6 +137,8 @@ void Sailor::Memory::TestPerformance()
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 1);
+
+			maxSizePool = std::max(maxSizePool, heapAllocator.GetOccupiedSpace());
 
 			poolAllocatorTimer.Stop();
 
@@ -142,7 +156,7 @@ void Sailor::Memory::TestPerformance()
 	}
 
 	printf("mallocAllocator %lld ms\n", mallocTimer.ResultAccumulatedMs());
-	printf("blockAllocator %lld ms\n", blockAllocatorTimer.ResultAccumulatedMs());
-	printf("poolAllocator %lld ms\n", poolAllocatorTimer.ResultAccumulatedMs());
+	printf("blockAllocator %lld ms, total space %lld kb \n", blockAllocatorTimer.ResultAccumulatedMs(), maxSizeBlock / 1024);
+	printf("poolAllocator %lld ms, total space %lld kb \n", poolAllocatorTimer.ResultAccumulatedMs(), maxSizePool / 1024);
 	printf("multiPoolAllocator %lld ms\n", multiPoolAllocatorTimer.ResultAccumulatedMs());
 }
