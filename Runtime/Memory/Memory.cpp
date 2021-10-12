@@ -57,7 +57,7 @@ void Sailor::Memory::TestPerformance()
 
 		std::random_device rd;
 		std::mt19937 g(rd());
-		//std::shuffle(objs.begin(), objs.end(), g);
+		std::shuffle(objs.begin(), objs.end(), g);
 
 		mallocTimer.Start();
 		for (uint32 i = 0; i < objs.size(); ++i)
@@ -74,7 +74,7 @@ void Sailor::Memory::TestPerformance()
 
 		for (int n = 0; n <= IterationsCount; ++n)
 		{
-			Memory::TBlockAllocator<Memory::GlobalHeapAllocator> heapAllocator(1024, 32);
+			Memory::TBlockAllocator<Memory::GlobalHeapAllocator> heapAllocator(2048, 32);
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 1);
@@ -85,7 +85,7 @@ void Sailor::Memory::TestPerformance()
 
 			std::random_device rd;
 			std::mt19937 g(rd());
-			//std::shuffle(currentObjs.begin(), currentObjs.end(), g);
+			std::shuffle(currentObjs.begin(), currentObjs.end(), g);
 
 			blockAllocatorTimer.Start();
 
@@ -113,7 +113,7 @@ void Sailor::Memory::TestPerformance()
 
 			std::random_device rd;
 			std::mt19937 g(rd());
-			//std::shuffle(currentObjs.begin(), currentObjs.end(), g);
+			std::shuffle(currentObjs.begin(), currentObjs.end(), g);
 
 			multiPoolAllocatorTimer.Start();
 
@@ -144,7 +144,7 @@ void Sailor::Memory::TestPerformance()
 
 			std::random_device rd;
 			std::mt19937 g(rd());
-			//std::shuffle(currentObjs.begin(), currentObjs.end(), g);
+			std::shuffle(currentObjs.begin(), currentObjs.end(), g);
 
 			poolAllocatorTimer.Start();
 

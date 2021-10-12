@@ -189,7 +189,7 @@ namespace Sailor::Memory
 			friend class TPoolAllocator;
 		};
 
-		TPoolAllocator(size_t startBlockSize = 4, size_t elementSize = 1) : m_startBlockSize(startBlockSize), m_elementSize(elementSize) {}
+		TPoolAllocator(size_t startBlockSize = 128, size_t elementSize = 32) : m_startBlockSize(startBlockSize), m_elementSize(elementSize) {}
 		TPoolAllocator(const TPoolAllocator&) = delete;
 		TPoolAllocator(TPoolAllocator&&) = default;
 		TPoolAllocator& operator= (const TPoolAllocator&) = delete;
@@ -287,7 +287,7 @@ namespace Sailor::Memory
 		bool HeuristicToMarkBlockDead(size_t blockSize, size_t segmentation) const
 		{
 			// Directly affects memory overhead & deallocation cost
-			const uint32_t highSegmentation = 32000;
+			const uint32_t highSegmentation = 10000;
 			return segmentation > highSegmentation;
 		}
 

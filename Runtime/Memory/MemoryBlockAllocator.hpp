@@ -133,7 +133,6 @@ namespace Sailor::Memory
 					return false;
 				}
 
-				//std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.second > rhs.second; });
 				for (uint32_t i = 0; i != (uint32_t)m_layout.size(); i++)
 				{
 					if (Align(size, alignment, Memory::Shift(*m_ptr, m_layout[i].first), m_layout[i].second, alignmentOffset))
