@@ -43,7 +43,7 @@ namespace Sailor::Memory
 		}
 	};
 
-	template<typename TGlobalAllocator = GlobalHeapAllocator, uint32_t blockSize = 1024, uint32_t averageElementSize = 64, typename TPtr = void*>
+	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
 	class TBlockAllocator;
 
 	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>

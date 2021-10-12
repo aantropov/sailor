@@ -1,6 +1,7 @@
 #include "Memory.h"
 #include <cstdlib>
 #include <malloc.h>
+#include <random>
 #include "Utils.h"
 #include "MemoryBlockAllocator.hpp"
 #include "MemoryPoolAllocator.hpp"
@@ -64,10 +65,18 @@ void Sailor::Memory::TestPerformance()
 
 		for (int n = 0; n <= IterationsCount; ++n)
 		{
-			Memory::TBlockAllocator<Memory::GlobalHeapAllocator, 4096> heapAllocator;
+			Memory::TBlockAllocator<Memory::GlobalHeapAllocator> heapAllocator(1024, 32);
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 1);
+
+			blockAllocatorTimer.Stop();
+
+			std::random_device rd;
+			std::mt19937 g(rd());
+		//	std::shuffle(currentObjs.begin(), currentObjs.end(), g);
+
+			blockAllocatorTimer.Start();
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				heapAllocator.Free(currentObjs[i]);
@@ -89,31 +98,47 @@ void Sailor::Memory::TestPerformance()
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 1);
 
+			multiPoolAllocatorTimer.Stop();
+
+			std::random_device rd;
+			std::mt19937 g(rd());
+			std::shuffle(currentObjs.begin(), currentObjs.end(), g);
+
+			multiPoolAllocatorTimer.Start();
+
 			for (uint32 i = 0; i < objs.size(); ++i)
 				heapAllocator.Free(currentObjs[i]);
 		}
 
 		multiPoolAllocatorTimer.Stop();
 	}
-
 	{
 		std::vector<Memory::TMemoryPtr<void*>> currentObjs;
 		currentObjs.resize(AllocationsCount);
 
-		poolAllocatorTimer.Start();
 
 		for (int n = 0; n <= IterationsCount; ++n)
 		{
-			Memory::TPoolAllocator heapAllocator(4096, 32);
+			poolAllocatorTimer.Start();
+
+			Memory::TPoolAllocator heapAllocator(128, 32);
 
 			for (uint32 i = 0; i < objs.size(); ++i)
 				currentObjs[i] = heapAllocator.Allocate(objs[i].second, 1);
 
+			poolAllocatorTimer.Stop();
+
+			std::random_device rd;
+			std::mt19937 g(rd());
+			//std::shuffle(currentObjs.begin(), currentObjs.end(), g);
+
+			poolAllocatorTimer.Start();
+
 			for (uint32 i = 0; i < objs.size(); ++i)
 				heapAllocator.Free(currentObjs[i]);
-		}
 
-		poolAllocatorTimer.Stop();
+			poolAllocatorTimer.Stop();
+		}
 	}
 
 	printf("mallocAllocator %lld ms\n", mallocTimer.ResultAccumulatedMs());

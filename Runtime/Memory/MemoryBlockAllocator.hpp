@@ -4,7 +4,7 @@
 
 namespace Sailor::Memory
 {
-	template<typename TGlobalAllocator, uint32_t blockSize, uint32_t averageElementSize, typename TPtr>
+	template<typename TGlobalAllocator, typename TPtr>
 	class TBlockAllocator
 	{
 	public:
@@ -22,7 +22,9 @@ namespace Sailor::Memory
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
 				m_ptr = Sailor::Memory::Allocate<TMemoryPtr<TPtr>, TPtr, TGlobalAllocator>(size, &m_owner->m_dataAllocator);
-				m_layout.reserve(m_blockSize / averageElementSize);
+				
+				const uint32_t bestFit = 32;
+				m_layout.reserve(32);
 			}
 
 			~MemoryBlock()
@@ -53,10 +55,8 @@ namespace Sailor::Memory
 				memoryBlock.m_emptySpace = 0;
 				memoryBlock.m_blockSize = 0;
 			}
-
 			TMemoryPtr<TPtr> Allocate(uint32_t layoutIndex, size_t size, uint32_t alignmentOffset)
 			{
-				//std::cout << "Acquire " << (int32_t)size << std::endl;
 				assert(layoutIndex != InvalidIndex);
 
 				auto& emptySpace = m_layout[layoutIndex];
@@ -65,42 +65,20 @@ namespace Sailor::Memory
 				emptySpace.first += size + alignmentOffset;
 				emptySpace.second -= (size + alignmentOffset);
 
-				const bool bShouldRemoveSegmentation = !(layoutIndex == 0 && emptySpace.second != 0);
-
 				if (emptySpace.second == 0)
 				{
-					std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
-					m_layout.pop_back();
-				}
-
-				if (bShouldRemoveSegmentation)
-				{
-					RemoveSegmentation();
+					for (int32_t i = layoutIndex; i < m_layout.size() - 1; i++)
+					{
+						m_layout[i] = m_layout[i + 1];
+					}
 				}
 
 				m_emptySpace -= (size + alignmentOffset);
 				return TMemoryPtr<TPtr>(offset, alignmentOffset, size, m_ptr.m_ptr, m_blockIndex);
 			}
 
-			void RemoveSegmentation()
-			{
-				std::sort(m_layout.begin(), m_layout.end(), [](auto& lhs, auto& rhs) { return lhs.first < rhs.first; });
-				for (int32_t i = (int32_t)m_layout.size() - 1; i > 0; i--)
-				{
-					if (m_layout[i].first == m_layout[i - 1].first + m_layout[i - 1].second)
-					{
-						m_layout[i - 1].second += m_layout[i].second;
-
-						std::iter_swap(m_layout.begin() + i, m_layout.end() - 1);
-						m_layout.pop_back();
-					}
-				}
-			}
-
 			void Free(TMemoryPtr<TPtr>& ptr)
 			{
-				//std::cout << "Release " << (int32_t)ptr.m_size << std::endl;
-
 				if (!ptr.m_ptr)
 				{
 					return;
@@ -108,10 +86,41 @@ namespace Sailor::Memory
 
 				m_emptySpace += ptr.m_size + ptr.m_alignmentOffset;
 
-				m_layout.push_back({ ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset });
+				if (m_layout.size() > 0 && ptr.m_offset > m_layout[m_layout.size() - 1].first)
+				{
+					m_layout.push_back({ ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset });
+					ptr.Clear();
+					return;
+				}
 
-				RemoveSegmentation();
+				if (m_layout.size() > 0 && ptr.m_offset < m_layout[0].first)
+				{
+					m_layout.push_back({ ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset });
+					std::iter_swap(m_layout.begin(), m_layout.end() - 1);
+					ptr.Clear();
+					return;
+				}
 
+				auto lower = std::lower_bound(m_layout.begin(), m_layout.end(), std::pair{ ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset }, [](auto& lhs, auto& rhs) { return lhs.first < rhs.first; });
+
+				if (lower != m_layout.end())
+				{
+					const size_t i = lower - m_layout.begin();
+					if (i > 0 && m_layout[i - 1].first + m_layout[i - 1].second == ptr.m_offset)
+					{
+						m_layout[i - 1].second += ptr.m_size + ptr.m_alignmentOffset;
+						ptr.Clear();
+						return;
+					}
+					else if (ptr.m_offset + ptr.m_size + ptr.m_alignmentOffset == m_layout[i].first)
+					{
+						m_layout[i].first = ptr.m_offset;
+						ptr.Clear();
+						return;
+					}
+				}
+
+				m_layout.insert(lower, { ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset });
 				ptr.Clear();
 			}
 
@@ -154,7 +163,7 @@ namespace Sailor::Memory
 			friend class TBlockAllocator;
 		};
 
-		TBlockAllocator() = default;
+		TBlockAllocator(size_t blockSize = 4096, size_t averageElementSize = 128) : m_blockSize(blockSize), m_averageElementSize(averageElementSize) {}
 		TBlockAllocator(const TBlockAllocator&) = delete;
 		TBlockAllocator& operator= (const TBlockAllocator&) = delete;
 
@@ -214,7 +223,7 @@ namespace Sailor::Memory
 
 		bool HeuristicToSkipBlocks(float occupation) const
 		{
-			const float border = 1.0f - (float)averageElementSize / blockSize;
+			const float border = 1.0f - (float)m_averageElementSize / m_blockSize;
 			return occupation > border;
 		}
 
@@ -231,7 +240,7 @@ namespace Sailor::Memory
 			}
 
 			// Create new block
-			MemoryBlock block = MemoryBlock((size_t)max((uint32_t)size, (uint32_t)blockSize), this);
+			MemoryBlock block = MemoryBlock((size_t)max((uint32_t)size, (uint32_t)m_blockSize), this);
 			block.m_blockIndex = (uint32_t)m_blocks.size();
 			outLayoutIndex = (uint32_t)m_layout.size();
 			block.FindLocationInLayout(size, alignment, outBlockLayoutIndex, outAlignedOffset);
@@ -256,5 +265,7 @@ namespace Sailor::Memory
 		size_t m_usedDataSpace = 0;
 		std::vector<MemoryBlock> m_blocks;
 		std::vector<uint32_t> m_layout;
+		size_t m_blockSize = 1024;
+		size_t m_averageElementSize = 128;
 	};
 }

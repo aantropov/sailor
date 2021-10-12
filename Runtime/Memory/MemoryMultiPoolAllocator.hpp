@@ -47,8 +47,7 @@ namespace Sailor::Memory
 
 	private:
 
-		TPoolAllocator<TGlobalAllocator, TPtr> allocator{ 4, 4 };
-		TPoolAllocator<TGlobalAllocator, TPtr>* GetOrCreateAllocator(size_t size)
+		TBlockAllocator<TGlobalAllocator, TPtr>* GetOrCreateAllocator(size_t size)
 		{
 			auto poolAllocator = m_layout.find(size);
 			if (poolAllocator != m_layout.end())
@@ -56,12 +55,12 @@ namespace Sailor::Memory
 				return (*poolAllocator).second;
 			}
 
-			auto res = new TPoolAllocator<TGlobalAllocator, TPtr>(4, size);
+			auto res = new TBlockAllocator<TGlobalAllocator, TPtr>(size * 32, size);
 			m_layout[size] = res;
 			return res;
 		}
 
-		std::unordered_map<size_t, TPoolAllocator<TGlobalAllocator, TPtr>*> m_layout;
+		std::unordered_map<size_t, TBlockAllocator<TGlobalAllocator, TPtr>*> m_layout;
 		size_t m_usedDataSpace = 0;
 	};
 }
