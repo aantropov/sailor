@@ -745,7 +745,8 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> de
 {
 	Memory::TBlockAllocator<Memory::GlobalVulkanHostAllocator, 2048, 128, Memory::VulkanDeviceMemoryPtr> allocator;
 	allocator.Allocate(168, 8);
-	auto data = allocator.Allocate(size, 16);
+
+	auto data = allocator.Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
 
 	TRefPtr<VulkanBuffer> stagingBuffer = TRefPtr<VulkanBuffer>::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();

@@ -17,8 +17,6 @@ namespace Sailor::Memory
 		template<typename TDataType>
 		TMemoryPtr<TPtr> Allocate(uint32_t count)
 		{
-			assert(sizeof(TDataType) == elementSize);
-
 			size_t size = count * sizeof(TDataType);
 			return Allocate(size, alignof(TDataType));
 		}
