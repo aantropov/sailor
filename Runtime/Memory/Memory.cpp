@@ -35,7 +35,7 @@ public:
 };
 
 template<typename TAllocator>
-void TestPerformanceRandom(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Utils::AccurateTimer& timer)
+void TestPerformanceRandom(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Utils::Timer& timer)
 {
 	auto firstTestElement = allocator.Allocate(1, 1);
 
@@ -74,7 +74,7 @@ void TestPerformanceRandom(TAllocator& allocator, const std::vector<size_t>& siz
 }
 
 template<typename TAllocator>
-void TestPerformanceShuffled(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Utils::AccurateTimer& timer)
+void TestPerformanceShuffle(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Utils::Timer& timer)
 {
 	auto firstTestElement = allocator.Allocate(1, 1);
 
@@ -101,7 +101,7 @@ void TestPerformanceShuffled(TAllocator& allocator, const std::vector<size_t>& s
 }
 
 template<typename TAllocator>
-void TestPerformanceSimple(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Utils::AccurateTimer& timer)
+void TestPerformanceSimple(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Utils::Timer& timer)
 {
 	auto firstTestElement = allocator.Allocate(1, 1);
 
@@ -113,7 +113,7 @@ void TestPerformanceSimple(TAllocator& allocator, const std::vector<size_t>& siz
 	{
 		ptrs[i] = allocator.Allocate(sizesToAllocate[i], 1);
 	}
-	
+
 	for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
 	{
 		allocator.Free(ptrs[i]);
@@ -121,49 +121,58 @@ void TestPerformanceSimple(TAllocator& allocator, const std::vector<size_t>& siz
 	timer.Stop();
 }
 
+template<typename TAllocator>
+struct TestCase_MemoryPerformance
+{
+	static void RunTests()
+	{
+		Utils::Timer simpleTest;
+		Utils::Timer shuffleTest;
+		Utils::Timer randomTest;
+
+		static const uint32 IterationsCount = 10;
+		static const uint32 AllocationsCount = 1000000;
+		static const uint32 MaxSize = 32;
+
+		std::vector<size_t> sizesToAllocate;
+		sizesToAllocate.resize(AllocationsCount);
+
+		srand(0);
+
+		size_t totalAllocatedSize = 0;
+
+		for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
+		{
+			sizesToAllocate[i] = rand() % MaxSize + 1;
+			totalAllocatedSize += sizesToAllocate[i];
+		}
+
+		for (uint32_t i = 0; i < IterationsCount; i++)
+		{
+			TAllocator allocator1;
+			TestPerformanceSimple(allocator1, sizesToAllocate, simpleTest);
+
+			TAllocator allocator2;
+			TestPerformanceShuffle(allocator2, sizesToAllocate, shuffleTest);
+
+			TAllocator allocator3;
+			TestPerformanceRandom(allocator3, sizesToAllocate, randomTest);
+		}
+
+		const std::string allocatorName = typeid(TAllocator).name();
+
+		printf("\n%s, Total alloc memory size: %.2f Mb:\n", allocatorName.c_str(), (float)((double)(totalAllocatedSize / 1024) / 1024.0));
+		printf("simpleTest %lld ms\n", simpleTest.ResultAccumulatedMs());
+		printf("shuffleTest %lld ms\n", shuffleTest.ResultAccumulatedMs());
+		printf("randomTest %lld ms\n", randomTest.ResultAccumulatedMs());
+
+	}
+};
+
 void Sailor::Memory::TestPerformance()
 {
-	static const uint32 IterationsCount = 10;
-	static const uint32 AllocationsCount = 1000000;
-	static const uint32 MaxSize = 32;
-
-	std::vector<size_t> sizesToAllocate;
-	sizesToAllocate.resize(AllocationsCount);
-
-	srand(0);
-
-	size_t totalAllocatedSize = 0;
-
-	for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
-	{
-		sizesToAllocate[i] = rand() % MaxSize + 1;
-		totalAllocatedSize += sizesToAllocate[i];
-	}
-
-	printf("Total alloc memory size: %.2f Mb\n\n", (float)((double)(totalAllocatedSize / 1024) / 1024.0));
-
-	Utils::AccurateTimer poolAllocatorTimer;
-	Utils::AccurateTimer multiPoolAllocatorTimer;
-	Utils::AccurateTimer blockAllocatorTimer;
-	Utils::AccurateTimer mallocTimer;
-
-	for (uint32_t i = 0; i < IterationsCount; i++)
-	{
-		TestMallocAllocator mallocAllocator;
-		TestPerformanceSimple(mallocAllocator, sizesToAllocate, mallocTimer);
-
-		Memory::TMultiPoolAllocator multiPoolAllocator;
-		TestPerformanceSimple(multiPoolAllocator, sizesToAllocate, multiPoolAllocatorTimer);
-
-		Memory::TPoolAllocator poolAllocator(128, 32);
-		TestPerformanceSimple(poolAllocator, sizesToAllocate, poolAllocatorTimer);
-
-		Memory::TBlockAllocator blockAllocator(2048, 32);
-		TestPerformanceSimple(blockAllocator, sizesToAllocate, blockAllocatorTimer);
-	}
-
-	printf("mallocAllocator %lld ms\n", mallocTimer.ResultAccumulatedMs());
-	printf("blockAllocator %lld ms\n", blockAllocatorTimer.ResultAccumulatedMs());
-	printf("poolAllocator %lld ms\n", poolAllocatorTimer.ResultAccumulatedMs());
-	printf("multiPoolAllocator %lld ms\n", multiPoolAllocatorTimer.ResultAccumulatedMs());
+	TestCase_MemoryPerformance<TestMallocAllocator>::RunTests();
+	TestCase_MemoryPerformance<TBlockAllocator<GlobalHeapAllocator, void*>>::RunTests();
+	TestCase_MemoryPerformance<TPoolAllocator<GlobalHeapAllocator, void*>>::RunTests();
+	TestCase_MemoryPerformance<TMultiPoolAllocator<GlobalHeapAllocator, void*>>::RunTests();
 }

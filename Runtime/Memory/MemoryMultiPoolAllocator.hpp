@@ -55,7 +55,7 @@ namespace Sailor::Memory
 				return (*poolAllocator).second;
 			}
 
-			auto res = new TPoolAllocator<TGlobalAllocator, TPtr>(4 * size, size);
+			auto res = new TPoolAllocator<TGlobalAllocator, TPtr>(10 * size, size);
 			m_layout[size] = res;
 			return res;
 		}

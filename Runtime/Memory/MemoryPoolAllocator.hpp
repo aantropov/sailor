@@ -112,7 +112,7 @@ namespace Sailor::Memory
 							ptr.Clear();
 							return;
 						}
-						
+
 						if (leftMerged)
 						{
 							m_layout[i - 1].second += ptr.m_size + ptr.m_alignmentOffset;
@@ -258,7 +258,7 @@ namespace Sailor::Memory
 					}
 				}
 
-				if (m_layout.size() > 3)
+				if (HeuristicToFreeBlock(m_blocks[index].m_blockSize, m_layout.size()))
 				{
 					TryFreeBlock(m_blocks[index]);
 				}
@@ -280,6 +280,7 @@ namespace Sailor::Memory
 
 		bool HeuristicToSkipBlocks(float occupation, size_t blockSize) const
 		{
+			// We assume that block is fully occupied if there is less space than the space of 1 element
 			const float border = 1.0f - (float)m_elementSize / blockSize;
 			return occupation > border;
 		}
@@ -287,8 +288,14 @@ namespace Sailor::Memory
 		bool HeuristicToMarkBlockDead(size_t blockSize, size_t segmentation) const
 		{
 			// Directly affects memory overhead & deallocation cost
-			const uint32_t highSegmentation = 10000;
+			const uint32_t highSegmentation = 6000;
 			return segmentation > highSegmentation;
+		}
+
+		bool HeuristicToFreeBlock(size_t blockSize, size_t countFreeBlocks) const
+		{
+			// Free small blocks
+			return countFreeBlocks > 2 || (countFreeBlocks > 1 && (blockSize / (float)m_usedDataSpace) < 0.25f);
 		}
 
 		void FindMemoryBlock(size_t size, size_t alignment, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex, uint32_t& outAlignedOffset)

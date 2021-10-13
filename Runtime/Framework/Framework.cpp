@@ -67,7 +67,7 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 	SAILOR_PROFILE_FUNCTION();
 
 	static uint32_t totalFramesCount = 0U;
-	static Utils::AccurateTimer timer;
+	static Utils::Timer timer;
 
 	timer.Start();
 

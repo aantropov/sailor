@@ -33,7 +33,7 @@ namespace Sailor
 		SAILOR_API int64_t GetCurrentTimeMicro();
 		SAILOR_API int64_t GetCurrentTimeNano();
 
-		struct SAILOR_API AccurateTimer
+		struct SAILOR_API Timer
 		{
 			int64_t m_counterStart = 0;
 			int64_t m_counterEnd = 0;

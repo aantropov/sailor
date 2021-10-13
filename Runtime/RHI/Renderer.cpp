@@ -61,7 +61,7 @@ bool Renderer::PushFrame(const FrameState& frame)
 
 		do
 		{
-			static Utils::AccurateTimer timer;
+			static Utils::Timer timer;
 			static uint32_t totalFramesCount = 0U;
 
 			SAILOR_PROFILE_BLOCK("Present Frame");

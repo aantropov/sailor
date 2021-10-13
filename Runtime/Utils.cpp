@@ -260,7 +260,7 @@ int64_t Sailor::Utils::GetCurrentTimeNano()
 	return (int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-void Sailor::Utils::AccurateTimer::Start()
+void Sailor::Utils::Timer::Start()
 {
 	LARGE_INTEGER li;
 	if (!QueryPerformanceFrequency(&li))
@@ -274,7 +274,7 @@ void Sailor::Utils::AccurateTimer::Start()
 	m_counterStart = li.QuadPart;
 }
 
-void Sailor::Utils::AccurateTimer::Stop()
+void Sailor::Utils::Timer::Stop()
 {
 	LARGE_INTEGER li;
 	QueryPerformanceCounter(&li);
@@ -283,12 +283,12 @@ void Sailor::Utils::AccurateTimer::Stop()
 	m_counterAcc += m_counterEnd - m_counterStart;
 }
 
-int64_t Sailor::Utils::AccurateTimer::ResultMs() const
+int64_t Sailor::Utils::Timer::ResultMs() const
 {
 	return int64_t(double(m_counterEnd - m_counterStart) / m_pcFrequence);
 }
 
-int64_t Sailor::Utils::AccurateTimer::ResultAccumulatedMs() const
+int64_t Sailor::Utils::Timer::ResultAccumulatedMs() const
 {
 	if (m_pcFrequence == 0.0)
 	{
@@ -297,7 +297,7 @@ int64_t Sailor::Utils::AccurateTimer::ResultAccumulatedMs() const
 	return int64_t((double)m_counterAcc / m_pcFrequence);
 }
 
-void Sailor::Utils::AccurateTimer::Clear()
+void Sailor::Utils::Timer::Clear()
 {
 	m_counterStart = 0;
 	m_counterEnd = 0;

@@ -173,7 +173,7 @@ namespace Sailor::Memory
 			friend class TBlockAllocator;
 		};
 
-		TBlockAllocator(size_t blockSize = 4096, size_t averageElementSize = 128) : m_blockSize(blockSize), m_averageElementSize(averageElementSize) {}
+		TBlockAllocator(size_t blockSize = 2048, size_t averageElementSize = 32) : m_blockSize(blockSize), m_averageElementSize(averageElementSize) {}
 		TBlockAllocator(const TBlockAllocator&) = delete;
 		TBlockAllocator& operator= (const TBlockAllocator&) = delete;
 

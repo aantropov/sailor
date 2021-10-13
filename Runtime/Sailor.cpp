@@ -69,7 +69,7 @@ void EngineInstance::Start()
 	m_pInstance->m_viewportWindow.SetRunning(true);
 
 	uint32_t frameCounter = 0U;
-	Utils::AccurateTimer timer;
+	Utils::Timer timer;
 	FrameState currentFrame;
 	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
