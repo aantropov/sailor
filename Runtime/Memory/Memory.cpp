@@ -43,8 +43,8 @@ void TestPerformanceRandom(TAllocator& allocator, const std::vector<size_t>& siz
 	ptrs.resize(sizesToAllocate.size());
 
 	timer.Start();
-	uint32_t border = (uint32_t)sizesToAllocate.size() / 4;
-	for (uint32 i = 0; i < border * 2; ++i)
+	size_t border = sizesToAllocate.size() / 4;
+	for (size_t i = 0; i < border * 2; ++i)
 	{
 		ptrs[i] = allocator.Allocate(sizesToAllocate[i], 1);
 	}
@@ -56,17 +56,17 @@ void TestPerformanceRandom(TAllocator& allocator, const std::vector<size_t>& siz
 
 	timer.Start();
 
-	for (uint32 i = 0; i < border; ++i)
+	for (size_t i = 0; i < border; ++i)
 	{
 		allocator.Free(ptrs[i]);
 	}
 
-	for (uint32 i = border * 2; i < sizesToAllocate.size(); ++i)
+	for (size_t i = border * 2; i < sizesToAllocate.size(); ++i)
 	{
 		ptrs[i] = allocator.Allocate(sizesToAllocate[i], 1);
 	}
 
-	for (uint32 i = border; i < sizesToAllocate.size(); ++i)
+	for (size_t i = border; i < sizesToAllocate.size(); ++i)
 	{
 		allocator.Free(ptrs[i]);
 	}
@@ -82,7 +82,7 @@ void TestPerformanceShuffle(TAllocator& allocator, const std::vector<size_t>& si
 	ptrs.resize(sizesToAllocate.size());
 
 	timer.Start();
-	for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
+	for (size_t i = 0; i < sizesToAllocate.size(); ++i)
 	{
 		ptrs[i] = allocator.Allocate(sizesToAllocate[i], 1);
 	}
@@ -93,7 +93,7 @@ void TestPerformanceShuffle(TAllocator& allocator, const std::vector<size_t>& si
 	std::shuffle(ptrs.begin(), ptrs.end(), g);
 
 	timer.Start();
-	for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
+	for (size_t i = 0; i < sizesToAllocate.size(); ++i)
 	{
 		allocator.Free(ptrs[i]);
 	}
@@ -109,12 +109,12 @@ void TestPerformanceSimple(TAllocator& allocator, const std::vector<size_t>& siz
 	ptrs.resize(sizesToAllocate.size());
 
 	timer.Start();
-	for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
+	for (size_t i = 0; i < sizesToAllocate.size(); ++i)
 	{
 		ptrs[i] = allocator.Allocate(sizesToAllocate[i], 1);
 	}
 
-	for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
+	for (size_t i = 0; i < sizesToAllocate.size(); ++i)
 	{
 		allocator.Free(ptrs[i]);
 	}
