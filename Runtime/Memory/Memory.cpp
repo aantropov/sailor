@@ -175,15 +175,15 @@ struct TestCase_MemoryPerformance
 	template<typename TAllocator>
 	static bool SanityCheck()
 	{
-		static const uint32 HalfAllocationsCount = 10;
-		static const uint32 MaxSize = 4;
+		static const size_t HalfAllocationsCount = 100000;
+		static const size_t MaxSize = 32;
 
 		std::vector<size_t> sizesToAllocate;
 		sizesToAllocate.resize(HalfAllocationsCount * 2);
 
 		srand(0);
 
-		for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
+		for (size_t i = 0; i < sizesToAllocate.size(); ++i)
 		{
 			sizesToAllocate[i] = rand() % MaxSize + 1;
 		}
@@ -198,17 +198,20 @@ struct TestCase_MemoryPerformance
 
 		for (size_t i = 0; i < HalfAllocationsCount; i++)
 		{
-			allocatorPtrs[i] = allocator.Allocate(sizesToAllocate[i], (uint32_t)pow(2, rand() % 4));
+			allocatorPtrs[i] = allocator.Allocate(sizesToAllocate[i], (size_t)pow(2, rand() % 4));
 			idealPtrs[i] = ideal.Allocate(sizesToAllocate[i], 1);
 
-			memset(*allocatorPtrs[i], i % 128, allocatorPtrs[i].m_size);
-			memset(idealPtrs[i], i % 128, sizesToAllocate[i]);
+			memset(*(allocatorPtrs[i]), 1 + i % 127, allocatorPtrs[i].m_size);
+			memset(idealPtrs[i], 1 + i % 127, sizesToAllocate[i]);
 		}
 
 		for (size_t i = 0; i < HalfAllocationsCount; i += 2)
 		{
-			void* address = *allocatorPtrs[i];
-
+			void* address = *(allocatorPtrs[i]);
+			
+			memset(address, 128, allocatorPtrs[i].m_size);
+			memset(idealPtrs[i], 128, sizesToAllocate[i]);
+			
 			allocator.Free(allocatorPtrs[i]);
 			ideal.Free(idealPtrs[i]);
 
@@ -217,20 +220,40 @@ struct TestCase_MemoryPerformance
 
 		for (size_t i = HalfAllocationsCount; i < HalfAllocationsCount * 2; i++)
 		{
-			allocatorPtrs[i] = allocator.Allocate(sizesToAllocate[i], (uint32_t)pow(2, rand() % 4));
+			allocatorPtrs[i] = allocator.Allocate(sizesToAllocate[i], (size_t)pow(2, rand() % 4));
 			idealPtrs[i] = ideal.Allocate(sizesToAllocate[i], 1);
 
-			memset(*(allocatorPtrs[i]), i % 128, allocatorPtrs[i].m_size);
-			memset(idealPtrs[i], i % 128, sizesToAllocate[i]);
+			//Try to catch allocated memory that is used, change GlobalAllocator to calloc to make it work
+	/*		for (uint32_t j = 0; j < allocatorPtrs[i].m_size; j++)
+			{
+				if (allocatorPtrs[i].m_offset != 0 && (((uint8_t*)*(allocatorPtrs[i]))[j] != 128 && ((uint8_t*)*(allocatorPtrs[i]))[j] != 0))
+				{
+					for (uint32_t k = 0; k < allocatorPtrs[i].m_size; k++)
+					{
+						printf("%d=%d\n", ((uint8_t*)*(allocatorPtrs[i]))[k], ((uint8_t*)idealPtrs[i])[k]);
+					}
+
+					return false;
+				}
+			}
+	*/			
+			memset(*(allocatorPtrs[i]), i % 127, allocatorPtrs[i].m_size);
+			memset(idealPtrs[i], i % 127, sizesToAllocate[i]);
 		}
 
 		for (size_t i = 0; i < HalfAllocationsCount * 2; i++)
 		{
 			if (idealPtrs[i])
 			{
-				if (!(memcmp(*(allocatorPtrs[i]), idealPtrs[i], allocatorPtrs[i].m_size) == 0 &&
-					memcmp(*(allocatorPtrs[i]), idealPtrs[i], sizesToAllocate[i]) == 0))
+				auto res = memcmp(*(allocatorPtrs[i]), idealPtrs[i], allocatorPtrs[i].m_size);
+				if (res != 0)
 				{
+					printf("size %lld=%lld, memcmp = %d\n", allocatorPtrs[i].m_size, sizesToAllocate[i], res);
+					for (uint32_t k = 0; k < allocatorPtrs[i].m_size; k++)
+					{
+						printf("%d=%d\n", ((uint8_t*)*(allocatorPtrs[i]))[k], ((uint8_t*)idealPtrs[i])[k]);
+					}
+					
 					return false;
 				}
 			}

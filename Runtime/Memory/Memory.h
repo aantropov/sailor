@@ -120,6 +120,10 @@ namespace Sailor::Memory
 	public:
 
 		TMemoryPtr() = default;
+		TMemoryPtr(const TMemoryPtr& rhs) = default;
+		TMemoryPtr(TMemoryPtr&& rhs) = default;
+		TMemoryPtr& operator=(const TMemoryPtr& rhs) = default;
+		TMemoryPtr& operator=(TMemoryPtr&& rhs) = default;
 
 		TMemoryPtr(size_t offset, size_t alignmentOffset, size_t size, TPtr ptr, uint32_t blockIndex) :
 			m_offset(offset),

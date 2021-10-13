@@ -121,6 +121,16 @@ namespace Sailor::Memory
 					}
 				}
 
+				if (m_layout.size() > 0)
+				{
+					if (const bool leftMerged = (((*m_layout.end()).first + (*m_layout.end()).second) == ptr.m_offset))
+					{
+						(*m_layout.end()).second += ptr.m_size + ptr.m_alignmentOffset;
+						ptr.Clear();
+						return;
+					}
+				}
+
 				m_layout.insert(lower, { ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset });
 
 				ptr.Clear();
