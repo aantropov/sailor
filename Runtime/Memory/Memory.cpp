@@ -278,7 +278,7 @@ struct TestCase_MemoryPerformance
 void Sailor::Memory::TestPerformance()
 {
 	TestCase_MemoryPerformance<TestMallocAllocator>::RunTests();
-	TestCase_MemoryPerformance<TBlockAllocator<GlobalHeapAllocator>, void*>::RunTests();
+	TestCase_MemoryPerformance<TBlockAllocator<GlobalHeapAllocator, void*>>::RunTests();
 	TestCase_MemoryPerformance<TPoolAllocator<GlobalHeapAllocator, void*>>::RunTests();
 	TestCase_MemoryPerformance<TMultiPoolAllocator<GlobalHeapAllocator, void*>>::RunTests();
 }
