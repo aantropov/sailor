@@ -166,6 +166,83 @@ struct TestCase_MemoryPerformance
 		printf("shuffleTest %lld ms\n", shuffleTest.ResultAccumulatedMs());
 		printf("randomTest %lld ms\n", randomTest.ResultAccumulatedMs());
 
+		if (!SanityCheck<TAllocator>())
+		{
+			printf("!!! Sanity check failed! \n");
+		}
+	}
+
+	template<typename TAllocator>
+	static bool SanityCheck()
+	{
+		static const uint32 HalfAllocationsCount = 10;
+		static const uint32 MaxSize = 4;
+
+		std::vector<size_t> sizesToAllocate;
+		sizesToAllocate.resize(HalfAllocationsCount * 2);
+
+		srand(0);
+
+		for (uint32 i = 0; i < sizesToAllocate.size(); ++i)
+		{
+			sizesToAllocate[i] = rand() % MaxSize + 1;
+		}
+
+		TAllocator allocator;
+		TestMallocAllocator ideal;
+
+		std::vector<decltype(allocator.Allocate(1, 1))> allocatorPtrs;
+		std::vector<void*> idealPtrs;
+		allocatorPtrs.resize(sizesToAllocate.size());
+		idealPtrs.resize(sizesToAllocate.size());
+
+		for (size_t i = 0; i < HalfAllocationsCount; i++)
+		{
+			allocatorPtrs[i] = allocator.Allocate(sizesToAllocate[i], (uint32_t)pow(2, rand() % 4));
+			idealPtrs[i] = ideal.Allocate(sizesToAllocate[i], 1);
+
+			memset(*allocatorPtrs[i], i % 128, allocatorPtrs[i].m_size);
+			memset(idealPtrs[i], i % 128, sizesToAllocate[i]);
+		}
+
+		for (size_t i = 0; i < HalfAllocationsCount; i += 2)
+		{
+			void* address = *allocatorPtrs[i];
+
+			allocator.Free(allocatorPtrs[i]);
+			ideal.Free(idealPtrs[i]);
+
+			idealPtrs[i] = nullptr;
+		}
+
+		for (size_t i = HalfAllocationsCount; i < HalfAllocationsCount * 2; i++)
+		{
+			allocatorPtrs[i] = allocator.Allocate(sizesToAllocate[i], (uint32_t)pow(2, rand() % 4));
+			idealPtrs[i] = ideal.Allocate(sizesToAllocate[i], 1);
+
+			memset(*(allocatorPtrs[i]), i % 128, allocatorPtrs[i].m_size);
+			memset(idealPtrs[i], i % 128, sizesToAllocate[i]);
+		}
+
+		for (size_t i = 0; i < HalfAllocationsCount * 2; i++)
+		{
+			if (idealPtrs[i])
+			{
+				if (!(memcmp(*(allocatorPtrs[i]), idealPtrs[i], allocatorPtrs[i].m_size) == 0 &&
+					memcmp(*(allocatorPtrs[i]), idealPtrs[i], sizesToAllocate[i]) == 0))
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	template<>
+	static bool SanityCheck<TestMallocAllocator>()
+	{
+		return true;
 	}
 };
 

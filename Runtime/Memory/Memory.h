@@ -64,7 +64,7 @@ namespace Sailor::Memory
 	template<typename TPtr>
 	inline TPtr Shift(const TPtr& ptr, size_t offset)
 	{
-		return reinterpret_cast<TPtr>(&(GetAddress(ptr)[offset]));
+		return reinterpret_cast<TPtr>(&((GetAddress(ptr)[offset])));
 	}
 
 	template<typename TPtr>
