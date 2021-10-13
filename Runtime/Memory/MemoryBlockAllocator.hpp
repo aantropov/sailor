@@ -57,6 +57,7 @@ namespace Sailor::Memory
 				memoryBlock.m_blockSize = 0;
 				memoryBlock.m_layout.clear();
 			}
+
 			TMemoryPtr<TPtr> Allocate(uint32_t layoutIndex, size_t size, uint32_t alignmentOffset)
 			{
 				assert(layoutIndex != InvalidIndex);
@@ -73,6 +74,7 @@ namespace Sailor::Memory
 					{
 						m_layout[i] = m_layout[i + 1];
 					}
+					m_layout.pop_back();
 				}
 
 				m_emptySpace -= (size + alignmentOffset);
@@ -101,7 +103,6 @@ namespace Sailor::Memory
 					{
 						m_layout[i - 1].second += ptr.m_size + ptr.m_alignmentOffset + m_layout[i].second;
 						m_layout.erase(m_layout.begin() + i);
-
 						ptr.Clear();
 						return;
 					}
@@ -123,16 +124,15 @@ namespace Sailor::Memory
 
 				if (m_layout.size() > 0)
 				{
-					if (const bool leftMerged = (((*m_layout.end()).first + (*m_layout.end()).second) == ptr.m_offset))
+					if (const bool leftMerged = (((m_layout[m_layout.size() - 1]).first + (m_layout[m_layout.size() - 1]).second) == ptr.m_offset))
 					{
-						(*m_layout.end()).second += ptr.m_size + ptr.m_alignmentOffset;
+						(m_layout[m_layout.size() - 1]).second += ptr.m_size + ptr.m_alignmentOffset;
 						ptr.Clear();
 						return;
 					}
 				}
 
 				m_layout.insert(lower, { ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset });
-
 				ptr.Clear();
 			}
 

@@ -78,6 +78,7 @@ namespace Sailor::Memory
 					{
 						m_layout[i] = m_layout[i + 1];
 					}
+					m_layout.pop_back();
 				}
 
 				m_emptySpace -= (size + alignmentOffset);
@@ -130,9 +131,9 @@ namespace Sailor::Memory
 
 					if (m_layout.size() > 0)
 					{
-						if (const bool leftMerged = (((*m_layout.end()).first + (*m_layout.end()).second) == ptr.m_offset))
+						if (const bool leftMerged = (((m_layout[m_layout.size() - 1]).first + (m_layout[m_layout.size() - 1]).second) == ptr.m_offset))
 						{
-							(*m_layout.end()).second += ptr.m_size + ptr.m_alignmentOffset;
+							(m_layout[m_layout.size() - 1]).second += ptr.m_size + ptr.m_alignmentOffset;
 							ptr.Clear();
 							return;
 						}

@@ -208,10 +208,15 @@ struct TestCase_MemoryPerformance
 		for (size_t i = 0; i < HalfAllocationsCount; i += 2)
 		{
 			void* address = *(allocatorPtrs[i]);
-			
+
+			if (allocatorPtrs[i].m_size != sizesToAllocate[i])
+			{
+				printf("Size doesn't match %lld=%lld\n", allocatorPtrs[i].m_size, sizesToAllocate[i]);
+			}
+
 			memset(address, 128, allocatorPtrs[i].m_size);
 			memset(idealPtrs[i], 128, sizesToAllocate[i]);
-			
+
 			allocator.Free(allocatorPtrs[i]);
 			ideal.Free(idealPtrs[i]);
 
@@ -224,7 +229,7 @@ struct TestCase_MemoryPerformance
 			idealPtrs[i] = ideal.Allocate(sizesToAllocate[i], 1);
 
 			//Try to catch allocated memory that is used, change GlobalAllocator to calloc to make it work
-	/*		for (uint32_t j = 0; j < allocatorPtrs[i].m_size; j++)
+			/*for (uint32_t j = 0; j < allocatorPtrs[i].m_size; j++)
 			{
 				if (allocatorPtrs[i].m_offset != 0 && (((uint8_t*)*(allocatorPtrs[i]))[j] != 128 && ((uint8_t*)*(allocatorPtrs[i]))[j] != 0))
 				{
@@ -233,10 +238,11 @@ struct TestCase_MemoryPerformance
 						printf("%d=%d\n", ((uint8_t*)*(allocatorPtrs[i]))[k], ((uint8_t*)idealPtrs[i])[k]);
 					}
 
-					return false;
+					//return false;
 				}
 			}
-	*/			
+			*/
+
 			memset(*(allocatorPtrs[i]), i % 127, allocatorPtrs[i].m_size);
 			memset(idealPtrs[i], i % 127, sizesToAllocate[i]);
 		}
@@ -253,7 +259,7 @@ struct TestCase_MemoryPerformance
 					{
 						printf("%d=%d\n", ((uint8_t*)*(allocatorPtrs[i]))[k], ((uint8_t*)idealPtrs[i])[k]);
 					}
-					
+
 					return false;
 				}
 			}
@@ -272,7 +278,7 @@ struct TestCase_MemoryPerformance
 void Sailor::Memory::TestPerformance()
 {
 	TestCase_MemoryPerformance<TestMallocAllocator>::RunTests();
-	TestCase_MemoryPerformance<TBlockAllocator<GlobalHeapAllocator, void*>>::RunTests();
+	TestCase_MemoryPerformance<TBlockAllocator<GlobalHeapAllocator>, void*>>::RunTests();
 	TestCase_MemoryPerformance<TPoolAllocator<GlobalHeapAllocator, void*>>::RunTests();
 	TestCase_MemoryPerformance<TMultiPoolAllocator<GlobalHeapAllocator, void*>>::RunTests();
 }
