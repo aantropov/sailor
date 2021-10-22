@@ -25,7 +25,7 @@ namespace Sailor::Memory
 	
 	class DefaultHeapAllocator
 	{
-		HeapAllocator m_heapAllocator;
+		static HeapAllocator m_heapAllocator;
 	
 	public:
 
@@ -185,5 +185,5 @@ namespace Sailor::Memory
 		TPtr m_ptr{};
 	};
 
-	void SAILOR_API TestPerformance();
+	void SAILOR_API RunMemoryBenchmark();
 }

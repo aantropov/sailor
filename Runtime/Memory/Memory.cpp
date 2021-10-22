@@ -12,7 +12,7 @@ using namespace Sailor;
 using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
-//HeapAllocator DefaultHeapAllocator::m_heapAllocator;
+HeapAllocator DefaultHeapAllocator::m_heapAllocator;
 
 typedef std::unordered_map<std::string, std::unordered_map<size_t, size_t>> TestResult;
 
@@ -70,7 +70,7 @@ public:
 	{
 		const std::string allocatorName = typeid(TAllocator).name();
 
-		printf("\n\n%s\n", allocatorName.c_str());
+		printf("\n%s\n", allocatorName.c_str());
 		printf("Can allocate huge block: %d\n", SanityCanAllocHugeBlock());
 		printf("Is stack based: %d\n", !SanityCheckIsStack());
 		printf("Sanity check passed: %d\n", SanityCheck());
@@ -511,13 +511,13 @@ std::string GetJsData(std::string allocSize, std::string testName, std::vector<R
 	return res;
 }
 
-void Sailor::Memory::TestPerformance()
+void Sailor::Memory::RunMemoryBenchmark()
 {
-	printf("Starting...\n");
+	printf("Starting memory benchmark...\n");
 
 	std::vector<Result> results;
 
-	results.push_back(TestCase_MemoryPerformance<DefaultHeapAllocator>::RunTests());
+	results.push_back(TestCase_MemoryPerformance<HeapAllocator>::RunTests());
 	results.push_back(TestCase_MemoryPerformance<DefaultMallocAllocator>::RunTests());
 
 	std::string emplace;
@@ -612,7 +612,7 @@ void Sailor::Memory::TestPerformance()
 		"</body>\n"
 		"</html>\n";
 
-	std::ofstream htmlResult{ "results.html" };
+	std::ofstream htmlResult{ "MemoryBenchmark.html" };
 	htmlResult << html;
 	htmlResult.close();
 }
