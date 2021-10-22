@@ -88,7 +88,7 @@ WorkerThread::WorkerThread(
 	m_pThread = TUniquePtr<std::thread>::Make(&WorkerThread::Process, this);
 }
 
-void WorkerThread::Join() const
+void WorkerThread::Join()
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_pThread->join();

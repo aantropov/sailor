@@ -4,21 +4,44 @@
 #include <cassert>
 #include <unordered_map>
 #include <unordered_set>
-#include <iostream>
+#include "Heap.h"
 #include "Defines.h"
 
 namespace Sailor::Memory
 {
-	class GlobalHeapAllocator
+	class MallocAllocator
 	{
 	public:
+		inline void* Allocate(size_t size, uint32_t alignment)
+		{
+			return malloc(size);
+		}
 
-		SAILOR_API void* Allocate(size_t size);
-		SAILOR_API void Free(void* pData, size_t size);
+		inline void Free(void* ptr, size_t size = 0)
+		{
+			free(ptr);
+		}
+	};
+	
+	class DefaultHeapAllocator
+	{
+		static HeapAllocator m_heapAllocator;
+	
+	public:
+
+		SAILOR_API void* Allocate(size_t size, uint32_t alignment = 8)
+		{
+			return m_heapAllocator.Allocate(size, alignment);
+		}
+		
+		SAILOR_API void Free(void* pData, size_t size = 0)
+		{
+			m_heapAllocator.Free(pData);
+		}
 	};
 
 	template<uint32_t stackSize = 1024>
-	class GlobalStackAllocator
+	class DefaultStackAllocator
 	{
 	protected:
 		uint8_t m_stack[stackSize];
@@ -43,13 +66,13 @@ namespace Sailor::Memory
 		}
 	};
 
-	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = DefaultHeapAllocator, typename TPtr = void*>
 	class TBlockAllocator;
 
-	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = DefaultHeapAllocator, typename TPtr = void*>
 	class TPoolAllocator;
 
-	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = DefaultHeapAllocator, typename TPtr = void*>
 	class TMultiPoolAllocator;
 
 	template<typename TPtr = void*>
@@ -85,16 +108,16 @@ namespace Sailor::Memory
 		return Shift(pStartBlock, offset);
 	}
 
-	template<typename TDataType, typename TPtr, typename TBlockAllocator = GlobalHeapAllocator>
-	TDataType Allocate(size_t size, TBlockAllocator* allocator)
+	template<typename TDataType, typename TPtr, typename TGlobalAllocator = DefaultHeapAllocator>
+	TDataType Allocate(size_t size, TGlobalAllocator* allocator)
 	{
 		TDataType newObj{};
 		newObj.m_ptr = static_cast<TPtr>(allocator->Allocate(size));
 		return newObj;
 	}
 
-	template<typename TDataType, typename TPtr, typename TBlockAllocator = GlobalHeapAllocator>
-	void Free(TDataType& ptr, TBlockAllocator* allocator)
+	template<typename TDataType, typename TPtr, typename TGlobalAllocator = DefaultHeapAllocator>
+	void Free(TDataType& ptr, TGlobalAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
 		ptr.Clear();

@@ -216,6 +216,7 @@
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h" />
     <ClInclude Include="..\Runtime\LogMacros.h" />
     <ClInclude Include="..\Runtime\Math\Math.h" />
+    <ClInclude Include="..\Runtime\Memory\Heap.h" />
     <ClInclude Include="..\Runtime\Memory\Memory.h" />
     <ClInclude Include="..\Runtime\Memory\MemoryBlockAllocator.hpp" />
     <ClInclude Include="..\Runtime\Memory\MemoryMultiPoolAllocator.hpp" />
@@ -263,6 +264,7 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanShaderModule.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp" />
+    <ClCompile Include="..\Runtime\Memory\Heap.cpp" />
     <ClCompile Include="..\Runtime\Memory\Memory.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\Input.cpp" />

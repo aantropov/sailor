@@ -213,6 +213,9 @@
     <ClInclude Include="..\Runtime\Memory\MemoryMultiPoolAllocator.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\Heap.h">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -336,6 +339,9 @@
       <Filter>Runtime\Framework</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Memory\Memory.cpp">
+      <Filter>Runtime\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Memory\Heap.cpp">
       <Filter>Runtime\Memory</Filter>
     </ClCompile>
   </ItemGroup>

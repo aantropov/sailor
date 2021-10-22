@@ -17,7 +17,7 @@ namespace Sailor::Memory
 				m_blockSize(size),
 				m_emptySpace(size),
 				m_layout({ {0, size} }),
-				m_blockIndex(InvalidIndex),
+				m_blockIndex(InvalidIndexUINT32),
 				m_owner(owner)
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
@@ -30,7 +30,7 @@ namespace Sailor::Memory
 			~MemoryBlock()
 			{
 				//std::cout << "Free Block " << (int32_t)m_size << std::endl;
-				if (m_blockIndex != InvalidIndex)
+				if (m_blockIndex != InvalidIndexUINT32)
 				{
 					Sailor::Memory::Free<TMemoryPtr<TPtr>, TPtr, TGlobalAllocator>(m_ptr, &m_owner->m_dataAllocator);
 				}
@@ -52,7 +52,7 @@ namespace Sailor::Memory
 				m_layout = std::move(memoryBlock.m_layout);
 
 				memoryBlock.m_owner = nullptr;
-				memoryBlock.m_blockIndex = InvalidIndex;
+				memoryBlock.m_blockIndex = InvalidIndexUINT32;
 				memoryBlock.m_emptySpace = 0;
 				memoryBlock.m_blockSize = 0;
 				memoryBlock.m_layout.clear();
@@ -60,7 +60,7 @@ namespace Sailor::Memory
 
 			TMemoryPtr<TPtr> Allocate(uint32_t layoutIndex, size_t size, uint32_t alignmentOffset)
 			{
-				assert(layoutIndex != InvalidIndex);
+				assert(layoutIndex != InvalidIndexUINT32);
 
 				auto& emptySpace = m_layout[layoutIndex];
 
@@ -167,7 +167,7 @@ namespace Sailor::Memory
 				m_blockSize = 0;
 				m_emptySpace = 0;
 				m_layout.clear();
-				m_blockIndex = InvalidIndex;
+				m_blockIndex = InvalidIndexUINT32;
 			}
 
 		private:
@@ -175,7 +175,7 @@ namespace Sailor::Memory
 			TMemoryPtr<TPtr> m_ptr;
 			size_t m_blockSize;
 			size_t m_emptySpace;
-			uint32_t m_blockIndex{ InvalidIndex };
+			uint32_t m_blockIndex{ InvalidIndexUINT32 };
 			TBlockAllocator* m_owner;
 
 			std::vector<std::pair<size_t, size_t>> m_layout;
@@ -196,6 +196,7 @@ namespace Sailor::Memory
 
 		TMemoryPtr<TPtr> Allocate(size_t size, size_t alignment)
 		{
+			m_mutex.lock();
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;
 			uint32_t alignmentOffset;
@@ -210,11 +211,13 @@ namespace Sailor::Memory
 				std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
 				m_layout.pop_back();
 			}
+			m_mutex.unlock();
 			return res;
 		}
 
 		void Free(TMemoryPtr<TPtr>& data)
 		{
+			m_mutex.lock();
 			if (data.m_ptr)
 			{
 				const uint32_t index = data.m_blockIndex;
@@ -227,6 +230,7 @@ namespace Sailor::Memory
 					m_layout.push_back(index);
 				}
 			}
+			m_mutex.unlock();
 		}
 
 		virtual ~TBlockAllocator()
@@ -240,7 +244,8 @@ namespace Sailor::Memory
 
 	private:
 
-		static constexpr uint32_t InvalidIndex = (uint32_t)-1;
+		std::mutex m_mutex;
+		static constexpr uint32_t InvalidIndexUINT32 = (uint32_t)-1;
 
 		bool HeuristicToSkipBlocks(float occupation) const
 		{

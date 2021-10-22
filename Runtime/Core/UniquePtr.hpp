@@ -70,7 +70,8 @@ namespace Sailor
 
 		T* GetRawPtr() const noexcept { return m_pRawPtr; }
 
-		T* operator->() const { return m_pRawPtr; }
+		const T* operator->() const { return m_pRawPtr; }
+		T* operator->() { return m_pRawPtr; }
 
 		T& operator*()  noexcept { return *m_pRawPtr; }
 		const T& operator*() const { return *m_pRawPtr; }
@@ -79,12 +80,12 @@ namespace Sailor
 
 		bool operator==(const TUniquePtr& pRhs) const
 		{
-			return m_pRawPtr == pRhs->m_pRawPtr;
+			return m_pRawPtr == pRhs.m_pRawPtr;
 		}
 
 		bool operator!=(const TUniquePtr& pRhs) const
 		{
-			return m_pRawPtr != pRhs->m_pRawPtr;
+			return m_pRawPtr != pRhs.m_pRawPtr;
 		}
 
 		void Clear() noexcept

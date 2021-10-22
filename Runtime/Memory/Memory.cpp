@@ -10,29 +10,7 @@
 using namespace Sailor;
 using namespace Sailor::Memory;
 
-void* GlobalHeapAllocator::Allocate(size_t size)
-{
-	return malloc(size);
-}
-
-void GlobalHeapAllocator::Free(void* pData, size_t size)
-{
-	free(pData);
-}
-
-class TestMallocAllocator
-{
-public:
-	inline void* Allocate(size_t size, uint32_t alignment)
-	{
-		return malloc(size);
-	}
-
-	inline void Free(void* ptr)
-	{
-		free(ptr);
-	}
-};
+HeapAllocator DefaultHeapAllocator::m_heapAllocator;
 
 template<typename TAllocator>
 void TestPerformanceRandom(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Utils::Timer& timer)
@@ -189,7 +167,7 @@ struct TestCase_MemoryPerformance
 		}
 
 		TAllocator allocator;
-		TestMallocAllocator ideal;
+		MallocAllocator ideal;
 
 		std::vector<decltype(allocator.Allocate(1, 1))> allocatorPtrs;
 		std::vector<void*> idealPtrs;
@@ -269,7 +247,13 @@ struct TestCase_MemoryPerformance
 	}
 
 	template<>
-	static bool SanityCheck<TestMallocAllocator>()
+	static bool SanityCheck<MallocAllocator>()
+	{
+		return true;
+	}
+
+	template<>
+	static bool SanityCheck<DefaultHeapAllocator>()
 	{
 		return true;
 	}
@@ -277,8 +261,10 @@ struct TestCase_MemoryPerformance
 
 void Sailor::Memory::TestPerformance()
 {
-	TestCase_MemoryPerformance<TestMallocAllocator>::RunTests();
-	TestCase_MemoryPerformance<TBlockAllocator<GlobalHeapAllocator, void*>>::RunTests();
-	TestCase_MemoryPerformance<TPoolAllocator<GlobalHeapAllocator, void*>>::RunTests();
-	TestCase_MemoryPerformance<TMultiPoolAllocator<GlobalHeapAllocator, void*>>::RunTests();
+	TestCase_MemoryPerformance<MallocAllocator>::RunTests();
+	TestCase_MemoryPerformance<DefaultHeapAllocator>::RunTests();
+	
+	TestCase_MemoryPerformance<TBlockAllocator<DefaultHeapAllocator, void*>>::RunTests();
+	TestCase_MemoryPerformance<TPoolAllocator<DefaultHeapAllocator, void*>>::RunTests();
+	TestCase_MemoryPerformance<TMultiPoolAllocator<DefaultHeapAllocator, void*>>::RunTests();
 }

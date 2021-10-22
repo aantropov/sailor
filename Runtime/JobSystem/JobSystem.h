@@ -104,7 +104,7 @@ namespace Sailor
 			SAILOR_API void ForcelyAssignJob(const TSharedPtr<Job>& pJob);
 
 			SAILOR_API void Process();
-			SAILOR_API void Join() const;
+			SAILOR_API void Join();
 
 		protected:
 
