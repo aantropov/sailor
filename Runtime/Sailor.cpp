@@ -63,8 +63,6 @@ void EngineInstance::Initialize()
 
 void EngineInstance::Start()
 {
-	Memory::TestPerformance();
-
 	m_pInstance->m_viewportWindow.SetActive(true);
 	m_pInstance->m_viewportWindow.SetRunning(true);
 

@@ -12,7 +12,7 @@ namespace Sailor::Memory
 	class MallocAllocator
 	{
 	public:
-		inline void* Allocate(size_t size, uint32_t alignment)
+		inline void* Allocate(size_t size, size_t alignment)
 		{
 			return malloc(size);
 		}
@@ -25,11 +25,11 @@ namespace Sailor::Memory
 	
 	class DefaultHeapAllocator
 	{
-		static HeapAllocator m_heapAllocator;
+		HeapAllocator m_heapAllocator;
 	
 	public:
 
-		SAILOR_API void* Allocate(size_t size, uint32_t alignment = 8)
+		SAILOR_API void* Allocate(size_t size, size_t alignment = 8)
 		{
 			return m_heapAllocator.Allocate(size, alignment);
 		}

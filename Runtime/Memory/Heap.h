@@ -60,7 +60,7 @@ namespace Sailor::Memory
 
 		private:
 
-			Page RequestPage(size_t size, size_t pageIndex) const;
+			bool RequestPage(Page& page, size_t size, size_t pageIndex) const;
 
 			const size_t m_pageSize = 2048;
 
@@ -87,6 +87,7 @@ namespace Sailor::Memory
 
 				static constexpr  uint32_t m_size = 65536;
 
+				SmallPage() = default;
 				SmallPage(uint8_t blockSize, uint16_t pageIndex);
 
 				uint16_t m_numAllocs = 0;
@@ -110,7 +111,7 @@ namespace Sailor::Memory
 			SmallPoolAllocator(uint8_t blockSize) : m_blockSize(blockSize) {}
 			~SmallPoolAllocator();
 
-			SmallPage RequestPage(uint8_t blockSize, uint16_t pageIndex) const;
+			bool RequestPage(SmallPage& page, uint8_t blockSize, uint16_t pageIndex) const;
 
 			void* Allocate();
 			void Free(void* ptr);

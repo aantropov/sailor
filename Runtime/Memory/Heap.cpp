@@ -19,15 +19,19 @@ using Header = Memory::Internal::PoolAllocator::Header;
 #define Offset(to, from) ((int64_t)to - (int64_t)from)
 #define GetHeaderPtr(pPage, pBlock, member) (Header*)( pBlock->#member != InvalidIndexUINT64 ? ShiftPtr(pPage, pBlock->#member) : nullptr)
 
-Page PoolAllocator::RequestPage(size_t size, size_t pageIndex) const
+bool PoolAllocator::RequestPage(Page& page, size_t size, size_t pageIndex) const
 {
-	Page page;
 	page.m_totalSize = size;
 	page.m_occupiedSpace = sizeof(Header);
 	page.m_pData = malloc(size);
 	page.m_firstFree = 0;
 	page.m_first = 0;
 	page.bIsInFreeList = true;
+
+	if (!page.m_pData)
+	{
+		return false;
+	}
 
 	Header* firstFree = static_cast<Header*>(page.m_pData);
 
@@ -39,7 +43,7 @@ Page PoolAllocator::RequestPage(size_t size, size_t pageIndex) const
 	firstFree->m_pageIndex = pageIndex;
 	firstFree->m_size = size - sizeof(Header);
 
-	return page;
+	return true;
 }
 
 void Page::Clear()
@@ -395,12 +399,21 @@ void* PoolAllocator::Allocate(size_t size, size_t alignment)
 	if (!m_emptyPages.empty())
 	{
 		index = m_emptyPages[m_emptyPages.size() - 1];
-		m_pages[index] = RequestPage(newPageSize, index);
+		if (!RequestPage(m_pages[index], newPageSize, index))
+		{
+			return nullptr;
+		}
 		m_emptyPages.pop_back();
 	}
 	else
 	{
-		m_pages.emplace_back(std::move(RequestPage(newPageSize, index)));
+		Page newPage;
+		if (!RequestPage(newPage, newPageSize, index))
+		{
+			return nullptr;
+		}
+
+		m_pages.emplace_back(std::move(newPage));
 	}
 
 	m_freeList.push_back(index);
@@ -446,12 +459,15 @@ PoolAllocator::~PoolAllocator()
 	m_pages.clear();
 }
 
-SmallPage SmallPoolAllocator::RequestPage(uint8_t blockSize, uint16_t pageIndex) const
+bool SmallPoolAllocator::RequestPage(SmallPage& page, uint8_t blockSize, uint16_t pageIndex) const
 {
-	SmallPage page(blockSize, pageIndex);
-	page.m_pData = malloc(page.m_size);
+	page = SmallPage(blockSize, pageIndex);
+	if (page.m_pData = malloc(page.m_size))
+	{
+		return true;
+	}
 
-	return page;
+	return false;
 }
 
 SmallPoolAllocator::SmallPage::SmallPage(uint8_t blockSize, uint16_t pageIndex)
@@ -545,12 +561,21 @@ void* SmallPoolAllocator::Allocate()
 	if (!m_emptyPages.empty())
 	{
 		index = m_emptyPages[m_emptyPages.size() - 1];
-		m_pages[index] = RequestPage(m_blockSize, index);
+		if (!RequestPage(m_pages[index], m_blockSize, index))
+		{
+			return nullptr;
+		}
 		m_emptyPages.pop_back();
 	}
 	else
 	{
-		m_pages.emplace_back(std::move(RequestPage(m_blockSize, index)));
+		SmallPage newPage;
+		if (!RequestPage(newPage, m_blockSize, index))
+		{
+			return nullptr;
+		}
+
+		m_pages.emplace_back(std::move(newPage));
 	}
 
 	m_freeList.push_back(index);
@@ -631,6 +656,11 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 		res = m_allocator.Allocate(size, alignment);
 	}
 
+	if (!res)
+	{
+		return nullptr;
+	}
+
 	const int32_t headerSize = sizeof(SmallPoolAllocator::SmallHeader);
 	SmallPoolAllocator::SmallHeader* block = (SmallPoolAllocator::SmallHeader*)ShiftPtr(res, -headerSize);
 
@@ -641,6 +671,11 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 
 void HeapAllocator::Free(void* ptr)
 {
+	if (!ptr)
+	{
+		return;
+	}
+
 	const int32_t headerSize = sizeof(SmallPoolAllocator::SmallHeader);
 	SmallPoolAllocator::SmallHeader* block = (SmallPoolAllocator::SmallHeader*)ShiftPtr(ptr, -headerSize);
 
