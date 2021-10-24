@@ -289,6 +289,8 @@ namespace Sailor::Memory
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }
 		size_t GetOccupiedSpace() const { return m_usedDataSpace; }
 
+		TGlobalAllocator& GetGlobalAllocator() { return m_dataAllocator; }
+
 	private:
 
 		std::mutex m_mutex;

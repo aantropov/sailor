@@ -22,6 +22,7 @@
 #include "VulkanShaderModule.h"
 #include "RHI/RHIResource.h"
 #include "Framework/Framework.h"
+#include "VulkanMemory.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -736,21 +737,20 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDe
 	TRefPtr<VulkanBuffer> outBuffer = TRefPtr<VulkanBuffer>::Make(device, size, usage, sharingMode);
 	outBuffer->Compile();
 
-	TRefPtr<VulkanDeviceMemory> outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(device, outBuffer->GetMemoryRequirements(), properties, nullptr);
-	outBuffer->Bind(outDeviceMemory, 0);
+	auto data = device->GetMemoryAllocator(properties, outBuffer->GetMemoryRequirements()).Allocate(size, outBuffer->GetMemoryRequirements().alignment);
+	outBuffer->Bind(data);
+
 	return outBuffer;
 }
 
 TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
-	Memory::TBlockAllocator<Memory::GlobalVulkanHostAllocator, Memory::VulkanDeviceMemoryPtr> allocator(2048, 128);
-	allocator.Allocate(168, 8);
-
-	auto data = allocator.Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
+	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), device->GetMemoryRequirements_StagingBuffer());
+	auto data = stagingMemoryAllocator.Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
 
 	TRefPtr<VulkanBuffer> stagingBuffer = TRefPtr<VulkanBuffer>::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
-	stagingBuffer->Bind(*data);
+	stagingBuffer->Bind(data);
 
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, data.m_size, pData);
 
@@ -762,8 +762,6 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> de
 		VK_SHARING_MODE_CONCURRENT);
 
 	VulkanApi::CopyBuffer_Immediate(device, stagingBuffer, resBuffer, size);
-
-	allocator.Free(data);
 	return resBuffer;
 }
 

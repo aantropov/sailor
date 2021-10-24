@@ -1,4 +1,5 @@
 #include "VulkanDeviceMemory.h"
+#include "VulkanDevice.h"
 
 #include <atomic>
 #include <cstring>

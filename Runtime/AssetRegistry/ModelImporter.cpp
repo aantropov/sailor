@@ -81,6 +81,8 @@ bool ModelImporter::LoadModel(UID uid, std::vector<RHI::Vertex>& outVertices, st
 				outIndices.push_back(uniqueVertices[vertex]);
 			}
 		}
+
+		return true;
 	}
 	return false;
 }

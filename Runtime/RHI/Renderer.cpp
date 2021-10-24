@@ -59,16 +59,16 @@ bool Renderer::PushFrame(const FrameState& frame)
 	TSharedPtr<class JobSystem::Job> renderingJob = JobSystem::Scheduler::CreateJob("Render Frame",
 		[this, frame]() {
 
+		static Utils::Timer timer;
+		timer.Start();
+
 		do
 		{
-			static Utils::Timer timer;
 			static uint32_t totalFramesCount = 0U;
 
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
-			timer.Start();
-
-			if (GfxDevice::Vulkan::VulkanApi::PresentFrame(frame))
+			if (GfxDevice::Vulkan::VulkanApi::PresentFrame(frame, &frame.GetCommandBuffers()))
 			{
 				totalFramesCount++;
 				timer.Stop();

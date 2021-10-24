@@ -204,7 +204,7 @@
     <ClInclude Include="..\Runtime\Memory\MemoryBlockAllocator.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.hpp">
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Memory\MemoryPoolAllocator.hpp">
@@ -343,6 +343,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Memory\Heap.cpp">
       <Filter>Runtime\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

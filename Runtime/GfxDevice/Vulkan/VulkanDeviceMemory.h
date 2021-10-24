@@ -1,7 +1,8 @@
 #pragma once
 #include <map>
+#include <vulkan/vulkan.h>
 #include "Core/RefPtr.hpp"
-#include "VulkanDevice.h"
+#include "RHI/RHIResource.h"
 
 namespace Sailor::GfxDevice::Vulkan
 {
@@ -10,7 +11,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDeviceMemory final : public RHI::Resource
 	{
 	public:
-		VulkanDeviceMemory(TRefPtr<VulkanDevice> device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, void* pNextAllocInfo = nullptr);
+		VulkanDeviceMemory(TRefPtr<class VulkanDevice> device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, void* pNextAllocInfo = nullptr);
 
 		void Copy(VkDeviceSize offset, VkDeviceSize size, const void* src_data);
 
@@ -35,4 +36,3 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanDevice> m_device;
 	};
 }
-

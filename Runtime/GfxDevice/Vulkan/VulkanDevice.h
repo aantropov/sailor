@@ -6,7 +6,10 @@
 #include "Core/RefPtr.hpp"
 #include "Core/UniquePtr.hpp"
 #include "RHI/RHIResource.h"
+#include "VulkanMemory.h"
 
+using namespace Sailor;
+using namespace Sailor::Memory;
 class Sailor::FrameState;
 class Sailor::Win32::Window;
 
@@ -99,6 +102,8 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateGraphicsPipeline();
 		SAILOR_API void CreateVertexBuffer();
 
+		SAILOR_API TPoolAllocator<class GlobalVulkanAllocator, class VulkanDeviceMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
+
 	protected:
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
@@ -164,5 +169,7 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanImageView> m_imageView;
 
 		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
+
+		std::unordered_map<uint64_t, TPoolAllocator<GlobalVulkanAllocator, VulkanDeviceMemoryPtr>> m_memoryAllocators;
 	};
 }

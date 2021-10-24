@@ -1,10 +1,10 @@
 #pragma once
 #include <map>
 #include "Core/RefPtr.hpp"
-#include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"
 #include "Memory/Memory.h"
 #include "Memory/MemoryBlockAllocator.hpp"
+#include "Memory/MemoryPoolAllocator.hpp"
 
 namespace Sailor::Memory
 {
@@ -13,55 +13,34 @@ namespace Sailor::Memory
 	public:
 
 		VulkanDeviceMemoryPtr() = default;
-		VulkanDeviceMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory) : m_deviceMemory(deviceMemory) {}
-		VulkanDeviceMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory, size_t offset, size_t size) :
-			m_deviceMemory(deviceMemory), m_offset(offset), m_size(size) {}
+		VulkanDeviceMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory);
+		VulkanDeviceMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory, size_t offset, size_t size);
 
-		VulkanDeviceMemoryPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>& rhs)
-		{
-			m_deviceMemory = rhs;
-			return *this;
-		}
+		VulkanDeviceMemoryPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>& rhs);
 
-		operator bool()
-		{
-			return m_deviceMemory;
-		}
+		operator bool();
 
 		TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> m_deviceMemory{};
 		size_t m_offset{};
 		size_t m_size{};
 	};
 
-	class GlobalVulkanHostAllocator
+	class GlobalVulkanAllocator
 	{
 	protected:
 
-		const VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		VkMemoryPropertyFlags m_memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		VkMemoryRequirements m_memoryRequirements;
 
 	public:
 
-		SAILOR_API VulkanDeviceMemoryPtr Allocate(size_t size)
-		{
-			auto device = Sailor::GfxDevice::Vulkan::VulkanApi::GetInstance()->GetMainDevice();
-			auto memoryRequirements = device->GetMemoryRequirements_StagingBuffer();
-			memoryRequirements.size = size;
+		SAILOR_API void SetMemoryProperties(VkMemoryPropertyFlags properties) { m_memoryProperties = properties; }
+		SAILOR_API void SetMemoryRequirements(VkMemoryRequirements requirements) { m_memoryRequirements = requirements; }
 
-			VulkanDeviceMemoryPtr memPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>::Make(device,
-				memoryRequirements,
-				memoryProperties),
-				0,
-				size);
-
-			return memPtr;
-		}
-
-		SAILOR_API void Free(VulkanDeviceMemoryPtr pData, size_t size)
-		{
-			pData.m_deviceMemory.Clear();
-			pData.m_offset = pData.m_size = 0;
-		}
+		SAILOR_API VulkanDeviceMemoryPtr Allocate(size_t size);
+		SAILOR_API void Free(VulkanDeviceMemoryPtr pData, size_t size);
 	};
+
 
 	template<typename TDataType, typename TPtr = VulkanDeviceMemoryPtr>
 	inline VulkanDeviceMemoryPtr GetPointer(TDataType& pData)
@@ -108,16 +87,16 @@ namespace Sailor::Memory
 		return nullptr;
 	}
 
-	template<typename TMemoryPtr, typename TPtr = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanHostAllocator>
-	TMemoryPtr Allocate(size_t size, GlobalVulkanHostAllocator* allocator)
+	template<typename TMemoryPtr, typename TPtr = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanAllocator>
+	TMemoryPtr Allocate(size_t size, GlobalVulkanAllocator* allocator)
 	{
 		TMemoryPtr newObj{};
 		newObj.m_ptr = allocator->Allocate(size);
 		return newObj;
 	}
 
-	template<typename TMemoryPtr, typename TPtr = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanHostAllocator>
-	void Free(TMemoryPtr& ptr, GlobalVulkanHostAllocator* allocator)
+	template<typename TMemoryPtr, typename TPtr = VulkanDeviceMemoryPtr, typename TGlobalAllocator = GlobalVulkanAllocator>
+	void Free(TMemoryPtr& ptr, GlobalVulkanAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
 		ptr.Clear();

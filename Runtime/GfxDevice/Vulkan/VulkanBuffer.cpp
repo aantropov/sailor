@@ -5,6 +5,7 @@
 #include "VulkanDeviceMemory.h"
 
 using namespace Sailor;
+using namespace Sailor::Memory;
 using namespace Sailor::GfxDevice::Vulkan;
 
 VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
@@ -19,6 +20,11 @@ void VulkanBuffer::Release()
 {
 	if (m_buffer)
 	{
+		if (m_ptr)
+		{
+			m_device->GetMemoryAllocator(m_deviceMemory->GetMemoryPropertyFlags(), m_deviceMemory->GetMemoryRequirements()).Free(m_ptr);
+			m_ptr.Clear();
+		}
 		vkDestroyBuffer(*m_device, m_buffer, nullptr);
 	}	
 }
@@ -63,9 +69,10 @@ VkMemoryRequirements VulkanBuffer::GetMemoryRequirements() const
 	return memRequirements;
 }
 
-VkResult VulkanBuffer::Bind(Memory::VulkanDeviceMemoryPtr ptr)
+VkResult VulkanBuffer::Bind(TMemoryPtr<VulkanDeviceMemoryPtr> ptr)
 {
-	return Bind(ptr.m_deviceMemory, ptr.m_offset);
+	m_ptr = ptr;
+	return Bind((*ptr).m_deviceMemory, ptr.m_offset);
 }
 
 VkResult VulkanBuffer::Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset)

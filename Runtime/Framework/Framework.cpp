@@ -49,9 +49,11 @@ FrameState& FrameState::operator=(FrameState frameState)
 	return *this;
 }
 
-void FrameState::AddCommandBuffer(TRefPtr<GfxDevice::Vulkan::VulkanCommandBuffer> commandBuffer)
+void FrameState::PushCommandBuffer_ThreadSafe(TRefPtr<GfxDevice::Vulkan::VulkanCommandBuffer> commandBuffer)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::unique_lock<std::mutex> lk(m_commandBuffers);
+	m_updateResourcesCommandBuffers.push_back(commandBuffer);
 }
 
 void Framework::Initialize()

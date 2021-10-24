@@ -43,6 +43,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "Winuser.h"
 #include "Framework/Framework.h"
 #include "Memory/MemoryBlockAllocator.hpp"
+#include "Memory/MemoryPoolAllocator.hpp"
 
 using namespace glm;
 using namespace Sailor;
@@ -213,6 +214,19 @@ VkFormat VulkanDevice::GetDepthFormat() const
 	);
 }
 
+TPoolAllocator<class GlobalVulkanAllocator, class VulkanDeviceMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
+{
+	uint64_t hash = properties | ((uint64_t)requirements.memoryTypeBits) >> 32;
+
+	auto& allocator = m_memoryAllocators[hash];
+	auto& vulkanAllocator = allocator.GetGlobalAllocator();
+
+	vulkanAllocator.SetMemoryProperties(properties);
+	vulkanAllocator.SetMemoryRequirements(requirements);
+
+	return allocator;
+}
+
 bool VulkanDevice::IsMipsSupported(VkFormat format) const
 {
 	VkFormatProperties formatProperties;
@@ -338,7 +352,7 @@ void VulkanDevice::CreateVertexBuffer()
 {
 	if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfo<ModelAssetInfo>("Models\\Sponza\\sponza.obj"))
 	{
-		//ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
+		ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
 	}
 
 	const VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
@@ -447,9 +461,9 @@ void VulkanDevice::CreateGraphicsPipeline()
 				m_imageView)
 		};
 
-		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this), 
-			GetThreadContext().m_descriptorPool, 
-			m_pipelineLayout->m_descriptionSetLayouts[0], 
+		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this),
+			GetThreadContext().m_descriptorPool,
+			m_pipelineLayout->m_descriptionSetLayouts[0],
 			descriptors);
 
 		m_descriptorSet->Compile();

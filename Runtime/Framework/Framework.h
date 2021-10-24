@@ -39,7 +39,12 @@ namespace Sailor
 		SAILOR_API const FrameInputState& GetInputState() const { return m_pData->m_inputState; }
 		SAILOR_API int64_t GetTime() const { return m_pData->m_currentTime; }
 		SAILOR_API float GetDeltaTime() const { return m_pData->m_deltaTimeSeconds; }
-		SAILOR_API void AddCommandBuffer(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanCommandBuffer> commandBuffer);
+		SAILOR_API void PushCommandBuffer_ThreadSafe(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanCommandBuffer> commandBuffer);
+
+		SAILOR_API const std::vector<TRefPtr<class GfxDevice::Vulkan::VulkanCommandBuffer>>& GetCommandBuffers() const
+		{
+			return m_updateResourcesCommandBuffers;
+		}
 
 	protected:
 
@@ -52,9 +57,9 @@ namespace Sailor
 			FrameInputState m_inputState;
 		};
 
+		std::mutex m_commandBuffers;
 		TUniquePtr<FrameData> m_pData;
-
-		std::vector<TRefPtr<class GfxDevice::Vulkan::VulkanCommandBuffer>> m_updateResourcesCommandBuffers;
+		std::vector<TRefPtr<GfxDevice::Vulkan::VulkanCommandBuffer>> m_updateResourcesCommandBuffers;
 	};
 
 	class Framework : public TSingleton<Framework>

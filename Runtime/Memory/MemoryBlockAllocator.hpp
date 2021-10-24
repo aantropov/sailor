@@ -1,6 +1,7 @@
 #pragma once
 #include "Memory.h"
 #include <algorithm>
+#include <mutex>
 
 namespace Sailor::Memory
 {
@@ -242,6 +243,8 @@ namespace Sailor::Memory
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }
 		size_t GetOccupiedSpace() const { return m_usedDataSpace; }
 
+		TGlobalAllocator& GetGlobalAllocator() { return m_dataAllocator; }
+
 	private:
 
 		std::mutex m_mutex;
@@ -266,7 +269,7 @@ namespace Sailor::Memory
 			}
 
 			// Create new block
-			MemoryBlock block = MemoryBlock((size_t)max((uint32_t)size, (uint32_t)m_blockSize), this);
+			MemoryBlock block = MemoryBlock((size_t)std::max((uint32_t)size, (uint32_t)m_blockSize), this);
 			block.m_blockIndex = (uint32_t)m_blocks.size();
 			outLayoutIndex = (uint32_t)m_layout.size();
 			block.FindLocationInLayout(size, alignment, outBlockLayoutIndex, outAlignedOffset);
