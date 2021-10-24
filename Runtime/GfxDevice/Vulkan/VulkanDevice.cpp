@@ -216,7 +216,7 @@ VkFormat VulkanDevice::GetDepthFormat() const
 
 TPoolAllocator<class GlobalVulkanAllocator, class VulkanDeviceMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
 {
-	uint64_t hash = properties | ((uint64_t)requirements.memoryTypeBits) >> 32;
+	uint64_t hash = properties | ((uint64_t)requirements.memoryTypeBits) << 32;
 
 	auto& allocator = m_memoryAllocators[hash];
 	auto& vulkanAllocator = allocator.GetGlobalAllocator();
