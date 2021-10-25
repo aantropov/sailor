@@ -72,12 +72,29 @@ void EngineInstance::Start()
 	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
 
+	std::unordered_map<std::string, std::function<void()>> consoleVars;
+	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, AssetRegistry::GetInstance());
+	consoleVars["memory.benchmark"] = &Memory::RunMemoryBenchmark;
 
 	while (m_pInstance->m_viewportWindow.IsRunning())
 	{
 		timer.Start();
 
 		Win32::ConsoleWindow::GetInstance()->Update();
+
+		char line[256];
+		if (Win32::ConsoleWindow::GetInstance()->Read(line, 256) != 0)
+		{
+			std::string cmd = std::string(line);
+			Utils::Trim(cmd);
+
+			auto cmdIt = consoleVars.find(cmd);
+			if (cmdIt != consoleVars.end())
+			{
+				cmdIt->second();
+			}
+		}
+
 		Win32::Window::ProcessWin32Msgs();
 		Renderer::GetInstance()->FixLostDevice();
 

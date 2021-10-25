@@ -82,10 +82,10 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API const VkMemoryRequirements& GetMemoryRequirements_StagingBuffer() const { return m_memoryRequirements_StagingBuffer; }
 		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_minUboOffsetAlignment; }
 
-		template<typename TMemoryPtr>
-		VkDeviceSize GetUboOffsetAlignment(TMemoryPtr) const
+		template<typename TData>
+		VkDeviceSize GetUboOffsetAlignment() const
 		{
-			VkDeviceSize dynamicAlignment = sizeof(TMemoryPtr);
+			VkDeviceSize dynamicAlignment = sizeof(TData);
 			if (m_minUboOffsetAlignment > 0)
 			{
 				dynamicAlignment = (dynamicAlignment + m_minUboOffsetAlignment - 1) & ~(m_minUboOffsetAlignment - 1);
@@ -102,7 +102,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API void CreateGraphicsPipeline();
 		SAILOR_API void CreateVertexBuffer();
 
-		SAILOR_API TPoolAllocator<class GlobalVulkanAllocator, class VulkanDeviceMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
+		SAILOR_API TBlockAllocator<class GlobalVulkanAllocator, class VulkanDeviceMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 
 	protected:
 
@@ -170,6 +170,6 @@ namespace Sailor::GfxDevice::Vulkan
 
 		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 
-		std::unordered_map<uint64_t, TPoolAllocator<GlobalVulkanAllocator, VulkanDeviceMemoryPtr>> m_memoryAllocators;
+		std::unordered_map<uint64_t, TBlockAllocator<GlobalVulkanAllocator, VulkanDeviceMemoryPtr>> m_memoryAllocators;
 	};
 }

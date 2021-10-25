@@ -19,7 +19,7 @@ namespace Sailor::RHI
 
 	protected:
 
-		uint8_t m_materialIndex;
+		uint32_t m_materialIndex;
 		
 		TRefPtr<VulkanBuffer> m_vertices;
 		TRefPtr<VulkanBuffer> m_indices;

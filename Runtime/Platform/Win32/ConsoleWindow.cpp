@@ -216,16 +216,27 @@ uint32_t ConsoleWindow::Read(char* OutBuffer, uint32_t BufferSize)
 		return 0;
 
 	char* out = OutBuffer;
-	/*for (uint32_t i = 0; i < eol_pos; ++i) {
-		// crop if output string does not fit
-		if (buffer + buffer_size - out <= 4)
-			break;
-		out = encoding::utf8_encode(_buffer[i], out);
-	}*/
+	bool bSkipFirstSpaces = true;
+	uint32_t j = 0;
+	for (uint32_t i = 0; i < eol_pos; ++i) 
+	{
+		char c = Utils::wchar_to_UTF8(&m_buffer[i]).c_str()[0];
+		if (bSkipFirstSpaces)
+		{
+			if (c == '\0' || c == ' ')
+			{
+				continue;
+			}
+			bSkipFirstSpaces = false;
+		}
+
+		out[j++] = c;
+	}
+	out[j] = '\0';
 
 	// adjust buffer
 	memmove(m_buffer, m_buffer + eol_pos + 1, BufferSize - eol_pos - 1);
 
 	BufferSize -= eol_pos + 1;
-	return (unsigned)(out - OutBuffer);
+	return (uint32_t)strlen(out);
 }
