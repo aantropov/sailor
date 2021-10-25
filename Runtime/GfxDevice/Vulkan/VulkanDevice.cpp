@@ -168,6 +168,7 @@ void VulkanDevice::Shutdown()
 	m_descriptorSet.Clear();
 	m_image.Clear();
 	m_imageView.Clear();
+
 	m_graphicsPipeline.Clear();
 	m_pipelineLayout.Clear();
 
@@ -177,6 +178,8 @@ void VulkanDevice::Shutdown()
 	{
 		pair.second.Clear();
 	}
+
+	m_memoryAllocators.clear();
 
 	m_renderFinishedSemaphores.clear();
 	m_imageAvailableSemaphores.clear();

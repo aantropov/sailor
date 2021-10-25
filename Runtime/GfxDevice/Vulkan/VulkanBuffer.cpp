@@ -18,15 +18,17 @@ VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBu
 
 void VulkanBuffer::Release()
 {
+	if (m_ptr)
+	{
+		m_device->GetMemoryAllocator(m_deviceMemory->GetMemoryPropertyFlags(), m_deviceMemory->GetMemoryRequirements()).Free(m_ptr);
+	}
+	
 	if (m_buffer)
 	{
-		if (m_ptr)
-		{
-			m_device->GetMemoryAllocator(m_deviceMemory->GetMemoryPropertyFlags(), m_deviceMemory->GetMemoryRequirements()).Free(m_ptr);
-			m_ptr.Clear();
-		}
 		vkDestroyBuffer(*m_device, m_buffer, nullptr);
-	}	
+	}
+
+	m_deviceMemory.Clear();
 }
 
 void VulkanBuffer::Compile()

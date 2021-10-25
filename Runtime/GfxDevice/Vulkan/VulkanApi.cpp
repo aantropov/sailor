@@ -737,7 +737,8 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDe
 	TRefPtr<VulkanBuffer> outBuffer = TRefPtr<VulkanBuffer>::Make(device, size, usage, sharingMode);
 	outBuffer->Compile();
 
-	auto data = device->GetMemoryAllocator(properties, outBuffer->GetMemoryRequirements()).Allocate(size, outBuffer->GetMemoryRequirements().alignment);
+	auto requirements = outBuffer->GetMemoryRequirements();
+	auto data = device->GetMemoryAllocator(properties, requirements).Allocate(requirements.size, outBuffer->GetMemoryRequirements().alignment);
 	outBuffer->Bind(data);
 
 	return outBuffer;
@@ -745,8 +746,17 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDe
 
 TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
-	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), device->GetMemoryRequirements_StagingBuffer());
-	auto data = stagingMemoryAllocator.Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
+	TRefPtr<VulkanBuffer> resBuffer = VulkanApi::CreateBuffer(
+		device,
+		size,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		VK_SHARING_MODE_CONCURRENT);
+
+	const auto requirements = resBuffer->GetMemoryRequirements();
+	
+	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
+	auto data = stagingMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
 	TRefPtr<VulkanBuffer> stagingBuffer = TRefPtr<VulkanBuffer>::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
@@ -754,12 +764,6 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> de
 
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, data.m_size, pData);
 
-	TRefPtr<VulkanBuffer> resBuffer = VulkanApi::CreateBuffer(
-		device,
-		size,
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		VK_SHARING_MODE_CONCURRENT);
 
 	VulkanApi::CopyBuffer_Immediate(device, stagingBuffer, resBuffer, size);
 	return resBuffer;
