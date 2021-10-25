@@ -115,7 +115,8 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMsaaSamples, m_currentMsaaSamples);
 
 	// Cache samplers
-	m_samplers.Initialize(TRefPtr<VulkanDevice>(this));
+	m_samplers = TUniquePtr<VulkanSamplers>::Make();
+	m_samplers->Initialize(TRefPtr<VulkanDevice>(this));
 
 	// Cache memory requirements
 	{
@@ -188,6 +189,9 @@ void VulkanDevice::Shutdown()
 
 	m_graphicsQueue.Clear();
 	m_presentQueue.Clear();
+
+	m_samplers.Clear();
+	m_threadContext.clear();
 }
 
 ThreadContext& VulkanDevice::GetThreadContext()
@@ -458,7 +462,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		{
 			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UboTransform)),
 			TRefPtr<VulkanDescriptorImage>::Make(1, 0,
-				m_samplers.GetSampler(textureUID->GetFiltration(),
+				m_samplers->GetSampler(textureUID->GetFiltration(),
 				textureUID->GetClamping(),
 				m_image->m_mipLevels),
 				m_imageView)

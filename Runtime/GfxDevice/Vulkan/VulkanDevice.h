@@ -154,7 +154,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
 
-		VulkanSamplers m_samplers;
+		TUniquePtr<VulkanSamplers> m_samplers;
 
 		// Custom testing code
 		TRefPtr<VulkanPipelineLayout> m_pipelineLayout = nullptr;
