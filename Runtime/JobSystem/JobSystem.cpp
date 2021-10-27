@@ -14,11 +14,23 @@ using namespace Sailor::JobSystem;
 
 void IJob::Join(const TWeakPtr<IJob>& job)
 {
-	if (job)
+	if (job && job.Lock()->AddDependency(this))
 	{
-		job.Lock()->m_dependencies.emplace_back(this);
 		++m_numBlockers;
 	}
+}
+
+bool IJob::AddDependency(IJob* job)
+{
+	std::unique_lock<std::mutex> lk(m_dependencyMutex);
+
+	if (IsFinished())
+	{
+		return false;
+	}
+
+	m_dependencies.emplace_back(job);
+	return true;
 }
 
 void IJob::Join(const std::vector<TWeakPtr<IJob>>& jobs)
@@ -31,6 +43,8 @@ void IJob::Join(const std::vector<TWeakPtr<IJob>>& jobs)
 
 void IJob::Complete()
 {
+	std::unique_lock<std::mutex> lk(m_dependencyMutex);
+
 	std::unordered_map<EThreadType, uint32_t> threadTypesToRefresh;
 
 	for (auto& job : m_dependencies)

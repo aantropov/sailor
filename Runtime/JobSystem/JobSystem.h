@@ -38,6 +38,8 @@ namespace Sailor
 
 			SAILOR_API const std::string& GetName() const { return m_name; }
 
+			SAILOR_API bool AddDependency(IJob* job);
+
 			// Wait other threads completion before start
 			SAILOR_API void Join(const TWeakPtr<IJob>& job);
 			SAILOR_API void Join(const std::vector<TWeakPtr<IJob>>& jobs);
@@ -63,6 +65,7 @@ namespace Sailor
 
 			std::condition_variable m_onComplete;
 			std::mutex m_waitMutex;
+			std::mutex m_dependencyMutex;
 
 			EThreadType m_threadType;
 		};
