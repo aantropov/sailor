@@ -7,6 +7,7 @@
 #include "Core/SharedPtr.hpp"
 #include "Core/WeakPtr.hpp"
 #include "AssetInfo.h"
+#include "JobSystem/JobSystem.h"
 
 namespace Sailor::RHI
 {
@@ -25,7 +26,7 @@ namespace Sailor
 
 		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfo* assetInfo) override;
 
-		bool SAILOR_API LoadModel(UID uid, std::vector<RHI::Vertex>& outVertices, std::vector<uint32_t>& outIndices);
+		TSharedPtr<JobSystem::Job> SAILOR_API LoadModel(UID uid, std::vector<RHI::Vertex>& outVertices, std::vector<uint32_t>& outIndices);
 
 	private:
 

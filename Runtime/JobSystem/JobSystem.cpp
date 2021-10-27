@@ -14,8 +14,11 @@ using namespace Sailor::JobSystem;
 
 void IJob::Join(const TWeakPtr<IJob>& job)
 {
-	job.Lock()->m_dependencies.emplace_back(this);
-	++m_numBlockers;
+	if (job)
+	{
+		job.Lock()->m_dependencies.emplace_back(this);
+		++m_numBlockers;
+	}
 }
 
 void IJob::Join(const std::vector<TWeakPtr<IJob>>& jobs)

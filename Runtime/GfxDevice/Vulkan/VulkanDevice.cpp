@@ -38,6 +38,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanPipeline.h"
 #include "VulkanDescriptors.h"
 #include "VulkanPipileneStates.h"
+#include "JobSystem/JobSystem.h"
 
 #include "Platform/Win32/Input.h"
 #include "Winuser.h"
@@ -357,23 +358,33 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 void VulkanDevice::CreateVertexBuffer()
 {
+	TSharedPtr<JobSystem::Job> jobLoadModel;
+
 	if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfo<ModelAssetInfo>("Models\\Sponza\\sponza.obj"))
 	{
-		ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
+		jobLoadModel = ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
 	}
 
-	const VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
-	const VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
+	auto jobCreateBuffers = JobSystem::Scheduler::GetInstance()->CreateJob("Create buffers",
+		[this]() {
 
-	m_vertexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
-		reinterpret_cast<void const*>(&g_testVertices[0]),
-		bufferSize,
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+		const VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
+		const VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
 
-	m_indexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
-		reinterpret_cast<void const*>(&g_testIndices[0]),
-		indexBufferSize,
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+		this->m_vertexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
+			reinterpret_cast<void const*>(&g_testVertices[0]),
+			bufferSize,
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+
+		this->m_indexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
+			reinterpret_cast<void const*>(&g_testIndices[0]),
+			indexBufferSize,
+			VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	});
+
+	jobCreateBuffers->Join(jobLoadModel);
+
+	JobSystem::Scheduler::GetInstance()->Run(jobCreateBuffers);
 }
 
 void VulkanDevice::CreateGraphicsPipeline()
@@ -726,6 +737,16 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefP
 	//////////////////////////////////////////////////
 	TRefPtr<VulkanStateViewport> pStateViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 
+	std::vector<VkCommandBuffer> commandBuffers;
+	if (primaryCommandBuffers)
+	{
+		commandBuffers.reserve(primaryCommandBuffers->size() + 1);
+		for (auto cmdBuffer : *primaryCommandBuffers)
+		{
+			commandBuffers.push_back(*cmdBuffer);
+		}
+	}
+
 	m_commandBuffers[imageIndex]->BeginCommandList();
 	{
 		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent());
@@ -738,17 +759,20 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefP
 			}
 		}
 
-		m_commandBuffers[imageIndex]->BindPipeline(m_graphicsPipeline);
-		m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
-		m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
-		m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
-		m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
-		m_commandBuffers[imageIndex]->BindDescriptorSet(m_pipelineLayout, m_descriptorSet);
-		m_commandBuffers[imageIndex]->DrawIndexed(m_indexBuffer);
-
+		if (m_vertexBuffer && m_indexBuffer)
+		{
+			m_commandBuffers[imageIndex]->BindPipeline(m_graphicsPipeline);
+			m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
+			m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
+			m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
+			m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
+			m_commandBuffers[imageIndex]->BindDescriptorSet(m_pipelineLayout, m_descriptorSet);
+			m_commandBuffers[imageIndex]->DrawIndexed(m_indexBuffer);
+		}
 		m_commandBuffers[imageIndex]->EndRenderPass();
 	}
 	m_commandBuffers[imageIndex]->EndCommandList();
+	commandBuffers.push_back(*m_commandBuffers[imageIndex]->GetHandle());
 
 	std::vector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait)
@@ -762,17 +786,6 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefP
 
 	waitSemaphores.push_back(*m_imageAvailableSemaphores[m_currentFrame]);
 
-	std::vector<VkCommandBuffer> commandBuffers;
-	if (primaryCommandBuffers)
-	{
-		commandBuffers.reserve(primaryCommandBuffers->size() + 1);
-		for (auto cmdBuffer : *primaryCommandBuffers)
-		{
-			commandBuffers.push_back(*cmdBuffer);
-		}
-	}
-
-	commandBuffers.push_back(*m_commandBuffers[imageIndex]->GetHandle());
 	///////////////////////////////////////////////////
 
 	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
