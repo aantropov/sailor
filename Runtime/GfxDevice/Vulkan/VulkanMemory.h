@@ -25,6 +25,23 @@ namespace Sailor::Memory
 		size_t m_size{};
 	};
 
+	class VulkanBufferPtr
+	{
+	public:
+
+		VulkanBufferPtr() = default;
+		VulkanBufferPtr(TRefPtr<class Sailor::GfxDevice::Vulkan::VulkanBuffer> buffer);
+		VulkanBufferPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer> buffer, size_t offset, size_t size);
+
+		VulkanBufferPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer>& rhs);
+
+		operator bool();
+
+		TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer> m_buffer{};
+		size_t m_offset{};
+		size_t m_size{};
+	};
+
 	class GlobalVulkanAllocator
 	{
 	protected:
@@ -40,7 +57,6 @@ namespace Sailor::Memory
 		SAILOR_API VulkanDeviceMemoryPtr Allocate(size_t size);
 		SAILOR_API void Free(VulkanDeviceMemoryPtr pData, size_t size);
 	};
-
 
 	template<typename TDataType, typename TPtr = VulkanDeviceMemoryPtr>
 	inline VulkanDeviceMemoryPtr GetPointer(TDataType& pData)

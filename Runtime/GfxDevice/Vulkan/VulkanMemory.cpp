@@ -1,5 +1,6 @@
 #include "VulkanMemory.h"
 #include "VulkanDevice.h"
+#include "VulkanBuffer.h"
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -18,6 +19,21 @@ VulkanDeviceMemoryPtr& VulkanDeviceMemoryPtr::operator=(const TRefPtr<Sailor::Gf
 VulkanDeviceMemoryPtr::operator bool()
 {
 	return m_deviceMemory;
+}
+
+VulkanBufferPtr::VulkanBufferPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer> buffer) : m_buffer(buffer) {}
+VulkanBufferPtr::VulkanBufferPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer> buffer, size_t offset, size_t size) :
+	m_buffer(buffer), m_offset(offset), m_size(size) {}
+
+VulkanBufferPtr& VulkanBufferPtr::operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer>& rhs)
+{
+	m_buffer = rhs;
+	return *this;
+}
+
+VulkanBufferPtr::operator bool()
+{
+	return m_buffer;
 }
 
 VulkanDeviceMemoryPtr GlobalVulkanAllocator::Allocate(size_t size)
