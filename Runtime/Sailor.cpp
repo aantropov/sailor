@@ -12,6 +12,7 @@
 #include "Memory/MemoryBlockAllocator.hpp"
 
 using namespace Sailor;
+using namespace Sailor::RHI;
 
 EngineInstance* EngineInstance::m_pInstance = nullptr;
 const std::string EngineInstance::ApplicationName = "SailorEngine";

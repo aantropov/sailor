@@ -111,7 +111,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API TRefPtr<VulkanImageView> CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
 		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
-		static SAILOR_API std::vector<TRefPtr<VulkanDescriptorSetLayout>> CreateDescriptorSetLayouts(TRefPtr<VulkanDevice> device, 
+		static SAILOR_API std::vector<TRefPtr<VulkanDescriptorSetLayout>> CreateDescriptorSetLayouts(TRefPtr<VulkanDevice> device,
 			const std::vector<TRefPtr<VulkanShaderStage>>& shaders);
 
 		static SAILOR_API VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
@@ -124,6 +124,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API VkDescriptorPoolSize CreateDescriptorPoolSize(VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uint32_t count = 1);
 
 		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
+		static SAILOR_API TRefPtr<VulkanCommandBuffer> CreateBuffer(TRefPtr<VulkanBuffer>& outbuffer, TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
 		//Immediate context
 		static SAILOR_API TRefPtr<VulkanBuffer> CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);

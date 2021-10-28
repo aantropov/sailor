@@ -70,6 +70,9 @@ namespace Sailor::RHI
 
 		Resource(Resource& copy) = delete;
 		Resource& operator =(Resource& rhs) = delete;
+
+		Resource(Resource&& copy) = default;
+		Resource& operator =(Resource&& rhs) = default;
 	};
 
 	class IExplicitInitialization

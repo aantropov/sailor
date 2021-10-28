@@ -10,8 +10,9 @@
 #include "Jobsystem/JobSystem.h"
 #include "Framework/Framework.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
+#include "RHI/Mesh.h"
 
-namespace Sailor
+namespace Sailor::RHI
 {
 	class Renderer : public TSingleton<Renderer>
 	{
@@ -28,6 +29,8 @@ namespace Sailor
 		uint32_t SAILOR_API GetNumFrames() const { return m_numFrames.load(); }
 		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
+		TRefPtr<RHI::Mesh> CreateMesh(const std::vector<RHI::Vertex>& vertices, const std::vector<uint32_t>& indices);
+
 	protected:
 
 		std::atomic<bool> m_bForceStop = false;
@@ -35,5 +38,9 @@ namespace Sailor
 		std::atomic<uint32_t> m_numFrames = 0u;
 
 		class Window const* m_pViewport;
+
+#if defined(VULKAN)
+		GfxDevice::Vulkan::VulkanApi* m_vkInstance;
+#endif
 	};
 };

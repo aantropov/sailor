@@ -32,3 +32,5 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #ifndef _WINDEF_
 typedef unsigned long DWORD;
 #endif
+
+#define VULKAN

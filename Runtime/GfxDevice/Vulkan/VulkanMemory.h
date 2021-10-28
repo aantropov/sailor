@@ -47,7 +47,7 @@ namespace Sailor::Memory
 	protected:
 
 		VkMemoryPropertyFlags m_memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-		VkMemoryRequirements m_memoryRequirements;
+		VkMemoryRequirements m_memoryRequirements{};
 
 	public:
 
