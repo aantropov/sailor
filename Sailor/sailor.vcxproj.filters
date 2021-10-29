@@ -84,7 +84,7 @@
     <ClInclude Include="..\Runtime\Defines.h">
       <Filter>Runtime</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\RHI\RHIResource.h">
+    <ClInclude Include="..\Runtime\RHI\Types.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h">
@@ -219,6 +219,15 @@
     <ClInclude Include="..\Runtime\RHI\Fence.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\CommandBuffer.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\GfxDevice.hpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\Texture.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -349,6 +358,18 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\CommandBuffer.cpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\Fence.cpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\Mesh.cpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\Texture.cpp">
+      <Filter>Runtime\RHI</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

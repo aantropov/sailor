@@ -36,12 +36,12 @@ namespace Sailor::RHI
 		Samples_64 = 64
 	};
 
-	
+
 	enum EBufferUsageBit : uint16_t
 	{
 		BufferTransferSrc_Bit = 0x00000001,
 		BufferTransferDst_Bit = 0x00000002,
-		
+
 		UniformTexelBuffer_Bit = 0x00000004,
 		StorageTexelBuffer_Bit = 0x00000008,
 		UniformBuffer_Bit = 0x00000010,
@@ -304,7 +304,7 @@ namespace Sailor::RHI
 	{
 		TextureTransferSrc_Bit = 0x00000001,
 		TextureTransferDst_Bit = 0x00000002,
-		
+
 		Sampled_Bit = 0x00000004,
 		Storage_Bit = 0x00000008,
 		ColorAttachment_Bit = 0x00000010,
@@ -378,7 +378,8 @@ namespace Sailor::RHI
 	};
 };
 
-namespace std {
+namespace std
+{
 	template<> struct hash<Sailor::RHI::Vertex>
 	{
 		size_t operator()(Sailor::RHI::Vertex const& vertex) const

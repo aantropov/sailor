@@ -224,10 +224,13 @@
     <ClInclude Include="..\Runtime\Platform\Win32\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Input.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Window.h" />
+    <ClInclude Include="..\Runtime\RHI\CommandBuffer.h" />
     <ClInclude Include="..\Runtime\RHI\Fence.h" />
+    <ClInclude Include="..\Runtime\RHI\GfxDevice.hpp" />
     <ClInclude Include="..\Runtime\RHI\Mesh.h" />
     <ClInclude Include="..\Runtime\RHI\Renderer.h" />
-    <ClInclude Include="..\Runtime\RHI\RHIResource.h" />
+    <ClInclude Include="..\Runtime\RHI\Texture.h" />
+    <ClInclude Include="..\Runtime\RHI\Types.h" />
     <ClInclude Include="..\Runtime\Sailor.h" />
     <ClInclude Include="..\Runtime\Utils.h" />
   </ItemGroup>
@@ -271,7 +274,11 @@
     <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\Input.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\Window.cpp" />
+    <ClCompile Include="..\Runtime\RHI\CommandBuffer.cpp" />
+    <ClCompile Include="..\Runtime\RHI\Fence.cpp" />
+    <ClCompile Include="..\Runtime\RHI\Mesh.cpp" />
     <ClCompile Include="..\Runtime\RHI\Renderer.cpp" />
+    <ClCompile Include="..\Runtime\RHI\Texture.cpp" />
     <ClCompile Include="..\Runtime\Sailor.cpp" />
     <ClCompile Include="..\Runtime\Utils.cpp" />
     <ClCompile Include="dllmain.cpp" />
