@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
 #include <vulkan/vulkan.h>
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "Core/RefPtr.hpp"
 
 namespace Sailor::GfxDevice::Vulkan

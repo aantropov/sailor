@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <vulkan/vulkan_core.h>
 #include "Sailor.h"
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "AssetRegistry/ShaderCompiler.h"
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"

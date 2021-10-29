@@ -3,7 +3,7 @@
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
 #include "Core/UniquePtr.hpp"
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "Platform/Win32/Input.h"
 
 namespace Sailor::GfxDevice::Vulkan

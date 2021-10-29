@@ -20,7 +20,7 @@
 #include "VulkanCommandBuffer.h"
 #include "VulkanDescriptors.h"
 #include "VulkanShaderModule.h"
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "Framework/Framework.h"
 #include "VulkanMemory.h"
 

@@ -5,7 +5,7 @@
 #include "VulkanSamplers.h"
 #include "Core/RefPtr.hpp"
 #include "Core/UniquePtr.hpp"
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "VulkanMemory.h"
 
 using namespace Sailor;

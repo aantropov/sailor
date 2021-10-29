@@ -18,7 +18,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "AssetRegistry/ModelImporter.h"
 #include "AssetRegistry/ModelAssetInfo.h"
 #include "Math/Math.h"
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
 #include "Platform/Win32/Window.h"

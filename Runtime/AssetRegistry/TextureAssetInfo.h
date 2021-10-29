@@ -1,6 +1,6 @@
 #pragma once
 #include "AssetInfo.h"
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "Core/Singleton.hpp"
 
 using namespace std;

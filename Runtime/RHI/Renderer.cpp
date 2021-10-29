@@ -20,8 +20,8 @@ void Renderer::Initialize(Window const* pViewport, RHI::EMsaaSamples msaaSamples
 
 	m_pInstance = new Renderer();
 	m_pInstance->m_pViewport = pViewport;
-#if defined(VULKAN)
 
+#if defined(VULKAN)
 	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
 	m_pInstance->m_vkInstance = GfxDevice::Vulkan::VulkanApi::GetInstance();
 

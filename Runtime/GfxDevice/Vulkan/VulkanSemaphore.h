@@ -2,7 +2,7 @@
 #include "VulkanApi.h"
 #include "VulkanDevice.h"
 #include "Core/RefPtr.hpp"
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 
 namespace Sailor::GfxDevice::Vulkan
 {

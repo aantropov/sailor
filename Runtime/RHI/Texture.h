@@ -7,20 +7,16 @@ using namespace GfxDevice::Vulkan;
 
 namespace Sailor::RHI
 {
-	class Mesh : public Resource
+	class Texture : public Resource
 	{
 	public:
 #if defined(VULKAN)
 		struct
 		{
-			TRefPtr<VulkanBuffer> m_vertexBuffer;
-			TRefPtr<VulkanBuffer> m_indexBuffer;
+			TRefPtr<VulkanImage> m_image;
 		} m_vulkan;
 #endif
 
-		size_t m_verticesNum;
-		size_t m_indicesNum;
-		
 		bool IsReady() const { return true; }
 	};
 };

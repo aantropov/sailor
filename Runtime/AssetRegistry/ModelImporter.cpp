@@ -7,7 +7,7 @@
 #include <fstream>
 #include <algorithm>
 #include <iostream>
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "Memory/Heap.h"
 
 #include "nlohmann_json/include/nlohmann/json.hpp"

@@ -1,12 +1,14 @@
 #pragma once
 #include "Core/RefPtr.hpp"
 #include "GfxDevice/Vulkan/VulkanFence.h"
-#include "RHIResource.h"
+#include "Types.h"
 
 using namespace GfxDevice::Vulkan;
 
 namespace Sailor::RHI
 {
+	class Mesh;
+
 	class IVisitor
 	{
 	public:
@@ -30,26 +32,9 @@ namespace Sailor::RHI
 			TRefPtr<VulkanFence> m_fence;
 		} m_vulkan;
 #endif
-		void Wait(uint64_t timeout = UINT64_MAX) const
-		{
-#if defined(VULKAN)
-			m_vulkan.m_fence->Wait(timeout);
-#endif
-		}
 
-		void Reset() const
-		{
-#if defined(VULKAN)
-			m_vulkan.m_fence->Reset();
-#endif
-		}
-
-		bool IsFinished() const
-		{
-#if defined(VULKAN)
-			return m_vulkan.m_fence->Status() == VkResult::VK_SUCCESS;
-#endif
-			return true;
-		}
+		void Wait(uint64_t timeout = UINT64_MAX) const;
+		void Reset() const;
+		bool IsFinished() const;
 	};
 };

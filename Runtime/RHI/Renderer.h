@@ -23,7 +23,6 @@ namespace Sailor::RHI
 		SAILOR_API ~Renderer() override;
 
 		void SAILOR_API FixLostDevice();
-
 		bool SAILOR_API PushFrame(const FrameState& frame);
 
 		uint32_t SAILOR_API GetNumFrames() const { return m_numFrames.load(); }

@@ -1,7 +1,7 @@
 #pragma once
 #include "VulkanApi.h"
 #include <vulkan/vulkan.h>
-#include "RHI/RHIResource.h"
+#include "RHI/Types.h"
 #include "VulkanMemory.h"
 #include "Memory/Memory.h"
 
