@@ -216,6 +216,9 @@
     <ClInclude Include="..\Runtime\Memory\Heap.h">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\Fence.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

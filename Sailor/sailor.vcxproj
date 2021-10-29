@@ -224,6 +224,7 @@
     <ClInclude Include="..\Runtime\Platform\Win32\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Input.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Window.h" />
+    <ClInclude Include="..\Runtime\RHI\Fence.h" />
     <ClInclude Include="..\Runtime\RHI\Mesh.h" />
     <ClInclude Include="..\Runtime\RHI\Renderer.h" />
     <ClInclude Include="..\Runtime\RHI\RHIResource.h" />

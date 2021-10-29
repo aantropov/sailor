@@ -746,14 +746,14 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDe
 
 TRefPtr<VulkanCommandBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanBuffer>& outbuffer, TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
-	TRefPtr<VulkanBuffer> resBuffer = VulkanApi::CreateBuffer(
+	outbuffer = VulkanApi::CreateBuffer(
 		device,
 		size,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		VK_SHARING_MODE_CONCURRENT);
 
-	const auto requirements = resBuffer->GetMemoryRequirements();
+	const auto requirements = outbuffer->GetMemoryRequirements();
 
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
 	auto data = stagingMemoryAllocator.Allocate(requirements.size, requirements.alignment);
@@ -764,28 +764,22 @@ TRefPtr<VulkanCommandBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanBuffer>& outb
 
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, data.m_size, pData);
 
-	// Todo: save resources in command buffer before it is finished
-	auto fence = TRefPtr<VulkanFence>::Make(device);
 	auto cmdBuffer = device->CreateCommandBuffer(true);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	cmdBuffer->CopyBuffer(stagingBuffer, resBuffer, size);
+	cmdBuffer->CopyBuffer(stagingBuffer, outbuffer, size);
 	cmdBuffer->EndCommandList();
-	device->SubmitCommandBuffer(cmdBuffer, fence);
-	fence->Wait();
 	
-	outbuffer = resBuffer;
-
-	return nullptr;
+	return cmdBuffer;
 }
 
 TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
 	TRefPtr<VulkanBuffer> resBuffer;
-	CreateBuffer(resBuffer, device, pData, size, usage, sharingMode);
+	auto cmd = CreateBuffer(resBuffer, device, pData, size, usage, sharingMode);
 
-	//auto fence = TRefPtr<VulkanFence>::Make(device);
-	//device->SubmitCommandBuffer(cmd, fence);
-	//fence->Wait();
+	auto fence = TRefPtr<VulkanFence>::Make(device);
+	device->SubmitCommandBuffer(cmd, fence);
+	fence->Wait();
 
 	return resBuffer;
 }
