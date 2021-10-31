@@ -17,7 +17,6 @@ void GfxDeviceVulkan::Initialize(const Win32::Window* pViewport, RHI::EMsaaSampl
 	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
 
 	m_vkInstance = GfxDevice::Vulkan::VulkanApi::GetInstance();
-	m_vkInstance->GetMainDevice()->CreateVertexBuffer();
 	m_vkInstance->GetMainDevice()->CreateGraphicsPipeline();
 
 	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
@@ -81,6 +80,12 @@ void GfxDeviceVulkan::WaitIdle()
 
 void GfxDeviceVulkan::SubmitCommandList(TRefPtr<RHI::CommandList> commandList, TRefPtr<RHI::Fence> fence)
 {
+	//if we have fence and that is null we should create device resource
+	if (!fence->m_vulkan.m_fence)
+	{
+		fence->m_vulkan.m_fence = TRefPtr<VulkanFence>::Make(m_vkInstance->GetMainDevice());
+	}
+
 	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence->m_vulkan.m_fence);
 }
 

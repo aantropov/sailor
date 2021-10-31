@@ -5,12 +5,8 @@
 #include "Core/UniquePtr.hpp"
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
+#include "RHI/Mesh.h"
 #include "Platform/Win32/Input.h"
-
-namespace Sailor::GfxDevice::Vulkan
-{
-	class VulkanCommandBuffer;
-}
 
 namespace Sailor
 {
@@ -76,9 +72,13 @@ namespace Sailor
 
 		~Framework() override = default;
 
+		TRefPtr<class RHI::Mesh>& GetTestMesh() { return m_testMesh; }
+
 	protected:
 
 		Framework() = default;
 		std::atomic<uint32_t> m_pureFps = 0u;
+
+		TRefPtr<class RHI::Mesh> m_testMesh;
 	};
 }

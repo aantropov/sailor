@@ -20,9 +20,6 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 		indexBufferSize,
 		EBufferUsageBit::IndexBuffer_Bit);
 
-	res->AddVisitor(updateVerticesCmd);
-	res->AddVisitor(updateIndexCmd);
-
 	TRefPtr<RHI::Fence> fenceUpdateVertices = TRefPtr<RHI::Fence>::Make();
 	SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
 
@@ -32,17 +29,25 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 	fenceUpdateVertices->AddObservable(res);
 	fenceUpdateIndex->AddObservable(res);
 
-	m_trackedFences.push_back(fenceUpdateVertices);
-	m_trackedFences.push_back(fenceUpdateIndex);
+	res->AddVisitor(fenceUpdateVertices);
+	res->AddVisitor(fenceUpdateIndex);
+
+	{
+		std::unique_lock<std::mutex>(m_mutexTrackedFences);
+		m_trackedFences.push_back(fenceUpdateVertices);
+		m_trackedFences.push_back(fenceUpdateIndex);
+	}
 
 	return res;
 }
 
 void IGfxDevice::TraceFences()
 {
-	for (uint32_t index = 0; index < m_trackedFences.size(); index++)
+	std::unique_lock<std::mutex>(m_mutexTrackedFences);
+
+	for (int32_t index = 0; index < m_trackedFences.size(); index++)
 	{
-		auto& cmd = m_trackedFences[index];
+		TRefPtr<Fence> cmd = m_trackedFences[index];
 
 		if (cmd->IsFinished())
 		{

@@ -29,8 +29,7 @@ namespace Sailor::RHI
 		uint32_t SAILOR_API GetNumFrames() const { return m_numFrames.load(); }
 		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
-		TUniquePtr<RHI::IGfxDevice>& GetDriver() { return m_driverInstance; }
-		const TUniquePtr<RHI::IGfxDevice>& GetDriver() const { return m_driverInstance; }
+		static SAILOR_API TUniquePtr<RHI::IGfxDevice>& GetDriver() { return m_pInstance->m_driverInstance; }
 
 	protected:
 

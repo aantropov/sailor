@@ -9,7 +9,7 @@ namespace Sailor::RHI
 {
 	class Mesh;
 
-	class Fence : virtual public Resource, public IVisitor
+	class Fence : public Resource, public IVisitor
 	{
 	public:
 #if defined(VULKAN)

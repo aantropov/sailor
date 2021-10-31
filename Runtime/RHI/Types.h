@@ -362,7 +362,7 @@ namespace Sailor::RHI
 		SAILOR_API Resource& operator =(Resource&& rhs) = default;
 	};
 
-	class IObservable : virtual public RHI::Resource
+	class IObservable
 	{
 	public:
 		SAILOR_API IObservable() = default;
@@ -372,13 +372,13 @@ namespace Sailor::RHI
 		SAILOR_API IObservable& operator=(IObservable&&) = default;
 		virtual SAILOR_API ~IObservable() = default;
 
-		virtual void SAILOR_API TraceVisit(class IVisitor& visitor, bool& bShouldRemoveFromList) = 0;
+		virtual void SAILOR_API TraceVisit(TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) = 0;
 	};
 
-	class IDependent : virtual public RHI::Resource
+	class IDependent
 	{
 	public:
-		
+
 		void AddVisitor(TRefPtr<Resource> dependency)
 		{
 			m_dependencies.push_back(std::move(dependency));
@@ -393,7 +393,7 @@ namespace Sailor::RHI
 		std::vector<TRefPtr<Resource>> m_dependencies;
 	};
 
-	class IVisitor : virtual public RHI::Resource
+	class IVisitor
 	{
 	public:
 
@@ -406,7 +406,7 @@ namespace Sailor::RHI
 
 		virtual SAILOR_API void TraceDependencies()
 		{
-			for (uint32_t i = 0; i < m_elements.size(); i++)
+			for (int32_t i = 0; i < m_elements.size(); i++)
 			{
 				auto& element = m_elements[i];
 
@@ -414,7 +414,7 @@ namespace Sailor::RHI
 				assert(visit);
 
 				bool bShouldRemove = false;
-				visit->TraceVisit(*this, bShouldRemove);
+				visit->TraceVisit((TRefPtr<Resource>(dynamic_cast<Resource*>(this))), bShouldRemove);
 
 				if (bShouldRemove)
 				{

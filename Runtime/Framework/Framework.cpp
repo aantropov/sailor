@@ -4,7 +4,10 @@
 #include "Platform/Win32/Input.h"
 #include "Math.h"
 #include "Utils.h"
-#include "GfxDevice/Vulkan/VulkanCommandBuffer.h"
+#include "RHI/Renderer.h"
+#include "RHI/Mesh.h"
+#include "AssetRegistry/ModelAssetInfo.h"
+#include "AssetRegistry/ModelImporter.h"
 
 using namespace Sailor;
 
@@ -91,4 +94,54 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 
 void Framework::CpuFrame()
 {
+	static bool bFirstFrame = true;
+
+	if (bFirstFrame)
+	{
+		static std::vector<RHI::Vertex> g_testVertices =
+		{
+			{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
+			{{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
+			{{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
+			{{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}},
+
+			{{-0.5f, 0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
+			{{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
+			{{-0.5f, -0.5f, 0.5f}, {1.0f, 0.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
+			{{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}}
+		};
+
+		static std::vector<uint32_t> g_testIndices =
+		{
+		   0, 1, 2,    // side 1
+			2, 1, 3,
+			4, 0, 6,    // side 2
+			6, 0, 2,
+			7, 5, 6,    // side 3
+			6, 5, 4,
+			3, 1, 7,    // side 4
+			7, 1, 5,
+			4, 5, 0,    // side 5
+			0, 5, 1,
+			3, 7, 2,    // side 6
+			2, 7, 6,
+		};
+
+		TSharedPtr<JobSystem::Job> jobLoadModel;
+
+		if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfo<ModelAssetInfo>("Models\\Sponza\\sponza.obj"))
+		{
+			jobLoadModel = ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
+		}
+
+		auto jobCreateBuffers = JobSystem::Scheduler::GetInstance()->CreateJob("Create buffers",
+			[this]() {
+
+			m_testMesh = Sailor::RHI::Renderer::GetDriver()->CreateMesh(g_testVertices, g_testIndices);
+		});
+
+		jobCreateBuffers->Join(jobLoadModel);
+		JobSystem::Scheduler::GetInstance()->Run(jobCreateBuffers);
+		bFirstFrame = false;
+	}
 }

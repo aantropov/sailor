@@ -1,4 +1,6 @@
 #pragma once
+#include <mutex>
+
 #include "Core/RefPtr.hpp"
 #include "Texture.h"
 #include "Fence.h"
@@ -49,6 +51,7 @@ namespace Sailor::RHI
 
 	protected:
 
+		std::mutex m_mutexTrackedFences;
 		std::vector<TRefPtr<RHI::Fence>> m_trackedFences;
 	};
 };

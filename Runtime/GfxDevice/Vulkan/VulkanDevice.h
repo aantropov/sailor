@@ -100,7 +100,6 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API ThreadContext& GetThreadContext();
 
 		SAILOR_API void CreateGraphicsPipeline();
-		SAILOR_API void CreateVertexBuffer();
 
 		SAILOR_API TBlockAllocator<class GlobalVulkanAllocator, class VulkanDeviceMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 
@@ -160,8 +159,6 @@ namespace Sailor::GfxDevice::Vulkan
 		TRefPtr<VulkanPipelineLayout> m_pipelineLayout = nullptr;
 		TRefPtr<VulkanPipeline> m_graphicsPipeline = nullptr;
 
-		TRefPtr<VulkanBuffer> m_vertexBuffer;
-		TRefPtr<VulkanBuffer> m_indexBuffer;
 		TRefPtr<VulkanBuffer> m_uniformBuffer;
 		TRefPtr<VulkanDescriptorSet> m_descriptorSet;
 

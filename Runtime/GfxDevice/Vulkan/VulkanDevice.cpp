@@ -55,35 +55,6 @@ using namespace Sailor::GfxDevice::Vulkan;
 TRefPtr<VulkanShaderStage> g_testFragShader;
 TRefPtr<VulkanShaderStage> g_testVertShader;
 
-std::vector<Vertex> g_testVertices =
-{
-	{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
-	{{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
-	{{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
-	{{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}},
-
-	{{-0.5f, 0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
-	{{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
-	{{-0.5f, -0.5f, 0.5f}, {1.0f, 0.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
-	{{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}}
-};
-
-std::vector<uint32_t> g_testIndices =
-{
-   0, 1, 2,    // side 1
-	2, 1, 3,
-	4, 0, 6,    // side 2
-	6, 0, 2,
-	7, 5, 6,    // side 3
-	6, 5, 4,
-	3, 1, 7,    // side 4
-	7, 1, 5,
-	4, 5, 0,    // side 5
-	0, 5, 1,
-	3, 7, 2,    // side 6
-	2, 7, 6,
-};
-
 VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 {
 	if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
@@ -160,8 +131,6 @@ void VulkanDevice::Shutdown()
 
 	m_swapchain.Clear();
 
-	m_vertexBuffer.Clear();
-	m_indexBuffer.Clear();
 	m_uniformBuffer.Clear();
 
 	g_testFragShader.Clear();
@@ -354,37 +323,6 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 	m_bIsSwapChainOutdated = false;
 	return true;
-}
-
-void VulkanDevice::CreateVertexBuffer()
-{
-	TSharedPtr<JobSystem::Job> jobLoadModel;
-
-	if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfo<ModelAssetInfo>("Models\\Sponza\\sponza.obj"))
-	{
-		jobLoadModel = ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
-	}
-
-	auto jobCreateBuffers = JobSystem::Scheduler::GetInstance()->CreateJob("Create buffers",
-		[this]() {
-
-		const VkDeviceSize bufferSize = sizeof(g_testVertices[0]) * g_testVertices.size();
-		const VkDeviceSize indexBufferSize = sizeof(g_testIndices[0]) * g_testIndices.size();
-
-		this->m_vertexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
-			reinterpret_cast<void const*>(&g_testVertices[0]),
-			bufferSize,
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-
-		this->m_indexBuffer = VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice>(this),
-			reinterpret_cast<void const*>(&g_testIndices[0]),
-			indexBufferSize,
-			VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-	});
-
-	jobCreateBuffers->Join(jobLoadModel);
-
-	JobSystem::Scheduler::GetInstance()->Run(jobCreateBuffers);
 }
 
 void VulkanDevice::CreateGraphicsPipeline()
@@ -759,15 +697,16 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefP
 			}
 		}
 
-		if (m_vertexBuffer && m_indexBuffer)
+		auto mesh = Framework::GetInstance()->GetTestMesh();
+		if (mesh && mesh->IsReady())
 		{
 			m_commandBuffers[imageIndex]->BindPipeline(m_graphicsPipeline);
 			m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
 			m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
-			m_commandBuffers[imageIndex]->BindVertexBuffers({ m_vertexBuffer });
-			m_commandBuffers[imageIndex]->BindIndexBuffer(m_indexBuffer);
+			m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });
+			m_commandBuffers[imageIndex]->BindIndexBuffer(mesh->m_indexBuffer->m_vulkan.m_buffer);
 			m_commandBuffers[imageIndex]->BindDescriptorSet(m_pipelineLayout, m_descriptorSet);
-			m_commandBuffers[imageIndex]->DrawIndexed(m_indexBuffer);
+			m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer);
 		}
 		m_commandBuffers[imageIndex]->EndRenderPass();
 	}

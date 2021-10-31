@@ -93,13 +93,13 @@ namespace Sailor
 			return *this;
 		}
 
-		T* GetRawPtr() const noexcept { return dynamic_cast<T*>(m_pRawPtr); }
+		T* GetRawPtr() const noexcept { return static_cast<T*>(m_pRawPtr); }
 
-		T* operator->()  noexcept { return dynamic_cast<T*>(m_pRawPtr); }
-		const T* operator->() const { return dynamic_cast<T*>(m_pRawPtr); }
+		T* operator->()  noexcept { return static_cast<T*>(m_pRawPtr); }
+		const T* operator->() const { return static_cast<T*>(m_pRawPtr); }
 
-		T& operator*()  noexcept { return *dynamic_cast<T*>(m_pRawPtr); }
-		const T& operator*() const { return *dynamic_cast<T*>(m_pRawPtr); }
+		T& operator*()  noexcept { return *static_cast<T*>(m_pRawPtr); }
+		const T& operator*() const { return *static_cast<T*>(m_pRawPtr); }
 
 		bool IsShared() const  noexcept { return GetRefCounter() > 1; }
 
