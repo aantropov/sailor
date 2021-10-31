@@ -192,6 +192,7 @@
     <ClInclude Include="..\Runtime\Core\WeakPtr.hpp" />
     <ClInclude Include="..\Runtime\Defines.h" />
     <ClInclude Include="..\Runtime\Framework\Framework.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h" />
@@ -224,9 +225,10 @@
     <ClInclude Include="..\Runtime\Platform\Win32\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Input.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Window.h" />
-    <ClInclude Include="..\Runtime\RHI\CommandBuffer.h" />
+    <ClInclude Include="..\Runtime\RHI\Buffer.h" />
+    <ClInclude Include="..\Runtime\RHI\CommandList.h" />
     <ClInclude Include="..\Runtime\RHI\Fence.h" />
-    <ClInclude Include="..\Runtime\RHI\GfxDevice.hpp" />
+    <ClInclude Include="..\Runtime\RHI\GfxDevice.h" />
     <ClInclude Include="..\Runtime\RHI\Mesh.h" />
     <ClInclude Include="..\Runtime\RHI\Renderer.h" />
     <ClInclude Include="..\Runtime\RHI\Texture.h" />
@@ -247,6 +249,7 @@
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\Framework\Framework.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.cpp" />
@@ -274,8 +277,10 @@
     <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\Input.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\Window.cpp" />
-    <ClCompile Include="..\Runtime\RHI\CommandBuffer.cpp" />
+    <ClCompile Include="..\Runtime\RHI\Buffer.cpp" />
+    <ClCompile Include="..\Runtime\RHI\CommandList.cpp" />
     <ClCompile Include="..\Runtime\RHI\Fence.cpp" />
+    <ClCompile Include="..\Runtime\RHI\GfxDevice.cpp" />
     <ClCompile Include="..\Runtime\RHI\Mesh.cpp" />
     <ClCompile Include="..\Runtime\RHI\Renderer.cpp" />
     <ClCompile Include="..\Runtime\RHI\Texture.cpp" />

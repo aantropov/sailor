@@ -4,6 +4,7 @@
 #include "Core/Singleton.hpp"
 #include "Core/UniquePtr.hpp"
 #include "RHI/Types.h"
+#include "RHI/CommandList.h"
 #include "Platform/Win32/Input.h"
 
 namespace Sailor::GfxDevice::Vulkan
@@ -28,7 +29,7 @@ namespace Sailor
 
 		SAILOR_API FrameState(const FrameState& frameState) noexcept;
 		SAILOR_API FrameState(FrameState&& frameState) noexcept;
-		
+
 		SAILOR_API FrameState& operator=(FrameState frameState);
 
 		SAILOR_API virtual ~FrameState() = default;
@@ -39,9 +40,9 @@ namespace Sailor
 		SAILOR_API const FrameInputState& GetInputState() const { return m_pData->m_inputState; }
 		SAILOR_API int64_t GetTime() const { return m_pData->m_currentTime; }
 		SAILOR_API float GetDeltaTime() const { return m_pData->m_deltaTimeSeconds; }
-		SAILOR_API void PushCommandBuffer_ThreadSafe(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanCommandBuffer> commandBuffer);
+		SAILOR_API void PushCommandBuffer_ThreadSafe(TRefPtr<RHI::CommandList> commandBuffer);
 
-		SAILOR_API const std::vector<TRefPtr<class GfxDevice::Vulkan::VulkanCommandBuffer>>& GetCommandBuffers() const
+		SAILOR_API const std::vector<TRefPtr<RHI::CommandList>>& GetCommandBuffers() const
 		{
 			return m_updateResourcesCommandBuffers;
 		}
@@ -59,7 +60,7 @@ namespace Sailor
 
 		std::mutex m_commandBuffers;
 		TUniquePtr<FrameData> m_pData;
-		std::vector<TRefPtr<GfxDevice::Vulkan::VulkanCommandBuffer>> m_updateResourcesCommandBuffers;
+		std::vector<TRefPtr<RHI::CommandList>> m_updateResourcesCommandBuffers;
 	};
 
 	class Framework : public TSingleton<Framework>

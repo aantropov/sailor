@@ -1,26 +1,23 @@
 #pragma once
 #include "Core/RefPtr.hpp"
-#include "GfxDevice/Vulkan/VulkanBuffer.h"
+#include "Buffer.h"
 #include "Types.h"
 
 using namespace GfxDevice::Vulkan;
 
 namespace Sailor::RHI
 {
-	class Mesh : public Resource
+	class Mesh : virtual public Resource, public IObservable, public IDependent
 	{
 	public:
-#if defined(VULKAN)
-		struct
-		{
-			TRefPtr<VulkanBuffer> m_vertexBuffer;
-			TRefPtr<VulkanBuffer> m_indexBuffer;
-		} m_vulkan;
-#endif
 
-		size_t m_verticesNum;
-		size_t m_indicesNum;
+		TRefPtr<Buffer> m_vertexBuffer;
+		TRefPtr<Buffer> m_indexBuffer;
 		
-		bool IsReady() const { return true; }
+		virtual void TraceVisit(class IVisitor& visitor, bool& bShouldRemoveFromList) override;
+
+		bool IsReady() const;
+	protected:
+
 	};
 };

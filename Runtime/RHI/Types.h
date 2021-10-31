@@ -2,6 +2,7 @@
 #include "Core/RefPtr.hpp"
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtx/hash.hpp>
+#include <vector>
 
 namespace Sailor::RHI
 {
@@ -322,7 +323,7 @@ namespace Sailor::RHI
 		glm::vec2 m_texcoord;
 		glm::vec4 m_color;
 
-		bool operator==(const Vertex& other) const
+		SAILOR_API bool operator==(const Vertex& other) const
 		{
 			return m_position == other.m_position &&
 				m_color == other.m_color &&
@@ -349,32 +350,105 @@ namespace Sailor::RHI
 
 	protected:
 
-		Resource() = default;
-		virtual ~Resource() = default;
+		SAILOR_API Resource() = default;
+		SAILOR_API virtual ~Resource() = default;
 
 	private:
 
-		Resource(Resource& copy) = delete;
-		Resource& operator =(Resource& rhs) = delete;
+		SAILOR_API Resource(Resource& copy) = delete;
+		SAILOR_API Resource& operator =(Resource& rhs) = delete;
 
-		Resource(Resource&& copy) = default;
-		Resource& operator =(Resource&& rhs) = default;
+		SAILOR_API Resource(Resource&& copy) = default;
+		SAILOR_API Resource& operator =(Resource&& rhs) = default;
+	};
+
+	class IObservable : virtual public RHI::Resource
+	{
+	public:
+		SAILOR_API IObservable() = default;
+		SAILOR_API IObservable(IObservable&) = default;
+		SAILOR_API IObservable(IObservable&&) = default;
+		SAILOR_API IObservable& operator=(IObservable&) = default;
+		SAILOR_API IObservable& operator=(IObservable&&) = default;
+		virtual SAILOR_API ~IObservable() = default;
+
+		virtual void SAILOR_API TraceVisit(class IVisitor& visitor, bool& bShouldRemoveFromList) = 0;
+	};
+
+	class IDependent : virtual public RHI::Resource
+	{
+	public:
+		
+		void AddVisitor(TRefPtr<Resource> dependency)
+		{
+			m_dependencies.push_back(std::move(dependency));
+		}
+
+		void Clear()
+		{
+			m_dependencies.clear();
+		}
+
+	protected:
+		std::vector<TRefPtr<Resource>> m_dependencies;
+	};
+
+	class IVisitor : virtual public RHI::Resource
+	{
+	public:
+
+		virtual SAILOR_API ~IVisitor() = default;
+
+		void SAILOR_API AddObservable(TRefPtr<RHI::Resource> resource)
+		{
+			m_elements.push_back(std::move(resource));
+		}
+
+		virtual SAILOR_API void TraceDependencies()
+		{
+			for (uint32_t i = 0; i < m_elements.size(); i++)
+			{
+				auto& element = m_elements[i];
+
+				auto visit = dynamic_cast<IObservable*>(element.GetRawPtr());
+				assert(visit);
+
+				bool bShouldRemove = false;
+				visit->TraceVisit(*this, bShouldRemove);
+
+				if (bShouldRemove)
+				{
+					std::iter_swap(m_elements.begin() + i, m_elements.end() - 1);
+					m_elements.pop_back();
+					i--;
+				}
+			}
+		}
+
+		SAILOR_API void Clear()
+		{
+			m_elements.clear();
+		}
+
+	protected:
+
+		std::vector<TRefPtr<RHI::Resource>> m_elements;
 	};
 
 	class IExplicitInitialization
 	{
 	public:
 
-		virtual void Compile() = 0;
-		virtual void Release() = 0;
+		SAILOR_API virtual void Compile() = 0;
+		SAILOR_API virtual void Release() = 0;
 	};
 
 	template<typename TState>
 	class IStateModifier
 	{
 	public:
-		virtual void Apply(TState& State) const = 0;
-		virtual ~IStateModifier() = default;
+		SAILOR_API virtual void Apply(TState& State) const = 0;
+		SAILOR_API virtual ~IStateModifier() = default;
 	};
 };
 
@@ -382,7 +456,7 @@ namespace std
 {
 	template<> struct hash<Sailor::RHI::Vertex>
 	{
-		size_t operator()(Sailor::RHI::Vertex const& vertex) const
+		SAILOR_API size_t operator()(Sailor::RHI::Vertex const& vertex) const
 		{
 			return ((hash<glm::vec3>()(vertex.m_position) ^
 				(hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^

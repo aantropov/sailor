@@ -9,21 +9,7 @@ namespace Sailor::RHI
 {
 	class Mesh;
 
-	class IVisitor
-	{
-	public:
-
-		virtual ~IVisitor() = default;
-
-		void AddDependency(TRefPtr<class RHI::Mesh> mesh);
-		void TraceDependencies();
-
-	protected:
-
-		virtual void TraceDependence() = 0;
-	};
-
-	class Fence : public Resource
+	class Fence : virtual public Resource, public IVisitor
 	{
 	public:
 #if defined(VULKAN)
@@ -33,8 +19,8 @@ namespace Sailor::RHI
 		} m_vulkan;
 #endif
 
-		void Wait(uint64_t timeout = UINT64_MAX) const;
-		void Reset() const;
-		bool IsFinished() const;
+		SAILOR_API void Wait(uint64_t timeout = UINT64_MAX) const;
+		SAILOR_API void Reset() const;
+		SAILOR_API bool IsFinished() const;
 	};
 };

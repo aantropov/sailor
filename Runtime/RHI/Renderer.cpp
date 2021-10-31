@@ -5,7 +5,7 @@
 #include "GfxDevice/Vulkan/VulkanDevice.h"
 #include "JobSystem/JobSystem.h"
 #include "Memory/MemoryBlockAllocator.hpp"
-#include "GfxDevice/Vulkan/VulkanDeviceMemory.h"
+#include "GfxDevice/Vulkan/GfxDeviceVulkan.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -22,34 +22,19 @@ void Renderer::Initialize(Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	m_pInstance->m_pViewport = pViewport;
 
 #if defined(VULKAN)
-	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
-	m_pInstance->m_vkInstance = GfxDevice::Vulkan::VulkanApi::GetInstance();
-
-	m_pInstance->m_vkInstance->GetMainDevice()->CreateVertexBuffer();
-	m_pInstance->m_vkInstance->GetMainDevice()->CreateGraphicsPipeline();
+	m_pInstance->m_driverInstance = TUniquePtr<Sailor::GfxDevice::Vulkan::GfxDeviceVulkan>::Make();
+	m_pInstance->m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
 #endif
 }
 
 Renderer::~Renderer()
 {
-#if defined(VULKAN)
-	m_vkInstance->Shutdown();
-#endif
+	m_driverInstance.Clear();
 }
 
 void Renderer::FixLostDevice()
 {
-#if defined(VULKAN)
-	if (m_vkInstance->GetMainDevice()->ShouldFixLostDevice(m_pViewport))
-	{
-		SAILOR_PROFILE_BLOCK("Fix lost device");
-
-		m_vkInstance->WaitIdle();
-		m_vkInstance->GetMainDevice()->FixLostDevice(m_pViewport);
-
-		SAILOR_PROFILE_END_BLOCK();
-	}
-#endif
+	m_driverInstance->FixLostDevice(m_pViewport);
 }
 
 bool Renderer::PushFrame(const FrameState& frame)
@@ -65,6 +50,14 @@ bool Renderer::PushFrame(const FrameState& frame)
 
 	SAILOR_PROFILE_BLOCK("Push frame");
 
+	TSharedPtr<class JobSystem::Job> preRenderingJob = JobSystem::Scheduler::CreateJob("Trace Command Lists",
+		[this]() {
+
+		SAILOR_PROFILE_BLOCK("Pre frame rendering jobs");
+		this->GetDriver()->TraceFences();
+		SAILOR_PROFILE_END_BLOCK();
+	});
+
 	TSharedPtr<class JobSystem::Job> renderingJob = JobSystem::Scheduler::CreateJob("Render Frame",
 		[this, frame]() {
 
@@ -77,8 +70,7 @@ bool Renderer::PushFrame(const FrameState& frame)
 
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
-#if defined(VULKAN)
-			if (m_vkInstance->PresentFrame(frame, &frame.GetCommandBuffers()))
+			if (m_driverInstance->PresentFrame(frame, &frame.GetCommandBuffers()))
 			{
 				totalFramesCount++;
 				timer.Stop();
@@ -94,43 +86,19 @@ bool Renderer::PushFrame(const FrameState& frame)
 			{
 				m_pureFps = 0;
 			}
-#endif
+		
 			SAILOR_PROFILE_END_BLOCK();
 
 		} while (m_pViewport->IsIconic());
 
 	}, Sailor::JobSystem::EThreadType::Rendering);
 
+	renderingJob->Join(preRenderingJob);
+
+	JobSystem::Scheduler::GetInstance()->Run(preRenderingJob);
 	JobSystem::Scheduler::GetInstance()->Run(renderingJob);
 
 	SAILOR_PROFILE_END_BLOCK();
 
 	return true;
-}
-
-TRefPtr<RHI::Mesh> Sailor::RHI::Renderer::CreateMesh(const std::vector<RHI::Vertex>& vertices, const std::vector<uint32_t>& indices)
-{
-	TRefPtr<RHI::Mesh> res = TRefPtr<RHI::Mesh>::Make();
-
-#if defined(VULKAN)
-
-	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
-
-	res->m_indicesNum = indexBufferSize;
-	res->m_verticesNum = bufferSize;
-
-	res->m_vulkan.m_vertexBuffer = VulkanApi::CreateBuffer_Immediate(m_vkInstance->GetMainDevice(),
-		reinterpret_cast<void const*>(&vertices[0]),
-		bufferSize,
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-
-	res->m_vulkan.m_indexBuffer = VulkanApi::CreateBuffer_Immediate(m_vkInstance->GetMainDevice(),
-		reinterpret_cast<void const*>(&indices[0]),
-		indexBufferSize,
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-#endif
-
-	return res;
 }

@@ -219,13 +219,19 @@
     <ClInclude Include="..\Runtime\RHI\Fence.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\RHI\CommandBuffer.h">
+    <ClInclude Include="..\Runtime\RHI\CommandList.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\RHI\GfxDevice.hpp">
+    <ClInclude Include="..\Runtime\RHI\GfxDevice.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Texture.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\Buffer.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
   </ItemGroup>
@@ -359,7 +365,7 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\RHI\CommandBuffer.cpp">
+    <ClCompile Include="..\Runtime\RHI\CommandList.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\RHI\Fence.cpp">
@@ -369,6 +375,15 @@
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\RHI\Texture.cpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\Buffer.cpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\GfxDevice.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
   </ItemGroup>

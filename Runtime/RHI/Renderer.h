@@ -6,6 +6,7 @@
 #include "Defines.h"
 #include <glm/glm/glm.hpp>
 #include "Core/RefPtr.hpp"
+#include "GfxDevice.h"
 #include "Core/Singleton.hpp"
 #include "Jobsystem/JobSystem.h"
 #include "Framework/Framework.h"
@@ -28,7 +29,8 @@ namespace Sailor::RHI
 		uint32_t SAILOR_API GetNumFrames() const { return m_numFrames.load(); }
 		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
-		TRefPtr<RHI::Mesh> CreateMesh(const std::vector<RHI::Vertex>& vertices, const std::vector<uint32_t>& indices);
+		TUniquePtr<RHI::IGfxDevice>& GetDriver() { return m_driverInstance; }
+		const TUniquePtr<RHI::IGfxDevice>& GetDriver() const { return m_driverInstance; }
 
 	protected:
 
@@ -38,8 +40,6 @@ namespace Sailor::RHI
 
 		class Window const* m_pViewport;
 
-#if defined(VULKAN)
-		GfxDevice::Vulkan::VulkanApi* m_vkInstance;
-#endif
+		TUniquePtr<RHI::IGfxDevice> m_driverInstance;
 	};
 };
