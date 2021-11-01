@@ -173,8 +173,6 @@ namespace Sailor
 		{
 			if (m_pRawPtr == static_cast<T*>(pSharedPtr.m_pRawPtr))
 			{
-				pSharedPtr.m_pRawPtr = nullptr;
-				pSharedPtr.m_pControlBlock = nullptr;
 				return;
 			}
 

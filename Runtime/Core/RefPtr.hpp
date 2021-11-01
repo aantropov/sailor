@@ -166,7 +166,6 @@ namespace Sailor
 		{
 			if (m_pRawPtr == pRefPtr.m_pRawPtr)
 			{
-				pRefPtr.m_pRawPtr = nullptr;
 				return;
 			}
 
