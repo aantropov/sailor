@@ -53,6 +53,8 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 	beginInfo.flags = flags;
 
 	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
+
+	ClearDependencies();
 }
 
 void VulkanCommandBuffer::CopyBuffer(TRefPtr<VulkanBuffer> src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
