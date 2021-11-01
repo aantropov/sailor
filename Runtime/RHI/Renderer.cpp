@@ -54,7 +54,7 @@ bool Renderer::PushFrame(const FrameState& frame)
 		[this]() {
 
 		SAILOR_PROFILE_BLOCK("Pre frame rendering jobs");
-		this->GetDriver()->TraceFences();
+		this->GetDriver()->TrackResources();
 		SAILOR_PROFILE_END_BLOCK();
 	});
 

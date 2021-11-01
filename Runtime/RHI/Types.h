@@ -379,12 +379,12 @@ namespace Sailor::RHI
 	{
 	public:
 
-		void AddVisitor(TRefPtr<Resource> dependency)
+		void AddDependency(TRefPtr<Resource> dependency)
 		{
 			m_dependencies.push_back(std::move(dependency));
 		}
 
-		void Clear()
+		void ClearDependencies()
 		{
 			m_dependencies.clear();
 		}
@@ -406,7 +406,7 @@ namespace Sailor::RHI
 			m_elements.push_back(std::move(resource));
 		}
 
-		virtual SAILOR_API void TraceDependencies()
+		virtual SAILOR_API void TraceObservables()
 		{
 			for (int32_t i = 0; i < m_elements.size(); i++)
 			{
@@ -427,7 +427,7 @@ namespace Sailor::RHI
 			}
 		}
 
-		SAILOR_API void Clear()
+		SAILOR_API void ClearObservables()
 		{
 			m_elements.clear();
 		}

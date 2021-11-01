@@ -20,20 +20,30 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 		indexBufferSize,
 		EBufferUsageBit::IndexBuffer_Bit);
 
+	// Create fences to track the state of mesh creation
 	TRefPtr<RHI::Fence> fenceUpdateVertices = TRefPtr<RHI::Fence>::Make();
-	SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
+	TRefPtr<RHI::Fence> fenceUpdateIndex = TRefPtr<RHI::Fence>::Make();
 
-	TRefPtr<RHI::Fence> fenceUpdateIndex= TRefPtr<RHI::Fence>::Make();
+	// Submit cmd lists
+	SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
 	SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
 
+	// Fence should notify mesh, when cmd list is finished
 	fenceUpdateVertices->AddObservable(res);
 	fenceUpdateIndex->AddObservable(res);
 
-	res->AddVisitor(fenceUpdateVertices);
-	res->AddVisitor(fenceUpdateIndex);
+	// Fence should hold cmd list, during it is executed
+	fenceUpdateVertices->AddDependency(updateVerticesCmd);
+	fenceUpdateIndex->AddDependency(updateIndexCmd);
+
+	// Mesh should hold fences, during cmd list is executed
+	res->AddDependency(fenceUpdateVertices);
+	res->AddDependency(fenceUpdateIndex);
 
 	{
 		std::unique_lock<std::mutex>(m_mutexTrackedFences);
+
+		// We should track fences to notity the mesh that cmd lists are finished
 		m_trackedFences.push_back(fenceUpdateVertices);
 		m_trackedFences.push_back(fenceUpdateIndex);
 	}
@@ -41,7 +51,7 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 	return res;
 }
 
-void IGfxDevice::TraceFences()
+void IGfxDevice::TrackResources()
 {
 	std::unique_lock<std::mutex>(m_mutexTrackedFences);
 
@@ -51,7 +61,9 @@ void IGfxDevice::TraceFences()
 
 		if (cmd->IsFinished())
 		{
-			cmd->TraceDependencies();
+			cmd->TraceObservables();
+			cmd->ClearDependencies();
+			cmd->ClearObservables();
 			
 			std::iter_swap(m_trackedFences.begin() + index, m_trackedFences.end() - 1);
 			m_trackedFences.pop_back();
