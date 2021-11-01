@@ -24,6 +24,7 @@ void GfxDeviceVulkan::Initialize(const Win32::Window* pViewport, RHI::EMsaaSampl
 
 GfxDeviceVulkan::~GfxDeviceVulkan()
 {
+	m_trackedFences.clear();
 	GfxDevice::Vulkan::VulkanApi::Shutdown();
 }
 

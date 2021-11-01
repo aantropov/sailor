@@ -17,7 +17,7 @@ namespace Sailor::GfxDevice::Vulkan
 	public:
 
 		virtual SAILOR_API void Initialize(const Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
-		virtual SAILOR_API ~GfxDeviceVulkan();
+		virtual SAILOR_API ~GfxDeviceVulkan() override;
 
 		virtual SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport);
 		virtual SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
