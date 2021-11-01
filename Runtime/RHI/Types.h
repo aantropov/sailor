@@ -389,6 +389,8 @@ namespace Sailor::RHI
 			m_dependencies.clear();
 		}
 
+		virtual SAILOR_API ~IDependent() = default;
+
 	protected:
 		std::vector<TRefPtr<Resource>> m_dependencies;
 	};
