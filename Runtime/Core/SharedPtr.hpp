@@ -39,14 +39,14 @@ namespace Sailor
 		TSharedPtr() noexcept = default;
 
 		// Raw pointers
-		TSharedPtr(T* Ptr) noexcept
+		TSharedPtr(T* pRawPtr) noexcept
 		{
-			AssignRawPtr(Ptr, new TSmartPtrControlBlock());
+			AssignRawPtr(pRawPtr, nullptr);
 		}
 
 		TSharedPtr& operator=(T* pRawPtr)
 		{
-			AssignRawPtr(pRawPtr, new TSmartPtrControlBlock());
+			AssignRawPtr(pRawPtr, nullptr);
 			return *this;
 		}
 
@@ -139,7 +139,7 @@ namespace Sailor
 				DecrementRefCounter();
 			}
 
-			m_pControlBlock = pControlBlock;
+			m_pControlBlock = pRawPtr && !pControlBlock ? new TSmartPtrControlBlock() : pControlBlock;
 
 			if (m_pRawPtr = pRawPtr)
 			{

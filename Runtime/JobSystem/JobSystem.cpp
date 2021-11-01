@@ -130,7 +130,7 @@ void WorkerThread::Process()
 
 			m_pJob->Execute();
 			m_pJob->Complete();
-			m_pJob = nullptr;
+			m_pJob.Clear();
 
 			scheduler->NotifyWorkerThread(m_threadType);
 
