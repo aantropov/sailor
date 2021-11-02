@@ -9,7 +9,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(TRefPtr<VulkanDevice> pDevice, std::vector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings) :
+VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, std::vector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings) :
 	m_descriptorSetLayoutBindings(std::move(descriptorSetLayoutBindings)),
 	m_device(pDevice)
 {
@@ -44,7 +44,7 @@ void VulkanDescriptorSetLayout::Release()
 	}
 }
 
-VulkanDescriptorPool::VulkanDescriptorPool(TRefPtr<VulkanDevice> pDevice, uint32_t maxSets,
+VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t maxSets,
 	const std::vector<VkDescriptorPoolSize>& descriptorPoolSizes) :
 	m_device(pDevice)
 {
@@ -67,10 +67,10 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
 	}
 }
 
-VulkanDescriptorSet::VulkanDescriptorSet(TRefPtr<VulkanDevice> pDevice,
-	TRefPtr<VulkanDescriptorPool> pool,
-	TRefPtr<VulkanDescriptorSetLayout> descriptorSetLayout,
-	std::vector<TRefPtr<VulkanDescriptor>> descriptors) :
+VulkanDescriptorSet::VulkanDescriptorSet(VulkanDevicePtr pDevice,
+	VulkanDescriptorPoolPtr pool,
+	VulkanDescriptorSetLayoutPtr descriptorSetLayout,
+	std::vector<VulkanDescriptorPtr> descriptors) :
 	m_device(pDevice),
 	m_descriptorPool(pool),
 	m_descriptorSetLayout(descriptorSetLayout),
@@ -141,7 +141,7 @@ void VulkanDescriptor::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
 
 VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
 	uint32_t dstArrayElement,
-	TRefPtr<VulkanBuffer> buffer,
+	VulkanBufferPtr buffer,
 	VkDeviceSize offset,
 	VkDeviceSize range) :
 	m_buffer(buffer),
@@ -166,8 +166,8 @@ void VulkanDescriptorBuffer::Apply(VkWriteDescriptorSet& writeDescriptorSet) con
 
 VulkanDescriptorImage::VulkanDescriptorImage(uint32_t dstBinding,
 	uint32_t dstArrayElement,
-	TRefPtr<VulkanSampler> sampler,
-	TRefPtr<VulkanImageView> imageView,
+	VulkanSamplerPtr sampler,
+	VulkanImageViewPtr imageView,
 	VkImageLayout imageLayout) :
 	m_sampler(sampler),
 	m_imageView(imageView),

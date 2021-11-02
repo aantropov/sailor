@@ -16,7 +16,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			TRefPtr<VulkanFence> m_fence;
+			VulkanFencePtr m_fence;
 		} m_vulkan;
 #endif
 

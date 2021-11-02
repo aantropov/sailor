@@ -13,7 +13,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			TRefPtr<VulkanBuffer> m_buffer;
+			VulkanBufferPtr m_buffer;
 		} m_vulkan;
 #endif
 

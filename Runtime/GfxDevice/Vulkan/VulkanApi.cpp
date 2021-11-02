@@ -136,14 +136,14 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 
 	SetupDebugCallback();
 
-	m_pInstance->m_device = TRefPtr<VulkanDevice>::Make(viewport, msaaSamples);
+	m_pInstance->m_device = VulkanDevicePtr::Make(viewport, msaaSamples);
 
 	SAILOR_LOG("Vulkan initialized");
 }
 
-bool VulkanApi::PresentFrame(const FrameState& state, const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
-	const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
-	const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores)
+bool VulkanApi::PresentFrame(const FrameState& state, const std::vector<VulkanCommandBufferPtr>* primaryCommandBuffers,
+	const std::vector<VulkanCommandBufferPtr>* secondaryCommandBuffers,
+	const std::vector<VulkanSemaphorePtr>* waitSemaphores)
 {
 	return m_pInstance->m_device->PresentFrame(state, primaryCommandBuffers, secondaryCommandBuffers, waitSemaphores);
 }
@@ -153,7 +153,7 @@ void VulkanApi::WaitIdle()
 	m_pInstance->m_device->WaitIdle();
 }
 
-TRefPtr<VulkanDevice> VulkanApi::GetMainDevice() const
+VulkanDevicePtr VulkanApi::GetMainDevice() const
 {
 	return m_device;
 }
@@ -239,7 +239,7 @@ bool VulkanApi::SetupDebugCallback()
 	return true;
 }
 
-VkPhysicalDevice VulkanApi::PickPhysicalDevice(TRefPtr<VulkanSurface> surface)
+VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 {
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 
@@ -278,7 +278,7 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(TRefPtr<VulkanSurface> surface)
 	return physicalDevice;
 }
 
-VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface)
+VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, VulkanSurfacePtr surface)
 {
 	VulkanQueueFamilyIndices indices;
 
@@ -316,7 +316,7 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, T
 	return indices;
 }
 
-SwapChainSupportDetails VulkanApi::QuerySwapChainSupport(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface)
+SwapChainSupportDetails VulkanApi::QuerySwapChainSupport(VkPhysicalDevice device, VulkanSurfacePtr surface)
 {
 	SwapChainSupportDetails details;
 
@@ -412,7 +412,7 @@ bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 	return requiredExtensions.empty();
 }
 
-bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, TRefPtr<VulkanSurface> surface)
+bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surface)
 {
 	VulkanQueueFamilyIndices indices = FindQueueFamilies(device, surface);
 
@@ -507,7 +507,7 @@ VkAttachmentDescription VulkanApi::GetDefaultDepthAttachment(VkFormat depthForma
 	return depthAttachment;
 }
 
-TRefPtr<VulkanRenderPass> VulkanApi::CreateRenderPass(TRefPtr<VulkanDevice> device, VkFormat imageFormat, VkFormat depthFormat)
+VulkanRenderPassPtr VulkanApi::CreateRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat)
 {
 	VkAttachmentReference colorAttachmentRef = {};
 	colorAttachmentRef.attachment = 0;
@@ -542,13 +542,13 @@ TRefPtr<VulkanRenderPass> VulkanApi::CreateRenderPass(TRefPtr<VulkanDevice> devi
 	depthDependency.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 	depthDependency.dependencyFlags = 0;
 
-	return TRefPtr<VulkanRenderPass>::Make(device,
+	return VulkanRenderPassPtr::Make(device,
 		std::vector<VkAttachmentDescription> {	GetDefaultColorAttachment(imageFormat), GetDefaultDepthAttachment(depthFormat) },
 		std::vector<VulkanSubpassDescription> { subpass },
 		std::vector<VkSubpassDependency> { colorDependency, depthDependency });
 }
 
-TRefPtr<VulkanRenderPass> VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice> device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples)
+VulkanRenderPassPtr VulkanApi::CreateMSSRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples)
 {
 	if (samples == VK_SAMPLE_COUNT_1_BIT)
 	{
@@ -630,7 +630,7 @@ TRefPtr<VulkanRenderPass> VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice> d
 
 	std::vector<VkSubpassDependency> dependencies{ dependency, dependency2 };
 
-	return TRefPtr<VulkanRenderPass>::Make(device, attachments, subpasses, dependencies);
+	return VulkanRenderPassPtr::Make(device, attachments, subpasses, dependencies);
 }
 
 bool VulkanApi::HasStencilComponent(VkFormat format)
@@ -673,10 +673,10 @@ VkImageAspectFlags VulkanApi::ComputeAspectFlagsForFormat(VkFormat format)
 	}
 }
 
-TRefPtr<VulkanImageView> VulkanApi::CreateImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags)
+VulkanImageViewPtr VulkanApi::CreateImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags)
 {
 	image->Compile();
-	TRefPtr<VulkanImageView> imageView = TRefPtr<VulkanImageView>::Make(device, image, aspectFlags);
+	VulkanImageViewPtr imageView = VulkanImageViewPtr::Make(device, image, aspectFlags);
 	imageView->Compile();
 
 	return imageView;
@@ -732,9 +732,9 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 	return 0;
 }
 
-TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode)
+VulkanBufferPtr VulkanApi::CreateBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode)
 {
-	TRefPtr<VulkanBuffer> outBuffer = TRefPtr<VulkanBuffer>::Make(device, size, usage, sharingMode);
+	VulkanBufferPtr outBuffer = VulkanBufferPtr::Make(device, size, usage, sharingMode);
 	outBuffer->Compile();
 
 	auto requirements = outBuffer->GetMemoryRequirements();
@@ -744,7 +744,7 @@ TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanDevice> device, VkDe
 	return outBuffer;
 }
 
-TRefPtr<VulkanCommandBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanBuffer>& outbuffer, TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
+VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
 	outbuffer = VulkanApi::CreateBuffer(
 		device,
@@ -758,7 +758,7 @@ TRefPtr<VulkanCommandBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanBuffer>& outb
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
 	auto data = stagingMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
-	TRefPtr<VulkanBuffer> stagingBuffer = TRefPtr<VulkanBuffer>::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
+	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
 	stagingBuffer->Bind(data);
 
@@ -772,21 +772,21 @@ TRefPtr<VulkanCommandBuffer> VulkanApi::CreateBuffer(TRefPtr<VulkanBuffer>& outb
 	return cmdBuffer;
 }
 
-TRefPtr<VulkanBuffer> VulkanApi::CreateBuffer_Immediate(TRefPtr<VulkanDevice> device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
+VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
-	TRefPtr<VulkanBuffer> resBuffer;
+	VulkanBufferPtr resBuffer;
 	auto cmd = CreateBuffer(resBuffer, device, pData, size, usage, sharingMode);
 
-	auto fence = TRefPtr<VulkanFence>::Make(device);
+	auto fence = VulkanFencePtr::Make(device);
 	device->SubmitCommandBuffer(cmd, fence);
 	fence->Wait();
 
 	return resBuffer;
 }
 
-void VulkanApi::CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<VulkanBuffer> src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size)
+void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size)
 {
-	auto fence = TRefPtr<VulkanFence>::Make(device);
+	auto fence = VulkanFencePtr::Make(device);
 
 	auto cmdBuffer = device->CreateCommandBuffer(true);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
@@ -797,8 +797,8 @@ void VulkanApi::CopyBuffer_Immediate(TRefPtr<VulkanDevice> device, TRefPtr<Vulka
 	fence->Wait();
 }
 
-TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
-	TRefPtr<VulkanDevice> device,
+VulkanImagePtr VulkanApi::CreateImage_Immediate(
+	VulkanDevicePtr device,
 	const void* pData,
 	VkDeviceSize size,
 	VkExtent3D extent,
@@ -809,7 +809,7 @@ TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
 	VkImageUsageFlags usage,
 	VkSharingMode sharingMode)
 {
-	TRefPtr<VulkanBuffer> stagingBuffer;
+	VulkanBufferPtr stagingBuffer;
 
 	stagingBuffer = VulkanApi::CreateBuffer(
 		device,
@@ -823,7 +823,7 @@ TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
 		stagingBuffer->GetMemoryDevice()->Copy(0, size, pData);
 	}
 
-	TRefPtr<VulkanImage> res = new VulkanImage(device);
+	VulkanImagePtr res = new VulkanImage(device);
 
 	res->m_extent = extent;
 	res->m_imageType = type;
@@ -839,7 +839,7 @@ TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
 
 	res->Compile();
 
-	TRefPtr<VulkanDeviceMemory> outDeviceMemory = TRefPtr<VulkanDeviceMemory>::Make(
+	VulkanDeviceMemoryPtr outDeviceMemory = VulkanDeviceMemoryPtr::Make(
 		device,
 		res->GetMemoryRequirements(),
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -847,7 +847,7 @@ TRefPtr<VulkanImage> VulkanApi::CreateImage_Immediate(
 
 	res->Bind(outDeviceMemory, 0);
 
-	auto fence = TRefPtr<VulkanFence>::Make(device);
+	auto fence = VulkanFencePtr::Make(device);
 
 	auto cmdBuffer = device->CreateCommandBuffer();
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
@@ -891,8 +891,8 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 	return poolSize;
 }
 
-std::vector<TRefPtr<VulkanDescriptorSetLayout>> VulkanApi::CreateDescriptorSetLayouts(TRefPtr<VulkanDevice> device,
-	const std::vector<TRefPtr<VulkanShaderStage>>& shaders)
+std::vector<VulkanDescriptorSetLayoutPtr> VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
+	const std::vector<VulkanShaderStagePtr>& shaders)
 {
 	std::vector<std::vector<VkDescriptorSetLayoutBinding>> layouts;
 
@@ -913,12 +913,12 @@ std::vector<TRefPtr<VulkanDescriptorSetLayout>> VulkanApi::CreateDescriptorSetLa
 		}
 	}
 
-	std::vector<TRefPtr<VulkanDescriptorSetLayout>> res;
+	std::vector<VulkanDescriptorSetLayoutPtr> res;
 	res.resize(layouts.size());
 
 	for (uint32_t i = 0; i < layouts.size(); i++)
 	{
-		res[i] = TRefPtr<VulkanDescriptorSetLayout>::Make(device, std::move(layouts[i]));
+		res[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(layouts[i]));
 	}
 
 	return res;

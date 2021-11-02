@@ -26,7 +26,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanSwapchainImage : public VulkanImage
 	{
 	public:
-		VulkanSwapchainImage(VkImage image, TRefPtr<VulkanDevice> device);
+		VulkanSwapchainImage(VkImage image, VulkanDevicePtr device);
 
 	protected:
 		virtual ~VulkanSwapchainImage();
@@ -36,7 +36,7 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain);
+		VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain);
 
 		operator VkSwapchainKHR() const { return m_swapchain; }
 
@@ -44,32 +44,32 @@ namespace Sailor::GfxDevice::Vulkan
 
 		const VkExtent2D& GetExtent() const { return m_swapchainExtent; }
 
-		TRefPtr<VulkanImageView> GetDepthBufferView() const { return m_depthBufferView; }
-		TRefPtr<VulkanImageView> GetColorBufferView() const { return m_colorBufferView; }
+		VulkanImageViewPtr GetDepthBufferView() const { return m_depthBufferView; }
+		VulkanImageViewPtr GetColorBufferView() const { return m_colorBufferView; }
 
-		std::vector<TRefPtr<VulkanImageView>>& GetImageViews() { return m_swapchainImageViews; }
-		const std::vector<TRefPtr<VulkanImageView>>& GetImageViews() const { return m_swapchainImageViews; }
+		std::vector<VulkanImageViewPtr>& GetImageViews() { return m_swapchainImageViews; }
+		const std::vector<VulkanImageViewPtr>& GetImageViews() const { return m_swapchainImageViews; }
 
-		VkResult AcquireNextImage(uint64_t timeout, TRefPtr<VulkanSemaphore> semaphore, TRefPtr<VulkanFence> fence, uint32_t& imageIndex);
+		VkResult AcquireNextImage(uint64_t timeout, VulkanSemaphorePtr semaphore, VulkanFencePtr fence, uint32_t& imageIndex);
 
 	protected:
 		virtual ~VulkanSwapchain();
 
-		TRefPtr<VulkanDevice> m_device;
-		TRefPtr<VulkanSurface> m_surface;
+		VulkanDevicePtr m_device;
+		VulkanSurfacePtr m_surface;
 		VkSwapchainKHR m_swapchain = 0;
 
 		VkExtent2D m_swapchainExtent;
 		VkSurfaceFormatKHR m_surfaceFormat;
 		VkPresentModeKHR m_presentMode;
 
-		std::vector<TRefPtr<VulkanSwapchainImage>> m_swapchainImages;
-		std::vector<TRefPtr<VulkanImageView>> m_swapchainImageViews;
+		std::vector<VulkanSwapchainImagePtr> m_swapchainImages;
+		std::vector<VulkanImageViewPtr> m_swapchainImageViews;
 
-		TRefPtr<VulkanImage> m_colorBuffer;
-		TRefPtr<VulkanImageView> m_colorBufferView;
+		VulkanImagePtr m_colorBuffer;
+		VulkanImageViewPtr m_colorBufferView;
 
-		TRefPtr<VulkanImage> m_depthBuffer;
-		TRefPtr<VulkanImageView> m_depthBufferView;
+		VulkanImagePtr m_depthBuffer;
+		VulkanImageViewPtr m_depthBufferView;
 	};
 }

@@ -5,7 +5,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanFence::VulkanFence(TRefPtr<VulkanDevice> device, VkFenceCreateFlags flags) :
+VulkanFence::VulkanFence(VulkanDevicePtr device, VkFenceCreateFlags flags) :
 	m_device(device)
 {
 	VkFenceCreateInfo createFenceInfo = {};

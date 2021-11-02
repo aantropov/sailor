@@ -11,7 +11,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanSwapchainImage::VulkanSwapchainImage(VkImage image, TRefPtr<VulkanDevice> device) : VulkanImage(image, device)
+VulkanSwapchainImage::VulkanSwapchainImage(VkImage image, VulkanDevicePtr device) : VulkanImage(image, device)
 {
 }
 
@@ -35,7 +35,7 @@ VulkanSurface::~VulkanSurface()
 	}
 }
 
-VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain) :
+VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain) :
 	m_device(device),
 	m_surface(device->GetSurface())
 {
@@ -101,8 +101,8 @@ VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, u
 
 	for (size_t i = 0; i < vkSwapchainImages.size(); i++)
 	{
-		m_swapchainImages.push_back(TRefPtr<VulkanSwapchainImage>::Make(vkSwapchainImages[i], m_device));
-		m_swapchainImageViews.push_back(TRefPtr<VulkanImageView>::Make(m_device, m_swapchainImages[i]));
+		m_swapchainImages.push_back(VulkanSwapchainImagePtr::Make(vkSwapchainImages[i], m_device));
+		m_swapchainImageViews.push_back(VulkanImageViewPtr::Make(m_device, m_swapchainImages[i]));
 
 		m_swapchainImageViews[i]->m_format = m_surfaceFormat.format;
 
@@ -123,7 +123,7 @@ VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, u
 	// We need color buffer only for resolving MSAA samples
 	if (device->GetCurrentMsaaSamples() != 1)
 	{
-		m_colorBuffer = TRefPtr<VulkanImage>::Make(m_device);
+		m_colorBuffer = VulkanImagePtr::Make(m_device);
 		m_colorBuffer->m_extent = VkExtent3D{ m_swapchainExtent.width, m_swapchainExtent.height, 1 };
 		m_colorBuffer->m_format = m_surfaceFormat.format;
 		m_colorBuffer->m_imageType = VkImageType::VK_IMAGE_TYPE_2D;
@@ -135,14 +135,14 @@ VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, u
 		m_colorBuffer->m_samples = device->GetCurrentMsaaSamples();
 		m_colorBuffer->Compile();
 
-		m_colorBuffer->Bind(TRefPtr<VulkanDeviceMemory>::Make(m_device, m_colorBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
-		m_colorBufferView = TRefPtr<VulkanImageView>::Make(m_device, m_colorBuffer, VulkanApi::ComputeAspectFlagsForFormat(m_surfaceFormat.format));
+		m_colorBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_colorBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
+		m_colorBufferView = VulkanImageViewPtr::Make(m_device, m_colorBuffer, VulkanApi::ComputeAspectFlagsForFormat(m_surfaceFormat.format));
 		m_colorBufferView->Compile();
 	}
 
 	VkFormat depthFormat = device->GetDepthFormat();
 
-	m_depthBuffer = TRefPtr<VulkanImage>::Make(m_device);
+	m_depthBuffer = VulkanImagePtr::Make(m_device);
 	m_depthBuffer->m_extent = VkExtent3D{ m_swapchainExtent.width, m_swapchainExtent.height, 1 };
 	m_depthBuffer->m_format = depthFormat;
 	m_depthBuffer->m_imageType = VkImageType::VK_IMAGE_TYPE_2D;
@@ -155,8 +155,8 @@ VulkanSwapchain::VulkanSwapchain(TRefPtr<VulkanDevice> device, uint32_t width, u
 
 	m_depthBuffer->Compile();
 
-	m_depthBuffer->Bind(TRefPtr<VulkanDeviceMemory>::Make(m_device, m_depthBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
-	m_depthBufferView = TRefPtr<VulkanImageView>::Make(m_device, m_depthBuffer, VulkanApi::ComputeAspectFlagsForFormat(depthFormat));
+	m_depthBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_depthBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
+	m_depthBufferView = VulkanImageViewPtr::Make(m_device, m_depthBuffer, VulkanApi::ComputeAspectFlagsForFormat(depthFormat));
 	m_depthBufferView->Compile();
 }
 
@@ -172,7 +172,7 @@ VulkanSwapchain::~VulkanSwapchain()
 	m_device.Clear();
 }
 
-VkResult VulkanSwapchain::AcquireNextImage(uint64_t timeout, TRefPtr<VulkanSemaphore> semaphore, TRefPtr<VulkanFence> fence, uint32_t& imageIndex)
+VkResult VulkanSwapchain::AcquireNextImage(uint64_t timeout, VulkanSemaphorePtr semaphore, VulkanFencePtr fence, uint32_t& imageIndex)
 {
 	return vkAcquireNextImageKHR(*m_device,
 		m_swapchain,

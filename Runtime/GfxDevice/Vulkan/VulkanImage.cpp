@@ -28,18 +28,18 @@ VulkanImage::~VulkanImage()
 	Release();
 }
 
-VulkanImage::VulkanImage(TRefPtr<VulkanDevice> device) :
+VulkanImage::VulkanImage(VulkanDevicePtr device) :
 	m_device(device)
 {
 }
 
-VulkanImage::VulkanImage(VkImage image, TRefPtr<VulkanDevice> device)
+VulkanImage::VulkanImage(VkImage image, VulkanDevicePtr device)
 {
 	m_image = image;
 	m_device = device;
 }
 
-VkResult VulkanImage::Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset)
+VkResult VulkanImage::Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset)
 {
 	VkResult result = vkBindImageMemory(*m_device, m_image, *deviceMemory, memoryOffset);
 	if (result == VK_SUCCESS)

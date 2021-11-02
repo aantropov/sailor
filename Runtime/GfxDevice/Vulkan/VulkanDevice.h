@@ -15,31 +15,12 @@ class Sailor::Win32::Window;
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanDescriptorPool;
-	class VulkanDescriptorSetLayout;
-	class VulkanDescriptorSet;
-	class VulkanCommandBuffer;
-	class VulkanCommandPool;
-	class VulkanQueue;
-	class VulkanDevice;
-	class VulkanFence;
-	class VulkanSemaphore;
-	class VulkanRenderPass;
-	class VulkanSwapchain;
-	class VulkanSurface;
-	class VulkanFramebuffer;
-	class VulkanDeviceMemory;
-	class VulkanBuffer;
-	class VulkanPipeline;
-	class VulkanPipelineLayout;
-	class VulkanSampler;
-
 	// Thread independent resources
 	struct ThreadContext
 	{
-		TRefPtr<VulkanCommandPool> m_commandPool;
-		TRefPtr<VulkanCommandPool> m_transferCommandPool;
-		TRefPtr<VulkanDescriptorPool> m_descriptorPool;
+		VulkanCommandPoolPtr m_commandPool;
+		VulkanCommandPoolPtr m_transferCommandPool;
+		VulkanDescriptorPoolPtr m_descriptorPool;
 	};
 
 	class VulkanDevice final : public RHI::Resource
@@ -57,19 +38,19 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		bool SAILOR_API PresentFrame(const FrameState& state, const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers = nullptr,
-			const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers = nullptr,
-			const std::vector<TRefPtr<VulkanSemaphore>>* waitSemaphores = nullptr);
+		bool SAILOR_API PresentFrame(const FrameState& state, const std::vector<VulkanCommandBufferPtr>* primaryCommandBuffers = nullptr,
+			const std::vector<VulkanCommandBufferPtr>* secondaryCommandBuffers = nullptr,
+			const std::vector<VulkanSemaphorePtr>* waitSemaphores = nullptr);
 
 		bool SAILOR_API IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 
-		SAILOR_API TRefPtr<VulkanSurface> GetSurface() const;
-		SAILOR_API TRefPtr<VulkanCommandBuffer> CreateCommandBuffer(bool bOnlyTransferQueue = false);
+		SAILOR_API VulkanSurfacePtr GetSurface() const;
+		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(bool bOnlyTransferQueue = false);
 
-		SAILOR_API void SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer,
-			TRefPtr<VulkanFence> fence = nullptr,
-			std::vector<TRefPtr<VulkanSemaphore>> signalSemaphores = {},
-			std::vector<TRefPtr<VulkanSemaphore>> waitSemaphores = {});
+		SAILOR_API void SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
+			VulkanFencePtr fence = nullptr,
+			std::vector<VulkanSemaphorePtr> signalSemaphores = {},
+			std::vector<VulkanSemaphorePtr> waitSemaphores = {});
 
 		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
 
@@ -101,7 +82,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API void CreateGraphicsPipeline();
 
-		SAILOR_API TBlockAllocator<class GlobalVulkanAllocator, class VulkanDeviceMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
+		SAILOR_API TBlockAllocator<class GlobalVulkanAllocator, class VulkanMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 
 	protected:
 
@@ -124,17 +105,17 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;
 
-		std::vector<TRefPtr<VulkanCommandBuffer>> m_commandBuffers;
+		std::vector<VulkanCommandBufferPtr> m_commandBuffers;
 
 		// Render Pass
-		TRefPtr<VulkanRenderPass> m_renderPass;
+		VulkanRenderPassPtr m_renderPass;
 
 		// Queuees
-		TRefPtr<VulkanQueue> m_graphicsQueue;
-		TRefPtr<VulkanQueue> m_presentQueue;
-		TRefPtr<VulkanQueue> m_transferQueue;
+		VulkanQueuePtr m_graphicsQueue;
+		VulkanQueuePtr m_presentQueue;
+		VulkanQueuePtr m_transferQueue;
 
-		TRefPtr<VulkanSurface> m_surface;
+		VulkanSurfacePtr m_surface;
 
 		VkPhysicalDevice m_physicalDevice = 0;
 		VkDevice m_device = 0;
@@ -142,13 +123,13 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// Swapchain
 		TRefPtr<VulkanSwapchain> m_swapchain;
-		std::vector<TRefPtr<VulkanFramebuffer>> m_swapChainFramebuffers;
+		std::vector<VulkanFramebufferPtr> m_swapChainFramebuffers;
 
 		// Frame sync
-		std::vector<TRefPtr<VulkanSemaphore>> m_imageAvailableSemaphores;
-		std::vector<TRefPtr<VulkanSemaphore>> m_renderFinishedSemaphores;
-		std::vector<TRefPtr<VulkanFence>> m_syncFences;
-		std::vector<TRefPtr<VulkanFence>> m_syncImages;
+		std::vector<VulkanSemaphorePtr> m_imageAvailableSemaphores;
+		std::vector<VulkanSemaphorePtr> m_renderFinishedSemaphores;
+		std::vector<VulkanFencePtr> m_syncFences;
+		std::vector<VulkanFencePtr> m_syncImages;
 		size_t m_currentFrame = 0;
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
@@ -156,17 +137,17 @@ namespace Sailor::GfxDevice::Vulkan
 		TUniquePtr<VulkanSamplers> m_samplers;
 
 		// Custom testing code
-		TRefPtr<VulkanPipelineLayout> m_pipelineLayout = nullptr;
-		TRefPtr<VulkanPipeline> m_graphicsPipeline = nullptr;
+		VulkanPipelineLayoutPtr m_pipelineLayout = nullptr;
+		VulkanPipelinePtr m_graphicsPipeline = nullptr;
 
-		TRefPtr<VulkanBuffer> m_uniformBuffer;
-		TRefPtr<VulkanDescriptorSet> m_descriptorSet;
+		VulkanBufferPtr m_uniformBuffer;
+		VulkanDescriptorSetPtr m_descriptorSet;
 
-		TRefPtr<VulkanImage> m_image;
-		TRefPtr<VulkanImageView> m_imageView;
+		VulkanImagePtr m_image;
+		VulkanImageViewPtr m_imageView;
 
 		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 
-		std::unordered_map<uint64_t, TBlockAllocator<GlobalVulkanAllocator, VulkanDeviceMemoryPtr>> m_memoryAllocators;
+		std::unordered_map<uint64_t, TBlockAllocator<GlobalVulkanAllocator, VulkanMemoryPtr>> m_memoryAllocators;
 	};
 }

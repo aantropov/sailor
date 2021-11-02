@@ -13,13 +13,13 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 		VulkanShaderStage() = default;
-		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, TRefPtr<VulkanShaderModule> shaderModule);
-		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, TRefPtr<VulkanDevice> pDevice, const ShaderCompiler::ByteCode& spirv);
+		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule);
+		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const ShaderCompiler::ByteCode& spirv);
 
 		/// Vulkan VkPipelineShaderStageCreateInfo settings
 		VkPipelineShaderStageCreateFlags m_flags = 0;
 		VkShaderStageFlagBits m_stage = {};
-		TRefPtr<VulkanShaderModule> m_module;
+		VulkanShaderModulePtr m_module;
 		std::string m_entryPointName;
 
 		virtual void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const override;
@@ -41,7 +41,7 @@ namespace Sailor::GfxDevice::Vulkan
 	public:
 
 		VulkanShaderModule() = default;
-		VulkanShaderModule(TRefPtr<VulkanDevice> pDevice, const ShaderCompiler::ByteCode& spirv);
+		VulkanShaderModule(VulkanDevicePtr pDevice, const ShaderCompiler::ByteCode& spirv);
 
 		operator VkShaderModule() const { return m_shaderModule; }
 
@@ -55,6 +55,6 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual ~VulkanShaderModule() override;
 
 		VkShaderModule m_shaderModule = nullptr;
-		TRefPtr<VulkanDevice> m_pDevice;
+		VulkanDevicePtr m_pDevice;
 	};
 }

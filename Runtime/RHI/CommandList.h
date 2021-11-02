@@ -13,7 +13,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			TRefPtr<GfxDevice::Vulkan::VulkanCommandBuffer> m_commandBuffer;
+			GfxDevice::Vulkan::VulkanCommandBufferPtr m_commandBuffer;
 		} m_vulkan;
 #endif
 	};

@@ -9,7 +9,7 @@ void VulkanCommandPool::Reset(VkCommandPoolResetFlags flags) const
 	VK_CHECK(vkResetCommandPool(*m_device, m_commandPool, flags));
 }
 
-VulkanCommandPool::VulkanCommandPool(TRefPtr<VulkanDevice> device, uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags) :
+VulkanCommandPool::VulkanCommandPool(VulkanDevicePtr device, uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags) :
 	m_device(device)
 {
 	VkCommandPoolCreateInfo poolInfo = {};

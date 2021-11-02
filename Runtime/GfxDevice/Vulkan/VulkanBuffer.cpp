@@ -8,7 +8,7 @@ using namespace Sailor;
 using namespace Sailor::Memory;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanBuffer::VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
+VulkanBuffer::VulkanBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode) :
 	m_size(size),
 	m_usage(usage),
 	m_sharingMode(sharingMode),
@@ -71,13 +71,13 @@ VkMemoryRequirements VulkanBuffer::GetMemoryRequirements() const
 	return memRequirements;
 }
 
-VkResult VulkanBuffer::Bind(TMemoryPtr<VulkanDeviceMemoryPtr> ptr)
+VkResult VulkanBuffer::Bind(TMemoryPtr<VulkanMemoryPtr> ptr)
 {
 	m_ptr = ptr;
 	return Bind((*ptr).m_deviceMemory, ptr.m_offset);
 }
 
-VkResult VulkanBuffer::Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset)
+VkResult VulkanBuffer::Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset)
 {
 	VkResult result = vkBindBufferMemory(*m_device, m_buffer, *deviceMemory, memoryOffset);
 	if (result == VK_SUCCESS)

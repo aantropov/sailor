@@ -6,7 +6,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanSampler::VulkanSampler(TRefPtr<VulkanDevice> pDevice,
+VulkanSampler::VulkanSampler(VulkanDevicePtr pDevice,
 	VkFilter filter,
 	VkSamplerAddressMode addressMode,
 	bool bUseMips,
@@ -45,7 +45,7 @@ VulkanSampler::~VulkanSampler()
 	vkDestroySampler(*m_device, m_textureSampler, nullptr);
 }
 
-void VulkanSamplers::Initialize(TRefPtr<VulkanDevice> pDevice)
+void VulkanSamplers::Initialize(VulkanDevicePtr pDevice)
 {
 	for (uint32_t i = 0; i < 8; i++)
 	{
@@ -53,7 +53,7 @@ void VulkanSamplers::Initialize(TRefPtr<VulkanDevice> pDevice)
 		VkSamplerAddressMode addressing = (i >> 1) & 1 ? VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT : VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 		VkFilter filter = (i >> 2) & 1 ? VkFilter::VK_FILTER_NEAREST : VkFilter::VK_FILTER_LINEAR;
 
-		m_samplers[i] = TRefPtr<VulkanSampler>::Make(pDevice,
+		m_samplers[i] = VulkanSamplerPtr::Make(pDevice,
 			filter,
 			addressing,
 			bUseMips,
@@ -62,7 +62,7 @@ void VulkanSamplers::Initialize(TRefPtr<VulkanDevice> pDevice)
 	}
 }
 
-TRefPtr<VulkanSampler> VulkanSamplers::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const
+VulkanSamplerPtr VulkanSamplers::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const
 {
 	uint8_t index = bHasMipMaps ? 1 : 0;
 	index += clampingMode == RHI::ETextureClamping::Repeat ? 2 : 0;

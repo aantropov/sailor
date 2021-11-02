@@ -12,12 +12,12 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanImageView : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
-		VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image);
-		VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags);
+		VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image);
+		VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags);
 
 		/// VkImageViewCreateInfo settings
 		VkImageViewCreateFlags m_flags = 0;
-		TRefPtr<VulkanImage> m_image;
+		VulkanImagePtr m_image;
 		VkImageViewType m_viewType = VK_IMAGE_VIEW_TYPE_2D;
 		VkFormat m_format = VK_FORMAT_UNDEFINED;
 		VkComponentMapping m_components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
@@ -34,6 +34,6 @@ namespace Sailor::GfxDevice::Vulkan
 	protected:
 
 		VkImageView m_imageView = VK_NULL_HANDLE;
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 	};
 }

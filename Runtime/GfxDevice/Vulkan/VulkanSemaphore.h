@@ -11,7 +11,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 	public:
 
-		VulkanSemaphore(TRefPtr<VulkanDevice> device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, void* pNextCreateInfo = nullptr);
+		VulkanSemaphore(VulkanDevicePtr device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, void* pNextCreateInfo = nullptr);
 
 		operator VkSemaphore() const { return m_semaphore; }
 
@@ -25,6 +25,6 @@ namespace Sailor::GfxDevice::Vulkan
 		VkSemaphore m_semaphore;
 		VkPipelineStageFlags m_pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 	};
 }

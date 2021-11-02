@@ -52,8 +52,8 @@ using namespace Sailor::Win32;
 using namespace Sailor::RHI;
 using namespace Sailor::GfxDevice::Vulkan;
 
-TRefPtr<VulkanShaderStage> g_testFragShader;
-TRefPtr<VulkanShaderStage> g_testVertShader;
+VulkanShaderStagePtr g_testFragShader;
+VulkanShaderStagePtr g_testVertShader;
 
 VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 {
@@ -88,12 +88,12 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 
 	// Cache samplers
 	m_samplers = TUniquePtr<VulkanSamplers>::Make();
-	m_samplers->Initialize(TRefPtr<VulkanDevice>(this));
+	m_samplers->Initialize(VulkanDevicePtr(this));
 
 	// Cache memory requirements
 	{
 		m_minUboOffsetAlignment = properties.limits.minUniformBufferOffsetAlignment;
-		TRefPtr<VulkanBuffer> stagingBuffer = TRefPtr<VulkanBuffer>::Make(TRefPtr<VulkanDevice>(this),
+		VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(VulkanDevicePtr(this),
 			1024,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_SHARING_MODE_CONCURRENT);
@@ -176,7 +176,7 @@ ThreadContext& VulkanDevice::GetThreadContext()
 	return *(m_threadContext[threadId] = CreateThreadContext());
 }
 
-TRefPtr<VulkanSurface> VulkanDevice::GetSurface() const
+VulkanSurfacePtr VulkanDevice::GetSurface() const
 {
 	return m_surface;
 }
@@ -191,7 +191,7 @@ VkFormat VulkanDevice::GetDepthFormat() const
 	);
 }
 
-TBlockAllocator<class GlobalVulkanAllocator, class VulkanDeviceMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
+TBlockAllocator<class GlobalVulkanAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
 {
 	uint64_t hash = properties | ((uint64_t)requirements.memoryTypeBits) << 32;
 
@@ -217,16 +217,16 @@ bool VulkanDevice::IsMipsSupported(VkFormat format) const
 	return true;
 }
 
-TRefPtr<VulkanCommandBuffer> VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue)
+VulkanCommandBufferPtr VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue)
 {
-	return TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this),
+	return VulkanCommandBufferPtr::Make(VulkanDevicePtr(this),
 		bOnlyTransferQueue ? GetThreadContext().m_transferCommandPool : GetThreadContext().m_commandPool);
 }
 
-void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffer,
-	TRefPtr<VulkanFence> fence,
-	std::vector<TRefPtr<VulkanSemaphore>> signalSemaphores,
-	std::vector<TRefPtr<VulkanSemaphore>> waitSemaphores)
+void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
+	VulkanFencePtr fence,
+	std::vector<VulkanSemaphorePtr> signalSemaphores,
+	std::vector<VulkanSemaphorePtr> waitSemaphores)
 {
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -272,7 +272,7 @@ void VulkanDevice::SubmitCommandBuffer(TRefPtr<VulkanCommandBuffer> commandBuffe
 void VulkanDevice::CreateRenderPass()
 {
 	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
-	m_renderPass = VulkanApi::CreateMSSRenderPass(TRefPtr<VulkanDevice>(this), m_swapchain->GetImageFormat(), depthFormat, (VkSampleCountFlagBits)m_currentMsaaSamples);
+	m_renderPass = VulkanApi::CreateMSSRenderPass(VulkanDevicePtr(this), m_swapchain->GetImageFormat(), depthFormat, (VkSampleCountFlagBits)m_currentMsaaSamples);
 }
 
 TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
@@ -280,8 +280,8 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 	TUniquePtr<ThreadContext> context = TUniquePtr<ThreadContext>::Make();
 
 	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	context->m_commandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-	context->m_transferCommandPool = TRefPtr<VulkanCommandPool>::Make(TRefPtr<VulkanDevice>(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	context->m_commandPool = TRefPtr<VulkanCommandPool>::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
 	auto descriptorSizes = vector
 	{
@@ -289,7 +289,7 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1)
 	};
 
-	context->m_descriptorPool = TRefPtr<VulkanDescriptorPool>::Make(TRefPtr<VulkanDevice>(this), 1, descriptorSizes);
+	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 1, descriptorSizes);
 
 	return context;
 }
@@ -300,9 +300,9 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 
 	for (size_t i = 0; i < VulkanApi::MaxFramesInFlight; i++)
 	{
-		m_imageAvailableSemaphores.push_back(TRefPtr<VulkanSemaphore>::Make(TRefPtr<VulkanDevice>(this)));
-		m_renderFinishedSemaphores.push_back(TRefPtr<VulkanSemaphore>::Make(TRefPtr<VulkanDevice>(this)));
-		m_syncFences.push_back(TRefPtr<VulkanFence>::Make(TRefPtr<VulkanDevice>(this), VK_FENCE_CREATE_SIGNALED_BIT));
+		m_imageAvailableSemaphores.push_back(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
+		m_renderFinishedSemaphores.push_back(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
+		m_syncFences.push_back(VulkanFencePtr::Make(VulkanDevicePtr(this), VK_FENCE_CREATE_SIGNALED_BIT));
 	}
 }
 
@@ -331,7 +331,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 	{
 		const VkDeviceSize uniformBufferSize = sizeof(RHI::UboTransform);
 
-		m_uniformBuffer = VulkanApi::CreateBuffer(TRefPtr<VulkanDevice>(this),
+		m_uniformBuffer = VulkanApi::CreateBuffer(VulkanDevicePtr(this),
 			uniformBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -341,8 +341,8 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode, true);
 
-		g_testVertShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", TRefPtr<VulkanDevice>(this), vertCode);
-		g_testFragShader = TRefPtr<VulkanShaderStage>::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", TRefPtr<VulkanDevice>(this), fragCode);
+		g_testVertShader = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", VulkanDevicePtr(this), vertCode);
+		g_testFragShader = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", VulkanDevicePtr(this), fragCode);
 
 		g_testVertShader->Compile();
 		g_testFragShader->Compile();
@@ -368,16 +368,16 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		const TRefPtr<VulkanStateMultisample> pMultisample = TRefPtr<VulkanStateMultisample>::Make(GetCurrentMsaaSamples());
 
-		auto descriptorSetLayouts = VulkanApi::CreateDescriptorSetLayouts(TRefPtr<VulkanDevice>(this), { g_testVertShader , g_testFragShader });
+		auto descriptorSetLayouts = VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr(this), { g_testVertShader , g_testFragShader });
 
-		m_pipelineLayout = TRefPtr<VulkanPipelineLayout>::Make(TRefPtr<VulkanDevice>(this),
+		m_pipelineLayout = VulkanPipelineLayoutPtr::Make(VulkanDevicePtr(this),
 			descriptorSetLayouts,
 			std::vector<VkPushConstantRange>(),
 			0);
 
-		std::vector<TRefPtr<VulkanPipelineState>> states = { pStateViewport, pVertexDescription, pInputAssembly, pStateRasterizer, pDynamicState, pDepthStencil, pColorBlending, pMultisample };
+		std::vector<VulkanPipelineStatePtr> states = { pStateViewport, pVertexDescription, pInputAssembly, pStateRasterizer, pDynamicState, pDepthStencil, pColorBlending, pMultisample };
 
-		m_graphicsPipeline = TRefPtr<VulkanPipeline>::Make(TRefPtr<VulkanDevice>(this),
+		m_graphicsPipeline = VulkanPipelinePtr::Make(VulkanDevicePtr(this),
 			m_pipelineLayout,
 			std::vector{ g_testVertShader, g_testFragShader },
 			states,
@@ -396,7 +396,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height, mipLevels);
 		m_image = VulkanApi::CreateImage_Immediate(
-			TRefPtr<VulkanDevice>(this),
+			VulkanDevicePtr(this),
 			data.data(),
 			data.size() * sizeof(uint8_t),
 			VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 },
@@ -404,10 +404,10 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		data.clear();
 
-		m_imageView = new VulkanImageView(TRefPtr<VulkanDevice>(this), m_image);
+		m_imageView = new VulkanImageView(VulkanDevicePtr(this), m_image);
 		m_imageView->Compile();
 
-		auto descriptors = std::vector<TRefPtr<VulkanDescriptor>>
+		auto descriptors = std::vector<VulkanDescriptorPtr>
 		{
 			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UboTransform)),
 			TRefPtr<VulkanDescriptorImage>::Make(1, 0,
@@ -417,7 +417,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 				m_imageView)
 		};
 
-		m_descriptorSet = TRefPtr<VulkanDescriptorSet>::Make(TRefPtr<VulkanDevice>(this),
+		m_descriptorSet = VulkanDescriptorSetPtr::Make(VulkanDevicePtr(this),
 			GetThreadContext().m_descriptorPool,
 			m_pipelineLayout->m_descriptionSetLayouts[0],
 			descriptors);
@@ -428,11 +428,11 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 void VulkanDevice::CreateFramebuffers()
 {
-	std::vector<TRefPtr<VulkanImageView>>& swapChainImageViews = m_swapchain->GetImageViews();
+	std::vector<VulkanImageViewPtr>& swapChainImageViews = m_swapchain->GetImageViews();
 
 	m_swapChainFramebuffers.resize(swapChainImageViews.size());
 
-	std::vector<TRefPtr<VulkanImageView>> attachments;
+	std::vector<VulkanImageViewPtr> attachments;
 
 	uint8_t swapchainIndex = 1;
 	if ((VkSampleCountFlagBits)m_currentMsaaSamples != VK_SAMPLE_COUNT_1_BIT)
@@ -448,7 +448,7 @@ void VulkanDevice::CreateFramebuffers()
 	for (size_t i = 0; i < swapChainImageViews.size(); i++)
 	{
 		attachments[swapchainIndex] = swapChainImageViews[i];
-		m_swapChainFramebuffers[i] = TRefPtr<VulkanFramebuffer>::Make(
+		m_swapChainFramebuffers[i] = VulkanFramebufferPtr::Make(
 			m_renderPass,
 			attachments,
 			m_swapchain->GetExtent().width,
@@ -461,7 +461,7 @@ void VulkanDevice::CreateCommandBuffers()
 {
 	for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
 	{
-		m_commandBuffers.push_back(TRefPtr<VulkanCommandBuffer>::Make(TRefPtr<VulkanDevice>(this), GetThreadContext().m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
+		m_commandBuffers.push_back(VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), GetThreadContext().m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 }
 
@@ -522,15 +522,15 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	// Create queues
 	VkQueue graphicsQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_graphicsFamily.value(), 0, &graphicsQueue);
-	m_graphicsQueue = TRefPtr<VulkanQueue>::Make(graphicsQueue, m_queueFamilies.m_graphicsFamily.value(), 0);
+	m_graphicsQueue = VulkanQueuePtr::Make(graphicsQueue, m_queueFamilies.m_graphicsFamily.value(), 0);
 
 	VkQueue presentQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &presentQueue);
-	m_presentQueue = TRefPtr<VulkanQueue>::Make(presentQueue, m_queueFamilies.m_presentFamily.value(), 0);
+	m_presentQueue = VulkanQueuePtr::Make(presentQueue, m_queueFamilies.m_presentFamily.value(), 0);
 
 	VkQueue transferQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_transferFamily.value(), 0, &transferQueue);
-	m_transferQueue = TRefPtr<VulkanQueue>::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
+	m_transferQueue = VulkanQueuePtr::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
 }
 
 void VulkanDevice::CreateWin32Surface(const Window* viewport)
@@ -541,7 +541,7 @@ void VulkanDevice::CreateWin32Surface(const Window* viewport)
 	VkSurfaceKHR surface;
 	VK_CHECK(vkCreateWin32SurfaceKHR(VulkanApi::GetVkInstance(), &createInfoWin32, nullptr, &surface));
 
-	m_surface = TRefPtr<VulkanSurface>::Make(surface, VulkanApi::GetVkInstance());
+	m_surface = VulkanSurfacePtr::Make(surface, VulkanApi::GetVkInstance());
 }
 
 void VulkanDevice::CreateSwapchain(const Window* viewport)
@@ -550,7 +550,7 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 	m_swapchain.Clear();
 
 	m_swapchain = TRefPtr<VulkanSwapchain>::Make(
-		TRefPtr<VulkanDevice>(this),
+		VulkanDevicePtr(this),
 		viewport->GetWidth(),
 		viewport->GetHeight(),
 		viewport->IsVsyncRequested(),
@@ -584,9 +584,9 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	RecreateSwapchain(pViewport);
 }
 
-bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefPtr<VulkanCommandBuffer>>* primaryCommandBuffers,
-	const std::vector<TRefPtr<VulkanCommandBuffer>>* secondaryCommandBuffers,
-	const std::vector<TRefPtr<VulkanSemaphore>>* semaphoresToWait)
+bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<VulkanCommandBufferPtr>* primaryCommandBuffers,
+	const std::vector<VulkanCommandBufferPtr>* secondaryCommandBuffers,
+	const std::vector<VulkanSemaphorePtr>* semaphoresToWait)
 {
 	// Wait while we recreate swapchain from main thread to sync with Win32Api
 	if (m_bIsSwapChainOutdated)
@@ -647,7 +647,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefP
 	/////////////////////////////////////////
 
 	uint32_t imageIndex;
-	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], TRefPtr<VulkanFence>(), imageIndex);
+	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VulkanFencePtr(), imageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
@@ -673,7 +673,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<TRefP
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
 	//////////////////////////////////////////////////
-	TRefPtr<VulkanStateViewport> pStateViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
+	VulkanStateViewportPtr pStateViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 
 	std::vector<VkCommandBuffer> commandBuffers;
 	if (primaryCommandBuffers)

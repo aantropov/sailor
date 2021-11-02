@@ -17,7 +17,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanCommandBuffer::VulkanCommandBuffer(TRefPtr<VulkanDevice> device, Sailor::TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level) :
+VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevicePtr device, VulkanCommandPoolPtr commandPool, VkCommandBufferLevel level) :
 	m_device(device),
 	m_level(level),
 	m_commandPool(commandPool)
@@ -41,7 +41,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	m_device.Clear();
 }
 
-TRefPtr<VulkanCommandPool> VulkanCommandBuffer::GetCommandPool() const
+VulkanCommandPoolPtr VulkanCommandBuffer::GetCommandPool() const
 {
 	return m_commandPool;
 }
@@ -57,7 +57,7 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 	ClearDependencies();
 }
 
-void VulkanCommandBuffer::CopyBuffer(TRefPtr<VulkanBuffer> src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
+void VulkanCommandBuffer::CopyBuffer(VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
 {
 	VkBufferCopy copyRegion{};
 	copyRegion.srcOffset = 0; // Optional
@@ -69,7 +69,7 @@ void VulkanCommandBuffer::CopyBuffer(TRefPtr<VulkanBuffer> src, TRefPtr<VulkanBu
 	m_bufferDependencies.push_back(dst);
 }
 
-void VulkanCommandBuffer::CopyBufferToImage(TRefPtr<VulkanBuffer> src, TRefPtr<VulkanImage> image, uint32_t width, uint32_t height)
+void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height)
 {
 	VkBufferImageCopy region{};
 	region.bufferOffset = 0;
@@ -106,7 +106,7 @@ void VulkanCommandBuffer::EndCommandList()
 	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
 }
 
-void VulkanCommandBuffer::BeginRenderPass(TRefPtr<VulkanRenderPass> renderPass, TRefPtr<VulkanFramebuffer> frameBuffer, VkExtent2D extent, VkOffset2D offset, VkClearValue clearColor)
+void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkOffset2D offset, VkClearValue clearColor)
 {
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -128,7 +128,7 @@ void VulkanCommandBuffer::BeginRenderPass(TRefPtr<VulkanRenderPass> renderPass, 
 	vkCmdBeginRenderPass(m_commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void VulkanCommandBuffer::BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> buffers, std::vector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
+void VulkanCommandBuffer::BindVertexBuffers(std::vector<VulkanBufferPtr> buffers, std::vector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
 {
 	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(_malloca(buffers.size() * sizeof(VkBuffer)));
 
@@ -141,23 +141,23 @@ void VulkanCommandBuffer::BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> b
 	_freea(vertexBuffers);
 }
 
-void VulkanCommandBuffer::BindIndexBuffer(TRefPtr<VulkanBuffer> indexBuffer)
+void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer)
 {
 	m_bufferDependencies.push_back(indexBuffer);
 	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 }
 
-void VulkanCommandBuffer::BindDescriptorSet(TRefPtr<VulkanPipelineLayout> pipelineLayout, TRefPtr<VulkanDescriptorSet> descriptorSet)
+void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, VulkanDescriptorSetPtr descriptorSet)
 {
 	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, 1, descriptorSet->GetHandle(), 0, nullptr);
 }
 
-void VulkanCommandBuffer::BindPipeline(TRefPtr<VulkanPipeline> pipeline)
+void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)
 {
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 }
 
-void VulkanCommandBuffer::DrawIndexed(TRefPtr<VulkanBuffer> indexBuffer)
+void VulkanCommandBuffer::DrawIndexed(VulkanBufferPtr indexBuffer)
 {
 	m_bufferDependencies.push_back(indexBuffer);
 	vkCmdDrawIndexed(m_commandBuffer, (uint32_t)indexBuffer->m_size / sizeof(uint32_t), 1, 0, 0, 0);
@@ -180,28 +180,28 @@ void VulkanCommandBuffer::ClearDependencies()
 	m_imageDependencies.clear();
 }
 
-void VulkanCommandBuffer::Execute(TRefPtr<VulkanCommandBuffer> secondaryCommandBuffer)
+void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)
 {
 	vkCmdExecuteCommands(m_commandBuffer, 1, secondaryCommandBuffer->GetHandle());
 }
 
-void VulkanCommandBuffer::SetViewport(TRefPtr<const VulkanStateViewport> viewport)
+void VulkanCommandBuffer::SetViewport(VulkanStateViewportPtr viewport)
 {
 	vkCmdSetViewport(m_commandBuffer, 0, 1, &viewport->GetViewport());
 }
 
-void VulkanCommandBuffer::SetScissor(TRefPtr<const VulkanStateViewport> viewport)
+void VulkanCommandBuffer::SetScissor(VulkanStateViewportPtr viewport)
 {
 	vkCmdSetScissor(m_commandBuffer, 0, 1, &viewport->GetScissor());
 }
 
-void VulkanCommandBuffer::Blit(TRefPtr<VulkanImage> srcImage, VkImageLayout srcImageLayout, TRefPtr<VulkanImage> dstImage, VkImageLayout dstImageLayout,
+void VulkanCommandBuffer::Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLayout, VulkanImagePtr dstImage, VkImageLayout dstImageLayout,
 	uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter)
 {
 	vkCmdBlitImage(m_commandBuffer, *srcImage, srcImageLayout, *dstImage, dstImageLayout, regionCount, pRegions, filter);
 }
 
-void VulkanCommandBuffer::GenerateMipMaps(TRefPtr<VulkanImage> image)
+void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 {
 	if (!image->GetDevice()->IsMipsSupported(image->m_format))
 	{
@@ -288,7 +288,7 @@ void VulkanCommandBuffer::GenerateMipMaps(TRefPtr<VulkanImage> image)
 		1, &barrier);
 }
 
-void VulkanCommandBuffer::ImageMemoryBarrier(TRefPtr<VulkanImage> image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;

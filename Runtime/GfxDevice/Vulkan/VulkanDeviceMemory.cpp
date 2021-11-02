@@ -8,7 +8,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanDeviceMemory::VulkanDeviceMemory(TRefPtr<VulkanDevice> device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, void* pNextAllocInfo) :
+VulkanDeviceMemory::VulkanDeviceMemory(VulkanDevicePtr device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, void* pNextAllocInfo) :
 	m_memoryRequirements(memRequirements),
 	m_properties(properties),
 	m_device(device)

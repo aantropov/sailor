@@ -22,14 +22,14 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanRenderPass(TRefPtr<VulkanDevice> device,
+		VulkanRenderPass(VulkanDevicePtr device,
 			const std::vector<VkAttachmentDescription>& attachments,
 			const std::vector<VulkanSubpassDescription>& subpasses,
 			const std::vector<VkSubpassDependency>& dependencies);
 
 		operator VkRenderPass() const { return m_renderPass; }
 
-		TRefPtr<VulkanDevice> GetDevice() const;
+		VulkanDevicePtr GetDevice() const;
 		VkSampleCountFlagBits GetMaxMSSamples() const { return m_maxMsSamples; }
 
 	protected:
@@ -38,6 +38,6 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VkRenderPass m_renderPass;
 		VkSampleCountFlagBits m_maxMsSamples;
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 	};
 }

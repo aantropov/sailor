@@ -5,7 +5,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanSemaphore::VulkanSemaphore(TRefPtr<VulkanDevice> device, VkPipelineStageFlags pipelineStageFlags, void* pNextCreateInfo) :
+VulkanSemaphore::VulkanSemaphore(VulkanDevicePtr device, VkPipelineStageFlags pipelineStageFlags, void* pNextCreateInfo) :
 	m_pipelineStageFlags(pipelineStageFlags),
 	m_device(device)
 {

@@ -50,8 +50,8 @@ bool GfxDeviceVulkan::PresentFrame(const class FrameState& state,
 	const std::vector<TRefPtr<RHI::CommandList>>* primaryCommandBuffers,
 	const std::vector<TRefPtr<RHI::CommandList>>* secondaryCommandBuffers) const
 {
-	std::vector<TRefPtr<VulkanCommandBuffer>> primaryBuffers;
-	std::vector<TRefPtr<VulkanCommandBuffer>> secondaryBuffers;
+	std::vector<VulkanCommandBufferPtr> primaryBuffers;
+	std::vector<VulkanCommandBufferPtr> secondaryBuffers;
 
 	if (primaryCommandBuffers != nullptr)
 	{
@@ -84,7 +84,7 @@ void GfxDeviceVulkan::SubmitCommandList(TRefPtr<RHI::CommandList> commandList, T
 	//if we have fence and that is null we should create device resource
 	if (!fence->m_vulkan.m_fence)
 	{
-		fence->m_vulkan.m_fence = TRefPtr<VulkanFence>::Make(m_vkInstance->GetMainDevice());
+		fence->m_vulkan.m_fence = VulkanFencePtr::Make(m_vkInstance->GetMainDevice());
 	}
 
 	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence->m_vulkan.m_fence);

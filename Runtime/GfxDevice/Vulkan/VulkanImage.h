@@ -13,8 +13,8 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanImage(TRefPtr<VulkanDevice> device);
-		VulkanImage(VkImage image, TRefPtr<VulkanDevice> device);
+		VulkanImage(VulkanDevicePtr device);
+		VulkanImage(VkImage image, VulkanDevicePtr device);
 
 		/// VkImageCreateInfo settings
 		VkImageCreateFlags m_flags = 0;
@@ -35,20 +35,20 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual void Compile() override;
 		virtual void Release() override;
 
-		VkResult Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset);
+		VkResult Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset);
 		VkMemoryRequirements GetMemoryRequirements() const;
 
-		TRefPtr<VulkanDeviceMemory> GetMemoryDevice() { return m_deviceMemory; }
-		TRefPtr<VulkanDevice> GetDevice() const { return m_device; }
+		VulkanDeviceMemoryPtr GetMemoryDevice() { return m_deviceMemory; }
+		VulkanDevicePtr GetDevice() const { return m_device; }
 
 	protected:
 
 		virtual ~VulkanImage() override;
 
 		VkImage m_image = nullptr;
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 
-		TRefPtr<VulkanDeviceMemory> m_deviceMemory;
+		VulkanDeviceMemoryPtr m_deviceMemory;
 		VkDeviceSize m_memoryOffset = 0;
 		VkDeviceSize m_size = 0;
 	};

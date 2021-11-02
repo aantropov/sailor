@@ -17,8 +17,8 @@ VulkanPipelineLayout::VulkanPipelineLayout() :
 }
 
 VulkanPipelineLayout::VulkanPipelineLayout(
-	TRefPtr<VulkanDevice> pDevice,
-	std::vector<TRefPtr<VulkanDescriptorSetLayout>> descriptorsSet,
+	VulkanDevicePtr pDevice,
+	std::vector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
 	std::vector<VkPushConstantRange> pushConstantRanges,
 	VkPipelineLayoutCreateFlags flags) :
 	m_flags(flags),
@@ -74,10 +74,10 @@ void VulkanPipelineLayout::Compile()
 	_freea(ptr);
 }
 
-VulkanPipeline::VulkanPipeline(TRefPtr<VulkanDevice> pDevice,
-	TRefPtr<VulkanPipelineLayout> pipelineLayout,
-	std::vector<TRefPtr<VulkanShaderStage>> shaderStages,
-	std::vector<TRefPtr<VulkanPipelineState>> pipelineStates,
+VulkanPipeline::VulkanPipeline(VulkanDevicePtr pDevice,
+	VulkanPipelineLayoutPtr pipelineLayout,
+	std::vector<VulkanShaderStagePtr> shaderStages,
+	std::vector<VulkanPipelineStatePtr> pipelineStates,
 	uint32_t subpass) :
 	m_stages(std::move(shaderStages)),
 	m_pipelineStates(std::move(pipelineStates)),

@@ -14,14 +14,14 @@ namespace Sailor::GfxDevice::Vulkan
 	public:
 
 		VulkanPipelineLayout();
-		VulkanPipelineLayout(TRefPtr<VulkanDevice> pDevice,
-			std::vector<TRefPtr<VulkanDescriptorSetLayout>> descriptorsSet,
+		VulkanPipelineLayout(VulkanDevicePtr pDevice,
+			std::vector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
 			std::vector<VkPushConstantRange> pushConstantRanges,
 			VkPipelineLayoutCreateFlags flags = 0);
 
 		/// VkPipelineLayoutCreateInfo settings
 		VkPipelineLayoutCreateFlags m_flags = 0;
-		std::vector<TRefPtr<VulkanDescriptorSetLayout>> m_descriptionSetLayouts;
+		std::vector<VulkanDescriptorSetLayoutPtr> m_descriptionSetLayouts;
 		std::vector<VkPushConstantRange> m_pushConstantRanges;
 
 		/// Vulkan VkPipelineLayout handle
@@ -34,7 +34,7 @@ namespace Sailor::GfxDevice::Vulkan
 	protected:
 
 		virtual ~VulkanPipelineLayout() override;
-		TRefPtr<VulkanDevice> m_pDevice;
+		VulkanDevicePtr m_pDevice;
 		VkPipelineLayout m_pipelineLayout;
 	};
 
@@ -44,17 +44,17 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VulkanPipeline() = default;
 
-		VulkanPipeline(TRefPtr<VulkanDevice> pDevice,
-			TRefPtr<VulkanPipelineLayout> pipelineLayout,
-			std::vector<TRefPtr<VulkanShaderStage>> shaderStages,
-			std::vector<TRefPtr<VulkanPipelineState>> pipelineStates,
+		VulkanPipeline(VulkanDevicePtr pDevice,
+			VulkanPipelineLayoutPtr pipelineLayout,
+			std::vector<VulkanShaderStagePtr> shaderStages,
+			std::vector<VulkanPipelineStatePtr> pipelineStates,
 			uint32_t subpass = 0);
 
 		/// VkGraphicsPipelineCreateInfo settings
-		std::vector<TRefPtr<VulkanShaderStage>> m_stages;
-		std::vector<TRefPtr<VulkanPipelineState>> m_pipelineStates;
-		TRefPtr<VulkanPipelineLayout> m_layout;
-		TRefPtr<VulkanRenderPass> m_renderPass;
+		std::vector<VulkanShaderStagePtr> m_stages;
+		std::vector<VulkanPipelineStatePtr> m_pipelineStates;
+		VulkanPipelineLayoutPtr m_layout;
+		VulkanRenderPassPtr m_renderPass;
 		uint32_t m_subpass;
 
 		void Compile();
@@ -68,6 +68,6 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual ~VulkanPipeline();
 
 		VkPipeline m_pipeline;
-		TRefPtr<VulkanDevice> m_pDevice;
+		VulkanDevicePtr m_pDevice;
 	};
 }

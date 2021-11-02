@@ -5,16 +5,6 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	class VulkanStateViewport;
-	class VulkanCommandPool;
-	class VulkanBuffer;
-	class VulkanDevice;
-	class VulkanRenderPass;
-	class VulkanFramebuffer;
-	class VulkanPipelineLayout;
-	class VulkanPipeline;
-	class VulkanDescriptorSet;
-
 	class VulkanCommandBuffer final : public RHI::Resource
 	{
 
@@ -23,53 +13,53 @@ namespace Sailor::GfxDevice::Vulkan
 		const VkCommandBuffer* GetHandle() const { return &m_commandBuffer; }
 		operator VkCommandBuffer() const { return m_commandBuffer; }
 
-		TRefPtr<VulkanCommandPool> GetCommandPool() const;
+		VulkanCommandPoolPtr GetCommandPool() const;
 
-		VulkanCommandBuffer(TRefPtr<VulkanDevice> device, class TRefPtr<VulkanCommandPool> commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		VulkanCommandBuffer(VulkanDevicePtr device, VulkanCommandPoolPtr commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
 		virtual ~VulkanCommandBuffer() override;
 
 		void BeginCommandList(VkCommandBufferUsageFlags flags = 0);
 		void EndCommandList();
 
-		void BeginRenderPass(TRefPtr<VulkanRenderPass> renderPass,
-			TRefPtr<VulkanFramebuffer> frameBuffer,
+		void BeginRenderPass(VulkanRenderPassPtr renderPass,
+			VulkanFramebufferPtr frameBuffer,
 			VkExtent2D extent,
 			VkOffset2D offset = { 0,0 },
 			VkClearValue clearColor = VulkanApi::DefaultClearColor);
 
 		void EndRenderPass();
 
-		void BindVertexBuffers(std::vector<TRefPtr<VulkanBuffer>> buffers, std::vector <VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
-		void BindIndexBuffer(TRefPtr<VulkanBuffer> indexBuffer);
-		void BindDescriptorSet(TRefPtr<VulkanPipelineLayout> pipelineLayout, TRefPtr<VulkanDescriptorSet> descriptorSet);
-		void BindPipeline(TRefPtr<VulkanPipeline> pipeline);
+		void BindVertexBuffers(std::vector<VulkanBufferPtr> buffers, std::vector <VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
+		void BindIndexBuffer(VulkanBufferPtr indexBuffer);
+		void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, VulkanDescriptorSetPtr descriptorSet);
+		void BindPipeline(VulkanPipelinePtr pipeline);
 
-		void DrawIndexed(TRefPtr<VulkanBuffer> indexBuffer);
+		void DrawIndexed(VulkanBufferPtr indexBuffer);
 
-		void Execute(TRefPtr<VulkanCommandBuffer> secondaryCommandBuffer);
-		void CopyBuffer(TRefPtr<VulkanBuffer>  src, TRefPtr<VulkanBuffer> dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
-		void CopyBufferToImage(TRefPtr<VulkanBuffer> src, TRefPtr<VulkanImage> image, uint32_t width, uint32_t height);
+		void Execute(VulkanCommandBufferPtr secondaryCommandBuffer);
+		void CopyBuffer(VulkanBufferPtr  src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
+		void CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height);
 
-		void SetViewport(TRefPtr<const VulkanStateViewport> viewport);
-		void SetScissor(TRefPtr<const VulkanStateViewport> viewport);
+		void SetViewport(VulkanStateViewportPtr viewport);
+		void SetScissor(VulkanStateViewportPtr viewport);
 
-		void ImageMemoryBarrier(TRefPtr<VulkanImage> image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+		void ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 
-		void Blit(TRefPtr<VulkanImage> srcImage, VkImageLayout srcImageLayout, TRefPtr<VulkanImage> dstImage, VkImageLayout dstImageLayout,
+		void Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLayout, VulkanImagePtr dstImage, VkImageLayout dstImageLayout,
 			uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter);
 
-		void GenerateMipMaps(TRefPtr<VulkanImage> image);
+		void GenerateMipMaps(VulkanImagePtr image);
 		void ClearDependencies();
 		void Reset();
 
 	protected:
 
-		std::vector<TRefPtr<VulkanBuffer>> m_bufferDependencies;
-		std::vector<TRefPtr<VulkanImage>> m_imageDependencies;
+		std::vector<VulkanBufferPtr> m_bufferDependencies;
+		std::vector<VulkanImagePtr> m_imageDependencies;
 
-		TRefPtr<VulkanDevice> m_device;
-		TRefPtr<VulkanCommandPool> m_commandPool;
+		VulkanDevicePtr m_device;
+		VulkanCommandPoolPtr m_commandPool;
 		VkCommandBuffer m_commandBuffer;
 		VkCommandBufferLevel m_level;
 	};

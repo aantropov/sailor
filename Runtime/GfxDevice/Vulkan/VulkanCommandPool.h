@@ -17,13 +17,13 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void Reset(VkCommandPoolResetFlags flags = VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT) const;
 
-		VulkanCommandPool(TRefPtr<VulkanDevice> device, uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);
+		VulkanCommandPool(VulkanDevicePtr device, uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);
 
 		virtual ~VulkanCommandPool() override;
 
 	protected:
 
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 		VkCommandPool m_commandPool;
 	};
 }

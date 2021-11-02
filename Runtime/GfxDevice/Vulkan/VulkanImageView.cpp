@@ -20,7 +20,7 @@ VulkanImageView::~VulkanImageView()
 	Release();
 }
 
-VulkanImageView::VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image) :
+VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image) :
 	m_image(image),
 	m_device(device)
 {
@@ -34,7 +34,7 @@ VulkanImageView::VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanIma
 	m_subresourceRange.layerCount = image->m_arrayLayers;
 }
 
-VulkanImageView::VulkanImageView(TRefPtr<VulkanDevice> device, TRefPtr<VulkanImage> image, VkImageAspectFlags aspectFlags) :
+VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags) :
 	m_image(image),
 	m_device(device)
 

@@ -10,14 +10,14 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanFramebuffer : public RHI::Resource
 	{
 	public:
-		VulkanFramebuffer(TRefPtr<VulkanRenderPass> renderPass, const std::vector<TRefPtr<VulkanImageView>>& attachments, uint32_t width, uint32_t height, uint32_t layers);
+		VulkanFramebuffer(VulkanRenderPassPtr renderPass, const std::vector<VulkanImageViewPtr>& attachments, uint32_t width, uint32_t height, uint32_t layers);
 
 		operator VkFramebuffer() const { return m_framebuffer; }
 
-		TRefPtr<VulkanRenderPass> GetRenderPass() { return m_renderPass; }
+		VulkanRenderPassPtr GetRenderPass() { return m_renderPass; }
 
-		std::vector<TRefPtr<VulkanImageView>>& GetAttachments() { return m_attachments; }
-		const std::vector<TRefPtr<VulkanImageView>>& GetAttachments() const { return m_attachments; }
+		std::vector<VulkanImageViewPtr>& GetAttachments() { return m_attachments; }
+		const std::vector<VulkanImageViewPtr>& GetAttachments() const { return m_attachments; }
 
 		uint32_t GetWidth() const { return m_width; }
 		uint32_t GetHeight() const { return m_height; }
@@ -27,10 +27,10 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual ~VulkanFramebuffer();
 
 		VkFramebuffer m_framebuffer;
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 
-		TRefPtr<VulkanRenderPass> m_renderPass;
-		std::vector<TRefPtr<VulkanImageView>> m_attachments;
+		VulkanRenderPassPtr m_renderPass;
+		std::vector<VulkanImageViewPtr> m_attachments;
 
 		const uint32_t m_width;
 		const uint32_t m_height;

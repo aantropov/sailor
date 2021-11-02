@@ -13,7 +13,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			TRefPtr<VulkanImage> m_image;
+			VulkanImagePtr m_image;
 		} m_vulkan;
 #endif
 

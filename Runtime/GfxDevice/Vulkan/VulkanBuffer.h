@@ -18,7 +18,7 @@ namespace Sailor::GfxDevice::Vulkan
 		const VkBuffer* GetHandle() const { return &m_buffer; }
 		operator VkBuffer() const { return m_buffer; }
 
-		VulkanBuffer(TRefPtr<VulkanDevice> device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode);
+		VulkanBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode);
 
 		/// VkBufferCreateInfo settings
 		VkBufferCreateFlags m_flags = 0;
@@ -29,19 +29,19 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual void Compile() override;
 		virtual void Release() override;
 
-		VkResult Bind(TMemoryPtr<VulkanDeviceMemoryPtr> ptr);
-		VkResult Bind(TRefPtr<VulkanDeviceMemory> deviceMemory, VkDeviceSize memoryOffset);
+		VkResult Bind(TMemoryPtr<VulkanMemoryPtr> ptr);
+		VkResult Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset);
 		VkMemoryRequirements GetMemoryRequirements() const;
 
-		TRefPtr<VulkanDeviceMemory> GetMemoryDevice() { return m_deviceMemory; }
+		VulkanDeviceMemoryPtr GetMemoryDevice() { return m_deviceMemory; }
 		virtual ~VulkanBuffer() override;
 
 	protected:
 
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 		VkBuffer m_buffer;
-		TRefPtr<VulkanDeviceMemory> m_deviceMemory;
+		VulkanDeviceMemoryPtr m_deviceMemory;
 		VkDeviceSize m_memoryOffset = 0;
-		TMemoryPtr<VulkanDeviceMemoryPtr> m_ptr{};
+		TMemoryPtr<VulkanMemoryPtr> m_ptr{};
 	};
 }

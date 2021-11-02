@@ -1,6 +1,6 @@
 #pragma once
 #include <map>
-#include <vulkan/vulkan.h>
+#include "VulkanApi.h"
 #include "Core/RefPtr.hpp"
 #include "RHI/Types.h"
 
@@ -24,7 +24,7 @@ namespace Sailor::GfxDevice::Vulkan
 		const VkMemoryRequirements& GetMemoryRequirements() const { return m_memoryRequirements; }
 		const VkMemoryPropertyFlags& GetMemoryPropertyFlags() const { return m_properties; }
 
-		TRefPtr<VulkanDevice> GetDevice() { return m_device; }
+		VulkanDevicePtr GetDevice() { return m_device; }
 
 	protected:
 
@@ -33,6 +33,6 @@ namespace Sailor::GfxDevice::Vulkan
 		VkDeviceMemory m_deviceMemory;
 		VkMemoryRequirements m_memoryRequirements;
 		VkMemoryPropertyFlags m_properties;
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 	};
 }

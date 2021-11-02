@@ -5,7 +5,7 @@
 
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanRenderPass::VulkanRenderPass(TRefPtr<VulkanDevice> device,
+VulkanRenderPass::VulkanRenderPass(VulkanDevicePtr device,
 	const std::vector<VkAttachmentDescription>& attachments,
 	const std::vector<VulkanSubpassDescription>& subpasses,
 	const std::vector<VkSubpassDependency>& dependencies) :
@@ -46,7 +46,7 @@ VulkanRenderPass::VulkanRenderPass(TRefPtr<VulkanDevice> device,
 	VK_CHECK(vkCreateRenderPass(*m_device, &renderPassInfo, nullptr, &m_renderPass));
 }
 
-TRefPtr<VulkanDevice> VulkanRenderPass::GetDevice() const 
+VulkanDevicePtr VulkanRenderPass::GetDevice() const 
 {
 	return m_device; 
 }

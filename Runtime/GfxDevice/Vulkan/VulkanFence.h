@@ -12,7 +12,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 	public:
 
-		VulkanFence(TRefPtr<VulkanDevice> device, VkFenceCreateFlags flags = 0);
+		VulkanFence(VulkanDevicePtr device, VkFenceCreateFlags flags = 0);
 
 		VkResult Wait(uint64_t timeout = UINT64_MAX) const;
 		VkResult Reset() const;
@@ -26,7 +26,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		virtual ~VulkanFence();
 
-		TRefPtr<VulkanDevice> m_device;
+		VulkanDevicePtr m_device;
 		VkFence m_fence;
 	};
 }

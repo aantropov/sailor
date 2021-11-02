@@ -7,18 +7,18 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, TRefPtr<VulkanShaderModule> shaderModule) :
+VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule) :
 	m_stage(stage),
 	m_module(shaderModule),
 	m_entryPointName(entryPointName)
 {
 }
 
-VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, TRefPtr<VulkanDevice> pDevice, const ShaderCompiler::ByteCode& spirv) :
+VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const ShaderCompiler::ByteCode& spirv) :
 	m_stage(stage),
 	m_entryPointName(entryPointName)
 {
-	m_module = TRefPtr<VulkanShaderModule>::Make(pDevice, spirv);
+	m_module = VulkanShaderModulePtr::Make(pDevice, spirv);
 }
 
 void VulkanShaderStage::Apply(VkPipelineShaderStageCreateInfo& stageInfo) const
@@ -96,7 +96,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const ShaderCompiler::ByteC
 }
 
 
-VulkanShaderModule::VulkanShaderModule(TRefPtr<VulkanDevice> pDevice, const ShaderCompiler::ByteCode& spirv) : m_pDevice(pDevice), m_byteCode(spirv) {}
+VulkanShaderModule::VulkanShaderModule(VulkanDevicePtr pDevice, const ShaderCompiler::ByteCode& spirv) : m_pDevice(pDevice), m_byteCode(spirv) {}
 
 VulkanShaderModule::~VulkanShaderModule()
 {
