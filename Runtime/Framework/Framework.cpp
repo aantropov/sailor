@@ -6,6 +6,7 @@
 #include "Utils.h"
 #include "RHI/Renderer.h"
 #include "RHI/Mesh.h"
+#include "RHI/GfxDevice.h"
 #include "AssetRegistry/ModelAssetInfo.h"
 #include "AssetRegistry/ModelImporter.h"
 
@@ -52,7 +53,7 @@ FrameState& FrameState::operator=(FrameState frameState)
 	return *this;
 }
 
-void FrameState::PushCommandBuffer_ThreadSafe(TRefPtr<RHI::CommandList> commandBuffer)
+void FrameState::PushCommandBuffer_ThreadSafe(RHI::CommandListPtr commandBuffer)
 {
 	SAILOR_PROFILE_FUNCTION();
 	std::unique_lock<std::mutex> lk(m_commandBuffers);

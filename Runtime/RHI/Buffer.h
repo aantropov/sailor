@@ -1,9 +1,7 @@
 #pragma once
 #include "Core/RefPtr.hpp"
-#include "GfxDevice/Vulkan/VulkanBuffer.h"
 #include "Types.h"
-
-using namespace GfxDevice::Vulkan;
+#include "GfxDevice/Vulkan/VulkanApi.h"
 
 namespace Sailor::RHI
 {
@@ -13,7 +11,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			VulkanBufferPtr m_buffer;
+			Sailor::GfxDevice::Vulkan::VulkanBufferPtr m_buffer;
 		} m_vulkan;
 #endif
 

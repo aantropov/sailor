@@ -1,9 +1,7 @@
 #pragma once
 #include "Core/RefPtr.hpp"
-#include "Buffer.h"
+#include "Renderer.h"
 #include "Types.h"
-
-using namespace GfxDevice::Vulkan;
 
 namespace Sailor::RHI
 {
@@ -11,8 +9,8 @@ namespace Sailor::RHI
 	{
 	public:
 
-		TRefPtr<Buffer> m_vertexBuffer;
-		TRefPtr<Buffer> m_indexBuffer;
+		BufferPtr m_vertexBuffer;
+		BufferPtr m_indexBuffer;
 		
 		virtual void TraceVisit(class TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) override;
 

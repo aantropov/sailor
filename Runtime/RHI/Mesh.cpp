@@ -1,5 +1,6 @@
 #include "Mesh.h"
 #include "Types.h"
+#include "Buffer.h"
 #include "Fence.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 
@@ -11,7 +12,7 @@ void Mesh::TraceVisit(TRefPtr<Resource> visitor, bool& bShouldRemoveFromList)
 {
 	bShouldRemoveFromList = false;
 
-	if (auto fence = TRefPtr<Fence>(visitor.GetRawPtr()))
+	if (auto fence = FencePtr(visitor.GetRawPtr()))
 	{
 		if (fence->IsFinished())
 		{
@@ -35,7 +36,7 @@ bool Mesh::IsReady() const
 {
 	for (auto& dep : m_dependencies)
 	{
-		TRefPtr<Fence> fence(dep.GetRawPtr());
+		FencePtr fence(dep.GetRawPtr());
 		if (fence)
 		{
 			if (!fence->IsFinished())

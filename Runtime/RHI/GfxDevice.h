@@ -1,43 +1,52 @@
 #pragma once
 #include <mutex>
-
-#include "Core/RefPtr.hpp"
-#include "Texture.h"
-#include "Fence.h"
-#include "CommandList.h"
-#include "Mesh.h"
 #include "Types.h"
-#include "Platform/Win32/Window.h"
+
+namespace Sailor
+{
+	class FrameState;
+}
+
+namespace Sailor::Win32
+{
+	class Window;
+}
 
 namespace Sailor::RHI
 {
+	typedef TRefPtr<class Buffer> BufferPtr;
+	typedef TRefPtr<class CommandList> CommandListPtr;
+	typedef TRefPtr<class Fence> FencePtr;
+	typedef TRefPtr<class Mesh> MeshPtr;
+	typedef TRefPtr<class Texture> TexturePtr;
+
 	class IGfxDevice
 	{
 	public:
 
-		virtual SAILOR_API void Initialize(const Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
+		virtual SAILOR_API void Initialize(const Sailor::Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
 		virtual SAILOR_API ~IGfxDevice() = default;
 
-		virtual SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport) = 0;
-		virtual SAILOR_API void FixLostDevice(const Win32::Window* pViewport) = 0;
+		virtual SAILOR_API bool ShouldFixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
+		virtual SAILOR_API void FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
 
-		virtual SAILOR_API bool PresentFrame(const class FrameState& state,
-			const std::vector<TRefPtr<RHI::CommandList>>* primaryCommandBuffers = nullptr,
-			const std::vector<TRefPtr<RHI::CommandList>>* secondaryCommandBuffers = nullptr) const = 0;
+		virtual SAILOR_API bool PresentFrame(const Sailor::FrameState& state,
+			const std::vector<CommandListPtr>* primaryCommandBuffers = nullptr,
+			const std::vector<CommandListPtr>* secondaryCommandBuffers = nullptr) const = 0;
 
 		virtual void SAILOR_API WaitIdle() = 0;
 
-		virtual SAILOR_API TRefPtr<class RHI::Buffer> CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
-		virtual SAILOR_API TRefPtr<class RHI::CommandList> CreateBuffer(TRefPtr<Buffer>& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		virtual SAILOR_API TRefPtr<RHI::Mesh> CreateMesh(const std::vector<RHI::Vertex>& vertices, const std::vector<uint32_t>& indices);
+		virtual SAILOR_API BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
+		virtual SAILOR_API CommandListPtr CreateBuffer(BufferPtr& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		virtual SAILOR_API MeshPtr CreateMesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
 
-		virtual SAILOR_API void SubmitCommandList(TRefPtr<RHI::CommandList> commandList, TRefPtr<RHI::Fence> fence) = 0;
+		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
 
 		//Immediate context
-		virtual SAILOR_API TRefPtr<Buffer> CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		virtual SAILOR_API void CopyBuffer_Immediate(TRefPtr<Buffer> src, TRefPtr<Buffer> dst, size_t size) = 0;
+		virtual SAILOR_API BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		virtual SAILOR_API void CopyBuffer_Immediate(BufferPtr src, BufferPtr dst, size_t size) = 0;
 
-		virtual SAILOR_API TRefPtr<Texture> CreateImage_Immediate(
+		virtual SAILOR_API TexturePtr CreateImage_Immediate(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,
@@ -52,6 +61,6 @@ namespace Sailor::RHI
 	protected:
 
 		std::mutex m_mutexTrackedFences;
-		std::vector<TRefPtr<RHI::Fence>> m_trackedFences;
+		std::vector<FencePtr> m_trackedFences;
 	};
 };

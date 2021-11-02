@@ -1,6 +1,8 @@
 #include <mutex>
 #include "Renderer.h"
 #include "Mesh.h"
+#include "GfxDevice.h"
+#include "Framework/Framework.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "GfxDevice/Vulkan/VulkanDevice.h"
 #include "JobSystem/JobSystem.h"
@@ -10,7 +12,7 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void Renderer::Initialize(Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
+void Renderer::Initialize(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	if (m_pInstance != nullptr)
 	{
@@ -32,12 +34,17 @@ Renderer::~Renderer()
 	m_driverInstance.Clear();
 }
 
+TUniquePtr<IGfxDevice>& Renderer::GetDriver() 
+{
+	return m_pInstance->m_driverInstance; 
+}
+
 void Renderer::FixLostDevice()
 {
 	m_driverInstance->FixLostDevice(m_pViewport);
 }
 
-bool Renderer::PushFrame(const FrameState& frame)
+bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
 	SAILOR_PROFILE_BLOCK("Wait for render thread");
 

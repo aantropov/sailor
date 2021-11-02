@@ -23,19 +23,19 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
 
 		virtual SAILOR_API bool PresentFrame(const class FrameState& state,
-			const std::vector<TRefPtr<RHI::CommandList>>* primaryCommandBuffers = nullptr,
-			const std::vector<TRefPtr<RHI::CommandList>>* secondaryCommandBuffers = nullptr) const;
+			const std::vector<RHI::CommandListPtr>* primaryCommandBuffers = nullptr,
+			const std::vector<RHI::CommandListPtr>* secondaryCommandBuffers = nullptr) const;
 
 		virtual void SAILOR_API WaitIdle();
 
-		virtual SAILOR_API TRefPtr<class RHI::Buffer> CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
-		virtual SAILOR_API TRefPtr<class RHI::CommandList> CreateBuffer(TRefPtr<RHI::Buffer>& outbuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
+		virtual SAILOR_API RHI::BufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
+		virtual SAILOR_API RHI::CommandListPtr CreateBuffer(RHI::BufferPtr& outbuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
 
-		virtual SAILOR_API void SubmitCommandList(TRefPtr<RHI::CommandList> commandList, TRefPtr<RHI::Fence> fence);
+		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, TRefPtr<RHI::Fence> fence);
 
 		//Immediate context
-		virtual SAILOR_API TRefPtr<RHI::Buffer> CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
-		virtual SAILOR_API void CopyBuffer_Immediate(TRefPtr<RHI::Buffer> src, TRefPtr<RHI::Buffer> dst, size_t size);
+		virtual SAILOR_API RHI::BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
+		virtual SAILOR_API void CopyBuffer_Immediate(RHI::BufferPtr src, RHI::BufferPtr dst, size_t size);
 
 		virtual SAILOR_API TRefPtr<RHI::Texture> CreateImage_Immediate(
 			const void* pData,

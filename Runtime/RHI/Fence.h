@@ -1,5 +1,5 @@
 #pragma once
-#include "CommandList.h"
+#include "Renderer.h"
 #include "Core/RefPtr.hpp"
 #include "GfxDevice/Vulkan/VulkanFence.h"
 #include "Types.h"
@@ -8,8 +8,6 @@ using namespace GfxDevice::Vulkan;
 
 namespace Sailor::RHI
 {
-	class Mesh;
-
 	class Fence : public Resource, public IVisitor, public IDependent
 	{
 	public:

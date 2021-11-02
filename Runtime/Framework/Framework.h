@@ -3,9 +3,7 @@
 #include "Core/RefPtr.hpp"
 #include "Core/Singleton.hpp"
 #include "Core/UniquePtr.hpp"
-#include "RHI/Types.h"
-#include "RHI/CommandList.h"
-#include "RHI/Mesh.h"
+#include "RHI/Renderer.h"
 #include "Platform/Win32/Input.h"
 
 namespace Sailor
@@ -36,9 +34,9 @@ namespace Sailor
 		SAILOR_API const FrameInputState& GetInputState() const { return m_pData->m_inputState; }
 		SAILOR_API int64_t GetTime() const { return m_pData->m_currentTime; }
 		SAILOR_API float GetDeltaTime() const { return m_pData->m_deltaTimeSeconds; }
-		SAILOR_API void PushCommandBuffer_ThreadSafe(TRefPtr<RHI::CommandList> commandBuffer);
+		SAILOR_API void PushCommandBuffer_ThreadSafe(RHI::CommandListPtr commandBuffer);
 
-		SAILOR_API const std::vector<TRefPtr<RHI::CommandList>>& GetCommandBuffers() const
+		SAILOR_API const std::vector<RHI::CommandListPtr>& GetCommandBuffers() const
 		{
 			return m_updateResourcesCommandBuffers;
 		}
@@ -56,7 +54,7 @@ namespace Sailor
 
 		std::mutex m_commandBuffers;
 		TUniquePtr<FrameData> m_pData;
-		std::vector<TRefPtr<RHI::CommandList>> m_updateResourcesCommandBuffers;
+		std::vector<RHI::CommandListPtr> m_updateResourcesCommandBuffers;
 	};
 
 	class Framework : public TSingleton<Framework>
@@ -72,13 +70,13 @@ namespace Sailor
 
 		~Framework() override = default;
 
-		TRefPtr<class RHI::Mesh>& GetTestMesh() { return m_testMesh; }
+		RHI::MeshPtr& GetTestMesh() { return m_testMesh; }
 
 	protected:
 
 		Framework() = default;
 		std::atomic<uint32_t> m_pureFps = 0u;
 
-		TRefPtr<class RHI::Mesh> m_testMesh;
+		RHI::MeshPtr m_testMesh;
 	};
 }

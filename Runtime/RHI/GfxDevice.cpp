@@ -1,4 +1,9 @@
 #include "GfxDevice.h"
+#include "Renderer.h"
+#include "CommandList.h"
+#include "Buffer.h"
+#include "Fence.h"
+#include "Mesh.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -57,7 +62,7 @@ void IGfxDevice::TrackResources()
 
 	for (int32_t index = 0; index < m_trackedFences.size(); index++)
 	{
-		TRefPtr<Fence> cmd = m_trackedFences[index];
+		FencePtr cmd = m_trackedFences[index];
 
 		if (cmd->IsFinished())
 		{
