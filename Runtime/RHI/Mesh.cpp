@@ -34,18 +34,6 @@ void Mesh::TraceVisit(TRefPtr<Resource> visitor, bool& bShouldRemoveFromList)
 
 bool Mesh::IsReady() const
 {
-	for (auto& dep : m_dependencies)
-	{
-		FencePtr fence(dep.GetRawPtr());
-		if (fence)
-		{
-			if (!fence->IsFinished())
-			{
-				return false;
-			}
-		}
-	}
-
-	return m_vertexBuffer->GetSize() > 0 && m_indexBuffer->GetSize() > 0;
+	return m_vertexBuffer->GetSize() > 0 && m_indexBuffer->GetSize() > 0 && m_dependencies.size() == 0;
 }
 

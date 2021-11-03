@@ -3,10 +3,14 @@
 #include <malloc.h>
 #include <random>
 #include <fstream>
+#include <cassert>
+#include <functional> 
+#include <cctype>
 #include "Utils.h"
 #include "MemoryBlockAllocator.hpp"
 #include "MemoryPoolAllocator.hpp"
 #include "MemoryMultiPoolAllocator.hpp"
+#include "psapi.h"
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -14,14 +18,48 @@ using Timer = Utils::Timer;
 
 HeapAllocator DefaultHeapAllocator::m_heapAllocator;
 
-typedef std::unordered_map<std::string, std::unordered_map<size_t, size_t>> TestResult;
+size_t GetTotalUsedVirtualMemory()
+{
+	PROCESS_MEMORY_COUNTERS_EX pmc;
+	GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc));
+	SIZE_T virtualMemUsedByMe = pmc.PrivateUsage;
+
+	MEMORYSTATUSEX statex;
+
+	statex.dwLength = sizeof(statex);
+
+	GlobalMemoryStatusEx(&statex);
+
+	MEMORYSTATUSEX memInfo;
+	memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+	GlobalMemoryStatusEx(&memInfo);
+	DWORDLONG virtualMemUsed = memInfo.ullTotalVirtual - memInfo.ullAvailVirtual;
+
+	return (size_t)virtualMemUsedByMe;
+}
+
+typedef std::unordered_map<std::string, std::unordered_map<size_t, std::pair<size_t, float>>> TestResult;
 
 struct Result
 {
 	Result(std::string allocator) : m_allocator(allocator) {}
 
 	std::string m_allocator;
-	std::unordered_map<std::string, TestResult> m_testResults;
+	std::unordered_map<std::string, TestResult> m_results;
+
+	size_t m_scoreTiming = 0;
+	size_t m_scoreMemory = 0;
+	size_t m_globalScore = 0;
+
+	void CalculateScore()
+	{
+		for (auto& strategy : m_results)
+		{
+			for (auto& test : strategy.second)
+			{
+			}
+		}
+	}
 };
 
 class DefaultMallocAllocator
@@ -50,18 +88,22 @@ private:
 template<typename TAllocator>
 class TestCase_MemoryPerformance
 {
+	static float m_globalScore;
+
 public:
 	static Result RunTests()
 	{
 		const std::string allocatorName = typeid(TAllocator).name();
 
 		Result result(allocatorName);
-		result.m_testResults["small"] = RunPerformanceTests(1, 32, 10, 1000000);
-		result.m_testResults["medium"] = RunPerformanceTests(128, 40000, 10, 100000);
-		result.m_testResults["large"] = RunPerformanceTests(4000000, 800000000, 10, 10000);
-		result.m_testResults["random"] = RunPerformanceTests(1, 16000000000, 10, 30000);
+		result.m_results["small"] = RunPerformanceTests(1, 32, 10, 1000000);
+		result.m_results["medium"] = RunPerformanceTests(128, 40000, 10, 100000);
+		result.m_results["large"] = RunPerformanceTests(4000000, 800000000, 10, 10000);
+		result.m_results["random"] = RunPerformanceTests(1, 16000000000, 10, 100000);
 
 		RunSanityTests();
+
+		printf("Score: %.2f\n", m_globalScore);
 
 		return result;
 	}
@@ -70,7 +112,7 @@ public:
 	{
 		const std::string allocatorName = typeid(TAllocator).name();
 
-		printf("\n%s\n", allocatorName.c_str());
+		printf("\n\n%s\n", allocatorName.c_str());
 		printf("Can allocate huge block: %d\n", SanityCanAllocHugeBlock());
 		printf("Is stack based: %d\n", !SanityCheckIsStack());
 		printf("Sanity check passed: %d\n", SanityCheck());
@@ -81,9 +123,12 @@ public:
 		TestResult result;
 
 		const size_t step = AllocationsCount / 5;
+		uint32_t index = 0;
 
 		for (size_t allocCount = step; allocCount <= AllocationsCount; allocCount += step)
 		{
+			index++;
+
 			std::vector<size_t> sizesToAllocate;
 			sizesToAllocate.resize(allocCount);
 
@@ -98,45 +143,76 @@ public:
 			}
 
 			Timer simpleTest;
+			size_t memoryOverhead1 = 0;
+
 			Timer shuffleTest;
+			size_t memoryOverhead2 = 0;
+
 			Timer randomTest;
+			size_t memoryOverhead3 = 0;
+
+			bool bTrackSimple = true;
+			bool bTrackShuffle = true;
+			bool bTrackRandom = true;
 
 			for (size_t i = 0; i < IterationsCount; i++)
 			{
-				{
-					TAllocator allocator1;
-					TestPerformanceSimple(allocator1, sizesToAllocate, simpleTest);
-				}
-
-				{
-					TAllocator allocator2;
-					TestPerformanceShuffle(allocator2, sizesToAllocate, shuffleTest);
-				}
-
-				{
-					TAllocator allocator3;
-					TestPerformanceRandom(allocator3, sizesToAllocate, randomTest);
-				}
+				bTrackSimple &= TestPerformanceSimple(sizesToAllocate, simpleTest, memoryOverhead1);
+				bTrackShuffle &= TestPerformanceShuffle(sizesToAllocate, shuffleTest, memoryOverhead2);
+				bTrackRandom &= TestPerformanceRandom(sizesToAllocate, randomTest, memoryOverhead3);
 			}
 
-			result["simple"][totalAllocatedSize] = simpleTest.ResultAccumulatedMs();
-			result["shuffle"][totalAllocatedSize] = shuffleTest.ResultAccumulatedMs();
-			result["random"][totalAllocatedSize] = randomTest.ResultAccumulatedMs();
+			result["simple"][totalAllocatedSize] = { simpleTest.ResultAccumulatedMs(), (float)((double)memoryOverhead1 / 1048576.0) };
+			result["shuffle"][totalAllocatedSize] = { shuffleTest.ResultAccumulatedMs(), (float)((double)memoryOverhead2 / 1048576.0) };
+			result["random"][totalAllocatedSize] = { randomTest.ResultAccumulatedMs(), (float)((double)memoryOverhead3 / 1048576.0) };
+
+			if (bTrackSimple)
+			{
+				m_globalScore += CalculateScore((float)result["simple"][totalAllocatedSize].first,
+					result["simple"][totalAllocatedSize].second, (float)index, (float)allocCount);
+			}
+
+			if (bTrackShuffle)
+			{
+				m_globalScore += CalculateScore((float)result["simple"][totalAllocatedSize].first,
+					result["shuffle"][totalAllocatedSize].second, (float)index, (float)allocCount);
+			}
+
+			if (bTrackRandom)
+			{
+				m_globalScore += CalculateScore((float)result["simple"][totalAllocatedSize].first,
+					result["random"][totalAllocatedSize].second, (float)index, (float)allocCount);
+			}
 		}
 
 		return result;
 	}
 
-	static void TestPerformanceRandom(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Timer& timer)
+	static float CalculateScore(float ms, float memoryOverhead, float step, float allocationSize)
 	{
+		return (float)(((1500.0 * (step / 5.0)) / ms) * (allocationSize / (allocationSize + memoryOverhead)));
+	}
+
+	static bool TestPerformanceRandom(const std::vector<size_t>& sizesToAllocate, Timer& timer, size_t& memoryOverhead)
+	{
+		size_t totalAllocated = 0;
 		std::vector<void*> ptrs;
 		ptrs.resize(sizesToAllocate.size());
+		size_t beforeTest = GetTotalUsedVirtualMemory();
+
+		TAllocator allocator;
 
 		timer.Start();
 		size_t border = sizesToAllocate.size() / 4;
 		for (size_t i = 0; i < border * 2; ++i)
 		{
 			ptrs[i] = allocator.Allocate(sizesToAllocate[i], 1);
+			totalAllocated += sizesToAllocate[i];
+
+			if (!ptrs[i])
+			{
+				return false;
+			}
 		}
 		timer.Stop();
 
@@ -149,11 +225,24 @@ public:
 		for (size_t i = 0; i < border; ++i)
 		{
 			allocator.Free(ptrs[i]);
+			totalAllocated -= sizesToAllocate[i];
 		}
 
 		for (size_t i = border * 2; i < sizesToAllocate.size(); ++i)
 		{
 			ptrs[i] = allocator.Allocate(sizesToAllocate[i], 1);
+			totalAllocated += sizesToAllocate[i];
+
+			if (!ptrs[i])
+			{
+				return false;
+			}
+		}
+
+		memoryOverhead = 0;
+		if (GetTotalUsedVirtualMemory() > beforeTest + totalAllocated)
+		{
+			memoryOverhead = GetTotalUsedVirtualMemory() - beforeTest - totalAllocated;
 		}
 
 		for (size_t i = border; i < sizesToAllocate.size(); ++i)
@@ -161,19 +250,37 @@ public:
 			allocator.Free(ptrs[i]);
 		}
 		timer.Stop();
+
+		return true;
 	}
 
-	static void TestPerformanceShuffle(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Timer& timer)
+	static bool TestPerformanceShuffle(const std::vector<size_t>& sizesToAllocate, Timer& timer, size_t& memoryOverhead)
 	{
+		size_t totalAllocated = 0;
 		std::vector<void*> ptrs;
 		ptrs.resize(sizesToAllocate.size());
+
+		size_t beforeTest = GetTotalUsedVirtualMemory();
+		TAllocator allocator;
 
 		timer.Start();
 		for (size_t i = 0; i < sizesToAllocate.size(); ++i)
 		{
 			ptrs[i] = allocator.Allocate(sizesToAllocate[i], 4);
+			totalAllocated += sizesToAllocate[i];
+
+			if (!ptrs[i])
+			{
+				return false;
+			}
 		}
 		timer.Stop();
+
+		memoryOverhead = 0;
+		if (GetTotalUsedVirtualMemory() > beforeTest + totalAllocated)
+		{
+			memoryOverhead = GetTotalUsedVirtualMemory() - beforeTest - totalAllocated;
+		}
 
 		std::random_device rd;
 		std::mt19937 g(rd());
@@ -185,24 +292,47 @@ public:
 			allocator.Free(ptrs[i]);
 		}
 		timer.Stop();
+
+		return true;
 	}
 
-	static void TestPerformanceSimple(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Timer& timer)
+	static bool TestPerformanceSimple(const std::vector<size_t>& sizesToAllocate, Timer& timer, size_t& memoryOverhead)
 	{
+		size_t totalAllocated = 0;
+
 		std::vector<void*> ptrs;
 		ptrs.resize(sizesToAllocate.size());
+		size_t beforeTest = GetTotalUsedVirtualMemory();
+		TAllocator allocator;
 
 		timer.Start();
 		for (size_t i = 0; i < sizesToAllocate.size(); ++i)
 		{
 			ptrs[i] = allocator.Allocate(sizesToAllocate[i], 1);
+
+			if (!ptrs[i])
+			{
+				return false;
+			}
+
+			totalAllocated += sizesToAllocate[i];
+		}
+		timer.Stop();
+
+		memoryOverhead = 0;
+		if (GetTotalUsedVirtualMemory() > beforeTest + totalAllocated)
+		{
+			memoryOverhead = GetTotalUsedVirtualMemory() - beforeTest - totalAllocated;
 		}
 
+		timer.Start();
 		for (size_t i = 0; i < sizesToAllocate.size(); ++i)
 		{
 			allocator.Free(ptrs[i]);
 		}
 		timer.Stop();
+
+		return true;
 	}
 
 	static bool SanityCanAllocHugeBlock()
@@ -318,8 +448,10 @@ public:
 		size_t size;
 	};
 
-	static void TestPerformanceStress(TAllocator& allocator, const std::vector<size_t>& sizesToAllocate, Timer& timer)
+	static void TestPerformanceStress(const std::vector<size_t>& sizesToAllocate, Timer& timer)
 	{
+		TAllocator allocator;
+
 		struct _util
 		{
 			inline static unsigned int random(unsigned int& seed)
@@ -478,7 +610,10 @@ public:
 
 };
 
-std::string GetJsData(std::string allocSize, std::string testName, std::vector<Result> results)
+template<typename TAllocator>
+float TestCase_MemoryPerformance<TAllocator>::m_globalScore = 0.0f;
+
+std::string GetJsData(std::string allocSize, std::string testName, std::vector<Result> results, bool bTime)
 {
 	std::string res;
 
@@ -490,7 +625,7 @@ std::string GetJsData(std::string allocSize, std::string testName, std::vector<R
 	}
 	res += "]";
 
-	for (auto& r : results[0].m_testResults[allocSize][testName])
+	for (auto& r : results[0].m_results[allocSize][testName])
 	{
 		char startString[1024];
 		snprintf(startString, sizeof(startString), ",\n['%.2fmb'", (float)((double)(r.first / 1024) / 1024.0));
@@ -499,7 +634,14 @@ std::string GetJsData(std::string allocSize, std::string testName, std::vector<R
 		for (auto& result : results)
 		{
 			char buffer[1024];
-			snprintf(buffer, sizeof(buffer), ",%llu", result.m_testResults[allocSize][testName][r.first]);
+			if (bTime)
+			{
+				snprintf(buffer, sizeof(buffer), ",%llu", result.m_results[allocSize][testName][r.first].first);
+			}
+			else
+			{
+				snprintf(buffer, sizeof(buffer), ",%.2f", result.m_results[allocSize][testName][r.first].second);
+			}
 			res += std::string(buffer);
 		}
 
@@ -519,24 +661,40 @@ void Sailor::Memory::RunMemoryBenchmark()
 
 	results.push_back(TestCase_MemoryPerformance<HeapAllocator>::RunTests());
 	results.push_back(TestCase_MemoryPerformance<DefaultMallocAllocator>::RunTests());
-
+	
 	std::string emplace;
 
-	emplace += "var smallSimple = " + GetJsData("small", "simple", results) + ";\n";
-	emplace += "var smallShuffle = " + GetJsData("small", "shuffle", results) + ";\n";
-	emplace += "var smallRandom = " + GetJsData("small", "random", results) + ";\n";
+	emplace += "var smallSimple = " + GetJsData("small", "simple", results, true) + ";\n";
+	emplace += "var smallShuffle = " + GetJsData("small", "shuffle", results, true) + ";\n";
+	emplace += "var smallRandom = " + GetJsData("small", "random", results, true) + ";\n";
 
-	emplace += "var mediumSimple = " + GetJsData("medium", "simple", results) + ";\n";
-	emplace += "var mediumShuffle = " + GetJsData("medium", "shuffle", results) + ";\n";
-	emplace += "var mediumRandom = " + GetJsData("medium", "random", results) + ";\n";
+	emplace += "var mediumSimple = " + GetJsData("medium", "simple", results, true) + ";\n";
+	emplace += "var mediumShuffle = " + GetJsData("medium", "shuffle", results, true) + ";\n";
+	emplace += "var mediumRandom = " + GetJsData("medium", "random", results, true) + ";\n";
 
-	emplace += "var largeSimple = " + GetJsData("large", "simple", results) + ";\n";
-	emplace += "var largeShuffle = " + GetJsData("large", "shuffle", results) + ";\n";
-	emplace += "var largeRandom = " + GetJsData("large", "random", results) + ";\n";
+	emplace += "var largeSimple = " + GetJsData("large", "simple", results, true) + ";\n";
+	emplace += "var largeShuffle = " + GetJsData("large", "shuffle", results, true) + ";\n";
+	emplace += "var largeRandom = " + GetJsData("large", "random", results, true) + ";\n";
 
-	emplace += "var randomSimple = " + GetJsData("random", "simple", results) + ";\n";
-	emplace += "var randomShuffle = " + GetJsData("random", "shuffle", results) + ";\n";
-	emplace += "var randomRandom = " + GetJsData("random", "random", results) + ";\n";
+	emplace += "var randomSimple = " + GetJsData("random", "simple", results, true) + ";\n";
+	emplace += "var randomShuffle = " + GetJsData("random", "shuffle", results, true) + ";\n";
+	emplace += "var randomRandom = " + GetJsData("random", "random", results, true) + ";\n";
+
+	emplace += "var smallSimpleMemory = " + GetJsData("small", "simple", results, false) + ";\n";
+	emplace += "var smallShuffleMemory = " + GetJsData("small", "shuffle", results, false) + ";\n";
+	emplace += "var smallRandomMemory = " + GetJsData("small", "random", results, false) + ";\n";
+
+	emplace += "var mediumSimpleMemory = " + GetJsData("medium", "simple", results, false) + ";\n";
+	emplace += "var mediumShuffleMemory = " + GetJsData("medium", "shuffle", results, false) + ";\n";
+	emplace += "var mediumRandomMemory = " + GetJsData("medium", "random", results, false) + ";\n";
+
+	emplace += "var largeSimpleMemory = " + GetJsData("large", "simple", results, false) + ";\n";
+	emplace += "var largeShuffleMemory = " + GetJsData("large", "shuffle", results, false) + ";\n";
+	emplace += "var largeRandomMemory = " + GetJsData("large", "random", results, false) + ";\n";
+
+	emplace += "var randomSimpleMemory = " + GetJsData("random", "simple", results, false) + ";\n";
+	emplace += "var randomShuffleMemory = " + GetJsData("random", "shuffle", results, false) + ";\n";
+	emplace += "var randomRandomMemory = " + GetJsData("random", "random", results, false) + ";\n";
 
 	std::string html =
 		"<!DOCTYPE html>\n"
@@ -554,65 +712,146 @@ void Sailor::Memory::RunMemoryBenchmark()
 		"  function to_float(str_mb) {"
 		"     return parseFloat(str_mb.substring(0, str_mb.length - 2));"
 		"  }"
-		"  function drawChart(d, div_id, title) {"
-		"   d.sort(function(x, y) {"
-		"     let a = to_float(x[0]);"
-		"     let b = to_float(y[0]);"
-		"     if (a < b) return -1;"
-		"     if (a > b) return 1;"
-		"     return 0;"
-		"   });"
-		"   var data = google.visualization.arrayToDataTable(d);"
-		"   var options = {"
-		"    title: title,"
-		"    hAxis: {title: 'Total allocated'},"
-		"    vAxis: {title: 'Ms'}"
-		"   };"
-		"   var chart = new google.visualization.AreaChart(document.getElementById(div_id));"
-		"   chart.draw(data, options);"
-		"  }"
+		"	function d_sort(d) {"
+		"  d.sort(function(x, y) {"
+		"      let a = to_float(x[0]);"
+		"      let b = to_float(y[0]);"
+		"      if (a < b) return -1;"
+		"      if (a > b) return 1;"
+		"      return 0;"
+		"  });"
+		"  return d;"
+		"}"
+		"function drawChart(d, div_id, title) {"
+		"  var data = google.visualization.arrayToDataTable(d_sort(d));"
+		"  var options = {"
+		"      title: title,"
+		"      hAxis: {title: 'Total allocated'},"
+		"      vAxis: {title: 'Ms'}"
+		"  };"
+		"  var chart = new google.visualization.AreaChart(document.getElementById(div_id));"
+		"  chart.draw(data, options);"
+		"}"
+		"function drawBars(d, div_id, title) {"
+		"var data = google.visualization.arrayToDataTable(d_sort(d));"
+		"var options = {"
+		"	title: title,"
+		"	hAxis : {title: 'Total allocated'},"
+		"	vAxis : {title: 'Mb'}"
+		"};"
+		"var chart = new google.visualization.ColumnChart(document.getElementById(div_id));"
+		"chart.draw(data, options);"
+		"}"
 		"  function drawCharts() {"
-		"   drawChart(smallSimple,\"smallSimple\", \"Simple\");"
-		"   drawChart(smallShuffle,\"smallShuffle\", \"Shuffle\");"
-		"   drawChart(smallRandom, \"smallRandom\", \"Random\");"
-		"   drawChart(mediumSimple,\"mediumSimple\", \"Simple\");"
-		"   drawChart(mediumShuffle,\"mediumShuffle\", \"Shuffle\");"
-		"   drawChart(mediumRandom,\"mediumRandom\", \"Random\");"
-		"   drawChart(largeSimple, \"largeSimple\",  \"Simple\");"
-		"   drawChart(largeShuffle,\"largeShuffle\", \"Shuffle\");"
-		"   drawChart(largeRandom, \"largeRandom\",  \"Random\");"
-		"   drawChart(randomSimple, \"randomSimple\", \"Simple\");"
-		"   drawChart(randomShuffle,\"randomShuffle\",\"Shuffle\");"
-		"   drawChart(randomRandom, \"randomRandom\", \"Random\");"
+		"   drawChart(smallSimple,\"smallSimple\", \"Simple consumed time\");"
+		"   drawChart(smallShuffle,\"smallShuffle\", \"Shuffle consumed time\");"
+		"   drawChart(smallRandom, \"smallRandom\", \"Random consumed time\");"
+		"   drawChart(mediumSimple,\"mediumSimple\", \"Simple consumed time\");"
+		"   drawChart(mediumShuffle,\"mediumShuffle\", \"Shuffle consumed time\");"
+		"   drawChart(mediumRandom,\"mediumRandom\", \"Random consumed time\");"
+		"   drawChart(largeSimple, \"largeSimple\",  \"Simple consumed time\");"
+		"   drawChart(largeShuffle,\"largeShuffle\", \"Shuffle consumed time\");"
+		"   drawChart(largeRandom, \"largeRandom\",  \"Random consumed time\");"
+		"   drawChart(randomSimple, \"randomSimple\", \"Simple consumed time\");"
+		"   drawChart(randomShuffle,\"randomShuffle\",\"Shuffle consumed time\");"
+		"   drawChart(randomRandom, \"randomRandom\", \"Random consumed time\");"
+		"	drawBars(smallSimpleMemory, \"smallSimpleMemory\", \"Simple memory overhead\");"
+		"	drawBars(smallShuffleMemory, \"smallShuffleMemory\", \"Shuffle memory overhead\");"
+		"	drawBars(smallRandomMemory, \"smallRandomMemory\", \"Random memory overhead\");"
+		"	drawBars(mediumSimpleMemory, \"mediumSimpleMemory\", \"Simple memory overhead\");"
+		"	drawBars(mediumShuffleMemory, \"mediumShuffleMemory\", \"Shuffle memory overhead\");"
+		"	drawBars(mediumRandomMemory, \"mediumRandomMemory\", \"Random memory overhead\");"
+		"	drawBars(largeSimpleMemory, \"largeSimpleMemory\", \"Simple memory overhead\");"
+		"	drawBars(largeShuffleMemory, \"largeShuffleMemory\", \"Shuffle memory overhead\");"
+		"	drawBars(largeRandomMemory, \"largeRandomMemory\", \"Random memory overhead\");"
+		"	drawBars(randomSimpleMemory, \"randomSimpleMemory\", \"Simple memory overhead\");"
+		"	drawBars(randomShuffleMemory, \"randomShuffleMemory\", \"Shuffle memory overhead\");"
+		"	drawBars(randomRandomMemory, \"randomRandomMemory\", \"Random memory overhead\");"
 		"   }"
 		" </script>\n"
+		"<style>"
+		".container {"
+		"    display: flex;"
+		"}"
+		".timegraph {"
+		"    flex: 1;"
+		"    width: 50%;"
+		"    padding: 5px;"
+		"    margin: 5px;"
+		"    height: 200px;"
+		"}"
+		".memgraph {"
+		"    flex: 1;"
+		"    width: 40%;"
+		"    padding: 5px;"
+		"    margin: 5px;"
+		"    height: 200px;"
+		"}"
+		"}"
+		"</style>"
 		"</head>\n"
 		"<body>\n"
 		"<hr/>\n"
-		"<h2>Small</h2>\n"
-		"<div id=\"smallSimple\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<div id=\"smallShuffle\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<div id=\"smallRandom\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<hr/>\n"
-		"<h2>Medium</h2>\n"
-		"<div id=\"mediumSimple\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<div id=\"mediumShuffle\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<div id=\"mediumRandom\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<hr/>\n"
-		"<h2>Large</h2>\n"
-		"<div id=\"largeSimple\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<div id=\"largeShuffle\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<div id=\"largeRandom\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<hr/>\n"
-		"<h2>Random</h2>\n"
-		"<div id=\"randomSimple\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<div id=\"randomShuffle\" style=\"width: 1024px; height: 200px; \"></div>\n"
-		"<div id=\"randomRandom\" style=\"width: 1024px; height: 200px; \"></div>\n"
+		"<h2>Small allocations [1,32] bytes</h2>\n"
+		"<div class=\"container\">"
+		"<div id=\"smallSimple\" class=\"timegraph\"></div>"
+		"<div id=\"smallSimpleMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<div class=\"container\">"
+		"<div id=\"smallShuffle\" class=\"timegraph\"></div>"
+		"<div id=\"smallShuffleMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<div class=\"container\">"
+		"<div id=\"smallRandom\" class=\"timegraph\"></div>"
+		"<div id=\"smallRandomMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<hr/>"
+		"<h2>Medium allocations [128,40000] bytes</h2>"
+		"<div class=\"container\">"
+		"<div id=\"mediumSimple\" class=\"timegraph\"></div>"
+		"<div id=\"mediumSimpleMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<div class=\"container\">"
+		"<div id=\"mediumShuffle\" class=\"timegraph\"></div>"
+		"<div id=\"mediumShuffleMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<div class=\"container\">"
+		"<div id=\"mediumRandom\" class=\"timegraph\"></div>"
+		"<div id=\"mediumRandomMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<hr/>"
+		"<h2>Large allocations [4000000,800000000] bytes</h2>"
+		"<div class=\"container\">"
+		"<div id=\"largeSimple\" class=\"timegraph\"></div>"
+		"<div id=\"largeSimpleMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<div class=\"container\">"
+		"<div id=\"largeShuffle\" class=\"timegraph\"></div>"
+		"<div id=\"largeShuffleMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<div class=\"container\">"
+		"<div id=\"largeRandom\" class=\"timegraph\"></div>"
+		"<div id=\"largeRandomMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<hr/>"
+		"<h2>Random allocations</h2>"
+		"<div class=\"container\">"
+		"<div id=\"randomSimple\" class=\"timegraph\"></div>"
+		"<div id=\"randomSimpleMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<div class=\"container\">"
+		"<div id=\"randomShuffle\" class=\"timegraph\"></div>"
+		"<div id=\"randomShuffleMemory\" class=\"memgraph\"></div>"
+		"</div>"
+		"<div class=\"container\">"
+		"<div id=\"randomRandom\" class=\"timegraph\"></div>"
+		"<div id=\"randomRandomMemory\" class=\"memgraph\"></div>"
+		"</div>"
 		"<hr/>\n"
 		"</body>\n"
 		"</html>\n";
 
-	std::ofstream htmlResult{ "MemoryBenchmark.html" };
+	std::ofstream htmlResult{ "results.html" };
 	htmlResult << html;
 	htmlResult.close();
 }

@@ -63,7 +63,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		SAILOR_PROFILE_BLOCK("Pre frame rendering jobs");
 		this->GetDriver()->TrackResources();
 		SAILOR_PROFILE_END_BLOCK();
-	});
+	}, Sailor::JobSystem::EThreadType::Rendering);
 
 	TSharedPtr<class JobSystem::Job> renderingJob = JobSystem::Scheduler::CreateJob("Render Frame",
 		[this, frame]() {
