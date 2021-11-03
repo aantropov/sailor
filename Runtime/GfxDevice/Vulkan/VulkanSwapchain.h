@@ -36,7 +36,7 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain);
+		VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_t height, bool bIsVSync, VulkanSwapchainPtr oldSwapchain);
 
 		operator VkSwapchainKHR() const { return m_swapchain; }
 

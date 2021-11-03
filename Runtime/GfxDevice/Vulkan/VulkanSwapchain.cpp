@@ -35,7 +35,7 @@ VulkanSurface::~VulkanSurface()
 	}
 }
 
-VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_t height, bool bIsVSync, TRefPtr<VulkanSwapchain> oldSwapchain) :
+VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_t height, bool bIsVSync, VulkanSwapchainPtr oldSwapchain) :
 	m_device(device),
 	m_surface(device->GetSurface())
 {

@@ -21,6 +21,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanCommandPoolPtr m_commandPool;
 		VulkanCommandPoolPtr m_transferCommandPool;
 		VulkanDescriptorPoolPtr m_descriptorPool;
+		VulkanQueuePtr m_graphicsQueue;
+		VulkanQueuePtr m_transferQueue;
 	};
 
 	class VulkanDevice final : public RHI::Resource
@@ -110,11 +112,8 @@ namespace Sailor::GfxDevice::Vulkan
 		// Render Pass
 		VulkanRenderPassPtr m_renderPass;
 
-		// Queuees
-		VulkanQueuePtr m_graphicsQueue;
+		// We have one global present queeueu
 		VulkanQueuePtr m_presentQueue;
-		VulkanQueuePtr m_transferQueue;
-
 		VulkanSurfacePtr m_surface;
 
 		VkPhysicalDevice m_physicalDevice = 0;
@@ -122,7 +121,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanQueueFamilyIndices m_queueFamilies;
 
 		// Swapchain
-		TRefPtr<VulkanSwapchain> m_swapchain;
+		VulkanSwapchainPtr m_swapchain;
 		std::vector<VulkanFramebufferPtr> m_swapChainFramebuffers;
 
 		// Frame sync
