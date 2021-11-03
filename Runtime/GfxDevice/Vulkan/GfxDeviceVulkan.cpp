@@ -18,8 +18,6 @@ void GfxDeviceVulkan::Initialize(const Win32::Window* pViewport, RHI::EMsaaSampl
 
 	m_vkInstance = GfxDevice::Vulkan::VulkanApi::GetInstance();
 	m_vkInstance->GetMainDevice()->CreateGraphicsPipeline();
-
-	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
 }
 
 GfxDeviceVulkan::~GfxDeviceVulkan()
