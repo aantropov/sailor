@@ -12,6 +12,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 	public:
 
+		uint32_t GetQueueFamilyIndex() const { return m_queueFamilyIndex; }
+
 		const VkCommandPool* GetHandle() const { return &m_commandPool; }
 		operator VkCommandPool() const { return m_commandPool; }
 
@@ -25,5 +27,6 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VulkanDevicePtr m_device;
 		VkCommandPool m_commandPool;
+		uint32_t m_queueFamilyIndex;
 	};
 }

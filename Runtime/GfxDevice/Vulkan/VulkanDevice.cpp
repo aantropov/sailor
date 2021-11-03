@@ -159,6 +159,8 @@ void VulkanDevice::Shutdown()
 	m_syncFences.clear();
 
 	m_presentQueue.Clear();
+	m_graphicsQueue.Clear();
+	m_transferQueue.Clear();
 
 	m_samplers.Clear();
 	m_threadContext.clear();
@@ -255,14 +257,13 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	submitInfo.pWaitSemaphores = &waits[0];
 	submitInfo.pWaitDstStageMask = &waitStages[0];
 
-	auto& pThreadContext = GetThreadContext();
-	if (*commandBuffer->GetCommandPool() == *pThreadContext.m_transferCommandPool)
+	if (commandBuffer->GetCommandPool()->GetQueueFamilyIndex() == m_queueFamilies.m_transferFamily.value_or(-1))
 	{
-		VK_CHECK(pThreadContext.m_transferQueue->Submit(submitInfo, fence));
+		VK_CHECK(m_transferQueue->Submit(submitInfo, fence));
 	}
 	else
 	{
-		VK_CHECK(pThreadContext.m_graphicsQueue->Submit(submitInfo, fence));
+		VK_CHECK(m_graphicsQueue->Submit(submitInfo, fence));
 	}
 
 	_freea(waits);
@@ -292,14 +293,6 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 1, descriptorSizes);
 
-	VkQueue graphicsQueue;
-	vkGetDeviceQueue(m_device, m_queueFamilies.m_graphicsFamily.value(), 0, &graphicsQueue);
-	context->m_graphicsQueue = VulkanQueuePtr::Make(graphicsQueue, m_queueFamilies.m_graphicsFamily.value(), 0);
-		
-	VkQueue transferQueue;
-	vkGetDeviceQueue(m_device, m_queueFamilies.m_transferFamily.value(), 0, &transferQueue);
-	context->m_transferQueue = VulkanQueuePtr::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
-	
 	return context;
 }
 
@@ -532,6 +525,14 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkQueue presentQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &presentQueue);
 	m_presentQueue = VulkanQueuePtr::Make(presentQueue, m_queueFamilies.m_presentFamily.value(), 0);
+
+	VkQueue graphicsQueue;
+	vkGetDeviceQueue(m_device, m_queueFamilies.m_graphicsFamily.value(), 0, &graphicsQueue);
+	m_graphicsQueue = VulkanQueuePtr::Make(graphicsQueue, m_queueFamilies.m_graphicsFamily.value(), 0);
+
+	VkQueue transferQueue;
+	vkGetDeviceQueue(m_device, m_queueFamilies.m_transferFamily.value(), 0, &transferQueue);
+	m_transferQueue = VulkanQueuePtr::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
 }
 
 void VulkanDevice::CreateWin32Surface(const Window* viewport)
@@ -571,6 +572,7 @@ void VulkanDevice::WaitIdlePresentQueue()
 
 void VulkanDevice::WaitIdle()
 {
+	m_graphicsQueue->WaitIdle();
 	vkDeviceWaitIdle(m_device);
 }
 
@@ -741,7 +743,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
 	m_syncFences[m_currentFrame]->Reset();
-	VK_CHECK(GetThreadContext().m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
+	VK_CHECK(m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
 
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

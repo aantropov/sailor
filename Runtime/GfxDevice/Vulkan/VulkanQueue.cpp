@@ -18,24 +18,24 @@ VulkanQueue::~VulkanQueue()
 
 VkResult VulkanQueue::Submit(const std::vector<VkSubmitInfo>& submitInfos, VulkanFencePtr fence) const
 {
-	//std::scoped_lock<std::mutex> guard(m_mutex);
+	std::scoped_lock<std::mutex> guard(m_mutex);
 	return vkQueueSubmit(m_queue, static_cast<uint32_t>(submitInfos.size()), submitInfos.data(), fence ? (VkFence)*fence : VK_NULL_HANDLE);
 }
 
 VkResult VulkanQueue::Submit(const VkSubmitInfo& submitInfo, VulkanFencePtr fence) const
 {
-	//std::scoped_lock<std::mutex> guard(m_mutex);
+	std::scoped_lock<std::mutex> guard(m_mutex);
 	return vkQueueSubmit(m_queue, 1, &submitInfo, fence ? (VkFence)*fence : VK_NULL_HANDLE);
 }
 
 VkResult VulkanQueue::Present(const VkPresentInfoKHR& info)
 {
-	//std::scoped_lock<std::mutex> guard(m_mutex);
+	std::scoped_lock<std::mutex> guard(m_mutex);
 	return vkQueuePresentKHR(m_queue, &info);
 }
 
 VkResult VulkanQueue::WaitIdle()
 {
-	//std::scoped_lock<std::mutex> guard(m_mutex);
+	std::scoped_lock<std::mutex> guard(m_mutex);
 	return vkQueueWaitIdle(m_queue);
 }

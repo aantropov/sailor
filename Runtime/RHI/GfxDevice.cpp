@@ -30,8 +30,12 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 	TRefPtr<RHI::Fence> fenceUpdateIndex = TRefPtr<RHI::Fence>::Make();
 
 	// Submit cmd lists
-	SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
-	SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
+	auto pJob = JobSystem::Scheduler::GetInstance()->CreateJob("Create mesh",
+		[this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
+	{
+		SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
+		SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
+	}, JobSystem::EThreadType::Rendering);
 
 	// Fence should notify mesh, when cmd list is finished
 	fenceUpdateVertices->AddObservable(res);
@@ -53,6 +57,8 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 		m_trackedFences.push_back(fenceUpdateIndex);
 	}
 
+
+	JobSystem::Scheduler::GetInstance()->Run(pJob);
 	return res;
 }
 
@@ -69,7 +75,7 @@ void IGfxDevice::TrackResources()
 			cmd->TraceObservables();
 			cmd->ClearDependencies();
 			cmd->ClearObservables();
-			
+
 			std::iter_swap(m_trackedFences.begin() + index, m_trackedFences.end() - 1);
 			m_trackedFences.pop_back();
 

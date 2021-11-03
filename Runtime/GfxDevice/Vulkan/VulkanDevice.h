@@ -21,8 +21,6 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanCommandPoolPtr m_commandPool;
 		VulkanCommandPoolPtr m_transferCommandPool;
 		VulkanDescriptorPoolPtr m_descriptorPool;
-		VulkanQueuePtr m_graphicsQueue;
-		VulkanQueuePtr m_transferQueue;
 	};
 
 	class VulkanDevice final : public RHI::Resource
@@ -114,6 +112,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// We have one global present queeueu
 		VulkanQueuePtr m_presentQueue;
+		VulkanQueuePtr m_graphicsQueue;
+		VulkanQueuePtr m_transferQueue;
+		
 		VulkanSurfacePtr m_surface;
 
 		VkPhysicalDevice m_physicalDevice = 0;

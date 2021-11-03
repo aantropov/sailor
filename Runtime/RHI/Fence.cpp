@@ -23,7 +23,7 @@ void Fence::Reset() const
 bool Fence::IsFinished() const
 {
 #if defined(VULKAN)
-	return m_vulkan.m_fence->Status() == VkResult::VK_SUCCESS;
+	return m_vulkan.m_fence && m_vulkan.m_fence->Status() == VkResult::VK_SUCCESS;
 #endif
 
 	return true;
