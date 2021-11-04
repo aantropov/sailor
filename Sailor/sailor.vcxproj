@@ -176,6 +176,8 @@
   <ItemGroup>
     <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\AssetRegistry.h" />
+    <ClInclude Include="..\Runtime\AssetRegistry\MaterialAssetInfo.h" />
+    <ClInclude Include="..\Runtime\AssetRegistry\MaterialImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ModelAssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ModelImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\ShaderAssetInfo.h" />
@@ -229,6 +231,7 @@
     <ClInclude Include="..\Runtime\RHI\CommandList.h" />
     <ClInclude Include="..\Runtime\RHI\Fence.h" />
     <ClInclude Include="..\Runtime\RHI\GfxDevice.h" />
+    <ClInclude Include="..\Runtime\RHI\Material.h" />
     <ClInclude Include="..\Runtime\RHI\Mesh.h" />
     <ClInclude Include="..\Runtime\RHI\Renderer.h" />
     <ClInclude Include="..\Runtime\RHI\Texture.h" />
@@ -239,6 +242,8 @@
   <ItemGroup>
     <ClCompile Include="..\Runtime\AssetRegistry\AssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp" />
+    <ClCompile Include="..\Runtime\AssetRegistry\MaterialAssetInfo.cpp" />
+    <ClCompile Include="..\Runtime\AssetRegistry\MaterialImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ModelAssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ModelImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\ShaderAssetInfo.cpp" />
@@ -281,6 +286,7 @@
     <ClCompile Include="..\Runtime\RHI\CommandList.cpp" />
     <ClCompile Include="..\Runtime\RHI\Fence.cpp" />
     <ClCompile Include="..\Runtime\RHI\GfxDevice.cpp" />
+    <ClCompile Include="..\Runtime\RHI\Material.cpp" />
     <ClCompile Include="..\Runtime\RHI\Mesh.cpp" />
     <ClCompile Include="..\Runtime\RHI\Renderer.cpp" />
     <ClCompile Include="..\Runtime\RHI\Texture.cpp" />

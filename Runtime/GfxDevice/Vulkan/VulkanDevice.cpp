@@ -411,8 +411,8 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		auto descriptors = std::vector<VulkanDescriptorPtr>
 		{
-			TRefPtr<VulkanDescriptorBuffer>::Make(0, 0, m_uniformBuffer, 0, sizeof(UboTransform)),
-			TRefPtr<VulkanDescriptorImage>::Make(1, 0,
+			VulkanDescriptorBufferPtr::Make(0, 0, m_uniformBuffer, 0, sizeof(UboTransform)),
+			VulkanDescriptorImagePtr::Make(1, 0,
 				m_samplers->GetSampler(textureUID->GetFiltration(),
 				textureUID->GetClamping(),
 				m_image->m_mipLevels),

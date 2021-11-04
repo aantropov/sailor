@@ -234,6 +234,15 @@
     <ClInclude Include="..\Runtime\RHI\Buffer.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\Material.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\MaterialAssetInfo.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\MaterialImporter.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -385,6 +394,15 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\RHI\GfxDevice.cpp">
       <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\Material.cpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\MaterialAssetInfo.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\MaterialImporter.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

@@ -7,22 +7,19 @@ using namespace std;
 
 namespace Sailor
 {
-	class ModelAssetInfo final : public AssetInfo
+	class MaterialAssetInfo final : public AssetInfo
 	{
 	public:
-		virtual SAILOR_API ~ModelAssetInfo() = default;
+		virtual SAILOR_API ~MaterialAssetInfo() = default;
 
 		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
 
-		bool ShouldGenerateMaterials() const { return m_bShouldGenerateMaterials; }
-
 	private:
 
-		bool m_bShouldGenerateMaterials = true;
 	};
 
-	class ModelAssetInfoHandler final : public TSingleton<ModelAssetInfoHandler>, public IAssetInfoHandler
+	class MaterialAssetInfoHandler final : public TSingleton<MaterialAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
@@ -32,6 +29,6 @@ namespace Sailor
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual SAILOR_API AssetInfo* CreateAssetInfo() const;
 
-		virtual SAILOR_API ~ModelAssetInfoHandler() = default;
+		virtual SAILOR_API ~MaterialAssetInfoHandler() = default;
 	};
 }

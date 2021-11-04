@@ -10,11 +10,17 @@ using namespace Sailor;
 void ModelAssetInfo::Serialize(nlohmann::json& outData) const
 {
 	AssetInfo::Serialize(outData);
+	outData["generate_materials"] = m_bShouldGenerateMaterials;
 }
 
 void ModelAssetInfo::Deserialize(const nlohmann::json& outData)
 {
 	AssetInfo::Deserialize(outData);
+	
+	if (outData.contains("generate_materials"))
+	{
+		m_bShouldGenerateMaterials = outData["generate_materials"].get<bool>();;
+	}
 }
 
 void ModelAssetInfoHandler::Initialize()

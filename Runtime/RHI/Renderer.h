@@ -25,6 +25,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class Fence> FencePtr;
 	typedef TRefPtr<class Mesh> MeshPtr;
 	typedef TRefPtr<class Texture> TexturePtr;
+	typedef TRefPtr<class Material> MaterialPtr;
 
 	class Renderer : public TSingleton<Renderer>
 	{

@@ -52,7 +52,9 @@ namespace Sailor::GfxDevice::Vulkan
 	typedef TRefPtr<class VulkanSwapchain> VulkanSwapchainPtr;
 	typedef TRefPtr<class VulkanDescriptorSet> VulkanDescriptorSetPtr;
 	typedef TRefPtr<class VulkanSwapchain> VulkanSwapchainPtr;
-	
+	typedef TRefPtr<class VulkanDescriptorBuffer> VulkanDescriptorBufferPtr;
+	typedef TRefPtr<class VulkanDescriptorImage> VulkanDescriptorImagePtr;
+
 #define VK_CHECK(call) \
 	do { \
 		VkResult result_ = call; \
