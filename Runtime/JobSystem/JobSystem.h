@@ -8,6 +8,9 @@
 #include "Core/Singleton.hpp"
 #include "Core/UniquePtr.hpp"
 
+#define SAILOR_EQUEUE_JOB(Name, Lambda) Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, Lambda))
+#define SAILOR_EQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, Lambda, Sailor::JobSystem::EThreadType::Rendering))
+
 namespace Sailor
 {
 	namespace JobSystem

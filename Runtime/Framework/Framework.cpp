@@ -135,9 +135,9 @@ void Framework::CpuFrame()
 			jobLoadModel = ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
 		}
 
-		auto jobCreateBuffers = JobSystem::Scheduler::GetInstance()->CreateJob("Create buffers",
-			[this]() {
-
+		auto jobCreateBuffers = JobSystem::Scheduler::CreateJob("Create buffers",
+			[this]()
+		{
 			m_testMesh = Sailor::RHI::Renderer::GetDriver()->CreateMesh(g_testVertices, g_testIndices);
 		});
 

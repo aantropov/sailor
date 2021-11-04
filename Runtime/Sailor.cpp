@@ -55,7 +55,7 @@ void EngineInstance::Initialize()
 	TextureImporter::Initialize();
 	ShaderCompiler::Initialize();
 	ModelImporter::Initialize();
-	Renderer::Initialize(&m_pInstance->m_viewportWindow, RHI::EMsaaSamples::Samples_4, bIsEnabledVulkanValidationLayers);
+	Renderer::Initialize(&m_pInstance->m_viewportWindow, RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers);
 	ShaderCompiler::GetInstance();
 	Framework::Initialize();
 

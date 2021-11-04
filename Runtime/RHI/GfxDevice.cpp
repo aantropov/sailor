@@ -4,6 +4,7 @@
 #include "Buffer.h"
 #include "Fence.h"
 #include "Mesh.h"
+#include "JobSystem/JobSystem.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -30,12 +31,12 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 	TRefPtr<RHI::Fence> fenceUpdateIndex = TRefPtr<RHI::Fence>::Make();
 
 	// Submit cmd lists
-	auto pJob = JobSystem::Scheduler::GetInstance()->CreateJob("Create mesh",
-		[this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
+	SAILOR_EQUEUE_JOB_RENDER_THREAD("Create mesh", 
+		([this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
 	{
 		SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
 		SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
-	}, JobSystem::EThreadType::Rendering);
+	}));
 
 	// Fence should notify mesh, when cmd list is finished
 	fenceUpdateVertices->AddObservable(res);
@@ -57,8 +58,6 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 		m_trackedFences.push_back(fenceUpdateIndex);
 	}
 
-
-	JobSystem::Scheduler::GetInstance()->Run(pJob);
 	return res;
 }
 
