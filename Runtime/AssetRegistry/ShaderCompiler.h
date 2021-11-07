@@ -7,16 +7,11 @@
 #include "Core/SharedPtr.hpp"
 #include "Core/WeakPtr.hpp"
 #include "AssetInfo.h"
+#include "RHI/Types.h"
 #include "ShaderCache.h"
 
 namespace Sailor
 {
-	enum class EShaderKind
-	{
-		Vertex,
-		Fragment
-	};
-
 	class ShaderAsset : IJsonSerializable
 	{
 	public:
@@ -42,19 +37,17 @@ namespace Sailor
 	class ShaderCompiler final : public TSingleton<ShaderCompiler>, public IAssetInfoHandlerListener
 	{
 	public:
-		using ByteCode = std::vector<uint32_t>;
-
 		static SAILOR_API void Initialize();
 
 		static SAILOR_API void CompileAllPermutations(const UID& assetUID);
 
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
-		static SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, ByteCode& outVertexByteCode, ByteCode& outFragmentByteCode, bool bIsDebug);
+		static SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
 
 		virtual SAILOR_API ~ShaderCompiler() override;
 
-		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, ByteCode& outByteCode, bool bIsDebug);
+		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
 		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfo* assetInfo) override;
 

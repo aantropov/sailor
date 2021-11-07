@@ -2,7 +2,7 @@
 #include "vulkan/vulkan_core.h"
 #include "vulkan/vulkan.h"
 #include "VulkanDevice.h"
-#include "AssetRegistry/ShaderCompiler.h"
+#include "RHI/Types.h"
 #include "Core/RefPtr.hpp"
 
 namespace Sailor::GfxDevice::Vulkan
@@ -14,7 +14,7 @@ namespace Sailor::GfxDevice::Vulkan
 	public:
 		VulkanShaderStage() = default;
 		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule);
-		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const ShaderCompiler::ByteCode& spirv);
+		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
 
 		/// Vulkan VkPipelineShaderStageCreateInfo settings
 		VkPipelineShaderStageCreateFlags m_flags = 0;
@@ -30,7 +30,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 	protected:
 
-		void ReflectDescriptorSetBindings(const ShaderCompiler::ByteCode& code);
+		void ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code);
 
 		std::vector<std::vector<VkDescriptorSetLayoutBinding>> m_layoutBindings;
 
@@ -41,11 +41,11 @@ namespace Sailor::GfxDevice::Vulkan
 	public:
 
 		VulkanShaderModule() = default;
-		VulkanShaderModule(VulkanDevicePtr pDevice, const ShaderCompiler::ByteCode& spirv);
+		VulkanShaderModule(VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
 
 		operator VkShaderModule() const { return m_shaderModule; }
 
-		ShaderCompiler::ByteCode m_byteCode;
+		RHI::ShaderByteCode m_byteCode;
 
 		virtual void Compile() override;
 		virtual void Release() override;

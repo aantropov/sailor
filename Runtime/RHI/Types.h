@@ -6,6 +6,8 @@
 
 namespace Sailor::RHI
 {
+	using ShaderByteCode = std::vector<uint32_t>;
+
 	enum class ETextureFiltration : uint8_t
 	{
 		Nearest = 0,
@@ -36,7 +38,6 @@ namespace Sailor::RHI
 		Samples_32 = 32,
 		Samples_64 = 64
 	};
-
 
 	enum EBufferUsageBit : uint16_t
 	{
@@ -315,6 +316,14 @@ namespace Sailor::RHI
 	};
 
 	typedef uint8_t ETextureUsageFlags;
+
+	enum class EShaderStage : uint8_t 
+	{
+		Vertex = 0x00000001,
+		Geometry = 0x00000008,
+		Fragment = 0x00000010,
+		Compute = 0x00000020
+	};
 
 	class Vertex
 	{

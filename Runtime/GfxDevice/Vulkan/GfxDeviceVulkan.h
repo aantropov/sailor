@@ -1,11 +1,13 @@
 #pragma once
 #include "Defines.h"
 #include "Core/RefPtr.hpp"
+#include "RHI/Types.h"
 #include "RHI/GfxDevice.h"
 #include "RHI/Texture.h"
 #include "RHI/Fence.h"
 #include "RHI/Mesh.h"
-#include "RHI/Types.h"
+#include "RHI/Shader.h"
+#include "RHI/Material.h"
 #include "Platform/Win32/Window.h"
 
 #ifdef VULKAN
@@ -30,6 +32,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		virtual SAILOR_API RHI::BufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
 		virtual SAILOR_API RHI::CommandListPtr CreateBuffer(RHI::BufferPtr& outbuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
+		virtual SAILOR_API RHI::ShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv);
 
 		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, TRefPtr<RHI::Fence> fence);
 

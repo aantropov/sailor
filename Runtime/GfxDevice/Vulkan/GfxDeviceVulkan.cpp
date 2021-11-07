@@ -3,11 +3,13 @@
 #include "RHI/Fence.h"
 #include "RHI/Mesh.h"
 #include "RHI/Buffer.h"
+#include "RHI/Shader.h"
 #include "RHI/CommandList.h"
 #include "RHI/Types.h"
 #include "Platform/Win32/Window.h"
 #include "VulkanApi.h"
 #include "VulkanCommandBuffer.h"
+#include "VulkanShaderModule.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -45,8 +47,8 @@ void GfxDeviceVulkan::FixLostDevice(const Win32::Window* pViewport)
 }
 
 bool GfxDeviceVulkan::PresentFrame(const class FrameState& state,
-	const std::vector<TRefPtr<RHI::CommandList>>* primaryCommandBuffers,
-	const std::vector<TRefPtr<RHI::CommandList>>* secondaryCommandBuffers) const
+	const std::vector<RHI::CommandListPtr>* primaryCommandBuffers,
+	const std::vector<RHI::CommandListPtr>* secondaryCommandBuffers) const
 {
 	std::vector<VulkanCommandBufferPtr> primaryBuffers;
 	std::vector<VulkanCommandBufferPtr> secondaryBuffers;
@@ -77,7 +79,7 @@ void GfxDeviceVulkan::WaitIdle()
 	m_vkInstance->WaitIdle();
 }
 
-void GfxDeviceVulkan::SubmitCommandList(TRefPtr<RHI::CommandList> commandList, TRefPtr<RHI::Fence> fence)
+void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence)
 {
 	//if we have fence and that is null we should create device resource
 	if (!fence->m_vulkan.m_fence)
@@ -88,18 +90,18 @@ void GfxDeviceVulkan::SubmitCommandList(TRefPtr<RHI::CommandList> commandList, T
 	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence->m_vulkan.m_fence);
 }
 
-TRefPtr<RHI::Buffer> GfxDeviceVulkan::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
+RHI::BufferPtr GfxDeviceVulkan::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
 {
-	TRefPtr<RHI::Buffer> res = TRefPtr<RHI::Buffer>::Make();
+	RHI::BufferPtr res = RHI::BufferPtr::Make();
 	res->m_vulkan.m_buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD);
 
 	return res;
 }
 
-TRefPtr<RHI::CommandList> GfxDeviceVulkan::CreateBuffer(TRefPtr<RHI::Buffer>& outBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
+RHI::CommandListPtr GfxDeviceVulkan::CreateBuffer(RHI::BufferPtr& outBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
 {
-	outBuffer = TRefPtr<RHI::Buffer>::Make();
-	TRefPtr<RHI::CommandList> cmdList = TRefPtr<RHI::CommandList>::Make();
+	outBuffer = RHI::BufferPtr::Make();
+	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
 
 	cmdList->m_vulkan.m_commandBuffer = m_vkInstance->CreateBuffer(outBuffer->m_vulkan.m_buffer,
 		m_vkInstance->GetMainDevice(),
@@ -108,14 +110,21 @@ TRefPtr<RHI::CommandList> GfxDeviceVulkan::CreateBuffer(TRefPtr<RHI::Buffer>& ou
 	return cmdList;
 }
 
-TRefPtr<RHI::Buffer> GfxDeviceVulkan::CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage)
+RHI::ShaderPtr GfxDeviceVulkan::CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv)
 {
-	TRefPtr<RHI::Buffer> res = TRefPtr<RHI::Buffer>::Make();
+	auto res = RHI::ShaderPtr::Make(shaderStage);
+	res->m_vulkan.m_shader = VulkanShaderStagePtr::Make((VkShaderStageFlagBits)shaderStage, "main", m_vkInstance->GetMainDevice(), shaderSpirv);
+	return res;
+}
+
+RHI::BufferPtr GfxDeviceVulkan::CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage)
+{
+	RHI::BufferPtr res = RHI::BufferPtr::Make();
 	res->m_vulkan.m_buffer = m_vkInstance->CreateBuffer_Immediate(m_vkInstance->GetMainDevice(), pData, size, (uint32_t)usage);
 	return res;
 }
 
-void GfxDeviceVulkan::CopyBuffer_Immediate(TRefPtr<RHI::Buffer> src, TRefPtr<RHI::Buffer> dst, size_t size)
+void GfxDeviceVulkan::CopyBuffer_Immediate(RHI::BufferPtr src, RHI::BufferPtr dst, size_t size)
 {
 	m_vkInstance->CopyBuffer_Immediate(m_vkInstance->GetMainDevice(), src->m_vulkan.m_buffer, dst->m_vulkan.m_buffer, size);
 }

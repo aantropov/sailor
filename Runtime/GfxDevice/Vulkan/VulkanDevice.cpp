@@ -371,7 +371,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		const TRefPtr<VulkanStateMultisample> pMultisample = TRefPtr<VulkanStateMultisample>::Make(GetCurrentMsaaSamples());
 
 		auto descriptorSetLayouts = VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr(this), { g_testVertShader , g_testFragShader });
-
+		
 		m_pipelineLayout = VulkanPipelineLayoutPtr::Make(VulkanDevicePtr(this),
 			descriptorSetLayouts,
 			std::vector<VkPushConstantRange>(),

@@ -1,5 +1,5 @@
 #include "VulkanShaderModule.h"
-#include "AssetRegistry/ShaderCompiler.h"
+#include "RHI/Types.h"
 
 #include <spirv_reflect/spirv_reflect.h>
 #include <spirv_reflect/spirv_reflect.c>
@@ -14,7 +14,7 @@ VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::str
 {
 }
 
-VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const ShaderCompiler::ByteCode& spirv) :
+VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv) :
 	m_stage(stage),
 	m_entryPointName(entryPointName)
 {
@@ -38,7 +38,7 @@ void VulkanShaderStage::Compile()
 	}
 }
 
-void VulkanShaderStage::ReflectDescriptorSetBindings(const ShaderCompiler::ByteCode& code)
+void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -96,7 +96,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const ShaderCompiler::ByteC
 }
 
 
-VulkanShaderModule::VulkanShaderModule(VulkanDevicePtr pDevice, const ShaderCompiler::ByteCode& spirv) : m_pDevice(pDevice), m_byteCode(spirv) {}
+VulkanShaderModule::VulkanShaderModule(VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv) : m_pDevice(pDevice), m_byteCode(spirv) {}
 
 VulkanShaderModule::~VulkanShaderModule()
 {

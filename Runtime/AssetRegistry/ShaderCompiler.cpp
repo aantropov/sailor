@@ -179,22 +179,22 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 
 	m_pInstance->m_shaderCache.CachePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl);
 
-	ByteCode spirvVertexByteCode;
-	ByteCode spirvFragmentByteCode;
+	RHI::ShaderByteCode spirvVertexByteCode;
+	RHI::ShaderByteCode spirvFragmentByteCode;
 
-	const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, EShaderKind::Vertex, {}, {}, spirvVertexByteCode, false);
-	const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, EShaderKind::Fragment, {}, {}, spirvFragmentByteCode, false);
+	const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, RHI::EShaderStage::Vertex, {}, {}, spirvVertexByteCode, false);
+	const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, RHI::EShaderStage::Fragment, {}, {}, spirvFragmentByteCode, false);
 
 	if (bResultCompileVertexShader && bResultCompileFragmentShader)
 	{
 		m_pInstance->m_shaderCache.CacheSpirv_ThreadSafe(assetUID, permutation, spirvVertexByteCode, spirvFragmentByteCode);
 	}
 
-	ByteCode spirvVertexByteCodeDebug;
-	ByteCode spirvFragmentByteCodeDebug;
+	RHI::ShaderByteCode spirvVertexByteCodeDebug;
+	RHI::ShaderByteCode spirvFragmentByteCodeDebug;
 
-	const bool bResultCompileVertexShaderDebug = CompileGlslToSpirv(vertexGlsl, EShaderKind::Vertex, {}, {}, spirvVertexByteCodeDebug, true);
-	const bool bResultCompileFragmentShaderDebug = CompileGlslToSpirv(fragmentGlsl, EShaderKind::Fragment, {}, {}, spirvFragmentByteCodeDebug, true);
+	const bool bResultCompileVertexShaderDebug = CompileGlslToSpirv(vertexGlsl, RHI::EShaderStage::Vertex, {}, {}, spirvVertexByteCodeDebug, true);
+	const bool bResultCompileFragmentShaderDebug = CompileGlslToSpirv(fragmentGlsl, RHI::EShaderStage::Fragment, {}, {}, spirvFragmentByteCodeDebug, true);
 
 	if (bResultCompileVertexShaderDebug && bResultCompileFragmentShaderDebug)
 	{
@@ -301,7 +301,7 @@ void ShaderCompiler::OnAssetInfoUpdated(AssetInfo* assetInfo)
 	ShaderCompiler::GetInstance()->CompileAllPermutations(assetInfo->GetUID());
 }
 
-bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind shaderKind, const std::vector<string>& defines, const std::vector<string>& includes, ByteCode& outByteCode, bool bIsDebug)
+bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderStage, const std::vector<string>& defines, const std::vector<string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -320,7 +320,7 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, EShaderKind s
 		options.SetOptimizationLevel(shaderc_optimization_level_performance);
 	}
 
-	shaderc_shader_kind kind = shaderKind == EShaderKind::Fragment ? shaderc_glsl_fragment_shader : shaderc_glsl_vertex_shader;
+	shaderc_shader_kind kind = shaderStage == RHI::EShaderStage::Fragment ? shaderc_glsl_fragment_shader : shaderc_glsl_vertex_shader;
 	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, source.c_str(), "main", options);
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status_success)
@@ -370,7 +370,7 @@ std::vector<std::string> ShaderCompiler::GetDefines(const std::vector<std::strin
 	return res;
 }
 
-void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, ByteCode& outVertexByteCode, ByteCode& outFragmentByteCode, bool bIsDebug)
+void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
 

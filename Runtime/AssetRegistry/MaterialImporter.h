@@ -13,7 +13,6 @@ namespace Sailor
 	class MaterialImporter final : public TSingleton<MaterialImporter>, public IAssetInfoHandlerListener
 	{
 	public:
-		using ByteCode = std::vector<uint8_t>;
 
 		static SAILOR_API void Initialize();
 		virtual SAILOR_API ~MaterialImporter() override;

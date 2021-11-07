@@ -19,6 +19,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class Fence> FencePtr;
 	typedef TRefPtr<class Mesh> MeshPtr;
 	typedef TRefPtr<class Texture> TexturePtr;
+	typedef TRefPtr<class Shader> ShaderPtr;
 
 	class IGfxDevice
 	{
@@ -39,6 +40,7 @@ namespace Sailor::RHI
 		virtual SAILOR_API BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API CommandListPtr CreateBuffer(BufferPtr& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API MeshPtr CreateMesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
+		virtual SAILOR_API ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
 
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
 

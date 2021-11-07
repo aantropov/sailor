@@ -19,7 +19,6 @@ namespace Sailor
 	class ModelImporter final : public TSingleton<ModelImporter>, public IAssetInfoHandlerListener
 	{
 	public:
-		using ByteCode = std::vector<uint8_t>;
 
 		static SAILOR_API void Initialize();
 		virtual SAILOR_API ~ModelImporter() override;
