@@ -26,7 +26,7 @@ MaterialImporter::~MaterialImporter()
 {
 }
 
-void MaterialImporter::OnAssetInfoUpdated(AssetInfo* assetInfo)
+void MaterialImporter::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
 {
 }
 

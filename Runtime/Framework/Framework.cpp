@@ -130,7 +130,7 @@ void Framework::CpuFrame()
 
 		TSharedPtr<JobSystem::Job> jobLoadModel;
 
-		if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfo<ModelAssetInfo>("Models\\Sponza\\sponza.obj"))
+		if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models\\Sponza\\sponza.obj"))
 		{
 			jobLoadModel = ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
 		}

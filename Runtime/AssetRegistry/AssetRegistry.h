@@ -11,6 +11,8 @@
 namespace Sailor
 {
 	class AssetInfo;
+	using AssetInfoPtr = AssetInfo*;
+
 	enum class EAssetType;
 
 	class AssetRegistry final : public TSingleton<AssetRegistry>
@@ -55,20 +57,17 @@ namespace Sailor
 
 		SAILOR_API void ScanContentFolder();
 
-		template<typename TAssetInfo>
-		TAssetInfo* GetAssetInfo(UID uid) const
+		template<typename TAssetInfoPtr = AssetInfoPtr>
+		TAssetInfoPtr GetAssetInfoPtr(UID uid) const
 		{
-			return 	dynamic_cast<TAssetInfo*>(GetAssetInfo(uid));
+			return 	dynamic_cast<TAssetInfoPtr>(GetAssetInfoPtr_Internal(uid));
 		}
 
-		template<typename TAssetInfo>
-		TAssetInfo* GetAssetInfo(const std::string& assetFilepath) const
+		template<typename TAssetInfoPtr = AssetInfoPtr>
+		TAssetInfoPtr GetAssetInfoPtr(const std::string& assetFilepath) const
 		{
-			return 	dynamic_cast<TAssetInfo*>(GetAssetInfo(assetFilepath));
+			return 	dynamic_cast<TAssetInfoPtr>(GetAssetInfoPtr_Internal(assetFilepath));
 		}
-
-		SAILOR_API AssetInfo* GetAssetInfo(UID uid) const;
-		SAILOR_API AssetInfo* GetAssetInfo(const std::string& assetFilepath) const;
 
 		template<class TAssetInfo>
 		void GetAllAssetInfos(std::vector<UID>& outAssetInfos) const
@@ -88,9 +87,12 @@ namespace Sailor
 
 	protected:
 
+		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(UID uid) const;
+		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
+
 		void ScanFolder(const std::string& folderPath);
 
-		std::unordered_map<UID, AssetInfo*> m_loadedAssetInfo;
+		std::unordered_map<UID, AssetInfoPtr> m_loadedAssetInfo;
 		std::unordered_map<std::string, UID> m_UIDs;
 		std::unordered_map<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
 	};

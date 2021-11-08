@@ -116,7 +116,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 					auto assetInfoIt = m_loadedAssetInfo.find(uid->second);
 					if (assetInfoIt != m_loadedAssetInfo.end())
 					{
-						AssetInfo* assetInfo = assetInfoIt->second;
+						AssetInfoPtr assetInfo = assetInfoIt->second;
 						if (assetInfo->IsExpired())
 						{
 							SAILOR_LOG("Reload asset info: %s", assetInfoFile.c_str());
@@ -129,7 +129,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 					m_UIDs.erase(uid);
 				}
 
-				AssetInfo* assetInfo = nullptr;
+				AssetInfoPtr assetInfo = nullptr;
 				if (std::filesystem::exists(assetInfoFile))
 				{
 					SAILOR_LOG("Load asset info: %s", assetInfoFile.c_str());
@@ -149,17 +149,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 	}
 }
 
-AssetInfo* AssetRegistry::GetAssetInfo(const std::string& filepath) const
-{
-	auto it = m_UIDs.find(ContentRootFolder + filepath);
-	if (it != m_UIDs.end())
-	{
-		return GetAssetInfo(it->second);
-	}
-	return nullptr;
-}
-
-AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const
+AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(UID uid) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -167,6 +157,16 @@ AssetInfo* AssetRegistry::GetAssetInfo(UID uid) const
 	if (it != m_loadedAssetInfo.end())
 	{
 		return it->second;
+	}
+	return nullptr;
+}
+
+AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFilepath) const
+{
+	auto it = m_UIDs.find(ContentRootFolder + assetFilepath);
+	if (it != m_UIDs.end())
+	{
+		return GetAssetInfoPtr_Internal(it->second);
 	}
 	return nullptr;
 }

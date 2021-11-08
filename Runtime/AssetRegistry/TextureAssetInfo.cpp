@@ -53,7 +53,7 @@ void TextureAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson)
 	defaultObject.Serialize(outDefaultJson);
 }
 
-AssetInfo* TextureAssetInfoHandler::CreateAssetInfo() const
+AssetInfoPtr TextureAssetInfoHandler::CreateAssetInfo() const
 {
 	return new TextureAssetInfo();
 }

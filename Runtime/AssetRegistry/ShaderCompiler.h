@@ -49,7 +49,7 @@ namespace Sailor
 
 		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
-		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfo* assetInfo) override;
+		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfoPtr assetInfo) override;
 
 	protected:
 

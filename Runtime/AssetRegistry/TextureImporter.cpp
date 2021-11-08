@@ -29,7 +29,7 @@ TextureImporter::~TextureImporter()
 {
 }
 
-void TextureImporter::OnAssetInfoUpdated(AssetInfo* assetInfo)
+void TextureImporter::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
 {
 }
 
@@ -37,7 +37,7 @@ bool TextureImporter::LoadTexture(UID uid, ByteCode& decodedData, int32_t& width
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (TextureAssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>(uid))
+	if (TextureAssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
 		int32_t texChannels = 0;
 

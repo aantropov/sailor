@@ -26,7 +26,7 @@ bool PoolAllocator::RequestPage(Page& page, size_t size, size_t pageIndex) const
 	page.m_pData = malloc(size);
 	page.m_firstFree = 0;
 	page.m_first = 0;
-	page.bIsInFreeList = true;
+	page.m_bIsInFreeList = true;
 
 	if (!page.m_pData)
 	{
@@ -35,7 +35,7 @@ bool PoolAllocator::RequestPage(Page& page, size_t size, size_t pageIndex) const
 
 	Header* firstFree = static_cast<Header*>(page.m_pData);
 
-	firstFree->bIsFree = 1;
+	firstFree->m_bIsFree = 1;
 	firstFree->m_next = InvalidIndexUINT64;
 	firstFree->m_nextFree = InvalidIndexUINT64;
 	firstFree->m_prev = InvalidIndexUINT64;
@@ -101,7 +101,7 @@ Header* Page::MoveHeader(Header* block, int64_t shift)
 		m_first = Offset(block, m_pData);
 	}
 
-	if (block->bIsFree && !pPrevFree)
+	if (block->m_bIsFree && !pPrevFree)
 	{
 		m_firstFree = Offset(block, m_pData);
 	}
@@ -121,7 +121,7 @@ void* Page::Allocate(size_t size, size_t alignment)
 	Header* freeBlock = static_cast<Header*>(ShiftPtr(m_pData, m_firstFree));
 	do
 	{
-		assert(freeBlock->bIsFree);
+		assert(freeBlock->m_bIsFree);
 
 		void* pOldStartData = ShiftPtr(freeBlock, headerSize);
 		void* pNewStartData = pOldStartData;
@@ -144,7 +144,7 @@ void* Page::Allocate(size_t size, size_t alignment)
 
 				//we never shift the first block
 				assert(pPrev);
-				m_occupiedSpace += pPrev->bIsFree ? -freeSpaceLeft : freeSpaceLeft;
+				m_occupiedSpace += pPrev->m_bIsFree ? -freeSpaceLeft : freeSpaceLeft;
 			}
 
 			const size_t freeSpaceRight = freeBlock->m_size - size;
@@ -156,7 +156,7 @@ void* Page::Allocate(size_t size, size_t alignment)
 				Header* pNewFreeBlock = static_cast<Header*>(ShiftPtr(freeBlock, size + headerSize));
 				const size_t newBlock = Offset(pNewFreeBlock, m_pData);
 
-				pNewFreeBlock->bIsFree = 1;
+				pNewFreeBlock->m_bIsFree = 1;
 				pNewFreeBlock->m_size = freeSpaceRight - headerSize;
 				pNewFreeBlock->m_prev = Offset(freeBlock, m_pData);
 
@@ -208,7 +208,7 @@ void* Page::Allocate(size_t size, size_t alignment)
 
 			freeBlock->m_nextFree = InvalidIndexUINT64;
 			freeBlock->m_prevFree = InvalidIndexUINT64;
-			freeBlock->bIsFree = 0;
+			freeBlock->m_bIsFree = 0;
 
 			m_occupiedSpace += freeBlock->m_size;
 
@@ -231,12 +231,12 @@ void Page::Free(void* pData)
 	Header* pPrev = static_cast<Header*>(block->m_prev != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_prev) : nullptr);
 	Header* pNext = static_cast<Header*>(block->m_next != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_next) : nullptr);
 
-	assert(!block->bIsFree);
+	assert(!block->m_bIsFree);
 
-	const bool bShouldMergeRight = pNext && pNext->bIsFree;
-	const bool bShouldMergeLeft = pPrev && pPrev->bIsFree;
+	const bool bShouldMergeRight = pNext && pNext->m_bIsFree;
+	const bool bShouldMergeLeft = pPrev && pPrev->m_bIsFree;
 
-	block->bIsFree = 1;
+	block->m_bIsFree = 1;
 	block->m_nextFree = InvalidIndexUINT64;
 	block->m_prevFree = InvalidIndexUINT64;
 
@@ -245,7 +245,7 @@ void Page::Free(void* pData)
 	{
 		m_occupiedSpace -= sizeof(Header);
 
-		if (!pNext->bIsFree)
+		if (!pNext->m_bIsFree)
 		{
 			m_occupiedSpace -= pNext->m_size;
 		}
@@ -295,7 +295,7 @@ void Page::Free(void* pData)
 	{
 		m_occupiedSpace -= sizeof(Header) * 2 + block->m_size;
 
-		if (!pNext->bIsFree)
+		if (!pNext->m_bIsFree)
 		{
 			m_occupiedSpace -= pNext->m_size;
 		}
@@ -375,7 +375,7 @@ void* PoolAllocator::Allocate(size_t size, size_t alignment)
 			{
 				if (realEmptySpace < page.GetMinAllowedEmptySpace())
 				{
-					page.bIsInFreeList = false;
+					page.m_bIsInFreeList = false;
 					std::iter_swap(m_freeList.begin() + i, m_freeList.end() - 1);
 					m_freeList.pop_back();
 				}
@@ -430,10 +430,10 @@ void PoolAllocator::Free(void* ptr)
 
 	page.Free(ptr);
 
-	if (!page.bIsInFreeList && (page.m_totalSize - page.m_occupiedSpace) > page.GetMinAllowedEmptySpace())
+	if (!page.m_bIsInFreeList && (page.m_totalSize - page.m_occupiedSpace) > page.GetMinAllowedEmptySpace())
 	{
 		m_freeList.push_back(block->m_pageIndex);
-		page.bIsInFreeList = true;
+		page.m_bIsInFreeList = true;
 	}
 
 	if (page.IsEmpty() && m_freeList.size() > 1)

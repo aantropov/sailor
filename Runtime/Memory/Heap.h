@@ -23,7 +23,7 @@ namespace Sailor::Memory
 				size_t m_prevFree = InvalidIndexUINT64;
 				size_t m_pageIndex = 0;
 				size_t m_size = 0;
-				bool bIsFree : 1;
+				bool m_bIsFree : 1;
 				uint8_t m_meta;
 			};
 
@@ -36,7 +36,7 @@ namespace Sailor::Memory
 				void* m_pData = nullptr;
 				size_t m_firstFree = InvalidIndexUINT64;
 				size_t m_first = InvalidIndexUINT64;
-				bool bIsInFreeList = true;
+				bool m_bIsInFreeList = true;
 
 				bool IsEmpty() const { return m_occupiedSpace == sizeof(Header); }
 				inline Header* MoveHeader(Header* block, int64_t shift);

@@ -39,10 +39,12 @@ namespace Sailor
 		friend class IAssetInfoHandler;
 	};
 
+	using AssetInfoPtr = AssetInfo*;
+
 	class IAssetInfoHandlerListener
 	{
 	public:
-		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfo* assetInfo) {}
+		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfoPtr assetInfo) {}
 	};
 
 	class IAssetInfoHandler
@@ -58,15 +60,15 @@ namespace Sailor
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const = 0;
 
-		virtual SAILOR_API AssetInfo* LoadAssetInfo(const std::string& metaFilepath) const;
-		virtual SAILOR_API AssetInfo* ImportAsset(const std::string& assetFilepath) const;
-		virtual SAILOR_API void ReloadAssetInfo(AssetInfo* assetInfo) const;
+		virtual SAILOR_API AssetInfoPtr LoadAssetInfo(const std::string& metaFilepath) const;
+		virtual SAILOR_API AssetInfoPtr ImportAsset(const std::string& assetFilepath) const;
+		virtual SAILOR_API void ReloadAssetInfo(AssetInfoPtr assetInfo) const;
 
 		virtual SAILOR_API ~IAssetInfoHandler() = default;
 
 	protected:
 
-		virtual SAILOR_API AssetInfo* CreateAssetInfo() const = 0;
+		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const = 0;
 		std::vector<std::string> m_supportedExtensions;
 
 		std::vector<IAssetInfoHandlerListener*> m_listeners;
@@ -80,7 +82,7 @@ namespace Sailor
 		static SAILOR_API void Initialize();
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const override;
-		virtual SAILOR_API AssetInfo* CreateAssetInfo() const override;
+		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const override;
 
 		virtual SAILOR_API ~DefaultAssetInfoHandler() override = default;
 	};

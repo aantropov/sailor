@@ -311,7 +311,7 @@ void ShaderCache::CachePrecompiledGlsl(const UID& uid, uint32_t permutation, con
 
 void ShaderCache::CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv) const
 {
-	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
+	AssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(uid);
 
 	std::ofstream vertexCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, "VERTEX"), std::ofstream::binary);
 	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.size() * sizeof(uint32_t));
@@ -328,7 +328,7 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
-	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
+	AssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(uid);
 
 	auto it = std::find_if(std::begin(m_cache.m_data[uid]), std::end(m_cache.m_data[uid]),
 		[permutation](const ShaderCacheEntry* arg) { return arg->m_permutation == permutation; });
@@ -409,7 +409,7 @@ bool ShaderCache::IsExpired(const UID& uid, uint32_t permutation) const
 		return true;
 	}
 
-	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(uid);
+	AssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(uid);
 
 	return assetInfo ? (*it)->m_timestamp < assetInfo->GetAssetLastModificationTime() : true;
 }

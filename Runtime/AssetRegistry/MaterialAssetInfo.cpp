@@ -31,7 +31,7 @@ void MaterialAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson
 	defaultObject.Serialize(outDefaultJson);
 }
 
-AssetInfo* MaterialAssetInfoHandler::CreateAssetInfo() const
+AssetInfoPtr MaterialAssetInfoHandler::CreateAssetInfo() const
 {
 	return new MaterialAssetInfo();
 }

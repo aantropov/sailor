@@ -21,7 +21,7 @@ void ShaderAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) 
 	defaultObject.Serialize(outDefaultJson);
 }
 
-AssetInfo* ShaderAssetInfoHandler::CreateAssetInfo() const
+AssetInfoPtr ShaderAssetInfoHandler::CreateAssetInfo() const
 {
 	return new ShaderAssetInfo();
 }

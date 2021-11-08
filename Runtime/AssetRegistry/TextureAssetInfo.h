@@ -26,6 +26,8 @@ namespace Sailor
 		bool m_bShouldGenerateMips = true;
 	};
 
+	using TextureAssetInfoPtr = TextureAssetInfo*;
+
 	class TextureAssetInfoHandler final : public TSingleton<TextureAssetInfoHandler>, public IAssetInfoHandler
 	{
 
@@ -34,7 +36,7 @@ namespace Sailor
 		static SAILOR_API void Initialize();
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
-		virtual SAILOR_API AssetInfo* CreateAssetInfo() const;
+		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;
 
 		virtual SAILOR_API ~TextureAssetInfoHandler() = default;
 	};

@@ -58,7 +58,7 @@ std::string AssetInfo::GetMetaFilepath() const
 	return m_assetFilename + "." + AssetRegistry::MetaFileExtension;
 }
 
-AssetInfo* IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) const
+AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) const
 {
 	const std::string assetInfoFilename = AssetRegistry::GetMetaFilePath(assetFilepath);
 	std::filesystem::remove(assetInfoFilename);
@@ -76,9 +76,9 @@ AssetInfo* IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) cons
 	return LoadAssetInfo(assetInfoFilename);
 }
 
-AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) const
+AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) const
 {
-	AssetInfo* res = CreateAssetInfo();
+	AssetInfoPtr res = CreateAssetInfo();
 	res->m_folder = std::filesystem::path(assetInfoPath).remove_filename().string();
 	// Temp to pass asset filename to Reload Asset Info
 	res->m_assetFilename = std::filesystem::path(assetInfoPath.substr(0, assetInfoPath.size() - strlen(AssetRegistry::MetaFileExtension) - 1)).string();
@@ -88,7 +88,7 @@ AssetInfo* IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) co
 	return res;
 }
 
-void IAssetInfoHandler::ReloadAssetInfo(AssetInfo* assetInfo) const
+void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 {
 	std::ifstream assetFile(assetInfo->GetMetaFilepath());
 
@@ -112,7 +112,7 @@ void DefaultAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson)
 	defaultObject.Serialize(outDefaultJson);
 }
 
-AssetInfo* DefaultAssetInfoHandler::CreateAssetInfo() const
+AssetInfoPtr DefaultAssetInfoHandler::CreateAssetInfo() const
 {
 	return new AssetInfo();
 }

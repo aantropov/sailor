@@ -22,6 +22,8 @@ namespace Sailor
 		bool m_bShouldGenerateMaterials = true;
 	};
 
+	using ModelAssetInfoPtr = ModelAssetInfo*;
+
 	class ModelAssetInfoHandler final : public TSingleton<ModelAssetInfoHandler>, public IAssetInfoHandler
 	{
 
@@ -30,7 +32,7 @@ namespace Sailor
 		static SAILOR_API void Initialize();
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
-		virtual SAILOR_API AssetInfo* CreateAssetInfo() const;
+		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;
 
 		virtual SAILOR_API ~ModelAssetInfoHandler() = default;
 	};

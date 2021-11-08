@@ -37,7 +37,7 @@ void ModelAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) c
 	defaultObject.Serialize(outDefaultJson);
 }
 
-AssetInfo* ModelAssetInfoHandler::CreateAssetInfo() const
+AssetInfoPtr ModelAssetInfoHandler::CreateAssetInfo() const
 {
 	return new ModelAssetInfo();
 }

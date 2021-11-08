@@ -207,7 +207,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 	SAILOR_PROFILE_FUNCTION();
 
 	TSharedPtr<ShaderAsset> pShader = m_pInstance->LoadShaderAsset(assetUID).Lock();
-	AssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo(assetUID);
+	AssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(assetUID);
 
 	if (!pShader->ContainsFragment() || !pShader->ContainsVertex())
 	{
@@ -261,7 +261,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (ShaderAssetInfo* shaderAssetInfo = dynamic_cast<ShaderAssetInfo*>(AssetRegistry::GetInstance()->GetAssetInfo(uid)))
+	if (ShaderAssetInfoPtr shaderAssetInfo = dynamic_cast<ShaderAssetInfoPtr>(AssetRegistry::GetInstance()->GetAssetInfoPtr(uid)))
 	{
 		if (const auto& loadedShader = m_loadedShaders.find(uid); loadedShader != m_loadedShaders.end())
 		{
@@ -296,7 +296,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 	return TWeakPtr<ShaderAsset>();
 }
 
-void ShaderCompiler::OnAssetInfoUpdated(AssetInfo* assetInfo)
+void ShaderCompiler::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
 {
 	ShaderCompiler::GetInstance()->CompileAllPermutations(assetInfo->GetUID());
 }

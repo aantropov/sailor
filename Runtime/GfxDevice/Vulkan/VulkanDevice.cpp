@@ -329,7 +329,7 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 void VulkanDevice::CreateGraphicsPipeline()
 {
-	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfo<ShaderAssetInfo>("Shaders\\Simple.shader"))
+	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ShaderAssetInfoPtr>("Shaders\\Simple.shader"))
 	{
 		const VkDeviceSize uniformBufferSize = sizeof(RHI::UboTransform);
 
@@ -389,7 +389,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		m_graphicsPipeline->Compile();
 	}
 
-	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfo<TextureAssetInfo>("Textures\\VulkanLogo.png"))
+	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<TextureAssetInfoPtr>("Textures\\VulkanLogo.png"))
 	{
 		TextureImporter::ByteCode data;
 		int32_t width;

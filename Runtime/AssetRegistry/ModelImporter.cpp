@@ -30,7 +30,7 @@ ModelImporter::~ModelImporter()
 {
 }
 
-void ModelImporter::OnAssetInfoUpdated(AssetInfo* assetInfo)
+void ModelImporter::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
 {
 }
 
@@ -38,7 +38,7 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Ve
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (ModelAssetInfo* assetInfo = AssetRegistry::GetInstance()->GetAssetInfo<ModelAssetInfo>(uid))
+	if (ModelAssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto jobLoad = JobSystem::Scheduler::CreateJob("Check unique vertices",
 			[&outIndices, &outVertices, assetInfo]() {

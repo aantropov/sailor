@@ -23,7 +23,7 @@ namespace Sailor
 		static SAILOR_API void Initialize();
 		virtual SAILOR_API ~ModelImporter() override;
 
-		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfo* assetInfo) override;
+		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfoPtr assetInfo) override;
 
 		TSharedPtr<JobSystem::Job> SAILOR_API LoadModel(UID uid, std::vector<RHI::Vertex>& outVertices, std::vector<uint32_t>& outIndices);
 
