@@ -155,7 +155,8 @@ VulkanStateDynamic::VulkanStateDynamic() : m_dynamicState{}
 {
 	m_dynamicStates.push_back(VK_DYNAMIC_STATE_VIEWPORT);
 	m_dynamicStates.push_back(VK_DYNAMIC_STATE_SCISSOR);
-	
+	m_dynamicStates.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
+
 	m_dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
 	m_dynamicState.dynamicStateCount = 2;
 	m_dynamicState.pDynamicStates = m_dynamicStates.data();
@@ -181,7 +182,5 @@ VulkanStateDepthStencil::VulkanStateDepthStencil(bool bEnableDepthTest, bool bEn
 
 void VulkanStateDepthStencil::Apply(struct VkGraphicsPipelineCreateInfo& state) const
 {
-
 	state.pDepthStencilState = &m_depthStencil;
 }
-

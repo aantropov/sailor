@@ -317,12 +317,27 @@ namespace Sailor::RHI
 
 	typedef uint8_t ETextureUsageFlags;
 
-	enum class EShaderStage : uint8_t 
+	enum class EShaderStage : uint8_t
 	{
 		Vertex = 0x00000001,
 		Geometry = 0x00000008,
 		Fragment = 0x00000010,
 		Compute = 0x00000020
+	};
+
+	enum class ECullMode : uint8_t
+	{
+		Front = 0x00000001,
+		Back = 0x00000002,
+		FrontAndBack = 0x00000003
+	};
+
+	enum class EBlendMode : uint8_t
+	{
+		None = 0,
+		Additive = 0x00000001,
+		AlphaBlending = 0x00000002,
+		Multiply = 0x00000003
 	};
 
 	class Vertex
