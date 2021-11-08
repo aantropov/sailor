@@ -768,7 +768,7 @@ VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, Vulka
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer(stagingBuffer, outbuffer, size);
 	cmdBuffer->EndCommandList();
-	
+
 	return cmdBuffer;
 }
 
@@ -797,7 +797,8 @@ void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr src
 	fence->Wait();
 }
 
-VulkanImagePtr VulkanApi::CreateImage_Immediate(
+VulkanCommandBufferPtr VulkanApi::CreateImage(
+	VulkanImagePtr& outImage,
 	VulkanDevicePtr device,
 	const void* pData,
 	VkDeviceSize size,
@@ -823,49 +824,66 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 		stagingBuffer->GetMemoryDevice()->Copy(0, size, pData);
 	}
 
-	VulkanImagePtr res = new VulkanImage(device);
+	outImage = new VulkanImage(device);
 
-	res->m_extent = extent;
-	res->m_imageType = type;
-	res->m_format = format;
-	res->m_tiling = tiling;
-	res->m_usage = usage;
-	res->m_mipLevels = mipLevels;
-	res->m_samples = VK_SAMPLE_COUNT_1_BIT;
-	res->m_arrayLayers = 1;
-	res->m_sharingMode = sharingMode;
-	res->m_initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
-	res->m_flags = 0;
+	outImage->m_extent = extent;
+	outImage->m_imageType = type;
+	outImage->m_format = format;
+	outImage->m_tiling = tiling;
+	outImage->m_usage = usage;
+	outImage->m_mipLevels = mipLevels;
+	outImage->m_samples = VK_SAMPLE_COUNT_1_BIT;
+	outImage->m_arrayLayers = 1;
+	outImage->m_sharingMode = sharingMode;
+	outImage->m_initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+	outImage->m_flags = 0;
 
-	res->Compile();
+	outImage->Compile();
 
-	VulkanDeviceMemoryPtr outDeviceMemory = VulkanDeviceMemoryPtr::Make(
-		device,
-		res->GetMemoryRequirements(),
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		nullptr);
+	const auto requirements = outImage->GetMemoryRequirements();
 
-	res->Bind(outDeviceMemory, 0);
+	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
+	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
-	auto fence = VulkanFencePtr::Make(device);
+	outImage->Bind(data);
 
 	auto cmdBuffer = device->CreateCommandBuffer();
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	cmdBuffer->ImageMemoryBarrier(res, res->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	cmdBuffer->CopyBufferToImage(stagingBuffer, res, static_cast<uint32_t>(extent.width), static_cast<uint32_t>(extent.height));
+	cmdBuffer->ImageMemoryBarrier(outImage, outImage->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	cmdBuffer->CopyBufferToImage(stagingBuffer, outImage, static_cast<uint32_t>(extent.width), static_cast<uint32_t>(extent.height));
 
-	if (res->m_mipLevels == 1)
+	if (outImage->m_mipLevels == 1)
 	{
-		cmdBuffer->ImageMemoryBarrier(res, res->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		cmdBuffer->ImageMemoryBarrier(outImage, outImage->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 	else
 	{
-		cmdBuffer->GenerateMipMaps(res);
+		cmdBuffer->GenerateMipMaps(outImage);
 	}
 
 	cmdBuffer->EndCommandList();
-	device->SubmitCommandBuffer(cmdBuffer, fence);
 
+	return cmdBuffer;
+}
+
+VulkanImagePtr VulkanApi::CreateImage_Immediate(
+	VulkanDevicePtr device,
+	const void* pData,
+	VkDeviceSize size,
+	VkExtent3D extent,
+	uint32_t mipLevels,
+	VkImageType type,
+	VkFormat format,
+	VkImageTiling tiling,
+	VkImageUsageFlags usage,
+	VkSharingMode sharingMode)
+{
+
+	VulkanImagePtr res{};
+	auto cmd = CreateImage(res, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode);
+	
+	auto fence = VulkanFencePtr::Make(device);
+	device->SubmitCommandBuffer(cmd, fence);
 	fence->Wait();
 
 	return res;

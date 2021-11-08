@@ -9,11 +9,18 @@ using namespace Sailor::GfxDevice::Vulkan;
 
 void VulkanImage::Release()
 {
+	if (m_ptr)
+	{
+		m_device->GetMemoryAllocator(m_deviceMemory->GetMemoryPropertyFlags(), m_deviceMemory->GetMemoryRequirements()).Free(m_ptr);
+	}
+
 	if (m_image)
 	{
 		vkDestroyImage(*m_device, m_image, nullptr);
 		m_image = VK_NULL_HANDLE;
 	}
+
+	m_deviceMemory.Clear();
 }
 
 VkMemoryRequirements VulkanImage::GetMemoryRequirements() const
@@ -48,6 +55,13 @@ VkResult VulkanImage::Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memo
 		m_memoryOffset = memoryOffset;
 	}
 	return result;
+}
+
+
+VkResult VulkanImage::Bind(TMemoryPtr<VulkanMemoryPtr> ptr)
+{
+	m_ptr = ptr;
+	return Bind((*ptr).m_deviceMemory, ptr.m_offset);
 }
 
 void VulkanImage::Compile()

@@ -145,6 +145,19 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API VulkanBufferPtr CreateBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 		static SAILOR_API VulkanCommandBufferPtr CreateBuffer(VulkanBufferPtr& outbuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
+		static SAILOR_API VulkanCommandBufferPtr CreateImage(
+			VulkanImagePtr& outImage,
+			VulkanDevicePtr device,
+			const void* pData,
+			VkDeviceSize size,
+			VkExtent3D extent,
+			uint32_t mipLevels = 1,
+			VkImageType type = VK_IMAGE_TYPE_2D,
+			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB,
+			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
+			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE);
+
 		//Immediate context
 		static SAILOR_API VulkanBufferPtr CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 		static SAILOR_API void CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr  src, VulkanBufferPtr dst, VkDeviceSize size);
