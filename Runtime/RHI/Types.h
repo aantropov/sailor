@@ -386,19 +386,7 @@ namespace Sailor::RHI
 		SAILOR_API Resource& operator =(Resource&& rhs) = default;
 	};
 
-	class IObservable
-	{
-	public:
-		SAILOR_API IObservable() = default;
-		SAILOR_API IObservable(IObservable&) = default;
-		SAILOR_API IObservable(IObservable&&) = default;
-		SAILOR_API IObservable& operator=(IObservable&) = default;
-		SAILOR_API IObservable& operator=(IObservable&&) = default;
-		virtual SAILOR_API ~IObservable() = default;
-
-		virtual void SAILOR_API TraceVisit(TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) = 0;
-	};
-
+	// Used to hold/track RHI resources
 	class IDependent
 	{
 	public:
@@ -417,6 +405,19 @@ namespace Sailor::RHI
 
 	protected:
 		std::vector<TRefPtr<Resource>> m_dependencies;
+	};
+	
+	class IObservable
+	{
+	public:
+		SAILOR_API IObservable() = default;
+		SAILOR_API IObservable(IObservable&) = default;
+		SAILOR_API IObservable(IObservable&&) = default;
+		SAILOR_API IObservable& operator=(IObservable&) = default;
+		SAILOR_API IObservable& operator=(IObservable&&) = default;
+		virtual SAILOR_API ~IObservable() = default;
+
+		virtual void SAILOR_API TraceVisit(TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) = 0;
 	};
 
 	class IVisitor
@@ -461,6 +462,7 @@ namespace Sailor::RHI
 		std::vector<TRefPtr<RHI::Resource>> m_elements;
 	};
 
+	// Used to create resource after create the instance of class
 	class IExplicitInitialization
 	{
 	public:
@@ -469,6 +471,16 @@ namespace Sailor::RHI
 		SAILOR_API virtual void Release() = 0;
 	};
 
+	// Used to track resource create/update with command lists
+	class IDelayedInitialization : public IObservable, public IDependent
+	{
+	public:
+
+		virtual void TraceVisit(class TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) override;
+		virtual bool IsReady() const;
+	};
+
+	// Used as composing approach to build the object by functionality
 	template<typename TState>
 	class IStateModifier
 	{

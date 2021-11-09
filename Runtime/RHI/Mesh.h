@@ -5,16 +5,15 @@
 
 namespace Sailor::RHI
 {
-	class Mesh : public Resource, public IObservable, public IDependent
+	class Mesh : public Resource, public IDelayedInitialization
 	{
 	public:
 
 		BufferPtr m_vertexBuffer;
 		BufferPtr m_indexBuffer;
-		
-		virtual void TraceVisit(class TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) override;
 
-		bool IsReady() const;
+		virtual bool IsReady() const override;
+
 	protected:
 
 	};

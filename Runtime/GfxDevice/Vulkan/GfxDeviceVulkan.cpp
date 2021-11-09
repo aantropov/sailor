@@ -88,6 +88,9 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 	}
 
 	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence->m_vulkan.m_fence);
+
+	// Fence should hold command list during execution
+	fence->AddDependency(commandList);
 }
 
 RHI::BufferPtr GfxDeviceVulkan::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
@@ -129,7 +132,7 @@ void GfxDeviceVulkan::CopyBuffer_Immediate(RHI::BufferPtr src, RHI::BufferPtr ds
 	m_vkInstance->CopyBuffer_Immediate(m_vkInstance->GetMainDevice(), src->m_vulkan.m_buffer, dst->m_vulkan.m_buffer, size);
 }
 
-TRefPtr<RHI::Texture> GfxDeviceVulkan::CreateImage_Immediate(
+RHI::TexturePtr GfxDeviceVulkan::CreateImage_Immediate(
 	const void* pData,
 	size_t size,
 	glm::ivec3 extent,
@@ -143,8 +146,40 @@ TRefPtr<RHI::Texture> GfxDeviceVulkan::CreateImage_Immediate(
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	TRefPtr<RHI::Texture> res = TRefPtr<RHI::Texture>::Make();
-
+	RHI::TexturePtr res = TRefPtr<RHI::Texture>::Make();
 	res->m_vulkan.m_image = m_vkInstance->CreateImage_Immediate(m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
 	return res;
+}
+
+RHI::TexturePtr GfxDeviceVulkan::CreateImage(
+	const void* pData,
+	size_t size,
+	glm::ivec3 extent,
+	uint32_t mipLevels,
+	RHI::ETextureType type,
+	RHI::ETextureFormat format,
+	RHI::ETextureUsageFlags usage)
+{
+	RHI::TexturePtr outTexture = RHI::TexturePtr::Make();
+
+	VkExtent3D vkExtent;
+	vkExtent.width = extent.x;
+	vkExtent.height = extent.y;
+	vkExtent.depth = extent.z;
+	
+	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
+	cmdList->m_vulkan.m_commandBuffer = m_vkInstance->CreateImage(outTexture->m_vulkan.m_image, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+
+	TRefPtr<RHI::Fence> fenceUpdateRes = TRefPtr<RHI::Fence>::Make();
+
+	// Submit cmd lists
+	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create texture",
+		([this, fenceUpdateRes, cmdList]()
+	{
+		SubmitCommandList(cmdList, fenceUpdateRes);
+	}));
+
+	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
+
+	return outTexture;
 }

@@ -41,7 +41,15 @@ namespace Sailor::RHI
 		virtual SAILOR_API CommandListPtr CreateBuffer(BufferPtr& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API MeshPtr CreateMesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
 		virtual SAILOR_API ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
-
+		virtual SAILOR_API TexturePtr CreateImage(
+			const void* pData,
+			size_t size,
+			glm::ivec3 extent,
+			uint32_t mipLevels = 1,
+			ETextureType type = ETextureType::Texture2D,
+			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
+			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
+		
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
 
 		//Immediate context
@@ -57,11 +65,13 @@ namespace Sailor::RHI
 			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		//Immediate context
-
+				
 		void TrackResources();
 
 	protected:
 
+		void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
+		
 		std::mutex m_mutexTrackedFences;
 		std::vector<FencePtr> m_trackedFences;
 	};

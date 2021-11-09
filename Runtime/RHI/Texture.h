@@ -7,7 +7,7 @@ using namespace GfxDevice::Vulkan;
 
 namespace Sailor::RHI
 {
-	class Texture : public Resource
+	class Texture : public Resource, public IDelayedInitialization
 	{
 	public:
 #if defined(VULKAN)
@@ -16,7 +16,5 @@ namespace Sailor::RHI
 			VulkanImagePtr m_image;
 		} m_vulkan;
 #endif
-
-		bool IsReady() const { return true; }
 	};
 };

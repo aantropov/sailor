@@ -33,6 +33,14 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual SAILOR_API RHI::BufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
 		virtual SAILOR_API RHI::CommandListPtr CreateBuffer(RHI::BufferPtr& outbuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
 		virtual SAILOR_API RHI::ShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv);
+		virtual SAILOR_API RHI::TexturePtr CreateImage(
+			const void* pData,
+			size_t size,
+			glm::ivec3 extent,
+			uint32_t mipLevels = 1,
+			RHI::ETextureType type = RHI::ETextureType::Texture2D,
+			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
+			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
 
 		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, TRefPtr<RHI::Fence> fence);
 

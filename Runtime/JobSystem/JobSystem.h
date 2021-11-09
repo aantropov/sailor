@@ -100,7 +100,6 @@ namespace Sailor
 				std::mutex& mutex,
 				std::list<TSharedPtr<Job>>& pJobsQueue);
 
-
 			virtual SAILOR_API ~WorkerThread() = default;
 
 			SAILOR_API WorkerThread(WorkerThread&& move) = delete;

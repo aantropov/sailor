@@ -17,12 +17,12 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
 
 	auto updateVerticesCmd = CreateBuffer(res->m_vertexBuffer,
-		reinterpret_cast<void const*>(&vertices[0]),
+		&vertices[0],
 		bufferSize,
 		EBufferUsageBit::VertexBuffer_Bit);
 
 	auto updateIndexCmd = CreateBuffer(res->m_indexBuffer,
-		reinterpret_cast<void const*>(&indices[0]),
+		&indices[0],
 		indexBufferSize,
 		EBufferUsageBit::IndexBuffer_Bit);
 
@@ -38,25 +38,8 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 		SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
 	}));
 
-	// Fence should notify mesh, when cmd list is finished
-	fenceUpdateVertices->AddObservable(res);
-	fenceUpdateIndex->AddObservable(res);
-
-	// Fence should hold cmd list, during it is executed
-	fenceUpdateVertices->AddDependency(updateVerticesCmd);
-	fenceUpdateIndex->AddDependency(updateIndexCmd);
-
-	// Mesh should hold fences, during cmd list is executed
-	res->AddDependency(fenceUpdateVertices);
-	res->AddDependency(fenceUpdateIndex);
-
-	{
-		std::unique_lock<std::mutex>(m_mutexTrackedFences);
-
-		// We should track fences to notity the mesh that cmd lists are finished
-		m_trackedFences.push_back(fenceUpdateVertices);
-		m_trackedFences.push_back(fenceUpdateIndex);
-	}
+	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateVertices);
+	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateIndex);
 
 	return res;
 }
@@ -67,19 +50,37 @@ void IGfxDevice::TrackResources()
 
 	for (int32_t index = 0; index < m_trackedFences.size(); index++)
 	{
-		FencePtr cmd = m_trackedFences[index];
+		FencePtr fence = m_trackedFences[index];
 
-		if (cmd->IsFinished())
+		if (fence->IsFinished())
 		{
-			cmd->TraceObservables();
-			cmd->ClearDependencies();
-			cmd->ClearObservables();
+			fence->TraceObservables();
+			fence->ClearDependencies();
+			fence->ClearObservables();
 
 			std::iter_swap(m_trackedFences.begin() + index, m_trackedFences.end() - 1);
 			m_trackedFences.pop_back();
 
 			index--;
 		}
+	}
+}
+
+void IGfxDevice::TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle)
+{
+	auto resource = dynamic_cast<Resource*>(pResource);
+
+	// Fence should notify res, when cmd list is finished
+	handle->AddObservable(resource);
+
+	// Res should hold fences to track dependencies
+	pResource->AddDependency(handle);
+
+	{
+		std::unique_lock<std::mutex>(m_mutexTrackedFences);
+		
+		// We should track fences to notity the res that cmd lists are finished
+		m_trackedFences.push_back(handle);
 	}
 }
 

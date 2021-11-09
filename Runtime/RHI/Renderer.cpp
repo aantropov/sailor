@@ -1,4 +1,5 @@
 #include <mutex>
+#include "Types.h"
 #include "Renderer.h"
 #include "Mesh.h"
 #include "GfxDevice.h"
@@ -11,6 +12,35 @@
 
 using namespace Sailor;
 using namespace Sailor::RHI;
+
+void IDelayedInitialization::TraceVisit(class TRefPtr<Resource> visitor, bool& bShouldRemoveFromList)
+{
+	bShouldRemoveFromList = false;
+
+	if (auto fence = TRefPtr<RHI::Fence>(visitor.GetRawPtr()))
+	{
+		if (fence->IsFinished())
+		{
+			auto it = std::find_if(m_dependencies.begin(), m_dependencies.end(),
+				[&fence](const auto& lhs)
+			{
+				return fence.GetRawPtr() == lhs.GetRawPtr();
+			});
+
+			if (it != std::end(m_dependencies))
+			{
+				std::iter_swap(it, m_dependencies.end() - 1);
+				m_dependencies.pop_back();
+				bShouldRemoveFromList = true;
+			}
+		}
+	}
+}
+
+bool IDelayedInitialization::IsReady() const
+{
+	return m_dependencies.size() == 0;
+}
 
 void Renderer::Initialize(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
@@ -34,9 +64,9 @@ Renderer::~Renderer()
 	m_driverInstance.Clear();
 }
 
-TUniquePtr<IGfxDevice>& Renderer::GetDriver() 
+TUniquePtr<IGfxDevice>& Renderer::GetDriver()
 {
-	return m_pInstance->m_driverInstance; 
+	return m_pInstance->m_driverInstance;
 }
 
 void Renderer::FixLostDevice()
@@ -93,7 +123,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			{
 				m_pureFps = 0;
 			}
-		
+
 			SAILOR_PROFILE_END_BLOCK();
 
 		} while (m_pViewport->IsIconic());
