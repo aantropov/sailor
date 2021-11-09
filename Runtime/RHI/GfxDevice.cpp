@@ -31,7 +31,7 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 	TRefPtr<RHI::Fence> fenceUpdateIndex = TRefPtr<RHI::Fence>::Make();
 
 	// Submit cmd lists
-	SAILOR_EQUEUE_JOB_RENDER_THREAD("Create mesh", 
+	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh", 
 		([this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
 	{
 		SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
