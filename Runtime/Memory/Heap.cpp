@@ -436,6 +436,7 @@ void PoolAllocator::Free(void* ptr)
 		page.m_bIsInFreeList = true;
 	}
 
+#ifndef SAILOR_MEMORY_HEAP_DISABLE_FREE
 	if (page.IsEmpty() && m_freeList.size() > 1)
 	{
 		m_emptyPages.push_back(block->m_pageIndex);
@@ -446,6 +447,7 @@ void PoolAllocator::Free(void* ptr)
 		m_freeList.pop_back();
 		page.Clear();
 	}
+#endif
 }
 
 PoolAllocator::~PoolAllocator()
@@ -600,7 +602,8 @@ void SmallPoolAllocator::Free(void* ptr)
 		page.m_bIsInFreeList = true;
 	}
 
-	if (page.IsEmpty() && m_freeList.size() > 2)
+#ifndef SAILOR_MEMORY_HEAP_DISABLE_FREE
+	if (page.IsEmpty() && m_freeList.size() > 1)
 	{
 		m_emptyPages.push_back(blockIndex);
 
@@ -613,6 +616,8 @@ void SmallPoolAllocator::Free(void* ptr)
 
 		page.Clear();
 	}
+#endif
+
 }
 
 SmallPoolAllocator::~SmallPoolAllocator()

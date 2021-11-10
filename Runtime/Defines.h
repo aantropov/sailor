@@ -29,6 +29,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 
 #define NOMINMAX
 
+//#define SAILOR_MEMORY_HEAP_DISABLE_FREE
+
 #ifndef _WINDEF_
 typedef unsigned long DWORD;
 #endif
