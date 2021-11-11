@@ -909,10 +909,13 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 	return poolSize;
 }
 
-std::vector<VulkanDescriptorSetLayoutPtr> VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
-	const std::vector<VulkanShaderStagePtr>& shaders)
+bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
+	const std::vector<VulkanShaderStagePtr>& shaders, 
+	std::vector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts, 
+	std::vector<RHI::ShaderBinding>& outRhiLayout)
 {
-	std::vector<std::vector<VkDescriptorSetLayoutBinding>> layouts;
+	std::vector<std::vector<VkDescriptorSetLayoutBinding>> vulkanLayouts;
+	std::vector<std::vector<RHI::ShaderBinding>> rhiLayouts;
 
 	uint32_t countDescriptorSets = 0;
 	for (uint32_t i = 0; i < shaders.size(); i++)
@@ -920,24 +923,41 @@ std::vector<VulkanDescriptorSetLayoutPtr> VulkanApi::CreateDescriptorSetLayouts(
 		countDescriptorSets = std::max(countDescriptorSets, (uint32_t)shaders[i]->GetDescriptorSetLayoutBindings().size());
 	}
 
-	layouts.resize(countDescriptorSets);
+	vulkanLayouts.resize(countDescriptorSets);
+	rhiLayouts.resize(countDescriptorSets);
 
 	for (uint32_t i = 0; i < shaders.size(); i++)
 	{
 		for (uint32_t j = 0; j < shaders[i]->GetDescriptorSetLayoutBindings().size(); j++)
 		{
 			auto& bindings = shaders[i]->GetDescriptorSetLayoutBindings()[j];
-			layouts[j].insert(layouts[j].end(), bindings.cbegin(), bindings.cend());
+			auto& rhiBindings = shaders[i]->GetBindings()[j];
+
+			vulkanLayouts[j].insert(vulkanLayouts[j].end(), bindings.cbegin(), bindings.cend());
+			rhiLayouts[j].insert(rhiLayouts[j].end(), rhiBindings.cbegin(), rhiBindings.cend());
 		}
 	}
 
 	std::vector<VulkanDescriptorSetLayoutPtr> res;
-	res.resize(layouts.size());
-
-	for (uint32_t i = 0; i < layouts.size(); i++)
+	res.resize(vulkanLayouts.size());
+	
+	for (uint32_t i = 0; i < vulkanLayouts.size(); i++)
 	{
-		res[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(layouts[i]));
+		res[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(vulkanLayouts[i]));
 	}
 
-	return res;
+	std::vector<RHI::ShaderBinding> rhiRes;
+
+	for (uint32_t i = 0; i < vulkanLayouts.size(); i++)
+	{
+		for (auto& rhi : rhiLayouts[i])
+		{
+			rhiRes.push_back(std::move(rhi));
+		}
+	}
+
+	outVulkanLayouts = std::move(res);
+	outRhiLayout = std::move(rhiRes);
+
+	return countDescriptorSets > 0;
 }

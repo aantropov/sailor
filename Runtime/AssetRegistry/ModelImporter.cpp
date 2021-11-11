@@ -43,49 +43,51 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Ve
 		auto jobLoad = JobSystem::Scheduler::CreateJob("Check unique vertices",
 			[&outIndices, &outVertices, assetInfo]() {
 
-			tinyobj::attrib_t attrib;
-			std::vector<tinyobj::shape_t> shapes;
-			std::vector<tinyobj::material_t> materials;
-			std::string warn;
-			std::string err;
+				tinyobj::attrib_t attrib;
+				std::vector<tinyobj::shape_t> shapes;
+				std::vector<tinyobj::material_t> materials;
+				std::string warn;
+				std::string err;
 
-			if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str()))
-			{
-				SAILOR_LOG("%s %s", warn.c_str(), err.c_str());
-				return;
-			}
-
-			std::unordered_map<RHI::Vertex, uint32_t> uniqueVertices{};
-
-			for (const auto& shape : shapes)
-			{
-				for (const auto& index : shape.mesh.indices)
+				if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str()))
 				{
-					RHI::Vertex vertex{};
-
-					vertex.m_position = {
-					attrib.vertices[3 * index.vertex_index + 0],
-					attrib.vertices[3 * index.vertex_index + 1],
-					attrib.vertices[3 * index.vertex_index + 2]
-					};
-
-					vertex.m_texcoord = {
-						attrib.texcoords[2 * index.texcoord_index + 0],
-						1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-					};
-
-					vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-					if (uniqueVertices.count(vertex) == 0)
-					{
-						uniqueVertices[vertex] = static_cast<uint32_t>(outVertices.size());
-						outVertices.push_back(vertex);
-					}
-
-					outIndices.push_back(uniqueVertices[vertex]);
+					SAILOR_LOG("%s %s", warn.c_str(), err.c_str());
+					return;
 				}
-			}
-		});
+
+				std::unordered_map<RHI::Vertex, uint32_t> uniqueVertices{};
+
+				for (const auto& shape : shapes)
+				{
+					for (const auto& index : shape.mesh.indices)
+					{
+						RHI::Vertex vertex{};
+
+						vertex.m_position =
+						{
+						attrib.vertices[3 * index.vertex_index + 0],
+						attrib.vertices[3 * index.vertex_index + 1],
+						attrib.vertices[3 * index.vertex_index + 2]
+						};
+
+						vertex.m_texcoord =
+						{
+							attrib.texcoords[2 * index.texcoord_index + 0],
+							1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+						};
+
+						vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+						if (uniqueVertices.count(vertex) == 0)
+						{
+							uniqueVertices[vertex] = static_cast<uint32_t>(outVertices.size());
+							outVertices.push_back(vertex);
+						}
+
+						outIndices.push_back(uniqueVertices[vertex]);
+					}
+				}
+			});
 
 		JobSystem::Scheduler::GetInstance()->Run(jobLoad);
 

@@ -340,6 +340,53 @@ namespace Sailor::RHI
 		Multiply = 0x00000003
 	};
 
+	enum class EShaderBindingType
+	{
+		Sampler = 0,
+		CombinedImageSampler = 1,
+		SampledImage = 2,
+		StorageImage = 3,
+		UniformTexelBuffer = 4,
+		StorageTexelBuffer = 5,
+		UniformBuffer = 6,
+		StorageBuffer = 7,
+		UniformBufferDynamic = 8,
+		StorageBufferDynamic = 9,
+		InputAttachment = 10,
+		AccelerationStructureKhr = 1000150000
+	};
+
+	enum class EShaderBindingMemberType
+	{
+		Bool = 20,
+		Int = 21,
+		Float = 22,
+		Vector = 23,
+		Matrix = 24,
+		Image = 25,
+		Sampler = 26,
+		SampledImage = 27,
+		Array = 28,
+		RuntimeArray = 29,
+		Struct = 30
+	};
+
+	struct ShaderBindingMember
+	{
+		EShaderBindingMemberType m_type;
+		std::string m_name;
+		uint32_t m_offset;
+		uint32_t m_size;
+	};
+
+	struct ShaderBinding
+	{
+		EShaderBindingType m_type;
+		std::string m_name;
+
+		std::vector<ShaderBindingMember> m_members;
+	};
+
 	class Vertex
 	{
 	public:

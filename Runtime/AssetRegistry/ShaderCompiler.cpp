@@ -383,7 +383,7 @@ void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::st
 			ForceCompilePermutation(assetUID, permutation);
 		}
 
-		m_pInstance->m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode);
+		m_pInstance->m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, bIsDebug);
 	}
 }
 

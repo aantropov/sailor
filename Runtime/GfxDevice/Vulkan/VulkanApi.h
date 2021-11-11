@@ -130,8 +130,10 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API VulkanImageViewPtr CreateImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags);
 		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
-		static SAILOR_API std::vector<VulkanDescriptorSetLayoutPtr> CreateDescriptorSetLayouts(VulkanDevicePtr device,
-			const std::vector<VulkanShaderStagePtr>& shaders);
+		static SAILOR_API bool CreateDescriptorSetLayouts(VulkanDevicePtr device,
+			const std::vector<VulkanShaderStagePtr>& shaders,
+			std::vector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
+			std::vector<RHI::ShaderBinding>& outRhiLayout);
 
 		static SAILOR_API VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
 			uint32_t              binding = 0,

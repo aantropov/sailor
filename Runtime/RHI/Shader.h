@@ -20,6 +20,7 @@ namespace Sailor::RHI
 #endif
 
 		EShaderStage GetStage() const { return m_stage; }
+
 	protected:
 
 		EShaderStage m_stage;

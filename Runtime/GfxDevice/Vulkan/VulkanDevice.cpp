@@ -370,14 +370,27 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		const TRefPtr<VulkanStateMultisample> pMultisample = TRefPtr<VulkanStateMultisample>::Make(GetCurrentMsaaSamples());
 
-		auto descriptorSetLayouts = VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr(this), { g_testVertShader , g_testFragShader });
+		std::vector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
+		std::vector<RHI::ShaderBinding> bindings;
+
+		VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr(this), { g_testVertShader , g_testFragShader }, descriptorSetLayouts, bindings);
 		
 		m_pipelineLayout = VulkanPipelineLayoutPtr::Make(VulkanDevicePtr(this),
 			descriptorSetLayouts,
 			std::vector<VkPushConstantRange>(),
 			0);
 
-		std::vector<VulkanPipelineStatePtr> states = { pStateViewport, pVertexDescription, pInputAssembly, pStateRasterizer, pDynamicState, pDepthStencil, pColorBlending, pMultisample };
+		std::vector<VulkanPipelineStatePtr> states = 
+		{ 
+			pStateViewport, 
+			pVertexDescription, 
+			pInputAssembly, 
+			pStateRasterizer, 
+			pDynamicState, 
+			pDepthStencil, 
+			pColorBlending, 
+			pMultisample 
+		};
 
 		m_graphicsPipeline = VulkanPipelinePtr::Make(VulkanDevicePtr(this),
 			m_pipelineLayout,
