@@ -341,7 +341,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		std::vector<uint32_t> vertCode;
 		std::vector<uint32_t> fragCode;
 
-		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode, true);
+		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode, false);
 
 		g_testVertShader = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", VulkanDevicePtr(this), vertCode);
 		g_testFragShader = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", VulkanDevicePtr(this), fragCode);
