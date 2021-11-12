@@ -331,13 +331,6 @@ void VulkanDevice::CreateGraphicsPipeline()
 {
 	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ShaderAssetInfoPtr>("Shaders\\Simple.shader"))
 	{
-		const VkDeviceSize uniformBufferSize = sizeof(RHI::UboTransform);
-
-		m_uniformBuffer = VulkanApi::CreateBuffer(VulkanDevicePtr(this),
-			uniformBufferSize,
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
 		std::vector<uint32_t> vertCode;
 		std::vector<uint32_t> fragCode;
 
@@ -404,6 +397,13 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<TextureAssetInfoPtr>("Textures\\VulkanLogo.png"))
 	{
+		const VkDeviceSize uniformBufferSize = sizeof(RHI::UboTransform);
+
+		m_uniformBuffer = VulkanApi::CreateBuffer(VulkanDevicePtr(this),
+			uniformBufferSize,
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
 		TextureImporter::ByteCode data;
 		int32_t width;
 		int32_t height;

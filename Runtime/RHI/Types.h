@@ -325,6 +325,13 @@ namespace Sailor::RHI
 		Compute = 0x00000020
 	};
 
+	enum class EFillMode : uint8_t
+	{
+		Fill = 0,
+		Line = 1,
+		Point = 2
+	};
+
 	enum class ECullMode : uint8_t
 	{
 		Front = 0x00000001,
@@ -340,7 +347,7 @@ namespace Sailor::RHI
 		Multiply = 0x00000003
 	};
 
-	enum class EShaderBindingType
+	enum class EShaderBindingType : uint8_t
 	{
 		Sampler = 0,
 		CombinedImageSampler = 1,
@@ -352,11 +359,10 @@ namespace Sailor::RHI
 		StorageBuffer = 7,
 		UniformBufferDynamic = 8,
 		StorageBufferDynamic = 9,
-		InputAttachment = 10,
-		AccelerationStructureKhr = 1000150000
+		InputAttachment = 10
 	};
 
-	enum class EShaderBindingMemberType
+	enum class EShaderBindingMemberType : uint8_t
 	{
 		Bool = 20,
 		Int = 21,
@@ -369,6 +375,25 @@ namespace Sailor::RHI
 		Array = 28,
 		RuntimeArray = 29,
 		Struct = 30
+	};
+
+	struct RenderState
+	{
+		bool IsDepthTestEnabled() const { return m_bEnableDepthTest; }
+		bool IsEnabledZWrite() const { return m_bEnableZWrite; }
+		ECullMode GetCullMode() const { return m_cullMode; }
+		EBlendMode GetBlendMode() const { return m_blendMode; }
+		EFillMode GetFillMode() const { return m_fillMode; }
+		float GetDepthBias() const { return m_depthBias; }
+
+	private:
+
+		bool m_bEnableDepthTest = true;
+		bool m_bEnableZWrite = true;
+		float m_depthBias = 0.0f;
+		ECullMode m_cullMode = ECullMode::Back;
+		EBlendMode m_blendMode = EBlendMode::None;
+		EFillMode m_fillMode = EFillMode::Fill;
 	};
 
 	struct ShaderBindingMember
@@ -453,7 +478,7 @@ namespace Sailor::RHI
 	protected:
 		std::vector<TRefPtr<Resource>> m_dependencies;
 	};
-	
+
 	class IObservable
 	{
 	public:
@@ -539,6 +564,16 @@ namespace Sailor::RHI
 
 namespace std
 {
+	inline void hash_combine(std::size_t& seed) { }
+
+	template <typename T, typename... Rest>
+	inline void hash_combine(std::size_t& seed, const T& v, Rest... rest)
+	{
+		std::hash<T> hasher;
+		seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+		hash_combine(seed, rest...);
+	}
+
 	template<> struct hash<Sailor::RHI::Vertex>
 	{
 		SAILOR_API size_t operator()(Sailor::RHI::Vertex const& vertex) const
@@ -546,6 +581,25 @@ namespace std
 			return ((hash<glm::vec3>()(vertex.m_position) ^
 				(hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^
 				(hash<glm::vec2>()(vertex.m_texcoord) << 1);
+		}
+	};
+
+	template<> struct hash<Sailor::RHI::RenderState>
+	{
+		SAILOR_API size_t operator()(Sailor::RHI::RenderState const& state) const
+		{
+			auto hash1 = hash<uint8_t>()((uint8_t)state.GetBlendMode() ^
+				((uint8_t)state.GetCullMode() << 2) ^
+				((uint8_t)state.GetFillMode() << 4) ^
+				((uint8_t)state.IsDepthTestEnabled() << 5) ^
+				((uint8_t)state.IsEnabledZWrite() << 6));
+
+			auto hash2 = hash<float>()((float)state.GetDepthBias());
+
+			std::size_t hash = 0;
+			hash_combine(hash, hash1, hash2);
+
+			return hash;
 		}
 	};
 }

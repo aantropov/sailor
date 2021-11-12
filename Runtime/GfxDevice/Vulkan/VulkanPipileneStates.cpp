@@ -1,5 +1,6 @@
 #include "VulkanPipileneStates.h"
 #include "Core/RefPtr.hpp"
+#include "VulkanApi.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -158,7 +159,7 @@ VulkanStateDynamic::VulkanStateDynamic() : m_dynamicState{}
 	m_dynamicStates.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
 
 	m_dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	m_dynamicState.dynamicStateCount = 2;
+	m_dynamicState.dynamicStateCount = (uint32_t)m_dynamicStates.size();
 	m_dynamicState.pDynamicStates = m_dynamicStates.data();
 }
 

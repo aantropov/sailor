@@ -17,23 +17,16 @@ namespace Sailor
 	{
 	public:
 
-		bool IsDepthTestEnabled() const { return m_bEnableDepthTest; }
-		bool IsEnabledZWrite() const { return m_bEnableZWrite; }
+		const RHI::RenderState& GetRenderState() const { return m_renderState; }
 		bool IsTransparent() const { return m_bIsTransparent; }
-		ECullMode GetCullMode() const { return m_cullMode; }
-		EBlendMode GetBlendMode() const { return m_blendMode; }
-		float GetDepthBias() const { return m_depthBias; }
 		const std::string& GetRenderQueue() const { return m_renderQueue; }
 
 	protected:
 
-		bool m_bEnableDepthTest = true;
-		bool m_bEnableZWrite = true;
-		float m_depthBias = 0.0f;
-		ECullMode m_cullMode = ECullMode::Back;
+		RHI::RenderState m_renderState;
+
 		std::string m_renderQueue = "Opaque";
 		bool m_bIsTransparent = false;
-		EBlendMode m_blendMode = EBlendMode::None;
 
 		UID m_vertexShader;
 		UID m_fragmentShader;

@@ -48,12 +48,19 @@ namespace Sailor::GfxDevice::Vulkan
 	typedef TRefPtr<class VulkanImageView> VulkanImageViewPtr;
 	typedef TRefPtr<class VulkanPipeline> VulkanPipelinePtr;
 	typedef TRefPtr<class VulkanFramebuffer> VulkanFramebufferPtr;
-	typedef TRefPtr<class VulkanStateViewport> VulkanStateViewportPtr;
 	typedef TRefPtr<class VulkanSwapchain> VulkanSwapchainPtr;
 	typedef TRefPtr<class VulkanDescriptorSet> VulkanDescriptorSetPtr;
 	typedef TRefPtr<class VulkanSwapchain> VulkanSwapchainPtr;
 	typedef TRefPtr<class VulkanDescriptorBuffer> VulkanDescriptorBufferPtr;
 	typedef TRefPtr<class VulkanDescriptorImage> VulkanDescriptorImagePtr;
+	typedef TRefPtr<class VulkanStateColorBlending> VulkanStateColorBlendingPtr;
+	typedef TRefPtr<class VulkanStateViewport> VulkanStateViewportPtr;
+	typedef TRefPtr<class VulkanStateRasterization> VulkanStateRasterizationPtr;
+	typedef TRefPtr<class VulkanStateDynamicViewport> VulkanStateDynamicViewportPtr;
+	typedef TRefPtr<class VulkanStateMultisample> VulkanStateMultisamplePtr;
+	typedef TRefPtr<class VulkanStateDepthStencil> VulkanStateDepthStencilPtr;
+	typedef TRefPtr<class VulkanStateInputAssembly> VulkanStateInputAssemblyPtr;
+	typedef TRefPtr<class VulkanStateVertexDescription> VulkanStateVertexDescriptionPtr;
 
 #define VK_CHECK(call) \
 	do { \
@@ -199,5 +206,10 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VkInstance m_vkInstance = 0;
 		VulkanDevicePtr m_device;
+
+		VulkanStateColorBlendingPtr m_additiveBlendMode;
+		VulkanStateColorBlendingPtr m_alphaBlendingBlendMode;
+		VulkanStateColorBlendingPtr m_multiplyBlendMode;
+
 	};
 }
