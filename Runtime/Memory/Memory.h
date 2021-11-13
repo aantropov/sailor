@@ -137,6 +137,7 @@ namespace Sailor::Memory
 		return false;
 	}
 
+	// The core class to work with different pointers to data (for example pointer to DeviceMemory or pointer 'inside' VulkanBuffer)
 	template<typename TPtr>
 	class TMemoryPtr
 	{

@@ -96,14 +96,14 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 RHI::BufferPtr GfxDeviceVulkan::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
 {
 	RHI::BufferPtr res = RHI::BufferPtr::Make();
-	res->m_vulkan.m_buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD);
+	res->m_vulkan.m_buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	return res;
 }
 
 RHI::CommandListPtr GfxDeviceVulkan::CreateBuffer(RHI::BufferPtr& outBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
 {
-	outBuffer = RHI::BufferPtr::Make();
+	outBuffer = CreateBuffer(size, usage);
 	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
 
 	cmdList->m_vulkan.m_commandBuffer = m_vkInstance->CreateBuffer(outBuffer->m_vulkan.m_buffer,
@@ -190,3 +190,19 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 
 	return res;
 }
+
+VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const std::string& uniformTypeId)
+{
+	auto it = m_uniformBuffers.find(uniformTypeId);
+	if (it != m_uniformBuffers.end())
+	{
+		return (*it).second;
+	}
+
+	auto& uniformAllocator = m_uniformBuffers[uniformTypeId];
+	uniformAllocator.GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+	uniformAllocator.GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	
+	return uniformAllocator;
+}
+

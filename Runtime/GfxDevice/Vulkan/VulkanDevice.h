@@ -16,6 +16,8 @@ class Sailor::Win32::Window;
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	using VulkanDeviceMemoryAllocator = TBlockAllocator<GlobalVulkanMemoryAllocator, VulkanMemoryPtr>;
+
 	// Thread independent resources
 	struct ThreadContext
 	{
@@ -149,6 +151,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanImageViewPtr m_imageView;
 
 		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
-		std::unordered_map<uint64_t, TBlockAllocator<GlobalVulkanMemoryAllocator, VulkanMemoryPtr>> m_memoryAllocators;
+
+		// We're sharing the same device memory between the different buffers
+		std::unordered_map<uint64_t, VulkanDeviceMemoryAllocator> m_memoryAllocators;
 	};
 }

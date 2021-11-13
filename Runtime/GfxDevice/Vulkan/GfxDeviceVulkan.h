@@ -1,6 +1,7 @@
 #pragma once
 #include "Defines.h"
 #include "Core/RefPtr.hpp"
+#include "Memory/MemoryPoolAllocator.hpp"
 #include "RHI/Types.h"
 #include "RHI/GfxDevice.h"
 #include "RHI/Texture.h"
@@ -16,6 +17,8 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	using VulkanUniformBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
+
 	class GfxDeviceVulkan : public RHI::IGfxDevice
 	{
 	public:
@@ -64,6 +67,11 @@ namespace Sailor::GfxDevice::Vulkan
 
 	protected:
 
+		VulkanUniformBufferAllocator& GetUniformBufferAllocator(const std::string& uniformTypeId);
+
+		// Uniform buffers to store uniforms
+		std::unordered_map<std::string, VulkanUniformBufferAllocator> m_uniformBuffers;
+		
 		GfxDevice::Vulkan::VulkanApi* m_vkInstance;
 	};
 };

@@ -29,12 +29,15 @@ namespace Sailor::Memory
 	{
 	public:
 
+		SAILOR_API void SetMemoryProperties(VkMemoryPropertyFlags properties) { m_memoryProperties = properties; }
 		SAILOR_API void SetUsage(VkBufferUsageFlags usage) { m_usage = usage; }
 
 		SAILOR_API VulkanBufferMemoryPtr Allocate(size_t size);
 		SAILOR_API void Free(VulkanBufferMemoryPtr pData, size_t size);
 
 	protected:
+
+		VkMemoryPropertyFlags m_memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 		VkBufferUsageFlags m_usage;
 	};
 
