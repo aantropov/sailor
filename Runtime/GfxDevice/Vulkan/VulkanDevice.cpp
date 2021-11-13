@@ -193,7 +193,7 @@ VkFormat VulkanDevice::GetDepthFormat() const
 	);
 }
 
-TBlockAllocator<class GlobalVulkanAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
+TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
 {
 	uint64_t hash = properties | ((uint64_t)requirements.memoryTypeBits) << 32;
 

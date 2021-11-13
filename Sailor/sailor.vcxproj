@@ -197,6 +197,7 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.h" />
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBufferMemory.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDescriptors.h" />
@@ -258,6 +259,7 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.cpp" />
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBufferMemory.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDescriptors.cpp" />

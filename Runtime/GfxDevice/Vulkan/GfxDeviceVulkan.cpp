@@ -184,9 +184,9 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 	return outTexture;
 }
 
-RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderState)
+RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderState, RHI::ShaderPtr vertexShader, RHI::ShaderPtr fragmentShader)
 {
-	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState);
+	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState, vertexShader, fragmentShader);
 
 	return res;
 }

@@ -246,6 +246,9 @@
     <ClInclude Include="..\Runtime\RHI\Shader.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBufferMemory.h">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -409,6 +412,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\RHI\Shader.cpp">
       <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBufferMemory.cpp">
+      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

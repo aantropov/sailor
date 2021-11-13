@@ -51,7 +51,7 @@ namespace Sailor::RHI
 			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		
-		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState) = 0;
+		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, RHI::ShaderPtr vertexShader, RHI::ShaderPtr fragmentShader) = 0;
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
 
 		//Immediate context

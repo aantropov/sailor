@@ -25,24 +25,7 @@ namespace Sailor::Memory
 		size_t m_size{};
 	};
 
-	class VulkanBufferAsMemoryPtr
-	{
-	public:
-
-		VulkanBufferAsMemoryPtr() = default;
-		VulkanBufferAsMemoryPtr(TRefPtr<class Sailor::GfxDevice::Vulkan::VulkanBuffer> buffer);
-		VulkanBufferAsMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer> buffer, size_t offset, size_t size);
-
-		VulkanBufferAsMemoryPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer>& rhs);
-
-		operator bool();
-
-		TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer> m_buffer{};
-		size_t m_offset{};
-		size_t m_size{};
-	};
-
-	class GlobalVulkanAllocator
+	class GlobalVulkanMemoryAllocator
 	{
 	protected:
 
@@ -57,6 +40,8 @@ namespace Sailor::Memory
 		SAILOR_API VulkanMemoryPtr Allocate(size_t size);
 		SAILOR_API void Free(VulkanMemoryPtr pData, size_t size);
 	};
+
+// VulkanMemoryPtr & GlobalVulkanMemoryAllocator
 
 	template<typename TDataType, typename TPtr = VulkanMemoryPtr>
 	inline VulkanMemoryPtr GetPointer(TDataType& pData)
@@ -103,16 +88,16 @@ namespace Sailor::Memory
 		return nullptr;
 	}
 
-	template<typename TMemoryPtr, typename TPtr = VulkanMemoryPtr, typename TGlobalAllocator = GlobalVulkanAllocator>
-	TMemoryPtr Allocate(size_t size, GlobalVulkanAllocator* allocator)
+	template<typename TMemoryPtr, typename TPtr = VulkanMemoryPtr, typename TGlobalAllocator = GlobalVulkanMemoryAllocator>
+	TMemoryPtr Allocate(size_t size, GlobalVulkanMemoryAllocator* allocator)
 	{
 		TMemoryPtr newObj{};
 		newObj.m_ptr = allocator->Allocate(size);
 		return newObj;
 	}
 
-	template<typename TMemoryPtr, typename TPtr = VulkanMemoryPtr, typename TGlobalAllocator = GlobalVulkanAllocator>
-	void Free(TMemoryPtr& ptr, GlobalVulkanAllocator* allocator)
+	template<typename TMemoryPtr, typename TPtr = VulkanMemoryPtr, typename TGlobalAllocator = GlobalVulkanMemoryAllocator>
+	void Free(TMemoryPtr& ptr, GlobalVulkanMemoryAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
 		ptr.Clear();
@@ -135,4 +120,5 @@ namespace Sailor::Memory
 
 		return true;
 	}
+
 }

@@ -83,7 +83,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API void CreateGraphicsPipeline();
 
-		SAILOR_API TBlockAllocator<class GlobalVulkanAllocator, class VulkanMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
+		SAILOR_API TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 
 	protected:
 
@@ -149,6 +149,6 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanImageViewPtr m_imageView;
 
 		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
-		std::unordered_map<uint64_t, TBlockAllocator<GlobalVulkanAllocator, VulkanMemoryPtr>> m_memoryAllocators;
+		std::unordered_map<uint64_t, TBlockAllocator<GlobalVulkanMemoryAllocator, VulkanMemoryPtr>> m_memoryAllocators;
 	};
 }

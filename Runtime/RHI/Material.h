@@ -15,10 +15,11 @@ namespace Sailor::RHI
 			Sailor::GfxDevice::Vulkan::VulkanPipelinePtr m_pipeline;
 		} m_vulkan;
 #endif
-		Material(RenderState renderState) : m_renderState(std::move(renderState)) {}
+		Material(RenderState renderState, ShaderPtr vertexShader, ShaderPtr fragmentShader) :
+			m_renderState(std::move(renderState)),
+			m_vertexShader(vertexShader),
+			m_fragmentShader(fragmentShader) {}
 
-		bool IsTransparent() const { return m_bIsTransparent; }
-		const std::string& GetRenderQueue() const { return m_renderQueue; }
 		const RHI::RenderState& GetRenderState() const { return m_renderState; }
 		const std::vector<RHI::ShaderBinding>& GetBindings() const { return m_bindings; }
 
@@ -26,13 +27,12 @@ namespace Sailor::RHI
 
 		RHI::RenderState m_renderState;
 
-		std::string m_renderQueue = "Opaque";
-		bool m_bIsTransparent = false;
-
 		ShaderPtr m_vertexShader;
 		ShaderPtr m_fragmentShader;
 
 		std::vector<RHI::ShaderBinding> m_bindings;
+
+		friend class IGfxDevice;
 	};
 
 	class MaterialDynamic : public Material
