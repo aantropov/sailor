@@ -15,6 +15,7 @@ namespace Sailor::RHI
 			Sailor::GfxDevice::Vulkan::VulkanPipelinePtr m_pipeline;
 		} m_vulkan;
 #endif
+		Material(RenderState renderState) : m_renderState(std::move(renderState)) {}
 
 		bool IsTransparent() const { return m_bIsTransparent; }
 		const std::string& GetRenderQueue() const { return m_renderQueue; }

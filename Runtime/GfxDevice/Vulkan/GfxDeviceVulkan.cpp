@@ -183,3 +183,10 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 
 	return outTexture;
 }
+
+RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderState)
+{
+	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState);
+
+	return res;
+}

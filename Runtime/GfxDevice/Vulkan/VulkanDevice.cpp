@@ -87,9 +87,9 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	SAILOR_LOG("m_maxAllowedAnisotropy = %.2f", m_maxAllowedAnisotropy);
 	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMsaaSamples, m_currentMsaaSamples);
 
-	// Cache samplers
-	m_samplers = TUniquePtr<VulkanSamplers>::Make();
-	m_samplers->Initialize(VulkanDevicePtr(this));
+	// Cache samplers & states
+	m_samplers = TUniquePtr<VulkanSamplerCache>::Make(VulkanDevicePtr(this));
+	m_pipelineBuilder = TUniquePtr<VulkanPipelineStateBuilder>::Make(VulkanDevicePtr(this));
 
 	// Cache memory requirements
 	{
@@ -331,8 +331,8 @@ void VulkanDevice::CreateGraphicsPipeline()
 {
 	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ShaderAssetInfoPtr>("Shaders\\Simple.shader"))
 	{
-		std::vector<uint32_t> vertCode;
-		std::vector<uint32_t> fragCode;
+		RHI::ShaderByteCode vertCode;
+		RHI::ShaderByteCode fragCode;
 
 		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode, false);
 
@@ -341,27 +341,6 @@ void VulkanDevice::CreateGraphicsPipeline()
 
 		g_testVertShader->Compile();
 		g_testFragShader->Compile();
-
-		const TRefPtr<VulkanStateVertexDescription> pVertexDescription = TRefPtr<VulkanStateVertexDescription>::Make(
-			VertexFactory<RHI::Vertex>::GetBindingDescription(),
-			VertexFactory<RHI::Vertex>::GetAttributeDescriptions());
-
-		const TRefPtr<VulkanStateInputAssembly> pInputAssembly = TRefPtr<VulkanStateInputAssembly>::Make();
-		const TRefPtr<VulkanStateDynamicViewport> pStateViewport = TRefPtr<VulkanStateDynamicViewport>::Make();
-		const TRefPtr<VulkanStateRasterization> pStateRasterizer = TRefPtr<VulkanStateRasterization>::Make();
-
-		const TRefPtr<VulkanStateDynamic> pDynamicState = TRefPtr<VulkanStateDynamic>::Make();
-		const TRefPtr<VulkanStateDepthStencil> pDepthStencil = TRefPtr<VulkanStateDepthStencil>::Make();
-		const TRefPtr<VulkanStateColorBlending> pColorBlending = TRefPtr<VulkanStateColorBlending>::Make(false,
-			VK_BLEND_FACTOR_ONE,
-			VK_BLEND_FACTOR_ZERO,
-			VK_BLEND_OP_ADD,
-			VK_BLEND_FACTOR_ONE,
-			VK_BLEND_FACTOR_ZERO,
-			VK_BLEND_OP_ADD,
-			VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
-
-		const TRefPtr<VulkanStateMultisample> pMultisample = TRefPtr<VulkanStateMultisample>::Make(GetCurrentMsaaSamples());
 
 		std::vector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
 		std::vector<RHI::ShaderBinding> bindings;
@@ -373,22 +352,10 @@ void VulkanDevice::CreateGraphicsPipeline()
 			std::vector<VkPushConstantRange>(),
 			0);
 
-		std::vector<VulkanPipelineStatePtr> states = 
-		{ 
-			pStateViewport, 
-			pVertexDescription, 
-			pInputAssembly, 
-			pStateRasterizer, 
-			pDynamicState, 
-			pDepthStencil, 
-			pColorBlending, 
-			pMultisample 
-		};
-
 		m_graphicsPipeline = VulkanPipelinePtr::Make(VulkanDevicePtr(this),
 			m_pipelineLayout,
 			std::vector{ g_testVertShader, g_testFragShader },
-			states,
+			m_pipelineBuilder->BuildPipeline(RHI::RenderState()),
 			0);
 
 		m_graphicsPipeline->m_renderPass = m_renderPass;

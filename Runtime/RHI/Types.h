@@ -386,6 +386,11 @@ namespace Sailor::RHI
 		EFillMode GetFillMode() const { return m_fillMode; }
 		float GetDepthBias() const { return m_depthBias; }
 
+		bool operator==(const RenderState& rhs) const
+		{
+			return memcmp(this, &rhs, sizeof(RenderState)) == 0;
+		}
+
 	private:
 
 		bool m_bEnableDepthTest = true;

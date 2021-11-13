@@ -23,9 +23,9 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanDevicePtr m_device;
 	};
 
-	struct VulkanSamplers
+	struct VulkanSamplerCache
 	{
-		void Initialize(VulkanDevicePtr pDevice);
+		VulkanSamplerCache(VulkanDevicePtr pDevice);
 
 		VulkanSamplerPtr GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const;
 

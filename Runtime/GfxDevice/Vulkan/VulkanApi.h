@@ -61,7 +61,8 @@ namespace Sailor::GfxDevice::Vulkan
 	typedef TRefPtr<class VulkanStateDepthStencil> VulkanStateDepthStencilPtr;
 	typedef TRefPtr<class VulkanStateInputAssembly> VulkanStateInputAssemblyPtr;
 	typedef TRefPtr<class VulkanStateVertexDescription> VulkanStateVertexDescriptionPtr;
-
+	typedef TRefPtr<class VulkanStateDynamic> VulkanStateDynamicPtr;
+	
 #define VK_CHECK(call) \
 	do { \
 		VkResult result_ = call; \

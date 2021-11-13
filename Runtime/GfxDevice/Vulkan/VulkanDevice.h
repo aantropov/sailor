@@ -7,6 +7,7 @@
 #include "Core/UniquePtr.hpp"
 #include "RHI/Types.h"
 #include "VulkanMemory.h"
+#include "VulkanPipileneStates.h"
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -134,7 +135,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
 
-		TUniquePtr<VulkanSamplers> m_samplers;
+		TUniquePtr<VulkanSamplerCache> m_samplers;
+		TUniquePtr<VulkanPipelineStateBuilder> m_pipelineBuilder;
 
 		// Custom testing code
 		VulkanPipelineLayoutPtr m_pipelineLayout = nullptr;
@@ -147,7 +149,6 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanImageViewPtr m_imageView;
 
 		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
-
 		std::unordered_map<uint64_t, TBlockAllocator<GlobalVulkanAllocator, VulkanMemoryPtr>> m_memoryAllocators;
 	};
 }

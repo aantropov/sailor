@@ -1,6 +1,8 @@
 #include "VulkanPipileneStates.h"
 #include "Core/RefPtr.hpp"
+#include "VulkanDevice.h"
 #include "VulkanApi.h"
+#include "RHI/Types.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -78,19 +80,19 @@ void VulkanStateInputAssembly::Apply(struct VkGraphicsPipelineCreateInfo& state)
 	state.pInputAssemblyState = &m_inputAssembly;
 }
 
-VulkanStateRasterization::VulkanStateRasterization() :
+VulkanStateRasterization::VulkanStateRasterization(bool bEnableDepathBias, float depthBias, VkCullModeFlags cullMode, VkPolygonMode fillMode) :
 	m_rasterizer{}
 {
 	m_rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	m_rasterizer.depthClampEnable = VK_FALSE;
 	m_rasterizer.rasterizerDiscardEnable = VK_FALSE;
-	m_rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	m_rasterizer.polygonMode = fillMode;
 	m_rasterizer.lineWidth = 1.0f;
-	m_rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+	m_rasterizer.cullMode = cullMode;
 	m_rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
-	m_rasterizer.depthBiasEnable = VK_FALSE;
-	m_rasterizer.depthBiasConstantFactor = 0.0f; // Optional
+	m_rasterizer.depthBiasEnable = bEnableDepathBias;
+	m_rasterizer.depthBiasConstantFactor = depthBias; // Optional
 	m_rasterizer.depthBiasClamp = 0.0f; // Optional
 	m_rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
 }
@@ -111,7 +113,7 @@ VulkanStateMultisample::VulkanStateMultisample(VkSampleCountFlagBits samples) : 
 	m_multisampling.alphaToOneEnable = VK_FALSE; // Optional
 
 #ifdef SAILOR_MSAA_IMPACTS_TEXTURE_SAMPLING
-	m_multisampling.sampleShadingEnable = VK_TRUE; 
+	m_multisampling.sampleShadingEnable = VK_TRUE;
 	m_multisampling.minSampleShading = 0.2f;
 #endif
 
@@ -184,4 +186,64 @@ VulkanStateDepthStencil::VulkanStateDepthStencil(bool bEnableDepthTest, bool bEn
 void VulkanStateDepthStencil::Apply(struct VkGraphicsPipelineCreateInfo& state) const
 {
 	state.pDepthStencilState = &m_depthStencil;
+}
+
+VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
+{
+	m_pDevice = pDevice;
+
+	auto mask = VkColorComponentFlagBits::VK_COLOR_COMPONENT_A_BIT | VkColorComponentFlagBits::VK_COLOR_COMPONENT_R_BIT |
+		VkColorComponentFlagBits::VK_COLOR_COMPONENT_G_BIT | VkColorComponentFlagBits::VK_COLOR_COMPONENT_B_BIT;
+
+	m_blendModes.resize(3);
+
+	m_blendModes[(size_t)RHI::EBlendMode::None] = VulkanStateColorBlendingPtr::Make(false, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD,
+		VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD, mask);
+
+	m_blendModes[(size_t)RHI::EBlendMode::Additive] = VulkanStateColorBlendingPtr::Make(true, VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_DST_ALPHA, VkBlendOp::VK_BLEND_OP_ADD,
+		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_ADD, mask);
+
+	m_blendModes[(size_t)RHI::EBlendMode::AlphaBlending] = VulkanStateColorBlendingPtr::Make(true, VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_ADD,
+		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
+}
+
+const std::vector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::RenderState& renderState)
+{
+	auto it = m_cache.find(renderState);
+	if (it != m_cache.end())
+	{
+		return (*it).second;
+	}
+
+	const VulkanStateVertexDescriptionPtr pVertexDescription = VulkanStateVertexDescriptionPtr::Make(
+		VertexFactory<RHI::Vertex>::GetBindingDescription(),
+		VertexFactory<RHI::Vertex>::GetAttributeDescriptions());
+
+	const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make();
+	const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();
+	const VulkanStateRasterizationPtr pStateRasterizer = VulkanStateRasterizationPtr::Make(renderState.GetDepthBias() != 0.0f,
+		renderState.GetDepthBias(), (VkCullModeFlags)renderState.GetCullMode(), (VkPolygonMode)renderState.GetFillMode());
+
+	const VulkanStateDynamicPtr pDynamicState = VulkanStateDynamicPtr::Make();
+	const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_LESS);
+	const VulkanStateMultisamplePtr pMultisample = VulkanStateMultisamplePtr::Make(m_pDevice->GetCurrentMsaaSamples());
+
+	auto& res = m_cache[renderState] = std::vector<VulkanPipelineStatePtr>
+	{
+		pStateViewport,
+			pVertexDescription,
+			pInputAssembly,
+			pStateRasterizer,
+			pDynamicState,
+			pDepthStencil,
+			GetBlendState(renderState.GetBlendMode()),
+			pMultisample
+	};
+
+	return res;
+}
+
+VulkanStateColorBlendingPtr VulkanPipelineStateBuilder::GetBlendState(RHI::EBlendMode mode)
+{
+	return m_blendModes[(size_t)mode];
 }

@@ -1,11 +1,16 @@
 #pragma once
 #include <vector>
+#include <unordered_map>
 #include "vulkan/vulkan.h"
 #include "Core/RefPtr.hpp"
 #include "RHI/Types.h"
 
 namespace Sailor::GfxDevice::Vulkan
 {
+	typedef TRefPtr<class VulkanDevice> VulkanDevicePtr;
+	typedef TRefPtr<class VulkanPipelineState> VulkanPipelineStatePtr;
+	typedef TRefPtr<class VulkanStateColorBlending> VulkanStateColorBlendingPtr;
+
 	class VulkanPipelineState : public RHI::Resource, public RHI::IStateModifier<VkGraphicsPipelineCreateInfo> {};
 
 	class VulkanStateViewport : public VulkanPipelineState
@@ -69,7 +74,7 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanStateRasterization();
+		VulkanStateRasterization(bool bEnableDepthBias = false, float depthBias = 0.0f, VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT, VkPolygonMode fillMode = VK_POLYGON_MODE_FILL);
 		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
@@ -128,5 +133,19 @@ namespace Sailor::GfxDevice::Vulkan
 	private:
 
 		VkPipelineDepthStencilStateCreateInfo m_depthStencil{};
+	};
+
+	struct VulkanPipelineStateBuilder
+	{
+		VulkanPipelineStateBuilder(VulkanDevicePtr pDevice);
+		const std::vector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::RenderState& renderState);
+
+	protected:
+
+		VulkanStateColorBlendingPtr GetBlendState(RHI::EBlendMode mode);
+
+		VulkanDevicePtr m_pDevice;
+		std::vector<VulkanStateColorBlendingPtr> m_blendModes;
+		std::unordered_map<RHI::RenderState, std::vector<VulkanPipelineStatePtr>> m_cache;
 	};
 }

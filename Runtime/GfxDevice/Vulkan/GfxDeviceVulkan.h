@@ -41,6 +41,8 @@ namespace Sailor::GfxDevice::Vulkan
 			RHI::ETextureType type = RHI::ETextureType::Texture2D,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
+		
+		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState);
 
 		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, TRefPtr<RHI::Fence> fence);
 

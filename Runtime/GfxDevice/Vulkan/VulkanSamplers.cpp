@@ -45,7 +45,7 @@ VulkanSampler::~VulkanSampler()
 	vkDestroySampler(*m_device, m_textureSampler, nullptr);
 }
 
-void VulkanSamplers::Initialize(VulkanDevicePtr pDevice)
+VulkanSamplerCache::VulkanSamplerCache(VulkanDevicePtr pDevice)
 {
 	for (uint32_t i = 0; i < 8; i++)
 	{
@@ -62,7 +62,7 @@ void VulkanSamplers::Initialize(VulkanDevicePtr pDevice)
 	}
 }
 
-VulkanSamplerPtr VulkanSamplers::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const
+VulkanSamplerPtr VulkanSamplerCache::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const
 {
 	uint8_t index = bHasMipMaps ? 1 : 0;
 	index += clampingMode == RHI::ETextureClamping::Repeat ? 2 : 0;
