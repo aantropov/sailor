@@ -31,12 +31,12 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 	TRefPtr<RHI::Fence> fenceUpdateIndex = TRefPtr<RHI::Fence>::Make();
 
 	// Submit cmd lists
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh", 
+	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
 		([this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
-	{
-		SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
-		SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
-	}));
+			{
+				SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
+				SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
+			}));
 
 	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateVertices);
 	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateIndex);
@@ -78,9 +78,30 @@ void IGfxDevice::TrackDelayedInitialization(IDelayedInitialization* pResource, F
 
 	{
 		std::unique_lock<std::mutex>(m_mutexTrackedFences);
-		
+
 		// We should track fences to notity the res that cmd lists are finished
 		m_trackedFences.push_back(handle);
 	}
 }
 
+void IGfxDevice::SubmitCommandList_Immediate(CommandListPtr commandList)
+{
+	FencePtr fence = FencePtr::Make();
+	SubmitCommandList(commandList, fence);
+	fence->Wait();
+}
+
+void IGfxDevice::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const bool& value)
+{
+	SetMaterialParameter(material, parameter, &value, sizeof(bool));
+}
+
+void IGfxDevice::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::vec4& value)
+{
+	SetMaterialParameter(material, parameter, &value, sizeof(vec4));
+}
+
+void IGfxDevice::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::mat4x4& value)
+{
+	SetMaterialParameter(material, parameter, &value, sizeof(glm::mat4x4));
+}

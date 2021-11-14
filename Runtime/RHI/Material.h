@@ -3,6 +3,7 @@
 #include "Renderer.h"
 #include "Types.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
+#include "GfxDevice/Vulkan/VulkanBufferMemory.h"
 
 namespace Sailor::RHI
 {
@@ -13,6 +14,7 @@ namespace Sailor::RHI
 		struct
 		{
 			Sailor::GfxDevice::Vulkan::VulkanPipelinePtr m_pipeline;
+			Sailor::GfxDevice::Vulkan::VulkanDescriptorSetPtr m_descriptorSet;
 		} m_vulkan;
 #endif
 		Material(RenderState renderState, ShaderPtr vertexShader, ShaderPtr fragmentShader) :
@@ -21,7 +23,7 @@ namespace Sailor::RHI
 			m_fragmentShader(fragmentShader) {}
 
 		const RHI::RenderState& GetRenderState() const { return m_renderState; }
-		const std::vector<RHI::ShaderBinding>& GetBindings() const { return m_bindings; }
+		const std::vector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
 
 	protected:
 
@@ -30,20 +32,11 @@ namespace Sailor::RHI
 		ShaderPtr m_vertexShader;
 		ShaderPtr m_fragmentShader;
 
-		std::vector<RHI::ShaderBinding> m_bindings;
+		std::vector<RHI::ShaderLayoutBinding> m_layoutBindings;
+		
+		std::unordered_map<std::string, RHI::ShaderBindingPtr> m_textureBindings;
+		std::unordered_map<std::string, RHI::ShaderBindingPtr> m_valueBindings;
 
 		friend class IGfxDevice;
-	};
-
-	class MaterialDynamic : public Material
-	{
-	public:
-
-		void SetParameter(const std::string& parameter, TexturePtr value) {}
-		void SetParameter(const std::string& parameter, const glm::vec4 value) {}
-		void SetParameter(const std::string& parameter, const glm::mat4x4& value) {}
-
-	protected:
-
 	};
 };

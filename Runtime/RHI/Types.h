@@ -401,7 +401,7 @@ namespace Sailor::RHI
 		EFillMode m_fillMode = EFillMode::Fill;
 	};
 
-	struct ShaderBindingMember
+	struct ShaderLayoutBindingMember
 	{
 		EShaderBindingMemberType m_type;
 		std::string m_name;
@@ -409,12 +409,12 @@ namespace Sailor::RHI
 		uint32_t m_size;
 	};
 
-	struct ShaderBinding
+	struct ShaderLayoutBinding
 	{
 		EShaderBindingType m_type;
 		std::string m_name;
 
-		std::vector<ShaderBindingMember> m_members;
+		std::vector<ShaderLayoutBindingMember> m_members;
 	};
 
 	class Vertex

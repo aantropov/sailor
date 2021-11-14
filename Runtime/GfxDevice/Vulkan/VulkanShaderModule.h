@@ -27,14 +27,14 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual void Release() override {}
 
 		const std::vector<std::vector<VkDescriptorSetLayoutBinding>>& GetDescriptorSetLayoutBindings() const { return m_layoutBindings; }
-		const std::vector<std::vector<RHI::ShaderBinding>>& GetBindings() const { return m_bindings; }
+		const std::vector<std::vector<RHI::ShaderLayoutBinding>>& GetBindings() const { return m_bindings; }
 
 	protected:
 
 		void ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code);
 
 		std::vector<std::vector<VkDescriptorSetLayoutBinding>> m_layoutBindings;
-		std::vector<std::vector<RHI::ShaderBinding>> m_bindings;
+		std::vector<std::vector<RHI::ShaderLayoutBinding>> m_bindings;
 	};
 
 	class VulkanShaderModule : public RHI::Resource, public RHI::IExplicitInitialization

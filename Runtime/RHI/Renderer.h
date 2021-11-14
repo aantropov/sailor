@@ -27,6 +27,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class Texture> TexturePtr;
 	typedef TRefPtr<class Material> MaterialPtr;
 	typedef TRefPtr<class Shader> ShaderPtr;
+	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
 
 	class Renderer : public TSingleton<Renderer>
 	{
@@ -43,6 +44,7 @@ namespace Sailor::RHI
 		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
 		static SAILOR_API TUniquePtr<IGfxDevice>& GetDriver();
+		static SAILOR_API TUniquePtr<IGfxDeviceCommands>& GetDriverCommands();
 
 	protected:
 
@@ -53,5 +55,6 @@ namespace Sailor::RHI
 		class Win32::Window const* m_pViewport;
 
 		TUniquePtr<IGfxDevice> m_driverInstance;
+		TUniquePtr<IGfxDeviceCommands> m_driverCommands;
 	};
 };

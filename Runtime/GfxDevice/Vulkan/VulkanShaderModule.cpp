@@ -51,7 +51,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);
 	assert(result == SPV_REFLECT_RESULT_SUCCESS);
 
-	std::vector<std::unordered_map<uint32_t, std::pair<RHI::ShaderBinding, VkDescriptorSetLayoutBinding>>> bindings;
+	std::vector<std::unordered_map<uint32_t, std::pair<RHI::ShaderLayoutBinding, VkDescriptorSetLayoutBinding>>> bindings;
 	bindings.resize(count);
 
 	std::vector<SpvReflectDescriptorSet*> sets(count);
@@ -61,13 +61,13 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	for (size_t i_set = 0; i_set < sets.size(); ++i_set)
 	{
 		const SpvReflectDescriptorSet& reflSet = *(sets[i_set]);
-		std::unordered_map<uint32_t, std::pair<RHI::ShaderBinding, VkDescriptorSetLayoutBinding>>& binding = bindings[i_set];
+		std::unordered_map<uint32_t, std::pair<RHI::ShaderLayoutBinding, VkDescriptorSetLayoutBinding>>& binding = bindings[i_set];
 
 		for (uint32_t i_binding = 0; i_binding < reflSet.binding_count; ++i_binding)
 		{
 			const SpvReflectDescriptorBinding& reflBinding = *(reflSet.bindings[i_binding]);
 
-			RHI::ShaderBinding& rhiBinding = binding[reflBinding.binding].first = {};
+			RHI::ShaderLayoutBinding& rhiBinding = binding[reflBinding.binding].first = {};
 			VkDescriptorSetLayoutBinding& layoutBinding = binding[reflBinding.binding].second = {};
 			layoutBinding.binding = reflBinding.binding;
 			layoutBinding.descriptorType = static_cast<VkDescriptorType>(reflBinding.descriptor_type);
@@ -88,7 +88,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				
 				for (uint32_t i = 0; i < reflBinding.block.member_count; i++)
 				{
-					RHI::ShaderBindingMember member;
+					RHI::ShaderLayoutBindingMember member;
 
 					member.m_name = std::string(reflBinding.block.members[i].name);
 					member.m_offset = reflBinding.block.members[i].absolute_offset;

@@ -46,7 +46,7 @@ namespace Sailor::GfxDevice::Vulkan
 			RHI::ETextureType type = RHI::ETextureType::Texture2D,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
-		
+
 		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, RHI::ShaderPtr vertexShader, RHI::ShaderPtr fragmentShader);
 
 		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, TRefPtr<RHI::Fence> fence);
@@ -65,14 +65,32 @@ namespace Sailor::GfxDevice::Vulkan
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
 		//Immediate context
 
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const void* value, size_t size);
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, RHI::TexturePtr value);
+
 	protected:
 
 		VulkanUniformBufferAllocator& GetUniformBufferAllocator(const std::string& uniformTypeId);
 
 		// Uniform buffers to store uniforms
 		std::unordered_map<std::string, VulkanUniformBufferAllocator> m_uniformBuffers;
-		
+
 		GfxDevice::Vulkan::VulkanApi* m_vkInstance;
+	};
+
+	class GfxDeviceVulkanCommands : public RHI::IGfxDeviceCommands
+	{
+	public:
+
+		GfxDeviceVulkanCommands();
+
+		virtual SAILOR_API void BeginCommandList(RHI::CommandListPtr cmd);
+		virtual SAILOR_API void EndCommandList(RHI::CommandListPtr cmd);
+		virtual SAILOR_API void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* data, size_t size);
+
+	protected:
+
+		VulkanDevicePtr m_device;
 	};
 };
 

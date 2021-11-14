@@ -141,7 +141,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API bool CreateDescriptorSetLayouts(VulkanDevicePtr device,
 			const std::vector<VulkanShaderStagePtr>& shaders,
 			std::vector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
-			std::vector<RHI::ShaderBinding>& outRhiLayout);
+			std::vector<RHI::ShaderLayoutBinding>& outRhiLayout);
 
 		static SAILOR_API VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
 			uint32_t              binding = 0,

@@ -343,7 +343,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		g_testFragShader->Compile();
 
 		std::vector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
-		std::vector<RHI::ShaderBinding> bindings;
+		std::vector<RHI::ShaderLayoutBinding> bindings;
 
 		VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr(this), { g_testVertShader , g_testFragShader }, descriptorSetLayouts, bindings);
 		

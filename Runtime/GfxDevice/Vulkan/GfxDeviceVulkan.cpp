@@ -166,7 +166,7 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 	vkExtent.width = extent.x;
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
-	
+
 	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
 	cmdList->m_vulkan.m_commandBuffer = m_vkInstance->CreateImage(outTexture->m_vulkan.m_image, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
 
@@ -175,9 +175,9 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 	// Submit cmd lists
 	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create texture",
 		([this, fenceUpdateRes, cmdList]()
-	{
-		SubmitCommandList(cmdList, fenceUpdateRes);
-	}));
+			{
+				SubmitCommandList(cmdList, fenceUpdateRes);
+			}));
 
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
 
@@ -202,7 +202,49 @@ VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const s
 	auto& uniformAllocator = m_uniformBuffers[uniformTypeId];
 	uniformAllocator.GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	uniformAllocator.GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	
+
 	return uniformAllocator;
 }
 
+void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const void* value, size_t size)
+{
+}
+
+void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, RHI::TexturePtr value)
+{
+	const auto& layoutBindings = material->GetLayoutBindings();
+}
+
+// Commands
+GfxDeviceVulkanCommands::GfxDeviceVulkanCommands()
+{
+	m_device = VulkanApi::GetInstance()->GetMainDevice();
+}
+
+void GfxDeviceVulkanCommands::BeginCommandList(RHI::CommandListPtr cmd)
+{
+	cmd->m_vulkan.m_commandBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+}
+
+void GfxDeviceVulkanCommands::EndCommandList(RHI::CommandListPtr cmd)
+{
+	cmd->m_vulkan.m_commandBuffer->EndCommandList();
+}
+
+void GfxDeviceVulkanCommands::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* pData, size_t size)
+{
+	auto& binding = parameter->m_vulkan.m_valueBinding;
+	auto dstBuffer = binding.m_buffer;
+
+	const auto requirements = dstBuffer->GetMemoryRequirements();
+
+	auto& stagingMemoryAllocator = m_device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
+	auto data = stagingMemoryAllocator.Allocate(size, requirements.alignment);
+
+	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(m_device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
+	stagingBuffer->Compile();
+	stagingBuffer->Bind(data);
+
+	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
+	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, 0, binding.m_offset);
+}

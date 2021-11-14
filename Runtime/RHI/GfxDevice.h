@@ -21,6 +21,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class Texture> TexturePtr;
 	typedef TRefPtr<class Shader> ShaderPtr;
 	typedef TRefPtr<class Material> MaterialPtr;
+	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
 
 	class IGfxDevice
 	{
@@ -50,13 +51,21 @@ namespace Sailor::RHI
 			ETextureType type = ETextureType::Texture2D,
 			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
-		
 		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, RHI::ShaderPtr vertexShader, RHI::ShaderPtr fragmentShader) = 0;
+
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const void* value, size_t size) = 0;
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, TexturePtr value) = 0;
+
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const bool& value);
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::vec4& value);
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::mat4x4& value);
+
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
 
 		//Immediate context
 		virtual SAILOR_API BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API void CopyBuffer_Immediate(BufferPtr src, BufferPtr dst, size_t size) = 0;
+		virtual SAILOR_API void SubmitCommandList_Immediate(CommandListPtr commandList);
 
 		virtual SAILOR_API TexturePtr CreateImage_Immediate(
 			const void* pData,
@@ -67,14 +76,21 @@ namespace Sailor::RHI
 			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		//Immediate context
-				
+
 		void TrackResources();
 
 	protected:
 
 		void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
-		
+
 		std::mutex m_mutexTrackedFences;
 		std::vector<FencePtr> m_trackedFences;
+	};
+
+	class IGfxDeviceCommands
+	{
+		virtual SAILOR_API void BeginCommandList(CommandListPtr cmd) = 0;
+		virtual SAILOR_API void EndCommandList(CommandListPtr cmd) = 0;
+		virtual SAILOR_API void SetMaterialParameter(CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* data, size_t size) = 0;
 	};
 };

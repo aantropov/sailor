@@ -912,10 +912,10 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	const std::vector<VulkanShaderStagePtr>& shaders, 
 	std::vector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts, 
-	std::vector<RHI::ShaderBinding>& outRhiLayout)
+	std::vector<RHI::ShaderLayoutBinding>& outRhiLayout)
 {
 	std::vector<std::vector<VkDescriptorSetLayoutBinding>> vulkanLayouts;
-	std::vector<std::vector<RHI::ShaderBinding>> rhiLayouts;
+	std::vector<std::vector<RHI::ShaderLayoutBinding>> rhiLayouts;
 
 	uint32_t countDescriptorSets = 0;
 	for (uint32_t i = 0; i < shaders.size(); i++)
@@ -946,7 +946,7 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 		res[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(vulkanLayouts[i]));
 	}
 
-	std::vector<RHI::ShaderBinding> rhiRes;
+	std::vector<RHI::ShaderLayoutBinding> rhiRes;
 
 	for (uint32_t i = 0; i < vulkanLayouts.size(); i++)
 	{
