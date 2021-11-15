@@ -14,6 +14,7 @@ namespace Sailor::RHI
 		struct
 		{
 			VulkanImagePtr m_image;
+			VulkanImageViewPtr m_imageView;
 		} m_vulkan;
 #endif
 	};

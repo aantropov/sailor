@@ -16,7 +16,7 @@ VulkanMemoryPtr& VulkanMemoryPtr::operator=(const TRefPtr<Sailor::GfxDevice::Vul
 	return *this;
 }
 
-VulkanMemoryPtr::operator bool()
+VulkanMemoryPtr::operator bool() const
 {
 	return m_deviceMemory;
 }

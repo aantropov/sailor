@@ -56,7 +56,6 @@ void Renderer::Initialize(Win32::Window const* pViewport, RHI::EMsaaSamples msaa
 #if defined(VULKAN)
 	m_pInstance->m_driverInstance = TUniquePtr<Sailor::GfxDevice::Vulkan::GfxDeviceVulkan>::Make();
 	m_pInstance->m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
-	m_pInstance->m_driverCommands = TUniquePtr<Sailor::GfxDevice::Vulkan::GfxDeviceVulkanCommands>::Make();
 #endif
 }
 
@@ -69,6 +68,17 @@ TUniquePtr<IGfxDevice>& Renderer::GetDriver()
 {
 	return m_pInstance->m_driverInstance;
 }
+
+IGfxDeviceCommands* Renderer::GetDriverCommands()
+{
+
+#if defined(VULKAN)
+	return dynamic_cast<IGfxDeviceCommands*>(m_pInstance->m_driverInstance.GetRawPtr());
+#endif
+
+	return nullptr;
+}
+
 
 void Renderer::FixLostDevice()
 {

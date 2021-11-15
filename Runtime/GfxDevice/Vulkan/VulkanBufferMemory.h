@@ -18,7 +18,7 @@ namespace Sailor::Memory
 
 		VulkanBufferMemoryPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer>& rhs);
 
-		operator bool();
+		operator bool() const;
 
 		TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer> m_buffer{};
 		size_t m_offset{};

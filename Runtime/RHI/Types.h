@@ -403,18 +403,20 @@ namespace Sailor::RHI
 
 	struct ShaderLayoutBindingMember
 	{
-		EShaderBindingMemberType m_type;
-		std::string m_name;
-		uint32_t m_offset;
-		uint32_t m_size;
+		EShaderBindingMemberType m_type = EShaderBindingMemberType::Float;
+		std::string m_name = "";
+		uint32_t m_absoluteOffset = 0u;
+		uint32_t m_size = 0u;
 	};
 
 	struct ShaderLayoutBinding
 	{
-		EShaderBindingType m_type;
-		std::string m_name;
+		EShaderBindingType m_type = EShaderBindingType::CombinedImageSampler;
+		std::string m_name = "";
+		std::vector<ShaderLayoutBindingMember> m_members{};
 
-		std::vector<ShaderLayoutBindingMember> m_members;
+		uint8_t m_location = 0u;
+		uint32_t m_size = 0u;
 	};
 
 	class Vertex

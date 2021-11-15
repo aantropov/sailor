@@ -53,6 +53,9 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanDescriptor(uint32_t dstBinding, uint32_t dstArrayElement, VkDescriptorType descriptorType);
 		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
 
+		uint32_t GetBinding() const { return m_dstBinding; }
+		uint32_t GetArrayElement() const { return m_dstArrayElement; }
+
 	protected:
 		uint32_t m_dstBinding;
 		uint32_t m_dstArrayElement;
@@ -86,6 +89,8 @@ namespace Sailor::GfxDevice::Vulkan
 			VulkanSamplerPtr sampler,
 			VulkanImageViewPtr imageView,
 			VkImageLayout imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		void SetImageView(VulkanImageViewPtr imageView);
 
 		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
 

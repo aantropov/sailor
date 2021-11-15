@@ -16,7 +16,7 @@ class Sailor::Win32::Window;
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	using VulkanDeviceMemoryAllocator = TBlockAllocator<GlobalVulkanMemoryAllocator, VulkanMemoryPtr>;
+	using VulkanDeviceMemoryAllocator = TBlockAllocator<GlobalVulkanMemoryAllocator, VulkanMemoryPtr>;	
 
 	// Thread independent resources
 	struct ThreadContext
@@ -38,6 +38,11 @@ namespace Sailor::GfxDevice::Vulkan
 		void Shutdown();
 
 		SAILOR_API VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
+		SAILOR_API VulkanSurfacePtr GetSurface() const;
+		SAILOR_API VulkanRenderPassPtr GetRenderPass() { return m_renderPass; }
+		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
+		SAILOR_API const TUniquePtr<VulkanSamplerCache>& GetSamplers() const { return m_samplers; }
+		SAILOR_API TUniquePtr<VulkanPipelineStateBuilder>& GetPipelineBuilder() { return m_pipelineBuilder; }
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
@@ -46,16 +51,13 @@ namespace Sailor::GfxDevice::Vulkan
 			const std::vector<VulkanSemaphorePtr>* waitSemaphores = nullptr);
 
 		bool SAILOR_API IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
-
-		SAILOR_API VulkanSurfacePtr GetSurface() const;
+		
 		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(bool bOnlyTransferQueue = false);
 
 		SAILOR_API void SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 			VulkanFencePtr fence = nullptr,
 			std::vector<VulkanSemaphorePtr> signalSemaphores = {},
 			std::vector<VulkanSemaphorePtr> waitSemaphores = {});
-
-		SAILOR_API const VulkanQueueFamilyIndices& GetQueueFamilies() const { return m_queueFamilies; }
 
 		SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport);
 		SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
@@ -69,7 +71,12 @@ namespace Sailor::GfxDevice::Vulkan
 		template<typename TData>
 		VkDeviceSize GetUboOffsetAlignment() const
 		{
-			VkDeviceSize dynamicAlignment = sizeof(TData);
+			return GetUboOffsetAlignment(sizeof(TData));
+		}
+
+		VkDeviceSize GetUboOffsetAlignment(size_t size) const
+		{
+			VkDeviceSize dynamicAlignment = size;
 			if (m_minUboOffsetAlignment > 0)
 			{
 				dynamicAlignment = (dynamicAlignment + m_minUboOffsetAlignment - 1) & ~(m_minUboOffsetAlignment - 1);
@@ -82,10 +89,9 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 
 		SAILOR_API ThreadContext& GetThreadContext();
-
 		SAILOR_API void CreateGraphicsPipeline();
 
-		SAILOR_API TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
+		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 
 	protected:
 
@@ -117,7 +123,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanQueuePtr m_presentQueue;
 		VulkanQueuePtr m_graphicsQueue;
 		VulkanQueuePtr m_transferQueue;
-		
+
 		VulkanSurfacePtr m_surface;
 
 		VkPhysicalDevice m_physicalDevice = 0;

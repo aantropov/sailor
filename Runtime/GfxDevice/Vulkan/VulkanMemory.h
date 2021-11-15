@@ -12,13 +12,13 @@ namespace Sailor::Memory
 	{
 	public:
 
-		VulkanMemoryPtr() = default;
-		VulkanMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory);
-		VulkanMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory, size_t offset, size_t size);
+		SAILOR_API VulkanMemoryPtr() = default;
+		SAILOR_API VulkanMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory);
+		SAILOR_API VulkanMemoryPtr(TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> deviceMemory, size_t offset, size_t size);
 
-		VulkanMemoryPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>& rhs);
+		SAILOR_API VulkanMemoryPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory>& rhs);
 
-		operator bool();
+		SAILOR_API operator bool() const;
 
 		TRefPtr<Sailor::GfxDevice::Vulkan::VulkanDeviceMemory> m_deviceMemory{};
 		size_t m_offset{};

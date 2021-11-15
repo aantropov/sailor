@@ -19,7 +19,7 @@ namespace Sailor::GfxDevice::Vulkan
 {
 	using VulkanUniformBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
 
-	class GfxDeviceVulkan : public RHI::IGfxDevice
+	class GfxDeviceVulkan : public RHI::IGfxDevice, public RHI::IGfxDeviceCommands
 	{
 	public:
 
@@ -51,7 +51,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, TRefPtr<RHI::Fence> fence);
 
-		//Immediate context
+		// Begin Immediate context
 		virtual SAILOR_API RHI::BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
 		virtual SAILOR_API void CopyBuffer_Immediate(RHI::BufferPtr src, RHI::BufferPtr dst, size_t size);
 
@@ -63,34 +63,26 @@ namespace Sailor::GfxDevice::Vulkan
 			RHI::ETextureType type = RHI::ETextureType::Texture2D,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
-		//Immediate context
+		//End Immediate context
 
 		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const void* value, size_t size);
 		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, RHI::TexturePtr value);
 
-	protected:
+		//Begin IGfxDeviceCommands
+		virtual SAILOR_API void BeginCommandList(RHI::CommandListPtr cmd);
+		virtual SAILOR_API void EndCommandList(RHI::CommandListPtr cmd);
+		virtual SAILOR_API void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* data, size_t size);
+		//End IGfxDeviceCommands
 
-		VulkanUniformBufferAllocator& GetUniformBufferAllocator(const std::string& uniformTypeId);
+	protected:
+		
+		SAILOR_API void UpdateDescriptorSet(RHI::MaterialPtr material);
+		SAILOR_API VulkanUniformBufferAllocator& GetUniformBufferAllocator(const std::string& uniformTypeId);
 
 		// Uniform buffers to store uniforms
 		std::unordered_map<std::string, VulkanUniformBufferAllocator> m_uniformBuffers;
 
 		GfxDevice::Vulkan::VulkanApi* m_vkInstance;
-	};
-
-	class GfxDeviceVulkanCommands : public RHI::IGfxDeviceCommands
-	{
-	public:
-
-		GfxDeviceVulkanCommands();
-
-		virtual SAILOR_API void BeginCommandList(RHI::CommandListPtr cmd);
-		virtual SAILOR_API void EndCommandList(RHI::CommandListPtr cmd);
-		virtual SAILOR_API void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* data, size_t size);
-
-	protected:
-
-		VulkanDevicePtr m_device;
 	};
 };
 

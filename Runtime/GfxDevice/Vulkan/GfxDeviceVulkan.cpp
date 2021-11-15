@@ -3,13 +3,19 @@
 #include "RHI/Fence.h"
 #include "RHI/Mesh.h"
 #include "RHI/Buffer.h"
+#include "RHI/Material.h"
 #include "RHI/Shader.h"
 #include "RHI/CommandList.h"
 #include "RHI/Types.h"
+#include "Memory.h"
 #include "Platform/Win32/Window.h"
 #include "VulkanApi.h"
+#include "VulkanImageView.h"
+#include "VulkanImage.h"
 #include "VulkanCommandBuffer.h"
+#include "VulkanPipeline.h"
 #include "VulkanShaderModule.h"
+#include "VulkanBufferMemory.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -184,9 +190,86 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 	return outTexture;
 }
 
+void GfxDeviceVulkan::UpdateDescriptorSet(RHI::MaterialPtr material)
+{
+	auto device = m_vkInstance->GetMainDevice();
+	std::vector<VulkanDescriptorPtr> descriptors;
+
+	for (const auto& binding : material->GetShaderBindings())
+	{
+		if (binding.second->IsBind())
+		{
+			if (binding.second->m_vulkan.m_textureBinding)
+			{
+				auto imageView = binding.second->m_vulkan.m_textureBinding;
+				auto descr = VulkanDescriptorImagePtr::Make(binding.second, 0,
+					device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, true),
+					imageView);
+
+				descriptors.push_back(descr);
+			}
+			else if (binding.second->m_vulkan.m_valueBinding)
+			{
+				auto& valueBinding = (*binding.second->m_vulkan.m_valueBinding);
+				auto descr = VulkanDescriptorBufferPtr::Make(binding.second, 0,
+					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size);
+				
+				descriptors.push_back(descr);
+			}
+		}
+	}
+
+	material->m_vulkan.m_descriptorSet = VulkanDescriptorSetPtr::Make(device,
+		device->GetThreadContext().m_descriptorPool,
+		material->m_vulkan.m_pipeline->m_layout->m_descriptionSetLayouts[0],
+		descriptors);
+
+	material->m_vulkan.m_descriptorSet->Compile();
+
+}
+
 RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderState, RHI::ShaderPtr vertexShader, RHI::ShaderPtr fragmentShader)
 {
+	auto device = m_vkInstance->GetMainDevice();
+
+	std::vector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
+	std::vector<RHI::ShaderLayoutBinding> bindings;
+
+	VulkanApi::CreateDescriptorSetLayouts(device, { vertexShader->m_vulkan.m_shader, fragmentShader->m_vulkan.m_shader }, descriptorSetLayouts, bindings);
+
 	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState, vertexShader, fragmentShader);
+
+	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
+		descriptorSetLayouts,
+		std::vector<VkPushConstantRange>(),
+		0);
+
+	res->m_vulkan.m_pipeline = VulkanPipelinePtr::Make(device,
+		pipelineLayout,
+		std::vector{ vertexShader->m_vulkan.m_shader, fragmentShader->m_vulkan.m_shader },
+		device->GetPipelineBuilder()->BuildPipeline(renderState),
+		0);
+
+	res->m_vulkan.m_pipeline->m_renderPass = device->GetRenderPass();
+	res->m_vulkan.m_pipeline->Compile();
+
+	for (auto& layoutBinding : bindings)
+	{
+		auto& binding = res->GetOrCreateShaderBinding(layoutBinding.m_name);
+
+		// That is reserved by render pipeline
+		if (layoutBinding.m_location != 0 && layoutBinding.m_name != "transform")
+		{
+			if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
+			{
+				auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
+				binding->m_vulkan.m_valueBinding = uniformAllocator.Allocate(layoutBinding.m_size, device->GetUboOffsetAlignment(layoutBinding.m_size));
+			}
+		}
+	}
+
+	res->SetLayoutShaderBindings(bindings);
+	UpdateDescriptorSet(res);
 
 	return res;
 }
@@ -208,42 +291,77 @@ VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const s
 
 void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const void* value, size_t size)
 {
+	auto device = m_vkInstance->GetMainDevice();
+
+	RHI::CommandListPtr commandList = RHI::CommandListPtr::Make();
+	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+
+	auto& shaderBinding = material->GetOrCreateShaderBinding(parameter);
+	bool bShouldUpdateDescriptorSet = false;
+
+	// All uniform buffers should be bound
+	assert(shaderBinding->IsBind());
+
+	SetMaterialParameter(commandList, shaderBinding, value, size);
+
+	SubmitCommandList_Immediate(commandList);
 }
 
 void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, RHI::TexturePtr value)
 {
 	const auto& layoutBindings = material->GetLayoutBindings();
+
+	auto it = std::find_if(layoutBindings.begin(), layoutBindings.end(), [&parameter](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
+		{
+			return shaderLayoutBinding.m_name == parameter;
+		});
+
+	if (it != layoutBindings.end())
+	{
+		auto& descriptors = material->m_vulkan.m_descriptorSet->m_descriptors;
+		auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [&it](const VulkanDescriptorPtr& descriptor)
+			{
+				return descriptor->GetBinding() == it->m_location;
+			});
+
+		if (descrIt != descriptors.end())
+		{
+			// Should we create a new one descriptorSet to avoid race condition?
+			auto descriptor = (*descrIt).DynamicCast<VulkanDescriptorImage>();
+			descriptor->SetImageView(value->m_vulkan.m_imageView);
+			material->m_vulkan.m_descriptorSet->Compile();
+		}
+	}
+
+	SAILOR_LOG("Trying to update not bind uniform sampler");
 }
 
-// Commands
-GfxDeviceVulkanCommands::GfxDeviceVulkanCommands()
-{
-	m_device = VulkanApi::GetInstance()->GetMainDevice();
-}
+// IGfxDeviceCommands
 
-void GfxDeviceVulkanCommands::BeginCommandList(RHI::CommandListPtr cmd)
+void GfxDeviceVulkan::BeginCommandList(RHI::CommandListPtr cmd)
 {
 	cmd->m_vulkan.m_commandBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 }
 
-void GfxDeviceVulkanCommands::EndCommandList(RHI::CommandListPtr cmd)
+void GfxDeviceVulkan::EndCommandList(RHI::CommandListPtr cmd)
 {
 	cmd->m_vulkan.m_commandBuffer->EndCommandList();
 }
 
-void GfxDeviceVulkanCommands::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* pData, size_t size)
+void GfxDeviceVulkan::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* pData, size_t size)
 {
+	auto device = m_vkInstance->GetMainDevice();
 	auto& binding = parameter->m_vulkan.m_valueBinding;
-	auto dstBuffer = binding.m_buffer;
+	auto dstBuffer = binding.m_ptr.m_buffer;
 
 	const auto requirements = dstBuffer->GetMemoryRequirements();
 
-	auto& stagingMemoryAllocator = m_device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
+	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
 	auto data = stagingMemoryAllocator.Allocate(size, requirements.alignment);
 
-	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(m_device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
+	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
-	stagingBuffer->Bind(data);
+	VK_CHECK(stagingBuffer->Bind(data));
 
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
 	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, 0, binding.m_offset);

@@ -14,9 +14,10 @@ namespace Sailor::RHI
 		struct
 		{
 			Sailor::GfxDevice::Vulkan::VulkanImageViewPtr m_textureBinding;
-			Sailor::Memory::VulkanBufferMemoryPtr m_valueBinding;
+			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding;
 		} m_vulkan;
 #endif
+		bool IsBind() const;
 	};
 
 	class Shader : public Resource

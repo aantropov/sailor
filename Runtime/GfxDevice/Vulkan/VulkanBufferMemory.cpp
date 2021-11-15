@@ -16,7 +16,7 @@ VulkanBufferMemoryPtr& VulkanBufferMemoryPtr::operator=(const TRefPtr<Sailor::Gf
 	return *this;
 }
 
-VulkanBufferMemoryPtr::operator bool()
+VulkanBufferMemoryPtr::operator bool() const
 {
 	return m_buffer;
 }

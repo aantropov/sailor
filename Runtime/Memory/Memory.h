@@ -156,8 +156,8 @@ namespace Sailor::Memory
 			m_blockIndex(blockIndex),
 			m_ptr(ptr)
 		{}
-
-		operator bool() { return (bool)m_ptr; }
+		
+		operator bool() const { return (bool)m_ptr; }
 
 		const TPtr operator*() const { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
 		TPtr operator*() { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }

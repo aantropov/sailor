@@ -80,22 +80,20 @@ VulkanDescriptorSet::VulkanDescriptorSet(VulkanDevicePtr pDevice,
 
 void VulkanDescriptorSet::Compile()
 {
-	if (m_descriptorSet)
+	if (!m_descriptorSet)
 	{
-		return;
+		m_descriptorSetLayout->Compile();
+
+		VkDescriptorSetLayout vkdescriptorSetLayout = *m_descriptorSetLayout;
+
+		VkDescriptorSetAllocateInfo descriptSetAllocateInfo = {};
+		descriptSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		descriptSetAllocateInfo.descriptorPool = *m_descriptorPool;
+		descriptSetAllocateInfo.descriptorSetCount = 1;
+		descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
+
+		VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
 	}
-
-	m_descriptorSetLayout->Compile();
-
-	VkDescriptorSetLayout vkdescriptorSetLayout = *m_descriptorSetLayout;
-
-	VkDescriptorSetAllocateInfo descriptSetAllocateInfo = {};
-	descriptSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	descriptSetAllocateInfo.descriptorPool = *m_descriptorPool;
-	descriptSetAllocateInfo.descriptorSetCount = 1;
-	descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
-
-	VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
 
 	VkWriteDescriptorSet* descriptorsWrite = reinterpret_cast<VkWriteDescriptorSet*>(_malloca(m_descriptors.size() * sizeof(VkWriteDescriptorSet)));
 
@@ -177,6 +175,11 @@ VulkanDescriptorImage::VulkanDescriptorImage(uint32_t dstBinding,
 	m_imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	m_imageInfo.imageView = *m_imageView;
 	m_imageInfo.sampler = *m_sampler;
+}
+
+void VulkanDescriptorImage::SetImageView(VulkanImageViewPtr imageView)
+{
+	m_imageView = imageView;
 }
 
 void VulkanDescriptorImage::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
