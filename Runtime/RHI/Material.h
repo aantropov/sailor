@@ -17,23 +17,25 @@ namespace Sailor::RHI
 			Sailor::GfxDevice::Vulkan::VulkanDescriptorSetPtr m_descriptorSet;
 		} m_vulkan;
 #endif
-		Material(RenderState renderState, ShaderPtr vertexShader, ShaderPtr fragmentShader) :
+		SAILOR_API Material(RenderState renderState, ShaderPtr vertexShader, ShaderPtr fragmentShader) :
 			m_renderState(std::move(renderState)),
 			m_vertexShader(vertexShader),
 			m_fragmentShader(fragmentShader)
 		{}
 
-		void SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> layoutBindings);
+		SAILOR_API void SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> layoutBindings);
 
-		const RHI::RenderState& GetRenderState() const { return m_renderState; }
-		const std::vector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
+		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_renderState; }
+		SAILOR_API const std::vector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
 
-		RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& parameter);
+		SAILOR_API RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& parameter);
 		
-		const std::unordered_map<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
+		SAILOR_API const std::unordered_map<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
 
-		ShaderPtr GetVertexShader() const { return m_vertexShader; }
-		ShaderPtr GetFragmentShader() const { return m_fragmentShader; }
+		SAILOR_API ShaderPtr GetVertexShader() const { return m_vertexShader; }
+		SAILOR_API ShaderPtr GetFragmentShader() const { return m_fragmentShader; }
+
+		SAILOR_API bool HasParameter(const std::string& parameter) const;
 
 	protected:
 

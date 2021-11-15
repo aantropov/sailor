@@ -19,6 +19,8 @@ namespace Sailor
 
 	};
 
+	using MaterialAssetInfoPtr = MaterialAssetInfo*;
+
 	class MaterialAssetInfoHandler final : public TSingleton<MaterialAssetInfoHandler>, public IAssetInfoHandler
 	{
 

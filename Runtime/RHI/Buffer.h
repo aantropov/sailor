@@ -15,6 +15,6 @@ namespace Sailor::RHI
 		} m_vulkan;
 #endif
 
-		size_t GetSize() const;
+		SAILOR_API size_t GetSize() const;
 	};
 };

@@ -1,9 +1,22 @@
 {
-"enable_depth_test":true,
-"enable_z_write":true,
-"depth_bias":0,
-"cull_mode":0,
-"render_queue":"opaque",
-"is_transparent":false,
-"blend_mode":0
+	"enable_depth_test": true,
+	"enable_z_write": true,
+	"depth_bias": 0,
+	"cull_mode": 0,
+	"render_queue": "opaque",
+	"is_transparent": false,
+	"blend_mode": 0,
+	"fill_mode": 0,
+	"defines": ["CUSTOM_DATA"],
+	"shader": { "uid": "{7C4C5270-3F13-49B9-A5FC-05EBDF2D70CD}"},
+	"samplers": [{
+		"textureSampler": {
+			"uid": "{338E77F2-3B87-4DCC-97DB-73856CD9D3A0}"
+		}
+	}],
+	"uniforms": [{
+		"custom.data": {
+			"value": "0.344345f"
+		}
+	}]
 }

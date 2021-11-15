@@ -376,7 +376,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		int32_t height;
 		uint32_t mipLevels;
 
-		TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID(), data, width, height, mipLevels);
+		TextureImporter::GetInstance()->LoadTextureRaw(textureUID->GetUID(), data, width, height, mipLevels);
 		m_image = VulkanApi::CreateImage_Immediate(
 			VulkanDevicePtr(this),
 			data.data(),

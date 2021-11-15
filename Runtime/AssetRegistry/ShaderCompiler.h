@@ -8,6 +8,7 @@
 #include "Core/WeakPtr.hpp"
 #include "AssetInfo.h"
 #include "RHI/Types.h"
+#include "RHI/Renderer.h"
 #include "ShaderCache.h"
 
 namespace Sailor

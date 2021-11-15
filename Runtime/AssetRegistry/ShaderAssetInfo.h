@@ -6,26 +6,6 @@ using namespace std;
 
 namespace Sailor
 {
-	/*
-			enum class EShaderBindingType : uint8_t
-		{
-			Float = 0,
-			Vec4,
-			Bool,
-			Texture,
-		};
-
-		struct ShaderBinding
-		{
-			EShaderBindingType m_type = EShaderBindingType::Vec4;
-			std::string m_name{};
-			uint32_t m_binding = 0;
-			uint32_t m_offset = 0;
-		};
-
-		std::vector<ShaderBinding> m_bindingLayout;*/
-
-
 	class ShaderAssetInfo final : public AssetInfo
 	{
 	public:

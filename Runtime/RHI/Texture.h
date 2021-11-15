@@ -17,5 +17,21 @@ namespace Sailor::RHI
 			VulkanImageViewPtr m_imageView;
 		} m_vulkan;
 #endif
+
+		SAILOR_API Texture(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips) :
+			m_filtration(filtration),
+			m_clamping(clamping),
+			m_bShouldGenerateMips(bShouldGenerateMips)
+		{}
+
+		SAILOR_API ETextureFiltration GetFiltration() const { return m_filtration; }
+		SAILOR_API ETextureClamping GetClamping() const { return m_clamping; }
+		SAILOR_API bool ShouldGenerateMips() const { return m_bShouldGenerateMips; }
+
+	private:
+
+		ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;
+		ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;
+		bool m_bShouldGenerateMips = false;
 	};
 };

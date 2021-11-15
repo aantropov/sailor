@@ -7,6 +7,7 @@
 #include "Core/SharedPtr.hpp"
 #include "Core/WeakPtr.hpp"
 #include "AssetInfo.h"
+#include "RHI/Renderer.h"
 
 namespace Sailor
 {
@@ -20,7 +21,8 @@ namespace Sailor
 
 		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfoPtr assetInfo) override;
 
-		bool SAILOR_API LoadTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
+		static SAILOR_API bool LoadTextureRaw(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
+		static SAILOR_API RHI::TexturePtr LoadTexture(UID uid);
 
 	private:
 

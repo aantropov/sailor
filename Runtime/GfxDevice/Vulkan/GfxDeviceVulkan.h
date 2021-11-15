@@ -45,9 +45,11 @@ namespace Sailor::GfxDevice::Vulkan
 			uint32_t mipLevels = 1,
 			RHI::ETextureType type = RHI::ETextureType::Texture2D,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
+			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
+			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
 
-		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, RHI::ShaderPtr vertexShader, RHI::ShaderPtr fragmentShader);
+		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {});
 
 		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, TRefPtr<RHI::Fence> fence);
 
@@ -62,16 +64,19 @@ namespace Sailor::GfxDevice::Vulkan
 			uint32_t mipLevels = 1,
 			RHI::ETextureType type = RHI::ETextureType::Texture2D,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
+			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
+			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
 		//End Immediate context
 
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const void* value, size_t size);
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, RHI::TexturePtr value);
+		virtual SAILOR_API void SetMaterialBinding(RHI::MaterialPtr material, const std::string& binding, const void* value, size_t size);
+		virtual SAILOR_API void SetMaterialBinding(RHI::MaterialPtr material, const std::string& binding, RHI::TexturePtr value);
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size);
 
 		//Begin IGfxDeviceCommands
 		virtual SAILOR_API void BeginCommandList(RHI::CommandListPtr cmd);
 		virtual SAILOR_API void EndCommandList(RHI::CommandListPtr cmd);
-		virtual SAILOR_API void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* data, size_t size);
+		virtual SAILOR_API void SetMaterialBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, size_t offset, const void* data, size_t size);
 		//End IGfxDeviceCommands
 
 	protected:

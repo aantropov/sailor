@@ -17,6 +17,13 @@ layout(binding = 0) uniform UBOTransform
     mat4 projection;
 } transform;
 
+#ifdef CUSTOM_DATA
+layout(binding = 1) uniform CustomData
+{
+    float color;
+} custom;
+#endif
+
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec2 inTexcoord;
 layout(location = 2) in vec4 inColor;
@@ -47,5 +54,5 @@ void main()
 }
 END_CODE,
 
-"defines":[]
+"defines":["CUSTOM_DATA"]
 }

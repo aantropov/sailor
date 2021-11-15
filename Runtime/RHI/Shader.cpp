@@ -9,8 +9,24 @@ using namespace Sailor::GfxDevice::Vulkan;
 bool ShaderBinding::IsBind() const
 {
 #if defined(VULKAN)
-	return (bool)(m_vulkan.m_textureBinding) || (bool)(m_vulkan.m_valueBinding);
+	return (bool)(m_textureBinding) || (bool)(m_vulkan.m_valueBinding);
 #endif
+
+	return false;
+}
+
+bool ShaderBinding::FindUniform(const std::string& variable, ShaderLayoutBindingMember& outVariable) const
+{
+	auto it = std::find_if(m_layoutBinding.m_members.begin(), m_layoutBinding.m_members.end(), [&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
+		{
+			return shaderLayoutBinding.m_name == variable;
+		});
+
+	if (it != m_layoutBinding.m_members.end())
+	{
+		outVariable = (*it);
+		return true;
+	}
 
 	return false;
 }

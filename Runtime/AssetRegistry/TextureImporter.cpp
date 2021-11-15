@@ -11,6 +11,8 @@
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "JobSystem/JobSystem.h"
+#include "RHI/Texture.h"
+#include "RHI/Renderer.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
@@ -33,7 +35,7 @@ void TextureImporter::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
 {
 }
 
-bool TextureImporter::LoadTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
+bool TextureImporter::LoadTextureRaw(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -52,4 +54,27 @@ bool TextureImporter::LoadTexture(UID uid, ByteCode& decodedData, int32_t& width
 	}
 
 	return false;
+}
+
+RHI::TexturePtr TextureImporter::LoadTexture(UID uid)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (TextureAssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
+	{
+		ByteCode decodedData;
+		int32_t width;
+		int32_t height;
+		uint32_t mipLevels;
+
+		if (LoadTextureRaw(uid, decodedData, width, height, mipLevels))
+		{
+			return RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 0.0f),
+				mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
+				assetInfo->GetClamping());
+		}
+	}
+
+	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
+	return nullptr;
 }

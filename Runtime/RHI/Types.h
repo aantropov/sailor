@@ -379,6 +379,20 @@ namespace Sailor::RHI
 
 	struct RenderState
 	{
+		RenderState(bool bEnableDepthTest = true,
+			bool bEnableZWrite = true,
+			float depthBias = 0.0f,
+			ECullMode cullMode = ECullMode::Back,
+			EBlendMode blendMode = EBlendMode::None,
+			EFillMode fillMode = EFillMode::Fill) :
+			m_bEnableDepthTest(bEnableDepthTest),
+			m_bEnableZWrite(bEnableZWrite),
+			m_depthBias(depthBias),
+			m_cullMode(cullMode),
+			m_blendMode(blendMode),
+			m_fillMode(fillMode)
+		{}
+
 		bool IsDepthTestEnabled() const { return m_bEnableDepthTest; }
 		bool IsEnabledZWrite() const { return m_bEnableZWrite; }
 		ECullMode GetCullMode() const { return m_cullMode; }

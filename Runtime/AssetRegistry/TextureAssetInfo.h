@@ -15,9 +15,9 @@ namespace Sailor
 		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
 
-		RHI::ETextureFiltration GetFiltration() const { return m_filtration; }
-		RHI::ETextureClamping GetClamping() const { return m_clamping; }
-		bool ShouldGenerateMips() const { return m_bShouldGenerateMips; }
+		SAILOR_API RHI::ETextureFiltration GetFiltration() const { return m_filtration; }
+		SAILOR_API RHI::ETextureClamping GetClamping() const { return m_clamping; }
+		SAILOR_API bool ShouldGenerateMips() const { return m_bShouldGenerateMips; }
 
 	private:
 

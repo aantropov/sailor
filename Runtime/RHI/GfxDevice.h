@@ -1,5 +1,6 @@
 #pragma once
 #include <mutex>
+#include "AssetRegistry/UID.h"
 #include "Types.h"
 
 namespace Sailor
@@ -50,12 +51,18 @@ namespace Sailor::RHI
 			uint32_t mipLevels = 1,
 			ETextureType type = ETextureType::Texture2D,
 			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
+			ETextureFiltration filtration = ETextureFiltration::Linear,
+			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
-		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, RHI::ShaderPtr vertexShader, RHI::ShaderPtr fragmentShader) = 0;
+		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {}) = 0;
 
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const void* value, size_t size) = 0;
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, TexturePtr value) = 0;
+		// Used for full binding update
+		virtual SAILOR_API void SetMaterialBinding(RHI::MaterialPtr material, const std::string& binding, const void* value, size_t size) = 0;
+		virtual SAILOR_API void SetMaterialBinding(RHI::MaterialPtr material, const std::string& binding, TexturePtr value) = 0;
 
+		// Used for variables inside uniform buffer 
+		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const bool& value);
 		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::vec4& value);
 		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::mat4x4& value);
@@ -74,14 +81,16 @@ namespace Sailor::RHI
 			uint32_t mipLevels = 1,
 			ETextureType type = ETextureType::Texture2D,
 			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
+			ETextureFiltration filtration = ETextureFiltration::Linear,
+			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		//Immediate context
 
-		void TrackResources();
+		SAILOR_API void TrackResources();
 
 	protected:
 
-		void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
+		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
 
 		std::mutex m_mutexTrackedFences;
 		std::vector<FencePtr> m_trackedFences;
@@ -91,6 +100,6 @@ namespace Sailor::RHI
 	{
 		virtual SAILOR_API void BeginCommandList(CommandListPtr cmd) = 0;
 		virtual SAILOR_API void EndCommandList(CommandListPtr cmd) = 0;
-		virtual SAILOR_API void SetMaterialParameter(CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* data, size_t size) = 0;
+		virtual SAILOR_API void SetMaterialBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, size_t offset, const void* data, size_t size) = 0;
 	};
 };
