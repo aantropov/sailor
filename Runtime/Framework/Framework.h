@@ -71,6 +71,7 @@ namespace Sailor
 		~Framework() override = default;
 
 		RHI::MeshPtr& GetTestMesh() { return m_testMesh; }
+		RHI::MaterialPtr& GetTestMaterial() { return m_testMaterial; }
 
 	protected:
 
@@ -78,5 +79,6 @@ namespace Sailor
 		std::atomic<uint32_t> m_pureFps = 0u;
 
 		RHI::MeshPtr m_testMesh;
+		RHI::MaterialPtr m_testMaterial;
 	};
 }

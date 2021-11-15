@@ -123,6 +123,8 @@ RHI::ShaderPtr GfxDeviceVulkan::CreateShader(RHI::EShaderStage shaderStage, cons
 {
 	auto res = RHI::ShaderPtr::Make(shaderStage);
 	res->m_vulkan.m_shader = VulkanShaderStagePtr::Make((VkShaderStageFlagBits)shaderStage, "main", m_vkInstance->GetMainDevice(), shaderSpirv);
+	res->m_vulkan.m_shader->Compile();
+
 	return res;
 }
 
@@ -198,6 +200,7 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::MaterialPtr material)
 {
 	auto device = m_vkInstance->GetMainDevice();
 	std::vector<VulkanDescriptorPtr> descriptors;
+	std::vector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
 
 	for (const auto& binding : material->GetShaderBindings())
 	{
@@ -206,19 +209,21 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::MaterialPtr material)
 			if (binding.second->GetTextureBinding())
 			{
 				auto& texture = binding.second->GetTextureBinding();
-				auto descr = VulkanDescriptorImagePtr::Make(binding.second, 0,
+				auto descr = VulkanDescriptorImagePtr::Make(binding.second->m_vulkan.m_descriptorSetLayout.binding, 0,
 					device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
 					texture->m_vulkan.m_imageView);
 
 				descriptors.push_back(descr);
+				descriptionSetLayouts.push_back(binding.second->m_vulkan.m_descriptorSetLayout);
 			}
 			else if (binding.second->m_vulkan.m_valueBinding)
 			{
 				auto& valueBinding = (*binding.second->m_vulkan.m_valueBinding);
-				auto descr = VulkanDescriptorBufferPtr::Make(binding.second, 0,
+				auto descr = VulkanDescriptorBufferPtr::Make(binding.second->m_vulkan.m_descriptorSetLayout.binding, 0,
 					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size);
-				
+
 				descriptors.push_back(descr);
+				descriptionSetLayouts.push_back(binding.second->m_vulkan.m_descriptorSetLayout);
 			}
 		}
 	}
@@ -226,7 +231,7 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::MaterialPtr material)
 	// Should we just update descriptor set instead of recreation?
 	material->m_vulkan.m_descriptorSet = VulkanDescriptorSetPtr::Make(device,
 		device->GetThreadContext().m_descriptorPool,
-		material->m_vulkan.m_pipeline->m_layout->m_descriptionSetLayouts[0],
+		VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
 		descriptors);
 
 	material->m_vulkan.m_descriptorSet->Compile();
@@ -245,6 +250,8 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	ShaderCompiler::GetSpirvCode(shader, defines, debugVertexSpirv, debugFragmentSpirv, true);
 	auto debugVertexShader = CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
 	auto debugFragmentShader = CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
+	VulkanApi::CreateDescriptorSetLayouts(device, { debugVertexShader->m_vulkan.m_shader, debugFragmentShader->m_vulkan.m_shader },
+		descriptorSetLayouts, bindings);
 
 	RHI::ShaderByteCode vertexSpirv;
 	RHI::ShaderByteCode fragmentSpirv;
@@ -268,8 +275,10 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	res->m_vulkan.m_pipeline->m_renderPass = device->GetRenderPass();
 	res->m_vulkan.m_pipeline->Compile();
 
-	for (auto& layoutBinding : bindings)
+	for (uint32_t i = 0; i < bindings.size(); i++)
 	{
+		auto& vkLayoutBinding = descriptorSetLayouts[0]->m_descriptorSetLayoutBindings[i];
+		auto& layoutBinding = bindings[i];
 		auto& binding = res->GetOrCreateShaderBinding(layoutBinding.m_name);
 
 		// That is reserved by render pipeline
@@ -279,7 +288,8 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 			{
 				auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
 				binding->m_vulkan.m_valueBinding = uniformAllocator.Allocate(layoutBinding.m_size, device->GetUboOffsetAlignment(layoutBinding.m_size));
-				binding->SetLayoutBinding(layoutBinding);
+				binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
+				binding->SetMembersInfo(layoutBinding);
 			}
 		}
 	}
@@ -300,7 +310,7 @@ VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const s
 
 	auto& uniformAllocator = m_uniformBuffers[uniformTypeId];
 	uniformAllocator.GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-	uniformAllocator.GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	uniformAllocator.GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	return uniformAllocator;
 }
@@ -400,7 +410,7 @@ void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std:
 
 	RHI::ShaderLayoutBindingMember bindingLayout;
 	assert(shaderBinding->FindUniform(variable, bindingLayout));
-	
+
 	SetMaterialBinding(commandList, shaderBinding, bindingLayout.m_absoluteOffset, value, size);
 
 	SubmitCommandList_Immediate(commandList);

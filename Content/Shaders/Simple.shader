@@ -18,7 +18,7 @@ layout(binding = 0) uniform UBOTransform
 } transform;
 
 #ifdef CUSTOM_DATA
-layout(binding = 1) uniform CustomData
+layout(binding = 2) uniform CustomData
 {
     float color;
 } custom;

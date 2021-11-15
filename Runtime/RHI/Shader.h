@@ -4,6 +4,7 @@
 #include "Types.h"
 #include "GfxDevice/Vulkan/VulkanBufferMemory.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
+#include "GfxDevice/Vulkan/VulkanDescriptors.h"
 
 namespace Sailor::RHI
 {
@@ -14,22 +15,23 @@ namespace Sailor::RHI
 		struct
 		{
 			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding;
+			VkDescriptorSetLayoutBinding m_descriptorSetLayout;
 		} m_vulkan;
 #endif
 		SAILOR_API bool IsBind() const;
 
 		SAILOR_API const TexturePtr& GetTextureBinding() const { return m_textureBinding; }
-		SAILOR_API const ShaderLayoutBinding& GetLayoutBinding() const { return m_layoutBinding; }
+		SAILOR_API const ShaderLayoutBinding& GetMembersInfo() const { return m_membersInfo; }
 
 		SAILOR_API void SetTextureBinding(TexturePtr textureBinding) { m_textureBinding = textureBinding; }
-		SAILOR_API void SetLayoutBinding(const ShaderLayoutBinding& layoutBinding) { m_layoutBinding = layoutBinding; }
+		SAILOR_API void SetMembersInfo(const ShaderLayoutBinding& membersInfo) { m_membersInfo = membersInfo; }
 
 		SAILOR_API bool FindUniform(const std::string& variable, ShaderLayoutBindingMember& outVariable) const;
 
 	protected:
 
 		TexturePtr m_textureBinding;
-		ShaderLayoutBinding m_layoutBinding;
+		ShaderLayoutBinding m_membersInfo;
 	};
 
 	class Shader : public Resource

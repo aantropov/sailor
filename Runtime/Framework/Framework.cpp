@@ -9,6 +9,7 @@
 #include "RHI/GfxDevice.h"
 #include "AssetRegistry/ModelAssetInfo.h"
 #include "AssetRegistry/ModelImporter.h"
+#include "AssetRegistry/MaterialImporter.h"
 
 using namespace Sailor;
 
@@ -143,6 +144,12 @@ void Framework::CpuFrame()
 
 		jobCreateBuffers->Join(jobLoadModel);
 		JobSystem::Scheduler::GetInstance()->Run(jobCreateBuffers);
+
+		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models\\Sponza\\sponza.mat"))
+		{
+			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
+		}
+
 		bFirstFrame = false;
 	}
 }

@@ -32,8 +32,8 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	for (auto& sampler : m_samplers)
 	{
 		nlohmann::json o;
-		sampler.second.Serialize(o);
-		jsonSamplers.push_back(json::object({ sampler.first, o }));
+		sampler.Serialize(o);
+		jsonSamplers.push_back(o);
 	}
 
 	outData["samplers"] = jsonSamplers;
@@ -42,9 +42,16 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	m_shader.Serialize(outData["shader"]);
 }
 
-
 void MaterialAsset::Deserialize(const nlohmann::json& outData)
 {
+	/*MaterialAsset a;
+	a.m_samplers.push_back(SamplerEntry());
+	a.m_uniforms.push_back({ "color", 5.0f });
+	nlohmann::json j;
+	a.Serialize(j);
+	std::string s = j.dump();
+	*/
+
 	bool bEnableDepthTest = true;
 	bool bEnableZWrite = true;
 	float depthBias = 0.0f;
@@ -52,7 +59,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	EBlendMode blendMode = EBlendMode::None;
 	EFillMode fillMode = EFillMode::Fill;
 	std::string renderQueue = "Opaque";
-	
+
 	m_shaderDefines.clear();
 	m_uniforms.clear();
 
@@ -108,12 +115,10 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	{
 		for (auto& elem : outData["samplers"])
 		{
-			auto first = elem["first"].get<std::string>();
+			SamplerEntry entry;
+			entry.Deserialize(elem);
 
-			UID second;
-			second.Deserialize(elem["second"]);
-
-			m_samplers.push_back({ first, second });
+			m_samplers.emplace_back(std::move(entry));
 		}
 	}
 
@@ -121,10 +126,10 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	{
 		for (auto& elem : outData["uniforms"])
 		{
-			auto first = elem["first"].get<std::string>();
-			auto second = elem["second"].get<float>();
+			auto first = elem[0].get<std::string>();
+			auto second = elem[1].get<float>();
 
-			m_uniforms.push_back({first, second});
+			m_uniforms.push_back({ first, second });
 		}
 	}
 
@@ -166,7 +171,7 @@ TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 		const std::string& filepath = materialAssetInfo->GetAssetFilepath();
 
 		std::string materialJson;
-		
+
 		AssetRegistry::ReadAllTextFile(filepath, materialJson);
 
 		json j_material;
@@ -196,13 +201,13 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 	{
 		auto pSharedMaterial = pMaterial.Lock();
 		MaterialPtr pMaterialPtr = Renderer::GetDriver()->CreateMaterial(pSharedMaterial->GetRenderState(), pSharedMaterial->GetShader(), pSharedMaterial->GetShaderDefines());
-		
+
 		for (auto& sampler : pSharedMaterial->GetSamplers())
 		{
-			if (pMaterialPtr->HasParameter(sampler.first))
+			if (pMaterialPtr->HasParameter(sampler.m_name))
 			{
-				TexturePtr texture = TextureImporter::LoadTexture(sampler.second);
-				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, sampler.first, texture);
+				TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
+				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, sampler.m_name, texture);
 			}
 		}
 

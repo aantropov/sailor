@@ -18,6 +18,27 @@ namespace Sailor
 	{
 	public:
 
+		class SamplerEntry final : IJsonSerializable
+		{
+		public:
+
+			std::string m_name;
+			UID m_uid;
+
+			virtual SAILOR_API void Serialize(nlohmann::json& outData) const
+			{
+				outData["name"] = m_name;
+				m_uid.Serialize(outData["uid"]);
+			}
+
+			virtual SAILOR_API void Deserialize(const nlohmann::json& inData)
+			{
+				m_name = inData["name"].get<std::string>();
+				m_uid.Deserialize(inData["uid"]);
+			}
+		};
+
+
 		virtual SAILOR_API ~MaterialAsset() = default;
 
 		virtual SAILOR_API void Serialize(nlohmann::json & outData) const override;
@@ -28,7 +49,7 @@ namespace Sailor
 		SAILOR_API const std::string& GetRenderQueue() const { return m_renderQueue; }
 		SAILOR_API const UID& GetShader() const { return m_shader; }
 		SAILOR_API const std::vector<std::string>& GetShaderDefines() const { return  m_shaderDefines; }
-		SAILOR_API const std::vector<std::pair<std::string, UID>>& GetSamplers() const { return m_samplers; }
+		SAILOR_API const std::vector<SamplerEntry>& GetSamplers() const { return m_samplers; }
 		SAILOR_API const std::vector<std::pair<std::string, float>>& GetUniforms() const { return m_uniforms; }
 
 	protected:
@@ -39,7 +60,7 @@ namespace Sailor
 		bool m_bIsTransparent = false;
 
 		std::vector<std::string> m_shaderDefines;
-		std::vector<std::pair<std::string, UID>> m_samplers;
+		std::vector<SamplerEntry> m_samplers;
 		std::vector<std::pair<std::string, float>> m_uniforms;
 
 		UID m_shader;

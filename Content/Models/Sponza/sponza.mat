@@ -9,14 +9,6 @@
 	"fill_mode": 0,
 	"defines": ["CUSTOM_DATA"],
 	"shader": { "uid": "{7C4C5270-3F13-49B9-A5FC-05EBDF2D70CD}"},
-	"samplers": [{
-		"textureSampler": {
-			"uid": "{338E77F2-3B87-4DCC-97DB-73856CD9D3A0}"
-		}
-	}],
-	"uniforms": [{
-		"custom.data": {
-			"value": "0.344345f"
-		}
-	}]
+	"samplers":[{"name":"textureSampler","uid":{"uid":"{338E77F2-3B87-4DCC-97DB-73856CD9D3A0}"}}],
+	"uniforms": [["custom.data", 0.34]]
 }
