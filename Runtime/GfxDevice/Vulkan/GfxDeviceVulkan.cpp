@@ -151,6 +151,8 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage_Immediate(
 	RHI::ETextureClamping clamping,
 	RHI::ETextureUsageFlags usage)
 {
+	auto device = m_vkInstance->GetMainDevice();
+
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
 	vkExtent.height = extent.y;
@@ -158,6 +160,9 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage_Immediate(
 
 	RHI::TexturePtr res = RHI::TexturePtr::Make(filtration, clamping, mipLevels > 1);
 	res->m_vulkan.m_image = m_vkInstance->CreateImage_Immediate(m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+	res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, res->m_vulkan.m_image);
+	res->m_vulkan.m_imageView->Compile();
+
 	return res;
 }
 
@@ -172,6 +177,7 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 	RHI::ETextureClamping clamping,
 	RHI::ETextureUsageFlags usage)
 {
+	auto device = m_vkInstance->GetMainDevice();
 	RHI::TexturePtr outTexture = RHI::TexturePtr::Make(filtration, clamping, mipLevels > 1);
 
 	VkExtent3D vkExtent;
@@ -181,6 +187,8 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 
 	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
 	cmdList->m_vulkan.m_commandBuffer = m_vkInstance->CreateImage(outTexture->m_vulkan.m_image, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
+	outTexture->m_vulkan.m_imageView->Compile();
 
 	TRefPtr<RHI::Fence> fenceUpdateRes = TRefPtr<RHI::Fence>::Make();
 
@@ -335,6 +343,7 @@ void GfxDeviceVulkan::SetMaterialBinding(RHI::MaterialPtr material, const std::s
 
 void GfxDeviceVulkan::SetMaterialBinding(RHI::MaterialPtr material, const std::string& parameter, RHI::TexturePtr value)
 {
+	auto device = m_vkInstance->GetMainDevice();
 	const auto& layoutBindings = material->GetLayoutBindings();
 
 	auto it = std::find_if(layoutBindings.begin(), layoutBindings.end(), [&parameter](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
@@ -352,12 +361,24 @@ void GfxDeviceVulkan::SetMaterialBinding(RHI::MaterialPtr material, const std::s
 
 		if (descrIt != descriptors.end())
 		{
-			// Should we recreate descriptorSet to avoid race condition?
+			// Should we fully recreate descriptorSet to avoid race condition?
 			//UpdateDescriptorSet(material);
 
 			auto descriptor = (*descrIt).DynamicCast<VulkanDescriptorImage>();
 			descriptor->SetImageView(value->m_vulkan.m_imageView);
 			material->m_vulkan.m_descriptorSet->Compile();
+
+			return;
+		}
+		else
+		{
+			// Add new texture binding
+			auto textureBinding = material->GetOrCreateShaderBinding(parameter);
+			textureBinding->SetTextureBinding(value);
+			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(it->m_location, (VkDescriptorType)it->m_type);
+			UpdateDescriptorSet(material);
+			
+			return;
 		}
 	}
 
@@ -379,6 +400,7 @@ void GfxDeviceVulkan::EndCommandList(RHI::CommandListPtr cmd)
 void GfxDeviceVulkan::SetMaterialBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, size_t variableOffset, const void* pData, size_t size)
 {
 	auto device = m_vkInstance->GetMainDevice();
+
 	auto& binding = parameter->m_vulkan.m_valueBinding;
 	auto dstBuffer = binding.m_ptr.m_buffer;
 

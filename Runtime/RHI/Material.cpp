@@ -23,12 +23,38 @@ void Material::SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> lay
 	m_layoutBindings = std::move(layoutBindings);
 }
 
-bool Material::HasParameter(const std::string& parameter) const
+bool Material::HasBinding(const std::string& binding) const
 {
-	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&parameter](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
+	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
-			return shaderLayoutBinding.m_name == parameter;
+			return shaderLayoutBinding.m_name == binding;
 		});
 
 	return it != m_layoutBindings.end();
+}
+
+bool Material::HasParameter(const std::string& parameter) const
+{
+	std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
+	const std::string& binding = splittedString[0];
+	const std::string& variable = splittedString[1];
+
+	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
+		{
+			return shaderLayoutBinding.m_name == binding;
+		});
+
+	if (it != m_layoutBindings.end())
+	{
+
+		if (it->m_members.end() != std::find_if(it->m_members.begin(), it->m_members.end(), [&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
+			{
+				return shaderLayoutBinding.m_name == variable;
+			}))
+		{
+			return true;
+		}
+	}
+
+	return false;
 }

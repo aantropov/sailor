@@ -35,6 +35,7 @@ namespace Sailor::RHI
 		SAILOR_API ShaderPtr GetVertexShader() const { return m_vertexShader; }
 		SAILOR_API ShaderPtr GetFragmentShader() const { return m_fragmentShader; }
 
+		SAILOR_API bool HasBinding(const std::string& binding) const;
 		SAILOR_API bool HasParameter(const std::string& parameter) const;
 
 	protected:

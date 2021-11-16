@@ -204,10 +204,10 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 
 		for (auto& sampler : pSharedMaterial->GetSamplers())
 		{
-			if (pMaterialPtr->HasParameter(sampler.m_name))
+			if (pMaterialPtr->HasBinding(sampler.m_name))
 			{
 				TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
-				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, sampler.m_name, texture);
+				Renderer::GetDriver()->SetMaterialBinding(pMaterialPtr, sampler.m_name, texture);
 			}
 		}
 
@@ -215,7 +215,7 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 		{
 			if (pMaterialPtr->HasParameter(uniform.first))
 			{
-				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, uniform.first, uniform.second);
+				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, uniform.first, (float)uniform.second);
 			}
 		}
 

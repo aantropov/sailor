@@ -69,7 +69,7 @@ RHI::TexturePtr TextureImporter::LoadTexture(UID uid)
 
 		if (LoadTextureRaw(uid, decodedData, width, height, mipLevels))
 		{
-			return RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 0.0f),
+			return RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 1.0f),
 				mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 				assetInfo->GetClamping());
 		}
