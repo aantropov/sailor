@@ -41,16 +41,22 @@ FrameState::FrameState(const FrameState& frameState) noexcept :
 	FrameState()
 {
 	m_pData = TUniquePtr<FrameData>::Make(*frameState.m_pData);
+	m_updateResourcesCommandBuffers = frameState.m_updateResourcesCommandBuffers;
+	m_frameBindings = frameState.m_frameBindings;
 }
 
 FrameState::FrameState(FrameState&& frameState) noexcept
 {
-	m_pData = std::move(frameState.m_pData);
+	std::swap(m_pData, frameState.m_pData);
+	std::swap(m_updateResourcesCommandBuffers, frameState.m_updateResourcesCommandBuffers);
+	std::swap(m_frameBindings, frameState.m_frameBindings);
 }
 
 FrameState& FrameState::operator=(FrameState frameState)
 {
-	m_pData = std::move(frameState.m_pData);
+	std::swap(m_pData, frameState.m_pData);
+	std::swap(m_updateResourcesCommandBuffers, frameState.m_updateResourcesCommandBuffers);
+	std::swap(m_frameBindings, frameState.m_frameBindings);
 	return *this;
 }
 
@@ -79,7 +85,7 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 	timer.Start();
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
-	CpuFrame();
+	CpuFrame(currentInputState);
 	SAILOR_PROFILE_END_BLOCK();
 
 	timer.Stop();
@@ -94,7 +100,7 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 	}
 }
 
-void Framework::CpuFrame()
+void Framework::CpuFrame(FrameState& state)
 {
 	static bool bFirstFrame = true;
 
@@ -138,9 +144,9 @@ void Framework::CpuFrame()
 
 		auto jobCreateBuffers = JobSystem::Scheduler::CreateJob("Create buffers",
 			[this]()
-		{
-			m_testMesh = Sailor::RHI::Renderer::GetDriver()->CreateMesh(g_testVertices, g_testIndices);
-		});
+			{
+				m_testMesh = Sailor::RHI::Renderer::GetDriver()->CreateMesh(g_testVertices, g_testIndices);
+			});
 
 		jobCreateBuffers->Join(jobLoadModel);
 		JobSystem::Scheduler::GetInstance()->Run(jobCreateBuffers);
@@ -150,6 +156,61 @@ void Framework::CpuFrame()
 			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
 		}
 
+		m_frameDataUbo = Sailor::RHI::Renderer::GetDriver()->CreateUniformBuffer("FrameData", sizeof(RHI::UboFrameData), 0);
+
 		bFirstFrame = false;
 	}
+
+	static glm::vec3 cameraPosition = Math::vec3_Forward * -10.0f;
+	static glm::vec3 cameraViewDir = Math::vec3_Forward;
+
+	const float sensitivity = 500;
+
+	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
+	if (state.GetInputState().IsKeyDown('A'))
+		delta += -cross(cameraViewDir, Math::vec3_Up);
+
+	if (state.GetInputState().IsKeyDown('D'))
+		delta += cross(cameraViewDir, Math::vec3_Up);
+
+	if (state.GetInputState().IsKeyDown('W'))
+		delta += cameraViewDir;
+
+	if (state.GetInputState().IsKeyDown('S'))
+		delta += -cameraViewDir;
+
+	if (glm::length(delta) > 0)
+		cameraPosition += glm::normalize(delta) * sensitivity * state.GetDeltaTime();
+
+	const float speed = 50.0f;
+
+	vec2 shift{};
+	shift.x += (state.GetMouseDeltaToCenterViewport().x) * state.GetDeltaTime() * speed;
+	shift.y += (state.GetMouseDeltaToCenterViewport().y) * state.GetDeltaTime() * speed;
+
+	if (glm::length(shift) > 0.0f && state.GetInputState().IsKeyDown(VK_LBUTTON))
+	{
+		glm::quat hRotation = angleAxis(-glm::radians(shift.x), Math::vec3_Up);
+		glm::quat vRotation = angleAxis(glm::radians(shift.y), cross(Math::vec3_Up, cameraViewDir));
+
+		cameraViewDir = vRotation * cameraViewDir;
+		cameraViewDir = hRotation * cameraViewDir;
+	}
+
+	auto width = Sailor::EngineInstance::GetViewportWindow().GetWidth();
+	auto height = Sailor::EngineInstance::GetViewportWindow().GetHeight();
+
+	float aspect = width / (float)height;
+	m_frameData.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 10000.0f);
+	m_frameData.m_projection[1][1] *= -1;
+	m_frameData.m_currentTime = (float)state.GetTime();
+	m_frameData.m_deltaTime = state.GetDeltaTime();
+	m_frameData.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Math::vec3_Up);
+
+	glm::mat4x4 model = glm::rotate(glm::mat4(1.0f), state.GetTime() * glm::radians(90.0f), Math::vec3_Up);
+
+	// TODO: Handle Lifetime of command buffers & threads
+	state.PushCommandBuffer_ThreadSafe(RHI::Renderer::GetDriver()->UpdateUniformBuffer(m_frameDataUbo, &m_frameData, sizeof(m_frameData)));
+	state.PushFrameBinding(m_frameDataUbo);
+	//RHI::Renderer::GetDriver()->SetMaterialParameter(m_testMaterial, "transform.model", model);
 }

@@ -32,7 +32,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void BindVertexBuffers(std::vector<VulkanBufferPtr> buffers, std::vector <VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
 		void BindIndexBuffer(VulkanBufferPtr indexBuffer);
-		void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, VulkanDescriptorSetPtr descriptorSet);
+		void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, std::vector<VulkanDescriptorSetPtr> descriptorSet);
 		void BindPipeline(VulkanPipelinePtr pipeline);
 
 		void DrawIndexed(VulkanBufferPtr indexBuffer);

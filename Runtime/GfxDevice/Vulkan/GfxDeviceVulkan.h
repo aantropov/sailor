@@ -52,6 +52,8 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {});
 
 		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, TRefPtr<RHI::Fence> fence);
+		virtual SAILOR_API RHI::CommandListPtr UpdateUniformBuffer(RHI::ShaderBindingPtr dst, const void* pData, size_t size);
+		virtual SAILOR_API RHI::ShaderBindingPtr CreateUniformBuffer(const std::string& type, size_t size, uint32_t shaderBinding);
 
 		// Begin Immediate context
 		virtual SAILOR_API RHI::BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);

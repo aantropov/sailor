@@ -148,9 +148,16 @@ void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer)
 	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 }
 
-void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, VulkanDescriptorSetPtr descriptorSet)
+void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, std::vector<VulkanDescriptorSetPtr> descriptorSet)
 {
-	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, 1, descriptorSet->GetHandle(), 0, nullptr);
+	VkDescriptorSet* sets = reinterpret_cast<VkDescriptorSet*>(_malloca(descriptorSet.size() * sizeof(VkDescriptorSet)));
+
+	for (int i = 0; i < descriptorSet.size(); i++)
+	{
+		sets[i] = *descriptorSet[i];
+	}
+	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, (uint32_t)descriptorSet.size(), &sets[0], 0, nullptr);
+	_freea(sets);
 }
 
 void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)

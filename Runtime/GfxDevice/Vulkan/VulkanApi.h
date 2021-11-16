@@ -17,15 +17,19 @@ namespace Sailor
 {
 	class Win32::Window;
 	class FrameState;
+	namespace Memory 
+	{
+		class VulkanBufferMemoryPtr;
+	}
 }
 
 using namespace Sailor::Win32;
 using namespace Sailor;
+using namespace Sailor::Memory;
 
 namespace Sailor::GfxDevice::Vulkan
 {
 	typedef TRefPtr<class VulkanSampler> VulkanSamplerPtr;
-	typedef TRefPtr<class VulkanDescriptorSetLayout> VulkanDescriptorSetLayoutPtr;
 	typedef TRefPtr<class VulkanDescriptor> VulkanDescriptorPtr;
 	typedef TRefPtr<class VulkanDeviceMemory> VulkanDeviceMemoryPtr;
 	typedef TRefPtr<class VulkanDescriptorSetLayout> VulkanDescriptorSetLayoutPtr;
@@ -168,9 +172,11 @@ namespace Sailor::GfxDevice::Vulkan
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE);
 
+		static SAILOR_API VulkanCommandBufferPtr UpdateBuffer(VulkanDevicePtr device, const VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size);
+
 		//Immediate context
 		static SAILOR_API VulkanBufferPtr CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
-		static SAILOR_API void CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr  src, VulkanBufferPtr dst, VkDeviceSize size);
+		static SAILOR_API void CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr  src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
 
 		static SAILOR_API VulkanImagePtr CreateImage_Immediate(
 			VulkanDevicePtr device,

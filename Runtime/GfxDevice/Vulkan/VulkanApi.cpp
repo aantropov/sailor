@@ -23,6 +23,7 @@
 #include "RHI/Types.h"
 #include "Framework/Framework.h"
 #include "VulkanMemory.h"
+#include "VulkanBufferMemory.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -772,6 +773,28 @@ VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, Vulka
 	return cmdBuffer;
 }
 
+VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Memory::VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size)
+{
+	const auto requirements = dst.m_buffer->GetMemoryRequirements();
+
+	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
+	auto data = stagingMemoryAllocator.Allocate(requirements.size, requirements.alignment);
+
+	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
+	stagingBuffer->Compile();
+	stagingBuffer->Bind(data);
+
+	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
+
+	//TODO: Implement transfer queue
+	auto cmdBuffer = device->CreateCommandBuffer(false);
+	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	cmdBuffer->CopyBuffer(stagingBuffer, dst.m_buffer, size, 0, dst.m_offset);
+	cmdBuffer->EndCommandList();
+
+	return cmdBuffer;
+}
+
 VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
 	VulkanBufferPtr resBuffer;
@@ -784,13 +807,13 @@ VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const 
 	return resBuffer;
 }
 
-void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size)
+void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
 {
 	auto fence = VulkanFencePtr::Make(device);
 
 	auto cmdBuffer = device->CreateCommandBuffer(true);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	cmdBuffer->CopyBuffer(src, dst, size);
+	cmdBuffer->CopyBuffer(src, dst, size, srcOffset, dstOffset);
 	cmdBuffer->EndCommandList();
 	device->SubmitCommandBuffer(cmdBuffer, fence);
 
@@ -881,7 +904,7 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 
 	VulkanImagePtr res{};
 	auto cmd = CreateImage(res, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode);
-	
+
 	auto fence = VulkanFencePtr::Make(device);
 	device->SubmitCommandBuffer(cmd, fence);
 	fence->Wait();
@@ -910,8 +933,8 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 }
 
 bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
-	const std::vector<VulkanShaderStagePtr>& shaders, 
-	std::vector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts, 
+	const std::vector<VulkanShaderStagePtr>& shaders,
+	std::vector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
 	std::vector<RHI::ShaderLayoutBinding>& outRhiLayout)
 {
 	std::vector<std::vector<VkDescriptorSetLayoutBinding>> vulkanLayouts;
@@ -940,7 +963,7 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 
 	std::vector<VulkanDescriptorSetLayoutPtr> res;
 	res.resize(vulkanLayouts.size());
-	
+
 	for (uint32_t i = 0; i < vulkanLayouts.size(); i++)
 	{
 		res[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(vulkanLayouts[i]));

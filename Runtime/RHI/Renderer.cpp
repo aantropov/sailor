@@ -79,7 +79,6 @@ IGfxDeviceCommands* Renderer::GetDriverCommands()
 	return nullptr;
 }
 
-
 void Renderer::FixLostDevice()
 {
 	m_driverInstance->FixLostDevice(m_pViewport);
@@ -118,7 +117,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
-			if (m_driverInstance->PresentFrame(frame, &frame.GetCommandBuffers()))
+			if (m_driverInstance->PresentFrame(frame))
 			{
 				totalFramesCount++;
 				timer.Stop();

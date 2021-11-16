@@ -16,6 +16,7 @@ namespace Sailor::RHI
 		{
 			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding;
 			VkDescriptorSetLayoutBinding m_descriptorSetLayout;
+			GfxDevice::Vulkan::VulkanDescriptorSetPtr m_descriptorSet;
 		} m_vulkan;
 #endif
 		SAILOR_API bool IsBind() const;

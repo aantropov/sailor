@@ -450,15 +450,15 @@ namespace Sailor::RHI
 
 	struct UboFrameData
 	{
-		alignas(4) float m_currentTime;
-		alignas(4) float m_deltaTime;
+		alignas(16) glm::mat4 m_view;
+		alignas(16) glm::mat4 m_projection;
+		alignas(16) float m_currentTime;
+		alignas(16) float m_deltaTime;
 	};
 
 	struct UboTransform
 	{
 		alignas(16) glm::mat4 m_model;
-		alignas(16) glm::mat4 m_view;
-		alignas(16) glm::mat4 m_projection;
 	};
 
 	class Resource : public TRefBase

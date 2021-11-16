@@ -46,6 +46,9 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "RHI/Types.h"
 #include "RHI/Mesh.h"
 #include "RHI/Buffer.h"
+#include "RHI/Material.h"
+#include "RHI/Shader.h"
+#include "RHI/CommandList.h"
 
 using namespace glm;
 using namespace Sailor;
@@ -580,55 +583,6 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();
 
-	///////////////////////////////////
-	static glm::vec3 cameraPosition = Math::vec3_Forward * -10.0f;
-	static glm::vec3 cameraViewDir = Math::vec3_Forward;
-
-	const float sensitivity = 500;
-
-	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
-	if (state.GetInputState().IsKeyDown('A'))
-		delta += -cross(cameraViewDir, Math::vec3_Up);
-
-	if (state.GetInputState().IsKeyDown('D'))
-		delta += cross(cameraViewDir, Math::vec3_Up);
-
-	if (state.GetInputState().IsKeyDown('W'))
-		delta += cameraViewDir;
-
-	if (state.GetInputState().IsKeyDown('S'))
-		delta += -cameraViewDir;
-
-	if (glm::length(delta) > 0)
-		cameraPosition += glm::normalize(delta) * sensitivity * state.GetDeltaTime();
-
-	const float speed = 50.0f;
-
-	vec2 shift{};
-	shift.x += (state.GetMouseDeltaToCenterViewport().x) * state.GetDeltaTime() * speed;
-	shift.y += (state.GetMouseDeltaToCenterViewport().y) * state.GetDeltaTime() * speed;
-
-	if (glm::length(shift) > 0.0f && state.GetInputState().IsKeyDown(VK_LBUTTON))
-	{
-		glm::quat hRotation = angleAxis(-glm::radians(shift.x), Math::vec3_Up);
-		glm::quat vRotation = angleAxis(glm::radians(shift.y), cross(Math::vec3_Up, cameraViewDir));
-
-		cameraViewDir = vRotation * cameraViewDir;
-		cameraViewDir = hRotation * cameraViewDir;
-	}
-
-	UboTransform ubo{};
-	ubo.m_model = glm::rotate(glm::mat4(1.0f), state.GetTime() * glm::radians(90.0f), Math::vec3_Up);
-	ubo.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Math::vec3_Up);
-
-	float aspect = m_swapchain->GetExtent().width / (float)m_swapchain->GetExtent().height;
-	ubo.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 10000.0f);
-	ubo.m_projection[1][1] *= -1;
-
-	m_uniformBuffer->GetMemoryDevice()->Copy(0, sizeof(ubo), &ubo);
-
-	/////////////////////////////////////////
-
 	uint32_t imageIndex;
 	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VulkanFencePtr(), imageIndex);
 
@@ -666,6 +620,11 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 		{
 			commandBuffers.push_back(*cmdBuffer);
 		}
+
+		for (auto cmdBuffer : state.GetCommandBuffers())
+		{
+			commandBuffers.push_back(*cmdBuffer->m_vulkan.m_commandBuffer);
+		}
 	}
 
 	m_commandBuffers[imageIndex]->BeginCommandList();
@@ -683,12 +642,14 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 		auto mesh = Framework::GetInstance()->GetTestMesh();
 		if (mesh && mesh->IsReady())
 		{
-			m_commandBuffers[imageIndex]->BindPipeline(m_graphicsPipeline);
+			auto& material = Framework::GetInstance()->GetTestMaterial();
+
+			m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
 			m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
 			m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
 			m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });
 			m_commandBuffers[imageIndex]->BindIndexBuffer(mesh->m_indexBuffer->m_vulkan.m_buffer);
-			m_commandBuffers[imageIndex]->BindDescriptorSet(m_pipelineLayout, m_descriptorSet);
+			m_commandBuffers[imageIndex]->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, { state.GetFrameBinding()->m_vulkan.m_descriptorSet, material->m_vulkan.m_descriptorSet });
 			m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer);
 		}
 		m_commandBuffers[imageIndex]->EndRenderPass();

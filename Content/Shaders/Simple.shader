@@ -10,11 +10,18 @@ END_CODE,
 "glslVertex":
 BEGIN_CODE
 
-layout(binding = 0) uniform UBOTransform 
+layout(binding = 0) uniform FrameData
 {
-    mat4 model;
     mat4 view;
     mat4 projection;
+    float currentTime;
+    float deltaTime;
+
+} frame;
+
+layout(binding = 1) uniform Transform
+{
+    mat4 model;
 } transform;
 
 #ifdef CUSTOM_DATA
@@ -33,7 +40,7 @@ layout(location = 1) out vec2 fragTexcoord;
 
 void main() 
 {
-    gl_Position = transform.projection * transform.view * transform.model * vec4(inPosition, 1.0);
+    gl_Position = frame.projection * frame.view * transform.model * vec4(inPosition, 1.0);
     fragColor = 1 - inColor * gl_Position.z / 1000;
     fragTexcoord = inTexcoord;
 }
@@ -44,7 +51,7 @@ BEGIN_CODE
 layout(location = 0) in vec4 fragColor;
 layout(location = 1) in vec2 fragTexcoord;
 
-layout(binding = 1) uniform sampler2D textureSampler;
+layout(binding = 3) uniform sampler2D textureSampler;
 
 layout(location = 0) out vec4 outColor;
 

@@ -72,6 +72,8 @@ namespace Sailor::RHI
 		}
 
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
+		virtual SAILOR_API CommandListPtr UpdateUniformBuffer(ShaderBindingPtr dst, const void* pData, size_t size) = 0;
+		virtual SAILOR_API ShaderBindingPtr CreateUniformBuffer(const std::string& type, size_t size, uint32_t shaderBinding) = 0;
 
 		//Immediate context
 		virtual SAILOR_API BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
