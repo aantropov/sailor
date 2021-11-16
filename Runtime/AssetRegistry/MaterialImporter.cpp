@@ -3,6 +3,7 @@
 #include "UID.h"
 #include "AssetRegistry.h"
 #include "MaterialAssetInfo.h"
+#include "Math/Math.h"
 #include "Utils.h"
 #include <filesystem>
 #include <fstream>
@@ -37,21 +38,13 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	}
 
 	outData["samplers"] = jsonSamplers;
-	outData["uniforms"] = m_uniforms;
+	outData["uniforms"] = m_uniformsVec4;
 
 	m_shader.Serialize(outData["shader"]);
 }
 
 void MaterialAsset::Deserialize(const nlohmann::json& outData)
 {
-	/*MaterialAsset a;
-	a.m_samplers.push_back(SamplerEntry());
-	a.m_uniforms.push_back({ "color", 5.0f });
-	nlohmann::json j;
-	a.Serialize(j);
-	std::string s = j.dump();
-	*/
-
 	bool bEnableDepthTest = true;
 	bool bEnableZWrite = true;
 	float depthBias = 0.0f;
@@ -61,7 +54,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	std::string renderQueue = "Opaque";
 
 	m_shaderDefines.clear();
-	m_uniforms.clear();
+	m_uniformsVec4.clear();
 
 	if (outData.contains("enable_depth_test"))
 	{
@@ -127,9 +120,9 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 		for (auto& elem : outData["uniforms"])
 		{
 			auto first = elem[0].get<std::string>();
-			auto second = elem[1].get<float>();
+			auto second = elem[1].get<glm::vec4>();
 
-			m_uniforms.push_back({ first, second });
+			m_uniformsVec4.push_back({ first, second });
 		}
 	}
 
@@ -211,11 +204,11 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 			}
 		}
 
-		for (auto& uniform : pSharedMaterial->GetUniforms())
+		for (auto& uniform : pSharedMaterial->GetUniformValues())
 		{
 			if (pMaterialPtr->HasParameter(uniform.first))
 			{
-				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, uniform.first, (float)uniform.second);
+				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, uniform.first, uniform.second);
 			}
 		}
 

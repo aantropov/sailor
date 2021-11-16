@@ -50,7 +50,7 @@ namespace Sailor
 		SAILOR_API const UID& GetShader() const { return m_shader; }
 		SAILOR_API const std::vector<std::string>& GetShaderDefines() const { return  m_shaderDefines; }
 		SAILOR_API const std::vector<SamplerEntry>& GetSamplers() const { return m_samplers; }
-		SAILOR_API const std::vector<std::pair<std::string, float>>& GetUniforms() const { return m_uniforms; }
+		SAILOR_API const std::vector<std::pair<std::string, glm::vec4>>& GetUniformValues() const { return m_uniformsVec4; }
 
 	protected:
 
@@ -61,7 +61,7 @@ namespace Sailor
 
 		std::vector<std::string> m_shaderDefines;
 		std::vector<SamplerEntry> m_samplers;
-		std::vector<std::pair<std::string, float>> m_uniforms;
+		std::vector<std::pair<std::string, glm::vec4>> m_uniformsVec4;
 
 		UID m_shader;
 	};

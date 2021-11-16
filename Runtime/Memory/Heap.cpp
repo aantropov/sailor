@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdint.h>
 #include <cassert>
+#include <algorithm>
 
 using namespace Sailor;
 using namespace Sailor::Memory;

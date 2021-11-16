@@ -261,10 +261,16 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	auto debugFragmentShader = CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
 	VulkanApi::CreateDescriptorSetLayouts(device, { debugVertexShader->m_vulkan.m_shader, debugFragmentShader->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
+	
+#ifdef _DEBUG
+	const bool bIsDebug = true;
+#else
+	const bool bIsDebug = false;
+#endif
 
 	RHI::ShaderByteCode vertexSpirv;
 	RHI::ShaderByteCode fragmentSpirv;
-	ShaderCompiler::GetSpirvCode(shader, defines, vertexSpirv, fragmentSpirv, false);
+	ShaderCompiler::GetSpirvCode(shader, defines, vertexSpirv, fragmentSpirv, bIsDebug);
 	auto vertexShader = CreateShader(RHI::EShaderStage::Vertex, vertexSpirv);
 	auto fragmentShader = CreateShader(RHI::EShaderStage::Fragment, fragmentSpirv);
 

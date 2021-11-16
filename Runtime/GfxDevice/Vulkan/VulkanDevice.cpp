@@ -362,7 +362,7 @@ void VulkanDevice::CreateGraphicsPipeline()
 		m_graphicsPipeline->Compile();
 	}
 
-	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<TextureAssetInfoPtr>("Textures\\VulkanLogo.png"))
+	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<TextureAssetInfoPtr>("Models\\Sponza\\textures\\spnza_bricks_a_diff.tga"))
 	{
 		const VkDeviceSize uniformBufferSize = sizeof(RHI::UboTransform);
 
