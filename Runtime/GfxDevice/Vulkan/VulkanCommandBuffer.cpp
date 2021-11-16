@@ -63,6 +63,7 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferPtr src, VulkanBufferPtr dst, V
 	copyRegion.srcOffset = srcOffset; // Optional
 	copyRegion.dstOffset = dstOffset; // Optional
 	copyRegion.size = size;
+
 	vkCmdCopyBuffer(m_commandBuffer, *src, *dst, 1, &copyRegion);
 
 	m_bufferDependencies.push_back(src);

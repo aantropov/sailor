@@ -31,6 +31,7 @@ void GfxDeviceVulkan::Initialize(const Win32::Window* pViewport, RHI::EMsaaSampl
 GfxDeviceVulkan::~GfxDeviceVulkan()
 {
 	m_trackedFences.clear();
+	m_uniformBuffers.clear();
 	GfxDevice::Vulkan::VulkanApi::Shutdown();
 }
 
@@ -317,7 +318,7 @@ VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const s
 	}
 
 	auto& uniformAllocator = m_uniformBuffers[uniformTypeId];
-	uniformAllocator.GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+	uniformAllocator.GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 	uniformAllocator.GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	return uniformAllocator;
@@ -404,7 +405,7 @@ void GfxDeviceVulkan::SetMaterialBinding(RHI::CommandListPtr cmd, RHI::ShaderBin
 	auto& binding = parameter->m_vulkan.m_valueBinding;
 	auto dstBuffer = binding.m_ptr.m_buffer;
 
-	const auto requirements = dstBuffer->GetMemoryRequirements();
+	const auto& requirements = dstBuffer->GetMemoryRequirements();
 
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
 	auto data = stagingMemoryAllocator.Allocate(size, requirements.alignment);
@@ -414,7 +415,10 @@ void GfxDeviceVulkan::SetMaterialBinding(RHI::CommandListPtr cmd, RHI::ShaderBin
 	VK_CHECK(stagingBuffer->Bind(data));
 
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
+
+	BeginCommandList(cmd);
 	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, 0, binding.m_offset + variableOffset);
+	EndCommandList(cmd);
 }
 
 void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size)
@@ -422,7 +426,7 @@ void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std:
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::CommandListPtr commandList = RHI::CommandListPtr::Make();
-	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
 	auto& shaderBinding = material->GetOrCreateShaderBinding(binding);
 	bool bShouldUpdateDescriptorSet = false;
