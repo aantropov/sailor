@@ -63,9 +63,13 @@ namespace Sailor::RHI
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
 		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const bool& value);
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::vec4& value);
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::mat4x4& value);
+
+		template<typename TDataType>
+		void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const TDataType& value)
+		{
+			std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
+			SetMaterialParameter(material, splittedString[0], splittedString[1], &value, sizeof(value));
+		}
 
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
 

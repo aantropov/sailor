@@ -90,21 +90,3 @@ void IGfxDevice::SubmitCommandList_Immediate(CommandListPtr commandList)
 	SubmitCommandList(commandList, fence);
 	fence->Wait();
 }
-
-void IGfxDevice::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const bool& value)
-{
-	std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
-	SetMaterialParameter(material, splittedString[0], splittedString[1], &value, sizeof(bool));
-}
-
-void IGfxDevice::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::vec4& value)
-{
-	std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
-	SetMaterialParameter(material, splittedString[0], splittedString[1], &value, sizeof(vec4));
-}
-
-void IGfxDevice::SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const glm::mat4x4& value)
-{
-	std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
-	SetMaterialParameter(material, splittedString[0], splittedString[1], &value, sizeof(glm::mat4x4));
-}

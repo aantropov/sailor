@@ -60,8 +60,8 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 void VulkanCommandBuffer::CopyBuffer(VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
 {
 	VkBufferCopy copyRegion{};
-	copyRegion.srcOffset = 0; // Optional
-	copyRegion.dstOffset = 0; // Optional
+	copyRegion.srcOffset = srcOffset; // Optional
+	copyRegion.dstOffset = dstOffset; // Optional
 	copyRegion.size = size;
 	vkCmdCopyBuffer(m_commandBuffer, *src, *dst, 1, &copyRegion);
 
