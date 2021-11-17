@@ -69,16 +69,19 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 
 			RHI::ShaderLayoutBinding& rhiBinding = binding[reflBinding.binding].first = {};
 			VkDescriptorSetLayoutBinding& layoutBinding = binding[reflBinding.binding].second = {};
-			layoutBinding.binding = reflBinding.binding;
-			layoutBinding.descriptorType = static_cast<VkDescriptorType>(reflBinding.descriptor_type);
-			layoutBinding.descriptorCount = 1;
+			
+			layoutBinding = VulkanApi::CreateDescriptorSetLayoutBinding(reflBinding.binding,
+				static_cast<VkDescriptorType>(reflBinding.descriptor_type),
+				1);
 
 			for (uint32_t i_dim = 0; i_dim < reflBinding.array.dims_count; ++i_dim)
 			{
 				layoutBinding.descriptorCount *= reflBinding.array.dims[i_dim];
 			}
 
-			layoutBinding.stageFlags = static_cast<VkShaderStageFlagBits>(module.shader_stage);
+			// We store different stages in one descriptor set
+			layoutBinding.stageFlags = VK_SHADER_STAGE_ALL;
+			// static_cast<VkShaderStageFlagBits>(module.shader_stage);
 
 			// If we have type description then we have all info
 			if (reflBinding.name)
@@ -87,6 +90,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				rhiBinding.m_type = (RHI::EShaderBindingType)reflBinding.descriptor_type;
 				rhiBinding.m_location = reflBinding.binding;
 				rhiBinding.m_size = reflBinding.block.size;
+				rhiBinding.m_set = reflBinding.set;
 
 				for (uint32_t i = 0; i < reflBinding.block.member_count; i++)
 				{

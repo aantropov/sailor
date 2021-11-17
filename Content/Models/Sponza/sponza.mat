@@ -7,8 +7,8 @@
 	"is_transparent": false,
 	"blend_mode": 0,
 	"fill_mode": 0,
-	"defines": ["CUSTOM_DATA"],
+	"defines": [],
 	"shader": { "uid": "{7C4C5270-3F13-49B9-A5FC-05EBDF2D70CD}"},
 	"samplers":[{"name":"textureSampler","uid":{"uid":"{1CA17F81-9998-413A-872D-7BD5E22299EB}"}}],
-	"uniforms": [["custom.color",{"w":1.0,"x":1.0,"y":0.5,"z":0.5}]]
+	"uniforms": [["custom.color",{"w":1.0,"x":0.0,"y":0.0,"z":0.1}]]
 }

@@ -209,8 +209,8 @@ void Framework::CpuFrame(FrameState& state)
 
 	glm::mat4x4 model = glm::rotate(glm::mat4(1.0f), state.GetTime() * glm::radians(90.0f), Math::vec3_Up);
 
-	// TODO: Handle Lifetime of command buffers & threads
-	state.PushCommandBuffer_ThreadSafe(RHI::Renderer::GetDriver()->UpdateUniformBuffer(m_frameDataUbo, &m_frameData, sizeof(m_frameData)));
 	state.PushFrameBinding(m_frameDataUbo);
-	//RHI::Renderer::GetDriver()->SetMaterialParameter(m_testMaterial, "transform.model", model);
+	// TODO: Handle Lifetime of command buffers & threads
+	RHI::Renderer::GetDriver()->SubmitCommandList_Immediate(RHI::Renderer::GetDriver()->UpdateUniformBuffer(m_frameDataUbo, &m_frameData, sizeof(m_frameData)));
+	RHI::Renderer::GetDriver()->SetMaterialParameter(m_testMaterial, "transform.model", model);
 }

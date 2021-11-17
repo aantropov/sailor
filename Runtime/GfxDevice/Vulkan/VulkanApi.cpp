@@ -953,15 +953,22 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	{
 		for (uint32_t j = 0; j < shaders[i]->GetDescriptorSetLayoutBindings().size(); j++)
 		{
-			auto& bindings = shaders[i]->GetDescriptorSetLayoutBindings()[j];
-			auto& rhiBindings = shaders[i]->GetBindings()[j];
+			const auto& rhiBindings = shaders[i]->GetBindings()[j];
+			const auto& bindings = shaders[i]->GetDescriptorSetLayoutBindings()[j];
+			
+			for (uint32_t k = 0; k < bindings.size(); k++)
+			{
+				const auto& rhiBinding = rhiBindings[k];
+				const auto& binding = bindings[k];
 
-			vulkanLayouts[j].insert(vulkanLayouts[j].end(), bindings.cbegin(), bindings.cend());
-			rhiLayouts[j].insert(rhiLayouts[j].end(), rhiBindings.cbegin(), rhiBindings.cend());
+				vulkanLayouts[rhiBinding.m_set].push_back(binding);
+				rhiLayouts[rhiBinding.m_set].push_back(rhiBinding);
+			}
 		}
 	}
 
 	std::vector<VulkanDescriptorSetLayoutPtr> res;
+
 	res.resize(vulkanLayouts.size());
 
 	for (uint32_t i = 0; i < vulkanLayouts.size(); i++)

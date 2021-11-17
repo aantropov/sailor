@@ -10,7 +10,7 @@ END_CODE,
 "glslVertex":
 BEGIN_CODE
 
-layout(binding = 0) uniform FrameData
+layout(set=0, binding=0) uniform FrameData
 {
     mat4 view;
     mat4 projection;
@@ -19,15 +19,15 @@ layout(binding = 0) uniform FrameData
 
 } frame;
 
-layout(binding = 1) uniform Transform
+layout(set=1, binding=0) uniform Transform
 {
     mat4 model;
 } transform;
 
 #ifdef CUSTOM_DATA
-layout(binding = 2) uniform CustomData
+layout(set=1, binding=1) uniform CustomData
 {
-    float color;
+    vec4 color;
 } custom;
 #endif
 
@@ -42,6 +42,11 @@ void main()
 {
     gl_Position = frame.projection * frame.view * transform.model * vec4(inPosition, 1.0);
     fragColor = 1 - inColor * gl_Position.z / 1000;
+
+#ifdef CUSTOM_DATA
+    fragColor *= custom.color; 
+#endif
+
     fragTexcoord = inTexcoord;
 }
 END_CODE,
@@ -51,7 +56,7 @@ BEGIN_CODE
 layout(location = 0) in vec4 fragColor;
 layout(location = 1) in vec2 fragTexcoord;
 
-layout(binding = 3) uniform sampler2D textureSampler;
+layout(set=1, binding=2) uniform sampler2D textureSampler;
 
 layout(location = 0) out vec4 outColor;
 

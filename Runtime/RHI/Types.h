@@ -431,6 +431,7 @@ namespace Sailor::RHI
 
 		uint8_t m_location = 0u;
 		uint32_t m_size = 0u;
+		uint32_t m_set = 0u;
 	};
 
 	class Vertex

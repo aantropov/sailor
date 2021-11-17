@@ -293,20 +293,29 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 
 	for (uint32_t i = 0; i < bindings.size(); i++)
 	{
-		auto& vkLayoutBinding = descriptorSetLayouts[0]->m_descriptorSetLayoutBindings[i];
 		auto& layoutBinding = bindings[i];
+		if (layoutBinding.m_set == 0)
+		{
+			// We skip 0 layout, it is frameData and would be binded in a different way
+			continue;
+		}
+		const auto& layoutBindings = descriptorSetLayouts[layoutBinding.m_set]->m_descriptorSetLayoutBindings;
+
+		auto it = std::find_if(layoutBindings.begin(), layoutBindings.end(), [&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_location; });
+		if (it == layoutBindings.end())
+		{
+			continue;
+		}
+
+		auto& vkLayoutBinding = *it;
 		auto& binding = res->GetOrCreateShaderBinding(layoutBinding.m_name);
 
-		// That is reserved by render pipeline
-		if (layoutBinding.m_location != 0 && layoutBinding.m_name != "frame")
+		if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
 		{
-			if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
-			{
-				auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
-				binding->m_vulkan.m_valueBinding = uniformAllocator.Allocate(layoutBinding.m_size, device->GetUboOffsetAlignment(layoutBinding.m_size));
-				binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
-				binding->SetMembersInfo(layoutBinding);
-			}
+			auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
+			binding->m_vulkan.m_valueBinding = uniformAllocator.Allocate(layoutBinding.m_size, device->GetUboOffsetAlignment(layoutBinding.m_size));
+			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
+			binding->SetMembersInfo(layoutBinding);
 		}
 	}
 
@@ -355,6 +364,7 @@ RHI::ShaderBindingPtr GfxDeviceVulkan::CreateUniformBuffer(const std::string& ty
 
 	RHI::ShaderBindingPtr binding = RHI::ShaderBindingPtr::Make();
 	binding->m_vulkan.m_valueBinding = GetUniformBufferAllocator(type).Allocate(size, device->GetUboOffsetAlignment(size));
+	auto valueBinding = *(binding->m_vulkan.m_valueBinding);
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_location = shaderBinding;
@@ -366,7 +376,9 @@ RHI::ShaderBindingPtr GfxDeviceVulkan::CreateUniformBuffer(const std::string& ty
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_location, (VkDescriptorType)layout.m_type);
 
 	VulkanDescriptorSetLayoutPtr descriptorSetLayout = VulkanDescriptorSetLayoutPtr::Make(device, std::vector<VkDescriptorSetLayoutBinding>{ binding->m_vulkan.m_descriptorSetLayout });
-	VulkanDescriptorPtr descriptor = VulkanDescriptorPtr::Make(layout.m_location, 1, (VkDescriptorType)layout.m_type);
+	auto descriptor = VulkanDescriptorBufferPtr::Make(layout.m_location, 0,
+		valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size);
+
 	binding->m_vulkan.m_descriptorSet = VulkanDescriptorSetPtr::Make(device, device->GetThreadContext().m_descriptorPool, descriptorSetLayout, std::vector<VulkanDescriptorPtr>{ descriptor });
 	binding->m_vulkan.m_descriptorSet->Compile();
 	return binding;
