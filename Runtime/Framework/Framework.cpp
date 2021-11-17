@@ -142,7 +142,7 @@ void Framework::CpuFrame(FrameState& state)
 			[this]()
 			{
 				m_testMesh = Sailor::RHI::Renderer::GetDriver()->CreateMesh(g_testVertices, g_testIndices);
-			});
+			}, JobSystem::EThreadType::Rendering);
 
 		jobCreateBuffers->Join(jobLoadModel);
 		JobSystem::Scheduler::GetInstance()->Run(jobCreateBuffers);
@@ -202,7 +202,7 @@ void Framework::CpuFrame(FrameState& state)
 	auto width = Sailor::EngineInstance::GetViewportWindow().GetWidth();
 	auto height = Sailor::EngineInstance::GetViewportWindow().GetHeight();
 
-	float aspect = width / (float)height;
+	float aspect = (height + width) > 0 ? width / (float)height : 1.0f;
 	m_frameData.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 10000.0f);
 	m_frameData.m_projection[1][1] *= -1;
 	m_frameData.m_currentTime = (float)state.GetTime();

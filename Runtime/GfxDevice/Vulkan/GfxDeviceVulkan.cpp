@@ -108,8 +108,8 @@ RHI::CommandListPtr GfxDeviceVulkan::CreateCommandList(bool bIsSecondary, bool b
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
-	cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device, 
-		bOnlyTransferQueue ? device->GetThreadContext().m_transferCommandPool : device->GetThreadContext().m_commandPool, 
+	cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device,
+		bOnlyTransferQueue ? device->GetThreadContext().m_transferCommandPool : device->GetThreadContext().m_commandPool,
 		bIsSecondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
 	return cmdList;
@@ -201,21 +201,15 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
+	RHI::CommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList();
 	cmdList->m_vulkan.m_commandBuffer = m_vkInstance->CreateImage(outTexture->m_vulkan.m_image, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
 
-	TRefPtr<RHI::Fence> fenceUpdateRes = TRefPtr<RHI::Fence>::Make();
-
-	// Submit cmd lists
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create texture",
-		([this, fenceUpdateRes, cmdList]()
-			{
-				SubmitCommandList(cmdList, fenceUpdateRes);
-			}));
-
+	RHI::FencePtr fenceUpdateRes = RHI::FencePtr::Make();
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
+	SubmitCommandList(cmdList, fenceUpdateRes);
 
 	return outTexture;
 }
