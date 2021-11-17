@@ -56,9 +56,6 @@ using namespace Sailor::Win32;
 using namespace Sailor::RHI;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanShaderStagePtr g_testFragShader;
-VulkanShaderStagePtr g_testVertShader;
-
 VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 {
 	if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
@@ -134,19 +131,6 @@ void VulkanDevice::Shutdown()
 	CleanupSwapChain();
 
 	m_swapchain.Clear();
-
-	m_uniformBuffer.Clear();
-
-	g_testFragShader.Clear();
-	g_testVertShader.Clear();
-
-	m_descriptorSet.Clear();
-	m_image.Clear();
-	m_imageView.Clear();
-
-	m_graphicsPipeline.Clear();
-	m_pipelineLayout.Clear();
-
 	m_commandBuffers.clear();
 
 	for (auto& pair : m_threadContext)
@@ -328,87 +312,6 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 	m_bIsSwapChainOutdated = false;
 	return true;
-}
-
-void VulkanDevice::CreateGraphicsPipeline()
-{
-	if (auto shaderUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ShaderAssetInfoPtr>("Shaders\\Simple.shader"))
-	{
-		RHI::ShaderByteCode vertCode;
-		RHI::ShaderByteCode fragCode;
-
-		ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), {}, vertCode, fragCode, false);
-
-		g_testVertShader = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_VERTEX_BIT, "main", VulkanDevicePtr(this), vertCode);
-		g_testFragShader = VulkanShaderStagePtr::Make(VK_SHADER_STAGE_FRAGMENT_BIT, "main", VulkanDevicePtr(this), fragCode);
-
-		g_testVertShader->Compile();
-		g_testFragShader->Compile();
-
-		std::vector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
-		std::vector<RHI::ShaderLayoutBinding> bindings;
-
-		VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr(this), { g_testVertShader , g_testFragShader }, descriptorSetLayouts, bindings);
-		
-		m_pipelineLayout = VulkanPipelineLayoutPtr::Make(VulkanDevicePtr(this),
-			descriptorSetLayouts,
-			std::vector<VkPushConstantRange>(),
-			0);
-
-		m_graphicsPipeline = VulkanPipelinePtr::Make(VulkanDevicePtr(this),
-			m_pipelineLayout,
-			std::vector{ g_testVertShader, g_testFragShader },
-			m_pipelineBuilder->BuildPipeline(RHI::RenderState()),
-			0);
-
-		m_graphicsPipeline->m_renderPass = m_renderPass;
-		m_graphicsPipeline->Compile();
-	}
-
-	if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<TextureAssetInfoPtr>("Models\\Sponza\\textures\\spnza_bricks_a_diff.tga"))
-	{
-		const VkDeviceSize uniformBufferSize = sizeof(RHI::UboTransform);
-
-		m_uniformBuffer = VulkanApi::CreateBuffer(VulkanDevicePtr(this),
-			uniformBufferSize,
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-		TextureImporter::ByteCode data;
-		int32_t width;
-		int32_t height;
-		uint32_t mipLevels;
-
-		TextureImporter::GetInstance()->LoadTextureRaw(textureUID->GetUID(), data, width, height, mipLevels);
-		m_image = VulkanApi::CreateImage_Immediate(
-			VulkanDevicePtr(this),
-			data.data(),
-			data.size() * sizeof(uint8_t),
-			VkExtent3D{ (uint32_t)width, (uint32_t)height, 1 },
-			mipLevels);
-
-		data.clear();
-
-		m_imageView = new VulkanImageView(VulkanDevicePtr(this), m_image);
-		m_imageView->Compile();
-
-		auto descriptors = std::vector<VulkanDescriptorPtr>
-		{
-			VulkanDescriptorBufferPtr::Make(0, 0, m_uniformBuffer, 0, sizeof(UboTransform)),
-			VulkanDescriptorImagePtr::Make(1, 0,
-				m_samplers->GetSampler(textureUID->GetFiltration(),
-				textureUID->GetClamping(),
-				m_image->m_mipLevels),
-				m_imageView)
-		};
-
-		m_descriptorSet = VulkanDescriptorSetPtr::Make(VulkanDevicePtr(this),
-			GetThreadContext().m_descriptorPool,
-			m_pipelineLayout->m_descriptionSetLayouts[0],
-			descriptors);
-
-		m_descriptorSet->Compile();
-	}
 }
 
 void VulkanDevice::CreateFramebuffers()
@@ -620,11 +523,6 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 		{
 			commandBuffers.push_back(*cmdBuffer);
 		}
-
-		for (auto cmdBuffer : state.GetCommandBuffers())
-		{
-			commandBuffers.push_back(*cmdBuffer->m_vulkan.m_commandBuffer);
-		}
 	}
 
 	m_commandBuffers[imageIndex]->BeginCommandList();
@@ -684,6 +582,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
 	m_syncFences[m_currentFrame]->Reset();
+
+	//TODO: Transfer queue for transfer family command lists
 	VK_CHECK(m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
 
 	VkPresentInfoKHR presentInfo{};

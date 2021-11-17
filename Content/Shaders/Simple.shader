@@ -16,7 +16,6 @@ END_CODE,
 
 "glslVertex":
 BEGIN_CODE
-
 layout(set=1, binding=0) uniform Transform
 {
     mat4 model;
@@ -61,7 +60,7 @@ layout(location = 0) out vec4 outColor;
 
 void main() 
 {
-    outColor = fragColor * texture(textureSampler, fragTexcoord) * texture(g_defaultSampler, fragTexcoord + sin(frame.currentTime));
+    outColor = fragColor * texture(textureSampler, fragTexcoord) * texture(g_defaultSampler, fragTexcoord);
 }
 END_CODE,
 

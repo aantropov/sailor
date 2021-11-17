@@ -27,8 +27,11 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 		EBufferUsageBit::IndexBuffer_Bit);
 
 	// Create fences to track the state of mesh creation
-	TRefPtr<RHI::Fence> fenceUpdateVertices = TRefPtr<RHI::Fence>::Make();
-	TRefPtr<RHI::Fence> fenceUpdateIndex = TRefPtr<RHI::Fence>::Make();
+	RHI::FencePtr fenceUpdateVertices = RHI::FencePtr::Make();
+	RHI::FencePtr fenceUpdateIndex = RHI::FencePtr::Make();
+
+	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateVertices);
+	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateIndex);
 
 	// Submit cmd lists
 	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
@@ -37,10 +40,7 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 				SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
 				SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
 			}));
-
-	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateVertices);
-	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateIndex);
-
+	
 	return res;
 }
 
@@ -75,13 +75,14 @@ void IGfxDevice::TrackDelayedInitialization(IDelayedInitialization* pResource, F
 
 	// Res should hold fences to track dependencies
 	pResource->AddDependency(handle);
+}
 
-	{
-		std::unique_lock<std::mutex>(m_mutexTrackedFences);
+void IGfxDevice::TrackPendingCommandList(FencePtr handle)
+{
+	std::unique_lock<std::mutex>(m_mutexTrackedFences);
 
-		// We should track fences to notity the res that cmd lists are finished
-		m_trackedFences.push_back(handle);
-	}
+	// We should track fences to handle pending command list
+	m_trackedFences.push_back(handle);
 }
 
 void IGfxDevice::SubmitCommandList_Immediate(CommandListPtr commandList)

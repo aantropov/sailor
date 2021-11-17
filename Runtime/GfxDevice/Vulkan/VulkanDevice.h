@@ -89,8 +89,6 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 
 		SAILOR_API ThreadContext& GetThreadContext();
-		SAILOR_API void CreateGraphicsPipeline();
-
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 
 	protected:
@@ -145,16 +143,6 @@ namespace Sailor::GfxDevice::Vulkan
 
 		TUniquePtr<VulkanSamplerCache> m_samplers;
 		TUniquePtr<VulkanPipelineStateBuilder> m_pipelineBuilder;
-
-		// Custom testing code
-		VulkanPipelineLayoutPtr m_pipelineLayout = nullptr;
-		VulkanPipelinePtr m_graphicsPipeline = nullptr;
-
-		VulkanBufferPtr m_uniformBuffer;
-		VulkanDescriptorSetPtr m_descriptorSet;
-
-		VulkanImagePtr m_image;
-		VulkanImageViewPtr m_imageView;
 
 		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 

@@ -98,6 +98,21 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 
 	// Fence should hold command list during execution
 	fence->AddDependency(commandList);
+
+	// We should remove fence after execution
+	TrackPendingCommandList(fence);
+}
+
+RHI::CommandListPtr GfxDeviceVulkan::CreateCommandList(bool bIsSecondary, bool bOnlyTransferQueue)
+{
+	auto device = m_vkInstance->GetMainDevice();
+
+	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
+	cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device, 
+		bOnlyTransferQueue ? device->GetThreadContext().m_transferCommandPool : device->GetThreadContext().m_commandPool, 
+		bIsSecondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+
+	return cmdList;
 }
 
 RHI::BufferPtr GfxDeviceVulkan::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
@@ -343,7 +358,7 @@ VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const s
 	return uniformAllocator;
 }
 
-void GfxDeviceVulkan::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
+void GfxDeviceVulkan::UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
 {
 	auto device = m_vkInstance->GetMainDevice();
 
@@ -356,7 +371,7 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, con
 	// All uniform buffers should be bound
 	assert(shaderBinding->IsBind());
 
-	UpdateShaderBinding(commandList, shaderBinding, 0, value, size);
+	UpdateShaderBinding(commandList, shaderBinding, value, size);
 
 	SubmitCommandList_Immediate(commandList);
 }
@@ -385,7 +400,7 @@ void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr&
 
 	binding->SetMembersInfo(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_location, (VkDescriptorType)layout.m_type);
-	
+
 	UpdateDescriptorSet(pShaderBindings);
 }
 
@@ -404,15 +419,6 @@ void GfxDeviceVulkan::AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShad
 	binding->SetTextureBinding(texture);
 
 	UpdateDescriptorSet(pShaderBindings);
-}
-
-RHI::CommandListPtr GfxDeviceVulkan::UpdateUniformBuffer(RHI::ShaderBindingPtr dst, const void* pData, size_t size)
-{
-	auto device = m_vkInstance->GetMainDevice();
-
-	RHI::CommandListPtr cmd = RHI::CommandListPtr::Make();
-	cmd->m_vulkan.m_commandBuffer = VulkanApi::UpdateBuffer(device, *(dst->m_vulkan.m_valueBinding), pData, size);
-	return cmd;
 }
 
 void GfxDeviceVulkan::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& parameter, RHI::TexturePtr value)
@@ -471,7 +477,7 @@ void GfxDeviceVulkan::EndCommandList(RHI::CommandListPtr cmd)
 	cmd->m_vulkan.m_commandBuffer->EndCommandList();
 }
 
-void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, size_t variableOffset, const void* pData, size_t size)
+void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* pData, size_t size, size_t variableOffset)
 {
 	auto device = m_vkInstance->GetMainDevice();
 
@@ -489,17 +495,12 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBi
 
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
 
-	BeginCommandList(cmd);
 	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, 0, binding.m_offset + variableOffset);
-	EndCommandList(cmd);
 }
 
-void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size)
+void GfxDeviceVulkan::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size)
 {
 	auto device = m_vkInstance->GetMainDevice();
-
-	RHI::CommandListPtr commandList = RHI::CommandListPtr::Make();
-	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
 	auto& shaderBinding = material->GetBindings()->GetOrCreateShaderBinding(binding);
 	bool bShouldUpdateDescriptorSet = false;
@@ -510,7 +511,5 @@ void GfxDeviceVulkan::SetMaterialParameter(RHI::MaterialPtr material, const std:
 	RHI::ShaderLayoutBindingMember bindingLayout;
 	assert(shaderBinding->FindVariableInUniformBuffer(variable, bindingLayout));
 
-	UpdateShaderBinding(commandList, shaderBinding, bindingLayout.m_absoluteOffset, value, size);
-
-	SubmitCommandList_Immediate(commandList);
+	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset);
 }

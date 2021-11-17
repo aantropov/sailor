@@ -41,6 +41,7 @@ namespace Sailor::RHI
 
 		virtual void SAILOR_API WaitIdle() = 0;
 
+		virtual SAILOR_API CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
 		virtual SAILOR_API BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API CommandListPtr CreateBuffer(BufferPtr& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API MeshPtr CreateMesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
@@ -57,27 +58,16 @@ namespace Sailor::RHI
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {}) = 0;
 
-		// Used for full binding update
-		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
-		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
-
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
-
-		// Used for variables inside uniform buffer 
-		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
-		template<typename TDataType>
-		void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const TDataType& value)
-		{
-			std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
-			SetMaterialParameter(material, splittedString[0], splittedString[1], &value, sizeof(value));
-		}
-
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
-		virtual SAILOR_API CommandListPtr UpdateUniformBuffer(ShaderBindingPtr dst, const void* pData, size_t size) = 0;
-		
+
+		// Shader binding set
 		virtual SAILOR_API ShaderBindingSetPtr CreateShaderBindings() = 0;
 		virtual SAILOR_API void AddUniformBufferToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding) = 0;
 		virtual SAILOR_API void AddSamplerToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding) = 0;
+		
+		// Used for full binding update
+		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
+		virtual SAILOR_API void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 
 		//Immediate context
 		virtual SAILOR_API BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
@@ -101,6 +91,7 @@ namespace Sailor::RHI
 	protected:
 
 		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
+		SAILOR_API void TrackPendingCommandList(FencePtr handle);
 
 		std::mutex m_mutexTrackedFences;
 		std::vector<FencePtr> m_trackedFences;
@@ -108,8 +99,21 @@ namespace Sailor::RHI
 
 	class IGfxDeviceCommands
 	{
+	public:
+
 		virtual SAILOR_API void BeginCommandList(CommandListPtr cmd) = 0;
 		virtual SAILOR_API void EndCommandList(CommandListPtr cmd) = 0;
-		virtual SAILOR_API void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, size_t offset, const void* data, size_t size) = 0;
+		
+		virtual SAILOR_API void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
+		virtual SAILOR_API void SetMaterialParameter(CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
+
+		// Used for variables inside uniform buffer 
+		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
+		template<typename TDataType>
+		void SetMaterialParameter(CommandListPtr cmd, RHI::MaterialPtr material, const std::string& parameter, const TDataType& value)
+		{
+			std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
+			SetMaterialParameter(cmd, material, splittedString[0], splittedString[1], &value, sizeof(value));
+		}
 	};
 };

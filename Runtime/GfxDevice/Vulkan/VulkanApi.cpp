@@ -961,8 +961,13 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 				const auto& rhiBinding = rhiBindings[k];
 				const auto& binding = bindings[k];
 
-				vulkanLayouts[rhiBinding.m_set].push_back(binding);
-				rhiLayouts[rhiBinding.m_set].push_back(rhiBinding);
+				// Handle duplicated bindings
+				auto& binds = vulkanLayouts[rhiBinding.m_set];
+				if (binds.end() == std::find_if(binds.begin(), binds.end(), [&rhiBinding](auto& b) { return b.binding == rhiBinding.m_location; }))
+				{
+					vulkanLayouts[rhiBinding.m_set].push_back(binding);
+					rhiLayouts[rhiBinding.m_set].push_back(rhiBinding);
+				}
 			}
 		}
 	}

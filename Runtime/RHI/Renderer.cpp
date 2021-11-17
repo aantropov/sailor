@@ -117,6 +117,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
+			// TODO: Implement semaphores to move synchronization to device
+			GetDriver()->SubmitCommandList_Immediate(frame.GetCommandBuffer());
+
 			if (m_driverInstance->PresentFrame(frame))
 			{
 				totalFramesCount++;

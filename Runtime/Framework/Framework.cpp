@@ -37,36 +37,25 @@ FrameState::FrameState(int64_t timeMs, const FrameInputState& currentInputState,
 		m_pData->m_deltaTimeSeconds = (m_pData->m_currentTime - previousFrame->GetTime()) / 1000.0f;
 		m_pData->m_inputState.TrackForChanges(previousFrame->GetInputState());
 	}
+
+	m_pData->m_updateResourcesCommandBuffers = Renderer::GetDriver()->CreateCommandList(false, true);
 }
 
 FrameState::FrameState(const FrameState& frameState) noexcept :
 	FrameState()
 {
 	m_pData = TUniquePtr<FrameData>::Make(*frameState.m_pData);
-	m_updateResourcesCommandBuffers = frameState.m_updateResourcesCommandBuffers;
-	m_frameBindings = frameState.m_frameBindings;
 }
 
 FrameState::FrameState(FrameState&& frameState) noexcept
 {
 	std::swap(m_pData, frameState.m_pData);
-	std::swap(m_updateResourcesCommandBuffers, frameState.m_updateResourcesCommandBuffers);
-	std::swap(m_frameBindings, frameState.m_frameBindings);
 }
 
 FrameState& FrameState::operator=(FrameState frameState)
 {
 	std::swap(m_pData, frameState.m_pData);
-	std::swap(m_updateResourcesCommandBuffers, frameState.m_updateResourcesCommandBuffers);
-	std::swap(m_frameBindings, frameState.m_frameBindings);
 	return *this;
-}
-
-void FrameState::PushCommandBuffer_ThreadSafe(RHI::CommandListPtr commandBuffer)
-{
-	SAILOR_PROFILE_FUNCTION();
-	std::unique_lock<std::mutex> lk(m_commandBuffers);
-	m_updateResourcesCommandBuffers.push_back(commandBuffer);
 }
 
 void Framework::Initialize()
@@ -86,9 +75,14 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 
 	timer.Start();
 
+	auto pCommandList = currentInputState.GetCommandBuffer();
+	Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
+
 	SAILOR_PROFILE_BLOCK("CPU Frame");
 	CpuFrame(currentInputState);
 	SAILOR_PROFILE_END_BLOCK();
+
+	Renderer::GetDriverCommands()->EndCommandList(currentInputState.GetCommandBuffer());
 
 	timer.Stop();
 
@@ -158,12 +152,12 @@ void Framework::CpuFrame(FrameState& state)
 			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
 		}
 
-		m_frameDataUbo = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-		Sailor::RHI::Renderer::GetDriver()->AddUniformBufferToShaderBindings(m_frameDataUbo, "frameData", sizeof(RHI::UboFrameData), 0);
-		
+		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+		Sailor::RHI::Renderer::GetDriver()->AddUniformBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0);
+
 		if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Textures\\VulkanLogo.png"))
 		{
-			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataUbo, "g_defaultSampler", TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID()), 1);
+			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID()), 1);
 		}
 
 		bFirstFrame = false;
@@ -217,8 +211,8 @@ void Framework::CpuFrame(FrameState& state)
 
 	glm::mat4x4 model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), Math::vec3_Up);
 
-	state.PushFrameBinding(m_frameDataUbo);
-	// TODO: Handle Lifetime of command buffers & threads
-	RHI::Renderer::GetDriver()->SubmitCommandList_Immediate(RHI::Renderer::GetDriver()->UpdateUniformBuffer(m_frameDataUbo->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData)));
-	RHI::Renderer::GetDriver()->SetMaterialParameter(m_testMaterial, "transform.model", model);
+	state.PushFrameBinding(m_frameDataBinding);
+
+	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(state.GetCommandBuffer(), m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
+	RHI::Renderer::GetDriverCommands()->SetMaterialParameter(state.GetCommandBuffer(), m_testMaterial, "transform.model", model);
 }

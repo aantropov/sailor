@@ -34,21 +34,20 @@ namespace Sailor
 		SAILOR_API const FrameInputState& GetInputState() const { return m_pData->m_inputState; }
 		SAILOR_API int64_t GetTime() const { return m_pData->m_currentTime; }
 		SAILOR_API float GetDeltaTime() const { return m_pData->m_deltaTimeSeconds; }
-		SAILOR_API void PushCommandBuffer_ThreadSafe(RHI::CommandListPtr commandBuffer);
 
-		SAILOR_API const std::vector<RHI::CommandListPtr>& GetCommandBuffers() const
+		SAILOR_API RHI::CommandListPtr GetCommandBuffer() const
 		{
-			return m_updateResourcesCommandBuffers;
+			return m_pData->m_updateResourcesCommandBuffers;
 		}
 
 		SAILOR_API void PushFrameBinding(RHI::ShaderBindingSetPtr frameBindings)
 		{
-			m_frameBindings = frameBindings;
+			m_pData->m_frameBindings = frameBindings;
 		}
 
 		SAILOR_API const RHI::ShaderBindingSetPtr& GetFrameBinding() const
 		{
-			return m_frameBindings;
+			return m_pData->m_frameBindings;
 		}
 
 	protected:
@@ -60,12 +59,11 @@ namespace Sailor
 			glm::ivec2 m_mouseDelta{ 0.0f, 0.0f };
 			glm::ivec2 m_mouseDeltaToCenter{ 0.0f,0.0f };
 			FrameInputState m_inputState;
+			RHI::CommandListPtr m_updateResourcesCommandBuffers;
+			RHI::ShaderBindingSetPtr m_frameBindings;
 		};
 
-		std::mutex m_commandBuffers;
 		TUniquePtr<FrameData> m_pData;
-		std::vector<RHI::CommandListPtr> m_updateResourcesCommandBuffers;
-		RHI::ShaderBindingSetPtr m_frameBindings;
 	};
 
 	class Framework : public TSingleton<Framework>
@@ -91,8 +89,8 @@ namespace Sailor
 
 		RHI::MeshPtr m_testMesh;
 		RHI::MaterialPtr m_testMaterial;
-		RHI::ShaderBindingSetPtr m_frameDataUbo;
 
 		RHI::UboFrameData m_frameData;
+		RHI::ShaderBindingSetPtr m_frameDataBinding;
 	};
 }

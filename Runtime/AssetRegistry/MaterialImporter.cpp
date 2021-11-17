@@ -12,11 +12,15 @@
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "JobSystem/JobSystem.h"
+#include "RHI/Renderer.h"
 #include "RHI/Material.h"
 #include "RHI/Shader.h"
+#include "RHI/Fence.h"
+#include "RHI/CommandList.h"
 #include "AssetRegistry/TextureImporter.h"
 
 using namespace Sailor;
+using namespace Sailor::RHI;
 
 void MaterialAsset::Serialize(nlohmann::json& outData) const
 {
@@ -209,7 +213,9 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 		{
 			if (pMaterialPtr->GetBindings()->HasVariable(uniform.first))
 			{
-				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, uniform.first, uniform.second);
+				SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD("Set material parameter", ([&pMaterialPtr, &uniform](RHI::CommandListPtr& cmdList) {
+					RHI::Renderer::GetDriverCommands()->SetMaterialParameter(cmdList, pMaterialPtr, uniform.first, uniform.second);
+					}));
 			}
 		}
 
