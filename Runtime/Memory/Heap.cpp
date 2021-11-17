@@ -392,7 +392,7 @@ void* PoolAllocator::Allocate(size_t size, size_t alignment)
 
 	const size_t quadraticGrow = (size_t)pow(2.0, (double)m_pages.size());
 	const size_t neededPlace = size + sizeof(Header);
-	const size_t maxBlockSize = 1024ull * 1024ull * 1024ull * 2u;
+	const size_t maxBlockSize = 1024ull * 1024ull * 1024ull * 1u;
 	const size_t newPageSize = std::max(neededPlace, std::min(maxBlockSize, quadraticGrow * m_pageSize));
 
 	size_t index = m_pages.size();
