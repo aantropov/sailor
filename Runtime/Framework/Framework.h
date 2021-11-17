@@ -41,12 +41,12 @@ namespace Sailor
 			return m_updateResourcesCommandBuffers;
 		}
 
-		SAILOR_API void PushFrameBinding(RHI::ShaderBindingPtr frameBindings)
+		SAILOR_API void PushFrameBinding(RHI::ShaderBindingSetPtr frameBindings)
 		{
 			m_frameBindings = frameBindings;
 		}
 
-		SAILOR_API const RHI::ShaderBindingPtr& GetFrameBinding() const
+		SAILOR_API const RHI::ShaderBindingSetPtr& GetFrameBinding() const
 		{
 			return m_frameBindings;
 		}
@@ -65,7 +65,7 @@ namespace Sailor
 		std::mutex m_commandBuffers;
 		TUniquePtr<FrameData> m_pData;
 		std::vector<RHI::CommandListPtr> m_updateResourcesCommandBuffers;
-		RHI::ShaderBindingPtr m_frameBindings;
+		RHI::ShaderBindingSetPtr m_frameBindings;
 	};
 
 	class Framework : public TSingleton<Framework>
@@ -91,7 +91,7 @@ namespace Sailor
 
 		RHI::MeshPtr m_testMesh;
 		RHI::MaterialPtr m_testMaterial;
-		RHI::ShaderBindingPtr m_frameDataUbo;
+		RHI::ShaderBindingSetPtr m_frameDataUbo;
 
 		RHI::UboFrameData m_frameData;
 	};

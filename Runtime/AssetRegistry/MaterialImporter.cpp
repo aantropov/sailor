@@ -13,6 +13,7 @@
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "JobSystem/JobSystem.h"
 #include "RHI/Material.h"
+#include "RHI/Shader.h"
 #include "AssetRegistry/TextureImporter.h"
 
 using namespace Sailor;
@@ -197,16 +198,16 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 
 		for (auto& sampler : pSharedMaterial->GetSamplers())
 		{
-			if (pMaterialPtr->HasBinding(sampler.m_name))
+			if (pMaterialPtr->GetBindings()->HasBinding(sampler.m_name))
 			{
 				TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
-				Renderer::GetDriver()->SetMaterialBinding(pMaterialPtr, sampler.m_name, texture);
+				Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture);
 			}
 		}
 
 		for (auto& uniform : pSharedMaterial->GetUniformValues())
 		{
-			if (pMaterialPtr->HasParameter(uniform.first))
+			if (pMaterialPtr->GetBindings()->HasVariable(uniform.first))
 			{
 				Renderer::GetDriver()->SetMaterialParameter(pMaterialPtr, uniform.first, uniform.second);
 			}

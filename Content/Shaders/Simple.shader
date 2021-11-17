@@ -5,19 +5,17 @@
 BEGIN_CODE
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
-END_CODE,
-
-"glslVertex":
-BEGIN_CODE
-
 layout(set=0, binding=0) uniform FrameData
 {
     mat4 view;
     mat4 projection;
     float currentTime;
     float deltaTime;
-
 } frame;
+END_CODE,
+
+"glslVertex":
+BEGIN_CODE
 
 layout(set=1, binding=0) uniform Transform
 {
@@ -56,13 +54,14 @@ BEGIN_CODE
 layout(location = 0) in vec4 fragColor;
 layout(location = 1) in vec2 fragTexcoord;
 
+layout(set=0, binding=1) uniform sampler2D g_defaultSampler;
 layout(set=1, binding=2) uniform sampler2D textureSampler;
 
 layout(location = 0) out vec4 outColor;
 
 void main() 
 {
-    outColor = fragColor * texture(textureSampler, fragTexcoord);
+    outColor = fragColor * texture(textureSampler, fragTexcoord) * texture(g_defaultSampler, fragTexcoord + sin(frame.currentTime));
 }
 END_CODE,
 

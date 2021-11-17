@@ -23,6 +23,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class Shader> ShaderPtr;
 	typedef TRefPtr<class Material> MaterialPtr;
 	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
+	typedef TRefPtr<class ShaderBindingSet> ShaderBindingSetPtr;
 
 	class IGfxDevice
 	{
@@ -57,13 +58,13 @@ namespace Sailor::RHI
 		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {}) = 0;
 
 		// Used for full binding update
-		virtual SAILOR_API void SetMaterialBinding(RHI::MaterialPtr material, const std::string& binding, const void* value, size_t size) = 0;
-		virtual SAILOR_API void SetMaterialBinding(RHI::MaterialPtr material, const std::string& binding, TexturePtr value) = 0;
+		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
+		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
+
+		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
-		virtual SAILOR_API void SetMaterialParameter(RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
-
 		template<typename TDataType>
 		void SetMaterialParameter(RHI::MaterialPtr material, const std::string& parameter, const TDataType& value)
 		{
@@ -73,7 +74,10 @@ namespace Sailor::RHI
 
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
 		virtual SAILOR_API CommandListPtr UpdateUniformBuffer(ShaderBindingPtr dst, const void* pData, size_t size) = 0;
-		virtual SAILOR_API ShaderBindingPtr CreateUniformBuffer(const std::string& type, size_t size, uint32_t shaderBinding) = 0;
+		
+		virtual SAILOR_API ShaderBindingSetPtr CreateShaderBindings() = 0;
+		virtual SAILOR_API void AddUniformBufferToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding) = 0;
+		virtual SAILOR_API void AddSamplerToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding) = 0;
 
 		//Immediate context
 		virtual SAILOR_API BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
@@ -106,6 +110,6 @@ namespace Sailor::RHI
 	{
 		virtual SAILOR_API void BeginCommandList(CommandListPtr cmd) = 0;
 		virtual SAILOR_API void EndCommandList(CommandListPtr cmd) = 0;
-		virtual SAILOR_API void SetMaterialBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, size_t offset, const void* data, size_t size) = 0;
+		virtual SAILOR_API void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, size_t offset, const void* data, size_t size) = 0;
 	};
 };

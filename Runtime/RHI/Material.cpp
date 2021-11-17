@@ -7,7 +7,7 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GfxDevice::Vulkan;
 
-RHI::ShaderBindingPtr& Material::GetOrCreateShaderBinding(const std::string& parameter)
+RHI::ShaderBindingPtr& ShaderBindingSet::GetOrCreateShaderBinding(const std::string& parameter)
 {
 	auto it = m_shaderBindings.find(parameter);
 	if (it != m_shaderBindings.end())
@@ -18,12 +18,12 @@ RHI::ShaderBindingPtr& Material::GetOrCreateShaderBinding(const std::string& par
 	return m_shaderBindings[parameter] = ShaderBindingPtr::Make();
 }
 
-void Material::SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> layoutBindings)
+void ShaderBindingSet::SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> layoutBindings)
 {
 	m_layoutBindings = std::move(layoutBindings);
 }
 
-bool Material::HasBinding(const std::string& binding) const
+bool ShaderBindingSet::HasBinding(const std::string& binding) const
 {
 	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
@@ -33,7 +33,7 @@ bool Material::HasBinding(const std::string& binding) const
 	return it != m_layoutBindings.end();
 }
 
-bool Material::HasParameter(const std::string& parameter) const
+bool ShaderBindingSet::HasVariable(const std::string& parameter) const
 {
 	std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
 	const std::string& binding = splittedString[0];

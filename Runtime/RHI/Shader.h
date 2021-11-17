@@ -16,7 +16,6 @@ namespace Sailor::RHI
 		{
 			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding;
 			VkDescriptorSetLayoutBinding m_descriptorSetLayout;
-			GfxDevice::Vulkan::VulkanDescriptorSetPtr m_descriptorSet;
 		} m_vulkan;
 #endif
 		SAILOR_API bool IsBind() const;
@@ -27,7 +26,7 @@ namespace Sailor::RHI
 		SAILOR_API void SetTextureBinding(TexturePtr textureBinding) { m_textureBinding = textureBinding; }
 		SAILOR_API void SetMembersInfo(const ShaderLayoutBinding& membersInfo) { m_membersInfo = membersInfo; }
 
-		SAILOR_API bool FindUniform(const std::string& variable, ShaderLayoutBindingMember& outVariable) const;
+		SAILOR_API bool FindVariableInUniformBuffer(const std::string& variable, ShaderLayoutBindingMember& outVariable) const;
 
 	protected:
 

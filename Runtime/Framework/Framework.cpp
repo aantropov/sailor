@@ -6,9 +6,11 @@
 #include "Utils.h"
 #include "RHI/Renderer.h"
 #include "RHI/Mesh.h"
+#include "RHI/Material.h"
 #include "RHI/GfxDevice.h"
 #include "AssetRegistry/ModelAssetInfo.h"
 #include "AssetRegistry/ModelImporter.h"
+#include "AssetRegistry/TextureImporter.h"
 #include "AssetRegistry/MaterialImporter.h"
 
 using namespace Sailor;
@@ -156,7 +158,13 @@ void Framework::CpuFrame(FrameState& state)
 			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
 		}
 
-		m_frameDataUbo = Sailor::RHI::Renderer::GetDriver()->CreateUniformBuffer("FrameData", sizeof(RHI::UboFrameData), 0);
+		m_frameDataUbo = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+		Sailor::RHI::Renderer::GetDriver()->AddUniformBufferToShaderBindings(m_frameDataUbo, "frameData", sizeof(RHI::UboFrameData), 0);
+		
+		if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Textures\\VulkanLogo.png"))
+		{
+			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataUbo, "g_defaultSampler", TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID()), 1);
+		}
 
 		bFirstFrame = false;
 	}
@@ -207,10 +215,10 @@ void Framework::CpuFrame(FrameState& state)
 	m_frameData.m_deltaTime = state.GetDeltaTime();
 	m_frameData.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Math::vec3_Up);
 
-	glm::mat4x4 model = glm::rotate(glm::mat4(1.0f), state.GetTime() * glm::radians(90.0f), Math::vec3_Up);
+	glm::mat4x4 model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), Math::vec3_Up);
 
 	state.PushFrameBinding(m_frameDataUbo);
 	// TODO: Handle Lifetime of command buffers & threads
-	RHI::Renderer::GetDriver()->SubmitCommandList_Immediate(RHI::Renderer::GetDriver()->UpdateUniformBuffer(m_frameDataUbo, &m_frameData, sizeof(m_frameData)));
+	RHI::Renderer::GetDriver()->SubmitCommandList_Immediate(RHI::Renderer::GetDriver()->UpdateUniformBuffer(m_frameDataUbo->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData)));
 	RHI::Renderer::GetDriver()->SetMaterialParameter(m_testMaterial, "transform.model", model);
 }

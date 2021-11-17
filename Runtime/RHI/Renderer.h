@@ -28,6 +28,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class Material> MaterialPtr;
 	typedef TRefPtr<class Shader> ShaderPtr;
 	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
+	typedef TRefPtr<class ShaderBindingSet> ShaderBindingSetPtr;
 
 	class Renderer : public TSingleton<Renderer>
 	{

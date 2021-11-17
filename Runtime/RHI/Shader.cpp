@@ -15,7 +15,7 @@ bool ShaderBinding::IsBind() const
 	return false;
 }
 
-bool ShaderBinding::FindUniform(const std::string& variable, ShaderLayoutBindingMember& outVariable) const
+bool ShaderBinding::FindVariableInUniformBuffer(const std::string& variable, ShaderLayoutBindingMember& outVariable) const
 {
 	auto it = std::find_if(m_membersInfo.m_members.begin(), m_membersInfo.m_members.end(), [&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
 		{
