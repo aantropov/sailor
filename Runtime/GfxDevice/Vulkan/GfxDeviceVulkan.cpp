@@ -42,6 +42,8 @@ bool GfxDeviceVulkan::ShouldFixLostDevice(const Win32::Window* pViewport)
 
 void GfxDeviceVulkan::FixLostDevice(const Win32::Window* pViewport)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	if (m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport))
 	{
 		SAILOR_PROFILE_BLOCK("Fix lost device");
@@ -83,11 +85,15 @@ bool GfxDeviceVulkan::PresentFrame(const class FrameState& state,
 
 void GfxDeviceVulkan::WaitIdle()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	m_vkInstance->WaitIdle();
 }
 
 void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	//if we have fence and that is null we should create device resource
 	if (!fence->m_vulkan.m_fence)
 	{
@@ -100,11 +106,13 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 	fence->AddDependency(commandList);
 
 	// We should remove fence after execution
-	TrackPendingCommandList(fence);
+	TrackPendingCommandList_ThreadSafe(fence);
 }
 
 RHI::CommandListPtr GfxDeviceVulkan::CreateCommandList(bool bIsSecondary, bool bOnlyTransferQueue)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
@@ -117,6 +125,8 @@ RHI::CommandListPtr GfxDeviceVulkan::CreateCommandList(bool bIsSecondary, bool b
 
 RHI::BufferPtr GfxDeviceVulkan::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	RHI::BufferPtr res = RHI::BufferPtr::Make(usage);
 	res->m_vulkan.m_buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
@@ -125,6 +135,8 @@ RHI::BufferPtr GfxDeviceVulkan::CreateBuffer(size_t size, RHI::EBufferUsageFlags
 
 RHI::CommandListPtr GfxDeviceVulkan::CreateBuffer(RHI::BufferPtr& outBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	outBuffer = CreateBuffer(size, usage);
 	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
 
@@ -137,6 +149,8 @@ RHI::CommandListPtr GfxDeviceVulkan::CreateBuffer(RHI::BufferPtr& outBuffer, con
 
 RHI::ShaderPtr GfxDeviceVulkan::CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto res = RHI::ShaderPtr::Make(shaderStage);
 	res->m_vulkan.m_shader = VulkanShaderStagePtr::Make((VkShaderStageFlagBits)shaderStage, "main", m_vkInstance->GetMainDevice(), shaderSpirv);
 	res->m_vulkan.m_shader->Compile();
@@ -146,6 +160,8 @@ RHI::ShaderPtr GfxDeviceVulkan::CreateShader(RHI::EShaderStage shaderStage, cons
 
 RHI::BufferPtr GfxDeviceVulkan::CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	RHI::BufferPtr res = RHI::BufferPtr::Make(usage);
 	res->m_vulkan.m_buffer = m_vkInstance->CreateBuffer_Immediate(m_vkInstance->GetMainDevice(), pData, size, (uint32_t)usage);
 	return res;
@@ -167,6 +183,8 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage_Immediate(
 	RHI::ETextureClamping clamping,
 	RHI::ETextureUsageFlags usage)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	VkExtent3D vkExtent;
@@ -193,6 +211,8 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 	RHI::ETextureClamping clamping,
 	RHI::ETextureUsageFlags usage)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 	RHI::TexturePtr outTexture = RHI::TexturePtr::Make(filtration, clamping, mipLevels > 1);
 
@@ -216,6 +236,8 @@ RHI::TexturePtr GfxDeviceVulkan::CreateImage(
 
 void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 	std::vector<VulkanDescriptorPtr> descriptors;
 	std::vector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
@@ -257,6 +279,8 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 
 RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	std::vector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
@@ -339,6 +363,8 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 
 VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const std::string& uniformTypeId)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto it = m_uniformBuffers.find(uniformTypeId);
 	if (it != m_uniformBuffers.end())
 	{
@@ -354,6 +380,8 @@ VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const s
 
 void GfxDeviceVulkan::UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::CommandListPtr commandList = RHI::CommandListPtr::Make();
@@ -372,6 +400,8 @@ void GfxDeviceVulkan::UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bin
 
 RHI::ShaderBindingSetPtr GfxDeviceVulkan::CreateShaderBindings()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::ShaderBindingSetPtr res = RHI::ShaderBindingSetPtr::Make();
@@ -380,6 +410,8 @@ RHI::ShaderBindingSetPtr GfxDeviceVulkan::CreateShaderBindings()
 
 void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::ShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
@@ -400,6 +432,8 @@ void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr&
 
 void GfxDeviceVulkan::AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 	RHI::ShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
 
@@ -417,6 +451,8 @@ void GfxDeviceVulkan::AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShad
 
 void GfxDeviceVulkan::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& parameter, RHI::TexturePtr value)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 	const auto& layoutBindings = bindings->GetLayoutBindings();
 
@@ -473,6 +509,8 @@ void GfxDeviceVulkan::EndCommandList(RHI::CommandListPtr cmd)
 
 void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* pData, size_t size, size_t variableOffset)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	auto& binding = parameter->m_vulkan.m_valueBinding;
@@ -494,6 +532,8 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBi
 
 void GfxDeviceVulkan::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	auto& shaderBinding = material->GetBindings()->GetOrCreateShaderBinding(binding);

@@ -101,6 +101,8 @@ void EngineInstance::Start()
 		Win32::Window::ProcessWin32Msgs();
 		Renderer::GetInstance()->FixLostDevice();
 
+		JobSystem::Scheduler::GetInstance()->ProcessJobsOnMainThread();
+
 		if (GlobalInput::GetInputState().IsKeyPressed(VK_ESCAPE))
 		{
 			Stop();

@@ -40,11 +40,11 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 				SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
 				SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
 			}));
-	
+
 	return res;
 }
 
-void IGfxDevice::TrackResources()
+void IGfxDevice::TrackResources_ThreadSafe()
 {
 	std::unique_lock<std::mutex>(m_mutexTrackedFences);
 
@@ -77,7 +77,7 @@ void IGfxDevice::TrackDelayedInitialization(IDelayedInitialization* pResource, F
 	pResource->AddDependency(handle);
 }
 
-void IGfxDevice::TrackPendingCommandList(FencePtr handle)
+void IGfxDevice::TrackPendingCommandList_ThreadSafe(FencePtr handle)
 {
 	std::unique_lock<std::mutex>(m_mutexTrackedFences);
 

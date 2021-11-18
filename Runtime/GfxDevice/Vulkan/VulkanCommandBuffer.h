@@ -57,10 +57,14 @@ namespace Sailor::GfxDevice::Vulkan
 
 		std::vector<VulkanBufferPtr> m_bufferDependencies;
 		std::vector<VulkanImagePtr> m_imageDependencies;
+		std::vector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;
+		std::vector<VulkanPipelinePtr> m_pipelineDependencies;
 
 		VulkanDevicePtr m_device;
 		VulkanCommandPoolPtr m_commandPool;
 		VkCommandBuffer m_commandBuffer;
 		VkCommandBufferLevel m_level;
+		
+		DWORD m_currentThreadId = 0;
 	};
 }

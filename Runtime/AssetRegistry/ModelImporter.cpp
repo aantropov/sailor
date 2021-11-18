@@ -41,8 +41,8 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Ve
 	if (ModelAssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto jobLoad = JobSystem::Scheduler::CreateJob("Check unique vertices",
-			[&outIndices, &outVertices, assetInfo]() {
-
+			[&outIndices, &outVertices, assetInfo]()
+			{
 				tinyobj::attrib_t attrib;
 				std::vector<tinyobj::shape_t> shapes;
 				std::vector<tinyobj::material_t> materials;

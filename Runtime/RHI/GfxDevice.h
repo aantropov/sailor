@@ -86,12 +86,12 @@ namespace Sailor::RHI
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		//Immediate context
 
-		SAILOR_API void TrackResources();
+		SAILOR_API void TrackResources_ThreadSafe();
 
 	protected:
 
 		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
-		SAILOR_API void TrackPendingCommandList(FencePtr handle);
+		SAILOR_API void TrackPendingCommandList_ThreadSafe(FencePtr handle);
 
 		std::mutex m_mutexTrackedFences;
 		std::vector<FencePtr> m_trackedFences;

@@ -106,7 +106,7 @@ namespace Sailor
 				EThreadType threadType,
 				std::condition_variable& refresh,
 				std::mutex& mutex,
-				std::list<TSharedPtr<Job>>& pJobsQueue);
+				std::vector<TSharedPtr<Job>>& pJobsQueue);
 
 			virtual SAILOR_API ~WorkerThread() = default;
 
@@ -116,12 +116,14 @@ namespace Sailor
 
 			SAILOR_API DWORD GetThreadId() const { return m_threadId; }
 
-			SAILOR_API void AddJob(const TSharedPtr<Job>& pJob);
+			SAILOR_API void ForcelyPushJob(const TSharedPtr<Job>& pJob);
 
 			SAILOR_API void Process();
 			SAILOR_API void Join();
 
 		protected:
+
+			SAILOR_API bool TryFetchJob(TSharedPtr<Job>& pOutJob);
 
 			std::string m_threadName;
 			TUniquePtr<std::thread> m_pThread;
@@ -133,12 +135,12 @@ namespace Sailor
 			
 			// Specific jobs for this thread
 			std::mutex m_queueMutex;
-			std::list<TSharedPtr<Job>> m_pJobsQueue;
+			std::vector<TSharedPtr<Job>> m_pJobsQueue;
 
 			// Assigned from scheduler
 			std::condition_variable& m_refresh;
 			std::mutex& m_commonQueueMutex;
-			std::list<TSharedPtr<Job>>& m_pCommonJobsQueue;
+			std::vector<TSharedPtr<Job>>& m_pCommonJobsQueue;
 		};
 
 		class Scheduler final : public TSingleton<Scheduler>
@@ -152,13 +154,13 @@ namespace Sailor
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 			uint32_t SAILOR_API GetNumRenderingJobs() const;
 
-			static SAILOR_API TSharedPtr<Job> CreateJob(const std::string& name, const std::function<void()> lambda, EThreadType thread = EThreadType::Worker);
+			static SAILOR_API TSharedPtr<Job> CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread = EThreadType::Worker);
 			SAILOR_API void Run(const TSharedPtr<Job>& pJob);
 			SAILOR_API void Run(const TSharedPtr<Job>& pJob, DWORD threadId);
+			SAILOR_API void ProcessJobsOnMainThread();
 
 			SAILOR_API bool TryFetchNextAvailiableJob(TSharedPtr<Job>& pOutJob, EThreadType threadType);
-			SAILOR_API bool TryFetchNextAvailiableJob(TSharedPtr<Job>& pOutJob, DWORD threadId);
-
+			
 			SAILOR_API void NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads = false);
 
 		protected:
@@ -166,18 +168,20 @@ namespace Sailor
 			SAILOR_API void GetThreadSyncVarsByThreadType(
 				EThreadType threadType,
 				std::mutex*& pOutMutex,
-				std::list<TSharedPtr<Job>>*& pOutQueue,
+				std::vector<TSharedPtr<Job>>*& pOutQueue,
 				std::condition_variable*& pOutCondVar);
 
 			SAILOR_API Scheduler() = default;
 
 			std::mutex m_queueMutex[3];
 			std::condition_variable m_refreshCondVar[3];
-			std::list<TSharedPtr<Job>> m_pCommonJobsQueue[3];
+			std::vector<TSharedPtr<Job>> m_pCommonJobsQueue[3];
 
 			std::atomic<uint32_t> m_numBusyThreads;
 			std::vector<WorkerThread*> m_workerThreads;
 			std::atomic_bool m_bIsTerminating;
+
+			DWORD m_mainThreadId = -1;
 
 			friend class WorkerThread;
 		};

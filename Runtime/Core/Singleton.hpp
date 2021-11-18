@@ -18,7 +18,11 @@ protected:
 public:
 
 	static SAILOR_API T* GetInstance() { return m_pInstance; }
-	static SAILOR_API void Shutdown() { delete m_pInstance; }
+	static SAILOR_API void Shutdown() 
+	{
+		delete m_pInstance;
+		m_pInstance = nullptr;
+	}
 };
 
 template<typename T>

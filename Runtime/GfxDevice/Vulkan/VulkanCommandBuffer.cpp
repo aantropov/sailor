@@ -11,6 +11,7 @@
 #include "VulkanPipeline.h"
 #include "VulkanPipileneStates.h"
 #include "VulkanDescriptors.h"
+#include "JobSystem/JobSystem.h"
 #include "VulkanImage.h"
 #include "Core/RefPtr.hpp"
 
@@ -29,16 +30,35 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevicePtr device, VulkanCommandPo
 	allocateInfo.commandBufferCount = 1;
 
 	VK_CHECK(vkAllocateCommandBuffers(*m_device, &allocateInfo, &m_commandBuffer));
+
+	m_currentThreadId = GetCurrentThreadId();
 }
 
 VulkanCommandBuffer::~VulkanCommandBuffer()
 {
-	if (m_commandBuffer)
-	{
-		vkFreeCommandBuffers(*m_device, *m_commandPool, 1, &m_commandBuffer);
-	}
+	DWORD currentThreadId = GetCurrentThreadId();
 
-	m_device.Clear();
+	VkDevice duplicatedDevice = *m_device;
+	auto duplicatedCommandPool = m_commandPool;
+	auto duplicatedCommandBuffer = m_commandBuffer;
+
+	auto pReleaseResource = JobSystem::Scheduler::CreateJob("Release command buffer", [duplicatedDevice, duplicatedCommandPool, duplicatedCommandBuffer]()
+		{
+			if (duplicatedCommandBuffer)
+			{
+				vkFreeCommandBuffers(duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
+			}
+		});
+
+	if (m_currentThreadId == currentThreadId)
+	{
+		pReleaseResource->Execute();
+		m_device.Clear();
+	}
+	else
+	{
+		JobSystem::Scheduler::GetInstance()->Run(pReleaseResource, m_currentThreadId);
+	}
 }
 
 VulkanCommandPoolPtr VulkanCommandBuffer::GetCommandPool() const
@@ -155,6 +175,8 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 	for (int i = 0; i < descriptorSet.size(); i++)
 	{
 		sets[i] = *descriptorSet[i];
+		m_descriptorSetDependencies.push_back(descriptorSet[i]);
+
 	}
 	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, (uint32_t)descriptorSet.size(), &sets[0], 0, nullptr);
 	_freea(sets);
@@ -162,6 +184,7 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 
 void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)
 {
+	m_pipelineDependencies.push_back(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 }
 
@@ -186,6 +209,8 @@ void VulkanCommandBuffer::ClearDependencies()
 {
 	m_bufferDependencies.clear();
 	m_imageDependencies.clear();
+	m_descriptorSetDependencies.clear();
+	m_pipelineDependencies.clear();
 }
 
 void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)

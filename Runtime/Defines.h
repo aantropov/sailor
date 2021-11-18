@@ -15,10 +15,6 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <easy/profiler.h>
 #pragma comment(lib, "easy_profiler.lib")
 
-#define SAILOR_PROFILE_FUNCTION() EASY_FUNCTION()
-#define SAILOR_PROFILE_BLOCK(Msg, ...) EASY_BLOCK(Msg, __VA_ARGS__)
-#define SAILOR_PROFILE_END_BLOCK() EASY_END_BLOCK
-
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
@@ -36,3 +32,17 @@ typedef unsigned long DWORD;
 #endif
 
 #define VULKAN
+
+#ifdef _DEBUG
+#define SAILOR_PROFILING_ENABLE
+#endif
+
+#ifdef SAILOR_PROFILING_ENABLE
+#define SAILOR_PROFILE_FUNCTION() EASY_FUNCTION()
+#define SAILOR_PROFILE_BLOCK(Msg, ...) EASY_BLOCK(Msg, __VA_ARGS__)
+#define SAILOR_PROFILE_END_BLOCK() EASY_END_BLOCK
+#else
+#define SAILOR_PROFILE_FUNCTION()
+#define SAILOR_PROFILE_BLOCK(Msg, ...) 
+#define SAILOR_PROFILE_END_BLOCK() 
+#endif

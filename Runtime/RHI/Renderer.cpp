@@ -23,9 +23,9 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<Resource> visitor, bool& b
 		{
 			auto it = std::find_if(m_dependencies.begin(), m_dependencies.end(),
 				[&fence](const auto& lhs)
-			{
-				return fence.GetRawPtr() == lhs.GetRawPtr();
-			});
+				{
+					return fence.GetRawPtr() == lhs.GetRawPtr();
+				});
 
 			if (it != std::end(m_dependencies))
 			{
@@ -61,6 +61,7 @@ void Renderer::Initialize(Win32::Window const* pViewport, RHI::EMsaaSamples msaa
 
 Renderer::~Renderer()
 {
+	GetDriver()->WaitIdle();
 	m_driverInstance.Clear();
 }
 
@@ -97,51 +98,52 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	SAILOR_PROFILE_BLOCK("Push frame");
 
-	TSharedPtr<class JobSystem::Job> preRenderingJob = JobSystem::Scheduler::CreateJob("Trace Command Lists",
-		[this]() {
-
-		SAILOR_PROFILE_BLOCK("Pre frame rendering jobs");
-		this->GetDriver()->TrackResources();
-		SAILOR_PROFILE_END_BLOCK();
-	}, Sailor::JobSystem::EThreadType::Rendering);
+	TSharedPtr<class JobSystem::Job> preRenderingJob = JobSystem::Scheduler::CreateJob("Trace command lists & Track RHI resources",
+		[this]()
+		{
+			this->GetDriver()->TrackResources_ThreadSafe();
+		}, Sailor::JobSystem::EThreadType::Rendering);
 
 	TSharedPtr<class JobSystem::Job> renderingJob = JobSystem::Scheduler::CreateJob("Render Frame",
 		[this, frame]() {
 
-		static Utils::Timer timer;
-		timer.Start();
+			static Utils::Timer timer;
+			timer.Start();
 
-		// TODO: Implement semaphores to move synchronization to device
-		GetDriver()->SubmitCommandList_Immediate(frame.GetCommandBuffer());
-
-		do
-		{
-			static uint32_t totalFramesCount = 0U;
-
-			SAILOR_PROFILE_BLOCK("Present Frame");
-
-			if (m_driverInstance->PresentFrame(frame))
-			{
-				totalFramesCount++;
-				timer.Stop();
-
-				if (timer.ResultAccumulatedMs() > 1000)
-				{
-					m_pureFps = totalFramesCount;
-					totalFramesCount = 0;
-					timer.Clear();
-				}
-			}
-			else
-			{
-				m_pureFps = 0;
-			}
-
+			SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
+			// TODO: Implement semaphores to move synchronization to device
+			//GetDriver()->SubmitCommandList_Immediate(frame.GetCommandBuffer());
+			GetDriver()->SubmitCommandList(frame.GetCommandBuffer(), FencePtr::Make());
 			SAILOR_PROFILE_END_BLOCK();
 
-		} while (m_pViewport->IsIconic());
+			do
+			{
+				static uint32_t totalFramesCount = 0U;
 
-	}, Sailor::JobSystem::EThreadType::Rendering);
+				SAILOR_PROFILE_BLOCK("Present Frame");
+
+				if (m_driverInstance->PresentFrame(frame))
+				{
+					totalFramesCount++;
+					timer.Stop();
+
+					if (timer.ResultAccumulatedMs() > 1000)
+					{
+						m_pureFps = totalFramesCount;
+						totalFramesCount = 0;
+						timer.Clear();
+					}
+				}
+				else
+				{
+					m_pureFps = 0;
+				}
+
+				SAILOR_PROFILE_END_BLOCK();
+
+			} while (m_pViewport->IsIconic());
+
+		}, Sailor::JobSystem::EThreadType::Rendering);
 
 	renderingJob->Join(preRenderingJob);
 
