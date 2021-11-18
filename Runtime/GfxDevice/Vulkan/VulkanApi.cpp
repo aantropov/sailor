@@ -213,8 +213,6 @@ bool VulkanApi::CheckValidationLayerSupport(const std::vector<const char*>& vali
 
 VulkanApi::~VulkanApi()
 {
-	m_device->WaitIdle();
-
 	if (bIsEnabledValidationLayers)
 	{
 		DestroyDebugUtilsMessengerEXT(GetVkInstance(), m_debugMessenger, nullptr);
