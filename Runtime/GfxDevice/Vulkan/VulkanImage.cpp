@@ -61,7 +61,7 @@ VkResult VulkanImage::Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memo
 VkResult VulkanImage::Bind(TMemoryPtr<VulkanMemoryPtr> ptr)
 {
 	m_ptr = ptr;
-	return Bind((*ptr).m_deviceMemory, ptr.m_offset);
+	return Bind((*ptr).m_deviceMemory, (*ptr).m_offset);
 }
 
 void VulkanImage::Compile()

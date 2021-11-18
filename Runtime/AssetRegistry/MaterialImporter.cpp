@@ -213,7 +213,7 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 		{
 			if (pMaterialPtr->GetBindings()->HasVariable(uniform.first))
 			{
-				SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD("Set material parameter", ([&pMaterialPtr, &uniform](RHI::CommandListPtr& cmdList) {
+				SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD("Set material parameter", ([pMaterialPtr, uniform](RHI::CommandListPtr& cmdList) {
 					RHI::Renderer::GetDriverCommands()->SetMaterialParameter(cmdList, pMaterialPtr, uniform.first, uniform.second);
 					}));
 			}
