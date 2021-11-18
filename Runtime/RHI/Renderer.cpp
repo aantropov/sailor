@@ -61,6 +61,7 @@ void Renderer::Initialize(Win32::Window const* pViewport, RHI::EMsaaSamples msaa
 
 Renderer::~Renderer()
 {
+	Renderer::GetDriver()->WaitIdle();
 	m_driverInstance.Clear();
 }
 
