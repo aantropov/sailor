@@ -150,6 +150,7 @@ void VulkanDevice::Shutdown()
 	m_transferQueue.Clear();
 
 	m_samplers.Clear();
+	m_pipelineBuilder.Clear();
 	m_threadContext.clear();
 }
 
