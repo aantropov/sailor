@@ -30,7 +30,7 @@ namespace Sailor
 		{
 			Rendering = 0,
 			Worker = 1,
-			FileSystem = 2
+			Main = 2
 		};
 
 		class IJob
@@ -114,7 +114,9 @@ namespace Sailor
 			SAILOR_API WorkerThread(WorkerThread& copy) = delete;
 			SAILOR_API WorkerThread& operator =(WorkerThread& rhs) = delete;
 
-			SAILOR_API void ForcelyAssignJob(const TSharedPtr<Job>& pJob);
+			SAILOR_API DWORD GetThreadId() const { return m_threadId; }
+
+			SAILOR_API void AddJob(const TSharedPtr<Job>& pJob);
 
 			SAILOR_API void Process();
 			SAILOR_API void Join();
@@ -123,16 +125,20 @@ namespace Sailor
 
 			std::string m_threadName;
 			TUniquePtr<std::thread> m_pThread;
-
-			std::atomic_bool m_bIsBusy;
-			TSharedPtr<Job> m_pJob;
-
+			
 			EThreadType m_threadType;
+			DWORD m_threadId;
+
+			std::atomic_bool m_bIsBusy;			
+			
+			// Specific jobs for this thread
+			std::mutex m_queueMutex;
+			std::list<TSharedPtr<Job>> m_pJobsQueue;
 
 			// Assigned from scheduler
 			std::condition_variable& m_refresh;
-			std::mutex& m_mutex;
-			std::list<TSharedPtr<Job>>& m_pJobsQueue;
+			std::mutex& m_commonQueueMutex;
+			std::list<TSharedPtr<Job>>& m_pCommonJobsQueue;
 		};
 
 		class Scheduler final : public TSingleton<Scheduler>
@@ -146,10 +152,12 @@ namespace Sailor
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 			uint32_t SAILOR_API GetNumRenderingJobs() const;
 
-			static SAILOR_API TSharedPtr<Job> CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread = EThreadType::Worker);
+			static SAILOR_API TSharedPtr<Job> CreateJob(const std::string& name, const std::function<void()> lambda, EThreadType thread = EThreadType::Worker);
 			SAILOR_API void Run(const TSharedPtr<Job>& pJob);
+			SAILOR_API void Run(const TSharedPtr<Job>& pJob, DWORD threadId);
 
 			SAILOR_API bool TryFetchNextAvailiableJob(TSharedPtr<Job>& pOutJob, EThreadType threadType);
+			SAILOR_API bool TryFetchNextAvailiableJob(TSharedPtr<Job>& pOutJob, DWORD threadId);
 
 			SAILOR_API void NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads = false);
 
@@ -165,7 +173,7 @@ namespace Sailor
 
 			std::mutex m_queueMutex[3];
 			std::condition_variable m_refreshCondVar[3];
-			std::list<TSharedPtr<Job>> m_pJobsQueue[3];
+			std::list<TSharedPtr<Job>> m_pCommonJobsQueue[3];
 
 			std::atomic<uint32_t> m_numBusyThreads;
 			std::vector<WorkerThread*> m_workerThreads;

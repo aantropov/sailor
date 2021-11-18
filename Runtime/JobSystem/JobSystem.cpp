@@ -99,8 +99,8 @@ WorkerThread::WorkerThread(
 	m_threadName(std::move(threadName)),
 	m_threadType(threadType),
 	m_refresh(refresh),
-	m_mutex(mutex),
-	m_pJobsQueue(pJobsQueue)
+	m_commonQueueMutex(mutex),	
+	m_pCommonJobsQueue(pJobsQueue)
 {
 	m_pThread = TUniquePtr<std::thread>::Make(&WorkerThread::Process, this);
 }
@@ -115,22 +115,25 @@ void WorkerThread::Process()
 {
 	Sailor::Utils::SetThreadName(m_threadName);
 	EASY_THREAD_SCOPE(m_threadName.c_str());
+	m_threadId = GetCurrentThreadId();
 
 	Scheduler* scheduler = Scheduler::GetInstance();
+	
+	TSharedPtr<Job> pCurrentJob;
 
 	std::mutex threadExecutionMutex;
 	while (!scheduler->m_bIsTerminating)
 	{
 		std::unique_lock<std::mutex> lk(threadExecutionMutex);
-		m_refresh.wait(lk, [this, scheduler] { return  scheduler->TryFetchNextAvailiableJob(m_pJob, m_threadType) || (bool)scheduler->m_bIsTerminating; });
+		m_refresh.wait(lk, [this, &pCurrentJob, scheduler] { return  scheduler->TryFetchNextAvailiableJob(pCurrentJob, m_threadType) || (bool)scheduler->m_bIsTerminating; });
 
-		if (m_pJob)
+		if (pCurrentJob)
 		{
-			SAILOR_PROFILE_BLOCK(m_pJob->GetName());
+			SAILOR_PROFILE_BLOCK(pCurrentJob->GetName());
 
-			m_pJob->Execute();
-			m_pJob->Complete();
-			m_pJob.Clear();
+			pCurrentJob->Execute();
+			pCurrentJob->Complete();
+			pCurrentJob.Clear();
 
 			scheduler->NotifyWorkerThread(m_threadType);
 
@@ -153,18 +156,9 @@ void Scheduler::Initialize()
 		EThreadType::Rendering,
 		m_pInstance->m_refreshCondVar[(uint32_t)EThreadType::Rendering],
 		m_pInstance->m_queueMutex[(uint32_t)EThreadType::Rendering],
-		m_pInstance->m_pJobsQueue[(uint32_t)EThreadType::Rendering]);
+		m_pInstance->m_pCommonJobsQueue[(uint32_t)EThreadType::Rendering]);
 
 	m_pInstance->m_workerThreads.emplace_back(newRenderingThread);
-
-	WorkerThread* newFilesystemThread = new WorkerThread(
-		"Filesystem Thread",
-		EThreadType::FileSystem,
-		m_pInstance->m_refreshCondVar[(uint32_t)EThreadType::FileSystem],
-		m_pInstance->m_queueMutex[(uint32_t)EThreadType::FileSystem],
-		m_pInstance->m_pJobsQueue[(uint32_t)EThreadType::FileSystem]);
-
-	m_pInstance->m_workerThreads.emplace_back(newFilesystemThread);
 
 	for (uint32_t i = 0; i < numThreads; i++)
 	{
@@ -172,7 +166,7 @@ void Scheduler::Initialize()
 		WorkerThread* newThread = new WorkerThread(threadName, EThreadType::Worker,
 			m_pInstance->m_refreshCondVar[(uint32_t)EThreadType::Worker],
 			m_pInstance->m_queueMutex[(uint32_t)EThreadType::Worker],
-			m_pInstance->m_pJobsQueue[(uint32_t)EThreadType::Worker]);
+			m_pInstance->m_pCommonJobsQueue[(uint32_t)EThreadType::Worker]);
 
 		m_pInstance->m_workerThreads.emplace_back(newThread);
 	}
@@ -185,7 +179,6 @@ Scheduler::~Scheduler()
 	m_bIsTerminating = true;
 
 	NotifyWorkerThread(EThreadType::Worker, true);
-	NotifyWorkerThread(EThreadType::FileSystem, true);
 	NotifyWorkerThread(EThreadType::Rendering, true);
 
 	for (auto& worker : m_workerThreads)
@@ -200,7 +193,7 @@ Scheduler::~Scheduler()
 	m_workerThreads.clear();
 }
 
-TSharedPtr<Job> Scheduler::CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread)
+TSharedPtr<Job> Scheduler::CreateJob(const std::string& name, const std::function<void()> lambda, EThreadType thread)
 {
 	return TSharedPtr<Job>::Make(name, lambda, thread);
 }
@@ -228,6 +221,12 @@ void Scheduler::Run(const TSharedPtr<Job>& pJob)
 	NotifyWorkerThread(pJob->GetThreadType());
 }
 
+void Scheduler::Run(const TSharedPtr<Job>& pJob, DWORD threadId)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+}
+
 void Scheduler::GetThreadSyncVarsByThreadType(
 	EThreadType threadType,
 	std::mutex*& pOutMutex,
@@ -237,7 +236,7 @@ void Scheduler::GetThreadSyncVarsByThreadType(
 	SAILOR_PROFILE_FUNCTION();
 
 	pOutMutex = &m_queueMutex[(uint32_t)threadType];
-	pOutQueue = &m_pJobsQueue[(uint32_t)threadType];
+	pOutQueue = &m_pCommonJobsQueue[(uint32_t)threadType];
 	pOutCondVar = &m_refreshCondVar[(uint32_t)threadType];
 }
 
@@ -295,5 +294,5 @@ void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThread
 
 uint32_t Scheduler::GetNumRenderingJobs() const
 {
-	return (uint32_t)m_pJobsQueue[(uint32_t)EThreadType::Rendering].size();
+	return (uint32_t)m_pCommonJobsQueue[(uint32_t)EThreadType::Rendering].size();
 }
