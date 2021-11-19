@@ -55,15 +55,7 @@ void Renderer::Initialize(Win32::Window const* pViewport, RHI::EMsaaSamples msaa
 
 #if defined(VULKAN)
 	m_pInstance->m_driverInstance = TUniquePtr<Sailor::GfxDevice::Vulkan::GfxDeviceVulkan>::Make();
-
-	//auto pJobInitializeRenderer = JobSystem::Scheduler::CreateJob("Initialize Gfx Device",
-	//[pViewport, msaaSamples, bIsDebug] ()
-		//{	
 	m_pInstance->m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
-	//}, JobSystem::EThreadType::Rendering);
-
-//JobSystem::Scheduler::GetInstance()->Run(pJobInitializeRenderer);
-	//pJobInitializeRenderer->Wait();
 #endif
 }
 
@@ -120,7 +112,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
 			// TODO: Implement semaphores to move synchronization to device
-			//GetDriver()->SubmitCommandList_Immediate(frame.GetCommandBuffer());
 			GetDriver()->SubmitCommandList(frame.GetCommandBuffer(), FencePtr::Make());
 			SAILOR_PROFILE_END_BLOCK();
 
