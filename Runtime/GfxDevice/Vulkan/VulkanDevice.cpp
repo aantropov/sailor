@@ -224,6 +224,8 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	std::vector<VulkanSemaphorePtr> signalSemaphores,
 	std::vector<VulkanSemaphorePtr> waitSemaphores)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.commandBufferCount = 1;

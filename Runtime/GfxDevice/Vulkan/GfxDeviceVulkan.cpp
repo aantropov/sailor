@@ -100,14 +100,20 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	SAILOR_PROFILE_BLOCK("Check fence");
+
 	//if we have fence and that is null we should create device resource
-	if (!fence->m_vulkan.m_fence)
+	if (fence && !fence->m_vulkan.m_fence)
 	{
 		fence->m_vulkan.m_fence = VulkanFencePtr::Make(m_vkInstance->GetMainDevice());
 	}
 
+	SAILOR_PROFILE_END_BLOCK();
+
 	std::vector<VulkanSemaphorePtr> signal;
 	std::vector<VulkanSemaphorePtr> wait;
+
+	SAILOR_PROFILE_BLOCK("Add semaphore dependencies");
 
 	if (signalSemaphore)
 	{
@@ -121,13 +127,22 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 		wait.push_back(waitSemaphore->m_vulkan.m_semaphore);
 	}
 
-	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence->m_vulkan.m_fence, signal, wait);
+	SAILOR_PROFILE_END_BLOCK();
 
-	// Fence should hold command list during execution
-	fence->AddDependency(commandList);
+	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence ? fence->m_vulkan.m_fence : nullptr, signal, wait);
 
-	// We should remove fence after execution
-	TrackPendingCommandList_ThreadSafe(fence);
+	if (fence)
+	{
+		SAILOR_PROFILE_BLOCK("Add fence dependencies");
+
+		// Fence should hold command list during execution
+		fence->AddDependency(commandList);
+
+		// We should remove fence after execution
+		TrackPendingCommandList_ThreadSafe(fence);
+
+		SAILOR_PROFILE_END_BLOCK();
+	}
 }
 
 RHI::SemaphorePtr GfxDeviceVulkan::CreateWaitSemaphore()
@@ -550,15 +565,24 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBi
 	const auto& requirements = dstBuffer->GetMemoryRequirements();
 
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
+	
+	SAILOR_PROFILE_BLOCK("Allocate staging memory")
 	auto data = stagingMemoryAllocator.Allocate(size, requirements.alignment);
+	SAILOR_PROFILE_END_BLOCK();
 
+	SAILOR_PROFILE_BLOCK("Create staging buffer")
 	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
 	VK_CHECK(stagingBuffer->Bind(data));
+	SAILOR_PROFILE_END_BLOCK();
 
+	SAILOR_PROFILE_BLOCK("Copy data to staging buffer")
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
+	SAILOR_PROFILE_END_BLOCK();
 
+	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command")
 	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, 0, binding.m_offset + variableOffset);
+	SAILOR_PROFILE_END_BLOCK();
 }
 
 void GfxDeviceVulkan::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size)
