@@ -64,7 +64,7 @@ namespace Sailor::RHI
 		virtual SAILOR_API ShaderBindingSetPtr CreateShaderBindings() = 0;
 		virtual SAILOR_API void AddUniformBufferToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding) = 0;
 		virtual SAILOR_API void AddSamplerToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding) = 0;
-		
+
 		// Used for full binding update
 		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
 		virtual SAILOR_API void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
@@ -103,7 +103,8 @@ namespace Sailor::RHI
 
 		virtual SAILOR_API void BeginCommandList(CommandListPtr cmd) = 0;
 		virtual SAILOR_API void EndCommandList(CommandListPtr cmd) = 0;
-		
+
+		virtual SAILOR_API void UpdateShaderBingingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
 		virtual SAILOR_API void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
 		virtual SAILOR_API void SetMaterialParameter(CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 
@@ -112,8 +113,11 @@ namespace Sailor::RHI
 		template<typename TDataType>
 		void SetMaterialParameter(CommandListPtr cmd, RHI::MaterialPtr material, const std::string& parameter, const TDataType& value)
 		{
-			std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
-			SetMaterialParameter(cmd, material, splittedString[0], splittedString[1], &value, sizeof(value));
+			std::string outBinding;
+			std::string outVariable;
+
+			ShaderBindingSet::ParseParameter(parameter, outBinding, outVariable);
+			SetMaterialParameter(cmd, material, outBinding, outVariable, &value, sizeof(value));
 		}
 	};
 };

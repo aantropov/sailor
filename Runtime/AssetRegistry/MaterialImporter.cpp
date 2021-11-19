@@ -200,9 +200,11 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 		auto pSharedMaterial = pMaterial.Lock();
 		MaterialPtr pMaterialPtr = Renderer::GetDriver()->CreateMaterial(pSharedMaterial->GetRenderState(), pSharedMaterial->GetShader(), pSharedMaterial->GetShaderDefines());
 
+		auto bindings = pMaterialPtr->GetBindings();
+
 		for (auto& sampler : pSharedMaterial->GetSamplers())
 		{
-			if (pMaterialPtr->GetBindings()->HasBinding(sampler.m_name))
+			if (bindings->HasBinding(sampler.m_name))
 			{
 				TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
 				Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture);
@@ -211,10 +213,18 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 
 		for (auto& uniform : pSharedMaterial->GetUniformValues())
 		{
-			if (pMaterialPtr->GetBindings()->HasVariable(uniform.first))
+			if (bindings->HasParameter(uniform.first))
 			{
-				SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD("Set material parameter", ([pMaterialPtr, uniform](RHI::CommandListPtr& cmdList) {
-					RHI::Renderer::GetDriverCommands()->SetMaterialParameter(cmdList, pMaterialPtr, uniform.first, uniform.second);
+				std::string outBinding;
+				std::string outVariable;
+
+				ShaderBindingSet::ParseParameter(uniform.first, outBinding, outVariable);
+				ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
+				auto value = uniform.second;
+
+				SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
+					{
+						RHI::Renderer::GetDriverCommands()->UpdateShaderBingingVariable(cmdList, binding, outVariable, &value, sizeof(value));
 					}));
 			}
 		}

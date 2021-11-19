@@ -184,6 +184,14 @@ void Framework::CpuFrame(FrameState& state)
 	if (glm::length(delta) > 0)
 		cameraPosition += glm::normalize(delta) * sensitivity * state.GetDeltaTime();
 
+	if (state.GetInputState().IsKeyDown(VK_SPACE))
+	{
+		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models\\Sponza\\sponza.mat"))
+		{
+			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
+		}
+	}
+
 	const float speed = 50.0f;
 
 	vec2 shift{};

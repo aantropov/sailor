@@ -38,7 +38,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 {
 	DWORD currentThreadId = GetCurrentThreadId();
 
-	VkDevice duplicatedDevice = *m_device;
+	auto duplicatedDevice = m_device;
 	auto duplicatedCommandPool = m_commandPool;
 	auto duplicatedCommandBuffer = m_commandBuffer;
 
@@ -46,7 +46,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 		{
 			if (duplicatedCommandBuffer)
 			{
-				vkFreeCommandBuffers(duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
+				vkFreeCommandBuffers(*duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
 			}
 		});
 

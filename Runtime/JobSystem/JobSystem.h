@@ -11,13 +11,19 @@
 #define SAILOR_ENQUEUE_JOB(Name, Lambda) Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, Lambda))
 #define SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, Lambda, Sailor::JobSystem::EThreadType::Rendering))
 
-#define SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD(Name, Lambda) SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, ([&](){\
-	Sailor::RHI::CommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, false);\
+#define SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD(Name, Lambda) \
+{ \
+auto lambda = Lambda; \
+auto submit = [lambda]() \
+{ \
+	Sailor::RHI::CommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, false); \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList); \
-	Lambda(cmdList);\
-	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);\
-	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make());\
-}))\
+	lambda(cmdList); \
+	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
+	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
+}; \
+Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
+}\
 
 namespace Sailor
 {
@@ -127,12 +133,12 @@ namespace Sailor
 
 			std::string m_threadName;
 			TUniquePtr<std::thread> m_pThread;
-			
+
 			EThreadType m_threadType;
 			DWORD m_threadId;
 
-			std::atomic_bool m_bIsBusy;			
-			
+			std::atomic_bool m_bIsBusy;
+
 			// Specific jobs for this thread
 			std::mutex m_queueMutex;
 			std::vector<TSharedPtr<Job>> m_pJobsQueue;
@@ -160,8 +166,11 @@ namespace Sailor
 			SAILOR_API void ProcessJobsOnMainThread();
 
 			SAILOR_API bool TryFetchNextAvailiableJob(TSharedPtr<Job>& pOutJob, EThreadType threadType);
-			
+
 			SAILOR_API void NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads = false);
+
+			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; };
+			SAILOR_API DWORD GetRendererThreadId() const;
 
 		protected:
 
@@ -182,6 +191,7 @@ namespace Sailor
 			std::atomic_bool m_bIsTerminating;
 
 			DWORD m_mainThreadId = -1;
+			DWORD m_renderingThreadId = -1;
 
 			friend class WorkerThread;
 		};

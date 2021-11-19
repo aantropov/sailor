@@ -172,7 +172,7 @@ void WorkerThread::Process()
 			scheduler->NotifyWorkerThread(m_threadType);
 
 			SAILOR_PROFILE_END_BLOCK()
-				m_bIsBusy = false;;
+			m_bIsBusy = false;;
 		}
 
 		lk.unlock();
@@ -209,6 +209,11 @@ void Scheduler::Initialize()
 	}
 
 	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Threads count: %zd", coresCount, m_pInstance->m_workerThreads.size());
+}
+
+DWORD Scheduler::GetRendererThreadId() const
+{
+	return m_pInstance->m_workerThreads[0]->GetThreadId();
 }
 
 Scheduler::~Scheduler()

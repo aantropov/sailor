@@ -20,11 +20,13 @@ namespace Sailor::RHI
 
 		SAILOR_API void SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> layoutBindings);
 		SAILOR_API const std::vector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
-		SAILOR_API RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& parameter);
-		SAILOR_API const std::unordered_map<std::string, RHI::ShaderBindingPtr>& GetBindings() const { return m_shaderBindings; }
+		SAILOR_API RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& binding);
+		SAILOR_API const std::unordered_map<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
+
+		static SAILOR_API void ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable);
 
 		SAILOR_API bool HasBinding(const std::string& binding) const;
-		SAILOR_API bool HasVariable(const std::string& parameter) const;
+		SAILOR_API bool HasParameter(const std::string& parameter) const;
 
 	protected:
 

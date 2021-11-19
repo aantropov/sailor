@@ -55,7 +55,15 @@ void Renderer::Initialize(Win32::Window const* pViewport, RHI::EMsaaSamples msaa
 
 #if defined(VULKAN)
 	m_pInstance->m_driverInstance = TUniquePtr<Sailor::GfxDevice::Vulkan::GfxDeviceVulkan>::Make();
+
+	//auto pJobInitializeRenderer = JobSystem::Scheduler::CreateJob("Initialize Gfx Device",
+	//[pViewport, msaaSamples, bIsDebug] ()
+		//{	
 	m_pInstance->m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
+	//}, JobSystem::EThreadType::Rendering);
+
+//JobSystem::Scheduler::GetInstance()->Run(pJobInitializeRenderer);
+	//pJobInitializeRenderer->Wait();
 #endif
 }
 

@@ -131,7 +131,9 @@ void VulkanDevice::Shutdown()
 	CleanupSwapChain();
 
 	m_swapchain.Clear();
+
 	m_commandBuffers.clear();
+	m_commandPool.Clear();
 
 	for (auto& pair : m_threadContext)
 	{
@@ -154,9 +156,8 @@ void VulkanDevice::Shutdown()
 	m_threadContext.clear();
 }
 
-ThreadContext& VulkanDevice::GetThreadContext()
+ThreadContext& VulkanDevice::GetThreadContext(DWORD threadId)
 {
-	const auto threadId = GetCurrentThreadId();
 	auto res = m_threadContext.find(threadId);
 	if (res != m_threadContext.end())
 	{
@@ -164,6 +165,11 @@ ThreadContext& VulkanDevice::GetThreadContext()
 	}
 
 	return *(m_threadContext[threadId] = CreateThreadContext());
+}
+
+ThreadContext& VulkanDevice::GetCurrentThreadContext()
+{
+	return GetThreadContext(GetCurrentThreadId());
 }
 
 VulkanSurfacePtr VulkanDevice::GetSurface() const
@@ -210,7 +216,7 @@ bool VulkanDevice::IsMipsSupported(VkFormat format) const
 VulkanCommandBufferPtr VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue)
 {
 	return VulkanCommandBufferPtr::Make(VulkanDevicePtr(this),
-		bOnlyTransferQueue ? GetThreadContext().m_transferCommandPool : GetThreadContext().m_commandPool);
+		bOnlyTransferQueue ? GetCurrentThreadContext().m_transferCommandPool : GetCurrentThreadContext().m_commandPool);
 }
 
 void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
@@ -270,8 +276,8 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 	TUniquePtr<ThreadContext> context = TUniquePtr<ThreadContext>::Make();
 
 	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 
 	auto descriptorSizes = vector
 	{
@@ -348,9 +354,14 @@ void VulkanDevice::CreateFramebuffers()
 
 void VulkanDevice::CreateCommandBuffers()
 {
+	// We use internal independent command pool with reset + to handle present command lists
+	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
+	m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+
 	for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
 	{
-		m_commandBuffers.push_back(VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), GetThreadContext().m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
+		// Command buffer would be released fine if we initialize render in the main thread
+		m_commandBuffers.push_back(VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 }
 

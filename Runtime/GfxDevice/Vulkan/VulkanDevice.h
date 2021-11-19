@@ -88,7 +88,9 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API VkFormat GetDepthFormat() const;
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 
-		SAILOR_API ThreadContext& GetThreadContext();
+		SAILOR_API ThreadContext& GetCurrentThreadContext();
+		SAILOR_API ThreadContext& GetThreadContext(DWORD threadId);
+
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 
 	protected:
@@ -112,6 +114,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;
 
+		// Internal pool & buffers
+		VulkanCommandPoolPtr m_commandPool;
 		std::vector<VulkanCommandBufferPtr> m_commandBuffers;
 
 		// Render Pass

@@ -51,13 +51,13 @@ void EngineInstance::Initialize()
 #endif 
 
 	JobSystem::Scheduler::Initialize();
-
+	Renderer::Initialize(&m_pInstance->m_viewportWindow, RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers);
+	
 	AssetRegistry::Initialize();
 	TextureImporter::Initialize();
 	ShaderCompiler::Initialize();
 	ModelImporter::Initialize();
 	MaterialImporter::Initialize();
-	Renderer::Initialize(&m_pInstance->m_viewportWindow, RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers);
 	ShaderCompiler::GetInstance();
 	Framework::Initialize();
 

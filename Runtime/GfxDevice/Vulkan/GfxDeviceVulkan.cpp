@@ -23,9 +23,7 @@ using namespace Sailor::GfxDevice::Vulkan;
 void GfxDeviceVulkan::Initialize(const Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	GfxDevice::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
-
 	m_vkInstance = GfxDevice::Vulkan::VulkanApi::GetInstance();
-	//m_vkInstance->GetMainDevice()->CreateGraphicsPipeline();
 }
 
 GfxDeviceVulkan::~GfxDeviceVulkan()
@@ -117,7 +115,7 @@ RHI::CommandListPtr GfxDeviceVulkan::CreateCommandList(bool bIsSecondary, bool b
 
 	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
 	cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device,
-		bOnlyTransferQueue ? device->GetThreadContext().m_transferCommandPool : device->GetThreadContext().m_commandPool,
+		bOnlyTransferQueue ? device->GetCurrentThreadContext().m_transferCommandPool : device->GetCurrentThreadContext().m_commandPool,
 		bIsSecondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
 	return cmdList;
@@ -242,7 +240,7 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 	std::vector<VulkanDescriptorPtr> descriptors;
 	std::vector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
 
-	for (const auto& binding : bindings->GetBindings())
+	for (const auto& binding : bindings->GetShaderBindings())
 	{
 		if (binding.second->IsBind())
 		{
@@ -270,7 +268,7 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 
 	// Should we just update descriptor set instead of recreation?
 	bindings->m_vulkan.m_descriptorSet = VulkanDescriptorSetPtr::Make(device,
-		device->GetThreadContext().m_descriptorPool,
+		device->GetCurrentThreadContext().m_descriptorPool,
 		VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
 		descriptors);
 
@@ -385,7 +383,7 @@ void GfxDeviceVulkan::UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bin
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::CommandListPtr commandList = RHI::CommandListPtr::Make();
-	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 
 	auto& shaderBinding = bindings->GetOrCreateShaderBinding(parameter);
 	bool bShouldUpdateDescriptorSet = false;
@@ -535,9 +533,15 @@ void GfxDeviceVulkan::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::Materia
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
-
 	auto& shaderBinding = material->GetBindings()->GetOrCreateShaderBinding(binding);
-	bool bShouldUpdateDescriptorSet = false;
+	UpdateShaderBingingVariable(cmd, shaderBinding, variable, value, size);
+}
+
+void GfxDeviceVulkan::UpdateShaderBingingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
 
 	// All uniform buffers should be bound
 	assert(shaderBinding->IsBind());
