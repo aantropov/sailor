@@ -205,12 +205,18 @@ void VulkanCommandBuffer::Reset()
 	ClearDependencies();
 }
 
+void VulkanCommandBuffer::AddSemaphoreDependency(VulkanSemaphorePtr semaphore)
+{
+	m_semaphoreDependencies.push_back(semaphore);
+}
+
 void VulkanCommandBuffer::ClearDependencies()
 {
 	m_bufferDependencies.clear();
 	m_imageDependencies.clear();
 	m_descriptorSetDependencies.clear();
 	m_pipelineDependencies.clear();
+	m_semaphoreDependencies.clear();
 }
 
 void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)

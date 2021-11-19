@@ -8,6 +8,21 @@ using namespace GfxDevice::Vulkan;
 
 namespace Sailor::RHI
 {
+	class Semaphore : public Resource
+	{
+	public:
+
+#if defined(VULKAN)
+		struct
+		{
+			VulkanSemaphorePtr m_semaphore;
+		} m_vulkan;
+#endif
+
+	protected:
+	};
+
+
 	class Fence : public Resource, public IVisitor, public IDependent
 	{
 	public:

@@ -24,6 +24,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class Material> MaterialPtr;
 	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
 	typedef TRefPtr<class ShaderBindingSet> ShaderBindingSetPtr;
+	typedef TRefPtr<class Semaphore> SemaphorePtr;
 
 	class IGfxDevice
 	{
@@ -37,10 +38,12 @@ namespace Sailor::RHI
 
 		virtual SAILOR_API bool PresentFrame(const Sailor::FrameState& state,
 			const std::vector<CommandListPtr>* primaryCommandBuffers = nullptr,
-			const std::vector<CommandListPtr>* secondaryCommandBuffers = nullptr) const = 0;
+			const std::vector<CommandListPtr>* secondaryCommandBuffers = nullptr,
+			std::vector<SemaphorePtr> waitSemaphores = {}) const = 0;
 
 		virtual void SAILOR_API WaitIdle() = 0;
 
+		virtual SAILOR_API SemaphorePtr CreateWaitSemaphore() = 0;
 		virtual SAILOR_API CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
 		virtual SAILOR_API BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API CommandListPtr CreateBuffer(BufferPtr& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
@@ -58,7 +61,7 @@ namespace Sailor::RHI
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {}) = 0;
 
-		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence) = 0;
+		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence = nullptr, SemaphorePtr signalSemaphore = nullptr, SemaphorePtr waitSemaphore = nullptr) = 0;
 
 		// Shader binding set
 		virtual SAILOR_API ShaderBindingSetPtr CreateShaderBindings() = 0;

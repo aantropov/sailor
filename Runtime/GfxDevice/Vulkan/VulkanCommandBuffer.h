@@ -53,12 +53,15 @@ namespace Sailor::GfxDevice::Vulkan
 		void ClearDependencies();
 		void Reset();
 
+		void AddSemaphoreDependency(VulkanSemaphorePtr semaphore);
+
 	protected:
 
 		std::vector<VulkanBufferPtr> m_bufferDependencies;
 		std::vector<VulkanImagePtr> m_imageDependencies;
 		std::vector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;
 		std::vector<VulkanPipelinePtr> m_pipelineDependencies;
+		std::vector<VulkanSemaphorePtr> m_semaphoreDependencies;
 
 		VulkanDevicePtr m_device;
 		VulkanCommandPoolPtr m_commandPool;

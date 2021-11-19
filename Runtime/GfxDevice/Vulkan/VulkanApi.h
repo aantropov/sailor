@@ -110,10 +110,6 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API void Initialize(const Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		virtual SAILOR_API ~VulkanApi() override;
 
-		static bool SAILOR_API PresentFrame(const FrameState& state, const std::vector<VulkanCommandBufferPtr>* primaryCommandBuffers = nullptr,
-			const std::vector<VulkanCommandBufferPtr>* secondaryCommandBuffers = nullptr,
-			const std::vector<VulkanSemaphorePtr>* waitSemaphores = nullptr);
-
 		static void SAILOR_API WaitIdle();
 		SAILOR_API VulkanDevicePtr GetMainDevice() const;
 

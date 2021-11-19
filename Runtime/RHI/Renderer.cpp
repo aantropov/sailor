@@ -111,8 +111,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			timer.Start();
 
 			SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
-			// TODO: Implement semaphores to move synchronization to device
-			GetDriver()->SubmitCommandList(frame.GetCommandBuffer(), FencePtr::Make());
+			SemaphorePtr waitFrameUpdate = GetDriver()->CreateWaitSemaphore();
+			GetDriver()->SubmitCommandList(frame.GetCommandBuffer(), FencePtr::Make(), waitFrameUpdate);
 			SAILOR_PROFILE_END_BLOCK();
 
 			do
@@ -121,7 +121,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 				SAILOR_PROFILE_BLOCK("Present Frame");
 
-				if (m_driverInstance->PresentFrame(frame))
+				if (m_driverInstance->PresentFrame(frame, nullptr, nullptr, { waitFrameUpdate }))
 				{
 					totalFramesCount++;
 					timer.Stop();

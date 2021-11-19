@@ -46,9 +46,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		bool SAILOR_API PresentFrame(const FrameState& state, const std::vector<VulkanCommandBufferPtr>* primaryCommandBuffers = nullptr,
-			const std::vector<VulkanCommandBufferPtr>* secondaryCommandBuffers = nullptr,
-			const std::vector<VulkanSemaphorePtr>* waitSemaphores = nullptr);
+		bool SAILOR_API PresentFrame(const FrameState& state, std::vector<VulkanCommandBufferPtr> primaryCommandBuffers = {},
+			std::vector<VulkanCommandBufferPtr> secondaryCommandBuffers = {},
+			std::vector<VulkanSemaphorePtr> waitSemaphores = {});
 
 		bool SAILOR_API IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 		
@@ -90,7 +90,6 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API ThreadContext& GetCurrentThreadContext();
 		SAILOR_API ThreadContext& GetThreadContext(DWORD threadId);
-
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 
 	protected:
@@ -114,7 +113,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;
 
-		// Internal pool & buffers
+		// Internal command buffers
 		VulkanCommandPoolPtr m_commandPool;
 		std::vector<VulkanCommandBufferPtr> m_commandBuffers;
 

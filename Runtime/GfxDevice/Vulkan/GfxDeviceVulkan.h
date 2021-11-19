@@ -31,10 +31,12 @@ namespace Sailor::GfxDevice::Vulkan
 
 		virtual SAILOR_API bool PresentFrame(const class FrameState& state,
 			const std::vector<RHI::CommandListPtr>* primaryCommandBuffers = nullptr,
-			const std::vector<RHI::CommandListPtr>* secondaryCommandBuffers = nullptr) const;
+			const std::vector<RHI::CommandListPtr>* secondaryCommandBuffers = nullptr,
+			std::vector<RHI::SemaphorePtr> waitSemaphores = {}) const;
 
 		virtual void SAILOR_API WaitIdle();
 
+		virtual SAILOR_API RHI::SemaphorePtr CreateWaitSemaphore();
 		virtual SAILOR_API RHI::CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
 		virtual SAILOR_API RHI::BufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
 		virtual SAILOR_API RHI::CommandListPtr CreateBuffer(RHI::BufferPtr& outbuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
@@ -52,13 +54,13 @@ namespace Sailor::GfxDevice::Vulkan
 
 		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {});
 
-		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence);
+		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence = nullptr, RHI::SemaphorePtr signalSemaphore = nullptr, RHI::SemaphorePtr waitSemaphore = nullptr);
 
 		// Shader binding set
 		virtual SAILOR_API RHI::ShaderBindingSetPtr CreateShaderBindings();
 		virtual SAILOR_API void AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding);
-		virtual SAILOR_API void AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding) ;
-		
+		virtual SAILOR_API void AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding);
+
 		// Used for full binding update
 		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, RHI::TexturePtr value);
 		virtual SAILOR_API void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);
@@ -78,7 +80,7 @@ namespace Sailor::GfxDevice::Vulkan
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
 		//End Immediate context
-	
+
 		//Begin IGfxDeviceCommands
 		virtual SAILOR_API void BeginCommandList(RHI::CommandListPtr cmd);
 		virtual SAILOR_API void EndCommandList(RHI::CommandListPtr cmd);
@@ -89,7 +91,7 @@ namespace Sailor::GfxDevice::Vulkan
 		//End IGfxDeviceCommands
 
 	protected:
-		
+
 		SAILOR_API void UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings);
 		SAILOR_API VulkanUniformBufferAllocator& GetUniformBufferAllocator(const std::string& uniformTypeId);
 

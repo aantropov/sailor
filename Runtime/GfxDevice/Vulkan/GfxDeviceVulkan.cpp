@@ -55,14 +55,15 @@ void GfxDeviceVulkan::FixLostDevice(const Win32::Window* pViewport)
 
 bool GfxDeviceVulkan::PresentFrame(const class FrameState& state,
 	const std::vector<RHI::CommandListPtr>* primaryCommandBuffers,
-	const std::vector<RHI::CommandListPtr>* secondaryCommandBuffers) const
+	const std::vector<RHI::CommandListPtr>* secondaryCommandBuffers,
+	std::vector<RHI::SemaphorePtr> waitSemaphores) const
 {
 	std::vector<VulkanCommandBufferPtr> primaryBuffers;
 	std::vector<VulkanCommandBufferPtr> secondaryBuffers;
+	std::vector<VulkanSemaphorePtr> vkWaitSemaphores;
 
 	if (primaryCommandBuffers != nullptr)
 	{
-		primaryBuffers.resize(primaryCommandBuffers->size());
 		for (auto& buffer : *primaryCommandBuffers)
 		{
 			primaryBuffers.push_back(buffer->m_vulkan.m_commandBuffer);
@@ -71,14 +72,21 @@ bool GfxDeviceVulkan::PresentFrame(const class FrameState& state,
 
 	if (secondaryCommandBuffers != nullptr)
 	{
-		secondaryBuffers.resize(secondaryCommandBuffers->size());
 		for (auto& buffer : *secondaryCommandBuffers)
 		{
 			secondaryBuffers.push_back(buffer->m_vulkan.m_commandBuffer);
 		}
 	}
 
-	return m_vkInstance->PresentFrame(state, &primaryBuffers, &secondaryBuffers);
+	if (waitSemaphores.size() > 0)
+	{
+		for (auto& buffer : waitSemaphores)
+		{
+			vkWaitSemaphores.push_back(buffer->m_vulkan.m_semaphore);
+		}
+	}
+
+	return m_vkInstance->GetMainDevice()->PresentFrame(state, std::move(primaryBuffers), std::move(secondaryBuffers), std::move(vkWaitSemaphores));
 }
 
 void GfxDeviceVulkan::WaitIdle()
@@ -88,7 +96,7 @@ void GfxDeviceVulkan::WaitIdle()
 	m_vkInstance->WaitIdle();
 }
 
-void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence)
+void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence, RHI::SemaphorePtr signalSemaphore, RHI::SemaphorePtr waitSemaphore)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -98,13 +106,38 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 		fence->m_vulkan.m_fence = VulkanFencePtr::Make(m_vkInstance->GetMainDevice());
 	}
 
-	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence->m_vulkan.m_fence);
+	std::vector<VulkanSemaphorePtr> signal;
+	std::vector<VulkanSemaphorePtr> wait;
+
+	if (signalSemaphore)
+	{
+		commandList->m_vulkan.m_commandBuffer->AddSemaphoreDependency(signalSemaphore->m_vulkan.m_semaphore);
+		signal.push_back(signalSemaphore->m_vulkan.m_semaphore);
+	}
+
+	if (waitSemaphore)
+	{
+		commandList->m_vulkan.m_commandBuffer->AddSemaphoreDependency(waitSemaphore->m_vulkan.m_semaphore);
+		wait.push_back(waitSemaphore->m_vulkan.m_semaphore);
+	}
+
+	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence->m_vulkan.m_fence, signal, wait);
 
 	// Fence should hold command list during execution
 	fence->AddDependency(commandList);
 
 	// We should remove fence after execution
 	TrackPendingCommandList_ThreadSafe(fence);
+}
+
+RHI::SemaphorePtr GfxDeviceVulkan::CreateWaitSemaphore()
+{
+	SAILOR_PROFILE_FUNCTION();
+	auto device = m_vkInstance->GetMainDevice();
+
+	RHI::SemaphorePtr res = RHI::SemaphorePtr::Make();
+	res->m_vulkan.m_semaphore = VulkanSemaphorePtr::Make(device);
+	return res;
 }
 
 RHI::CommandListPtr GfxDeviceVulkan::CreateCommandList(bool bIsSecondary, bool bOnlyTransferQueue)

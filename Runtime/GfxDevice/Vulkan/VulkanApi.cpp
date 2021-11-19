@@ -142,13 +142,6 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	SAILOR_LOG("Vulkan initialized");
 }
 
-bool VulkanApi::PresentFrame(const FrameState& state, const std::vector<VulkanCommandBufferPtr>* primaryCommandBuffers,
-	const std::vector<VulkanCommandBufferPtr>* secondaryCommandBuffers,
-	const std::vector<VulkanSemaphorePtr>* waitSemaphores)
-{
-	return m_pInstance->m_device->PresentFrame(state, primaryCommandBuffers, secondaryCommandBuffers, waitSemaphores);
-}
-
 void VulkanApi::WaitIdle()
 {
 	m_pInstance->m_device->WaitIdle();

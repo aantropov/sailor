@@ -485,9 +485,9 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	RecreateSwapchain(pViewport);
 }
 
-bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<VulkanCommandBufferPtr>* primaryCommandBuffers,
-	const std::vector<VulkanCommandBufferPtr>* secondaryCommandBuffers,
-	const std::vector<VulkanSemaphorePtr>* semaphoresToWait)
+bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanCommandBufferPtr> primaryCommandBuffers,
+	std::vector<VulkanCommandBufferPtr> secondaryCommandBuffers,
+	std::vector<VulkanSemaphorePtr> semaphoresToWait)
 {
 	// Wait while we recreate swapchain from main thread to sync with Win32Api
 	if (m_bIsSwapChainOutdated)
@@ -528,10 +528,9 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 	VulkanStateViewportPtr pStateViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 
 	std::vector<VkCommandBuffer> commandBuffers;
-	if (primaryCommandBuffers)
+	if (primaryCommandBuffers.size() > 0)
 	{
-		commandBuffers.reserve(primaryCommandBuffers->size() + 1);
-		for (auto cmdBuffer : *primaryCommandBuffers)
+		for (auto cmdBuffer : primaryCommandBuffers)
 		{
 			commandBuffers.push_back(*cmdBuffer);
 		}
@@ -541,9 +540,9 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 	{
 		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent());
 
-		if (secondaryCommandBuffers)
+		if (secondaryCommandBuffers.size() > 0)
 		{
-			for (auto cmdBuffer : *secondaryCommandBuffers)
+			for (auto cmdBuffer : secondaryCommandBuffers)
 			{
 				m_commandBuffers[imageIndex]->Execute(cmdBuffer);
 			}
@@ -573,12 +572,13 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 	commandBuffers.push_back(*m_commandBuffers[imageIndex]->GetHandle());
 
 	std::vector<VkSemaphore> waitSemaphores;
-	if (semaphoresToWait)
+	if (semaphoresToWait.size() > 0)
 	{
-		waitSemaphores.reserve(semaphoresToWait->size() + 1);
-		for (auto semaphore : *semaphoresToWait)
+		//waitSemaphores.reserve(semaphoresToWait.size() + 1);
+		for (auto semaphore : semaphoresToWait)
 		{
 			waitSemaphores.push_back(*semaphore);
+			m_commandBuffers[imageIndex]->AddSemaphoreDependency(semaphore);
 		}
 	}
 
@@ -586,7 +586,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const std::vector<Vulka
 
 	///////////////////////////////////////////////////
 
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
 	submitInfo.pWaitSemaphores = &waitSemaphores[0];
 	submitInfo.pWaitDstStageMask = waitStages;
