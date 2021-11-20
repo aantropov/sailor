@@ -19,6 +19,7 @@ namespace Sailor::Memory
 		VulkanBufferMemoryPtr& operator=(const TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer>& rhs);
 
 		operator bool() const;
+		VulkanMemoryPtr operator*();
 
 		TRefPtr<Sailor::GfxDevice::Vulkan::VulkanBuffer> m_buffer{};
 		size_t m_offset{};
@@ -31,6 +32,7 @@ namespace Sailor::Memory
 
 		SAILOR_API void SetMemoryProperties(VkMemoryPropertyFlags properties) { m_memoryProperties = properties; }
 		SAILOR_API void SetUsage(VkBufferUsageFlags usage) { m_usage = usage; }
+		SAILOR_API void SetSharingMode(VkSharingMode sharing) { m_sharing = sharing; }
 
 		SAILOR_API VulkanBufferMemoryPtr Allocate(size_t size);
 		SAILOR_API void Free(VulkanBufferMemoryPtr pData, size_t size);
@@ -39,6 +41,7 @@ namespace Sailor::Memory
 
 		VkMemoryPropertyFlags m_memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 		VkBufferUsageFlags m_usage;
+		VkSharingMode m_sharing = VkSharingMode::VK_SHARING_MODE_CONCURRENT;
 	};
 
 // VulkanBufferMemoryPtr & GlobalVulkanBufferAllocator

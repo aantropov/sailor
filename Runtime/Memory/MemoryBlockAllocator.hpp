@@ -223,7 +223,7 @@ namespace Sailor::Memory
 			//SAILOR_LOG("Free memory: %zu", data.m_size);
 
 			m_mutex.lock();
-			if (data.m_ptr)
+			if (data.m_ptr && m_blocks.size() > 0)
 			{
 				const uint32_t index = data.m_blockIndex;
 				const float prevOccupation = m_blocks[index].GetOccupation();
@@ -240,8 +240,12 @@ namespace Sailor::Memory
 
 		virtual ~TBlockAllocator()
 		{
+			m_mutex.lock();
+
 			m_blocks.clear();
 			m_layout.clear();
+			
+			m_mutex.unlock();
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }

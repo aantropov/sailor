@@ -7,6 +7,7 @@
 #include "Core/UniquePtr.hpp"
 #include "RHI/Types.h"
 #include "VulkanMemory.h"
+#include "VulkanBufferMemory.h"
 #include "VulkanPipileneStates.h"
 
 using namespace Sailor;
@@ -16,7 +17,8 @@ class Sailor::Win32::Window;
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	using VulkanDeviceMemoryAllocator = TBlockAllocator<GlobalVulkanMemoryAllocator, VulkanMemoryPtr>;	
+	using VulkanDeviceMemoryAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanMemoryAllocator, VulkanMemoryPtr>;
+	using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
 
 	// Thread independent resources
 	struct ThreadContext
@@ -91,6 +93,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API ThreadContext& GetCurrentThreadContext();
 		SAILOR_API ThreadContext& GetThreadContext(DWORD threadId);
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
+		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return m_stagingBufferAllocator; }
 
 	protected:
 
@@ -151,5 +154,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// We're sharing the same device memory between the different buffers
 		std::unordered_map<uint64_t, VulkanDeviceMemoryAllocator> m_memoryAllocators;
+
+		TSharedPtr<VulkanBufferAllocator> m_stagingBufferAllocator;
 	};
 }

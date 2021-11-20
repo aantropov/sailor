@@ -59,6 +59,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	{
 		JobSystem::Scheduler::GetInstance()->Run(pReleaseResource, m_currentThreadId);
 	}
+	ClearDependencies();
 }
 
 VulkanCommandPoolPtr VulkanCommandBuffer::GetCommandPool() const
@@ -90,10 +91,10 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferPtr src, VulkanBufferPtr dst, V
 	m_bufferDependencies.push_back(dst);
 }
 
-void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height)
+void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, VkDeviceSize srcOffset)
 {
 	VkBufferImageCopy region{};
-	region.bufferOffset = 0;
+	region.bufferOffset = srcOffset;
 	region.bufferRowLength = 0;
 	region.bufferImageHeight = 0;
 
@@ -205,7 +206,12 @@ void VulkanCommandBuffer::Reset()
 	ClearDependencies();
 }
 
-void VulkanCommandBuffer::AddSemaphoreDependency(VulkanSemaphorePtr semaphore)
+void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator)
+{
+	m_memoryPtrs.push_back(std::pair{ ptr, allocator });
+}
+
+void VulkanCommandBuffer::AddDependency(VulkanSemaphorePtr semaphore)
 {
 	m_semaphoreDependencies.push_back(semaphore);
 }
@@ -217,6 +223,16 @@ void VulkanCommandBuffer::ClearDependencies()
 	m_descriptorSetDependencies.clear();
 	m_pipelineDependencies.clear();
 	m_semaphoreDependencies.clear();
+
+	for (auto& managedPtr : m_memoryPtrs)
+	{
+		if (managedPtr.first && managedPtr.second)
+		{
+			managedPtr.second.Lock()->Free(managedPtr.first);
+		}
+	}
+
+	m_memoryPtrs.clear();
 }
 
 void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)

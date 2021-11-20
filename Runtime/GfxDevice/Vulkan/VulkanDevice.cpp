@@ -94,6 +94,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	// Cache memory requirements
 	{
 		m_minUboOffsetAlignment = properties.limits.minUniformBufferOffsetAlignment;
+		properties.limits.optimalBufferCopyOffsetAlignment;
 		VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(VulkanDevicePtr(this),
 			1024,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -102,6 +103,11 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 		stagingBuffer->Compile();
 		m_memoryRequirements_StagingBuffer = stagingBuffer->GetMemoryRequirements();
 		stagingBuffer.Clear();
+
+		m_stagingBufferAllocator = TSharedPtr<VulkanBufferAllocator>::Make(8192, 256);
+		m_stagingBufferAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+		//m_stagingBufferAllocator->GetGlobalAllocator().SetSharingMode(VK_SHARING_MODE_EXCLUSIVE);
+		m_stagingBufferAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	}
 
 	// Create swapchain	CreateCommandPool();
@@ -141,6 +147,7 @@ void VulkanDevice::Shutdown()
 	}
 
 	m_memoryAllocators.clear();
+	m_stagingBufferAllocator.Clear();
 
 	m_renderFinishedSemaphores.clear();
 	m_imageAvailableSemaphores.clear();
@@ -580,7 +587,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 		for (auto semaphore : semaphoresToWait)
 		{
 			waitSemaphores.push_back(*semaphore);
-			m_commandBuffers[imageIndex]->AddSemaphoreDependency(semaphore);
+			m_commandBuffers[imageIndex]->AddDependency(semaphore);
 		}
 	}
 

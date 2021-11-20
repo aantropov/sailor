@@ -746,20 +746,22 @@ VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, Vulka
 		VK_SHARING_MODE_CONCURRENT);
 
 	const auto requirements = outbuffer->GetMemoryRequirements();
-
+	/*
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
 	auto data = stagingMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
 	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
 	stagingBuffer->Bind(data);
-
-	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, data.m_size, pData);
+	/**/
+	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(requirements.size, requirements.alignment);
+	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
 	auto cmdBuffer = device->CreateCommandBuffer(true);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	cmdBuffer->CopyBuffer(stagingBuffer, outbuffer, size);
+	cmdBuffer->CopyBuffer((*stagingBufferManagedPtr).m_buffer, outbuffer, size, (*stagingBufferManagedPtr).m_offset);
 	cmdBuffer->EndCommandList();
+	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
 	return cmdBuffer;
 }
@@ -767,7 +769,7 @@ VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, Vulka
 VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Memory::VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size)
 {
 	const auto requirements = dst.m_buffer->GetMemoryRequirements();
-
+	/*
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
 	auto data = stagingMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
@@ -776,12 +778,16 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 	stagingBuffer->Bind(data);
 
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
+	*/
 
-	//TODO: Implement transfer queue
-	auto cmdBuffer = device->CreateCommandBuffer(false);
+	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(requirements.size, requirements.alignment);
+	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
+
+	auto cmdBuffer = device->CreateCommandBuffer(true);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	cmdBuffer->CopyBuffer(stagingBuffer, dst.m_buffer, size, 0, dst.m_offset);
+	cmdBuffer->CopyBuffer((*stagingBufferManagedPtr).m_buffer, dst.m_buffer, size, (*stagingBufferManagedPtr).m_offset, dst.m_offset);
 	cmdBuffer->EndCommandList();
+	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
 	return cmdBuffer;
 }
@@ -824,6 +830,7 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 	VkImageUsageFlags usage,
 	VkSharingMode sharingMode)
 {
+	/*
 	VulkanBufferPtr stagingBuffer;
 
 	stagingBuffer = VulkanApi::CreateBuffer(
@@ -837,6 +844,10 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 	{
 		stagingBuffer->GetMemoryDevice()->Copy(0, size, pData);
 	}
+	*/
+
+	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
+ 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
 	outImage = new VulkanImage(device);
 
@@ -864,7 +875,13 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 	auto cmdBuffer = device->CreateCommandBuffer();
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->ImageMemoryBarrier(outImage, outImage->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	cmdBuffer->CopyBufferToImage(stagingBuffer, outImage, static_cast<uint32_t>(extent.width), static_cast<uint32_t>(extent.height));
+	cmdBuffer->CopyBufferToImage((*stagingBufferManagedPtr).m_buffer, 
+		outImage, 
+		static_cast<uint32_t>(extent.width), 
+		static_cast<uint32_t>(extent.height), 
+		(*stagingBufferManagedPtr).m_offset);
+
+ 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
 	if (outImage->m_mipLevels == 1)
 	{
@@ -946,7 +963,7 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 		{
 			const auto& rhiBindings = shaders[i]->GetBindings()[j];
 			const auto& bindings = shaders[i]->GetDescriptorSetLayoutBindings()[j];
-			
+
 			for (uint32_t k = 0; k < bindings.size(); k++)
 			{
 				const auto& rhiBinding = rhiBindings[k];

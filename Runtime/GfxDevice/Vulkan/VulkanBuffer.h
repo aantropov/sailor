@@ -33,6 +33,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkResult Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset);
 		VkMemoryRequirements GetMemoryRequirements() const;
 
+		TMemoryPtr<VulkanMemoryPtr> GetMemoryPtr() { return m_ptr; }
 		VulkanDeviceMemoryPtr GetMemoryDevice() { return m_deviceMemory; }
 		virtual ~VulkanBuffer() override;
 

@@ -8,6 +8,7 @@
 #include "RHI/CommandList.h"
 #include "RHI/Types.h"
 #include "Memory.h"
+#include "Memory/MemoryBlockAllocator.hpp"
 #include "Platform/Win32/Window.h"
 #include "VulkanApi.h"
 #include "VulkanImageView.h"
@@ -117,13 +118,13 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 
 	if (signalSemaphore)
 	{
-		commandList->m_vulkan.m_commandBuffer->AddSemaphoreDependency(signalSemaphore->m_vulkan.m_semaphore);
+		commandList->m_vulkan.m_commandBuffer->AddDependency(signalSemaphore->m_vulkan.m_semaphore);
 		signal.push_back(signalSemaphore->m_vulkan.m_semaphore);
 	}
 
 	if (waitSemaphore)
 	{
-		commandList->m_vulkan.m_commandBuffer->AddSemaphoreDependency(waitSemaphore->m_vulkan.m_semaphore);
+		commandList->m_vulkan.m_commandBuffer->AddDependency(waitSemaphore->m_vulkan.m_semaphore);
 		wait.push_back(waitSemaphore->m_vulkan.m_semaphore);
 	}
 
@@ -569,24 +570,56 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBi
 
 	const auto& requirements = dstBuffer->GetMemoryRequirements();
 
+	VulkanBufferPtr stagingBuffer;
+	size_t m_bufferOffset;
+	size_t m_memoryOffset;
+
+#if defined(SAILOR_VULKAN_COMBINE_STAGING_BUFFERS)
+	SAILOR_PROFILE_BLOCK("Allocate space in staging buffer allocator");
+	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(requirements.size, requirements.alignment);
+	SAILOR_PROFILE_END_BLOCK();
+	m_bufferOffset = (*stagingBufferManagedPtr).m_offset;
+	m_memoryOffset = (**stagingBufferManagedPtr).m_offset;
+	stagingBuffer = (*stagingBufferManagedPtr).m_buffer;
+	cmd->m_vulkan.m_commandBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
+#elif defined(SAILOR_VULKAN_SHARE_DEVICE_MEMORY_FOR_STAGING_BUFFERS)
+
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
 
-	SAILOR_PROFILE_BLOCK("Allocate staging memory")
+	SAILOR_PROFILE_BLOCK("Allocate staging memory");
 	auto data = stagingMemoryAllocator.Allocate(size, requirements.alignment);
 	SAILOR_PROFILE_END_BLOCK();
 
-	SAILOR_PROFILE_BLOCK("Create staging buffer")
-	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
+	SAILOR_PROFILE_BLOCK("Create staging buffer");
+	stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
 	VK_CHECK(stagingBuffer->Bind(data));
 	SAILOR_PROFILE_END_BLOCK();
 
-	SAILOR_PROFILE_BLOCK("Copy data to staging buffer")
-	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
+	m_bufferOffset = 0;
+	m_memoryOffset = (*data).m_offset;
+#else
+
+	SAILOR_PROFILE_BLOCK("Allocate staging device memory");
+	auto deviceMemoryPtr = VulkanDeviceMemoryPtr::Make(device, device->GetMemoryRequirements_StagingBuffer(), VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	SAILOR_PROFILE_END_BLOCK();
 
-	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command")
-		cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, 0, binding.m_offset + variableOffset);
+	SAILOR_PROFILE_BLOCK("Create staging buffer");
+	stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
+	stagingBuffer->Compile();
+	VK_CHECK(stagingBuffer->Bind(deviceMemoryPtr, 0));
+	SAILOR_PROFILE_END_BLOCK();
+
+	m_bufferOffset = 0;
+	m_memoryOffset = 0;
+#endif
+
+	SAILOR_PROFILE_BLOCK("Copy data to staging buffer");
+	stagingBuffer->GetMemoryDevice()->Copy(m_memoryOffset, size, pData);
+	SAILOR_PROFILE_END_BLOCK();
+
+	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command");
+	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, m_bufferOffset, binding.m_offset + variableOffset);
 	SAILOR_PROFILE_END_BLOCK();
 }
 

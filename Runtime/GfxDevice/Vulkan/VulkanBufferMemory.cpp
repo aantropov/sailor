@@ -21,10 +21,20 @@ VulkanBufferMemoryPtr::operator bool() const
 	return m_buffer;
 }
 
+VulkanMemoryPtr VulkanBufferMemoryPtr::operator*()
+{ 
+	VulkanMemoryPtr res;
+	auto memPtr = m_buffer->GetMemoryPtr();
+	res.m_deviceMemory = (*memPtr).m_deviceMemory;
+	res.m_offset = (*memPtr).m_offset + m_offset;
+	res.m_size = m_size;
+	return res; 
+}
+
 VulkanBufferMemoryPtr GlobalVulkanBufferAllocator::Allocate(size_t size)
 {
 	auto buffer = Sailor::GfxDevice::Vulkan::VulkanApi::CreateBuffer(Sailor::GfxDevice::Vulkan::VulkanApi::GetInstance()->GetMainDevice(),
-		size, m_usage, m_memoryProperties);
+		size, m_usage, m_memoryProperties, m_sharing);
 
 	VulkanBufferMemoryPtr memPtr(buffer, 0, size);
 	return memPtr;

@@ -283,8 +283,12 @@ namespace Sailor::Memory
 
 		virtual ~TPoolAllocator()
 		{
+			m_mutex.lock();
+
 			m_blocks.clear();
 			m_layout.clear();
+			
+			m_mutex.unlock();
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }

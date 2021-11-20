@@ -9,16 +9,15 @@
 #include "RHI/Mesh.h"
 #include "RHI/Shader.h"
 #include "RHI/Material.h"
-#include "VulkanMemory.h"
-#include "VulkanBufferMemory.h"
+#include "GfxDevice/Vulkan/VulkanMemory.h"
+#include "GfxDevice/Vulkan/VulkanBufferMemory.h"
+#include "GfxDevice/Vulkan/VulkanDevice.h"
 #include "Platform/Win32/Window.h"
 
 #ifdef VULKAN
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
-
 	class GfxDeviceVulkan : public RHI::IGfxDevice, public RHI::IGfxDeviceCommands
 	{
 	public:
