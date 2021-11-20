@@ -68,8 +68,7 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 	return VK_SAMPLE_COUNT_1_BIT;
 }
 
-VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsaa) :
-	m_stagingBufferAllocator(8092, 128)
+VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsaa)
 {
 	// Create Win32 surface
 	CreateWin32Surface(pViewport);
@@ -103,9 +102,6 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 		stagingBuffer->Compile();
 		m_memoryRequirements_StagingBuffer = stagingBuffer->GetMemoryRequirements();
 		stagingBuffer.Clear();
-
-		m_stagingBufferAllocator.GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-		m_stagingBufferAllocator.GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	}
 
 	// Create swapchain	CreateCommandPool();
@@ -189,11 +185,6 @@ VkFormat VulkanDevice::GetDepthFormat() const
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
 	);
-}
-
-VulkanBufferMemoryPtr VulkanDevice::GetStagingBufferAllocator(VkDeviceSize size, VkDeviceSize alignment)
-{
-	return *m_stagingBufferAllocator.Allocate(size, alignment);
 }
 
 TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)

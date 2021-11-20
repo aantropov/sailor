@@ -408,7 +408,7 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	return res;
 }
 
-TSharedPtr<VulkanUniformBufferAllocator>& GfxDeviceVulkan::GetUniformBufferAllocator(const std::string& uniformTypeId)
+TSharedPtr<VulkanBufferAllocator>& GfxDeviceVulkan::GetUniformBufferAllocator(const std::string& uniformTypeId)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -418,7 +418,7 @@ TSharedPtr<VulkanUniformBufferAllocator>& GfxDeviceVulkan::GetUniformBufferAlloc
 		return (*it).second;
 	}
 
-	auto& uniformAllocator = m_uniformBuffers[uniformTypeId] = TSharedPtr<VulkanUniformBufferAllocator>::Make();
+	auto& uniformAllocator = m_uniformBuffers[uniformTypeId] = TSharedPtr<VulkanBufferAllocator>::Make();
 	uniformAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 	uniformAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
@@ -576,13 +576,13 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBi
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Create staging buffer")
-		VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
+	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
 	VK_CHECK(stagingBuffer->Bind(data));
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Copy data to staging buffer")
-		stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
+	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command")

@@ -17,7 +17,7 @@
 
 namespace Sailor::GfxDevice::Vulkan
 {
-	using VulkanUniformBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
+	using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
 
 	class GfxDeviceVulkan : public RHI::IGfxDevice, public RHI::IGfxDeviceCommands
 	{
@@ -93,10 +93,10 @@ namespace Sailor::GfxDevice::Vulkan
 	protected:
 
 		SAILOR_API void UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings);
-		SAILOR_API TSharedPtr<VulkanUniformBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
 
 		// Uniform buffers to store uniforms
-		std::unordered_map<std::string, TSharedPtr<VulkanUniformBufferAllocator>> m_uniformBuffers;
+		std::unordered_map<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
 
 		GfxDevice::Vulkan::VulkanApi* m_vkInstance;
 	};

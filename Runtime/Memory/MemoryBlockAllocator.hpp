@@ -197,6 +197,8 @@ namespace Sailor::Memory
 
 		TMemoryPtr<TPtr> Allocate(size_t size, size_t alignment)
 		{
+			//SAILOR_LOG("Allocate memory: %zu", size);
+
 			m_mutex.lock();
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;
@@ -218,6 +220,8 @@ namespace Sailor::Memory
 
 		void Free(TMemoryPtr<TPtr>& data)
 		{
+			//SAILOR_LOG("Free memory: %zu", data.m_size);
+
 			m_mutex.lock();
 			if (data.m_ptr)
 			{

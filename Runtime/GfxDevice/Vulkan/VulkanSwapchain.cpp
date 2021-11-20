@@ -39,6 +39,8 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	m_device(device),
 	m_surface(device->GetSurface())
 {
+	const bool bIsRecreating = oldSwapchain;
+
 	SwapChainSupportDetails swapChainSupport = VulkanApi::QuerySwapChainSupport(device->GetPhysicalDevice(), m_surface);
 
 	m_surfaceFormat = VulkanApi::ChooseSwapSurfaceFormat(swapChainSupport.m_formats);
@@ -135,7 +137,18 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_colorBuffer->m_samples = device->GetCurrentMsaaSamples();
 		m_colorBuffer->Compile();
 
-		m_colorBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_colorBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
+		if (bIsRecreating)
+		{
+			// We are using device memory allocator to fastly recreate the swapchain
+			const auto& requirements = m_colorBuffer->GetMemoryRequirements();
+			auto memoryPtr = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements).Allocate(requirements.size, requirements.alignment);
+			m_colorBuffer->Bind(memoryPtr);
+		}
+		else
+		{
+			m_colorBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_colorBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
+		}
+
 		m_colorBufferView = VulkanImageViewPtr::Make(m_device, m_colorBuffer, VulkanApi::ComputeAspectFlagsForFormat(m_surfaceFormat.format));
 		m_colorBufferView->Compile();
 	}
@@ -155,7 +168,18 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 	m_depthBuffer->Compile();
 
-	m_depthBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_depthBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
+	if (bIsRecreating)
+	{
+		// We are using device memory allocator to fastly recreate the swapchain
+		const auto& requirements = m_depthBuffer->GetMemoryRequirements();
+		auto memoryPtr = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements).Allocate(requirements.size, requirements.alignment);
+		m_depthBuffer->Bind(memoryPtr);
+	}
+	else
+	{
+		m_depthBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_depthBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
+	}
+
 	m_depthBufferView = VulkanImageViewPtr::Make(m_device, m_depthBuffer, VulkanApi::ComputeAspectFlagsForFormat(depthFormat));
 	m_depthBufferView->Compile();
 }
