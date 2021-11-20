@@ -395,7 +395,8 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 		if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
 		{
 			auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
-			binding->m_vulkan.m_valueBinding = uniformAllocator.Allocate(layoutBinding.m_size, device->GetUboOffsetAlignment(layoutBinding.m_size));
+			binding->m_vulkan.m_valueBinding = uniformAllocator->Allocate(layoutBinding.m_size, device->GetUboOffsetAlignment(layoutBinding.m_size));
+			binding->m_vulkan.m_uniformBufferAllocator = uniformAllocator;
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
 			binding->SetMembersInfo(layoutBinding);
 		}
@@ -407,7 +408,7 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	return res;
 }
 
-VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const std::string& uniformTypeId)
+TSharedPtr<VulkanUniformBufferAllocator>& GfxDeviceVulkan::GetUniformBufferAllocator(const std::string& uniformTypeId)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -417,9 +418,9 @@ VulkanUniformBufferAllocator& GfxDeviceVulkan::GetUniformBufferAllocator(const s
 		return (*it).second;
 	}
 
-	auto& uniformAllocator = m_uniformBuffers[uniformTypeId];
-	uniformAllocator.GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-	uniformAllocator.GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	auto& uniformAllocator = m_uniformBuffers[uniformTypeId] = TSharedPtr<VulkanUniformBufferAllocator>::Make();
+	uniformAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	uniformAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	return uniformAllocator;
 }
@@ -461,7 +462,11 @@ void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr&
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::ShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
-	binding->m_vulkan.m_valueBinding = GetUniformBufferAllocator(name).Allocate(size, device->GetUboOffsetAlignment(size));
+
+	auto allocator = GetUniformBufferAllocator(name);
+
+	binding->m_vulkan.m_valueBinding = allocator->Allocate(size, device->GetUboOffsetAlignment(size));
+	binding->m_vulkan.m_uniformBufferAllocator = allocator;
 	auto valueBinding = *(binding->m_vulkan.m_valueBinding);
 
 	RHI::ShaderLayoutBinding layout;
@@ -565,23 +570,23 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBi
 	const auto& requirements = dstBuffer->GetMemoryRequirements();
 
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
-	
+
 	SAILOR_PROFILE_BLOCK("Allocate staging memory")
 	auto data = stagingMemoryAllocator.Allocate(size, requirements.alignment);
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Create staging buffer")
-	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
+		VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
 	VK_CHECK(stagingBuffer->Bind(data));
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Copy data to staging buffer")
-	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
+		stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command")
-	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, 0, binding.m_offset + variableOffset);
+		cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, 0, binding.m_offset + variableOffset);
 	SAILOR_PROFILE_END_BLOCK();
 }
 

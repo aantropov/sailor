@@ -1,23 +1,32 @@
 #pragma once
 #include "Core/RefPtr.hpp"
+#include "Core/WeakPtr.hpp"
 #include "Renderer.h"
 #include "Types.h"
+#include "GfxDevice/Vulkan/VulkanMemory.h"
+#include "GfxDevice/Vulkan/VulkanBufferMemory.h"
 #include "GfxDevice/Vulkan/VulkanBufferMemory.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "GfxDevice/Vulkan/VulkanDescriptors.h"
 
 namespace Sailor::RHI
 {
+#if defined(VULKAN)
+	using VulkanUniformBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
+#endif
+
 	class ShaderBinding : public Resource
 	{
 	public:
 #if defined(VULKAN)
 		struct
 		{
+			TWeakPtr<VulkanUniformBufferAllocator> m_uniformBufferAllocator;
 			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding;
 			VkDescriptorSetLayoutBinding m_descriptorSetLayout;
 		} m_vulkan;
 #endif
+		SAILOR_API ~ShaderBinding() override;
 		SAILOR_API bool IsBind() const;
 
 		SAILOR_API const TexturePtr& GetTextureBinding() const { return m_textureBinding; }

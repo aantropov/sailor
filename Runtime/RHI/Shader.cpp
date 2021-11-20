@@ -1,6 +1,8 @@
 #include "Shader.h"
 #include "Types.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
+#include "GfxDevice/Vulkan/GfxDeviceVulkan.h"
+#include "Core/WeakPtr.hpp"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -29,4 +31,18 @@ bool ShaderBinding::FindVariableInUniformBuffer(const std::string& variable, Sha
 	}
 
 	return false;
+}
+
+ShaderBinding::~ShaderBinding()
+{
+#if defined(VULKAN)
+	if (m_vulkan.m_valueBinding)
+	{
+		if (m_vulkan.m_uniformBufferAllocator)
+		{
+			auto allocator = m_vulkan.m_uniformBufferAllocator.Lock();
+			allocator->Free(m_vulkan.m_valueBinding);
+		}
+	}
+#endif
 }
