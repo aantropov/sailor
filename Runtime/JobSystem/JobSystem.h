@@ -48,7 +48,6 @@ namespace Sailor
 			virtual SAILOR_API bool IsExecuting() const { return m_bIsStarted && !m_bIsFinished; }
 			virtual SAILOR_API bool IsStarted() const { return m_bIsStarted; }
 
-			virtual SAILOR_API void Complete();
 			virtual SAILOR_API void Execute() = 0;
 
 			virtual SAILOR_API ~IJob() = default;
@@ -67,6 +66,8 @@ namespace Sailor
 			EThreadType GetThreadType() const { return m_threadType; }
 
 		protected:
+
+			virtual SAILOR_API void Complete();
 
 			SAILOR_API IJob(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_threadType(thread)
 			{
@@ -158,9 +159,6 @@ namespace Sailor
 
 			// Lock thit thread until all jobs on thread type would be finished
 			SAILOR_API void WaitIdle(EThreadType type);
-
-			// Remove all jobs by thread type
-			SAILOR_API void StopAll(EThreadType type);
 
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 			uint32_t SAILOR_API GetNumRenderingJobs() const;

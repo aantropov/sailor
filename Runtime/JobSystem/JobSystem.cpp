@@ -91,6 +91,7 @@ void Job::Execute()
 {
 	m_bIsStarted = true;
 	m_function();
+	Complete();
 }
 
 WorkerThread::WorkerThread(
@@ -169,7 +170,6 @@ void WorkerThread::Process()
 			SAILOR_PROFILE_BLOCK(pCurrentJob->GetName());
 
 			pCurrentJob->Execute();
-			pCurrentJob->Complete();
 			pCurrentJob.Clear();
 
 			scheduler->NotifyWorkerThread(m_threadType);
@@ -261,7 +261,6 @@ void Scheduler::ProcessJobsOnMainThread()
 			SAILOR_PROFILE_BLOCK(pCurrentJob->GetName());
 
 			pCurrentJob->Execute();
-			pCurrentJob->Complete();
 			pCurrentJob.Clear();
 		}
 	}
@@ -386,23 +385,12 @@ uint32_t Scheduler::GetNumRenderingJobs() const
 	return (uint32_t)m_pCommonJobsQueue[(uint32_t)EThreadType::Rendering].size();
 }
 
-SAILOR_API void Scheduler::StopAll(EThreadType type)
-{
-	std::mutex* pOutMutex;
-	std::vector<TSharedPtr<Job>>* pOutQueue;
-	std::condition_variable* pOutCondVar;
-	std::vector<TSharedPtr<Job>> waitFor;
-
-	GetThreadSyncVarsByThreadType(type, pOutMutex, pOutQueue, pOutCondVar);
-	{
-		const std::unique_lock<std::mutex> lock(*pOutMutex);
-		pOutQueue->clear();
-	}
-}
-
 void Scheduler::WaitIdle(EThreadType type)
 {
 	SAILOR_PROFILE_FUNCTION();
+
+	// Not implemented for workers
+	assert(type != EThreadType::Main && type != EThreadType::Rendering);
 
 	std::mutex* pOutMutex;
 	std::vector<TSharedPtr<Job>>* pOutQueue;

@@ -243,7 +243,14 @@ void Framework::CpuFrame(FrameState& state)
 			});
 		pJobs.emplace_back(pJob);
 
-		JobSystem::Scheduler::GetInstance()->Run(pJob);
+		if (state.NumCommandLists == 1)
+		{
+			pJob->Execute();
+		}
+		else
+		{
+			JobSystem::Scheduler::GetInstance()->Run(pJob);
+		}
 	}
 
 	for (uint32_t listIndex = 0; listIndex < state.NumCommandLists; listIndex++)
