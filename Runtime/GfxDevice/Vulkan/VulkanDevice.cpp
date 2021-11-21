@@ -294,7 +294,7 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 1024, descriptorSizes);
 
-	context->m_stagingBufferAllocator = TSharedPtr<VulkanBufferAllocator>::Make(8192, 256);
+	context->m_stagingBufferAllocator = TSharedPtr<VulkanBufferAllocator>::Make(16777216, 2048);
 	context->m_stagingBufferAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 	//m_stagingBufferAllocator->GetGlobalAllocator().SetSharingMode(VK_SHARING_MODE_EXCLUSIVE);
 	context->m_stagingBufferAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);

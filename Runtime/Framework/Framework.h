@@ -13,7 +13,7 @@ namespace Sailor
 	class FrameState
 	{
 	public:
-		static constexpr uint32_t NumCommandLists = 6u;
+		static constexpr uint32_t NumCommandLists = 4u;
 
 		SAILOR_API FrameState() noexcept;
 

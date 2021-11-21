@@ -388,23 +388,34 @@ uint32_t Scheduler::GetNumRenderingJobs() const
 
 void Scheduler::WaitIdle(EThreadType type)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	// Not implemented for workers
 	assert(type != EThreadType::Main && type != EThreadType::Rendering);
 
 	std::mutex* pOutMutex;
 	std::vector<TSharedPtr<Job>>* pOutQueue;
 	std::condition_variable* pOutCondVar;
+	std::vector<TSharedPtr<Job>> waitFor;
 
 	GetThreadSyncVarsByThreadType(type, pOutMutex, pOutQueue, pOutCondVar);
 
-	std::vector<TSharedPtr<Job>> waitFor;
 	{
 		const std::unique_lock<std::mutex> lock(m_queueMutex[(uint8_t)type]);
 		waitFor = *pOutQueue;
 	}
 
-	for (auto& wait : waitFor)
+	do
 	{
-		wait->Wait();
-	}
+		for (auto& wait : waitFor)
+		{
+			wait->Wait();
+		}
+
+		{
+			const std::unique_lock<std::mutex> lock(m_queueMutex[(uint8_t)type]);
+			waitFor = *pOutQueue;
+		}
+
+	} while (waitFor.size() != 0);
 }
