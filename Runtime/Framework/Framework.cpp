@@ -37,8 +37,6 @@ FrameState::FrameState(int64_t timeMs, const FrameInputState& currentInputState,
 		m_pData->m_deltaTimeSeconds = (m_pData->m_currentTime - previousFrame->GetTime()) / 1000.0f;
 		m_pData->m_inputState.TrackForChanges(previousFrame->GetInputState());
 	}
-
-	m_pData->m_updateResourcesCommandBuffers = Renderer::GetDriver()->CreateCommandList(false, true);
 }
 
 FrameState::FrameState(const FrameState& frameState) noexcept :
@@ -58,6 +56,11 @@ FrameState& FrameState::operator=(FrameState frameState)
 	return *this;
 }
 
+RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
+{
+	return m_pData->m_updateResourcesCommandBuffers[index] = Renderer::GetDriver()->CreateCommandList(false, true);
+}
+
 void Framework::Initialize()
 {
 	if (m_pInstance == nullptr)
@@ -75,14 +78,11 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 
 	timer.Start();
 
-	auto pCommandList = currentInputState.GetCommandBuffer();
-	Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
 	CpuFrame(currentInputState);
 	SAILOR_PROFILE_END_BLOCK();
 
-	Renderer::GetDriverCommands()->EndCommandList(currentInputState.GetCommandBuffer());
 
 	timer.Stop();
 
@@ -137,7 +137,7 @@ void Framework::CpuFrame(FrameState& state)
 		{
 			jobLoadModel = ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
 		}
-		
+
 		auto jobCreateBuffers = JobSystem::Scheduler::CreateJob("Create buffers",
 			[this]()
 			{
@@ -221,6 +221,35 @@ void Framework::CpuFrame(FrameState& state)
 
 	state.PushFrameBinding(m_frameDataBinding);
 
-	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(state.GetCommandBuffer(), m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
-	RHI::Renderer::GetDriverCommands()->SetMaterialParameter(state.GetCommandBuffer(), m_testMaterial, "transform.model", model);
+	SAILOR_PROFILE_BLOCK("Test Performance");
+
+	std::vector<TSharedPtr<JobSystem::Job>> pJobs;
+
+	for (uint32_t listIndex = 0; listIndex < state.NumCommandLists; listIndex++)
+	{
+		auto pJob = JobSystem::Scheduler::GetInstance()->CreateJob("Update command list",
+			[&state, this, model, listIndex]()
+			{
+				auto pCommandList = state.CreateCommandBuffer(listIndex);
+				Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
+
+				for (uint32_t i = 0; i < 1000 / state.NumCommandLists; i++)
+				{
+					RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
+				}
+
+				RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, m_testMaterial, "transform.model", model);
+				Renderer::GetDriverCommands()->EndCommandList(pCommandList);
+			});
+		pJobs.emplace_back(pJob);
+
+		JobSystem::Scheduler::GetInstance()->Run(pJob);
+	}
+
+	for (uint32_t listIndex = 0; listIndex < state.NumCommandLists; listIndex++)
+	{
+		pJobs[listIndex]->Wait();
+	}
+
+	SAILOR_PROFILE_END_BLOCK();
 }

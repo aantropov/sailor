@@ -103,11 +103,6 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 		stagingBuffer->Compile();
 		m_memoryRequirements_StagingBuffer = stagingBuffer->GetMemoryRequirements();
 		stagingBuffer.Clear();
-
-		m_stagingBufferAllocator = TSharedPtr<VulkanBufferAllocator>::Make(8192, 256);
-		m_stagingBufferAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-		//m_stagingBufferAllocator->GetGlobalAllocator().SetSharingMode(VK_SHARING_MODE_EXCLUSIVE);
-		m_stagingBufferAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	}
 
 	// Create swapchain	CreateCommandPool();
@@ -147,7 +142,6 @@ void VulkanDevice::Shutdown()
 	}
 
 	m_memoryAllocators.clear();
-	m_stagingBufferAllocator.Clear();
 
 	m_renderFinishedSemaphores.clear();
 	m_imageAvailableSemaphores.clear();
@@ -163,7 +157,7 @@ void VulkanDevice::Shutdown()
 	m_threadContext.clear();
 }
 
-ThreadContext& VulkanDevice::GetThreadContext(DWORD threadId)
+ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)
 {
 	auto res = m_threadContext.find(threadId);
 	if (res != m_threadContext.end())
@@ -171,12 +165,16 @@ ThreadContext& VulkanDevice::GetThreadContext(DWORD threadId)
 		return *(*res).second;
 	}
 
-	return *(m_threadContext[threadId] = CreateThreadContext());
+	{
+		std::scoped_lock<std::mutex> guard(m_mutex);
+		auto& threadContext = *(m_threadContext[threadId] = CreateThreadContext());
+		return threadContext;
+	}
 }
 
 ThreadContext& VulkanDevice::GetCurrentThreadContext()
 {
-	return GetThreadContext(GetCurrentThreadId());
+	return GetOrCreateThreadContext(GetCurrentThreadId());
 }
 
 VulkanSurfacePtr VulkanDevice::GetSurface() const
@@ -295,6 +293,11 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 	};
 
 	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 1024, descriptorSizes);
+
+	context->m_stagingBufferAllocator = TSharedPtr<VulkanBufferAllocator>::Make(8192, 256);
+	context->m_stagingBufferAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+	//m_stagingBufferAllocator->GetGlobalAllocator().SetSharingMode(VK_SHARING_MODE_EXCLUSIVE);
+	context->m_stagingBufferAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 	return context;
 }
@@ -595,7 +598,13 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 
 	///////////////////////////////////////////////////
 
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+	VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.size() * sizeof(VkPipelineStageFlags)));
+
+	for (uint32_t i = 0; i < waitSemaphores.size(); i++)
+	{
+		waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	}
+
 	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
 	submitInfo.pWaitSemaphores = &waitSemaphores[0];
 	submitInfo.pWaitDstStageMask = waitStages;
@@ -611,6 +620,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 
 	//TODO: Transfer queue for transfer family command lists
 	VK_CHECK(m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
+
+	_freea(waitStages);
 
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

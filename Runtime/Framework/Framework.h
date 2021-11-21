@@ -13,6 +13,7 @@ namespace Sailor
 	class FrameState
 	{
 	public:
+		static constexpr uint32_t NumCommandLists = 6u;
 
 		SAILOR_API FrameState() noexcept;
 
@@ -35,10 +36,13 @@ namespace Sailor
 		SAILOR_API int64_t GetTime() const { return m_pData->m_currentTime; }
 		SAILOR_API float GetDeltaTime() const { return m_pData->m_deltaTimeSeconds; }
 
-		SAILOR_API RHI::CommandListPtr GetCommandBuffer() const
+		SAILOR_API RHI::CommandListPtr CreateCommandBuffer(uint32_t index);
+		SAILOR_API RHI::CommandListPtr GetCommandBuffer(uint32_t index)
 		{
-			return m_pData->m_updateResourcesCommandBuffers;
+			return m_pData->m_updateResourcesCommandBuffers[index];
 		}
+
+		SAILOR_API size_t GetNumCommandLists() const { return NumCommandLists; }
 
 		SAILOR_API void PushFrameBinding(RHI::ShaderBindingSetPtr frameBindings)
 		{
@@ -59,7 +63,7 @@ namespace Sailor
 			glm::ivec2 m_mouseDelta{ 0.0f, 0.0f };
 			glm::ivec2 m_mouseDeltaToCenter{ 0.0f,0.0f };
 			FrameInputState m_inputState;
-			RHI::CommandListPtr m_updateResourcesCommandBuffers;
+			std::array<RHI::CommandListPtr, NumCommandLists> m_updateResourcesCommandBuffers;
 			RHI::ShaderBindingSetPtr m_frameBindings;
 		};
 

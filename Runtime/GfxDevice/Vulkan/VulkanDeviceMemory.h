@@ -37,5 +37,6 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// We keep mapped memory from constructor till destructor
 		void* pData = nullptr;
+
 	};
 }

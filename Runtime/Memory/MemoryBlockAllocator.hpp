@@ -199,7 +199,8 @@ namespace Sailor::Memory
 		{
 			//SAILOR_LOG("Allocate memory: %zu", size);
 
-			m_mutex.lock();
+			std::scoped_lock<std::mutex> guard(m_mutex);
+
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;
 			uint32_t alignmentOffset;
@@ -214,7 +215,6 @@ namespace Sailor::Memory
 				std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
 				m_layout.pop_back();
 			}
-			m_mutex.unlock();
 			return res;
 		}
 
@@ -222,7 +222,7 @@ namespace Sailor::Memory
 		{
 			//SAILOR_LOG("Free memory: %zu", data.m_size);
 
-			m_mutex.lock();
+			std::scoped_lock<std::mutex> guard(m_mutex);
 			if (data.m_ptr && m_blocks.size() > 0)
 			{
 				const uint32_t index = data.m_blockIndex;
@@ -235,17 +235,14 @@ namespace Sailor::Memory
 					m_layout.push_back(index);
 				}
 			}
-			m_mutex.unlock();
 		}
 
 		virtual ~TBlockAllocator()
 		{
-			m_mutex.lock();
+			std::scoped_lock<std::mutex> guard(m_mutex);
 
 			m_blocks.clear();
 			m_layout.clear();
-			
-			m_mutex.unlock();
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }

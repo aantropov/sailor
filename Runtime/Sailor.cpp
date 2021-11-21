@@ -163,10 +163,10 @@ void EngineInstance::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
-	JobSystem::Scheduler::Shutdown();
 	Framework::Shutdown();
 	AssetRegistry::Shutdown();
 	Renderer::Shutdown();
+	JobSystem::Scheduler::Shutdown();
 	Win32::ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
 

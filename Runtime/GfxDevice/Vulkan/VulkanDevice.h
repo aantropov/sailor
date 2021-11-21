@@ -26,6 +26,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanCommandPoolPtr m_commandPool;
 		VulkanCommandPoolPtr m_transferCommandPool;
 		VulkanDescriptorPoolPtr m_descriptorPool;
+		TSharedPtr<VulkanBufferAllocator> m_stagingBufferAllocator;
 	};
 
 	class VulkanDevice final : public RHI::Resource
@@ -91,9 +92,9 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 
 		SAILOR_API ThreadContext& GetCurrentThreadContext();
-		SAILOR_API ThreadContext& GetThreadContext(DWORD threadId);
+		SAILOR_API ThreadContext& GetOrCreateThreadContext(DWORD threadId);
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
-		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return m_stagingBufferAllocator; }
+		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return GetCurrentThreadContext().m_stagingBufferAllocator; }
 
 	protected:
 
@@ -155,6 +156,7 @@ namespace Sailor::GfxDevice::Vulkan
 		// We're sharing the same device memory between the different buffers
 		std::unordered_map<uint64_t, VulkanDeviceMemoryAllocator> m_memoryAllocators;
 
-		TSharedPtr<VulkanBufferAllocator> m_stagingBufferAllocator;
+		// We're creating rendering context with sync
+		std::mutex m_mutex;
 	};
 }

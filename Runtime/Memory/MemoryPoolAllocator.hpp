@@ -218,7 +218,7 @@ namespace Sailor::Memory
 
 		TMemoryPtr<TPtr> Allocate(size_t size, size_t alignment)
 		{
-			m_mutex.lock();
+			std::scoped_lock<std::mutex> guard(m_mutex);
 			//assert(size % m_elementSize == 0);
 
 			uint32_t layoutIndex;
@@ -235,13 +235,13 @@ namespace Sailor::Memory
 				std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
 				m_layout.pop_back();
 			}
-			m_mutex.unlock();
+
 			return res;
 		}
 
 		void Free(TMemoryPtr<TPtr>& data)
 		{
-			m_mutex.lock();
+			std::scoped_lock<std::mutex> guard(m_mutex);
 			if (data.m_ptr)
 			{
 				const uint32_t index = data.m_blockIndex;
@@ -278,17 +278,15 @@ namespace Sailor::Memory
 					TryFreeBlock(m_blocks[index]);
 				}
 			}
-			m_mutex.unlock();
 		}
 
 		virtual ~TPoolAllocator()
 		{
-			m_mutex.lock();
+			std::scoped_lock<std::mutex> guard(m_mutex);
 
 			m_blocks.clear();
 			m_layout.clear();
 			
-			m_mutex.unlock();
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }

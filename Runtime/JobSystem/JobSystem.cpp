@@ -22,7 +22,7 @@ void IJob::Join(const TWeakPtr<IJob>& job)
 
 bool IJob::AddDependency(IJob* job)
 {
-	std::unique_lock<std::mutex> lk(m_dependencyMutex);
+	std::unique_lock<std::mutex> lk(m_mutex);
 
 	if (IsFinished())
 	{
@@ -43,7 +43,7 @@ void IJob::Join(const std::vector<TWeakPtr<IJob>>& jobs)
 
 void IJob::Complete()
 {
-	std::unique_lock<std::mutex> lk(m_dependencyMutex);
+	std::unique_lock<std::mutex> lk(m_mutex);
 
 	std::unordered_map<EThreadType, uint32_t> threadTypesToRefresh;
 
@@ -69,9 +69,12 @@ void IJob::Complete()
 void IJob::Wait()
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::unique_lock<std::mutex> lk(m_mutex);
 
-	std::unique_lock<std::mutex> lk(m_waitMutex);
-	m_onComplete.wait(lk);
+	if (!m_bIsFinished)
+	{
+		m_onComplete.wait(lk);
+	}
 }
 
 Job::Job(const std::string& name, const std::function<void()>& function, EThreadType thread) : IJob(name, thread)
@@ -172,7 +175,7 @@ void WorkerThread::Process()
 			scheduler->NotifyWorkerThread(m_threadType);
 
 			SAILOR_PROFILE_END_BLOCK()
-			m_bIsBusy = false;;
+				m_bIsBusy = false;;
 		}
 
 		lk.unlock();
@@ -297,7 +300,7 @@ void Scheduler::Run(const TSharedPtr<Job>& pJob, DWORD threadId)
 		(*result)->ForcelyPushJob(pJob);
 		return;
 	}
-	
+
 	assert(m_mainThreadId == threadId);
 
 	// Add to Main thread if cannot find the thread in workers
@@ -381,4 +384,27 @@ void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThread
 uint32_t Scheduler::GetNumRenderingJobs() const
 {
 	return (uint32_t)m_pCommonJobsQueue[(uint32_t)EThreadType::Rendering].size();
+}
+
+void Scheduler::WaitIdle(EThreadType type)
+{
+	// Not implemented for workers
+	assert(type != EThreadType::Main && type != EThreadType::Rendering);
+
+	std::mutex* pOutMutex;
+	std::vector<TSharedPtr<Job>>* pOutQueue;
+	std::condition_variable* pOutCondVar;
+
+	GetThreadSyncVarsByThreadType(type, pOutMutex, pOutQueue, pOutCondVar);
+
+	std::vector<TSharedPtr<Job>> waitFor;
+	{
+		const std::unique_lock<std::mutex> lock(m_queueMutex[(uint8_t)type]);
+		waitFor = *pOutQueue;
+	}
+
+	for (auto& wait : waitFor)
+	{
+		wait->Wait();
+	}
 }

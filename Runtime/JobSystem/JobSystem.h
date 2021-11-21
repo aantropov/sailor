@@ -81,8 +81,7 @@ namespace Sailor
 			std::string m_name;
 
 			std::condition_variable m_onComplete;
-			std::mutex m_waitMutex;
-			std::mutex m_dependencyMutex;
+			std::mutex m_mutex;
 
 			EThreadType m_threadType;
 		};
@@ -156,6 +155,9 @@ namespace Sailor
 			static SAILOR_API void Initialize();
 
 			virtual SAILOR_API ~Scheduler() override;
+
+			// Lock thit thread until all jobs on thread type would be finished
+			SAILOR_API void WaitIdle(EThreadType type);
 
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 			uint32_t SAILOR_API GetNumRenderingJobs() const;

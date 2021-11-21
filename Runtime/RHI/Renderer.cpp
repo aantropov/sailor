@@ -107,12 +107,18 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	TSharedPtr<class JobSystem::Job> renderingJob = JobSystem::Scheduler::CreateJob("Render Frame",
 		[this, frame]() {
 
+			auto frameInstance = frame;
 			static Utils::Timer timer;
 			timer.Start();
 
 			SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
-			SemaphorePtr waitFrameUpdate = GetDriver()->CreateWaitSemaphore();
-			GetDriver()->SubmitCommandList(frame.GetCommandBuffer(), FencePtr::Make(), waitFrameUpdate);
+			std::vector<SemaphorePtr> waitFrameUpdate;
+			for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
+			{
+				waitFrameUpdate.push_back(GetDriver()->CreateWaitSemaphore());
+				auto pCommandList = frameInstance.GetCommandBuffer(i);
+				GetDriver()->SubmitCommandList(pCommandList, FencePtr::Make(), waitFrameUpdate[i]);
+			}
 			SAILOR_PROFILE_END_BLOCK();
 
 			do
@@ -121,7 +127,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 				SAILOR_PROFILE_BLOCK("Present Frame");
 
-				if (m_driverInstance->PresentFrame(frame, nullptr, nullptr, { waitFrameUpdate }))
+				if (m_driverInstance->PresentFrame(frame, nullptr, nullptr, waitFrameUpdate))
 				{
 					totalFramesCount++;
 					timer.Stop();
