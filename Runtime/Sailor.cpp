@@ -152,6 +152,9 @@ void EngineInstance::Start()
 
 	m_pInstance->m_viewportWindow.SetActive(false);
 	m_pInstance->m_viewportWindow.SetRunning(false);
+
+	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Worker);
+	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
 }
 
 void EngineInstance::Stop()
@@ -163,8 +166,8 @@ void EngineInstance::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
-	Framework::Shutdown();
 	AssetRegistry::Shutdown();
+	Framework::Shutdown();
 	Renderer::Shutdown();
 	JobSystem::Scheduler::Shutdown();
 	Win32::ConsoleWindow::Shutdown();

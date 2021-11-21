@@ -29,10 +29,12 @@ void GfxDeviceVulkan::Initialize(const Win32::Window* pViewport, RHI::EMsaaSampl
 
 GfxDeviceVulkan::~GfxDeviceVulkan()
 {
-	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
-
 	m_trackedFences.clear();
 	m_uniformBuffers.clear();
+
+	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Worker);
+	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
+
 	GfxDevice::Vulkan::VulkanApi::Shutdown();
 }
 

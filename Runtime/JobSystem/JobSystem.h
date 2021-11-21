@@ -159,6 +159,9 @@ namespace Sailor
 			// Lock thit thread until all jobs on thread type would be finished
 			SAILOR_API void WaitIdle(EThreadType type);
 
+			// Remove all jobs by thread type
+			SAILOR_API void StopAll(EThreadType type);
+
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 			uint32_t SAILOR_API GetNumRenderingJobs() const;
 
