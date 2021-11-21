@@ -115,6 +115,12 @@ void WorkerThread::Join()
 	m_pThread->join();
 }
 
+void WorkerThread::WaitIdle()
+{
+	SAILOR_PROFILE_FUNCTION();
+	while (m_bIsBusy);
+}
+
 void WorkerThread::ForcelyPushJob(const TSharedPtr<Job>& pJob)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -175,7 +181,7 @@ void WorkerThread::Process()
 			scheduler->NotifyWorkerThread(m_threadType);
 
 			SAILOR_PROFILE_END_BLOCK()
-				m_bIsBusy = false;;
+			m_bIsBusy = false;;
 		}
 
 		lk.unlock();
@@ -389,9 +395,6 @@ void Scheduler::WaitIdle(EThreadType type)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	// Not implemented for workers
-	assert(type != EThreadType::Main && type != EThreadType::Rendering);
-
 	std::mutex* pOutMutex;
 	std::vector<TSharedPtr<Job>>* pOutQueue;
 	std::condition_variable* pOutCondVar;
@@ -417,4 +420,12 @@ void Scheduler::WaitIdle(EThreadType type)
 		}
 
 	} while (waitFor.size() != 0);
+
+	for (auto& worker : m_workerThreads)
+	{
+		if (worker->GetThreadType() == type)
+		{
+			worker->WaitIdle();
+		}
+	}
 }

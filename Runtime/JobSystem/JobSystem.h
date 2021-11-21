@@ -63,7 +63,7 @@ namespace Sailor
 			// Lock this thread while job is executing
 			SAILOR_API void Wait();
 
-			EThreadType GetThreadType() const { return m_threadType; }
+			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
 		protected:
 
@@ -121,11 +121,13 @@ namespace Sailor
 			SAILOR_API WorkerThread& operator =(WorkerThread& rhs) = delete;
 
 			SAILOR_API DWORD GetThreadId() const { return m_threadId; }
+			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
 			SAILOR_API void ForcelyPushJob(const TSharedPtr<Job>& pJob);
 
 			SAILOR_API void Process();
 			SAILOR_API void Join();
+			SAILOR_API void WaitIdle();
 
 		protected:
 

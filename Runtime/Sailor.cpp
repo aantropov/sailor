@@ -168,6 +168,12 @@ void EngineInstance::Shutdown()
 
 	AssetRegistry::Shutdown();
 	Framework::Shutdown();
+
+	// We need to finish all jobs before release
+	JobSystem::Scheduler::GetInstance()->ProcessJobsOnMainThread();
+	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Worker);
+	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
+
 	Renderer::Shutdown();
 	JobSystem::Scheduler::Shutdown();
 	Win32::ConsoleWindow::Shutdown();
