@@ -24,18 +24,18 @@ using namespace Sailor::RHI;
 
 void MaterialAsset::Serialize(nlohmann::json& outData) const
 {
-	outData["enable_depth_test"] = m_renderState.IsDepthTestEnabled();
-	outData["enable_z_write"] = m_renderState.IsEnabledZWrite();
-	outData["depth_bias"] = m_renderState.GetDepthBias();
-	outData["cull_mode"] = m_renderState.GetCullMode();
+	outData["enable_depth_test"] = m_pData->m_renderState.IsDepthTestEnabled();
+	outData["enable_z_write"] = m_pData->m_renderState.IsEnabledZWrite();
+	outData["depth_bias"] = m_pData->m_renderState.GetDepthBias();
+	outData["cull_mode"] = m_pData->m_renderState.GetCullMode();
 	outData["render_queue"] = GetRenderQueue();
 	outData["is_transparent"] = IsTransparent();
-	outData["blend_mode"] = m_renderState.GetBlendMode();
-	outData["fill_mode"] = m_renderState.GetFillMode();
-	outData["defines"] = m_shaderDefines;
+	outData["blend_mode"] = m_pData->m_renderState.GetBlendMode();
+	outData["fill_mode"] = m_pData->m_renderState.GetFillMode();
+	outData["defines"] = m_pData->m_shaderDefines;
 
 	auto jsonSamplers = json::array();
-	for (auto& sampler : m_samplers)
+	for (auto& sampler : m_pData->m_samplers)
 	{
 		nlohmann::json o;
 		sampler.Serialize(o);
@@ -43,13 +43,15 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	}
 
 	outData["samplers"] = jsonSamplers;
-	outData["uniforms"] = m_uniformsVec4;
+	outData["uniforms"] = m_pData->m_uniformsVec4;
 
-	m_shader.Serialize(outData["shader"]);
+	m_pData->m_shader.Serialize(outData["shader"]);
 }
 
 void MaterialAsset::Deserialize(const nlohmann::json& outData)
 {
+	m_pData = TUniquePtr<Data>::Make();
+
 	bool bEnableDepthTest = true;
 	bool bEnableZWrite = true;
 	float depthBias = 0.0f;
@@ -58,8 +60,8 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	EFillMode fillMode = EFillMode::Fill;
 	std::string renderQueue = "Opaque";
 
-	m_shaderDefines.clear();
-	m_uniformsVec4.clear();
+	m_pData->m_shaderDefines.clear();
+	m_pData->m_uniformsVec4.clear();
 
 	if (outData.contains("enable_depth_test"))
 	{
@@ -93,7 +95,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 
 	if (outData.contains("is_transparent"))
 	{
-		m_bIsTransparent = outData["is_transparent"].get<bool>();
+		m_pData->m_bIsTransparent = outData["is_transparent"].get<bool>();
 	}
 
 	if (outData.contains("blend_mode"))
@@ -105,7 +107,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	{
 		for (auto& elem : outData["defines"])
 		{
-			m_shaderDefines.push_back(elem.get<std::string>());
+			m_pData->m_shaderDefines.push_back(elem.get<std::string>());
 		}
 	}
 
@@ -116,7 +118,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 			SamplerEntry entry;
 			entry.Deserialize(elem);
 
-			m_samplers.emplace_back(std::move(entry));
+			m_pData->m_samplers.emplace_back(std::move(entry));
 		}
 	}
 
@@ -127,16 +129,16 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 			auto first = elem[0].get<std::string>();
 			auto second = elem[1].get<glm::vec4>();
 
-			m_uniformsVec4.push_back({ first, second });
+			m_pData->m_uniformsVec4.push_back({ first, second });
 		}
 	}
 
 	if (outData.contains("shader"))
 	{
-		m_shader.Deserialize(outData["shader"]);
+		m_pData->m_shader.Deserialize(outData["shader"]);
 	}
 
-	m_renderState = RenderState(bEnableDepthTest, bEnableZWrite, depthBias, cullMode, blendMode, fillMode);
+	m_pData->m_renderState = RenderState(bEnableDepthTest, bEnableZWrite, depthBias, cullMode, blendMode, fillMode);
 }
 
 void MaterialImporter::Initialize()
@@ -189,6 +191,23 @@ TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 
 	SAILOR_LOG("Cannot find material asset info with UID: %s", uid.ToString().c_str());
 	return TWeakPtr<MaterialAsset>();
+}
+
+const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
+{
+	json newMaterial;
+	
+	MaterialAsset asset;
+	asset.m_pData = TUniquePtr<MaterialAsset::Data>::Make(std::move(data));
+	asset.Serialize(newMaterial);
+
+	std::ofstream assetFile(assetFilepath);
+	assetFile << newMaterial.dump();
+	assetFile.close();
+
+	AssetRegistry::GetInstance()->ScanFolder(Utils::GetFileFolder(assetFilepath));
+
+	return AssetRegistry::GetInstance()->GetAssetInfoPtr(assetFilepath)->GetUID();
 }
 
 RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)

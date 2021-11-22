@@ -115,9 +115,11 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			std::vector<SemaphorePtr> waitFrameUpdate;
 			for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
 			{
-				waitFrameUpdate.push_back(GetDriver()->CreateWaitSemaphore());
-				auto pCommandList = frameInstance.GetCommandBuffer(i);
-				GetDriver()->SubmitCommandList(pCommandList, FencePtr::Make(), waitFrameUpdate[i]);
+				if (auto pCommandList = frameInstance.GetCommandBuffer(i))
+				{
+					waitFrameUpdate.push_back(GetDriver()->CreateWaitSemaphore());
+					GetDriver()->SubmitCommandList(pCommandList, FencePtr::Make(), waitFrameUpdate[i]);
+				}
 			}
 			SAILOR_PROFILE_END_BLOCK();
 

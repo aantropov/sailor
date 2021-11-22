@@ -95,7 +95,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 		}
 		else if (entry.is_regular_file())
 		{
-			const std::string filepath = entry.path().string();
+			const std::string filepath = Utils::SanitizeFilepath(entry.path().string());
 			const std::string extension = Utils::GetFileExtension(filepath);
 
 			if (extension != MetaFileExtension)

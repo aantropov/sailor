@@ -19,7 +19,7 @@ namespace Sailor
 	{
 	public:
 
-		static constexpr const char* ContentRootFolder = "..//Content//";
+		static constexpr const char* ContentRootFolder = "../Content/";
 		static constexpr const char* MetaFileExtension = "asset";
 
 		virtual SAILOR_API ~AssetRegistry() override;
@@ -56,6 +56,7 @@ namespace Sailor
 		static SAILOR_API bool ReadAllTextFile(const std::string& filename, std::string& text);
 
 		SAILOR_API void ScanContentFolder();
+		SAILOR_API void ScanFolder(const std::string& folderPath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
 		TAssetInfoPtr GetAssetInfoPtr(UID uid) const
@@ -89,8 +90,6 @@ namespace Sailor
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(UID uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
-
-		void ScanFolder(const std::string& folderPath);
 
 		std::unordered_map<UID, AssetInfoPtr> m_loadedAssetInfo;
 		std::unordered_map<std::string, UID> m_UIDs;

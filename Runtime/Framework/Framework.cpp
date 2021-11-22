@@ -133,7 +133,7 @@ void Framework::CpuFrame(FrameState& state)
 
 		TSharedPtr<JobSystem::Job> jobLoadModel;
 
-		if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models\\Sponza\\sponza.obj"))
+		if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 		{
 			jobLoadModel = ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
 		}
@@ -147,7 +147,7 @@ void Framework::CpuFrame(FrameState& state)
 		jobCreateBuffers->Join(jobLoadModel);
 		JobSystem::Scheduler::GetInstance()->Run(jobCreateBuffers);
 
-		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models\\Sponza\\sponza.mat"))
+		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models/Sponza/sponza.mat"))
 		{
 			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
 		}
@@ -155,7 +155,7 @@ void Framework::CpuFrame(FrameState& state)
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 		Sailor::RHI::Renderer::GetDriver()->AddUniformBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0);
 
-		if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Textures\\VulkanLogo.png"))
+		if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
 			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID()), 1);
 		}
@@ -186,7 +186,7 @@ void Framework::CpuFrame(FrameState& state)
 
 	if (state.GetInputState().IsKeyDown(VK_SPACE))
 	{
-		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models\\Sponza\\sponza.mat"))
+		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models/Sponza/sponza.mat"))
 		{
 			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
 		}
@@ -223,40 +223,20 @@ void Framework::CpuFrame(FrameState& state)
 
 	SAILOR_PROFILE_BLOCK("Test Performance");
 
-	std::vector<TSharedPtr<JobSystem::Job>> pJobs;
 
-	for (uint32_t listIndex = 0; listIndex < state.NumCommandLists; listIndex++)
-	{
-		auto pJob = JobSystem::Scheduler::GetInstance()->CreateJob("Update command list",
-			[&state, this, model, listIndex]()
-			{
-				auto pCommandList = state.CreateCommandBuffer(listIndex);
-				Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
-
-				for (uint32_t i = 0; i < 1000 / state.NumCommandLists; i++)
-				{
-					RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
-				}
-
-				RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, m_testMaterial, "transform.model", model);
-				Renderer::GetDriverCommands()->EndCommandList(pCommandList);
-			});
-		pJobs.emplace_back(pJob);
-
-		if (state.NumCommandLists == 1)
+	auto pJob = JobSystem::Scheduler::GetInstance()->CreateJob("Update command list",
+		[&state, this, model]()
 		{
-			pJob->Execute();
-		}
-		else
-		{
-			JobSystem::Scheduler::GetInstance()->Run(pJob);
-		}
-	}
+			auto pCommandList = state.CreateCommandBuffer(0);
+			Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
+			RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, m_testMaterial, "transform.model", model);
+			Renderer::GetDriverCommands()->EndCommandList(pCommandList);
+		});
 
-	for (uint32_t listIndex = 0; listIndex < state.NumCommandLists; listIndex++)
-	{
-		pJobs[listIndex]->Wait();
-	}
+	JobSystem::Scheduler::GetInstance()->Run(pJob);
+
+	pJob->Wait();
 
 	SAILOR_PROFILE_END_BLOCK();
 }

@@ -15,11 +15,11 @@ namespace Sailor
 	{
 	public:
 
-		static constexpr const char* CacheRootFolder = "..//Cache//";
-		static constexpr const char* ShaderCacheFilepath = "..//Cache//ShaderCache.json";
-		static constexpr const char* PrecompiledShadersFolder = "..//Cache//PrecompiledShaders//";
-		static constexpr const char* CompiledShadersFolder = "..//Cache//CompiledShaders//";
-		static constexpr const char* CompiledShadersWithDebugFolder = "..//Cache//CompiledShadersWithDebug//";
+		static constexpr const char* CacheRootFolder = "../Cache/";
+		static constexpr const char* ShaderCacheFilepath = "../Cache/ShaderCache.json";
+		static constexpr const char* PrecompiledShadersFolder = "../Cache/PrecompiledShaders/";
+		static constexpr const char* CompiledShadersFolder = "../Cache/CompiledShaders//";
+		static constexpr const char* CompiledShadersWithDebugFolder = "../Cache/CompiledShadersWithDebug/";
 		static constexpr const char* CompiledShaderFileExtension = "spirv";
 		static constexpr const char* PrecompiledShaderFileExtension = "glsl";
 

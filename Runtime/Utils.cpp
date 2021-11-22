@@ -156,6 +156,17 @@ std::string Sailor::Utils::RemoveFileExtension(const std::string& filename)
 	return filename.substr(0, lastdot);
 }
 
+std::string Sailor::Utils::GetFileFolder(const std::string& filepath)
+{
+	const size_t lastSlash = filepath.rfind('/');
+	if (std::string::npos != lastSlash)
+	{
+		return filepath.substr(0, lastSlash + 1);
+	}
+
+	return std::string();
+}
+
 std::string Sailor::Utils::GetFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -215,6 +226,14 @@ void Sailor::Utils::Erase(std::string& str, const std::string& substr, size_t st
 	}
 }
 
+std::string Sailor::Utils::SanitizeFilepath(const std::string& filename)
+{
+	std::string res = filename;
+	ReplaceAll(res, "\\", "/");
+	ReplaceAll(res, "//", "/");
+	return res;
+}
+
 std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -242,7 +261,7 @@ void Sailor::Utils::Trim(std::string& s)
 	SAILOR_PROFILE_FUNCTION();
 	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
 		return !std::isspace(ch);
-	}));
+		}));
 }
 
 int64_t Sailor::Utils::GetCurrentTimeMs()

@@ -25,7 +25,6 @@ AssetInfo::AssetInfo()
 	m_loadTime = std::time(nullptr);
 }
 
-
 bool AssetInfo::IsExpired() const
 {
 	if (!(std::filesystem::exists(m_folder)))
@@ -35,7 +34,6 @@ bool AssetInfo::IsExpired() const
 
 	return m_loadTime < GetMetaLastModificationTime();
 }
-
 
 void DefaultAssetInfoHandler::Initialize()
 {
@@ -56,6 +54,21 @@ std::time_t AssetInfo::GetMetaLastModificationTime() const
 std::string AssetInfo::GetMetaFilepath() const
 {
 	return m_assetFilename + "." + AssetRegistry::MetaFileExtension;
+}
+
+std::string AssetInfo::GetRelativeAssetFilepath() const
+{
+	std::string res = GetAssetFilepath();
+	Utils::Erase(res, AssetRegistry::ContentRootFolder);
+	return res;
+}
+
+std::string AssetInfo::GetRelativeMetaFilepath() const
+{
+	std::string res = GetMetaFilepath();
+	Utils::Erase(res, AssetRegistry::ContentRootFolder);
+	return res;
+
 }
 
 AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) const

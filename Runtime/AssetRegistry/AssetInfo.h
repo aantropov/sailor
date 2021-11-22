@@ -18,7 +18,14 @@ namespace Sailor
 		virtual ~AssetInfo() = default;
 
 		SAILOR_API const UID& GetUID() const { return m_UID; }
+
+		SAILOR_API std::string GetRelativeAssetFilepath() const;
+		SAILOR_API std::string GetRelativeMetaFilepath() const;
+
+		// That includes "../Content/" in the beginning
 		SAILOR_API std::string GetAssetFilepath() const { return m_folder + m_assetFilename; }
+		
+		// That includes "../Content/" in the beginning
 		SAILOR_API std::string GetMetaFilepath() const;
 
 		SAILOR_API std::time_t GetAssetLastModificationTime() const;

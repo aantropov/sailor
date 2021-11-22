@@ -22,6 +22,9 @@ namespace Sailor
 		{
 		public:
 
+			SamplerEntry() = default;
+			SamplerEntry(std::string name, const UID& uid) : m_name(std::move(name)), m_uid(uid) {}
+
 			std::string m_name;
 			UID m_uid;
 
@@ -38,32 +41,37 @@ namespace Sailor
 			}
 		};
 
+		struct Data
+		{
+			RHI::RenderState m_renderState;
+
+			std::string m_renderQueue = "Opaque";
+			bool m_bIsTransparent = false;
+
+			std::vector<std::string> m_shaderDefines;
+			std::vector<SamplerEntry> m_samplers;
+			std::vector<std::pair<std::string, glm::vec4>> m_uniformsVec4;
+
+			UID m_shader;
+		};
 
 		virtual SAILOR_API ~MaterialAsset() = default;
 
-		virtual SAILOR_API void Serialize(nlohmann::json & outData) const override;
-		virtual SAILOR_API void Deserialize(const nlohmann::json & inData) override;
+		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
+		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
 
-		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_renderState; }
-		SAILOR_API bool IsTransparent() const { return m_bIsTransparent; }
-		SAILOR_API const std::string& GetRenderQueue() const { return m_renderQueue; }
-		SAILOR_API const UID& GetShader() const { return m_shader; }
-		SAILOR_API const std::vector<std::string>& GetShaderDefines() const { return  m_shaderDefines; }
-		SAILOR_API const std::vector<SamplerEntry>& GetSamplers() const { return m_samplers; }
-		SAILOR_API const std::vector<std::pair<std::string, glm::vec4>>& GetUniformValues() const { return m_uniformsVec4; }
+		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_pData->m_renderState; }
+		SAILOR_API bool IsTransparent() const { return m_pData->m_bIsTransparent; }
+		SAILOR_API const std::string& GetRenderQueue() const { return m_pData->m_renderQueue; }
+		SAILOR_API const UID& GetShader() const { return m_pData->m_shader; }
+		SAILOR_API const std::vector<std::string>& GetShaderDefines() const { return  m_pData->m_shaderDefines; }
+		SAILOR_API const std::vector<SamplerEntry>& GetSamplers() const { return m_pData->m_samplers; }
+		SAILOR_API const std::vector<std::pair<std::string, glm::vec4>>& GetUniformValues() const { return m_pData->m_uniformsVec4; }
 
 	protected:
 
-		RHI::RenderState m_renderState;
-
-		std::string m_renderQueue = "Opaque";
-		bool m_bIsTransparent = false;
-
-		std::vector<std::string> m_shaderDefines;
-		std::vector<SamplerEntry> m_samplers;
-		std::vector<std::pair<std::string, glm::vec4>> m_uniformsVec4;
-
-		UID m_shader;
+		TUniquePtr<Data> m_pData;
+		friend class MaterialImporter;
 	};
 
 	class MaterialImporter final : public TSingleton<MaterialImporter>, public IAssetInfoHandlerListener
@@ -77,6 +85,7 @@ namespace Sailor
 
 		static SAILOR_API TWeakPtr<MaterialAsset> LoadMaterialAsset(UID uid);
 		static SAILOR_API RHI::MaterialPtr LoadMaterial(UID uid);
+		static SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
 
 	private:
 

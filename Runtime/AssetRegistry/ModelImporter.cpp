@@ -1,6 +1,7 @@
 #include "ModelImporter.h"
 #include "UID.h"
 #include "AssetRegistry.h"
+#include "MaterialImporter.h"
 #include "ModelAssetInfo.h"
 #include "Utils.h"
 #include <filesystem>
@@ -49,10 +50,55 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Ve
 				std::string warn;
 				std::string err;
 
-				if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str()))
+				auto assetFilepath = assetInfo->GetAssetFilepath();
+				auto materialFolder = Utils::GetFileFolder(assetFilepath);
+				if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str(), materialFolder.c_str()))
 				{
 					SAILOR_LOG("%s %s", warn.c_str(), err.c_str());
 					return;
+				}
+
+				if (assetInfo->ShouldGenerateMaterials())
+				{
+					auto texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
+					for (const auto& material : materials)
+					{
+						MaterialAsset::Data data;
+						data.m_shader = AssetRegistry::GetInstance()->GetAssetInfoPtr("Shaders/Simple.shader")->GetUID();
+
+						glm::vec4 diffuse, ambient, emission, specular;
+						memcpy(&diffuse, material.diffuse, 3 * sizeof(tinyobj::real_t));
+						memcpy(&ambient, material.ambient, 3 * sizeof(tinyobj::real_t));
+						memcpy(&emission, material.emission, 3 * sizeof(tinyobj::real_t));
+						memcpy(&specular, material.specular, 3 * sizeof(tinyobj::real_t));
+						data.m_uniformsVec4.push_back({ "diffuse", diffuse });
+						data.m_uniformsVec4.push_back({ "ambient", ambient });
+						data.m_uniformsVec4.push_back({ "emission", emission });
+						data.m_uniformsVec4.push_back({ "specular", specular });
+
+						if (auto assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(texturesFolder + material.diffuse_texname))
+						{
+							UID diffuseSampler = assetInfo->GetUID();
+							data.m_samplers.push_back(MaterialAsset::SamplerEntry("diffuseSampler", diffuseSampler));
+						}
+
+						if (auto assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(texturesFolder + material.ambient_texname))
+						{
+							UID ambientSampler = assetInfo->GetUID();
+							data.m_samplers.push_back(MaterialAsset::SamplerEntry("ambientSampler", ambientSampler));
+						}
+
+						if (auto assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(texturesFolder + material.normal_texname))
+						{
+							UID normalSampler = assetInfo->GetUID();
+							data.m_samplers.push_back(MaterialAsset::SamplerEntry("normalSampler", normalSampler));
+						}
+
+						std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";
+						std::filesystem::create_directory(materialsFolder);
+
+						MaterialImporter::CreateMaterialAsset(materialsFolder + material.name + ".mat", std::move(data));
+					}
 				}
 
 				std::unordered_map<RHI::Vertex, uint32_t> uniqueVertices{};
