@@ -117,8 +117,6 @@ namespace Sailor::Memory
 		{
 			return false;
 		}
-
 		return true;
 	}
-
 }

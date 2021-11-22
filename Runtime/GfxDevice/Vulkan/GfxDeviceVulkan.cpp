@@ -579,7 +579,7 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBi
 
 #if defined(SAILOR_VULKAN_COMBINE_STAGING_BUFFERS)
 	SAILOR_PROFILE_BLOCK("Allocate space in staging buffer allocator");
-	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(requirements.size, requirements.alignment);
+	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
 	SAILOR_PROFILE_END_BLOCK();
 	m_bufferOffset = (*stagingBufferManagedPtr).m_offset;
 	m_memoryOffset = (**stagingBufferManagedPtr).m_offset;

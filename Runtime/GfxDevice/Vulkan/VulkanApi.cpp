@@ -754,7 +754,7 @@ VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, Vulka
 	stagingBuffer->Compile();
 	stagingBuffer->Bind(data);
 	/**/
-	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(requirements.size, requirements.alignment);
+	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
 	auto cmdBuffer = device->CreateCommandBuffer(true);
@@ -780,7 +780,7 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
 	*/
 
-	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(requirements.size, requirements.alignment);
+	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
 	auto cmdBuffer = device->CreateCommandBuffer(true);

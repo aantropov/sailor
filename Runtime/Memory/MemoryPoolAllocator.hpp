@@ -139,7 +139,7 @@ namespace Sailor::Memory
 							return;
 						}
 					}
-					
+
 					m_layout.insert(lower, { ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset });
 				}
 				else
@@ -169,6 +169,7 @@ namespace Sailor::Memory
 				return false;
 			}
 
+			uint32_t GetBlockIndex() const { return m_blockIndex; }
 			size_t GetBlockSize() const { return m_blockSize; }
 			float GetOccupation() const { return 1.0f - (float)m_emptySpace / m_blockSize; }
 
@@ -201,7 +202,12 @@ namespace Sailor::Memory
 			friend class TPoolAllocator;
 		};
 
-		TPoolAllocator(size_t startBlockSize = 128, size_t elementSize = 32) : m_startBlockSize(startBlockSize), m_elementSize(elementSize) {}
+		TPoolAllocator(size_t startBlockSize = 2 * 1024 * 1024, size_t elementSize = 2048, size_t requestedSize = 4 * 1024 * 1024) :
+			m_startBlockSize(startBlockSize), 
+			m_elementSize(elementSize),
+			m_requestedSize(requestedSize)
+		{}
+
 		TPoolAllocator(const TPoolAllocator&) = delete;
 		TPoolAllocator(TPoolAllocator&&) = default;
 		TPoolAllocator& operator= (const TPoolAllocator&) = delete;
@@ -286,7 +292,8 @@ namespace Sailor::Memory
 
 			m_blocks.clear();
 			m_layout.clear();
-			
+			m_emptyBlocks.clear();
+
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }
@@ -297,7 +304,7 @@ namespace Sailor::Memory
 	private:
 
 		std::mutex m_mutex;
-		
+
 		static constexpr uint32_t InvalidIndex = (uint32_t)-1;
 
 		bool HeuristicToSkipBlocks(float occupation, size_t blockSize) const
@@ -317,7 +324,7 @@ namespace Sailor::Memory
 		bool HeuristicToFreeBlock(size_t blockSize, size_t countFreeBlocks) const
 		{
 			// Free small blocks
-			return countFreeBlocks > 2 || (countFreeBlocks > 1 && (blockSize / (float)m_usedDataSpace) < 0.25f);
+			return (countFreeBlocks > 2 || (countFreeBlocks > 1 && (blockSize / (float)m_usedDataSpace) < 0.25f)) && m_requestedSize < (m_usedDataSpace - blockSize);
 		}
 
 		void FindMemoryBlock(size_t size, size_t alignment, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex, uint32_t& outAlignedOffset)
@@ -332,20 +339,41 @@ namespace Sailor::Memory
 				}
 			}
 
-			// Create new block
 			MemoryBlock block = MemoryBlock((size_t)max((uint32_t)size, (uint32_t)(m_startBlockSize * pow(2, m_blocks.size()))), this);
-			block.m_blockIndex = (uint32_t)m_blocks.size();
+			uint32_t blockIndex = 0;
+
+			if (m_emptyBlocks.size() == 0)
+			{
+				blockIndex = (uint32_t)m_blocks.size();
+			}
+			else
+			{
+				blockIndex = m_emptyBlocks[m_emptyBlocks.size() - 1];
+				m_emptyBlocks.pop_back();
+			}
+
+			block.m_blockIndex = blockIndex;
 			outLayoutIndex = (uint32_t)m_layout.size();
 			block.FindLocationInLayout(size, alignment, outBlockLayoutIndex, outAlignedOffset);
 			m_layout.push_back(block.m_blockIndex);
 			m_usedDataSpace += block.GetBlockSize();
-			m_blocks.push_back(std::move(block));
+
+			if (blockIndex == m_blocks.size())
+			{
+				m_blocks.push_back(std::move(block));
+			}
+			else
+			{
+				m_blocks[blockIndex] = std::move(block);
+			}
 		}
 
 		bool TryFreeBlock(MemoryBlock& block)
 		{
 			if (block.IsEmpty())
 			{
+				m_emptyBlocks.push_back(block.GetBlockIndex());
+
 				m_usedDataSpace -= block.m_blockSize;
 				m_layout.erase(std::remove(m_layout.begin(), m_layout.end(), block.m_blockIndex), m_layout.end());
 
@@ -363,5 +391,7 @@ namespace Sailor::Memory
 		size_t m_usedDataSpace = 0;
 		std::vector<MemoryBlock> m_blocks;
 		std::vector<uint32_t> m_layout;
+		std::vector<uint32_t> m_emptyBlocks;
+		size_t m_requestedSize = 2048;
 	};
 }
