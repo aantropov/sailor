@@ -429,7 +429,7 @@ namespace Sailor::RHI
 		std::string m_name = "";
 		std::vector<ShaderLayoutBindingMember> m_members{};
 
-		uint8_t m_location = 0u;
+		uint8_t m_binding = 0u;
 		uint32_t m_size = 0u;
 		uint32_t m_set = 0u;
 	};

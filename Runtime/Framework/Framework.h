@@ -85,6 +85,7 @@ namespace Sailor
 
 		RHI::MeshPtr& GetTestMesh() { return m_testMesh; }
 		RHI::MaterialPtr& GetTestMaterial() { return m_testMaterial; }
+		RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_testBinding; }
 
 	protected:
 
@@ -93,6 +94,7 @@ namespace Sailor
 
 		RHI::MeshPtr m_testMesh;
 		RHI::MaterialPtr m_testMaterial;
+		RHI::ShaderBindingSetPtr m_testBinding;
 
 		RHI::UboFrameData m_frameData;
 		RHI::ShaderBindingSetPtr m_frameDataBinding;

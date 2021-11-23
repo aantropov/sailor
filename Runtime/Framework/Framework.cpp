@@ -152,6 +152,9 @@ void Framework::CpuFrame(FrameState& state)
 			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
 		}
 
+		m_testBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+		Sailor::RHI::Renderer::GetDriver()->AddUniformBufferToShaderBindings(m_testBinding, "instance", sizeof(glm::mat4x4), 0);
+
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 		Sailor::RHI::Renderer::GetDriver()->AddUniformBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0);
 
@@ -184,14 +187,6 @@ void Framework::CpuFrame(FrameState& state)
 	if (glm::length(delta) > 0)
 		cameraPosition += glm::normalize(delta) * sensitivity * state.GetDeltaTime();
 
-	if (state.GetInputState().IsKeyDown(VK_SPACE))
-	{
-		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models/Sponza/sponza.mat"))
-		{
-			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
-		}
-	}
-
 	const float speed = 50.0f;
 
 	vec2 shift{};
@@ -221,8 +216,15 @@ void Framework::CpuFrame(FrameState& state)
 
 	state.PushFrameBinding(m_frameDataBinding);
 
-	SAILOR_PROFILE_BLOCK("Test Performance");
+	if (state.GetInputState().IsKeyDown(VK_SPACE))
+	{
+		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models/Sponza/sponza.mat"))
+		{
+			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
+		}
+	}
 
+	SAILOR_PROFILE_BLOCK("Test Performance");
 
 	auto pJob = JobSystem::Scheduler::GetInstance()->CreateJob("Update command list",
 		[&state, this, model]()
@@ -230,7 +232,9 @@ void Framework::CpuFrame(FrameState& state)
 			auto pCommandList = state.CreateCommandBuffer(0);
 			Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
-			RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, m_testMaterial, "transform.model", model);
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("instance"), &model, sizeof(model));
+
+			RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, m_testMaterial, "material.color", std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
 			Renderer::GetDriverCommands()->EndCommandList(pCommandList);
 		});
 

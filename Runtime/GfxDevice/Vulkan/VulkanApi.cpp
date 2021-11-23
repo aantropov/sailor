@@ -847,7 +847,7 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 	*/
 
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
- 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
+	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
 	outImage = new VulkanImage(device);
 
@@ -875,13 +875,13 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 	auto cmdBuffer = device->CreateCommandBuffer();
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->ImageMemoryBarrier(outImage, outImage->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	cmdBuffer->CopyBufferToImage((*stagingBufferManagedPtr).m_buffer, 
-		outImage, 
-		static_cast<uint32_t>(extent.width), 
-		static_cast<uint32_t>(extent.height), 
+	cmdBuffer->CopyBufferToImage((*stagingBufferManagedPtr).m_buffer,
+		outImage,
+		static_cast<uint32_t>(extent.width),
+		static_cast<uint32_t>(extent.height),
 		(*stagingBufferManagedPtr).m_offset);
 
- 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
+	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
 	if (outImage->m_mipLevels == 1)
 	{
@@ -948,11 +948,15 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	std::vector<std::vector<VkDescriptorSetLayoutBinding>> vulkanLayouts;
 	std::vector<std::vector<RHI::ShaderLayoutBinding>> rhiLayouts;
 
-	uint32_t countDescriptorSets = 0;
-	for (uint32_t i = 0; i < shaders.size(); i++)
+	std::unordered_set<uint32_t> uniqueDescriptorSets;
+	for (const auto& shader : shaders)
 	{
-		countDescriptorSets = std::max(countDescriptorSets, (uint32_t)shaders[i]->GetDescriptorSetLayoutBindings().size());
+		for (const auto& binding : shader->GetBindings())
+		{
+			uniqueDescriptorSets.insert(binding[0].m_set);
+		}
 	}
+	size_t countDescriptorSets = uniqueDescriptorSets.size();
 
 	vulkanLayouts.resize(countDescriptorSets);
 	rhiLayouts.resize(countDescriptorSets);
@@ -971,7 +975,7 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 
 				// Handle duplicated bindings
 				auto& binds = vulkanLayouts[rhiBinding.m_set];
-				if (binds.end() == std::find_if(binds.begin(), binds.end(), [&rhiBinding](auto& b) { return b.binding == rhiBinding.m_location; }))
+				if (binds.end() == std::find_if(binds.begin(), binds.end(), [&rhiBinding](auto& b) { return b.binding == rhiBinding.m_binding; }))
 				{
 					vulkanLayouts[rhiBinding.m_set].push_back(binding);
 					rhiLayouts[rhiBinding.m_set].push_back(rhiBinding);

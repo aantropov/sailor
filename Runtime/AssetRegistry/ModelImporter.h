@@ -7,6 +7,7 @@
 #include "Core/SharedPtr.hpp"
 #include "Core/WeakPtr.hpp"
 #include "AssetInfo.h"
+#include "RHI/Renderer.h"
 #include "ModelAssetInfo.h"
 #include "JobSystem/JobSystem.h"
 
@@ -17,6 +18,14 @@ namespace Sailor::RHI
 
 namespace Sailor
 {
+	class Model
+	{
+	public:
+
+		RHI::MeshPtr m_meshes;
+		RHI::MaterialPtr m_materials;
+	};
+
 	class ModelImporter final : public TSingleton<ModelImporter>, public IAssetInfoHandlerListener
 	{
 	public:

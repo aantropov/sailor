@@ -566,6 +566,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 			auto mesh = Framework::GetInstance()->GetTestMesh();
 			if (mesh && mesh->IsReady())
 			{
+				auto& perInstanceBinding = Framework::GetInstance()->GetPerInstanceBinding();
 				auto& material = Framework::GetInstance()->GetTestMaterial();
 
 				m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
@@ -573,7 +574,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 				m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
 				m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });
 				m_commandBuffers[imageIndex]->BindIndexBuffer(mesh->m_indexBuffer->m_vulkan.m_buffer);
-				m_commandBuffers[imageIndex]->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, { state.GetFrameBinding()->m_vulkan.m_descriptorSet, material->GetBindings()->m_vulkan.m_descriptorSet });
+				m_commandBuffers[imageIndex]->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, { state.GetFrameBinding()->m_vulkan.m_descriptorSet, perInstanceBinding->m_vulkan.m_descriptorSet, material->GetBindings()->m_vulkan.m_descriptorSet });
 				m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer);
 			}
 		}

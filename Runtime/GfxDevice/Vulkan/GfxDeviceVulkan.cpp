@@ -385,14 +385,15 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	for (uint32_t i = 0; i < bindings.size(); i++)
 	{
 		auto& layoutBinding = bindings[i];
-		if (layoutBinding.m_set == 0)
+		if (layoutBinding.m_set == 0 || layoutBinding.m_set == 1)
 		{
 			// We skip 0 layout, it is frameData and would be binded in a different way
+			// Also we skip 1 layout, that is per instance data and would be binded in a different way
 			continue;
 		}
 		const auto& layoutBindings = descriptorSetLayouts[layoutBinding.m_set]->m_descriptorSetLayoutBindings;
 
-		auto it = std::find_if(layoutBindings.begin(), layoutBindings.end(), [&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_location; });
+		auto it = std::find_if(layoutBindings.begin(), layoutBindings.end(), [&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_binding; });
 		if (it == layoutBindings.end())
 		{
 			continue;
@@ -479,13 +480,13 @@ void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr&
 	auto valueBinding = *(binding->m_vulkan.m_valueBinding);
 
 	RHI::ShaderLayoutBinding layout;
-	layout.m_location = shaderBinding;
+	layout.m_binding = shaderBinding;
 	layout.m_name = name;
 	layout.m_size = (uint32_t)size;
 	layout.m_type = RHI::EShaderBindingType::UniformBuffer;
 
 	binding->SetMembersInfo(layout);
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_location, (VkDescriptorType)layout.m_type);
+	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
 
 	UpdateDescriptorSet(pShaderBindings);
 }
@@ -498,12 +499,12 @@ void GfxDeviceVulkan::AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShad
 	RHI::ShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
 
 	RHI::ShaderLayoutBinding layout;
-	layout.m_location = shaderBinding;
+	layout.m_binding = shaderBinding;
 	layout.m_name = name;
 	layout.m_type = RHI::EShaderBindingType::CombinedImageSampler;
 
 	binding->SetMembersInfo(layout);
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_location, (VkDescriptorType)layout.m_type);
+	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
 	binding->SetTextureBinding(texture);
 
 	UpdateDescriptorSet(pShaderBindings);
@@ -526,7 +527,7 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, con
 		auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
 		auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [&it](const VulkanDescriptorPtr& descriptor)
 			{
-				return descriptor->GetBinding() == it->m_location;
+				return descriptor->GetBinding() == it->m_binding;
 			});
 
 		if (descrIt != descriptors.end())
@@ -545,7 +546,7 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, con
 			// Add new texture binding
 			auto textureBinding = bindings->GetOrCreateShaderBinding(parameter);
 			textureBinding->SetTextureBinding(value);
-			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(it->m_location, (VkDescriptorType)it->m_type);
+			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(it->m_binding, (VkDescriptorType)it->m_type);
 			UpdateDescriptorSet(bindings);
 
 			return;
@@ -635,9 +636,12 @@ void GfxDeviceVulkan::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::Materia
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto device = m_vkInstance->GetMainDevice();
-	auto& shaderBinding = material->GetBindings()->GetOrCreateShaderBinding(binding);
-	UpdateShaderBingingVariable(cmd, shaderBinding, variable, value, size);
+	if (material->GetBindings()->HasBinding(binding))
+	{
+		auto device = m_vkInstance->GetMainDevice();
+		auto& shaderBinding = material->GetBindings()->GetOrCreateShaderBinding(binding);
+		UpdateShaderBingingVariable(cmd, shaderBinding, variable, value, size);
+	}
 }
 
 void GfxDeviceVulkan::UpdateShaderBingingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size)

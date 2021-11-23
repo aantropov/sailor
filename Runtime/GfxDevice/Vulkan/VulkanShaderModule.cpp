@@ -88,7 +88,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			{
 				rhiBinding.m_name = std::string(reflBinding.name);
 				rhiBinding.m_type = (RHI::EShaderBindingType)reflBinding.descriptor_type;
-				rhiBinding.m_location = reflBinding.binding;
+				rhiBinding.m_binding = reflBinding.binding;
 				rhiBinding.m_size = reflBinding.block.size;
 				rhiBinding.m_set = reflBinding.set;
 
