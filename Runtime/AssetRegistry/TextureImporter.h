@@ -19,7 +19,8 @@ namespace Sailor
 		static SAILOR_API void Initialize();
 		virtual SAILOR_API ~TextureImporter() override;
 
-		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfoPtr assetInfo) override;
+		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override; 
+		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		static SAILOR_API bool LoadTextureRaw(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
 		static SAILOR_API RHI::TexturePtr LoadTexture(UID uid);

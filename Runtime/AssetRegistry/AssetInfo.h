@@ -51,7 +51,9 @@ namespace Sailor
 	class IAssetInfoHandlerListener
 	{
 	public:
-		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfoPtr assetInfo) {}
+		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) = 0;
+		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) = 0;
+
 	};
 
 	class IAssetInfoHandler

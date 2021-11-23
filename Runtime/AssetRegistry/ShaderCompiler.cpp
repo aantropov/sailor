@@ -205,56 +205,62 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	TSharedPtr<ShaderAsset> pShader = m_pInstance->LoadShaderAsset(assetUID).Lock();
-	AssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(assetUID);
-
-	if (!pShader->ContainsFragment() || !pShader->ContainsVertex())
+	if (TWeakPtr<ShaderAsset> pWeakShader = m_pInstance->LoadShaderAsset(assetUID))
 	{
-		SAILOR_LOG("Skip shader compilation (missing fragment/vertex module): %s", assetInfo->GetAssetFilepath().c_str());
+		TSharedPtr<ShaderAsset> pShader = pWeakShader.Lock();
+		AssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(assetUID);
 
-		return;
-	}
-
-	const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->m_defines.size());
-
-	std::vector<uint32_t> permutationsToCompile;
-
-	for (uint32_t permutation = 0; permutation < NumPermutations; permutation++)
-	{
-		if (m_pInstance->m_shaderCache.IsExpired(assetUID, permutation))
+		if (!pShader->ContainsFragment() || !pShader->ContainsVertex())
 		{
-			permutationsToCompile.push_back(permutation);
+			SAILOR_LOG("Skip shader compilation (missing fragment/vertex module): %s", assetInfo->GetAssetFilepath().c_str());
+
+			return;
 		}
-	}
 
-	if (permutationsToCompile.empty())
-	{
-		return;
-	}
+		const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->m_defines.size());
 
-	auto scheduler = JobSystem::Scheduler::GetInstance();
+		std::vector<uint32_t> permutationsToCompile;
 
-	SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.size());
-
-	auto saveCacheJob = scheduler->CreateJob("Save Shader Cache", [=]()
-	{
-		SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
-		m_pInstance->m_shaderCache.SaveCache();
-	});
-
-	for (uint32_t i = 0; i < permutationsToCompile.size(); i++)
-	{
-		auto job = scheduler->CreateJob("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
+		for (uint32_t permutation = 0; permutation < NumPermutations; permutation++)
 		{
-			SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
-			ForceCompilePermutation(assetUID, permutationsToCompile[i]);
-		});
+			if (m_pInstance->m_shaderCache.IsExpired(assetUID, permutation))
+			{
+				permutationsToCompile.push_back(permutation);
+			}
+		}
 
-		saveCacheJob->Join(job);
-		scheduler->Run(job);
+		if (permutationsToCompile.empty())
+		{
+			return;
+		}
+
+		auto scheduler = JobSystem::Scheduler::GetInstance();
+
+		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.size());
+
+		auto saveCacheJob = scheduler->CreateJob("Save Shader Cache", [=]()
+			{
+				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
+				m_pInstance->m_shaderCache.SaveCache();
+			});
+
+		for (uint32_t i = 0; i < permutationsToCompile.size(); i++)
+		{
+			auto job = scheduler->CreateJob("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
+				{
+					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
+					ForceCompilePermutation(assetUID, permutationsToCompile[i]);
+				});
+
+			saveCacheJob->Join(job);
+			scheduler->Run(job);
+		}
+		scheduler->Run(saveCacheJob);
 	}
-	scheduler->Run(saveCacheJob);
+	else
+	{
+		SAILOR_LOG("Cannot find shader asset %s", assetUID.ToString().c_str());
+	}
 }
 
 TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
@@ -296,7 +302,15 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 	return TWeakPtr<ShaderAsset>();
 }
 
-void ShaderCompiler::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
+void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
+{
+	if (bWasExpired)
+	{
+		ShaderCompiler::GetInstance()->CompileAllPermutations(assetInfo->GetUID());
+	}
+}
+
+void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
 {
 	ShaderCompiler::GetInstance()->CompileAllPermutations(assetInfo->GetUID());
 }

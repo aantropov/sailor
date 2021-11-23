@@ -153,7 +153,11 @@ MaterialImporter::~MaterialImporter()
 {
 }
 
-void MaterialImporter::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
+void MaterialImporter::OnImportAsset(AssetInfoPtr assetInfo)
+{
+}
+
+void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 }
 

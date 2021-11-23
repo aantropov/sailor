@@ -81,7 +81,8 @@ namespace Sailor
 		static SAILOR_API void Initialize();
 		virtual SAILOR_API ~MaterialImporter() override;
 
-		virtual SAILOR_API void OnAssetInfoUpdated(AssetInfoPtr assetInfo) override;
+		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
+		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		static SAILOR_API TWeakPtr<MaterialAsset> LoadMaterialAsset(UID uid);
 		static SAILOR_API RHI::MaterialPtr LoadMaterial(UID uid);

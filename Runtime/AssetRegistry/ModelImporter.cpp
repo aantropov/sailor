@@ -31,7 +31,11 @@ ModelImporter::~ModelImporter()
 {
 }
 
-void ModelImporter::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
+void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
+{
+}
+
+void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{

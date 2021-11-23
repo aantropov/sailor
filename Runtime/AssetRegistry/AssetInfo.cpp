@@ -89,7 +89,7 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) co
 	auto assetInfoPtr = LoadAssetInfo(assetInfoFilename);
 	for (IAssetInfoHandlerListener* listener : m_listeners)
 	{
-		listener->OnAssetInfoUpdated(assetInfoPtr);
+		listener->OnImportAsset(assetInfoPtr);
 	}
 
 	return assetInfoPtr;
@@ -109,6 +109,8 @@ AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) 
 
 void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 {
+	bool bWasExpired = assetInfo->IsExpired();
+
 	std::ifstream assetFile(assetInfo->GetMetaFilepath());
 
 	json meta;
@@ -121,7 +123,7 @@ void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 
 	for (IAssetInfoHandlerListener* listener : m_listeners)
 	{
-		//listener->OnAssetInfoUpdated(assetInfo);
+		listener->OnUpdateAssetInfo(assetInfo, bWasExpired);
 	}
 }
 

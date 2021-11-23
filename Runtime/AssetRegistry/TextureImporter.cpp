@@ -31,7 +31,12 @@ TextureImporter::~TextureImporter()
 {
 }
 
-void TextureImporter::OnAssetInfoUpdated(AssetInfoPtr assetInfo)
+void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
+{
+}
+
+
+void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
 
