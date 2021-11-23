@@ -16,10 +16,13 @@ namespace Sailor
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
 
 		SAILOR_API bool ShouldGenerateMaterials() const { return m_bShouldGenerateMaterials; }
+		SAILOR_API bool ShouldBatchByMaterial() const { return m_bShouldBatchByMaterials; }
 
 	private:
 
+		std::vector<UID> m_materials;
 		bool m_bShouldGenerateMaterials = true;
+		bool m_bShouldBatchByMaterials = true;
 	};
 
 	using ModelAssetInfoPtr = ModelAssetInfo*;

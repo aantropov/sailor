@@ -12,6 +12,33 @@ namespace Sailor
 		virtual SAILOR_API void Serialize(nlohmann::json& outData) const = 0;
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) = 0;
 	};
+
+	template<typename TEntryType>
+	void SerializeArray(const std::vector<TEntryType>& inArray, nlohmann::json& outJson)
+	{
+		auto jsonArray = nlohmann::json::array();
+		for (const auto& entry : inArray)
+		{
+			nlohmann::json o;
+			entry.Serialize(o);
+			jsonArray.push_back(o);
+		}
+
+		outJson = std::move(jsonArray);
+	}
+
+	template<typename TEntryType>
+	void DeserializeArray(std::vector<TEntryType>& outArray, const nlohmann::json& inJson)
+	{
+		outArray.clear();
+
+		for (auto& elem : inJson)
+		{
+			TEntryType entry;
+			entry.Deserialize(elem);
+			outArray.push_back(std::move(entry));
+		}
+	}
 }
 
 namespace ns

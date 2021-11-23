@@ -34,15 +34,7 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	outData["fill_mode"] = m_pData->m_renderState.GetFillMode();
 	outData["defines"] = m_pData->m_shaderDefines;
 
-	auto jsonSamplers = json::array();
-	for (auto& sampler : m_pData->m_samplers)
-	{
-		nlohmann::json o;
-		sampler.Serialize(o);
-		jsonSamplers.push_back(o);
-	}
-
-	outData["samplers"] = jsonSamplers;
+	SerializeArray(m_pData->m_samplers, outData["samplers"]);
 	outData["uniforms"] = m_pData->m_uniformsVec4;
 
 	m_pData->m_shader.Serialize(outData["shader"]);
@@ -113,13 +105,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 
 	if (outData.contains("samplers"))
 	{
-		for (auto& elem : outData["samplers"])
-		{
-			SamplerEntry entry;
-			entry.Deserialize(elem);
-
-			m_pData->m_samplers.emplace_back(std::move(entry));
-		}
+		Sailor::DeserializeArray(m_pData->m_samplers, outData["samplers"]);
 	}
 
 	if (outData.contains("uniforms"))
@@ -200,7 +186,7 @@ TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
 {
 	json newMaterial;
-	
+
 	MaterialAsset asset;
 	asset.m_pData = TUniquePtr<MaterialAsset::Data>::Make(std::move(data));
 	asset.Serialize(newMaterial);
