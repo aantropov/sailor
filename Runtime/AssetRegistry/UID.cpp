@@ -4,6 +4,8 @@
 using namespace Sailor;
 using namespace nlohmann;
 
+const UID UID::Invalid = UID();
+
 void UID::Serialize(nlohmann::json& outData) const
 {
 	outData = json{ {"uid", m_UID} };

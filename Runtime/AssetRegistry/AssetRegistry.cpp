@@ -24,8 +24,6 @@ void AssetRegistry::Initialize()
 	ShaderAssetInfoHandler::Initialize();
 	ModelAssetInfoHandler::Initialize();
 	MaterialAssetInfoHandler::Initialize();
-
-	m_pInstance->ScanContentFolder();
 }
 
 bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& text)
@@ -78,9 +76,79 @@ bool AssetRegistry::RegisterAssetInfoHandler(const std::vector<std::string>& sup
 	return bAssigned;
 }
 
-std::string AssetRegistry::GetMetaFilePath(const std::string& assetFilePath)
+std::string AssetRegistry::GetMetaFilePath(const std::string& assetFilepath)
 {
-	return assetFilePath + "." + MetaFileExtension;
+	return assetFilepath + "." + MetaFileExtension;
+}
+
+const UID& AssetRegistry::GetOrLoadAsset(const std::string& assetFilepath)
+{
+	if (auto assetInfo = GetAssetInfoPtr(assetFilepath))
+	{
+		return assetInfo->GetUID();
+	}
+	return LoadAsset(assetFilepath);
+}
+
+const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
+{
+	// Convert to absolute path
+	const std::string filepath = (!assetFilepath._Starts_with(ContentRootFolder)) ?
+		(ContentRootFolder + Utils::SanitizeFilepath(assetFilepath)) :
+		Utils::SanitizeFilepath(assetFilepath);
+
+	const std::string extension = Utils::GetFileExtension(filepath);
+
+	if (extension != MetaFileExtension)
+	{
+		const std::string assetInfoFile = GetMetaFilePath(filepath);
+
+		IAssetInfoHandler* assetInfoHandler = DefaultAssetInfoHandler::GetInstance();
+
+		auto assetInfoHandlerIt = m_assetInfoHandlers.find(extension);
+		if (assetInfoHandlerIt != m_assetInfoHandlers.end())
+		{
+			assetInfoHandler = (*assetInfoHandlerIt).second;
+		}
+
+		auto uid = m_UIDs.find(filepath);
+		if (uid != m_UIDs.end())
+		{
+			auto assetInfoIt = m_loadedAssetInfo.find(uid->second);
+			if (assetInfoIt != m_loadedAssetInfo.end())
+			{
+				AssetInfoPtr assetInfo = assetInfoIt->second;
+				if (assetInfo->IsExpired())
+				{
+					SAILOR_LOG("Reload asset info: %s", assetInfoFile.c_str());
+					assetInfoHandler->ReloadAssetInfo(assetInfo);
+				}
+				return (*uid).second;
+			}
+
+			// Meta were delete
+			m_UIDs.erase(uid);
+		}
+
+		AssetInfoPtr assetInfo = nullptr;
+		if (std::filesystem::exists(assetInfoFile))
+		{
+			SAILOR_LOG("Load asset info: %s", assetInfoFile.c_str());
+			assetInfo = assetInfoHandler->LoadAssetInfo(assetInfoFile);
+		}
+		else
+		{
+			SAILOR_LOG("Import new asset: %s", filepath.c_str());
+			assetInfo = assetInfoHandler->ImportAsset(filepath);
+		}
+
+		m_loadedAssetInfo[assetInfo->GetUID()] = assetInfo;
+		m_UIDs[filepath] = assetInfo->GetUID();
+
+		return assetInfo->GetUID();
+	}
+
+	return UID::Invalid;
 }
 
 void AssetRegistry::ScanFolder(const std::string& folderPath)
@@ -95,56 +163,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 		}
 		else if (entry.is_regular_file())
 		{
-			const std::string filepath = Utils::SanitizeFilepath(entry.path().string());
-			const std::string extension = Utils::GetFileExtension(filepath);
-
-			if (extension != MetaFileExtension)
-			{
-				const std::string assetInfoFile = GetMetaFilePath(filepath);
-
-				IAssetInfoHandler* assetInfoHandler = DefaultAssetInfoHandler::GetInstance();
-
-				auto assetInfoHandlerIt = m_assetInfoHandlers.find(extension);
-				if (assetInfoHandlerIt != m_assetInfoHandlers.end())
-				{
-					assetInfoHandler = (*assetInfoHandlerIt).second;
-				}
-
-				auto uid = m_UIDs.find(filepath);
-				if (uid != m_UIDs.end())
-				{
-					auto assetInfoIt = m_loadedAssetInfo.find(uid->second);
-					if (assetInfoIt != m_loadedAssetInfo.end())
-					{
-						AssetInfoPtr assetInfo = assetInfoIt->second;
-						if (assetInfo->IsExpired())
-						{
-							SAILOR_LOG("Reload asset info: %s", assetInfoFile.c_str());
-							assetInfoHandler->ReloadAssetInfo(assetInfo);
-						}
-						continue;
-					}
-
-					// Meta were delete
-					m_UIDs.erase(uid);
-				}
-
-				AssetInfoPtr assetInfo = nullptr;
-				if (std::filesystem::exists(assetInfoFile))
-				{
-					SAILOR_LOG("Load asset info: %s", assetInfoFile.c_str());
-					assetInfo = assetInfoHandler->LoadAssetInfo(assetInfoFile);
-				}
-				else
-				{
-					SAILOR_LOG("Import new asset: %s", filepath.c_str());
-					assetInfo = assetInfoHandler->ImportAsset(filepath);
-				}
-
-				m_loadedAssetInfo[assetInfo->GetUID()] = assetInfo;
-				m_UIDs[filepath] = assetInfo->GetUID();
-
-			}
+			LoadAsset(entry.path().string());
 		}
 	}
 }
@@ -168,6 +187,7 @@ AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFil
 	{
 		return GetAssetInfoPtr_Internal(it->second);
 	}
+
 	return nullptr;
 }
 

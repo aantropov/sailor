@@ -123,12 +123,11 @@ void ShaderCache::Initialize()
 	}
 
 	LoadCache();
-	ClearExpired();
-	SaveCache();
 }
 
 void ShaderCache::Shutdown()
 {
+	ClearExpired();
 	SaveCache();
 
 	for (const auto& entries : m_cache.m_data)
@@ -258,7 +257,6 @@ void ShaderCache::Remove(const ShaderCacheEntry* pEntry)
 		}
 	}
 }
-
 
 void ShaderCache::Remove(const UID& uid)
 {

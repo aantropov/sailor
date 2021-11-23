@@ -86,7 +86,13 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) co
 	assetFile << newMeta.dump();
 	assetFile.close();
 
-	return LoadAssetInfo(assetInfoFilename);
+	auto assetInfoPtr = LoadAssetInfo(assetInfoFilename);
+	for (IAssetInfoHandlerListener* listener : m_listeners)
+	{
+		listener->OnAssetInfoUpdated(assetInfoPtr);
+	}
+
+	return assetInfoPtr;
 }
 
 AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) const

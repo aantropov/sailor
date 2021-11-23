@@ -7,6 +7,7 @@
 #include "Core/SharedPtr.hpp"
 #include "Core/WeakPtr.hpp"
 #include "AssetInfo.h"
+#include "ModelAssetInfo.h"
 #include "JobSystem/JobSystem.h"
 
 namespace Sailor::RHI
@@ -29,5 +30,6 @@ namespace Sailor
 
 	private:
 
+		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 	};
 }

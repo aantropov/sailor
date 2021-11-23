@@ -58,6 +58,9 @@ void EngineInstance::Initialize()
 	ShaderCompiler::Initialize();
 	ModelImporter::Initialize();
 	MaterialImporter::Initialize();
+
+	AssetRegistry::GetInstance()->ScanContentFolder();
+
 	ShaderCompiler::GetInstance();
 	Framework::Initialize();
 
@@ -166,7 +169,6 @@ void EngineInstance::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
-	AssetRegistry::Shutdown();
 	Framework::Shutdown();
 
 	// We need to finish all jobs before release
@@ -178,6 +180,7 @@ void EngineInstance::Shutdown()
 	JobSystem::Scheduler::Shutdown();
 	Win32::ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
+	AssetRegistry::Shutdown();
 
 	delete m_pInstance;
 }

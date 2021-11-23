@@ -57,6 +57,8 @@ namespace Sailor
 
 		SAILOR_API void ScanContentFolder();
 		SAILOR_API void ScanFolder(const std::string& folderPath);
+		SAILOR_API const UID& LoadAsset(const std::string& filepath);
+		SAILOR_API const UID& GetOrLoadAsset(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
 		TAssetInfoPtr GetAssetInfoPtr(UID uid) const

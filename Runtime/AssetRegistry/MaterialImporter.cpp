@@ -205,9 +205,7 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 	assetFile << newMaterial.dump();
 	assetFile.close();
 
-	AssetRegistry::GetInstance()->ScanFolder(Utils::GetFileFolder(assetFilepath));
-
-	return AssetRegistry::GetInstance()->GetAssetInfoPtr(assetFilepath)->GetUID();
+	return AssetRegistry::GetInstance()->LoadAsset(assetFilepath);
 }
 
 RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
