@@ -34,6 +34,11 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 	m_trackedFences.clear();
 	m_uniformBuffers.clear();
 
+	// Waiting finishing releasing of rendering resources
+	JobSystem::Scheduler::GetInstance()->ProcessJobsOnMainThread();
+	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
+	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Worker);
+
 	GfxDevice::Vulkan::VulkanApi::Shutdown();
 }
 
