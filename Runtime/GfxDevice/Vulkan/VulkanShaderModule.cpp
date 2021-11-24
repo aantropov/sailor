@@ -91,6 +91,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				rhiBinding.m_binding = reflBinding.binding;
 				rhiBinding.m_size = reflBinding.block.size;
 				rhiBinding.m_set = reflBinding.set;
+				rhiBinding.m_arrayCount = layoutBinding.descriptorCount;
 
 				for (uint32_t i = 0; i < reflBinding.block.member_count; i++)
 				{
@@ -100,6 +101,36 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 					member.m_absoluteOffset = reflBinding.block.members[i].absolute_offset;
 					member.m_size = reflBinding.block.members[i].size;
 					member.m_type = (RHI::EShaderBindingMemberType)(reflBinding.block.members[i].type_description->op);
+					member.m_arrayDimensions = reflBinding.block.members[i].array.dims_count;
+					// TODO: implement multiple arrays
+					member.m_arrayCount = reflBinding.block.members[i].array.dims[0];
+					member.m_arrayStride = reflBinding.block.members[i].array.stride;
+					
+					if (member.m_type == RHI::EShaderBindingMemberType::Array && reflBinding.block.members[i].type_description)
+					{
+						const auto& typeFlags = reflBinding.block.members[i].type_description->type_flags;
+						if (typeFlags & SPV_REFLECT_TYPE_FLAG_FLOAT)
+						{
+							member.m_type = RHI::EShaderBindingMemberType::Float;
+						}
+						else if (typeFlags & SPV_REFLECT_TYPE_FLAG_BOOL)
+						{
+							member.m_type = RHI::EShaderBindingMemberType::Bool;
+						}
+						else if (typeFlags & SPV_REFLECT_TYPE_FLAG_INT)
+						{
+							member.m_type = RHI::EShaderBindingMemberType::Int;
+						}
+
+						if (typeFlags & SPV_REFLECT_TYPE_FLAG_MATRIX)
+						{
+							member.m_type = RHI::EShaderBindingMemberType::Matrix;
+						}
+						else if (typeFlags & SPV_REFLECT_TYPE_FLAG_VECTOR)
+						{
+							member.m_type = RHI::EShaderBindingMemberType::Vector;
+						}
+					}
 
 					rhiBinding.m_members.emplace_back(std::move(member));
 				}

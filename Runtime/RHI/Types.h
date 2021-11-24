@@ -421,6 +421,11 @@ namespace Sailor::RHI
 		std::string m_name = "";
 		uint32_t m_absoluteOffset = 0u;
 		uint32_t m_size = 0u;
+		uint32_t m_arrayCount = 1u;
+		uint32_t m_arrayDimensions = 1u;
+		uint32_t m_arrayStride = 0u;
+
+		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};
 
 	struct ShaderLayoutBinding
@@ -432,6 +437,9 @@ namespace Sailor::RHI
 		uint8_t m_binding = 0u;
 		uint32_t m_size = 0u;
 		uint32_t m_set = 0u;
+		uint32_t m_arrayCount = 0u;
+
+		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};
 
 	class Vertex

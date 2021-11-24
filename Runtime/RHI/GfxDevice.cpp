@@ -91,3 +91,17 @@ void IGfxDevice::SubmitCommandList_Immediate(CommandListPtr commandList)
 	SubmitCommandList(commandList, fence);
 	fence->Wait();
 }
+
+void IGfxDeviceCommands::UpdateShaderBingingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	// All uniform buffers should be bound
+	assert(shaderBinding->IsBind());
+
+	RHI::ShaderLayoutBindingMember bindingLayout;
+	assert(shaderBinding->FindVariableInUniformBuffer(variable, bindingLayout));
+	assert(bindingLayout.IsArray() || indexInArray == 0);
+
+	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset + bindingLayout.m_arrayStride * indexInArray);
+}
