@@ -16,6 +16,7 @@
 #include <mutex>
 
 #include "JobSystem/JobSystem.h"
+#include <unordered_set>
 
 #ifdef _DEBUG
 #pragma comment(lib, "shaderc_combinedd.lib")
@@ -351,6 +352,13 @@ uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines,
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	std::unordered_set<std::string> requested;
+
+	for (int32_t i = 0; i < actualDefines.size(); i++)
+	{
+		requested.insert(actualDefines[i]);
+	}
+
 	uint32_t res = 0;
 	for (int32_t i = 0; i < defines.size(); i++)
 	{
@@ -359,7 +367,7 @@ uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines,
 			break;
 		}
 
-		if (defines[i] == actualDefines[i])
+		if (requested.find(defines[i]) != std::end(requested))
 		{
 			res += 1 << i;
 		}

@@ -93,6 +93,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				rhiBinding.m_set = reflBinding.set;
 				rhiBinding.m_arrayCount = layoutBinding.descriptorCount;
 
+				uint32_t membersSize = 0;
 				for (uint32_t i = 0; i < reflBinding.block.member_count; i++)
 				{
 					RHI::ShaderLayoutBindingMember member;
@@ -106,6 +107,8 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 					member.m_arrayCount = reflBinding.block.members[i].array.dims[0];
 					member.m_arrayStride = reflBinding.block.members[i].array.stride;
 					
+					membersSize += reflBinding.block.members[i].padded_size;
+
 					if (member.m_type == RHI::EShaderBindingMemberType::Array && reflBinding.block.members[i].type_description)
 					{
 						const auto& typeFlags = reflBinding.block.members[i].type_description->type_flags;
@@ -133,6 +136,12 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 					}
 
 					rhiBinding.m_members.emplace_back(std::move(member));
+				}
+
+				if (rhiBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
+				{
+					//We store 1 instance size in binding
+					rhiBinding.m_size = membersSize;
 				}
 			}
 		}

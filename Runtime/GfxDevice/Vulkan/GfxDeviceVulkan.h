@@ -57,7 +57,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// Shader binding set
 		virtual SAILOR_API RHI::ShaderBindingSetPtr CreateShaderBindings();
-		virtual SAILOR_API void AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding);
+		virtual SAILOR_API void AddBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType);
 		virtual SAILOR_API void AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding);
 
 		// Used for full binding update

@@ -65,7 +65,7 @@ namespace Sailor::RHI
 
 		// Shader binding set
 		virtual SAILOR_API ShaderBindingSetPtr CreateShaderBindings() = 0;
-		virtual SAILOR_API void AddUniformBufferToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding) = 0;
+		virtual SAILOR_API void AddBufferToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
 		virtual SAILOR_API void AddSamplerToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding) = 0;
 
 		// Used for full binding update

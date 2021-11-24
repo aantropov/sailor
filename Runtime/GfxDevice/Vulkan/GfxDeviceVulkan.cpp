@@ -489,17 +489,19 @@ RHI::ShaderBindingSetPtr GfxDeviceVulkan::CreateShaderBindings()
 	return res;
 }
 
-void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding)
+void GfxDeviceVulkan::AddBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType)
 {
 	SAILOR_PROFILE_FUNCTION();
+
+	bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer;
 
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::ShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
 
-	auto allocator = GetUniformBufferAllocator(name);
+	auto allocator = bIsStorage ? GetStorageBufferAllocator() : GetUniformBufferAllocator(name);
 
-	binding->m_vulkan.m_valueBinding = allocator->Allocate(size, device->GetUboOffsetAlignment(size));
+	binding->m_vulkan.m_valueBinding = allocator->Allocate(size, bIsStorage ? 0 : device->GetUboOffsetAlignment(size));
 	binding->m_vulkan.m_bufferAllocator = allocator;
 	auto valueBinding = *(binding->m_vulkan.m_valueBinding);
 
@@ -507,7 +509,7 @@ void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr&
 	layout.m_binding = shaderBinding;
 	layout.m_name = name;
 	layout.m_size = (uint32_t)size;
-	layout.m_type = RHI::EShaderBindingType::UniformBuffer;
+	layout.m_type = bufferType;
 
 	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);

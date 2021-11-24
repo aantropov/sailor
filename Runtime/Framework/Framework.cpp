@@ -153,10 +153,10 @@ void Framework::CpuFrame(FrameState& state)
 		}
 
 		m_testBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-		Sailor::RHI::Renderer::GetDriver()->AddUniformBufferToShaderBindings(m_testBinding, "instance", sizeof(glm::mat4x4), 0);
+		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_testBinding, "data", sizeof(glm::mat4x4), 0, EShaderBindingType::StorageBuffer);
 
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-		Sailor::RHI::Renderer::GetDriver()->AddUniformBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0);
+		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, EShaderBindingType::UniformBuffer);
 
 		if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
@@ -232,7 +232,7 @@ void Framework::CpuFrame(FrameState& state)
 			auto pCommandList = state.CreateCommandBuffer(0);
 			Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
-			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("instance"), &model, sizeof(model));
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("data"), &model, sizeof(model));
 			RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, m_testMaterial, "material.color", std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
 			Renderer::GetDriverCommands()->EndCommandList(pCommandList);
 		});
