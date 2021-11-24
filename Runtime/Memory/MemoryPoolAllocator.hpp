@@ -202,10 +202,10 @@ namespace Sailor::Memory
 			friend class TPoolAllocator;
 		};
 
-		TPoolAllocator(size_t startBlockSize = 2 * 1024 * 1024, size_t elementSize = 2048, size_t requestedSize = 4 * 1024 * 1024) :
+		TPoolAllocator(size_t startBlockSize = 2 * 1024 * 1024, size_t elementSize = 2048, size_t reservedSize = 4 * 1024 * 1024) :
 			m_startBlockSize(startBlockSize), 
 			m_elementSize(elementSize),
-			m_requestedSize(requestedSize)
+			m_reservedSize(reservedSize)
 		{}
 
 		TPoolAllocator(const TPoolAllocator&) = delete;
@@ -324,7 +324,7 @@ namespace Sailor::Memory
 		bool HeuristicToFreeBlock(size_t blockSize, size_t countFreeBlocks) const
 		{
 			// Free small blocks
-			return (countFreeBlocks > 2 || (countFreeBlocks > 1 && (blockSize / (float)m_usedDataSpace) < 0.25f)) && m_requestedSize < (m_usedDataSpace - blockSize);
+			return (countFreeBlocks > 2 || (countFreeBlocks > 1 && (blockSize / (float)m_usedDataSpace) < 0.25f)) && m_reservedSize < (m_usedDataSpace - blockSize);
 		}
 
 		void FindMemoryBlock(size_t size, size_t alignment, uint32_t& outLayoutIndex, uint32_t& outBlockLayoutIndex, uint32_t& outAlignedOffset)
@@ -392,6 +392,6 @@ namespace Sailor::Memory
 		std::vector<MemoryBlock> m_blocks;
 		std::vector<uint32_t> m_layout;
 		std::vector<uint32_t> m_emptyBlocks;
-		size_t m_requestedSize = 2048;
+		size_t m_reservedSize = 2048;
 	};
 }

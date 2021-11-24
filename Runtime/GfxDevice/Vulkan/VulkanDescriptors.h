@@ -69,7 +69,8 @@ namespace Sailor::GfxDevice::Vulkan
 			uint32_t dstArrayElement,
 			VulkanBufferPtr buffer,
 			VkDeviceSize offset = 0,
-			VkDeviceSize range = VK_WHOLE_SIZE);
+			VkDeviceSize range = VK_WHOLE_SIZE,
+			RHI::EShaderBindingType bufferType = RHI::EShaderBindingType::UniformBuffer);
 
 		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
 

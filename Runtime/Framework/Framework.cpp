@@ -233,7 +233,6 @@ void Framework::CpuFrame(FrameState& state)
 			Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("instance"), &model, sizeof(model));
-
 			RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, m_testMaterial, "material.color", std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
 			Renderer::GetDriverCommands()->EndCommandList(pCommandList);
 		});

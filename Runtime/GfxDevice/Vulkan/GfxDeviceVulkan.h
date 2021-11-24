@@ -93,9 +93,13 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API void UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetStorageBufferAllocator();
 
 		// Uniform buffers to store uniforms
 		std::unordered_map<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
+
+		// Storage buffers to store everything
+		TSharedPtr<VulkanBufferAllocator> m_storageBuffer;
 
 		GfxDevice::Vulkan::VulkanApi* m_vkInstance;
 	};

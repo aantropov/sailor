@@ -19,12 +19,12 @@ bool ShaderBinding::IsBind() const
 
 bool ShaderBinding::FindVariableInUniformBuffer(const std::string& variable, ShaderLayoutBindingMember& outVariable) const
 {
-	auto it = std::find_if(m_membersInfo.m_members.begin(), m_membersInfo.m_members.end(), [&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
+	auto it = std::find_if(m_bindingLayout.m_members.begin(), m_bindingLayout.m_members.end(), [&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
 		{
 			return shaderLayoutBinding.m_name == variable;
 		});
 
-	if (it != m_membersInfo.m_members.end())
+	if (it != m_bindingLayout.m_members.end())
 	{
 		outVariable = (*it);
 		return true;
@@ -38,9 +38,9 @@ ShaderBinding::~ShaderBinding()
 #if defined(VULKAN)
 	if (m_vulkan.m_valueBinding)
 	{
-		if (m_vulkan.m_uniformBufferAllocator)
+		if (m_vulkan.m_bufferAllocator)
 		{
-			auto allocator = m_vulkan.m_uniformBufferAllocator.Lock();
+			auto allocator = m_vulkan.m_bufferAllocator.Lock();
 			allocator->Free(m_vulkan.m_valueBinding);
 		}
 	}

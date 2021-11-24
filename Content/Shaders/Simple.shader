@@ -1,11 +1,11 @@
 {
-"includes":[],
+"includes": [] ,
 
-"glslCommon":
+"glslCommon" :
 BEGIN_CODE
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
-layout(set=0, binding=0) uniform FrameData
+layout(set = 0, binding = 0) uniform FrameData
 {
     mat4 view;
     mat4 projection;

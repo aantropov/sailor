@@ -33,6 +33,7 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 
 	m_trackedFences.clear();
 	m_uniformBuffers.clear();
+	m_storageBuffer.Clear();
 
 	// Waiting finishing releasing of rendering resources
 	JobSystem::Scheduler::GetInstance()->ProcessJobsOnMainThread();
@@ -315,7 +316,7 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 			{
 				auto& valueBinding = (*binding.second->m_vulkan.m_valueBinding);
 				auto descr = VulkanDescriptorBufferPtr::Make(binding.second->m_vulkan.m_descriptorSetLayout.binding, 0,
-					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size);
+					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.second->GetLayout().m_type);
 
 				descriptors.push_back(descr);
 				descriptionSetLayouts.push_back(binding.second->m_vulkan.m_descriptorSetLayout);
@@ -406,9 +407,17 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 		{
 			auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
 			binding->m_vulkan.m_valueBinding = uniformAllocator->Allocate(layoutBinding.m_size, device->GetUboOffsetAlignment(layoutBinding.m_size));
-			binding->m_vulkan.m_uniformBufferAllocator = uniformAllocator;
+			binding->m_vulkan.m_bufferAllocator = uniformAllocator;
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
-			binding->SetMembersInfo(layoutBinding);
+			binding->SetLayout(layoutBinding);
+		}
+		else if (layoutBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
+		{
+			auto& storageAllocator = GetStorageBufferAllocator();
+			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, 0);
+			binding->m_vulkan.m_bufferAllocator = storageAllocator;
+			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
+			binding->SetLayout(layoutBinding);
 		}
 	}
 
@@ -416,6 +425,21 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	UpdateDescriptorSet(shaderBindings);
 
 	return res;
+}
+
+TSharedPtr<VulkanBufferAllocator>& GfxDeviceVulkan::GetStorageBufferAllocator()
+{
+	if (!m_storageBuffer)
+	{
+		const size_t StorageBufferBlockSize = 256 * 1024 * 1024u;
+		const size_t ReservedSize = 64 * 1024 * 1024u;
+
+		m_storageBuffer = TSharedPtr<VulkanBufferAllocator>::Make(StorageBufferBlockSize, 1024 * 1024u, StorageBufferBlockSize);
+		m_storageBuffer->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+		m_storageBuffer->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	}
+	return m_storageBuffer;
 }
 
 TSharedPtr<VulkanBufferAllocator>& GfxDeviceVulkan::GetUniformBufferAllocator(const std::string& uniformTypeId)
@@ -476,7 +500,7 @@ void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr&
 	auto allocator = GetUniformBufferAllocator(name);
 
 	binding->m_vulkan.m_valueBinding = allocator->Allocate(size, device->GetUboOffsetAlignment(size));
-	binding->m_vulkan.m_uniformBufferAllocator = allocator;
+	binding->m_vulkan.m_bufferAllocator = allocator;
 	auto valueBinding = *(binding->m_vulkan.m_valueBinding);
 
 	RHI::ShaderLayoutBinding layout;
@@ -485,7 +509,7 @@ void GfxDeviceVulkan::AddUniformBufferToShaderBindings(RHI::ShaderBindingSetPtr&
 	layout.m_size = (uint32_t)size;
 	layout.m_type = RHI::EShaderBindingType::UniformBuffer;
 
-	binding->SetMembersInfo(layout);
+	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
 
 	UpdateDescriptorSet(pShaderBindings);
@@ -503,7 +527,7 @@ void GfxDeviceVulkan::AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShad
 	layout.m_name = name;
 	layout.m_type = RHI::EShaderBindingType::CombinedImageSampler;
 
-	binding->SetMembersInfo(layout);
+	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
 	binding->SetTextureBinding(texture);
 

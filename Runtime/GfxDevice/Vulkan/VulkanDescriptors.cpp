@@ -141,11 +141,12 @@ VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
 	uint32_t dstArrayElement,
 	VulkanBufferPtr buffer,
 	VkDeviceSize offset,
-	VkDeviceSize range) :
+	VkDeviceSize range,
+	RHI::EShaderBindingType bufferType) :
 	m_buffer(buffer),
 	m_offset(offset),
 	m_range(range),
-	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+	VulkanDescriptor(dstBinding, dstArrayElement, (VkDescriptorType)bufferType)
 {
 	m_bufferInfo.buffer = *buffer;
 	m_bufferInfo.offset = m_offset;
