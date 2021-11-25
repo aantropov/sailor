@@ -23,15 +23,15 @@ struct PerInstanceData
     mat4 model;
 };
 
-#ifdef USE_STORAGE_BUFFER
-layout(std140, set = 1, binding = 0) readonly buffer PerInstanceDataSSBO
-{
-    PerInstanceData instance[];
-} data;
-#else
+#ifdef USE_UNIFORM_BUFFER
 layout(set = 1, binding = 0) uniform PerInstanceDataUBO
 {
     PerInstanceData instance;
+} data;
+#else
+layout(std140, set = 1, binding = 0) readonly buffer PerInstanceDataSSBO
+{
+    PerInstanceData instance[];
 } data;
 #endif
 
@@ -51,13 +51,13 @@ layout(location=1) out vec2 fragTexcoord;
 
 void main() 
 {
-#ifdef USE_STORAGE_BUFFER
-    gl_Position = frame.projection * frame.view * data.instance[gl_BaseInstance].model * vec4(inPosition, 1.0);
-#else
+#ifdef USE_UNIFORM_BUFFER
     gl_Position = frame.projection * frame.view * data.instance.model * vec4(inPosition, 1.0);
+#else
+    gl_Position = frame.projection * frame.view * data.instance[gl_BaseInstance].model * vec4(inPosition, 1.0);
 #endif
 
-    fragColor = 1 - inColor * gl_Position.z / 1000;
+    fragColor = 1 - inColor * gl_Position.z / 3000;
 
 #ifdef CUSTOM_DATA
     fragColor *= material.color;
@@ -73,15 +73,22 @@ layout(location=0) in vec4 fragColor;
 layout(location=1) in vec2 fragTexcoord;
 
 layout(set=0, binding=1) uniform sampler2D g_defaultSampler;
-layout(set=2, binding=1) uniform sampler2D textureSampler;
+
+#ifndef NO_DIFFUSE
+layout(set=2, binding=1) uniform sampler2D diffuseSampler;
+#endif
 
 layout(location = 0) out vec4 outColor;
 
 void main() 
 {
-    outColor = fragColor * texture(textureSampler, fragTexcoord) * texture(g_defaultSampler, fragTexcoord);
+#ifndef NO_DIFFUSE
+    outColor = fragColor * texture(diffuseSampler, fragTexcoord);
+#else 
+    outColor = fragColor * texture(g_defaultSampler, fragTexcoord);
+#endif
 }
 END_CODE,
 
-"defines":["CUSTOM_DATA", "USE_STORAGE_BUFFER"]
+"defines":["CUSTOM_DATA", "USE_UNIFORM_BUFFER", "NO_DIFFUSE"]
 }

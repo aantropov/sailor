@@ -746,14 +746,7 @@ VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, Vulka
 		VK_SHARING_MODE_CONCURRENT);
 
 	const auto requirements = outbuffer->GetMemoryRequirements();
-	/*
-	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
-	auto data = stagingMemoryAllocator.Allocate(requirements.size, requirements.alignment);
 
-	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
-	stagingBuffer->Compile();
-	stagingBuffer->Bind(data);
-	/**/
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
@@ -769,16 +762,6 @@ VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, Vulka
 VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Memory::VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size)
 {
 	const auto requirements = dst.m_buffer->GetMemoryRequirements();
-	/*
-	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
-	auto data = stagingMemoryAllocator.Allocate(requirements.size, requirements.alignment);
-
-	VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
-	stagingBuffer->Compile();
-	stagingBuffer->Bind(data);
-
-	stagingBuffer->GetMemoryDevice()->Copy((*data).m_offset, size, pData);
-	*/
 
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
@@ -830,22 +813,6 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 	VkImageUsageFlags usage,
 	VkSharingMode sharingMode)
 {
-	/*
-	VulkanBufferPtr stagingBuffer;
-
-	stagingBuffer = VulkanApi::CreateBuffer(
-		device,
-		size,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		sharingMode);
-
-	if (pData != nullptr && size > 0)
-	{
-		stagingBuffer->GetMemoryDevice()->Copy(0, size, pData);
-	}
-	*/
-
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 

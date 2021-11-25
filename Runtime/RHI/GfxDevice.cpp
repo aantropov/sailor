@@ -9,19 +9,17 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertices, const std::vector<uint32_t>& indices)
+void IGfxDevice::UpdateMesh(RHI::MeshPtr mesh, const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices)
 {
-	TRefPtr<RHI::Mesh> res = TRefPtr<RHI::Mesh>::Make();
-
 	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
 
-	auto updateVerticesCmd = CreateBuffer(res->m_vertexBuffer,
+	auto updateVerticesCmd = CreateBuffer(mesh->m_vertexBuffer,
 		&vertices[0],
 		bufferSize,
 		EBufferUsageBit::VertexBuffer_Bit);
 
-	auto updateIndexCmd = CreateBuffer(res->m_indexBuffer,
+	auto updateIndexCmd = CreateBuffer(mesh->m_indexBuffer,
 		&indices[0],
 		indexBufferSize,
 		EBufferUsageBit::IndexBuffer_Bit);
@@ -30,23 +28,29 @@ TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh(const std::vector<RHI::Vertex>& vertic
 	RHI::FencePtr fenceUpdateVertices = RHI::FencePtr::Make();
 	RHI::FencePtr fenceUpdateIndex = RHI::FencePtr::Make();
 
-	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateVertices);
-	TrackDelayedInitialization(res.GetRawPtr(), fenceUpdateIndex);
+	TrackDelayedInitialization(mesh.GetRawPtr(), fenceUpdateVertices);
+	TrackDelayedInitialization(mesh.GetRawPtr(), fenceUpdateIndex);
 
 	// Submit cmd lists
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
-		([this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
-			{
+	//SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
+		//([this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
+			//{
 				SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
 				SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
-			}));
+			//}));
+
+}
+
+TRefPtr<RHI::Mesh> IGfxDevice::CreateMesh()
+{
+	TRefPtr<RHI::Mesh> res = TRefPtr<RHI::Mesh>::Make();
 
 	return res;
 }
 
 void IGfxDevice::TrackResources_ThreadSafe()
 {
-	std::unique_lock<std::mutex>(m_mutexTrackedFences);
+	std::scoped_lock<std::mutex> guard(m_mutexTrackedFences);
 
 	for (int32_t index = 0; index < m_trackedFences.size(); index++)
 	{
@@ -79,7 +83,7 @@ void IGfxDevice::TrackDelayedInitialization(IDelayedInitialization* pResource, F
 
 void IGfxDevice::TrackPendingCommandList_ThreadSafe(FencePtr handle)
 {
-	std::unique_lock<std::mutex>(m_mutexTrackedFences);
+	std::scoped_lock<std::mutex> guard(m_mutexTrackedFences);
 
 	// We should track fences to handle pending command list
 	m_trackedFences.push_back(handle);

@@ -19,8 +19,8 @@ namespace Sailor::RHI
 
 		struct
 		{
-			TWeakPtr<VulkanBufferAllocator> m_bufferAllocator{};
-			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding{};
+			TWeakPtr<VulkanBufferAllocator> m_bufferAllocator;
+			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding;
 			VkDescriptorSetLayoutBinding m_descriptorSetLayout{};
 			uint32_t m_storageInstanceIndex = 0;
 		} m_vulkan;
@@ -47,7 +47,7 @@ namespace Sailor::RHI
 
 	protected:
 
-		TexturePtr m_textureBinding{};
+		TexturePtr m_textureBinding;
 		ShaderLayoutBinding m_bindingLayout{};
 	};
 

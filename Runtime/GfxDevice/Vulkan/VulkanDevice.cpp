@@ -564,19 +564,45 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 		// Temporary
 		if (Framework::GetInstance())
 		{
-			auto& mesh = Framework::GetInstance()->GetTestMesh();
-			auto& material = Framework::GetInstance()->GetTestMaterial();
+			auto materials = Framework::GetInstance()->GetTestMaterial();
+			auto meshes = Framework::GetInstance()->GetTestMesh();
+
 			auto& perInstanceBinding = Framework::GetInstance()->GetPerInstanceBinding();
 
-			if (mesh && mesh->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
+			for (uint32_t index = 0; index < meshes.size(); index++)
 			{
-				m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
-				m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
-				m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
-				m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });
-				m_commandBuffers[imageIndex]->BindIndexBuffer(mesh->m_indexBuffer->m_vulkan.m_buffer);
-				m_commandBuffers[imageIndex]->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, { state.GetFrameBinding()->m_vulkan.m_descriptorSet, perInstanceBinding->m_vulkan.m_descriptorSet, material->GetBindings()->m_vulkan.m_descriptorSet });
-				m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer, 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
+				if (materials.size() == meshes.size())
+				{
+					auto& material = materials[index];
+					auto& mesh = meshes[index];
+
+					if (mesh && mesh->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
+					{
+						m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
+						m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
+						m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
+						m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });
+						m_commandBuffers[imageIndex]->BindIndexBuffer(mesh->m_indexBuffer->m_vulkan.m_buffer);
+
+						// TODO: Parse missing descriptor sets
+						std::vector<VulkanDescriptorSetPtr> sets;
+						if (state.GetFrameBinding()->GetShaderBindings().size())
+						{
+							sets.push_back(state.GetFrameBinding()->m_vulkan.m_descriptorSet);
+						}
+						if (perInstanceBinding->GetShaderBindings().size())
+						{
+							sets.push_back(perInstanceBinding->m_vulkan.m_descriptorSet);
+						}
+						if (material->GetBindings()->GetShaderBindings().size())
+						{
+							sets.push_back(material->GetBindings()->m_vulkan.m_descriptorSet);
+						}
+
+						m_commandBuffers[imageIndex]->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
+						m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer, 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
+					}
+				}
 			}
 		}
 

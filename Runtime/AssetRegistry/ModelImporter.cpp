@@ -76,10 +76,10 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		memcpy(&ambient, material.ambient, 3 * sizeof(tinyobj::real_t));
 		memcpy(&emission, material.emission, 3 * sizeof(tinyobj::real_t));
 		memcpy(&specular, material.specular, 3 * sizeof(tinyobj::real_t));
-		data.m_uniformsVec4.push_back({ "diffuse", diffuse });
-		data.m_uniformsVec4.push_back({ "ambient", ambient });
-		data.m_uniformsVec4.push_back({ "emission", emission });
-		data.m_uniformsVec4.push_back({ "specular", specular });
+		data.m_uniformsVec4.push_back({ "material.diffuse", diffuse });
+		data.m_uniformsVec4.push_back({ "material.ambient", ambient });
+		data.m_uniformsVec4.push_back({ "material.emission", emission });
+		data.m_uniformsVec4.push_back({ "material.specular", specular });
 
 		if (!material.diffuse_texname.empty())
 		{
@@ -103,14 +103,14 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	}
 }
 
-TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Vertex>& outVertices, std::vector<uint32_t>& outIndices)
+TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::MeshPtr>& outMeshes, std::vector<RHI::MaterialPtr>& outMaterials)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (ModelAssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto jobLoad = JobSystem::Scheduler::CreateJob("Check unique vertices",
-			[&outIndices, &outVertices, assetInfo]()
+			[&outMeshes, &outMaterials, assetInfo]()
 			{
 				tinyobj::attrib_t attrib;
 				std::vector<tinyobj::shape_t> shapes;
@@ -126,10 +126,21 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Ve
 					return;
 				}
 
-				std::unordered_map<RHI::Vertex, uint32_t> uniqueVertices{};
+				struct MeshContext
+				{
+					std::unordered_map<RHI::Vertex, uint32_t> uniqueVertices;
+					std::vector<RHI::Vertex> outVertices;
+					std::vector<uint32_t> outIndices;
+				};
 
+				std::vector<MeshContext> meshes;
+
+				meshes.resize(assetInfo->ShouldBatchByMaterial() ? materials.size() : shapes.size());
+
+				uint32_t idx = 0;
 				for (const auto& shape : shapes)
 				{
+					auto& mesh = meshes[assetInfo->ShouldBatchByMaterial() ? shape.mesh.material_ids[0] : idx];
 					for (const auto& index : shape.mesh.indices)
 					{
 						RHI::Vertex vertex{};
@@ -149,13 +160,42 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Ve
 
 						vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-						if (uniqueVertices.count(vertex) == 0)
+						if (mesh.uniqueVertices.count(vertex) == 0)
 						{
-							uniqueVertices[vertex] = static_cast<uint32_t>(outVertices.size());
-							outVertices.push_back(vertex);
+							mesh.uniqueVertices[vertex] = static_cast<uint32_t>(mesh.outVertices.size());
+							mesh.outVertices.push_back(vertex);
 						}
 
-						outIndices.push_back(uniqueVertices[vertex]);
+						mesh.outIndices.push_back(mesh.uniqueVertices[vertex]);
+					}
+				}
+
+				for (auto mesh : meshes)
+				{
+					RHI::MeshPtr ptr = Renderer::GetDriver()->CreateMesh();
+
+					Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob("Update mesh",
+						[ptr, mesh]()
+							{
+								Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
+							}));
+					outMeshes.emplace_back(ptr);
+				}
+
+				const std::string materialsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath()) + "materials/";
+
+				if (assetInfo->ShouldGenerateMaterials())
+				{
+					for (const auto& material : materials)
+					{
+						if (AssetInfoPtr materialInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
+						{
+							outMaterials.emplace_back(MaterialImporter::LoadMaterial(materialInfo->GetUID()));
+						}
+						else
+						{
+							outMaterials.push_back(RHI::MaterialPtr());
+						}
 					}
 				}
 			});

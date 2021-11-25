@@ -83,8 +83,8 @@ namespace Sailor
 
 		~Framework() override = default;
 
-		RHI::MeshPtr& GetTestMesh() { return m_testMesh; }
-		RHI::MaterialPtr& GetTestMaterial() { return m_testMaterial; }
+		std::vector<RHI::MeshPtr>& GetTestMesh() { return m_testMesh; }
+		std::vector<RHI::MaterialPtr>& GetTestMaterial() { return m_testMaterial; }
 		RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_testBinding; }
 
 	protected:
@@ -92,8 +92,9 @@ namespace Sailor
 		Framework() = default;
 		std::atomic<uint32_t> m_pureFps = 0u;
 
-		RHI::MeshPtr m_testMesh;
-		RHI::MaterialPtr m_testMaterial;
+		std::vector<RHI::MeshPtr> m_testMesh;
+		std::vector<RHI::MaterialPtr> m_testMaterial;
+
 		RHI::ShaderBindingSetPtr m_testBinding;
 
 		RHI::UboFrameData m_frameData;

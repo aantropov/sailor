@@ -102,62 +102,14 @@ void Framework::CpuFrame(FrameState& state)
 
 	if (bFirstFrame)
 	{
-		static std::vector<RHI::Vertex> g_testVertices =
-		{
-			{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
-			{{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
-			{{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
-			{{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}},
-
-			{{-0.5f, 0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
-			{{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f}, {0.3f, 1.0f, 0.0f, 1.0f}},
-			{{-0.5f, -0.5f, 0.5f}, {1.0f, 0.0f}, {0.0f, 0.0f, 0.5f, 1.0f}},
-			{{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 1.0f}}
-		};
-
-		static std::vector<uint32_t> g_testIndices =
-		{
-		   0, 1, 2,    // side 1
-			2, 1, 3,
-			4, 0, 6,    // side 2
-			6, 0, 2,
-			7, 5, 6,    // side 3
-			6, 5, 4,
-			3, 1, 7,    // side 4
-			7, 1, 5,
-			4, 5, 0,    // side 5
-			0, 5, 1,
-			3, 7, 2,    // side 6
-			2, 7, 6,
-		};
-
-		TSharedPtr<JobSystem::Job> jobLoadModel;
-
 		if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 		{
-			jobLoadModel = ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), g_testVertices, g_testIndices);
+			ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), m_testMesh, m_testMaterial);
 		}
-
-		auto jobCreateBuffers = JobSystem::Scheduler::CreateJob("Create buffers",
-			[this]()
-			{
-				m_testMesh = Sailor::RHI::Renderer::GetDriver()->CreateMesh(g_testVertices, g_testIndices);
-			});
-
-		jobCreateBuffers->Join(jobLoadModel);
-		JobSystem::Scheduler::GetInstance()->Run(jobCreateBuffers);
 
 		m_testBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-
-		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models/Sponza/sponza.mat"))
-		{
-			SAILOR_ENQUEUE_JOB("Load materials",
-				([this, materialUID]()
-					{
-						m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
-						Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_testBinding, "data", sizeof(glm::mat4x4), 0, m_testMaterial->GetBindings()->NeedsStorageBuffer() ? EShaderBindingType::StorageBuffer : EShaderBindingType::UniformBuffer);
-					}));
-		}
+		//bool bNeedsStorageBuffer = m_testMaterial->GetBindings()->NeedsStorageBuffer() ? EShaderBindingType::StorageBuffer : EShaderBindingType::UniformBuffer;
+		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_testBinding, "data", sizeof(glm::mat4x4), 0, EShaderBindingType::StorageBuffer);
 
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, EShaderBindingType::UniformBuffer);
@@ -220,14 +172,6 @@ void Framework::CpuFrame(FrameState& state)
 
 	state.PushFrameBinding(m_frameDataBinding);
 
-	if (state.GetInputState().IsKeyDown(VK_SPACE))
-	{
-		if (auto materialUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Models/Sponza/sponza.mat"))
-		{
-			m_testMaterial = MaterialImporter::LoadMaterial(materialUID->GetUID());
-		}
-	}
-
 	SAILOR_PROFILE_BLOCK("Test Performance");
 
 	auto pJob = JobSystem::Scheduler::GetInstance()->CreateJob("Update command list",
@@ -236,15 +180,18 @@ void Framework::CpuFrame(FrameState& state)
 			auto pCommandList = state.CreateCommandBuffer(0);
 			Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
-			
+
 			if (m_testBinding->HasBinding("data"))
 			{
 				RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("data"), &model, sizeof(model));
 			}
 
-			if (m_testMaterial)
+			for (auto& material : m_testMaterial)
 			{
-				RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, m_testMaterial, "material.color", std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
+				if (material && material->GetBindings() && material->GetBindings()->HasBinding("material"))
+				{
+					RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, material, "material.color", std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
+				}
 			}
 
 			Renderer::GetDriverCommands()->EndCommandList(pCommandList);

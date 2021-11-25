@@ -47,7 +47,8 @@ namespace Sailor::RHI
 		virtual SAILOR_API CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
 		virtual SAILOR_API BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API CommandListPtr CreateBuffer(BufferPtr& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		virtual SAILOR_API MeshPtr CreateMesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
+		virtual SAILOR_API MeshPtr CreateMesh();
+		virtual SAILOR_API void UpdateMesh(RHI::MeshPtr mesh, const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
 		virtual SAILOR_API ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
 		virtual SAILOR_API TexturePtr CreateImage(
 			const void* pData,
@@ -76,7 +77,7 @@ namespace Sailor::RHI
 		virtual SAILOR_API BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API void CopyBuffer_Immediate(BufferPtr src, BufferPtr dst, size_t size) = 0;
 		virtual SAILOR_API void SubmitCommandList_Immediate(CommandListPtr commandList);
-
+		
 		virtual SAILOR_API TexturePtr CreateImage_Immediate(
 			const void* pData,
 			size_t size,
