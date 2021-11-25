@@ -564,12 +564,12 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 		// Temporary
 		if (Framework::GetInstance())
 		{
-			auto mesh = Framework::GetInstance()->GetTestMesh();
-			if (mesh && mesh->IsReady())
-			{
-				auto& perInstanceBinding = Framework::GetInstance()->GetPerInstanceBinding();
-				auto& material = Framework::GetInstance()->GetTestMaterial();
+			auto& mesh = Framework::GetInstance()->GetTestMesh();
+			auto& material = Framework::GetInstance()->GetTestMaterial();
+			auto& perInstanceBinding = Framework::GetInstance()->GetPerInstanceBinding();
 
+			if (mesh && mesh->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
+			{
 				m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
 				m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
 				m_commandBuffers[imageIndex]->SetScissor(pStateViewport);

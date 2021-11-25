@@ -522,6 +522,8 @@ void GfxDeviceVulkan::AddBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShade
 
 	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
+	
+	pShaderBindings->AddLayoutShaderBinding(layout);
 
 	UpdateDescriptorSet(pShaderBindings);
 }

@@ -181,7 +181,7 @@ void WorkerThread::Process()
 			scheduler->NotifyWorkerThread(m_threadType);
 
 			SAILOR_PROFILE_END_BLOCK()
-			m_bIsBusy = false;;
+			m_bIsBusy = false;
 		}
 
 		lk.unlock();
