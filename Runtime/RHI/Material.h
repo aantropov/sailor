@@ -28,10 +28,15 @@ namespace Sailor::RHI
 		SAILOR_API bool HasBinding(const std::string& binding) const;
 		SAILOR_API bool HasParameter(const std::string& parameter) const;
 
+		SAILOR_API bool NeedsStorageBuffer() const { return m_bNeedsStorageBuffer; }
+
 	protected:
+
+		SAILOR_API bool PerInstanceDataStoredInSSBO() const;
 
 		std::vector<RHI::ShaderLayoutBinding> m_layoutBindings;
 		std::unordered_map<std::string, RHI::ShaderBindingPtr> m_shaderBindings;
+		bool m_bNeedsStorageBuffer = false;
 	};
 
 	class Material : public Resource
