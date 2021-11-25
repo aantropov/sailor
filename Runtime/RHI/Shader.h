@@ -19,16 +19,26 @@ namespace Sailor::RHI
 
 		struct
 		{
-			TWeakPtr<VulkanBufferAllocator> m_bufferAllocator;
-			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding;
-			VkDescriptorSetLayoutBinding m_descriptorSetLayout;
+			TWeakPtr<VulkanBufferAllocator> m_bufferAllocator{};
+			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding{};
+			VkDescriptorSetLayoutBinding m_descriptorSetLayout{};
+			uint32_t m_storageInstanceIndex = 0;
 		} m_vulkan;
 #endif
+
 		SAILOR_API ~ShaderBinding() override;
 		SAILOR_API bool IsBind() const;
 
 		SAILOR_API const TexturePtr& GetTextureBinding() const { return m_textureBinding; }
 		SAILOR_API const ShaderLayoutBinding& GetLayout() const { return m_bindingLayout; }
+
+		SAILOR_API uint32_t GetStorageInstanceIndex()
+		{
+#if defined(VULKAN)
+			return m_vulkan.m_storageInstanceIndex;
+#endif
+			return 0;
+		}
 
 		SAILOR_API void SetTextureBinding(TexturePtr textureBinding) { m_textureBinding = textureBinding; }
 		SAILOR_API void SetLayout(const ShaderLayoutBinding& layout) { m_bindingLayout = layout; }
@@ -37,8 +47,8 @@ namespace Sailor::RHI
 
 	protected:
 
-		TexturePtr m_textureBinding;
-		ShaderLayoutBinding m_bindingLayout;
+		TexturePtr m_textureBinding{};
+		ShaderLayoutBinding m_bindingLayout{};
 	};
 
 	class Shader : public Resource
@@ -50,7 +60,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			Sailor::GfxDevice::Vulkan::VulkanShaderStagePtr m_shader;
+			Sailor::GfxDevice::Vulkan::VulkanShaderStagePtr m_shader{};
 		} m_vulkan;
 #endif
 

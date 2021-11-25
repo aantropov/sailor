@@ -189,10 +189,10 @@ void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 }
 
-void VulkanCommandBuffer::DrawIndexed(VulkanBufferPtr indexBuffer)
+void VulkanCommandBuffer::DrawIndexed(VulkanBufferPtr indexBuffer, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
 	m_bufferDependencies.push_back(indexBuffer);
-	vkCmdDrawIndexed(m_commandBuffer, (uint32_t)indexBuffer->m_size / sizeof(uint32_t), 1, 0, 0, 0);
+	vkCmdDrawIndexed(m_commandBuffer, (uint32_t)indexBuffer->m_size / sizeof(uint32_t), instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
 void VulkanCommandBuffer::EndRenderPass()

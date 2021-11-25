@@ -362,11 +362,6 @@ uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines,
 	uint32_t res = 0;
 	for (int32_t i = 0; i < defines.size(); i++)
 	{
-		if (i >= actualDefines.size())
-		{
-			break;
-		}
-
 		if (requested.find(defines[i]) != std::end(requested))
 		{
 			res += 1 << i;

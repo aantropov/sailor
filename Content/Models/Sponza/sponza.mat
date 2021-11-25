@@ -7,7 +7,7 @@
 	"is_transparent": false,
 	"blend_mode": 0,
 	"fill_mode": 0,
-	"defines": ["USE_STORAGE_BUFFER","CUSTOM_DATA"],
+	"defines": ["USE_STORAGE_BUFFER"],
 	"shader": { "uid": "{7C4C5270-3F13-49B9-A5FC-05EBDF2D70CD}"},
 	"samplers":[{"name":"textureSampler","uid":{"uid":"{1CA17F81-9998-413A-872D-7BD5E22299EB}"}}],
 	"uniforms": [["material.color",{"w":1.0,"x":0.0,"y":0.0,"z":0.1}]]

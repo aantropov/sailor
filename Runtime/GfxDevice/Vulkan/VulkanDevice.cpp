@@ -93,6 +93,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 
 	// Cache memory requirements
 	{
+		m_minStorageBufferOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment;
 		m_minUboOffsetAlignment = properties.limits.minUniformBufferOffsetAlignment;
 		properties.limits.optimalBufferCopyOffsetAlignment;
 		VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(VulkanDevicePtr(this),
@@ -575,7 +576,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 				m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });
 				m_commandBuffers[imageIndex]->BindIndexBuffer(mesh->m_indexBuffer->m_vulkan.m_buffer);
 				m_commandBuffers[imageIndex]->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, { state.GetFrameBinding()->m_vulkan.m_descriptorSet, perInstanceBinding->m_vulkan.m_descriptorSet, material->GetBindings()->m_vulkan.m_descriptorSet });
-				m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer);
+				m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer, 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
 			}
 		}
 

@@ -40,7 +40,7 @@ namespace Sailor::GfxDevice::Vulkan
 		void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, std::vector<VulkanDescriptorSetPtr> descriptorSet);
 		void BindPipeline(VulkanPipelinePtr pipeline);
 
-		void DrawIndexed(VulkanBufferPtr indexBuffer);
+		void DrawIndexed(VulkanBufferPtr indexBuffer, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0);
 
 		void Execute(VulkanCommandBufferPtr secondaryCommandBuffer);
 		void CopyBuffer(VulkanBufferPtr  src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
@@ -75,7 +75,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanCommandPoolPtr m_commandPool;
 		VkCommandBuffer m_commandBuffer;
 		VkCommandBufferLevel m_level;
-		
+
 		DWORD m_currentThreadId = 0;
 	};
 }

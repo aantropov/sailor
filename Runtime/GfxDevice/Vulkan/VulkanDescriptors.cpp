@@ -148,6 +148,13 @@ VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
 	m_range(range),
 	VulkanDescriptor(dstBinding, dstArrayElement, (VkDescriptorType)bufferType)
 {
+	// If we're using storage buffer then we bind buffer once and operate with instance id
+	if (const bool bIsStorageBuffer = bufferType == RHI::EShaderBindingType::StorageBuffer)
+	{
+		m_offset = 0;
+		m_range = VK_WHOLE_SIZE;
+	}
+
 	m_bufferInfo.buffer = *buffer;
 	m_bufferInfo.offset = m_offset;
 	m_bufferInfo.range = m_range;

@@ -70,6 +70,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API VkSampleCountFlagBits GetCurrentMsaaSamples() const { return m_currentMsaaSamples; };
 		SAILOR_API const VkMemoryRequirements& GetMemoryRequirements_StagingBuffer() const { return m_memoryRequirements_StagingBuffer; }
 		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_minUboOffsetAlignment; }
+		SAILOR_API const VkDeviceSize& GetMinSsboOffsetAlignment() const { return m_minStorageBufferOffsetAlignment; }
 
 		template<typename TData>
 		VkDeviceSize GetUboOffsetAlignment() const
@@ -83,6 +84,17 @@ namespace Sailor::GfxDevice::Vulkan
 			if (m_minUboOffsetAlignment > 0)
 			{
 				dynamicAlignment = (dynamicAlignment + m_minUboOffsetAlignment - 1) & ~(m_minUboOffsetAlignment - 1);
+			}
+
+			return dynamicAlignment;
+		}
+
+		VkDeviceSize GetSsboOffsetAlignment(size_t size) const
+		{
+			VkDeviceSize dynamicAlignment = size;
+			if (m_minStorageBufferOffsetAlignment > 0)
+			{
+				dynamicAlignment = (dynamicAlignment + m_minStorageBufferOffsetAlignment - 1) & ~(m_minStorageBufferOffsetAlignment - 1);
 			}
 
 			return dynamicAlignment;
@@ -113,7 +125,8 @@ namespace Sailor::GfxDevice::Vulkan
 		float m_maxAllowedAnisotropy = 0;
 		VkSampleCountFlagBits m_maxAllowedMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
-		VkDeviceSize m_minUboOffsetAlignment = 0;
+		VkDeviceSize m_minUboOffsetAlignment = 1;
+		VkDeviceSize m_minStorageBufferOffsetAlignment = 1;
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;
 
