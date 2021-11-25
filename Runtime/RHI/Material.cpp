@@ -18,6 +18,11 @@ RHI::ShaderBindingPtr& ShaderBindingSet::GetOrCreateShaderBinding(const std::str
 	return m_shaderBindings[binding] = ShaderBindingPtr::Make();
 }
 
+void ShaderBindingSet::AddLayoutShaderBinding(ShaderLayoutBinding layout)
+{
+	m_layoutBindings.emplace_back(std::move(layout)); 
+}
+
 bool ShaderBindingSet::PerInstanceDataStoredInSSBO() const
 {
 	return std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [](const auto& binding) { return binding.m_type == EShaderBindingType::StorageBuffer; }) != m_layoutBindings.end();

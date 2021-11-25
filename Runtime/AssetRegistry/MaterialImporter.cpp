@@ -229,7 +229,7 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 				ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
 				auto value = uniform.second;
 
-				SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
+				SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
 					{
 						RHI::Renderer::GetDriverCommands()->UpdateShaderBingingVariable(cmdList, binding, outVariable, &value, sizeof(value));
 					}));

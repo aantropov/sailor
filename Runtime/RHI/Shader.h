@@ -31,7 +31,7 @@ namespace Sailor::RHI
 
 		SAILOR_API const TexturePtr& GetTextureBinding() const { return m_textureBinding; }
 		SAILOR_API const ShaderLayoutBinding& GetLayout() const { return m_bindingLayout; }
-
+	
 		SAILOR_API uint32_t GetStorageInstanceIndex()
 		{
 #if defined(VULKAN)

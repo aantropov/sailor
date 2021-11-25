@@ -18,6 +18,7 @@ namespace Sailor::RHI
 		} m_vulkan;
 #endif
 
+		SAILOR_API void AddLayoutShaderBinding(ShaderLayoutBinding layout);
 		SAILOR_API void SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> layoutBindings);
 		SAILOR_API const std::vector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
 		SAILOR_API RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& binding);
