@@ -173,12 +173,7 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Me
 				for (auto mesh : meshes)
 				{
 					RHI::MeshPtr ptr = Renderer::GetDriver()->CreateMesh();
-
-					Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob("Update mesh",
-						[ptr, mesh]()
-							{
-								Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
-							}));
+					Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
 					outMeshes.emplace_back(ptr);
 				}
 
