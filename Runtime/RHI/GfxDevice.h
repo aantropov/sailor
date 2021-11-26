@@ -3,6 +3,34 @@
 #include "AssetRegistry/UID.h"
 #include "Types.h"
 
+#define SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD(Name, Lambda) \
+{ \
+auto lambda = Lambda; \
+auto submit = [lambda]() \
+{ \
+	Sailor::RHI::CommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, false); \
+	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList); \
+	lambda(cmdList); \
+	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
+	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
+}; \
+Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
+}\
+
+#define SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD(Name, Lambda) \
+{ \
+auto lambda = Lambda; \
+auto submit = [lambda]() \
+{ \
+	Sailor::RHI::CommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, true); \
+	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList); \
+	lambda(cmdList); \
+	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
+	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
+}; \
+Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
+}\
+
 namespace Sailor
 {
 	class FrameState;

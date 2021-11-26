@@ -32,7 +32,7 @@ void IGfxDevice::UpdateMesh(RHI::MeshPtr mesh, const std::vector<Vertex>& vertic
 	TrackDelayedInitialization(mesh.GetRawPtr(), fenceUpdateIndex);
 
 	// Submit cmd lists
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Create mesh",
+	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
 		([this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
 			{
 				SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
