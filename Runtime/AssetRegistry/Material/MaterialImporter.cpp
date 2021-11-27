@@ -1,10 +1,10 @@
-#include "MaterialImporter.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 
-#include "UID.h"
-#include "AssetRegistry.h"
+#include "AssetRegistry/UID.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "MaterialAssetInfo.h"
 #include "Math/Math.h"
-#include "Utils.h"
+#include "Core/Utils.h"
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -17,7 +17,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Fence.h"
 #include "RHI/CommandList.h"
-#include "AssetRegistry/TextureImporter.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;

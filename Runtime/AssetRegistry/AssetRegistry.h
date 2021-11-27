@@ -2,9 +2,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "UID.h"
+#include "AssetRegistry/UID.h"
 #include "Sailor.h"
-#include "AssetInfo.h"
+#include "AssetRegistry/AssetInfo.h"
 #include "Core/Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 

@@ -4,8 +4,8 @@
 #include <iostream>
 #include <sstream>
 #include <unordered_set>
-#include "AssetRegistry.h"
-#include "AssetRegistry/ShaderCompiler.h"
+#include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
 
 using namespace Sailor;
 

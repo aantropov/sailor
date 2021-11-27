@@ -1,8 +1,8 @@
 #pragma once
 #include <string>
 #include <ctime>
-#include "AssetRegistry.h"
-#include "UID.h"
+#include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/UID.h"
 #include "Core/Singleton.hpp"
 #include "Core/JsonSerializable.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"

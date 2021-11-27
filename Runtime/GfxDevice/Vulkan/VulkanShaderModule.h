@@ -3,7 +3,7 @@
 #include "vulkan/vulkan.h"
 #include "VulkanDevice.h"
 #include "RHI/Types.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 
 namespace Sailor::GfxDevice::Vulkan
 {

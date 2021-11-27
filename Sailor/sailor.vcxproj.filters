@@ -49,37 +49,34 @@
     <Filter Include="Runtime\Memory">
       <UniqueIdentifier>{b78f6e51-d07c-4f95-95ae-8ce4402e727f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\AssetRegistry\Material">
+      <UniqueIdentifier>{069d282b-5790-4b0a-82a7-75f4bab40292}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\AssetRegistry\Model">
+      <UniqueIdentifier>{841dd309-64c9-4f45-b1e6-a3404f007230}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\AssetRegistry\Texture">
+      <UniqueIdentifier>{7b94a248-253d-4241-a073-2bf8118bcba5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\AssetRegistry\Shader">
+      <UniqueIdentifier>{81ea8f38-0dcb-4e79-80eb-2ec22bdebcf5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\AssetRegistry\RenderPipeline">
+      <UniqueIdentifier>{27258cad-e314-4982-b128-0583757aefee}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
       <Filter>Runtime</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\LogMacros.h">
-      <Filter>Runtime</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\AssetRegistry\AssetRegistry.h">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\ShaderCompiler.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Utils.h">
-      <Filter>Runtime</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\ShaderCache.h">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\ShaderAssetInfo.h">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h">
       <Filter>Runtime\Jobsystem</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Defines.h">
-      <Filter>Runtime</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Types.h">
       <Filter>Runtime\RHI</Filter>
@@ -88,12 +85,6 @@
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Core\Singleton.hpp">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Core\RefPtr.hpp">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h">
@@ -132,12 +123,6 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanImageView.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Core\SharedPtr.hpp">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Core\WeakPtr.hpp">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
@@ -159,20 +144,8 @@
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDescriptors.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\TextureAssetInfo.h">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\TextureImporter.h">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.h">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\ModelAssetInfo.h">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\ModelImporter.h">
-      <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Math\Math.h">
       <Filter>Runtime\Math</Filter>
@@ -191,9 +164,6 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Mesh.h">
       <Filter>Runtime\RHI</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Core\UniquePtr.hpp">
-      <Filter>Runtime\Core</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Memory\Memory.h">
       <Filter>Runtime\Memory</Filter>
@@ -234,12 +204,6 @@
     <ClInclude Include="..\Runtime\RHI\Material.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\MaterialAssetInfo.h">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\AssetRegistry\MaterialImporter.h">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Shader.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
@@ -248,6 +212,63 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h">
       <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Material\MaterialAssetInfo.h">
+      <Filter>Runtime\AssetRegistry\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Material\MaterialImporter.h">
+      <Filter>Runtime\AssetRegistry\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Model\ModelAssetInfo.h">
+      <Filter>Runtime\AssetRegistry\Model</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Model\ModelImporter.h">
+      <Filter>Runtime\AssetRegistry\Model</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Shader\ShaderAssetInfo.h">
+      <Filter>Runtime\AssetRegistry\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Shader\ShaderCache.h">
+      <Filter>Runtime\AssetRegistry\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Shader\ShaderCompiler.h">
+      <Filter>Runtime\AssetRegistry\Shader</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.h">
+      <Filter>Runtime\AssetRegistry\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureImporter.h">
+      <Filter>Runtime\AssetRegistry\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\RenderPipeline\RenderPipelineAssetInfo.h">
+      <Filter>Runtime\AssetRegistry\RenderPipeline</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\RenderPipeline\RenderPipelineImporter.h">
+      <Filter>Runtime\AssetRegistry\RenderPipeline</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Core\Singleton.hpp">
+      <Filter>Runtime\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Core\LogMacros.h">
+      <Filter>Runtime\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Core\Defines.h">
+      <Filter>Runtime\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Core\Utils.h">
+      <Filter>Runtime\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\RefPtr.hpp">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\SharedPtr.hpp">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\UniquePtr.hpp">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\WeakPtr.hpp">
+      <Filter>Runtime\Memory</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -260,22 +281,10 @@
     <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\ShaderCompiler.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\AssetInfo.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\Utils.cpp">
-      <Filter>Runtime</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\ShaderCache.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\ShaderAssetInfo.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp">
@@ -344,20 +353,8 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDescriptors.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\TextureAssetInfo.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\TextureImporter.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\ModelAssetInfo.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\ModelImporter.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp">
       <Filter>Runtime\Platform\Win32</Filter>
@@ -404,17 +401,47 @@
     <ClCompile Include="..\Runtime\RHI\Material.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\MaterialAssetInfo.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\AssetRegistry\MaterialImporter.cpp">
-      <Filter>Runtime\AssetRegistry</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\RHI\Shader.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBufferMemory.cpp">
       <Filter>Runtime\GfxDevice\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Material\MaterialAssetInfo.cpp">
+      <Filter>Runtime\AssetRegistry\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Material\MaterialImporter.cpp">
+      <Filter>Runtime\AssetRegistry\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Model\ModelAssetInfo.cpp">
+      <Filter>Runtime\AssetRegistry\Model</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Model\ModelImporter.cpp">
+      <Filter>Runtime\AssetRegistry\Model</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Shader\ShaderAssetInfo.cpp">
+      <Filter>Runtime\AssetRegistry\Shader</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Shader\ShaderCache.cpp">
+      <Filter>Runtime\AssetRegistry\Shader</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Shader\ShaderCompiler.cpp">
+      <Filter>Runtime\AssetRegistry\Shader</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.cpp">
+      <Filter>Runtime\AssetRegistry\Texture</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureImporter.cpp">
+      <Filter>Runtime\AssetRegistry\Texture</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\RenderPipeline\RenderPipelineAssetInfo.cpp">
+      <Filter>Runtime\AssetRegistry\RenderPipeline</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\RenderPipeline\RenderPipelineImporter.cpp">
+      <Filter>Runtime\AssetRegistry\RenderPipeline</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Core\Utils.cpp">
+      <Filter>Runtime\Core</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

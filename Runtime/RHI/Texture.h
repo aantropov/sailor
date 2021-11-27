@@ -1,5 +1,5 @@
 #pragma once
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include "GfxDevice/Vulkan/VulkanBuffer.h"
 #include "Types.h"
 

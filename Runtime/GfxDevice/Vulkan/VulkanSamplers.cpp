@@ -1,7 +1,8 @@
 #include <algorithm>
 #include "VulkanSamplers.h"
 #include "VulkanDevice.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
+#include "Math/Math.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -24,7 +25,7 @@ VulkanSampler::VulkanSampler(VulkanDevicePtr pDevice,
 	samplerInfo.addressModeW = addressMode;
 
 	samplerInfo.anisotropyEnable = bIsAnisotropyEnabled;
-	samplerInfo.maxAnisotropy = min(maxAnisotropy, m_device->GetMaxAllowedAnisotropy());
+	samplerInfo.maxAnisotropy = std::min(maxAnisotropy, m_device->GetMaxAllowedAnisotropy());
 
 	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;

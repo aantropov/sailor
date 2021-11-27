@@ -1,6 +1,6 @@
 #include "VulkanFence.h"
 #include "VulkanDevice.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;

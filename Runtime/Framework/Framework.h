@@ -1,8 +1,8 @@
 #pragma once
 #include <array>
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include "Core/Singleton.hpp"
-#include "Core/UniquePtr.hpp"
+#include "Memory/UniquePtr.hpp"
 #include "RHI/Renderer.h"
 #include "Platform/Win32/Input.h"
 

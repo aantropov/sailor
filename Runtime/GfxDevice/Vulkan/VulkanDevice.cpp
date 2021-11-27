@@ -11,12 +11,9 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/ShaderCompiler.h"
-#include "AssetRegistry/ShaderAssetInfo.h"
-#include "AssetRegistry/TextureImporter.h"
-#include "AssetRegistry/TextureAssetInfo.h"
-#include "AssetRegistry/ModelImporter.h"
-#include "AssetRegistry/ModelAssetInfo.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 #include "Platform/Win32/Window.h"
 #include "Math/Math.h"
 #include "VulkanDevice.h"

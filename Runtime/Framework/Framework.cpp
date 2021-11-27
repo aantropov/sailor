@@ -1,17 +1,17 @@
 #pragma once
 #include "Framework.h"
-#include "Defines.h"
+#include "Core/Defines.h"
 #include "Platform/Win32/Input.h"
 #include "Math.h"
-#include "Utils.h"
+#include "Core/Utils.h"
 #include "RHI/Renderer.h"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
 #include "RHI/GfxDevice.h"
-#include "AssetRegistry/ModelAssetInfo.h"
-#include "AssetRegistry/ModelImporter.h"
-#include "AssetRegistry/TextureImporter.h"
-#include "AssetRegistry/MaterialImporter.h"
+
+#include "AssetRegistry/Model/ModelImporter.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 
 using namespace Sailor;
 

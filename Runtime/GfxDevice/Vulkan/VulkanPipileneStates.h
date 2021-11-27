@@ -2,7 +2,7 @@
 #include <vector>
 #include <unordered_map>
 #include "vulkan/vulkan.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
 
 namespace Sailor::GfxDevice::Vulkan

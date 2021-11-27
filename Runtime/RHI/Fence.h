@@ -1,6 +1,6 @@
 #pragma once
 #include "Renderer.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include "GfxDevice/Vulkan/VulkanFence.h"
 #include "Types.h"
 

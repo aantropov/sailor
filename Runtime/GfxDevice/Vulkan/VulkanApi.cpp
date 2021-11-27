@@ -1,14 +1,14 @@
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include <vulkan/vulkan.h>
 #include <unordered_map>
-#include "LogMacros.h"
+#include "Core/LogMacros.h"
 #include <assert.h>
 #include <vector>
 #include <set>
 #include "Sailor.h"
 #include "Platform/Win32/Window.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/ShaderCompiler.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "VulkanDevice.h"
 #include "VulkanSwapchain.h"
 #include "VulkanRenderPass.h"

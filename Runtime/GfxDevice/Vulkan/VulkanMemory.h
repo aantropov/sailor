@@ -1,6 +1,6 @@
 #pragma once
 #include <map>
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include "VulkanDeviceMemory.h"
 #include "Memory/Memory.h"
 #include "Memory/MemoryBlockAllocator.hpp"

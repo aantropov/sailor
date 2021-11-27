@@ -2,7 +2,7 @@
 #include "Types.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "GfxDevice/Vulkan/GfxDeviceVulkan.h"
-#include "Core/WeakPtr.hpp"
+#include "Memory/WeakPtr.hpp"
 
 using namespace Sailor;
 using namespace Sailor::RHI;

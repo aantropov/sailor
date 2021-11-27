@@ -1,5 +1,5 @@
 #include "VulkanBuffer.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include <vulkan/vulkan.h>
 #include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"

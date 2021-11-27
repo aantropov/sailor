@@ -1,15 +1,16 @@
 #pragma once
-#include "Defines.h"
+#include "Core/Defines.h"
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Singleton.hpp"
-#include "Core/SharedPtr.hpp"
-#include "Core/WeakPtr.hpp"
-#include "AssetInfo.h"
+#include "Memory/SharedPtr.hpp"
+#include "Memory/WeakPtr.hpp"
+#include "AssetRegistry/AssetInfo.h"
 #include "RHI/Renderer.h"
 #include "ModelAssetInfo.h"
 #include "JobSystem/JobSystem.h"
+#include "ModelAssetInfo.h"
 
 namespace Sailor::RHI
 {

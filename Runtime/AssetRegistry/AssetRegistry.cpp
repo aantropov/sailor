@@ -1,13 +1,13 @@
-#include "AssetRegistry.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include "AssetInfo.h"
-#include "ShaderAssetInfo.h"
-#include "TextureAssetInfo.h"
-#include "ModelAssetInfo.h"
-#include "MaterialAssetInfo.h"
-#include "Utils.h"
+#include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/Shader/ShaderAssetInfo.h"
+#include "AssetRegistry/Texture/TextureAssetInfo.h"
+#include "AssetRegistry/Model/ModelAssetInfo.h"
+#include "AssetRegistry/Material/MaterialAssetInfo.h"
+#include "Core/Utils.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
 using namespace Sailor;

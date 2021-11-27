@@ -1,6 +1,6 @@
 #pragma once
-#include "Defines.h"
-#include "Core/RefPtr.hpp"
+#include "Core/Defines.h"
+#include "Memory/RefPtr.hpp"
 #include "Memory/MemoryPoolAllocator.hpp"
 #include "RHI/Types.h"
 #include "RHI/GfxDevice.h"

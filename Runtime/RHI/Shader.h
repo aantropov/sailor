@@ -1,6 +1,6 @@
 #pragma once
-#include "Core/RefPtr.hpp"
-#include "Core/WeakPtr.hpp"
+#include "Memory/RefPtr.hpp"
+#include "Memory/WeakPtr.hpp"
 #include "Renderer.h"
 #include "Types.h"
 #include "GfxDevice/Vulkan/VulkanDevice.h"

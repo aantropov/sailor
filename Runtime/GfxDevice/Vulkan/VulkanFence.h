@@ -1,7 +1,7 @@
 #pragma once
 #include "VulkanSemaphore.h"
 #include "VulkanCommandBuffer.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 
 namespace Sailor::GfxDevice::Vulkan
 {

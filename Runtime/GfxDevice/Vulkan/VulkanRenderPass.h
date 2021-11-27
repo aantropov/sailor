@@ -1,6 +1,6 @@
 #pragma once
 #include "VulkanApi.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
 
 namespace Sailor::GfxDevice::Vulkan

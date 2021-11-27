@@ -1,9 +1,9 @@
 #pragma once
-#include "Core/Defines.h"
-#include "Core/LogMacros.h"
-#include "Core/Utils.h"
-#include "Memory/SharedPtr.hpp"
-#include "Memory/WeakPtr.hpp"
+#include "Defines.h"
+#include "LogMacros.h"
+#include "Utils.h"
+#include "Core/SharedPtr.hpp"
+#include "Core/WeakPtr.hpp"
 #include "Platform/Win32/Window.h"
 #include <glm/glm/glm.hpp>
 

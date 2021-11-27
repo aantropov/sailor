@@ -1,8 +1,8 @@
 #include "TextureAssetInfo.h"
-#include "AssetInfo.h"
+#include "AssetRegistry/AssetInfo.h"
 #include <filesystem>
 #include <fstream>
-#include "Utils.h"
+#include "Core/Utils.h"
 #include <iostream>
 
 using namespace Sailor;

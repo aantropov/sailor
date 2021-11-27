@@ -9,8 +9,8 @@
 #include <vulkan/vulkan_core.h>
 #include "Sailor.h"
 #include "RHI/Types.h"
-#include "AssetRegistry/ShaderCompiler.h"
-#include "Core/RefPtr.hpp"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "Memory/RefPtr.hpp"
 #include "Core/Singleton.hpp"
 
 namespace Sailor

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Defines.h"
+#include "Core/Defines.h"
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/quaternion.hpp>
 #include <glm/glm/common.hpp>
@@ -21,3 +21,13 @@ namespace Sailor::Math
 	const glm::vec3 vec3_Down = -vec3_Up;
 	const glm::vec3 vec3_Left = -vec3_Right;
 }
+
+#if defined(min)
+#undef min
+#define min(a,b) (a < b ? a : b)
+#endif
+
+#if defined(max)
+#undef max
+#define max(a,b) (a < b ? b : a)
+#endif

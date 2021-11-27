@@ -1,10 +1,10 @@
-#include "ShaderCompiler.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
 
-#include "UID.h"
-#include "AssetRegistry.h"
+#include "AssetRegistry/UID.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "ShaderAssetInfo.h"
 #include "ShaderCache.h"
-#include "Utils.h"
+#include "Core/Utils.h"
 #include <filesystem>
 #include <fstream>
 #include <algorithm>

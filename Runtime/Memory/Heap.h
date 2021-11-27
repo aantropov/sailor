@@ -2,7 +2,7 @@
 #include <memory>
 #include <vector>
 
-#include "Core/UniquePtr.hpp"
+#include "Memory/UniquePtr.hpp"
 #define InvalidIndexUINT64 UINT64_MAX
 
 namespace Sailor::Memory

@@ -1,5 +1,5 @@
 #pragma once
-#include "AssetInfo.h"
+#include "AssetRegistry/AssetInfo.h"
 #include "RHI/Types.h"
 #include "Core/Singleton.hpp"
 

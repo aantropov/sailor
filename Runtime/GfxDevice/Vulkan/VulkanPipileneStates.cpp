@@ -1,5 +1,5 @@
 #include "VulkanPipileneStates.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
 #include "RHI/Types.h"

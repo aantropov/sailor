@@ -5,10 +5,10 @@
 #include <thread>
 #include <glm/glm/glm.hpp>
 
-#include "Defines.h"
+#include "Core/Defines.h"
 #include "Types.h"
-#include "Core/RefPtr.hpp"
-#include "Core/UniquePtr.hpp"
+#include "Memory/RefPtr.hpp"
+#include "Memory/UniquePtr.hpp"
 #include "Core/Singleton.hpp"
 #include "Jobsystem/JobSystem.h"
 #include "GfxDevice.h"

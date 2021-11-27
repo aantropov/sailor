@@ -1,5 +1,5 @@
 #pragma once
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtx/hash.hpp>
 #include <vector>

@@ -1,9 +1,9 @@
 #include "ModelImporter.h"
-#include "UID.h"
-#include "AssetRegistry.h"
-#include "MaterialImporter.h"
+#include "AssetRegistry/UID.h"
+#include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 #include "ModelAssetInfo.h"
-#include "Utils.h"
+#include "Core/Utils.h"
 #include <filesystem>
 #include <fstream>
 #include <algorithm>

@@ -1,7 +1,7 @@
 #include "VulkanRenderPass.h"
 #include "VulkanFramebuffer.h"
 #include "VulkanDevice.h"
-#include "Core/RefPtr.hpp"
+#include "Memory/RefPtr.hpp"
 
 using namespace Sailor::GfxDevice::Vulkan;
 

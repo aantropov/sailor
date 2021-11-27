@@ -1,9 +1,9 @@
-#include "AssetInfo.h"
-#include "AssetRegistry.h"
+#include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include <corecrt_io.h>
 #include <filesystem>
 #include <fstream>
-#include "Utils.h"
+#include "Core/Utils.h"
 #include <iostream>
 
 using namespace Sailor;
