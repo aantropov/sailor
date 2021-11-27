@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <vector>
 #include "AssetRegistry/UID.h"
-#include "Sailor.h"
+#include "Core/Submodule.hpp"
 #include "AssetRegistry/AssetInfo.h"
 #include "Core/Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
@@ -15,7 +15,7 @@ namespace Sailor
 
 	enum class EAssetType;
 
-	class AssetRegistry final : public TSingleton<AssetRegistry>
+	class AssetRegistry final : public Submodule
 	{
 	public:
 
@@ -24,7 +24,7 @@ namespace Sailor
 
 		virtual SAILOR_API ~AssetRegistry() override;
 
-		static SAILOR_API void Initialize();
+		SAILOR_API void Initialize();
 
 		template<typename TBinaryType, typename TFilepath>
 		static bool ReadBinaryFile(const TFilepath& filename, std::vector<TBinaryType>& buffer)

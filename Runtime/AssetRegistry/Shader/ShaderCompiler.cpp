@@ -68,7 +68,7 @@ void ShaderCompiler::Initialize()
 	ShaderAssetInfoHandler::GetInstance()->Subscribe(m_pInstance);
 
 	std::vector<UID> shaderAssetInfos;
-	AssetRegistry::GetInstance()->GetAllAssetInfos<ShaderAssetInfo>(shaderAssetInfos);
+	EngineInstance::GetSubmodule<AssetRegistry>()->GetAllAssetInfos<ShaderAssetInfo>(shaderAssetInfos);
 
 	for (const auto& uid : shaderAssetInfos)
 	{
@@ -209,7 +209,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 	if (TWeakPtr<ShaderAsset> pWeakShader = m_pInstance->LoadShaderAsset(assetUID))
 	{
 		TSharedPtr<ShaderAsset> pShader = pWeakShader.Lock();
-		AssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr(assetUID);
+		AssetInfoPtr assetInfo = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(assetUID);
 
 		if (!pShader->ContainsFragment() || !pShader->ContainsVertex())
 		{
@@ -268,7 +268,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (ShaderAssetInfoPtr shaderAssetInfo = dynamic_cast<ShaderAssetInfoPtr>(AssetRegistry::GetInstance()->GetAssetInfoPtr(uid)))
+	if (ShaderAssetInfoPtr shaderAssetInfo = dynamic_cast<ShaderAssetInfoPtr>(EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
 		if (const auto& loadedShader = m_loadedShaders.find(uid); loadedShader != m_loadedShaders.end())
 		{

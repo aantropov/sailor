@@ -44,7 +44,9 @@ void TextureAssetInfoHandler::Initialize()
 	m_pInstance->m_supportedExtensions.emplace_back("jpg");
 	m_pInstance->m_supportedExtensions.emplace_back("gif");
 	m_pInstance->m_supportedExtensions.emplace_back("psd");
-	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
+
+	auto pAssetRegistry = EngineInstance::GetSubmodule<AssetRegistry>();
+	pAssetRegistry->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
 void TextureAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

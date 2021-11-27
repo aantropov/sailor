@@ -11,11 +11,11 @@ using namespace Sailor;
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 {
-	auto assetRegistry = AssetRegistry::GetInstance();
+	Sailor::EngineInstance::Initialize();
+
+	auto assetRegistry = EngineInstance::GetSubmodule<AssetRegistry>();
 	auto shaderCompiler = ShaderCompiler::GetInstance();
 
-	EngineInstance::Initialize();
-	
 	/*if (auto shaderUID = assetRegistry->GetAssetInfoPtr("Shaders\\Simple.shader"))
 	{
 		ShaderCompiler::GetInstance()->CompileAllPermutations(shaderUID->GetUID());
@@ -25,7 +25,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 	*/
 	EngineInstance::Start();
 	EngineInstance::Stop();
-	EngineInstance::Shutdown();
+
+	Sailor::EngineInstance::Shutdown();
 
 	return 0;
 }

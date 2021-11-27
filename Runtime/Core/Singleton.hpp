@@ -11,9 +11,9 @@ protected:
 	SAILOR_API TSingleton() = default;
 	virtual SAILOR_API ~TSingleton() = default;
 
-	TSingleton(TSingleton&& move) = delete;
-	TSingleton(TSingleton& copy) = delete;
-	TSingleton& operator =(TSingleton& rhs) = delete;
+	SAILOR_API TSingleton(TSingleton&& move) = delete;
+	SAILOR_API TSingleton(TSingleton& copy) = delete;
+	SAILOR_API TSingleton& operator =(TSingleton& rhs) = delete;
 	
 public:
 

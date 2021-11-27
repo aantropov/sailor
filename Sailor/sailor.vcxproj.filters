@@ -246,9 +246,6 @@
     <ClInclude Include="..\Runtime\AssetRegistry\RenderPipeline\RenderPipelineImporter.h">
       <Filter>Runtime\AssetRegistry\RenderPipeline</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Core\Singleton.hpp">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\Core\LogMacros.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
@@ -269,6 +266,12 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\Memory\WeakPtr.hpp">
       <Filter>Runtime\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Core\Singleton.hpp">
+      <Filter>Runtime\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Core\Submodule.hpp">
+      <Filter>Runtime\Core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

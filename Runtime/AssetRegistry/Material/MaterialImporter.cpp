@@ -151,7 +151,7 @@ TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (MaterialAssetInfoPtr materialAssetInfo = dynamic_cast<MaterialAssetInfoPtr>(AssetRegistry::GetInstance()->GetAssetInfoPtr(uid)))
+	if (MaterialAssetInfoPtr materialAssetInfo = dynamic_cast<MaterialAssetInfoPtr>(EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
 		if (const auto& loadedMaterial = m_pInstance->m_loadedMaterials.find(uid); loadedMaterial != m_pInstance->m_loadedMaterials.end())
 		{
@@ -195,7 +195,7 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 	assetFile << newMaterial.dump();
 	assetFile.close();
 
-	return AssetRegistry::GetInstance()->LoadAsset(assetFilepath);
+	return EngineInstance::GetSubmodule<AssetRegistry>()->LoadAsset(assetFilepath);
 }
 
 RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)

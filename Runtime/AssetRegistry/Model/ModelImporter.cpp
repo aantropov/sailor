@@ -69,7 +69,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	{
 		MaterialAsset::Data data;
 
-		data.m_shader = AssetRegistry::GetInstance()->GetOrLoadAsset("Shaders/Simple.shader");
+		data.m_shader = EngineInstance::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Simple.shader");
 
 		glm::vec4 diffuse, ambient, emission, specular;
 		memcpy(&diffuse, material.diffuse, 3 * sizeof(tinyobj::real_t));
@@ -83,17 +83,17 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 		if (!material.diffuse_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("diffuseSampler", AssetRegistry::GetInstance()->GetOrLoadAsset(texturesFolder + material.diffuse_texname)));
+			data.m_samplers.push_back(MaterialAsset::SamplerEntry("diffuseSampler", EngineInstance::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.diffuse_texname)));
 		}
 
 		if (!material.ambient_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("ambientSampler", AssetRegistry::GetInstance()->GetOrLoadAsset(texturesFolder + material.ambient_texname)));
+			data.m_samplers.push_back(MaterialAsset::SamplerEntry("ambientSampler", EngineInstance::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.ambient_texname)));
 		}
 
 		if (!material.normal_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("normalSampler", AssetRegistry::GetInstance()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
+			data.m_samplers.push_back(MaterialAsset::SamplerEntry("normalSampler", EngineInstance::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
 		}
 
 		std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";
@@ -107,7 +107,7 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Me
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (ModelAssetInfoPtr assetInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
+	if (ModelAssetInfoPtr assetInfo = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto jobLoad = JobSystem::Scheduler::CreateJob("Check unique vertices",
 			[&outMeshes, &outMaterials, assetInfo]()
@@ -183,7 +183,7 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Me
 				{
 					for (const auto& material : materials)
 					{
-						if (AssetInfoPtr materialInfo = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
+						if (AssetInfoPtr materialInfo = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
 						{
 							outMaterials.emplace_back(MaterialImporter::LoadMaterial(materialInfo->GetUID()));
 						}

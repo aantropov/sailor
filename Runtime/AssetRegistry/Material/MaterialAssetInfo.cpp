@@ -22,7 +22,7 @@ void MaterialAssetInfoHandler::Initialize()
 	m_pInstance = new MaterialAssetInfoHandler();
 
 	m_pInstance->m_supportedExtensions.emplace_back("mat");
-	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
+	EngineInstance::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
 void MaterialAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

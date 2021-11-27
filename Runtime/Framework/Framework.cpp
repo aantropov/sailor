@@ -102,7 +102,7 @@ void Framework::CpuFrame(FrameState& state)
 
 	if (bFirstFrame)
 	{
-		if (auto modelUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
+		if (auto modelUID = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 		{
 			ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), m_testMesh, m_testMaterial);
 		}
@@ -114,7 +114,7 @@ void Framework::CpuFrame(FrameState& state)
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, EShaderBindingType::UniformBuffer);
 
-		if (auto textureUID = AssetRegistry::GetInstance()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
+		if (auto textureUID = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
 			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID()), 1);
 		}
@@ -158,8 +158,8 @@ void Framework::CpuFrame(FrameState& state)
 		cameraViewDir = hRotation * cameraViewDir;
 	}
 
-	auto width = Sailor::EngineInstance::GetViewportWindow().GetWidth();
-	auto height = Sailor::EngineInstance::GetViewportWindow().GetHeight();
+	auto width = Sailor::EngineInstance::GetViewportWindow()->GetWidth();
+	auto height = Sailor::EngineInstance::GetViewportWindow()->GetHeight();
 
 	float aspect = (height + width) > 0 ? width / (float)height : 1.0f;
 	m_frameData.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 10000.0f);

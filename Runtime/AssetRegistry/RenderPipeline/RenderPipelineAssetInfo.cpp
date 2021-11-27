@@ -22,7 +22,7 @@ void RenderPipelineAssetInfoHandler::Initialize()
 	m_pInstance = new RenderPipelineAssetInfoHandler();
 
 	m_pInstance->m_supportedExtensions.emplace_back("render_pipeline");
-	AssetRegistry::GetInstance()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
+	EngineInstance::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
 }
 
 void RenderPipelineAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

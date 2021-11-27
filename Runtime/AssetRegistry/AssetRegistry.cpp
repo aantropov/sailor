@@ -17,8 +17,6 @@ void AssetRegistry::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_pInstance = new AssetRegistry();
-
 	DefaultAssetInfoHandler::Initialize();
 	TextureAssetInfoHandler::Initialize();
 	ShaderAssetInfoHandler::Initialize();

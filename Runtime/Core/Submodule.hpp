@@ -1,38 +1,30 @@
 #pragma once
-#include "Defines.h"
-#include "LogMacros.h"
-#include "Utils.h"
-#include "Core/SharedPtr.hpp"
-#include "Core/WeakPtr.hpp"
-#include "Platform/Win32/Window.h"
-#include <glm/glm/glm.hpp>
+#include "Sailor.h"
 
 namespace Sailor
 {
-	class EngineInstance
+	class Submodule
 	{
-
 	public:
 
-		static const std::string ApplicationName;
-		static const std::string EngineName;
-		
-		static void SAILOR_API Initialize();
-		static void SAILOR_API Start();
-		static void SAILOR_API Stop();
-		static void SAILOR_API Shutdown();
+		virtual SAILOR_API ~Submodule() noexcept = default;
 
-		static Win32::Window& GetViewportWindow();
+		template<typename TSubmodule>
+		static TSubmodule* Make()
+		{
+			return new TSubmodule();
+		}
 
 	protected:
 
-		Win32::Window m_viewportWindow;
+		SAILOR_API Submodule() noexcept = default;
 
-		static EngineInstance* m_pInstance;
-		
-	private:
+		SAILOR_API Submodule(Submodule&& move) noexcept = delete;
+		SAILOR_API Submodule(Submodule& copy) noexcept = delete;
+		SAILOR_API Submodule& operator =(Submodule& rhs) noexcept = delete;
+		SAILOR_API Submodule& operator =(Submodule&& rhs) noexcept = delete;
 
-		EngineInstance() = default;
-		~EngineInstance() = default;
+		friend class EngineInstance;
 	};
+
 }

@@ -6,7 +6,7 @@
 namespace Sailor
 {
 	template<typename T>
-	class TUniquePtr final
+	class SAILOR_API TUniquePtr final
 	{
 	public:
 

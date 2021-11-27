@@ -85,7 +85,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	// Create Vulkan instance
 	VkApplicationInfo appInfo{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
 
-	appInfo.pApplicationName = EngineInstance::ApplicationName.c_str();
+	appInfo.pApplicationName = EngineInstance::ApplicationName;
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.pEngineName = "Sailor";
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);

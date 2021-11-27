@@ -9,6 +9,7 @@
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "JobSystem/JobSystem.h"
 #include "RHI/Renderer.h"
+#include "Core/Submodule.hpp"
 #include "Framework/Framework.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 
@@ -16,8 +17,8 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 
 EngineInstance* EngineInstance::m_pInstance = nullptr;
-const std::string EngineInstance::ApplicationName = "SailorEngine";
-const std::string EngineInstance::EngineName = "Sailor";
+const char* EngineInstance::ApplicationName = "SailorEngine";
+const char* EngineInstance::EngineName = "Sailor";
 
 void EngineInstance::Initialize()
 {
@@ -28,11 +29,6 @@ void EngineInstance::Initialize()
 		return;
 	}
 
-#ifdef BUILD_WITH_EASY_PROFILER
-	profiler::startListen();
-	EASY_MAIN_THREAD;
-#endif
-
 	Win32::ConsoleWindow::Initialize(false);
 
 	//#ifdef _DEBUG
@@ -40,7 +36,8 @@ void EngineInstance::Initialize()
 	//#endif
 
 	m_pInstance = new EngineInstance();
-	m_pInstance->m_viewportWindow.Create(L"Sailor Viewport", L"SailorViewport", 1024, 768);
+	m_pInstance->m_pViewportWindow = TUniquePtr<Win32::Window>::Make();
+	m_pInstance->m_pViewportWindow->Create(L"Sailor Viewport", L"SailorViewport", 1024, 768);
 
 #ifdef _DEBUG
 	const bool bIsEnabledVulkanValidationLayers = true;
@@ -51,15 +48,24 @@ void EngineInstance::Initialize()
 #endif 
 
 	JobSystem::Scheduler::Initialize();
-	Renderer::Initialize(&m_pInstance->m_viewportWindow, RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers);
+
+#ifdef BUILD_WITH_EASY_PROFILER
+	SAILOR_ENQUEUE_JOB("Initialize profiler", ([]() {profiler::startListen(); }));
+	EASY_MAIN_THREAD;
+#endif
 	
-	AssetRegistry::Initialize();
+	Renderer::Initialize(m_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers);
+	
+	m_pInstance->m_pAssetRegistry = Submodule::Make<AssetRegistry>();
+
+	GetSubmodule<AssetRegistry>()->Initialize();
+
 	TextureImporter::Initialize();
 	ShaderCompiler::Initialize();
 	ModelImporter::Initialize();
 	MaterialImporter::Initialize();
 
-	AssetRegistry::GetInstance()->ScanContentFolder();
+	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
 	ShaderCompiler::GetInstance();
 	Framework::Initialize();
@@ -69,8 +75,8 @@ void EngineInstance::Initialize()
 
 void EngineInstance::Start()
 {
-	m_pInstance->m_viewportWindow.SetActive(true);
-	m_pInstance->m_viewportWindow.SetRunning(true);
+	m_pInstance->m_pViewportWindow->SetActive(true);
+	m_pInstance->m_pViewportWindow->SetRunning(true);
 
 	uint32_t frameCounter = 0U;
 	Utils::Timer timer;
@@ -79,10 +85,10 @@ void EngineInstance::Start()
 	bool bCanCreateNewFrame = true;
 
 	std::unordered_map<std::string, std::function<void()>> consoleVars;
-	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, AssetRegistry::GetInstance());
+	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, GetSubmodule<AssetRegistry>());
 	consoleVars["memory.benchmark"] = &Memory::RunMemoryBenchmark;
 
-	while (m_pInstance->m_viewportWindow.IsRunning())
+	while (m_pInstance->m_pViewportWindow->IsRunning())
 	{
 		timer.Start();
 
@@ -116,12 +122,12 @@ void EngineInstance::Start()
 		{
 			if (GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON))
 			{
-				ivec2 centerPosition = m_pInstance->m_viewportWindow.GetCenterPointScreen();
+				ivec2 centerPosition = m_pInstance->m_pViewportWindow->GetCenterPointScreen();
 				GlobalInput::SetCursorPos(centerPosition.x, centerPosition.y);
 			}
 
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, m_pInstance->m_viewportWindow.GetCenterPointClient(), &lastFrame);
+			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, m_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
 			Framework::GetInstance()->ProcessCpuFrame(currentFrame);
 		}
 
@@ -144,7 +150,7 @@ void EngineInstance::Start()
 				Renderer::GetInstance()->GetSmoothFps(),
 				(uint32_t)Framework::GetInstance()->GetSmoothFps());
 
-			m_pInstance->m_viewportWindow.SetWindowTitle(Buff);
+			m_pInstance->m_pViewportWindow->SetWindowTitle(Buff);
 
 			frameCounter = 0U;
 			timer.Clear();
@@ -153,8 +159,8 @@ void EngineInstance::Start()
 		}
 	}
 
-	m_pInstance->m_viewportWindow.SetActive(false);
-	m_pInstance->m_viewportWindow.SetRunning(false);
+	m_pInstance->m_pViewportWindow->SetActive(false);
+	m_pInstance->m_pViewportWindow->SetRunning(false);
 
 	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Worker);
 	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
@@ -162,7 +168,7 @@ void EngineInstance::Start()
 
 void EngineInstance::Stop()
 {
-	m_pInstance->m_viewportWindow.SetActive(false);
+	m_pInstance->m_pViewportWindow->SetActive(false);
 }
 
 void EngineInstance::Shutdown()
@@ -180,14 +186,14 @@ void EngineInstance::Shutdown()
 	JobSystem::Scheduler::Shutdown();
 	Win32::ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
-	AssetRegistry::Shutdown();
-
+	
+	delete m_pInstance->m_pAssetRegistry;
 	delete m_pInstance;
 }
 
-Win32::Window& EngineInstance::GetViewportWindow()
+TUniquePtr<Win32::Window>& EngineInstance::GetViewportWindow()
 {
-	return m_pInstance->m_viewportWindow;
+	return m_pInstance->m_pViewportWindow;
 }
 
 std::mutex m_logMutex;
