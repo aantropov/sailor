@@ -7,12 +7,10 @@
 
 using namespace Sailor;
 
-void ShaderAssetInfoHandler::Initialize()
+ShaderAssetInfoHandler::ShaderAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	s_pInstance = new ShaderAssetInfoHandler();
-
-	s_pInstance->m_supportedExtensions.emplace_back("shader");
-	App::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(s_pInstance->m_supportedExtensions, s_pInstance);
+	m_supportedExtensions.emplace_back("shader");
+	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
 void ShaderAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

@@ -7,6 +7,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/Material/MaterialAssetInfo.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
 
@@ -78,7 +79,7 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API void Initialize();
+		SAILOR_API MaterialImporter(MaterialAssetInfoHandler* infoHandler);
 		virtual SAILOR_API ~MaterialImporter() override;
 
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;

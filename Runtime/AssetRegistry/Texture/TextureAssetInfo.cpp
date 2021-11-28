@@ -34,18 +34,16 @@ void TextureAssetInfo::Deserialize(const nlohmann::json& outData)
 	}
 }
 
-void TextureAssetInfoHandler::Initialize()
+TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	s_pInstance = new TextureAssetInfoHandler();
+	m_supportedExtensions.emplace_back("png");
+	m_supportedExtensions.emplace_back("bmp");
+	m_supportedExtensions.emplace_back("tga");
+	m_supportedExtensions.emplace_back("jpg");
+	m_supportedExtensions.emplace_back("gif");
+	m_supportedExtensions.emplace_back("psd");
 
-	s_pInstance->m_supportedExtensions.emplace_back("png");
-	s_pInstance->m_supportedExtensions.emplace_back("bmp");
-	s_pInstance->m_supportedExtensions.emplace_back("tga");
-	s_pInstance->m_supportedExtensions.emplace_back("jpg");
-	s_pInstance->m_supportedExtensions.emplace_back("gif");
-	s_pInstance->m_supportedExtensions.emplace_back("psd");
-
-	App::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(s_pInstance->m_supportedExtensions, s_pInstance);
+	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
 void TextureAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

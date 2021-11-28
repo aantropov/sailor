@@ -13,17 +13,6 @@
 using namespace Sailor;
 using namespace nlohmann;
 
-void AssetRegistry::Initialize()
-{
-	SAILOR_PROFILE_FUNCTION();
-
-	DefaultAssetInfoHandler::Initialize();
-	TextureAssetInfoHandler::Initialize();
-	ShaderAssetInfoHandler::Initialize();
-	ModelAssetInfoHandler::Initialize();
-	MaterialAssetInfoHandler::Initialize();
-}
-
 bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& text)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -101,7 +90,7 @@ const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 	{
 		const std::string assetInfoFile = GetMetaFilePath(filepath);
 
-		IAssetInfoHandler* assetInfoHandler = DefaultAssetInfoHandler::GetInstance();
+		IAssetInfoHandler* assetInfoHandler = App::GetSubmodule<DefaultAssetInfoHandler>();
 
 		auto assetInfoHandlerIt = m_assetInfoHandlers.find(extension);
 		if (assetInfoHandlerIt != m_assetInfoHandlers.end())
@@ -195,9 +184,4 @@ AssetRegistry::~AssetRegistry()
 	{
 		delete asset.second;
 	}
-
-	DefaultAssetInfoHandler::Shutdown();
-	ShaderAssetInfoHandler::Shutdown();
-	TextureAssetInfoHandler::Shutdown();
-	ModelAssetInfoHandler::Shutdown();
 }

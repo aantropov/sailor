@@ -21,12 +21,12 @@ namespace Sailor
 
 	using MaterialAssetInfoPtr = MaterialAssetInfo*;
 
-	class MaterialAssetInfoHandler final : public TSingleton<MaterialAssetInfoHandler>, public IAssetInfoHandler
+	class MaterialAssetInfoHandler final : public TSubmodule<MaterialAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
 
-		static SAILOR_API void Initialize();
+		SAILOR_API MaterialAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;

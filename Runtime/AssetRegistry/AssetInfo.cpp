@@ -35,10 +35,9 @@ bool AssetInfo::IsExpired() const
 	return m_loadTime < GetMetaLastModificationTime();
 }
 
-void DefaultAssetInfoHandler::Initialize()
+DefaultAssetInfoHandler::DefaultAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	s_pInstance = new DefaultAssetInfoHandler();
-	App::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(s_pInstance->m_supportedExtensions, s_pInstance);
+	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
 std::time_t AssetInfo::GetAssetLastModificationTime() const

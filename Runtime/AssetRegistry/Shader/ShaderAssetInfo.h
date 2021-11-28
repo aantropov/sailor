@@ -14,12 +14,12 @@ namespace Sailor
 
 	using ShaderAssetInfoPtr = ShaderAssetInfo*;
 
-	class ShaderAssetInfoHandler final : public TSingleton<ShaderAssetInfoHandler>, public IAssetInfoHandler
+	class ShaderAssetInfoHandler final : public TSubmodule<ShaderAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
 
-		static SAILOR_API void Initialize();
+		SAILOR_API ShaderAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;

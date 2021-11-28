@@ -17,7 +17,7 @@ namespace Sailor
 	public:
 		using ByteCode = std::vector<uint8_t>;
 
-		SAILOR_API void Initialize();
+		SAILOR_API TextureImporter(TextureAssetInfoHandler* infoHandler);
 		virtual SAILOR_API ~TextureImporter() override;
 
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override; 

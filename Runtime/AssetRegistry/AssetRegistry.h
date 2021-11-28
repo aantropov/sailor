@@ -24,8 +24,6 @@ namespace Sailor
 
 		virtual SAILOR_API ~AssetRegistry() override;
 
-		SAILOR_API void Initialize();
-
 		template<typename TBinaryType, typename TFilepath>
 		static bool ReadBinaryFile(const TFilepath& filename, std::vector<TBinaryType>& buffer)
 		{

@@ -31,7 +31,7 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API void Initialize();
+		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);
 		virtual SAILOR_API ~ModelImporter() override;
 
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;

@@ -29,12 +29,10 @@ void ModelAssetInfo::Deserialize(const nlohmann::json& outData)
 	}
 }
 
-void ModelAssetInfoHandler::Initialize()
+ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	s_pInstance = new ModelAssetInfoHandler();
-
-	s_pInstance->m_supportedExtensions.emplace_back("obj");
-	App::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(s_pInstance->m_supportedExtensions, s_pInstance);
+	m_supportedExtensions.emplace_back("obj");
+	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
 void ModelAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

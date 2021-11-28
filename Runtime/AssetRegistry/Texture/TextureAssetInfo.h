@@ -28,12 +28,12 @@ namespace Sailor
 
 	using TextureAssetInfoPtr = TextureAssetInfo*;
 
-	class TextureAssetInfoHandler final : public TSingleton<TextureAssetInfoHandler>, public IAssetInfoHandler
+	class TextureAssetInfoHandler final : public TSubmodule<TextureAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
 
-		static SAILOR_API void Initialize();
+		SAILOR_API TextureAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;

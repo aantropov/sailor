@@ -19,11 +19,11 @@
 
 using namespace Sailor;
 
-void TextureImporter::Initialize()
+TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	TextureAssetInfoHandler::GetInstance()->Subscribe(this);
+	infoHandler->Subscribe(this);
 }
 
 TextureImporter::~TextureImporter()

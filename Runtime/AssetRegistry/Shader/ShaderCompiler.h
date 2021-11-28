@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
-#include "Core/Singleton.hpp"
+#include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
@@ -39,7 +39,7 @@ namespace Sailor
 	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener
 	{
 	public:
-		SAILOR_API void Initialize();
+		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
 		SAILOR_API void CompileAllPermutations(const UID& assetUID);
 

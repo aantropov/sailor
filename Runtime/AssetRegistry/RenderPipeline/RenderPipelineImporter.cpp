@@ -14,12 +14,11 @@
 
 using namespace Sailor;
 
-void RenderPipelineImporter::Initialize()
+RenderPipelineImporter::RenderPipelineImporter(RenderPipelineAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	s_pInstance = new RenderPipelineImporter();
-	RenderPipelineAssetInfoHandler::GetInstance()->Subscribe(s_pInstance);
+	infoHandler->Subscribe(this);
 }
 
 RenderPipelineImporter::~RenderPipelineImporter()

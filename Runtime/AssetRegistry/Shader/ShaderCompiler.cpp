@@ -59,12 +59,12 @@ void ShaderAsset::Deserialize(const nlohmann::json& inData)
 	}
 }
 
-void ShaderCompiler::Initialize()
+ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	m_shaderCache.Initialize();
-	ShaderAssetInfoHandler::GetInstance()->Subscribe(this);
+	infoHandler->Subscribe(this);
 
 	std::vector<UID> shaderAssetInfos;
 	App::GetSubmodule<AssetRegistry>()->GetAllAssetInfos<ShaderAssetInfo>(shaderAssetInfos);

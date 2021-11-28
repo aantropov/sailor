@@ -27,12 +27,12 @@ namespace Sailor
 
 	using ModelAssetInfoPtr = ModelAssetInfo*;
 
-	class ModelAssetInfoHandler final : public TSingleton<ModelAssetInfoHandler>, public IAssetInfoHandler
+	class ModelAssetInfoHandler final : public TSubmodule<ModelAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
 
-		static SAILOR_API void Initialize();
+		SAILOR_API ModelAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;

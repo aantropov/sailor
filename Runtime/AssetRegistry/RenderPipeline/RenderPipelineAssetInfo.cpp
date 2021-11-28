@@ -17,12 +17,10 @@ void RenderPipelineAssetInfo::Deserialize(const nlohmann::json& outData)
 	AssetInfo::Deserialize(outData);
 }
 
-void RenderPipelineAssetInfoHandler::Initialize()
+RenderPipelineAssetInfoHandler::RenderPipelineAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	s_pInstance = new RenderPipelineAssetInfoHandler();
-
-	s_pInstance->m_supportedExtensions.emplace_back("render_pipeline");
-	App::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(s_pInstance->m_supportedExtensions, s_pInstance);
+	m_supportedExtensions.emplace_back("render_pipeline");
+	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
 void RenderPipelineAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

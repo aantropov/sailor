@@ -19,12 +19,12 @@ namespace Sailor
 
 	using RenderPipelineAssetInfoPtr = RenderPipelineAssetInfo*;
 
-	class RenderPipelineAssetInfoHandler final : public TSingleton<RenderPipelineAssetInfoHandler>, public IAssetInfoHandler
+	class RenderPipelineAssetInfoHandler final : public TSubmodule<RenderPipelineAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
 
-		static SAILOR_API void Initialize();
+		SAILOR_API RenderPipelineAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;

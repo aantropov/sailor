@@ -19,10 +19,10 @@
 
 using namespace Sailor;
 
-void ModelImporter::Initialize()
+ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-	ModelAssetInfoHandler::GetInstance()->Subscribe(this);
+	infoHandler->Subscribe(this);
 }
 
 ModelImporter::~ModelImporter()

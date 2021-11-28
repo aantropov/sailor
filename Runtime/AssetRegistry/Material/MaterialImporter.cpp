@@ -126,10 +126,10 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	m_pData->m_renderState = RenderState(bEnableDepthTest, bEnableZWrite, depthBias, cullMode, blendMode, fillMode);
 }
 
-void MaterialImporter::Initialize()
+MaterialImporter::MaterialImporter(MaterialAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-	MaterialAssetInfoHandler::GetInstance()->Subscribe(this);
+	infoHandler->Subscribe(this);
 }
 
 MaterialImporter::~MaterialImporter()

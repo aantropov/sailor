@@ -83,12 +83,12 @@ namespace Sailor
 		std::vector<IAssetInfoHandlerListener*> m_listeners;
 	};
 
-	class DefaultAssetInfoHandler final : public TSingleton<DefaultAssetInfoHandler>, public IAssetInfoHandler
+	class DefaultAssetInfoHandler final : public TSubmodule<DefaultAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
 
-		static SAILOR_API void Initialize();
+		SAILOR_API DefaultAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const override;
 		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const override;

@@ -55,11 +55,19 @@ void App::Initialize()
 #endif
 
 	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers));
-	s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make())->Initialize();
-	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make())->Initialize();
-	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make())->Initialize();
-	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make())->Initialize();
-	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make())->Initialize();
+	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
+
+	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
+
+	auto textureInfoHandler = s_pInstance->AddSubmodule(TSubmodule<TextureAssetInfoHandler>::Make(assetRegistry));
+	auto shaderInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ShaderAssetInfoHandler>::Make(assetRegistry));
+	auto modelInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ModelAssetInfoHandler>::Make(assetRegistry));
+	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
+
+	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make(textureInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
@@ -187,6 +195,11 @@ void App::Shutdown()
 	RemoveSubmodule<ShaderCompiler>();
 	RemoveSubmodule<TextureImporter>();
 	RemoveSubmodule<AssetRegistry>();
+
+	RemoveSubmodule<DefaultAssetInfoHandler>();
+	RemoveSubmodule<ShaderAssetInfoHandler>();
+	RemoveSubmodule<TextureAssetInfoHandler>();
+	RemoveSubmodule<ModelAssetInfoHandler>();
 
 	delete s_pInstance;
 }
