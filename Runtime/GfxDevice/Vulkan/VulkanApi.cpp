@@ -70,14 +70,14 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (m_pInstance != nullptr)
+	if (s_pInstance != nullptr)
 	{
 		SAILOR_LOG("Vulkan already initialized!");
 		return;
 	}
 
-	m_pInstance = new VulkanApi();
-	m_pInstance->bIsEnabledValidationLayers = bInIsEnabledValidationLayers;
+	s_pInstance = new VulkanApi();
+	s_pInstance->bIsEnabledValidationLayers = bInIsEnabledValidationLayers;
 
 	SAILOR_LOG("Num supported Vulkan extensions: %d", VulkanApi::GetNumSupportedExtensions());
 	PrintSupportedExtensions();
@@ -85,7 +85,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	// Create Vulkan instance
 	VkApplicationInfo appInfo{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
 
-	appInfo.pApplicationName = EngineInstance::ApplicationName;
+	appInfo.pApplicationName = App::ApplicationName;
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.pEngineName = "Sailor";
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -101,7 +101,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 #endif
 	};
 
-	if (m_pInstance->bIsEnabledValidationLayers)
+	if (s_pInstance->bIsEnabledValidationLayers)
 	{
 		extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 	}
@@ -114,7 +114,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
-	if (m_pInstance->bIsEnabledValidationLayers)
+	if (s_pInstance->bIsEnabledValidationLayers)
 	{
 		createInfo.ppEnabledLayerNames = validationLayers.data();
 		createInfo.enabledLayerCount = (uint32_t)validationLayers.size();
@@ -137,14 +137,14 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 
 	SetupDebugCallback();
 
-	m_pInstance->m_device = VulkanDevicePtr::Make(viewport, msaaSamples);
+	s_pInstance->m_device = VulkanDevicePtr::Make(viewport, msaaSamples);
 
 	SAILOR_LOG("Vulkan initialized");
 }
 
 void VulkanApi::WaitIdle()
 {
-	m_pInstance->m_device->WaitIdle();
+	s_pInstance->m_device->WaitIdle();
 }
 
 VulkanDevicePtr VulkanApi::GetMainDevice() const
@@ -218,7 +218,7 @@ VulkanApi::~VulkanApi()
 
 bool VulkanApi::SetupDebugCallback()
 {
-	if (!m_pInstance->bIsEnabledValidationLayers)
+	if (!s_pInstance->bIsEnabledValidationLayers)
 	{
 		return false;
 	}
@@ -226,7 +226,7 @@ bool VulkanApi::SetupDebugCallback()
 	VkDebugUtilsMessengerCreateInfoEXT createInfo;
 	PopulateDebugMessengerCreateInfo(createInfo);
 
-	VK_CHECK(CreateDebugUtilsMessengerEXT(GetVkInstance(), &createInfo, nullptr, &m_pInstance->m_debugMessenger));
+	VK_CHECK(CreateDebugUtilsMessengerEXT(GetVkInstance(), &createInfo, nullptr, &s_pInstance->m_debugMessenger));
 
 	return true;
 }

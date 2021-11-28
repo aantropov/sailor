@@ -36,9 +36,9 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 	m_storageBuffer.Clear();
 
 	// Waiting finishing releasing of rendering resources
-	JobSystem::Scheduler::GetInstance()->ProcessJobsOnMainThread();
-	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
-	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Worker);
+	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
+	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Rendering);
+	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Worker);
 
 	GfxDevice::Vulkan::VulkanApi::Shutdown();
 }
@@ -345,7 +345,7 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	// We need debug shaders to get full names from reflection
 	RHI::ShaderByteCode debugVertexSpirv;
 	RHI::ShaderByteCode debugFragmentSpirv;
-	ShaderCompiler::GetSpirvCode(shader, defines, debugVertexSpirv, debugFragmentSpirv, true);
+	App::GetSubmodule<ShaderCompiler>()->GetSpirvCode(shader, defines, debugVertexSpirv, debugFragmentSpirv, true);
 	auto debugVertexShader = CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
 	auto debugFragmentShader = CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
 	VulkanApi::CreateDescriptorSetLayouts(device, { debugVertexShader->m_vulkan.m_shader, debugFragmentShader->m_vulkan.m_shader },
@@ -359,7 +359,7 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 
 	RHI::ShaderByteCode vertexSpirv;
 	RHI::ShaderByteCode fragmentSpirv;
-	ShaderCompiler::GetSpirvCode(shader, defines, vertexSpirv, fragmentSpirv, bIsDebug);
+	App::GetSubmodule<ShaderCompiler>()->GetSpirvCode(shader, defines, vertexSpirv, fragmentSpirv, bIsDebug);
 	auto vertexShader = CreateShader(RHI::EShaderStage::Vertex, vertexSpirv);
 	auto fragmentShader = CreateShader(RHI::EShaderStage::Fragment, fragmentSpirv);
 

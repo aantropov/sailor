@@ -22,9 +22,7 @@ using namespace Sailor;
 void ModelImporter::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	m_pInstance = new ModelImporter();
-	ModelAssetInfoHandler::GetInstance()->Subscribe(m_pInstance);
+	ModelAssetInfoHandler::GetInstance()->Subscribe(this);
 }
 
 ModelImporter::~ModelImporter()
@@ -69,7 +67,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	{
 		MaterialAsset::Data data;
 
-		data.m_shader = EngineInstance::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Simple.shader");
+		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Simple.shader");
 
 		glm::vec4 diffuse, ambient, emission, specular;
 		memcpy(&diffuse, material.diffuse, 3 * sizeof(tinyobj::real_t));
@@ -83,23 +81,23 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 		if (!material.diffuse_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("diffuseSampler", EngineInstance::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.diffuse_texname)));
+			data.m_samplers.push_back(MaterialAsset::SamplerEntry("diffuseSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.diffuse_texname)));
 		}
 
 		if (!material.ambient_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("ambientSampler", EngineInstance::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.ambient_texname)));
+			data.m_samplers.push_back(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.ambient_texname)));
 		}
 
 		if (!material.normal_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("normalSampler", EngineInstance::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
+			data.m_samplers.push_back(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
 		}
 
 		std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";
 		std::filesystem::create_directory(materialsFolder);
 
-		MaterialImporter::CreateMaterialAsset(materialsFolder + material.name + ".mat", std::move(data));
+		App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.name + ".mat", std::move(data));
 	}
 }
 
@@ -107,7 +105,7 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Me
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (ModelAssetInfoPtr assetInfo = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
+	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto jobLoad = JobSystem::Scheduler::CreateJob("Check unique vertices",
 			[&outMeshes, &outMaterials, assetInfo]()
@@ -183,9 +181,9 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Me
 				{
 					for (const auto& material : materials)
 					{
-						if (AssetInfoPtr materialInfo = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
+						if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
 						{
-							outMaterials.emplace_back(MaterialImporter::LoadMaterial(materialInfo->GetUID()));
+							outMaterials.emplace_back(App::GetSubmodule<MaterialImporter>()->LoadMaterial(materialInfo->GetUID()));
 						}
 						else
 						{
@@ -195,7 +193,7 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Me
 				}
 			});
 
-		JobSystem::Scheduler::GetInstance()->Run(jobLoad);
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(jobLoad);
 
 		return jobLoad;
 	}

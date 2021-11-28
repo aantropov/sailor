@@ -19,10 +19,10 @@ void MaterialAssetInfo::Deserialize(const nlohmann::json& outData)
 
 void MaterialAssetInfoHandler::Initialize()
 {
-	m_pInstance = new MaterialAssetInfoHandler();
+	s_pInstance = new MaterialAssetInfoHandler();
 
-	m_pInstance->m_supportedExtensions.emplace_back("mat");
-	EngineInstance::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
+	s_pInstance->m_supportedExtensions.emplace_back("mat");
+	App::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(s_pInstance->m_supportedExtensions, s_pInstance);
 }
 
 void MaterialAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

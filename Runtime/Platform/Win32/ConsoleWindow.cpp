@@ -30,7 +30,7 @@ void ConsoleWindow::Initialize(bool bInShouldAttach)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_pInstance = new ConsoleWindow(bInShouldAttach);
+	s_pInstance = new ConsoleWindow(bInShouldAttach);
 }
 
 // Global handler for break and exit signals from the console.

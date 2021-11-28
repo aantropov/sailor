@@ -6,7 +6,7 @@ class SAILOR_API TSingleton
 {
 protected:
 
-	static T* m_pInstance;
+	static T* s_pInstance;
 
 	TSingleton() = default;
 	virtual ~TSingleton() = default;
@@ -17,17 +17,17 @@ protected:
 
 public:
 
-	static  T* GetInstance() { return m_pInstance; }
+	static  T* GetInstance() { return s_pInstance; }
 	static void Shutdown()
 	{
-		delete m_pInstance;
-		m_pInstance = nullptr;
+		delete s_pInstance;
+		s_pInstance = nullptr;
 	}
 };
 
 #ifndef _SAILOR_IMPORT_
 
 template<typename T>
-T* TSingleton<T>::m_pInstance = nullptr;
+T* TSingleton<T>::s_pInstance = nullptr;
 
 #endif

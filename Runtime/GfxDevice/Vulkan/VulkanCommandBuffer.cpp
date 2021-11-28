@@ -57,7 +57,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	}
 	else
 	{
-		JobSystem::Scheduler::GetInstance()->Run(pReleaseResource, m_currentThreadId);
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
 	}
 	ClearDependencies();
 }

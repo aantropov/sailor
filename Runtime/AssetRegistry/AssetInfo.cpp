@@ -37,8 +37,8 @@ bool AssetInfo::IsExpired() const
 
 void DefaultAssetInfoHandler::Initialize()
 {
-	m_pInstance = new DefaultAssetInfoHandler();
-	EngineInstance::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(m_pInstance->m_supportedExtensions, m_pInstance);
+	s_pInstance = new DefaultAssetInfoHandler();
+	App::GetSubmodule<AssetRegistry>()->RegisterAssetInfoHandler(s_pInstance->m_supportedExtensions, s_pInstance);
 }
 
 std::time_t AssetInfo::GetAssetLastModificationTime() const

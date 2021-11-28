@@ -9,7 +9,7 @@
 #include "Types.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/UniquePtr.hpp"
-#include "Core/Singleton.hpp"
+#include "Core/Submodule.h"
 #include "Jobsystem/JobSystem.h"
 #include "GfxDevice.h"
 
@@ -31,12 +31,12 @@ namespace Sailor::RHI
 	typedef TRefPtr<class ShaderBindingSet> ShaderBindingSetPtr;
 	typedef TRefPtr<class Semaphore> SemaphorePtr;
 
-	class Renderer : public TSingleton<Renderer>
+	class Renderer : public TSubmodule<Renderer>
 	{
 	public:
 		static constexpr uint32_t MaxFramesInQueue = 2;
 
-		static SAILOR_API void Initialize(class Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+		SAILOR_API Renderer(class Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API ~Renderer() override;
 
 		void SAILOR_API FixLostDevice();

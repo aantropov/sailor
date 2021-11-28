@@ -114,7 +114,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API VulkanDevicePtr GetMainDevice() const;
 
 		bool SAILOR_API IsEnabledValidationLayers() const { return bIsEnabledValidationLayers; }
-		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return m_pInstance->m_vkInstance; }
+		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return s_pInstance->m_vkInstance; }
 
 		static SAILOR_API VulkanQueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VulkanSurfacePtr surface);
 

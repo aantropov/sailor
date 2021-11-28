@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
-#include "Core/Singleton.hpp"
+#include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
@@ -27,11 +27,11 @@ namespace Sailor
 		RHI::MaterialPtr m_materials;
 	};
 
-	class ModelImporter final : public TSingleton<ModelImporter>, public IAssetInfoHandlerListener
+	class ModelImporter final : public TSubmodule<ModelImporter>, public IAssetInfoHandlerListener
 	{
 	public:
 
-		static SAILOR_API void Initialize();
+		SAILOR_API void Initialize();
 		virtual SAILOR_API ~ModelImporter() override;
 
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;

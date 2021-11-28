@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
-#include "Core/Singleton.hpp"
+#include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
@@ -74,19 +74,19 @@ namespace Sailor
 		friend class MaterialImporter;
 	};
 
-	class MaterialImporter final : public TSingleton<MaterialImporter>, public IAssetInfoHandlerListener
+	class MaterialImporter final : public TSubmodule<MaterialImporter>, public IAssetInfoHandlerListener
 	{
 	public:
 
-		static SAILOR_API void Initialize();
+		SAILOR_API void Initialize();
 		virtual SAILOR_API ~MaterialImporter() override;
 
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		static SAILOR_API TWeakPtr<MaterialAsset> LoadMaterialAsset(UID uid);
-		static SAILOR_API RHI::MaterialPtr LoadMaterial(UID uid);
-		static SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
+		SAILOR_API TWeakPtr<MaterialAsset> LoadMaterialAsset(UID uid);
+		SAILOR_API RHI::MaterialPtr LoadMaterial(UID uid);
+		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
 
 	private:
 

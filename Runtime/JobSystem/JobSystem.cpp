@@ -59,7 +59,7 @@ void IJob::Complete()
 
 	for (auto& threadType : threadTypesToRefresh)
 	{
-		Scheduler::GetInstance()->NotifyWorkerThread(threadType.first, threadType.second > 1);
+		App::GetSubmodule<JobSystem::Scheduler>()->NotifyWorkerThread(threadType.first, threadType.second > 1);
 	}
 
 	m_bIsFinished = true;
@@ -155,7 +155,7 @@ void WorkerThread::Process()
 	EASY_THREAD_SCOPE(m_threadName.c_str());
 	m_threadId = GetCurrentThreadId();
 
-	Scheduler* scheduler = Scheduler::GetInstance();
+	Scheduler* scheduler = App::GetSubmodule<JobSystem::Scheduler>();
 
 	TSharedPtr<Job> pCurrentJob;
 
@@ -181,7 +181,7 @@ void WorkerThread::Process()
 			scheduler->NotifyWorkerThread(m_threadType);
 
 			SAILOR_PROFILE_END_BLOCK()
-			m_bIsBusy = false;
+				m_bIsBusy = false;
 		}
 
 		lk.unlock();
@@ -190,9 +190,7 @@ void WorkerThread::Process()
 
 void Scheduler::Initialize()
 {
-	m_pInstance = new Scheduler();
-
-	m_pInstance->m_mainThreadId = GetCurrentThreadId();
+	m_mainThreadId = GetCurrentThreadId();
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numThreads = std::max(1u, coresCount - 2u);
@@ -200,29 +198,29 @@ void Scheduler::Initialize()
 	WorkerThread* newRenderingThread = new WorkerThread(
 		"Rendering Thread",
 		EThreadType::Rendering,
-		m_pInstance->m_refreshCondVar[(uint32_t)EThreadType::Rendering],
-		m_pInstance->m_queueMutex[(uint32_t)EThreadType::Rendering],
-		m_pInstance->m_pCommonJobsQueue[(uint32_t)EThreadType::Rendering]);
+		m_refreshCondVar[(uint32_t)EThreadType::Rendering],
+		m_queueMutex[(uint32_t)EThreadType::Rendering],
+		m_pCommonJobsQueue[(uint32_t)EThreadType::Rendering]);
 
-	m_pInstance->m_workerThreads.emplace_back(newRenderingThread);
+	m_workerThreads.emplace_back(newRenderingThread);
 
 	for (uint32_t i = 0; i < numThreads; i++)
 	{
 		const std::string threadName = std::string("Worker Thread ") + std::to_string(i);
 		WorkerThread* newThread = new WorkerThread(threadName, EThreadType::Worker,
-			m_pInstance->m_refreshCondVar[(uint32_t)EThreadType::Worker],
-			m_pInstance->m_queueMutex[(uint32_t)EThreadType::Worker],
-			m_pInstance->m_pCommonJobsQueue[(uint32_t)EThreadType::Worker]);
+			m_refreshCondVar[(uint32_t)EThreadType::Worker],
+			m_queueMutex[(uint32_t)EThreadType::Worker],
+			m_pCommonJobsQueue[(uint32_t)EThreadType::Worker]);
 
-		m_pInstance->m_workerThreads.emplace_back(newThread);
+		m_workerThreads.emplace_back(newThread);
 	}
 
-	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Threads count: %zd", coresCount, m_pInstance->m_workerThreads.size());
+	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Threads count: %zd", coresCount, m_workerThreads.size());
 }
 
 DWORD Scheduler::GetRendererThreadId() const
 {
-	return m_pInstance->m_workerThreads[0]->GetThreadId();
+	return App::GetSubmodule<Scheduler>()->m_workerThreads[0]->GetThreadId();
 }
 
 Scheduler::~Scheduler()
@@ -243,7 +241,7 @@ Scheduler::~Scheduler()
 	}
 	m_workerThreads.clear();
 
-	JobSystem::Scheduler::GetInstance()->ProcessJobsOnMainThread();
+	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
 }
 
 TSharedPtr<Job> Scheduler::CreateJob(const std::string& name, const std::function<void()>& lambda, EThreadType thread)

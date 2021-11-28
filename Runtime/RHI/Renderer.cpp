@@ -42,20 +42,13 @@ bool IDelayedInitialization::IsReady() const
 	return m_dependencies.size() == 0;
 }
 
-void Renderer::Initialize(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
+Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
-	if (m_pInstance != nullptr)
-	{
-		SAILOR_LOG("Renderer already initialized!");
-		return;
-	}
-
-	m_pInstance = new Renderer();
-	m_pInstance->m_pViewport = pViewport;
+	m_pViewport = pViewport;
 
 #if defined(VULKAN)
-	m_pInstance->m_driverInstance = TUniquePtr<Sailor::GfxDevice::Vulkan::GfxDeviceVulkan>::Make();
-	m_pInstance->m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
+	m_driverInstance = TUniquePtr<Sailor::GfxDevice::Vulkan::GfxDeviceVulkan>::Make();
+	m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
 #endif
 }
 
@@ -67,14 +60,14 @@ Renderer::~Renderer()
 
 TUniquePtr<IGfxDevice>& Renderer::GetDriver()
 {
-	return m_pInstance->m_driverInstance;
+	return App::GetSubmodule<Renderer>()->m_driverInstance;
 }
 
 IGfxDeviceCommands* Renderer::GetDriverCommands()
 {
 
 #if defined(VULKAN)
-	return dynamic_cast<IGfxDeviceCommands*>(m_pInstance->m_driverInstance.GetRawPtr());
+	return dynamic_cast<IGfxDeviceCommands*>(App::GetSubmodule<Renderer>()->m_driverInstance.GetRawPtr());
 #endif
 
 	return nullptr;
@@ -89,7 +82,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
 	SAILOR_PROFILE_BLOCK("Wait for render thread");
 
-	if (m_bForceStop || JobSystem::Scheduler::GetInstance()->GetNumRenderingJobs() > MaxFramesInQueue)
+	if (m_bForceStop || App::GetSubmodule<JobSystem::Scheduler>()->GetNumRenderingJobs() > MaxFramesInQueue)
 	{
 		return false;
 	}
@@ -155,8 +148,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	renderingJob->Join(preRenderingJob);
 
-	JobSystem::Scheduler::GetInstance()->Run(preRenderingJob);
-	JobSystem::Scheduler::GetInstance()->Run(renderingJob);
+	App::GetSubmodule<JobSystem::Scheduler>()->Run(preRenderingJob);
+	App::GetSubmodule<JobSystem::Scheduler>()->Run(renderingJob);
 
 	SAILOR_PROFILE_END_BLOCK();
 

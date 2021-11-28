@@ -18,8 +18,8 @@ void RenderPipelineImporter::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_pInstance = new RenderPipelineImporter();
-	RenderPipelineAssetInfoHandler::GetInstance()->Subscribe(m_pInstance);
+	s_pInstance = new RenderPipelineImporter();
+	RenderPipelineAssetInfoHandler::GetInstance()->Subscribe(s_pInstance);
 }
 
 RenderPipelineImporter::~RenderPipelineImporter()

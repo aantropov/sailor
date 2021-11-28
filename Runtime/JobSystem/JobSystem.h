@@ -5,11 +5,11 @@
 #include <atomic>
 #include <thread>
 #include "Sailor.h"
-#include "Core/Singleton.hpp"
+#include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
 
-#define SAILOR_ENQUEUE_JOB(Name, Lambda) Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, Lambda))
-#define SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::JobSystem::Scheduler::GetInstance()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, Lambda, Sailor::JobSystem::EThreadType::Rendering))
+#define SAILOR_ENQUEUE_JOB(Name, Lambda) Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, Lambda))
+#define SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, Lambda, Sailor::JobSystem::EThreadType::Rendering))
 
 namespace Sailor
 {
@@ -137,11 +137,11 @@ namespace Sailor
 			std::vector<TSharedPtr<Job>>& m_pCommonJobsQueue;
 		};
 
-		class Scheduler final : public TSingleton<Scheduler>
+		class Scheduler final : public TSubmodule<Scheduler>
 		{
 		public:
 
-			static SAILOR_API void Initialize();
+			SAILOR_API void Initialize();
 
 			virtual SAILOR_API ~Scheduler() override;
 
@@ -163,6 +163,8 @@ namespace Sailor
 			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; };
 			SAILOR_API DWORD GetRendererThreadId() const;
 
+			SAILOR_API Scheduler() = default;
+
 		protected:
 
 			SAILOR_API void GetThreadSyncVarsByThreadType(
@@ -170,8 +172,6 @@ namespace Sailor
 				std::mutex*& pOutMutex,
 				std::vector<TSharedPtr<Job>>*& pOutQueue,
 				std::condition_variable*& pOutCondVar);
-
-			SAILOR_API Scheduler() = default;
 
 			std::mutex m_queueMutex[3];
 			std::condition_variable m_refreshCondVar[3];

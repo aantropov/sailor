@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <nlohmann_json/include/nlohmann/json.hpp>
-#include "Core/Singleton.hpp"
+#include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
@@ -12,12 +12,12 @@
 
 namespace Sailor
 {
-	class TextureImporter final : public TSingleton<TextureImporter>, public IAssetInfoHandlerListener
+	class TextureImporter final : public TSubmodule<TextureImporter>, public IAssetInfoHandlerListener
 	{
 	public:
 		using ByteCode = std::vector<uint8_t>;
 
-		static SAILOR_API void Initialize();
+		SAILOR_API void Initialize();
 		virtual SAILOR_API ~TextureImporter() override;
 
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override; 

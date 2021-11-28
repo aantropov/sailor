@@ -13,7 +13,7 @@ namespace Sailor
 {
 	class AssetRegistry;
 
-	class SAILOR_API EngineInstance
+	class SAILOR_API App
 	{
 
 	public:
@@ -35,7 +35,7 @@ namespace Sailor
 			const int32_t typeId = TSubmodule<T>::GetTypeId();
 			if (typeId != SubmoduleBase::InvalidSubmoduleTypeId)
 			{
-				return static_cast<T*>(m_pInstance->m_submodules[(uint32_t)typeId].GetRawPtr());
+				return static_cast<T*>(s_pInstance->m_submodules[(uint32_t)typeId].GetRawPtr());
 			}
 			return nullptr;
 		}
@@ -45,10 +45,10 @@ namespace Sailor
 		{
 			assert(submodule);
 			assert(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
-			assert(!m_pInstance->m_submodules[(uint32_t)TSubmodule<T>::GetTypeId()]);
+			assert(!s_pInstance->m_submodules[(uint32_t)TSubmodule<T>::GetTypeId()]);
 
 			T* rawPtr = static_cast<T*>(submodule.GetRawPtr());
-			m_pInstance->m_submodules[TSubmodule<T>::GetTypeId()] = std::move(submodule);
+			s_pInstance->m_submodules[TSubmodule<T>::GetTypeId()] = std::move(submodule);
 
 			return rawPtr;
 		}
@@ -57,7 +57,7 @@ namespace Sailor
 		static void RemoveSubmodule()
 		{
 			assert(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
-			m_pInstance->m_submodules[TSubmodule<T>::GetTypeId()].Clear();
+			s_pInstance->m_submodules[TSubmodule<T>::GetTypeId()].Clear();
 		}
 
 	protected:
@@ -68,12 +68,12 @@ namespace Sailor
 
 		TUniquePtr<SubmoduleBase> m_submodules[MaxSubmodules];
 
-		static EngineInstance* m_pInstance;
+		static App* s_pInstance;
 
-		EngineInstance(const EngineInstance&) = delete;
-		EngineInstance(EngineInstance&&) = delete;
+		App(const App&) = delete;
+		App(App&&) = delete;
 
-		EngineInstance() = default;
-		~EngineInstance() = default;
+		App() = default;
+		~App() = default;
 	};
 }

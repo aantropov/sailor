@@ -130,9 +130,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 void MaterialImporter::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	m_pInstance = new MaterialImporter();
-	MaterialAssetInfoHandler::GetInstance()->Subscribe(m_pInstance);
+	MaterialAssetInfoHandler::GetInstance()->Subscribe(this);
 }
 
 MaterialImporter::~MaterialImporter()
@@ -151,9 +149,9 @@ TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (MaterialAssetInfoPtr materialAssetInfo = dynamic_cast<MaterialAssetInfoPtr>(EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
+	if (MaterialAssetInfoPtr materialAssetInfo = dynamic_cast<MaterialAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
-		if (const auto& loadedMaterial = m_pInstance->m_loadedMaterials.find(uid); loadedMaterial != m_pInstance->m_loadedMaterials.end())
+		if (const auto& loadedMaterial = m_loadedMaterials.find(uid); loadedMaterial != m_loadedMaterials.end())
 		{
 			return loadedMaterial->second;
 		}
@@ -176,7 +174,7 @@ TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 		MaterialAsset* material = new MaterialAsset();
 		material->Deserialize(j_material);
 
-		return m_pInstance->m_loadedMaterials[uid] = TSharedPtr<MaterialAsset>(material);
+		return m_loadedMaterials[uid] = TSharedPtr<MaterialAsset>(material);
 	}
 
 	SAILOR_LOG("Cannot find material asset info with UID: %s", uid.ToString().c_str());
@@ -195,12 +193,12 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 	assetFile << newMaterial.dump();
 	assetFile.close();
 
-	return EngineInstance::GetSubmodule<AssetRegistry>()->LoadAsset(assetFilepath);
+	return App::GetSubmodule<AssetRegistry>()->LoadAsset(assetFilepath);
 }
 
 RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 {
-	auto pMaterial = GetInstance()->LoadMaterialAsset(uid);
+	auto pMaterial = LoadMaterialAsset(uid);
 
 	if (pMaterial)
 	{

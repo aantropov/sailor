@@ -23,7 +23,8 @@ namespace Sailor
 
 		virtual ~TSubmodule() noexcept = default;
 
-		static TUniquePtr<TSubmodule> Make()
+		template<typename... TArgs>
+		static TUniquePtr<TSubmodule> Make(TArgs&&... args)
 		{
 			// We're generating typeId by Submodule class only once
 			if (TSubmodule::s_typeId == -1)
@@ -32,7 +33,7 @@ namespace Sailor
 				SubmoduleBase::s_nextTypeId++;
 			}
 
-			return TUniquePtr<TSubmodule>(new T());
+			return TUniquePtr<TSubmodule>(new T(std::forward<TArgs>(args)...));
 		}
 
 		static int32_t GetTypeId() { return s_typeId; }

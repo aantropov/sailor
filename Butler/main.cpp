@@ -10,9 +10,9 @@ using namespace Sailor;
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 {
-	Sailor::EngineInstance::Initialize();
+	Sailor::App::Initialize();
 
-	//auto assetRegistry = EngineInstance::GetSubmodule<AssetRegistry>();
+	//auto assetRegistry = App::GetSubmodule<AssetRegistry>();
 	/*auto shaderCompiler = ShaderCompiler::GetInstance();
 
 	if (auto shaderUID = assetRegistry->GetAssetInfoPtr("Shaders\\Simple.shader"))
@@ -22,10 +22,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 		//ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), "TEST_DEFINE1",);
 	}
 	*/
-	EngineInstance::Start();
-	EngineInstance::Stop();
+	App::Start();
+	App::Stop();
 
-	Sailor::EngineInstance::Shutdown();
+	Sailor::App::Shutdown();
 
 	return 0;
 }

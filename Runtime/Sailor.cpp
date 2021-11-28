@@ -16,15 +16,15 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-EngineInstance* EngineInstance::m_pInstance = nullptr;
-const char* EngineInstance::ApplicationName = "SailorEngine";
-const char* EngineInstance::EngineName = "Sailor";
+App* App::s_pInstance = nullptr;
+const char* App::ApplicationName = "SailorEngine";
+const char* App::EngineName = "Sailor";
 
-void EngineInstance::Initialize()
+void App::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (m_pInstance != nullptr)
+	if (s_pInstance != nullptr)
 	{
 		return;
 	}
@@ -35,9 +35,9 @@ void EngineInstance::Initialize()
 	Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
 	//#endif
 
-	m_pInstance = new EngineInstance();
-	m_pInstance->m_pViewportWindow = TUniquePtr<Win32::Window>::Make();
-	m_pInstance->m_pViewportWindow->Create(L"Sailor Viewport", L"SailorViewport", 1024, 768);
+	s_pInstance = new App();
+	s_pInstance->m_pViewportWindow = TUniquePtr<Win32::Window>::Make();
+	s_pInstance->m_pViewportWindow->Create(L"Sailor Viewport", L"SailorViewport", 1024, 768);
 
 #ifdef _DEBUG
 	const bool bIsEnabledVulkanValidationLayers = true;
@@ -47,34 +47,31 @@ void EngineInstance::Initialize()
 	const bool bIsEnabledVulkanValidationLayers = false;
 #endif 
 
-	JobSystem::Scheduler::Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<JobSystem::Scheduler>::Make())->Initialize();
 
 #ifdef BUILD_WITH_EASY_PROFILER
 	SAILOR_ENQUEUE_JOB("Initialize profiler", ([]() {profiler::startListen(); }));
 	EASY_MAIN_THREAD;
 #endif
-	
-	Renderer::Initialize(m_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers);
-	
-	m_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make())->Initialize();
 
-	TextureImporter::Initialize();
-	ShaderCompiler::Initialize();
-	ModelImporter::Initialize();
-	MaterialImporter::Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers));
+	s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make())->Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make())->Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make())->Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make())->Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make())->Initialize();
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
-	ShaderCompiler::GetInstance();
 	Framework::Initialize();
 
 	SAILOR_LOG("Sailor Engine initialized");
 }
 
-void EngineInstance::Start()
+void App::Start()
 {
-	m_pInstance->m_pViewportWindow->SetActive(true);
-	m_pInstance->m_pViewportWindow->SetRunning(true);
+	s_pInstance->m_pViewportWindow->SetActive(true);
+	s_pInstance->m_pViewportWindow->SetRunning(true);
 
 	uint32_t frameCounter = 0U;
 	Utils::Timer timer;
@@ -86,7 +83,7 @@ void EngineInstance::Start()
 	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, GetSubmodule<AssetRegistry>());
 	consoleVars["memory.benchmark"] = &Memory::RunMemoryBenchmark;
 
-	while (m_pInstance->m_pViewportWindow->IsRunning())
+	while (s_pInstance->m_pViewportWindow->IsRunning())
 	{
 		timer.Start();
 
@@ -106,9 +103,9 @@ void EngineInstance::Start()
 		}
 
 		Win32::Window::ProcessWin32Msgs();
-		Renderer::GetInstance()->FixLostDevice();
+		GetSubmodule<Renderer>()->FixLostDevice();
 
-		JobSystem::Scheduler::GetInstance()->ProcessJobsOnMainThread();
+		GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
 
 		if (GlobalInput::GetInputState().IsKeyPressed(VK_ESCAPE))
 		{
@@ -120,16 +117,16 @@ void EngineInstance::Start()
 		{
 			if (GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON))
 			{
-				ivec2 centerPosition = m_pInstance->m_pViewportWindow->GetCenterPointScreen();
+				ivec2 centerPosition = s_pInstance->m_pViewportWindow->GetCenterPointScreen();
 				GlobalInput::SetCursorPos(centerPosition.x, centerPosition.y);
 			}
 
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, m_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
+			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
 			Framework::GetInstance()->ProcessCpuFrame(currentFrame);
 		}
 
-		if (bCanCreateNewFrame = Renderer::GetInstance()->PushFrame(currentFrame))
+		if (bCanCreateNewFrame = GetSubmodule<Renderer>()->PushFrame(currentFrame))
 		{
 			lastFrame = currentFrame;
 
@@ -145,10 +142,10 @@ void EngineInstance::Start()
 
 			WCHAR Buff[50];
 			wsprintf(Buff, L"Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u", frameCounter,
-				Renderer::GetInstance()->GetSmoothFps(),
+				GetSubmodule<Renderer>()->GetSmoothFps(),
 				(uint32_t)Framework::GetInstance()->GetSmoothFps());
 
-			m_pInstance->m_pViewportWindow->SetWindowTitle(Buff);
+			s_pInstance->m_pViewportWindow->SetWindowTitle(Buff);
 
 			frameCounter = 0U;
 			timer.Clear();
@@ -157,41 +154,43 @@ void EngineInstance::Start()
 		}
 	}
 
-	m_pInstance->m_pViewportWindow->SetActive(false);
-	m_pInstance->m_pViewportWindow->SetRunning(false);
+	s_pInstance->m_pViewportWindow->SetActive(false);
+	s_pInstance->m_pViewportWindow->SetRunning(false);
 
-	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Worker);
-	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
+	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Worker);
+	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Rendering);
 }
 
-void EngineInstance::Stop()
+void App::Stop()
 {
-	m_pInstance->m_pViewportWindow->SetActive(false);
+	s_pInstance->m_pViewportWindow->SetActive(false);
 }
 
-void EngineInstance::Shutdown()
+void App::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
 	Framework::Shutdown();
 
 	// We need to finish all jobs before release
-	JobSystem::Scheduler::GetInstance()->ProcessJobsOnMainThread();
-	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Worker);
-	JobSystem::Scheduler::GetInstance()->WaitIdle(JobSystem::EThreadType::Rendering);
+	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
+	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Worker);
+	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Rendering);
 
-	Renderer::Shutdown();
-	JobSystem::Scheduler::Shutdown();
+	RemoveSubmodule<Renderer>();
+	RemoveSubmodule<JobSystem::Scheduler>();
+
 	Win32::ConsoleWindow::Shutdown();
-	ShaderCompiler::Shutdown();
-	
+
+	RemoveSubmodule<ShaderCompiler>();
+	RemoveSubmodule<TextureImporter>();
 	RemoveSubmodule<AssetRegistry>();
-	delete m_pInstance;
+	delete s_pInstance;
 }
 
-TUniquePtr<Win32::Window>& EngineInstance::GetViewportWindow()
+TUniquePtr<Win32::Window>& App::GetViewportWindow()
 {
-	return m_pInstance->m_pViewportWindow;
+	return s_pInstance->m_pViewportWindow;
 }
 
 std::mutex m_logMutex;

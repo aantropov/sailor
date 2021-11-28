@@ -23,8 +23,7 @@ void TextureImporter::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_pInstance = new TextureImporter();
-	TextureAssetInfoHandler::GetInstance()->Subscribe(m_pInstance);
+	TextureAssetInfoHandler::GetInstance()->Subscribe(this);
 }
 
 TextureImporter::~TextureImporter()
@@ -44,7 +43,7 @@ bool TextureImporter::LoadTextureRaw(UID uid, ByteCode& decodedData, int32_t& wi
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (TextureAssetInfoPtr assetInfo = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
+	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
 		int32_t texChannels = 0;
 
@@ -65,7 +64,7 @@ RHI::TexturePtr TextureImporter::LoadTexture(UID uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (TextureAssetInfoPtr assetInfo = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
+	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
 		ByteCode decodedData;
 		int32_t width;

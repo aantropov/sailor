@@ -63,9 +63,9 @@ RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 
 void Framework::Initialize()
 {
-	if (m_pInstance == nullptr)
+	if (s_pInstance == nullptr)
 	{
-		m_pInstance = new Framework();
+		s_pInstance = new Framework();
 	}
 }
 
@@ -102,9 +102,9 @@ void Framework::CpuFrame(FrameState& state)
 
 	if (bFirstFrame)
 	{
-		if (auto modelUID = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
+		if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 		{
-			ModelImporter::GetInstance()->LoadModel(modelUID->GetUID(), m_testMesh, m_testMaterial);
+			App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), m_testMesh, m_testMaterial);
 		}
 
 		m_testBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
@@ -114,9 +114,9 @@ void Framework::CpuFrame(FrameState& state)
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, EShaderBindingType::UniformBuffer);
 
-		if (auto textureUID = EngineInstance::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
+		if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
-			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", TextureImporter::GetInstance()->LoadTexture(textureUID->GetUID()), 1);
+			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID()), 1);
 		}
 
 		bFirstFrame = false;
@@ -158,8 +158,8 @@ void Framework::CpuFrame(FrameState& state)
 		cameraViewDir = hRotation * cameraViewDir;
 	}
 
-	auto width = Sailor::EngineInstance::GetViewportWindow()->GetWidth();
-	auto height = Sailor::EngineInstance::GetViewportWindow()->GetHeight();
+	auto width = Sailor::App::GetViewportWindow()->GetWidth();
+	auto height = Sailor::App::GetViewportWindow()->GetHeight();
 
 	float aspect = (height + width) > 0 ? width / (float)height : 1.0f;
 	m_frameData.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 10000.0f);
@@ -174,7 +174,7 @@ void Framework::CpuFrame(FrameState& state)
 
 	SAILOR_PROFILE_BLOCK("Test Performance");
 
-	auto pJob = JobSystem::Scheduler::GetInstance()->CreateJob("Update command list",
+	auto pJob = App::GetSubmodule<JobSystem::Scheduler>()->CreateJob("Update command list",
 		[&state, this, model]()
 		{
 			auto pCommandList = state.CreateCommandBuffer(0);
@@ -197,7 +197,7 @@ void Framework::CpuFrame(FrameState& state)
 			Renderer::GetDriverCommands()->EndCommandList(pCommandList);
 		});
 
-	JobSystem::Scheduler::GetInstance()->Run(pJob);
+	App::GetSubmodule<JobSystem::Scheduler>()->Run(pJob);
 
 	pJob->Wait();
 

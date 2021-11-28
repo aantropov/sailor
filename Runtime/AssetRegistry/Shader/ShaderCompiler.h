@@ -36,20 +36,20 @@ namespace Sailor
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
 	};
 
-	class ShaderCompiler final : public TSingleton<ShaderCompiler>, public IAssetInfoHandlerListener
+	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener
 	{
 	public:
-		static SAILOR_API void Initialize();
+		SAILOR_API void Initialize();
 
-		static SAILOR_API void CompileAllPermutations(const UID& assetUID);
+		SAILOR_API void CompileAllPermutations(const UID& assetUID);
 
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
-		static SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
+		SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
 
 		virtual SAILOR_API ~ShaderCompiler() override;
 
-		static SAILOR_API bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
+		SAILOR_API bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
@@ -59,14 +59,14 @@ namespace Sailor
 		ShaderCache m_shaderCache;
 		std::unordered_map<UID, TSharedPtr<ShaderAsset>> m_loadedShaders;
 
-		static SAILOR_API void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const std::vector<std::string>& defines = {});
-		static SAILOR_API void ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON);
-		static SAILOR_API bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
+		SAILOR_API void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const std::vector<std::string>& defines = {});
+		SAILOR_API void ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON);
+		SAILOR_API bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
 
-		static SAILOR_API void ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
+		SAILOR_API void ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
 
-		static SAILOR_API uint32_t GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines);
-		static SAILOR_API std::vector<std::string> GetDefines(const std::vector<std::string>& defines, uint32_t permutation);
+		SAILOR_API uint32_t GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines);
+		SAILOR_API std::vector<std::string> GetDefines(const std::vector<std::string>& defines, uint32_t permutation);
 
 	private:
 
