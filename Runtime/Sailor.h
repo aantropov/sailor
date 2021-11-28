@@ -2,7 +2,7 @@
 #include "Core/Defines.h"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
-#include "Core/Submodule.hpp"
+#include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "Memory/UniquePtr.hpp"
@@ -18,6 +18,7 @@ namespace Sailor
 
 	public:
 
+		static constexpr size_t MaxSubmodules = 64u;
 		static const char* ApplicationName;
 		static const char* EngineName;
 
@@ -28,11 +29,36 @@ namespace Sailor
 
 		static TUniquePtr<Win32::Window>& GetViewportWindow();
 
-		template<typename TSubmodule>
-		static TSubmodule* GetSubmodule() { return nullptr; }
+		template<typename T>
+		static T* GetSubmodule()
+		{
+			const int32_t typeId = TSubmodule<T>::GetTypeId();
+			if (typeId != SubmoduleBase::InvalidSubmoduleTypeId)
+			{
+				return static_cast<T*>(m_pInstance->m_submodules[(uint32_t)typeId].GetRawPtr());
+			}
+			return nullptr;
+		}
 
-		template<>
-		static AssetRegistry* GetSubmodule<AssetRegistry>() { return m_pInstance->m_pAssetRegistry; }
+		template<typename T>
+		static T* AddSubmodule(TUniquePtr<TSubmodule<T>>&& submodule)
+		{
+			assert(submodule);
+			assert(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
+			assert(!m_pInstance->m_submodules[(uint32_t)TSubmodule<T>::GetTypeId()]);
+
+			T* rawPtr = static_cast<T*>(submodule.GetRawPtr());
+			m_pInstance->m_submodules[TSubmodule<T>::GetTypeId()] = std::move(submodule);
+
+			return rawPtr;
+		}
+
+		template<typename T>
+		static void RemoveSubmodule()
+		{
+			assert(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
+			m_pInstance->m_submodules[TSubmodule<T>::GetTypeId()].Clear();
+		}
 
 	protected:
 
@@ -40,7 +66,8 @@ namespace Sailor
 
 	private:
 
-		AssetRegistry* m_pAssetRegistry = nullptr;
+		TUniquePtr<SubmoduleBase> m_submodules[MaxSubmodules];
+
 		static EngineInstance* m_pInstance;
 
 		EngineInstance(const EngineInstance&) = delete;

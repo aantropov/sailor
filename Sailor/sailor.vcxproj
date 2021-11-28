@@ -192,7 +192,7 @@
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\Core\LogMacros.h" />
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
-    <ClInclude Include="..\Runtime\Core\Submodule.hpp" />
+    <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
     <ClInclude Include="..\Runtime\Framework\Framework.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h" />
@@ -260,6 +260,7 @@
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />
+    <ClCompile Include="..\Runtime\Core\Submodule.cpp" />
     <ClCompile Include="..\Runtime\Core\Utils.cpp" />
     <ClCompile Include="..\Runtime\Framework\Framework.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp" />

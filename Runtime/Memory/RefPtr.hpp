@@ -100,7 +100,7 @@ namespace Sailor
 		}
 
 		template<typename R>
-		TRefPtr<R> StaticCast() noexcept
+		inline TRefPtr<R> StaticCast() noexcept
 		{
 			return TRefPtr<R>(static_cast<R*>(GetRawPtr()));
 		}

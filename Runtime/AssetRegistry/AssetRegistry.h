@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <vector>
 #include "AssetRegistry/UID.h"
-#include "Core/Submodule.hpp"
+#include "Core/Submodule.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "Core/Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
@@ -15,7 +15,7 @@ namespace Sailor
 
 	enum class EAssetType;
 
-	class AssetRegistry final : public Submodule
+	class AssetRegistry final : public TSubmodule<AssetRegistry>
 	{
 	public:
 

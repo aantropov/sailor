@@ -9,7 +9,7 @@
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "JobSystem/JobSystem.h"
 #include "RHI/Renderer.h"
-#include "Core/Submodule.hpp"
+#include "Core/Submodule.h"
 #include "Framework/Framework.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 
@@ -56,9 +56,7 @@ void EngineInstance::Initialize()
 	
 	Renderer::Initialize(m_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers);
 	
-	m_pInstance->m_pAssetRegistry = Submodule::Make<AssetRegistry>();
-
-	GetSubmodule<AssetRegistry>()->Initialize();
+	m_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make())->Initialize();
 
 	TextureImporter::Initialize();
 	ShaderCompiler::Initialize();
@@ -187,7 +185,7 @@ void EngineInstance::Shutdown()
 	Win32::ConsoleWindow::Shutdown();
 	ShaderCompiler::Shutdown();
 	
-	delete m_pInstance->m_pAssetRegistry;
+	RemoveSubmodule<AssetRegistry>();
 	delete m_pInstance;
 }
 
