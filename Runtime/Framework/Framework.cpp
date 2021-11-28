@@ -61,14 +61,6 @@ RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 	return m_pData->m_updateResourcesCommandBuffers[index] = Renderer::GetDriver()->CreateCommandList(false, true);
 }
 
-void Framework::Initialize()
-{
-	if (s_pInstance == nullptr)
-	{
-		s_pInstance = new Framework();
-	}
-}
-
 void Framework::ProcessCpuFrame(FrameState& currentInputState)
 {
 	SAILOR_PROFILE_FUNCTION();

@@ -63,7 +63,7 @@ void App::Initialize()
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
-	Framework::Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<Framework>::Make());
 
 	SAILOR_LOG("Sailor Engine initialized");
 }
@@ -123,7 +123,7 @@ void App::Start()
 
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
 			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
-			Framework::GetInstance()->ProcessCpuFrame(currentFrame);
+			App::GetSubmodule<Framework>()->ProcessCpuFrame(currentFrame);
 		}
 
 		if (bCanCreateNewFrame = GetSubmodule<Renderer>()->PushFrame(currentFrame))
@@ -143,7 +143,7 @@ void App::Start()
 			WCHAR Buff[50];
 			wsprintf(Buff, L"Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u", frameCounter,
 				GetSubmodule<Renderer>()->GetSmoothFps(),
-				(uint32_t)Framework::GetInstance()->GetSmoothFps());
+				(uint32_t)App::GetSubmodule<Framework>()->GetSmoothFps());
 
 			s_pInstance->m_pViewportWindow->SetWindowTitle(Buff);
 
@@ -170,7 +170,7 @@ void App::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
-	Framework::Shutdown();
+	App::RemoveSubmodule<Framework>();
 
 	// We need to finish all jobs before release
 	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
@@ -182,9 +182,12 @@ void App::Shutdown()
 
 	Win32::ConsoleWindow::Shutdown();
 
+	RemoveSubmodule<MaterialImporter>();
+	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<ShaderCompiler>();
 	RemoveSubmodule<TextureImporter>();
 	RemoveSubmodule<AssetRegistry>();
+
 	delete s_pInstance;
 }
 

@@ -559,12 +559,12 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 		}
 
 		// Temporary
-		if (Framework::GetInstance())
+		if (auto framework = App::GetSubmodule<Framework>())
 		{
-			auto materials = Framework::GetInstance()->GetTestMaterial();
-			auto meshes = Framework::GetInstance()->GetTestMesh();
+			auto materials = framework->GetTestMaterial();
+			auto meshes = framework->GetTestMesh();
 
-			auto& perInstanceBinding = Framework::GetInstance()->GetPerInstanceBinding();
+			auto& perInstanceBinding = framework->GetPerInstanceBinding();
 
 			for (uint32_t index = 0; index < meshes.size(); index++)
 			{

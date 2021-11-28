@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
 #include "Memory/RefPtr.hpp"
-#include "Core/Singleton.hpp"
+#include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
 #include "RHI/Renderer.h"
 #include "Platform/Win32/Input.h"
@@ -70,17 +70,16 @@ namespace Sailor
 		TUniquePtr<FrameData> m_pData;
 	};
 
-	class Framework : public TSingleton<Framework>
+	class Framework : public TSubmodule<Framework>
 	{
 	public:
-
-		static SAILOR_API void Initialize();
 
 		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
 		SAILOR_API void CpuFrame(FrameState& currentInputState);
 
 		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
+		Framework() = default;
 		~Framework() override = default;
 
 		std::vector<RHI::MeshPtr>& GetTestMesh() { return m_testMesh; }
@@ -89,7 +88,6 @@ namespace Sailor
 
 	protected:
 
-		Framework() = default;
 		std::atomic<uint32_t> m_pureFps = 0u;
 
 		std::vector<RHI::MeshPtr> m_testMesh;
