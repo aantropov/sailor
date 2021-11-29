@@ -176,6 +176,7 @@
   <ItemGroup>
     <ClInclude Include="..\Runtime\AssetRegistry\AssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\AssetRegistry.h" />
+    <ClInclude Include="..\Runtime\AssetRegistry\DefaultAssets.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\Material\MaterialAssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\Material\MaterialImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\Model\ModelAssetInfo.h" />
@@ -195,6 +196,7 @@
     <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
     <ClInclude Include="..\Runtime\Framework\Framework.h" />
+    <ClInclude Include="..\Runtime\Framework\Object.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.h" />
@@ -247,6 +249,7 @@
   <ItemGroup>
     <ClCompile Include="..\Runtime\AssetRegistry\AssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\AssetRegistry.cpp" />
+    <ClCompile Include="..\Runtime\AssetRegistry\DefaultAssets.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\Material\MaterialAssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\Material\MaterialImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\Model\ModelAssetInfo.cpp" />
@@ -263,6 +266,7 @@
     <ClCompile Include="..\Runtime\Core\Submodule.cpp" />
     <ClCompile Include="..\Runtime\Core\Utils.cpp" />
     <ClCompile Include="..\Runtime\Framework\Framework.cpp" />
+    <ClCompile Include="..\Runtime\Framework\Object.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.cpp" />

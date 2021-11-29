@@ -101,13 +101,13 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	}
 }
 
-TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::MeshPtr>& outMeshes, std::vector<RHI::MaterialPtr>& outMaterials)
+JobSystem::TaskPtr ModelImporter::LoadModel(UID uid, std::vector<RHI::MeshPtr>& outMeshes, std::vector<RHI::MaterialPtr>& outMaterials)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
-		auto jobLoad = JobSystem::Scheduler::CreateJob("Check unique vertices",
+		auto jobLoad = JobSystem::Scheduler::CreateTask("Check unique vertices",
 			[&outMeshes, &outMaterials, assetInfo]()
 			{
 				tinyobj::attrib_t attrib;

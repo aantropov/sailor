@@ -166,7 +166,7 @@ void Framework::CpuFrame(FrameState& state)
 
 	SAILOR_PROFILE_BLOCK("Test Performance");
 
-	auto pJob = App::GetSubmodule<JobSystem::Scheduler>()->CreateJob("Update command list",
+	auto pJob = App::GetSubmodule<JobSystem::Scheduler>()->CreateTask("Update command list",
 		[&state, this, model]()
 		{
 			auto pCommandList = state.CreateCommandBuffer(0);

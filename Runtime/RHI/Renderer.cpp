@@ -91,13 +91,13 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	SAILOR_PROFILE_BLOCK("Push frame");
 
-	TSharedPtr<class JobSystem::Job> preRenderingJob = JobSystem::Scheduler::CreateJob("Trace command lists & Track RHI resources",
+	TSharedPtr<class JobSystem::Task> preRenderingJob = JobSystem::Scheduler::CreateTask("Trace command lists & Track RHI resources",
 		[this]()
 		{
 			this->GetDriver()->TrackResources_ThreadSafe();
 		}, Sailor::JobSystem::EThreadType::Rendering);
 
-	TSharedPtr<class JobSystem::Job> renderingJob = JobSystem::Scheduler::CreateJob("Render Frame",
+	TSharedPtr<class JobSystem::Task> renderingJob = JobSystem::Scheduler::CreateTask("Render Frame",
 		[this, frame]() 
 		{
 

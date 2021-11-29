@@ -86,12 +86,12 @@ namespace Sailor
 
 		bool operator==(const TWeakPtr<T>& pRhs) const
 		{
-			return m_pRawPtr == pRhs->m_pRawPtr;
+			return m_pRawPtr == pRhs.m_pRawPtr;
 		}
 
 		bool operator!=(const TWeakPtr<T>& pRhs) const
 		{
-			return m_pRawPtr != pRhs->m_pRawPtr;
+			return m_pRawPtr != pRhs.m_pRawPtr;
 		}
 
 		void Clear() noexcept
@@ -170,5 +170,17 @@ namespace Sailor
 
 		friend class TWeakPtr;
 		friend class TSharedPtr<T>;
+	};
+}
+
+namespace std
+{
+	template<typename T>
+	struct std::hash<Sailor::TWeakPtr<T>>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::TWeakPtr<T>& p) const
+		{
+			return p.Hash();
+		}
 	};
 }

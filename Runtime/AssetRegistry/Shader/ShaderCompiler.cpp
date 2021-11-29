@@ -238,7 +238,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.size());
 
-		auto saveCacheJob = scheduler->CreateJob("Save Shader Cache", [=]()
+		auto saveCacheJob = scheduler->CreateTask("Save Shader Cache", [=]()
 			{
 				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
 				m_shaderCache.SaveCache();
@@ -246,7 +246,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 
 		for (uint32_t i = 0; i < permutationsToCompile.size(); i++)
 		{
-			auto job = scheduler->CreateJob("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
+			auto job = scheduler->CreateTask("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
 				{
 					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
 					App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetUID, permutationsToCompile[i]);

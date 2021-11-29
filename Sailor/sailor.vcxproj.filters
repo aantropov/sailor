@@ -273,6 +273,12 @@
     <ClInclude Include="..\Runtime\Core\Submodule.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\AssetRegistry\DefaultAssets.h">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Framework\Object.h">
+      <Filter>Runtime\Framework</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -448,6 +454,12 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Core\Submodule.cpp">
       <Filter>Runtime\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\AssetRegistry\DefaultAssets.cpp">
+      <Filter>Runtime\AssetRegistry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Framework\Object.cpp">
+      <Filter>Runtime\Framework</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

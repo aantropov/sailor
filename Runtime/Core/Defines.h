@@ -49,3 +49,5 @@ typedef unsigned long DWORD;
 #define SAILOR_PROFILE_BLOCK(Msg, ...) 
 #define SAILOR_PROFILE_END_BLOCK() 
 #endif
+
+#define SAILOR_EDITOR

@@ -19,6 +19,14 @@ namespace Sailor
 
 	class TSmartPtrBase
 	{
+	public:
+
+		virtual size_t Hash() const
+		{
+			std::hash<const void*> p;
+			return p(m_pControlBlock);
+		}
+
 	protected:
 		TSmartPtrControlBlock* m_pControlBlock = nullptr;
 
@@ -101,12 +109,12 @@ namespace Sailor
 
 		bool operator==(const TSharedPtr& pRhs) const
 		{
-			return m_pRawPtr == pRhs->m_pRawPtr;
+			return m_pRawPtr == pRhs.m_pRawPtr;
 		}
 
 		bool operator!=(const TSharedPtr& pRhs) const
 		{
-			return m_pRawPtr != pRhs->m_pRawPtr;
+			return m_pRawPtr != pRhs.m_pRawPtr;
 		}
 
 		void Clear() noexcept
@@ -192,5 +200,29 @@ namespace Sailor
 
 		template<typename>
 		friend class TWeakPtr;
+	};
+}
+
+namespace std
+{
+	template<>
+	struct std::hash<Sailor::TSmartPtrBase>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::TSmartPtrBase& p) const
+		{
+			return p.Hash();
+		}
+	};
+}
+
+namespace std
+{
+	template<typename T>
+	struct std::hash<Sailor::TSharedPtr<T>>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::TSharedPtr<T>& p) const
+		{
+			return p.Hash();
+		}
 	};
 }

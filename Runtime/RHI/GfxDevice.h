@@ -14,7 +14,7 @@ auto submit = [lambda]() \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
 	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
 }; \
-Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
+Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateTask(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
 }\
 
 #define SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD(Name, Lambda) \
@@ -28,7 +28,7 @@ auto submit = [lambda]() \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
 	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
 }; \
-Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateJob(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
+Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateTask(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
 }\
 
 namespace Sailor

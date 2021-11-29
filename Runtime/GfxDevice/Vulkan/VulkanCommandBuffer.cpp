@@ -42,7 +42,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	auto duplicatedCommandPool = m_commandPool;
 	auto duplicatedCommandBuffer = m_commandBuffer;
 
-	auto pReleaseResource = JobSystem::Scheduler::CreateJob("Release command buffer", [duplicatedDevice, duplicatedCommandPool, duplicatedCommandBuffer]()
+	auto pReleaseResource = JobSystem::Scheduler::CreateTask("Release command buffer", [duplicatedDevice, duplicatedCommandPool, duplicatedCommandBuffer]()
 		{
 			if (duplicatedCommandBuffer)
 			{
