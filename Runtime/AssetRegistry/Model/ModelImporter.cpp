@@ -118,6 +118,8 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Me
 
 				auto assetFilepath = assetInfo->GetAssetFilepath();
 				auto materialFolder = Utils::GetFileFolder(assetFilepath);
+				const std::string materialsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath()) + "materials/";
+
 				if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str(), materialFolder.c_str()))
 				{
 					SAILOR_LOG("%s %s", warn.c_str(), err.c_str());
@@ -166,18 +168,30 @@ TSharedPtr<JobSystem::Job> ModelImporter::LoadModel(UID uid, std::vector<RHI::Me
 
 						mesh.outIndices.push_back(mesh.uniqueVertices[vertex]);
 					}
+
+					if (assetInfo->ShouldGenerateMaterials() && !assetInfo->ShouldBatchByMaterial())
+					{
+						if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + materials[shape.mesh.material_ids[0]].name + ".mat"))
+						{
+							outMaterials.emplace_back(App::GetSubmodule<MaterialImporter>()->LoadMaterial(materialInfo->GetUID()));
+						}
+						else
+						{
+							outMaterials.push_back(RHI::MaterialPtr());
+						}
+					}
+
+					idx++;
 				}
 
-				for (auto mesh : meshes)
+				for (const auto& mesh : meshes)
 				{
 					RHI::MeshPtr ptr = Renderer::GetDriver()->CreateMesh();
 					Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
 					outMeshes.emplace_back(ptr);
 				}
 
-				const std::string materialsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath()) + "materials/";
-
-				if (assetInfo->ShouldGenerateMaterials())
+				if (assetInfo->ShouldGenerateMaterials() && assetInfo->ShouldBatchByMaterial())
 				{
 					for (const auto& material : materials)
 					{
