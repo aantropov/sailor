@@ -6,6 +6,8 @@
 
 namespace Sailor
 {
+	using ObjectPtr = TWeakPtr<class Object>;
+
 	class Object
 	{
 	public:
@@ -14,19 +16,24 @@ namespace Sailor
 		virtual JobSystem::TaskPtr OnHotReload();
 
 		void TraceHotReload(JobSystem::TaskPtr previousTask);
-		void AddHotReloadDependentObject(TWeakPtr<Object> object);
-		void RemoveHotReloadDependentObject(TWeakPtr<Object> object);
+		void AddHotReloadDependentObject(ObjectPtr object);
+		void RemoveHotReloadDependentObject(ObjectPtr object);
 		void ClearHotReloadDependentObjects();
 #endif
+
 		Object() noexcept = default;
 		virtual ~Object() = default;
+
+		Object(const Object&) = delete;
+		Object& operator=(const Object&) = delete;
+
+		Object(Object&&) = default;
+		Object& operator=(Object&&) = default;
 
 	protected:
 #ifdef SAILOR_EDITOR
 
-		std::unordered_set<TWeakPtr<Object>> m_hotReloadDeps;
+		std::unordered_set<ObjectPtr> m_hotReloadDeps;
 #endif
 	};
-
-	using ObjectPtr = TWeakPtr<Object>;
 }

@@ -27,12 +27,6 @@ namespace Sailor
 			m_meshes(std::move(meshes)),
 			m_materials(std::move(materials)) {}
 
-		Model(const Model&) = delete;
-		Model(Model&&) = default;
-
-		Model& operator=(const Model&) = delete;
-		Model& operator=(Model&&) = default;
-
 		virtual ~Model() = default;
 
 	protected:
