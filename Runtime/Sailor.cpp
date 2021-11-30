@@ -180,6 +180,18 @@ void App::Shutdown()
 
 	App::RemoveSubmodule<Framework>();
 
+	// Release all resources before renderer
+	RemoveSubmodule<DefaultAssetInfoHandler>();
+	RemoveSubmodule<ShaderAssetInfoHandler>();
+	RemoveSubmodule<TextureAssetInfoHandler>();
+	RemoveSubmodule<ModelAssetInfoHandler>();
+
+	RemoveSubmodule<MaterialImporter>();
+	RemoveSubmodule<ModelImporter>();
+	RemoveSubmodule<ShaderCompiler>();
+	RemoveSubmodule<TextureImporter>();
+	RemoveSubmodule<AssetRegistry>();
+
 	// We need to finish all jobs before release
 	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
 	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Worker);
@@ -189,17 +201,6 @@ void App::Shutdown()
 	RemoveSubmodule<JobSystem::Scheduler>();
 
 	Win32::ConsoleWindow::Shutdown();
-
-	RemoveSubmodule<MaterialImporter>();
-	RemoveSubmodule<ModelImporter>();
-	RemoveSubmodule<ShaderCompiler>();
-	RemoveSubmodule<TextureImporter>();
-	RemoveSubmodule<AssetRegistry>();
-
-	RemoveSubmodule<DefaultAssetInfoHandler>();
-	RemoveSubmodule<ShaderAssetInfoHandler>();
-	RemoveSubmodule<TextureAssetInfoHandler>();
-	RemoveSubmodule<ModelAssetInfoHandler>();
 
 	delete s_pInstance;
 }

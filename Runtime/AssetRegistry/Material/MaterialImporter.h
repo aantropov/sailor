@@ -6,15 +6,35 @@
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
+#include "AssetRegistry/UID.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
-
-using namespace Sailor::RHI;
+#include "Framework/Object.h"
 
 namespace Sailor
 {
+	class Material : public Object
+	{
+	public:
+
+		Material(UID uid) : Object(uid) {}
+
+		virtual bool IsReady() const override;
+
+		const RHI::MaterialPtr& GetRHI() const { return m_rhiMaterial; }
+		RHI::MaterialPtr& GetRHI() { return m_rhiMaterial; }
+
+	protected:
+
+		RHI::MaterialPtr m_rhiMaterial;
+
+		friend class MaterialImporter;
+	};
+
+	using MaterialPtr = TWeakPtr<Material>;
+
 	class MaterialAsset : public IJsonSerializable
 	{
 	public:
@@ -85,12 +105,18 @@ namespace Sailor
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		SAILOR_API TWeakPtr<MaterialAsset> LoadMaterialAsset(UID uid);
-		SAILOR_API RHI::MaterialPtr LoadMaterial(UID uid);
+		SAILOR_API TSharedPtr<MaterialAsset> LoadMaterialAsset(UID uid);
+
+		SAILOR_API bool LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial);
+		SAILOR_API bool LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem::TaskPtr& outLoadingTask);
+
 		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
 
-	private:
+	protected:
 
-		std::unordered_map<UID, TSharedPtr<MaterialAsset>> m_loadedMaterials;
+		bool IsMaterialLoaded(UID uid) const;
+		MaterialPtr GetOrCreateMaterial(UID uid);
+
+		std::unordered_map<UID, TSharedPtr<Material>> m_loadedMaterials;
 	};
 }

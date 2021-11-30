@@ -11,6 +11,10 @@
 #include "ModelAssetInfo.h"
 #include "JobSystem/JobSystem.h"
 #include "ModelAssetInfo.h"
+#include "Framework/Object.h"
+#include "RHI/Mesh.h"
+#include "RHI/Material.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 
 namespace Sailor::RHI
 {
@@ -19,20 +23,33 @@ namespace Sailor::RHI
 
 namespace Sailor
 {
-	class Model
+	class Model : public Object
 	{
 	public:
 
-		Model(std::vector<RHI::MeshPtr> meshes, std::vector<RHI::MaterialPtr> materials) :
+		Model(UID uid, std::vector<RHI::MeshPtr> meshes = {}, std::vector<MaterialPtr> materials = {}) :
+			Object(std::move(uid)),
 			m_meshes(std::move(meshes)),
 			m_materials(std::move(materials)) {}
 
+		const std::vector<RHI::MeshPtr>& GetMeshes() const { return m_meshes; }
+		const std::vector<MaterialPtr>& GetMaterials() const { return m_materials; }
+
+		std::vector<RHI::MeshPtr>& GetMeshes() { return m_meshes; }
+		std::vector<MaterialPtr>& GetMaterials() { return m_materials; }
+
+		virtual bool IsReady() const override;
 		virtual ~Model() = default;
 
 	protected:
+
 		std::vector<RHI::MeshPtr> m_meshes;
-		std::vector <RHI::MaterialPtr> m_materials;
+		std::vector<MaterialPtr> m_materials;
+
+		friend class ModelImporter;
 	};
+
+	using ModelPtr = TWeakPtr<Model>;
 
 	class ModelImporter final : public TSubmodule<ModelImporter>, public IAssetInfoHandlerListener
 	{
@@ -44,10 +61,17 @@ namespace Sailor
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
 
-		JobSystem::TaskPtr SAILOR_API LoadModel(UID uid, std::vector<RHI::MeshPtr>& outMeshes, std::vector<RHI::MaterialPtr>& outMaterials);
+		SAILOR_API bool LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& outLoadingTask);
+		SAILOR_API bool LoadModel_Immediate(UID uid, ModelPtr& outModel);
 
 	private:
 
+		static SAILOR_API bool ImportObjModel(ModelAssetInfoPtr assetInfo,
+			std::vector<RHI::MeshPtr>& outMeshes,
+			std::vector<MaterialPtr>& outMaterials);
+
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+
+		std::unordered_map<UID, TSharedPtr<Model>> m_loadedModels;
 	};
 }

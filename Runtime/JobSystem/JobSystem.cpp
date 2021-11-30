@@ -77,9 +77,9 @@ void ITask::Wait()
 	}
 }
 
-Task::Task(const std::string& name, const std::function<void()>& function, EThreadType thread) : ITask(name, thread)
+Task::Task(const std::string& name, std::function<void()> function, EThreadType thread) : ITask(name, thread)
 {
-	m_function = function;
+	m_function = std::move(function);
 }
 
 bool Task::IsReadyToStart() const
@@ -244,9 +244,9 @@ Scheduler::~Scheduler()
 	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
 }
 
-TaskPtr Scheduler::CreateTask(const std::string& name, const std::function<void()>& lambda, EThreadType thread)
+TaskPtr Scheduler::CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread)
 {
-	return TaskPtr::Make(name, lambda, thread);
+	return TaskPtr::Make(name, std::move(lambda), thread);
 }
 
 uint32_t Scheduler::GetNumWorkerThreads() const

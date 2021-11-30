@@ -2,6 +2,7 @@
 #include "Sailor.h"
 #include "Memory/SharedPtr.hpp"
 #include "JobSystem/JobSystem.h"
+#include "AssetRegistry/UID.h"
 #include <unordered_set>
 
 namespace Sailor
@@ -11,6 +12,9 @@ namespace Sailor
 	class Object
 	{
 	public:
+		
+		Object(UID uid) : m_UID(std::move(uid)) {}
+
 #ifdef SAILOR_EDITOR
 
 		virtual JobSystem::TaskPtr OnHotReload();
@@ -21,7 +25,9 @@ namespace Sailor
 		void ClearHotReloadDependentObjects();
 #endif
 
-		Object() noexcept = default;
+		virtual bool IsReady() const { return true; }
+
+		Object() = default;
 		virtual ~Object() = default;
 
 		Object(const Object&) = delete;
@@ -30,9 +36,13 @@ namespace Sailor
 		Object(Object&&) = default;
 		Object& operator=(Object&&) = default;
 
-	protected:
-#ifdef SAILOR_EDITOR
+		const UID& GetUID() const { return m_UID; }
 
+	protected:
+
+		UID m_UID;
+
+#ifdef SAILOR_EDITOR
 		std::unordered_set<ObjectPtr> m_hotReloadDeps;
 #endif
 	};

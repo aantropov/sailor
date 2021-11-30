@@ -19,7 +19,11 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 
 using namespace Sailor;
-using namespace Sailor::RHI;
+
+bool Material::IsReady() const
+{
+	return m_rhiMaterial;
+}
 
 void MaterialAsset::Serialize(nlohmann::json& outData) const
 {
@@ -46,9 +50,9 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	bool bEnableDepthTest = true;
 	bool bEnableZWrite = true;
 	float depthBias = 0.0f;
-	ECullMode cullMode = ECullMode::Back;
-	EBlendMode blendMode = EBlendMode::None;
-	EFillMode fillMode = EFillMode::Fill;
+	RHI::ECullMode cullMode = RHI::ECullMode::Back;
+	RHI::EBlendMode blendMode = RHI::EBlendMode::None;
+	RHI::EFillMode fillMode = RHI::EFillMode::Fill;
 	std::string renderQueue = "Opaque";
 
 	m_pData->m_shaderDefines.clear();
@@ -71,12 +75,12 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 
 	if (outData.contains("cull_mode"))
 	{
-		cullMode = (ECullMode)outData["cull_mode"].get<uint8_t>();
+		cullMode = (RHI::ECullMode)outData["cull_mode"].get<uint8_t>();
 	}
 
 	if (outData.contains("fill_mode"))
 	{
-		fillMode = (EFillMode)outData["fill_mode"].get<uint8_t>();
+		fillMode = (RHI::EFillMode)outData["fill_mode"].get<uint8_t>();
 	}
 
 	if (outData.contains("render_queue"))
@@ -91,7 +95,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 
 	if (outData.contains("blend_mode"))
 	{
-		blendMode = (EBlendMode)outData["blend_mode"].get<uint8_t>();
+		blendMode = (RHI::EBlendMode)outData["blend_mode"].get<uint8_t>();
 	}
 
 	if (outData.contains("defines"))
@@ -123,7 +127,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 		m_pData->m_shader.Deserialize(outData["shader"]);
 	}
 
-	m_pData->m_renderState = RenderState(bEnableDepthTest, bEnableZWrite, depthBias, cullMode, blendMode, fillMode);
+	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, cullMode, blendMode, fillMode);
 }
 
 MaterialImporter::MaterialImporter(MaterialAssetInfoHandler* infoHandler)
@@ -134,6 +138,7 @@ MaterialImporter::MaterialImporter(MaterialAssetInfoHandler* infoHandler)
 
 MaterialImporter::~MaterialImporter()
 {
+	m_loadedMaterials.clear();
 }
 
 void MaterialImporter::OnImportAsset(AssetInfoPtr assetInfo)
@@ -144,17 +149,28 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 {
 }
 
-TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
+bool MaterialImporter::IsMaterialLoaded(UID uid) const
+{
+	return m_loadedMaterials.find(uid) != m_loadedMaterials.end();
+}
+
+MaterialPtr MaterialImporter::GetOrCreateMaterial(UID uid)
+{
+	auto it = m_loadedMaterials.find(uid);
+	if (it != m_loadedMaterials.end())
+	{
+		return m_loadedMaterials[uid] = TSharedPtr<Material>::Make(uid);
+	}
+
+	return (*it).second;
+}
+
+TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (MaterialAssetInfoPtr materialAssetInfo = dynamic_cast<MaterialAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
-		if (const auto& loadedMaterial = m_loadedMaterials.find(uid); loadedMaterial != m_loadedMaterials.end())
-		{
-			return loadedMaterial->second;
-		}
-
 		const std::string& filepath = materialAssetInfo->GetAssetFilepath();
 
 		std::string materialJson;
@@ -165,7 +181,7 @@ TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 		if (j_material.parse(materialJson.c_str()) == nlohmann::detail::value_t::discarded)
 		{
 			SAILOR_LOG("Cannot parse material asset file: %s", filepath.c_str());
-			return TWeakPtr<MaterialAsset>();
+			return TSharedPtr<MaterialAsset>();
 		}
 
 		j_material = json::parse(materialJson);
@@ -173,11 +189,11 @@ TWeakPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 		MaterialAsset* material = new MaterialAsset();
 		material->Deserialize(j_material);
 
-		return m_loadedMaterials[uid] = TSharedPtr<MaterialAsset>(material);
+		return TSharedPtr<MaterialAsset>(material);
 	}
 
 	SAILOR_LOG("Cannot find material asset info with UID: %s", uid.ToString().c_str());
-	return TWeakPtr<MaterialAsset>();
+	return TSharedPtr<MaterialAsset>();
 }
 
 const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
@@ -195,35 +211,42 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 	return App::GetSubmodule<AssetRegistry>()->LoadAsset(assetFilepath);
 }
 
-RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
+bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 {
-	auto pMaterial = LoadMaterialAsset(uid);
-
-	if (pMaterial)
+	auto it = m_loadedMaterials.find(uid);
+	if (it != m_loadedMaterials.end())
 	{
-		auto pSharedMaterial = pMaterial.Lock();
-		MaterialPtr pMaterialPtr = Renderer::GetDriver()->CreateMaterial(pSharedMaterial->GetRenderState(), pSharedMaterial->GetShader(), pSharedMaterial->GetShaderDefines());
+		return outMaterial = (*it).second;
+	}
+
+	outMaterial = nullptr;
+
+	if (auto pMaterialAsset = LoadMaterialAsset(uid))
+	{
+		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(),
+			pMaterialAsset->GetShader(),
+			pMaterialAsset->GetShaderDefines());
 
 		auto bindings = pMaterialPtr->GetBindings();
 
-		for (auto& sampler : pSharedMaterial->GetSamplers())
+		for (auto& sampler : pMaterialAsset->GetSamplers())
 		{
 			if (bindings->HasBinding(sampler.m_name))
 			{
-				TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
-				Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture);
+				RHI::TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
+				RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture);
 			}
 		}
 
-		for (auto& uniform : pSharedMaterial->GetUniformValues())
+		for (auto& uniform : pMaterialAsset->GetUniformValues())
 		{
 			if (bindings->HasParameter(uniform.first))
 			{
 				std::string outBinding;
 				std::string outVariable;
 
-				ShaderBindingSet::ParseParameter(uniform.first, outBinding, outVariable);
-				ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
+				RHI::ShaderBindingSet::ParseParameter(uniform.first, outBinding, outVariable);
+				RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
 				auto value = uniform.second;
 
 				SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
@@ -233,8 +256,73 @@ RHI::MaterialPtr MaterialImporter::LoadMaterial(UID uid)
 			}
 		}
 
-		return pMaterialPtr;
+		auto pMaterial = TSharedPtr<Material>::Make(uid);
+
+		// TODO: Add dependencies for hot reload
+		//pMaterial->AddHotReloadDependentObject();
+
+		pMaterial->m_rhiMaterial = pMaterialPtr;
+		return outMaterial = m_loadedMaterials[uid] = pMaterial;
 	}
 
-	return nullptr;
+	return false;
 }
+
+bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem::TaskPtr& outLoadingTask)
+{
+	auto it = m_loadedMaterials.find(uid);
+	if (it != m_loadedMaterials.end())
+	{
+		return outMaterial = (*it).second;
+	}
+
+	outMaterial = nullptr;
+
+	if (auto pMaterialAsset = LoadMaterialAsset(uid))
+	{
+		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(),
+			pMaterialAsset->GetShader(),
+			pMaterialAsset->GetShaderDefines());
+
+		auto bindings = pMaterialPtr->GetBindings();
+
+		for (auto& sampler : pMaterialAsset->GetSamplers())
+		{
+			if (bindings->HasBinding(sampler.m_name))
+			{
+				RHI::TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
+				RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture);
+			}
+		}
+
+		for (auto& uniform : pMaterialAsset->GetUniformValues())
+		{
+			if (bindings->HasParameter(uniform.first))
+			{
+				std::string outBinding;
+				std::string outVariable;
+
+				RHI::ShaderBindingSet::ParseParameter(uniform.first, outBinding, outVariable);
+				RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
+				auto value = uniform.second;
+
+				SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
+					{
+						RHI::Renderer::GetDriverCommands()->UpdateShaderBingingVariable(cmdList, binding, outVariable, &value, sizeof(value));
+					}));
+			}
+		}
+
+		auto pMaterial = TSharedPtr<Material>::Make(uid);
+
+		// TODO: Add dependencies for hot reload
+		//pMaterial->AddHotReloadDependentObject();
+
+		pMaterial->m_rhiMaterial = pMaterialPtr;
+		return outMaterial = m_loadedMaterials[uid] = pMaterial;
+	}
+
+	return false;
+}
+
+

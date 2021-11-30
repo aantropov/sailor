@@ -4,6 +4,7 @@
 #include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
 #include "RHI/Renderer.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 #include "Platform/Win32/Input.h"
 
 namespace Sailor
@@ -82,16 +83,14 @@ namespace Sailor
 		Framework() = default;
 		~Framework() override = default;
 
-		std::vector<RHI::MeshPtr>& GetTestMesh() { return m_testMesh; }
-		std::vector<RHI::MaterialPtr>& GetTestMaterial() { return m_testMaterial; }
+		ModelPtr& GetTestMesh() { return m_testMesh; }
 		RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_testBinding; }
 
 	protected:
 
 		std::atomic<uint32_t> m_pureFps = 0u;
 
-		std::vector<RHI::MeshPtr> m_testMesh;
-		std::vector<RHI::MaterialPtr> m_testMaterial;
+		ModelPtr m_testMesh;
 
 		RHI::ShaderBindingSetPtr m_testBinding;
 

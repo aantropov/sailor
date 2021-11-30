@@ -100,7 +100,7 @@ namespace Sailor
 		T* operator->()  noexcept { return m_pRawPtr; }
 		const T* operator->() const { return m_pRawPtr; }
 
-		T& operator*()  noexcept { return *m_pRawPtr; }
+		T& operator*() noexcept { return *m_pRawPtr; }
 		const T& operator*() const { return *m_pRawPtr; }
 
 		bool IsShared() const  noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 1; }

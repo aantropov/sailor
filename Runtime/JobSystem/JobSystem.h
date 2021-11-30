@@ -82,7 +82,7 @@ namespace Sailor
 			SAILOR_API bool IsReadyToStart() const;
 
 			virtual SAILOR_API void Execute() override;
-			SAILOR_API Task(const std::string& name, const std::function<void()>& function, EThreadType thread);
+			SAILOR_API Task(const std::string& name, std::function<void()> function, EThreadType thread);
 
 		protected:
 
@@ -153,7 +153,7 @@ namespace Sailor
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 			uint32_t SAILOR_API GetNumRenderingJobs() const;
 
-			static SAILOR_API TaskPtr CreateTask(const std::string& name, const std::function<void()>& lambda, EThreadType thread = EThreadType::Worker);
+			static SAILOR_API TaskPtr CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread = EThreadType::Worker);
 			SAILOR_API void Run(const TaskPtr& pJob);
 			SAILOR_API void Run(const TaskPtr& pJob, DWORD threadId);
 			SAILOR_API void ProcessJobsOnMainThread();

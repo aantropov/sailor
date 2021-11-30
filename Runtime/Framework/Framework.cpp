@@ -58,7 +58,7 @@ FrameState& FrameState::operator=(FrameState frameState)
 
 RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 {
-	return m_pData->m_updateResourcesCommandBuffers[index] = Renderer::GetDriver()->CreateCommandList(false, true);
+	return m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
 }
 
 void Framework::ProcessCpuFrame(FrameState& currentInputState)
@@ -96,15 +96,16 @@ void Framework::CpuFrame(FrameState& state)
 	{
 		if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 		{
-			App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), m_testMesh, m_testMaterial);
+			JobSystem::TaskPtr loadingModel;
+			App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), m_testMesh, loadingModel);
 		}
 
 		m_testBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 		//bool bNeedsStorageBuffer = m_testMaterial->GetBindings()->NeedsStorageBuffer() ? EShaderBindingType::StorageBuffer : EShaderBindingType::UniformBuffer;
-		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_testBinding, "data", sizeof(glm::mat4x4), 0, EShaderBindingType::StorageBuffer);
+		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_testBinding, "data", sizeof(glm::mat4x4), 0, RHI::EShaderBindingType::StorageBuffer);
 
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, EShaderBindingType::UniformBuffer);
+		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
 
 		if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
@@ -170,7 +171,7 @@ void Framework::CpuFrame(FrameState& state)
 		[&state, this, model]()
 		{
 			auto pCommandList = state.CreateCommandBuffer(0);
-			Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
+			RHI::Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
 
 			if (m_testBinding->HasBinding("data"))
@@ -178,15 +179,31 @@ void Framework::CpuFrame(FrameState& state)
 				RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("data"), &model, sizeof(model));
 			}
 
-			for (auto& material : m_testMaterial)
+			if (m_testMesh)
 			{
-				if (material && material->GetBindings() && material->GetBindings()->HasBinding("material"))
+				auto pMesh = m_testMesh.Lock();
+				for (auto& weakMaterial : pMesh->GetMaterials())
 				{
-					RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList, material, "material.color", std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
+					if (!weakMaterial)
+					{
+						continue;
+					}
+
+					if (auto material = weakMaterial.Lock())
+					{
+						if (material->GetRHI()->GetBindings() &&
+							material->GetRHI()->GetBindings()->HasBinding("material"))
+						{
+							RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList,
+								material->GetRHI(),
+								"material.color",
+								std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
+						}
+					}
 				}
 			}
 
-			Renderer::GetDriverCommands()->EndCommandList(pCommandList);
+			RHI::Renderer::GetDriverCommands()->EndCommandList(pCommandList);
 		});
 
 	App::GetSubmodule<JobSystem::Scheduler>()->Run(pJob);
