@@ -194,13 +194,19 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 {
 	uint64_t hash = properties | ((uint64_t)requirements.memoryTypeBits) << 32;
 
-	auto& allocator = m_memoryAllocators[hash];
-	auto& vulkanAllocator = allocator.GetGlobalAllocator();
+	auto& pAllocator = m_memoryAllocators[hash];
+
+	if (!pAllocator)
+	{
+		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(1024 * 1024 * 64, 1024 * 512, 32 * 1024 * 1024);
+	}
+
+	auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
 
 	vulkanAllocator.SetMemoryProperties(properties);
 	vulkanAllocator.SetMemoryRequirements(requirements);
 
-	return allocator;
+	return *pAllocator;
 }
 
 bool VulkanDevice::IsMipsSupported(VkFormat format) const
@@ -284,7 +290,7 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 
-	auto descriptorSizes = vector
+	auto descriptorSizes = std::vector
 	{
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1024),
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024)
@@ -441,7 +447,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkQueue transferQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_transferFamily.value(), 0, &transferQueue);
 	m_transferQueue = VulkanQueuePtr::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
-}
+	}
 
 void VulkanDevice::CreateWin32Surface(const Window* viewport)
 {
@@ -568,20 +574,29 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 
 				auto& perInstanceBinding = framework->GetPerInstanceBinding();
 
+				SAILOR_PROFILE_BLOCK("Render meshes");
 				for (uint32_t index = 0; index < pModel->GetMeshes().size(); index++)
 				{
 					if (pModel->IsReady())
 					{
+						SAILOR_PROFILE_BLOCK("Get data");
 						auto& material = pModel->GetMaterials()[index].Lock()->GetRHI();
 						auto& mesh = pModel->GetMeshes()[index];
+						SAILOR_PROFILE_END_BLOCK();
 
 						if (mesh && mesh->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
 						{
+							SAILOR_PROFILE_BLOCK("Bind pipelines");
 							m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
+							SAILOR_PROFILE_END_BLOCK();
+
 							m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
 							m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
+
+							SAILOR_PROFILE_BLOCK("Bind buffers");
 							m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });
 							m_commandBuffers[imageIndex]->BindIndexBuffer(mesh->m_indexBuffer->m_vulkan.m_buffer);
+							SAILOR_PROFILE_END_BLOCK();
 
 							// TODO: Parse missing descriptor sets
 							std::vector<VulkanDescriptorSetPtr> sets;
@@ -598,11 +613,19 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 								sets.push_back(material->GetBindings()->m_vulkan.m_descriptorSet);
 							}
 
+							SAILOR_PROFILE_BLOCK("Bind descriptor sets");
 							m_commandBuffers[imageIndex]->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
+							SAILOR_PROFILE_END_BLOCK();
+
+							SAILOR_PROFILE_BLOCK("Draw Indexed");
 							m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer, 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
+							SAILOR_PROFILE_END_BLOCK();
+
+							SAILOR_PROFILE_END_BLOCK();
 						}
 					}
 				}
+				SAILOR_PROFILE_END_BLOCK();
 			}
 		}
 

@@ -167,7 +167,7 @@ namespace Sailor::GfxDevice::Vulkan
 		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 
 		// We're sharing the same device memory between the different buffers
-		std::unordered_map<uint64_t, VulkanDeviceMemoryAllocator> m_memoryAllocators;
+		std::unordered_map<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>> m_memoryAllocators;
 
 		// We're creating rendering context with sync
 		std::mutex m_mutex;
