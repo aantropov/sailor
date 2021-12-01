@@ -53,5 +53,6 @@ namespace Sailor
 		
 		SAILOR_API bool IsTextureLoaded(UID uid) const;
 		std::unordered_map<UID, TSharedPtr<Texture>> m_loadedTextures;
+		std::mutex m_mutex;
 	};
 }

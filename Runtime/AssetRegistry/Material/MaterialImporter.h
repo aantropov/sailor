@@ -26,9 +26,12 @@ namespace Sailor
 		const RHI::MaterialPtr& GetRHI() const { return m_rhiMaterial; }
 		RHI::MaterialPtr& GetRHI() { return m_rhiMaterial; }
 
+		void Flush();
+
 	protected:
 
 		RHI::MaterialPtr m_rhiMaterial;
+		std::atomic<bool> m_bIsReady;
 
 		friend class MaterialImporter;
 	};
@@ -115,6 +118,8 @@ namespace Sailor
 	protected:
 
 		SAILOR_API bool IsMaterialLoaded(UID uid) const;
+
 		std::unordered_map<UID, TSharedPtr<Material>> m_loadedMaterials;
+		std::mutex m_mutex;
 	};
 }

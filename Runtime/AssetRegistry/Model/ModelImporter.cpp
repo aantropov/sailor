@@ -171,7 +171,10 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 			}
 			model->Flush();
 
-			return outModel = m_loadedModels[uid] = model;
+			{
+				std::scoped_lock<std::mutex> guard(m_mutex);
+				return outModel = m_loadedModels[uid] = model;
+			}
 		}
 	}
 
@@ -198,7 +201,11 @@ bool ModelImporter::LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& o
 				std::vector<AssetInfoPtr> outMaterialUIDs;
 				if (ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, outMaterialUIDs))
 				{
-					JobSystem::TaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model", [model]() {model.GetRawPtr()->Flush(); });
+					JobSystem::TaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model", 
+						[model]() 
+						{
+							model.GetRawPtr()->Flush(); 
+						});
 
 					for (auto& assetInfo : outMaterialUIDs)
 					{
@@ -229,7 +236,10 @@ bool ModelImporter::LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& o
 
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
 
-		return outModel = m_loadedModels[uid] = model;
+		{
+			std::scoped_lock<std::mutex> guard(m_mutex);
+			return outModel = m_loadedModels[uid] = model;
+		}
 	}
 
 	return false;

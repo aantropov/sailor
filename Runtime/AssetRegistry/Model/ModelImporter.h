@@ -78,5 +78,6 @@ namespace Sailor
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 
 		std::unordered_map<UID, TSharedPtr<Model>> m_loadedModels;
+		std::mutex m_mutex;
 	};
 }

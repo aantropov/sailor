@@ -97,7 +97,10 @@ bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 				mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 				assetInfo->GetClamping());
 
-			return outTexture = m_loadedTextures[uid] = pTexture;
+			{
+				std::scoped_lock<std::mutex> guard(m_mutex);
+				return outTexture = m_loadedTextures[uid] = pTexture;
+			}
 		}
 
 		SAILOR_LOG("Cannot import texture with uid: %s", uid.ToString().c_str());
@@ -142,11 +145,13 @@ bool TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::Ta
 			});
 
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
-
-		return outTexture = m_loadedTextures[uid] = pTexture;
+		
+		{
+			std::scoped_lock<std::mutex> guard(m_mutex);
+			return outTexture = m_loadedTextures[uid] = pTexture;
+		}
 	}
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
 	return false;
-
 }

@@ -22,7 +22,12 @@ using namespace Sailor;
 
 bool Material::IsReady() const
 {
-	return m_rhiMaterial;
+	return m_bIsReady;
+}
+
+void Material::Flush()
+{
+	m_bIsReady = m_rhiMaterial;
 }
 
 void MaterialAsset::Serialize(nlohmann::json& outData) const
@@ -252,7 +257,12 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 		}
 
 		pMaterial->m_rhiMaterial = pMaterialPtr;
-		return outMaterial = m_loadedMaterials[uid] = pMaterial;
+		pMaterial->Flush();
+
+		{
+			std::scoped_lock<std::mutex> guard(m_mutex);
+			return outMaterial = m_loadedMaterials[uid] = pMaterial;
+		}
 	}
 
 	return false;
@@ -267,6 +277,7 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 	}
 
 	outMaterial = nullptr;
+	outLoadingTask = nullptr;
 
 	if (auto pMaterialAsset = LoadMaterialAsset(uid))
 	{
@@ -276,46 +287,65 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 			pMaterialAsset->GetShader(),
 			pMaterialAsset->GetShaderDefines());
 
+		outLoadingTask = JobSystem::Scheduler::CreateTask("Load material",
+			[pMaterial, pMaterialPtr, pMaterialAsset]()
+			{
+				auto bindings = pMaterialPtr->GetBindings();
+				for (auto& sampler : pMaterialAsset.GetRawPtr()->GetSamplers())
+				{
+					if (bindings->HasBinding(sampler.m_name))
+					{
+						TexturePtr texture;
+						if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_uid, texture))
+						{
+							RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
+							texture.Lock()->AddHotReloadDependentObject(pMaterial);
+						}
+					}
+				}
+
+				for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())
+				{
+					if (bindings->HasParameter(uniform.first))
+					{
+						std::string outBinding;
+						std::string outVariable;
+
+						RHI::ShaderBindingSet::ParseParameter(uniform.first, outBinding, outVariable);
+						RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
+						auto value = uniform.second;
+
+						SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
+							{
+								RHI::Renderer::GetDriverCommands()->UpdateShaderBingingVariable(cmdList, binding, outVariable, &value, sizeof(value));
+							}));
+					}
+				}
+
+				pMaterial.GetRawPtr()->m_rhiMaterial = pMaterialPtr;
+				pMaterial.GetRawPtr()->Flush();
+			});
+
 		auto bindings = pMaterialPtr->GetBindings();
-
-		outLoadingTask = JobSystem::Scheduler::CreateTask("Load material", nullptr);
-
 		for (auto& sampler : pMaterialAsset->GetSamplers())
 		{
 			if (bindings->HasBinding(sampler.m_name))
 			{
 				TexturePtr texture;
 				JobSystem::TaskPtr loadingTask;
-				if (App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture, loadingTask))
+				if(App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture, loadingTask) && loadingTask)
 				{
-					RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
-					texture.Lock()->AddHotReloadDependentObject(pMaterial);
-
 					outLoadingTask->Join(loadingTask);
 				}
 			}
 		}
 
-		for (auto& uniform : pMaterialAsset->GetUniformValues())
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
+
 		{
-			if (bindings->HasParameter(uniform.first))
-			{
-				std::string outBinding;
-				std::string outVariable;
-
-				RHI::ShaderBindingSet::ParseParameter(uniform.first, outBinding, outVariable);
-				RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
-				auto value = uniform.second;
-
-				SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
-					{
-						RHI::Renderer::GetDriverCommands()->UpdateShaderBingingVariable(cmdList, binding, outVariable, &value, sizeof(value));
-					}));
-			}
+			std::scoped_lock<std::mutex> guard(m_mutex);
+			return outMaterial = m_loadedMaterials[uid] = pMaterial;
 		}
-
-		pMaterial->m_rhiMaterial = pMaterialPtr;
-		return outMaterial = m_loadedMaterials[uid] = pMaterial;
 	}
 
 	return false;
