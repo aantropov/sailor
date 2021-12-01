@@ -5,14 +5,14 @@ using namespace Sailor::JobSystem;
 
 #ifdef SAILOR_EDITOR
 
-TaskPtr Object::OnHotReload()
+ITaskPtr Object::OnHotReload()
 {
-	return TaskPtr(nullptr);
+	return ITaskPtr(nullptr);
 }
 
-void Object::TraceHotReload(TaskPtr previousTask)
+void Object::TraceHotReload(ITaskPtr previousTask)
 {
-	TaskPtr hotReload = OnHotReload();
+	ITaskPtr hotReload = OnHotReload();
 
 	if (hotReload)
 	{

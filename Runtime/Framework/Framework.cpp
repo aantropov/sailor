@@ -96,8 +96,7 @@ void Framework::CpuFrame(FrameState& state)
 	{
 		if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 		{
-			JobSystem::TaskPtr loadingModel;
-			App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), m_testMesh, loadingModel);
+			App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), m_testMesh);
 		}
 
 		m_testBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
@@ -110,7 +109,7 @@ void Framework::CpuFrame(FrameState& state)
 		if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
 			TexturePtr defaultTexture;
-			JobSystem::TaskPtr task;
+			JobSystem::ITaskPtr task;
 			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(textureUID->GetUID(), defaultTexture);
 			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
 		}

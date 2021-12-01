@@ -112,7 +112,7 @@ bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 	return false;
 }
 
-bool TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::TaskPtr& outLoadingTask)
+bool TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::ITaskPtr& outLoadingTask)
 {
 	SAILOR_PROFILE_FUNCTION();
 

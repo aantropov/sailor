@@ -181,27 +181,30 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 	return false;
 }
 
-bool ModelImporter::LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& outLoadingTask)
+JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto it = m_loadedModels.find(uid);
 	if (it != m_loadedModels.end())
 	{
-		return outModel = (*it).second;
+		outModel = (*it).second;
+		return JobSystem::TaskPtr<bool>::Make(true);
 	}
+
+	JobSystem::TaskPtr<bool> outLoadingTask;
 
 	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto model = TSharedPtr<Model>::Make(uid);
 
-		outLoadingTask = JobSystem::Scheduler::CreateTask("Load model",
+		outLoadingTask = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[model, assetInfo, this]()
 			{
 				std::vector<AssetInfoPtr> outMaterialUIDs;
 				if (ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, outMaterialUIDs))
 				{
-					JobSystem::TaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model", 
+					JobSystem::ITaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model", 
 						[model]() 
 						{
 							model.GetRawPtr()->Flush(); 
@@ -210,7 +213,7 @@ bool ModelImporter::LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& o
 					for (auto& assetInfo : outMaterialUIDs)
 					{
 						MaterialPtr material;
-						JobSystem::TaskPtr loadMaterial;
+						JobSystem::ITaskPtr loadMaterial;
 						if (assetInfo && App::GetSubmodule<MaterialImporter>()->LoadMaterial(assetInfo->GetUID(), material, loadMaterial))
 						{
 							if (material)
@@ -231,18 +234,22 @@ bool ModelImporter::LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& o
 					}
 
 					App::GetSubmodule<JobSystem::Scheduler>()->Run(flushModel);
+
+					return true;
 				}
+				return false;
 			});
 
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
 
 		{
 			std::scoped_lock<std::mutex> guard(m_mutex);
-			return outModel = m_loadedModels[uid] = model;
+			outModel = m_loadedModels[uid] = model;
+			return outLoadingTask;
 		}
 	}
 
-	return false;
+	return JobSystem::TaskPtr<bool>::Make(false);
 }
 
 bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,

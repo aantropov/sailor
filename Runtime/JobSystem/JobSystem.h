@@ -33,6 +33,10 @@ namespace Sailor
 			virtual SAILOR_API bool IsFinished() const { return m_bIsFinished; }
 			virtual SAILOR_API bool IsExecuting() const { return m_bIsStarted && !m_bIsFinished; }
 			virtual SAILOR_API bool IsStarted() const { return m_bIsStarted; }
+			virtual SAILOR_API bool IsReadyToStart() const
+			{
+				return !m_bIsStarted && !m_bIsFinished && m_numBlockers == 0;
+			}
 
 			virtual SAILOR_API void Execute() = 0;
 
@@ -45,6 +49,7 @@ namespace Sailor
 			// Wait other threads completion before start
 			SAILOR_API void Join(const TWeakPtr<ITask>& job);
 			SAILOR_API void Join(const std::vector<TWeakPtr<ITask>>& jobs);
+			SAILOR_API void Join(ITask* job);
 
 			// Lock this thread while job is executing
 			SAILOR_API void Wait();
@@ -73,23 +78,205 @@ namespace Sailor
 			EThreadType m_threadType;
 		};
 
-		class Task : public ITask
+		template<typename TResult>
+		class ITaskWithResult
+		{
+		public:
+
+			const TResult& GetResult() const { return m_result; }
+
+		protected:
+
+			TResult m_result{};
+		};
+
+		template<typename TArgs>
+		class ITaskWithArgs
+		{
+		public:
+
+			void SetArgs(const TArgs& args) { m_args = args; }
+
+		protected:
+
+			TArgs m_args{};
+		};
+
+		template<typename TResult = void, typename TArgs = void>
+		class Task : public ITask, public ITaskWithResult<TResult>, public ITaskWithArgs<TArgs>
 		{
 		public:
 
 			virtual SAILOR_API ~Task() = default;
 
-			SAILOR_API bool IsReadyToStart() const;
+			SAILOR_API void Execute() override
+			{
+				m_bIsStarted = true;
 
-			virtual SAILOR_API void Execute() override;
-			SAILOR_API Task(const std::string& name, std::function<void()> function, EThreadType thread);
+				if (m_function)
+				{
+					ITaskWithResult<TResult>::m_result = m_function(ITaskWithArgs<TArgs>::m_args);
+				}
+
+				if (m_chainedTask)
+				{
+					m_chainedTask.Lock()->SetArgs(ITaskWithResult<TResult>::m_result);
+				}
+
+				Complete();
+			}
+
+			SAILOR_API Task(TResult result) : ITask("TaskResult", EThreadType::Worker)
+			{
+				ITaskWithResult<TResult>::m_result = std::move(result);
+			}
+
+			SAILOR_API Task(const std::string& name, std::function<TResult(TArgs)> function, EThreadType thread)
+			{
+				m_function = std::move(function);
+			}
+
+			template<typename TResult1, typename TArgs1>
+			TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function)
+			{
+				auto res = Scheduler::CreateTask(m_name + " chained", std::move(function), m_threadType);
+				m_chainedTask = res;
+				res->SetArgs(ITaskWithResult<TResult>::m_result);
+				res->Join(this);
+				return res;
+			}
+
+		protected:
+
+			std::function<TResult(TArgs)> m_function;
+			TWeakPtr<ITaskWithArgs<TResult>> m_chainedTask;
+		};
+
+		template<>
+		class Task<void, void> : public ITask
+		{
+		public:
+
+			virtual SAILOR_API ~Task() = default;
+
+			virtual SAILOR_API void Execute() override
+			{
+				m_bIsStarted = true;
+
+				if (m_function)
+				{
+					m_function();
+				}
+
+				Complete();
+			}
+
+			SAILOR_API Task(const std::string& name, std::function<void()> function, EThreadType thread) :
+				ITask(name, thread)
+			{
+				m_function = std::move(function);
+			}
 
 		protected:
 
 			std::function<void()> m_function;
 		};
 
-		using TaskPtr = TSharedPtr<Task>;
+		template<typename TArgs>
+		class Task<void, TArgs> : public ITask, public ITaskWithArgs<TArgs>
+		{
+		public:
+
+			virtual SAILOR_API ~Task() = default;
+
+			virtual SAILOR_API void Execute() override
+			{
+				m_bIsStarted = true;
+
+				if (m_function)
+				{
+					m_function(ITaskWithArgs<TArgs>::m_args);
+				}
+
+				Complete();
+			}
+
+			SAILOR_API Task(const std::string& name, std::function<void(TArgs)> function, EThreadType thread) :
+				ITask(name, thread)
+			{
+				m_function = std::move(function);
+			}
+
+			template<typename TResult1>
+			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
+			{
+				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
+				m_chainedTask = res;
+				res->Join(this);
+				return res;
+			}
+
+		protected:
+
+			std::function<void(TArgs)> m_function;
+			TWeakPtr<ITask> m_chainedTask;
+		};
+
+		template<typename TResult>
+		class Task<TResult, void> : public ITask, public ITaskWithResult<TResult>
+		{
+		public:
+
+			virtual SAILOR_API ~Task() = default;
+
+			virtual SAILOR_API void Execute() override
+			{
+				m_bIsStarted = true;
+
+				if (m_function)
+				{
+					ITaskWithResult<TResult>::m_result = m_function();
+				}
+
+				if (m_chainedTask)
+				{
+					m_chainedTask.Lock()->SetArgs(ITaskWithResult<TResult>::m_result);
+				}
+
+				Complete();
+			}
+
+			SAILOR_API Task(TResult result) : ITask("TaskResult", EThreadType::Worker)
+			{
+				ITaskWithResult<TResult>::m_result = std::move(result);
+			}
+
+			SAILOR_API Task(const std::string& name, std::function<TResult()> function, EThreadType thread) :
+				ITask(name, thread)
+			{
+				m_function = std::move(function);
+			}
+
+			template<typename TResult1, typename TArgs1>
+			SAILOR_API TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function)
+			{
+				auto res = Scheduler::CreateTask(m_name + " chained task", function, m_threadType);
+				m_chainedTask = res;
+				res->SetArgs(ITaskWithResult<TResult>::m_result);
+				res->Join(this);
+				return res;
+			}
+
+		protected:
+
+			std::function<TResult()> m_function;
+			TWeakPtr<ITaskWithArgs<TResult>> m_chainedTask;
+		};
+
+		template<typename TResult = void, typename TArgs = void>
+		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
+
+		using ITaskPtr = TSharedPtr<ITask>;
 
 		class WorkerThread
 		{
@@ -100,7 +287,7 @@ namespace Sailor
 				EThreadType threadType,
 				std::condition_variable& refresh,
 				std::mutex& mutex,
-				std::vector<TaskPtr>& pJobsQueue);
+				std::vector<ITaskPtr>& pJobsQueue);
 
 			virtual SAILOR_API ~WorkerThread() = default;
 
@@ -111,7 +298,7 @@ namespace Sailor
 			SAILOR_API DWORD GetThreadId() const { return m_threadId; }
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
-			SAILOR_API void ForcelyPushJob(const TaskPtr& pJob);
+			SAILOR_API void ForcelyPushJob(const ITaskPtr& pJob);
 
 			SAILOR_API void Process();
 			SAILOR_API void Join();
@@ -119,7 +306,7 @@ namespace Sailor
 
 		protected:
 
-			SAILOR_API bool TryFetchJob(TaskPtr& pOutJob);
+			SAILOR_API bool TryFetchJob(ITaskPtr& pOutJob);
 
 			std::string m_threadName;
 			TUniquePtr<std::thread> m_pThread;
@@ -127,16 +314,16 @@ namespace Sailor
 			EThreadType m_threadType;
 			DWORD m_threadId;
 
-			std::atomic_bool m_bIsBusy;
+			std::atomic<bool> m_bIsBusy;
 
 			// Specific jobs for this thread
 			std::mutex m_queueMutex;
-			std::vector<TaskPtr> m_pJobsQueue;
+			std::vector<ITaskPtr> m_pJobsQueue;
 
 			// Assigned from scheduler
 			std::condition_variable& m_refresh;
 			std::mutex& m_commonQueueMutex;
-			std::vector<TaskPtr>& m_pCommonJobsQueue;
+			std::vector<ITaskPtr>& m_pCommonJobsQueue;
 		};
 
 		class Scheduler final : public TSubmodule<Scheduler>
@@ -153,12 +340,34 @@ namespace Sailor
 			uint32_t SAILOR_API GetNumWorkerThreads() const;
 			uint32_t SAILOR_API GetNumRenderingJobs() const;
 
-			static SAILOR_API TaskPtr CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread = EThreadType::Worker);
-			SAILOR_API void Run(const TaskPtr& pJob);
-			SAILOR_API void Run(const TaskPtr& pJob, DWORD threadId);
+			template<typename TResult = void, typename TArgs = void>
+			static SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
+			{
+				return TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
+			}
+
+			template<typename TArgs>
+			static SAILOR_API TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, std::function<void(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
+			{
+				return TaskPtr<void, TArgs>::Make(name, std::move(lambda), thread);
+			}
+
+			template<typename TResult>
+			static SAILOR_API TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, std::function<TResult()> lambda, EThreadType thread = EThreadType::Worker)
+			{
+				return TaskPtr<TResult, void>::Make(name, std::move(lambda), thread);
+			}
+
+			static SAILOR_API TaskPtr<void, void> CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread = EThreadType::Worker)
+			{
+				return TaskPtr<void, void>::Make(name, std::move(lambda), thread);
+			}
+
+			SAILOR_API void Run(const ITaskPtr& pJob);
+			SAILOR_API void Run(const ITaskPtr& pJob, DWORD threadId);
 			SAILOR_API void ProcessJobsOnMainThread();
 
-			SAILOR_API bool TryFetchNextAvailiableJob(TaskPtr& pOutJob, EThreadType threadType);
+			SAILOR_API bool TryFetchNextAvailiableJob(ITaskPtr& pOutJob, EThreadType threadType);
 
 			SAILOR_API void NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads = false);
 
@@ -172,12 +381,12 @@ namespace Sailor
 			SAILOR_API void GetThreadSyncVarsByThreadType(
 				EThreadType threadType,
 				std::mutex*& pOutMutex,
-				std::vector<TaskPtr>*& pOutQueue,
+				std::vector<ITaskPtr>*& pOutQueue,
 				std::condition_variable*& pOutCondVar);
 
 			std::mutex m_queueMutex[3];
 			std::condition_variable m_refreshCondVar[3];
-			std::vector<TaskPtr> m_pCommonJobsQueue[3];
+			std::vector<ITaskPtr> m_pCommonJobsQueue[3];
 
 			std::atomic<uint32_t> m_numBusyThreads;
 			std::vector<WorkerThread*> m_workerThreads;

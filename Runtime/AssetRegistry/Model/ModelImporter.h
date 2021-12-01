@@ -66,7 +66,7 @@ namespace Sailor
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
 
-		SAILOR_API bool LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& outLoadingTask);
+		SAILOR_API JobSystem::TaskPtr<bool> LoadModel(UID uid, ModelPtr& outModel);
 		SAILOR_API bool LoadModel_Immediate(UID uid, ModelPtr& outModel);
 
 	private:

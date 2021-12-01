@@ -268,7 +268,7 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 	return false;
 }
 
-bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem::TaskPtr& outLoadingTask)
+bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem::ITaskPtr& outLoadingTask)
 {
 	auto it = m_loadedMaterials.find(uid);
 	if (it != m_loadedMaterials.end())
@@ -332,7 +332,7 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 			if (bindings->HasBinding(sampler.m_name))
 			{
 				TexturePtr texture;
-				JobSystem::TaskPtr loadingTask;
+				JobSystem::ITaskPtr loadingTask;
 				if(App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture, loadingTask) && loadingTask)
 				{
 					outLoadingTask->Join(loadingTask);

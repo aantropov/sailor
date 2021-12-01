@@ -45,7 +45,7 @@ namespace Sailor
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		SAILOR_API bool LoadTexture_Immediate(UID uid, TexturePtr& outTexture);
-		SAILOR_API bool LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::TaskPtr& outLoadingJob);
+		SAILOR_API bool LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::ITaskPtr& outLoadingJob);
 
 	private:
 

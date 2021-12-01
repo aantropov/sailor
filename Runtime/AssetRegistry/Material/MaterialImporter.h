@@ -111,7 +111,7 @@ namespace Sailor
 		SAILOR_API TSharedPtr<MaterialAsset> LoadMaterialAsset(UID uid);
 
 		SAILOR_API bool LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial);
-		SAILOR_API bool LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem::TaskPtr& outLoadingTask);
+		SAILOR_API bool LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem::ITaskPtr& outLoadingTask);
 
 		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
 

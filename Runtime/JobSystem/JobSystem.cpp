@@ -20,6 +20,14 @@ void ITask::Join(const TWeakPtr<ITask>& job)
 	}
 }
 
+void ITask::Join(ITask* job)
+{
+	if (job && job->AddDependency(this))
+	{
+		++m_numBlockers;
+	}
+}
+
 bool ITask::AddDependency(ITask* job)
 {
 	std::unique_lock<std::mutex> lk(m_mutex);
@@ -77,34 +85,12 @@ void ITask::Wait()
 	}
 }
 
-Task::Task(const std::string& name, std::function<void()> function, EThreadType thread) : ITask(name, thread)
-{
-	m_function = std::move(function);
-}
-
-bool Task::IsReadyToStart() const
-{
-	return !m_bIsStarted && !m_bIsFinished && m_numBlockers == 0 && m_function != nullptr;
-}
-
-void Task::Execute()
-{
-	m_bIsStarted = true;
-	
-	if (m_function)
-	{
-		m_function();
-	}
-
-	Complete();
-}
-
 WorkerThread::WorkerThread(
 	std::string threadName,
 	EThreadType threadType,
 	std::condition_variable& refresh,
 	std::mutex& mutex,
-	std::vector<TaskPtr>& pJobsQueue) :
+	std::vector<ITaskPtr>& pJobsQueue) :
 	m_threadName(std::move(threadName)),
 	m_threadType(threadType),
 	m_refresh(refresh),
@@ -126,7 +112,7 @@ void WorkerThread::WaitIdle()
 	while (m_bIsBusy);
 }
 
-void WorkerThread::ForcelyPushJob(const TaskPtr& pJob)
+void WorkerThread::ForcelyPushJob(const ITaskPtr& pJob)
 {
 	SAILOR_PROFILE_FUNCTION();
 	{
@@ -140,7 +126,7 @@ void WorkerThread::ForcelyPushJob(const TaskPtr& pJob)
 	}
 }
 
-bool WorkerThread::TryFetchJob(TaskPtr& pOutJob)
+bool WorkerThread::TryFetchJob(ITaskPtr& pOutJob)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -162,7 +148,7 @@ void WorkerThread::Process()
 
 	Scheduler* scheduler = App::GetSubmodule<JobSystem::Scheduler>();
 
-	TaskPtr pCurrentJob;
+	ITaskPtr pCurrentJob;
 
 	std::mutex threadExecutionMutex;
 	while (!scheduler->m_bIsTerminating)
@@ -249,11 +235,6 @@ Scheduler::~Scheduler()
 	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
 }
 
-TaskPtr Scheduler::CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread)
-{
-	return TaskPtr::Make(name, std::move(lambda), thread);
-}
-
 uint32_t Scheduler::GetNumWorkerThreads() const
 {
 	return static_cast<uint32_t>(m_workerThreads.size());
@@ -262,7 +243,7 @@ uint32_t Scheduler::GetNumWorkerThreads() const
 void Scheduler::ProcessJobsOnMainThread()
 {
 	SAILOR_PROFILE_FUNCTION();
-	TaskPtr pCurrentJob;
+	ITaskPtr pCurrentJob;
 	while (TryFetchNextAvailiableJob(pCurrentJob, EThreadType::Main))
 	{
 		if (pCurrentJob)
@@ -275,13 +256,13 @@ void Scheduler::ProcessJobsOnMainThread()
 	}
 }
 
-void Scheduler::Run(const TaskPtr& pJob)
+void Scheduler::Run(const ITaskPtr& pJob)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	{
 		std::mutex* pOutMutex;
-		std::vector<TaskPtr>* pOutQueue;
+		std::vector<ITaskPtr>* pOutQueue;
 		std::condition_variable* pOutCondVar;
 
 		GetThreadSyncVarsByThreadType(pJob->GetThreadType(), pOutMutex, pOutQueue, pOutCondVar);
@@ -293,7 +274,7 @@ void Scheduler::Run(const TaskPtr& pJob)
 	NotifyWorkerThread(pJob->GetThreadType());
 }
 
-void Scheduler::Run(const TaskPtr& pJob, DWORD threadId)
+void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -314,7 +295,7 @@ void Scheduler::Run(const TaskPtr& pJob, DWORD threadId)
 	// Add to Main thread if cannot find the thread in workers
 	{
 		std::mutex* pOutMutex;
-		std::vector<TaskPtr>* pOutQueue;
+		std::vector<ITaskPtr>* pOutQueue;
 		std::condition_variable* pOutCondVar;
 
 		GetThreadSyncVarsByThreadType(EThreadType::Main, pOutMutex, pOutQueue, pOutCondVar);
@@ -327,7 +308,7 @@ void Scheduler::Run(const TaskPtr& pJob, DWORD threadId)
 void Scheduler::GetThreadSyncVarsByThreadType(
 	EThreadType threadType,
 	std::mutex*& pOutMutex,
-	std::vector<TaskPtr>*& pOutQueue,
+	std::vector<ITaskPtr>*& pOutQueue,
 	std::condition_variable*& pOutCondVar)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -337,12 +318,12 @@ void Scheduler::GetThreadSyncVarsByThreadType(
 	pOutCondVar = &m_refreshCondVar[(uint32_t)threadType];
 }
 
-bool Scheduler::TryFetchNextAvailiableJob(TaskPtr& pOutJob, EThreadType threadType)
+bool Scheduler::TryFetchNextAvailiableJob(ITaskPtr& pOutJob, EThreadType threadType)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	std::mutex* pOutMutex;
-	std::vector<TaskPtr>* pOutQueue;
+	std::vector<ITaskPtr>* pOutQueue;
 	std::condition_variable* pOutCondVar;
 
 	GetThreadSyncVarsByThreadType(threadType, pOutMutex, pOutQueue, pOutCondVar);
@@ -352,7 +333,7 @@ bool Scheduler::TryFetchNextAvailiableJob(TaskPtr& pOutJob, EThreadType threadTy
 	if (!(*pOutQueue).empty())
 	{
 		const auto result = std::find_if((*pOutQueue).cbegin(), (*pOutQueue).cend(),
-			[&](const TaskPtr& job)
+			[&](const ITaskPtr& job)
 			{
 				return job->IsReadyToStart();
 			});
@@ -374,7 +355,7 @@ void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThread
 	SAILOR_PROFILE_FUNCTION();
 
 	std::mutex* pOutMutex;
-	std::vector<TaskPtr>* pOutQueue;
+	std::vector<ITaskPtr>* pOutQueue;
 	std::condition_variable* pOutCondVar;
 
 	GetThreadSyncVarsByThreadType(threadType, pOutMutex, pOutQueue, pOutCondVar);
@@ -399,9 +380,9 @@ void Scheduler::WaitIdle(EThreadType type)
 	SAILOR_PROFILE_FUNCTION();
 
 	std::mutex* pOutMutex;
-	std::vector<TaskPtr>* pOutQueue;
+	std::vector<ITaskPtr>* pOutQueue;
 	std::condition_variable* pOutCondVar;
-	std::vector<TaskPtr> waitFor;
+	std::vector<ITaskPtr> waitFor;
 
 	GetThreadSyncVarsByThreadType(type, pOutMutex, pOutQueue, pOutCondVar);
 

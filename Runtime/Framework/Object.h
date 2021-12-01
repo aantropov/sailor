@@ -17,9 +17,9 @@ namespace Sailor
 
 #ifdef SAILOR_EDITOR
 
-		virtual JobSystem::TaskPtr OnHotReload();
+		virtual JobSystem::ITaskPtr OnHotReload();
 
-		void TraceHotReload(JobSystem::TaskPtr previousTask);
+		void TraceHotReload(JobSystem::ITaskPtr previousTask);
 		void AddHotReloadDependentObject(ObjectPtr object);
 		void RemoveHotReloadDependentObject(ObjectPtr object);
 		void ClearHotReloadDependentObjects();
