@@ -38,6 +38,9 @@ namespace Sailor
 		std::vector<RHI::MeshPtr>& GetMeshes() { return m_meshes; }
 		std::vector<MaterialPtr>& GetMaterials() { return m_materials; }
 
+		// Should be triggered after mesh/material changes
+		void Flush();
+
 		virtual bool IsReady() const override;
 		virtual ~Model() = default;
 
@@ -45,6 +48,8 @@ namespace Sailor
 
 		std::vector<RHI::MeshPtr> m_meshes;
 		std::vector<MaterialPtr> m_materials;
+
+		std::atomic<bool> m_bIsReady;
 
 		friend class ModelImporter;
 	};

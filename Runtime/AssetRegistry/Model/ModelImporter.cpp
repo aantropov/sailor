@@ -19,20 +19,20 @@
 
 using namespace Sailor;
 
-bool Model::IsReady() const
+void Model::Flush()
 {
-	// TODO: Implement Flush for Model
-	if(m_meshes.size() == 0 || m_meshes.size() != m_materials.size())
+	if (m_meshes.size() == 0 || m_meshes.size() != m_materials.size())
 	{
-		return false;
+		m_bIsReady = false;
+		return;
 	}
 
-	bool bIsReady = true;
 	for (const auto& mesh : m_meshes)
 	{
 		if (!mesh || !mesh->IsReady())
 		{
-			return false;
+			m_bIsReady = false;
+			return;
 		}
 	}
 
@@ -40,11 +40,16 @@ bool Model::IsReady() const
 	{
 		if (!material || !material.Lock()->IsReady())
 		{
-			return false;
+			m_bIsReady = false;
 		}
 	}
 
-	return true;
+	m_bIsReady = true;
+}
+
+bool Model::IsReady() const
+{
+	return m_bIsReady;
 }
 
 ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
@@ -153,6 +158,8 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 				}
 			}
 
+			model->Flush();
+
 			return outModel = m_loadedModels[uid] = model;
 		}
 	}
@@ -186,6 +193,8 @@ bool ModelImporter::LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& o
 							model.GetRawPtr()->AddHotReloadDependentObject(material);
 						}
 					}
+
+					model.GetRawPtr()->Flush();
 				}
 			});
 
