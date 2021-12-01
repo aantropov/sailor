@@ -82,6 +82,18 @@ namespace Sailor
 			return pRes;
 		}
 
+		TSharedPtr<T> TryLock() const
+		{
+			TSharedPtr<T> pRes;
+			if (!m_pRawPtr)
+			{
+				return pRes;
+			}
+
+			pRes.AssignRawPtr(m_pRawPtr, m_pControlBlock);
+			return pRes;
+		}
+
 		operator bool() const noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0; }
 
 		bool operator==(const TWeakPtr<T>& pRhs) const

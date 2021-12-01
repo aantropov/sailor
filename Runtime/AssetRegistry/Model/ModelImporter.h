@@ -73,7 +73,7 @@ namespace Sailor
 
 		static SAILOR_API bool ImportObjModel(ModelAssetInfoPtr assetInfo,
 			std::vector<RHI::MeshPtr>& outMeshes,
-			std::vector<MaterialPtr>& outMaterials);
+			std::vector<AssetInfoPtr>& outMaterialUIDs);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 

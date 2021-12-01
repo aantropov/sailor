@@ -27,6 +27,7 @@ void Model::Flush()
 		return;
 	}
 
+/*
 	for (const auto& mesh : m_meshes)
 	{
 		if (!mesh || !mesh->IsReady())
@@ -43,7 +44,7 @@ void Model::Flush()
 			m_bIsReady = false;
 		}
 	}
-
+*/
 	m_bIsReady = true;
 }
 
@@ -148,16 +149,26 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto model = TSharedPtr<Model>::Make(uid);
-		if (ImportObjModel(assetInfo, model->m_meshes, model->m_materials))
+		std::vector<AssetInfoPtr> outMaterialUIDs;
+
+		if (ImportObjModel(assetInfo, model->m_meshes, outMaterialUIDs))
 		{
-			for (auto& material : model->m_materials)
+			for (auto& assetInfo : outMaterialUIDs)
 			{
-				if (material)
+				MaterialPtr material;
+				if (assetInfo && App::GetSubmodule<MaterialImporter>()->LoadMaterial_Immediate(assetInfo->GetUID(), material))
 				{
-					model->AddHotReloadDependentObject(material);
+					if (material)
+					{
+						model.GetRawPtr()->m_materials.push_back(material);
+						model.GetRawPtr()->AddHotReloadDependentObject(material);
+					}
+					else
+					{
+						//TODO: push missing material
+					}
 				}
 			}
-
 			model->Flush();
 
 			return outModel = m_loadedModels[uid] = model;
@@ -184,17 +195,35 @@ bool ModelImporter::LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& o
 		outLoadingTask = JobSystem::Scheduler::CreateTask("Load model",
 			[model, assetInfo, this]()
 			{
-				if (ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, model.GetRawPtr()->m_materials))
+				std::vector<AssetInfoPtr> outMaterialUIDs;
+				if (ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, outMaterialUIDs))
 				{
-					for (auto& material : model->GetMaterials())
+					JobSystem::TaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model", [model]() {model.GetRawPtr()->Flush(); });
+
+					for (auto& assetInfo : outMaterialUIDs)
 					{
-						if (material)
+						MaterialPtr material;
+						JobSystem::TaskPtr loadMaterial;
+						if (assetInfo && App::GetSubmodule<MaterialImporter>()->LoadMaterial(assetInfo->GetUID(), material, loadMaterial))
 						{
-							model.GetRawPtr()->AddHotReloadDependentObject(material);
+							if (material)
+							{
+								model.GetRawPtr()->m_materials.push_back(material);
+								model.GetRawPtr()->AddHotReloadDependentObject(material);
+
+								if (loadMaterial)
+								{
+									flushModel->Join(loadMaterial);
+								}
+							}
+							else
+							{
+								//TODO: push missing material
+							}
 						}
 					}
 
-					model.GetRawPtr()->Flush();
+					App::GetSubmodule<JobSystem::Scheduler>()->Run(flushModel);
 				}
 			});
 
@@ -208,7 +237,7 @@ bool ModelImporter::LoadModel(UID uid, ModelPtr& outModel, JobSystem::TaskPtr& o
 
 bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 	std::vector<RHI::MeshPtr>& outMeshes,
-	std::vector<MaterialPtr>& outMaterials)
+	std::vector<AssetInfoPtr>& outMaterialUIDs)
 {
 
 	tinyobj::attrib_t attrib;
@@ -273,21 +302,11 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 		{
 			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + materials[shape.mesh.material_ids[0]].name + ".mat"))
 			{
-				MaterialPtr material;
-				if (App::GetSubmodule<MaterialImporter>()->LoadMaterial_Immediate(materialInfo->GetUID(), material))
-				{
-					outMaterials.push_back(std::move(material));
-				}
-				else
-				{
-					//TODO: Insert default material
-					//outMaterials.push_back();
-				}
+				outMaterialUIDs.push_back(materialInfo);
 			}
 			else
 			{
-				//TODO: Insert default material
-				//outMaterials.push_back();
+				outMaterialUIDs.push_back(nullptr);
 			}
 		}
 
@@ -307,21 +326,11 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 		{
 			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
 			{
-				MaterialPtr material;
-				if (App::GetSubmodule<MaterialImporter>()->LoadMaterial_Immediate(materialInfo->GetUID(), material))
-				{
-					outMaterials.emplace_back(material);
-				}
-				else
-				{
-					//TODO: Insert default material
-					//outMaterials.push_back(RHI::MaterialPtr());
-				}
+				outMaterialUIDs.push_back(materialInfo);
 			}
 			else
 			{
-				//TODO: Insert default material
-				//outMaterials.push_back(RHI::MaterialPtr());
+				outMaterialUIDs.push_back(nullptr);
 			}
 		}
 	}

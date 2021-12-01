@@ -40,7 +40,7 @@ namespace Sailor
 
 	protected:
 
-		UID m_UID;
+		UID m_UID = UID::Invalid;
 
 #ifdef SAILOR_EDITOR
 		std::unordered_set<ObjectPtr> m_hotReloadDeps;

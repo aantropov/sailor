@@ -154,17 +154,6 @@ bool MaterialImporter::IsMaterialLoaded(UID uid) const
 	return m_loadedMaterials.find(uid) != m_loadedMaterials.end();
 }
 
-MaterialPtr MaterialImporter::GetOrCreateMaterial(UID uid)
-{
-	auto it = m_loadedMaterials.find(uid);
-	if (it != m_loadedMaterials.end())
-	{
-		return m_loadedMaterials[uid] = TSharedPtr<Material>::Make(uid);
-	}
-
-	return (*it).second;
-}
-
 TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -223,6 +212,8 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 
 	if (auto pMaterialAsset = LoadMaterialAsset(uid))
 	{
+		auto pMaterial = TSharedPtr<Material>::Make(uid);
+
 		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(),
 			pMaterialAsset->GetShader(),
 			pMaterialAsset->GetShaderDefines());
@@ -233,8 +224,12 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 		{
 			if (bindings->HasBinding(sampler.m_name))
 			{
-				RHI::TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
-				RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture);
+				TexturePtr texture;
+				if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_uid, texture))
+				{
+					RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
+					texture.Lock()->AddHotReloadDependentObject(pMaterial);
+				}
 			}
 		}
 
@@ -255,11 +250,6 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 					}));
 			}
 		}
-
-		auto pMaterial = TSharedPtr<Material>::Make(uid);
-
-		// TODO: Add dependencies for hot reload
-		//pMaterial->AddHotReloadDependentObject();
 
 		pMaterial->m_rhiMaterial = pMaterialPtr;
 		return outMaterial = m_loadedMaterials[uid] = pMaterial;
@@ -280,18 +270,29 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 
 	if (auto pMaterialAsset = LoadMaterialAsset(uid))
 	{
+		auto pMaterial = TSharedPtr<Material>::Make(uid);
+
 		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(),
 			pMaterialAsset->GetShader(),
 			pMaterialAsset->GetShaderDefines());
 
 		auto bindings = pMaterialPtr->GetBindings();
 
+		outLoadingTask = JobSystem::Scheduler::CreateTask("Load material", nullptr);
+
 		for (auto& sampler : pMaterialAsset->GetSamplers())
 		{
 			if (bindings->HasBinding(sampler.m_name))
 			{
-				RHI::TexturePtr texture = TextureImporter::LoadTexture(sampler.m_uid);
-				RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture);
+				TexturePtr texture;
+				JobSystem::TaskPtr loadingTask;
+				if (App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture, loadingTask))
+				{
+					RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
+					texture.Lock()->AddHotReloadDependentObject(pMaterial);
+
+					outLoadingTask->Join(loadingTask);
+				}
 			}
 		}
 
@@ -312,11 +313,6 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 					}));
 			}
 		}
-
-		auto pMaterial = TSharedPtr<Material>::Make(uid);
-
-		// TODO: Add dependencies for hot reload
-		//pMaterial->AddHotReloadDependentObject();
 
 		pMaterial->m_rhiMaterial = pMaterialPtr;
 		return outMaterial = m_loadedMaterials[uid] = pMaterial;

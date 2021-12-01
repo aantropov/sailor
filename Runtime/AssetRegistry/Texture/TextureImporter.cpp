@@ -19,6 +19,11 @@
 
 using namespace Sailor;
 
+bool Texture::IsReady() const
+{
+	return m_rhiTexture && m_rhiTexture->IsReady();
+}
+
 TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -39,7 +44,12 @@ void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
 
-bool TextureImporter::LoadTextureRaw(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
+bool TextureImporter::IsTextureLoaded(UID uid) const
+{
+	return m_loadedTextures.find(uid) != m_loadedTextures.end();
+}
+
+bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -60,9 +70,17 @@ bool TextureImporter::LoadTextureRaw(UID uid, ByteCode& decodedData, int32_t& wi
 	return false;
 }
 
-RHI::TexturePtr TextureImporter::LoadTexture(UID uid)
+bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
+
+	auto it = m_loadedTextures.find(uid);
+	if (it != m_loadedTextures.end())
+	{
+		return outTexture = (*it).second;
+	}
+
+	outTexture = nullptr;
 
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
@@ -71,14 +89,64 @@ RHI::TexturePtr TextureImporter::LoadTexture(UID uid)
 		int32_t height;
 		uint32_t mipLevels;
 
-		if (LoadTextureRaw(uid, decodedData, width, height, mipLevels))
+		if (ImportTexture(uid, decodedData, width, height, mipLevels))
 		{
-			return RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 1.0f),
+			auto pTexture = TSharedPtr<Texture>::Make(uid);
+
+			pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 1.0f),
 				mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 				assetInfo->GetClamping());
+
+			return outTexture = m_loadedTextures[uid] = pTexture;
 		}
+
+		SAILOR_LOG("Cannot import texture with uid: %s", uid.ToString().c_str());
+
+		return false;
 	}
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
-	return nullptr;
+	return false;
+}
+
+bool TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::TaskPtr& outLoadingTask)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto it = m_loadedTextures.find(uid);
+	if (it != m_loadedTextures.end())
+	{
+		return outTexture = (*it).second;
+	}
+
+	outTexture = nullptr;
+
+	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
+	{
+		auto pTexture = TSharedPtr<Texture>::Make(uid);
+
+		outLoadingTask = JobSystem::Scheduler::CreateTask("Load model",
+			[pTexture, assetInfo, this]()
+			{
+				ByteCode decodedData;
+				int32_t width;
+				int32_t height;
+				uint32_t mipLevels;
+
+				if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
+				{
+					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 1.0f),
+						mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
+						assetInfo->GetClamping());
+				}
+			});
+
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
+
+		return outTexture = m_loadedTextures[uid] = pTexture;
+	}
+
+	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
+	return false;
+
 }

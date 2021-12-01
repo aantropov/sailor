@@ -109,7 +109,10 @@ void Framework::CpuFrame(FrameState& state)
 
 		if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
-			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID()), 1);
+			TexturePtr defaultTexture;
+			JobSystem::TaskPtr task;
+			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(textureUID->GetUID(), defaultTexture);
+			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
 		}
 
 		bFirstFrame = false;
@@ -179,7 +182,7 @@ void Framework::CpuFrame(FrameState& state)
 				RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("data"), &model, sizeof(model));
 			}
 
-			if (m_testMesh)
+			if (m_testMesh && m_testMesh.TryLock()->IsReady())
 			{
 				auto pMesh = m_testMesh.Lock();
 				for (auto& weakMaterial : pMesh->GetMaterials())

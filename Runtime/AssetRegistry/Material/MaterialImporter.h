@@ -114,9 +114,7 @@ namespace Sailor
 
 	protected:
 
-		bool IsMaterialLoaded(UID uid) const;
-		MaterialPtr GetOrCreateMaterial(UID uid);
-
+		SAILOR_API bool IsMaterialLoaded(UID uid) const;
 		std::unordered_map<UID, TSharedPtr<Material>> m_loadedMaterials;
 	};
 }

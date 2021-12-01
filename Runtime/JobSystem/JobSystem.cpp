@@ -90,7 +90,12 @@ bool Task::IsReadyToStart() const
 void Task::Execute()
 {
 	m_bIsStarted = true;
-	m_function();
+	
+	if (m_function)
+	{
+		m_function();
+	}
+
 	Complete();
 }
 
