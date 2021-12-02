@@ -129,6 +129,7 @@ namespace Sailor
 			SAILOR_API Task(TResult result) : ITask("TaskResult", EThreadType::Worker)
 			{
 				ITaskWithResult<TResult>::m_result = std::move(result);
+				m_bIsFinished = true;
 			}
 
 			SAILOR_API Task(const std::string& name, std::function<TResult(TArgs)> function, EThreadType thread)
@@ -137,12 +138,17 @@ namespace Sailor
 			}
 
 			template<typename TResult1, typename TArgs1>
-			TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function)
+			TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker, bool bAutoRun = true)
 			{
-				auto res = Scheduler::CreateTask(m_name + " chained", std::move(function), m_threadType);
+				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
 				m_chainedTask = res;
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
 				res->Join(this);
+
+				if (bAutoRun)
+				{
+					App::GetSubmodule<Scheduler>()->Run(res);
+				}
 				return res;
 			}
 
@@ -249,6 +255,7 @@ namespace Sailor
 			SAILOR_API Task(TResult result) : ITask("TaskResult", EThreadType::Worker)
 			{
 				ITaskWithResult<TResult>::m_result = std::move(result);
+				m_bIsFinished = true;
 			}
 
 			SAILOR_API Task(const std::string& name, std::function<TResult()> function, EThreadType thread) :
@@ -258,12 +265,18 @@ namespace Sailor
 			}
 
 			template<typename TResult1, typename TArgs1>
-			SAILOR_API TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function)
+			SAILOR_API TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker, bool bAutoRun = true)
 			{
-				auto res = Scheduler::CreateTask(m_name + " chained task", function, m_threadType);
+				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
 				m_chainedTask = res;
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
 				res->Join(this);
+
+				if (bAutoRun)
+				{
+					App::GetSubmodule<Scheduler>()->Run(res);
+				}
+
 				return res;
 			}
 

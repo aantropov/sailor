@@ -110,8 +110,14 @@ void Framework::CpuFrame(FrameState& state)
 		{
 			TexturePtr defaultTexture;
 			JobSystem::ITaskPtr task;
-			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(textureUID->GetUID(), defaultTexture);
-			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
+			App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID(), defaultTexture)->Then<void, bool>(
+				[=](bool res)
+				{
+					if (res)
+					{
+						Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
+					}
+				}, "Update Shader Bindings", JobSystem::EThreadType::Rendering);
 		}
 
 		bFirstFrame = false;

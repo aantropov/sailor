@@ -112,15 +112,18 @@ bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 	return false;
 }
 
-bool TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::ITaskPtr& outLoadingTask)
+JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto it = m_loadedTextures.find(uid);
 	if (it != m_loadedTextures.end())
 	{
-		return outTexture = (*it).second;
+		outTexture = (*it).second;
+		return JobSystem::TaskPtr<bool>::Make(true);
 	}
+
+	JobSystem::TaskPtr<bool> outLoadingTask;
 
 	outTexture = nullptr;
 
@@ -128,7 +131,7 @@ bool TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::IT
 	{
 		auto pTexture = TSharedPtr<Texture>::Make(uid);
 
-		outLoadingTask = JobSystem::Scheduler::CreateTask("Load model",
+		outLoadingTask = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[pTexture, assetInfo, this]()
 			{
 				ByteCode decodedData;
@@ -141,17 +144,20 @@ bool TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture, JobSystem::IT
 					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 1.0f),
 						mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 						assetInfo->GetClamping());
+					return true;
 				}
+				return false;
 			});
 
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
-		
+
 		{
 			std::scoped_lock<std::mutex> guard(m_mutex);
-			return outTexture = m_loadedTextures[uid] = pTexture;
+			outTexture = m_loadedTextures[uid] = pTexture;
 		}
+		return outLoadingTask;
 	}
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
-	return false;
+	return JobSystem::TaskPtr<bool>::Make(false);
 }

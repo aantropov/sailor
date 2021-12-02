@@ -268,16 +268,17 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 	return false;
 }
 
-bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem::ITaskPtr& outLoadingTask)
+JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial)
 {
 	auto it = m_loadedMaterials.find(uid);
 	if (it != m_loadedMaterials.end())
 	{
-		return outMaterial = (*it).second;
+		outMaterial = (*it).second;
+		return JobSystem::TaskPtr<bool>::Make(true);
 	}
 
 	outMaterial = nullptr;
-	outLoadingTask = nullptr;
+	JobSystem::TaskPtr<bool> outLoadingTask;
 
 	if (auto pMaterialAsset = LoadMaterialAsset(uid))
 	{
@@ -287,7 +288,7 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 			pMaterialAsset->GetShader(),
 			pMaterialAsset->GetShaderDefines());
 
-		outLoadingTask = JobSystem::Scheduler::CreateTask("Load material",
+		outLoadingTask = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
 			[pMaterial, pMaterialPtr, pMaterialAsset]()
 			{
 				auto bindings = pMaterialPtr->GetBindings();
@@ -324,6 +325,7 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 
 				pMaterial.GetRawPtr()->m_rhiMaterial = pMaterialPtr;
 				pMaterial.GetRawPtr()->Flush();
+				return true;
 			});
 
 		auto bindings = pMaterialPtr->GetBindings();
@@ -332,8 +334,7 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 			if (bindings->HasBinding(sampler.m_name))
 			{
 				TexturePtr texture;
-				JobSystem::ITaskPtr loadingTask;
-				if(App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture, loadingTask) && loadingTask)
+				if (JobSystem::ITaskPtr loadingTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture))
 				{
 					outLoadingTask->Join(loadingTask);
 				}
@@ -344,11 +345,13 @@ bool MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial, JobSystem
 
 		{
 			std::scoped_lock<std::mutex> guard(m_mutex);
-			return outMaterial = m_loadedMaterials[uid] = pMaterial;
+			outMaterial = m_loadedMaterials[uid] = pMaterial;
 		}
+		return outLoadingTask;
+
 	}
 
-	return false;
+	return JobSystem::TaskPtr<bool>::Make(false);
 }
 
 

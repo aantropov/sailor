@@ -260,6 +260,8 @@ void Scheduler::Run(const ITaskPtr& pJob)
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	assert(!pJob->IsStarted() && !pJob->IsExecuting() && !pJob->IsFinished());
+
 	{
 		std::mutex* pOutMutex;
 		std::vector<ITaskPtr>* pOutQueue;
@@ -277,6 +279,8 @@ void Scheduler::Run(const ITaskPtr& pJob)
 void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId)
 {
 	SAILOR_PROFILE_FUNCTION();
+
+	assert(!pJob->IsStarted() && !pJob->IsExecuting() && !pJob->IsFinished());
 
 	auto result = std::find_if(m_workerThreads.cbegin(), m_workerThreads.cend(),
 		[&](const auto& worker)

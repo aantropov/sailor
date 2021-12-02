@@ -27,24 +27,24 @@ void Model::Flush()
 		return;
 	}
 
-/*
-	for (const auto& mesh : m_meshes)
-	{
-		if (!mesh || !mesh->IsReady())
+	/*
+		for (const auto& mesh : m_meshes)
 		{
-			m_bIsReady = false;
-			return;
+			if (!mesh || !mesh->IsReady())
+			{
+				m_bIsReady = false;
+				return;
+			}
 		}
-	}
 
-	for (const auto& material : m_materials)
-	{
-		if (!material || !material.Lock()->IsReady())
+		for (const auto& material : m_materials)
 		{
-			m_bIsReady = false;
+			if (!material || !material.Lock()->IsReady())
+			{
+				m_bIsReady = false;
+			}
 		}
-	}
-*/
+	*/
 	m_bIsReady = true;
 }
 
@@ -204,17 +204,17 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 				std::vector<AssetInfoPtr> outMaterialUIDs;
 				if (ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, outMaterialUIDs))
 				{
-					JobSystem::ITaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model", 
-						[model]() 
+					JobSystem::ITaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model",
+						[model]()
 						{
-							model.GetRawPtr()->Flush(); 
+							model.GetRawPtr()->Flush();
 						});
 
 					for (auto& assetInfo : outMaterialUIDs)
 					{
 						MaterialPtr material;
 						JobSystem::ITaskPtr loadMaterial;
-						if (assetInfo && App::GetSubmodule<MaterialImporter>()->LoadMaterial(assetInfo->GetUID(), material, loadMaterial))
+						if (assetInfo && (loadMaterial = App::GetSubmodule<MaterialImporter>()->LoadMaterial(assetInfo->GetUID(), material)))
 						{
 							if (material)
 							{
@@ -245,8 +245,9 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 		{
 			std::scoped_lock<std::mutex> guard(m_mutex);
 			outModel = m_loadedModels[uid] = model;
-			return outLoadingTask;
 		}
+
+		return outLoadingTask;
 	}
 
 	return JobSystem::TaskPtr<bool>::Make(false);
