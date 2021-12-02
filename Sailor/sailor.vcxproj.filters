@@ -279,6 +279,9 @@
     <ClInclude Include="..\Runtime\Framework\Object.h">
       <Filter>Runtime\Framework</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\JobSystem\Tasks.h">
+      <Filter>Runtime\Jobsystem</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -460,6 +463,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Framework\Object.cpp">
       <Filter>Runtime\Framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\JobSystem\Tasks.cpp">
+      <Filter>Runtime\Jobsystem</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

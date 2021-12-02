@@ -156,6 +156,7 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 			outTexture = m_loadedTextures[uid] = pTexture;
 		}
 		return outLoadingTask;
+
 	}
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());

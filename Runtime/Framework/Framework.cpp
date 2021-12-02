@@ -109,7 +109,6 @@ void Framework::CpuFrame(FrameState& state)
 		if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
 			TexturePtr defaultTexture;
-			JobSystem::ITaskPtr task;
 			App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID(), defaultTexture)->Then<void, bool>(
 				[=](bool res)
 				{
