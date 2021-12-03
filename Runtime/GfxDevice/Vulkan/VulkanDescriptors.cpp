@@ -93,6 +93,8 @@ void VulkanDescriptorSet::Compile()
 		descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
 
 		VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
+
+		m_currentThreadId = GetCurrentThreadId();
 	}
 
 	VkWriteDescriptorSet* descriptorsWrite = reinterpret_cast<VkWriteDescriptorSet*>(_malloca(m_descriptors.size() * sizeof(VkWriteDescriptorSet)));
@@ -110,9 +112,28 @@ void VulkanDescriptorSet::Compile()
 
 void VulkanDescriptorSet::Release()
 {
-	if (m_descriptorSet)
+	DWORD currentThreadId = GetCurrentThreadId();
+
+	auto duplicatedDevice = m_device;
+	auto duplicatedPool = m_descriptorPool;
+	auto duplicatedSet = m_descriptorSet;
+
+	auto pReleaseResource = JobSystem::Scheduler::CreateTask("Release descriptor set", [=]()
+		{
+			if (m_descriptorSet)
+			{
+				vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
+			}
+		});
+
+	if (m_currentThreadId == currentThreadId)
 	{
-		vkFreeDescriptorSets(*m_device, *m_descriptorPool, 1, &m_descriptorSet);
+		pReleaseResource->Execute();
+		m_device.Clear();
+	}
+	else
+	{
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
 	}
 }
 

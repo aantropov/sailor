@@ -168,7 +168,7 @@ namespace Sailor
 			if (m_pRawPtr != nullptr &&
 				--m_pControlBlock->m_sharedPtrCounter == 0)
 			{
-				bool bShouldRemoveControlBlock = 0 == m_pControlBlock->m_weakPtrCounter;
+				const volatile bool bShouldRemoveControlBlock = (m_pControlBlock->m_weakPtrCounter.load() == 0);
 
 				delete m_pRawPtr;
 				m_pRawPtr = nullptr;

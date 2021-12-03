@@ -129,5 +129,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkDescriptorSet m_descriptorSet{};
 		VulkanDescriptorPoolPtr m_descriptorPool{};
 		VulkanDescriptorSetLayoutPtr m_descriptorSetLayout{};
+
+		DWORD m_currentThreadId = 0;
 	};
 }
