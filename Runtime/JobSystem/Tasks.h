@@ -13,7 +13,7 @@ namespace Sailor
 	namespace JobSystem
 	{
 		class Scheduler;
-		
+
 		enum class EThreadType : uint8_t
 		{
 			Rendering = 0,
@@ -21,6 +21,13 @@ namespace Sailor
 			Main = 2
 		};
 
+
+		/* The tasks are using JobSystem::Scheduler to run the activities on other threads.
+		*  The main point to use tasks is to handle/get results of long term tasks without blocking the current thread.
+		*  The chaining is implemented via linked list and there is no need to explicitely run the added(by calling ->Then) tasks.
+		*  While Join is designed as low-level kind of call, so you have to run Joined threads explicitely.
+		*  Api is designed to always pass the name of Task to it.
+		*/
 		template<typename T, typename R>
 		class Task;
 
@@ -43,12 +50,12 @@ namespace Sailor
 
 			SAILOR_API const std::string& GetName() const { return m_name; }
 
-			SAILOR_API bool AddDependency(ITask* job);
-
 			// Wait other task's completion before start
-			SAILOR_API void Join(const TWeakPtr<ITask>& job);
-			SAILOR_API void Join(const std::vector<TWeakPtr<ITask>>& jobs);
-			SAILOR_API void Join(ITask* job);
+			SAILOR_API void Join(const TWeakPtr<ITask>& jobDependent);
+			SAILOR_API void Join(const std::vector<TWeakPtr<ITask>>& jobsDependent);
+
+			// Run current task and all chained
+			SAILOR_API void Run();
 
 			SAILOR_API bool IsInQueue() const { return m_bIsInQueue; }
 			SAILOR_API void OnEnqueue() { m_bIsInQueue = true; }
@@ -71,9 +78,15 @@ namespace Sailor
 			SAILOR_API void Wait();
 
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
-			SAILOR_API const TWeakPtr<ITask>& GetChainedTask() const { return m_chainedTask; }
+			
+			SAILOR_API const TWeakPtr<ITask>& GetChainedTaskNext() const { return m_chainedTaskNext; }
+			SAILOR_API const TWeakPtr<ITask>& GetChainedTaskPrev() const { return m_chainedTaskPrev; }
+
+			SAILOR_API void SetChainedTaskPrev(TWeakPtr<ITask>& job);
 
 		protected:
+
+			SAILOR_API bool AddDependency(TSharedPtr<ITask> dependentJob);
 
 			virtual SAILOR_API void Complete();
 
@@ -81,20 +94,25 @@ namespace Sailor
 			{
 			}
 
-			TWeakPtr<ITask> m_chainedTask;
+			TWeakPtr<ITask> m_self;
+			TWeakPtr<ITask> m_chainedTaskNext;
+			TWeakPtr<ITask> m_chainedTaskPrev;
 
 			std::atomic<bool> m_bIsFinished = false;
 			std::atomic<bool> m_bIsStarted = false;
 			std::atomic<bool> m_bIsInQueue = false;
 
 			std::atomic<uint32_t> m_numBlockers;
-			std::vector<ITask*> m_dependencies;
+
+			std::vector<TWeakPtr<ITask>> m_dependencies;
 			std::string m_name;
 
 			std::condition_variable m_onComplete;
 			std::mutex m_mutex;
 
 			EThreadType m_threadType;
+
+			friend class Scheduler;
 		};
 
 		template<typename TResult>
@@ -124,6 +142,9 @@ namespace Sailor
 		template<typename TResult = void, typename TArgs = void>
 		class Task : public ITask, public ITaskWithResult<TResult>, public ITaskWithArgs<TArgs>
 		{
+			using Task::ITask::m_chainedTaskNext;
+			using Task::ITask::m_chainedTaskPrev;
+
 		public:
 
 			virtual SAILOR_API ~Task() = default;
@@ -137,9 +158,10 @@ namespace Sailor
 					ITaskWithResult<TResult>::m_result = m_function(ITaskWithArgs<TArgs>::m_args);
 				}
 
-				if (m_chainedTaskInterface)
+				if (m_chainedTaskNext)
 				{
-					m_chainedTaskInterface.Lock()->SetArgs(ITaskWithResult<TResult>::m_result);
+					dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr())->SetArgs(ITaskWithResult<TResult>::m_result);
+
 				}
 
 				Complete();
@@ -160,9 +182,10 @@ namespace Sailor
 			SAILOR_API TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
-				m_chainedTaskInterface = res;
+				res->SetChainedTaskPrev(m_self);
+				m_chainedTaskNext = res;
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
-				res->Join(this);
+				res->Join(m_self);
 
 				if (m_bIsStarted || m_bIsInQueue)
 				{
@@ -174,12 +197,14 @@ namespace Sailor
 		protected:
 
 			std::function<TResult(TArgs)> m_function;
-			TWeakPtr<ITaskWithArgs<TResult>> m_chainedTaskInterface;
 		};
 
 		template<>
 		class Task<void, void> : public ITask
 		{
+			using Task::ITask::m_chainedTaskNext;
+			using Task::ITask::m_chainedTaskPrev;
+
 		public:
 
 			virtual SAILOR_API ~Task() = default;
@@ -202,6 +227,21 @@ namespace Sailor
 				m_function = std::move(function);
 			}
 
+			template<typename TResult1>
+			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
+			{
+				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
+				m_chainedTaskNext = res;
+				res->SetChainedTaskPrev(m_self);
+				res->Join(m_self);
+
+				if (m_bIsStarted || m_bIsInQueue)
+				{
+					App::GetSubmodule<Scheduler>()->Run(res);
+				}
+				return res;
+			}
+
 		protected:
 
 			std::function<void()> m_function;
@@ -210,6 +250,9 @@ namespace Sailor
 		template<typename TArgs>
 		class Task<void, TArgs> : public ITask, public ITaskWithArgs<TArgs>
 		{
+			using Task::ITask::m_chainedTaskNext;
+			using Task::ITask::m_chainedTaskPrev;
+
 		public:
 
 			virtual SAILOR_API ~Task() = default;
@@ -236,20 +279,28 @@ namespace Sailor
 			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
 			{
 				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
-				m_chainedTaskInterface = res;
-				res->Join(this);
+				m_chainedTaskNext = res;
+				res->SetChainedTaskPrev(m_self);
+				res->Join(m_self);
+
+				if (m_bIsStarted || m_bIsInQueue)
+				{
+					App::GetSubmodule<Scheduler>()->Run(res);
+				}
 				return res;
 			}
 
 		protected:
 
 			std::function<void(TArgs)> m_function;
-			TWeakPtr<ITask> m_chainedTaskInterface;
 		};
 
 		template<typename TResult>
 		class Task<TResult, void> : public ITask, public ITaskWithResult<TResult>
 		{
+			using Task::ITask::m_chainedTaskNext;
+			using Task::ITask::m_chainedTaskPrev;
+
 		public:
 
 			virtual SAILOR_API ~Task() = default;
@@ -263,9 +314,9 @@ namespace Sailor
 					ITaskWithResult<TResult>::m_result = m_function();
 				}
 
-				if (m_chainedTaskInterface)
+				if (m_chainedTaskNext)
 				{
-					m_chainedTaskInterface.Lock()->SetArgs(ITaskWithResult<TResult>::m_result);
+					dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr())->SetArgs(ITaskWithResult<TResult>::m_result);
 				}
 
 				Complete();
@@ -287,23 +338,23 @@ namespace Sailor
 			SAILOR_API TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
-				m_chainedTaskInterface = res;
-				m_chainedTask = res;
+				m_chainedTaskNext = res;
+				
+				res->SetChainedTaskPrev(m_self);
+
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
-				res->Join(this);
+				res->Join(m_self);
 
 				if (m_bIsStarted || m_bIsInQueue)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
-
 				return res;
 			}
 
 		protected:
 
 			std::function<TResult()> m_function;
-			TWeakPtr<ITaskWithArgs<TResult>> m_chainedTaskInterface;			
 		};
 
 		template<typename TResult = void, typename TArgs = void>

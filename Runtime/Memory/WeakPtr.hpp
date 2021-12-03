@@ -18,6 +18,13 @@ namespace Sailor
 			AssignRawPtr(pWeakPtr.m_pRawPtr, pWeakPtr.m_pControlBlock);
 		}
 
+		// Basic copy/assignment
+		TWeakPtr& operator=(const TWeakPtr& pWeakPtr) noexcept
+		{
+			AssignRawPtr(pWeakPtr.m_pRawPtr, pWeakPtr.m_pControlBlock);
+			return *this;
+		}
+
 		TWeakPtr(TWeakPtr&& pPtr) noexcept
 		{
 			Swap(std::move(pPtr));
@@ -85,7 +92,7 @@ namespace Sailor
 		TSharedPtr<T> TryLock() const
 		{
 			TSharedPtr<T> pRes;
-			if (!m_pRawPtr)
+			if (!(*this))
 			{
 				return pRes;
 			}
@@ -136,10 +143,13 @@ namespace Sailor
 				DecrementRefCounter();
 			}
 
-			m_pControlBlock = pControlBlock;
+			m_pControlBlock = nullptr;
+			m_pRawPtr = nullptr;
 
-			if (m_pRawPtr = pRawPtr)
+			if (pRawPtr)
 			{
+				m_pControlBlock = pControlBlock;
+				m_pRawPtr = pRawPtr;
 				IncrementRefCounter();
 			}
 		}
@@ -157,6 +167,7 @@ namespace Sailor
 			{
 				delete m_pControlBlock;
 				m_pControlBlock = nullptr;
+				m_pRawPtr = nullptr;
 			}
 		}
 

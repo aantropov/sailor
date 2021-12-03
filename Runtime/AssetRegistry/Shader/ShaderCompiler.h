@@ -11,9 +11,33 @@
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
 #include "ShaderCache.h"
+#include "Framework/Object.h"
 
 namespace Sailor
 {
+	class Shader : public Object
+	{
+	public:
+
+		Shader(UID uid, std::vector<string> defines) : Object(uid), m_defines(defines) {}
+
+		virtual bool IsReady() const override;
+
+		const RHI::ShaderPtr& GetVertexShaderRHI() const { return m_rhiVertexShader; }
+		RHI::ShaderPtr& GetVertexShaderRHI() { return m_rhiVertexShader; }
+
+		const RHI::ShaderPtr& GetFragmentShaderRHI() const { return m_rhiFragmentShader; }
+		RHI::ShaderPtr& GetFragmentShaderRHI() { return m_rhiFragmentShader; }
+
+	protected:
+
+		RHI::ShaderPtr m_rhiVertexShader;
+		RHI::ShaderPtr m_rhiFragmentShader;
+		std::vector<std::string> m_defines;
+
+		friend class ShaderCompiler;
+	};
+
 	class ShaderAsset : IJsonSerializable
 	{
 	public:
@@ -42,7 +66,6 @@ namespace Sailor
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
 		SAILOR_API void CompileAllPermutations(const UID& assetUID);
-
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
 		SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);

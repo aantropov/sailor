@@ -183,16 +183,43 @@ void Scheduler::ProcessJobsOnMainThread()
 	}
 }
 
-void Scheduler::Run(const ITaskPtr& pJob)
+void Scheduler::RunChainedTasks(const ITaskPtr& pJob)
+{
+	ITaskPtr pCurrentChainedTask;
+	while (pCurrentChainedTask = pJob->GetChainedTaskNext().TryLock())
+	{
+		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted())
+		{
+			// No point to trace next
+			break;
+		}
+
+		Run(pCurrentChainedTask, false);
+	}
+
+	while (pCurrentChainedTask = pJob->GetChainedTaskPrev().TryLock())
+	{
+		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted())
+		{
+			// No point to trace next
+			break;
+		}
+
+		Run(pCurrentChainedTask, false);
+	}
+}
+
+void Scheduler::Run(const ITaskPtr& pJob, bool bAutoRunChainedTasks)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	assert(!pJob->IsStarted() && !pJob->IsExecuting() && !pJob->IsFinished() && !pJob->IsInQueue());
 
-	if (const auto& chainedTask = pJob->GetChainedTask().TryLock())
+	if (bAutoRunChainedTasks)
 	{
-		Run(chainedTask);
+		RunChainedTasks(pJob);
 	}
+
 	pJob.GetRawPtr()->OnEnqueue();
 
 	{
@@ -209,16 +236,17 @@ void Scheduler::Run(const ITaskPtr& pJob)
 	NotifyWorkerThread(pJob->GetThreadType());
 }
 
-void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId)
+void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTasks)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	assert(!pJob->IsStarted() && !pJob->IsExecuting() && !pJob->IsFinished() && !pJob->IsInQueue());
 
-	if (const auto& chainedTask = pJob->GetChainedTask().TryLock())
+	if (bAutoRunChainedTasks)
 	{
-		Run(chainedTask);
+		RunChainedTasks(pJob);
 	}
+
 	pJob.GetRawPtr()->OnEnqueue();
 
 	auto result = std::find_if(m_workerThreads.cbegin(), m_workerThreads.cend(),

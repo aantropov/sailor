@@ -4,6 +4,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "ShaderAssetInfo.h"
 #include "ShaderCache.h"
+#include "RHI/Shader.h"
 #include "Core/Utils.h"
 #include <filesystem>
 #include <fstream>
@@ -25,6 +26,11 @@
 #endif
 
 using namespace Sailor;
+
+bool Shader::IsReady() const
+{
+	return m_rhiVertexShader && m_rhiFragmentShader;
+}
 
 void ShaderAsset::Serialize(nlohmann::json& outData) const
 {

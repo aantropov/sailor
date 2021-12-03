@@ -98,7 +98,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		}, Sailor::JobSystem::EThreadType::Rendering);
 
 	TSharedPtr<class JobSystem::ITask> renderingJob = JobSystem::Scheduler::CreateTask("Render Frame",
-		[this, frame]() 
+		[this, frame]()
 		{
 
 			auto frameInstance = frame;

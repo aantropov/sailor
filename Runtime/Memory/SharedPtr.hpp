@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <atomic>
+#include <cassert>
 #include <type_traits>
 
 namespace Sailor
@@ -147,10 +148,12 @@ namespace Sailor
 				DecrementRefCounter();
 			}
 
-			m_pControlBlock = pRawPtr && !pControlBlock ? new TSmartPtrControlBlock() : pControlBlock;
+			m_pControlBlock = nullptr;
+			m_pRawPtr = nullptr;
 
 			if (m_pRawPtr = pRawPtr)
 			{
+				m_pControlBlock = !pControlBlock ? new TSmartPtrControlBlock() : pControlBlock;
 				IncrementRefCounter();
 			}
 		}
@@ -165,10 +168,12 @@ namespace Sailor
 			if (m_pRawPtr != nullptr &&
 				--m_pControlBlock->m_sharedPtrCounter == 0)
 			{
+				bool bShouldRemoveControlBlock = 0 == m_pControlBlock->m_weakPtrCounter;
+
 				delete m_pRawPtr;
 				m_pRawPtr = nullptr;
 
-				if (m_pControlBlock->m_weakPtrCounter == 0)
+				if (bShouldRemoveControlBlock)
 				{
 					delete m_pControlBlock;
 					m_pControlBlock = nullptr;

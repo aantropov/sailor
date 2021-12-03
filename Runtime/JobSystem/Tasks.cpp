@@ -7,6 +7,8 @@
 #include <set>
 #include <string>
 #include "Core/Utils.h"
+#include "Core/Submodule.h"
+#include "JobSystem/JobSystem.h"
 
 using namespace std;
 using namespace Sailor;
@@ -14,21 +16,15 @@ using namespace Sailor::JobSystem;
 
 void ITask::Join(const TWeakPtr<ITask>& job)
 {
-	if (job && job.Lock()->AddDependency(this))
+	TSharedPtr<ITask> pOtherJob = job.Lock();
+
+	if (pOtherJob && pOtherJob->AddDependency(m_self.Lock()))
 	{
-		++m_numBlockers;
+		this->m_numBlockers++;
 	}
 }
 
-void ITask::Join(ITask* job)
-{
-	if (job && job->AddDependency(this))
-	{
-		++m_numBlockers;
-	}
-}
-
-bool ITask::AddDependency(ITask* job)
+bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
 {
 	std::unique_lock<std::mutex> lk(m_mutex);
 
@@ -37,8 +33,14 @@ bool ITask::AddDependency(ITask* job)
 		return false;
 	}
 
-	m_dependencies.emplace_back(job);
+	m_dependencies.emplace_back(dependentJob);
 	return true;
+}
+
+void ITask::SetChainedTaskPrev(TWeakPtr<ITask>& job)
+{
+	assert(!m_chainedTaskPrev);
+	m_chainedTaskPrev = job;
 }
 
 void ITask::Join(const std::vector<TWeakPtr<ITask>>& jobs)
@@ -49,17 +51,27 @@ void ITask::Join(const std::vector<TWeakPtr<ITask>>& jobs)
 	}
 }
 
+void ITask::Run()
+{
+	App::GetSubmodule<Scheduler>()->Run(this);
+}
+
 void ITask::Complete()
 {
+	assert(!m_bIsFinished);
+
 	std::unique_lock<std::mutex> lk(m_mutex);
 
 	std::unordered_map<EThreadType, uint32_t> threadTypesToRefresh;
 
 	for (auto& job : m_dependencies)
 	{
-		if (--job->m_numBlockers == 0)
+		if (auto pJob = job.TryLock())
 		{
-			threadTypesToRefresh[job->GetThreadType()]++;
+			if (--pJob->m_numBlockers == 0)
+			{
+				threadTypesToRefresh[pJob->GetThreadType()]++;
+			}
 		}
 	}
 

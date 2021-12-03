@@ -84,28 +84,36 @@ namespace Sailor
 			template<typename TResult = void, typename TArgs = void>
 			static SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
 			{
-				return TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
+				auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
+				task->m_self = task;
+				return task;
 			}
 
 			template<typename TArgs>
 			static SAILOR_API TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, std::function<void(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
 			{
-				return TaskPtr<void, TArgs>::Make(name, std::move(lambda), thread);
+				auto task = TaskPtr<void, TArgs>::Make(name, std::move(lambda), thread);
+				task->m_self = task;
+				return task;
 			}
 
 			template<typename TResult>
 			static SAILOR_API TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, std::function<TResult()> lambda, EThreadType thread = EThreadType::Worker)
 			{
-				return TaskPtr<TResult, void>::Make(name, std::move(lambda), thread);
+				auto task = TaskPtr<TResult, void>::Make(name, std::move(lambda), thread);
+				task->m_self = task;
+				return task;
 			}
 
 			static SAILOR_API TaskPtr<void, void> CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread = EThreadType::Worker)
 			{
-				return TaskPtr<void, void>::Make(name, std::move(lambda), thread);
+				auto task = TaskPtr<void, void>::Make(name, std::move(lambda), thread);
+				task->m_self = task;
+				return task;
 			}
 
-			SAILOR_API void Run(const ITaskPtr& pJob);
-			SAILOR_API void Run(const ITaskPtr& pJob, DWORD threadId);
+			SAILOR_API void Run(const ITaskPtr& pJob, bool bAutoRunChainedTasks = true);
+			SAILOR_API void Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTasks = true);
 			SAILOR_API void ProcessJobsOnMainThread();
 
 			SAILOR_API bool TryFetchNextAvailiableJob(ITaskPtr& pOutJob, EThreadType threadType);
@@ -118,6 +126,8 @@ namespace Sailor
 			SAILOR_API Scheduler() = default;
 
 		protected:
+
+			SAILOR_API void RunChainedTasks(const ITaskPtr& pJob);
 
 			SAILOR_API void GetThreadSyncVarsByThreadType(
 				EThreadType threadType,
