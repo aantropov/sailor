@@ -211,11 +211,9 @@ void Framework::CpuFrame(FrameState& state)
 			}
 
 			RHI::Renderer::GetDriverCommands()->EndCommandList(pCommandList);
-		});
+		}, JobSystem::EThreadType::Rendering);
 
 	App::GetSubmodule<JobSystem::Scheduler>()->Run(pJob);
-
-	pJob->Wait();
 
 	SAILOR_PROFILE_END_BLOCK();
 }

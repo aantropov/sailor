@@ -99,8 +99,9 @@ bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 
 			{
 				std::scoped_lock<std::mutex> guard(m_mutex);
-				return outTexture = m_loadedTextures[uid] = pTexture;
+				outTexture = m_loadedTextures[uid] = pTexture;
 			}
+			return outTexture;
 		}
 
 		SAILOR_LOG("Cannot import texture with uid: %s", uid.ToString().c_str());

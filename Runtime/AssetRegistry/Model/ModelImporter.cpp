@@ -173,8 +173,9 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 
 			{
 				std::scoped_lock<std::mutex> guard(m_mutex);
-				return outModel = m_loadedModels[uid] = model;
+				outModel = m_loadedModels[uid] = model;
 			}
+			return outModel;
 		}
 	}
 

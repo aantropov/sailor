@@ -261,8 +261,9 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 
 		{
 			std::scoped_lock<std::mutex> guard(m_mutex);
-			return outMaterial = m_loadedMaterials[uid] = pMaterial;
+			outMaterial = m_loadedMaterials[uid] = pMaterial;
 		}
+		return outMaterial;
 	}
 
 	return false;
