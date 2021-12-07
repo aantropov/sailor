@@ -49,10 +49,10 @@ namespace Sailor
 
 	private:
 
-		SAILOR_API bool ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
-		
-		SAILOR_API bool IsTextureLoaded(UID uid) const;
-		std::unordered_map<UID, TSharedPtr<Texture>> m_loadedTextures;
 		std::mutex m_mutex;
+		std::unordered_map<UID, TSharedPtr<Texture>> m_loadedTextures;
+
+		SAILOR_API bool IsTextureLoaded(UID uid) const;
+		SAILOR_API bool ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
 	};
 }

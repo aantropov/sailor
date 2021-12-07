@@ -109,16 +109,9 @@ void Framework::CpuFrame(FrameState& state)
 		if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
 			TexturePtr defaultTexture;
-			App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID(), defaultTexture)->Then<void, bool>(
-				[=](bool res)
-				{
-					if (res)
-					{
-						Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
-					}
-				}, "Update Shader Bindings", JobSystem::EThreadType::Rendering);
+			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(textureUID->GetUID(), defaultTexture);
+			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
 		}
-
 		bFirstFrame = false;
 	}
 

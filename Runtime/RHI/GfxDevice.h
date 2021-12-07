@@ -34,6 +34,9 @@ Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Schedu
 namespace Sailor
 {
 	class FrameState;
+	class ShaderSet;
+
+	using ShaderSetPtr = TWeakPtr<ShaderSet>;
 }
 
 namespace Sailor::Win32
@@ -88,7 +91,7 @@ namespace Sailor::RHI
 			ETextureFiltration filtration = ETextureFiltration::Linear,
 			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
-		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {}) = 0;
+		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
 
 		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence = nullptr, SemaphorePtr signalSemaphore = nullptr, SemaphorePtr waitSemaphore = nullptr) = 0;
 
@@ -105,7 +108,7 @@ namespace Sailor::RHI
 		virtual SAILOR_API BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API void CopyBuffer_Immediate(BufferPtr src, BufferPtr dst, size_t size) = 0;
 		virtual SAILOR_API void SubmitCommandList_Immediate(CommandListPtr commandList);
-		
+
 		virtual SAILOR_API TexturePtr CreateImage_Immediate(
 			const void* pData,
 			size_t size,

@@ -51,7 +51,7 @@ namespace Sailor::GfxDevice::Vulkan
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
 
-		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines = {});
+		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader);
 
 		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence = nullptr, RHI::SemaphorePtr signalSemaphore = nullptr, RHI::SemaphorePtr waitSemaphore = nullptr);
 

@@ -17,6 +17,7 @@
 #include "VulkanPipeline.h"
 #include "VulkanShaderModule.h"
 #include "VulkanBufferMemory.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
 
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
@@ -333,7 +334,7 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 	bindings->m_vulkan.m_descriptorSet->Compile();
 }
 
-RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderState, const UID& shader, const std::vector<std::string>& defines)
+RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -343,12 +344,7 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	std::vector<RHI::ShaderLayoutBinding> bindings;
 
 	// We need debug shaders to get full names from reflection
-	RHI::ShaderByteCode debugVertexSpirv;
-	RHI::ShaderByteCode debugFragmentSpirv;
-	App::GetSubmodule<ShaderCompiler>()->GetSpirvCode(shader, defines, debugVertexSpirv, debugFragmentSpirv, true);
-	auto debugVertexShader = CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
-	auto debugFragmentShader = CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
-	VulkanApi::CreateDescriptorSetLayouts(device, { debugVertexShader->m_vulkan.m_shader, debugFragmentShader->m_vulkan.m_shader },
+	VulkanApi::CreateDescriptorSetLayouts(device, { shader.Lock()->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader.Lock()->GetDebugFragmentShaderRHI()->m_vulkan.m_shader},
 		descriptorSetLayouts, bindings);
 
 #ifdef _DEBUG
@@ -357,13 +353,10 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	const bool bIsDebug = false;
 #endif
 
-	RHI::ShaderByteCode vertexSpirv;
-	RHI::ShaderByteCode fragmentSpirv;
-	App::GetSubmodule<ShaderCompiler>()->GetSpirvCode(shader, defines, vertexSpirv, fragmentSpirv, bIsDebug);
-	auto vertexShader = CreateShader(RHI::EShaderStage::Vertex, vertexSpirv);
-	auto fragmentShader = CreateShader(RHI::EShaderStage::Fragment, fragmentSpirv);
+	auto vertex = shader.Lock()->GetVertexShaderRHI();
+	auto fragment = shader.Lock()->GetFragmentShaderRHI();
 
-	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState, vertexShader, fragmentShader);
+	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState, vertex, fragment);
 
 	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
 	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
@@ -373,7 +366,7 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 
 	res->m_vulkan.m_pipeline = VulkanPipelinePtr::Make(device,
 		pipelineLayout,
-		std::vector{ vertexShader->m_vulkan.m_shader, fragmentShader->m_vulkan.m_shader },
+		std::vector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
 		device->GetPipelineBuilder()->BuildPipeline(renderState),
 		0);
 

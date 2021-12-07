@@ -27,7 +27,7 @@
 
 using namespace Sailor;
 
-bool Shader::IsReady() const
+bool ShaderSet::IsReady() const
 {
 	return m_rhiVertexShader && m_rhiFragmentShader;
 }
@@ -96,9 +96,9 @@ void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& o
 	std::string fragmentGlsl;
 	std::string commonGlsl;
 
-	ConvertFromJsonToGlslCode(shader->m_glslVertex, vertexGlsl);
-	ConvertFromJsonToGlslCode(shader->m_glslFragment, fragmentGlsl);
-	ConvertFromJsonToGlslCode(shader->m_glslCommon, commonGlsl);
+	ConvertFromJsonToGlslCode(shader->GetGlslVertexCode(), vertexGlsl);
+	ConvertFromJsonToGlslCode(shader->GetGlslFragmentCode(), fragmentGlsl);
+	ConvertFromJsonToGlslCode(shader->GetGlslCommonCode(), commonGlsl);
 
 	outGLSLCode += commonGlsl + "\n";
 
@@ -170,7 +170,7 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 	SAILOR_PROFILE_FUNCTION();
 
 	auto pShader = LoadShaderAsset(assetUID).Lock();
-	const auto defines = GetDefines(pShader->m_defines, permutation);
+	const auto defines = GetDefines(pShader->GetSupportedDefines(), permutation);
 
 	std::vector<std::string> vertexDefines = defines;
 	vertexDefines.push_back("VERTEX");
@@ -223,7 +223,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 			return;
 		}
 
-		const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->m_defines.size());
+		const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->GetSupportedDefines().size());
 
 		std::vector<uint32_t> permutationsToCompile;
 
@@ -275,7 +275,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 
 	if (ShaderAssetInfoPtr shaderAssetInfo = dynamic_cast<ShaderAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
-		if (const auto& loadedShader = m_loadedShaders.find(uid); loadedShader != m_loadedShaders.end())
+		if (const auto& loadedShader = m_loadedShaderAssets.find(uid); loadedShader != m_loadedShaderAssets.end())
 		{
 			return loadedShader->second;
 		}
@@ -301,7 +301,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 		ShaderAsset* shader = new ShaderAsset();
 		shader->Deserialize(j_shader);
 
-		return m_loadedShaders[uid] = TSharedPtr<ShaderAsset>(shader);
+		return m_loadedShaderAssets[uid] = TSharedPtr<ShaderAsset>(shader);
 	}
 
 	SAILOR_LOG("Cannot find shader asset info with UID: %s", uid.ToString().c_str());
@@ -357,6 +357,11 @@ uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines,
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	if (actualDefines.size() == 0)
+	{
+		return 0;
+	}
+
 	std::unordered_set<std::string> requested;
 
 	for (int32_t i = 0; i < actualDefines.size(); i++)
@@ -398,7 +403,7 @@ void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::st
 
 	if (auto pShader = LoadShaderAsset(assetUID).Lock())
 	{
-		uint32_t permutation = GetPermutation(pShader->m_defines, defines);
+		uint32_t permutation = GetPermutation(pShader->GetSupportedDefines(), defines);
 
 		if (m_shaderCache.IsExpired(assetUID, permutation))
 		{
@@ -409,3 +414,121 @@ void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::st
 	}
 }
 
+JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outShader, const std::vector<string>& defines)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (auto pShader = LoadShaderAsset(uid).TryLock())
+	{
+		const uint32_t permutation = GetPermutation(pShader->GetSupportedDefines(), defines);
+
+		auto it = m_loadedShaders.find(uid);
+		if (it != m_loadedShaders.end())
+		{
+			auto allLoadedPermutations = (*it).second;
+			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.first == permutation; });
+			if (shaderIt != allLoadedPermutations.end())
+			{
+				outShader = (*shaderIt).second;
+				// TODO: Implement promises to wait loading resources
+				return JobSystem::TaskPtr<bool>::Make(true);
+			}
+		}
+
+		JobSystem::TaskPtr<bool> outLoadingTask;
+		outShader = nullptr;
+
+		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
+		{
+			auto pShader = TSharedPtr<ShaderSet>::Make(uid);
+
+			outLoadingTask = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load shader",
+				[pShader, assetInfo, defines, this]()
+				{
+					auto pRaw = pShader.GetRawPtr();
+					auto& pRhiDriver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+
+					RHI::ShaderByteCode debugVertexSpirv;
+					RHI::ShaderByteCode debugFragmentSpirv;
+					GetSpirvCode(assetInfo->GetUID(), defines, debugVertexSpirv, debugFragmentSpirv, true);
+
+					pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
+					pRaw->m_rhiFragmentShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
+
+					RHI::ShaderByteCode vertexByteCode;
+					RHI::ShaderByteCode fragmentByteCode;
+					GetSpirvCode(assetInfo->GetUID(), defines, vertexByteCode, fragmentByteCode, false);
+
+					pRaw->m_rhiVertexShader = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, vertexByteCode);
+					pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);
+
+					return true;
+				});
+
+			App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
+
+			{
+				std::scoped_lock<std::mutex> guard(m_mutex);
+				m_loadedShaders[uid].push_back({ permutation, pShader });
+				outShader = (*(m_loadedShaders[uid].end() - 1)).second;
+			}
+			return outLoadingTask;
+		}
+	}
+	SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
+	return JobSystem::TaskPtr<bool>::Make(false);
+}
+
+bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const std::vector<string>& defines)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (auto pShader = LoadShaderAsset(uid).TryLock())
+	{
+		const uint32_t permutation = GetPermutation(pShader->GetSupportedDefines(), defines);
+
+		auto it = m_loadedShaders.find(uid);
+		if (it != m_loadedShaders.end())
+		{
+			auto allLoadedPermutations = (*it).second;
+			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.first == permutation; });
+			if (shaderIt != allLoadedPermutations.end())
+			{
+				outShader = (*shaderIt).second;
+				return true;
+			}
+		}
+
+		outShader = nullptr;
+
+		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
+		{
+			auto pShader = TSharedPtr<ShaderSet>::Make(uid);
+			auto pRaw = pShader.GetRawPtr();
+			auto& pRhiDriver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+
+			RHI::ShaderByteCode debugVertexSpirv;
+			RHI::ShaderByteCode debugFragmentSpirv;
+			GetSpirvCode(assetInfo->GetUID(), defines, debugVertexSpirv, debugFragmentSpirv, true);
+
+			pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
+			pRaw->m_rhiFragmentShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
+
+			RHI::ShaderByteCode vertexByteCode;
+			RHI::ShaderByteCode fragmentByteCode;
+			GetSpirvCode(assetInfo->GetUID(), defines, vertexByteCode, fragmentByteCode, false);
+
+			pRaw->m_rhiVertexShader = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, vertexByteCode);
+			pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);
+
+			{
+				std::scoped_lock<std::mutex> guard(m_mutex);
+				m_loadedShaders[uid].push_back({ permutation, pShader });
+				outShader = (*(m_loadedShaders[uid].end() - 1)).second;
+			}
+			return true;
+		}
+	}
+	SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
+	return false;
+}

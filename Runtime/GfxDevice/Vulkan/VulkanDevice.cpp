@@ -11,6 +11,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
@@ -581,10 +582,11 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 					{
 						SAILOR_PROFILE_BLOCK("Get data");
 						auto& material = pModel->GetMaterials()[index].Lock()->GetRHI();
+						bool bIsMaterialReady = pModel->GetMaterials()[index] && pModel->GetMaterials()[index].Lock()->IsReady();
 						auto& mesh = pModel->GetMeshes()[index];
 						SAILOR_PROFILE_END_BLOCK();
 
-						if (mesh && mesh->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
+						if (mesh && mesh->IsReady() && bIsMaterialReady && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
 						{
 							SAILOR_PROFILE_BLOCK("Bind pipelines");
 							m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);

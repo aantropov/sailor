@@ -3,6 +3,7 @@
 #include "AssetRegistry/UID.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "MaterialAssetInfo.h"
+#include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Math/Math.h"
 #include "Core/Utils.h"
 #include <filesystem>
@@ -219,9 +220,14 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 	{
 		auto pMaterial = TSharedPtr<Material>::Make(uid);
 
-		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(),
-			pMaterialAsset->GetShader(),
-			pMaterialAsset->GetShaderDefines());
+		ShaderSetPtr pShader;
+		if (!App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines()))
+		{
+			return false;
+		}
+
+		pShader.Lock()->AddHotReloadDependentObject(pMaterial);
+		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(), pShader);
 
 		auto bindings = pMaterialPtr->GetBindings();
 
@@ -285,14 +291,38 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 	{
 		auto pMaterial = TSharedPtr<Material>::Make(uid);
 
-		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(),
-			pMaterialAsset->GetShader(),
-			pMaterialAsset->GetShaderDefines());
+		ShaderSetPtr pShader;
+		auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
+
+		pShader.Lock()->AddHotReloadDependentObject(pMaterial);
 
 		outLoadingTask = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
-			[pMaterial, pMaterialPtr, pMaterialAsset]()
+			[pMaterial, pShader, pMaterialAsset]()
 			{
+				RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(), pShader);
+
+				// Preload textures
+				std::vector<JobSystem::ITaskPtr> deps;
 				auto bindings = pMaterialPtr->GetBindings();
+				for (auto& sampler : pMaterialAsset->GetSamplers())
+				{
+					if (bindings->HasBinding(sampler.m_name))
+					{
+						TexturePtr texture;
+						if (auto loadingTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture))
+						{
+							deps.push_back(loadingTask);
+							texture.Lock()->AddHotReloadDependentObject(pMaterial);
+						}
+					}
+				}
+				
+				// Wait while textures are loading
+				for (auto& task : deps)
+				{
+					task->Wait();
+				}
+
 				for (auto& sampler : pMaterialAsset.GetRawPtr()->GetSamplers())
 				{
 					if (bindings->HasBinding(sampler.m_name))
@@ -301,7 +331,6 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 						if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_uid, texture))
 						{
 							RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
-							texture.Lock()->AddHotReloadDependentObject(pMaterial);
 						}
 					}
 				}
@@ -329,18 +358,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 				return true;
 			});
 
-		auto bindings = pMaterialPtr->GetBindings();
-		for (auto& sampler : pMaterialAsset->GetSamplers())
-		{
-			if (bindings->HasBinding(sampler.m_name))
-			{
-				TexturePtr texture;
-				if (JobSystem::ITaskPtr loadingTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture))
-				{
-					outLoadingTask->Join(loadingTask);
-				}
-			}
-		}
+		outLoadingTask->Join(pLoadShader);
 
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
 
@@ -349,9 +367,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 			outMaterial = m_loadedMaterials[uid] = pMaterial;
 		}
 		return outLoadingTask;
-
 	}
-
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
 
