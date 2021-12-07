@@ -55,7 +55,7 @@ namespace Sailor
 			SAILOR_API void Join(const std::vector<TWeakPtr<ITask>>& jobsDependent);
 
 			// Run current task and all chained
-			SAILOR_API void Run();
+			SAILOR_API TSharedPtr<ITask> Run();
 
 			SAILOR_API bool IsInQueue() const { return m_bIsInQueue; }
 			SAILOR_API void OnEnqueue() { m_bIsInQueue = true; }
@@ -359,7 +359,6 @@ namespace Sailor
 
 		template<typename TResult = void, typename TArgs = void>
 		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
-
 		using ITaskPtr = TSharedPtr<ITask>;
 	}
 }

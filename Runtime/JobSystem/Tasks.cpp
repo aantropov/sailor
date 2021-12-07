@@ -51,9 +51,11 @@ void ITask::Join(const std::vector<TWeakPtr<ITask>>& jobs)
 	}
 }
 
-void ITask::Run()
+TSharedPtr<ITask> ITask::Run()
 {
-	App::GetSubmodule<Scheduler>()->Run(this);
+	TSharedPtr<ITask> res = m_self.Lock();
+	App::GetSubmodule<Scheduler>()->Run(res);
+	return res;
 }
 
 void ITask::Complete()
