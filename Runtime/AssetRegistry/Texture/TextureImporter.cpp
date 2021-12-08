@@ -72,67 +72,45 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 
 bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 {
-	SAILOR_PROFILE_FUNCTION();
-
-	auto it = m_loadedTextures.find(uid);
-	if (it != m_loadedTextures.end())
-	{
-		return outTexture = (*it).second;
-	}
-
-	outTexture = nullptr;
-
-	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
-	{
-		ByteCode decodedData;
-		int32_t width;
-		int32_t height;
-		uint32_t mipLevels;
-
-		if (ImportTexture(uid, decodedData, width, height, mipLevels))
-		{
-			auto pTexture = TSharedPtr<Texture>::Make(uid);
-
-			pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 1.0f),
-				mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
-				assetInfo->GetClamping());
-
-			{
-				std::scoped_lock<std::mutex> guard(m_mutex);
-				outTexture = m_loadedTextures[uid] = pTexture;
-			}
-			return outTexture;
-		}
-
-		SAILOR_LOG("Cannot import texture with uid: %s", uid.ToString().c_str());
-
-		return false;
-	}
-
-	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
-	return false;
+	auto task = LoadTexture(uid, outTexture);
+	task->Wait();
+	return task->GetResult();
 }
 
 JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::scoped_lock<std::mutex> guard(m_mutex);
 
-	auto it = m_loadedTextures.find(uid);
-	if (it != m_loadedTextures.end())
+	JobSystem::TaskPtr<bool> promise;
+	outTexture = nullptr;
+
+	// Check promises first
+	auto it = m_promises.find(uid);
+	if (it != m_promises.end())
 	{
-		outTexture = (*it).second;
-		return JobSystem::TaskPtr<bool>::Make(true);
+		promise = (*it).second;
 	}
 
-	JobSystem::TaskPtr<bool> outLoadingTask;
+	// Check loaded textures
+	auto textureIt = m_loadedTextures.find(uid);
+	if (textureIt != m_loadedTextures.end())
+	{
+		outTexture = (*textureIt).second;
 
-	outTexture = nullptr;
+		if (!promise)
+		{
+			return JobSystem::TaskPtr<bool>::Make(true);
+		}
+
+		return promise;
+	}
 
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
 		auto pTexture = TSharedPtr<Texture>::Make(uid);
 
-		outLoadingTask = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
+		promise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[pTexture, assetInfo, this]()
 			{
 				ByteCode decodedData;
@@ -150,14 +128,12 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 				return false;
 			});
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
 
-		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
-			outTexture = m_loadedTextures[uid] = pTexture;
-		}
-		return outLoadingTask;
+		outTexture = m_loadedTextures[uid] = pTexture;
+		m_promises[uid] = promise;
 
+		return promise;
 	}
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());

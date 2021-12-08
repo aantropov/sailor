@@ -119,7 +119,9 @@ namespace Sailor
 
 		SAILOR_API bool IsMaterialLoaded(UID uid) const;
 
-		std::unordered_map<UID, TSharedPtr<Material>> m_loadedMaterials;
 		std::mutex m_mutex;
+		std::unordered_map <UID, JobSystem::TaskPtr<bool>> m_promises;
+
+		std::unordered_map<UID, TSharedPtr<Material>> m_loadedMaterials;
 	};
 }

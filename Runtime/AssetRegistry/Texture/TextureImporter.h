@@ -47,12 +47,14 @@ namespace Sailor
 		SAILOR_API bool LoadTexture_Immediate(UID uid, TexturePtr& outTexture);
 		SAILOR_API JobSystem::TaskPtr<bool> LoadTexture(UID uid, TexturePtr& outTexture);
 
-	private:
+	protected:
 
 		std::mutex m_mutex;
+
+		std::unordered_map <UID, JobSystem::TaskPtr<bool>> m_promises;
 		std::unordered_map<UID, TSharedPtr<Texture>> m_loadedTextures;
 
 		SAILOR_API bool IsTextureLoaded(UID uid) const;
-		SAILOR_API bool ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
+		SAILOR_API static bool ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
 	};
 }

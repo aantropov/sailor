@@ -140,66 +140,46 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_loadedModels.find(uid);
-	if (it != m_loadedModels.end())
-	{
-		return outModel = (*it).second;
-	}
-
-	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
-	{
-		auto model = TSharedPtr<Model>::Make(uid);
-		std::vector<AssetInfoPtr> outMaterialUIDs;
-
-		if (ImportObjModel(assetInfo, model->m_meshes, outMaterialUIDs))
-		{
-			for (auto& assetInfo : outMaterialUIDs)
-			{
-				MaterialPtr material;
-				if (assetInfo && App::GetSubmodule<MaterialImporter>()->LoadMaterial_Immediate(assetInfo->GetUID(), material))
-				{
-					if (material)
-					{
-						model.GetRawPtr()->m_materials.push_back(material);
-						model.GetRawPtr()->AddHotReloadDependentObject(material);
-					}
-					else
-					{
-						//TODO: push missing material
-					}
-				}
-			}
-			model->Flush();
-
-			{
-				std::scoped_lock<std::mutex> guard(m_mutex);
-				outModel = m_loadedModels[uid] = model;
-			}
-			return outModel;
-		}
-	}
-
-	return false;
+	auto task = LoadModel(uid, outModel);
+	task->Wait();
+	return task->GetResult();
 }
 
 JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_loadedModels.find(uid);
-	if (it != m_loadedModels.end())
+	std::scoped_lock<std::mutex> guard(m_mutex);
+
+	JobSystem::TaskPtr<bool> promise;
+	outModel = nullptr;
+
+	// Check promises first
+	auto it = m_promises.find(uid);
+	if (it != m_promises.end())
 	{
-		outModel = (*it).second;
-		return JobSystem::TaskPtr<bool>::Make(true);
+		promise = (*it).second;
 	}
 
-	JobSystem::TaskPtr<bool> outLoadingTask;
+	// Check loaded model
+	auto modelIt = m_loadedModels.find(uid);
+	if (modelIt != m_loadedModels.end())
+	{
+		outModel = (*modelIt).second;
+
+		if (!promise)
+		{
+			return JobSystem::TaskPtr<bool>::Make(true);
+		}
+
+		return promise;
+	}
 
 	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto model = TSharedPtr<Model>::Make(uid);
 
-		outLoadingTask = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
+		promise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[model, assetInfo, this]()
 			{
 				std::vector<AssetInfoPtr> outMaterialUIDs;
@@ -241,14 +221,12 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 				return false;
 			});
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
 
-		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
-			outModel = m_loadedModels[uid] = model;
-		}
+		outModel = m_loadedModels[uid] = model;
+		m_promises[uid] = promise;
 
-		return outLoadingTask;
+		return promise;
 	}
 
 	return JobSystem::TaskPtr<bool>::Make(false);

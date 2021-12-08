@@ -423,33 +423,36 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 
 	if (auto pShader = LoadShaderAsset(uid).TryLock())
 	{
+		std::scoped_lock<std::mutex> guard(m_mutex);
 		const uint32_t permutation = GetPermutation(pShader->GetSupportedDefines(), defines);
+
+		// Check promises first
+		auto it = m_promises.find(uid);
+		if (it != m_promises.end())
 		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
-
-			// Check promises first
-			auto it = m_promises.find(uid);
-			if (it != m_promises.end())
+			auto allLoadedPermutations = (*it).second;
+			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.first == permutation; });
+			if (shaderIt != allLoadedPermutations.end())
 			{
-				auto allLoadedPermutations = (*it).second;
-				auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.first == permutation; });
-				if (shaderIt != allLoadedPermutations.end())
-				{
-					promise = (*shaderIt).second;
-				}
+				promise = (*shaderIt).second;
 			}
+		}
 
-			// Check loaded shaders then
-			auto loadedShadersIt = m_loadedShaders.find(uid);
-			if (loadedShadersIt != m_loadedShaders.end())
+		// Check loaded shaders then
+		auto loadedShadersIt = m_loadedShaders.find(uid);
+		if (loadedShadersIt != m_loadedShaders.end())
+		{
+			auto allLoadedPermutations = (*loadedShadersIt).second;
+			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.first == permutation; });
+			if (shaderIt != allLoadedPermutations.end())
 			{
-				auto allLoadedPermutations = (*loadedShadersIt).second;
-				auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.first == permutation; });
-				if (shaderIt != allLoadedPermutations.end())
+				outShader = (*shaderIt).second;
+				if (!promise)
 				{
-					outShader = (*shaderIt).second;
-					return promise ? promise : JobSystem::TaskPtr<bool>::Make(true);
+					return JobSystem::TaskPtr<bool>::Make(true);
 				}
+
+				return promise;
 			}
 		}
 
@@ -482,19 +485,16 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 
 			App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
 
-			{
-				std::scoped_lock<std::mutex> guard(m_mutex);
-				m_loadedShaders[uid].push_back({ permutation, pShader });
-				m_promises[uid].push_back({ permutation, promise });
-				outShader = (*(m_loadedShaders[uid].end() - 1)).second;
-			}
+			m_loadedShaders[uid].push_back({ permutation, pShader });
+			m_promises[uid].push_back({ permutation, promise });
+			outShader = (*(m_loadedShaders[uid].end() - 1)).second;
+
 			return promise;
 		}
 	}
 	SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
-
 
 bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const std::vector<string>& defines)
 {

@@ -69,15 +69,17 @@ namespace Sailor
 		SAILOR_API JobSystem::TaskPtr<bool> LoadModel(UID uid, ModelPtr& outModel);
 		SAILOR_API bool LoadModel_Immediate(UID uid, ModelPtr& outModel);
 
-	private:
+	protected:
+
+		std::mutex m_mutex;
+		
+		std::unordered_map <UID, JobSystem::TaskPtr<bool>> m_promises;
+		std::unordered_map<UID, TSharedPtr<Model>> m_loadedModels;
 
 		static SAILOR_API bool ImportObjModel(ModelAssetInfoPtr assetInfo,
 			std::vector<RHI::MeshPtr>& outMeshes,
 			std::vector<AssetInfoPtr>& outMaterialUIDs);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
-
-		std::unordered_map<UID, TSharedPtr<Model>> m_loadedModels;
-		std::mutex m_mutex;
 	};
 }

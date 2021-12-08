@@ -208,81 +208,42 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 
 bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 {
-	auto it = m_loadedMaterials.find(uid);
-	if (it != m_loadedMaterials.end())
-	{
-		return outMaterial = (*it).second;
-	}
+	SAILOR_PROFILE_FUNCTION();
+	auto task = LoadMaterial(uid, outMaterial);
+	task->Wait();
 
-	outMaterial = nullptr;
-
-	if (auto pMaterialAsset = LoadMaterialAsset(uid))
-	{
-		auto pMaterial = TSharedPtr<Material>::Make(uid);
-
-		ShaderSetPtr pShader;
-		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
-
-		pShader.Lock()->AddHotReloadDependentObject(pMaterial);
-		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(), pShader);
-
-		auto bindings = pMaterialPtr->GetBindings();
-
-		for (auto& sampler : pMaterialAsset->GetSamplers())
-		{
-			if (bindings->HasBinding(sampler.m_name))
-			{
-				TexturePtr texture;
-				if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_uid, texture))
-				{
-					RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
-					texture.Lock()->AddHotReloadDependentObject(pMaterial);
-				}
-			}
-		}
-
-		for (auto& uniform : pMaterialAsset->GetUniformValues())
-		{
-			if (bindings->HasParameter(uniform.first))
-			{
-				std::string outBinding;
-				std::string outVariable;
-
-				RHI::ShaderBindingSet::ParseParameter(uniform.first, outBinding, outVariable);
-				RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
-				auto value = uniform.second;
-
-				SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
-					{
-						RHI::Renderer::GetDriverCommands()->UpdateShaderBingingVariable(cmdList, binding, outVariable, &value, sizeof(value));
-					}));
-			}
-		}
-
-		pMaterial->m_rhiMaterial = pMaterialPtr;
-		pMaterial->Flush();
-
-		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
-			outMaterial = m_loadedMaterials[uid] = pMaterial;
-		}
-		return outMaterial;
-	}
-
-	return false;
+	return task->GetResult();
 }
 
 JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial)
 {
-	auto it = m_loadedMaterials.find(uid);
-	if (it != m_loadedMaterials.end())
+	SAILOR_PROFILE_FUNCTION();
+
+	std::scoped_lock<std::mutex> guard(m_mutex);
+
+	JobSystem::TaskPtr<bool> promise;
+	outMaterial = nullptr;
+
+	// Check promises first
+	auto it = m_promises.find(uid);
+	if (it != m_promises.end())
 	{
-		outMaterial = (*it).second;
-		return JobSystem::TaskPtr<bool>::Make(true);
+		promise = (*it).second;
 	}
 
-	outMaterial = nullptr;
-	JobSystem::TaskPtr<bool> outLoadingTask;
+	// Check loaded materials
+	auto materialIt = m_loadedMaterials.find(uid);
+	if (materialIt != m_loadedMaterials.end())
+	{
+		outMaterial = (*materialIt).second;
+
+		if (!promise)
+		{
+			return JobSystem::TaskPtr<bool>::Make(true);
+		}
+
+		return promise;
+	}
 
 	if (auto pMaterialAsset = LoadMaterialAsset(uid))
 	{
@@ -293,7 +254,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 
 		pShader.Lock()->AddHotReloadDependentObject(pMaterial);
 
-		outLoadingTask = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
+		promise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
 			[pMaterial, pShader, pMaterialAsset]()
 			{
 				RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(), pShader);
@@ -357,15 +318,14 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 				return true;
 			});
 
-		outLoadingTask->Join(pLoadShader);
+		promise->Join(pLoadShader);
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(outLoadingTask);
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
 
-		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
-			outMaterial = m_loadedMaterials[uid] = pMaterial;
-		}
-		return outLoadingTask;
+		outMaterial = m_loadedMaterials[uid] = pMaterial;
+		m_promises[uid] = promise;
+
+		return promise;
 	}
 	return JobSystem::TaskPtr<bool>::Make(false);
 }

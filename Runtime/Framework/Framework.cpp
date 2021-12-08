@@ -208,7 +208,7 @@ void Framework::CpuFrame(FrameState& state)
 			}
 
 			RHI::Renderer::GetDriverCommands()->EndCommandList(pCommandList);
-		})->Run()->Wait();
+		})->Execute();
 
 		SAILOR_PROFILE_END_BLOCK();
 }
