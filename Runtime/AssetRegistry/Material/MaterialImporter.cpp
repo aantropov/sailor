@@ -221,10 +221,7 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 		auto pMaterial = TSharedPtr<Material>::Make(uid);
 
 		ShaderSetPtr pShader;
-		if (!App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines()))
-		{
-			return false;
-		}
+		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
 
 		pShader.Lock()->AddHotReloadDependentObject(pMaterial);
 		RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(), pShader);
@@ -301,36 +298,37 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 			{
 				RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(), pShader);
 
+				auto flushMaterial = JobSystem::Scheduler::CreateTask("Flush material", [=]()
+					{
+						pMaterial.GetRawPtr()->Flush();
+					});
+
 				// Preload textures
-				std::vector<JobSystem::ITaskPtr> deps;
 				auto bindings = pMaterialPtr->GetBindings();
 				for (auto& sampler : pMaterialAsset->GetSamplers())
 				{
 					if (bindings->HasBinding(sampler.m_name))
 					{
 						TexturePtr texture;
-						if (auto loadingTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture))
-						{
-							deps.push_back(loadingTask);
-							texture.Lock()->AddHotReloadDependentObject(pMaterial);
-						}
-					}
-				}
-				
-				// Wait while textures are loading
-				for (auto& task : deps)
-				{
-					task->Wait();
-				}
+						flushMaterial->Join(
+							App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, bool>(
+								[=](bool bRes)
+								{
+									if (bRes)
+									{
+										for (auto& sampler : pMaterialAsset.GetRawPtr()->GetSamplers())
+										{
+											if (bindings->HasBinding(sampler.m_name))
+											{
+												RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
+											}
+										}
+									}
+								}, "Set material texture binding", JobSystem::EThreadType::Rendering));
 
-				for (auto& sampler : pMaterialAsset.GetRawPtr()->GetSamplers())
-				{
-					if (bindings->HasBinding(sampler.m_name))
-					{
-						TexturePtr texture;
-						if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_uid, texture))
+						if (texture)
 						{
-							RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
+							texture.Lock()->AddHotReloadDependentObject(pMaterial);
 						}
 					}
 				}
@@ -354,7 +352,8 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 				}
 
 				pMaterial.GetRawPtr()->m_rhiMaterial = pMaterialPtr;
-				pMaterial.GetRawPtr()->Flush();
+				flushMaterial->Run();
+
 				return true;
 			});
 

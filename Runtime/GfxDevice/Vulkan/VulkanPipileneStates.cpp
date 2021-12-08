@@ -209,6 +209,10 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 
 const std::vector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::RenderState& renderState)
 {
+	SAILOR_PROFILE_FUNCTION();
+
+	std::scoped_lock<std::mutex> guard(m_mutex);
+
 	auto it = m_cache.find(renderState);
 	if (it != m_cache.end())
 	{

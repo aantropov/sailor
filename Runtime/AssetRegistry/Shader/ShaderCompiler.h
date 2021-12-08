@@ -11,10 +11,39 @@
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
 #include "ShaderCache.h"
+#include "JobSystem/Tasks.h"
 #include "Framework/Object.h"
 
 namespace Sailor
 {
+	class ShaderSet : public Object
+	{
+	public:
+
+		ShaderSet(UID uid) : Object(std::move(uid)) {}
+
+		virtual bool IsReady() const override;
+
+		const RHI::ShaderPtr& GetVertexShaderRHI() const { return m_rhiVertexShader; }
+		RHI::ShaderPtr& GetVertexShaderRHI() { return m_rhiVertexShader; }
+
+		const RHI::ShaderPtr& GetFragmentShaderRHI() const { return m_rhiFragmentShader; }
+		RHI::ShaderPtr& GetFragmentShaderRHI() { return m_rhiFragmentShader; }
+
+		const RHI::ShaderPtr& GetDebugVertexShaderRHI() const { return m_rhiVertexShaderDebug; }
+		const RHI::ShaderPtr& GetDebugFragmentShaderRHI() const { return m_rhiFragmentShaderDebug; }
+
+	protected:
+
+		RHI::ShaderPtr m_rhiVertexShader;
+		RHI::ShaderPtr m_rhiFragmentShader;
+
+		RHI::ShaderPtr m_rhiVertexShaderDebug;
+		RHI::ShaderPtr m_rhiFragmentShaderDebug;
+
+		friend class ShaderCompiler;
+	};
+
 	using ShaderSetPtr = TWeakPtr<class ShaderSet>;
 
 	class ShaderAsset : IJsonSerializable
@@ -69,6 +98,8 @@ namespace Sailor
 		std::mutex m_mutex;
 		ShaderCache m_shaderCache;
 
+		std::unordered_map<UID, std::vector<std::pair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;
+
 		std::unordered_map<UID, TSharedPtr<ShaderAsset>> m_loadedShaderAssets;
 		std::unordered_map<UID, std::vector<std::pair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
 
@@ -90,33 +121,5 @@ namespace Sailor
 		static constexpr char const* JsonBeginCodeTag = "BEGIN_CODE";
 		static constexpr char const* JsonEndCodeTag = "END_CODE";
 		static constexpr char const* JsonEndLineTag = " END_LINE ";
-	};
-
-	class ShaderSet : public Object
-	{
-	public:
-
-		ShaderSet(UID uid) : Object(std::move(uid)) {}
-
-		virtual bool IsReady() const override;
-
-		const RHI::ShaderPtr& GetVertexShaderRHI() const { return m_rhiVertexShader; }
-		RHI::ShaderPtr& GetVertexShaderRHI() { return m_rhiVertexShader; }
-
-		const RHI::ShaderPtr& GetFragmentShaderRHI() const { return m_rhiFragmentShader; }
-		RHI::ShaderPtr& GetFragmentShaderRHI() { return m_rhiFragmentShader; }
-
-		const RHI::ShaderPtr& GetDebugVertexShaderRHI() const { return m_rhiVertexShaderDebug; }
-		const RHI::ShaderPtr& GetDebugFragmentShaderRHI() const { return m_rhiFragmentShaderDebug; }
-
-	protected:
-
-		RHI::ShaderPtr m_rhiVertexShader;
-		RHI::ShaderPtr m_rhiFragmentShader;
-
-		RHI::ShaderPtr m_rhiVertexShaderDebug;
-		RHI::ShaderPtr m_rhiFragmentShaderDebug;
-
-		friend class ShaderCompiler;
 	};
 }

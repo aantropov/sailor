@@ -70,11 +70,9 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 
 	timer.Start();
 
-
 	SAILOR_PROFILE_BLOCK("CPU Frame");
 	CpuFrame(currentInputState);
 	SAILOR_PROFILE_END_BLOCK();
-
 
 	timer.Stop();
 
@@ -109,8 +107,14 @@ void Framework::CpuFrame(FrameState& state)
 		if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
 		{
 			TexturePtr defaultTexture;
-			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(textureUID->GetUID(), defaultTexture);
-			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
+			App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID(), defaultTexture)->Then<void, bool>(
+				[=](bool bRes)
+				{
+					if (bRes)
+					{
+						Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
+					}
+				});
 		}
 		bFirstFrame = false;
 	}
@@ -167,7 +171,7 @@ void Framework::CpuFrame(FrameState& state)
 
 	SAILOR_PROFILE_BLOCK("Test Performance");
 
-	auto pJob = App::GetSubmodule<JobSystem::Scheduler>()->CreateTask("Update command list",
+	App::GetSubmodule<JobSystem::Scheduler>()->CreateTask("Update command list",
 		[&state, this, model]()
 		{
 			auto pCommandList = state.CreateCommandBuffer(0);
@@ -204,12 +208,7 @@ void Framework::CpuFrame(FrameState& state)
 			}
 
 			RHI::Renderer::GetDriverCommands()->EndCommandList(pCommandList);
-		});
+		})->Run()->Wait();
 
-	//App::GetSubmodule<JobSystem::Scheduler>()->Run(pJob);
-	//pJob->Wait();
-
-	pJob->Execute();
-
-	SAILOR_PROFILE_END_BLOCK();
+		SAILOR_PROFILE_END_BLOCK();
 }

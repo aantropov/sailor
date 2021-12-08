@@ -4,6 +4,7 @@
 #include "vulkan/vulkan.h"
 #include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
+#include <mutex>
 
 namespace Sailor::GfxDevice::Vulkan
 {
@@ -141,6 +142,9 @@ namespace Sailor::GfxDevice::Vulkan
 		const std::vector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::RenderState& renderState);
 
 	protected:
+
+		// We can cache pipelines in different threads simulteniously
+		std::mutex m_mutex;
 
 		VulkanStateColorBlendingPtr GetBlendState(RHI::EBlendMode mode);
 
