@@ -679,6 +679,50 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 	return res;
 }
 
+void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
+{
+	if (!ptr)
+	{
+		return Allocate(size, alignment);
+	}
+
+	void* res = ptr;
+
+	// Quick look to get allocator type
+	if (((SmallPoolAllocator::SmallHeader*)ShiftPtr(ptr, -(int32_t)sizeof(SmallPoolAllocator::SmallHeader)))->m_meta == 1)
+	{
+		const int32_t headerSize = sizeof(Header);
+		Header* header = static_cast<Header*>(ShiftPtr(ptr, -headerSize));
+
+		if (size <= header->m_size - headerSize)
+		{
+			// No need to reallocate
+			return ptr;
+		}
+
+		res = Allocate(size, alignment);
+		std::memcpy(res, ptr, header->m_size - headerSize);
+		m_allocator.Free(ptr);
+	}
+	else
+	{
+		const int32_t headerSize = sizeof(SmallPoolAllocator::SmallHeader);
+		SmallPoolAllocator::SmallHeader* header = (SmallPoolAllocator::SmallHeader*)ShiftPtr(ptr, -headerSize);
+
+		if (size <= header->m_size - headerSize)
+		{
+			// No need to reallocate
+			return ptr;
+		}
+
+		res = Allocate(size, alignment);
+		std::memcpy(res, ptr, header->m_size - headerSize);
+		m_smallAllocators[header->m_size]->Free(ptr);
+	}
+
+	return res;
+}
+
 void HeapAllocator::Free(void* ptr)
 {
 	if (!ptr)

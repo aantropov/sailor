@@ -16,7 +16,7 @@ using namespace Sailor;
 using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
-HeapAllocator DefaultHeapAllocator::m_heapAllocator;
+HeapAllocator GlobalHeapAllocator::m_heapAllocator;
 
 size_t GetTotalUsedVirtualMemory()
 {

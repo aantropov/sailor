@@ -195,6 +195,7 @@
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
     <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
+    <ClInclude Include="..\Runtime\Core\Vector.h" />
     <ClInclude Include="..\Runtime\Framework\Framework.h" />
     <ClInclude Include="..\Runtime\Framework\Object.h" />
     <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h" />
@@ -293,6 +294,7 @@
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\Tasks.cpp" />
+    <ClCompile Include="..\Runtime\Math\Math.cpp" />
     <ClCompile Include="..\Runtime\Memory\Heap.cpp" />
     <ClCompile Include="..\Runtime\Memory\Memory.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp" />

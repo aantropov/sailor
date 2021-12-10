@@ -20,6 +20,8 @@ namespace Sailor::Math
 	const glm::vec3 vec3_Back = -vec3_Forward;
 	const glm::vec3 vec3_Down = -vec3_Up;
 	const glm::vec3 vec3_Left = -vec3_Right;
+
+	unsigned long SAILOR_API UpperPowOf2(unsigned long v);
 }
 
 #if defined(min)

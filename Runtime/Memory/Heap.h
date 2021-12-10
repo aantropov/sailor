@@ -130,7 +130,8 @@ namespace Sailor::Memory
 	public:
 
 		HeapAllocator();
-		void* Allocate(size_t size, size_t alignment);
+		void* Allocate(size_t size, size_t alignment = 8);
+		void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
 		void Free(void* ptr);
 
 	private:

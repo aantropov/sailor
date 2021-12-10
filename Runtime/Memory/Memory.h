@@ -22,18 +22,23 @@ namespace Sailor::Memory
 			free(ptr);
 		}
 	};
-	
-	class DefaultHeapAllocator
+
+	class GlobalHeapAllocator
 	{
 		static HeapAllocator m_heapAllocator;
-	
+
 	public:
+
+		SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
+		{
+			return m_heapAllocator.Reallocate(ptr, size, alignment);
+		}
 
 		SAILOR_API void* Allocate(size_t size, size_t alignment = 8)
 		{
 			return m_heapAllocator.Allocate(size, alignment);
 		}
-		
+
 		SAILOR_API void Free(void* pData, size_t size = 0)
 		{
 			m_heapAllocator.Free(pData);
@@ -41,7 +46,7 @@ namespace Sailor::Memory
 	};
 
 	template<uint32_t stackSize = 1024>
-	class DefaultStackAllocator
+	class InlineAllocator
 	{
 	protected:
 		uint8_t m_stack[stackSize];
@@ -66,13 +71,13 @@ namespace Sailor::Memory
 		}
 	};
 
-	template<typename TGlobalAllocator = DefaultHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
 	class TBlockAllocator;
 
-	template<typename TGlobalAllocator = DefaultHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
 	class TPoolAllocator;
 
-	template<typename TGlobalAllocator = DefaultHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
 	class TMultiPoolAllocator;
 
 	template<typename TPtr = void*>
@@ -108,7 +113,7 @@ namespace Sailor::Memory
 		return Shift(pStartBlock, offset);
 	}
 
-	template<typename TDataType, typename TPtr, typename TGlobalAllocator = DefaultHeapAllocator>
+	template<typename TDataType, typename TPtr, typename TGlobalAllocator = GlobalHeapAllocator>
 	TDataType Allocate(size_t size, TGlobalAllocator* allocator)
 	{
 		TDataType newObj{};
@@ -116,7 +121,7 @@ namespace Sailor::Memory
 		return newObj;
 	}
 
-	template<typename TDataType, typename TPtr, typename TGlobalAllocator = DefaultHeapAllocator>
+	template<typename TDataType, typename TPtr, typename TGlobalAllocator = GlobalHeapAllocator>
 	void Free(TDataType& ptr, TGlobalAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
@@ -156,7 +161,7 @@ namespace Sailor::Memory
 			m_blockIndex(blockIndex),
 			m_ptr(ptr)
 		{}
-		
+
 		operator bool() const { return (bool)m_ptr; }
 
 		const TPtr operator*() const { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
