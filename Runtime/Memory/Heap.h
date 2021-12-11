@@ -42,6 +42,7 @@ namespace Sailor::Memory
 				inline Header* MoveHeader(Header* block, int64_t shift);
 
 				void* Allocate(size_t size, size_t alignment);
+				bool TryAddMoreSpace(void* ptr, size_t size);
 				void Free(void* pData);
 
 				void Clear();
@@ -50,6 +51,7 @@ namespace Sailor::Memory
 			};
 
 			void* Allocate(size_t size, size_t alignment);
+			bool TryAddMoreSpace(void* ptr, size_t newSize);
 			void Free(void* ptr);
 
 			size_t GetOccupiedSpace() const
@@ -124,7 +126,7 @@ namespace Sailor::Memory
 			std::vector<uint16_t> m_emptyPages;
 		};
 	}
-	
+
 	class HeapAllocator
 	{
 	public:

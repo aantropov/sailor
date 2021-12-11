@@ -110,6 +110,21 @@ Header* Page::MoveHeader(Header* block, int64_t shift)
 	return block;
 }
 
+bool Page::TryAddMoreSpace(void* ptr, size_t size)
+{
+	const int32_t headerSize = sizeof(Header);
+	Header* block = static_cast<Header*>(ShiftPtr(ptr, -headerSize));
+	Header* pNext = static_cast<Header*>(block->m_next != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_next) : nullptr);
+
+	if (pNext && pNext->m_bIsFree && block->m_size + pNext->m_size >= size + 2 * headerSize + SAILOR_SMALLEST_DATA_SIZE)
+	{
+		MoveHeader(pNext, size - (block->m_size - headerSize));
+		return true;
+	}
+
+	return false;
+}
+
 void* Page::Allocate(size_t size, size_t alignment)
 {
 	if (m_firstFree == InvalidIndexUINT64)
@@ -361,6 +376,14 @@ void Page::Free(void* pData)
 		block->m_nextFree = m_firstFree;
 		m_firstFree = blockAddress;
 	}
+}
+
+bool PoolAllocator::TryAddMoreSpace(void* ptr, size_t newSize)
+{
+	const int32_t headerSize = sizeof(Header);
+	Header* block = static_cast<Header*>(ShiftPtr(ptr, -headerSize));
+
+	return m_pages[block->m_pageIndex].TryAddMoreSpace(ptr, newSize);
 }
 
 void* PoolAllocator::Allocate(size_t size, size_t alignment)
@@ -686,7 +709,7 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 		return Allocate(size, alignment);
 	}
 
-	void* res = ptr;
+	size_t oldSize = 0;
 
 	// Quick look to get allocator type
 	if (((SmallPoolAllocator::SmallHeader*)ShiftPtr(ptr, -(int32_t)sizeof(SmallPoolAllocator::SmallHeader)))->m_meta == 1)
@@ -696,13 +719,17 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 
 		if (size <= header->m_size - headerSize)
 		{
-			// No need to reallocate
+			// No need to reallocate, we already have slack that could be used
 			return ptr;
 		}
 
-		res = Allocate(size, alignment);
-		std::memcpy(res, ptr, header->m_size - headerSize);
-		m_allocator.Free(ptr);
+		if (m_allocator.TryAddMoreSpace(ptr, size))
+		{
+			// We succesfully reallocated 
+			return ptr;
+		}
+
+		oldSize = header->m_size - headerSize;
 	}
 	else
 	{
@@ -711,14 +738,16 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 
 		if (size <= header->m_size - headerSize)
 		{
-			// No need to reallocate
+			// No need to reallocate, we already have slack that could be used
 			return ptr;
 		}
 
-		res = Allocate(size, alignment);
-		std::memcpy(res, ptr, header->m_size - headerSize);
-		m_smallAllocators[header->m_size]->Free(ptr);
+		oldSize = header->m_size - headerSize;
 	}
+
+	void* res = Allocate(size, alignment);
+	std::memcpy(res, ptr, oldSize);
+	Free(ptr);
 
 	return res;
 }
