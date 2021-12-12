@@ -1,6 +1,7 @@
 #pragma once
 #include <cassert>
 #include <memory>
+#include <functional>
 #include <concepts>
 #include <type_traits>
 #include "Defines.h"
@@ -33,6 +34,9 @@ namespace Sailor
 
 	template<typename T>
 	concept IsTriviallyDestructible = std::is_trivially_destructible<T>::value;
+
+	template<typename T>
+	using TPredicate = std::function<bool(const T&)>;
 
 	template<typename TElementType, typename TAllocator = Memory::GlobalHeapAllocator>
 	class SAILOR_API TVector
@@ -106,7 +110,7 @@ namespace Sailor
 		{
 			ResizeIfNeeded(1);
 
-			new (&m_pRawPtr[m_arrayNum]) TElementType(std::forward(args));
+			new (&m_pRawPtr[m_arrayNum]) TElementType(std::forward<TArgs>(args)...);
 			return m_arrayNum++;
 		}
 
@@ -172,7 +176,7 @@ namespace Sailor
 			return false;
 		}
 
-		bool ContainsIf(const std::function<bool>& predicate) const
+		bool ContainsIf(const TPredicate<TElementType>& predicate) const
 		{
 			for (size_t i = 0; i < m_arrayNum; i++)
 			{
@@ -215,7 +219,7 @@ namespace Sailor
 			return -1;
 		}
 
-		size_t FindIf(const std::function<bool>& predicate) const
+		size_t FindIf(const TPredicate<TElementType>& predicate) const
 		{
 			for (size_t i = 0; i < m_arrayNum; i++)
 			{
@@ -284,6 +288,12 @@ namespace Sailor
 		bool IsValidIndex(size_t index) const { return 0 < index && index < m_arrayNum; }
 		size_t Num() const { return m_arrayNum; }
 
+		void RemoveLast()
+		{
+			DestructElements(m_arrayNum - 1, 1);
+			m_arrayNum--;
+		}
+
 		size_t Remove(const TElementType& item)
 		{
 			size_t shift = 0;
@@ -306,7 +316,7 @@ namespace Sailor
 			return shift;
 		}
 
-		size_t RemoveAll(const std::function<bool>& predicate)
+		size_t RemoveAll(const TPredicate<TElementType>& predicate)
 		{
 			size_t shift = 0;
 			for (size_t i = 0; i < m_arrayNum - shift; i++)
@@ -408,7 +418,7 @@ namespace Sailor
 		}
 
 		void Sort();
-		void Sort(const std::function<bool>& predicate);
+		void Sort(const TPredicate<TElementType>& predicate);
 
 		void Swap(TVector& lhs, TVector& rhs) const
 		{
@@ -422,13 +432,16 @@ namespace Sailor
 		TIterator<TElementType> begin() { return TIterator<TElementType>(m_pRawPtr); }
 		TIterator<TElementType> end() { return TIterator<TElementType>(m_pRawPtr + m_arrayNum); }
 
+		TElementType* Data() { return m_pRawPtr; }
+		const TElementType* Data() const { return m_pRawPtr; }
+
 	protected:
 
 		__forceinline void ResizeIfNeeded(size_t extraNum)
 		{
 			if (m_capacity < m_arrayNum + extraNum)
 			{
-				const size_t optimalSize = Math::UpperPowOf2(m_capacity + extraNum);
+				const size_t optimalSize = Math::UpperPowOf2((uint32_t)(m_capacity + extraNum));
 				Reserve(optimalSize);
 			}
 		}
