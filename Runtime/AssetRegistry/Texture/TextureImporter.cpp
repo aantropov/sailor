@@ -59,8 +59,8 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 
 		stbi_uc* pixels = stbi_load(assetInfo->GetAssetFilepath().c_str(), &width, &height, &texChannels, STBI_rgb_alpha);
 		uint32_t imageSize = (uint32_t)width * height * 4;
-		decodedData.Reserve(imageSize);
-		memcpy(decodedData.Data(), pixels, imageSize);
+		decodedData.Resize(imageSize);
+		memcpy(decodedData.GetData(), pixels, imageSize);
 
 		mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
 		stbi_image_free(pixels);

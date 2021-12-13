@@ -4,6 +4,8 @@
 #include <cassert>
 #include <unordered_map>
 #include <unordered_set>
+#include <memory>
+#include <mutex>
 #include "Heap.h"
 #include "Core/Defines.h"
 
@@ -12,37 +14,32 @@ namespace Sailor::Memory
 	class MallocAllocator
 	{
 	public:
-		inline void* Allocate(size_t size, size_t alignment)
+		inline void* Allocate(size_t size, size_t alignment = 8)
 		{
-			return malloc(size);
+			return std::malloc(size);
 		}
 
-		inline void Free(void* ptr, size_t size = 0)
+		inline void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
 		{
-			free(ptr);
+			return std::realloc(ptr, size);
+		}
+
+		inline void Free(void* ptr, size_t size = 8)
+		{
+			std::free(ptr);
 		}
 	};
 
 	class GlobalHeapAllocator
 	{
 		static HeapAllocator m_heapAllocator;
+		static std::mutex m_mutex;
 
 	public:
 
-		SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
-		{
-			return m_heapAllocator.Reallocate(ptr, size, alignment);
-		}
-
-		SAILOR_API void* Allocate(size_t size, size_t alignment = 8)
-		{
-			return m_heapAllocator.Allocate(size, alignment);
-		}
-
-		SAILOR_API void Free(void* pData, size_t size = 0)
-		{
-			m_heapAllocator.Free(pData);
-		}
+		SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
+		SAILOR_API void* Allocate(size_t size, size_t alignment = 8);
+		SAILOR_API void Free(void* pData, size_t size = 0);
 	};
 
 	template<uint32_t stackSize = 1024>

@@ -100,7 +100,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	auto texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 	for (const auto& material : materials)
 	{
-		MaterialAsset::Data data;
+		MaterialAsset::GetData data;
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Simple.shader");
 
@@ -261,7 +261,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 	};
 
 	TVector<MeshContext> meshes;
-	meshes.Reserve(assetInfo->ShouldBatchByMaterial() ? materials.size() : shapes.size());
+	meshes.Resize(assetInfo->ShouldBatchByMaterial() ? materials.size() : shapes.size());
 
 	uint32_t idx = 0;
 	for (const auto& shape : shapes)

@@ -40,12 +40,12 @@ namespace Sailor
 
 			size_t mod = fileSize % sizeof(TBinaryType);
 			size_t size = fileSize / sizeof(TBinaryType) + (mod ? 1 : 0);
-			buffer.Reserve(size);
+			buffer.Resize(size);
 
 			//buffer.resize(fileSize / sizeof(T));
 
 			file.seekg(0, std::ios::beg);
-			file.read(reinterpret_cast<char*>(buffer.Data()), fileSize);
+			file.read(reinterpret_cast<char*>(buffer.GetData()), fileSize);
 
 			file.close();
 			return true;

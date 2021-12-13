@@ -309,7 +309,7 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 void VulkanDevice::CreateFrameSyncSemaphores()
 {
-	m_syncImages.Reserve(m_swapchain->GetImageViews().Num());
+	m_syncImages.Resize(m_swapchain->GetImageViews().Num());
 
 	for (size_t i = 0; i < VulkanApi::MaxFramesInFlight; i++)
 	{
@@ -342,7 +342,7 @@ void VulkanDevice::CreateFramebuffers()
 {
 	TVector<VulkanImageViewPtr>& swapChainImageViews = m_swapchain->GetImageViews();
 
-	m_swapChainFramebuffers.Reserve(swapChainImageViews.Num());
+	m_swapChainFramebuffers.Resize(swapChainImageViews.Num());
 
 	TVector<VulkanImageViewPtr> attachments;
 
@@ -416,10 +416,10 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
-	createInfo.ppEnabledExtensionNames = deviceExtensions.Data();
+	createInfo.ppEnabledExtensionNames = deviceExtensions.GetData();
 
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.Num());
-	createInfo.pQueueCreateInfos = queueCreateInfos.Data();
+	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
 	createInfo.pEnabledFeatures = &deviceFeatures;
 
 	// Compatibility with older Vulkan drivers
@@ -427,7 +427,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	if (VulkanApi::GetInstance()->IsEnabledValidationLayers())
 	{
 		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.Num());
-		createInfo.ppEnabledLayerNames = validationLayers.Data();
+		createInfo.ppEnabledLayerNames = validationLayers.GetData();
 	}
 	else
 	{

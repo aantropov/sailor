@@ -78,7 +78,7 @@ namespace Sailor
 			SAILOR_API void Wait();
 
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
-			
+
 			SAILOR_API const TWeakPtr<ITask>& GetChainedTaskNext() const { return m_chainedTaskNext; }
 			SAILOR_API const TWeakPtr<ITask>& GetChainedTaskPrev() const { return m_chainedTaskPrev; }
 
@@ -339,7 +339,7 @@ namespace Sailor
 			{
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
 				m_chainedTaskNext = res;
-				
+
 				res->SetChainedTaskPrev(m_self);
 
 				res->SetArgs(ITaskWithResult<TResult>::m_result);

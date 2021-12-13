@@ -60,7 +60,11 @@ namespace Sailor
 
 		// Constructors & Destructor
 		TVector() : m_arrayNum(0), m_capacity(0) {}
-		TVector(size_t capacity) : m_arrayNum(0) { Reserve(capacity); }
+		TVector(size_t countDefaultElements)
+		{
+			AddDefault(countDefaultElements);
+		}
+
 		virtual ~TVector() { Clear(); }
 
 		TVector(std::initializer_list<TElementType> initList) : TVector(initList.begin(), initList.size()) {}
@@ -130,6 +134,28 @@ namespace Sailor
 			return m_arrayNum++;
 		}
 
+		void Resize(size_t count)
+		{
+			if (m_arrayNum > count)
+			{
+				DestructElements(count, m_arrayNum - count);
+				m_arrayNum = count;
+				return;
+			}
+
+			ResizeIfNeeded(count - m_arrayNum);
+			ConstructElements(m_arrayNum, count - m_arrayNum);
+			m_arrayNum = count;
+		}
+
+		void AddDefault(size_t count)
+		{
+			ResizeIfNeeded(count);
+
+			ConstructElements(m_arrayNum, count);
+			m_arrayNum += count;
+		}
+
 		size_t Add(const TElementType& item)
 		{
 			return Emplace(item);
@@ -137,23 +163,7 @@ namespace Sailor
 
 		size_t Add(TElementType&& item)
 		{
-			ResizeIfNeeded(1);
-
-			std::swap(m_pRawPtr[m_arrayNum], item);
-
-			return m_arrayNum++;
-		}
-
-		void AddRange(TVector&& other)
-		{
-			if (m_capacity == 0 && !m_pRawPtr)
-			{
-				Swap(this, other);
-			}
-			else
-			{
-				AddRange(other);
-			}
+			return Emplace(item);
 		}
 
 		void AddRange(const TElementType* first, size_t count)
@@ -171,7 +181,7 @@ namespace Sailor
 
 		void AddRange(const TVector& other)
 		{
-			AddRange(other.Data(), other.Num());
+			AddRange(other.GetData(), other.Num());
 		}
 
 		void AddRange(std::initializer_list<TElementType> initList)
@@ -258,9 +268,11 @@ namespace Sailor
 				return;
 			}
 
-			for (int32 i = m_arrayNum + 1; i > index; i--)
+			for (int32_t i = (int32_t)m_arrayNum; i > index; i--)
 			{
-				m_pRawPtr[i] == m_pRawPtr[i - 1];
+				memmove(&m_pRawPtr[i], &m_pRawPtr[i - 1], sizeof(TElementType));
+
+				//m_pRawPtr[i] = m_pRawPtr[i - 1];
 			}
 
 			ConstructElements(index, item, 1);
@@ -288,13 +300,14 @@ namespace Sailor
 
 			if (index == m_arrayNum)
 			{
-				AddRange(first);
+				AddRange(first, count);
 				return;
 			}
 
 			for (int32 i = m_arrayNum + count; i > index + count; i--)
 			{
-				m_pRawPtr[i] == m_pRawPtr[i - count];
+				memmove(&m_pRawPtr[i], &m_pRawPtr[i - count], sizeof(TElementType));
+				//m_pRawPtr[i] = m_pRawPtr[i - count];
 			}
 
 			ConstructElements(index, first, count);
@@ -312,24 +325,7 @@ namespace Sailor
 
 		size_t Remove(const TElementType& item)
 		{
-			size_t shift = 0;
-			for (size_t i = 0; i < m_arrayNum - shift; i++)
-			{
-				if (m_pRawPtr[i] == item)
-				{
-					i--;
-					shift++;
-				}
-
-				if (shift)
-				{
-					DestructElements(i, 1);
-					m_pRawPtr[i] = m_pRawPtr[i + shift];
-				}
-			}
-
-			m_arrayNum -= shift;
-			return shift;
+			return RemoveAll([&](const auto& el) { return el == item; });
 		}
 
 		size_t RemoveAll(const TPredicate<TElementType>& predicate)
@@ -337,16 +333,23 @@ namespace Sailor
 			size_t shift = 0;
 			for (size_t i = 0; i < m_arrayNum - shift; i++)
 			{
-				if (predicate(m_pRawPtr[i]))
+				const bool bShouldDelete = predicate(m_pRawPtr[i]);
+				if (bShouldDelete)
 				{
-					i--;
 					shift++;
+					DestructElements(i, 1);
 				}
 
 				if (shift)
 				{
-					DestructElements(i, 1);
-					m_pRawPtr[i] = m_pRawPtr[i + shift];
+					memmove(&m_pRawPtr[i], &m_pRawPtr[i + shift], sizeof(TElementType));
+
+					//m_pRawPtr[i] = m_pRawPtr[i + shift];
+				}
+
+				if (bShouldDelete)
+				{
+					i--;
 				}
 			}
 
@@ -357,12 +360,15 @@ namespace Sailor
 		void RemoveAt(size_t index, size_t count = 1)
 		{
 			DestructElements(index, count);
-
-			size_t i = index;
+			memmove(&m_pRawPtr[index], &m_pRawPtr[index + count], sizeof(TElementType) * (m_arrayNum-(index + count)));
+			
+			/*size_t i = index;
 			while (i + count < m_arrayNum)
 			{
 				m_pRawPtr[i] = m_pRawPtr[i + count];
-			}
+				i++;
+			}*/
+
 			m_arrayNum -= count;
 		}
 
@@ -371,8 +377,7 @@ namespace Sailor
 			DestructElements(index, count);
 			for (size_t i = 0; i < count; i++)
 			{
-
-				m_pRawPtr[index + i] = m_pRawPtr[m_arrayNum - count + i];
+				memmove(&m_pRawPtr[index + i], &m_pRawPtr[m_arrayNum - count + i], sizeof(TElementType));
 			}
 			m_arrayNum -= count;
 		}
@@ -383,21 +388,28 @@ namespace Sailor
 			size_t shift = 0;
 			for (size_t i = 0; i < m_arrayNum - shift; i++)
 			{
-				if (m_pRawPtr[i] == item && shift == 0)
+				const bool bShouldDelete = m_pRawPtr[i] == item && shift == 0;
+				if (bShouldDelete)
 				{
-					i--;
+					DestructElements(i, 1);
+
 					shift++;
 					res = i;
 				}
 
 				if (shift)
 				{
-					DestructElements(i, 1);
-					m_pRawPtr[i] = m_pRawPtr[i + shift];
+					memmove(&m_pRawPtr[i], &m_pRawPtr[i + shift], sizeof(TElementType));
+					//m_pRawPtr[i] = m_pRawPtr[i + shift];
+				}
+
+				if (bShouldDelete)
+				{
+					i--;
 				}
 			}
 
-			m_arrayNum -= 1;
+			m_arrayNum--;
 			return res;
 		}
 
@@ -406,7 +418,6 @@ namespace Sailor
 			DestructElements(0, m_arrayNum);
 
 			m_arrayNum = 0;
-
 			if (bResetCapacity)
 			{
 				m_capacity = 0;
@@ -418,6 +429,8 @@ namespace Sailor
 		void Reserve(size_t newCapacity)
 		{
 			assert(newCapacity > m_capacity);
+			const size_t slack = newCapacity - m_capacity;
+
 			m_capacity = newCapacity;
 
 			if (m_capacity)
@@ -453,8 +466,8 @@ namespace Sailor
 		TConstIterator<TElementType> begin() const { return TConstIterator<TElementType>(m_pRawPtr); }
 		TConstIterator<TElementType> end() const { return TConstIterator<TElementType>(m_pRawPtr + m_arrayNum); }
 
-		TElementType* Data() { return m_pRawPtr; }
-		const TElementType* Data() const { return m_pRawPtr; }
+		TElementType* GetData() { return m_pRawPtr; }
+		const TElementType* GetData() const { return m_pRawPtr; }
 
 	protected:
 
@@ -467,13 +480,19 @@ namespace Sailor
 			}
 		}
 
-		const float Factor = 2.0f;
-
 		TAllocator m_allocator{};
 		size_t m_arrayNum = 0;
 		size_t m_capacity = 0;
 
 		TElementType* m_pRawPtr = nullptr;
+
+		void ConstructElements(size_t index, size_t count = 1)
+		{
+			for (size_t i = 0; i < count; i++)
+			{
+				new (&m_pRawPtr[i + index]) TElementType();
+			}
+		}
 
 		void ConstructElements(size_t index, const TElementType& firstElement, size_t count = 1)
 		{
@@ -485,9 +504,9 @@ namespace Sailor
 
 		void DestructElements(size_t index, size_t count = 1) requires !IsTriviallyDestructible<TElementType>
 		{
-			for (size_t i = 0; i < m_arrayNum; i++)
+			for (size_t i = 0; i < count; i++)
 			{
-				m_pRawPtr[i].~TElementType();
+				m_pRawPtr[index + i].~TElementType();
 			}
 		}
 
@@ -496,4 +515,6 @@ namespace Sailor
 			// Do nothing for trivial types
 		}
 	};
+
+	void RunVectorBenchmark();
 }

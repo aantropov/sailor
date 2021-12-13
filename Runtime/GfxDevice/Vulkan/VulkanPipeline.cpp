@@ -66,7 +66,7 @@ void VulkanPipelineLayout::Compile()
 	pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(m_descriptionSetLayouts.Num());
 	pipelineLayoutInfo.pSetLayouts = ptr;
 	pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(m_pushConstantRanges.Num());
-	pipelineLayoutInfo.pPushConstantRanges = m_pushConstantRanges.Data();
+	pipelineLayoutInfo.pPushConstantRanges = m_pushConstantRanges.GetData();
 	pipelineLayoutInfo.pNext = nullptr;
 
 	VK_CHECK(vkCreatePipelineLayout(*m_pDevice, &pipelineLayoutInfo, nullptr, &m_pipelineLayout));

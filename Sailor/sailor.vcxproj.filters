@@ -473,5 +473,8 @@
     <ClCompile Include="..\Runtime\Math\Math.cpp">
       <Filter>Runtime\Math</Filter>
     </ClCompile>
+    <ClCompile Include="..\Runtime\Core\VectorBenchmark.cpp">
+      <Filter>Runtime\Core</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

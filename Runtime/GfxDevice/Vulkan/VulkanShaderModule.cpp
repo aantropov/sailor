@@ -52,10 +52,10 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	assert(result == SPV_REFLECT_RESULT_SUCCESS);
 
 	TVector<std::unordered_map<uint32_t, std::pair<RHI::ShaderLayoutBinding, VkDescriptorSetLayoutBinding>>> bindings;
-	bindings.Reserve(count);
+	bindings.Resize(count);
 
 	TVector<SpvReflectDescriptorSet*> sets(count);
-	result = spvReflectEnumerateDescriptorSets(&module, &count, sets.Data());
+	result = spvReflectEnumerateDescriptorSets(&module, &count, sets.GetData());
 	assert(result == SPV_REFLECT_RESULT_SUCCESS);
 
 	for (size_t i_set = 0; i_set < sets.Num(); ++i_set)
@@ -150,10 +150,10 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	spvReflectDestroyShaderModule(&module);
 
 	m_layoutBindings.Clear();
-	m_layoutBindings.Reserve(count);
+	m_layoutBindings.Resize(count);
 
 	m_bindings.Clear();
-	m_bindings.Reserve(count);
+	m_bindings.Resize(count);
 
 	for (uint32_t i = 0; i < count; i++)
 	{
@@ -182,7 +182,7 @@ void VulkanShaderModule::Compile()
 	VkShaderModuleCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	createInfo.codeSize = m_byteCode.Num() * 4;
-	createInfo.pCode = reinterpret_cast<const uint32_t*>(m_byteCode.Data());
+	createInfo.pCode = reinterpret_cast<const uint32_t*>(m_byteCode.GetData());
 
 	VK_CHECK(vkCreateShaderModule(*m_pDevice, &createInfo, nullptr, &m_shaderModule));
 }

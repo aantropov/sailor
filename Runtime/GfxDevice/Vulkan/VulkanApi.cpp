@@ -108,7 +108,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 
 	VkInstanceCreateInfo createInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	createInfo.pApplicationInfo = &appInfo;
-	createInfo.ppEnabledExtensionNames = extensions.Data();
+	createInfo.ppEnabledExtensionNames = extensions.GetData();
 	createInfo.enabledExtensionCount = (uint32_t)extensions.Num();
 
 	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
@@ -116,7 +116,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
-		createInfo.ppEnabledLayerNames = validationLayers.Data();
+		createInfo.ppEnabledLayerNames = validationLayers.GetData();
 		createInfo.enabledLayerCount = (uint32_t)validationLayers.Num();
 
 		PopulateDebugMessengerCreateInfo(debugCreateInfo);
@@ -165,7 +165,7 @@ void VulkanApi::PrintSupportedExtensions()
 
 	TVector<VkExtensionProperties> extensions(extensionNum);
 	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &extensionNum,
-		extensions.Data()));
+		extensions.GetData()));
 
 	printf("Vulkan available extensions:\n");
 	for (const auto& extension : extensions)
@@ -181,7 +181,7 @@ bool VulkanApi::CheckValidationLayerSupport(const TVector<const char*>& validati
 
 	TVector<VkLayerProperties> availableLayers(layerCount);
 	VK_CHECK(vkEnumerateInstanceLayerProperties(&layerCount,
-		availableLayers.Data()));
+		availableLayers.GetData()));
 
 	for (const std::string& layerName : validationLayers)
 	{
@@ -247,7 +247,7 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 	TVector<VkPhysicalDevice> devices(deviceCount);
 	std::multimap<int, VkPhysicalDevice> candidates;
 
-	VK_CHECK(vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, devices.Data()));
+	VK_CHECK(vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, devices.GetData()));
 
 	for (const auto& device : devices)
 	{
@@ -278,7 +278,7 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, V
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
 
 	TVector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.Data());
+	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.GetData());
 
 	int i = 0;
 	for (const auto& queueFamily : queueFamilies)
@@ -319,8 +319,8 @@ SwapChainSupportDetails VulkanApi::QuerySwapChainSupport(VkPhysicalDevice device
 
 	if (formatCount != 0)
 	{
-		details.m_formats.Reserve(formatCount);
-		VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device, *surface, &formatCount, details.m_formats.Data()));
+		details.m_formats.AddDefault(formatCount);
+		VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device, *surface, &formatCount, details.m_formats.GetData()));
 	}
 
 	uint32_t presentModeCount;
@@ -328,8 +328,8 @@ SwapChainSupportDetails VulkanApi::QuerySwapChainSupport(VkPhysicalDevice device
 
 	if (presentModeCount != 0)
 	{
-		details.m_presentModes.Reserve(presentModeCount);
-		VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, *surface, &presentModeCount, details.m_presentModes.Data()));
+		details.m_presentModes.AddDefault(presentModeCount);
+		VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, *surface, &presentModeCount, details.m_presentModes.GetData()));
 	}
 
 	return details;
@@ -388,7 +388,7 @@ bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
 
 	TVector<VkExtensionProperties> availableExtensions(extensionCount);
-	VK_CHECK(vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.Data()));
+	VK_CHECK(vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.GetData()));
 
 	TVector<const char*> deviceExtensions;
 	TVector<const char*> instanceExtensions;
@@ -925,8 +925,8 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	}
 	size_t countDescriptorSets = uniqueDescriptorSets.size();
 
-	vulkanLayouts.Reserve(countDescriptorSets);
-	rhiLayouts.Reserve(countDescriptorSets);
+	vulkanLayouts.Resize(countDescriptorSets);
+	rhiLayouts.Resize(countDescriptorSets);
 
 	for (uint32_t i = 0; i < shaders.Num(); i++)
 	{
@@ -953,7 +953,7 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 
 	TVector<VulkanDescriptorSetLayoutPtr> res;
 
-	res.Reserve(vulkanLayouts.Num());
+	res.Resize(vulkanLayouts.Num());
 
 	for (uint32_t i = 0; i < vulkanLayouts.Num(); i++)
 	{

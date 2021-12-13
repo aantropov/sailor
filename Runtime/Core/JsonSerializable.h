@@ -44,15 +44,24 @@ namespace Sailor
 	}
 
 	template<typename T>
-	void to_json(json& j, const TVector<T>& P)
+	void to_json(json& j, const TVector<T>& p)
 	{
-		//TODO: Implement TVector
+		for (const auto& el : p)
+		{			
+			json s;
+			to_json(j, p);
+			j.push_back(s);
+		}
 	}
 
 	template<typename T>
-	void from_json(const json& j, TVector<T>& P)
+	void from_json(const json& j, TVector<T>& p)
 	{
-		//TODO: Implement TVector
+		p.Clear();
+		for (const auto& el : j)
+		{
+			p.Emplace(el.get<T>());
+		}
 	}
 }
 

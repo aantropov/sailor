@@ -267,6 +267,7 @@
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\Core\Submodule.cpp" />
     <ClCompile Include="..\Runtime\Core\Utils.cpp" />
+    <ClCompile Include="..\Runtime\Core\VectorBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Framework\Framework.cpp" />
     <ClCompile Include="..\Runtime\Framework\Object.cpp" />
     <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp" />
