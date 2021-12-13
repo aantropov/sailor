@@ -103,19 +103,20 @@ namespace Sailor
 		{
 			Clear(false);
 			AddRange(initList);
+			return *this;
 		}
 
 		TVector& operator=(TVector&& other)
 		{
 			Swap(this, other);
-			return this;
+			return *this;
 		}
 
 		TVector& operator=(const TVector& other)
 		{
 			Clear(false);
 			AddRange(other);
-			return this;
+			return *this;
 		}
 
 		// Methods
@@ -365,7 +366,7 @@ namespace Sailor
 			m_arrayNum -= count;
 		}
 
-		size_t RemoveAtSwap(size_t index, size_t count = 1)
+		void RemoveAtSwap(size_t index, size_t count = 1)
 		{
 			DestructElements(index, count);
 			for (size_t i = 0; i < count; i++)

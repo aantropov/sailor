@@ -98,10 +98,10 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 	// Create Swapchain images & image views
 	VK_CHECK(vkGetSwapchainImagesKHR(*m_device, m_swapchain, &imageCount, nullptr));
-	vkSwapchainImages.resize(imageCount);
-	VK_CHECK(vkGetSwapchainImagesKHR(*m_device, m_swapchain, &imageCount, vkSwapchainImages.data()));
+	vkSwapchainImages.Reserve(imageCount);
+	VK_CHECK(vkGetSwapchainImagesKHR(*m_device, m_swapchain, &imageCount, vkSwapchainImages.Data()));
 
-	for (size_t i = 0; i < vkSwapchainImages.size(); i++)
+	for (size_t i = 0; i < vkSwapchainImages.Num(); i++)
 	{
 		m_swapchainImages.Add(VulkanSwapchainImagePtr::Make(vkSwapchainImages[i], m_device));
 		m_swapchainImageViews.Add(VulkanImageViewPtr::Make(m_device, m_swapchainImages[i]));
@@ -186,8 +186,8 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 VulkanSwapchain::~VulkanSwapchain()
 {
-	m_swapchainImages.clear();
-	m_swapchainImageViews.clear();
+	m_swapchainImages.Clear();
+	m_swapchainImageViews.Clear();
 
 	if (m_swapchain)
 	{

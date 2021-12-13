@@ -56,9 +56,9 @@ VulkanStateVertexDescription::VulkanStateVertexDescription(const VkVertexInputBi
 {
 	m_vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	m_vertexInput.vertexBindingDescriptionCount = 1;
-	m_vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(m_attributeDescriptions.size());
+	m_vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(m_attributeDescriptions.Num());
 	m_vertexInput.pVertexBindingDescriptions = &m_bindingDescription;
-	m_vertexInput.pVertexAttributeDescriptions = m_attributeDescriptions.data();
+	m_vertexInput.pVertexAttributeDescriptions = m_attributeDescriptions.Data();
 }
 
 void VulkanStateVertexDescription::Apply(VkGraphicsPipelineCreateInfo& state) const
@@ -161,8 +161,8 @@ VulkanStateDynamic::VulkanStateDynamic() : m_dynamicState{}
 	m_dynamicStates.Add(VK_DYNAMIC_STATE_DEPTH_BIAS);
 
 	m_dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	m_dynamicState.dynamicStateCount = (uint32_t)m_dynamicStates.size();
-	m_dynamicState.pDynamicStates = m_dynamicStates.data();
+	m_dynamicState.dynamicStateCount = (uint32_t)m_dynamicStates.Num();
+	m_dynamicState.pDynamicStates = m_dynamicStates.Data();
 }
 
 void VulkanStateDynamic::Apply(struct VkGraphicsPipelineCreateInfo& state) const
@@ -195,7 +195,7 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 	auto mask = VkColorComponentFlagBits::VK_COLOR_COMPONENT_A_BIT | VkColorComponentFlagBits::VK_COLOR_COMPONENT_R_BIT |
 		VkColorComponentFlagBits::VK_COLOR_COMPONENT_G_BIT | VkColorComponentFlagBits::VK_COLOR_COMPONENT_B_BIT;
 
-	m_blendModes.resize(3);
+	m_blendModes.Reserve(3);
 
 	m_blendModes[(size_t)RHI::EBlendMode::None] = VulkanStateColorBlendingPtr::Make(false, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD,
 		VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD, mask);

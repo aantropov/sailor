@@ -29,7 +29,7 @@ void VulkanDescriptorSetLayout::Compile()
 
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings..Num();
+	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings.Num();
 	layoutInfo.pBindings = m_descriptorSetLayoutBindings.Data();
 
 	VK_CHECK(vkCreateDescriptorSetLayout(*m_device, &layoutInfo, nullptr, &m_descriptorSetLayout));
@@ -50,7 +50,7 @@ VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t max
 {
 	VkDescriptorPoolCreateInfo poolInfo = {};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes..Num());
+	poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.Num());
 	poolInfo.pPoolSizes = descriptorPoolSizes.Data();
 	poolInfo.maxSets = maxSets;
 	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
@@ -97,7 +97,7 @@ void VulkanDescriptorSet::Compile()
 		m_currentThreadId = GetCurrentThreadId();
 	}
 
-	VkWriteDescriptorSet* descriptorsWrite = reinterpret_cast<VkWriteDescriptorSet*>(_malloca(m_descriptors..Num() * sizeof(VkWriteDescriptorSet)));
+	VkWriteDescriptorSet* descriptorsWrite = reinterpret_cast<VkWriteDescriptorSet*>(_malloca(m_descriptors.Num() * sizeof(VkWriteDescriptorSet)));
 
 	for (uint32_t i = 0; i < m_descriptors.Num(); i++)
 	{
@@ -105,7 +105,7 @@ void VulkanDescriptorSet::Compile()
 		descriptorsWrite[i].dstSet = m_descriptorSet;
 	}
 
-	vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(m_descriptors..Num()), descriptorsWrite, 0, nullptr);
+	vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(m_descriptors.Num()), descriptorsWrite, 0, nullptr);
 
 	_freea(descriptorsWrite);
 }

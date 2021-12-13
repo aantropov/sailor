@@ -33,7 +33,7 @@ bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
 		return false;
 	}
 
-	m_dependencies.emplace_back(dependentJob);
+	m_dependencies.Emplace(dependentJob);
 	return true;
 }
 
@@ -77,7 +77,7 @@ void ITask::Complete()
 		}
 	}
 
-	m_dependencies.clear();
+	m_dependencies.Clear();
 
 	for (auto& threadType : threadTypesToRefresh)
 	{
