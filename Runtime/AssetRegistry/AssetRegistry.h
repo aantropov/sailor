@@ -36,16 +36,16 @@ namespace Sailor
 			}
 
 			size_t fileSize = (size_t)file.tellg();
-			buffer.clear();
+			buffer.Clear();
 
 			size_t mod = fileSize % sizeof(TBinaryType);
 			size_t size = fileSize / sizeof(TBinaryType) + (mod ? 1 : 0);
-			buffer.resize(size);
+			buffer.Reserve(size);
 
 			//buffer.resize(fileSize / sizeof(T));
 
 			file.seekg(0, std::ios::beg);
-			file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
+			file.read(reinterpret_cast<char*>(buffer.Data()), fileSize);
 
 			file.close();
 			return true;

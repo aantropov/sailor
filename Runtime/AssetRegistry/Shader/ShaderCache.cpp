@@ -186,7 +186,7 @@ void ShaderCache::ClearExpired()
 
 	TVector<UID> expiredShaders;
 	std::unordered_set<std::string> whiteListSpirv;
-	TVector<const ShaderCacheEntry*> blackListEntry;
+	TVector<ShaderCacheEntry*> blackListEntry;
 
 	for (const auto& entries : m_cache.m_data)
 	{
@@ -211,7 +211,7 @@ void ShaderCache::ClearExpired()
 		}
 	}
 
-	for (const auto& entry : blackListEntry)
+	for (auto& entry : blackListEntry)
 	{
 		Remove(entry);
 	}
