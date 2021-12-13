@@ -314,7 +314,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 	{
 		RHI::MeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
 		RHI::Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
-		outMeshes.emplace_back(ptr);
+		outMeshes.Emplace(ptr);
 	}
 
 	if (assetInfo->ShouldGenerateMaterials() && assetInfo->ShouldBatchByMaterial())

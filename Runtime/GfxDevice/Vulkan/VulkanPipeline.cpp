@@ -49,11 +49,11 @@ void VulkanPipelineLayout::Compile()
 		return;
 	}
 
-	const size_t stackArraySize = m_descriptionSetLayouts.size() * sizeof(VkDescriptorSetLayout);
+	const size_t stackArraySize = m_descriptionSetLayouts.Num() * sizeof(VkDescriptorSetLayout);
 	auto ptr = reinterpret_cast<VkDescriptorSetLayout*>(_malloca(stackArraySize));
 	memset(ptr, 0, stackArraySize);
 
-	for(size_t i = 0; i < m_descriptionSetLayouts.size(); i++)
+	for(size_t i = 0; i < m_descriptionSetLayouts.Num(); i++)
 	{
 		m_descriptionSetLayouts[i]->Compile();
 		ptr[i] = *m_descriptionSetLayouts[i];
@@ -63,10 +63,10 @@ void VulkanPipelineLayout::Compile()
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.flags = m_flags;
-	pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(m_descriptionSetLayouts.size());
+	pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(m_descriptionSetLayouts.Num());
 	pipelineLayoutInfo.pSetLayouts = ptr;
-	pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(m_pushConstantRanges.size());
-	pipelineLayoutInfo.pPushConstantRanges = m_pushConstantRanges.data();
+	pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(m_pushConstantRanges.Num());
+	pipelineLayoutInfo.pPushConstantRanges = m_pushConstantRanges.Data();
 	pipelineLayoutInfo.pNext = nullptr;
 
 	VK_CHECK(vkCreatePipelineLayout(*m_pDevice, &pipelineLayoutInfo, nullptr, &m_pipelineLayout));
@@ -124,18 +124,18 @@ void VulkanPipeline::Compile()
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 	pipelineInfo.pNext = nullptr;
 
-	const size_t stackArraySize = m_stages.size() * sizeof(VkPipelineShaderStageCreateInfo);
+	const size_t stackArraySize = m_stages.Num() * sizeof(VkPipelineShaderStageCreateInfo);
 	auto shaderStageCreateInfo = reinterpret_cast<VkPipelineShaderStageCreateInfo*>(_malloca(stackArraySize));
 	memset(shaderStageCreateInfo, 0, stackArraySize);
 
-	for (size_t i = 0; i < m_stages.size(); ++i)
+	for (size_t i = 0; i < m_stages.Num(); ++i)
 	{
 		shaderStageCreateInfo[i].flags = 0;
 		shaderStageCreateInfo[i].pNext = nullptr;
 		m_stages[i]->Apply(shaderStageCreateInfo[i]);
 	}
 
-	pipelineInfo.stageCount = static_cast<uint32_t>(m_stages.size());
+	pipelineInfo.stageCount = static_cast<uint32_t>(m_stages.Num());
 	pipelineInfo.pStages = shaderStageCreateInfo;
 
 	ApplyStates(pipelineInfo);

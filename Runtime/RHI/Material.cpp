@@ -20,7 +20,7 @@ RHI::ShaderBindingPtr& ShaderBindingSet::GetOrCreateShaderBinding(const std::str
 
 void ShaderBindingSet::AddLayoutShaderBinding(ShaderLayoutBinding layout)
 {
-	m_layoutBindings.emplace_back(std::move(layout)); 
+	m_layoutBindings.Emplace(std::move(layout));
 }
 
 bool ShaderBindingSet::PerInstanceDataStoredInSSBO() const
@@ -57,18 +57,18 @@ bool ShaderBindingSet::HasParameter(const std::string& parameter) const
 	const std::string& binding = splittedString[0];
 	const std::string& variable = splittedString[1];
 
-	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
+	auto index = m_layoutBindings.FindIf([&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
 			return shaderLayoutBinding.m_name == binding;
 		});
 
-	if (it != m_layoutBindings.end())
+	if (index != -1)
 	{
 
-		if (it->m_members.end() != std::find_if(it->m_members.begin(), it->m_members.end(), [&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
+		if (m_layoutBindings[index].m_members.FindIf([&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
 			{
 				return shaderLayoutBinding.m_name == variable;
-			}))
+			}) == -1)
 		{
 			return true;
 		}

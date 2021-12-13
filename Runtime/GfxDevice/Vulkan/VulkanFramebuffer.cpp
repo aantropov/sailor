@@ -25,8 +25,8 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRenderPassPtr renderPass, const TVect
 	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	framebufferInfo.flags = 0;
 	framebufferInfo.renderPass = *m_renderPass;
-	framebufferInfo.attachmentCount = static_cast<uint32_t>(vkAttachments.size());
-	framebufferInfo.pAttachments = vkAttachments.data();
+	framebufferInfo.attachmentCount = static_cast<uint32_t>(vkAttachments.Num());
+	framebufferInfo.pAttachments = vkAttachments.Data();
 	framebufferInfo.width = width;
 	framebufferInfo.height = height;
 	framebufferInfo.layers = layers;

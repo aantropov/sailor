@@ -30,7 +30,7 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<Resource> visitor, bool& b
 			if (it != std::end(m_dependencies))
 			{
 				std::iter_swap(it, m_dependencies.end() - 1);
-				m_dependencies.pop_back();
+				m_dependencies.RemoveLast();
 				bShouldRemoveFromList = true;
 			}
 		}
@@ -39,7 +39,7 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<Resource> visitor, bool& b
 
 bool IDelayedInitialization::IsReady() const
 {
-	return m_dependencies.size() == 0;
+	return m_dependencies.Num() == 0;
 }
 
 Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)

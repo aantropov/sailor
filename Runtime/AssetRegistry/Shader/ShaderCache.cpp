@@ -227,7 +227,7 @@ void ShaderCache::ClearExpired()
 	SaveCache();
 }
 
-void ShaderCache::Remove(const ShaderCacheEntry* pEntry)
+void ShaderCache::Remove(ShaderCacheEntry* pEntry)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -246,6 +246,7 @@ void ShaderCache::Remove(const ShaderCacheEntry* pEntry)
 		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
 
 		auto& entries = m_cache.m_data[pEntry->m_UID];
+
 		entries.Remove(pEntry);
 
 		delete pEntry;

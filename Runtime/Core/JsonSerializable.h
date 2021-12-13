@@ -33,7 +33,7 @@ namespace Sailor
 	template<typename TEntryType>
 	void DeserializeArray(TVector<TEntryType>& outArray, const nlohmann::json& inJson)
 	{
-		outArray.clear();
+		outArray.Clear();
 
 		for (auto& elem : inJson)
 		{

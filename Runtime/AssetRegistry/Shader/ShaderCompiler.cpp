@@ -349,7 +349,7 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderS
 		return false;
 	}
 
-	outByteCode = { module.cbegin(), module.cend() };
+	outByteCode = TVector(module.cbegin(), module.cend() - module.cbegin());
 	return true;
 }
 

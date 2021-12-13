@@ -10,5 +10,5 @@ using namespace Sailor::GfxDevice::Vulkan;
 
 bool Mesh::IsReady() const
 {
-	return m_vertexBuffer->GetSize() > 0 && m_indexBuffer->GetSize() > 0 && m_dependencies.size() == 0;
+	return m_vertexBuffer->GetSize() > 0 && m_indexBuffer->GetSize() > 0 && m_dependencies.Num() == 0;
 }

@@ -65,7 +65,7 @@ namespace Sailor
 
 		TVector(std::initializer_list<TElementType> initList) : TVector(initList.begin(), initList.size()) {}
 
-		TVector(const TVector& other) : TVector(other[0], other.Num()) {}
+		TVector(const TVector& other) : TVector(&other[0], other.Num()) {}
 
 		TVector(TVector&& other) { Swap(*this, other); }
 
@@ -108,7 +108,7 @@ namespace Sailor
 
 		TVector& operator=(TVector&& other)
 		{
-			Swap(this, other);
+			Swap(*this, other);
 			return *this;
 		}
 
@@ -171,7 +171,7 @@ namespace Sailor
 
 		void AddRange(const TVector& other)
 		{
-			AddRange(other[0], other.Num());
+			AddRange(other.Data(), other.Num());
 		}
 
 		void AddRange(std::initializer_list<TElementType> initList)
@@ -475,7 +475,7 @@ namespace Sailor
 
 		TElementType* m_pRawPtr = nullptr;
 
-		void ConstructElements(size_t index, const TElementType& firstElement, size_t count = 1) requires !IsTriviallyDestructible<TElementType>
+		void ConstructElements(size_t index, const TElementType& firstElement, size_t count = 1)
 		{
 			for (size_t i = 0; i < count; i++)
 			{

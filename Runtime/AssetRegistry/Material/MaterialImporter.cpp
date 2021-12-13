@@ -61,8 +61,8 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	RHI::EFillMode fillMode = RHI::EFillMode::Fill;
 	std::string renderQueue = "Opaque";
 
-	m_pData->m_shaderDefines.clear();
-	m_pData->m_uniformsVec4.clear();
+	m_pData->m_shaderDefines.Clear();
+	m_pData->m_uniformsVec4.Clear();
 
 	if (outData.contains("enable_depth_test"))
 	{

@@ -11,8 +11,8 @@ using namespace Sailor::RHI;
 
 void IGfxDevice::UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& vertices, const TVector<uint32_t>& indices)
 {
-	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
+	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.Num();
+	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
 
 	auto updateVerticesCmd = CreateBuffer(mesh->m_vertexBuffer,
 		&vertices[0],
@@ -51,7 +51,7 @@ void IGfxDevice::TrackResources_ThreadSafe()
 {
 	std::scoped_lock<std::mutex> guard(m_mutexTrackedFences);
 
-	for (int32_t index = 0; index < m_trackedFences.size(); index++)
+	for (int32_t index = 0; index < m_trackedFences.Num(); index++)
 	{
 		FencePtr fence = m_trackedFences[index];
 
@@ -62,7 +62,7 @@ void IGfxDevice::TrackResources_ThreadSafe()
 			fence->ClearObservables();
 
 			std::iter_swap(m_trackedFences.begin() + index, m_trackedFences.end() - 1);
-			m_trackedFences.pop_back();
+			m_trackedFences.RemoveLast();
 
 			index--;
 		}

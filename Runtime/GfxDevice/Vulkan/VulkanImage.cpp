@@ -83,8 +83,8 @@ void VulkanImage::Compile()
 	info.tiling = m_tiling;
 	info.usage = m_usage;
 	info.sharingMode = m_sharingMode;
-	info.queueFamilyIndexCount = static_cast<uint32_t>(m_queueFamilyIndices.size());
-	info.pQueueFamilyIndices = m_queueFamilyIndices.data();
+	info.queueFamilyIndexCount = static_cast<uint32_t>(m_queueFamilyIndices.Num());
+	info.pQueueFamilyIndices = m_queueFamilyIndices.Data();
 	info.initialLayout = m_initialLayout;
 
 	// remap RGB to RGBA

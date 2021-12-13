@@ -74,7 +74,7 @@ namespace Sailor
 
 		std::mutex m_saveToCacheMutex;
 
-		SAILOR_API void Remove(const ShaderCache::ShaderCacheEntry* entry);
+		SAILOR_API void Remove(ShaderCache::ShaderCacheEntry* entry);
 
 	private:
 
