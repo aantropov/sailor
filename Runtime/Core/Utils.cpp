@@ -14,7 +14,9 @@
 #include <cctype>
 
 #include <windows.h>
+#include "Core/Vector.h"
 
+using namespace Sailor;
 using namespace Sailor::Utils;
 
 std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
@@ -177,21 +179,21 @@ std::string Sailor::Utils::GetFileExtension(const std::string& filename)
 	return filename.substr(lastdot, filename.size() - lastdot);
 }
 
-std::vector<std::string> Sailor::Utils::SplitString(const std::string& str, const std::string& delimiter)
+TVector<std::string> Sailor::Utils::SplitString(const std::string& str, const std::string& delimiter)
 {
 	SAILOR_PROFILE_FUNCTION();
-	std::vector<std::string> strings;
+	TVector<std::string> strings;
 
 	std::string::size_type pos = 0;
 	std::string::size_type prev = 0;
 	while ((pos = str.find(delimiter, prev)) != std::string::npos)
 	{
-		strings.push_back(str.substr(prev, pos - prev));
+		strings.Add(str.substr(prev, pos - prev));
 		prev = pos + delimiter.size();
 	}
 
 	// To get the last substring (or only, if delimiter is not found)
-	strings.push_back(str.substr(prev));
+	strings.Add(str.substr(prev));
 
 	return strings;
 }
@@ -245,13 +247,13 @@ std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
 	return 0;
 }
 
-void Sailor::Utils::FindAllOccurances(std::string& str, const std::string& substr, std::vector<size_t>& outLocations, size_t startPosition, size_t endLocation)
+void Sailor::Utils::FindAllOccurances(std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
 	size_t pos = str.find(substr, startPosition);
 	while (pos < endLocation)
 	{
-		outLocations.push_back(pos);
+		outLocations.Add(pos);
 		pos = str.find(substr, pos + 1);
 	}
 }

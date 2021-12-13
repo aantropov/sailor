@@ -19,8 +19,8 @@ namespace Sailor::RHI
 #endif
 
 		SAILOR_API void AddLayoutShaderBinding(ShaderLayoutBinding layout);
-		SAILOR_API void SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> layoutBindings);
-		SAILOR_API const std::vector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
+		SAILOR_API void SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings);
+		SAILOR_API const TVector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
 		SAILOR_API RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& binding);
 		SAILOR_API const std::unordered_map<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
 
@@ -35,7 +35,7 @@ namespace Sailor::RHI
 
 		SAILOR_API bool PerInstanceDataStoredInSSBO() const;
 
-		std::vector<RHI::ShaderLayoutBinding> m_layoutBindings;
+		TVector<RHI::ShaderLayoutBinding> m_layoutBindings;
 		std::unordered_map<std::string, RHI::ShaderBindingPtr> m_shaderBindings;
 		bool m_bNeedsStorageBuffer = false;
 	};

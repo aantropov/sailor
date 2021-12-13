@@ -30,7 +30,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VkImageTiling m_tiling = VK_IMAGE_TILING_OPTIMAL;
 		VkImageUsageFlags m_usage = 0;
 		VkSharingMode m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		std::vector<uint32_t> m_queueFamilyIndices;
+		TVector<uint32_t> m_queueFamilyIndices;
 		VkImageLayout m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 		operator VkImage() const { return m_image; }

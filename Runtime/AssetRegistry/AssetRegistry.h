@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <unordered_map>
-#include <vector>
+#include "Core/Vector.h"
 #include "AssetRegistry/UID.h"
 #include "Core/Submodule.h"
 #include "AssetRegistry/AssetInfo.h"
@@ -25,7 +25,7 @@ namespace Sailor
 		virtual SAILOR_API ~AssetRegistry() override;
 
 		template<typename TBinaryType, typename TFilepath>
-		static bool ReadBinaryFile(const TFilepath& filename, std::vector<TBinaryType>& buffer)
+		static bool ReadBinaryFile(const TFilepath& filename, TVector<TBinaryType>& buffer)
 		{
 			std::ifstream file(filename, std::ios::ate | std::ios::binary);
 			file.unsetf(std::ios::skipws);
@@ -71,19 +71,19 @@ namespace Sailor
 		}
 
 		template<class TAssetInfo>
-		void GetAllAssetInfos(std::vector<UID>& outAssetInfos) const
+		void GetAllAssetInfos(TVector<UID>& outAssetInfos) const
 		{
-			outAssetInfos.clear();
+			outAssetInfos.Clear();
 			for (const auto& assetInfo : m_loadedAssetInfo)
 			{
 				if (dynamic_cast<TAssetInfo*>(assetInfo.second))
 				{
-					outAssetInfos.push_back(assetInfo.first);
+					outAssetInfos.Add(assetInfo.first);
 				}
 			}
 		}
 
-		SAILOR_API bool RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, class IAssetInfoHandler* pAssetInfoHandler);
+		SAILOR_API bool RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions, class IAssetInfoHandler* pAssetInfoHandler);
 		static SAILOR_API std::string GetMetaFilePath(const std::string& assetFilePath);
 
 	protected:

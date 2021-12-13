@@ -6,9 +6,9 @@
 using namespace Sailor::GfxDevice::Vulkan;
 
 VulkanRenderPass::VulkanRenderPass(VulkanDevicePtr device,
-	const std::vector<VkAttachmentDescription>& attachments,
-	const std::vector<VulkanSubpassDescription>& subpasses,
-	const std::vector<VkSubpassDependency>& dependencies) :
+	const TVector<VkAttachmentDescription>& attachments,
+	const TVector<VulkanSubpassDescription>& subpasses,
+	const TVector<VkSubpassDependency>& dependencies) :
 	m_device(device)
 {
 	m_maxMsSamples = VK_SAMPLE_COUNT_1_BIT;
@@ -17,31 +17,31 @@ VulkanRenderPass::VulkanRenderPass(VulkanDevicePtr device,
 		if (attachment.samples > m_maxMsSamples) m_maxMsSamples = attachment.samples;
 	}
 
-	std::vector<VkSubpassDescription> vk_subpasses(subpasses.size());
-	for (size_t i = 0; i < subpasses.size(); ++i)
+	TVector<VkSubpassDescription> vk_subpasses(subpasses.Num());
+	for (size_t i = 0; i < subpasses.Num(); ++i)
 	{
 		auto& src = subpasses[i];
 		VkSubpassDescription& dst = vk_subpasses[i];
 		dst.flags = src.m_flags;
 		dst.pipelineBindPoint = src.m_pipelineBindPoint;
-		dst.inputAttachmentCount = static_cast<uint32_t>(src.m_inputAttachments.size());
-		dst.pInputAttachments = src.m_inputAttachments.empty() ? nullptr : src.m_inputAttachments.data();
-		dst.colorAttachmentCount = static_cast<uint32_t>(src.m_colorAttachments.size());
-		dst.pColorAttachments = src.m_colorAttachments.empty() ? nullptr : src.m_colorAttachments.data();
-		dst.pResolveAttachments = src.m_depthStencilAttachments.empty() ? nullptr : src.m_resolveAttachments.data();
-		dst.pDepthStencilAttachment = (src.m_depthStencilAttachments.empty()) ? nullptr : src.m_depthStencilAttachments.data();
-		dst.preserveAttachmentCount = static_cast<uint32_t>(src.m_preserveAttachments.size());
-		dst.pPreserveAttachments = src.m_preserveAttachments.empty() ? nullptr : src.m_preserveAttachments.data();
+		dst.inputAttachmentCount = static_cast<uint32_t>(src.m_inputAttachments.Num());
+		dst.pInputAttachments = src.m_inputAttachments.IsEmpty() ? nullptr : src.m_inputAttachments.Data();
+		dst.colorAttachmentCount = static_cast<uint32_t>(src.m_colorAttachments.Num());
+		dst.pColorAttachments = src.m_colorAttachments.IsEmpty() ? nullptr : src.m_colorAttachments.Data();
+		dst.pResolveAttachments = src.m_depthStencilAttachments.IsEmpty() ? nullptr : src.m_resolveAttachments.Data();
+		dst.pDepthStencilAttachment = (src.m_depthStencilAttachments.IsEmpty()) ? nullptr : src.m_depthStencilAttachments.Data();
+		dst.preserveAttachmentCount = static_cast<uint32_t>(src.m_preserveAttachments.Num());
+		dst.pPreserveAttachments = src.m_preserveAttachments.IsEmpty() ? nullptr : src.m_preserveAttachments.Data();
 	}
 
 	VkRenderPassCreateInfo renderPassInfo = {};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-	renderPassInfo.pAttachments = attachments.data();
-	renderPassInfo.subpassCount = static_cast<uint32_t>(vk_subpasses.size());
-	renderPassInfo.pSubpasses = vk_subpasses.data();
-	renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
-	renderPassInfo.pDependencies = dependencies.data();
+	renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.Num());
+	renderPassInfo.pAttachments = attachments.Data();
+	renderPassInfo.subpassCount = static_cast<uint32_t>(vk_subpasses.Num());
+	renderPassInfo.pSubpasses = vk_subpasses.Data();
+	renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.Num());
+	renderPassInfo.pDependencies = dependencies.Data();
 
 	VK_CHECK(vkCreateRenderPass(*m_device, &renderPassInfo, nullptr, &m_renderPass));
 }

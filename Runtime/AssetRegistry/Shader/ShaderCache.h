@@ -1,7 +1,7 @@
 #pragma once
 #include <chrono>
 #include <ctime>
-#include <vector>
+#include "Core/Vector.h"
 #include <unordered_map>
 #include "AssetRegistry/UID.h"
 #include "Core/Singleton.hpp"
@@ -27,10 +27,10 @@ namespace Sailor
 		SAILOR_API void Shutdown();
 
 		SAILOR_API void CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const;
-		SAILOR_API void CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv) const;
-		SAILOR_API void CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv);
+		SAILOR_API void CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv) const;
+		SAILOR_API void CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv);
 		
-		SAILOR_API bool GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<uint32_t>& vertexSpirv, std::vector<uint32_t>& fragmentSpirv, bool bIsDebug = false) const;
+		SAILOR_API bool GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, bool bIsDebug = false) const;
 
 		SAILOR_API void Remove(const UID& uid);
 
@@ -66,7 +66,7 @@ namespace Sailor
 		class ShaderCacheData final : IJsonSerializable
 		{
 		public:
-			std::unordered_map<UID, std::vector<ShaderCache::ShaderCacheEntry*>> m_data;
+			std::unordered_map<UID, TVector<ShaderCache::ShaderCacheEntry*>> m_data;
 
 			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
 			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);

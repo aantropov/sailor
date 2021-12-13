@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
-#include <vector>
+#include "Core/Vector.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -27,16 +27,16 @@ namespace Sailor
 	{
 	public:
 
-		Model(UID uid, std::vector<RHI::MeshPtr> meshes = {}, std::vector<MaterialPtr> materials = {}) :
+		Model(UID uid, TVector<RHI::MeshPtr> meshes = {}, TVector<MaterialPtr> materials = {}) :
 			Object(std::move(uid)),
 			m_meshes(std::move(meshes)),
 			m_materials(std::move(materials)) {}
 
-		const std::vector<RHI::MeshPtr>& GetMeshes() const { return m_meshes; }
-		const std::vector<MaterialPtr>& GetMaterials() const { return m_materials; }
+		const TVector<RHI::MeshPtr>& GetMeshes() const { return m_meshes; }
+		const TVector<MaterialPtr>& GetMaterials() const { return m_materials; }
 
-		std::vector<RHI::MeshPtr>& GetMeshes() { return m_meshes; }
-		std::vector<MaterialPtr>& GetMaterials() { return m_materials; }
+		TVector<RHI::MeshPtr>& GetMeshes() { return m_meshes; }
+		TVector<MaterialPtr>& GetMaterials() { return m_materials; }
 
 		// Should be triggered after mesh/material changes
 		void Flush();
@@ -46,8 +46,8 @@ namespace Sailor
 
 	protected:
 
-		std::vector<RHI::MeshPtr> m_meshes;
-		std::vector<MaterialPtr> m_materials;
+		TVector<RHI::MeshPtr> m_meshes;
+		TVector<MaterialPtr> m_materials;
 
 		std::atomic<bool> m_bIsReady;
 
@@ -77,8 +77,8 @@ namespace Sailor
 		std::unordered_map<UID, TSharedPtr<Model>> m_loadedModels;
 
 		static SAILOR_API bool ImportObjModel(ModelAssetInfoPtr assetInfo,
-			std::vector<RHI::MeshPtr>& outMeshes,
-			std::vector<AssetInfoPtr>& outMaterialUIDs);
+			TVector<RHI::MeshPtr>& outMeshes,
+			TVector<AssetInfoPtr>& outMaterialUIDs);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 	};

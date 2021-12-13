@@ -51,7 +51,7 @@ void VulkanStateDynamicViewport::Apply(VkGraphicsPipelineCreateInfo& state) cons
 	state.pViewportState = &m_viewportState;
 }
 
-VulkanStateVertexDescription::VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const std::vector<VkVertexInputAttributeDescription> attributes) :
+VulkanStateVertexDescription::VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const TVector<VkVertexInputAttributeDescription> attributes) :
 	m_bindingDescription(binding), m_attributeDescriptions(std::move(attributes)), m_vertexInput{}
 {
 	m_vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -156,9 +156,9 @@ void VulkanStateColorBlending::Apply(struct VkGraphicsPipelineCreateInfo& state)
 
 VulkanStateDynamic::VulkanStateDynamic() : m_dynamicState{}
 {
-	m_dynamicStates.push_back(VK_DYNAMIC_STATE_VIEWPORT);
-	m_dynamicStates.push_back(VK_DYNAMIC_STATE_SCISSOR);
-	m_dynamicStates.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
+	m_dynamicStates.Add(VK_DYNAMIC_STATE_VIEWPORT);
+	m_dynamicStates.Add(VK_DYNAMIC_STATE_SCISSOR);
+	m_dynamicStates.Add(VK_DYNAMIC_STATE_DEPTH_BIAS);
 
 	m_dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
 	m_dynamicState.dynamicStateCount = (uint32_t)m_dynamicStates.size();
@@ -207,7 +207,7 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
 }
 
-const std::vector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::RenderState& renderState)
+const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::RenderState& renderState)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -232,7 +232,7 @@ const std::vector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipe
 	const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_LESS);
 	const VulkanStateMultisamplePtr pMultisample = VulkanStateMultisamplePtr::Make(m_pDevice->GetCurrentMsaaSamples());
 
-	auto& res = m_cache[renderState] = std::vector<VulkanPipelineStatePtr>
+	auto& res = m_cache[renderState] = TVector<VulkanPipelineStatePtr>
 	{
 		pStateViewport,
 			pVertexDescription,

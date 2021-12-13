@@ -9,7 +9,7 @@ using namespace Sailor;
 
 ShaderAssetInfoHandler::ShaderAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.emplace_back("shader");
+	m_supportedExtensions.Emplace("shader");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 

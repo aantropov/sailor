@@ -54,7 +54,7 @@ void ShaderCache::ShaderCacheEntry::Deserialize(const nlohmann::json& inData)
 
 void ShaderCache::ShaderCacheData::Serialize(nlohmann::json& outData) const
 {
-	std::vector<json> data;
+	TVector<json> data;
 
 	for (const auto& entry : m_data)
 	{
@@ -73,7 +73,7 @@ void ShaderCache::ShaderCacheData::Serialize(nlohmann::json& outData) const
 		}
 		temp["entries"] = entriesJson;
 
-		data.push_back(temp);
+		data.Add(temp);
 	}
 
 	outData["uids"] = data;
@@ -81,21 +81,21 @@ void ShaderCache::ShaderCacheData::Serialize(nlohmann::json& outData) const
 
 void ShaderCache::ShaderCacheData::Deserialize(const nlohmann::json& inData)
 {
-	std::vector<json> data;
-	data = inData["uids"].get<std::vector<json>>();
+	TVector<json> data;
+	data = inData["uids"].get<TVector<json>>();
 
 	for (const auto& entryJson : data)
 	{
 		UID uid;
 		uid.Deserialize(entryJson["uid"]);
-		std::vector<json> entriesJson = entryJson["entries"].get<std::vector<json>>();
+		TVector<json> entriesJson = entryJson["entries"].get<TVector<json>>();
 
 		for (const auto& permutation : entriesJson)
 		{
 			ShaderCacheEntry* entry = new ShaderCacheEntry();
 			entry->Deserialize(permutation);
 
-			m_data[uid].push_back(entry);
+			m_data[uid].Add(entry);
 		}
 	}
 }
@@ -184,9 +184,9 @@ void ShaderCache::ClearExpired()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::vector<UID> expiredShaders;
+	TVector<UID> expiredShaders;
 	std::unordered_set<std::string> whiteListSpirv;
-	std::vector<const ShaderCacheEntry*> blackListEntry;
+	TVector<const ShaderCacheEntry*> blackListEntry;
 
 	for (const auto& entries : m_cache.m_data)
 	{
@@ -205,7 +205,7 @@ void ShaderCache::ClearExpired()
 				}
 				else
 				{
-					blackListEntry.push_back(entry);
+					blackListEntry.Add(entry);
 				}
 			}
 		}
@@ -246,12 +246,12 @@ void ShaderCache::Remove(const ShaderCacheEntry* pEntry)
 		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
 
 		auto& entries = m_cache.m_data[pEntry->m_UID];
-		entries.erase(std::find(std::begin(entries), std::end(entries), pEntry));
+		entries.Remove(pEntry);
 
 		delete pEntry;
 		m_bIsDirty = true;
 
-		if (entries.size() == 0)
+		if (entries.Num() == 0)
 		{
 			Remove(uid);
 		}
@@ -307,20 +307,20 @@ void ShaderCache::CachePrecompiledGlsl(const UID& uid, uint32_t permutation, con
 	}
 }
 
-void ShaderCache::CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv) const
+void ShaderCache::CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv) const
 {
 	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
 
 	std::ofstream vertexCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, "VERTEX"), std::ofstream::binary);
-	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.size() * sizeof(uint32_t));
+	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.Num() * sizeof(uint32_t));
 	vertexCompiled.close();
 
 	std::ofstream fragmentCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, "FRAGMENT"), std::ofstream::binary);
-	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.size() * sizeof(uint32_t));
+	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.Num() * sizeof(uint32_t));
 	fragmentCompiled.close();
 }
 
-void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv)
+void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -339,22 +339,22 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 	newEntry->m_timestamp = assetInfo->GetAssetLastModificationTime();
 
 	std::ofstream vertexCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, "VERTEX"), std::ofstream::binary);
-	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.size() * sizeof(uint32_t));
+	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.Num() * sizeof(uint32_t));
 	vertexCompiled.close();
 
 	std::ofstream fragmentCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, "FRAGMENT"), std::ofstream::binary);
-	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.size() * sizeof(uint32_t));
+	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.Num() * sizeof(uint32_t));
 	fragmentCompiled.close();
 
 	if (!bAlreadyContains)
 	{
-		m_cache.m_data[uid].push_back(newEntry);
+		m_cache.m_data[uid].Add(newEntry);
 	}
 
 	m_bIsDirty = true;
 }
 
-bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, std::vector<uint32_t>& vertexSpirv, std::vector<uint32_t>& fragmentSpirv, bool bIsDebug) const
+bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, bool bIsDebug) const
 {
 	SAILOR_PROFILE_FUNCTION();
 

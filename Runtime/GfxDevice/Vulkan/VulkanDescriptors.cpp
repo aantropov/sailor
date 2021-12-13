@@ -1,4 +1,4 @@
-#include <vector>
+#include "Core/Vector.h"
 #include "VulkanApi.h"
 #include "VulkanBuffer.h"
 #include "VulkanDescriptors.h"
@@ -9,7 +9,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, std::vector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings) :
+VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings) :
 	m_descriptorSetLayoutBindings(std::move(descriptorSetLayoutBindings)),
 	m_device(pDevice)
 {
@@ -29,8 +29,8 @@ void VulkanDescriptorSetLayout::Compile()
 
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings.size();
-	layoutInfo.pBindings = m_descriptorSetLayoutBindings.data();
+	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings..Num();
+	layoutInfo.pBindings = m_descriptorSetLayoutBindings.Data();
 
 	VK_CHECK(vkCreateDescriptorSetLayout(*m_device, &layoutInfo, nullptr, &m_descriptorSetLayout));
 }
@@ -45,13 +45,13 @@ void VulkanDescriptorSetLayout::Release()
 }
 
 VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t maxSets,
-	const std::vector<VkDescriptorPoolSize>& descriptorPoolSizes) :
+	const TVector<VkDescriptorPoolSize>& descriptorPoolSizes) :
 	m_device(pDevice)
 {
 	VkDescriptorPoolCreateInfo poolInfo = {};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
-	poolInfo.pPoolSizes = descriptorPoolSizes.data();
+	poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes..Num());
+	poolInfo.pPoolSizes = descriptorPoolSizes.Data();
 	poolInfo.maxSets = maxSets;
 	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	poolInfo.pNext = nullptr;
@@ -70,7 +70,7 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
 VulkanDescriptorSet::VulkanDescriptorSet(VulkanDevicePtr pDevice,
 	VulkanDescriptorPoolPtr pool,
 	VulkanDescriptorSetLayoutPtr descriptorSetLayout,
-	std::vector<VulkanDescriptorPtr> descriptors) :
+	TVector<VulkanDescriptorPtr> descriptors) :
 	m_device(pDevice),
 	m_descriptorPool(pool),
 	m_descriptorSetLayout(descriptorSetLayout),
@@ -97,15 +97,15 @@ void VulkanDescriptorSet::Compile()
 		m_currentThreadId = GetCurrentThreadId();
 	}
 
-	VkWriteDescriptorSet* descriptorsWrite = reinterpret_cast<VkWriteDescriptorSet*>(_malloca(m_descriptors.size() * sizeof(VkWriteDescriptorSet)));
+	VkWriteDescriptorSet* descriptorsWrite = reinterpret_cast<VkWriteDescriptorSet*>(_malloca(m_descriptors..Num() * sizeof(VkWriteDescriptorSet)));
 
-	for (uint32_t i = 0; i < m_descriptors.size(); i++)
+	for (uint32_t i = 0; i < m_descriptors.Num(); i++)
 	{
 		m_descriptors[i]->Apply(descriptorsWrite[i]);
 		descriptorsWrite[i].dstSet = m_descriptorSet;
 	}
 
-	vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(m_descriptors.size()), descriptorsWrite, 0, nullptr);
+	vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(m_descriptors..Num()), descriptorsWrite, 0, nullptr);
 
 	_freea(descriptorsWrite);
 }

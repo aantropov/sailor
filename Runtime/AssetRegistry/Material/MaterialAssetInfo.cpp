@@ -19,7 +19,7 @@ void MaterialAssetInfo::Deserialize(const nlohmann::json& outData)
 
 MaterialAssetInfoHandler::MaterialAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.emplace_back("mat");
+	m_supportedExtensions.Emplace("mat");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 

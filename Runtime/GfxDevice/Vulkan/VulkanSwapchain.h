@@ -47,8 +47,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanImageViewPtr GetDepthBufferView() const { return m_depthBufferView; }
 		VulkanImageViewPtr GetColorBufferView() const { return m_colorBufferView; }
 
-		std::vector<VulkanImageViewPtr>& GetImageViews() { return m_swapchainImageViews; }
-		const std::vector<VulkanImageViewPtr>& GetImageViews() const { return m_swapchainImageViews; }
+		TVector<VulkanImageViewPtr>& GetImageViews() { return m_swapchainImageViews; }
+		const TVector<VulkanImageViewPtr>& GetImageViews() const { return m_swapchainImageViews; }
 
 		VkResult AcquireNextImage(uint64_t timeout, VulkanSemaphorePtr semaphore, VulkanFencePtr fence, uint32_t& imageIndex);
 
@@ -63,8 +63,8 @@ namespace Sailor::GfxDevice::Vulkan
 		VkSurfaceFormatKHR m_surfaceFormat;
 		VkPresentModeKHR m_presentMode;
 
-		std::vector<VulkanSwapchainImagePtr> m_swapchainImages;
-		std::vector<VulkanImageViewPtr> m_swapchainImageViews;
+		TVector<VulkanSwapchainImagePtr> m_swapchainImages;
+		TVector<VulkanImageViewPtr> m_swapchainImageViews;
 
 		VulkanImagePtr m_colorBuffer;
 		VulkanImageViewPtr m_colorBufferView;

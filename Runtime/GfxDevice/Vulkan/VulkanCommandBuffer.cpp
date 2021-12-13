@@ -87,8 +87,8 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferPtr src, VulkanBufferPtr dst, V
 
 	vkCmdCopyBuffer(m_commandBuffer, *src, *dst, 1, &copyRegion);
 
-	m_bufferDependencies.push_back(src);
-	m_bufferDependencies.push_back(dst);
+	m_bufferDependencies.Add(src);
+	m_bufferDependencies.Add(dst);
 }
 
 void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, VkDeviceSize srcOffset)
@@ -119,8 +119,8 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr 
 		&region
 	);
 
-	m_bufferDependencies.push_back(src);
-	m_imageDependencies.push_back(image);
+	m_bufferDependencies.Add(src);
+	m_imageDependencies.Add(image);
 }
 
 void VulkanCommandBuffer::EndCommandList()
@@ -137,7 +137,7 @@ void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, Vulkan
 	renderPassInfo.renderArea.offset = offset;
 	renderPassInfo.renderArea.extent = extent;
 
-	bool bMSSA = frameBuffer->GetAttachments().size() == 3;
+	bool bMSSA = frameBuffer->GetAttachments().Num() == 3;
 
 	std::array<VkClearValue, 3> clearValues;
 	clearValues[0].color = clearColor.color;
@@ -150,48 +150,48 @@ void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, Vulkan
 	vkCmdBeginRenderPass(m_commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void VulkanCommandBuffer::BindVertexBuffers(std::vector<VulkanBufferPtr> buffers, std::vector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
+void VulkanCommandBuffer::BindVertexBuffers(TVector<VulkanBufferPtr> buffers, TVector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
 {
-	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(_malloca(buffers.size() * sizeof(VkBuffer)));
+	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(_malloca(buffers.Num() * sizeof(VkBuffer)));
 
-	for (int i = 0; i < buffers.size(); i++)
+	for (int i = 0; i < buffers.Num(); i++)
 	{
 		vertexBuffers[i] = *buffers[i];
 	}
 	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
-	m_bufferDependencies.insert(m_bufferDependencies.end(), std::make_move_iterator(buffers.begin()), std::make_move_iterator(buffers.end()));
+	m_bufferDependencies.AddRange(buffers);
 	_freea(vertexBuffers);
 }
 
 void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer)
 {
-	m_bufferDependencies.push_back(indexBuffer);
+	m_bufferDependencies.Add(indexBuffer);
 	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 }
 
-void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, std::vector<VulkanDescriptorSetPtr> descriptorSet)
+void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, TVector<VulkanDescriptorSetPtr> descriptorSet)
 {
-	VkDescriptorSet* sets = reinterpret_cast<VkDescriptorSet*>(_malloca(descriptorSet.size() * sizeof(VkDescriptorSet)));
+	VkDescriptorSet* sets = reinterpret_cast<VkDescriptorSet*>(_malloca(descriptorSet.Num() * sizeof(VkDescriptorSet)));
 
-	for (int i = 0; i < descriptorSet.size(); i++)
+	for (int i = 0; i < descriptorSet.Num(); i++)
 	{
 		sets[i] = *descriptorSet[i];
-		m_descriptorSetDependencies.push_back(descriptorSet[i]);
+		m_descriptorSetDependencies.Add(descriptorSet[i]);
 
 	}
-	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, (uint32_t)descriptorSet.size(), &sets[0], 0, nullptr);
+	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, (uint32_t)descriptorSet.Num(), &sets[0], 0, nullptr);
 	_freea(sets);
 }
 
 void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)
 {
-	m_pipelineDependencies.push_back(pipeline);
+	m_pipelineDependencies.Add(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 }
 
 void VulkanCommandBuffer::DrawIndexed(VulkanBufferPtr indexBuffer, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
-	m_bufferDependencies.push_back(indexBuffer);
+	m_bufferDependencies.Add(indexBuffer);
 	vkCmdDrawIndexed(m_commandBuffer, (uint32_t)indexBuffer->m_size / sizeof(uint32_t), instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
@@ -208,21 +208,21 @@ void VulkanCommandBuffer::Reset()
 
 void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator)
 {
-	m_memoryPtrs.push_back(std::pair{ ptr, allocator });
+	m_memoryPtrs.Add(std::pair{ ptr, allocator });
 }
 
 void VulkanCommandBuffer::AddDependency(VulkanSemaphorePtr semaphore)
 {
-	m_semaphoreDependencies.push_back(semaphore);
+	m_semaphoreDependencies.Add(semaphore);
 }
 
 void VulkanCommandBuffer::ClearDependencies()
 {
-	m_bufferDependencies.clear();
-	m_imageDependencies.clear();
-	m_descriptorSetDependencies.clear();
-	m_pipelineDependencies.clear();
-	m_semaphoreDependencies.clear();
+	m_bufferDependencies.Clear();
+	m_imageDependencies.Clear();
+	m_descriptorSetDependencies.Clear();
+	m_pipelineDependencies.Clear();
+	m_semaphoreDependencies.Clear();
 
 	for (auto& managedPtr : m_memoryPtrs)
 	{
@@ -232,7 +232,7 @@ void VulkanCommandBuffer::ClearDependencies()
 		}
 	}
 
-	m_memoryPtrs.clear();
+	m_memoryPtrs.Clear();
 }
 
 void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)
@@ -399,5 +399,5 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 		1, &barrier
 	);
 
-	m_imageDependencies.push_back(image);
+	m_imageDependencies.Add(image);
 }

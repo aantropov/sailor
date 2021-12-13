@@ -31,7 +31,7 @@ void ModelAssetInfo::Deserialize(const nlohmann::json& outData)
 
 ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.emplace_back("obj");
+	m_supportedExtensions.Emplace("obj");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 

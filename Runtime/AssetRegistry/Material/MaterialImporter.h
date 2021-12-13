@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
-#include <vector>
+#include "Core/Vector.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -72,9 +72,9 @@ namespace Sailor
 			std::string m_renderQueue = "Opaque";
 			bool m_bIsTransparent = false;
 
-			std::vector<std::string> m_shaderDefines;
-			std::vector<SamplerEntry> m_samplers;
-			std::vector<std::pair<std::string, glm::vec4>> m_uniformsVec4;
+			TVector<std::string> m_shaderDefines;
+			TVector<SamplerEntry> m_samplers;
+			TVector<std::pair<std::string, glm::vec4>> m_uniformsVec4;
 
 			UID m_shader;
 		};
@@ -88,9 +88,9 @@ namespace Sailor
 		SAILOR_API bool IsTransparent() const { return m_pData->m_bIsTransparent; }
 		SAILOR_API const std::string& GetRenderQueue() const { return m_pData->m_renderQueue; }
 		SAILOR_API const UID& GetShader() const { return m_pData->m_shader; }
-		SAILOR_API const std::vector<std::string>& GetShaderDefines() const { return  m_pData->m_shaderDefines; }
-		SAILOR_API const std::vector<SamplerEntry>& GetSamplers() const { return m_pData->m_samplers; }
-		SAILOR_API const std::vector<std::pair<std::string, glm::vec4>>& GetUniformValues() const { return m_pData->m_uniformsVec4; }
+		SAILOR_API const TVector<std::string>& GetShaderDefines() const { return  m_pData->m_shaderDefines; }
+		SAILOR_API const TVector<SamplerEntry>& GetSamplers() const { return m_pData->m_samplers; }
+		SAILOR_API const TVector<std::pair<std::string, glm::vec4>>& GetUniformValues() const { return m_pData->m_uniformsVec4; }
 
 	protected:
 

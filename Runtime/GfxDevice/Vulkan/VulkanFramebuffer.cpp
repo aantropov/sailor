@@ -6,7 +6,7 @@
 using namespace Sailor;
 using namespace Sailor::GfxDevice::Vulkan;
 
-VulkanFramebuffer::VulkanFramebuffer(VulkanRenderPassPtr renderPass, const std::vector<VulkanImageViewPtr>& attachments, uint32_t width, uint32_t height, uint32_t layers) :
+VulkanFramebuffer::VulkanFramebuffer(VulkanRenderPassPtr renderPass, const TVector<VulkanImageViewPtr>& attachments, uint32_t width, uint32_t height, uint32_t layers) :
 	m_device(renderPass->GetDevice()),
 	m_renderPass(renderPass),
 	m_attachments(attachments),
@@ -14,11 +14,11 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRenderPassPtr renderPass, const std::
 	m_height(height),
 	m_layers(layers)
 {
-	std::vector<VkImageView> vkAttachments;
+	TVector<VkImageView> vkAttachments;
 
 	for (auto& attachment : attachments)
 	{
-		vkAttachments.push_back((VkImageView)*attachment);
+		vkAttachments.Add((VkImageView)*attachment);
 	}
 
 	VkFramebufferCreateInfo framebufferInfo = {};

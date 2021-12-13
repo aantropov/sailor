@@ -4,6 +4,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/UID.h"
 #include "Core/Singleton.hpp"
+#include "Core/Vector.h"
 #include "Core/JsonSerializable.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
@@ -61,10 +62,10 @@ namespace Sailor
 
 	public:
 
-		SAILOR_API void Subscribe(IAssetInfoHandlerListener* listener) { m_listeners.push_back(listener); }
+		SAILOR_API void Subscribe(IAssetInfoHandlerListener* listener) { m_listeners.Add(listener); }
 		SAILOR_API void Unsubscribe(IAssetInfoHandlerListener* listener)
 		{
-			m_listeners.erase(std::find(m_listeners.begin(), m_listeners.end(), listener));
+			m_listeners.Remove(listener);
 		}
 
 		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const = 0;
@@ -78,9 +79,9 @@ namespace Sailor
 	protected:
 
 		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const = 0;
-		std::vector<std::string> m_supportedExtensions;
+		TVector<std::string> m_supportedExtensions;
 
-		std::vector<IAssetInfoHandlerListener*> m_listeners;
+		TVector<IAssetInfoHandlerListener*> m_listeners;
 	};
 
 	class DefaultAssetInfoHandler final : public TSubmodule<DefaultAssetInfoHandler>, public IAssetInfoHandler

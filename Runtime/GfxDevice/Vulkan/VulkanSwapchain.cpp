@@ -94,7 +94,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 	oldSwapchain.Clear();
 
-	std::vector<VkImage> vkSwapchainImages;
+	TVector<VkImage> vkSwapchainImages;
 
 	// Create Swapchain images & image views
 	VK_CHECK(vkGetSwapchainImagesKHR(*m_device, m_swapchain, &imageCount, nullptr));
@@ -103,8 +103,8 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 	for (size_t i = 0; i < vkSwapchainImages.size(); i++)
 	{
-		m_swapchainImages.push_back(VulkanSwapchainImagePtr::Make(vkSwapchainImages[i], m_device));
-		m_swapchainImageViews.push_back(VulkanImageViewPtr::Make(m_device, m_swapchainImages[i]));
+		m_swapchainImages.Add(VulkanSwapchainImagePtr::Make(vkSwapchainImages[i], m_device));
+		m_swapchainImageViews.Add(VulkanImageViewPtr::Make(m_device, m_swapchainImages[i]));
 
 		m_swapchainImageViews[i]->m_format = m_surfaceFormat.format;
 

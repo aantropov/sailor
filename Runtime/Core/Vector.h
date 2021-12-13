@@ -19,6 +19,12 @@ namespace Sailor
 		bool operator!=(TIterator rhs) const { return m_element != rhs.m_element; }
 		TElementType& operator*() { return *m_element; }
 		void operator++() { ++m_element; }
+
+		TIterator operator-(size_t rhs) const { return m_element - rhs; }
+		TIterator operator+(size_t rhs) const { return m_element + rhs; }
+
+		TIterator& operator-=(size_t rhs) { m_element -= rhs; return this; }
+		TIterator& operator+=(size_t rhs) { m_element += rhs; return this; }
 	};
 
 	template<typename TElementType>
@@ -30,6 +36,12 @@ namespace Sailor
 		bool operator!=(TConstIterator rhs) const { return m_element != rhs.m_element; }
 		const TElementType& operator*() const { return *m_element; }
 		void operator++() { ++m_element; }
+
+		TConstIterator operator-(size_t rhs) const { return m_element - rhs; }
+		TConstIterator operator+(size_t rhs) const { return m_element + rhs; }
+
+		TConstIterator& operator-=(size_t rhs) { m_element -= rhs; return this; }
+		TConstIterator& operator+=(size_t rhs) { m_element += rhs; return this; }
 	};
 
 	template<typename T>
@@ -44,15 +56,18 @@ namespace Sailor
 
 	public:
 
+		static constexpr size_t InvalidIndex = (size_t)-1;
+
 		// Constructors & Destructor
 		TVector() : m_arrayNum(0), m_capacity(0) {}
+		TVector(size_t capacity) : m_arrayNum(0) { Reserve(capacity); }
 		virtual ~TVector() { Clear(); }
 
 		TVector(std::initializer_list<TElementType> initList) : TVector(initList.begin(), initList.size()) {}
 
 		TVector(const TVector& other) : TVector(other[0], other.Num()) {}
 
-		TVector(TVector&& other) { Swap(this, other); }
+		TVector(TVector&& other) { Swap(*this, other); }
 
 		TVector(const TElementType* rawPtr, size_t count)
 		{
@@ -417,6 +432,8 @@ namespace Sailor
 			}
 		}
 
+		bool IsEmpty() const { return m_arrayNum == 0; }
+
 		void Sort();
 		void Sort(const TPredicate<TElementType>& predicate);
 
@@ -431,6 +448,9 @@ namespace Sailor
 		// Support ranged for
 		TIterator<TElementType> begin() { return TIterator<TElementType>(m_pRawPtr); }
 		TIterator<TElementType> end() { return TIterator<TElementType>(m_pRawPtr + m_arrayNum); }
+
+		TConstIterator<TElementType> begin() const { return TConstIterator<TElementType>(m_pRawPtr); }
+		TConstIterator<TElementType> end() const { return TConstIterator<TElementType>(m_pRawPtr + m_arrayNum); }
 
 		TElementType* Data() { return m_pRawPtr; }
 		const TElementType* Data() const { return m_pRawPtr; }

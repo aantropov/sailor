@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include "Core/LogMacros.h"
 #include <assert.h>
-#include <vector>
+#include "Core/Vector.h"
 #include <set>
 #include "Sailor.h"
 #include "Platform/Win32/Window.h"
@@ -91,7 +91,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.apiVersion = VK_API_VERSION_1_2;
 
-	std::vector<const char*> extensions =
+	TVector<const char*> extensions =
 	{
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		"VK_KHR_win32_surface",
@@ -103,21 +103,21 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
-		extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+		extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 	}
 
 	VkInstanceCreateInfo createInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	createInfo.pApplicationInfo = &appInfo;
-	createInfo.ppEnabledExtensionNames = extensions.data();
-	createInfo.enabledExtensionCount = (uint32_t)extensions.size();
+	createInfo.ppEnabledExtensionNames = extensions.Data();
+	createInfo.enabledExtensionCount = (uint32_t)extensions.Num();
 
-	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
+	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
-		createInfo.ppEnabledLayerNames = validationLayers.data();
-		createInfo.enabledLayerCount = (uint32_t)validationLayers.size();
+		createInfo.ppEnabledLayerNames = validationLayers.Data();
+		createInfo.enabledLayerCount = (uint32_t)validationLayers.Num();
 
 		PopulateDebugMessengerCreateInfo(debugCreateInfo);
 		createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
@@ -163,9 +163,9 @@ void VulkanApi::PrintSupportedExtensions()
 {
 	uint32_t extensionNum = GetNumSupportedExtensions();
 
-	std::vector<VkExtensionProperties> extensions(extensionNum);
+	TVector<VkExtensionProperties> extensions(extensionNum);
 	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &extensionNum,
-		extensions.data()));
+		extensions.Data()));
 
 	printf("Vulkan available extensions:\n");
 	for (const auto& extension : extensions)
@@ -174,14 +174,14 @@ void VulkanApi::PrintSupportedExtensions()
 	}
 }
 
-bool VulkanApi::CheckValidationLayerSupport(const std::vector<const char*>& validationLayers)
+bool VulkanApi::CheckValidationLayerSupport(const TVector<const char*>& validationLayers)
 {
 	uint32_t layerCount;
 	VK_CHECK(vkEnumerateInstanceLayerProperties(&layerCount, nullptr));
 
-	std::vector<VkLayerProperties> availableLayers(layerCount);
+	TVector<VkLayerProperties> availableLayers(layerCount);
 	VK_CHECK(vkEnumerateInstanceLayerProperties(&layerCount,
-		availableLayers.data()));
+		availableLayers.Data()));
 
 	for (const std::string& layerName : validationLayers)
 	{
@@ -244,10 +244,10 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 		return VK_NULL_HANDLE;
 	}
 
-	std::vector<VkPhysicalDevice> devices(deviceCount);
+	TVector<VkPhysicalDevice> devices(deviceCount);
 	std::multimap<int, VkPhysicalDevice> candidates;
 
-	VK_CHECK(vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, devices.data()));
+	VK_CHECK(vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, devices.Data()));
 
 	for (const auto& device : devices)
 	{
@@ -277,8 +277,8 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, V
 	uint32_t queueFamilyCount = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
 
-	std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+	TVector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.Data());
 
 	int i = 0;
 	for (const auto& queueFamily : queueFamilies)
@@ -319,8 +319,8 @@ SwapChainSupportDetails VulkanApi::QuerySwapChainSupport(VkPhysicalDevice device
 
 	if (formatCount != 0)
 	{
-		details.m_formats.resize(formatCount);
-		VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device, *surface, &formatCount, details.m_formats.data()));
+		details.m_formats.Reserve(formatCount);
+		VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(device, *surface, &formatCount, details.m_formats.Data()));
 	}
 
 	uint32_t presentModeCount;
@@ -328,14 +328,14 @@ SwapChainSupportDetails VulkanApi::QuerySwapChainSupport(VkPhysicalDevice device
 
 	if (presentModeCount != 0)
 	{
-		details.m_presentModes.resize(presentModeCount);
-		VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, *surface, &presentModeCount, details.m_presentModes.data()));
+		details.m_presentModes.Reserve(presentModeCount);
+		VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, *surface, &presentModeCount, details.m_presentModes.Data()));
 	}
 
 	return details;
 }
 
-VkSurfaceFormatKHR VulkanApi::ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
+VkSurfaceFormatKHR VulkanApi::ChooseSwapSurfaceFormat(const TVector<VkSurfaceFormatKHR>& availableFormats)
 {
 	for (const auto& availableFormat : availableFormats)
 	{
@@ -348,7 +348,7 @@ VkSurfaceFormatKHR VulkanApi::ChooseSwapSurfaceFormat(const std::vector<VkSurfac
 	return availableFormats[0];
 }
 
-VkPresentModeKHR VulkanApi::ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync)
+VkPresentModeKHR VulkanApi::ÑhooseSwapPresentMode(const TVector<VkPresentModeKHR>& availablePresentModes, bool bVSync)
 {
 	if (bVSync)
 	{
@@ -387,11 +387,11 @@ bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 	uint32_t extensionCount;
 	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
 
-	std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-	VK_CHECK(vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data()));
+	TVector<VkExtensionProperties> availableExtensions(extensionCount);
+	VK_CHECK(vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.Data()));
 
-	std::vector<const char*> deviceExtensions;
-	std::vector<const char*> instanceExtensions;
+	TVector<const char*> deviceExtensions;
+	TVector<const char*> instanceExtensions;
 	GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
 	std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
@@ -414,7 +414,7 @@ bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surfa
 	if (extensionsSupported)
 	{
 		SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(device, surface);
-		swapChainFits = !swapChainSupport.m_formats.empty() && !swapChainSupport.m_presentModes.empty();
+		swapChainFits = !swapChainSupport.m_formats.IsEmpty() && !swapChainSupport.m_presentModes.IsEmpty();
 	}
 
 	VkPhysicalDeviceFeatures supportedFeatures;
@@ -511,8 +511,8 @@ VulkanRenderPassPtr VulkanApi::CreateRenderPass(VulkanDevicePtr device, VkFormat
 
 	VulkanSubpassDescription subpass = {};
 	subpass.m_pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.m_colorAttachments.emplace_back(colorAttachmentRef);
-	subpass.m_depthStencilAttachments.emplace_back(depthAttachmentRef);
+	subpass.m_colorAttachments.Emplace(colorAttachmentRef);
+	subpass.m_depthStencilAttachments.Emplace(depthAttachmentRef);
 
 	// image layout transition
 	VkSubpassDependency colorDependency = {};
@@ -535,9 +535,9 @@ VulkanRenderPassPtr VulkanApi::CreateRenderPass(VulkanDevicePtr device, VkFormat
 	depthDependency.dependencyFlags = 0;
 
 	return VulkanRenderPassPtr::Make(device,
-		std::vector<VkAttachmentDescription> {	GetDefaultColorAttachment(imageFormat), GetDefaultDepthAttachment(depthFormat) },
-		std::vector<VulkanSubpassDescription> { subpass },
-		std::vector<VkSubpassDependency> { colorDependency, depthDependency });
+		TVector<VkAttachmentDescription> {	GetDefaultColorAttachment(imageFormat), GetDefaultDepthAttachment(depthFormat) },
+		TVector<VulkanSubpassDescription> { subpass },
+		TVector<VkSubpassDependency> { colorDependency, depthDependency });
 }
 
 VulkanRenderPassPtr VulkanApi::CreateMSSRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples)
@@ -580,7 +580,7 @@ VulkanRenderPassPtr VulkanApi::CreateMSSRenderPass(VulkanDevicePtr device, VkFor
 	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-	std::vector<VkAttachmentDescription> attachments{ colorAttachment, resolveAttachment, depthAttachment };
+	TVector<VkAttachmentDescription> attachments{ colorAttachment, resolveAttachment, depthAttachment };
 
 	VkAttachmentReference colorAttachmentRef = {};
 	colorAttachmentRef.attachment = 0;
@@ -596,11 +596,11 @@ VulkanRenderPassPtr VulkanApi::CreateMSSRenderPass(VulkanDevicePtr device, VkFor
 
 	VulkanSubpassDescription subpass;
 	subpass.m_pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.m_colorAttachments.emplace_back(colorAttachmentRef);
-	subpass.m_resolveAttachments.emplace_back(resolveAttachmentRef);
-	subpass.m_depthStencilAttachments.emplace_back(depthAttachmentRef);
+	subpass.m_colorAttachments.Emplace(colorAttachmentRef);
+	subpass.m_resolveAttachments.Emplace(resolveAttachmentRef);
+	subpass.m_depthStencilAttachments.Emplace(depthAttachmentRef);
 
-	std::vector<VulkanSubpassDescription> subpasses{ subpass };
+	TVector<VulkanSubpassDescription> subpasses{ subpass };
 
 	VkSubpassDependency dependency = {};
 	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -620,7 +620,7 @@ VulkanRenderPassPtr VulkanApi::CreateMSSRenderPass(VulkanDevicePtr device, VkFor
 	dependency2.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
 	dependency2.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
-	std::vector<VkSubpassDependency> dependencies{ dependency, dependency2 };
+	TVector<VkSubpassDependency> dependencies{ dependency, dependency2 };
 
 	return VulkanRenderPassPtr::Make(device, attachments, subpasses, dependencies);
 }
@@ -630,7 +630,7 @@ bool VulkanApi::HasStencilComponent(VkFormat format)
 	return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-VkFormat VulkanApi::SelectFormatByFeatures(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
+VkFormat VulkanApi::SelectFormatByFeatures(VkPhysicalDevice physicalDevice, const TVector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
 {
 	for (VkFormat format : candidates)
 	{
@@ -683,9 +683,9 @@ VkVertexInputBindingDescription VertexFactory<RHI::Vertex>::GetBindingDescriptio
 	return bindingDescription;
 }
 
-std::vector<VkVertexInputAttributeDescription> VertexFactory<RHI::Vertex>::GetAttributeDescriptions()
+TVector<VkVertexInputAttributeDescription> VertexFactory<RHI::Vertex>::GetAttributeDescriptions()
 {
-	std::vector<VkVertexInputAttributeDescription> attributeDescriptions(3);
+	TVector<VkVertexInputAttributeDescription> attributeDescriptions(3);
 
 	attributeDescriptions[0].binding = 0;
 	attributeDescriptions[0].location = 0;
@@ -908,12 +908,12 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 }
 
 bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
-	const std::vector<VulkanShaderStagePtr>& shaders,
-	std::vector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
-	std::vector<RHI::ShaderLayoutBinding>& outRhiLayout)
+	const TVector<VulkanShaderStagePtr>& shaders,
+	TVector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
+	TVector<RHI::ShaderLayoutBinding>& outRhiLayout)
 {
-	std::vector<std::vector<VkDescriptorSetLayoutBinding>> vulkanLayouts;
-	std::vector<std::vector<RHI::ShaderLayoutBinding>> rhiLayouts;
+	TVector<TVector<VkDescriptorSetLayoutBinding>> vulkanLayouts;
+	TVector<TVector<RHI::ShaderLayoutBinding>> rhiLayouts;
 
 	std::unordered_set<uint32_t> uniqueDescriptorSets;
 	for (const auto& shader : shaders)
@@ -925,48 +925,48 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	}
 	size_t countDescriptorSets = uniqueDescriptorSets.size();
 
-	vulkanLayouts.resize(countDescriptorSets);
-	rhiLayouts.resize(countDescriptorSets);
+	vulkanLayouts.Reserve(countDescriptorSets);
+	rhiLayouts.Reserve(countDescriptorSets);
 
-	for (uint32_t i = 0; i < shaders.size(); i++)
+	for (uint32_t i = 0; i < shaders.Num(); i++)
 	{
-		for (uint32_t j = 0; j < shaders[i]->GetDescriptorSetLayoutBindings().size(); j++)
+		for (uint32_t j = 0; j < shaders[i]->GetDescriptorSetLayoutBindings().Num(); j++)
 		{
 			const auto& rhiBindings = shaders[i]->GetBindings()[j];
 			const auto& bindings = shaders[i]->GetDescriptorSetLayoutBindings()[j];
 
-			for (uint32_t k = 0; k < bindings.size(); k++)
+			for (uint32_t k = 0; k < bindings.Num(); k++)
 			{
 				const auto& rhiBinding = rhiBindings[k];
 				const auto& binding = bindings[k];
 
 				// Handle duplicated bindings
 				auto& binds = vulkanLayouts[rhiBinding.m_set];
-				if (binds.end() == std::find_if(binds.begin(), binds.end(), [&rhiBinding](auto& b) { return b.binding == rhiBinding.m_binding; }))
+				if (binds.FindIf([&rhiBinding](auto& b) { return b.binding == rhiBinding.m_binding; }) == -1)
 				{
-					vulkanLayouts[rhiBinding.m_set].push_back(binding);
-					rhiLayouts[rhiBinding.m_set].push_back(rhiBinding);
+					vulkanLayouts[rhiBinding.m_set].Add(binding);
+					rhiLayouts[rhiBinding.m_set].Add(rhiBinding);
 				}
 			}
 		}
 	}
 
-	std::vector<VulkanDescriptorSetLayoutPtr> res;
+	TVector<VulkanDescriptorSetLayoutPtr> res;
 
-	res.resize(vulkanLayouts.size());
+	res.Reserve(vulkanLayouts.Num());
 
-	for (uint32_t i = 0; i < vulkanLayouts.size(); i++)
+	for (uint32_t i = 0; i < vulkanLayouts.Num(); i++)
 	{
 		res[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(vulkanLayouts[i]));
 	}
 
-	std::vector<RHI::ShaderLayoutBinding> rhiRes;
+	TVector<RHI::ShaderLayoutBinding> rhiRes;
 
-	for (uint32_t i = 0; i < vulkanLayouts.size(); i++)
+	for (uint32_t i = 0; i < vulkanLayouts.Num(); i++)
 	{
 		for (auto& rhi : rhiLayouts[i])
 		{
-			rhiRes.push_back(std::move(rhi));
+			rhiRes.Add(std::move(rhi));
 		}
 	}
 

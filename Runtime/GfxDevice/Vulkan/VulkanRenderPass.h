@@ -11,11 +11,11 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 		VkSubpassDescriptionFlags m_flags = 0;
 		VkPipelineBindPoint m_pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		std::vector<VkAttachmentReference> m_inputAttachments;
-		std::vector<VkAttachmentReference> m_colorAttachments;
-		std::vector<VkAttachmentReference> m_resolveAttachments;
-		std::vector<VkAttachmentReference> m_depthStencilAttachments;
-		std::vector<uint32_t> m_preserveAttachments;
+		TVector<VkAttachmentReference> m_inputAttachments;
+		TVector<VkAttachmentReference> m_colorAttachments;
+		TVector<VkAttachmentReference> m_resolveAttachments;
+		TVector<VkAttachmentReference> m_depthStencilAttachments;
+		TVector<uint32_t> m_preserveAttachments;
 	};
 
 	class VulkanRenderPass final : public RHI::Resource
@@ -23,9 +23,9 @@ namespace Sailor::GfxDevice::Vulkan
 	public:
 
 		VulkanRenderPass(VulkanDevicePtr device,
-			const std::vector<VkAttachmentDescription>& attachments,
-			const std::vector<VulkanSubpassDescription>& subpasses,
-			const std::vector<VkSubpassDependency>& dependencies);
+			const TVector<VkAttachmentDescription>& attachments,
+			const TVector<VulkanSubpassDescription>& subpasses,
+			const TVector<VkSubpassDependency>& dependencies);
 
 		operator VkRenderPass() const { return m_renderPass; }
 

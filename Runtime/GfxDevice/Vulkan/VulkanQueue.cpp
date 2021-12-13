@@ -16,10 +16,10 @@ VulkanQueue::~VulkanQueue()
 {
 }
 
-VkResult VulkanQueue::Submit(const std::vector<VkSubmitInfo>& submitInfos, VulkanFencePtr fence) const
+VkResult VulkanQueue::Submit(const TVector<VkSubmitInfo>& submitInfos, VulkanFencePtr fence) const
 {
 	std::scoped_lock<std::mutex> guard(m_mutex);
-	return vkQueueSubmit(m_queue, static_cast<uint32_t>(submitInfos.size()), submitInfos.data(), fence ? (VkFence)*fence : VK_NULL_HANDLE);
+	return vkQueueSubmit(m_queue, static_cast<uint32_t>(submitInfos.Num()), submitInfos.Data(), fence ? (VkFence)*fence : VK_NULL_HANDLE);
 }
 
 VkResult VulkanQueue::Submit(const VkSubmitInfo& submitInfo, VulkanFencePtr fence) const

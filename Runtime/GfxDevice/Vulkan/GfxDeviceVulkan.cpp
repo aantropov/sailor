@@ -32,7 +32,7 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 {
 	TrackResources_ThreadSafe();
 
-	m_trackedFences.clear();
+	m_trackedFences.Clear();
 	m_uniformBuffers.clear();
 	m_storageBuffer.Clear();
 
@@ -65,19 +65,19 @@ void GfxDeviceVulkan::FixLostDevice(const Win32::Window* pViewport)
 }
 
 bool GfxDeviceVulkan::PresentFrame(const class FrameState& state,
-	const std::vector<RHI::CommandListPtr>* primaryCommandBuffers,
-	const std::vector<RHI::CommandListPtr>* secondaryCommandBuffers,
-	std::vector<RHI::SemaphorePtr> waitSemaphores) const
+	const TVector<RHI::CommandListPtr>* primaryCommandBuffers,
+	const TVector<RHI::CommandListPtr>* secondaryCommandBuffers,
+	TVector<RHI::SemaphorePtr> waitSemaphores) const
 {
-	std::vector<VulkanCommandBufferPtr> primaryBuffers;
-	std::vector<VulkanCommandBufferPtr> secondaryBuffers;
-	std::vector<VulkanSemaphorePtr> vkWaitSemaphores;
+	TVector<VulkanCommandBufferPtr> primaryBuffers;
+	TVector<VulkanCommandBufferPtr> secondaryBuffers;
+	TVector<VulkanSemaphorePtr> vkWaitSemaphores;
 
 	if (primaryCommandBuffers != nullptr)
 	{
 		for (auto& buffer : *primaryCommandBuffers)
 		{
-			primaryBuffers.push_back(buffer->m_vulkan.m_commandBuffer);
+			primaryBuffers.Add(buffer->m_vulkan.m_commandBuffer);
 		}
 	}
 
@@ -85,15 +85,15 @@ bool GfxDeviceVulkan::PresentFrame(const class FrameState& state,
 	{
 		for (auto& buffer : *secondaryCommandBuffers)
 		{
-			secondaryBuffers.push_back(buffer->m_vulkan.m_commandBuffer);
+			secondaryBuffers.Add(buffer->m_vulkan.m_commandBuffer);
 		}
 	}
 
-	if (waitSemaphores.size() > 0)
+	if (waitSemaphores.Num() > 0)
 	{
 		for (auto& buffer : waitSemaphores)
 		{
-			vkWaitSemaphores.push_back(buffer->m_vulkan.m_semaphore);
+			vkWaitSemaphores.Add(buffer->m_vulkan.m_semaphore);
 		}
 	}
 
@@ -121,21 +121,21 @@ void GfxDeviceVulkan::SubmitCommandList(RHI::CommandListPtr commandList, RHI::Fe
 
 	SAILOR_PROFILE_END_BLOCK();
 
-	std::vector<VulkanSemaphorePtr> signal;
-	std::vector<VulkanSemaphorePtr> wait;
+	TVector<VulkanSemaphorePtr> signal;
+	TVector<VulkanSemaphorePtr> wait;
 
 	SAILOR_PROFILE_BLOCK("Add semaphore dependencies");
 
 	if (signalSemaphore)
 	{
 		commandList->m_vulkan.m_commandBuffer->AddDependency(signalSemaphore->m_vulkan.m_semaphore);
-		signal.push_back(signalSemaphore->m_vulkan.m_semaphore);
+		signal.Add(signalSemaphore->m_vulkan.m_semaphore);
 	}
 
 	if (waitSemaphore)
 	{
 		commandList->m_vulkan.m_commandBuffer->AddDependency(waitSemaphore->m_vulkan.m_semaphore);
-		wait.push_back(waitSemaphore->m_vulkan.m_semaphore);
+		wait.Add(waitSemaphore->m_vulkan.m_semaphore);
 	}
 
 	SAILOR_PROFILE_END_BLOCK();
@@ -296,8 +296,8 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
-	std::vector<VulkanDescriptorPtr> descriptors;
-	std::vector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
+	TVector<VulkanDescriptorPtr> descriptors;
+	TVector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
 
 	for (const auto& binding : bindings->GetShaderBindings())
 	{
@@ -310,8 +310,8 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 					device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
 					texture->m_vulkan.m_imageView);
 
-				descriptors.push_back(descr);
-				descriptionSetLayouts.push_back(binding.second->m_vulkan.m_descriptorSetLayout);
+				descriptors.Add(descr);
+				descriptionSetLayouts.Add(binding.second->m_vulkan.m_descriptorSetLayout);
 			}
 			else if (binding.second->m_vulkan.m_valueBinding)
 			{
@@ -319,8 +319,8 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 				auto descr = VulkanDescriptorBufferPtr::Make(binding.second->m_vulkan.m_descriptorSetLayout.binding, 0,
 					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.second->GetLayout().m_type);
 
-				descriptors.push_back(descr);
-				descriptionSetLayouts.push_back(binding.second->m_vulkan.m_descriptorSetLayout);
+				descriptors.Add(descr);
+				descriptionSetLayouts.Add(binding.second->m_vulkan.m_descriptorSetLayout);
 			}
 		}
 	}
@@ -340,8 +340,8 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	std::vector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
-	std::vector<RHI::ShaderLayoutBinding> bindings;
+	TVector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
+	TVector<RHI::ShaderLayoutBinding> bindings;
 
 	// We need debug shaders to get full names from reflection
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader.Lock()->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader.Lock()->GetDebugFragmentShaderRHI()->m_vulkan.m_shader},
@@ -361,12 +361,12 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
 	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
 		descriptorSetLayouts,
-		std::vector<VkPushConstantRange>(),
+		TVector<VkPushConstantRange>(),
 		0);
 
 	res->m_vulkan.m_pipeline = VulkanPipelinePtr::Make(device,
 		pipelineLayout,
-		std::vector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
+		TVector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
 		device->GetPipelineBuilder()->BuildPipeline(renderState),
 		0);
 
@@ -376,7 +376,7 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 	auto shaderBindings = CreateShaderBindings();
 	res->SetBindings(shaderBindings);
 
-	for (uint32_t i = 0; i < bindings.size(); i++)
+	for (uint32_t i = 0; i < bindings.Num(); i++)
 	{
 		auto& layoutBinding = bindings[i];
 		if (layoutBinding.m_set == 0 || layoutBinding.m_set == 1)
@@ -387,13 +387,13 @@ RHI::MaterialPtr GfxDeviceVulkan::CreateMaterial(const RHI::RenderState& renderS
 		}
 		const auto& layoutBindings = descriptorSetLayouts[layoutBinding.m_set]->m_descriptorSetLayoutBindings;
 
-		auto it = std::find_if(layoutBindings.begin(), layoutBindings.end(), [&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_binding; });
-		if (it == layoutBindings.end())
+		auto it = layoutBindings.FindIf([&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_binding; });
+		if (it == -1)
 		{
 			continue;
 		}
 
-		auto& vkLayoutBinding = *it;
+		auto& vkLayoutBinding = layoutBindings[it];
 		auto& binding = shaderBindings->GetOrCreateShaderBinding(layoutBinding.m_name);
 
 		if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
@@ -547,17 +547,17 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, con
 	auto device = m_vkInstance->GetMainDevice();
 	const auto& layoutBindings = bindings->GetLayoutBindings();
 
-	auto it = std::find_if(layoutBindings.begin(), layoutBindings.end(), [&parameter](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
+	auto index = layoutBindings.FindIf([&parameter](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
 			return shaderLayoutBinding.m_name == parameter;
 		});
 
-	if (it != layoutBindings.end())
+	if (index != -1)
 	{
 		auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
-		auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [&it](const VulkanDescriptorPtr& descriptor)
+		auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [=](const VulkanDescriptorPtr& descriptor)
 			{
-				return descriptor->GetBinding() == it->m_binding;
+				return descriptor->GetBinding() == layoutBindings[index].m_binding;
 			});
 
 		if (descrIt != descriptors.end())
@@ -576,7 +576,7 @@ void GfxDeviceVulkan::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, con
 			// Add new texture binding
 			auto textureBinding = bindings->GetOrCreateShaderBinding(parameter);
 			textureBinding->SetTextureBinding(value);
-			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(it->m_binding, (VkDescriptorType)it->m_type);
+			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layoutBindings[index].m_binding, (VkDescriptorType)layoutBindings[index].m_type);
 			UpdateDescriptorSet(bindings);
 
 			return;

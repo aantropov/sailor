@@ -1,5 +1,5 @@
 #pragma once
-#include <vector>
+#include "Core/Vector.h"
 #include <unordered_map>
 #include "vulkan/vulkan.h"
 #include "Memory/RefPtr.hpp"
@@ -48,14 +48,14 @@ namespace Sailor::GfxDevice::Vulkan
 	{
 	public:
 
-		VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const std::vector<VkVertexInputAttributeDescription> attributes);
+		VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const TVector<VkVertexInputAttributeDescription> attributes);
 
 		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 
 		VkVertexInputBindingDescription m_bindingDescription;
-		std::vector<VkVertexInputAttributeDescription> m_attributeDescriptions;
+		TVector<VkVertexInputAttributeDescription> m_attributeDescriptions;
 		VkPipelineVertexInputStateCreateInfo m_vertexInput;
 	};
 
@@ -122,7 +122,7 @@ namespace Sailor::GfxDevice::Vulkan
 	private:
 
 		VkPipelineDynamicStateCreateInfo m_dynamicState;
-		std::vector<VkDynamicState> m_dynamicStates;
+		TVector<VkDynamicState> m_dynamicStates;
 	};
 
 	class VulkanStateDepthStencil : public VulkanPipelineState
@@ -139,7 +139,7 @@ namespace Sailor::GfxDevice::Vulkan
 	struct VulkanPipelineStateBuilder
 	{
 		VulkanPipelineStateBuilder(VulkanDevicePtr pDevice);
-		const std::vector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::RenderState& renderState);
+		const TVector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::RenderState& renderState);
 
 	protected:
 
@@ -149,7 +149,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanStateColorBlendingPtr GetBlendState(RHI::EBlendMode mode);
 
 		VulkanDevicePtr m_pDevice;
-		std::vector<VulkanStateColorBlendingPtr> m_blendModes;
-		std::unordered_map<RHI::RenderState, std::vector<VulkanPipelineStatePtr>> m_cache;
+		TVector<VulkanStateColorBlendingPtr> m_blendModes;
+		std::unordered_map<RHI::RenderState, TVector<VulkanPipelineStatePtr>> m_cache;
 	};
 }

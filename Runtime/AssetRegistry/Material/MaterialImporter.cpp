@@ -108,7 +108,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	{
 		for (auto& elem : outData["defines"])
 		{
-			m_pData->m_shaderDefines.push_back(elem.get<std::string>());
+			m_pData->m_shaderDefines.Add(elem.get<std::string>());
 		}
 	}
 
@@ -124,7 +124,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 			auto first = elem[0].get<std::string>();
 			auto second = elem[1].get<glm::vec4>();
 
-			m_pData->m_uniformsVec4.push_back({ first, second });
+			m_pData->m_uniformsVec4.Add({ first, second });
 		}
 	}
 

@@ -52,7 +52,7 @@ namespace Sailor
 
 			// Wait other task's completion before start
 			SAILOR_API void Join(const TWeakPtr<ITask>& jobDependent);
-			SAILOR_API void Join(const std::vector<TWeakPtr<ITask>>& jobsDependent);
+			SAILOR_API void Join(const TVector<TWeakPtr<ITask>>& jobsDependent);
 
 			// Run current task and all chained
 			SAILOR_API TSharedPtr<ITask> Run();
@@ -104,7 +104,7 @@ namespace Sailor
 
 			std::atomic<uint32_t> m_numBlockers;
 
-			std::vector<TWeakPtr<ITask>> m_dependencies;
+			TVector<TWeakPtr<ITask>> m_dependencies;
 			std::string m_name;
 
 			std::condition_variable m_onComplete;

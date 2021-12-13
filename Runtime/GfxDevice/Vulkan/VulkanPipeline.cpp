@@ -1,4 +1,4 @@
-#include <vector>
+#include "Core/Vector.h"
 #include "VulkanApi.h"
 #include "VulkanPipeline.h"
 
@@ -18,8 +18,8 @@ VulkanPipelineLayout::VulkanPipelineLayout() :
 
 VulkanPipelineLayout::VulkanPipelineLayout(
 	VulkanDevicePtr pDevice,
-	std::vector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
-	std::vector<VkPushConstantRange> pushConstantRanges,
+	TVector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
+	TVector<VkPushConstantRange> pushConstantRanges,
 	VkPipelineLayoutCreateFlags flags) :
 	m_flags(flags),
 	m_descriptionSetLayouts(std::move(descriptorsSet)),
@@ -76,8 +76,8 @@ void VulkanPipelineLayout::Compile()
 
 VulkanPipeline::VulkanPipeline(VulkanDevicePtr pDevice,
 	VulkanPipelineLayoutPtr pipelineLayout,
-	std::vector<VulkanShaderStagePtr> shaderStages,
-	std::vector<VulkanPipelineStatePtr> pipelineStates,
+	TVector<VulkanShaderStagePtr> shaderStages,
+	TVector<VulkanPipelineStatePtr> pipelineStates,
 	uint32_t subpass) :
 	m_stages(std::move(shaderStages)),
 	m_pipelineStates(std::move(pipelineStates)),

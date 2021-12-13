@@ -44,7 +44,7 @@ void AssetRegistry::ScanContentFolder()
 	ScanFolder(ContentRootFolder);
 }
 
-bool AssetRegistry::RegisterAssetInfoHandler(const std::vector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler)
+bool AssetRegistry::RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
 

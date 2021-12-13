@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
-#include <vector>
+#include "Core/Vector.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -36,7 +36,7 @@ namespace Sailor
 	class TextureImporter final : public TSubmodule<TextureImporter>, public IAssetInfoHandlerListener
 	{
 	public:
-		using ByteCode = std::vector<uint8_t>;
+		using ByteCode = TVector<uint8_t>;
 
 		SAILOR_API TextureImporter(TextureAssetInfoHandler* infoHandler);
 		virtual SAILOR_API ~TextureImporter() override;

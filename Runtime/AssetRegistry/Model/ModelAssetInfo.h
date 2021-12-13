@@ -20,7 +20,7 @@ namespace Sailor
 
 	private:
 
-		std::vector<UID> m_materials;
+		TVector<UID> m_materials;
 		bool m_bShouldGenerateMaterials = true;
 		bool m_bShouldBatchByMaterials = true;
 	};

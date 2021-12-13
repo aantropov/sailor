@@ -2,11 +2,11 @@
 #include "Memory/RefPtr.hpp"
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtx/hash.hpp>
-#include <vector>
+#include "Core/Vector.h"
 
 namespace Sailor::RHI
 {
-	using ShaderByteCode = std::vector<uint32_t>;
+	using ShaderByteCode = TVector<uint32_t>;
 
 	enum class ETextureFiltration : uint8_t
 	{
@@ -432,7 +432,7 @@ namespace Sailor::RHI
 	{
 		EShaderBindingType m_type = EShaderBindingType::CombinedImageSampler;
 		std::string m_name = "";
-		std::vector<ShaderLayoutBindingMember> m_members{};
+		TVector<ShaderLayoutBindingMember> m_members{};
 
 		uint8_t m_binding = 0u;
 		uint32_t m_size = 0u;
@@ -495,18 +495,18 @@ namespace Sailor::RHI
 
 		void AddDependency(TRefPtr<Resource> dependency)
 		{
-			m_dependencies.push_back(std::move(dependency));
+			m_dependencies.Add(std::move(dependency));
 		}
 
 		void ClearDependencies()
 		{
-			m_dependencies.clear();
+			m_dependencies.Clear();
 		}
 
 		virtual SAILOR_API ~IDependent() = default;
 
 	protected:
-		std::vector<TRefPtr<Resource>> m_dependencies;
+		TVector<TRefPtr<Resource>> m_dependencies;
 	};
 
 	class IObservable
@@ -530,12 +530,12 @@ namespace Sailor::RHI
 
 		void SAILOR_API AddObservable(TRefPtr<RHI::Resource> resource)
 		{
-			m_elements.push_back(std::move(resource));
+			m_elements.Add(std::move(resource));
 		}
 
 		virtual SAILOR_API void TraceObservables()
 		{
-			for (int32_t i = 0; i < m_elements.size(); i++)
+			for (int32_t i = 0; i < m_elements.Num(); i++)
 			{
 				auto& element = m_elements[i];
 
@@ -547,8 +547,7 @@ namespace Sailor::RHI
 
 				if (bShouldRemove)
 				{
-					std::iter_swap(m_elements.begin() + i, m_elements.end() - 1);
-					m_elements.pop_back();
+					m_elements.RemoveAtSwap(i);
 					i--;
 				}
 			}
@@ -556,12 +555,12 @@ namespace Sailor::RHI
 
 		SAILOR_API void ClearObservables()
 		{
-			m_elements.clear();
+			m_elements.Clear();
 		}
 
 	protected:
 
-		std::vector<TRefPtr<RHI::Resource>> m_elements;
+		TVector<TRefPtr<RHI::Resource>> m_elements;
 	};
 
 	// Used to create resource after create the instance of class

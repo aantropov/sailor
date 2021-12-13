@@ -49,9 +49,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void SAILOR_API WaitIdle();
 		void SAILOR_API WaitIdlePresentQueue();
-		bool SAILOR_API PresentFrame(const FrameState& state, std::vector<VulkanCommandBufferPtr> primaryCommandBuffers = {},
-			std::vector<VulkanCommandBufferPtr> secondaryCommandBuffers = {},
-			std::vector<VulkanSemaphorePtr> waitSemaphores = {});
+		bool SAILOR_API PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers = {},
+			TVector<VulkanCommandBufferPtr> secondaryCommandBuffers = {},
+			TVector<VulkanSemaphorePtr> waitSemaphores = {});
 
 		bool SAILOR_API IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 		
@@ -59,8 +59,8 @@ namespace Sailor::GfxDevice::Vulkan
 
 		SAILOR_API void SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 			VulkanFencePtr fence = nullptr,
-			std::vector<VulkanSemaphorePtr> signalSemaphores = {},
-			std::vector<VulkanSemaphorePtr> waitSemaphores = {});
+			TVector<VulkanSemaphorePtr> signalSemaphores = {},
+			TVector<VulkanSemaphorePtr> waitSemaphores = {});
 
 		SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport);
 		SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
@@ -132,7 +132,7 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// Internal command buffers
 		VulkanCommandPoolPtr m_commandPool;
-		std::vector<VulkanCommandBufferPtr> m_commandBuffers;
+		TVector<VulkanCommandBufferPtr> m_commandBuffers;
 
 		// Render Pass
 		VulkanRenderPassPtr m_renderPass;
@@ -150,13 +150,13 @@ namespace Sailor::GfxDevice::Vulkan
 
 		// Swapchain
 		VulkanSwapchainPtr m_swapchain;
-		std::vector<VulkanFramebufferPtr> m_swapChainFramebuffers;
+		TVector<VulkanFramebufferPtr> m_swapChainFramebuffers;
 
 		// Frame sync
-		std::vector<VulkanSemaphorePtr> m_imageAvailableSemaphores;
-		std::vector<VulkanSemaphorePtr> m_renderFinishedSemaphores;
-		std::vector<VulkanFencePtr> m_syncFences;
-		std::vector<VulkanFencePtr> m_syncImages;
+		TVector<VulkanSemaphorePtr> m_imageAvailableSemaphores;
+		TVector<VulkanSemaphorePtr> m_renderFinishedSemaphores;
+		TVector<VulkanFencePtr> m_syncFences;
+		TVector<VulkanFencePtr> m_syncImages;
 		size_t m_currentFrame = 0;
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;

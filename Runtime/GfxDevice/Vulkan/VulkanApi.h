@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <vector>
+#include "Core/Vector.h"
 #include <cassert>
 #include <iostream>
 #include <cstdint>
@@ -12,6 +12,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Memory/RefPtr.hpp"
 #include "Core/Singleton.hpp"
+#include "Core/Vector.h"
 
 namespace Sailor
 {
@@ -87,8 +88,8 @@ namespace Sailor::GfxDevice::Vulkan
 	struct SwapChainSupportDetails
 	{
 		VkSurfaceCapabilitiesKHR m_capabilities;
-		std::vector<VkSurfaceFormatKHR> m_formats;
-		std::vector<VkPresentModeKHR> m_presentModes;
+		TVector<VkSurfaceFormatKHR> m_formats;
+		TVector<VkPresentModeKHR> m_presentModes;
 	};
 
 	template<typename TVertex = RHI::Vertex>
@@ -97,7 +98,7 @@ namespace Sailor::GfxDevice::Vulkan
 	public:
 
 		static SAILOR_API VkVertexInputBindingDescription GetBindingDescription();
-		static SAILOR_API std::vector<VkVertexInputAttributeDescription> GetAttributeDescriptions();
+		static SAILOR_API TVector<VkVertexInputAttributeDescription> GetAttributeDescriptions();
 	};
 
 	class VulkanApi : public TSingleton<VulkanApi>
@@ -118,17 +119,17 @@ namespace Sailor::GfxDevice::Vulkan
 
 		static SAILOR_API VulkanQueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VulkanSurfacePtr surface);
 
-		static SAILOR_API VkFormat SelectFormatByFeatures(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+		static SAILOR_API VkFormat SelectFormatByFeatures(VkPhysicalDevice physicalDevice, const TVector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 		static SAILOR_API bool HasStencilComponent(VkFormat format);
 
 		static SAILOR_API SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device, VulkanSurfacePtr surface);
 
-		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
-		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
+		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const TVector<VkSurfaceFormatKHR>& availableFormats);
+		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const TVector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
 		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
-		static SAILOR_API void GetRequiredExtensions(std::vector<const char*>& requiredDeviceExtensions, std::vector<const char*>& requiredInstanceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
+		static SAILOR_API void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
 
 		static SAILOR_API VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
 		static SAILOR_API VkAttachmentDescription GetDefaultDepthAttachment(VkFormat depthFormat);
@@ -139,9 +140,9 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
 		static SAILOR_API bool CreateDescriptorSetLayouts(VulkanDevicePtr device,
-			const std::vector<VulkanShaderStagePtr>& shaders,
-			std::vector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
-			std::vector<RHI::ShaderLayoutBinding>& outRhiLayout);
+			const TVector<VulkanShaderStagePtr>& shaders,
+			TVector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
+			TVector<RHI::ShaderLayoutBinding>& outRhiLayout);
 
 		static SAILOR_API VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
 			uint32_t              binding = 0,
@@ -195,7 +196,7 @@ namespace Sailor::GfxDevice::Vulkan
 		static SAILOR_API void PrintSupportedExtensions();
 
 		static SAILOR_API bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
-		static SAILOR_API bool CheckValidationLayerSupport(const std::vector<const char*>& validationLayers);
+		static SAILOR_API bool CheckValidationLayerSupport(const TVector<const char*>& validationLayers);
 
 		static SAILOR_API bool IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surface);
 		static SAILOR_API int32_t GetDeviceScore(VkPhysicalDevice device);

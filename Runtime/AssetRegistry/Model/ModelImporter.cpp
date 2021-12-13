@@ -21,7 +21,7 @@ using namespace Sailor;
 
 void Model::Flush()
 {
-	if (m_meshes.size() == 0 || m_meshes.size() != m_materials.size())
+	if (m_meshes.Num() == 0 || m_meshes.Num() != m_materials.Num())
 	{
 		m_bIsReady = false;
 		return;
@@ -109,24 +109,24 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		memcpy(&ambient, material.ambient, 3 * sizeof(tinyobj::real_t));
 		memcpy(&emission, material.emission, 3 * sizeof(tinyobj::real_t));
 		memcpy(&specular, material.specular, 3 * sizeof(tinyobj::real_t));
-		data.m_uniformsVec4.push_back({ "material.diffuse", diffuse });
-		data.m_uniformsVec4.push_back({ "material.ambient", ambient });
-		data.m_uniformsVec4.push_back({ "material.emission", emission });
-		data.m_uniformsVec4.push_back({ "material.specular", specular });
+		data.m_uniformsVec4.Add({ "material.diffuse", diffuse });
+		data.m_uniformsVec4.Add({ "material.ambient", ambient });
+		data.m_uniformsVec4.Add({ "material.emission", emission });
+		data.m_uniformsVec4.Add({ "material.specular", specular });
 
 		if (!material.diffuse_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("diffuseSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.diffuse_texname)));
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("diffuseSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.diffuse_texname)));
 		}
 
 		if (!material.ambient_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.ambient_texname)));
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.ambient_texname)));
 		}
 
 		if (!material.normal_texname.empty())
 		{
-			data.m_samplers.push_back(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
 		}
 
 		std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";
@@ -182,7 +182,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 		promise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[model, assetInfo, this]()
 			{
-				std::vector<AssetInfoPtr> outMaterialUIDs;
+				TVector<AssetInfoPtr> outMaterialUIDs;
 				if (ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, outMaterialUIDs))
 				{
 					JobSystem::ITaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model",
@@ -199,7 +199,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 						{
 							if (material)
 							{
-								model.GetRawPtr()->m_materials.push_back(material);
+								model.GetRawPtr()->m_materials.Add(material);
 								model.GetRawPtr()->AddHotReloadDependentObject(material);
 
 								if (loadMaterial)
@@ -233,8 +233,8 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 }
 
 bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
-	std::vector<RHI::MeshPtr>& outMeshes,
-	std::vector<AssetInfoPtr>& outMaterialUIDs)
+	TVector<RHI::MeshPtr>& outMeshes,
+	TVector<AssetInfoPtr>& outMaterialUIDs)
 {
 
 	tinyobj::attrib_t attrib;
@@ -256,12 +256,12 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 	struct MeshContext
 	{
 		std::unordered_map<RHI::Vertex, uint32_t> uniqueVertices;
-		std::vector<RHI::Vertex> outVertices;
-		std::vector<uint32_t> outIndices;
+		TVector<RHI::Vertex> outVertices;
+		TVector<uint32_t> outIndices;
 	};
 
-	std::vector<MeshContext> meshes;
-	meshes.resize(assetInfo->ShouldBatchByMaterial() ? materials.size() : shapes.size());
+	TVector<MeshContext> meshes;
+	meshes.Reserve(assetInfo->ShouldBatchByMaterial() ? materials.size() : shapes.size());
 
 	uint32_t idx = 0;
 	for (const auto& shape : shapes)
@@ -288,22 +288,22 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 
 			if (mesh.uniqueVertices.count(vertex) == 0)
 			{
-				mesh.uniqueVertices[vertex] = static_cast<uint32_t>(mesh.outVertices.size());
-				mesh.outVertices.push_back(vertex);
+				mesh.uniqueVertices[vertex] = static_cast<uint32_t>(mesh.outVertices.Num());
+				mesh.outVertices.Add(vertex);
 			}
 
-			mesh.outIndices.push_back(mesh.uniqueVertices[vertex]);
+			mesh.outIndices.Add(mesh.uniqueVertices[vertex]);
 		}
 
 		if (assetInfo->ShouldGenerateMaterials() && !assetInfo->ShouldBatchByMaterial())
 		{
 			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + materials[shape.mesh.material_ids[0]].name + ".mat"))
 			{
-				outMaterialUIDs.push_back(materialInfo);
+				outMaterialUIDs.Add(materialInfo);
 			}
 			else
 			{
-				outMaterialUIDs.push_back(nullptr);
+				outMaterialUIDs.Add(nullptr);
 			}
 		}
 
@@ -323,11 +323,11 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 		{
 			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
 			{
-				outMaterialUIDs.push_back(materialInfo);
+				outMaterialUIDs.Add(materialInfo);
 			}
 			else
 			{
-				outMaterialUIDs.push_back(nullptr);
+				outMaterialUIDs.Add(nullptr);
 			}
 		}
 	}

@@ -28,7 +28,7 @@ namespace Sailor
 				EThreadType threadType,
 				std::condition_variable& refresh,
 				std::mutex& mutex,
-				std::vector<ITaskPtr>& pJobsQueue);
+				TVector<ITaskPtr>& pJobsQueue);
 
 			virtual SAILOR_API ~WorkerThread() = default;
 
@@ -59,12 +59,12 @@ namespace Sailor
 
 			// Specific jobs for this thread
 			std::mutex m_queueMutex;
-			std::vector<ITaskPtr> m_pJobsQueue;
+			TVector<ITaskPtr> m_pJobsQueue;
 
 			// Assigned from scheduler
 			std::condition_variable& m_refresh;
 			std::mutex& m_commonQueueMutex;
-			std::vector<ITaskPtr>& m_pCommonJobsQueue;
+			TVector<ITaskPtr>& m_pCommonJobsQueue;
 		};
 
 		class Scheduler final : public TSubmodule<Scheduler>
@@ -132,15 +132,15 @@ namespace Sailor
 			SAILOR_API void GetThreadSyncVarsByThreadType(
 				EThreadType threadType,
 				std::mutex*& pOutMutex,
-				std::vector<ITaskPtr>*& pOutQueue,
+				TVector<ITaskPtr>*& pOutQueue,
 				std::condition_variable*& pOutCondVar);
 
 			std::mutex m_queueMutex[3];
 			std::condition_variable m_refreshCondVar[3];
-			std::vector<ITaskPtr> m_pCommonJobsQueue[3];
+			TVector<ITaskPtr> m_pCommonJobsQueue[3];
 
 			std::atomic<uint32_t> m_numBusyThreads;
-			std::vector<WorkerThread*> m_workerThreads;
+			TVector<WorkerThread*> m_workerThreads;
 			std::atomic_bool m_bIsTerminating;
 
 			DWORD m_mainThreadId = -1;

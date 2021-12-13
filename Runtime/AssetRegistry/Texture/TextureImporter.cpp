@@ -59,8 +59,8 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 
 		stbi_uc* pixels = stbi_load(assetInfo->GetAssetFilepath().c_str(), &width, &height, &texChannels, STBI_rgb_alpha);
 		uint32_t imageSize = (uint32_t)width * height * 4;
-		decodedData.resize(imageSize);
-		memcpy(decodedData.data(), pixels, imageSize);
+		decodedData.Reserve(imageSize);
+		memcpy(decodedData.Data(), pixels, imageSize);
 
 		mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
 		stbi_image_free(pixels);
@@ -120,7 +120,7 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 
 				if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
 				{
-					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.size(), glm::vec3(width, height, 1.0f),
+					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
 						mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 						assetInfo->GetClamping());
 					return true;

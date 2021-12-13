@@ -15,14 +15,14 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VulkanPipelineLayout();
 		VulkanPipelineLayout(VulkanDevicePtr pDevice,
-			std::vector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
-			std::vector<VkPushConstantRange> pushConstantRanges,
+			TVector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
+			TVector<VkPushConstantRange> pushConstantRanges,
 			VkPipelineLayoutCreateFlags flags = 0);
 
 		/// VkPipelineLayoutCreateInfo settings
 		VkPipelineLayoutCreateFlags m_flags = 0;
-		std::vector<VulkanDescriptorSetLayoutPtr> m_descriptionSetLayouts;
-		std::vector<VkPushConstantRange> m_pushConstantRanges;
+		TVector<VulkanDescriptorSetLayoutPtr> m_descriptionSetLayouts;
+		TVector<VkPushConstantRange> m_pushConstantRanges;
 
 		/// Vulkan VkPipelineLayout handle
 		VkPipelineLayout* GetHandle() { return &m_pipelineLayout; }
@@ -46,13 +46,13 @@ namespace Sailor::GfxDevice::Vulkan
 
 		VulkanPipeline(VulkanDevicePtr pDevice,
 			VulkanPipelineLayoutPtr pipelineLayout,
-			std::vector<VulkanShaderStagePtr> shaderStages,
-			std::vector<VulkanPipelineStatePtr> pipelineStates,
+			TVector<VulkanShaderStagePtr> shaderStages,
+			TVector<VulkanPipelineStatePtr> pipelineStates,
 			uint32_t subpass = 0);
 
 		/// VkGraphicsPipelineCreateInfo settings
-		std::vector<VulkanShaderStagePtr> m_stages;
-		std::vector<VulkanPipelineStatePtr> m_pipelineStates;
+		TVector<VulkanShaderStagePtr> m_stages;
+		TVector<VulkanPipelineStatePtr> m_pipelineStates;
 		VulkanPipelineLayoutPtr m_layout;
 		VulkanRenderPassPtr m_renderPass;
 		uint32_t m_subpass;

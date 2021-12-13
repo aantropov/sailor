@@ -9,7 +9,7 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void IGfxDevice::UpdateMesh(RHI::MeshPtr mesh, const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices)
+void IGfxDevice::UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& vertices, const TVector<uint32_t>& indices)
 {
 	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
@@ -85,7 +85,7 @@ void IGfxDevice::TrackPendingCommandList_ThreadSafe(FencePtr handle)
 	std::scoped_lock<std::mutex> guard(m_mutexTrackedFences);
 
 	// We should track fences to handle pending command list
-	m_trackedFences.push_back(handle);
+	m_trackedFences.Add(handle);
 }
 
 void IGfxDevice::SubmitCommandList_Immediate(CommandListPtr commandList)

@@ -12,13 +12,13 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDescriptorSetLayout : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
-		VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, std::vector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings);
+		VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings);
 
 		VulkanDescriptorSetLayout() = default;
 		virtual ~VulkanDescriptorSetLayout() override;
 
 		/// VkDescriptorSetLayoutCreateInfo settings
-		std::vector<struct VkDescriptorSetLayoutBinding> m_descriptorSetLayoutBindings;
+		TVector<struct VkDescriptorSetLayoutBinding> m_descriptorSetLayoutBindings;
 
 		/// Vulkan VkDescriptorSetLayout handle
 		operator VkDescriptorSetLayout() const { return m_descriptorSetLayout; }
@@ -35,7 +35,7 @@ namespace Sailor::GfxDevice::Vulkan
 	class VulkanDescriptorPool : public RHI::Resource
 	{
 	public:
-		VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t maxSets, const std::vector<VkDescriptorPoolSize>& descriptorPoolSizes);
+		VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t maxSets, const TVector<VkDescriptorPoolSize>& descriptorPoolSizes);
 
 		operator VkDescriptorPool() const { return m_descriptorPool; }
 
@@ -110,11 +110,11 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanDescriptorSet(VulkanDevicePtr pDevice,
 			VulkanDescriptorPoolPtr pool,
 			VulkanDescriptorSetLayoutPtr descriptorSetLayout,
-			std::vector<VulkanDescriptorPtr> descriptors);
+			TVector<VulkanDescriptorPtr> descriptors);
 
 		/// VkDescriptorSetAllocateInfo settings
 		VulkanDescriptorSetLayoutPtr setLayout;
-		std::vector<VulkanDescriptorPtr> m_descriptors;
+		TVector<VulkanDescriptorPtr> m_descriptors;
 
 		virtual void Compile() override;
 		virtual void Release() override;

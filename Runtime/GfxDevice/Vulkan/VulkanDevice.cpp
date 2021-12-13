@@ -4,7 +4,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <set>
 #include <assert.h>
 #include <map>
-#include <vector>
+#include "Core/Vector.h"
 #include <optional>
 #include <unordered_map>
 #include <wtypes.h>
@@ -132,7 +132,7 @@ void VulkanDevice::Shutdown()
 
 	m_swapchain.Clear();
 
-	m_commandBuffers.clear();
+	m_commandBuffers.Clear();
 	m_commandPool.Clear();
 
 	for (auto& pair : m_threadContext)
@@ -142,10 +142,10 @@ void VulkanDevice::Shutdown()
 
 	m_memoryAllocators.clear();
 
-	m_renderFinishedSemaphores.clear();
-	m_imageAvailableSemaphores.clear();
-	m_syncImages.clear();
-	m_syncFences.clear();
+	m_renderFinishedSemaphores.Clear();
+	m_imageAvailableSemaphores.Clear();
+	m_syncImages.Clear();
+	m_syncFences.Clear();
 
 	m_presentQueue.Clear();
 	m_graphicsQueue.Clear();
@@ -231,8 +231,8 @@ VulkanCommandBufferPtr VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue
 
 void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	VulkanFencePtr fence,
-	std::vector<VulkanSemaphorePtr> signalSemaphores,
-	std::vector<VulkanSemaphorePtr> waitSemaphores)
+	TVector<VulkanSemaphorePtr> signalSemaphores,
+	TVector<VulkanSemaphorePtr> waitSemaphores)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -241,25 +241,25 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = { commandBuffer->GetHandle() };
 
-	VkSemaphore* waits = reinterpret_cast<VkSemaphore*>(_malloca(waitSemaphores.size() * sizeof(VkSemaphore)));
-	VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.size() * sizeof(VkPipelineStageFlags)));
-	VkSemaphore* signals = reinterpret_cast<VkSemaphore*>(_malloca(signalSemaphores.size() * sizeof(VkSemaphore)));
+	VkSemaphore* waits = reinterpret_cast<VkSemaphore*>(_malloca(waitSemaphores.Num() * sizeof(VkSemaphore)));
+	VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.Num() * sizeof(VkPipelineStageFlags)));
+	VkSemaphore* signals = reinterpret_cast<VkSemaphore*>(_malloca(signalSemaphores.Num() * sizeof(VkSemaphore)));
 
-	for (uint32_t i = 0; i < waitSemaphores.size(); i++)
+	for (uint32_t i = 0; i < waitSemaphores.Num(); i++)
 	{
 		waits[i] = *waitSemaphores[i];
 		waitStages[i] = waitSemaphores[i]->PipelineStageFlags();
 	}
 
-	for (uint32_t i = 0; i < signalSemaphores.size(); i++)
+	for (uint32_t i = 0; i < signalSemaphores.Num(); i++)
 	{
 		signals[i] = *signalSemaphores[i];
 	}
 
-	submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
+	submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.Num());
 	submitInfo.pSignalSemaphores = &signals[0];
 
-	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
+	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.Num());
 	submitInfo.pWaitSemaphores = &waits[0];
 	submitInfo.pWaitDstStageMask = &waitStages[0];
 
@@ -291,7 +291,7 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 
-	auto descriptorSizes = std::vector
+	auto descriptorSizes = TVector
 	{
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1024),
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024)
@@ -309,13 +309,13 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 void VulkanDevice::CreateFrameSyncSemaphores()
 {
-	m_syncImages.resize(m_swapchain->GetImageViews().size());
+	m_syncImages.Reserve(m_swapchain->GetImageViews().Num());
 
 	for (size_t i = 0; i < VulkanApi::MaxFramesInFlight; i++)
 	{
-		m_imageAvailableSemaphores.push_back(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
-		m_renderFinishedSemaphores.push_back(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
-		m_syncFences.push_back(VulkanFencePtr::Make(VulkanDevicePtr(this), VK_FENCE_CREATE_SIGNALED_BIT));
+		m_imageAvailableSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
+		m_renderFinishedSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
+		m_syncFences.Add(VulkanFencePtr::Make(VulkanDevicePtr(this), VK_FENCE_CREATE_SIGNALED_BIT));
 	}
 }
 
@@ -340,11 +340,11 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 void VulkanDevice::CreateFramebuffers()
 {
-	std::vector<VulkanImageViewPtr>& swapChainImageViews = m_swapchain->GetImageViews();
+	TVector<VulkanImageViewPtr>& swapChainImageViews = m_swapchain->GetImageViews();
 
-	m_swapChainFramebuffers.resize(swapChainImageViews.size());
+	m_swapChainFramebuffers.Reserve(swapChainImageViews.Num());
 
-	std::vector<VulkanImageViewPtr> attachments;
+	TVector<VulkanImageViewPtr> attachments;
 
 	uint8_t swapchainIndex = 1;
 	if ((VkSampleCountFlagBits)m_currentMsaaSamples != VK_SAMPLE_COUNT_1_BIT)
@@ -357,7 +357,7 @@ void VulkanDevice::CreateFramebuffers()
 		attachments = { nullptr, m_swapchain->GetDepthBufferView() };
 	}
 
-	for (size_t i = 0; i < swapChainImageViews.size(); i++)
+	for (size_t i = 0; i < swapChainImageViews.Num(); i++)
 	{
 		attachments[swapchainIndex] = swapChainImageViews[i];
 		m_swapChainFramebuffers[i] = VulkanFramebufferPtr::Make(
@@ -375,10 +375,10 @@ void VulkanDevice::CreateCommandBuffers()
 	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
 	m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
-	for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
+	for (int i = 0; i < m_swapChainFramebuffers.Num(); i++)
 	{
 		// Command buffer would be released fine if we initialize render in the main thread
-		m_commandBuffers.push_back(VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
+		m_commandBuffers.Add(VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
 	}
 }
 
@@ -386,7 +386,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 {
 	m_queueFamilies = VulkanApi::FindQueueFamilies(physicalDevice, m_surface);
 
-	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+	TVector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	std::set<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(),
 		m_queueFamilies.m_presentFamily.value(),
 		m_queueFamilies.m_transferFamily.value() };
@@ -399,7 +399,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		queueCreateInfo.queueFamilyIndex = queueFamily;
 		queueCreateInfo.queueCount = 1;
 		queueCreateInfo.pQueuePriorities = &queuePriority;
-		queueCreateInfos.push_back(queueCreateInfo);
+		queueCreateInfos.Add(queueCreateInfo);
 	}
 
 	VkPhysicalDeviceFeatures deviceFeatures{};
@@ -411,23 +411,23 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
-	std::vector<const char*> deviceExtensions;
-	std::vector<const char*> instanceExtensions;
+	TVector<const char*> deviceExtensions;
+	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
-	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
+	createInfo.ppEnabledExtensionNames = deviceExtensions.Data();
 
-	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-	createInfo.pQueueCreateInfos = queueCreateInfos.data();
+	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.Num());
+	createInfo.pQueueCreateInfos = queueCreateInfos.Data();
 	createInfo.pEnabledFeatures = &deviceFeatures;
 
 	// Compatibility with older Vulkan drivers
-	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
+	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 	if (VulkanApi::GetInstance()->IsEnabledValidationLayers())
 	{
-		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-		createInfo.ppEnabledLayerNames = validationLayers.data();
+		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.Num());
+		createInfo.ppEnabledLayerNames = validationLayers.Data();
 	}
 	else
 	{
@@ -476,7 +476,7 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 
 void VulkanDevice::CleanupSwapChain()
 {
-	m_swapChainFramebuffers.clear();
+	m_swapChainFramebuffers.Clear();
 	m_renderPass.Clear();
 }
 
@@ -502,9 +502,9 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	RecreateSwapchain(pViewport);
 }
 
-bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanCommandBufferPtr> primaryCommandBuffers,
-	std::vector<VulkanCommandBufferPtr> secondaryCommandBuffers,
-	std::vector<VulkanSemaphorePtr> semaphoresToWait)
+bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers,
+	TVector<VulkanCommandBufferPtr> secondaryCommandBuffers,
+	TVector<VulkanSemaphorePtr> semaphoresToWait)
 {
 	// Wait while we recreate swapchain from main thread to sync with Win32Api
 	if (m_bIsSwapChainOutdated)
@@ -544,12 +544,12 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 	//////////////////////////////////////////////////
 	VulkanStateViewportPtr pStateViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 
-	std::vector<VkCommandBuffer> commandBuffers;
-	if (primaryCommandBuffers.size() > 0)
+	TVector<VkCommandBuffer> commandBuffers;
+	if (primaryCommandBuffers.Num() > 0)
 	{
 		for (auto cmdBuffer : primaryCommandBuffers)
 		{
-			commandBuffers.push_back(*cmdBuffer);
+			commandBuffers.Add(*cmdBuffer);
 		}
 	}
 
@@ -557,7 +557,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 	{
 		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent());
 
-		if (secondaryCommandBuffers.size() > 0)
+		if (secondaryCommandBuffers.Num() > 0)
 		{
 			for (auto cmdBuffer : secondaryCommandBuffers)
 			{
@@ -576,7 +576,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 				auto& perInstanceBinding = framework->GetPerInstanceBinding();
 
 				SAILOR_PROFILE_BLOCK("Render meshes");
-				for (uint32_t index = 0; index < pModel->GetMeshes().size(); index++)
+				for (uint32_t index = 0; index < pModel->GetMeshes().Num(); index++)
 				{
 					if (pModel->IsReady())
 					{
@@ -601,18 +601,18 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 							SAILOR_PROFILE_END_BLOCK();
 
 							// TODO: Parse missing descriptor sets
-							std::vector<VulkanDescriptorSetPtr> sets;
+							TVector<VulkanDescriptorSetPtr> sets;
 							if (state.GetFrameBinding()->GetShaderBindings().size())
 							{
-								sets.push_back(state.GetFrameBinding()->m_vulkan.m_descriptorSet);
+								sets.Add(state.GetFrameBinding()->m_vulkan.m_descriptorSet);
 							}
 							if (perInstanceBinding->GetShaderBindings().size())
 							{
-								sets.push_back(perInstanceBinding->m_vulkan.m_descriptorSet);
+								sets.Add(perInstanceBinding->m_vulkan.m_descriptorSet);
 							}
 							if (material->GetBindings()->GetShaderBindings().size())
 							{
-								sets.push_back(material->GetBindings()->m_vulkan.m_descriptorSet);
+								sets.Add(material->GetBindings()->m_vulkan.m_descriptorSet);
 							}
 
 							SAILOR_PROFILE_BLOCK("Bind descriptor sets");
@@ -634,35 +634,35 @@ bool VulkanDevice::PresentFrame(const FrameState& state, std::vector<VulkanComma
 		m_commandBuffers[imageIndex]->EndRenderPass();
 	}
 	m_commandBuffers[imageIndex]->EndCommandList();
-	commandBuffers.push_back(*m_commandBuffers[imageIndex]->GetHandle());
+	commandBuffers.Add(*m_commandBuffers[imageIndex]->GetHandle());
 
-	std::vector<VkSemaphore> waitSemaphores;
-	if (semaphoresToWait.size() > 0)
+	TVector<VkSemaphore> waitSemaphores;
+	if (semaphoresToWait.Num() > 0)
 	{
 		//waitSemaphores.reserve(semaphoresToWait.size() + 1);
 		for (auto semaphore : semaphoresToWait)
 		{
-			waitSemaphores.push_back(*semaphore);
+			waitSemaphores.Add(*semaphore);
 			m_commandBuffers[imageIndex]->AddDependency(semaphore);
 		}
 	}
 
-	waitSemaphores.push_back(*m_imageAvailableSemaphores[m_currentFrame]);
+	waitSemaphores.Add(*m_imageAvailableSemaphores[m_currentFrame]);
 
 	///////////////////////////////////////////////////
 
-	VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.size() * sizeof(VkPipelineStageFlags)));
+	VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.Num() * sizeof(VkPipelineStageFlags)));
 
-	for (uint32_t i = 0; i < waitSemaphores.size(); i++)
+	for (uint32_t i = 0; i < waitSemaphores.Num(); i++)
 	{
 		waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	}
 
-	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
+	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.Num());
 	submitInfo.pWaitSemaphores = &waitSemaphores[0];
 	submitInfo.pWaitDstStageMask = waitStages;
 
-	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
 	submitInfo.pCommandBuffers = &commandBuffers[0];
 
 	VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[m_currentFrame] };

@@ -36,12 +36,12 @@ void TextureAssetInfo::Deserialize(const nlohmann::json& outData)
 
 TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.emplace_back("png");
-	m_supportedExtensions.emplace_back("bmp");
-	m_supportedExtensions.emplace_back("tga");
-	m_supportedExtensions.emplace_back("jpg");
-	m_supportedExtensions.emplace_back("gif");
-	m_supportedExtensions.emplace_back("psd");
+	m_supportedExtensions.Emplace("png");
+	m_supportedExtensions.Emplace("bmp");
+	m_supportedExtensions.Emplace("tga");
+	m_supportedExtensions.Emplace("jpg");
+	m_supportedExtensions.Emplace("gif");
+	m_supportedExtensions.Emplace("psd");
 
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }

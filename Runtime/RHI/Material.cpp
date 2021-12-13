@@ -28,7 +28,7 @@ bool ShaderBindingSet::PerInstanceDataStoredInSSBO() const
 	return std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [](const auto& binding) { return binding.m_type == EShaderBindingType::StorageBuffer; }) != m_layoutBindings.end();
 }
 
-void ShaderBindingSet::SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBinding> layoutBindings)
+void ShaderBindingSet::SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings)
 {
 	m_layoutBindings = std::move(layoutBindings);
 	m_bNeedsStorageBuffer = PerInstanceDataStoredInSSBO();
@@ -36,7 +36,7 @@ void ShaderBindingSet::SetLayoutShaderBindings(std::vector<RHI::ShaderLayoutBind
 
 void ShaderBindingSet::ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable)
 {
-	std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
+	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
 	outBinding = splittedString[0];
 	outVariable = splittedString[1];
 }
@@ -53,7 +53,7 @@ bool ShaderBindingSet::HasBinding(const std::string& binding) const
 
 bool ShaderBindingSet::HasParameter(const std::string& parameter) const
 {
-	std::vector<std::string> splittedString = Utils::SplitString(parameter, ".");
+	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
 	const std::string& binding = splittedString[0];
 	const std::string& variable = splittedString[1];
 

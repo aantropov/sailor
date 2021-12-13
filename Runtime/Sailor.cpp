@@ -10,6 +10,7 @@
 #include "JobSystem/JobSystem.h"
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"
+#include "Core/Vector.h"
 #include "Framework/Framework.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 
@@ -78,6 +79,13 @@ void App::Initialize()
 
 void App::Start()
 {
+	TVector<int> test;
+	test.Reserve(1);
+	test.Reserve(2);
+	test.Reserve(72);
+	test.Reserve(76);
+	test.Clear();
+
 	s_pInstance->m_pViewportWindow->SetActive(true);
 	s_pInstance->m_pViewportWindow->SetRunning(true);
 

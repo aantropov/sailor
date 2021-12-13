@@ -2,6 +2,9 @@
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Defines.h"
 #include "Math/Math.h"
+#include "Core/Vector.h"
+
+using json = nlohmann::json;
 
 namespace Sailor
 {
@@ -14,7 +17,7 @@ namespace Sailor
 	};
 
 	template<typename TEntryType>
-	void SerializeArray(const std::vector<TEntryType>& inArray, nlohmann::json& outJson)
+	void SerializeArray(const TVector<TEntryType>& inArray, nlohmann::json& outJson)
 	{
 		auto jsonArray = nlohmann::json::array();
 		for (const auto& entry : inArray)
@@ -28,7 +31,7 @@ namespace Sailor
 	}
 
 	template<typename TEntryType>
-	void DeserializeArray(std::vector<TEntryType>& outArray, const nlohmann::json& inJson)
+	void DeserializeArray(TVector<TEntryType>& outArray, const nlohmann::json& inJson)
 	{
 		outArray.clear();
 
@@ -36,8 +39,20 @@ namespace Sailor
 		{
 			TEntryType entry;
 			entry.Deserialize(elem);
-			outArray.push_back(std::move(entry));
+			outArray.Add(std::move(entry));
 		}
+	}
+
+	template<typename T>
+	void to_json(json& j, const TVector<T>& P)
+	{
+		//TODO: Implement TVector
+	}
+
+	template<typename T>
+	void from_json(const json& j, TVector<T>& P)
+	{
+		//TODO: Implement TVector
 	}
 }
 
@@ -46,8 +61,6 @@ namespace ns
 	SAILOR_API void to_json(nlohmann::json& j, const class Sailor::IJsonSerializable& p);
 	SAILOR_API void from_json(const nlohmann::json& j, class Sailor::IJsonSerializable& p);
 }
-
-using json = nlohmann::json;
 
 namespace glm
 {

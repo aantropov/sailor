@@ -43,7 +43,7 @@ void ITask::SetChainedTaskPrev(TWeakPtr<ITask>& job)
 	m_chainedTaskPrev = job;
 }
 
-void ITask::Join(const std::vector<TWeakPtr<ITask>>& jobs)
+void ITask::Join(const TVector<TWeakPtr<ITask>>& jobs)
 {
 	for (const auto& job : jobs)
 	{

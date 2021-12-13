@@ -10,7 +10,7 @@
 using namespace Sailor;
 using namespace Sailor::Win32;
 
-std::vector<Window*> Window::g_windows;
+TVector<Window*> Window::g_windows;
 
 bool Window::Create(LPCWSTR title, LPCWSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested)
 {
@@ -72,7 +72,7 @@ bool Window::Create(LPCWSTR title, LPCWSTR className, int32_t inWidth, int32_t i
 		return false;
 	}
 
-	g_windows.push_back(this);
+	g_windows.Add(this);
 
 	// ïGet window descriptor
 	m_hDC = GetDC(m_hWnd);
@@ -276,7 +276,7 @@ void Window::Destroy()
 		UnregisterClass((LPCWSTR)m_windowClassName.c_str(), m_hInstance);
 	}
 
-	g_windows.erase(std::remove(g_windows.begin(), g_windows.end(), this));
+	g_windows.Remove(this);
 }
 
 bool Window::IsIconic() const
@@ -286,14 +286,12 @@ bool Window::IsIconic() const
 
 LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	auto windowIterator = std::find_if(Window::g_windows.begin(),
-		Window::g_windows.end(),
-		[hWnd](Window* pWindow) { return pWindow->GetHWND() == hWnd; });
+	auto windowIndex = Window::g_windows.FindIf([hWnd](Window* pWindow) { return pWindow->GetHWND() == hWnd; });
 
 	Window* pWindow = nullptr;
-	if (windowIterator != Window::g_windows.end())
+	if (windowIndex != -1)
 	{
-		pWindow = *windowIterator;
+		pWindow = Window::g_windows[windowIndex];
 	}
 
 	switch (msg)

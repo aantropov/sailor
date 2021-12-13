@@ -29,9 +29,9 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
 
 		virtual SAILOR_API bool PresentFrame(const class FrameState& state,
-			const std::vector<RHI::CommandListPtr>* primaryCommandBuffers = nullptr,
-			const std::vector<RHI::CommandListPtr>* secondaryCommandBuffers = nullptr,
-			std::vector<RHI::SemaphorePtr> waitSemaphores = {}) const;
+			const TVector<RHI::CommandListPtr>* primaryCommandBuffers = nullptr,
+			const TVector<RHI::CommandListPtr>* secondaryCommandBuffers = nullptr,
+			TVector<RHI::SemaphorePtr> waitSemaphores = {}) const;
 
 		virtual void SAILOR_API WaitIdle();
 

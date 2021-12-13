@@ -44,21 +44,21 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 
 	SpvReflectShaderModule module;
 
-	SpvReflectResult result = spvReflectCreateShaderModule(code.size() * sizeof(code[0]), &code[0], &module);
+	SpvReflectResult result = spvReflectCreateShaderModule(code.Num() * sizeof(code[0]), &code[0], &module);
 	assert(result == SPV_REFLECT_RESULT_SUCCESS);
 
 	uint32_t count = 0;
 	result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);
 	assert(result == SPV_REFLECT_RESULT_SUCCESS);
 
-	std::vector<std::unordered_map<uint32_t, std::pair<RHI::ShaderLayoutBinding, VkDescriptorSetLayoutBinding>>> bindings;
-	bindings.resize(count);
+	TVector<std::unordered_map<uint32_t, std::pair<RHI::ShaderLayoutBinding, VkDescriptorSetLayoutBinding>>> bindings;
+	bindings.Reserve(count);
 
-	std::vector<SpvReflectDescriptorSet*> sets(count);
-	result = spvReflectEnumerateDescriptorSets(&module, &count, sets.data());
+	TVector<SpvReflectDescriptorSet*> sets(count);
+	result = spvReflectEnumerateDescriptorSets(&module, &count, sets.Data());
 	assert(result == SPV_REFLECT_RESULT_SUCCESS);
 
-	for (size_t i_set = 0; i_set < sets.size(); ++i_set)
+	for (size_t i_set = 0; i_set < sets.Num(); ++i_set)
 	{
 		const SpvReflectDescriptorSet& reflSet = *(sets[i_set]);
 		std::unordered_map<uint32_t, std::pair<RHI::ShaderLayoutBinding, VkDescriptorSetLayoutBinding>>& binding = bindings[i_set];
@@ -135,7 +135,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 						}
 					}
 
-					rhiBinding.m_members.emplace_back(std::move(member));
+					rhiBinding.m_members.Emplace(std::move(member));
 				}
 
 				if (rhiBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
@@ -149,18 +149,18 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 
 	spvReflectDestroyShaderModule(&module);
 
-	m_layoutBindings.clear();
-	m_layoutBindings.resize(count);
+	m_layoutBindings.Clear();
+	m_layoutBindings.Reserve(count);
 
-	m_bindings.clear();
-	m_bindings.resize(count);
+	m_bindings.Clear();
+	m_bindings.Reserve(count);
 
 	for (uint32_t i = 0; i < count; i++)
 	{
 		for (auto& binding : bindings[i])
 		{
-			m_layoutBindings[i].push_back(std::move(binding.second.second));
-			m_bindings[i].push_back(std::move(binding.second.first));
+			m_layoutBindings[i].Add(std::move(binding.second.second));
+			m_bindings[i].Add(std::move(binding.second.first));
 		}
 	}
 }
@@ -181,8 +181,8 @@ void VulkanShaderModule::Compile()
 
 	VkShaderModuleCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = m_byteCode.size() * 4;
-	createInfo.pCode = reinterpret_cast<const uint32_t*>(m_byteCode.data());
+	createInfo.codeSize = m_byteCode.Num() * 4;
+	createInfo.pCode = reinterpret_cast<const uint32_t*>(m_byteCode.Data());
 
 	VK_CHECK(vkCreateShaderModule(*m_pDevice, &createInfo, nullptr, &m_shaderModule));
 }

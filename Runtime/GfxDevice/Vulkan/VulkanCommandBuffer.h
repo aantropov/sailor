@@ -35,9 +35,9 @@ namespace Sailor::GfxDevice::Vulkan
 
 		void EndRenderPass();
 
-		void BindVertexBuffers(std::vector<VulkanBufferPtr> buffers, std::vector <VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
+		void BindVertexBuffers(TVector<VulkanBufferPtr> buffers, TVector <VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
 		void BindIndexBuffer(VulkanBufferPtr indexBuffer);
-		void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, std::vector<VulkanDescriptorSetPtr> descriptorSet);
+		void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, TVector<VulkanDescriptorSetPtr> descriptorSet);
 		void BindPipeline(VulkanPipelinePtr pipeline);
 
 		void DrawIndexed(VulkanBufferPtr indexBuffer, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0);
@@ -64,12 +64,12 @@ namespace Sailor::GfxDevice::Vulkan
 
 	protected:
 
-		std::vector<VulkanBufferPtr> m_bufferDependencies;
-		std::vector<VulkanImagePtr> m_imageDependencies;
-		std::vector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;
-		std::vector<VulkanPipelinePtr> m_pipelineDependencies;
-		std::vector<VulkanSemaphorePtr> m_semaphoreDependencies;
-		std::vector<std::pair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
+		TVector<VulkanBufferPtr> m_bufferDependencies;
+		TVector<VulkanImagePtr> m_imageDependencies;
+		TVector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;
+		TVector<VulkanPipelinePtr> m_pipelineDependencies;
+		TVector<VulkanSemaphorePtr> m_semaphoreDependencies;
+		TVector<std::pair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
 
 		VulkanDevicePtr m_device;
 		VulkanCommandPoolPtr m_commandPool;

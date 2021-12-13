@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
-#include <vector>
+#include "Core/Vector.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -54,8 +54,8 @@ namespace Sailor
 		const std::string& GetGlslFragmentCode() const { return m_glslFragment; }
 		const std::string& GetGlslCommonCode() const { return m_glslCommon; }
 
-		const std::vector<std::string>& GetIncludes() const { return m_includes; }
-		const std::vector<std::string>& GetSupportedDefines() const { return m_defines; }
+		const TVector<std::string>& GetIncludes() const { return m_includes; }
+		const TVector<std::string>& GetSupportedDefines() const { return m_defines; }
 
 		SAILOR_API bool ContainsFragment() const { return !m_glslFragment.empty(); }
 		SAILOR_API bool ContainsVertex() const { return !m_glslVertex.empty(); }
@@ -73,8 +73,8 @@ namespace Sailor
 		// Library code
 		std::string m_glslCommon;
 
-		std::vector<std::string> m_includes;
-		std::vector<std::string> m_defines;
+		TVector<std::string> m_includes;
+		TVector<std::string> m_defines;
 	};
 
 	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener
@@ -90,31 +90,31 @@ namespace Sailor
 		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		SAILOR_API bool LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const std::vector<string>& defines = {});
-		SAILOR_API JobSystem::TaskPtr<bool> LoadShader(UID uid, ShaderSetPtr& outShader, const std::vector<string>& defines = {});
+		SAILOR_API bool LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
+		SAILOR_API JobSystem::TaskPtr<bool> LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
 
 	protected:
 
 		std::mutex m_mutex;
 		ShaderCache m_shaderCache;
 
-		std::unordered_map<UID, std::vector<std::pair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;
+		std::unordered_map<UID, TVector<std::pair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;
 
 		std::unordered_map<UID, TSharedPtr<ShaderAsset>> m_loadedShaderAssets;
-		std::unordered_map<UID, std::vector<std::pair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
+		std::unordered_map<UID, TVector<std::pair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
 
 		// ShaderAsset related functions
-		SAILOR_API static void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const std::vector<std::string>& defines = {});
+		SAILOR_API static void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& defines = {});
 		SAILOR_API static void ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON);
 		SAILOR_API static bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
 
 		// Compile related functions
 		SAILOR_API void ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
-		SAILOR_API void GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
-		SAILOR_API static bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const std::vector<std::string>& defines, const std::vector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
+		SAILOR_API void GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
+		SAILOR_API static bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const TVector<std::string>& defines, const TVector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
-		SAILOR_API static uint32_t GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines);
-		SAILOR_API static std::vector<std::string> GetDefines(const std::vector<std::string>& defines, uint32_t permutation);
+		SAILOR_API static uint32_t GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines);
+		SAILOR_API static TVector<std::string> GetDefines(const TVector<std::string>& defines, uint32_t permutation);
 
 	private:
 

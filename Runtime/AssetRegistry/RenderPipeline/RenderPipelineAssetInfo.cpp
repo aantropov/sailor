@@ -19,7 +19,7 @@ void RenderPipelineAssetInfo::Deserialize(const nlohmann::json& outData)
 
 RenderPipelineAssetInfoHandler::RenderPipelineAssetInfoHandler(AssetRegistry* assetRegistry)
 {
-	m_supportedExtensions.emplace_back("render_pipeline");
+	m_supportedExtensions.Emplace("render_pipeline");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 

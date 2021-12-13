@@ -68,9 +68,9 @@ namespace Sailor::RHI
 		virtual SAILOR_API void FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
 
 		virtual SAILOR_API bool PresentFrame(const Sailor::FrameState& state,
-			const std::vector<CommandListPtr>* primaryCommandBuffers = nullptr,
-			const std::vector<CommandListPtr>* secondaryCommandBuffers = nullptr,
-			std::vector<SemaphorePtr> waitSemaphores = {}) const = 0;
+			const TVector<CommandListPtr>* primaryCommandBuffers = nullptr,
+			const TVector<CommandListPtr>* secondaryCommandBuffers = nullptr,
+			TVector<SemaphorePtr> waitSemaphores = {}) const = 0;
 
 		virtual void SAILOR_API WaitIdle() = 0;
 
@@ -79,7 +79,7 @@ namespace Sailor::RHI
 		virtual SAILOR_API BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API CommandListPtr CreateBuffer(BufferPtr& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API MeshPtr CreateMesh();
-		virtual SAILOR_API void UpdateMesh(RHI::MeshPtr mesh, const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
+		virtual SAILOR_API void UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& vertices, const TVector<uint32_t>& indices);
 		virtual SAILOR_API ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
 		virtual SAILOR_API TexturePtr CreateImage(
 			const void* pData,
@@ -129,7 +129,7 @@ namespace Sailor::RHI
 		SAILOR_API void TrackPendingCommandList_ThreadSafe(FencePtr handle);
 
 		std::mutex m_mutexTrackedFences;
-		std::vector<FencePtr> m_trackedFences;
+		TVector<FencePtr> m_trackedFences;
 	};
 
 	class IGfxDeviceCommands

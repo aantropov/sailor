@@ -73,7 +73,7 @@ namespace Sailor::Win32
 
 		SAILOR_API void SetIsIconic(bool value) { m_bIsIconic = value; }
 
-		static std::vector<Window*> g_windows;
+		static TVector<Window*> g_windows;
 
 		friend LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	};

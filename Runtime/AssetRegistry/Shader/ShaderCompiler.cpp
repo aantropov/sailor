@@ -56,12 +56,12 @@ void ShaderAsset::Deserialize(const nlohmann::json& inData)
 
 	if (inData.contains("defines"))
 	{
-		m_defines = inData["defines"].get<std::vector<std::string>>();
+		m_defines = inData["defines"].get<TVector<std::string>>();
 	}
 
 	if (inData.contains("includes"))
 	{
-		m_includes = inData["includes"].get<std::vector<std::string>>();
+		m_includes = inData["includes"].get<TVector<std::string>>();
 	}
 }
 
@@ -72,7 +72,7 @@ ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 	m_shaderCache.Initialize();
 	infoHandler->Subscribe(this);
 
-	std::vector<UID> shaderAssetInfos;
+	TVector<UID> shaderAssetInfos;
 	App::GetSubmodule<AssetRegistry>()->GetAllAssetInfos<ShaderAssetInfo>(shaderAssetInfos);
 
 	for (const auto& uid : shaderAssetInfos)
@@ -86,7 +86,7 @@ ShaderCompiler::~ShaderCompiler()
 	m_shaderCache.Shutdown();
 }
 
-void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const std::vector<std::string>& defines)
+void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& defines)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -119,28 +119,28 @@ void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::
 
 	Utils::ReplaceAll(outCodeInJSON, std::string{ '\r' }, std::string{ ' ' });
 
-	vector<size_t> beginCodeTagLocations;
-	vector<size_t> endCodeTagLocations;
+	TVector<size_t> beginCodeTagLocations;
+	TVector<size_t> endCodeTagLocations;
 
 	Utils::FindAllOccurances(outCodeInJSON, std::string(JsonBeginCodeTag), beginCodeTagLocations);
 	Utils::FindAllOccurances(outCodeInJSON, std::string(JsonEndCodeTag), endCodeTagLocations);
 
-	if (beginCodeTagLocations.size() != endCodeTagLocations.size())
+	if (beginCodeTagLocations.Num() != endCodeTagLocations.Num())
 	{
-		//assert(beginCodeTagLocations.size() == endCodeTagLocations.size());
+		//assert(beginCodeTagLocations.Num() == endCodeTagLocations.Num());
 		SAILOR_LOG("Cannot convert from JSON to GLSL shader's code (doesn't match num of begin/end tags): %s", shaderText.c_str());
 		return;
 	}
 
 	size_t shift = 0;
-	for (size_t i = 0; i < beginCodeTagLocations.size(); i++)
+	for (size_t i = 0; i < beginCodeTagLocations.Num(); i++)
 	{
 		const size_t beginLocation = beginCodeTagLocations[i] + shift;
 		const size_t endLocation = endCodeTagLocations[i] + shift;
 
-		std::vector<size_t> endls;
+		TVector<size_t> endls;
 		Utils::FindAllOccurances(outCodeInJSON, std::string{ '\n' }, endls, beginLocation, endLocation);
-		shift += endls.size() * size_t(strlen(JsonEndLineTag) - 1);
+		shift += endls.Num() * size_t(strlen(JsonEndLineTag) - 1);
 
 		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, JsonEndLineTag, beginLocation, endLocation);
 	}
@@ -172,11 +172,11 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 	auto pShader = LoadShaderAsset(assetUID).Lock();
 	const auto defines = GetDefines(pShader->GetSupportedDefines(), permutation);
 
-	std::vector<std::string> vertexDefines = defines;
-	vertexDefines.push_back("VERTEX");
+	TVector<std::string> vertexDefines = defines;
+	vertexDefines.Add("VERTEX");
 
-	std::vector<std::string> fragmentDefines = defines;
-	fragmentDefines.push_back("FRAGMENT");
+	TVector<std::string> fragmentDefines = defines;
+	fragmentDefines.Add("FRAGMENT");
 
 	std::string vertexGlsl;
 	std::string fragmentGlsl;
@@ -223,26 +223,26 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 			return;
 		}
 
-		const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->GetSupportedDefines().size());
+		const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->GetSupportedDefines().Num());
 
-		std::vector<uint32_t> permutationsToCompile;
+		TVector<uint32_t> permutationsToCompile;
 
 		for (uint32_t permutation = 0; permutation < NumPermutations; permutation++)
 		{
 			if (m_shaderCache.IsExpired(assetUID, permutation))
 			{
-				permutationsToCompile.push_back(permutation);
+				permutationsToCompile.Add(permutation);
 			}
 		}
 
-		if (permutationsToCompile.empty())
+		if (permutationsToCompile.IsEmpty())
 		{
 			return;
 		}
 
 		auto scheduler = App::GetSubmodule<JobSystem::Scheduler>();
 
-		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.size());
+		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
 		JobSystem::ITaskPtr saveCacheJob = scheduler->CreateTask("Save Shader Cache", [=]()
 			{
@@ -250,7 +250,7 @@ void ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 				m_shaderCache.SaveCache();
 			});
 
-		for (uint32_t i = 0; i < permutationsToCompile.size(); i++)
+		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
 		{
 			JobSystem::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
 				{
@@ -321,7 +321,7 @@ void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
 	CompileAllPermutations(assetInfo->GetUID());
 }
 
-bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderStage, const std::vector<string>& defines, const std::vector<string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug)
+bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderStage, const TVector<string>& defines, const TVector<string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -353,24 +353,24 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderS
 	return true;
 }
 
-uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines, const std::vector<std::string>& actualDefines)
+uint32_t ShaderCompiler::GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (actualDefines.size() == 0)
+	if (actualDefines.Num() == 0)
 	{
 		return 0;
 	}
 
 	std::unordered_set<std::string> requested;
 
-	for (int32_t i = 0; i < actualDefines.size(); i++)
+	for (int32_t i = 0; i < actualDefines.Num(); i++)
 	{
 		requested.insert(actualDefines[i]);
 	}
 
 	uint32_t res = 0;
-	for (int32_t i = 0; i < defines.size(); i++)
+	for (int32_t i = 0; i < defines.Num(); i++)
 	{
 		if (requested.find(defines[i]) != std::end(requested))
 		{
@@ -380,24 +380,24 @@ uint32_t ShaderCompiler::GetPermutation(const std::vector<std::string>& defines,
 	return res;
 }
 
-std::vector<std::string> ShaderCompiler::GetDefines(const std::vector<std::string>& defines, uint32_t permutation)
+TVector<std::string> ShaderCompiler::GetDefines(const TVector<std::string>& defines, uint32_t permutation)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::vector<std::string> res;
+	TVector<std::string> res;
 
-	for (int32_t define = 0; define < defines.size(); define++)
+	for (int32_t define = 0; define < defines.Num(); define++)
 	{
 		if ((permutation >> define) & 1)
 		{
-			res.push_back(defines[define]);
+			res.Add(defines[define]);
 		}
 	}
 
 	return res;
 }
 
-void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
+void ShaderCompiler::GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -414,7 +414,7 @@ void ShaderCompiler::GetSpirvCode(const UID& assetUID, const std::vector<std::st
 	}
 }
 
-JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outShader, const std::vector<string>& defines)
+JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -485,8 +485,8 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 
 			App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
 
-			m_loadedShaders[uid].push_back({ permutation, pShader });
-			m_promises[uid].push_back({ permutation, promise });
+			m_loadedShaders[uid].Add({ permutation, pShader });
+			m_promises[uid].Add({ permutation, promise });
 			outShader = (*(m_loadedShaders[uid].end() - 1)).second;
 
 			return promise;
@@ -496,7 +496,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
 
-bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const std::vector<string>& defines)
+bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)
 {
 	SAILOR_PROFILE_FUNCTION();
 	auto task = LoadShader(uid, outShader, defines);
