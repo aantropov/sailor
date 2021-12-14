@@ -356,13 +356,13 @@ namespace Sailor
 		void RemoveAtSwap(size_t index, size_t count = 1)
 		{
 			DestructElements(index, count);
-			memmove(&m_pRawPtr[index], &m_pRawPtr[index + count], sizeof(TElementType) * (m_arrayNum - index - count));
+			memmove(&m_pRawPtr[index], &m_pRawPtr[m_arrayNum - count], sizeof(TElementType) * count);
 			m_arrayNum -= count;
 		}
 
 		size_t RemoveFirst(const TElementType& item)
 		{
-			for (size_t i = 0; i < m_arrayNum - shift; i++)
+			for (size_t i = 0; i < m_arrayNum; i++)
 			{
 				if (const bool bShouldDelete = m_pRawPtr[i] == item)
 				{
