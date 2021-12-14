@@ -128,10 +128,7 @@ namespace Sailor
 		template<typename... TArgs>
 		size_t Emplace(TArgs&& ... args)
 		{
-			ResizeIfNeeded(m_arrayNum + 1);
-
-			new (&m_pRawPtr[m_arrayNum]) TElementType(std::forward<TArgs>(args)...);
-			return m_arrayNum++;
+			return EmplaceAt(m_arrayNum, args ...);
 		}
 
 		void Resize(size_t count)
@@ -156,12 +153,7 @@ namespace Sailor
 			m_arrayNum += count;
 		}
 
-		size_t Add(const TElementType& item)
-		{
-			return Emplace(item);
-		}
-
-		size_t Add(TElementType&& item)
+		size_t Add(TElementType item)
 		{
 			return Emplace(item);
 		}
@@ -272,6 +264,18 @@ namespace Sailor
 
 			ConstructElements(index, item, 1);
 			m_arrayNum++;
+		}
+
+		void Insert(TElementType&& item, size_t index)
+		{
+			if (index == m_arrayNum)
+			{
+				Emplace(item);
+				return;
+			}
+
+			memmove(&m_pRawPtr[index + 1], &m_pRawPtr[index], (m_arrayNum - index) * sizeof(TElementType));
+			EmplaceAt(index, item);
 		}
 
 		void Insert(const TVector& vector, size_t index)
@@ -440,6 +444,15 @@ namespace Sailor
 				const size_t optimalSize = Math::UpperPowOf2((uint32_t)(newSize));
 				Reserve(optimalSize);
 			}
+		}
+
+		template<typename... TArgs>
+		__forceinline size_t EmplaceAt(size_t index, TArgs&& ... args)
+		{
+			ResizeIfNeeded(m_arrayNum + 1);
+
+			new (&m_pRawPtr[index]) TElementType(std::forward<TArgs>(args)...);
+			return m_arrayNum++;
 		}
 
 		TAllocator m_allocator{};
