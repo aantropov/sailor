@@ -4,6 +4,7 @@
 #include <functional>
 #include <concepts>
 #include <type_traits>
+#include <iterator>
 #include "Defines.h"
 #include "Math/Math.h"
 #include "Memory/Memory.h"
@@ -11,38 +12,88 @@
 namespace Sailor
 {
 	template<typename TElementType>
-	struct SAILOR_API TIterator
+	class SAILOR_API TIterator
 	{
-		TElementType* m_element;
-		TIterator(TElementType* element) : m_element(element) {}
+	public:
 
-		bool operator!=(TIterator rhs) const { return m_element != rhs.m_element; }
-		TElementType& operator*() { return *m_element; }
-		void operator++() { ++m_element; }
+		using iterator_category = std::random_access_iterator_tag;
+		using value_type = TElementType;
+		using difference_type = int64_t;
+		using pointer = TElementType*;
+		using reference = TElementType&;
 
-		TIterator operator-(size_t rhs) const { return m_element - rhs; }
-		TIterator operator+(size_t rhs) const { return m_element + rhs; }
+		TIterator() : m_element(nullptr) {}
 
-		TIterator& operator-=(size_t rhs) { m_element -= rhs; return this; }
-		TIterator& operator+=(size_t rhs) { m_element += rhs; return this; }
+		TIterator(const TIterator&) = default;
+		TIterator(TIterator&&) = default;
+
+		virtual ~TIterator() = default;
+
+		TIterator(pointer element) : m_element(element) {}
+
+		TIterator& operator=(const TIterator& rhs)
+		{
+			m_element = rhs.m_element;
+			return *this;
+		}
+
+		TIterator& operator=(TIterator&& rhs)
+		{
+			m_element = rhs.m_element;
+			rhs.m_element = nullptr;
+		}
+
+		bool operator==(const TIterator& rhs) const { return m_element == rhs.m_element; }
+		bool operator!=(const TIterator& rhs) const { return m_element != rhs.m_element; }
+
+		bool operator<(const TIterator& rhs) const { return *m_element < *rhs.m_element; }
+
+		reference operator*() { return *m_element; }
+		reference operator*() const { return *m_element; }
+
+		reference operator->() { return m_element; }
+		reference operator->() const { return m_element; }
+
+		TIterator& operator++()
+		{
+			++m_element;
+			return *this;
+		}
+
+		TIterator& operator--()
+		{
+			--m_element;
+			return *this;
+		}
+
+		TIterator operator-(difference_type rhs) const { return m_element - rhs; }
+		TIterator operator+(difference_type rhs) const { return m_element + rhs; }
+
+		TIterator& operator-=(difference_type rhs) { m_element -= rhs; return this; }
+		TIterator& operator+=(difference_type rhs) { m_element += rhs; return this; }
+
+		difference_type operator-(const TIterator& other) const
+		{
+			return (difference_type)(m_element - other.m_element);
+		}
+
+		static friend TIterator<TElementType> operator-(const difference_type& offset, TIterator<TElementType>& other)
+		{
+			return other - offset;
+		}
+
+		static friend TIterator<TElementType> operator+(const difference_type& offset, TIterator<TElementType>& other)
+		{
+			return other + offset;
+		}
+
+	protected:
+
+		pointer m_element;
 	};
 
 	template<typename TElementType>
-	struct SAILOR_API TConstIterator
-	{
-		const TElementType* m_element;
-		TConstIterator(const TElementType* element) : m_element(element) {}
-
-		bool operator!=(TConstIterator rhs) const { return m_element != rhs.m_element; }
-		const TElementType& operator*() const { return *m_element; }
-		void operator++() { ++m_element; }
-
-		TConstIterator operator-(size_t rhs) const { return m_element - rhs; }
-		TConstIterator operator+(size_t rhs) const { return m_element + rhs; }
-
-		TConstIterator& operator-=(size_t rhs) { m_element -= rhs; return this; }
-		TConstIterator& operator+=(size_t rhs) { m_element += rhs; return this; }
-	};
+	using TConstIterator = TIterator<const TElementType>;
 
 	template<typename T>
 	concept IsTriviallyDestructible = std::is_trivially_destructible<T>::value;
@@ -53,7 +104,6 @@ namespace Sailor
 	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
 	class SAILOR_API TVector
 	{
-
 	public:
 
 		static constexpr size_t InvalidIndex = (size_t)-1;
