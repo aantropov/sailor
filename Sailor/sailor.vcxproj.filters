@@ -285,6 +285,9 @@
     <ClInclude Include="..\Runtime\Core\Vector.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Core\Map.h">
+      <Filter>Runtime\Core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

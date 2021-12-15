@@ -192,6 +192,7 @@
     <ClInclude Include="..\Runtime\Core\Defines.h" />
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\Core\LogMacros.h" />
+    <ClInclude Include="..\Runtime\Core\Map.h" />
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
     <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
