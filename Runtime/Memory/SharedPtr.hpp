@@ -22,8 +22,9 @@ namespace Sailor
 	{
 	public:
 
-		virtual size_t Hash() const
+		size_t GetHash() const
 		{
+			// TODO: implement hash_combine
 			std::hash<const void*> p;
 			return p(m_pControlBlock);
 		}
@@ -215,7 +216,7 @@ namespace std
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TSmartPtrBase& p) const
 		{
-			return p.Hash();
+			return p.GetHash();
 		}
 	};
 }
@@ -227,7 +228,7 @@ namespace std
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TSharedPtr<T>& p) const
 		{
-			return p.Hash();
+			return p.GetHash();
 		}
 	};
 }

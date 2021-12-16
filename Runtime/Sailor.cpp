@@ -11,6 +11,7 @@
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"
 #include "Core/Vector.h"
+#include "Core/Set.h"
 #include "Framework/Framework.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 
@@ -69,7 +70,7 @@ void App::Initialize()
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
-
+	
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
 	s_pInstance->AddSubmodule(TSubmodule<Framework>::Make());
@@ -79,6 +80,8 @@ void App::Initialize()
 
 void App::Start()
 {
+	Sailor::RunSetBenchmark();
+
 	s_pInstance->m_pViewportWindow->SetActive(true);
 	s_pInstance->m_pViewportWindow->SetRunning(true);
 

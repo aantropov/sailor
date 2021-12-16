@@ -132,11 +132,20 @@ namespace Sailor
 		}
 
 		// Operators
-		const TElementType& operator[](size_t index) const { return m_pRawPtr[index]; }
-		TElementType& operator[](size_t index) { return m_pRawPtr[index]; }
+		__forceinline const TElementType& operator[](size_t index) const
+		{
+			assert(index < m_arrayNum);
+			return m_pRawPtr[index];
+		}
 
-		bool operator!=(const TVector& otherArray) const { return !(otherArray == this); }
-		bool operator==(const TVector& otherArray) const
+		__forceinline TElementType& operator[](size_t index)
+		{
+			assert(index < m_arrayNum);
+			return m_pRawPtr[index];
+		}
+
+		__forceinline bool operator!=(const TVector& otherArray) const { return !(otherArray == this); }
+		__forceinline bool operator==(const TVector& otherArray) const
 		{
 			if (m_arrayNum != otherArray.m_arrayNum)
 			{
@@ -352,8 +361,10 @@ namespace Sailor
 			m_arrayNum += count;
 		}
 
-		bool IsValidIndex(size_t index) const { return 0 < index && index < m_arrayNum; }
-		size_t Num() const { return m_arrayNum; }
+		__forceinline bool IsValidIndex(size_t index) const { return 0 < index && index < m_arrayNum; }
+
+		__forceinline size_t Num() const { return m_arrayNum; }
+		__forceinline size_t Capacity() const { return m_capacity; }
 
 		void RemoveLast()
 		{
@@ -459,11 +470,13 @@ namespace Sailor
 
 		void Sort()
 		{
+			// For now use std
 			std::stable_sort(begin(), end());
 		}
 
 		void Sort(const TPredicate<TElementType>& predicate)
 		{
+			// For now use std
 			std::stable_sort(begin(), end(), predicate);
 		}
 

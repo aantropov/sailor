@@ -53,7 +53,7 @@ public:
 		Timer stdVector;
 		Timer tVector;
 
-		const size_t count = 1053600;
+		const size_t count = 1653600;
 
 		TVector<TData, Sailor::Memory::MallocAllocator> container;
 		std::vector<TData> ideal;

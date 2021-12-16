@@ -203,7 +203,7 @@ namespace std
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TWeakPtr<T>& p) const
 		{
-			return p.Hash();
+			return p.GetHash();
 		}
 	};
 }
