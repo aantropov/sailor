@@ -1,10 +1,7 @@
 #include "Memory.h"
 #include <cstdlib>
-#include <malloc.h>
 #include <vector>
-#include <fstream>
 #include <cassert>
-#include <functional> 
 #include <cctype>
 #include "Core/Utils.h"
 #include "Vector.h"

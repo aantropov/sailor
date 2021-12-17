@@ -1,8 +1,3 @@
-#include <cassert>
-#include <memory>
-#include <functional>
-#include <concepts>
-#include <type_traits>
 #include "Defines.h"
 #include "Set.h"
 #include "Math/Math.h"

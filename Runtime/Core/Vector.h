@@ -119,7 +119,7 @@ namespace Sailor
 
 		TVector(std::initializer_list<TElementType> initList) : TVector(initList.begin(), initList.size()) {}
 
-		TVector(const TVector& other) : TVector(&other[0], other.Num()) {}
+		TVector(const TVector& other) : TVector(other.GetData(), other.Num()) {}
 
 		TVector(TVector&& other) { Swap(*this, other); }
 
@@ -332,7 +332,7 @@ namespace Sailor
 
 		void Insert(const TVector& vector, size_t index)
 		{
-			Insert(vector[0], vector.Num(), index);
+			Insert(vector.GetData(), vector.Num(), index);
 		}
 
 		void Insert(std::initializer_list<TElementType> initList, size_t index)
