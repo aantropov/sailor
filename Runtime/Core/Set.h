@@ -4,10 +4,8 @@
 #include <functional>
 #include <concepts>
 #include <type_traits>
-#include "Defines.h"
+#include "Core/Defines.h"
 #include "Vector.h"
-#include "Math/Math.h"
-#include "Memory/UniquePtr.hpp"
 #include "Memory/Memory.h"
 
 namespace Sailor
@@ -32,7 +30,8 @@ namespace Sailor
 
 		virtual ~TSetElement() = default;
 
-		TVector<TElementType, TAllocator>& GetContainer() { return m_elements; }
+		__forceinline TVector<TElementType, TAllocator>& GetContainer() { return m_elements; }
+		__forceinline const TVector<TElementType, TAllocator>& GetContainer() const { return m_elements; }
 
 		__forceinline bool operator==(const TSetElement& Other) const
 		{
@@ -55,7 +54,7 @@ namespace Sailor
 
 		TSet(const uint32_t desiredNumBuckets = 16)
 		{
-			m_buckets.Reserve(desiredNumBuckets);
+			m_buckets.Resize(desiredNumBuckets);
 		}
 
 		TSet(TSet&&) = default;
@@ -63,14 +62,16 @@ namespace Sailor
 		TSet& operator=(TSet&&) = default;
 		TSet& operator=(const TSet&) = default;
 
+		size_t Num() const { return m_num; }
+
 		bool Contains(const TElementType& element) const
 		{
 			const auto& hash = Sailor::GetHash(element);
 			const size_t index = hash % m_buckets.Num();
 
-			if (m_buckets[index].Num() > 0)
+			if (m_buckets[index].GetContainer().Num() > 0)
 			{
-				return m_buckets[index].Find(element) != -1;
+				return m_buckets[index].GetContainer().Find(element) != -1;
 			}
 
 			return false;
@@ -85,7 +86,9 @@ namespace Sailor
 
 			const auto& hash = Sailor::GetHash(element);
 			const size_t index = hash % m_buckets.Num();
-			m_buckets[index].Emplace(element);
+			m_buckets[index].GetContainer().Emplace(element);
+
+			m_num++;
 		}
 
 		bool Remove(const TElementType& element)
@@ -93,12 +96,13 @@ namespace Sailor
 			const auto& hash = Sailor::GetHash(element);
 			const size_t index = hash % m_buckets.Num();
 
-			if (m_buckets[index].Num() > 0)
+			if (m_buckets[index].GetContainer().Num() > 0)
 			{
-				const auto& i = m_buckets[index].Find(element);
+				const auto& i = m_buckets[index].GetContainer().Find(element);
 				if (i != -1)
 				{
-					m_buckets[index].RemoveAtSwap(i);
+					m_buckets[index].GetContainer().RemoveAtSwap(i);
+					m_num--;
 					return true;
 				}
 				return false;
@@ -127,22 +131,20 @@ namespace Sailor
 
 	protected:
 
-		TVector<TSetElement<TElementType, TAllocator>, TAllocator> m_buckets;
-
-		bool ShouldRehash() const
+		__forceinline bool ShouldRehash() const
 		{
 			// TODO: Rethink the approach
-			return (float)m_buckets.Num() > m_buckets.Capacity() * 0.8f;
+			return (float)m_num > m_buckets.Num() * 256;
 		}
 
 		void Rehash(size_t desiredBucketsNum)
 		{
-			if (desiredBucketsNum <= m_buckets.Capacity())
+			if (desiredBucketsNum <= m_buckets.Num())
 			{
 				return;
 			}
 
-			TVector<TSetElement<TElementType>, TAllocator> buckets(desiredBucketsNum);
+			TVector<TSetElement<TElementType, TAllocator>, TAllocator> buckets(desiredBucketsNum);
 
 			for (auto& el : m_buckets)
 			{
@@ -150,6 +152,9 @@ namespace Sailor
 			}
 			m_buckets = std::move(buckets);
 		}
+
+		TVector<TSetElement<TElementType, TAllocator>, TAllocator> m_buckets{};
+		size_t m_num = 0;
 	};
 
 	SAILOR_API void RunSetBenchmark();

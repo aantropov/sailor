@@ -1,8 +1,5 @@
-#include "Defines.h"
-#include "Set.h"
-#include "Math/Math.h"
+#include "Core/Set.h"
 #include "Core/Utils.h"
-#include "Memory/Memory.h"
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -10,21 +7,6 @@ using Timer = Utils::Timer;
 
 class TestCase_SetPerfromance
 {
-	struct TData
-	{
-		TData(uint32_t value)
-		{
-			m_value = value;
-		}
-
-		bool operator==(const TData& rhs) const
-		{
-			return m_value == rhs.m_value;
-		}
-
-		uint32_t m_value;
-	};
-
 public:
 
 	static void RunTests()
@@ -37,22 +19,13 @@ public:
 
 	static void PerformanceTests()
 	{
+		const size_t count = 1000600;
+
 		Timer stdSet;
 		Timer tSet;
-
-		const size_t count = 13600;
-
-		TSet<TData, Sailor::Memory::MallocAllocator> container;
-		std::unordered_set<TData> ideal;
-
-		srand(0);
-		tSet.Start();
-		for (size_t i = 0; i < count; i++)
-		{
-			const int32_t value = rand();
-			container.Insert(value);
-		}
-		tSet.Stop();
+	
+		TSet<size_t, Sailor::Memory::MallocAllocator> container(1000600);
+		std::unordered_set<size_t> ideal;
 
 		srand(0);
 		stdSet.Start();
@@ -63,7 +36,64 @@ public:
 		}
 		stdSet.Stop();
 
+		srand(0);
+		tSet.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const int32_t value = rand();
+			container.Insert(value);
+		}
+		tSet.Stop();
+
 		SAILOR_LOG("Performance test insert:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
+
+/////////////////////////////////////////////
+		stdSet.Clear();
+		tSet.Clear();
+
+		srand(0);
+		stdSet.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const int32_t value = rand();
+			auto res = ideal.find(value);
+		}
+		stdSet.Stop();
+
+		srand(0);
+		tSet.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const int32_t value = rand();
+			container.Contains(value);
+		}
+		tSet.Stop();
+
+		SAILOR_LOG("Performance test contains:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
+/////////////////////////////////////////////
+
+		stdSet.Clear();
+		tSet.Clear();
+
+		srand(0);
+		tSet.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const int32_t value = rand();
+			container.Remove(value);
+		}
+		tSet.Stop();
+
+		srand(0);
+		stdSet.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const int32_t value = rand();
+			ideal.erase(value);
+		}
+		stdSet.Stop();
+
+		SAILOR_LOG("Performance test remove:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
 	}
 
 	static bool SanityCheck()

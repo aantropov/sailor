@@ -554,5 +554,5 @@ namespace Sailor
 		}
 	};
 
-	void RunVectorBenchmark();
+	SAILOR_API void RunVectorBenchmark();
 }

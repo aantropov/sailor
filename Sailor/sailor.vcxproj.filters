@@ -291,9 +291,6 @@
     <ClInclude Include="..\Runtime\Core\Set.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Core\SetBenchmark.cpp">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -483,6 +480,9 @@
       <Filter>Runtime\Math</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Core\VectorBenchmark.cpp">
+      <Filter>Runtime\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Core\SetBenchmark.cpp">
       <Filter>Runtime\Core</Filter>
     </ClCompile>
   </ItemGroup>
