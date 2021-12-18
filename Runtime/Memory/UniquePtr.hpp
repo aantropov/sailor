@@ -94,7 +94,7 @@ namespace Sailor
 			m_pRawPtr = nullptr;
 		}
 
-		virtual ~TUniquePtr()
+		~TUniquePtr()
 		{
 			Clear();
 		}

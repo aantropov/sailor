@@ -17,26 +17,19 @@ using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
 HeapAllocator GlobalHeapAllocator::m_heapAllocator;
-std::mutex GlobalHeapAllocator::m_mutex;
 
 void* GlobalHeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 {
-	std::scoped_lock<std::mutex> guard(m_mutex);
-
 	return m_heapAllocator.Reallocate(ptr, size, alignment);
 }
 
 void* GlobalHeapAllocator::Allocate(size_t size, size_t alignment)
 {
-	std::scoped_lock<std::mutex> guard(m_mutex);
-
 	return m_heapAllocator.Allocate(size, alignment);
 }
 
 void GlobalHeapAllocator::Free(void* pData, size_t size)
 {
-	std::scoped_lock<std::mutex> guard(m_mutex);
-
 	m_heapAllocator.Free(pData);
 }
 

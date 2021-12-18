@@ -18,25 +18,8 @@ namespace Sailor
 		TSmartPtrCounter m_sharedPtrCounter = 0;
 	};
 
-	class TSmartPtrBase
-	{
-	public:
-
-		size_t GetHash() const
-		{
-			// TODO: implement hash_combine
-			std::hash<const void*> p;
-			return p(m_pControlBlock);
-		}
-
-	protected:
-		TSmartPtrControlBlock* m_pControlBlock = nullptr;
-
-		virtual ~TSmartPtrBase() = default;
-	};
-
 	template<typename T>
-	class TSharedPtr final : public TSmartPtrBase
+	class TSharedPtr final
 	{
 	public:
 
@@ -126,9 +109,16 @@ namespace Sailor
 			m_pControlBlock = nullptr;
 		}
 
-		virtual ~TSharedPtr() override
+		~TSharedPtr()
 		{
 			DecrementRefCounter();
+		}
+
+		size_t GetHash() const
+		{
+			// TODO: implement hash_combine
+			std::hash<const void*> p;
+			return p(m_pControlBlock);
 		}
 
 	protected:
@@ -136,6 +126,7 @@ namespace Sailor
 	private:
 
 		T* m_pRawPtr = nullptr;
+		TSmartPtrControlBlock* m_pControlBlock = nullptr;
 
 		void AssignRawPtr(T* pRawPtr, TSmartPtrControlBlock* pControlBlock)
 		{
@@ -206,18 +197,6 @@ namespace Sailor
 
 		template<typename>
 		friend class TWeakPtr;
-	};
-}
-
-namespace std
-{
-	template<>
-	struct std::hash<Sailor::TSmartPtrBase>
-	{
-		SAILOR_API std::size_t operator()(const Sailor::TSmartPtrBase& p) const
-		{
-			return p.GetHash();
-		}
 	};
 }
 

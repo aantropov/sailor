@@ -6,7 +6,7 @@
 namespace Sailor
 {
 	template<typename T>
-	class TWeakPtr final : public TSmartPtrBase
+	class TWeakPtr final
 	{
 	public:
 
@@ -120,9 +120,16 @@ namespace Sailor
 			m_pControlBlock = nullptr;
 		}
 
-		virtual ~TWeakPtr() override
+		~TWeakPtr()
 		{
 			DecrementRefCounter();
+		}
+
+		size_t GetHash() const
+		{
+			// TODO: implement hash_combine
+			std::hash<const void*> p;
+			return p(m_pControlBlock);
 		}
 
 	protected:
@@ -130,6 +137,7 @@ namespace Sailor
 	private:
 
 		T* m_pRawPtr = nullptr;
+		TSmartPtrControlBlock* m_pControlBlock = nullptr;
 
 		void AssignRawPtr(T* pRawPtr, TSmartPtrControlBlock* pControlBlock)
 		{

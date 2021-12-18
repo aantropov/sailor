@@ -38,7 +38,7 @@ namespace Sailor
 			TIterator(const TIterator&) = default;
 			TIterator(TIterator&&) = default;
 
-			virtual ~TIterator() = default;
+			~TIterator() = default;
 
 			TIterator(pointer element) : m_element(element) {}
 

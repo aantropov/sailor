@@ -23,8 +23,8 @@ public:
 
 		Timer stdSet;
 		Timer tSet;
-	
-		TSet<size_t, Sailor::Memory::MallocAllocator> container(1000600);
+
+		TSet<size_t, Sailor::Memory::MallocAllocator> container;
 		std::unordered_set<size_t> ideal;
 
 		srand(0);
@@ -47,7 +47,7 @@ public:
 
 		SAILOR_LOG("Performance test insert:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
 
-/////////////////////////////////////////////
+		/////////////////////////////////////////////
 		stdSet.Clear();
 		tSet.Clear();
 
@@ -70,7 +70,7 @@ public:
 		tSet.Stop();
 
 		SAILOR_LOG("Performance test contains:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
-/////////////////////////////////////////////
+		/////////////////////////////////////////////
 
 		stdSet.Clear();
 		tSet.Clear();

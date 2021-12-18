@@ -33,8 +33,6 @@ namespace Sailor::Memory
 	class GlobalHeapAllocator
 	{
 		static HeapAllocator m_heapAllocator;
-		static std::mutex m_mutex;
-
 	public:
 
 		SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
