@@ -239,6 +239,16 @@ namespace Sailor
 							element->m_prev->m_next = element->m_next;
 						}
 
+						if (m_last == element.GetRawPtr())
+						{
+							m_last = m_last->m_prev;
+						}
+
+						if (m_first == element.GetRawPtr())
+						{
+							m_first = m_first->m_next;
+						}
+
 						element.Clear();
 					}
 
