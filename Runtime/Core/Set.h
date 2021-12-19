@@ -22,7 +22,7 @@ namespace Sailor
 	{
 	public:
 
-		using TContainer = TVector<TElementType>;// TVector<TElementType, Memory::TInlineAllocator<64u, TAllocator>>;
+		using TContainer = TVector<TElementType, Memory::TInlineAllocator<64u, TAllocator>>;
 
 		TSetElement() = default;
 		TSetElement(TSetElement&&) = default;
@@ -147,7 +147,7 @@ namespace Sailor
 		{
 			// We assume that each bucket has up to 64 elements inside
 			// TODO: Rethink the approach
-			return (float)m_num > (float)m_buckets.Num() * 2;
+			return (float)m_num > (float)m_buckets.Num() * 16;
 		}
 
 		void Rehash(size_t desiredBucketsNum)

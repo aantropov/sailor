@@ -34,7 +34,7 @@ namespace Sailor::Memory
 
 		bool Contains(void* pData) const
 		{
-			return 	&m_stack + stackSize <= pData && pData <= &m_stack;
+			return pData < &m_stack[stackSize] && &m_stack[sizeof(uint16_t)] <= pData;
 		}
 
 	public:
@@ -44,7 +44,7 @@ namespace Sailor::Memory
 			// We store size of element before allocated memory
 			size_t requiredSize = size + sizeof(uint16_t);
 
-			if (stackSize - m_index < requiredSize)
+			if (stackSize - m_index - 1 < requiredSize)
 			{
 				return m_allocator.Allocate(size, alignment);
 			}
