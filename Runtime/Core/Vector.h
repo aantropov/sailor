@@ -5,9 +5,10 @@
 #include <concepts>
 #include <type_traits>
 #include <iterator>
+#include <algorithm>
 #include "Defines.h"
 #include "Math/Math.h"
-#include "Memory/Memory.h"
+#include "Memory/MallocAllocator.h"
 
 namespace Sailor
 {
@@ -15,10 +16,16 @@ namespace Sailor
 	concept IsTriviallyDestructible = std::is_trivially_destructible<T>::value;
 
 	template<typename T>
+	concept IsMoveConstructible = std::is_move_constructible<T>::value;
+
+	template<typename T>
+	concept IsCopyConstructible = std::is_copy_constructible<T>::value;
+
+	template<typename T>
 	using TPredicate = std::function<bool(const T&)>;
 
 	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
-	class SAILOR_API TVector
+	class SAILOR_API TVector final
 	{
 	public:
 
@@ -52,6 +59,7 @@ namespace Sailor
 			{
 				m_element = rhs.m_element;
 				rhs.m_element = nullptr;
+				return *this;
 			}
 
 			bool operator==(const TIterator& rhs) const { return m_element == rhs.m_element; }
@@ -104,7 +112,7 @@ namespace Sailor
 		};
 
 		template<typename TElementType>
-		using TConstIterator = TIterator<const TElementType>;
+		using TConstIterator = TVector::TIterator<const TElementType>;
 
 		static constexpr size_t InvalidIndex = (size_t)-1;
 
@@ -115,20 +123,28 @@ namespace Sailor
 			AddDefault(countDefaultElements);
 		}
 
-		virtual ~TVector() { Clear(); }
+		~TVector() { Clear(); }
 
 		TVector(std::initializer_list<TElementType> initList) : TVector(initList.begin(), initList.size()) {}
 
-		TVector(const TVector& other) : TVector(other.GetData(), other.Num()) {}
+		TVector(const TVector& other) requires IsCopyConstructible<TElementType> : TVector(other.GetData(), other.Num()) {}
 
-		TVector(TVector&& other) { Swap(*this, other); }
+		TVector(TVector&& other) noexcept { Swap(*this, other); }
 
-		TVector(const TElementType* rawPtr, size_t count)
+		TVector(const TElementType* rawPtr, size_t count) requires IsCopyConstructible<TElementType>
 		{
 			ResizeIfNeeded(count);
 
 			m_arrayNum = count;
 			ConstructElements(0, rawPtr[0], count);
+		}
+
+		TVector(TElementType* rawPtr, size_t count) requires IsMoveConstructible<TElementType> && !IsCopyConstructible<TElementType>
+		{
+			ResizeIfNeeded(count);
+
+			m_arrayNum = count;
+			MoveElements(0, rawPtr[0], count);
 		}
 
 		// Operators
@@ -270,7 +286,7 @@ namespace Sailor
 		{
 			for (size_t i = 0; i < m_arrayNum; i++)
 			{
-				if (m_pRawPtr[i] == item)
+				if (item == m_pRawPtr[i])
 				{
 					return i;
 				}
@@ -407,7 +423,11 @@ namespace Sailor
 		void RemoveAt(size_t index, size_t count = 1)
 		{
 			DestructElements(index, count);
-			memmove(&m_pRawPtr[index], &m_pRawPtr[index + count], sizeof(TElementType) * (m_arrayNum - index - count));
+			if (m_arrayNum - count != 0)
+			{
+				memmove(&m_pRawPtr[index], &m_pRawPtr[index + count], sizeof(TElementType) * (m_arrayNum - index - count));
+			}
+
 			m_arrayNum -= count;
 		}
 
@@ -466,7 +486,7 @@ namespace Sailor
 			}
 		}
 
-		bool IsEmpty() const { return m_arrayNum == 0; }
+		__forceinline bool IsEmpty() const { return m_arrayNum == 0; }
 
 		void Sort()
 		{
@@ -514,17 +534,16 @@ namespace Sailor
 		{
 			ResizeIfNeeded(m_arrayNum + 1);
 
-			new (&m_pRawPtr[index]) TElementType(std::forward<TArgs>(args)...);
+			new (&m_pRawPtr[index]) TElementType(std::move<TArgs>(args)...);
 			return m_arrayNum++;
 		}
 
-		TAllocator m_allocator{};
+		TElementType* m_pRawPtr = nullptr;
 		size_t m_arrayNum = 0;
 		size_t m_capacity = 0;
+		TAllocator m_allocator{};
 
-		TElementType* m_pRawPtr = nullptr;
-
-		void ConstructElements(size_t index, size_t count = 1)
+		__forceinline void ConstructElements(size_t index, size_t count = 1)
 		{
 			for (size_t i = 0; i < count; i++)
 			{
@@ -532,7 +551,7 @@ namespace Sailor
 			}
 		}
 
-		void ConstructElements(size_t index, const TElementType& firstElement, size_t count = 1)
+		__forceinline void ConstructElements(size_t index, const TElementType& firstElement, size_t count = 1) requires IsCopyConstructible<TElementType>
 		{
 			for (size_t i = 0; i < count; i++)
 			{
@@ -540,7 +559,15 @@ namespace Sailor
 			}
 		}
 
-		void DestructElements(size_t index, size_t count = 1) requires !IsTriviallyDestructible<TElementType>
+		__forceinline void MoveElements(size_t index, TElementType& firstElement, size_t count = 1) requires IsMoveConstructible<TElementType>
+		{
+			for (size_t i = 0; i < count; i++)
+			{
+				new (&m_pRawPtr[i + index]) TElementType(std::move((&firstElement)[i]));
+			}
+		}
+
+		__forceinline void DestructElements(size_t index, size_t count = 1) requires !IsTriviallyDestructible<TElementType>
 		{
 			for (size_t i = 0; i < count; i++)
 			{
@@ -548,7 +575,7 @@ namespace Sailor
 			}
 		}
 
-		void DestructElements(size_t index, size_t count = 1) requires IsTriviallyDestructible<TElementType>
+		__forceinline void DestructElements(size_t index, size_t count = 1) requires IsTriviallyDestructible<TElementType>
 		{
 			// Do nothing for trivial types
 		}

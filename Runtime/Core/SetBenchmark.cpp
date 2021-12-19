@@ -19,12 +19,12 @@ public:
 
 	static void PerformanceTests()
 	{
-		const size_t count = 1000600;
+		const size_t count = 10000600;
 
 		Timer stdSet;
 		Timer tSet;
 
-		TSet<size_t, Sailor::Memory::MallocAllocator> container;
+		TSet<size_t> container(10000600);
 		std::unordered_set<size_t> ideal;
 
 		srand(0);

@@ -291,6 +291,9 @@
     <ClInclude Include="..\Runtime\Core\Set.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\MallocAllocator.h">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

@@ -388,7 +388,7 @@ bool PoolAllocator::TryAddMoreSpace(void* ptr, size_t newSize)
 
 void* PoolAllocator::Allocate(size_t size, size_t alignment)
 {
-	for (size_t i = 0; i < m_freeList.size(); i++)
+	for (size_t i = 0; i < m_freeList.Num(); i++)
 	{
 		auto& page = m_pages[m_freeList[i]];
 		const size_t realEmptySpace = page.m_totalSize - page.m_occupiedSpace;
@@ -401,7 +401,7 @@ void* PoolAllocator::Allocate(size_t size, size_t alignment)
 				{
 					page.m_bIsInFreeList = false;
 					std::iter_swap(m_freeList.begin() + i, m_freeList.end() - 1);
-					m_freeList.pop_back();
+					m_freeList.RemoveLast();
 				}
 				else if (i != 0)
 				{
@@ -413,21 +413,21 @@ void* PoolAllocator::Allocate(size_t size, size_t alignment)
 		}
 	}
 
-	const size_t quadraticGrow = (size_t)pow(2.0, (double)m_pages.size());
+	const size_t quadraticGrow = (size_t)pow(2.0, (double)m_pages.Num());
 	const size_t neededPlace = size + sizeof(Header);
 	const size_t maxBlockSize = 1024ull * 1024ull * 1024ull * 1u;
 	const size_t newPageSize = std::max(neededPlace, std::min(maxBlockSize, quadraticGrow * m_pageSize));
 
-	size_t index = m_pages.size();
+	size_t index = m_pages.Num();
 
-	if (!m_emptyPages.empty())
+	if (!m_emptyPages.IsEmpty())
 	{
-		index = m_emptyPages[m_emptyPages.size() - 1];
+		index = m_emptyPages[m_emptyPages.Num() - 1];
 		if (!RequestPage(m_pages[index], newPageSize, index))
 		{
 			return nullptr;
 		}
-		m_emptyPages.pop_back();
+		m_emptyPages.RemoveLast();
 	}
 	else
 	{
@@ -437,13 +437,13 @@ void* PoolAllocator::Allocate(size_t size, size_t alignment)
 			return nullptr;
 		}
 
-		m_pages.emplace_back(std::move(newPage));
+		m_pages.Emplace(std::move(newPage));
 	}
 
 	// If we are out of maxBlockSize then we have one block per allocation
 	if (newPageSize <= maxBlockSize)
 	{
-		m_freeList.push_back(index);
+		m_freeList.Add(index);
 	}
 
 	return m_pages[index].Allocate(size, alignment);
@@ -460,19 +460,19 @@ void PoolAllocator::Free(void* ptr)
 
 	if (!page.m_bIsInFreeList && (page.m_totalSize - page.m_occupiedSpace) > page.GetMinAllowedEmptySpace())
 	{
-		m_freeList.push_back(block->m_pageIndex);
+		m_freeList.Add(block->m_pageIndex);
 		page.m_bIsInFreeList = true;
 	}
 
 #ifndef SAILOR_MEMORY_HEAP_DISABLE_FREE
-	if (page.IsEmpty() && m_freeList.size() > 1)
+	if (page.IsEmpty() && m_freeList.Num() > 1)
 	{
-		m_emptyPages.push_back(block->m_pageIndex);
+		m_emptyPages.Add(block->m_pageIndex);
 
 		auto it = std::find(m_freeList.begin(), m_freeList.end(), block->m_pageIndex);
 
 		std::iter_swap(m_freeList.end() - 1, it);
-		m_freeList.pop_back();
+		m_freeList.RemoveLast();
 		page.Clear();
 	}
 #endif
@@ -485,8 +485,8 @@ PoolAllocator::~PoolAllocator()
 		page.Clear();
 	}
 
-	m_freeList.clear();
-	m_pages.clear();
+	m_freeList.Clear();
+	m_pages.Clear();
 }
 
 bool SmallPoolAllocator::RequestPage(SmallPage& page, uint8_t blockSize, uint16_t pageIndex) const
@@ -505,23 +505,23 @@ SmallPoolAllocator::SmallPage::SmallPage(uint8_t blockSize, uint16_t pageIndex)
 	m_blockSize = blockSize;
 	m_pageIndex = pageIndex;
 
-	m_freeList.reserve(GetMaxBlocksNum());
+	m_freeList.Reserve(GetMaxBlocksNum());
 
 	for (uint16_t i = 1; i < GetMaxBlocksNum(); i++)
 	{
-		m_freeList.emplace_back(i);
+		m_freeList.Emplace(i);
 	}
 }
 
 void* SmallPoolAllocator::SmallPage::Allocate()
 {
-	if (m_freeList.size() == 0)
+	if (m_freeList.Num() == 0)
 	{
 		return nullptr;
 	}
 
-	uint16_t id = m_freeList[m_freeList.size() - 1];
-	m_freeList.pop_back();
+	uint16_t id = m_freeList[m_freeList.Num() - 1];
+	m_freeList.RemoveLast();
 
 	SmallHeader* header = (SmallHeader*)ShiftPtr(m_pData, (int32_t)id * m_blockSize - (int32_t)sizeof(SmallHeader));
 	header->m_id = id;
@@ -539,7 +539,7 @@ void SmallPoolAllocator::SmallPage::Free(void* ptr)
 
 	m_numAllocs--;
 
-	m_freeList.push_back(header->m_id);
+	m_freeList.Add(header->m_id);
 }
 
 void SmallPoolAllocator::SmallPage::Clear()
@@ -560,17 +560,17 @@ bool SmallPoolAllocator::SmallPage::IsEmpty() const
 
 uint16_t SmallPoolAllocator::SmallPage::GetOccupiedSpace() const
 {
-	return m_size - (uint16_t)m_freeList.size() * m_blockSize;
+	return m_size - (uint16_t)m_freeList.Num() * m_blockSize;
 }
 
 bool SmallPoolAllocator::SmallPage::IsFull() const
 {
-	return m_freeList.empty();
+	return m_freeList.IsEmpty();
 }
 
 void* SmallPoolAllocator::Allocate()
 {
-	for (size_t i = 0; i < m_freeList.size(); i++)
+	for (size_t i = 0; i < m_freeList.Num(); i++)
 	{
 		auto& page = m_pages[m_freeList[i]];
 
@@ -580,22 +580,22 @@ void* SmallPoolAllocator::Allocate()
 			{
 				page.m_bIsInFreeList = false;
 				std::iter_swap(m_freeList.begin() + i, m_freeList.end() - 1);
-				m_freeList.pop_back();
+				m_freeList.RemoveLast();
 			}
 			return res;
 		}
 	}
 
-	uint16_t index = (uint16_t)m_pages.size();
+	uint16_t index = (uint16_t)m_pages.Num();
 
-	if (!m_emptyPages.empty())
+	if (!m_emptyPages.IsEmpty())
 	{
-		index = m_emptyPages[m_emptyPages.size() - 1];
+		index = m_emptyPages[m_emptyPages.Num() - 1];
 		if (!RequestPage(m_pages[index], m_blockSize, index))
 		{
 			return nullptr;
 		}
-		m_emptyPages.pop_back();
+		m_emptyPages.RemoveLast();
 	}
 	else
 	{
@@ -605,10 +605,10 @@ void* SmallPoolAllocator::Allocate()
 			return nullptr;
 		}
 
-		m_pages.emplace_back(std::move(newPage));
+		m_pages.Emplace(std::move(newPage));
 	}
 
-	m_freeList.push_back(index);
+	m_freeList.Add(index);
 	return m_pages[index].Allocate();
 }
 
@@ -626,20 +626,20 @@ void SmallPoolAllocator::Free(void* ptr)
 
 	if (!page.m_bIsInFreeList)
 	{
-		m_freeList.push_back(block->m_pageIndex);
+		m_freeList.Add(block->m_pageIndex);
 		page.m_bIsInFreeList = true;
 	}
 
 #ifndef SAILOR_MEMORY_HEAP_DISABLE_FREE
-	if (page.IsEmpty() && m_freeList.size() > 1)
+	if (page.IsEmpty() && m_freeList.Num() > 1)
 	{
-		m_emptyPages.push_back(blockIndex);
+		m_emptyPages.Add(blockIndex);
 
 		if (page.m_bIsInFreeList)
 		{
 			auto it = std::find(m_freeList.begin(), m_freeList.end(), blockIndex);
 			std::iter_swap(m_freeList.end() - 1, it);
-			m_freeList.pop_back();
+			m_freeList.RemoveLast();
 		}
 
 		page.Clear();
@@ -660,7 +660,7 @@ HeapAllocator::HeapAllocator()
 {
 	for (uint8_t i = 0; i < 255; i++)
 	{
-		m_smallAllocators.push_back(nullptr);
+		m_smallAllocators.Add(nullptr);
 	}
 
 	for (uint8_t i = 0; i < 255; i++)

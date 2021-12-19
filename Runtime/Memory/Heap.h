@@ -1,15 +1,15 @@
 #pragma once
 #include <memory>
-#include <vector>
-
+#include "Core/Vector.h"
 #include "Memory/UniquePtr.hpp"
+
 #define InvalidIndexUINT64 UINT64_MAX
 
 namespace Sailor::Memory
 {
 	namespace Internal
 	{
-		class PoolAllocator
+		class SAILOR_API PoolAllocator
 		{
 		public:
 
@@ -65,13 +65,13 @@ namespace Sailor::Memory
 			bool RequestPage(Page& page, size_t size, size_t pageIndex) const;
 
 			const size_t m_pageSize = 2048;
-
-			std::vector<Page> m_pages;
-			std::vector<size_t> m_freeList;
-			std::vector<size_t> m_emptyPages;
+		
+			Sailor::TVector<Page> m_pages;
+			Sailor::TVector<size_t> m_freeList;
+			Sailor::TVector<size_t> m_emptyPages;
 		};
 
-		class SmallPoolAllocator
+		class SAILOR_API SmallPoolAllocator
 		{
 		public:
 
@@ -97,7 +97,7 @@ namespace Sailor::Memory
 				void* m_pData = nullptr;
 				uint8_t m_blockSize = 0;
 				bool m_bIsInFreeList = true;
-				std::vector<uint16_t> m_freeList;
+				TVector<uint16_t, Sailor::Memory::MallocAllocator> m_freeList;
 
 				void* Allocate();
 				void Free(void* ptr);
@@ -121,13 +121,13 @@ namespace Sailor::Memory
 		private:
 
 			uint8_t m_blockSize = 0;
-			std::vector<SmallPage> m_pages;
-			std::vector<uint16_t> m_freeList;
-			std::vector<uint16_t> m_emptyPages;
+			TVector<SmallPage> m_pages;
+			TVector<uint16_t> m_freeList;
+			TVector<uint16_t> m_emptyPages;
 		};
 	}
 
-	class HeapAllocator
+	class SAILOR_API HeapAllocator
 	{
 	public:
 
@@ -139,7 +139,7 @@ namespace Sailor::Memory
 	private:
 
 		inline size_t CalculateAlignedSize(size_t blockSize) const;
-		std::vector<TUniquePtr<Internal::SmallPoolAllocator>> m_smallAllocators;
+		TVector<TUniquePtr<Internal::SmallPoolAllocator>> m_smallAllocators;
 		Internal::PoolAllocator m_allocator;
 	};
 }

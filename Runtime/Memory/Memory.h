@@ -8,60 +8,83 @@
 #include <mutex>
 #include "Heap.h"
 #include "Core/Defines.h"
+#include "MallocAllocator.h"
 
 namespace Sailor::Memory
 {
-	class MallocAllocator
-	{
-	public:
-		inline void* Allocate(size_t size, size_t alignment = 8)
-		{
-			return std::malloc(size);
-		}
-
-		inline void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
-		{
-			return std::realloc(ptr, size);
-		}
-
-		inline void Free(void* ptr, size_t size = 8)
-		{
-			std::free(ptr);
-		}
-	};
-
-	class GlobalHeapAllocator
+	class SAILOR_API GlobalHeapAllocator
 	{
 		static HeapAllocator m_heapAllocator;
 	public:
 
-		SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
-		SAILOR_API void* Allocate(size_t size, size_t alignment = 8);
-		SAILOR_API void Free(void* pData, size_t size = 0);
+		void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
+		void* Allocate(size_t size, size_t alignment = 8);
+		void Free(void* pData, size_t size = 0);
 	};
 
-	template<uint32_t stackSize = 1024>
-	class InlineAllocator
+	template<uint16_t stackSize = 1024, typename TAllocator = MallocAllocator>
+	class SAILOR_API TInlineAllocator final
 	{
 	protected:
+
 		uint8_t m_stack[stackSize];
-		uint32_t m_index = 0;
+		uint16_t m_index = 0u;
+
+		TAllocator m_allocator{};
+
+		bool Contains(void* pData) const
+		{
+			return 	&m_stack + stackSize <= pData && pData <= &m_stack;
+		}
 
 	public:
 
-		SAILOR_API void* Allocate(size_t size)
+		void* Allocate(size_t size, size_t alignment = 8)
 		{
-			void* res = (void*)(&m_stack[m_index]);
-			m_index += (uint32_t)(size);
-			return res;
+			// We store size of element before allocated memory
+			size_t requiredSize = size + sizeof(uint16_t);
+
+			if (stackSize - m_index < requiredSize)
+			{
+				return m_allocator.Allocate(size, alignment);
+			}
+
+			uint8_t* res = &m_stack[m_index];
+			m_index += (uint32_t)(requiredSize);
+
+			assert(size < 65536);
+
+			*(uint16_t*)res = (uint16_t)size;
+
+			return res + sizeof(uint16_t);
 		}
 
-		SAILOR_API void Free(void* pData, size_t size)
+		void* Reallocate(void* pData, size_t size, size_t alignment = 8)
 		{
-			// we can only remove the objects that are placed on the top of the stack
-			if (&((uint8_t*)pData)[(uint32_t)size] == &m_stack[m_index])
+			if (Contains(pData))
 			{
-				m_index -= (uint32_t)size;
+				Free(pData);
+				return Allocate(size, alignment);
+			}
+
+			return m_allocator.Reallocate(pData, size, alignment);
+		}
+
+		void Free(void* pData, size_t size = 0)
+		{
+			if (Contains(pData))
+			{
+				uint16_t size = *((uint8_t*)pData - sizeof(uint16_t)) + sizeof(uint16_t);
+
+				// we can only remove the objects that are placed on the top of the stack
+				if (&((uint8_t*)pData - sizeof(uint16_t))[size] == &m_stack[m_index])
+				{
+					m_index -= size;
+				}
+			}
+			else
+			{
+				m_allocator.Free(pData);
 			}
 		}
 	};
