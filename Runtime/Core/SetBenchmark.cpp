@@ -74,16 +74,27 @@ public:
 		tSet.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			container.Remove(i);
+			if (i % 2)
+			{
+				container.Remove(i);
+			}
 		}
 		tSet.Stop();
 
 		stdSet.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			ideal.erase(i);
+			if (i % 2)
+			{
+				ideal.erase(i);
+			}
 		}
 		stdSet.Stop();
+
+		for (auto& el : container)
+		{
+			SAILOR_LOG("%llu", el);
+		}
 
 		SAILOR_LOG("Performance test remove:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
 	}

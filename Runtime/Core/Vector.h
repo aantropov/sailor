@@ -24,95 +24,95 @@ namespace Sailor
 	template<typename T>
 	using TPredicate = std::function<bool(const T&)>;
 
+	template<typename TDataType>
+	class SAILOR_API TVectorIterator
+	{
+	public:
+
+		using iterator_category = std::random_access_iterator_tag;
+		using value_type = TDataType;
+		using difference_type = int64_t;
+		using pointer = TDataType*;
+		using reference = TDataType&;
+
+		TVectorIterator() : m_element(nullptr) {}
+
+		TVectorIterator(const TVectorIterator&) = default;
+		TVectorIterator(TVectorIterator&&) = default;
+
+		~TVectorIterator() = default;
+
+		TVectorIterator(pointer element) : m_element(element) {}
+
+		TVectorIterator& operator=(const TVectorIterator& rhs)
+		{
+			m_element = rhs.m_element;
+			return *this;
+		}
+
+		TVectorIterator& operator=(TVectorIterator&& rhs)
+		{
+			m_element = rhs.m_element;
+			rhs.m_element = nullptr;
+			return *this;
+		}
+
+		bool operator==(const TVectorIterator& rhs) const { return m_element == rhs.m_element; }
+		bool operator!=(const TVectorIterator& rhs) const { return m_element != rhs.m_element; }
+
+		bool operator<(const TVectorIterator& rhs) const { return *m_element < *rhs.m_element; }
+
+		reference operator*() { return *m_element; }
+		reference operator*() const { return *m_element; }
+
+		reference operator->() { return m_element; }
+		reference operator->() const { return m_element; }
+
+		TVectorIterator& operator++()
+		{
+			++m_element;
+			return *this;
+		}
+
+		TVectorIterator& operator--()
+		{
+			--m_element;
+			return *this;
+		}
+
+		TVectorIterator operator-(difference_type rhs) const { return m_element - rhs; }
+		TVectorIterator operator+(difference_type rhs) const { return m_element + rhs; }
+
+		TVectorIterator& operator-=(difference_type rhs) { m_element -= rhs; return this; }
+		TVectorIterator& operator+=(difference_type rhs) { m_element += rhs; return this; }
+
+		difference_type operator-(const TVectorIterator& other) const
+		{
+			return (difference_type)(m_element - other.m_element);
+		}
+
+		static friend TVectorIterator<TDataType> operator-(const difference_type& offset, TVectorIterator<TDataType>& other)
+		{
+			return other - offset;
+		}
+
+		static friend TVectorIterator<TDataType> operator+(const difference_type& offset, TVectorIterator<TDataType>& other)
+		{
+			return other + offset;
+		}
+
+	protected:
+
+		pointer m_element;
+	};
+
+	template<typename TDataType>
+	using TConstVectorIterator = TVectorIterator<const TDataType>;
+
 	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
 	class SAILOR_API TVector final
 	{
 	public:
-
-		template<typename TElementType>
-		class SAILOR_API TIterator
-		{
-		public:
-
-			using iterator_category = std::random_access_iterator_tag;
-			using value_type = TElementType;
-			using difference_type = int64_t;
-			using pointer = TElementType*;
-			using reference = TElementType&;
-
-			TIterator() : m_element(nullptr) {}
-
-			TIterator(const TIterator&) = default;
-			TIterator(TIterator&&) = default;
-
-			~TIterator() = default;
-
-			TIterator(pointer element) : m_element(element) {}
-
-			TIterator& operator=(const TIterator& rhs)
-			{
-				m_element = rhs.m_element;
-				return *this;
-			}
-
-			TIterator& operator=(TIterator&& rhs)
-			{
-				m_element = rhs.m_element;
-				rhs.m_element = nullptr;
-				return *this;
-			}
-
-			bool operator==(const TIterator& rhs) const { return m_element == rhs.m_element; }
-			bool operator!=(const TIterator& rhs) const { return m_element != rhs.m_element; }
-
-			bool operator<(const TIterator& rhs) const { return *m_element < *rhs.m_element; }
-
-			reference operator*() { return *m_element; }
-			reference operator*() const { return *m_element; }
-
-			reference operator->() { return m_element; }
-			reference operator->() const { return m_element; }
-
-			TIterator& operator++()
-			{
-				++m_element;
-				return *this;
-			}
-
-			TIterator& operator--()
-			{
-				--m_element;
-				return *this;
-			}
-
-			TIterator operator-(difference_type rhs) const { return m_element - rhs; }
-			TIterator operator+(difference_type rhs) const { return m_element + rhs; }
-
-			TIterator& operator-=(difference_type rhs) { m_element -= rhs; return this; }
-			TIterator& operator+=(difference_type rhs) { m_element += rhs; return this; }
-
-			difference_type operator-(const TIterator& other) const
-			{
-				return (difference_type)(m_element - other.m_element);
-			}
-
-			static friend TIterator<TElementType> operator-(const difference_type& offset, TIterator<TElementType>& other)
-			{
-				return other - offset;
-			}
-
-			static friend TIterator<TElementType> operator+(const difference_type& offset, TIterator<TElementType>& other)
-			{
-				return other + offset;
-			}
-
-		protected:
-
-			pointer m_element;
-		};
-
-		template<typename TElementType>
-		using TConstIterator = TVector::TIterator<const TElementType>;
 
 		static constexpr size_t InvalidIndex = (size_t)-1;
 
@@ -527,11 +527,11 @@ namespace Sailor
 		}
 
 		// Support ranged for
-		TIterator<TElementType> begin() { return TIterator<TElementType>(m_pRawPtr); }
-		TIterator<TElementType> end() { return TIterator<TElementType>(m_pRawPtr + m_arrayNum); }
+		TVectorIterator<TElementType> begin() { return TVectorIterator<TElementType>(m_pRawPtr); }
+		TVectorIterator<TElementType> end() { return TVectorIterator<TElementType>(m_pRawPtr + m_arrayNum); }
 
-		TConstIterator<TElementType> begin() const { return TConstIterator<TElementType>(m_pRawPtr); }
-		TConstIterator<TElementType> end() const { return TConstIterator<TElementType>(m_pRawPtr + m_arrayNum); }
+		TConstVectorIterator<TElementType> begin() const { return TConstVectorIterator<TElementType>(m_pRawPtr); }
+		TConstVectorIterator<TElementType> end() const { return TConstVectorIterator<TElementType>(m_pRawPtr + m_arrayNum); }
 
 		TElementType* GetData() { return m_pRawPtr; }
 		const TElementType* GetData() const { return m_pRawPtr; }

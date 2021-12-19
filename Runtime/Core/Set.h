@@ -25,96 +25,7 @@ namespace Sailor
 
 		using TElementContainer = TVector<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 3, TAllocator>>;
 
-		template<typename TElementType>
-		class TIterator
-		{
-		public:
-
-			using iterator_category = std::random_access_iterator_tag;
-			using value_type = TElementType;
-			using difference_type = int64_t;
-			using pointer = TElementType*;
-			using reference = TElementType&;
-
-			TIterator() : m_element(nullptr), m_currentBucket(nullptr) {}
-
-			TIterator(const TIterator&) = default;
-			TIterator(TIterator&&) = default;
-
-			~TIterator() = default;
-
-			TIterator(class TSetElement* bucket, pointer element) : m_element(element), m_currentBucket(bucket) {}
-
-			TIterator& operator=(const TIterator& rhs)
-			{
-				m_element = rhs.m_element;
-				m_currentBucket = rhs.m_currentBucket;
-				return *this;
-			}
-
-			TIterator& operator=(TIterator&& rhs)
-			{
-				m_element = rhs.m_element;
-				m_currentBucket = rhs.m_currentBucket;
-				rhs.m_element = nullptr;
-				return *this;
-			}
-
-			bool operator==(const TIterator& rhs) const { return m_element == rhs.m_element; }
-			bool operator!=(const TIterator& rhs) const { return m_element != rhs.m_element; }
-
-			bool operator<(const TIterator& rhs) const { return *m_element < *rhs.m_element; }
-
-			reference operator*() { return *m_element; }
-			reference operator*() const { return *m_element; }
-
-			reference operator->() { return m_element; }
-			reference operator->() const { return m_element; }
-
-			TIterator& operator++()
-			{
-				++m_element;
-
-				if (m_element == m_currentBucket->end())
-				{
-					if (m_currentBucket->m_next)
-					{
-						m_currentBucket = m_currentBucket->m_next;
-						m_element = m_currentBucket->GetContainer().begin();
-					}
-				}
-
-				return *this;
-			}
-
-			TIterator& operator--()
-			{
-				if (m_element == m_currentBucket->begin())
-				{
-					if (m_currentBucket->m_prev)
-					{
-						m_currentBucket = m_currentBucket->m_prev;
-						m_element = m_currentBucket->GetContainer().end();
-					}
-				}
-
-				--m_element;
-
-				return *this;
-			}
-
-		protected:
-
-			TSetElement* m_currentBucket;
-			TElementContainer::TIterator::pointer m_element;
-
-			friend class TSetElement;
-		};
-
-		template<typename TElementType>
-		using TConstIterator = TSet::TIterator<const TElementType>;
-
-		class TSetElement
+		class SAILOR_API TSetElement
 		{
 		public:
 
@@ -151,6 +62,93 @@ namespace Sailor
 
 			friend class TSet;
 		};
+
+		template<typename TDataType = TElementType>
+		class SAILOR_API TIterator
+		{
+		public:
+
+			using iterator_category = std::bidirectional_iterator_tag;
+			using value_type = TDataType;
+			using difference_type = int64_t;
+			using pointer = TDataType*;
+			using reference = TDataType&;
+
+			TIterator() : m_element(nullptr), m_currentBucket(nullptr) {}
+
+			TIterator(const TIterator&) = default;
+			TIterator(TIterator&&) = default;
+
+			~TIterator() = default;
+
+			TIterator(TSetElement* bucket, pointer element) : m_element(element), m_currentBucket(bucket) {}
+
+			TIterator& operator=(const TIterator& rhs)
+			{
+				m_element = rhs.m_element;
+				m_currentBucket = rhs.m_currentBucket;
+				return *this;
+			}
+
+			TIterator& operator=(TIterator&& rhs)
+			{
+				m_element = rhs.m_element;
+				m_currentBucket = rhs.m_currentBucket;
+				rhs.m_element = nullptr;
+				return *this;
+			}
+
+			bool operator==(const TIterator& rhs) const { return m_element == rhs.m_element; }
+			bool operator!=(const TIterator& rhs) const { return m_element != rhs.m_element; }
+
+			reference operator*() { return *m_element; }
+			reference operator*() const { return *m_element; }
+
+			reference operator->() { return m_element; }
+			reference operator->() const { return m_element; }
+
+			TIterator& operator++()
+			{
+				++m_element;
+
+				if (m_element == &*m_currentBucket->GetContainer().end())
+				{
+					if (m_currentBucket->m_next)
+					{
+						m_currentBucket = m_currentBucket->m_next;
+						m_element = &*m_currentBucket->GetContainer().begin();
+					}
+				}
+
+				return *this;
+			}
+
+			TIterator& operator--()
+			{
+				if (m_element == &*m_currentBucket->begin())
+				{
+					if (m_currentBucket->m_prev)
+					{
+						m_currentBucket = m_currentBucket->m_prev;
+						m_element = &*m_currentBucket->GetContainer().end();
+					}
+				}
+
+				--m_element;
+
+				return *this;
+			}
+
+		protected:
+
+			TSetElement* m_currentBucket;
+			pointer m_element;
+
+			friend class TSetElement;
+		};
+
+		template<typename TDataType = TElementType>
+		using TConstIterator = TSet::TIterator<const TDataType>;
 
 		using TSetElementPtr = TUniquePtr<TSetElement>;
 
@@ -270,6 +268,13 @@ namespace Sailor
 
 			return nullptr;
 		}
+
+		// Support ranged for
+		TIterator<TElementType> begin() { return TIterator<TElementType>(m_first, &*m_first->GetContainer().begin()); }
+		TIterator<TElementType> end() { return TIterator<TElementType>(m_last, &*m_last->GetContainer().end()); }
+
+		TConstIterator<TElementType> begin() const { return TConstIterator<TElementType>(m_first, &*m_first->GetContainer().cbegin()); }
+		TConstIterator<TElementType> end() const { return TConstIterator<TElementType>(m_last, &*m_last->GetContainer().cend()); }
 
 	protected:
 
