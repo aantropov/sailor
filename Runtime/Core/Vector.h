@@ -191,7 +191,7 @@ namespace Sailor
 			return *this;
 		}
 
-		TVector& operator=(const TVector& other)
+		TVector& operator=(const TVector& other) requires IsCopyConstructible<TElementType>
 		{
 			Clear(false);
 			AddRange(other);
@@ -233,7 +233,20 @@ namespace Sailor
 			return Emplace(item);
 		}
 
-		void AddRange(const TElementType* first, size_t count)
+		void MoveRange(TElementType* first, size_t count) requires IsMoveConstructible<TElementType>
+		{
+			if (count == 0)
+			{
+				return;
+			}
+
+			ResizeIfNeeded(m_arrayNum + count);
+
+			MoveElements(m_arrayNum, *first, count);
+			m_arrayNum += count;
+		}
+
+		void AddRange(const TElementType* first, size_t count) requires IsCopyConstructible<TElementType>
 		{
 			if (count == 0)
 			{
@@ -246,9 +259,14 @@ namespace Sailor
 			m_arrayNum += count;
 		}
 
-		void AddRange(const TVector& other)
+		void AddRange(const TVector& other) requires IsCopyConstructible<TElementType>
 		{
 			AddRange(other.GetData(), other.Num());
+		}
+
+		void AddRange(TVector&& other) requires IsMoveConstructible<TElementType>
+		{
+			MoveRange(other.GetData(), other.Num());
 		}
 
 		void AddRange(std::initializer_list<TElementType> initList)

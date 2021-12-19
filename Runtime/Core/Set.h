@@ -19,15 +19,104 @@ namespace Sailor
 	}
 
 	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
-	class TSet
+	class SAILOR_API TSet
 	{
 	public:
+
+		using TElementContainer = TVector<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 3, TAllocator>>;
+
+		template<typename TElementType>
+		class TIterator
+		{
+		public:
+
+			using iterator_category = std::random_access_iterator_tag;
+			using value_type = TElementType;
+			using difference_type = int64_t;
+			using pointer = TElementType*;
+			using reference = TElementType&;
+
+			TIterator() : m_element(nullptr), m_currentBucket(nullptr) {}
+
+			TIterator(const TIterator&) = default;
+			TIterator(TIterator&&) = default;
+
+			~TIterator() = default;
+
+			TIterator(class TSetElement* bucket, pointer element) : m_element(element), m_currentBucket(bucket) {}
+
+			TIterator& operator=(const TIterator& rhs)
+			{
+				m_element = rhs.m_element;
+				m_currentBucket = rhs.m_currentBucket;
+				return *this;
+			}
+
+			TIterator& operator=(TIterator&& rhs)
+			{
+				m_element = rhs.m_element;
+				m_currentBucket = rhs.m_currentBucket;
+				rhs.m_element = nullptr;
+				return *this;
+			}
+
+			bool operator==(const TIterator& rhs) const { return m_element == rhs.m_element; }
+			bool operator!=(const TIterator& rhs) const { return m_element != rhs.m_element; }
+
+			bool operator<(const TIterator& rhs) const { return *m_element < *rhs.m_element; }
+
+			reference operator*() { return *m_element; }
+			reference operator*() const { return *m_element; }
+
+			reference operator->() { return m_element; }
+			reference operator->() const { return m_element; }
+
+			TIterator& operator++()
+			{
+				++m_element;
+
+				if (m_element == m_currentBucket->end())
+				{
+					if (m_currentBucket->m_next)
+					{
+						m_currentBucket = m_currentBucket->m_next;
+						m_element = m_currentBucket->GetContainer().begin();
+					}
+				}
+
+				return *this;
+			}
+
+			TIterator& operator--()
+			{
+				if (m_element == m_currentBucket->begin())
+				{
+					if (m_currentBucket->m_prev)
+					{
+						m_currentBucket = m_currentBucket->m_prev;
+						m_element = m_currentBucket->GetContainer().end();
+					}
+				}
+
+				--m_element;
+
+				return *this;
+			}
+
+		protected:
+
+			TSetElement* m_currentBucket;
+			TElementContainer::TIterator::pointer m_element;
+
+			friend class TSetElement;
+		};
+
+		template<typename TElementType>
+		using TConstIterator = TSet::TIterator<const TElementType>;
 
 		class TSetElement
 		{
 		public:
-
-			using TContainer = TVector<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 3, TAllocator>>;
 
 			TSetElement(size_t hashCode) : m_hashCode(hashCode) {}
 			TSetElement(TSetElement&&) = default;
@@ -38,8 +127,8 @@ namespace Sailor
 			__forceinline operator bool() const { return m_elements.Num() > 0; }
 			virtual ~TSetElement() = default;
 
-			__forceinline TContainer& GetContainer() { return m_elements; }
-			__forceinline const TContainer& GetContainer() const { return m_elements; }
+			__forceinline TElementContainer& GetContainer() { return m_elements; }
+			__forceinline const TElementContainer& GetContainer() const { return m_elements; }
 
 			__forceinline bool operator==(const TSetElement& Other) const
 			{
@@ -55,7 +144,7 @@ namespace Sailor
 		protected:
 
 			size_t m_hashCode;
-			TContainer m_elements;
+			TElementContainer m_elements;
 
 			TSetElement* m_next = nullptr;
 			TSetElement* m_prev = nullptr;
@@ -64,6 +153,8 @@ namespace Sailor
 		};
 
 		using TSetElementPtr = TUniquePtr<TSetElement>;
+
+		using TBucketContainer = TVector<TSetElementPtr, TAllocator>;
 
 		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
 		TSet(TSet&&) = default;
@@ -104,7 +195,7 @@ namespace Sailor
 
 				if (!m_first)
 				{
-					m_first = element.GetRawPtr();
+					m_last = m_first = element.GetRawPtr();
 				}
 				else
 				{
@@ -135,6 +226,11 @@ namespace Sailor
 
 					if (container.Num() == 0)
 					{
+						if (element.GetRawPtr() == m_last)
+						{
+							m_last = element->m_prev;
+						}
+
 						if (element->m_next)
 						{
 							element->m_next->m_prev = element->m_prev;
@@ -207,9 +303,10 @@ namespace Sailor
 			m_buckets = std::move(buckets);
 		}
 
-		TVector<TSetElementPtr, TAllocator> m_buckets{};
+		TBucketContainer m_buckets{};
 		size_t m_num = 0;
 		TSetElement* m_first = nullptr;
+		TSetElement* m_last = nullptr;
 	};
 
 	SAILOR_API void RunSetBenchmark();
