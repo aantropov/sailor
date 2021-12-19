@@ -24,24 +24,20 @@ public:
 		Timer stdSet;
 		Timer tSet;
 
-		TSet<size_t> container(10000600);
+		TSet<size_t> container;
 		std::unordered_set<size_t> ideal;
 
-		srand(0);
 		stdSet.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const int32_t value = rand();
-			ideal.insert(value);
+			ideal.insert(i);
 		}
 		stdSet.Stop();
 
-		srand(0);
 		tSet.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const int32_t value = rand();
-			container.Insert(value);
+			container.Insert(i);
 		}
 		tSet.Stop();
 
@@ -75,21 +71,17 @@ public:
 		stdSet.Clear();
 		tSet.Clear();
 
-		srand(0);
 		tSet.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const int32_t value = rand();
-			container.Remove(value);
+			container.Remove(i);
 		}
 		tSet.Stop();
 
-		srand(0);
 		stdSet.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const int32_t value = rand();
-			ideal.erase(value);
+			ideal.erase(i);
 		}
 		stdSet.Stop();
 

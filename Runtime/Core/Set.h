@@ -65,7 +65,7 @@ namespace Sailor
 
 		using TSetElementPtr = TUniquePtr<TSetElement>;
 
-		TSet(const uint32_t desiredNumBuckets = 1024) { m_buckets.Resize(desiredNumBuckets); }
+		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
 		TSet(TSet&&) = default;
 		TSet(const TSet&) = default;
 		TSet& operator=(TSet&&) = default;
@@ -179,9 +179,9 @@ namespace Sailor
 
 		__forceinline bool ShouldRehash() const
 		{
-			// We assume that each bucket has up 16 elements inside
+			// We assume that each bucket has ~2 elements inside
 			// TODO: Rethink the approach
-			return (float)m_num > (float)m_buckets.Num() * 16;
+			return (float)m_num > (float)m_buckets.Num() * 2;
 		}
 
 		void Rehash(size_t desiredBucketsNum)
