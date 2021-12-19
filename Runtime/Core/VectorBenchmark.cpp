@@ -5,6 +5,7 @@
 #include <cctype>
 #include "Core/Utils.h"
 #include "Vector.h"
+#include "Memory/Memory.h"
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -52,7 +53,7 @@ public:
 
 		const size_t count = 1653600;
 
-		TVector<TData, Sailor::Memory::MallocAllocator> container;
+		TVector<TData, Memory::TInlineAllocator<65535, Memory::MallocAllocator>> container;
 		std::vector<TData> ideal;
 
 		srand(0);

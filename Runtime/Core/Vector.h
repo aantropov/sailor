@@ -129,7 +129,7 @@ namespace Sailor
 
 		TVector(const TVector& other) requires IsCopyConstructible<TElementType> : TVector(other.GetData(), other.Num()) {}
 
-		TVector(TVector&& other) noexcept { Swap(*this, other); }
+		TVector(TVector&& other) noexcept requires IsMoveConstructible<TAllocator> { Swap(*this, other); }
 
 		TVector(const TElementType* rawPtr, size_t count) requires IsCopyConstructible<TElementType>
 		{
@@ -185,7 +185,7 @@ namespace Sailor
 			return *this;
 		}
 
-		TVector& operator=(TVector&& other)
+		TVector& operator=(TVector&& other) requires IsMoveConstructible<TAllocator>
 		{
 			Swap(*this, other);
 			return *this;

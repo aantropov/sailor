@@ -34,10 +34,17 @@ namespace Sailor::Memory
 
 		bool Contains(void* pData) const
 		{
-			return pData < &m_stack[stackSize] && &m_stack[sizeof(uint16_t)] <= pData;
+			return pData < &m_stack[stackSize] && &m_stack[sizeof(uint16_t) - 1] <= pData;
 		}
 
 	public:
+
+		TInlineAllocator() = default;
+		TInlineAllocator(const TInlineAllocator&) = delete;
+		TInlineAllocator(TInlineAllocator&&) = delete;
+		TInlineAllocator& operator=(TInlineAllocator&&) = delete;
+		TInlineAllocator& operator=(const TInlineAllocator&) = delete;
+		~TInlineAllocator() = default;
 
 		void* Allocate(size_t size, size_t alignment = 8)
 		{
