@@ -518,7 +518,7 @@ namespace Sailor
 			std::stable_sort(begin(), end(), predicate);
 		}
 
-		void Swap(TVector& lhs, TVector& rhs) const
+		static void Swap(TVector& lhs, TVector& rhs)
 		{
 			std::swap(lhs.m_pRawPtr, rhs.m_pRawPtr);
 			std::swap(lhs.m_allocator, rhs.m_allocator);

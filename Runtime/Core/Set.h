@@ -8,6 +8,7 @@
 #include "Vector.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/Memory.h"
+#include "Core/LogMacros.h"
 
 namespace Sailor
 {
@@ -23,7 +24,7 @@ namespace Sailor
 	{
 	public:
 
-		using TElementContainer = TVector<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 3, TAllocator>>;
+		using TElementContainer = TVector<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 6, TAllocator>>;
 
 		class SAILOR_API TSetElement
 		{
@@ -180,7 +181,7 @@ namespace Sailor
 		{
 			if (ShouldRehash())
 			{
-				Rehash(m_buckets.Capacity() * 2);
+				Rehash(m_buckets.Capacity() * 4);
 			}
 
 			const auto& hash = Sailor::GetHash(inElement);
@@ -280,19 +281,19 @@ namespace Sailor
 		}
 
 		// Support ranged for
-		TIterator<TElementType> begin() { return TIterator<TElementType>(m_first, &*m_first->GetContainer().begin()); }
-		TIterator<TElementType> end() { return TIterator<TElementType>(m_last, &*m_last->GetContainer().end()); }
+		TIterator<TElementType> begin() { return TIterator<TElementType>(m_first, m_first ? &*m_first->GetContainer().begin() : nullptr); }
+		TIterator<TElementType> end() { return TIterator<TElementType>(m_last, m_last ? &*m_last->GetContainer().end() : nullptr); }
 
-		TConstIterator<TElementType> begin() const { return TConstIterator<TElementType>(m_first, &*m_first->GetContainer().cbegin()); }
-		TConstIterator<TElementType> end() const { return TConstIterator<TElementType>(m_last, &*m_last->GetContainer().cend()); }
+		TConstIterator<TElementType> begin() const { return TConstIterator<TElementType>(m_first, m_first ? &*m_first->GetContainer().cbegin() : nullptr); }
+		TConstIterator<TElementType> end() const { return TConstIterator<TElementType>(m_last, m_last ? &*m_last->GetContainer().cend() : nullptr); }
 
 	protected:
 
 		__forceinline bool ShouldRehash() const
 		{
-			// We assume that each bucket has ~2 elements inside
+			// We assume that each bucket has ~6 elements inside
 			// TODO: Rethink the approach
-			return (float)m_num > (float)m_buckets.Num() * 2;
+			return (float)m_num > (float)m_buckets.Num() * 6;
 		}
 
 		void Rehash(size_t desiredBucketsNum)
@@ -303,19 +304,27 @@ namespace Sailor
 			}
 
 			TVector<TSetElementPtr, TAllocator> buckets(desiredBucketsNum);
+			TVector<TSetElementPtr, TAllocator>::Swap(buckets, m_buckets);
 
 			TSetElement* current = m_first;
+			
+			m_num = 0;
+			m_first = nullptr;
+			m_last = nullptr;
+
 			while (current)
 			{
-				const size_t index = current->GetHash() % desiredBucketsNum;
 				const size_t oldIndex = current->GetHash() % m_buckets.Num();
-
-				buckets[index] = std::move(m_buckets[oldIndex]);
+				
+				for (const auto& el : current->GetContainer())
+				{
+					Insert(el);
+				}
 
 				current = current->m_next;
 			}
 
-			m_buckets = std::move(buckets);
+			buckets.Clear();
 		}
 
 		TBucketContainer m_buckets{};

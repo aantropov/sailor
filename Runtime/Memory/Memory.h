@@ -68,10 +68,27 @@ namespace Sailor::Memory
 
 		void* Reallocate(void* pData, size_t size, size_t alignment = 8)
 		{
-			if (Contains(pData))
+			if (Contains(pData) && size < 65536)
 			{
-				Free(pData);
-				return Allocate(size, alignment);
+				uint16_t usedSpace = *((uint8_t*)pData - sizeof(uint16_t)) + sizeof(uint16_t);
+
+				// we can realloc only if we're at top of stack
+				if (&((uint8_t*)pData - sizeof(uint16_t))[usedSpace] == &m_stack[m_index])
+				{
+					const uint16_t extraSpace = (uint16_t)(size - (usedSpace - sizeof(uint16_t)));
+
+					// we can reallocate
+					if (extraSpace <= (stackSize - m_index))
+					{
+						*(uint16_t*)((uint8_t*)pData - sizeof(uint16_t)) = (uint16_t)size;
+						m_index += extraSpace;
+						return pData;
+					}
+				}
+
+				void* res = m_allocator.Allocate(size, alignment);
+				memmove(res, pData, usedSpace - sizeof(uint16_t));
+				return res;
 			}
 
 			return m_allocator.Reallocate(pData, size, alignment);

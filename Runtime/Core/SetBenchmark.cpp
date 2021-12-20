@@ -91,17 +91,45 @@ public:
 		}
 		stdSet.Stop();
 
-		for (auto& el : container)
-		{
-			SAILOR_LOG("%llu", el);
-		}
-
 		SAILOR_LOG("Performance test remove:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
 	}
 
 	static bool SanityCheck()
 	{
-		return false;
+		const size_t count = 18000;
+
+		TSet<size_t> container;
+		std::unordered_set<size_t> ideal;
+
+		for (size_t i = 0; i < count; i++)
+		{
+			ideal.insert(i);
+			container.Insert(i);
+		}
+
+		for (size_t i = 0; i < count / 2; i++)
+		{
+			ideal.erase(i * 2);
+			container.Remove(i * 2);
+
+			for (const auto& el : ideal)
+			{
+				if (!container.Contains(el))
+				{
+					return false;
+				}
+			}
+
+			for (const auto& el : container)
+			{
+				if (!ideal.contains(el))
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
 	}
 };
 
