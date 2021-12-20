@@ -4,7 +4,7 @@
 #include "Core/LogMacros.h"
 #include <assert.h>
 #include "Containers/Vector.h"
-#include <set>
+#include "Containers/Set.h"
 #include "Sailor.h"
 #include "Platform/Win32/Window.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -394,14 +394,18 @@ bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 	TVector<const char*> instanceExtensions;
 	GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
-	std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+	TSet<std::string> requiredExtensions;
+	for (const auto& extension : deviceExtensions)
+	{
+		requiredExtensions.Insert(extension);
+	}
 
 	for (const auto& extension : availableExtensions)
 	{
-		requiredExtensions.erase(extension.extensionName);
+		requiredExtensions.Remove(extension.extensionName);
 	}
 
-	return requiredExtensions.empty();
+	return requiredExtensions.IsEmpty();
 }
 
 bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surface)
@@ -915,15 +919,15 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	TVector<TVector<VkDescriptorSetLayoutBinding>> vulkanLayouts;
 	TVector<TVector<RHI::ShaderLayoutBinding>> rhiLayouts;
 
-	std::unordered_set<uint32_t> uniqueDescriptorSets;
+	TSet<uint32_t> uniqueDescriptorSets;
 	for (const auto& shader : shaders)
 	{
 		for (const auto& binding : shader->GetBindings())
 		{
-			uniqueDescriptorSets.insert(binding[0].m_set);
+			uniqueDescriptorSets.Insert(binding[0].m_set);
 		}
 	}
-	size_t countDescriptorSets = uniqueDescriptorSets.size();
+	size_t countDescriptorSets = uniqueDescriptorSets.Num();
 
 	vulkanLayouts.Resize(countDescriptorSets);
 	rhiLayouts.Resize(countDescriptorSets);

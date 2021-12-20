@@ -17,7 +17,7 @@
 #include <mutex>
 
 #include "JobSystem/JobSystem.h"
-#include <unordered_set>
+#include "Containers/Set.h"
 
 #ifdef _DEBUG
 #pragma comment(lib, "shaderc_combinedd.lib")
@@ -362,17 +362,17 @@ uint32_t ShaderCompiler::GetPermutation(const TVector<std::string>& defines, con
 		return 0;
 	}
 
-	std::unordered_set<std::string> requested;
+	TSet<std::string> requested;
 
 	for (int32_t i = 0; i < actualDefines.Num(); i++)
 	{
-		requested.insert(actualDefines[i]);
+		requested.Insert(actualDefines[i]);
 	}
 
 	uint32_t res = 0;
 	for (int32_t i = 0; i < defines.Num(); i++)
 	{
-		if (requested.find(defines[i]) != std::end(requested))
+		if (requested.Contains(defines[i]))
 		{
 			res += 1 << i;
 		}

@@ -3,6 +3,7 @@
 #include "Core/Defines.h"
 #include "Math/Math.h"
 #include "Containers/Vector.h"
+#include "Containers/Set.h"
 
 using json = nlohmann::json;
 
@@ -47,10 +48,8 @@ namespace Sailor
 	void to_json(json& j, const TVector<T>& p)
 	{
 		for (const auto& el : p)
-		{			
-			json s;
-			to_json(j, p);
-			j.push_back(s);
+		{
+			j.push_back(el);
 		}
 	}
 
@@ -61,6 +60,25 @@ namespace Sailor
 		for (const auto& el : j)
 		{
 			p.Emplace(el.get<T>());
+		}
+	}
+
+	template<typename T>
+	void to_json(json& j, const TSet<T>& p)
+	{
+		for (const auto& el : p)
+		{
+			j.push_back(el);
+		}
+	}
+
+	template<typename T>
+	void from_json(const json& j, TSet<T>& p)
+	{
+		p.Clear();
+		for (const auto& el : j)
+		{
+			p.Insert(el.get<T>());
 		}
 	}
 }

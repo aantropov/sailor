@@ -3,7 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <unordered_set>
+#include "Containers/Set.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 
@@ -185,7 +185,7 @@ void ShaderCache::ClearExpired()
 	SAILOR_PROFILE_FUNCTION();
 
 	TVector<UID> expiredShaders;
-	std::unordered_set<std::string> whiteListSpirv;
+	TSet<std::string> whiteListSpirv;
 	TVector<ShaderCacheEntry*> blackListEntry;
 
 	for (const auto& entries : m_cache.m_data)
@@ -200,8 +200,8 @@ void ShaderCache::ClearExpired()
 					auto vertexFilepath = GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, "VERTEX");
 					auto fragmentFilepath = GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, "FRAGMENT");
 
-					whiteListSpirv.insert(vertexFilepath.string());
-					whiteListSpirv.insert(fragmentFilepath.string());
+					whiteListSpirv.Insert(vertexFilepath.string());
+					whiteListSpirv.Insert(fragmentFilepath.string());
 				}
 				else
 				{
@@ -218,7 +218,7 @@ void ShaderCache::ClearExpired()
 
 	for (const auto& entry : std::filesystem::directory_iterator(CompiledShadersFolder))
 	{
-		if (entry.is_regular_file() && whiteListSpirv.find(entry.path().string()) == whiteListSpirv.end())
+		if (entry.is_regular_file() && !whiteListSpirv.Contains(entry.path().string()))
 		{
 			std::filesystem::remove(entry);
 		}

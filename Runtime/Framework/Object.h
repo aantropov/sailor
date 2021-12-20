@@ -3,7 +3,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "JobSystem/JobSystem.h"
 #include "AssetRegistry/UID.h"
-#include <unordered_set>
+#include "Containers/Set.h"
 
 namespace Sailor
 {
@@ -44,7 +44,7 @@ namespace Sailor
 
 #ifdef SAILOR_EDITOR
 		// TODO: Add lock free list to support multi threaded approach
-		std::unordered_set<ObjectPtr> m_hotReloadDeps;
+		TSet<ObjectPtr> m_hotReloadDeps;
 #endif
 	};
 }

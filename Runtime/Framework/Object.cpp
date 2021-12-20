@@ -30,17 +30,17 @@ void Object::TraceHotReload(ITaskPtr previousTask)
 
 void Object::AddHotReloadDependentObject(ObjectPtr object)
 {
-	m_hotReloadDeps.insert(object);
+	m_hotReloadDeps.Insert(object);
 }
 
 void Object::RemoveHotReloadDependentObject(ObjectPtr object)
 {
-	m_hotReloadDeps.erase(object);
+	m_hotReloadDeps.Remove(object);
 }
 
 void Object::ClearHotReloadDependentObjects()
 {
-	m_hotReloadDeps.clear();
+	m_hotReloadDeps.Clear();
 }
 
 #endif

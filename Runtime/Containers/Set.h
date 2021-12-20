@@ -58,6 +58,7 @@ namespace Sailor
 			size_t m_hashCode;
 			TElementContainer m_elements;
 
+			// That's unsafe but we handle that properly
 			TSetElement* m_next = nullptr;
 			TSetElement* m_prev = nullptr;
 
@@ -161,7 +162,27 @@ namespace Sailor
 		TSet& operator=(TSet&&) = default;
 		TSet& operator=(const TSet&) = default;
 
-		size_t Num() const { return m_num; }
+		TSet(std::initializer_list<TElementType> initList)
+		{
+			for (const auto& el : initList)
+			{
+				Insert(el);
+			}
+		}
+
+		// TODO: Rethink the approach of base class for iterators
+		TSet(const TVectorIterator<TElementType>& begin, const TVectorIterator<TElementType>& end)
+		{
+			TVectorIterator<TElementType> it = begin;
+			while (it != end)
+			{
+				Insert(*it);
+				it++;
+			}
+		}
+
+		__forceinline bool IsEmpty() const { return m_num == 0; }
+		__forceinline size_t Num() const { return m_num; }
 
 		bool Contains(const TElementType& inElement) const
 		{
@@ -280,6 +301,13 @@ namespace Sailor
 			return nullptr;
 		}
 
+		void Clear()
+		{
+			m_num = 0;
+			m_first = m_last = nullptr;
+			m_buckets.Clear();
+		}
+
 		// Support ranged for
 		TIterator<TElementType> begin() { return TIterator<TElementType>(m_first, m_first ? &*m_first->GetContainer().begin() : nullptr); }
 		TIterator<TElementType> end() { return TIterator<TElementType>(m_last, m_last ? &*m_last->GetContainer().end() : nullptr); }
@@ -307,7 +335,7 @@ namespace Sailor
 			TVector<TSetElementPtr, TAllocator>::Swap(buckets, m_buckets);
 
 			TSetElement* current = m_first;
-			
+
 			m_num = 0;
 			m_first = nullptr;
 			m_last = nullptr;
@@ -315,7 +343,7 @@ namespace Sailor
 			while (current)
 			{
 				const size_t oldIndex = current->GetHash() % m_buckets.Num();
-				
+
 				for (const auto& el : current->GetContainer())
 				{
 					Insert(el);
@@ -329,6 +357,8 @@ namespace Sailor
 
 		TBucketContainer m_buckets{};
 		size_t m_num = 0;
+
+		// That's unsafe but we handle that properly
 		TSetElement* m_first = nullptr;
 		TSetElement* m_last = nullptr;
 	};

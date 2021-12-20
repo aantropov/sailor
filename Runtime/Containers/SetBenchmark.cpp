@@ -1,3 +1,4 @@
+#include <unordered_set>
 #include "Containers/Set.h"
 #include "Core/Utils.h"
 
