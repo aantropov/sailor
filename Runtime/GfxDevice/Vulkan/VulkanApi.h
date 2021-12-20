@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include "Core/Vector.h"
+#include "Containers/Vector.h"
 #include <cassert>
 #include <iostream>
 #include <cstdint>
@@ -12,7 +12,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Memory/RefPtr.hpp"
 #include "Core/Singleton.hpp"
-#include "Core/Vector.h"
+#include "Containers/Vector.h"
 
 namespace Sailor
 {

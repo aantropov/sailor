@@ -10,8 +10,8 @@
 #include "JobSystem/JobSystem.h"
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"
-#include "Core/Vector.h"
-#include "Core/Set.h"
+#include "Containers/Vector.h"
+#include "Containers/Set.h"
 #include "Framework/Framework.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 

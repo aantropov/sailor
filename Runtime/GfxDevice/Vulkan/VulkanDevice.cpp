@@ -4,7 +4,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <set>
 #include <assert.h>
 #include <map>
-#include "Core/Vector.h"
+#include "Containers/Vector.h"
 #include <optional>
 #include <unordered_map>
 #include <wtypes.h>

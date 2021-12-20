@@ -64,6 +64,9 @@
     <Filter Include="Runtime\AssetRegistry\RenderPipeline">
       <UniqueIdentifier>{27258cad-e314-4982-b128-0583757aefee}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\Containers">
+      <UniqueIdentifier>{953ab208-0362-4921-b8d1-08e052356135}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
@@ -282,17 +285,17 @@
     <ClInclude Include="..\Runtime\JobSystem\Tasks.h">
       <Filter>Runtime\Jobsystem</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Core\Vector.h">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\Core\Map.h">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Core\Set.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Memory\MallocAllocator.h">
       <Filter>Runtime\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\Set.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\Vector.h">
+      <Filter>Runtime\Containers</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -482,11 +485,11 @@
     <ClCompile Include="..\Runtime\Math\Math.cpp">
       <Filter>Runtime\Math</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Core\VectorBenchmark.cpp">
-      <Filter>Runtime\Core</Filter>
+    <ClCompile Include="..\Runtime\Containers\SetBenchmark.cpp">
+      <Filter>Runtime\Containers</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Core\SetBenchmark.cpp">
-      <Filter>Runtime\Core</Filter>
+    <ClCompile Include="..\Runtime\Containers\VectorBenchmark.cpp">
+      <Filter>Runtime\Containers</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

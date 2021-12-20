@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
-#include "Core/Vector.h"
+#include "Containers/Vector.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"

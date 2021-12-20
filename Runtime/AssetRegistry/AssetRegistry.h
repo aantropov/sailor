@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <unordered_map>
-#include "Core/Vector.h"
+#include "Containers/Vector.h"
 #include "AssetRegistry/UID.h"
 #include "Core/Submodule.h"
 #include "AssetRegistry/AssetInfo.h"

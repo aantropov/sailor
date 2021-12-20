@@ -4,7 +4,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/UID.h"
 #include "Core/Singleton.hpp"
-#include "Core/Vector.h"
+#include "Containers/Vector.h"
 #include "Core/JsonSerializable.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 
