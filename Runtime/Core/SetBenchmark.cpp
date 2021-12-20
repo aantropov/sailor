@@ -11,10 +11,10 @@ public:
 
 	static void RunTests()
 	{
-		printf("\n\n%s\n", "class Sailor::TSet");
+		printf("%s\n", "class Sailor::TSet");
 		printf("Sanity check passed: %d\n", SanityCheck());
 		PerformanceTests();
-		printf("\n\n");
+		printf("\n");
 	}
 
 	static void PerformanceTests()
@@ -135,7 +135,7 @@ public:
 
 void Sailor::RunSetBenchmark()
 {
-	printf("Starting set benchmark...\n");
+	printf("\nStarting set benchmark...\n");
 
 	TestCase_SetPerfromance::RunTests();
 }

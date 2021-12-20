@@ -40,10 +40,10 @@ public:
 
 	static void RunSanityTests()
 	{
-		printf("\n\n%s\n", "class Sailor::TVector");
+		printf("%s\n", "class Sailor::TVector");
 		printf("Sanity check passed: %d\n", SanityCheck());
 		PerformanceTests();
-		printf("\n\n");
+		printf("\n");
 	}
 
 	static void PerformanceTests()
@@ -53,7 +53,7 @@ public:
 
 		const size_t count = 1653600;
 
-		TVector<TData, Memory::TInlineAllocator<65535, Memory::MallocAllocator>> container;
+		TVector<TData> container;
 		std::vector<TData> ideal;
 
 		srand(0);
@@ -300,7 +300,7 @@ public:
 
 void Sailor::RunVectorBenchmark()
 {
-	printf("Starting vector benchmark...\n");
+	printf("\nStarting vector benchmark...\n");
 
 	TestCase_VectorPerfromance::RunTests();
 }

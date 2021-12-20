@@ -80,8 +80,6 @@ void App::Initialize()
 
 void App::Start()
 {
-	Sailor::RunSetBenchmark();
-
 	s_pInstance->m_pViewportWindow->SetActive(true);
 	s_pInstance->m_pViewportWindow->SetRunning(true);
 
