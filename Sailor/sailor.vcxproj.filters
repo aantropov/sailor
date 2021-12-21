@@ -285,9 +285,6 @@
     <ClInclude Include="..\Runtime\JobSystem\Tasks.h">
       <Filter>Runtime\Jobsystem</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Core\Map.h">
-      <Filter>Runtime\Core</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\Memory\MallocAllocator.h">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
@@ -295,6 +292,9 @@
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Containers\Vector.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\Map.h">
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
   </ItemGroup>
@@ -489,6 +489,9 @@
       <Filter>Runtime\Containers</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Containers\VectorBenchmark.cpp">
+      <Filter>Runtime\Containers</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Containers\MapBenchmark.cpp">
       <Filter>Runtime\Containers</Filter>
     </ClCompile>
   </ItemGroup>

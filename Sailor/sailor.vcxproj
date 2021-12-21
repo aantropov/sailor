@@ -189,12 +189,12 @@
     <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
+    <ClInclude Include="..\Runtime\Containers\Map.h" />
     <ClInclude Include="..\Runtime\Containers\Set.h" />
     <ClInclude Include="..\Runtime\Containers\Vector.h" />
     <ClInclude Include="..\Runtime\Core\Defines.h" />
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\Core\LogMacros.h" />
-    <ClInclude Include="..\Runtime\Core\Map.h" />
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
     <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
@@ -267,6 +267,7 @@
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
+    <ClCompile Include="..\Runtime\Containers\MapBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\SetBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\VectorBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />

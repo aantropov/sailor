@@ -553,7 +553,8 @@ namespace Sailor
 			ResizeIfNeeded(m_arrayNum + 1);
 
 			new (&m_pRawPtr[index]) TElementType(std::move<TArgs>(args)...);
-			return m_arrayNum++;
+			m_arrayNum++;
+			return index;
 		}
 
 		TElementType* m_pRawPtr = nullptr;

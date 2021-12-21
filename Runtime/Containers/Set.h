@@ -53,7 +53,9 @@ namespace Sailor
 
 			__forceinline size_t GetHash() const { return m_hashCode; }
 
-		protected:
+		// Should we hide the data in internal class 
+		// that programmer has no access but it could be used by derived classes?
+		//protected:
 
 			size_t m_hashCode;
 			TElementContainer m_elements;
@@ -280,25 +282,6 @@ namespace Sailor
 				return false;
 			}
 			return false;
-		}
-
-		const TElementType* Find(const TElementType& element) const
-		{
-			const auto& hash = Sailor::GetHash(element);
-			const size_t index = hash % m_buckets.Num();
-			auto& element = m_buckets[index];
-
-			if (element)
-			{
-				const auto& i = element->GetContainer().Find(element);
-				if (i != -1)
-				{
-					return &(*m_buckets[i]);
-				}
-				return nullptr;
-			}
-
-			return nullptr;
 		}
 
 		void Clear()
