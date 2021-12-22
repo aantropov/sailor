@@ -1,6 +1,7 @@
 #include <unordered_map>
 #include "Containers/Map.h"
 #include "Core/Utils.h"
+#include <random>
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -20,7 +21,7 @@ public:
 
 	static void PerformanceTests()
 	{
-		const size_t count = 1000500;
+		const size_t count = 10000500;
 
 		Timer stdMap;
 		Timer tMap;
@@ -48,25 +49,37 @@ public:
 		stdMap.Clear();
 		tMap.Clear();
 
-		srand(0);
-		stdMap.Start();
-		for (size_t i = 0; i < count; i++)
-		{
-			const size_t value = rand();
-			auto res = ideal.find(value);
-		}
-		stdMap.Stop();
+		std::random_device rd;
+		std::mt19937 g(rd());
 
-		srand(0);
+		volatile float misses = 0;
+
+		g.seed(0);
 		tMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const int32_t value = rand();
-			container.ContainsKey(value);
+			const size_t value = i % 2 ? g() : g() % count;
+			if (!container.ContainsKey(value))
+			{
+				misses++;
+			}
 		}
 		tMap.Stop();
 
-		SAILOR_LOG("Performance test ContainsKey:\n\tstd::Map %llums\n\tTMap %llums", stdMap.ResultMs(), tMap.ResultMs());
+		misses = 0;
+		g.seed(0);
+		stdMap.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const size_t value = i % 2 ? g() : g() % count;
+			if (ideal.find(value) == ideal.end())
+			{
+				misses++;
+			}
+		}
+		stdMap.Stop();
+
+		SAILOR_LOG("Performance test ContainsKey(percent of misses %.2f):\n\tstd::map %llums\n\tTMap %llums", misses / (float)count, stdMap.ResultMs(), tMap.ResultMs());
 		/////////////////////////////////////////////
 
 		stdMap.Clear();

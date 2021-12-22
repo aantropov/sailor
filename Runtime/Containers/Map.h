@@ -15,7 +15,7 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API TPair() = default;
+		SAILOR_API TPair() : m_first(), m_second() {}
 		SAILOR_API TPair(const TPair&) = default;
 		SAILOR_API TPair(TPair&&) = default;
 		SAILOR_API ~TPair() = default;
@@ -28,8 +28,8 @@ namespace Sailor
 		SAILOR_API TPair& operator=(const TPair&) = default;
 		SAILOR_API TPair& operator=(TPair&&) = default;
 
-		SAILOR_API const TKeyType& First() const { return m_first; }
-		SAILOR_API const TValueType& Second() const { return m_second; }
+		SAILOR_API __forceinline const TKeyType& First() const { return m_first; }
+		SAILOR_API __forceinline const TValueType& Second() const { return m_second; }
 
 		TKeyType m_first;
 		TValueType m_second;
@@ -43,10 +43,10 @@ namespace Sailor
 		using Super = TSet<TPair<TKeyType, TValueType>, TAllocator>;
 		using TElementType = TPair<TKeyType, TValueType>;
 
-		TMap(const uint32_t desiredNumBuckets = 8) : Super(desiredNumBuckets) {  }
+		TMap(const uint32_t desiredNumBuckets = 16) : Super(desiredNumBuckets) {  }
 		TMap(TMap&&) = default;
 		TMap(const TMap&) = default;
-		TMap& operator=(TMap&&) = default;
+		TMap& operator=(TMap&&) noexcept = default;
 		TMap& operator=(const TMap&) = default;
 
 		TMap(std::initializer_list<TElementType> initList)
@@ -135,7 +135,7 @@ namespace Sailor
 			const size_t index = hash % Super::m_buckets.Num();
 			auto& element = Super::m_buckets[index];
 
-			if (element)
+			if (element && element->LikelyContains(hash))
 			{
 				auto& container = element->GetContainer();
 				const size_t i = container.FindIf([&](const TElementType& el) { return el.First() == key; });

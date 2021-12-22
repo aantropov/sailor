@@ -1,6 +1,7 @@
 #include <unordered_set>
 #include "Containers/Set.h"
 #include "Core/Utils.h"
+#include <random>
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -48,27 +49,51 @@ public:
 		stdSet.Clear();
 		tSet.Clear();
 
-		srand(0);
+		std::random_device rd;
+		std::mt19937 g(rd());
+
+		g.seed(0);
 		stdSet.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const int32_t value = rand();
+			const size_t value = count + g();
 			auto res = ideal.find(value);
 		}
 		stdSet.Stop();
 
-		srand(0);
+		g.seed(0);
 		tSet.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const int32_t value = rand();
+			const size_t value = count + g();
 			container.Contains(value);
 		}
 		tSet.Stop();
 
-		SAILOR_LOG("Performance test contains:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
+		SAILOR_LOG("Performance test contains(only misses):\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
 		/////////////////////////////////////////////
+		stdSet.Clear();
+		tSet.Clear();
+		g.seed(0);
+		stdSet.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const size_t value = g() % count;
+			auto res = ideal.find(value);
+		}
+		stdSet.Stop();
 
+		g.seed(0);
+		tSet.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const size_t value = g() % count;
+			container.Contains(value);
+		}
+		tSet.Stop();
+
+		SAILOR_LOG("Performance test contains(never miss):\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
+		/////////////////////////////////////////////
 		stdSet.Clear();
 		tSet.Clear();
 

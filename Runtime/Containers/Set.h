@@ -52,12 +52,14 @@ namespace Sailor
 			}
 
 			__forceinline size_t GetHash() const { return m_hashCode; }
+			__forceinline size_t LikelyContains(size_t hashCode) const { return (m_bloom & hashCode) == hashCode; }
 
 		// Should we hide the data in internal class 
 		// that programmer has no access but it could be used by derived classes?
 		//protected:
 
-			size_t m_hashCode;
+			size_t m_bloom = 0;
+			size_t m_hashCode = 0;
 			TElementContainer m_elements;
 
 			// That's unsafe but we handle that properly
@@ -187,12 +189,12 @@ namespace Sailor
 		__forceinline size_t Num() const { return m_num; }
 
 		bool Contains(const TElementType& inElement) const
-		{
+		{			
 			const auto& hash = Sailor::GetHash(inElement);
 			const size_t index = hash % m_buckets.Num();
 			auto& element = m_buckets[index];
 
-			if (element)
+			if (element && element->LikelyContains(hash))
 			{
 				return element->GetContainer().Find(inElement) != -1;
 			}
@@ -228,6 +230,7 @@ namespace Sailor
 			}
 
 			element->GetContainer().Emplace(inElement);
+			element->m_bloom |= hash;
 
 			m_num++;
 		}
@@ -322,11 +325,11 @@ namespace Sailor
 			m_num = 0;
 			m_first = nullptr;
 			m_last = nullptr;
-
+			
 			while (current)
 			{
 				const size_t oldIndex = current->GetHash() % m_buckets.Num();
-
+				
 				for (const auto& el : current->GetContainer())
 				{
 					Insert(el);
