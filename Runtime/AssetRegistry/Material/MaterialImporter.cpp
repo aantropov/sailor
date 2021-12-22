@@ -296,14 +296,14 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 
 				for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())
 				{
-					if (bindings->HasParameter(uniform.first))
+					if (bindings->HasParameter(uniform.m_first))
 					{
 						std::string outBinding;
 						std::string outVariable;
 
-						RHI::ShaderBindingSet::ParseParameter(uniform.first, outBinding, outVariable);
+						RHI::ShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
 						RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
-						auto value = uniform.second;
+						auto value = uniform.m_second;
 
 						SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
 							{

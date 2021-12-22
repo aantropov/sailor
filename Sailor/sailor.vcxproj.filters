@@ -297,6 +297,12 @@
     <ClInclude Include="..\Runtime\Containers\Map.h">
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\Concepts.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\Pair.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

@@ -431,10 +431,10 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 		if (it != m_promises.end())
 		{
 			auto allLoadedPermutations = (*it).second;
-			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.first == permutation; });
+			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.m_first == permutation; });
 			if (shaderIt != allLoadedPermutations.end())
 			{
-				promise = (*shaderIt).second;
+				promise = (*shaderIt).m_second;
 			}
 		}
 
@@ -443,10 +443,10 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 		if (loadedShadersIt != m_loadedShaders.end())
 		{
 			auto allLoadedPermutations = (*loadedShadersIt).second;
-			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.first == permutation; });
+			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.m_first == permutation; });
 			if (shaderIt != allLoadedPermutations.end())
 			{
-				outShader = (*shaderIt).second;
+				outShader = (*shaderIt).m_second;
 				if (!promise)
 				{
 					return JobSystem::TaskPtr<bool>::Make(true);
@@ -487,7 +487,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 
 			m_loadedShaders[uid].Add({ permutation, pShader });
 			m_promises[uid].Add({ permutation, promise });
-			outShader = (*(m_loadedShaders[uid].end() - 1)).second;
+			outShader = (*(m_loadedShaders[uid].end() - 1)).m_second;
 
 			return promise;
 		}

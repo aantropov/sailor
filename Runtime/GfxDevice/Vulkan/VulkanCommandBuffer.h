@@ -3,6 +3,7 @@
 #include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
 #include "GfxDeviceVulkan.h"
+#include "Containers/Pair.h"
 
 #ifdef MemoryBarrier
 #undef MemoryBarrier
@@ -69,7 +70,7 @@ namespace Sailor::GfxDevice::Vulkan
 		TVector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;
 		TVector<VulkanPipelinePtr> m_pipelineDependencies;
 		TVector<VulkanSemaphorePtr> m_semaphoreDependencies;
-		TVector<std::pair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
+		TVector<TPair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
 
 		VulkanDevicePtr m_device;
 		VulkanCommandPoolPtr m_commandPool;

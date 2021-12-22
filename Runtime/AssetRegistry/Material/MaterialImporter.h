@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
+#include "Containers/Pair.h"
 #include "Containers/Vector.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
@@ -74,7 +75,7 @@ namespace Sailor
 
 			TVector<std::string> m_shaderDefines;
 			TVector<SamplerEntry> m_samplers;
-			TVector<std::pair<std::string, glm::vec4>> m_uniformsVec4;
+			TVector<TPair<std::string, glm::vec4>> m_uniformsVec4;
 
 			UID m_shader;
 		};
@@ -90,7 +91,7 @@ namespace Sailor
 		SAILOR_API const UID& GetShader() const { return m_pData->m_shader; }
 		SAILOR_API const TVector<std::string>& GetShaderDefines() const { return  m_pData->m_shaderDefines; }
 		SAILOR_API const TVector<SamplerEntry>& GetSamplers() const { return m_pData->m_samplers; }
-		SAILOR_API const TVector<std::pair<std::string, glm::vec4>>& GetUniformValues() const { return m_pData->m_uniformsVec4; }
+		SAILOR_API const TVector<TPair<std::string, glm::vec4>>& GetUniformValues() const { return m_pData->m_uniformsVec4; }
 
 	protected:
 

@@ -6,7 +6,7 @@
 
 namespace Sailor::RHI
 {
-	using ShaderByteCode = TVector<uint32_t>;
+	using ShaderByteCode = Sailor::TVector<uint32_t>;
 
 	enum class ETextureFiltration : uint8_t
 	{

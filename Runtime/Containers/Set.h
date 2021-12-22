@@ -8,6 +8,7 @@
 #include "Vector.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/Memory.h"
+#include "Containers/Pair.h"
 #include "Core/LogMacros.h"
 
 namespace Sailor
@@ -18,6 +19,7 @@ namespace Sailor
 		static std::hash<Type> p;
 		return p(instance);
 	}
+
 
 	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
 	class SAILOR_API TSet
@@ -350,4 +352,16 @@ namespace Sailor
 	};
 
 	SAILOR_API void RunSetBenchmark();
+}
+
+namespace std
+{
+	template<typename TKeyType, typename TValueType>
+	struct std::hash<Sailor::TPair<TKeyType, TValueType>>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::TPair<TKeyType, TValueType>& p) const
+		{
+			return Sailor::GetHash(p.First());
+		}
+	};
 }

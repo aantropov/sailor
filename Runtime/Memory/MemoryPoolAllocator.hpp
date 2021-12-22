@@ -2,6 +2,8 @@
 #include "Memory.h"
 #include <algorithm>
 #include <mutex>
+#include "Containers/Pair.h"
+#include "Containers/Vector.h"
 
 namespace Sailor::Memory
 {
@@ -97,7 +99,7 @@ namespace Sailor::Memory
 
 				if (!m_bIsOutOfSync)
 				{
-					auto lower = std::lower_bound(m_layout.begin(), m_layout.end(), std::pair{ ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset }, [](auto& lhs, auto& rhs) { return lhs.first < rhs.first; });
+					auto lower = std::lower_bound(m_layout.begin(), m_layout.end(), TPair(ptr.m_offset, ptr.m_size + ptr.m_alignmentOffset), [](auto& lhs, auto& rhs) { return lhs.first < rhs.first; });
 					if (lower != m_layout.end())
 					{
 						const size_t i = lower - m_layout.begin();
@@ -197,7 +199,7 @@ namespace Sailor::Memory
 			size_t m_notTrackedEmptySpace = 0;
 			TPoolAllocator* m_owner;
 
-			std::vector<std::pair<size_t, size_t>> m_layout;
+			TVector<TPair<size_t, size_t>> m_layout;
 
 			friend class TPoolAllocator;
 		};

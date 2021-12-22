@@ -44,6 +44,21 @@ namespace Sailor
 		}
 	}
 
+	template<typename TKeyType, typename TValueType>
+	void to_json(json& j, const TPair<TKeyType, TValueType>& p)
+	{
+		j.push_back(p.First());
+		j.push_back(p.Second());
+	}
+
+	template<typename TKeyType, typename TValueType>
+	void from_json(const json& j, TPair<TKeyType, TValueType>& p)
+	{
+		p.Clear();
+		p.m_first = std::move(j[0].get<TKeyType>());
+		p.m_second = std::move(j[1].get<TValueType>());
+	}
+
 	template<typename T>
 	void to_json(json& j, const TVector<T>& p)
 	{

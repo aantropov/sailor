@@ -9,21 +9,10 @@
 #include "Core/Defines.h"
 #include "Math/Math.h"
 #include "Memory/MallocAllocator.h"
+#include "Containers/Concepts.h"
 
 namespace Sailor
 {
-	template<typename T>
-	concept IsTriviallyDestructible = std::is_trivially_destructible<T>::value;
-
-	template<typename T>
-	concept IsMoveConstructible = std::is_move_constructible<T>::value;
-
-	template<typename T>
-	concept IsCopyConstructible = std::is_copy_constructible<T>::value;
-
-	template<typename T>
-	using TPredicate = std::function<bool(const T&)>;
-
 	template<typename TDataType>
 	class SAILOR_API TVectorIterator
 	{
@@ -83,8 +72,8 @@ namespace Sailor
 		TVectorIterator operator-(difference_type rhs) const { return m_element - rhs; }
 		TVectorIterator operator+(difference_type rhs) const { return m_element + rhs; }
 
-		TVectorIterator& operator-=(difference_type rhs) { m_element -= rhs; return this; }
-		TVectorIterator& operator+=(difference_type rhs) { m_element += rhs; return this; }
+		TVectorIterator& operator-=(difference_type rhs) { m_element -= rhs; return *this; }
+		TVectorIterator& operator+=(difference_type rhs) { m_element += rhs; return *this; }
 
 		difference_type operator-(const TVectorIterator& other) const
 		{

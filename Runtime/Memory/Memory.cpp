@@ -7,6 +7,7 @@
 #include <functional> 
 #include <cctype>
 #include "Core/Utils.h"
+#include "Containers/Pair.h"
 #include "MemoryBlockAllocator.hpp"
 #include "MemoryPoolAllocator.hpp"
 #include "MemoryMultiPoolAllocator.hpp"

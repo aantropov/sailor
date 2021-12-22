@@ -13,6 +13,7 @@
 #include "VulkanDescriptors.h"
 #include "JobSystem/JobSystem.h"
 #include "VulkanImage.h"
+#include "Containers/Pair.h"
 #include "Memory/RefPtr.hpp"
 
 using namespace Sailor;
@@ -208,7 +209,7 @@ void VulkanCommandBuffer::Reset()
 
 void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator)
 {
-	m_memoryPtrs.Add(std::pair{ ptr, allocator });
+	m_memoryPtrs.Add(TPair(ptr, allocator));
 }
 
 void VulkanCommandBuffer::AddDependency(VulkanSemaphorePtr semaphore)
@@ -226,9 +227,9 @@ void VulkanCommandBuffer::ClearDependencies()
 
 	for (auto& managedPtr : m_memoryPtrs)
 	{
-		if (managedPtr.first && managedPtr.second)
+		if (managedPtr.m_first && managedPtr.m_second)
 		{
-			managedPtr.second.Lock()->Free(managedPtr.first);
+			managedPtr.m_second.Lock()->Free(managedPtr.m_first);
 		}
 	}
 

@@ -12,6 +12,7 @@
 #include "Core/Submodule.h"
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
+#include "Containers/Map.h"
 #include "Framework/Framework.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 
@@ -70,7 +71,7 @@ void App::Initialize()
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
-	
+
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
 	s_pInstance->AddSubmodule(TSubmodule<Framework>::Make());
@@ -92,6 +93,9 @@ void App::Start()
 	std::unordered_map<std::string, std::function<void()>> consoleVars;
 	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, GetSubmodule<AssetRegistry>());
 	consoleVars["memory.benchmark"] = &Memory::RunMemoryBenchmark;
+	consoleVars["vector.benchmark"] = &Sailor::RunVectorBenchmark;
+	consoleVars["set.benchmark"] = &Sailor::RunSetBenchmark;
+	consoleVars["map.benchmark"] = &Sailor::RunMapBenchmark;
 
 	while (s_pInstance->m_pViewportWindow->IsRunning())
 	{
