@@ -22,57 +22,57 @@ public:
 	{
 		const size_t count = 10000600;
 
-		Timer stdSet;
-		Timer tSet;
+		Timer stdMap;
+		Timer tMap;
 
 		TMap<size_t, size_t> container;
 		std::unordered_map<size_t, size_t> ideal;
 
-		stdSet.Start();
+		stdMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
 			ideal[i] = i * 3;
 		}
-		stdSet.Stop();
+		stdMap.Stop();
 
-		tSet.Start();
+		tMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
 			container[i] = i * 3;
 		}
-		tSet.Stop();
+		tMap.Stop();
 
-		SAILOR_LOG("Performance test operator[]:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
+		SAILOR_LOG("Performance test operator[]:\n\tstd::Map %llums\n\tTMap %llums", stdMap.ResultMs(), tMap.ResultMs());
 
 		/////////////////////////////////////////////
-		stdSet.Clear();
-		tSet.Clear();
+		stdMap.Clear();
+		tMap.Clear();
 
 		srand(0);
-		stdSet.Start();
+		stdMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
 			const int32_t value = rand();
 			auto res = ideal.find(value);
 		}
-		stdSet.Stop();
+		stdMap.Stop();
 
 		srand(0);
-		tSet.Start();
+		tMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
 			const int32_t value = rand();
 			container.ContainsKey(value);
 		}
-		tSet.Stop();
+		tMap.Stop();
 
-		SAILOR_LOG("Performance test ContainsKey:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
+		SAILOR_LOG("Performance test ContainsKey:\n\tstd::Map %llums\n\tTMap %llums", stdMap.ResultMs(), tMap.ResultMs());
 		/////////////////////////////////////////////
 
-		stdSet.Clear();
-		tSet.Clear();
+		stdMap.Clear();
+		tMap.Clear();
 
-		tSet.Start();
+		tMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
 			if (i % 2)
@@ -80,9 +80,9 @@ public:
 				container.Remove(i);
 			}
 		}
-		tSet.Stop();
+		tMap.Stop();
 
-		stdSet.Start();
+		stdMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
 			if (i % 2)
@@ -90,20 +90,52 @@ public:
 				ideal.erase(i);
 			}
 		}
-		stdSet.Stop();
+		stdMap.Stop();
 
-		SAILOR_LOG("Performance test Remove:\n\tstd::set %llums\n\tTSet %llums", stdSet.ResultMs(), tSet.ResultMs());
+		SAILOR_LOG("Performance test Remove:\n\tstd::Map %llums\n\tTMap %llums", stdMap.ResultMs(), tMap.ResultMs());
 	}
 
 	static bool SanityCheck()
 	{
+		const size_t count = 1800;
+
+		TMap<size_t, size_t> container;
+		std::unordered_map<size_t, size_t> ideal;
+
+		for (size_t i = 0; i < count; i++)
+		{
+			ideal[i] = i * 3;
+			container[i] = i * 3;
+		}
+
+		for (size_t i = 0; i < count / 2; i++)
+		{
+			ideal.erase(i * 2);
+			container.Remove(i * 2);
+
+			for (const auto& el : ideal)
+			{
+				if (container[el.first] != el.second)
+				{
+					return false;
+				}
+			}
+
+			for (const auto& el : container)
+			{
+				if (ideal[el.m_first] != el.m_second)
+				{
+					return false;
+				}
+			}
+		}
 		return true;
 	}
 };
 
 void Sailor::RunMapBenchmark()
 {
-	printf("\nStarting set benchmark...\n");
+	printf("\nStarting Map benchmark...\n");
 
 	TestCase_MapPerfromance::RunTests();
 }

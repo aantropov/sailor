@@ -14,24 +14,25 @@ namespace Sailor
 	class SAILOR_API TPair final
 	{
 	public:
+
 		TPair() = default;
 		TPair(const TPair&) = default;
 		TPair(TPair&&) = default;
 		~TPair() = default;
 
-		TPair(const TKeyType& key, const TValueType& value) : m_key(key), m_value(value) {}
-		TPair(TKeyType&& key, TValueType&& value) : m_key(std::move(key)), m_value(std::move(value)) {}
+		TPair(TKeyType&& first, const TValueType& second) : m_first(std::move(first)), m_second(second) {}
+		TPair(const TKeyType& first, TValueType&& second) : m_first(first), m_second(std::move(second)) {}
+		TPair(const TKeyType& first, const TValueType& second) : m_first(first), m_second(second) {}
+		TPair(TKeyType&& first, TValueType&& second) : m_first(std::move(first)), m_second(std::move(second)) {}
 
-		TKeyType& First() { return m_key; }
-		const TKeyType& First() const { return m_key; }
+		TPair& operator=(const TPair&) = default;
+		TPair& operator=(TPair&&) = default;
 
-		TValueType& Second() { return m_key; }
-		const TValueType& Second() const { return m_value; }
+		const TKeyType& First() const { return m_first; }
+		const TValueType& Second() const { return m_second; }
 
-	private:
-
-		TKeyType m_key;
-		TValueType m_value;
+		TKeyType m_first;
+		TValueType m_second;
 	};
 
 	template<typename TKeyType, typename TValueType, typename TAllocator = Memory::MallocAllocator>
@@ -120,7 +121,7 @@ namespace Sailor
 
 		TValueType& operator[] (const TKeyType& key)
 		{
-			return GetOrAdd(key).Second();
+			return GetOrAdd(key).m_second;
 		}
 
 		const TValueType& operator[] (const TKeyType& key) const
@@ -161,22 +162,28 @@ namespace Sailor
 		TElementType& GetOrAdd(const TKeyType& key)
 		{
 			const auto& hash = Sailor::GetHash(key);
-			const size_t index = hash % Super::m_buckets.Num();
-			auto& element = Super::m_buckets[index];
-
-			if (element)
 			{
-				auto& container = element->GetContainer();
+				const size_t index = hash % Super::m_buckets.Num();
+				auto& element = Super::m_buckets[index];
 
-				const size_t i = container.FindIf([&](const TElementType& element) { return element.First() == key; });
-				if (i != -1)
+				if (element)
 				{
-					return container[i];
+					auto& container = element->GetContainer();
+
+					const size_t i = container.FindIf([&](const TElementType& element) { return element.First() == key; });
+					if (i != -1)
+					{
+						return container[i];
+					}
 				}
 			}
 
-			// TODO: rethink the approach with missed default constructor
+			// TODO: rethink the approach when default constructor is missed
 			Insert(key, TValueType());
+
+			const size_t index = hash % Super::m_buckets.Num();
+			auto& element = Super::m_buckets[index];
+
 			return element->GetContainer()[element->GetContainer().Num() - 1];
 		}
 	};
