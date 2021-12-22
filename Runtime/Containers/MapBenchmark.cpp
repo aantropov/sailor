@@ -20,25 +20,25 @@ public:
 
 	static void PerformanceTests()
 	{
-		const size_t count = 10000600;
+		const size_t count = 1000500;
 
 		Timer stdMap;
 		Timer tMap;
 
-		TMap<size_t, size_t> container;
-		std::unordered_map<size_t, size_t> ideal;
+		TMap<size_t, std::string> container;
+		std::unordered_map<size_t, std::string> ideal;
 
 		stdMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			ideal[i] = i * 3;
+			ideal[i] = std::to_string(i * 3);
 		}
 		stdMap.Stop();
 
 		tMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			container[i] = i * 3;
+			container[i] = std::to_string(i * 3);
 		}
 		tMap.Stop();
 
@@ -52,7 +52,7 @@ public:
 		stdMap.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const int32_t value = rand();
+			const size_t value = rand();
 			auto res = ideal.find(value);
 		}
 		stdMap.Stop();

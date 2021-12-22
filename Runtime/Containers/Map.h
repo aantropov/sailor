@@ -11,25 +11,25 @@
 namespace Sailor
 {
 	template<typename TKeyType, typename TValueType>
-	class SAILOR_API TPair final
+	class TPair final
 	{
 	public:
 
-		TPair() = default;
-		TPair(const TPair&) = default;
-		TPair(TPair&&) = default;
-		~TPair() = default;
+		SAILOR_API TPair() = default;
+		SAILOR_API TPair(const TPair&) = default;
+		SAILOR_API TPair(TPair&&) = default;
+		SAILOR_API ~TPair() = default;
 
-		TPair(TKeyType&& first, const TValueType& second) : m_first(std::move(first)), m_second(second) {}
-		TPair(const TKeyType& first, TValueType&& second) : m_first(first), m_second(std::move(second)) {}
-		TPair(const TKeyType& first, const TValueType& second) : m_first(first), m_second(second) {}
-		TPair(TKeyType&& first, TValueType&& second) : m_first(std::move(first)), m_second(std::move(second)) {}
+		SAILOR_API TPair(TKeyType&& first, const TValueType& second) : m_first(std::move(first)), m_second(second) {}
+		SAILOR_API TPair(const TKeyType& first, TValueType&& second) : m_first(first), m_second(std::move(second)) {}
+		SAILOR_API TPair(const TKeyType& first, const TValueType& second) : m_first(first), m_second(second) {}
+		SAILOR_API TPair(TKeyType&& first, TValueType&& second) : m_first(std::move(first)), m_second(std::move(second)) {}
 
-		TPair& operator=(const TPair&) = default;
-		TPair& operator=(TPair&&) = default;
+		SAILOR_API TPair& operator=(const TPair&) = default;
+		SAILOR_API TPair& operator=(TPair&&) = default;
 
-		const TKeyType& First() const { return m_first; }
-		const TValueType& Second() const { return m_second; }
+		SAILOR_API const TKeyType& First() const { return m_first; }
+		SAILOR_API const TValueType& Second() const { return m_second; }
 
 		TKeyType m_first;
 		TValueType m_second;
