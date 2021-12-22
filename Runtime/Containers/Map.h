@@ -105,7 +105,29 @@ namespace Sailor
 			return GetOrAdd(key).Second();
 		}
 
-		bool ContainsKey(const TKeyType& key) const
+		bool Find(const TKeyType& key, TValueType*& out)
+		{
+			out = nullptr;
+
+			const auto& hash = Sailor::GetHash(key);
+			const size_t index = hash % Super::m_buckets.Num();
+			auto& element = Super::m_buckets[index];
+
+			if (element && element->LikelyContains(hash))
+			{
+				auto& container = element->GetContainer();
+				const size_t i = container.FindIf([&](const TElementType& el) { return el.First() == key; });
+				if (i != -1)
+				{
+					out = &container[i];
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		Super::TIterator Find(const TKeyType& key)
 		{
 			const auto& hash = Sailor::GetHash(key);
 			const size_t index = hash % Super::m_buckets.Num();
@@ -115,10 +137,19 @@ namespace Sailor
 			{
 				auto& container = element->GetContainer();
 				const size_t i = container.FindIf([&](const TElementType& el) { return el.First() == key; });
-				return i != -1;
+				if (i != -1)
+				{
+					return TIterator(element, &container[i]);
+				}
 			}
 
-			return false;
+			return Super::end();
+		}
+
+		bool ContainsKey(const TKeyType& key) const
+		{
+			TValueType* notUsed = nullptr;
+			return Find(key, TValueType);
 		}
 
 		bool ContainsValue(const TValueType& value) const
