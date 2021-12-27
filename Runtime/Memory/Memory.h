@@ -87,6 +87,8 @@ namespace Sailor::Memory
 
 				void* res = m_allocator.Allocate(size, alignment);
 				memmove(res, pData, usedSpace - sizeof(uint16_t));
+				Free(pData);
+
 				return res;
 			}
 
@@ -97,12 +99,12 @@ namespace Sailor::Memory
 		{
 			if (Contains(pData))
 			{
-				uint16_t size = *((uint8_t*)pData - sizeof(uint16_t)) + sizeof(uint16_t);
+				uint16_t usedSpace = *((uint8_t*)pData - sizeof(uint16_t)) + sizeof(uint16_t);
 
 				// we can only remove the objects that are placed on the top of the stack
-				if (&((uint8_t*)pData - sizeof(uint16_t))[size] == &m_stack[m_index])
+				if (&((uint8_t*)pData - sizeof(uint16_t))[usedSpace] == &m_stack[m_index])
 				{
-					m_index -= size;
+					m_index -= usedSpace;
 				}
 			}
 			else

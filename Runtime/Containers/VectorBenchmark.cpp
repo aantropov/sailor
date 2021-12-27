@@ -18,15 +18,36 @@ class TestCase_VectorPerfromance
 		TData(uint32_t value)
 		{
 			m_value = value;
-			//memset(m_data, value, 128 * sizeof(size_t));
+			m_data = new size_t[8];
+			memset(m_data, value, 8 * sizeof(size_t));
+		}
+
+		TData(const TData& rhs)
+		{
+			m_data = new size_t[8];
+			m_value = rhs.m_value;
+
+			memcpy(m_data, rhs.m_data, 8 * sizeof(size_t));
+		}
+
+		~TData()
+		{
+			delete[] m_data;
 		}
 
 		bool operator==(const TData& rhs) const
 		{
-			return m_value == rhs.m_value;// && (memcmp(rhs.m_data, m_data, 128 * sizeof(size_t)) == 0);
+			return m_value == rhs.m_value && memcmp(m_data, rhs.m_data, 8 * sizeof(size_t)) == 0;
 		}
 
-		//size_t m_data[128];
+		TData& operator=(const TData& rhs)
+		{
+			m_value = rhs.m_value;
+			memcpy(m_data, rhs.m_data, 8 * sizeof(size_t));
+			return *this;
+		}
+
+		size_t* m_data = nullptr;
 		uint32_t m_value;
 	};
 
@@ -34,7 +55,6 @@ public:
 
 	static void RunTests()
 	{
-
 		RunSanityTests();
 	}
 
@@ -203,7 +223,7 @@ public:
 
 	static bool SanityCheck()
 	{
-		const size_t count = 16536;
+		const size_t count = 16571;
 
 		TVector<TData> container;
 		std::vector<TData> ideal;
@@ -215,13 +235,13 @@ public:
 
 			if (i % 2 == 0)
 			{
-				ideal.push_back(value);
-				container.Add(value);
+				ideal.push_back(TData(value));
+				container.Add(TData(value));
 			}
 			else
 			{
-				ideal.emplace_back(value);
-				container.Emplace(value);
+				ideal.emplace_back(TData(value));
+				container.Emplace(TData(value));
 			}
 		}
 

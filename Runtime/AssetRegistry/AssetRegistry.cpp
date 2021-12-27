@@ -90,7 +90,6 @@ const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 	if (extension != MetaFileExtension)
 	{
 		const std::string assetInfoFile = GetMetaFilePath(filepath);
-
 		IAssetInfoHandler* assetInfoHandler = App::GetSubmodule<DefaultAssetInfoHandler>();
 
 		auto assetInfoHandlerIt = m_assetInfoHandlers.Find(extension);

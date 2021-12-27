@@ -133,7 +133,7 @@ namespace Sailor
 			ResizeIfNeeded(count);
 
 			m_arrayNum = count;
-			MoveElements(0, rawPtr[0], count);
+			ConstructMoveElements(0, rawPtr[0], count);
 		}
 
 		// Operators
@@ -231,7 +231,7 @@ namespace Sailor
 
 			ResizeIfNeeded(m_arrayNum + count);
 
-			MoveElements(m_arrayNum, *first, count);
+			ConstructMoveElements(m_arrayNum, *first, count);
 			m_arrayNum += count;
 		}
 
@@ -335,7 +335,7 @@ namespace Sailor
 				return;
 			}
 
-			memmove(&m_pRawPtr[index + 1], &m_pRawPtr[index], (m_arrayNum - index) * sizeof(TElementType));
+			MemMove(index + 1, index, m_arrayNum - index);
 
 			ConstructElements(index, item, 1);
 			m_arrayNum++;
@@ -350,7 +350,7 @@ namespace Sailor
 				return;
 			}
 
-			memmove(&m_pRawPtr[index + 1], &m_pRawPtr[index], (m_arrayNum - index) * sizeof(TElementType));
+			MemMove(index + 1, index, m_arrayNum - index);
 			EmplaceAt(index, item);
 		}
 
@@ -379,8 +379,7 @@ namespace Sailor
 				return;
 			}
 
-			memmove(&m_pRawPtr[index + count], &m_pRawPtr[index], (m_arrayNum - index) * sizeof(TElementType));
-
+			MemMove(index + count, index, m_arrayNum - index);
 			ConstructElements(index, first, count);
 			m_arrayNum += count;
 		}
@@ -415,7 +414,28 @@ namespace Sailor
 
 				if (shift)
 				{
-					memmove(&m_pRawPtr[i], &m_pRawPtr[i + shift], sizeof(TElementType));
+					if (bShouldDelete)
+					{
+						if constexpr (IsMoveConstructible<TElementType>)
+						{
+							ConstructMoveElements(i, m_pRawPtr[i + shift], 1);
+						}
+						else
+						{
+							ConstructElements(i, m_pRawPtr[i + shift], 1);
+						}
+					}
+					else
+					{
+						if constexpr (IsMoveAssignable<TElementType>)
+						{
+							m_pRawPtr[i] = std::move(m_pRawPtr[i + shift]);
+						}
+						else
+						{
+							m_pRawPtr[i] = m_pRawPtr[i + shift];
+						}
+					}
 				}
 
 				if (bShouldDelete)
@@ -424,6 +444,7 @@ namespace Sailor
 				}
 			}
 
+			DestructElements(m_arrayNum - shift, shift);
 			m_arrayNum -= shift;
 			return shift;
 		}
@@ -433,7 +454,24 @@ namespace Sailor
 			DestructElements(index, count);
 			if (m_arrayNum - count != 0)
 			{
-				memmove(&m_pRawPtr[index], &m_pRawPtr[index + count], sizeof(TElementType) * (m_arrayNum - index - count));
+				const size_t tailElementsNum = m_arrayNum - index - count;
+				const size_t elementsToRecreate = min(tailElementsNum, count);
+				const size_t elementsToMove = tailElementsNum - elementsToRecreate;
+
+				// Create new elements
+				if constexpr (IsMoveConstructible<TElementType>)
+				{
+					ConstructMoveElements(index, m_pRawPtr[index + count], elementsToRecreate);
+				}
+				else
+				{
+					ConstructElements(index, m_pRawPtr[index + count], elementsToRecreate);
+				}
+
+				if (elementsToMove)
+				{
+					MemMove(index + count, m_arrayNum - elementsToMove, elementsToMove);
+				}
 			}
 
 			m_arrayNum -= count;
@@ -442,7 +480,17 @@ namespace Sailor
 		void RemoveAtSwap(size_t index, size_t count = 1)
 		{
 			DestructElements(index, count);
-			memmove(&m_pRawPtr[index], &m_pRawPtr[m_arrayNum - count], sizeof(TElementType) * count);
+
+			if constexpr (IsMoveConstructible<TElementType>)
+			{
+				ConstructMoveElements(index, m_pRawPtr[m_arrayNum - count], count);
+			}
+			else
+			{
+				ConstructElements(index, m_pRawPtr[m_arrayNum - count], count);
+			}
+
+			DestructElements(m_arrayNum - count, count);
 			m_arrayNum -= count;
 		}
 
@@ -453,7 +501,7 @@ namespace Sailor
 				if (const bool bShouldDelete = m_pRawPtr[i] == item)
 				{
 					DestructElements(i, 1);
-					memmove(&m_pRawPtr[i], &m_pRawPtr[i + 1], (m_arrayNum - i - 1) * sizeof(TElementType));
+					ConstructMoveElements(i, m_pRawPtr[i + 1], m_arrayNum - i - 1);
 					return m_arrayNum--;
 				}
 			}
@@ -480,8 +528,7 @@ namespace Sailor
 			const size_t slack = newCapacity - m_capacity;
 
 			m_capacity = newCapacity;
-
-			if (m_capacity)
+			if constexpr (IsTriviallyCopyable<TElementType>)
 			{
 				if (m_pRawPtr)
 				{
@@ -491,6 +538,22 @@ namespace Sailor
 				{
 					m_pRawPtr = static_cast<TElementType*>(m_allocator.Allocate(newCapacity * sizeof(TElementType)));
 				}
+			}
+			else
+			{
+				TElementType* pRawPtr = static_cast<TElementType*>(m_allocator.Allocate(newCapacity * sizeof(TElementType)));
+				std::swap(m_pRawPtr, pRawPtr);
+
+				if constexpr (IsMoveConstructible<TElementType>)
+				{
+					ConstructMoveElements(0, pRawPtr[0], newCapacity - slack);
+				}
+				else
+				{
+					ConstructElements(0, pRawPtr[0], newCapacity - slack);
+				}
+
+				m_allocator.Free(pRawPtr);
 			}
 		}
 
@@ -568,7 +631,7 @@ namespace Sailor
 			}
 		}
 
-		__forceinline void MoveElements(size_t index, TElementType& firstElement, size_t count = 1) requires IsMoveConstructible<TElementType>
+		__forceinline void ConstructMoveElements(size_t index, TElementType& firstElement, size_t count = 1) requires IsMoveConstructible<TElementType>
 		{
 			for (size_t i = 0; i < count; i++)
 			{
@@ -587,6 +650,58 @@ namespace Sailor
 		__forceinline void DestructElements(size_t index, size_t count = 1) requires IsTriviallyDestructible<TElementType>
 		{
 			// Do nothing for trivial types
+		}
+
+		__forceinline void MemMove(size_t to, size_t from, size_t count)
+		{
+			if constexpr (IsTriviallyCopyable<TElementType>)
+			{
+				memmove(&m_pRawPtr[to], &m_pRawPtr[from], count * sizeof(TElementType));
+			}
+			else
+			{
+				for (size_t i = 0; i < count; i++)
+				{
+					size_t shift = from < to ? (count - i - 1) : i;
+
+					// Move operator
+					if (to + shift < m_arrayNum)
+					{
+						if constexpr (IsMoveAssignable<TElementType>)
+						{
+							m_pRawPtr[to + shift] = std::move(m_pRawPtr[from + shift]);
+						}
+						else
+						{
+							m_pRawPtr[to + shift] = m_pRawPtr[from + shift];
+						}
+					}
+					else
+					{
+						// We need to create object if we are out of bounds
+						if constexpr (IsMoveConstructible<TElementType>)
+						{
+							ConstructMoveElements(to + shift, m_pRawPtr[from + shift], 1);
+						}
+						else
+						{
+							ConstructElements(to + shift, m_pRawPtr[from + shift], 1);
+						}
+					}
+
+				}
+
+				// Destruct unused elements
+				if (from < to)
+				{
+					DestructElements(from, min(count, to - from));
+				}
+				else
+				{
+					size_t shift = (size_t)max(0, (int32_t)to + (int32_t)count - (int32_t)from);
+					DestructElements(from + shift, count - shift);
+				}
+			}
 		}
 	};
 

@@ -159,9 +159,7 @@ namespace Sailor
 
 		using TIterator = TBaseIterator<TElementType>;
 		using TConstIterator = TBaseIterator<const TElementType>;
-
 		using TSetElementPtr = TUniquePtr<TSetElement>;
-
 		using TBucketContainer = TVector<TSetElementPtr, TAllocator>;
 
 		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
@@ -306,10 +304,6 @@ namespace Sailor
 		TConstIterator end() const { return TConstIterator(m_last, m_last ? &*m_last->GetContainer().end() : nullptr); }
 
 	protected:
-
-		//__forceinline TConstIterator CreateConstIterator(TSetElement* bucket, pointer element) : m_element(element), m_currentBucket(bucket) {}) const
-		//{
-		//}
 
 		__forceinline bool ShouldRehash() const
 		{

@@ -8,7 +8,7 @@ namespace Sailor { class UID; }
 
 namespace Sailor
 {
-	class UID : public IJsonSerializable
+	class UID final : public IJsonSerializable
 	{
 	public:
 
@@ -23,7 +23,7 @@ namespace Sailor
 		inline SAILOR_API bool operator==(const UID& rhs) const;
 		inline SAILOR_API bool operator!=(const UID& rhs) const { return !(rhs == *this); }
 
-		virtual SAILOR_API~UID() = default;
+		SAILOR_API ~UID() = default;
 
 		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;

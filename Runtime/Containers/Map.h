@@ -164,7 +164,7 @@ namespace Sailor
 		bool ContainsKey(const TKeyType& key) const
 		{
 			auto& element = Super::m_buckets[Sailor::GetHash(key) % Super::m_buckets.Num()];
-			return element && element->GetContainer().Num() > 0;
+			return element && element->GetContainer().FindIf([&](const TElementType& el) { return el.First() == key; }) != -1;
 		}
 
 		bool ContainsValue(const TValueType& value) const
