@@ -61,7 +61,7 @@ ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
 
 ModelImporter::~ModelImporter()
 {
-	m_loadedModels.clear();
+	m_loadedModels.Clear();
 }
 
 void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
@@ -155,17 +155,17 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	outModel = nullptr;
 
 	// Check promises first
-	auto it = m_promises.find(uid);
+	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
 	{
-		promise = (*it).second;
+		promise = (*it).m_second;
 	}
 
 	// Check loaded model
-	auto modelIt = m_loadedModels.find(uid);
+	auto modelIt = m_loadedModels.Find(uid);
 	if (modelIt != m_loadedModels.end())
 	{
-		outModel = (*modelIt).second;
+		outModel = (*modelIt).m_second;
 
 		if (!promise)
 		{

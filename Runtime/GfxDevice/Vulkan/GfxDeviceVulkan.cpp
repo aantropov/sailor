@@ -33,7 +33,7 @@ GfxDeviceVulkan::~GfxDeviceVulkan()
 	TrackResources_ThreadSafe();
 
 	m_trackedFences.Clear();
-	m_uniformBuffers.clear();
+	m_uniformBuffers.Clear();
 	m_storageBuffer.Clear();
 
 	// Waiting finishing releasing of rendering resources
@@ -301,26 +301,26 @@ void GfxDeviceVulkan::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
 
 	for (const auto& binding : bindings->GetShaderBindings())
 	{
-		if (binding.second->IsBind())
+		if (binding.m_second->IsBind())
 		{
-			if (binding.second->GetTextureBinding())
+			if (binding.m_second->GetTextureBinding())
 			{
-				auto& texture = binding.second->GetTextureBinding();
-				auto descr = VulkanDescriptorImagePtr::Make(binding.second->m_vulkan.m_descriptorSetLayout.binding, 0,
+				auto& texture = binding.m_second->GetTextureBinding();
+				auto descr = VulkanDescriptorImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
 					device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
 					texture->m_vulkan.m_imageView);
 
 				descriptors.Add(descr);
-				descriptionSetLayouts.Add(binding.second->m_vulkan.m_descriptorSetLayout);
+				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 			}
-			else if (binding.second->m_vulkan.m_valueBinding)
+			else if (binding.m_second->m_vulkan.m_valueBinding)
 			{
-				auto& valueBinding = (*binding.second->m_vulkan.m_valueBinding);
-				auto descr = VulkanDescriptorBufferPtr::Make(binding.second->m_vulkan.m_descriptorSetLayout.binding, 0,
-					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.second->GetLayout().m_type);
+				auto& valueBinding = (*binding.m_second->m_vulkan.m_valueBinding);
+				auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
+					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.m_second->GetLayout().m_type);
 
 				descriptors.Add(descr);
-				descriptionSetLayouts.Add(binding.second->m_vulkan.m_descriptorSetLayout);
+				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 			}
 		}
 	}
@@ -439,10 +439,10 @@ TSharedPtr<VulkanBufferAllocator>& GfxDeviceVulkan::GetUniformBufferAllocator(co
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_uniformBuffers.find(uniformTypeId);
+	auto it = m_uniformBuffers.Find(uniformTypeId);
 	if (it != m_uniformBuffers.end())
 	{
-		return (*it).second;
+		return (*it).m_second;
 	}
 
 	auto& uniformAllocator = m_uniformBuffers[uniformTypeId] = TSharedPtr<VulkanBufferAllocator>::Make();

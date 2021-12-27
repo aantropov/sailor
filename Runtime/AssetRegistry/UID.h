@@ -8,7 +8,7 @@ namespace Sailor { class UID; }
 
 namespace Sailor
 {
-	class UID : IJsonSerializable
+	class UID : public IJsonSerializable
 	{
 	public:
 

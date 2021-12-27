@@ -54,8 +54,8 @@ namespace Sailor
 		reference operator*() { return *m_element; }
 		reference operator*() const { return *m_element; }
 
-		reference operator->() { return m_element; }
-		reference operator->() const { return m_element; }
+		pointer operator->() { return m_element; }
+		pointer operator->() const { return m_element; }
 
 		TVectorIterator& operator++()
 		{
@@ -343,6 +343,7 @@ namespace Sailor
 
 		void Insert(TElementType&& item, size_t index)
 		{
+			// No need to resize since it is handled in Emplace functions
 			if (index == m_arrayNum)
 			{
 				Emplace(item);

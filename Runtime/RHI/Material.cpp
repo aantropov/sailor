@@ -9,10 +9,10 @@ using namespace Sailor::GfxDevice::Vulkan;
 
 RHI::ShaderBindingPtr& ShaderBindingSet::GetOrCreateShaderBinding(const std::string& binding)
 {
-	auto it = m_shaderBindings.find(binding);
+	auto it = m_shaderBindings.Find(binding);
 	if (it != m_shaderBindings.end())
 	{
-		return (*it).second;
+		return (*it).m_second;
 	}
 
 	return m_shaderBindings[binding] = ShaderBindingPtr::Make();

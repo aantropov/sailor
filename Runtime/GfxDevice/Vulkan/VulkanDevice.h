@@ -1,5 +1,5 @@
 #pragma once
-#include <unordered_map>
+#include "Containers/Map.h"
 #include "VulkanApi.h"
 #include "VulkanDescriptors.h"
 #include "VulkanSamplers.h"
@@ -164,10 +164,10 @@ namespace Sailor::GfxDevice::Vulkan
 		TUniquePtr<VulkanSamplerCache> m_samplers;
 		TUniquePtr<VulkanPipelineStateBuilder> m_pipelineBuilder;
 
-		std::unordered_map<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
+		TMap<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 
 		// We're sharing the same device memory between the different buffers
-		std::unordered_map<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>> m_memoryAllocators;
+		TMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>> m_memoryAllocators;
 
 		// We're creating rendering context with sync
 		std::mutex m_mutex;

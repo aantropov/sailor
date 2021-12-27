@@ -13,6 +13,7 @@
 #include "GfxDevice/Vulkan/VulkanBufferMemory.h"
 #include "GfxDevice/Vulkan/VulkanDevice.h"
 #include "Platform/Win32/Window.h"
+#include "Containers/Map.h"
 
 #ifdef VULKAN
 
@@ -96,7 +97,7 @@ namespace Sailor::GfxDevice::Vulkan
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetStorageBufferAllocator();
 
 		// Uniform buffers to store uniforms
-		std::unordered_map<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
+		TMap<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
 
 		// Storage buffers to store everything
 		TSharedPtr<VulkanBufferAllocator> m_storageBuffer;

@@ -2,6 +2,7 @@
 #include "Core/Defines.h"
 #include <string>
 #include "Containers/Vector.h"
+#include "Containers/Map.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -51,8 +52,8 @@ namespace Sailor
 
 		std::mutex m_mutex;
 
-		std::unordered_map <UID, JobSystem::TaskPtr<bool>> m_promises;
-		std::unordered_map<UID, TSharedPtr<Texture>> m_loadedTextures;
+		TMap<UID, JobSystem::TaskPtr<bool>> m_promises;
+		TMap<UID, TSharedPtr<Texture>> m_loadedTextures;
 
 		SAILOR_API bool IsTextureLoaded(UID uid) const;
 		SAILOR_API static bool ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);

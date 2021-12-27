@@ -6,7 +6,6 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <map>
 #include "Containers/Vector.h"
 #include <optional>
-#include <unordered_map>
 #include <wtypes.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
@@ -47,6 +46,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "RHI/Material.h"
 #include "RHI/Shader.h"
 #include "RHI/CommandList.h"
+#include "Containers/Map.h"
 
 using namespace glm;
 using namespace Sailor;
@@ -137,10 +137,10 @@ void VulkanDevice::Shutdown()
 
 	for (auto& pair : m_threadContext)
 	{
-		pair.second.Clear();
+		pair.m_second.Clear();
 	}
 
-	m_memoryAllocators.clear();
+	m_memoryAllocators.Clear();
 
 	m_renderFinishedSemaphores.Clear();
 	m_imageAvailableSemaphores.Clear();
@@ -153,15 +153,15 @@ void VulkanDevice::Shutdown()
 
 	m_samplers.Clear();
 	m_pipelineBuilder.Clear();
-	m_threadContext.clear();
+	m_threadContext.Clear();
 }
 
 ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)
 {
-	auto res = m_threadContext.find(threadId);
+	auto res = m_threadContext.Find(threadId);
 	if (res != m_threadContext.end())
 	{
-		return *(*res).second;
+		return *(*res).m_second;
 	}
 
 	{
@@ -602,15 +602,15 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 
 							// TODO: Parse missing descriptor sets
 							TVector<VulkanDescriptorSetPtr> sets;
-							if (state.GetFrameBinding()->GetShaderBindings().size())
+							if (state.GetFrameBinding()->GetShaderBindings().Num())
 							{
 								sets.Add(state.GetFrameBinding()->m_vulkan.m_descriptorSet);
 							}
-							if (perInstanceBinding->GetShaderBindings().size())
+							if (perInstanceBinding->GetShaderBindings().Num())
 							{
 								sets.Add(perInstanceBinding->m_vulkan.m_descriptorSet);
 							}
-							if (material->GetBindings()->GetShaderBindings().size())
+							if (material->GetBindings()->GetShaderBindings().Num())
 							{
 								sets.Add(material->GetBindings()->m_vulkan.m_descriptorSet);
 							}

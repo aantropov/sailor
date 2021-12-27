@@ -60,11 +60,11 @@ void ShaderCache::ShaderCacheData::Serialize(nlohmann::json& outData) const
 	{
 		json temp;
 
-		entry.first.Serialize(temp["uid"]);
+		entry.m_first.Serialize(temp["uid"]);
 
 		std::vector<json> entriesJson;
 
-		for (const auto& permutation : entry.second)
+		for (const auto& permutation : entry.m_second)
 		{
 			json temp;
 			permutation->Serialize(temp);
@@ -132,7 +132,7 @@ void ShaderCache::Shutdown()
 
 	for (const auto& entries : m_cache.m_data)
 	{
-		for (const auto& entry : entries.second)
+		for (const auto& entry : entries.m_second)
 		{
 			delete entry;
 		}
@@ -190,9 +190,9 @@ void ShaderCache::ClearExpired()
 
 	for (const auto& entries : m_cache.m_data)
 	{
-		if (Contains(entries.first))
+		if (Contains(entries.m_first))
 		{
-			for (const auto& entry : entries.second)
+			for (const auto& entry : entries.m_second)
 			{
 				if (!IsExpired(entry->m_UID, entry->m_permutation))
 				{
@@ -231,7 +231,7 @@ void ShaderCache::Remove(ShaderCacheEntry* pEntry)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_cache.m_data.find(pEntry->m_UID);
+	auto it = m_cache.m_data.Find(pEntry->m_UID);
 	if (it != m_cache.m_data.end())
 	{
 		UID uid = pEntry->m_UID;
@@ -263,12 +263,12 @@ void ShaderCache::Remove(const UID& uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_cache.m_data.find(uid);
+	auto it = m_cache.m_data.Find(uid);
 	if (it != m_cache.m_data.end())
 	{
 		const auto& entries = *it;
 
-		for (const auto& pEntry : entries.second)
+		for (const auto& pEntry : entries.m_second)
 		{
 			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX"));
 			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
@@ -283,13 +283,13 @@ void ShaderCache::Remove(const UID& uid)
 		}
 
 		m_bIsDirty = true;
-		m_cache.m_data.erase(it);
+		m_cache.m_data.Remove(it->m_first);
 	}
 }
 
 bool ShaderCache::Contains(const UID& uid) const
 {
-	return m_cache.m_data.find(uid) != m_cache.m_data.end();
+	return m_cache.m_data.ContainsKey(uid);
 }
 
 void ShaderCache::CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const
@@ -364,7 +364,7 @@ bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uin
 		return false;
 	}
 
-	const auto& entries = m_cache.m_data.at(uid);
+	const auto& entries = m_cache.m_data[uid];
 	const auto it = std::find_if(std::cbegin(entries), std::cend(entries),
 		[permutation](const ShaderCacheEntry* arg) { return arg->m_permutation == permutation; });
 
@@ -389,11 +389,10 @@ bool ShaderCache::IsExpired(const UID& uid, uint32_t permutation) const
 		return true;
 	}
 
-	const auto& entries = m_cache.m_data.at(uid);
-	const auto it = std::find_if(std::cbegin(entries), std::cend(entries),
-		[permutation](const ShaderCacheEntry* arg) { return arg->m_permutation == permutation; });
+	const auto& entries = m_cache.m_data[uid];
+	size_t index = entries.FindIf([permutation](const ShaderCacheEntry* arg) { return arg->m_permutation == permutation; });
 
-	const bool bAlreadyContains = it != std::cend(entries);
+	const bool bAlreadyContains = index != -1;
 
 	if (!bAlreadyContains)
 	{
@@ -410,7 +409,7 @@ bool ShaderCache::IsExpired(const UID& uid, uint32_t permutation) const
 
 	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
 
-	return assetInfo ? (*it)->m_timestamp < assetInfo->GetAssetLastModificationTime() : true;
+	return assetInfo ? entries[index]->m_timestamp < assetInfo->GetAssetLastModificationTime() : true;
 }
 
 

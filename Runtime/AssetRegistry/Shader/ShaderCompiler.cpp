@@ -275,9 +275,9 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 
 	if (ShaderAssetInfoPtr shaderAssetInfo = dynamic_cast<ShaderAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
-		if (const auto& loadedShader = m_loadedShaderAssets.find(uid); loadedShader != m_loadedShaderAssets.end())
+		if (const auto& loadedShader = m_loadedShaderAssets.Find(uid); loadedShader != m_loadedShaderAssets.end())
 		{
-			return loadedShader->second;
+			return loadedShader->m_second;
 		}
 
 		const std::string& filepath = shaderAssetInfo->GetAssetFilepath();
@@ -427,10 +427,10 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 		const uint32_t permutation = GetPermutation(pShader->GetSupportedDefines(), defines);
 
 		// Check promises first
-		auto it = m_promises.find(uid);
+		auto it = m_promises.Find(uid);
 		if (it != m_promises.end())
 		{
-			auto allLoadedPermutations = (*it).second;
+			auto allLoadedPermutations = (*it).m_second;
 			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.m_first == permutation; });
 			if (shaderIt != allLoadedPermutations.end())
 			{
@@ -439,10 +439,10 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 		}
 
 		// Check loaded shaders then
-		auto loadedShadersIt = m_loadedShaders.find(uid);
+		auto loadedShadersIt = m_loadedShaders.Find(uid);
 		if (loadedShadersIt != m_loadedShaders.end())
 		{
-			auto allLoadedPermutations = (*loadedShadersIt).second;
+			auto allLoadedPermutations = (*loadedShadersIt).m_second;
 			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.m_first == permutation; });
 			if (shaderIt != allLoadedPermutations.end())
 			{

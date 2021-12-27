@@ -110,7 +110,7 @@ public:
 
 	static bool SanityCheck()
 	{
-		const size_t count = 1800;
+		const size_t count = 18000;
 
 		TMap<size_t, size_t> container;
 		std::unordered_map<size_t, size_t> ideal;

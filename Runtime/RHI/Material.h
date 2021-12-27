@@ -2,6 +2,7 @@
 #include "Memory/RefPtr.hpp"
 #include "Renderer.h"
 #include "Types.h"
+#include "Containers/Map.h"
 #include "GfxDevice/Vulkan/VulkanApi.h"
 #include "GfxDevice/Vulkan/VulkanBufferMemory.h"
 
@@ -22,7 +23,7 @@ namespace Sailor::RHI
 		SAILOR_API void SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings);
 		SAILOR_API const TVector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
 		SAILOR_API RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& binding);
-		SAILOR_API const std::unordered_map<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
+		SAILOR_API const TMap<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
 
 		static SAILOR_API void ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable);
 
@@ -36,7 +37,7 @@ namespace Sailor::RHI
 		SAILOR_API bool PerInstanceDataStoredInSSBO() const;
 
 		TVector<RHI::ShaderLayoutBinding> m_layoutBindings;
-		std::unordered_map<std::string, RHI::ShaderBindingPtr> m_shaderBindings;
+		TMap<std::string, RHI::ShaderBindingPtr> m_shaderBindings;
 		bool m_bNeedsStorageBuffer = false;
 	};
 

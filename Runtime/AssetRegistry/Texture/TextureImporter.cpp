@@ -46,7 +46,7 @@ void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
 
 bool TextureImporter::IsTextureLoaded(UID uid) const
 {
-	return m_loadedTextures.find(uid) != m_loadedTextures.end();
+	return m_loadedTextures.ContainsKey(uid);
 }
 
 bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
@@ -86,17 +86,17 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 	outTexture = nullptr;
 
 	// Check promises first
-	auto it = m_promises.find(uid);
+	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
 	{
-		promise = (*it).second;
+		promise = (*it).m_second;
 	}
 
 	// Check loaded textures
-	auto textureIt = m_loadedTextures.find(uid);
+	auto textureIt = m_loadedTextures.Find(uid);
 	if (textureIt != m_loadedTextures.end())
 	{
-		outTexture = (*textureIt).second;
+		outTexture = (*textureIt).m_second;
 
 		if (!promise)
 		{

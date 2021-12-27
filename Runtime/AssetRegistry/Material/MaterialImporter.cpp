@@ -144,7 +144,7 @@ MaterialImporter::MaterialImporter(MaterialAssetInfoHandler* infoHandler)
 
 MaterialImporter::~MaterialImporter()
 {
-	m_loadedMaterials.clear();
+	m_loadedMaterials.Clear();
 }
 
 void MaterialImporter::OnImportAsset(AssetInfoPtr assetInfo)
@@ -157,7 +157,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 
 bool MaterialImporter::IsMaterialLoaded(UID uid) const
 {
-	return m_loadedMaterials.find(uid) != m_loadedMaterials.end();
+	return m_loadedMaterials.ContainsKey(uid);
 }
 
 TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
@@ -225,17 +225,17 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 	outMaterial = nullptr;
 
 	// Check promises first
-	auto it = m_promises.find(uid);
+	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
 	{
-		promise = (*it).second;
+		promise = (*it).m_second;
 	}
 
 	// Check loaded materials
-	auto materialIt = m_loadedMaterials.find(uid);
+	auto materialIt = m_loadedMaterials.Find(uid);
 	if (materialIt != m_loadedMaterials.end())
 	{
-		outMaterial = (*materialIt).second;
+		outMaterial = (*materialIt).m_second;
 
 		if (!promise)
 		{

@@ -9,6 +9,7 @@
 #include "Core/Utils.h"
 #include "Core/Submodule.h"
 #include "JobSystem/JobSystem.h"
+#include "Containers/Map.h"
 
 using namespace std;
 using namespace Sailor;
@@ -64,7 +65,7 @@ void ITask::Complete()
 
 	std::unique_lock<std::mutex> lk(m_mutex);
 
-	std::unordered_map<EThreadType, uint32_t> threadTypesToRefresh;
+	TMap<EThreadType, uint32_t> threadTypesToRefresh;
 
 	for (auto& job : m_dependencies)
 	{
@@ -81,7 +82,7 @@ void ITask::Complete()
 
 	for (auto& threadType : threadTypesToRefresh)
 	{
-		App::GetSubmodule<JobSystem::Scheduler>()->NotifyWorkerThread(threadType.first, threadType.second > 1);
+		App::GetSubmodule<JobSystem::Scheduler>()->NotifyWorkerThread(threadType.m_first, threadType.m_second > 1);
 	}
 
 	m_bIsFinished = true;

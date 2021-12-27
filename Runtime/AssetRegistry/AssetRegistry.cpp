@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include "Containers/Map.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/Shader/ShaderAssetInfo.h"
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
@@ -51,7 +52,7 @@ bool AssetRegistry::RegisterAssetInfoHandler(const TVector<std::string>& support
 	bool bAssigned = false;
 	for (const auto& extension : supportedExtensions)
 	{
-		if (m_assetInfoHandlers.find(extension) != m_assetInfoHandlers.end())
+		if (m_assetInfoHandlers.ContainsKey(extension))
 		{
 			continue;
 		}
@@ -92,29 +93,29 @@ const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 
 		IAssetInfoHandler* assetInfoHandler = App::GetSubmodule<DefaultAssetInfoHandler>();
 
-		auto assetInfoHandlerIt = m_assetInfoHandlers.find(extension);
+		auto assetInfoHandlerIt = m_assetInfoHandlers.Find(extension);
 		if (assetInfoHandlerIt != m_assetInfoHandlers.end())
 		{
-			assetInfoHandler = (*assetInfoHandlerIt).second;
+			assetInfoHandler = (*assetInfoHandlerIt).m_second;
 		}
 
-		auto uid = m_UIDs.find(filepath);
+		auto uid = m_UIDs.Find(filepath);
 		if (uid != m_UIDs.end())
 		{
-			auto assetInfoIt = m_loadedAssetInfo.find(uid->second);
+			auto assetInfoIt = m_loadedAssetInfo.Find(uid->m_second);
 			if (assetInfoIt != m_loadedAssetInfo.end())
 			{
-				AssetInfoPtr assetInfo = assetInfoIt->second;
+				AssetInfoPtr assetInfo = assetInfoIt->m_second;
 				if (assetInfo->IsExpired())
 				{
 					SAILOR_LOG("Reload asset info: %s", assetInfoFile.c_str());
 					assetInfoHandler->ReloadAssetInfo(assetInfo);
 				}
-				return (*uid).second;
+				return (*uid).m_second;
 			}
 
 			// Meta were delete
-			m_UIDs.erase(uid);
+			m_UIDs.Remove(uid->m_first);
 		}
 
 		AssetInfoPtr assetInfo = nullptr;
@@ -159,20 +160,20 @@ AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(UID uid) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_loadedAssetInfo.find(uid);
+	auto it = m_loadedAssetInfo.Find(uid);
 	if (it != m_loadedAssetInfo.end())
 	{
-		return it->second;
+		return it->m_second;
 	}
 	return nullptr;
 }
 
 AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFilepath) const
 {
-	auto it = m_UIDs.find(ContentRootFolder + assetFilepath);
+	auto it = m_UIDs.Find(ContentRootFolder + assetFilepath);
 	if (it != m_UIDs.end())
 	{
-		return GetAssetInfoPtr_Internal(it->second);
+		return GetAssetInfoPtr_Internal(it->m_second);
 	}
 
 	return nullptr;
@@ -182,6 +183,6 @@ AssetRegistry::~AssetRegistry()
 {
 	for (auto& asset : m_loadedAssetInfo)
 	{
-		delete asset.second;
+		delete asset.m_second;
 	}
 }

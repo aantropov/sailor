@@ -20,6 +20,8 @@ namespace Sailor
 		return p(instance);
 	}
 
+	//	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
+	//	class TSet;
 
 	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
 	class SAILOR_API TSet
@@ -56,9 +58,9 @@ namespace Sailor
 			__forceinline size_t GetHash() const { return m_hashCode; }
 			__forceinline size_t LikelyContains(size_t hashCode) const { return (m_bloom & hashCode) == hashCode; }
 
-		// Should we hide the data in internal class 
-		// that programmer has no access but it could be used by derived classes?
-		//protected:
+			// Should we hide the data in internal class 
+			// that programmer has no access but it could be used by derived classes?
+			//protected:
 
 			size_t m_bloom = 0;
 			size_t m_hashCode = 0;
@@ -72,7 +74,7 @@ namespace Sailor
 		};
 
 		template<typename TDataType = TElementType>
-		class SAILOR_API TIterator
+		class SAILOR_API TBaseIterator
 		{
 		public:
 
@@ -82,23 +84,23 @@ namespace Sailor
 			using pointer = TDataType*;
 			using reference = TDataType&;
 
-			TIterator() : m_element(nullptr), m_currentBucket(nullptr) {}
+			TBaseIterator() : m_element(nullptr), m_currentBucket(nullptr) {}
 
-			TIterator(const TIterator&) = default;
-			TIterator(TIterator&&) = default;
+			TBaseIterator(const TBaseIterator&) = default;
+			TBaseIterator(TBaseIterator&&) = default;
 
-			~TIterator() = default;
+			~TBaseIterator() = default;
 
-			TIterator(TSetElement* bucket, pointer element) : m_element(element), m_currentBucket(bucket) {}
+			TBaseIterator(TSetElement* bucket, pointer element) : m_element(element), m_currentBucket(bucket) {}
 
-			TIterator& operator=(const TIterator& rhs)
+			TBaseIterator& operator=(const TBaseIterator& rhs)
 			{
 				m_element = rhs.m_element;
 				m_currentBucket = rhs.m_currentBucket;
 				return *this;
 			}
 
-			TIterator& operator=(TIterator&& rhs)
+			TBaseIterator& operator=(TBaseIterator&& rhs)
 			{
 				m_element = rhs.m_element;
 				m_currentBucket = rhs.m_currentBucket;
@@ -106,16 +108,16 @@ namespace Sailor
 				return *this;
 			}
 
-			bool operator==(const TIterator& rhs) const { return m_element == rhs.m_element; }
-			bool operator!=(const TIterator& rhs) const { return m_element != rhs.m_element; }
+			bool operator==(const TBaseIterator& rhs) const { return m_element == rhs.m_element; }
+			bool operator!=(const TBaseIterator& rhs) const { return m_element != rhs.m_element; }
+
+			pointer operator->() { return m_element; }
+			pointer operator->() const { return m_element; }
 
 			reference operator*() { return *m_element; }
 			reference operator*() const { return *m_element; }
 
-			reference operator->() { return m_element; }
-			reference operator->() const { return m_element; }
-
-			TIterator& operator++()
+			TBaseIterator& operator++()
 			{
 				++m_element;
 
@@ -131,7 +133,7 @@ namespace Sailor
 				return *this;
 			}
 
-			TIterator& operator--()
+			TBaseIterator& operator--()
 			{
 				if (m_element == &*m_currentBucket->begin())
 				{
@@ -155,8 +157,8 @@ namespace Sailor
 			friend class TSetElement;
 		};
 
-		template<typename TDataType = TElementType>
-		using TConstIterator = TSet::TIterator<const TDataType>;
+		using TIterator = TBaseIterator<TElementType>;
+		using TConstIterator = TBaseIterator<const TElementType>;
 
 		using TSetElementPtr = TUniquePtr<TSetElement>;
 
@@ -191,7 +193,7 @@ namespace Sailor
 		__forceinline size_t Num() const { return m_num; }
 
 		bool Contains(const TElementType& inElement) const
-		{			
+		{
 			const auto& hash = Sailor::GetHash(inElement);
 			const size_t index = hash % m_buckets.Num();
 			auto& element = m_buckets[index];
@@ -297,13 +299,17 @@ namespace Sailor
 		}
 
 		// Support ranged for
-		TIterator<TElementType> begin() { return TIterator<TElementType>(m_first, m_first ? &*m_first->GetContainer().begin() : nullptr); }
-		TIterator<TElementType> end() { return TIterator<TElementType>(m_last, m_last ? &*m_last->GetContainer().end() : nullptr); }
+		TIterator begin() { return TIterator(m_first, m_first ? &*m_first->GetContainer().begin() : nullptr); }
+		TIterator end() { return TIterator(m_last, m_last ? &*m_last->GetContainer().end() : nullptr); }
 
-		TConstIterator<TElementType> begin() const { return TConstIterator<TElementType>(m_first, m_first ? &*m_first->GetContainer().cbegin() : nullptr); }
-		TConstIterator<TElementType> end() const { return TConstIterator<TElementType>(m_last, m_last ? &*m_last->GetContainer().cend() : nullptr); }
+		TConstIterator begin() const { return TConstIterator(m_first, m_first ? &*m_first->GetContainer().begin() : nullptr); }
+		TConstIterator end() const { return TConstIterator(m_last, m_last ? &*m_last->GetContainer().end() : nullptr); }
 
 	protected:
+
+		//__forceinline TConstIterator CreateConstIterator(TSetElement* bucket, pointer element) : m_element(element), m_currentBucket(bucket) {}) const
+		//{
+		//}
 
 		__forceinline bool ShouldRehash() const
 		{
@@ -327,14 +333,21 @@ namespace Sailor
 			m_num = 0;
 			m_first = nullptr;
 			m_last = nullptr;
-			
+
 			while (current)
 			{
 				const size_t oldIndex = current->GetHash() % m_buckets.Num();
-				
-				for (const auto& el : current->GetContainer())
+
+				for (auto& el : current->GetContainer())
 				{
-					Insert(el);
+					if constexpr (IsMoveConstructible<TElementType>)
+					{
+						Insert(std::move(el));
+					}
+					else
+					{
+						Insert(el);
+					}
 				}
 
 				current = current->m_next;

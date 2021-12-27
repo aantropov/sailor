@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
-#include <unordered_map>
 #include "Containers/Vector.h"
+#include "Containers/Map.h"
 #include "AssetRegistry/UID.h"
 #include "Core/Submodule.h"
 #include "AssetRegistry/AssetInfo.h"
@@ -76,9 +76,9 @@ namespace Sailor
 			outAssetInfos.Clear();
 			for (const auto& assetInfo : m_loadedAssetInfo)
 			{
-				if (dynamic_cast<TAssetInfo*>(assetInfo.second))
+				if (dynamic_cast<TAssetInfo*>(assetInfo.m_second))
 				{
-					outAssetInfos.Add(assetInfo.first);
+					outAssetInfos.Add(assetInfo.m_first);
 				}
 			}
 		}
@@ -91,8 +91,8 @@ namespace Sailor
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(UID uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
 
-		std::unordered_map<UID, AssetInfoPtr> m_loadedAssetInfo;
-		std::unordered_map<std::string, UID> m_UIDs;
-		std::unordered_map<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
+		TMap<UID, AssetInfoPtr> m_loadedAssetInfo;
+		TMap<std::string, UID> m_UIDs;
+		TMap<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
 	};
 }

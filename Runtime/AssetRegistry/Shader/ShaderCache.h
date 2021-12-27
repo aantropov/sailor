@@ -2,7 +2,7 @@
 #include <chrono>
 #include <ctime>
 #include "Containers/Vector.h"
-#include <unordered_map>
+#include "Containers/Map.h"
 #include "AssetRegistry/UID.h"
 #include "Core/Singleton.hpp"
 #include <nlohmann_json/include/nlohmann/json.hpp>
@@ -66,7 +66,7 @@ namespace Sailor
 		class ShaderCacheData final : IJsonSerializable
 		{
 		public:
-			std::unordered_map<UID, TVector<ShaderCache::ShaderCacheEntry*>> m_data;
+			TMap<UID, TVector<ShaderCache::ShaderCacheEntry*>> m_data;
 
 			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
 			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);

@@ -1,7 +1,7 @@
 #pragma once
 #include "Memory.h"
 #include <algorithm>
-#include <unordered_map>
+#include "Containers/Map.h"
 
 namespace Sailor::Memory
 {
@@ -60,7 +60,7 @@ namespace Sailor::Memory
 			return res;
 		}
 
-		std::unordered_map<size_t, TPoolAllocator<TGlobalAllocator, TPtr>*> m_layout;
+		TMap<size_t, TPoolAllocator<TGlobalAllocator, TPtr>*> m_layout;
 		size_t m_usedDataSpace = 0;
 	};
 }

@@ -16,8 +16,8 @@ namespace Sailor
 	{
 	public:
 
-		using Super = TSet<TPair<TKeyType, TValueType>, TAllocator>;
-		using TElementType = TPair<TKeyType, TValueType>;
+		using Super = Sailor::TSet<TPair<TKeyType, TValueType>, TAllocator>;
+		using TElementType = Sailor::TPair<TKeyType, TValueType>;
 
 		TMap(const uint32_t desiredNumBuckets = 16) : Super(desiredNumBuckets) {  }
 		TMap(TMap&&) = default;
@@ -33,21 +33,20 @@ namespace Sailor
 			}
 		}
 
-		void Insert(const TKeyType& key, const TValueType& value)
+		void Insert(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
 		{
-			Super::Insert(TPair(key, value));
+			Super::Insert(TElementType(key, value));
 		}
 
-		void Insert(TKeyType&& key, TValueType&& value)
+		void Insert(const TKeyType& key, TValueType&& value) requires IsMoveConstructible<TValueType>
 		{
-			Super::Insert(TPair(std::move(key), std::move(value)));
+			Super::Insert(TElementType(key, std::move(value)));
 		}
 
 		bool Remove(const TKeyType& key)
 		{
 			const auto& hash = Sailor::GetHash(key);
-			const size_t index = hash % Super::m_buckets.Num();
-			auto& element = Super::m_buckets[index];
+			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
 
 			if (element)
 			{
@@ -100,38 +99,36 @@ namespace Sailor
 			return GetOrAdd(key).m_second;
 		}
 
+		// TODO: rethink the approach for const operator []
 		const TValueType& operator[] (const TKeyType& key) const
 		{
-			return GetOrAdd(key).Second();
+			TValueType const* out = nullptr;
+			assert(Find(key, out));
+			return *out;
 		}
 
 		bool Find(const TKeyType& key, TValueType*& out)
 		{
-			out = nullptr;
-
-			const auto& hash = Sailor::GetHash(key);
-			const size_t index = hash % Super::m_buckets.Num();
-			auto& element = Super::m_buckets[index];
-
-			if (element && element->LikelyContains(hash))
+			auto it = Find(key);
+			if (it != Super::end())
 			{
-				auto& container = element->GetContainer();
-				const size_t i = container.FindIf([&](const TElementType& el) { return el.First() == key; });
-				if (i != -1)
-				{
-					out = &container[i];
-					return true;
-				}
+				out = &it->m_second;
+				return true;
 			}
-
 			return false;
+		}
+
+		bool Find(const TKeyType& key, TValueType const*& out) const
+		{
+			auto it = Find(key);
+			out = &it->m_second;
+			return it != Super::end();
 		}
 
 		Super::TIterator Find(const TKeyType& key)
 		{
 			const auto& hash = Sailor::GetHash(key);
-			const size_t index = hash % Super::m_buckets.Num();
-			auto& element = Super::m_buckets[index];
+			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
 
 			if (element && element->LikelyContains(hash))
 			{
@@ -139,7 +136,25 @@ namespace Sailor
 				const size_t i = container.FindIf([&](const TElementType& el) { return el.First() == key; });
 				if (i != -1)
 				{
-					return TIterator(element, &container[i]);
+					return Super::TIterator(element.GetRawPtr(), &container[i]);
+				}
+			}
+
+			return Super::end();
+		}
+
+		Super::TConstIterator Find(const TKeyType& key) const
+		{
+			const auto& hash = Sailor::GetHash(key);
+			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
+
+			if (element && element->LikelyContains(hash))
+			{
+				auto& container = element->GetContainer();
+				const size_t i = container.FindIf([&](const TElementType& el) { return el.First() == key; });
+				if (i != -1)
+				{
+					return Super::TConstIterator(element.GetRawPtr(), &container[i]);
 				}
 			}
 
@@ -148,8 +163,8 @@ namespace Sailor
 
 		bool ContainsKey(const TKeyType& key) const
 		{
-			TValueType* notUsed = nullptr;
-			return Find(key, TValueType);
+			auto& element = Super::m_buckets[Sailor::GetHash(key) % Super::m_buckets.Num()];
+			return element && element->GetContainer().Num() > 0;
 		}
 
 		bool ContainsValue(const TValueType& value) const

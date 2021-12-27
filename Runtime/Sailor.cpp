@@ -90,7 +90,7 @@ void App::Start()
 	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
 
-	std::unordered_map<std::string, std::function<void()>> consoleVars;
+	TMap<std::string, std::function<void()>> consoleVars;
 	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, GetSubmodule<AssetRegistry>());
 	consoleVars["memory.benchmark"] = &Memory::RunMemoryBenchmark;
 	consoleVars["vector.benchmark"] = &Sailor::RunVectorBenchmark;
@@ -109,10 +109,10 @@ void App::Start()
 			std::string cmd = std::string(line);
 			Utils::Trim(cmd);
 
-			auto cmdIt = consoleVars.find(cmd);
-			if (cmdIt != consoleVars.end())
+			std::function<void()>* function;
+			if (consoleVars.Find(cmd, function))
 			{
-				cmdIt->second();
+				(*function)();
 			}
 		}
 

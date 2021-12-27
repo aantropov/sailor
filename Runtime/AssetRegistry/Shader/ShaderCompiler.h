@@ -3,6 +3,7 @@
 #include <string>
 #include "Containers/Pair.h"
 #include "Containers/Vector.h"
+#include "Containers/Map.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -99,10 +100,9 @@ namespace Sailor
 		std::mutex m_mutex;
 		ShaderCache m_shaderCache;
 
-		std::unordered_map<UID, TVector<TPair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;
-
-		std::unordered_map<UID, TSharedPtr<ShaderAsset>> m_loadedShaderAssets;
-		std::unordered_map<UID, TVector<TPair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
+		TMap<UID, TVector<TPair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;		
+		TMap<UID, TSharedPtr<ShaderAsset>> m_loadedShaderAssets;
+		TMap<UID, TVector<TPair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
 
 		// ShaderAsset related functions
 		SAILOR_API static void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& defines = {});
