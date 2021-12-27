@@ -103,7 +103,7 @@ namespace Sailor
 		const TValueType& operator[] (const TKeyType& key) const
 		{
 			TValueType const* out = nullptr;
-			assert(Find(key, out));
+			Find(key, out);
 			return *out;
 		}
 
@@ -163,8 +163,7 @@ namespace Sailor
 
 		bool ContainsKey(const TKeyType& key) const
 		{
-			auto& element = Super::m_buckets[Sailor::GetHash(key) % Super::m_buckets.Num()];
-			return element && element->GetContainer().FindIf([&](const TElementType& el) { return el.First() == key; }) != -1;
+			return Find(key) != Super::end();
 		}
 
 		bool ContainsValue(const TValueType& value) const
