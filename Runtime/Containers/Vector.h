@@ -501,7 +501,13 @@ namespace Sailor
 				if (const bool bShouldDelete = m_pRawPtr[i] == item)
 				{
 					DestructElements(i, 1);
-					ConstructMoveElements(i, m_pRawPtr[i + 1], m_arrayNum - i - 1);
+
+					if (i != m_arrayNum - 1)
+					{
+						ConstructMoveElements(i, m_pRawPtr[i + 1], 1);
+						MemMove(i + 1, i + 2, m_arrayNum - i - 2);
+					}
+
 					return m_arrayNum--;
 				}
 			}
@@ -551,6 +557,12 @@ namespace Sailor
 				else
 				{
 					ConstructElements(0, pRawPtr[0], newCapacity - slack);
+				}
+
+				// Destruct old elements
+				for (size_t i = 0; i < newCapacity - slack; i++)
+				{
+					pRawPtr[i].~TElementType();
 				}
 
 				m_allocator.Free(pRawPtr);

@@ -11,6 +11,8 @@ using namespace Sailor;
 using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
+size_t numInstances = 0;
+
 class TestCase_VectorPerfromance
 {
 	struct TData
@@ -20,6 +22,7 @@ class TestCase_VectorPerfromance
 			m_value = value;
 			m_data = new size_t[8];
 			memset(m_data, value, 8 * sizeof(size_t));
+			numInstances++;
 		}
 
 		TData(const TData& rhs)
@@ -28,11 +31,13 @@ class TestCase_VectorPerfromance
 			m_value = rhs.m_value;
 
 			memcpy(m_data, rhs.m_data, 8 * sizeof(size_t));
+			numInstances++;
 		}
 
 		~TData()
 		{
 			delete[] m_data;
+			numInstances--;
 		}
 
 		bool operator==(const TData& rhs) const
@@ -71,7 +76,7 @@ public:
 		Timer stdVector;
 		Timer tVector;
 
-		const size_t count = 1653600;
+		const size_t count = 163600;
 
 		TVector<TData> container;
 		std::vector<TData> ideal;
@@ -266,9 +271,9 @@ public:
 			ideal.insert(ideal.begin() + pos, 1u, TData((uint32_t)i));
 			container.Insert(TData((uint32_t)i), pos);
 		}
-
+		
 		bRes &= Compare(ideal, container);
-
+		
 		uint32_t countToRemove = count / 16;
 		for (size_t i = 0; i < countToRemove; i++)
 		{
@@ -278,7 +283,7 @@ public:
 			ideal.erase(std::find(ideal.begin(), ideal.end(), valueToRemove));
 			container.RemoveFirst(valueToRemove);
 		}
-
+		
 		bRes &= Compare(ideal, container);
 
 		uint32_t countToRemoveSwap = count / 16;
@@ -292,10 +297,13 @@ public:
 
 			container.RemoveAtSwap(pos);
 		}
-
+		
 		bRes &= Compare(ideal, container);
 
-		return bRes;
+		container.Clear();
+		ideal.clear();
+
+		return bRes && numInstances == 0;
 	}
 
 	template<typename T>
