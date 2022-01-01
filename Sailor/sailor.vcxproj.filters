@@ -303,6 +303,9 @@
     <ClInclude Include="..\Runtime\Containers\Pair.h">
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\List.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -498,6 +501,9 @@
       <Filter>Runtime\Containers</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Containers\MapBenchmark.cpp">
+      <Filter>Runtime\Containers</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Containers\ListBenchmark.cpp">
       <Filter>Runtime\Containers</Filter>
     </ClCompile>
   </ItemGroup>

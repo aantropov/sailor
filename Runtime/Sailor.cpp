@@ -13,6 +13,7 @@
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
 #include "Containers/Map.h"
+#include "Containers/List.h"
 #include "Framework/Framework.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 
@@ -81,6 +82,8 @@ void App::Initialize()
 
 void App::Start()
 {
+	RunListBenchmark();
+
 	s_pInstance->m_pViewportWindow->SetActive(true);
 	s_pInstance->m_pViewportWindow->SetRunning(true);
 
@@ -96,6 +99,7 @@ void App::Start()
 	consoleVars["vector.benchmark"] = &Sailor::RunVectorBenchmark;
 	consoleVars["set.benchmark"] = &Sailor::RunSetBenchmark;
 	consoleVars["map.benchmark"] = &Sailor::RunMapBenchmark;
+	consoleVars["list.benchmark"] = &Sailor::RunListBenchmark;
 
 	while (s_pInstance->m_pViewportWindow->IsRunning())
 	{

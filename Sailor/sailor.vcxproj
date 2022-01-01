@@ -190,6 +190,7 @@
     <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
     <ClInclude Include="..\Runtime\Containers\Concepts.h" />
+    <ClInclude Include="..\Runtime\Containers\List.h" />
     <ClInclude Include="..\Runtime\Containers\Map.h" />
     <ClInclude Include="..\Runtime\Containers\Pair.h" />
     <ClInclude Include="..\Runtime\Containers\Set.h" />
@@ -269,6 +270,7 @@
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
+    <ClCompile Include="..\Runtime\Containers\ListBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\MapBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\SetBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\VectorBenchmark.cpp" />

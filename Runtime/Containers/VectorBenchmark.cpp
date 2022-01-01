@@ -11,8 +11,6 @@ using namespace Sailor;
 using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
-size_t numInstances = 0;
-
 class TestCase_VectorPerfromance
 {
 	struct TData
@@ -271,9 +269,9 @@ public:
 			ideal.insert(ideal.begin() + pos, 1u, TData((uint32_t)i));
 			container.Insert(TData((uint32_t)i), pos);
 		}
-		
+
 		bRes &= Compare(ideal, container);
-		
+
 		uint32_t countToRemove = count / 16;
 		for (size_t i = 0; i < countToRemove; i++)
 		{
@@ -283,7 +281,7 @@ public:
 			ideal.erase(std::find(ideal.begin(), ideal.end(), valueToRemove));
 			container.RemoveFirst(valueToRemove);
 		}
-		
+
 		bRes &= Compare(ideal, container);
 
 		uint32_t countToRemoveSwap = count / 16;
@@ -297,7 +295,7 @@ public:
 
 			container.RemoveAtSwap(pos);
 		}
-		
+
 		bRes &= Compare(ideal, container);
 
 		container.Clear();
@@ -324,7 +322,10 @@ public:
 		return true;
 	}
 
+	static size_t numInstances;
 };
+
+size_t TestCase_VectorPerfromance::numInstances = 0;
 
 void Sailor::RunVectorBenchmark()
 {
