@@ -71,6 +71,115 @@ public:
 
 	static void PerformanceTests()
 	{
+		TList<TData> container;
+		std::list<TData> ideal;
+
+		Timer stdList;
+		Timer tList;
+
+		const size_t count = 163600;
+
+		srand(0);
+		stdList.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const int32_t value = rand();
+
+			if (i % 2)
+			{
+				ideal.push_back(TData(value));
+			}
+			else
+			{
+				ideal.push_front(TData(value));
+			}
+		}
+		stdList.Stop();
+
+		srand(0);
+		tList.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const int32_t value = rand();
+
+			if (i % 2)
+			{
+				container.PushBack(TData(value));
+			}
+			else
+			{
+				container.PushFront(TData(value));
+			}
+		}
+		tList.Stop();
+
+		SAILOR_LOG("Performance test push:\n\tstd::list %llums\n\tTList %llums", stdList.ResultMs(), tList.ResultMs());
+
+		stdList.Clear();
+		tList.Clear();
+
+		uint32_t countToDelete = count / 4;
+
+		srand(0);
+		stdList.Start();
+		for (size_t i = 0; i < countToDelete; i++)
+		{
+			const int32_t value = rand();
+
+			if (i % 2)
+			{
+				ideal.pop_front();
+			}
+			else
+			{
+				ideal.pop_back();
+			}
+		}
+		stdList.Stop();
+
+		srand(0);
+		tList.Start();
+		for (size_t i = 0; i < countToDelete; i++)
+		{
+			const int32_t value = rand();
+
+			if (i % 2)
+			{
+				container.PopBack();
+			}
+			else
+			{
+				container.PopBack();
+			}
+		}
+		tList.Stop();
+
+		SAILOR_LOG("Performance test pop:\n\tstd::list %llums\n\tTList %llums", stdList.ResultMs(), tList.ResultMs());
+
+		stdList.Clear();
+		tList.Clear();
+
+		countToDelete = count / 64;
+
+		srand(0);
+		stdList.Start();
+		for (size_t i = 0; i < countToDelete; i++)
+		{
+			const int32_t value = rand();
+			ideal.erase(std::find(ideal.begin(), ideal.end(), value));
+		}
+		stdList.Stop();
+
+		srand(0);
+		tList.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			const int32_t value = rand();
+			container.RemoveAll(value);
+		}
+		tList.Stop();
+
+		SAILOR_LOG("Performance test remove all:\n\tstd::list %llums\n\tTList %llums", stdList.ResultMs(), tList.ResultMs());
 	}
 
 	static bool SanityCheck()

@@ -82,8 +82,6 @@ void App::Initialize()
 
 void App::Start()
 {
-	RunListBenchmark();
-
 	s_pInstance->m_pViewportWindow->SetActive(true);
 	s_pInstance->m_pViewportWindow->SetRunning(true);
 
