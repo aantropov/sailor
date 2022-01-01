@@ -172,7 +172,7 @@ public:
 
 		srand(0);
 		tList.Start();
-		for (size_t i = 0; i < count; i++)
+		for (size_t i = 0; i < countToDelete; i++)
 		{
 			const int32_t value = rand();
 			container.RemoveAll(value);
