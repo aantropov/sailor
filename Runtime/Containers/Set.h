@@ -9,6 +9,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Memory/Memory.h"
 #include "Containers/Pair.h"
+#include "Containers/List.h"
 #include "Core/LogMacros.h"
 
 namespace Sailor
@@ -20,15 +21,12 @@ namespace Sailor
 		return p(instance);
 	}
 
-	//	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
-	//	class TSet;
-
 	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
 	class SAILOR_API TSet
 	{
 	public:
 
-		using TElementContainer = TVector<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 6, TAllocator>>;
+		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 6, TAllocator>>;
 
 		class SAILOR_API TSetElement
 		{
@@ -73,7 +71,7 @@ namespace Sailor
 			friend class TSet;
 		};
 
-		template<typename TDataType = TElementType>
+		template<typename TDataType, typename TElementIterator>
 		class SAILOR_API TBaseIterator
 		{
 		public:
@@ -84,49 +82,37 @@ namespace Sailor
 			using pointer = TDataType*;
 			using reference = TDataType&;
 
-			TBaseIterator() : m_element(nullptr), m_currentBucket(nullptr) {}
+			TBaseIterator() : m_it(nullptr), m_currentBucket(nullptr) {}
 
 			TBaseIterator(const TBaseIterator&) = default;
 			TBaseIterator(TBaseIterator&&) = default;
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(TSetElement* bucket, pointer element) : m_element(element), m_currentBucket(bucket) {}
+			TBaseIterator(TSetElement* bucket, TElementIterator it) : m_it(std::move(it)), m_currentBucket(bucket) {}
 
-			TBaseIterator& operator=(const TBaseIterator& rhs)
-			{
-				m_element = rhs.m_element;
-				m_currentBucket = rhs.m_currentBucket;
-				return *this;
-			}
+			TBaseIterator& operator=(const TBaseIterator& rhs) = default;
+			TBaseIterator& operator=(TBaseIterator&& rhs) = default;
 
-			TBaseIterator& operator=(TBaseIterator&& rhs)
-			{
-				m_element = rhs.m_element;
-				m_currentBucket = rhs.m_currentBucket;
-				rhs.m_element = nullptr;
-				return *this;
-			}
+			bool operator==(const TBaseIterator& rhs) const { return m_it == rhs.m_it; }
+			bool operator!=(const TBaseIterator& rhs) const { return m_it != rhs.m_it; }
 
-			bool operator==(const TBaseIterator& rhs) const { return m_element == rhs.m_element; }
-			bool operator!=(const TBaseIterator& rhs) const { return m_element != rhs.m_element; }
+			pointer operator->() { return &*m_it; }
+			pointer operator->() const { return &*m_it; }
 
-			pointer operator->() { return m_element; }
-			pointer operator->() const { return m_element; }
-
-			reference operator*() { return *m_element; }
-			reference operator*() const { return *m_element; }
+			reference operator*() { return *m_it; }
+			reference operator*() const { return *m_it; }
 
 			TBaseIterator& operator++()
 			{
-				++m_element;
+				++m_it;
 
-				if (m_element == &*m_currentBucket->GetContainer().end())
+				if (m_it == m_currentBucket->GetContainer().end())
 				{
 					if (m_currentBucket->m_next)
 					{
 						m_currentBucket = m_currentBucket->m_next;
-						m_element = &*m_currentBucket->GetContainer().begin();
+						m_it = m_currentBucket->GetContainer().begin();
 					}
 				}
 
@@ -135,30 +121,32 @@ namespace Sailor
 
 			TBaseIterator& operator--()
 			{
-				if (m_element == &*m_currentBucket->begin())
+				if (m_it == m_currentBucket->GetContainer().begin())
 				{
 					if (m_currentBucket->m_prev)
 					{
 						m_currentBucket = m_currentBucket->m_prev;
-						m_element = &*m_currentBucket->GetContainer().end();
+						m_it = m_currentBucket->GetContainer().Last();
 					}
 				}
-
-				--m_element;
-
+				else
+				{
+					--m_it;
+				}
+				
 				return *this;
 			}
 
 		protected:
 
 			TSetElement* m_currentBucket;
-			pointer m_element;
+			TElementIterator m_it;
 
 			friend class TSetElement;
 		};
 
-		using TIterator = TBaseIterator<TElementType>;
-		using TConstIterator = TBaseIterator<const TElementType>;
+		using TIterator = TBaseIterator<TElementType, typename TElementContainer::TIterator>;
+		using TConstIterator = TBaseIterator<const TElementType, typename TElementContainer::TConstIterator>;
 		using TSetElementPtr = TUniquePtr<TSetElement>;
 		using TBucketContainer = TVector<TSetElementPtr, TAllocator>;
 
@@ -198,7 +186,7 @@ namespace Sailor
 
 			if (element && element->LikelyContains(hash))
 			{
-				return element->GetContainer().Find(inElement) != -1;
+				return element->GetContainer().Contains(inElement);
 			}
 
 			return false;
@@ -231,7 +219,7 @@ namespace Sailor
 				}
 			}
 
-			element->GetContainer().Emplace(inElement);
+			element->GetContainer().EmplaceBack(std::move(inElement));
 			element->m_bloom |= hash;
 
 			m_num++;
@@ -246,11 +234,8 @@ namespace Sailor
 			if (element)
 			{
 				auto& container = element->GetContainer();
-				const auto& i = container.Find(inElement);
-				if (i != -1)
+				if (container.RemoveFirst(inElement))
 				{
-					container.RemoveAtSwap(i);
-
 					if (container.Num() == 0)
 					{
 						if (element.GetRawPtr() == m_last)
@@ -297,11 +282,11 @@ namespace Sailor
 		}
 
 		// Support ranged for
-		TIterator begin() { return TIterator(m_first, m_first ? &*m_first->GetContainer().begin() : nullptr); }
-		TIterator end() { return TIterator(m_last, m_last ? &*m_last->GetContainer().end() : nullptr); }
+		TIterator begin() { return TIterator(m_first, m_first ? m_first->GetContainer().begin() : nullptr); }
+		TIterator end() { return TIterator(m_last, nullptr); }
 
-		TConstIterator begin() const { return TConstIterator(m_first, m_first ? &*m_first->GetContainer().begin() : nullptr); }
-		TConstIterator end() const { return TConstIterator(m_last, m_last ? &*m_last->GetContainer().end() : nullptr); }
+		TConstIterator begin() const { return TConstIterator(m_first, m_first ? m_first->GetContainer().begin() : nullptr); }
+		TConstIterator end() const { return TConstIterator(m_last, nullptr); }
 
 	protected:
 

@@ -23,7 +23,7 @@ namespace Sailor
 		public:
 
 			template<typename... TArgs>
-			TNode(TArgs&& ... args) noexcept : m_data(args ...), m_pNext(nullptr), m_pPrev(nullptr) {}
+			TNode(TArgs&& ... args) noexcept : m_data(std::forward<TArgs>(args) ...), m_pNext(nullptr), m_pPrev(nullptr) {}
 
 			TElementType m_data;
 			TNode* m_pNext;
@@ -49,6 +49,8 @@ namespace Sailor
 			~TBaseIterator() = default;
 
 			TBaseIterator(TNode* node) : m_node(node) {}
+
+			operator TBaseIterator<const TElementType>() { return TBaseIterator<const TElementType>(m_node); }
 
 			TBaseIterator& operator=(const TBaseIterator& rhs) = default;
 			TBaseIterator& operator=(TBaseIterator&& rhs) = default;
@@ -91,7 +93,7 @@ namespace Sailor
 		{
 			for (auto it : other)
 			{
-				Add(*it);
+				PushBack(it);
 			}
 		}
 
@@ -104,7 +106,7 @@ namespace Sailor
 		{
 			for (auto it : other)
 			{
-				Add(*it);
+				PushBack(it);
 			}
 
 			return *this;
@@ -116,7 +118,7 @@ namespace Sailor
 		__forceinline void EmplaceBack(TArgs&& ... args)
 		{
 			TNode* node = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode)));
-			new (node) TNode(std::move<TArgs>(args)...);
+			new (node) TNode(std::forward<TArgs>(args)...);
 
 			if (!m_pFirst)
 			{
@@ -136,7 +138,7 @@ namespace Sailor
 		__forceinline void EmplaceFront(TArgs&& ... args)
 		{
 			TNode* node = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode)));
-			new (node) TNode(std::move<TArgs>(args)...);
+			new (node) TNode(std::forward<TArgs>(args)...);
 
 			if (!m_pFirst)
 			{
@@ -192,7 +194,23 @@ namespace Sailor
 			return false;
 		}
 
-		bool FindIf(TElementType& out, const TPredicate<TElementType>& predicate)
+		TIterator Find(const TElementType& el)
+		{
+			TNode* current = m_pFirst;
+
+			while (current)
+			{
+				TNode* next = current->m_pNext;
+				if (current->m_data == el)
+				{
+					return TIterator(current);
+				}
+				current = next;
+			}
+			return end();
+		}
+
+		TIterator FindIf(const TPredicate<TElementType>& predicate)
 		{
 			TNode* current = m_pFirst;
 
@@ -201,7 +219,57 @@ namespace Sailor
 				TNode* next = current->m_pNext;
 				if (predicate(current->m_data))
 				{
-					out = current->m_data;
+					return TIterator(current);
+				}
+				current = next;
+			}
+			return end();
+		}
+
+		TConstIterator FindIf(const TPredicate<TElementType>& predicate) const
+		{
+			TNode* current = m_pFirst;
+
+			while (current)
+			{
+				TNode* next = current->m_pNext;
+				if (predicate(current->m_data))
+				{
+					return TConstIterator(current);
+				}
+				current = next;
+			}
+			return end();
+		}
+
+		bool FindIf(TElementType*& out, const TPredicate<TElementType>& predicate)
+		{
+			TNode* current = m_pFirst;
+
+			while (current)
+			{
+				TNode* next = current->m_pNext;
+				if (predicate(current->m_data))
+				{
+					out = &current->m_data;
+					return true;
+				}
+				current = next;
+			}
+
+			return false;
+		}
+
+		bool FindIf(const TElementType*& out, const TPredicate<TElementType>& predicate) const
+		{
+			TNode* current = m_pFirst;
+
+			while (current)
+			{
+				TNode* next = current->m_pNext;
+				if (predicate(current->m_data))
+				{
+					out = &current->m_data;
 					return true;
 				}
 				current = next;
@@ -319,16 +387,16 @@ namespace Sailor
 
 		// Support ranged for
 		TIterator begin() { return TIterator(m_pFirst); }
-		TIterator end() { return TIterator(m_pLast); }
+		TIterator end() { return TIterator(nullptr); }
 
 		TConstIterator begin() const { return TConstIterator(m_pFirst); }
-		TConstIterator end() const { return TConstIterator(m_pLast); }
+		TConstIterator end() const { return TConstIterator(nullptr); }
 
-		TElementType* First() { return m_pFirst ? m_pFirst->m_data : nullptr; }
-		const TElementType* First() const { return m_pFirst ? m_pFirst->m_data : nullptr; }
+		TIterator First() { return begin(); }
+		TConstIterator First() const { return begin(); }
 
-		TElementType* Last() { return m_pLast ? m_pLast->m_data : nullptr; }
-		const TElementType* Last() const { return m_pLast ? m_pLast->m_data : nullptr; }
+		TIterator Last() { return TIterator(m_pLast); }
+		TConstIterator Last() const { return TConstIterator(m_pLast); }
 
 	protected:
 

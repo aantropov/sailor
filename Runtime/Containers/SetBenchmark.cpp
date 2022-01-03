@@ -133,25 +133,41 @@ public:
 			container.Insert(i);
 		}
 
+		for (const auto& el : ideal)
+		{
+			if (!container.Contains(el))
+			{
+				return false;
+			}
+		}
+
+		for (const auto& el : container)
+		{
+			if (!ideal.contains(el))
+			{
+				return false;
+			}
+		}
+
 		for (size_t i = 0; i < count / 2; i++)
 		{
 			ideal.erase(i * 2);
 			container.Remove(i * 2);
+		}
 
-			for (const auto& el : ideal)
+		for (const auto& el : ideal)
+		{
+			if (!container.Contains(el))
 			{
-				if (!container.Contains(el))
-				{
-					return false;
-				}
+				return false;
 			}
+		}
 
-			for (const auto& el : container)
+		for (const auto& el : container)
+		{
+			if (!ideal.contains(el))
 			{
-				if (!ideal.contains(el))
-				{
-					return false;
-				}
+				return false;
 			}
 		}
 

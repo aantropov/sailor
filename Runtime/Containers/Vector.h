@@ -192,7 +192,7 @@ namespace Sailor
 		template<typename... TArgs>
 		size_t Emplace(TArgs&& ... args)
 		{
-			return EmplaceAt(m_arrayNum, args ...);
+			return EmplaceAt(m_arrayNum, std::forward<TArgs>(args) ...);
 		}
 
 		void Resize(size_t count)
@@ -219,7 +219,7 @@ namespace Sailor
 
 		size_t Add(TElementType item)
 		{
-			return Emplace(item);
+			return Emplace(std::move(item));
 		}
 
 		void MoveRange(TElementType* first, size_t count) requires IsMoveConstructible<TElementType>
@@ -617,7 +617,7 @@ namespace Sailor
 		{
 			ResizeIfNeeded(m_arrayNum + 1);
 
-			new (&m_pRawPtr[index]) TElementType(std::move<TArgs>(args)...);
+			new (&m_pRawPtr[index]) TElementType(std::forward<TArgs>(args)...);
 			m_arrayNum++;
 			return index;
 		}

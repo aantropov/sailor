@@ -51,11 +51,8 @@ namespace Sailor
 			if (element)
 			{
 				auto& container = element->GetContainer();
-				const auto& i = container.FindIf([&](const TElementType& el) {return el.First() == key; });
-				if (i != -1)
+				if (container.RemoveAll([&](const TElementType& el) { return el.First() == key; }))
 				{
-					container.RemoveAtSwap(i);
-
 					if (container.Num() == 0)
 					{
 						if (element.GetRawPtr() == Super::m_last)
@@ -133,10 +130,11 @@ namespace Sailor
 			if (element && element->LikelyContains(hash))
 			{
 				auto& container = element->GetContainer();
-				const size_t i = container.FindIf([&](const TElementType& el) { return el.First() == key; });
-				if (i != -1)
+
+				typename Super::TElementContainer::TIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
+				if (it != container.end())
 				{
-					return Super::TIterator(element.GetRawPtr(), &container[i]);
+					return Super::TIterator(element.GetRawPtr(), it);
 				}
 			}
 
@@ -151,10 +149,10 @@ namespace Sailor
 			if (element && element->LikelyContains(hash))
 			{
 				auto& container = element->GetContainer();
-				const size_t i = container.FindIf([&](const TElementType& el) { return el.First() == key; });
-				if (i != -1)
+				typename Super::TElementContainer::TConstIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
+				if (it != container.end())
 				{
-					return Super::TConstIterator(element.GetRawPtr(), &container[i]);
+					return Super::TConstIterator(element.GetRawPtr(), it);
 				}
 			}
 
@@ -191,10 +189,10 @@ namespace Sailor
 				{
 					auto& container = element->GetContainer();
 
-					const size_t i = container.FindIf([&](const TElementType& element) { return element.First() == key; });
-					if (i != -1)
+					TElementType* out;
+					if (container.FindIf(out, [&](const TElementType& element) { return element.First() == key; }))
 					{
-						return container[i];
+						return *out;
 					}
 				}
 			}
@@ -205,7 +203,7 @@ namespace Sailor
 			const size_t index = hash % Super::m_buckets.Num();
 			auto& element = Super::m_buckets[index];
 
-			return element->GetContainer()[element->GetContainer().Num() - 1];
+			return *element->GetContainer().Last();
 		}
 	};
 
