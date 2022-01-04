@@ -91,6 +91,8 @@ namespace Sailor
 
 			TBaseIterator(TSetElement* bucket, TElementIterator it) : m_it(std::move(it)), m_currentBucket(bucket) {}
 
+			operator TBaseIterator<const TDataType, TElementIterator>() { return TBaseIterator<const TDataType, TElementIterator>(m_currentBucket, m_it); }
+
 			TBaseIterator& operator=(const TBaseIterator& rhs) = default;
 			TBaseIterator& operator=(TBaseIterator&& rhs) = default;
 
@@ -133,7 +135,7 @@ namespace Sailor
 				{
 					--m_it;
 				}
-				
+
 				return *this;
 			}
 

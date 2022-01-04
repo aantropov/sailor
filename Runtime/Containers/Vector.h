@@ -46,6 +46,8 @@ namespace Sailor
 			return *this;
 		}
 
+		operator TVectorIterator<const TDataType>() { return TVectorIterator<const TDataType>(m_element); }
+
 		bool operator==(const TVectorIterator& rhs) const { return m_element == rhs.m_element; }
 		bool operator!=(const TVectorIterator& rhs) const { return m_element != rhs.m_element; }
 
