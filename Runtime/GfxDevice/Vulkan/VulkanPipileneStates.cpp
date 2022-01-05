@@ -212,7 +212,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 	SAILOR_PROFILE_FUNCTION();
 
 	auto it = m_cache.Find(renderState);
-	if (it != m_cache.end())
+	if (it != m_cache.end() && (*it).m_second.Num() > 0)
 	{
 		return (*it).m_second;
 	}
