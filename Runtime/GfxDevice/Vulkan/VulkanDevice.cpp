@@ -140,8 +140,6 @@ void VulkanDevice::Shutdown()
 		pair.m_second.Clear();
 	}
 
-	m_memoryAllocators.Clear();
-
 	m_renderFinishedSemaphores.Clear();
 	m_imageAvailableSemaphores.Clear();
 	m_syncImages.Clear();
@@ -154,6 +152,8 @@ void VulkanDevice::Shutdown()
 	m_samplers.Clear();
 	m_pipelineBuilder.Clear();
 	m_threadContext.Clear();
+
+	m_memoryAllocators.Clear();
 }
 
 ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)

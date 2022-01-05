@@ -211,39 +211,43 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::scoped_lock<std::mutex> guard(m_mutex);
-
 	auto it = m_cache.Find(renderState);
 	if (it != m_cache.end())
 	{
 		return (*it).m_second;
 	}
 
-	const VulkanStateVertexDescriptionPtr pVertexDescription = VulkanStateVertexDescriptionPtr::Make(
-		VertexFactory<RHI::Vertex>::GetBindingDescription(),
-		VertexFactory<RHI::Vertex>::GetAttributeDescriptions());
+	TVector<VulkanPipelineStatePtr>& res = m_cache.At_Lock(renderState);
 
-	const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make();
-	const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();
-	const VulkanStateRasterizationPtr pStateRasterizer = VulkanStateRasterizationPtr::Make(renderState.GetDepthBias() != 0.0f,
-		renderState.GetDepthBias(), (VkCullModeFlags)renderState.GetCullMode(), (VkPolygonMode)renderState.GetFillMode());
-
-	const VulkanStateDynamicPtr pDynamicState = VulkanStateDynamicPtr::Make();
-	const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_LESS);
-	const VulkanStateMultisamplePtr pMultisample = VulkanStateMultisamplePtr::Make(m_pDevice->GetCurrentMsaaSamples());
-
-	auto& res = m_cache[renderState] = TVector<VulkanPipelineStatePtr>
+	if (res.Num() == 0)
 	{
-		pStateViewport,
-			pVertexDescription,
-			pInputAssembly,
-			pStateRasterizer,
-			pDynamicState,
-			pDepthStencil,
-			GetBlendState(renderState.GetBlendMode()),
-			pMultisample
-	};
+		const VulkanStateVertexDescriptionPtr pVertexDescription = VulkanStateVertexDescriptionPtr::Make(
+			VertexFactory<RHI::Vertex>::GetBindingDescription(),
+			VertexFactory<RHI::Vertex>::GetAttributeDescriptions());
 
+		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make();
+		const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();
+		const VulkanStateRasterizationPtr pStateRasterizer = VulkanStateRasterizationPtr::Make(renderState.GetDepthBias() != 0.0f,
+			renderState.GetDepthBias(), (VkCullModeFlags)renderState.GetCullMode(), (VkPolygonMode)renderState.GetFillMode());
+
+		const VulkanStateDynamicPtr pDynamicState = VulkanStateDynamicPtr::Make();
+		const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_LESS);
+		const VulkanStateMultisamplePtr pMultisample = VulkanStateMultisamplePtr::Make(m_pDevice->GetCurrentMsaaSamples());
+
+		res = TVector<VulkanPipelineStatePtr>
+		{
+			pStateViewport,
+				pVertexDescription,
+				pInputAssembly,
+				pStateRasterizer,
+				pDynamicState,
+				pDepthStencil,
+				GetBlendState(renderState.GetBlendMode()),
+				pMultisample
+		};
+	}
+
+	m_cache.Unlock(renderState);
 	return res;
 }
 
