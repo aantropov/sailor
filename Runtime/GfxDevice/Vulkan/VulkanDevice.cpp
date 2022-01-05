@@ -164,11 +164,7 @@ ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)
 		return *(*res).m_second;
 	}
 
-	{
-		std::scoped_lock<std::mutex> guard(m_mutex);
-		auto& threadContext = *(m_threadContext[threadId] = CreateThreadContext());
-		return threadContext;
-	}
+	return *(m_threadContext[threadId] = CreateThreadContext());
 }
 
 ThreadContext& VulkanDevice::GetCurrentThreadContext()
@@ -448,7 +444,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkQueue transferQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_transferFamily.value(), 0, &transferQueue);
 	m_transferQueue = VulkanQueuePtr::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
-	}
+}
 
 void VulkanDevice::CreateWin32Surface(const Window* viewport)
 {

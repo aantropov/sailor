@@ -1,10 +1,10 @@
 #pragma once
+#include <mutex>
 #include "Containers/Vector.h"
-#include <unordered_map>
+#include "Containers/Map.h"
 #include "vulkan/vulkan.h"
 #include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
-#include <mutex>
 
 namespace Sailor::GfxDevice::Vulkan
 {
@@ -143,13 +143,11 @@ namespace Sailor::GfxDevice::Vulkan
 
 	protected:
 
-		// We can cache pipelines in different threads simulteniously
-		std::mutex m_mutex;
-
+		// We can cache pipelines in different threads simulteniously		std::mutex m_mutex;
 		VulkanStateColorBlendingPtr GetBlendState(RHI::EBlendMode mode);
 
 		VulkanDevicePtr m_pDevice;
 		TVector<VulkanStateColorBlendingPtr> m_blendModes;
-		std::unordered_map<RHI::RenderState, TVector<VulkanPipelineStatePtr>> m_cache;
+		TMap<RHI::RenderState, TVector<VulkanPipelineStatePtr>> m_cache;
 	};
 }

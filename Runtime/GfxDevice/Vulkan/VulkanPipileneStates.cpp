@@ -213,10 +213,10 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 
 	std::scoped_lock<std::mutex> guard(m_mutex);
 
-	auto it = m_cache.find(renderState);
+	auto it = m_cache.Find(renderState);
 	if (it != m_cache.end())
 	{
-		return (*it).second;
+		return (*it).m_second;
 	}
 
 	const VulkanStateVertexDescriptionPtr pVertexDescription = VulkanStateVertexDescriptionPtr::Make(
