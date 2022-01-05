@@ -309,6 +309,9 @@
     <ClInclude Include="..\Runtime\Containers\ConcurrentSet.h">
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\ConcurrentMap.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

@@ -16,7 +16,7 @@
 
 namespace Sailor
 {
-	template<typename TElementType, typename TAllocator = Memory::MallocAllocator, const uint32_t concurrencyLevel = 8>
+	template<typename TElementType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::MallocAllocator>
 	class TConcurrentSet
 	{
 	public:

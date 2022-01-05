@@ -1,5 +1,6 @@
 #include <unordered_map>
 #include "Containers/Map.h"
+#include "Containers/ConcurrentMap.h"
 #include "Core/Utils.h"
 #include <random>
 
@@ -7,13 +8,16 @@ using namespace Sailor;
 using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
+template<typename TContainer>
 class TestCase_MapPerfromance
 {
 public:
 
 	static void RunTests()
 	{
-		printf("%s\n", "class Sailor::TMap");
+		const std::string tMapClassName = typeid(TContainer).name();
+
+		printf("%s\n", tMapClassName.c_str());
 		printf("Sanity check passed: %d\n", SanityCheck());
 		PerformanceTests();
 		printf("\n");
@@ -26,7 +30,7 @@ public:
 		Timer stdMap;
 		Timer tMap;
 
-		TMap<size_t, std::string> container;
+		TContainer container;
 		std::unordered_map<size_t, std::string> ideal;
 
 		stdMap.Start();
@@ -112,7 +116,7 @@ public:
 	{
 		const size_t count = 18000;
 
-		TMap<size_t, size_t> container;
+		TConcurrentMap<size_t, size_t> container;
 		std::unordered_map<size_t, size_t> ideal;
 
 		for (size_t i = 0; i < count; i++)
@@ -150,5 +154,6 @@ void Sailor::RunMapBenchmark()
 {
 	printf("\nStarting Map benchmark...\n");
 
-	TestCase_MapPerfromance::RunTests();
+	TestCase_MapPerfromance<Sailor::TMap<size_t, std::string>>::RunTests();
+	TestCase_MapPerfromance<TConcurrentMap<size_t, std::string>>::RunTests();
 }
