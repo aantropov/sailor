@@ -1,5 +1,6 @@
 #include <unordered_set>
 #include "Containers/Set.h"
+#include "Containers/ConcurrentSet.h"
 #include "Core/Utils.h"
 #include <random>
 
@@ -7,13 +8,16 @@ using namespace Sailor;
 using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
+template<typename TContainer>
 class TestCase_SetPerfromance
 {
 public:
 
 	static void RunTests()
 	{
-		printf("%s\n", "class Sailor::TSet");
+		const std::string tSetClassName = typeid(TContainer).name();
+
+		printf("%s\n", tSetClassName.c_str());
 		printf("Sanity check passed: %d\n", SanityCheck());
 		PerformanceTests();
 		printf("\n");
@@ -26,7 +30,7 @@ public:
 		Timer stdSet;
 		Timer tSet;
 
-		TSet<size_t> container;
+		TContainer container;
 		std::unordered_set<size_t> ideal;
 
 		stdSet.Start();
@@ -124,7 +128,7 @@ public:
 	{
 		const size_t count = 18000;
 
-		TSet<size_t> container;
+		TContainer container;
 		std::unordered_set<size_t> ideal;
 
 		for (size_t i = 0; i < count; i++)
@@ -178,6 +182,8 @@ public:
 void Sailor::RunSetBenchmark()
 {
 	printf("\nStarting set benchmark...\n");
+	TestCase_SetPerfromance<Sailor::TSet<size_t>>::RunTests();
 
-	TestCase_SetPerfromance::RunTests();
+	printf("\nStarting concurrent set benchmark...\n");
+	TestCase_SetPerfromance<Sailor::TConcurrentSet<size_t>>::RunTests();
 }

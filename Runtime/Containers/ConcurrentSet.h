@@ -4,39 +4,52 @@
 #include <functional>
 #include <concepts>
 #include <type_traits>
+#include <atomic>
+#include <mutex>
 #include "Core/Defines.h"
-#include "Vector.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/Memory.h"
 #include "Containers/Pair.h"
 #include "Containers/List.h"
+#include "Containers/Vector.h"
 #include "Core/LogMacros.h"
 
 namespace Sailor
 {
-	template<typename Type>
-	size_t GetHash(const Type& instance)
-	{
-		static std::hash<Type> p;
-		return p(instance);
-	}
-
-	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
-	class SAILOR_API TSet
+	template<typename TElementType, typename TAllocator = Memory::MallocAllocator, const uint32_t concurrencyLevel = 8>
+	class TConcurrentSet
 	{
 	public:
 
 		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 6, TAllocator>>;
 
-		class SAILOR_API TEntry
+		class TEntry
 		{
 		public:
 
 			TEntry(size_t hashCode) : m_hashCode(hashCode) {}
 			TEntry(TEntry&&) = default;
-			TEntry(const TEntry&) = default;
+			TEntry(const volatile TEntry& rhs)
+			{
+				m_bloom = rhs.m_bloom;
+				m_hashCode = rhs.m_hashCode;
+				m_elements = rhs.m_elements;
+
+				m_next = rhs.m_next;
+				m_prev = rhs.m_prev;
+			}
+
 			TEntry& operator=(TEntry&&) = default;
-			TEntry& operator=(const TEntry&) = default;
+			TEntry& operator=(const volatile TEntry& rhs)
+			{
+				m_bloom = rhs.m_bloom;
+				m_hashCode = rhs.m_hashCode;
+				m_elements = rhs.m_elements;
+
+				m_next = rhs.m_next;
+				m_prev = rhs.m_prev;
+				return *this;
+			}
 
 			__forceinline operator bool() const { return m_elements.Num() > 0; }
 			virtual ~TEntry() = default;
@@ -65,14 +78,14 @@ namespace Sailor
 			TElementContainer m_elements;
 
 			// That's unsafe but we handle that properly
-			TEntry* m_next = nullptr;
-			TEntry* m_prev = nullptr;
+			volatile TEntry* m_next = nullptr;
+			volatile TEntry* m_prev = nullptr;
 
-			friend class TSet;
+			friend class TConcurrentSet;
 		};
 
 		template<typename TDataType, typename TElementIterator>
-		class SAILOR_API TBaseIterator
+		class TBaseIterator
 		{
 		public:
 
@@ -89,7 +102,7 @@ namespace Sailor
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(TEntry* bucket, TElementIterator it) : m_it(std::move(it)), m_currentBucket(bucket) {}
+			TBaseIterator(volatile TEntry* bucket, TElementIterator it) : m_it(std::move(it)), m_currentBucket(bucket) {}
 
 			operator TBaseIterator<const TDataType, TElementIterator>() { return TBaseIterator<const TDataType, TElementIterator>(m_currentBucket, m_it); }
 
@@ -109,12 +122,12 @@ namespace Sailor
 			{
 				++m_it;
 
-				if (m_it == m_currentBucket->GetContainer().end())
+				if (m_it == ((TEntry*)m_currentBucket)->GetContainer().end())
 				{
 					if (m_currentBucket->m_next)
 					{
 						m_currentBucket = m_currentBucket->m_next;
-						m_it = m_currentBucket->GetContainer().begin();
+						m_it = ((TEntry*)m_currentBucket)->GetContainer().begin();
 					}
 				}
 
@@ -128,7 +141,7 @@ namespace Sailor
 					if (m_currentBucket->m_prev)
 					{
 						m_currentBucket = m_currentBucket->m_prev;
-						m_it = m_currentBucket->GetContainer().Last();
+						m_it = ((TEntry*)m_currentBucket)->GetContainer().Last();
 					}
 				}
 				else
@@ -141,7 +154,7 @@ namespace Sailor
 
 		protected:
 
-			TEntry* m_currentBucket;
+			volatile TEntry* m_currentBucket;
 			TElementIterator m_it;
 
 			friend class TEntry;
@@ -149,16 +162,16 @@ namespace Sailor
 
 		using TIterator = TBaseIterator<TElementType, typename TElementContainer::TIterator>;
 		using TConstIterator = TBaseIterator<const TElementType, typename TElementContainer::TConstIterator>;
-		using TEntryPtr = TUniquePtr<TEntry>;
-		using TBucketContainer = TVector<TEntryPtr, TAllocator>;
+		using TConcurrentEntryPtr = TUniquePtr<TEntry>;
+		using TBucketContainer = TVector<TConcurrentEntryPtr, TAllocator>;
 
-		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
-		TSet(TSet&&) = default;
-		TSet(const TSet&) = default;
-		TSet& operator=(TSet&&) = default;
-		TSet& operator=(const TSet&) = default;
+		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
+		SAILOR_API TConcurrentSet(TConcurrentSet&&) = default;
+		SAILOR_API TConcurrentSet(const TConcurrentSet&) = default;
+		SAILOR_API TConcurrentSet& operator=(TConcurrentSet&&) = default;
+		SAILOR_API TConcurrentSet& operator=(const TConcurrentSet&) = default;
 
-		TSet(std::initializer_list<TElementType> initList)
+		SAILOR_API TConcurrentSet(std::initializer_list<TElementType> initList)
 		{
 			for (const auto& el : initList)
 			{
@@ -167,7 +180,7 @@ namespace Sailor
 		}
 
 		// TODO: Rethink the approach of base class for iterators
-		TSet(const TVectorIterator<TElementType>& begin, const TVectorIterator<TElementType>& end)
+		SAILOR_API TConcurrentSet(const TVectorIterator<TElementType>& begin, const TVectorIterator<TElementType>& end)
 		{
 			TVectorIterator<TElementType> it = begin;
 			while (it != end)
@@ -196,35 +209,20 @@ namespace Sailor
 
 		void Insert(TElementType inElement)
 		{
-			if (ShouldRehash())
+			if (ShouldRehash() && TryLockAll())
 			{
 				Rehash(m_buckets.Capacity() * 4);
+
+				UnlockAll();
 			}
 
 			const auto& hash = Sailor::GetHash(inElement);
-			const size_t index = hash % m_buckets.Num();
-			auto& element = m_buckets[index];
 
-			if (!element)
-			{
-				element = TEntryPtr::Make(hash);
+			Lock(hash);
 
-				if (!m_first)
-				{
-					m_last = m_first = element.GetRawPtr();
-				}
-				else
-				{
-					m_first->m_prev = element.GetRawPtr();
-					element->m_next = m_first;
-					m_first = element.GetRawPtr();
-				}
-			}
+			Insert_Internal(std::move(inElement), hash);
 
-			element->GetContainer().EmplaceBack(std::move(inElement));
-			element->m_bloom |= hash;
-
-			m_num++;
+			Unlock(hash);
 		}
 
 		bool Remove(const TElementType& inElement)
@@ -235,6 +233,8 @@ namespace Sailor
 
 			if (element)
 			{
+				Lock(hash);
+
 				auto& container = element->GetContainer();
 				if (container.RemoveFirst(inElement))
 				{
@@ -269,8 +269,10 @@ namespace Sailor
 					}
 
 					m_num--;
+					Unlock(hash);
 					return true;
 				}
+				Unlock(hash);
 				return false;
 			}
 			return false;
@@ -278,38 +280,99 @@ namespace Sailor
 
 		void Clear()
 		{
+			LockAll();
+
 			m_num = 0;
 			m_first = m_last = nullptr;
 			m_buckets.Clear();
+
+			UnlockAll();
 		}
 
 		// Support ranged for
-		TIterator begin() { return TIterator(m_first, m_first ? m_first->GetContainer().begin() : nullptr); }
+		TIterator begin() { return TIterator(m_first, m_first ? ((TEntry*)m_first)->GetContainer().begin() : nullptr); }
 		TIterator end() { return TIterator(m_last, nullptr); }
 
-		TConstIterator begin() const { return TConstIterator(m_first, m_first ? m_first->GetContainer().begin() : nullptr); }
+		TConstIterator begin() const { return TConstIterator(m_first, m_first ? ((TEntry*)m_first)->GetContainer().begin() : nullptr); }
 		TConstIterator end() const { return TConstIterator(m_last, nullptr); }
 
 	protected:
 
-		__forceinline bool ShouldRehash() const
+		__forceinline void Insert_Internal(TElementType inElement, const size_t& hash)
 		{
-			// We assume that each bucket has ~6 elements inside
-			// TODO: Rethink the approach
-			return (float)m_num > (float)m_buckets.Num() * 6;
+			const size_t index = hash % m_buckets.Num();
+			auto& element = m_buckets[index];
+
+			if (!element)
+			{
+				element = TConcurrentEntryPtr::Make(hash);
+
+				if (!m_first)
+				{
+					m_last = m_first = element.GetRawPtr();
+				}
+				else
+				{
+					m_first->m_prev = element.GetRawPtr();
+					element->m_next = m_first;
+					m_first = element.GetRawPtr();
+				}
+			}
+
+			element->GetContainer().EmplaceBack(std::move(inElement));
+			element->m_bloom |= hash;
+
+			m_num++;
 		}
 
-		void Rehash(size_t desiredBucketsNum)
+		__forceinline bool TryLock(size_t hash) { return m_mutexes[hash % concurrencyLevel].try_lock(); }
+		__forceinline void Lock(size_t hash) { m_mutexes[hash % concurrencyLevel].lock(); }
+		__forceinline void Unlock(size_t hash) { m_mutexes[hash % concurrencyLevel].unlock(); }
+
+		__forceinline bool TryLockAll()
+		{
+			for (size_t i = 0; i < concurrencyLevel; i++)
+			{
+				if (!m_mutexes[i].try_lock())
+				{
+					for (size_t j = i; j >= 0; j--)
+					{
+						m_mutexes[j].unlock();
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+
+		__forceinline void LockAll()
+		{
+			for (size_t i = 0; i < concurrencyLevel; i++)
+			{
+				m_mutexes[i].lock();
+			}
+		}
+
+		__forceinline void UnlockAll()
+		{
+			for (size_t i = 0; i < concurrencyLevel; i++)
+			{
+				m_mutexes[i].unlock();
+			}
+		}
+
+		__forceinline bool ShouldRehash() const { return (float)m_num > (float)m_buckets.Num() * 6; }
+		__forceinline void Rehash(size_t desiredBucketsNum)
 		{
 			if (desiredBucketsNum <= m_buckets.Num())
 			{
 				return;
 			}
 
-			TVector<TEntryPtr, TAllocator> buckets(desiredBucketsNum);
-			TVector<TEntryPtr, TAllocator>::Swap(buckets, m_buckets);
+			TVector<TConcurrentEntryPtr, TAllocator> buckets(desiredBucketsNum);
+			TVector<TConcurrentEntryPtr, TAllocator>::Swap(buckets, m_buckets);
 
-			TEntry* current = m_first;
+			volatile TEntry* current = (TEntry*)m_first;
 
 			m_num = 0;
 			m_first = nullptr;
@@ -317,17 +380,19 @@ namespace Sailor
 
 			while (current)
 			{
-				const size_t oldIndex = current->GetHash() % m_buckets.Num();
+				const size_t oldIndex = ((TEntry*)current)->GetHash() % m_buckets.Num();
 
-				for (auto& el : current->GetContainer())
+				for (auto& el : ((TEntry*)current)->GetContainer())
 				{
+					const auto& hash = Sailor::GetHash(el);
+
 					if constexpr (IsMoveConstructible<TElementType>)
 					{
-						Insert(std::move(el));
+						Insert_Internal(std::move(el), hash);
 					}
 					else
 					{
-						Insert(el);
+						Insert_Internal(el, hash);
 					}
 				}
 
@@ -338,24 +403,14 @@ namespace Sailor
 		}
 
 		TBucketContainer m_buckets{};
+		std::mutex m_mutexes[concurrencyLevel];
+
 		size_t m_num = 0;
 
 		// That's unsafe but we handle that properly
-		TEntry* m_first = nullptr;
-		TEntry* m_last = nullptr;
+		volatile TEntry* m_first = nullptr;
+		volatile TEntry* m_last = nullptr;
 	};
 
 	SAILOR_API void RunSetBenchmark();
-}
-
-namespace std
-{
-	template<typename TKeyType, typename TValueType>
-	struct std::hash<Sailor::TPair<TKeyType, TValueType>>
-	{
-		SAILOR_API std::size_t operator()(const Sailor::TPair<TKeyType, TValueType>& p) const
-		{
-			return Sailor::GetHash(p.First());
-		}
-	};
 }
