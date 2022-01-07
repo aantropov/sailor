@@ -418,12 +418,11 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<bool> promise;
+	JobSystem::TaskPtr<bool> newPromise;
 	outShader = nullptr;
 
 	if (auto pShader = LoadShaderAsset(uid).TryLock())
 	{
-		std::scoped_lock<std::mutex> guard(m_mutex);
 		const uint32_t permutation = GetPermutation(pShader->GetSupportedDefines(), defines);
 
 		// Check promises first
@@ -434,7 +433,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.m_first == permutation; });
 			if (shaderIt != allLoadedPermutations.end())
 			{
-				promise = (*shaderIt).m_second;
+				newPromise = (*shaderIt).m_second;
 			}
 		}
 
@@ -447,12 +446,30 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 			if (shaderIt != allLoadedPermutations.end())
 			{
 				outShader = (*shaderIt).m_second;
-				if (!promise)
+				if (newPromise != nullptr)
 				{
-					return JobSystem::TaskPtr<bool>::Make(true);
-				}
+					if (!newPromise)
+					{
+						return JobSystem::TaskPtr<bool>::Make(true);
+					}
 
-				return promise;
+					return newPromise;
+				}
+			}
+		}
+
+		auto& entry = m_promises.At_Lock(uid);
+
+		// We have promise
+		if (entry.Num() > 0)
+		{
+			const size_t index = entry.FindIf([&](const auto& el) { return el.m_first == permutation; });
+			if (index != -1)
+			{
+				outShader = m_loadedShaders[uid][index].m_second;
+				m_promises.Unlock(uid);
+
+				return entry[index].m_second;
 			}
 		}
 
@@ -460,7 +477,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 		{
 			auto pShader = TSharedPtr<ShaderSet>::Make(uid);
 
-			promise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load shader",
+			newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load shader",
 				[pShader, assetInfo, defines, this]()
 				{
 					auto pRaw = pShader.GetRawPtr();
@@ -483,15 +500,20 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 					return true;
 				});
 
-			App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
+			App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
 
 			m_loadedShaders[uid].Add({ permutation, pShader });
-			m_promises[uid].Add({ permutation, promise });
+			entry.Add({ permutation, newPromise });
 			outShader = (*(m_loadedShaders[uid].end() - 1)).m_second;
 
-			return promise;
+			m_promises.Unlock(uid);
+
+			return (entry.end() - 1)->m_second;
 		}
 	}
+
+	m_promises.Unlock(uid);
+
 	SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
 	return JobSystem::TaskPtr<bool>::Make(false);
 }

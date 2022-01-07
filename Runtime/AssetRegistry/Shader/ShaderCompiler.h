@@ -3,7 +3,7 @@
 #include <string>
 #include "Containers/Pair.h"
 #include "Containers/Vector.h"
-#include "Containers/Map.h"
+#include "Containers/ConcurrentMap.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -97,12 +97,11 @@ namespace Sailor
 
 	protected:
 
-		std::mutex m_mutex;
 		ShaderCache m_shaderCache;
 
-		TMap<UID, TVector<TPair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;		
-		TMap<UID, TSharedPtr<ShaderAsset>> m_loadedShaderAssets;
-		TMap<UID, TVector<TPair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
+		TConcurrentMap<UID, TVector<TPair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;
+		TConcurrentMap<UID, TSharedPtr<ShaderAsset>> m_loadedShaderAssets;
+		TConcurrentMap<UID, TVector<TPair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
 
 		// ShaderAsset related functions
 		SAILOR_API static void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& defines = {});
