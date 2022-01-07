@@ -1,5 +1,4 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
-
 #include "AssetRegistry/UID.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "TextureAssetInfo.h"
@@ -8,7 +7,6 @@
 #include <fstream>
 #include <algorithm>
 #include <iostream>
-
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "JobSystem/JobSystem.h"
 #include "RHI/Texture.h"
@@ -80,16 +78,15 @@ bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
-	std::scoped_lock<std::mutex> guard(m_mutex);
 
-	JobSystem::TaskPtr<bool> promise;
+	JobSystem::TaskPtr<bool> newPromise;
 	outTexture = nullptr;
 
 	// Check promises first
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
 	{
-		promise = (*it).m_second;
+		newPromise = (*it).m_second;
 	}
 
 	// Check loaded textures
@@ -97,12 +94,24 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 	if (textureIt != m_loadedTextures.end())
 	{
 		outTexture = (*textureIt).m_second;
-
-		if (!promise)
+		if (newPromise != nullptr)
 		{
-			return JobSystem::TaskPtr<bool>::Make(true);
-		}
+			if (!newPromise)
+			{
+				return JobSystem::TaskPtr<bool>::Make(true);
+			}
 
+			return newPromise;
+		}
+	}
+
+	auto& promise = m_promises.At_Lock(uid, nullptr);
+
+	// We have promise
+	if (promise)
+	{
+		m_promises.Unlock(uid);
+		outTexture = m_loadedTextures[uid];
 		return promise;
 	}
 
@@ -110,7 +119,7 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 	{
 		auto pTexture = TSharedPtr<Texture>::Make(uid);
 
-		promise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
+		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[pTexture, assetInfo, this]()
 			{
 				ByteCode decodedData;
@@ -128,13 +137,16 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 				return false;
 			});
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
 
 		outTexture = m_loadedTextures[uid] = pTexture;
-		m_promises[uid] = promise;
+		promise = newPromise;
+		m_promises.Unlock(uid);
 
 		return promise;
 	}
+
+	m_promises.Unlock(uid);
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
 	return JobSystem::TaskPtr<bool>::Make(false);
