@@ -105,6 +105,14 @@ namespace Sailor
 			return res;
 		}
 
+		SAILOR_API TValueType& At_Lock(const TKeyType& key, TValueType defaultValue)
+		{
+			auto& res = GetOrAdd(key, std::move(defaultValue)).m_second;
+			const auto& hash = Sailor::GetHash(key);
+			Super::Lock(hash);
+			return res;
+		}
+
 		SAILOR_API void Unlock(const TKeyType& key)
 		{
 			const auto& hash = Sailor::GetHash(key);
@@ -219,6 +227,33 @@ namespace Sailor
 
 			// TODO: rethink the approach when default constructor is missed
 			Insert(key, TValueType());
+
+			const size_t index = hash % Super::m_buckets.Num();
+			auto& element = Super::m_buckets[index];
+
+			return *element->GetContainer().Last();
+		}
+
+		SAILOR_API TElementType& GetOrAdd(const TKeyType& key, TValueType defaultValue)
+		{
+			const auto& hash = Sailor::GetHash(key);
+			{
+				const size_t index = hash % Super::m_buckets.Num();
+				auto& element = Super::m_buckets[index];
+
+				if (element)
+				{
+					auto& container = element->GetContainer();
+
+					TElementType* out;
+					if (container.FindIf(out, [&](const TElementType& element) { return element.First() == key; }))
+					{
+						return *out;
+					}
+				}
+			}
+
+			Insert(key, std::move(defaultValue));
 
 			const size_t index = hash % Super::m_buckets.Num();
 			auto& element = Super::m_buckets[index];

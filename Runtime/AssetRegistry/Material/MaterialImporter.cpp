@@ -219,16 +219,14 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::scoped_lock<std::mutex> guard(m_mutex);
-
-	JobSystem::TaskPtr<bool> promise;
+	JobSystem::TaskPtr<bool> newPromise;
 	outMaterial = nullptr;
 
 	// Check promises first
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
 	{
-		promise = (*it).m_second;
+		newPromise = (*it).m_second;
 	}
 
 	// Check loaded materials
@@ -237,14 +235,28 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 	{
 		outMaterial = (*materialIt).m_second;
 
-		if (!promise)
+		if (newPromise != nullptr)
 		{
-			return JobSystem::TaskPtr<bool>::Make(true);
-		}
+			if (!newPromise)
+			{
+				return JobSystem::TaskPtr<bool>::Make(true);
+			}
 
+			return newPromise;
+		}
+	}
+
+	auto& promise = m_promises.At_Lock(uid, nullptr);
+
+	// We have promise
+	if (promise)
+	{
+		m_promises.Unlock(uid);
+		outMaterial = m_loadedMaterials[uid];
 		return promise;
 	}
 
+	// We need to start load the material
 	if (auto pMaterialAsset = LoadMaterialAsset(uid))
 	{
 		auto pMaterial = TSharedPtr<Material>::Make(uid);
@@ -254,7 +266,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 
 		pShader.Lock()->AddHotReloadDependentObject(pMaterial);
 
-		promise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
+		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
 			[pMaterial, pShader, pMaterialAsset]()
 			{
 				RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(), pShader);
@@ -318,15 +330,20 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 				return true;
 			});
 
-		promise->Join(pLoadShader);
+		newPromise->Join(pLoadShader);
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
 
 		outMaterial = m_loadedMaterials[uid] = pMaterial;
-		m_promises[uid] = promise;
+		promise = newPromise;
 
-		return promise;
+		m_promises.Unlock(uid);
+
+		return newPromise;
 	}
+
+	m_promises.Unlock(uid);
+
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
 

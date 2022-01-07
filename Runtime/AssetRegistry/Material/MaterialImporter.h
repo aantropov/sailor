@@ -4,6 +4,7 @@
 #include "Containers/Pair.h"
 #include "Containers/Vector.h"
 #include "Containers/Map.h"
+#include "Containers/ConcurrentMap.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -121,9 +122,7 @@ namespace Sailor
 
 		SAILOR_API bool IsMaterialLoaded(UID uid) const;
 
-		std::mutex m_mutex;
-		TMap<UID, JobSystem::TaskPtr<bool>> m_promises;
-
-		TMap<UID, TSharedPtr<Material>> m_loadedMaterials;
+		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
+		TConcurrentMap<UID, TSharedPtr<Material>> m_loadedMaterials;
 	};
 }
