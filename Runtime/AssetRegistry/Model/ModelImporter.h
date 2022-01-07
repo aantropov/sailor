@@ -2,7 +2,7 @@
 #include "Core/Defines.h"
 #include <string>
 #include "Containers/Vector.h"
-#include "Containers/Map.h"
+#include "Containers/ConcurrentMap.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -72,10 +72,8 @@ namespace Sailor
 
 	protected:
 
-		std::mutex m_mutex;
-		
-		TMap<UID, JobSystem::TaskPtr<bool>> m_promises;
-		TMap<UID, TSharedPtr<Model>> m_loadedModels;
+		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
+		TConcurrentMap<UID, TSharedPtr<Model>> m_loadedModels;
 
 		static SAILOR_API bool ImportObjModel(ModelAssetInfoPtr assetInfo,
 			TVector<RHI::MeshPtr>& outMeshes,

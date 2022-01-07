@@ -149,16 +149,14 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::scoped_lock<std::mutex> guard(m_mutex);
-
-	JobSystem::TaskPtr<bool> promise;
+	JobSystem::TaskPtr<bool> newPromise;
 	outModel = nullptr;
 
 	// Check promises first
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
 	{
-		promise = (*it).m_second;
+		newPromise = (*it).m_second;
 	}
 
 	// Check loaded model
@@ -167,19 +165,33 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	{
 		outModel = (*modelIt).m_second;
 
-		if (!promise)
+		if (newPromise != nullptr)
 		{
-			return JobSystem::TaskPtr<bool>::Make(true);
-		}
+			if (!newPromise)
+			{
+				return JobSystem::TaskPtr<bool>::Make(true);
+			}
 
+			return newPromise;
+		}
+	}
+
+	auto& promise = m_promises.At_Lock(uid, nullptr);
+
+	// We have promise
+	if (promise)
+	{
+		m_promises.Unlock(uid);
+		outModel = m_loadedModels[uid];
 		return promise;
 	}
 
+	// There is no promise, we need to load model
 	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		auto model = TSharedPtr<Model>::Make(uid);
 
-		promise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
+		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[model, assetInfo, this]()
 			{
 				TVector<AssetInfoPtr> outMaterialUIDs;
@@ -221,14 +233,16 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 				return false;
 			});
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(promise);
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
 
 		outModel = m_loadedModels[uid] = model;
-		m_promises[uid] = promise;
+		promise = newPromise;
+		m_promises.Unlock(uid);
 
 		return promise;
 	}
 
+	m_promises.Unlock(uid);
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
 

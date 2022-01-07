@@ -336,15 +336,12 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 
 		outMaterial = m_loadedMaterials[uid] = pMaterial;
 		promise = newPromise;
-
 		m_promises.Unlock(uid);
 
-		return newPromise;
+		return promise;
 	}
 
 	m_promises.Unlock(uid);
 
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
-
-
