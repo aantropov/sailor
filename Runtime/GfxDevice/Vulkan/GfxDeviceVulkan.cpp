@@ -670,11 +670,11 @@ void GfxDeviceVulkan::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::Materia
 	{
 		auto device = m_vkInstance->GetMainDevice();
 		auto& shaderBinding = material->GetBindings()->GetOrCreateShaderBinding(binding);
-		UpdateShaderBingingVariable(cmd, shaderBinding, variable, value, size);
+		UpdateShaderBindingVariable(cmd, shaderBinding, variable, value, size);
 	}
 }
 
-void GfxDeviceVulkan::UpdateShaderBingingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size)
+void GfxDeviceVulkan::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size)
 {
 	SAILOR_PROFILE_FUNCTION();
 

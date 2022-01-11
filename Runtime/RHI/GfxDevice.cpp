@@ -95,7 +95,7 @@ void IGfxDevice::SubmitCommandList_Immediate(CommandListPtr commandList)
 	fence->Wait();
 }
 
-void IGfxDeviceCommands::UpdateShaderBingingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)
+void IGfxDeviceCommands::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)
 {
 	SAILOR_PROFILE_FUNCTION();
 

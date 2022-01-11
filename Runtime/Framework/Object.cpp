@@ -16,14 +16,19 @@ void Object::TraceHotReload(ITaskPtr previousTask)
 
 	if (hotReload)
 	{
+		if (previousTask != nullptr)
+		{
+			hotReload->Join(previousTask);
+		}
+
 		App::GetSubmodule<Scheduler>()->Run(hotReload);
 	}
-
+		
 	for (auto& obj : m_hotReloadDeps)
 	{
 		if (auto ptr = std::move(obj.Lock()))
 		{
-			ptr->TraceHotReload(hotReload);
+			ptr->TraceHotReload(hotReload != nullptr ? hotReload : previousTask);
 		}
 	}
 }

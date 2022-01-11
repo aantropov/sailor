@@ -12,6 +12,7 @@
 #include "AssetRegistry/UID.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
 #include "Framework/Object.h"
@@ -31,10 +32,18 @@ namespace Sailor
 
 		void Flush();
 
+		virtual JobSystem::ITaskPtr OnHotReload() override;
+
+		void SetSampler(const std::string& name, TexturePtr value);
+		void SetUniform(const std::string& name, glm::vec4 value);
+
 	protected:
 
 		RHI::MaterialPtr m_rhiMaterial;
 		std::atomic<bool> m_bIsReady;
+
+		TConcurrentMap<std::string, TexturePtr> m_samplers;
+		TConcurrentMap<std::string, glm::vec4> m_uniforms;
 
 		friend class MaterialImporter;
 	};
@@ -117,6 +126,8 @@ namespace Sailor
 		SAILOR_API JobSystem::TaskPtr<bool> LoadMaterial(UID uid, MaterialPtr& outMaterial);
 
 		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::GetData data);
+
+		SAILOR_API MaterialPtr GetLoadedMaterial(UID uid);
 
 	protected:
 

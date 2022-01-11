@@ -2,10 +2,12 @@
 
 #include "AssetRegistry/UID.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "MaterialAssetInfo.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Math/Math.h"
 #include "Core/Utils.h"
+#include "Memory/WeakPtr.hpp"
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -29,6 +31,66 @@ bool Material::IsReady() const
 void Material::Flush()
 {
 	m_bIsReady = m_rhiMaterial;
+}
+
+JobSystem::ITaskPtr Material::OnHotReload()
+{
+	m_bIsReady = false;
+
+	auto flushMaterial = JobSystem::Scheduler::CreateTask("Flush material", [=]()
+		{
+			Flush();
+		});
+
+	//auto pMaterialAsset = App::GetSubmodule<MaterialImporter>()->LoadMaterialAsset(m_UID);
+	//auto self = App::GetSubmodule<MaterialImporter>()->GetLoadedMaterial(m_UID);
+
+	return nullptr;
+}
+
+void Material::SetSampler(const std::string& name, TexturePtr value)
+{
+	auto self = App::GetSubmodule<MaterialImporter>()->GetLoadedMaterial(m_UID);
+
+	auto it = m_samplers.Find(name);
+	if (it != m_samplers.end())
+	{
+		it->m_second.Lock()->RemoveHotReloadDependentObject(self);
+		m_samplers[name] = value;
+	}
+
+	auto bindings = m_rhiMaterial->GetBindings();
+
+	if (bindings->HasBinding(name))
+	{
+		RHI::Renderer::GetDriver()->UpdateShaderBinding(m_rhiMaterial->GetBindings(), name, value.Lock()->GetRHI());
+	}
+
+	if (value)
+	{
+		value.Lock()->AddHotReloadDependentObject(self);
+	}
+}
+
+void Material::SetUniform(const std::string& name, glm::vec4 value)
+{
+	m_uniforms[name] = value;
+
+	auto bindings = m_rhiMaterial->GetBindings();
+
+	if (bindings->HasParameter(name))
+	{
+		std::string outBinding;
+		std::string outVariable;
+
+		RHI::ShaderBindingSet::ParseParameter(name, outBinding, outVariable);
+		RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
+
+		SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
+			{
+				RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
+			}));
+	}
 }
 
 void MaterialAsset::Serialize(nlohmann::json& outData) const
@@ -215,6 +277,17 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 	return task->GetResult();
 }
 
+MaterialPtr MaterialImporter::GetLoadedMaterial(UID uid)
+{
+	// Check loaded materials
+	auto materialIt = m_loadedMaterials.Find(uid);
+	if (materialIt != m_loadedMaterials.end())
+	{
+		return (*materialIt).m_second;
+	}
+	return TWeakPtr<Material>(nullptr);
+}
+
 JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -270,6 +343,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 			[pMaterial, pShader, pMaterialAsset]()
 			{
 				RHI::MaterialPtr pMaterialPtr = RHI::Renderer::GetDriver()->CreateMaterial(pMaterialAsset->GetRenderState(), pShader);
+				pMaterial.GetRawPtr()->m_rhiMaterial = pMaterialPtr;
 
 				auto flushMaterial = JobSystem::Scheduler::CreateTask("Flush material", [=]()
 					{
@@ -289,42 +363,17 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 								{
 									if (bRes)
 									{
-										for (auto& sampler : pMaterialAsset.GetRawPtr()->GetSamplers())
-										{
-											if (bindings->HasBinding(sampler.m_name))
-											{
-												RHI::Renderer::GetDriver()->UpdateShaderBinding(pMaterialPtr->GetBindings(), sampler.m_name, texture.Lock()->GetRHI());
-											}
-										}
+										pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
 									}
 								}, "Set material texture binding", JobSystem::EThreadType::Rendering));
-
-						if (texture)
-						{
-							texture.Lock()->AddHotReloadDependentObject(pMaterial);
-						}
 					}
 				}
 
 				for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())
 				{
-					if (bindings->HasParameter(uniform.m_first))
-					{
-						std::string outBinding;
-						std::string outVariable;
-
-						RHI::ShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-						RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
-						auto value = uniform.m_second;
-
-						SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&binding, outVariable, value](RHI::CommandListPtr& cmdList)
-							{
-								RHI::Renderer::GetDriverCommands()->UpdateShaderBingingVariable(cmdList, binding, outVariable, &value, sizeof(value));
-							}));
-					}
+					pMaterial.GetRawPtr()->SetUniform(uniform.m_first, uniform.m_second);
 				}
 
-				pMaterial.GetRawPtr()->m_rhiMaterial = pMaterialPtr;
 				flushMaterial->Run();
 
 				return true;

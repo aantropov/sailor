@@ -85,7 +85,7 @@ namespace Sailor::GfxDevice::Vulkan
 		virtual SAILOR_API void BeginCommandList(RHI::CommandListPtr cmd);
 		virtual SAILOR_API void EndCommandList(RHI::CommandListPtr cmd);
 
-		virtual SAILOR_API void UpdateShaderBingingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size);
+		virtual SAILOR_API void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size);
 		virtual SAILOR_API void UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t offset = 0);
 		virtual SAILOR_API void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size);
 		//End IGfxDeviceCommands

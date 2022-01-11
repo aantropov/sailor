@@ -37,7 +37,6 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired
 {
 }
 
-
 void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
