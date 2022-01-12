@@ -176,7 +176,7 @@ namespace Sailor
 			return *this;
 		}
 
-		TVector& operator=(TVector&& other) requires IsMoveConstructible<TAllocator>
+		TVector& operator=(TVector&& other) noexcept requires IsMoveConstructible<TAllocator>
 		{
 			Swap(*this, other);
 			return *this;

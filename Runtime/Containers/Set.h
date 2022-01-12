@@ -33,9 +33,9 @@ namespace Sailor
 		public:
 
 			TEntry(size_t hashCode) : m_hashCode(hashCode) {}
-			TEntry(TEntry&&) = default;
+			TEntry(TEntry&&) noexcept = default;
 			TEntry(const TEntry&) = default;
-			TEntry& operator=(TEntry&&) = default;
+			TEntry& operator=(TEntry&&) noexcept = default;
 			TEntry& operator=(const TEntry&) = default;
 
 			__forceinline operator bool() const { return m_elements.Num() > 0; }
@@ -155,7 +155,7 @@ namespace Sailor
 		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
 		TSet(TSet&&) = default;
 		TSet(const TSet&) = default;
-		TSet& operator=(TSet&&) = default;
+		TSet& operator=(TSet&&) noexcept = default;
 		TSet& operator=(const TSet&) = default;
 
 		TSet(std::initializer_list<TElementType> initList)

@@ -75,7 +75,7 @@ namespace Sailor
 		SAILOR_API __forceinline const TKeyType& First() const { return m_first; }
 		SAILOR_API __forceinline const TValueType& Second() const { return m_second; }
 
-		TKeyType m_first;
-		TValueType m_second;
+		TKeyType m_first{};
+		TValueType m_second{};
 	};
 }

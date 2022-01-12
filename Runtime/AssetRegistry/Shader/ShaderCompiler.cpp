@@ -343,7 +343,7 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderS
 	shaderc_shader_kind kind = shaderStage == RHI::EShaderStage::Fragment ? shaderc_glsl_fragment_shader : shaderc_glsl_vertex_shader;
 	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, source.c_str(), "main", options);
 
-	if (module.GetCompilationStatus() != shaderc_compilation_status_success)
+	if (module.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
 	{
 		SAILOR_LOG("Failed to compile shader: %s", module.GetErrorMessage().c_str());
 		return false;

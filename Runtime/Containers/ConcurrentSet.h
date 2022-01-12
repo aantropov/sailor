@@ -331,15 +331,15 @@ namespace Sailor
 
 		__forceinline bool TryLockAll()
 		{
-			for (size_t i = 0; i < concurrencyLevel; i++)
+			for (uint32_t i = 0; i < concurrencyLevel; i++)
 			{
 				if (!m_mutexes[i].try_lock())
 				{
-					for (size_t j = i; j >= 0; j--)
+					for (uint32_t j = i; j >= 0; j--)
 					{
 						m_mutexes[j].unlock();
-						return false;
 					}
+					return false;
 				}
 			}
 			return true;
