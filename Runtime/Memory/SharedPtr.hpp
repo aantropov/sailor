@@ -153,19 +153,20 @@ namespace Sailor
 		void IncrementRefCounter()
 		{
 			m_pControlBlock->m_sharedPtrCounter++;
+			m_pControlBlock->m_weakPtrCounter++;
 		}
 
 		void DecrementRefCounter()
 		{
-			if (m_pRawPtr != nullptr &&
-				--m_pControlBlock->m_sharedPtrCounter == 0)
+			if (m_pRawPtr != nullptr)
 			{
-				const volatile bool bShouldRemoveControlBlock = (m_pControlBlock->m_weakPtrCounter.load() == 0);
+				if (--m_pControlBlock->m_sharedPtrCounter == 0)
+				{
+					delete m_pRawPtr;
+					m_pRawPtr = nullptr;
+				}
 
-				delete m_pRawPtr;
-				m_pRawPtr = nullptr;
-
-				if (bShouldRemoveControlBlock)
+				if (--m_pControlBlock->m_weakPtrCounter == 0)
 				{
 					delete m_pControlBlock;
 					m_pControlBlock = nullptr;
