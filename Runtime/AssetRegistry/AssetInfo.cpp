@@ -32,7 +32,7 @@ bool AssetInfo::IsExpired() const
 		return true;
 	}
 
-	return m_loadTime < GetMetaLastModificationTime();
+	return m_loadTime < GetMetaLastModificationTime() || m_loadTime < GetAssetLastModificationTime();
 }
 
 DefaultAssetInfoHandler::DefaultAssetInfoHandler(AssetRegistry* assetRegistry)
@@ -52,7 +52,7 @@ std::time_t AssetInfo::GetMetaLastModificationTime() const
 
 std::string AssetInfo::GetMetaFilepath() const
 {
-	return m_assetFilename + "." + AssetRegistry::MetaFileExtension;
+	return m_folder + m_assetFilename + "." + AssetRegistry::MetaFileExtension;
 }
 
 std::string AssetInfo::GetRelativeAssetFilepath() const
@@ -67,7 +67,6 @@ std::string AssetInfo::GetRelativeMetaFilepath() const
 	std::string res = GetMetaFilepath();
 	Utils::Erase(res, AssetRegistry::ContentRootFolder);
 	return res;
-
 }
 
 AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) const
@@ -98,8 +97,10 @@ AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) 
 {
 	AssetInfoPtr res = CreateAssetInfo();
 	res->m_folder = std::filesystem::path(assetInfoPath).remove_filename().string();
+
 	// Temp to pass asset filename to Reload Asset Info
-	res->m_assetFilename = std::filesystem::path(assetInfoPath.substr(0, assetInfoPath.size() - strlen(AssetRegistry::MetaFileExtension) - 1)).string();
+	const std::string filename = std::filesystem::path(assetInfoPath).filename().string();
+	res->m_assetFilename = filename.substr(0, filename.length() - strlen(AssetRegistry::MetaFileExtension) - 1);
 
 	ReloadAssetInfo(res);
 
