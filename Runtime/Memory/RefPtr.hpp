@@ -16,7 +16,7 @@ namespace Sailor
 
 	protected:
 
-		TSmartPtrCounter RefCounter = 0;
+		TSmartPtrCounter m_refCounter = 0;
 		friend class TRefPtrBase;
 	};
 
@@ -26,7 +26,7 @@ namespace Sailor
 
 		TRefBase* m_pRawPtr = nullptr;
 
-		TSmartPtrCounter& GetRefCounter() const noexcept { return m_pRawPtr->RefCounter; }
+		TSmartPtrCounter& GetRefCounter() const noexcept { return m_pRawPtr->m_refCounter; }
 
 		virtual ~TRefPtrBase() = default;
 	};

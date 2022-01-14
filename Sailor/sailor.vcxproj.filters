@@ -513,4 +513,9 @@
       <Filter>Runtime\Containers</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="Containers.natvis">
+      <Filter>Runtime\Containers</Filter>
+    </Natvis>
+  </ItemGroup>
 </Project>
