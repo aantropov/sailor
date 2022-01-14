@@ -72,6 +72,8 @@ namespace Sailor
 			return *this;
 		}
 
+		SAILOR_API bool operator==(const TPair& rhs) const { return m_second == rhs.m_second && m_first == rhs.m_first; }
+
 		SAILOR_API __forceinline const TKeyType& First() const { return m_first; }
 		SAILOR_API __forceinline const TValueType& Second() const { return m_second; }
 

@@ -359,6 +359,7 @@ namespace Sailor
 
 		template<typename TResult = void, typename TArgs = void>
 		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
+
 		using ITaskPtr = TSharedPtr<ITask>;
 	}
 }

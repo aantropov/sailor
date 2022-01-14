@@ -19,7 +19,11 @@ namespace Sailor
 
 		SAILOR_API UID() = default;
 		SAILOR_API UID(const UID& inUID) = default;
-		SAILOR_API void operator=(const UID& inUID);
+		SAILOR_API UID(UID&& inUID) = default;
+
+		SAILOR_API UID& operator=(const UID& inUID) = default;
+		SAILOR_API UID& operator=(UID&& inUID) = default;
+
 		inline SAILOR_API bool operator==(const UID& rhs) const;
 		inline SAILOR_API bool operator!=(const UID& rhs) const { return !(rhs == *this); }
 

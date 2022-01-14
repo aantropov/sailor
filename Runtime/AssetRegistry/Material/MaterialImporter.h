@@ -37,11 +37,27 @@ namespace Sailor
 		void SetSampler(const std::string& name, TexturePtr value);
 		void SetUniform(const std::string& name, glm::vec4 value);
 
+		void SetShader(ShaderSetPtr shader) { m_shader = shader; }
+		void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
+
+		const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
+		const TConcurrentMap<std::string, glm::vec4>& GetUniforms() const { return m_uniforms; }
+
+		void ClearSamplers();
+		void ClearUniforms();
+
+		const RHI::RenderState& GetRenderState(const RHI::RenderState& renderState) const { return m_renderState; }
+
+		void UpdateRHIResource();
+
 	protected:
 
 		RHI::MaterialPtr m_rhiMaterial;
 		std::atomic<bool> m_bIsReady;
 
+		ShaderSetPtr m_shader;
+
+		RHI::RenderState m_renderState;
 		TConcurrentMap<std::string, TexturePtr> m_samplers;
 		TConcurrentMap<std::string, glm::vec4> m_uniforms;
 

@@ -22,6 +22,7 @@ namespace Sailor
 	{
 	public:
 
+		// We aren't able to create shader without asset
 		ShaderSet(UID uid) : Object(std::move(uid)) {}
 
 		virtual bool IsReady() const override;
@@ -84,7 +85,7 @@ namespace Sailor
 	public:
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
-		SAILOR_API void CompileAllPermutations(const UID& assetUID);
+		SAILOR_API JobSystem::TaskPtr<void, void> CompileAllPermutations(const UID& assetUID);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
 		virtual SAILOR_API ~ShaderCompiler() override;
@@ -111,10 +112,13 @@ namespace Sailor
 		// Compile related functions
 		SAILOR_API void ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
 		SAILOR_API void GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
+		SAILOR_API void GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
 		SAILOR_API static bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const TVector<std::string>& defines, const TVector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
 		SAILOR_API static uint32_t GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines);
 		SAILOR_API static TVector<std::string> GetDefines(const TVector<std::string>& defines, uint32_t permutation);
+
+		SAILOR_API bool UpdateRHIResource(TSharedPtr<ShaderSet> shader, uint32_t permutation);
 
 	private:
 

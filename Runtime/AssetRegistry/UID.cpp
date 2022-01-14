@@ -21,11 +21,6 @@ const std::string& UID::ToString() const
 	return m_UID;
 }
 
-void UID::operator=(const UID& inUID)
-{
-	m_UID = inUID.m_UID;
-}
-
 bool UID::operator==(const UID& rhs) const
 {
 	return m_UID == rhs.m_UID;

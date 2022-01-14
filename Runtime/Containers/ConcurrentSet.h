@@ -319,6 +319,11 @@ namespace Sailor
 				}
 			}
 
+			if (element->GetContainer().Contains(inElement))
+			{
+				return;
+			}
+
 			element->GetContainer().EmplaceBack(std::move(inElement));
 			element->m_bloom |= hash;
 
