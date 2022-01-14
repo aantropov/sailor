@@ -64,11 +64,10 @@ bool ShaderBindingSet::HasParameter(const std::string& parameter) const
 
 	if (index != -1)
 	{
-
 		if (m_layoutBindings[index].m_members.FindIf([&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
 			{
 				return shaderLayoutBinding.m_name == variable;
-			}) == -1)
+			}) != -1)
 		{
 			return true;
 		}

@@ -72,24 +72,16 @@ void Material::UpdateRHIResource()
 
 	for (auto& sampler : m_samplers)
 	{
-		SAILOR_LOG("Material %s, sampler %s ", GetUID().ToString().c_str(), sampler.m_first.c_str());
-
 		if (bindings->HasBinding(sampler.m_first))
 		{
-			SAILOR_LOG("True");
-
 			RHI::Renderer::GetDriver()->UpdateShaderBinding(bindings, sampler.m_first, sampler.m_second.Lock()->GetRHI());
 		}
 	}
 
 	for (auto& uniform : m_uniforms)
 	{
-		SAILOR_LOG("Material %s, uniform %s ", GetUID().ToString().c_str(), uniform.m_first.c_str());
-
 		if (bindings->HasParameter(uniform.m_first))
 		{
-			SAILOR_LOG("True");
-
 			std::string outBinding;
 			std::string outVariable;
 
