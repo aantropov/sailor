@@ -425,6 +425,17 @@ namespace Sailor::RHI
 		uint32_t m_arrayDimensions = 1u;
 		uint32_t m_arrayStride = 0u;
 
+		SAILOR_API bool operator==(const ShaderLayoutBindingMember& rhs) const
+		{
+			return	m_type == rhs.m_type &&
+				m_name == rhs.m_name &&
+				m_absoluteOffset == rhs.m_absoluteOffset &&
+				m_size == rhs.m_size &&
+				m_arrayCount == rhs.m_arrayCount &&
+				m_arrayDimensions == rhs.m_arrayDimensions &&
+				m_arrayStride == rhs.m_arrayStride;
+		}
+
 		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};
 
@@ -438,6 +449,17 @@ namespace Sailor::RHI
 		uint32_t m_size = 0u;
 		uint32_t m_set = 0u;
 		uint32_t m_arrayCount = 0u;
+
+		SAILOR_API bool operator==(const ShaderLayoutBinding& rhs) const
+		{
+			return m_type == rhs.m_type &&
+				m_binding == rhs.m_binding &&
+				m_size == rhs.m_size &&
+				m_set == rhs.m_set &&
+				m_arrayCount == rhs.m_arrayCount &&
+				m_members == rhs.m_members &&
+				m_name == rhs.m_name;
+		}
 
 		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};

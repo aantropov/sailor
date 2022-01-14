@@ -979,3 +979,12 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 
 	return countDescriptorSets > 0;
 }
+
+bool operator==(const VkDescriptorSetLayoutBinding& lhs, const VkDescriptorSetLayoutBinding& rhs)
+{
+	return	lhs.binding == rhs.binding &&
+		lhs.descriptorType == rhs.descriptorType &&
+		lhs.descriptorCount == rhs.descriptorCount &&
+		lhs.stageFlags == rhs.stageFlags &&
+		lhs.pImmutableSamplers == rhs.pImmutableSamplers;
+}

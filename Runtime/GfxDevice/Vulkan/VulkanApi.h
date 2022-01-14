@@ -214,6 +214,7 @@ namespace Sailor::GfxDevice::Vulkan
 		VulkanStateColorBlendingPtr m_additiveBlendMode;
 		VulkanStateColorBlendingPtr m_alphaBlendingBlendMode;
 		VulkanStateColorBlendingPtr m_multiplyBlendMode;
-
 	};
 }
+
+bool operator==(const VkDescriptorSetLayoutBinding& lhs, const VkDescriptorSetLayoutBinding& rhs);

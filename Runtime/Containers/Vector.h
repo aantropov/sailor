@@ -161,7 +161,7 @@ namespace Sailor
 
 			for (size_t i = 0; i < m_arrayNum; i++)
 			{
-				if (otherArray[i] != operator[](i))
+				if (!(otherArray[i] == operator[](i)))
 				{
 					return false;
 				}
