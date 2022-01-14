@@ -79,7 +79,7 @@ namespace Sailor
 
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
-			SAILOR_API const TWeakPtr<ITask>& GetChainedTaskNext() const { return m_chainedTaskNext; }
+			SAILOR_API const TVector<TWeakPtr<ITask>>& GetChainedTasksNext() const { return m_chainedTasksNext; }
 			SAILOR_API const TWeakPtr<ITask>& GetChainedTaskPrev() const { return m_chainedTaskPrev; }
 
 			SAILOR_API void SetChainedTaskPrev(TWeakPtr<ITask>& job);
@@ -95,7 +95,7 @@ namespace Sailor
 			}
 
 			TWeakPtr<ITask> m_self;
-			TWeakPtr<ITask> m_chainedTaskNext;
+			TVector<TWeakPtr<ITask>> m_chainedTasksNext;
 			TWeakPtr<ITask> m_chainedTaskPrev;
 
 			std::atomic<bool> m_bIsFinished = false;
@@ -142,7 +142,7 @@ namespace Sailor
 		template<typename TResult = void, typename TArgs = void>
 		class Task : public ITask, public ITaskWithResult<TResult>, public ITaskWithArgs<TArgs>
 		{
-			using Task::ITask::m_chainedTaskNext;
+			using Task::ITask::m_chainedTasksNext;
 			using Task::ITask::m_chainedTaskPrev;
 
 		public:
@@ -158,10 +158,9 @@ namespace Sailor
 					ITaskWithResult<TResult>::m_result = m_function(ITaskWithArgs<TArgs>::m_args);
 				}
 
-				if (m_chainedTaskNext)
+				for (auto& m_chainedTaskNext : m_chainedTasksNext)
 				{
 					dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr())->SetArgs(ITaskWithResult<TResult>::m_result);
-
 				}
 
 				Complete();
@@ -183,7 +182,7 @@ namespace Sailor
 			{
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
 				res->SetChainedTaskPrev(m_self);
-				m_chainedTaskNext = res;
+				m_chainedTasksNext.Add(res);
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
 				res->Join(m_self);
 
@@ -202,7 +201,7 @@ namespace Sailor
 		template<>
 		class Task<void, void> : public ITask
 		{
-			using Task::ITask::m_chainedTaskNext;
+			using Task::ITask::m_chainedTasksNext;
 			using Task::ITask::m_chainedTaskPrev;
 
 		public:
@@ -231,7 +230,7 @@ namespace Sailor
 			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
 			{
 				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
-				m_chainedTaskNext = res;
+				m_chainedTasksNext.Add(res);
 				res->SetChainedTaskPrev(m_self);
 				res->Join(m_self);
 
@@ -250,7 +249,7 @@ namespace Sailor
 		template<typename TArgs>
 		class Task<void, TArgs> : public ITask, public ITaskWithArgs<TArgs>
 		{
-			using Task::ITask::m_chainedTaskNext;
+			using Task::ITask::m_chainedTasksNext;
 			using Task::ITask::m_chainedTaskPrev;
 
 		public:
@@ -279,7 +278,7 @@ namespace Sailor
 			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
 			{
 				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
-				m_chainedTaskNext = res;
+				m_chainedTasksNext.Add(res);
 				res->SetChainedTaskPrev(m_self);
 				res->Join(m_self);
 
@@ -298,7 +297,7 @@ namespace Sailor
 		template<typename TResult>
 		class Task<TResult, void> : public ITask, public ITaskWithResult<TResult>
 		{
-			using Task::ITask::m_chainedTaskNext;
+			using Task::ITask::m_chainedTasksNext;
 			using Task::ITask::m_chainedTaskPrev;
 
 		public:
@@ -314,7 +313,7 @@ namespace Sailor
 					ITaskWithResult<TResult>::m_result = m_function();
 				}
 
-				if (m_chainedTaskNext)
+				for (auto& m_chainedTaskNext : m_chainedTasksNext)
 				{
 					dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr())->SetArgs(ITaskWithResult<TResult>::m_result);
 				}
@@ -338,7 +337,7 @@ namespace Sailor
 			SAILOR_API TSharedPtr<Task<TResult1, TArgs1>> Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
-				m_chainedTaskNext = res;
+				m_chainedTasksNext.Add(res);
 
 				res->SetChainedTaskPrev(m_self);
 

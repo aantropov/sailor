@@ -118,7 +118,7 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 	{
 		auto pTexture = TSharedPtr<Texture>::Make(uid);
 
-		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
+		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load Texture",
 			[pTexture, assetInfo, this]()
 			{
 				ByteCode decodedData;

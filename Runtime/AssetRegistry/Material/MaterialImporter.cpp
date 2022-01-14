@@ -65,6 +65,8 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 
 void Material::UpdateRHIResource()
 {
+	SAILOR_LOG("Update material RHI resource: %s", GetUID().ToString().c_str());
+
 	m_bIsReady = false;
 	m_rhiMaterial = RHI::Renderer::GetDriver()->CreateMaterial(m_renderState, m_shader);
 
@@ -418,7 +420,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 						App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, bool>(
 							[=](bool bRes)
 							{
-								if (bRes)
+								//if (bRes)
 								{
 									texture.Lock()->AddHotReloadDependentObject(pMaterial);
 									pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
