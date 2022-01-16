@@ -129,6 +129,11 @@ void App::Start()
 			break;
 		}
 
+		if (GlobalInput::GetInputState().IsKeyPressed(VK_F5))
+		{
+			GetSubmodule<AssetRegistry>()->ScanContentFolder();
+		}
+
 		if (bCanCreateNewFrame)
 		{
 			if (GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON))

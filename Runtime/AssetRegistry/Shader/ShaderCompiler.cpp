@@ -165,7 +165,7 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 	return true;
 }
 
-void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permutation)
+bool ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permutation)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -206,9 +206,11 @@ void ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 	{
 		m_shaderCache.CacheSpirvWithDebugInfo(assetUID, permutation, spirvVertexByteCodeDebug, spirvFragmentByteCodeDebug);
 	}
+
+	return bResultCompileVertexShader && bResultCompileFragmentShader;
 }
 
-JobSystem::TaskPtr<void, void> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
+JobSystem::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 {
 	SAILOR_PROFILE_FUNCTION();
 	if (TWeakPtr<ShaderAsset> pWeakShader = LoadShaderAsset(assetUID))
@@ -220,7 +222,7 @@ JobSystem::TaskPtr<void, void> ShaderCompiler::CompileAllPermutations(const UID&
 		{
 			SAILOR_LOG("Skip shader compilation (missing fragment/vertex module): %s", assetInfo->GetAssetFilepath().c_str());
 
-			return nullptr;
+			return JobSystem::TaskPtr<bool>::Make(false);
 		}
 
 		const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->GetSupportedDefines().Num());
@@ -237,17 +239,18 @@ JobSystem::TaskPtr<void, void> ShaderCompiler::CompileAllPermutations(const UID&
 
 		if (permutationsToCompile.IsEmpty())
 		{
-			return nullptr;
+			return JobSystem::TaskPtr<bool>::Make(false);
 		}
 
 		auto scheduler = App::GetSubmodule<JobSystem::Scheduler>();
 
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
-		JobSystem::TaskPtr<void, void> saveCacheJob = scheduler->CreateTask("Save Shader Cache", [=]()
+		JobSystem::TaskPtr<bool> saveCacheJob = scheduler->CreateTaskWithResult<bool>("Save Shader Cache", [=]()
 			{
 				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
 				m_shaderCache.SaveCache();
+				return true;
 			});
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
@@ -270,7 +273,7 @@ JobSystem::TaskPtr<void, void> ShaderCompiler::CompileAllPermutations(const UID&
 		SAILOR_LOG("Cannot find shader asset %s", assetUID.ToString().c_str());
 	}
 
-	return nullptr;
+	return JobSystem::TaskPtr<bool>::Make(false);
 }
 
 TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
@@ -321,14 +324,19 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 		auto compileTask = CompileAllPermutations(assetInfo->GetUID());
 		if (compileTask)
 		{
-			compileTask->Then<void>([=]()
+			compileTask->Then<void, bool>([=](bool bRes)
 				{
-					for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
+					if (bRes)
 					{
-						SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+						for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
+						{
+							SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
 
-						UpdateRHIResource(loadedShader.m_second, loadedShader.m_first);
-						loadedShader.m_second->TraceHotReload(nullptr);
+							if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+							{
+								loadedShader.m_second->TraceHotReload(nullptr);
+							}
+						}
 					}
 				}
 			);
@@ -417,27 +425,31 @@ TVector<std::string> ShaderCompiler::GetDefines(const TVector<std::string>& defi
 	return res;
 }
 
-void ShaderCompiler::GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
+bool ShaderCompiler::GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
 {
 	if (auto pShader = LoadShaderAsset(assetUID).Lock())
 	{
-		GetSpirvCode(assetUID, GetPermutation(pShader->GetSupportedDefines(), defines), outVertexByteCode, outFragmentByteCode, bIsDebug);
+		return GetSpirvCode(assetUID, GetPermutation(pShader->GetSupportedDefines(), defines), outVertexByteCode, outFragmentByteCode, bIsDebug);
 	}
+	return false;
 }
 
-void ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
+bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (auto pShader = LoadShaderAsset(assetUID).Lock())
 	{
+		bool bCompiledSuccesfully = true;
 		if (m_shaderCache.IsExpired(assetUID, permutation))
 		{
-			ForceCompilePermutation(assetUID, permutation);
+			bCompiledSuccesfully = ForceCompilePermutation(assetUID, permutation);
 		}
-
-		m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, bIsDebug);
+		
+		return m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, bIsDebug) && bCompiledSuccesfully;
 	}
+
+	return false;
 }
 
 JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)
@@ -544,14 +556,20 @@ bool ShaderCompiler::UpdateRHIResource(TSharedPtr<ShaderSet> pShader, uint32_t p
 
 	RHI::ShaderByteCode debugVertexSpirv;
 	RHI::ShaderByteCode debugFragmentSpirv;
-	GetSpirvCode(pShader->GetUID(), permutation, debugVertexSpirv, debugFragmentSpirv, true);
-
-	pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
-	pRaw->m_rhiFragmentShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
+	if (!GetSpirvCode(pShader->GetUID(), permutation, debugVertexSpirv, debugFragmentSpirv, true))
+	{
+		return false;
+	}
 
 	RHI::ShaderByteCode vertexByteCode;
 	RHI::ShaderByteCode fragmentByteCode;
-	GetSpirvCode(pShader->GetUID(), permutation, vertexByteCode, fragmentByteCode, false);
+	if (!GetSpirvCode(pShader->GetUID(), permutation, vertexByteCode, fragmentByteCode, false))
+	{
+		return false;
+	}
+
+	pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
+	pRaw->m_rhiFragmentShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
 
 	pRaw->m_rhiVertexShader = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, vertexByteCode);
 	pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);

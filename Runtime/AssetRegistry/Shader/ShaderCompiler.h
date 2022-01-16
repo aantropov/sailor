@@ -85,7 +85,7 @@ namespace Sailor
 	public:
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
-		SAILOR_API JobSystem::TaskPtr<void, void> CompileAllPermutations(const UID& assetUID);
+		SAILOR_API JobSystem::TaskPtr<bool> CompileAllPermutations(const UID& assetUID);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
 		virtual SAILOR_API ~ShaderCompiler() override;
@@ -110,9 +110,9 @@ namespace Sailor
 		SAILOR_API static bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
 
 		// Compile related functions
-		SAILOR_API void ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
-		SAILOR_API void GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
-		SAILOR_API void GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
+		SAILOR_API bool ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
+		SAILOR_API bool GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
+		SAILOR_API bool GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
 		SAILOR_API static bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const TVector<std::string>& defines, const TVector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
 		SAILOR_API static uint32_t GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines);

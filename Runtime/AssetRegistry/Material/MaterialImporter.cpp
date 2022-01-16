@@ -239,6 +239,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					auto pMaterial = material.Lock();
 					pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
 
+
 					pMaterial->SetShader(pShader);
 					pShader.Lock()->AddHotReloadDependentObject(material);
 
@@ -402,7 +403,9 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 		auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
 
 		pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
+
 		pMaterial->SetShader(pShader);
+		pShader.Lock()->AddHotReloadDependentObject(pMaterial);
 
 		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
 			[pMaterial, pMaterialAsset]()
