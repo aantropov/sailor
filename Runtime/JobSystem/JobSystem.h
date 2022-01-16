@@ -125,9 +125,11 @@ namespace Sailor
 
 			SAILOR_API Scheduler() = default;
 
+			SAILOR_API void RunChainedTasks(const ITaskPtr& pJob);
+
 		protected:
 
-			SAILOR_API void RunChainedTasks(const ITaskPtr& pJob);
+			SAILOR_API void RunChainedTasks_Internal(const ITaskPtr& pJob, const ITaskPtr& pJobToIgnore);
 
 			SAILOR_API void GetThreadSyncVarsByThreadType(
 				EThreadType threadType,

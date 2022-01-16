@@ -183,8 +183,7 @@ void Scheduler::ProcessJobsOnMainThread()
 	}
 }
 
-// TODO: NOT ALL CHAINED TASKS ARE RUN
-void Scheduler::RunChainedTasks(const ITaskPtr& pJob)
+void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pJob, const ITaskPtr& pJobToIgnore)
 {
 	for (auto& chainedTasksNext : pJob->GetChainedTasksNext())
 	{
@@ -197,22 +196,31 @@ void Scheduler::RunChainedTasks(const ITaskPtr& pJob)
 				break;
 			}
 
-			Run(pCurrentChainedTask, false);
-		}	
+			if (pCurrentChainedTask != pJobToIgnore)
+			{
+				Run(pCurrentChainedTask, false);
+				RunChainedTasks_Internal(pCurrentChainedTask, pJob);
+			}
+		}
 	}
 
-	// TODO: Should we support tricky task dependencies? If so then we should rewrite the code 
 	ITaskPtr pCurrentChainedTask;
 	while (pCurrentChainedTask = pJob->GetChainedTaskPrev().TryLock())
 	{
-		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted())
+		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted() || pCurrentChainedTask == pJobToIgnore)
 		{
 			// No point to trace next
 			break;
 		}
 
 		Run(pCurrentChainedTask, false);
+		RunChainedTasks_Internal(pCurrentChainedTask, pJob);
 	}
+}
+
+void Scheduler::RunChainedTasks(const ITaskPtr& pJob)
+{
+	RunChainedTasks_Internal(pJob, nullptr);
 }
 
 void Scheduler::Run(const ITaskPtr& pJob, bool bAutoRunChainedTasks)
