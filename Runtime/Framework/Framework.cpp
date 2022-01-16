@@ -195,8 +195,7 @@ void Framework::CpuFrame(FrameState& state)
 
 					if (auto material = weakMaterial.Lock())
 					{
-						if (material->GetRHI() && material->GetRHI()->GetBindings() &&
-							material->GetRHI()->GetBindings()->HasBinding("material"))
+						if (material->IsReady() && material->GetRHI()->GetBindings()->HasBinding("material"))
 						{
 							RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList,
 								material->GetRHI(),
