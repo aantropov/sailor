@@ -278,13 +278,15 @@ namespace Sailor
 			return false;
 		}
 
-		void Clear()
+		void Clear(uint32_t desiredBucketsNum = 8)
 		{
 			LockAll();
 
 			m_num = 0;
 			m_first = m_last = nullptr;
 			m_buckets.Clear();
+
+			m_buckets.Resize(desiredBucketsNum);
 
 			UnlockAll();
 		}

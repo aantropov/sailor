@@ -250,6 +250,10 @@ JobSystem::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& asset
 			{
 				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
 				m_shaderCache.SaveCache();
+
+				//Unload shader asset text
+				m_shaderAssetsCache.Remove(assetInfo->GetUID());
+
 				return true;
 			});
 
@@ -282,7 +286,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 
 	if (ShaderAssetInfoPtr shaderAssetInfo = dynamic_cast<ShaderAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
-		if (const auto& loadedShader = m_loadedShaderAssets.Find(uid); loadedShader != m_loadedShaderAssets.end())
+		if (const auto& loadedShader = m_shaderAssetsCache.Find(uid); loadedShader != m_shaderAssetsCache.end())
 		{
 			return loadedShader->m_second;
 		}
@@ -308,7 +312,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 		ShaderAsset* shader = new ShaderAsset();
 		shader->Deserialize(j_shader);
 
-		return m_loadedShaderAssets[uid] = TSharedPtr<ShaderAsset>(shader);
+		return m_shaderAssetsCache[uid] = TSharedPtr<ShaderAsset>(shader);
 	}
 
 	SAILOR_LOG("Cannot find shader asset info with UID: %s", uid.ToString().c_str());
@@ -319,7 +323,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	if (bWasExpired)
 	{
-		m_loadedShaderAssets.Remove(assetInfo->GetUID());
+		m_shaderAssetsCache.Remove(assetInfo->GetUID());
 
 		auto compileTask = CompileAllPermutations(assetInfo->GetUID());
 		if (compileTask)
@@ -445,7 +449,7 @@ bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI
 		{
 			bCompiledSuccesfully = ForceCompilePermutation(assetUID, permutation);
 		}
-		
+
 		return m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, bIsDebug) && bCompiledSuccesfully;
 	}
 

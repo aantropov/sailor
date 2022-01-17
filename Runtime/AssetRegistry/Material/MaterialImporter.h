@@ -38,6 +38,8 @@ namespace Sailor
 		void SetUniform(const std::string& name, glm::vec4 value);
 
 		void SetShader(ShaderSetPtr shader) { m_shader = shader; }
+		ShaderSetPtr GetShader() { return m_shader; }
+
 		void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
 
 		const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
@@ -144,6 +146,7 @@ namespace Sailor
 		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::GetData data);
 
 		SAILOR_API MaterialPtr GetLoadedMaterial(UID uid);
+		SAILOR_API JobSystem::TaskPtr<bool> GetLoadPromise(UID uid);
 
 	protected:
 

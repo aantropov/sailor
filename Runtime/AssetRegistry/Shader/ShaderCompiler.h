@@ -101,7 +101,7 @@ namespace Sailor
 		ShaderCache m_shaderCache;
 
 		TConcurrentMap<UID, TVector<TPair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;
-		TConcurrentMap<UID, TSharedPtr<ShaderAsset>> m_loadedShaderAssets;
+		TConcurrentMap<UID, TSharedPtr<ShaderAsset>> m_shaderAssetsCache;
 		TConcurrentMap<UID, TVector<TPair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
 
 		// ShaderAsset related functions
