@@ -159,7 +159,7 @@ public:
 		stdList.Clear();
 		tList.Clear();
 
-		countToDelete = count / 64;
+		countToDelete = count / 256;
 
 		srand(0);
 		stdList.Start();
