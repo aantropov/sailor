@@ -1,7 +1,7 @@
 {
     "blend_mode": 0,
     "cull_mode": 2,
-    "defines": null,
+    "defines": ["NO_DIFFUSE"],
     "depth_bias": 0.0,
     "enable_depth_test": true,
     "enable_z_write": true,
