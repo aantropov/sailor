@@ -423,7 +423,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 						App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, bool>(
 							[=](bool bRes)
 							{
-								//if (bRes)
+								if (bRes)
 								{
 									texture.Lock()->AddHotReloadDependentObject(pMaterial);
 									pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
