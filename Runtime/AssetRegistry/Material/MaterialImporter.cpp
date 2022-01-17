@@ -328,7 +328,8 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 	asset.Serialize(newMaterial);
 
 	std::ofstream assetFile(assetFilepath);
-	assetFile << newMaterial.dump();
+
+	assetFile << newMaterial.dump(Sailor::JsonDumpIndent);
 	assetFile.close();
 
 	return App::GetSubmodule<AssetRegistry>()->LoadAsset(assetFilepath);

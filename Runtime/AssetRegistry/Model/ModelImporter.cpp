@@ -212,7 +212,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 							if (material)
 							{
 								model.GetRawPtr()->m_materials.Add(material);
-								model.GetRawPtr()->AddHotReloadDependentObject(material);
+								material.Lock()->AddHotReloadDependentObject(model);
 
 								if (loadMaterial)
 								{

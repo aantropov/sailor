@@ -81,7 +81,7 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) co
 
 	newMeta["filename"] = std::filesystem::path(assetFilepath).filename().string();
 
-	assetFile << newMeta.dump();
+	assetFile << newMeta.dump(Sailor::JsonDumpIndent);
 	assetFile.close();
 
 	auto assetInfoPtr = LoadAssetInfo(assetInfoFilename);

@@ -118,7 +118,7 @@ void ShaderCache::Initialize()
 
 		m_cache.Serialize(dataJson);
 
-		assetFile << dataJson.dump();
+		assetFile << dataJson.dump(Sailor::JsonDumpIndent);
 		assetFile.close();
 	}
 
@@ -150,7 +150,7 @@ void ShaderCache::SaveCache(bool bForcely)
 		json cacheJson;
 		m_cache.Serialize(cacheJson);
 
-		assetFile << cacheJson.dump();
+		assetFile << cacheJson.dump(Sailor::JsonDumpIndent);
 		assetFile.close();
 
 		m_bIsDirty = false;

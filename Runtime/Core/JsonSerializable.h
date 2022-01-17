@@ -9,6 +9,8 @@ using json = nlohmann::json;
 
 namespace Sailor
 {
+	const uint32_t JsonDumpIndent = 4;
+
 	class IJsonSerializable
 	{
 	public:
