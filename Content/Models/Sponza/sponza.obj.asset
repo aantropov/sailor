@@ -1,1 +1,8 @@
-{"batch_by_material":true,"filename":"sponza.obj","generate_materials":true,"uid":{"uid":"{8A3A7C2B-F270-4C0A-8B91-5F5AF40C6738}"}}
+{
+    "batch_by_material": true,
+    "filename": "sponza.obj",
+    "generate_materials": true,
+    "uid": {
+        "uid": "{FEE79B46-1B46-402E-8D79-21215F2AEB8A}"
+    }
+}
