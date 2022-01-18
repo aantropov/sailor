@@ -468,12 +468,14 @@ namespace Sailor::RHI
 	{
 	public:
 		glm::vec3 m_position;
+		glm::vec3 m_normal;
 		glm::vec2 m_texcoord;
 		glm::vec4 m_color;
 
 		SAILOR_API bool operator==(const Vertex& other) const
 		{
 			return m_position == other.m_position &&
+				m_normal == other.m_normal &&
 				m_color == other.m_color &&
 				m_texcoord == other.m_texcoord;
 		}

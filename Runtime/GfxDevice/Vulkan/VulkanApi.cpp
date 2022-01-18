@@ -689,7 +689,7 @@ VkVertexInputBindingDescription VertexFactory<RHI::Vertex>::GetBindingDescriptio
 
 TVector<VkVertexInputAttributeDescription> VertexFactory<RHI::Vertex>::GetAttributeDescriptions()
 {
-	TVector<VkVertexInputAttributeDescription> attributeDescriptions(3);
+	TVector<VkVertexInputAttributeDescription> attributeDescriptions(4);
 
 	attributeDescriptions[0].binding = 0;
 	attributeDescriptions[0].location = 0;
@@ -698,13 +698,18 @@ TVector<VkVertexInputAttributeDescription> VertexFactory<RHI::Vertex>::GetAttrib
 
 	attributeDescriptions[1].binding = 0;
 	attributeDescriptions[1].location = 1;
-	attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
-	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_texcoord);
+	attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_normal);
 
 	attributeDescriptions[2].binding = 0;
 	attributeDescriptions[2].location = 2;
-	attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-	attributeDescriptions[2].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_color);
+	attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+	attributeDescriptions[2].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_texcoord);
+
+	attributeDescriptions[3].binding = 0;
+	attributeDescriptions[3].location = 3;
+	attributeDescriptions[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	attributeDescriptions[3].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_color);
 
 	return attributeDescriptions;
 }

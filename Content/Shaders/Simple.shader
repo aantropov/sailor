@@ -43,8 +43,9 @@ layout(set=2, binding=0) uniform MaterialData
 #endif
 
 layout(location=0) in vec3 inPosition;
-layout(location=1) in vec2 inTexcoord;
-layout(location=2) in vec4 inColor;
+layout(location=1) in vec3 inNormal;
+layout(location=2) in vec2 inTexcoord;
+layout(location=3) in vec4 inColor;
 
 layout(location=0) out vec4 fragColor;
 layout(location=1) out vec2 fragTexcoord;
@@ -53,8 +54,10 @@ void main()
 {
 #ifdef USE_UNIFORM_BUFFER
     gl_Position = frame.projection * frame.view * data.instance.model * vec4(inPosition, 1.0);
+    vec4 worldNormal = data.instance.model * vec4(inNormal, 1.0);
 #else
     gl_Position = frame.projection * frame.view * data.instance[gl_BaseInstance].model * vec4(inPosition, 1.0);
+    vec4 worldNormal = data.instance[gl_BaseInstance].model * vec4(inNormal, 1.0);
 #endif
 
     fragColor = 1 - inColor * gl_Position.z / 3000;
