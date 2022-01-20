@@ -306,10 +306,10 @@
     <ClInclude Include="..\Runtime\Containers\ConcurrentMap.h">
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Engine\Object.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\Engine\EngineLoop.h">
+      <Filter>Runtime\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Engine\Object.h">
       <Filter>Runtime\Engine</Filter>
     </ClInclude>
   </ItemGroup>
@@ -506,10 +506,10 @@
     <ClCompile Include="..\Runtime\Containers\ListBenchmark.cpp">
       <Filter>Runtime\Containers</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Engine\Object.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\Engine\EngineLoop.cpp">
+      <Filter>Runtime\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Engine\Object.cpp">
       <Filter>Runtime\Engine</Filter>
     </ClCompile>
   </ItemGroup>
