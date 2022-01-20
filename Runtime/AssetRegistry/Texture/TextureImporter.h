@@ -10,7 +10,7 @@
 #include "AssetRegistry/AssetInfo.h"
 #include "TextureAssetInfo.h"
 #include "RHI/Renderer.h"
-#include "Framework/Object.h"
+#include "Engine/Object.h"
 
 namespace Sailor
 {

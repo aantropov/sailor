@@ -40,9 +40,6 @@
     <Filter Include="Runtime\Math">
       <UniqueIdentifier>{a8fee1ec-103d-48d0-b93b-f726495399f4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Runtime\Framework">
-      <UniqueIdentifier>{fdc87901-fb01-4592-bfeb-c831946fcd25}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Runtime\Platform\Win32">
       <UniqueIdentifier>{1c4b6dba-7224-49e7-a4ec-698a2b6500bb}</UniqueIdentifier>
     </Filter>
@@ -66,6 +63,9 @@
     </Filter>
     <Filter Include="Runtime\Containers">
       <UniqueIdentifier>{953ab208-0362-4921-b8d1-08e052356135}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\Engine">
+      <UniqueIdentifier>{fdc87901-fb01-4592-bfeb-c831946fcd25}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -152,9 +152,6 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\Math\Math.h">
       <Filter>Runtime\Math</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\Framework\Framework.h">
-      <Filter>Runtime\Framework</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Platform\Win32\ConsoleWindow.h">
       <Filter>Runtime\Platform\Win32</Filter>
@@ -279,9 +276,6 @@
     <ClInclude Include="..\Runtime\AssetRegistry\DefaultAssets.h">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Framework\Object.h">
-      <Filter>Runtime\Framework</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\JobSystem\Tasks.h">
       <Filter>Runtime\Jobsystem</Filter>
     </ClInclude>
@@ -311,6 +305,12 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\Containers\ConcurrentMap.h">
       <Filter>Runtime\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Engine\Object.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Engine\EngineLoop.h">
+      <Filter>Runtime\Engine</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -407,9 +407,6 @@
     <ClCompile Include="..\Runtime\Platform\Win32\Window.cpp">
       <Filter>Runtime\Platform\Win32</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Framework\Framework.cpp">
-      <Filter>Runtime\Framework</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\Memory\Memory.cpp">
       <Filter>Runtime\Memory</Filter>
     </ClCompile>
@@ -491,9 +488,6 @@
     <ClCompile Include="..\Runtime\AssetRegistry\DefaultAssets.cpp">
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Framework\Object.cpp">
-      <Filter>Runtime\Framework</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\JobSystem\Tasks.cpp">
       <Filter>Runtime\Jobsystem</Filter>
     </ClCompile>
@@ -512,9 +506,15 @@
     <ClCompile Include="..\Runtime\Containers\ListBenchmark.cpp">
       <Filter>Runtime\Containers</Filter>
     </ClCompile>
+    <ClCompile Include="..\Runtime\Engine\Object.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Engine\EngineLoop.cpp">
+      <Filter>Runtime\Engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Natvis Include="Containers.natvis">
+    <Natvis Include="..\Runtime\Containers\Containers.natvis">
       <Filter>Runtime\Containers</Filter>
     </Natvis>
   </ItemGroup>

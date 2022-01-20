@@ -21,7 +21,7 @@
 #include "VulkanDescriptors.h"
 #include "VulkanShaderModule.h"
 #include "RHI/Types.h"
-#include "Framework/Framework.h"
+#include "Engine/EngineLoop.h"
 #include "VulkanMemory.h"
 #include "VulkanBufferMemory.h"
 

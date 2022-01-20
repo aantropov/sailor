@@ -14,7 +14,7 @@
 #include "Containers/Set.h"
 #include "Containers/Map.h"
 #include "Containers/List.h"
-#include "Framework/Framework.h"
+#include "Engine/EngineLoop.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 
 using namespace Sailor;
@@ -75,7 +75,7 @@ void App::Initialize()
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
-	s_pInstance->AddSubmodule(TSubmodule<Framework>::Make());
+	s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
 
 	SAILOR_LOG("Sailor Engine initialized");
 }
@@ -144,7 +144,7 @@ void App::Start()
 
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
 			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
-			App::GetSubmodule<Framework>()->ProcessCpuFrame(currentFrame);
+			App::GetSubmodule<EngineLoop>()->ProcessCpuFrame(currentFrame);
 		}
 
 		if (bCanCreateNewFrame = GetSubmodule<Renderer>()->PushFrame(currentFrame))
@@ -164,7 +164,7 @@ void App::Start()
 			WCHAR Buff[50];
 			wsprintf(Buff, L"Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u", frameCounter,
 				GetSubmodule<Renderer>()->GetSmoothFps(),
-				(uint32_t)App::GetSubmodule<Framework>()->GetSmoothFps());
+				(uint32_t)App::GetSubmodule<EngineLoop>()->GetSmoothFps());
 
 			s_pInstance->m_pViewportWindow->SetWindowTitle(Buff);
 
@@ -191,7 +191,7 @@ void App::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
-	App::RemoveSubmodule<Framework>();
+	App::RemoveSubmodule<EngineLoop>();
 
 	// Release all resources before renderer
 	RemoveSubmodule<DefaultAssetInfoHandler>();

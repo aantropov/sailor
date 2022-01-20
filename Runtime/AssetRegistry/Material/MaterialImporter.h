@@ -15,7 +15,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
-#include "Framework/Object.h"
+#include "Engine/Object.h"
 
 namespace Sailor
 {

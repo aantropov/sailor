@@ -37,7 +37,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "JobSystem/JobSystem.h"
 #include "Platform/Win32/Input.h"
 #include "Winuser.h"
-#include "Framework/Framework.h"
+#include "Engine/EngineLoop.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "Memory/MemoryPoolAllocator.hpp"
 #include "RHI/Types.h"
@@ -563,13 +563,13 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 
 		// Temporary
 
-		if (auto framework = App::GetSubmodule<Framework>())
+		if (auto engineLoop = App::GetSubmodule<EngineLoop>())
 		{
-			if (framework->GetTestMesh())
+			if (engineLoop->GetTestMesh())
 			{
-				auto pModel = framework->GetTestMesh().Lock();
+				auto pModel = engineLoop->GetTestMesh().Lock();
 
-				auto& perInstanceBinding = framework->GetPerInstanceBinding();
+				auto& perInstanceBinding = engineLoop->GetPerInstanceBinding();
 
 				SAILOR_PROFILE_BLOCK("Render meshes");
 				for (uint32_t index = 0; index < pModel->GetMeshes().Num(); index++)

@@ -71,7 +71,7 @@ namespace Sailor
 		TUniquePtr<FrameData> m_pData;
 	};
 
-	class Framework : public TSubmodule<Framework>
+	class EngineLoop : public TSubmodule<EngineLoop>
 	{
 	public:
 
@@ -80,8 +80,8 @@ namespace Sailor
 
 		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
-		Framework() = default;
-		~Framework() override = default;
+		EngineLoop() = default;
+		~EngineLoop() override = default;
 
 		ModelPtr& GetTestMesh() { return m_testMesh; }
 		RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_testBinding; }

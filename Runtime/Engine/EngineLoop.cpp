@@ -1,5 +1,5 @@
 #pragma once
-#include "Framework.h"
+#include "EngineLoop.h"
 #include "Core/Defines.h"
 #include "Platform/Win32/Input.h"
 #include "Math.h"
@@ -61,7 +61,7 @@ RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 	return m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
 }
 
-void Framework::ProcessCpuFrame(FrameState& currentInputState)
+void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -86,7 +86,7 @@ void Framework::ProcessCpuFrame(FrameState& currentInputState)
 	}
 }
 
-void Framework::CpuFrame(FrameState& state)
+void EngineLoop::CpuFrame(FrameState& state)
 {
 	static bool bFirstFrame = true;
 

@@ -12,7 +12,7 @@
 #include "ModelAssetInfo.h"
 #include "JobSystem/JobSystem.h"
 #include "ModelAssetInfo.h"
-#include "Framework/Object.h"
+#include "Engine/Object.h"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
 #include "AssetRegistry/Material/MaterialImporter.h"

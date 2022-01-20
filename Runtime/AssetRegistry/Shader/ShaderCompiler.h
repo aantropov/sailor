@@ -14,7 +14,7 @@
 #include "RHI/Renderer.h"
 #include "ShaderCache.h"
 #include "JobSystem/Tasks.h"
-#include "Framework/Object.h"
+#include "Engine/Object.h"
 
 namespace Sailor
 {
