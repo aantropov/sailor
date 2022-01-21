@@ -1,0 +1,9 @@
+{
+"static_resources": [{"name":"g_defaultSampler", "uid":"", "path":"Content/Textures/VulkanLogo.png"}],
+"constants": [{"name":"PI", "value":3.1415926}],
+"render_targets": [{"name":"Main", "type":"R16G16B16A16_SFLOAT"}],
+"frame":[
+    {"node":"RenderScene", "params":[{"type":"Opaque"}, {"render_target":"Main"}]},
+    {"node":"Blit", "params":[{"src":"Main"}, {"dst":"BackBuffer"}]}
+]
+}

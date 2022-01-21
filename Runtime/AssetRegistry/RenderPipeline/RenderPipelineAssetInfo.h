@@ -14,7 +14,6 @@ namespace Sailor
 
 		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
 		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
-
 	};
 
 	using RenderPipelineAssetInfoPtr = RenderPipelineAssetInfo*;
