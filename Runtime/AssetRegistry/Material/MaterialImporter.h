@@ -30,8 +30,6 @@ namespace Sailor
 		const RHI::MaterialPtr& GetRHI() const { return m_rhiMaterial; }
 		RHI::MaterialPtr& GetRHI() { return m_rhiMaterial; }
 
-		void Flush();
-
 		virtual JobSystem::ITaskPtr OnHotReload() override;
 
 		void SetSampler(const std::string& name, TexturePtr value);
