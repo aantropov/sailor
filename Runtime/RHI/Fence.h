@@ -1,10 +1,10 @@
 #pragma once
 #include "Renderer.h"
 #include "Memory/RefPtr.hpp"
-#include "GfxDevice/Vulkan/VulkanFence.h"
+#include "GraphicsDriver/Vulkan/VulkanFence.h"
 #include "Types.h"
 
-using namespace GfxDevice::Vulkan;
+using namespace GraphicsDriver::Vulkan;
 
 namespace Sailor::RHI
 {

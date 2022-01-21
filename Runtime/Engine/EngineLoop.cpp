@@ -7,7 +7,7 @@
 #include "RHI/Renderer.h"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
-#include "RHI/GfxDevice.h"
+#include "RHI/GraphicsDriver.h"
 
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"

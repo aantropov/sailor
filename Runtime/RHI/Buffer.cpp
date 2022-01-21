@@ -1,10 +1,10 @@
 #include "Buffer.h"
 #include "Types.h"
-#include "GfxDevice/Vulkan/VulkanBuffer.h"
+#include "GraphicsDriver/Vulkan/VulkanBuffer.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
-using namespace Sailor::GfxDevice::Vulkan;
+using namespace Sailor::GraphicsDriver::Vulkan;
 
 size_t Buffer::GetSize() const
 {

@@ -2,13 +2,13 @@
 #include "Types.h"
 #include "Renderer.h"
 #include "Mesh.h"
-#include "GfxDevice.h"
+#include "GraphicsDriver.h"
 #include "Engine/EngineLoop.h"
-#include "GfxDevice/Vulkan/VulkanApi.h"
-#include "GfxDevice/Vulkan/VulkanDevice.h"
+#include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "JobSystem/JobSystem.h"
 #include "Memory/MemoryBlockAllocator.hpp"
-#include "GfxDevice/Vulkan/GfxDeviceVulkan.h"
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -47,7 +47,7 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	m_pViewport = pViewport;
 
 #if defined(VULKAN)
-	m_driverInstance = TUniquePtr<Sailor::GfxDevice::Vulkan::GfxDeviceVulkan>::Make();
+	m_driverInstance = TUniquePtr<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver>::Make();
 	m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
 #endif
 }
@@ -58,16 +58,16 @@ Renderer::~Renderer()
 	m_driverInstance.Clear();
 }
 
-TUniquePtr<IGfxDevice>& Renderer::GetDriver()
+TUniquePtr<IGraphicsDriver>& Renderer::GetDriver()
 {
 	return App::GetSubmodule<Renderer>()->m_driverInstance;
 }
 
-IGfxDeviceCommands* Renderer::GetDriverCommands()
+IGraphicsDriverCommands* Renderer::GetDriverCommands()
 {
 
 #if defined(VULKAN)
-	return dynamic_cast<IGfxDeviceCommands*>(App::GetSubmodule<Renderer>()->m_driverInstance.GetRawPtr());
+	return dynamic_cast<IGraphicsDriverCommands*>(App::GetSubmodule<Renderer>()->m_driverInstance.GetRawPtr());
 #endif
 
 	return nullptr;

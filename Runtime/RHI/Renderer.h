@@ -11,7 +11,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Core/Submodule.h"
 #include "Jobsystem/JobSystem.h"
-#include "GfxDevice.h"
+#include "GraphicsDriver.h"
 
 namespace Sailor
 {
@@ -45,8 +45,8 @@ namespace Sailor::RHI
 		uint32_t SAILOR_API GetNumFrames() const { return m_numFrames.load(); }
 		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
 
-		static SAILOR_API TUniquePtr<IGfxDevice>& GetDriver();
-		static SAILOR_API IGfxDeviceCommands* GetDriverCommands();
+		static SAILOR_API TUniquePtr<IGraphicsDriver>& GetDriver();
+		static SAILOR_API IGraphicsDriverCommands* GetDriverCommands();
 
 	protected:
 
@@ -56,6 +56,6 @@ namespace Sailor::RHI
 
 		class Win32::Window const* m_pViewport;
 
-		TUniquePtr<IGfxDevice> m_driverInstance;
+		TUniquePtr<IGraphicsDriver> m_driverInstance;
 	};
 };

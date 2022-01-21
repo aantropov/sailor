@@ -1,10 +1,10 @@
 #include "Fence.h"
 #include "Types.h"
-#include "GfxDevice/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanApi.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
-using namespace Sailor::GfxDevice::Vulkan;
+using namespace Sailor::GraphicsDriver::Vulkan;
 
 void Fence::Wait(uint64_t timeout) const
 {

@@ -1,12 +1,12 @@
 #include "Shader.h"
 #include "Types.h"
-#include "GfxDevice/Vulkan/VulkanApi.h"
-#include "GfxDevice/Vulkan/GfxDeviceVulkan.h"
+#include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Memory/WeakPtr.hpp"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
-using namespace Sailor::GfxDevice::Vulkan;
+using namespace Sailor::GraphicsDriver::Vulkan;
 
 bool ShaderBinding::IsBind() const
 {

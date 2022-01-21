@@ -1,9 +1,9 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
-#include "GfxDevice/Vulkan/VulkanBuffer.h"
+#include "GraphicsDriver/Vulkan/VulkanBuffer.h"
 #include "Types.h"
 
-using namespace GfxDevice::Vulkan;
+using namespace GraphicsDriver::Vulkan;
 
 namespace Sailor::RHI
 {

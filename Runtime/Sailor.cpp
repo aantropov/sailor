@@ -6,7 +6,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Platform/Win32/ConsoleWindow.h"
 #include "Platform/Win32/Input.h"
-#include "GfxDevice/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "JobSystem/JobSystem.h"
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"

@@ -1,7 +1,7 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
 #include "Types.h"
-#include "GfxDevice/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanApi.h"
 
 namespace Sailor::RHI
 {
@@ -14,7 +14,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			Sailor::GfxDevice::Vulkan::VulkanBufferPtr m_buffer;
+			Sailor::GraphicsDriver::Vulkan::VulkanBufferPtr m_buffer;
 		} m_vulkan;
 #endif
 

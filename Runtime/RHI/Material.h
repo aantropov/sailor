@@ -3,8 +3,8 @@
 #include "Renderer.h"
 #include "Types.h"
 #include "Containers/Map.h"
-#include "GfxDevice/Vulkan/VulkanApi.h"
-#include "GfxDevice/Vulkan/VulkanBufferMemory.h"
+#include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanBufferMemory.h"
 
 namespace Sailor::RHI
 {
@@ -15,7 +15,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			GfxDevice::Vulkan::VulkanDescriptorSetPtr m_descriptorSet;
+			GraphicsDriver::Vulkan::VulkanDescriptorSetPtr m_descriptorSet;
 		} m_vulkan;
 #endif
 
@@ -47,7 +47,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			Sailor::GfxDevice::Vulkan::VulkanPipelinePtr m_pipeline;
+			Sailor::GraphicsDriver::Vulkan::VulkanPipelinePtr m_pipeline;
 		} m_vulkan;
 #endif
 		SAILOR_API Material(RenderState renderState, ShaderPtr vertexShader, ShaderPtr fragmentShader) :
@@ -73,6 +73,6 @@ namespace Sailor::RHI
 
 		ShaderBindingSetPtr m_bindings;
 
-		friend class IGfxDevice;
+		friend class IGraphicsDriver;
 	};
 };

@@ -25,12 +25,6 @@
     <Filter Include="Runtime\Platform">
       <UniqueIdentifier>{c4e0e853-b4ec-4661-9e22-a337e7149438}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Runtime\GfxDevice">
-      <UniqueIdentifier>{6358c04d-e453-43f1-8bc7-b5c8499fdf8f}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Runtime\GfxDevice\Vulkan">
-      <UniqueIdentifier>{3169d8cc-1eb9-4f23-a67e-c35395774073}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Runtime\Core">
       <UniqueIdentifier>{74f5adc3-d8b2-4f2b-a3b1-184191c1f8e4}</UniqueIdentifier>
     </Filter>
@@ -67,6 +61,12 @@
     <Filter Include="Runtime\Engine">
       <UniqueIdentifier>{fdc87901-fb01-4592-bfeb-c831946fcd25}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\GraphicsDriver">
+      <UniqueIdentifier>{b3d70ef8-b9d6-401b-abf2-85d910f75b2b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime\GraphicsDriver\Vulkan">
+      <UniqueIdentifier>{0d20221a-115f-4076-92f4-af7eb17494a1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
@@ -84,71 +84,11 @@
     <ClInclude Include="..\Runtime\RHI\Types.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanFence.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSemaphore.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDevice.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanRenderPass.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanQueue.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanFramebuffer.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanImage.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanImageInfo.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanImageView.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDeviceMemory.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Renderer.h">
       <Filter>Runtime\RHI</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanPipeline.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanShaderModule.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanPipileneStates.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanDescriptors.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Math\Math.h">
       <Filter>Runtime\Math</Filter>
@@ -171,9 +111,6 @@
     <ClInclude Include="..\Runtime\Memory\MemoryBlockAllocator.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\Memory\MemoryPoolAllocator.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
@@ -189,14 +126,11 @@
     <ClInclude Include="..\Runtime\RHI\CommandList.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\RHI\GfxDevice.h">
+    <ClInclude Include="..\Runtime\RHI\GraphicsDriver.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Texture.h">
       <Filter>Runtime\RHI</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Buffer.h">
       <Filter>Runtime\RHI</Filter>
@@ -206,9 +140,6 @@
     </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Shader.h">
       <Filter>Runtime\RHI</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Runtime\GfxDevice\Vulkan\VulkanBufferMemory.h">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h">
       <Filter>Runtime\AssetRegistry</Filter>
@@ -312,6 +243,78 @@
     <ClInclude Include="..\Runtime\Engine\Object.h">
       <Filter>Runtime\Engine</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanApi.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanBuffer.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanBufferMemory.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanCommandBuffer.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanCommandPool.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanDescriptors.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanDevice.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanDeviceMemory.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanFence.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanFramebuffer.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanGraphicsDriver.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanImage.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanImageInfo.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanImageView.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanMemory.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanMemory.hpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanPipeline.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanPipileneStates.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanQueue.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanRenderPass.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanSamplers.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanSemaphore.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanShaderModule.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanSwapchain.h">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -332,71 +335,11 @@
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp">
       <Filter>Runtime\Jobsystem</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanApi.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp">
       <Filter>Runtime\Core</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandBuffer.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanCommandPool.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanFence.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSemaphore.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDevice.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanRenderPass.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSwapchain.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanQueue.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanFramebuffer.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanImage.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanImageInfo.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanImageView.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBuffer.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDeviceMemory.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\RHI\Renderer.cpp">
       <Filter>Runtime\RHI</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanPipeline.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanShaderModule.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanPipileneStates.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanDescriptors.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanSamplers.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp">
       <Filter>Runtime\Platform\Win32</Filter>
@@ -413,9 +356,6 @@
     <ClCompile Include="..\Runtime\Memory\Heap.cpp">
       <Filter>Runtime\Memory</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanMemory.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\RHI\CommandList.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
@@ -428,13 +368,10 @@
     <ClCompile Include="..\Runtime\RHI\Texture.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\GfxDeviceVulkan.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\RHI\Buffer.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\RHI\GfxDevice.cpp">
+    <ClCompile Include="..\Runtime\RHI\GraphicsDriver.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\RHI\Material.cpp">
@@ -442,9 +379,6 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\RHI\Shader.cpp">
       <Filter>Runtime\RHI</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Runtime\GfxDevice\Vulkan\VulkanBufferMemory.cpp">
-      <Filter>Runtime\GfxDevice\Vulkan</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\AssetRegistry\Material\MaterialAssetInfo.cpp">
       <Filter>Runtime\AssetRegistry\Material</Filter>
@@ -511,6 +445,75 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Engine\Object.cpp">
       <Filter>Runtime\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanApi.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanBuffer.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanBufferMemory.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanCommandBuffer.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanCommandPool.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanDescriptors.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanDevice.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanDeviceMemory.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanFence.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanFramebuffer.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanGraphicsDriver.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanImage.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanImageInfo.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanImageView.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanMemory.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanPipeline.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanPipileneStates.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanQueue.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanRenderPass.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanSamplers.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanSemaphore.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanShaderModule.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanSwapchain.cpp">
+      <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

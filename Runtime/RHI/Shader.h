@@ -3,11 +3,11 @@
 #include "Memory/WeakPtr.hpp"
 #include "Renderer.h"
 #include "Types.h"
-#include "GfxDevice/Vulkan/VulkanDevice.h"
-#include "GfxDevice/Vulkan/VulkanMemory.h"
-#include "GfxDevice/Vulkan/VulkanBufferMemory.h"
-#include "GfxDevice/Vulkan/VulkanApi.h"
-#include "GfxDevice/Vulkan/VulkanDescriptors.h"
+#include "GraphicsDriver/Vulkan/VulkanDevice.h"
+#include "GraphicsDriver/Vulkan/VulkanMemory.h"
+#include "GraphicsDriver/Vulkan/VulkanBufferMemory.h"
+#include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanDescriptors.h"
 
 namespace Sailor::RHI
 {
@@ -60,7 +60,7 @@ namespace Sailor::RHI
 #if defined(VULKAN)
 		struct
 		{
-			Sailor::GfxDevice::Vulkan::VulkanShaderStagePtr m_shader{};
+			Sailor::GraphicsDriver::Vulkan::VulkanShaderStagePtr m_shader{};
 		} m_vulkan;
 #endif
 

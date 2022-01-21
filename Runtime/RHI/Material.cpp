@@ -1,11 +1,11 @@
 #include "Material.h"
 #include "Types.h"
 #include "Shader.h"
-#include "GfxDevice/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanApi.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
-using namespace Sailor::GfxDevice::Vulkan;
+using namespace Sailor::GraphicsDriver::Vulkan;
 
 RHI::ShaderBindingPtr& ShaderBindingSet::GetOrCreateShaderBinding(const std::string& binding)
 {
