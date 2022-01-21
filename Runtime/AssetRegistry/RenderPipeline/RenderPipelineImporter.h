@@ -8,6 +8,7 @@
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/RenderPipeline/RenderPipelineAssetInfo.h"
 #include "RHI/Renderer.h"
+#include "RenderPipeline/RenderPipeline.h"
 
 namespace Sailor
 {
@@ -19,7 +20,7 @@ namespace Sailor
 		SAILOR_API RenderPipelineImporter(RenderPipelineAssetInfoHandler* infoHandler);
 		virtual SAILOR_API ~RenderPipelineImporter() override;
 
-		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override; 
+		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
 		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 	};
 }
