@@ -19,9 +19,6 @@
     <Filter Include="Runtime\AssetRegistry">
       <UniqueIdentifier>{743d5375-e41f-4249-944a-31c1edb7a9ce}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Runtime\Jobsystem">
-      <UniqueIdentifier>{204ddbe7-3034-430c-8a5a-73c2f95bc940}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Runtime\Platform">
       <UniqueIdentifier>{c4e0e853-b4ec-4661-9e22-a337e7149438}</UniqueIdentifier>
     </Filter>
@@ -67,6 +64,9 @@
     <Filter Include="Runtime\GraphicsDriver\Vulkan">
       <UniqueIdentifier>{0d20221a-115f-4076-92f4-af7eb17494a1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\JobSystem">
+      <UniqueIdentifier>{204ddbe7-3034-430c-8a5a-73c2f95bc940}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
@@ -79,7 +79,7 @@
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h">
-      <Filter>Runtime\Jobsystem</Filter>
+      <Filter>Runtime\JobSystem</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Types.h">
       <Filter>Runtime\RHI</Filter>
@@ -208,7 +208,7 @@
       <Filter>Runtime\AssetRegistry</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\JobSystem\Tasks.h">
-      <Filter>Runtime\Jobsystem</Filter>
+      <Filter>Runtime\JobSystem</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Memory\MallocAllocator.h">
       <Filter>Runtime\Memory</Filter>
@@ -315,6 +315,12 @@
     <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanSwapchain.h">
       <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Engine\Scene.h">
+      <Filter>Runtime\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Engine\World.h">
+      <Filter>Runtime\Engine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -333,7 +339,7 @@
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp">
-      <Filter>Runtime\Jobsystem</Filter>
+      <Filter>Runtime\JobSystem</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp">
       <Filter>Runtime\Core</Filter>
@@ -423,7 +429,7 @@
       <Filter>Runtime\AssetRegistry</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\JobSystem\Tasks.cpp">
-      <Filter>Runtime\Jobsystem</Filter>
+      <Filter>Runtime\JobSystem</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Math\Math.cpp">
       <Filter>Runtime\Math</Filter>
@@ -514,6 +520,12 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanSwapchain.cpp">
       <Filter>Runtime\GraphicsDriver\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Engine\Scene.cpp">
+      <Filter>Runtime\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Engine\World.cpp">
+      <Filter>Runtime\Engine</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

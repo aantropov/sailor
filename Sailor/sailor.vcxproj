@@ -205,6 +205,8 @@
     <ClInclude Include="..\Runtime\Core\Utils.h" />
     <ClInclude Include="..\Runtime\Engine\EngineLoop.h" />
     <ClInclude Include="..\Runtime\Engine\Object.h" />
+    <ClInclude Include="..\Runtime\Engine\Scene.h" />
+    <ClInclude Include="..\Runtime\Engine\World.h" />
     <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanApi.h" />
     <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanBuffer.h" />
     <ClInclude Include="..\Runtime\GraphicsDriver\Vulkan\VulkanBufferMemory.h" />
@@ -282,6 +284,8 @@
     <ClCompile Include="..\Runtime\Core\Utils.cpp" />
     <ClCompile Include="..\Runtime\Engine\EngineLoop.cpp" />
     <ClCompile Include="..\Runtime\Engine\Object.cpp" />
+    <ClCompile Include="..\Runtime\Engine\Scene.cpp" />
+    <ClCompile Include="..\Runtime\Engine\World.cpp" />
     <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanApi.cpp" />
     <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanBuffer.cpp" />
     <ClCompile Include="..\Runtime\GraphicsDriver\Vulkan\VulkanBufferMemory.cpp" />
