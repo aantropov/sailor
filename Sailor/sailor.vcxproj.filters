@@ -321,6 +321,9 @@
     <ClInclude Include="..\Runtime\Engine\World.h">
       <Filter>Runtime\Engine</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Engine\GameObject.h">
+      <Filter>Runtime\Engine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -525,6 +528,9 @@
       <Filter>Runtime\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Engine\World.cpp">
+      <Filter>Runtime\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Engine\GameObject.cpp">
       <Filter>Runtime\Engine</Filter>
     </ClCompile>
   </ItemGroup>

@@ -36,6 +36,7 @@ namespace Sailor
 		Object(Object&&) = default;
 		Object& operator=(Object&&) = default;
 
+		// Object could be related to loaded asset, texture, material, etc..
 		const UID& GetUID() const { return m_UID; }
 
 	protected:
