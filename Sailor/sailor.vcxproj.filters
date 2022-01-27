@@ -67,6 +67,9 @@
     <Filter Include="Runtime\JobSystem">
       <UniqueIdentifier>{204ddbe7-3034-430c-8a5a-73c2f95bc940}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\Components">
+      <UniqueIdentifier>{8926601c-7135-4414-805e-3aaca38892fa}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
@@ -324,6 +327,15 @@
     <ClInclude Include="..\Runtime\Engine\GameObject.h">
       <Filter>Runtime\Engine</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Components\Component.h">
+      <Filter>Runtime\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Components\StaticMeshComponent.h">
+      <Filter>Runtime\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Components\TransformComponent.h">
+      <Filter>Runtime\Components</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -533,10 +545,19 @@
     <ClCompile Include="..\Runtime\Engine\GameObject.cpp">
       <Filter>Runtime\Engine</Filter>
     </ClCompile>
+    <ClCompile Include="..\Runtime\Components\Component.cpp">
+      <Filter>Runtime\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Components\StaticMeshComponent.cpp">
+      <Filter>Runtime\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Components\TransformComponent.cpp">
+      <Filter>Runtime\Components</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Natvis Include="..\Runtime\Containers\Containers.natvis">
-      <Filter>Runtime\Containers</Filter>
+    <Natvis Include="..\Runtime\Sailor.natvis">
+      <Filter>Runtime</Filter>
     </Natvis>
   </ItemGroup>
 </Project>

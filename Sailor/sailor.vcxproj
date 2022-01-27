@@ -189,6 +189,9 @@
     <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
+    <ClInclude Include="..\Runtime\Components\Component.h" />
+    <ClInclude Include="..\Runtime\Components\StaticMeshComponent.h" />
+    <ClInclude Include="..\Runtime\Components\TransformComponent.h" />
     <ClInclude Include="..\Runtime\Containers\Concepts.h" />
     <ClInclude Include="..\Runtime\Containers\ConcurrentMap.h" />
     <ClInclude Include="..\Runtime\Containers\ConcurrentSet.h" />
@@ -276,6 +279,9 @@
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
+    <ClCompile Include="..\Runtime\Components\Component.cpp" />
+    <ClCompile Include="..\Runtime\Components\StaticMeshComponent.cpp" />
+    <ClCompile Include="..\Runtime\Components\TransformComponent.cpp" />
     <ClCompile Include="..\Runtime\Containers\ListBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\MapBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\SetBenchmark.cpp" />
@@ -332,7 +338,7 @@
     <ClCompile Include="dllmain.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <Natvis Include="..\Runtime\Containers\Containers.natvis" />
+    <Natvis Include="..\Runtime\Sailor.natvis" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

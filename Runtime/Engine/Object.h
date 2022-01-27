@@ -44,7 +44,6 @@ namespace Sailor
 		UID m_UID = UID::Invalid;
 
 #ifdef SAILOR_EDITOR
-		// TODO: Add lock free list to support multi threaded approach
 		TConcurrentSet<ObjectPtr> m_hotReloadDeps;
 #endif
 	};

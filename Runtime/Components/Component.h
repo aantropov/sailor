@@ -8,18 +8,16 @@ namespace Sailor
 {
 	using GameObjectPtr = TWeakPtr<class GameObject>;
 	using WorldPtr = TWeakPtr<class World>;
-
-	class GameObject : public Object
+	using ComponentPtr = TSharedPtr<class Component>;
+	
+	// All components are tracked
+	class Component : public Object
 	{
 	public:
 
-		WorldPtr GetWorld() const { return m_world; }
+		virtual void BeginPlay() {}
+		virtual void EndPlay() {}
 
-	protected:
-
-		bool bPendingDestroy = false;
-		WorldPtr m_world;
-
-		friend class World;
+		virtual void Update() {}
 	};
 }

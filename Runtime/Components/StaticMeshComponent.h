@@ -3,23 +3,17 @@
 #include "Memory/SharedPtr.hpp"
 #include "JobSystem/JobSystem.h"
 #include "Engine/Object.h"
+#include "Components/Component.h"
 
 namespace Sailor
 {
 	using GameObjectPtr = TWeakPtr<class GameObject>;
 	using WorldPtr = TWeakPtr<class World>;
 
-	class GameObject : public Object
+	class StaticMeshComponent : public Component
 	{
 	public:
-
-		WorldPtr GetWorld() const { return m_world; }
-
 	protected:
 
-		bool bPendingDestroy = false;
-		WorldPtr m_world;
-
-		friend class World;
 	};
 }

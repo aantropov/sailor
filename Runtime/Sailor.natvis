@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+	<!-- TPair visualizer -->
+	<Type Name="TPair&lt;*,*&gt;">
+		<DisplayString>({m_first}, {m_second})</DisplayString>
+	</Type>
+
+	<!-- TVector visualizer -->
+	<Type Name="Sailor::TVector&lt;*&gt;">
+		<DisplayString>{{ size={m_arrayNum} }}</DisplayString>
+		<Expand>
+			<Item Name="[size]" ExcludeView="simple">m_arrayNum</Item>
+			<Item Name="[capacity]" ExcludeView="simple">m_capacity</Item>
+			<ArrayItems>
+				<Size>m_arrayNum</Size>
+				<ValuePointer>m_pRawPtr</ValuePointer>
+			</ArrayItems>
+		</Expand>
+	</Type>
+
+	<!-- TRefPtrBase visualizer -->
+	<Type Name="Sailor::TRefPtrBase">
+		<DisplayString Condition="m_pRawPtr == 0">Null</DisplayString>
+		<DisplayString Condition="m_pRawPtr != 0">Ptr={(void*)m_pRawPtr}, Refs={m_pRawPtr->m_refCounter}, m_pRawPtr={*m_pRawPtr}</DisplayString>
+		<Expand>
+			<Item Condition="m_pRawPtr != 0" Name="[RefsCount]">m_pRawPtr->m_refCounter</Item>
+			<Item Condition="m_pRawPtr != 0" Name="[Ptr]">(void*)m_pRawPtr</Item>
+			<ExpandedItem Condition="m_pRawPtr != 0">*m_pRawPtr</ExpandedItem>
+		</Expand>
+	</Type>
+
+	<!-- TSharedPtr visualizer -->
+	<Type Name="Sailor::TSharedPtr&lt;*&gt;">
+		<DisplayString Condition="m_pRawPtr == 0">Null</DisplayString>
+		<DisplayString Condition="m_pRawPtr != 0">Ptr={(void*)m_pRawPtr}, SharedRefs={m_pControlBlock->m_sharedPtrCounter}, WeakRefs={m_pControlBlock->m_weakPtrCounter}, m_pRawPtr={*m_pRawPtr}</DisplayString>
+		<Expand>
+			<Item Condition="m_pRawPtr != 0" Name="[SharedReferenceCount]">m_pControlBlock->m_sharedPtrCounter</Item>
+			<Item Condition="m_pRawPtr != 0" Name="[WeakReferenceCount]">m_pControlBlock->m_weakPtrCounter</Item>
+			<Item Condition="m_pRawPtr != 0" Name="[Ptr]">(void*)m_pRawPtr</Item>
+			<ExpandedItem Condition="m_pRawPtr != 0">*m_pRawPtr</ExpandedItem>
+		</Expand>
+	</Type>
+	
+	<!-- TWeakPtr visualizer -->
+	<Type Name="Sailor::TWeakPtr&lt;*&gt;">
+		<DisplayString Condition="m_pRawPtr == 0">Null</DisplayString>
+		<DisplayString Condition="(*(uint32_t*)&amp;m_pControlBlock->m_sharedPtrCounter._Storage) == 0">Object has been destroyed</DisplayString>
+		<DisplayString Condition="m_pRawPtr != 0">Ptr={(void*)m_pRawPtr}, SharedRefs={m_pControlBlock->m_sharedPtrCounter}, WeakRefs={m_pControlBlock->m_weakPtrCounter}, m_pRawPtr={*m_pRawPtr}</DisplayString>
+		<Expand>
+			<Item Condition="m_pRawPtr != 0 &amp;&amp; m_pControlBlock != 0" Name="[SharedReferenceCount]">m_pControlBlock->m_sharedPtrCounter</Item>
+			<Item Condition="m_pRawPtr != 0 &amp;&amp; m_pControlBlock != 0" Name="[WeakReferenceCount]">m_pControlBlock->m_weakPtrCounter</Item>
+			<Item Condition="m_pRawPtr != 0 &amp;&amp;(*(uint32_t*)&amp;m_pControlBlock->m_sharedPtrCounter._Storage) > 0" Name="[Ptr]">(void*)m_pRawPtr</Item>
+			<ExpandedItem Condition="m_pRawPtr != 0 &amp;&amp; (*(uint32_t*)&amp;m_pControlBlock->m_sharedPtrCounter._Storage) > 0">*m_pRawPtr</ExpandedItem>
+		</Expand>
+	</Type>
+
+	<!-- UID visualizer -->
+	<Type Name="Sailor::UID">
+		<DisplayString Condition="m_UID.empty()">Invalid</DisplayString>
+		<DisplayString Condition="!m_UID.empty()">m_UID</DisplayString>		
+	</Type>	
+	
+</AutoVisualizer>
