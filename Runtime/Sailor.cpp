@@ -99,6 +99,10 @@ void App::Start()
 	consoleVars["map.benchmark"] = &Sailor::RunMapBenchmark;
 	consoleVars["list.benchmark"] = &Sailor::RunListBenchmark;
 
+#ifdef SAILOR_EDITOR
+	App::GetSubmodule<EngineLoop>()->CreateWorld("WorldEditor");
+#endif
+
 	while (s_pInstance->m_pViewportWindow->IsRunning())
 	{
 		timer.Start();

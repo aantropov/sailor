@@ -11,7 +11,8 @@ namespace Sailor
 	{
 	public:
 
-		World() = default;
+		World(std::string name) : m_name(std::move(name)) {}
+
 		virtual ~World() = default;
 
 		World(const World&) = delete;
@@ -45,6 +46,7 @@ namespace Sailor
 
 	protected:
 
+		std::string m_name;
 		TVector<GameObjectPtr> m_objects;
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
 	};

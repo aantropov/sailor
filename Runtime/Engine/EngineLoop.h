@@ -1,8 +1,10 @@
 #pragma once
 #include <array>
 #include "Memory/RefPtr.hpp"
+#include "Engine/World.h"
 #include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
+#include "Memory/SharedPtr.hpp"
 #include "RHI/Renderer.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "Platform/Win32/Input.h"
@@ -86,6 +88,8 @@ namespace Sailor
 		ModelPtr& GetTestMesh() { return m_testMesh; }
 		RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_testBinding; }
 
+		void CreateWorld(std::string name);
+
 	protected:
 
 		std::atomic<uint32_t> m_pureFps = 0u;
@@ -96,5 +100,7 @@ namespace Sailor
 
 		RHI::UboFrameData m_frameData;
 		RHI::ShaderBindingSetPtr m_frameDataBinding;
+
+		TVector<TSharedPtr<World>> m_worlds;
 	};
 }

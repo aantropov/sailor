@@ -61,6 +61,11 @@ RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 	return m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
 }
 
+void EngineLoop::CreateWorld(std::string name)
+{
+	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name)));
+}
+
 void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 {
 	SAILOR_PROFILE_FUNCTION();
