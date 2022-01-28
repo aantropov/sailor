@@ -336,6 +336,9 @@
     <ClInclude Include="..\Runtime\Components\TransformComponent.h">
       <Filter>Runtime\Components</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\ObjectPtr.hpp">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

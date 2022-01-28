@@ -21,9 +21,9 @@ namespace Sailor
 		World& operator=(World&&) = default;
 
 		template<typename TObject, typename... TArgs >
-		TWeakPtr<TObject> Instantiate(TArgs&& ... args)
+		TObjectPtr<TObject> Instantiate(TArgs&& ... args)
 		{
-			auto newObject = TSharedPtr<GameObjectPtr>::Make(std::forward(args));
+			auto newObject = TObjectPtr<GameObject>::Make(std::forward(args));
 			AddObject(newObject);
 			return newObject;
 		}
@@ -32,17 +32,21 @@ namespace Sailor
 		{
 			assert(object && !object.Lock()->GetWorld());
 
-			object.Lock()->m_world = this;
-			m_objects.Add(object.Lock());
+			object->m_world = this;
+			m_objects.Add(object);
 		}
 				
 		void Destroy(GameObjectPtr object)
 		{
-			object.Lock()->bPendingDestroy = true;
+			object->bPendingDestroy = true;
 		}
+
+		void Tick(float deltaTime);
 
 	protected:
 
-		TVector<TSharedPtr<GameObject>> m_objects;
+		TVector<GameObjectPtr> m_objects;
+
+		void GarbageCollect();
 	};
 }

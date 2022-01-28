@@ -1,12 +1,13 @@
 #pragma once
 #include "Sailor.h"
 #include "Memory/SharedPtr.hpp"
+#include "Memory/ObjectPtr.hpp"
 #include "JobSystem/JobSystem.h"
 #include "Engine/Object.h"
 
 namespace Sailor
 {
-	using GameObjectPtr = TWeakPtr<class GameObject>;
+	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using WorldPtr = TWeakPtr<class World>;
 
 	class GameObject : public Object
