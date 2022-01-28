@@ -24,21 +24,21 @@ namespace Sailor
 		TObjectPtr<TObject> Instantiate(TArgs&& ... args)
 		{
 			auto newObject = TObjectPtr<GameObject>::Make(std::forward(args));
-			AddObject(newObject);
+			assert(newObject);
+
+			newObject->m_world = this;
+			m_objects.Add(newObject);
+
 			return newObject;
 		}
 
-		void AddObject(GameObjectPtr object)
-		{
-			assert(object && !object.Lock()->GetWorld());
-
-			object->m_world = this;
-			m_objects.Add(object);
-		}
-				
 		void Destroy(GameObjectPtr object)
 		{
-			object->bPendingDestroy = true;
+			if (object && !object->bPendingDestroy)
+			{
+				object->bPendingDestroy = true;
+				m_pendingDestroyObjects.PushBack(std::move(object));
+			}
 		}
 
 		void Tick(float deltaTime);
@@ -46,7 +46,6 @@ namespace Sailor
 	protected:
 
 		TVector<GameObjectPtr> m_objects;
-
-		void GarbageCollect();
+		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
 	};
 }

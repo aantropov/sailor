@@ -1,6 +1,7 @@
 #pragma once
 #include <cassert>
 #include <type_traits>
+#include "Engine/Object.h"
 #include "SharedPtr.hpp"
 
 namespace Sailor
@@ -18,7 +19,7 @@ namespace Sailor
 	template<typename T>
 	class TObjectPtr final
 	{
-		static_assert(std::is_base_of<Object, T>::value, "T must inherit from Object");
+		//static_assert(std::is_base_of<Object, T>::value, "T must inherit from Object");
 
 	public:
 
@@ -85,31 +86,31 @@ namespace Sailor
 		T* GetRawPtr() const noexcept 
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
-			return m_pRawPtr; 
+			return static_cast<T*>(m_pRawPtr);
 		}
 
 		T* operator->()  noexcept 
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
-			return m_pRawPtr; 
+			return static_cast<T*>(m_pRawPtr);
 		}
 
 		const T* operator->() const 
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
-			return m_pRawPtr; 
+			return static_cast<T*>(m_pRawPtr);
 		}
 
 		T& operator*() noexcept 
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
-			return *m_pRawPtr; 
+			return *static_cast<T*>(m_pRawPtr);
 		}
 
 		const T& operator*() const 
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
-			return *m_pRawPtr; 
+			return *static_cast<T*>(m_pRawPtr); 
 		}
 
 		operator bool() const noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0; }
@@ -159,10 +160,10 @@ namespace Sailor
 
 	private:
 
-		T* m_pRawPtr = nullptr;
+		Object* m_pRawPtr = nullptr;
 		TSmartPtrControlBlock* m_pControlBlock = nullptr;
 
-		void AssignRawPtr(T* pRawPtr, TSmartPtrControlBlock* pControlBlock)
+		void AssignRawPtr(Object* pRawPtr, TSmartPtrControlBlock* pControlBlock)
 		{
 			if (m_pRawPtr == pRawPtr)
 			{
