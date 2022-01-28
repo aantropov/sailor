@@ -391,9 +391,9 @@ namespace Sailor::Memory
 		size_t m_startBlockSize;
 		size_t m_elementSize = 1;
 		size_t m_usedDataSpace = 0;
-		std::vector<MemoryBlock> m_blocks;
-		std::vector<uint32_t> m_layout;
-		std::vector<uint32_t> m_emptyBlocks;
+		TVector<MemoryBlock> m_blocks;
+		TVector<uint32_t> m_layout;
+		TVector<uint32_t> m_emptyBlocks;
 		size_t m_reservedSize = 2048;
 	};
 }
