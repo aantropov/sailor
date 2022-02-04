@@ -12,7 +12,7 @@
 
 namespace Sailor
 {
-	template<typename TKeyType, typename TValueType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::MallocAllocator>
+	template<typename TKeyType, typename TValueType, const uint32_t concurrencyLevel, typename TAllocator>
 	class TConcurrentMap final : public TConcurrentSet<TPair<TKeyType, TValueType>, concurrencyLevel, TAllocator>
 	{
 	public:

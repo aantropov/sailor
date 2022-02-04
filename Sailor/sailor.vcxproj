@@ -195,6 +195,7 @@
     <ClInclude Include="..\Runtime\Containers\Concepts.h" />
     <ClInclude Include="..\Runtime\Containers\ConcurrentMap.h" />
     <ClInclude Include="..\Runtime\Containers\ConcurrentSet.h" />
+    <ClInclude Include="..\Runtime\Containers\Containers.h" />
     <ClInclude Include="..\Runtime\Containers\List.h" />
     <ClInclude Include="..\Runtime\Containers\Map.h" />
     <ClInclude Include="..\Runtime\Containers\Pair.h" />
@@ -238,8 +239,9 @@
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h" />
     <ClInclude Include="..\Runtime\JobSystem\Tasks.h" />
     <ClInclude Include="..\Runtime\Math\Math.h" />
-    <ClInclude Include="..\Runtime\Memory\Heap.h" />
-    <ClInclude Include="..\Runtime\Memory\MallocAllocator.h" />
+    <ClInclude Include="..\Runtime\Memory\HeapAllocator.h" />
+    <ClInclude Include="..\Runtime\Memory\LockFreeHeapAllocator.h" />
+    <ClInclude Include="..\Runtime\Memory\MallocAllocator.hpp" />
     <ClInclude Include="..\Runtime\Memory\Memory.h" />
     <ClInclude Include="..\Runtime\Memory\MemoryBlockAllocator.hpp" />
     <ClInclude Include="..\Runtime\Memory\MemoryMultiPoolAllocator.hpp" />
@@ -321,7 +323,8 @@
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\Tasks.cpp" />
     <ClCompile Include="..\Runtime\Math\Math.cpp" />
-    <ClCompile Include="..\Runtime\Memory\Heap.cpp" />
+    <ClCompile Include="..\Runtime\Memory\HeapAllocator.cpp" />
+    <ClCompile Include="..\Runtime\Memory\LockFreeHeapAllocator.cpp" />
     <ClCompile Include="..\Runtime\Memory\Memory.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\Input.cpp" />

@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <iostream>
 #include "RHI/Types.h"
-#include "Memory/Heap.h"
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "JobSystem/JobSystem.h"

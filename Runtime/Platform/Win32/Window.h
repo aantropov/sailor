@@ -4,8 +4,7 @@
 #include <wtypes.h>
 #include <atomic>
 #include "Math/Math.h"
-#include "Containers/Vector.h"
-#include "Containers/Map.h"
+#include "Containers/Containers.h"
 
 namespace Sailor::Win32
 {

@@ -120,7 +120,7 @@
     <ClInclude Include="..\Runtime\Memory\MemoryMultiPoolAllocator.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Memory\Heap.h">
+    <ClInclude Include="..\Runtime\Memory\HeapAllocator.h">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\RHI\Fence.h">
@@ -213,7 +213,7 @@
     <ClInclude Include="..\Runtime\JobSystem\Tasks.h">
       <Filter>Runtime\JobSystem</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Memory\MallocAllocator.h">
+    <ClInclude Include="..\Runtime\Memory\MallocAllocator.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Containers\Set.h">
@@ -339,6 +339,12 @@
     <ClInclude Include="..\Runtime\Memory\ObjectPtr.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\LockFreeHeapAllocator.h">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\Containers.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -377,7 +383,7 @@
     <ClCompile Include="..\Runtime\Memory\Memory.cpp">
       <Filter>Runtime\Memory</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Memory\Heap.cpp">
+    <ClCompile Include="..\Runtime\Memory\HeapAllocator.cpp">
       <Filter>Runtime\Memory</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\RHI\CommandList.cpp">
@@ -556,6 +562,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Components\TransformComponent.cpp">
       <Filter>Runtime\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Memory\LockFreeHeapAllocator.cpp">
+      <Filter>Runtime\Memory</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

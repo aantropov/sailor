@@ -8,7 +8,6 @@
 #include <algorithm>
 #include "Core/Defines.h"
 #include "Math/Math.h"
-#include "Memory/MallocAllocator.h"
 #include "Containers/Concepts.h"
 
 namespace Sailor
@@ -100,7 +99,7 @@ namespace Sailor
 	template<typename TDataType>
 	using TConstVectorIterator = TVectorIterator<const TDataType>;
 
-	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
+	template<typename TElementType, typename TAllocator>
 	class SAILOR_API TVector final
 	{
 	public:

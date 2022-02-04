@@ -4,10 +4,9 @@
 #include <cassert>
 #include <unordered_map>
 #include <memory>
-#include <mutex>
-#include "Heap.h"
+#include "HeapAllocator.h"
 #include "Core/Defines.h"
-#include "MallocAllocator.h"
+#include "MallocAllocator.hpp"
 
 namespace Sailor::Memory
 {

@@ -51,3 +51,4 @@ typedef unsigned long DWORD;
 #endif
 
 #define SAILOR_EDITOR
+//#define SAILOR_CONTAINERS_LOCK_FREE_HEAP_ALLOCATOR

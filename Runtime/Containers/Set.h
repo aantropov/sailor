@@ -21,7 +21,7 @@ namespace Sailor
 		return p(instance);
 	}
 
-	template<typename TElementType, typename TAllocator = Memory::MallocAllocator>
+	template<typename TElementType, typename TAllocator>
 	class SAILOR_API TSet
 	{
 	public:

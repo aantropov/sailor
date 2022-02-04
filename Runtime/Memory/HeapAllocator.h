@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include "Containers/Vector.h"
+#include "Memory/MallocAllocator.hpp"
 #include "Memory/UniquePtr.hpp"
 
 #define InvalidIndexUINT64 UINT64_MAX
@@ -66,9 +67,9 @@ namespace Sailor::Memory
 
 			const size_t m_pageSize = 2048;
 		
-			Sailor::TVector<Page> m_pages;
-			Sailor::TVector<size_t> m_freeList;
-			Sailor::TVector<size_t> m_emptyPages;
+			Sailor::TVector<Page, Memory::MallocAllocator> m_pages;
+			Sailor::TVector<size_t, Memory::MallocAllocator> m_freeList;
+			Sailor::TVector<size_t, Memory::MallocAllocator> m_emptyPages;
 		};
 
 		class SAILOR_API SmallPoolAllocator
@@ -121,12 +122,13 @@ namespace Sailor::Memory
 		private:
 
 			uint8_t m_blockSize = 0;
-			TVector<SmallPage> m_pages;
-			TVector<uint16_t> m_freeList;
-			TVector<uint16_t> m_emptyPages;
+			TVector<SmallPage, Memory::MallocAllocator> m_pages;
+			TVector<uint16_t, Memory::MallocAllocator> m_freeList;
+			TVector<uint16_t, Memory::MallocAllocator> m_emptyPages;
 		};
 	}
 
+	// Single threaded heap allocator that significantly 'faster' the std's default allocator
 	class SAILOR_API HeapAllocator
 	{
 	public:
@@ -139,7 +141,7 @@ namespace Sailor::Memory
 	private:
 
 		inline size_t CalculateAlignedSize(size_t blockSize) const;
-		TVector<TUniquePtr<Internal::SmallPoolAllocator>> m_smallAllocators;
+		TVector<TUniquePtr<Internal::SmallPoolAllocator>, Memory::MallocAllocator> m_smallAllocators;
 		Internal::PoolAllocator m_allocator;
 	};
 }

@@ -7,6 +7,7 @@
 #include "Memory/WeakPtr.hpp"
 #include "Memory/UniquePtr.hpp"
 #include "Platform/Win32/Window.h"
+#include "Containers/Containers.h"
 #include <glm/glm/glm.hpp>
 
 namespace Sailor

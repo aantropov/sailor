@@ -2,8 +2,7 @@
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Defines.h"
 #include "Math/Math.h"
-#include "Containers/Vector.h"
-#include "Containers/Set.h"
+#include "Containers/Containers.h"
 
 using json = nlohmann::json;
 

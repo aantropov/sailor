@@ -2,8 +2,7 @@
 #include "Memory.h"
 #include <algorithm>
 #include <mutex>
-#include "Containers/Pair.h"
-#include "Containers/Vector.h"
+#include "Containers/Containers.h"
 
 namespace Sailor::Memory
 {

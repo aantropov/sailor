@@ -11,7 +11,7 @@
 
 namespace Sailor
 {
-	template<typename TKeyType, typename TValueType, typename TAllocator = Memory::MallocAllocator>
+	template<typename TKeyType, typename TValueType, typename TAllocator>
 	class SAILOR_API TMap final: public TSet<TPair<TKeyType, TValueType>, TAllocator>
 	{
 	public:
