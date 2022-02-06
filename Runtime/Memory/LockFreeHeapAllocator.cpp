@@ -22,6 +22,11 @@ void* LockFreeHeapAllocator::Allocate(size_t size, size_t alignment)
 	res = pAllocator->Allocate(size + sizeof(DWORD), alignment);
 	g_lockFreeAllocators.Unlock(currentThreadId);
 
+	if (!res)
+	{
+		return nullptr;
+	}
+
 	((DWORD*)res)[0] = currentThreadId;
 
 	return &((DWORD*)res)[1];
@@ -38,6 +43,11 @@ void* LockFreeHeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment
 	if (res == pRaw)
 	{
 		return ptr;
+	}
+
+	if (!res)
+	{
+		return nullptr;
 	}
 
 	return &((DWORD*)res)[1];

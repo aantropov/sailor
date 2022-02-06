@@ -12,7 +12,7 @@
 
 namespace Sailor
 {
-#ifdef SAILOR_CONTAINERS_LOCK_FREE_HEAP_ALLOCATOR
+#ifdef SAILOR_CONTAINERS_USE_LOCK_FREE_HEAP_ALLOCATOR
 	template<typename TData, typename TAllocator = Memory::LockFreeHeapAllocator>	class TVector;
 	template<typename TData, typename TAllocator = Memory::LockFreeHeapAllocator>	class TList;
 	template<typename TData, typename TAllocator = Memory::LockFreeHeapAllocator>	class TSet;

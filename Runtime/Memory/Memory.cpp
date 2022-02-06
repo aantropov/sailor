@@ -8,6 +8,7 @@
 #include <cctype>
 #include "Core/Utils.h"
 #include "Containers/Pair.h"
+#include "MallocAllocator.hpp"
 #include "MemoryBlockAllocator.hpp"
 #include "MemoryPoolAllocator.hpp"
 #include "MemoryMultiPoolAllocator.hpp"
@@ -76,29 +77,6 @@ struct Result
 			}
 		}
 	}
-};
-
-class DefaultMallocAllocator
-{
-public:
-	inline void* Allocate(size_t size, size_t alignment)
-	{
-		m_size += size;
-		return malloc(size);
-	}
-
-	inline void Free(void* ptr)
-	{
-		free(ptr);
-	}
-
-	size_t GetOccupiedSpace() const
-	{
-		return m_size;
-	}
-
-private:
-	size_t m_size = 0;
 };
 
 template<typename TAllocator>
@@ -381,7 +359,7 @@ public:
 		}
 
 		TAllocator allocator;
-		DefaultMallocAllocator ideal;
+		MallocAllocator ideal;
 
 		std::vector<void*> allocatorPtrs;
 		std::vector<void*> idealPtrs;
@@ -676,8 +654,9 @@ void Sailor::Memory::RunMemoryBenchmark()
 	std::vector<Result> results;
 
 	results.push_back(TestCase_MemoryPerformance<HeapAllocator>::RunTests());
-	results.push_back(TestCase_MemoryPerformance<DefaultMallocAllocator>::RunTests());
-	
+	results.push_back(TestCase_MemoryPerformance<LockFreeHeapAllocator>::RunTests());
+	results.push_back(TestCase_MemoryPerformance<MallocAllocator>::RunTests());
+
 	std::string emplace;
 
 	emplace += "var smallSimple = " + GetJsData("small", "simple", results, true) + ";\n";
