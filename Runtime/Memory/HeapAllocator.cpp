@@ -729,7 +729,7 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 			return ptr;
 		}
 
-		oldSize = header->m_size - headerSize;
+		oldSize = header->m_size;
 	}
 	else
 	{
@@ -742,7 +742,7 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 			return ptr;
 		}
 
-		oldSize = header->m_size - headerSize;
+		oldSize = header->m_size;
 	}
 
 	void* res = Allocate(size, alignment);
