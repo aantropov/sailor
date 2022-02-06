@@ -15,12 +15,6 @@ namespace Sailor::Memory
 		inline void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
 		inline void Free(void* ptr, size_t size = 0);
 
-		LockFreeHeapAllocator() = default;
-		LockFreeHeapAllocator(const LockFreeHeapAllocator&) = default;
-		LockFreeHeapAllocator& operator=(const LockFreeHeapAllocator&) = default;
-		LockFreeHeapAllocator& operator=(LockFreeHeapAllocator&&) = default;
-		LockFreeHeapAllocator(LockFreeHeapAllocator&&) = default;
-
 	protected:
 	};
 }
