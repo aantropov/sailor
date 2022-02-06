@@ -7,16 +7,20 @@
 
 namespace Sailor::Memory
 {
-	class LockFreeHeapAllocator
+	class SAILOR_API LockFreeHeapAllocator
 	{
 	public:
 
-		inline SAILOR_API void* Allocate(size_t size, size_t alignment = 8);
-		inline SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
-		inline SAILOR_API void Free(void* ptr, size_t size = 0);
+		inline void* Allocate(size_t size, size_t alignment = 8);
+		inline void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
+		inline void Free(void* ptr, size_t size = 0);
+
+		LockFreeHeapAllocator() = default;
+		LockFreeHeapAllocator(const LockFreeHeapAllocator&) = default;
+		LockFreeHeapAllocator& operator=(const LockFreeHeapAllocator&) = default;
+		LockFreeHeapAllocator& operator=(LockFreeHeapAllocator&&) = default;
+		LockFreeHeapAllocator(LockFreeHeapAllocator&&) = default;
 
 	protected:
-
-		static TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator> m_allocators;
 	};
 }

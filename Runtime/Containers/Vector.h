@@ -150,8 +150,8 @@ namespace Sailor
 			return m_pRawPtr[index];
 		}
 
-		__forceinline bool operator!=(const TVector& otherArray) const { return !(otherArray == this); }
-		__forceinline bool operator==(const TVector& otherArray) const
+		template<typename TAllocator1>
+		__forceinline bool operator==(const TVector<TElementType, TAllocator1>& otherArray) const
 		{
 			if (m_arrayNum != otherArray.m_arrayNum)
 			{
@@ -716,6 +716,8 @@ namespace Sailor
 				}
 			}
 		}
+
+		friend class TVector;
 	};
 
 	SAILOR_API void RunVectorBenchmark();
