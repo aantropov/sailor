@@ -5,6 +5,7 @@
 using namespace Sailor;
 using namespace Sailor::Memory;
 
+// For now TConcurrentMap doesn't have dll interface, so cannot hold that in the Allocator class
 TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator> g_lockFreeAllocators;
 
 void* LockFreeHeapAllocator::Allocate(size_t size, size_t alignment)
