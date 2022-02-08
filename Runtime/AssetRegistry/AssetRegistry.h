@@ -1,7 +1,6 @@
 #pragma once
 #include <string>
-#include "Containers/Vector.h"
-#include "Containers/Map.h"
+#include "Containers/Containers.h"
 #include "AssetRegistry/UID.h"
 #include "Core/Submodule.h"
 #include "AssetRegistry/AssetInfo.h"

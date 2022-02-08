@@ -5,7 +5,7 @@
 
 namespace Sailor
 {
-	template<typename T>
+	template<typename T, typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator>
 	class TWeakPtr final
 	{
 	public:
@@ -173,7 +173,7 @@ namespace Sailor
 				--m_pControlBlock->m_weakPtrCounter == 0 &&
 				m_pControlBlock->m_sharedPtrCounter == 0)
 			{
-				delete m_pControlBlock;
+				TGlobalAllocator::free(m_pControlBlock);
 				m_pControlBlock = nullptr;
 				m_pRawPtr = nullptr;
 			}

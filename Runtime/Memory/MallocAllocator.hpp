@@ -5,20 +5,38 @@
 
 namespace Sailor::Memory
 {
+	// Global allocator
 	class SAILOR_API MallocAllocator
 	{
 	public:
-		inline void* Allocate(size_t size, size_t alignment = 8)
+
+		__forceinline void* Allocate(size_t size, size_t alignment = 8)
+		{
+			return MallocAllocator::allocate(size, alignment);
+		}
+
+		__forceinline void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
+		{
+			return MallocAllocator::reallocate(ptr, size, alignment);
+		}
+
+		__forceinline void Free(void* ptr, size_t size = 0)
+		{
+			MallocAllocator::free(ptr, size);
+		}
+
+		// Used for smart ptrs
+		static void* allocate(size_t size, size_t alignment = 8)
 		{
 			return std::malloc(size);
 		}
 
-		inline void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
+		static void* reallocate(void* ptr, size_t size, size_t alignment = 8)
 		{
 			return std::realloc(ptr, size);
 		}
 
-		inline void Free(void* ptr, size_t size = 0)
+		static void free(void* ptr, size_t size = 0)
 		{
 			std::free(ptr);
 		}

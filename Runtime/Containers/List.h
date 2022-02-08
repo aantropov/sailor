@@ -8,12 +8,11 @@
 #include <algorithm>
 #include "Core/Defines.h"
 #include "Math/Math.h"
-#include "Memory/MallocAllocator.hpp"
 #include "Containers/Concepts.h"
 
 namespace Sailor
 {
-	template<typename TElementType, typename TAllocator>
+	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class SAILOR_API TList final
 	{
 	public:

@@ -16,7 +16,7 @@
 
 namespace Sailor
 {
-	template<typename TElementType, const uint32_t concurrencyLevel, typename TAllocator>
+	template<typename TElementType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class TConcurrentSet
 	{
 	public:

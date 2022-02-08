@@ -49,7 +49,7 @@ bool PoolAllocator::RequestPage(Page& page, size_t size, size_t pageIndex) const
 
 void Page::Clear()
 {
-	free(m_pData);
+	std::free(m_pData);
 	m_pData = nullptr;
 	m_totalSize = m_occupiedSpace = 0;
 }
@@ -492,7 +492,7 @@ PoolAllocator::~PoolAllocator()
 bool SmallPoolAllocator::RequestPage(SmallPage& page, uint8_t blockSize, uint16_t pageIndex) const
 {
 	page = SmallPage(blockSize, pageIndex);
-	if (page.m_pData = malloc(page.m_size))
+	if (page.m_pData = std::malloc(page.m_size))
 	{
 		return true;
 	}

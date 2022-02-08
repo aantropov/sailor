@@ -5,10 +5,11 @@
 using namespace Sailor;
 using namespace Sailor::Memory;
 
-// For now TConcurrentMap doesn't have dll interface, so cannot hold that in the Allocator class
+// For now TConcurrentMap doesn't have dll interface, so cannot 
+// handle that in class
 TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator> g_lockFreeAllocators;
 
-void* LockFreeHeapAllocator::Allocate(size_t size, size_t alignment)
+void* LockFreeHeapAllocator::allocate(size_t size, size_t alignment)
 {
 	const DWORD currentThreadId = GetCurrentThreadId();
 	void* res = nullptr;
@@ -33,7 +34,7 @@ void* LockFreeHeapAllocator::Allocate(size_t size, size_t alignment)
 	return &((DWORD*)res)[1];
 }
 
-void* LockFreeHeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
+void* LockFreeHeapAllocator::reallocate(void* ptr, size_t size, size_t alignment)
 {
 	const DWORD allocatedThreadId = *(((DWORD*)ptr) - 1);
 	void* pRaw = (((DWORD*)ptr) - 1);
@@ -54,7 +55,7 @@ void* LockFreeHeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment
 	return &((DWORD*)res)[1];
 }
 
-void LockFreeHeapAllocator::Free(void* ptr, size_t size)
+void LockFreeHeapAllocator::free(void* ptr, size_t size)
 {
 	if (ptr != nullptr)
 	{

@@ -3,12 +3,14 @@
 #include <atomic>
 #include <cassert>
 #include <type_traits>
+#include "Containers/Concepts.h"
+#include "Memory/MallocAllocator.hpp"
 
 namespace Sailor
 {
 	using TSmartPtrCounter = std::atomic<uint32_t>;
 
-	template<typename>
+	template<typename, typename>
 	class TWeakPtr;
 
 	class TSmartPtrControlBlock
@@ -16,9 +18,10 @@ namespace Sailor
 	public:
 		TSmartPtrCounter m_weakPtrCounter = 0;
 		TSmartPtrCounter m_sharedPtrCounter = 0;
+		bool bAllocatedByCustomAllocator = false;
 	};
 
-	template<typename T>
+	template<typename T, typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator>
 	class TSharedPtr final
 	{
 	public:
@@ -26,7 +29,11 @@ namespace Sailor
 		template<typename... TArgs>
 		static TSharedPtr<T> Make(TArgs&&... args) noexcept
 		{
-			return TSharedPtr<T>(new T(std::forward<TArgs>(args)...));
+			void* ptr = TGlobalAllocator::allocate(sizeof(T));
+			auto pRes = TSharedPtr<T>(new (ptr) T(std::forward<TArgs>(args)...));
+			pRes.m_pControlBlock->bAllocatedByCustomAllocator = true;
+
+			return pRes;
 		}
 
 		TSharedPtr() noexcept = default;
@@ -145,7 +152,15 @@ namespace Sailor
 
 			if (m_pRawPtr = pRawPtr)
 			{
-				m_pControlBlock = !pControlBlock ? new TSmartPtrControlBlock() : pControlBlock;
+				if (!pControlBlock)
+				{
+					m_pControlBlock = new (TGlobalAllocator::allocate(sizeof(TSmartPtrControlBlock))) TSmartPtrControlBlock();
+				}
+				else
+				{
+					m_pControlBlock = pControlBlock;
+				}
+
 				IncrementRefCounter();
 			}
 		}
@@ -162,13 +177,26 @@ namespace Sailor
 			{
 				if (--m_pControlBlock->m_sharedPtrCounter == 0)
 				{
-					delete m_pRawPtr;
+					if (m_pControlBlock->bAllocatedByCustomAllocator)
+					{
+						if constexpr (!IsTriviallyDestructible<T>)
+						{
+							m_pRawPtr->~T();
+						}
+
+						TGlobalAllocator::free(m_pRawPtr);
+					}
+					else
+					{
+						delete m_pRawPtr;
+					}
+
 					m_pRawPtr = nullptr;
 				}
 
 				if (--m_pControlBlock->m_weakPtrCounter == 0)
 				{
-					delete m_pControlBlock;
+					TGlobalAllocator::free(m_pControlBlock);
 					m_pControlBlock = nullptr;
 				}
 			}
@@ -196,7 +224,7 @@ namespace Sailor
 
 		friend class TSharedPtr;
 
-		template<typename>
+		template<typename, typename>
 		friend class TWeakPtr;
 	};
 }

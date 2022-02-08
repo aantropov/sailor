@@ -99,7 +99,7 @@ namespace Sailor
 	template<typename TDataType>
 	using TConstVectorIterator = TVectorIterator<const TDataType>;
 
-	template<typename TElementType, typename TAllocator>
+	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class SAILOR_API TVector final
 	{
 	public:

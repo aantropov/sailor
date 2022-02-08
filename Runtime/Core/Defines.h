@@ -51,5 +51,14 @@ typedef unsigned long DWORD;
 #define SAILOR_EDITOR
 
 //Memory
-#define SAILOR_CONTAINERS_USE_LOCK_FREE_HEAP_ALLOCATOR
+#define SAILOR_USE_DEFAULT_LOCK_FREE_HEAP_ALLOCATOR
 //#define SAILOR_MEMORY_HEAP_DISABLE_FREE
+
+namespace Sailor::Memory
+{
+#ifdef SAILOR_USE_DEFAULT_LOCK_FREE_HEAP_ALLOCATOR
+	using DefaultGlobalAllocator = class LockFreeHeapAllocator;
+#else
+	using DefaultGlobalAllocator = class MallocAllocator;
+#endif
+}

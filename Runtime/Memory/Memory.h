@@ -10,12 +10,6 @@
 
 namespace Sailor::Memory
 {
-#ifdef SAILOR_CONTAINERS_USE_LOCK_FREE_HEAP_ALLOCATOR
-	using DefaultGlobalAllocator = class LockFreeHeapAllocator;
-#else
-	using DefaultGlobalAllocator = MallocAllocator;
-#endif
-
 	template<uint16_t stackSize = 1024, typename TAllocator = DefaultGlobalAllocator>
 	class SAILOR_API TInlineAllocator final
 	{
@@ -109,13 +103,13 @@ namespace Sailor::Memory
 		}
 	};
 
-	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator, typename TPtr = void*>
 	class TBlockAllocator;
 
-	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator, typename TPtr = void*>
 	class TPoolAllocator;
 
-	template<typename TGlobalAllocator = GlobalHeapAllocator, typename TPtr = void*>
+	template<typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator, typename TPtr = void*>
 	class TMultiPoolAllocator;
 
 	template<typename TPtr = void*>
@@ -151,7 +145,7 @@ namespace Sailor::Memory
 		return Shift(pStartBlock, offset);
 	}
 
-	template<typename TDataType, typename TPtr, typename TGlobalAllocator = GlobalHeapAllocator>
+	template<typename TDataType, typename TPtr, typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator>
 	TDataType Allocate(size_t size, TGlobalAllocator* allocator)
 	{
 		TDataType newObj{};
@@ -159,7 +153,7 @@ namespace Sailor::Memory
 		return newObj;
 	}
 
-	template<typename TDataType, typename TPtr, typename TGlobalAllocator = GlobalHeapAllocator>
+	template<typename TDataType, typename TPtr, typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator>
 	void Free(TDataType& ptr, TGlobalAllocator* allocator)
 	{
 		allocator->Free(ptr.m_ptr, ptr.m_size);
