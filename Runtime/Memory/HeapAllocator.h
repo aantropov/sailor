@@ -128,7 +128,7 @@ namespace Sailor::Memory
 		};
 	}
 
-	// Single threaded heap allocator that significantly 'faster' the std's default allocator
+	// Single threaded heap allocator that significantly 'faster' than std's default allocator
 	class SAILOR_API HeapAllocator
 	{
 	public:

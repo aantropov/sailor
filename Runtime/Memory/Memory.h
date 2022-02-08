@@ -10,17 +10,13 @@
 
 namespace Sailor::Memory
 {
-	class SAILOR_API GlobalHeapAllocator
-	{
-		static HeapAllocator m_heapAllocator;
-	public:
+#ifdef SAILOR_CONTAINERS_USE_LOCK_FREE_HEAP_ALLOCATOR
+	using DefaultGlobalAllocator = class LockFreeHeapAllocator;
+#else
+	using DefaultGlobalAllocator = MallocAllocator;
+#endif
 
-		void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
-		void* Allocate(size_t size, size_t alignment = 8);
-		void Free(void* pData, size_t size = 0);
-	};
-
-	template<uint16_t stackSize = 1024, typename TAllocator = MallocAllocator>
+	template<uint16_t stackSize = 1024, typename TAllocator = DefaultGlobalAllocator>
 	class SAILOR_API TInlineAllocator final
 	{
 	protected:

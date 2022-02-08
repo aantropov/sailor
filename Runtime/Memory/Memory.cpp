@@ -18,23 +18,6 @@ using namespace Sailor;
 using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
-HeapAllocator GlobalHeapAllocator::m_heapAllocator;
-
-void* GlobalHeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
-{
-	return m_heapAllocator.Reallocate(ptr, size, alignment);
-}
-
-void* GlobalHeapAllocator::Allocate(size_t size, size_t alignment)
-{
-	return m_heapAllocator.Allocate(size, alignment);
-}
-
-void GlobalHeapAllocator::Free(void* pData, size_t size)
-{
-	m_heapAllocator.Free(pData);
-}
-
 size_t GetTotalUsedVirtualMemory()
 {
 	PROCESS_MEMORY_COUNTERS_EX pmc;
@@ -402,7 +385,7 @@ public:
 				}
 			}
 		}
-
+		
 		return true;
 	}
 
