@@ -4,6 +4,7 @@
 #include "JobSystem/JobSystem.h"
 #include "AssetRegistry/UID.h"
 #include "Containers/ConcurrentSet.h"
+#include <typeindex>
 
 namespace Sailor
 {
@@ -38,6 +39,8 @@ namespace Sailor
 
 		// Object could be related to loaded asset, texture, material, etc..
 		const UID& GetUID() const { return m_UID; }
+
+		std::type_index GetType() const { return std::type_index(typeid(*this)); }
 
 	protected:
 
