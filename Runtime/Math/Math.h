@@ -22,6 +22,9 @@ namespace Sailor::Math
 	const glm::vec3 vec3_Down = -vec3_Up;
 	const glm::vec3 vec3_Left = -vec3_Right;
 
+	const quat quat_Identity = quat(1.0, 0.0, 0.0, 0.0);
+	const mat4 mat4_Identity = mat4(1);
+
 	unsigned long SAILOR_API UpperPowOf2(unsigned long v);
 
 	template<typename T>
