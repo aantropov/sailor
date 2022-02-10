@@ -345,6 +345,9 @@
     <ClInclude Include="..\Runtime\Containers\Containers.h">
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Math\Transform.h">
+      <Filter>Runtime\Math</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -565,6 +568,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Memory\LockFreeHeapAllocator.cpp">
       <Filter>Runtime\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Math\Transform.cpp">
+      <Filter>Runtime\Math</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -5,6 +5,7 @@
 #include <glm/glm/gtc/quaternion.hpp>
 #include <glm/glm/common.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
+#include "Transform.h"
 
 using namespace glm;
 
@@ -22,6 +23,9 @@ namespace Sailor::Math
 	const glm::vec3 vec3_Left = -vec3_Right;
 
 	unsigned long SAILOR_API UpperPowOf2(unsigned long v);
+
+	template<typename T>
+	T Lerp(const T& a, const T& b, float t) { return a + (b - a) * t; }
 }
 
 #if defined(min)

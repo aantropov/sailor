@@ -5,6 +5,7 @@
 #include <type_traits>
 #include "Containers/Concepts.h"
 #include "Memory/MallocAllocator.hpp"
+#include "Memory/LockFreeHeapAllocator.h"
 
 namespace Sailor
 {

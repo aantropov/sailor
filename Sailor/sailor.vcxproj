@@ -239,6 +239,7 @@
     <ClInclude Include="..\Runtime\JobSystem\JobSystem.h" />
     <ClInclude Include="..\Runtime\JobSystem\Tasks.h" />
     <ClInclude Include="..\Runtime\Math\Math.h" />
+    <ClInclude Include="..\Runtime\Math\Transform.h" />
     <ClInclude Include="..\Runtime\Memory\HeapAllocator.h" />
     <ClInclude Include="..\Runtime\Memory\LockFreeHeapAllocator.h" />
     <ClInclude Include="..\Runtime\Memory\MallocAllocator.hpp" />
@@ -323,6 +324,7 @@
     <ClCompile Include="..\Runtime\JobSystem\JobSystem.cpp" />
     <ClCompile Include="..\Runtime\JobSystem\Tasks.cpp" />
     <ClCompile Include="..\Runtime\Math\Math.cpp" />
+    <ClCompile Include="..\Runtime\Math\Transform.cpp" />
     <ClCompile Include="..\Runtime\Memory\HeapAllocator.cpp" />
     <ClCompile Include="..\Runtime\Memory\LockFreeHeapAllocator.cpp" />
     <ClCompile Include="..\Runtime\Memory\Memory.cpp" />
