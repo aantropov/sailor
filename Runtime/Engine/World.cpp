@@ -2,6 +2,11 @@
 
 using namespace Sailor;
 
+World::World(std::string name) : m_name(std::move(name))
+{
+	m_allocator = Memory::ObjectAllocatorPtr::Make();
+}
+
 void World::Tick(float deltaTime)
 {
 	for (auto& el : m_objects)
@@ -22,7 +27,7 @@ void World::Tick(float deltaTime)
 
 		el->EndPlay();
 		el->RemoveAllComponents();
-		el.ForcelyDestroyObject();
+		el.DestroyObject(m_allocator);
 
 		m_objects.RemoveFirst(el);
 	}

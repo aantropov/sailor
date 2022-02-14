@@ -1,3 +1,4 @@
+#include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "Components/Component.h"
 
@@ -11,7 +12,7 @@ bool GameObject::RemoveComponent(ComponentPtr component)
 	if (m_components.RemoveFirst(component))
 	{
 		component->EndPlay();
-		component.ForcelyDestroyObject();
+		component.DestroyObject(m_world.Lock()->GetAllocator());
 		return true;
 	}
 
@@ -23,7 +24,7 @@ void GameObject::RemoveAllComponents()
 	for (auto& el : m_components)
 	{
 		el->EndPlay();
-		el.ForcelyDestroyObject();
+		el.DestroyObject(m_world.Lock()->GetAllocator());
 	}
 
 	m_components.Clear(true);

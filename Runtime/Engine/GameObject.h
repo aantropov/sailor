@@ -30,7 +30,8 @@ namespace Sailor
 		template<typename TComponent, typename... TArgs >
 		TObjectPtr<TComponent> AddComponent(TArgs&& ... args)
 		{
-			auto newObject = TObjectPtr<TComponent>::Make(std::forward(args));
+			assert(m_world);
+			auto newObject = TObjectPtr<TComponent>::Make(m_world.Lock()->GetAllocator(), std::forward(args));
 			assert(newObject);
 
 			newObject->m_world = this;

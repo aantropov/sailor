@@ -7,8 +7,8 @@
 
 namespace Sailor
 {
-	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using WorldPtr = TWeakPtr<class World>;
+	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using ComponentPtr = TObjectPtr<class Component>;
 
 	// All components are tracked
@@ -16,16 +16,16 @@ namespace Sailor
 	{
 	public:
 
-		virtual void BeginPlay() {}
-		virtual void EndPlay() {}
-
-		virtual void Update() {}
+		virtual void BeginPlay() = 0;
+		virtual void EndPlay() = 0;
+		virtual void Update() = 0;
 
 		GameObjectPtr GetGameObject() const { return m_gameObject; }
 
 	protected:
 
 		Component() = default;
+		virtual ~Component() = default;
 
 		GameObjectPtr m_gameObject;
 

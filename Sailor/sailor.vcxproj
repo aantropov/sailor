@@ -207,6 +207,7 @@
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
     <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
+    <ClInclude Include="..\Runtime\ECS\ECS.h" />
     <ClInclude Include="..\Runtime\Engine\EngineLoop.h" />
     <ClInclude Include="..\Runtime\Engine\GameObject.h" />
     <ClInclude Include="..\Runtime\Engine\Object.h" />
@@ -294,6 +295,7 @@
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\Core\Submodule.cpp" />
     <ClCompile Include="..\Runtime\Core\Utils.cpp" />
+    <ClCompile Include="..\Runtime\ECS\ECS.cpp" />
     <ClCompile Include="..\Runtime\Engine\EngineLoop.cpp" />
     <ClCompile Include="..\Runtime\Engine\GameObject.cpp" />
     <ClCompile Include="..\Runtime\Engine\Object.cpp" />

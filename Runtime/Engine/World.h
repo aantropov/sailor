@@ -2,6 +2,7 @@
 #include "Sailor.h"
 #include "GameObject.h"
 #include "Memory/SharedPtr.hpp"
+#include "Memory/ObjectAllocator.hpp"
 
 namespace Sailor
 {
@@ -11,7 +12,7 @@ namespace Sailor
 	{
 	public:
 
-		World(std::string name) : m_name(std::move(name)) {}
+		World(std::string name);
 
 		virtual ~World() = default;
 
@@ -24,7 +25,7 @@ namespace Sailor
 		template<typename TObject, typename... TArgs >
 		TObjectPtr<TObject> Instantiate(TArgs&& ... args)
 		{
-			auto newObject = TObjectPtr<GameObject>::Make(std::forward(args));
+			auto newObject = GameObjectPtr::Make(m_allocator, std::forward(args));
 			assert(newObject);
 
 			newObject->m_world = this;
@@ -44,10 +45,14 @@ namespace Sailor
 
 		void Tick(float deltaTime);
 
+		Memory::ObjectAllocatorPtr GetAllocator() { return m_allocator; }
+		const Memory::ObjectAllocatorPtr& GetAllocator() const { return m_allocator; }
+
 	protected:
 
 		std::string m_name;
 		TVector<GameObjectPtr> m_objects;
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
+		Memory::ObjectAllocatorPtr m_allocator;
 	};
 }

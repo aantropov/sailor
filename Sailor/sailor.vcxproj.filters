@@ -70,6 +70,9 @@
     <Filter Include="Runtime\Components">
       <UniqueIdentifier>{8926601c-7135-4414-805e-3aaca38892fa}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\ECS">
+      <UniqueIdentifier>{f85cc86a-2bde-491e-8e76-4686f9e46cd4}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
@@ -351,6 +354,9 @@
     <ClInclude Include="..\Runtime\Memory\ObjectAllocator.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\ECS\ECS.h">
+      <Filter>Runtime\ECS</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -574,6 +580,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Math\Transform.cpp">
       <Filter>Runtime\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\ECS\ECS.cpp">
+      <Filter>Runtime\ECS</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

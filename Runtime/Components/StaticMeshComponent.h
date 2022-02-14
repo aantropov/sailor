@@ -8,13 +8,14 @@
 
 namespace Sailor
 {
-	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using WorldPtr = TWeakPtr<class World>;
+	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using StaticMeshComponentPtr = TObjectPtr<class StaticMeshComponent>;
 
 	class StaticMeshComponent : public Component
 	{
 	public:
+
 	protected:
 
 	};
