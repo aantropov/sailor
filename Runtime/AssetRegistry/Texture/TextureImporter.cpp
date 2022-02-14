@@ -37,8 +37,58 @@ TextureImporter::~TextureImporter()
 	}
 }
 
-void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
+TexturePtr TextureImporter::GetLoadedTexture(UID uid)
 {
+	// Check loaded materials
+	auto it = m_loadedTextures.Find(uid);
+	if (it != m_loadedTextures.end())
+	{
+		return (*it).m_second;
+	}
+	return TexturePtr();
+}
+
+JobSystem::TaskPtr<bool> TextureImporter::GetLoadPromise(UID uid)
+{
+	auto it = m_promises.Find(uid);
+	if (it != m_promises.end())
+	{
+		return (*it).m_second;
+	}
+
+	return JobSystem::TaskPtr<bool>(nullptr);
+}
+
+void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpired)
+{
+	TexturePtr pTexture = GetLoadedTexture(inAssetInfo->GetUID());
+	if (bWasExpired && pTexture)
+	{
+		if (TextureAssetInfoPtr assetInfo = dynamic_cast<TextureAssetInfo*>(inAssetInfo))
+		{
+			auto newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Update Texture",
+				[pTexture, assetInfo, this]()
+				{
+					ByteCode decodedData;
+					int32_t width;
+					int32_t height;
+					uint32_t mipLevels;
+
+					if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
+					{
+						pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
+							mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
+							assetInfo->GetClamping());
+						return true;
+					}
+					return false;
+				});
+			
+			App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
+
+			pTexture->TraceHotReload(newPromise);
+		}
+	}
 }
 
 void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)

@@ -50,6 +50,9 @@ namespace Sailor
 		SAILOR_API bool LoadTexture_Immediate(UID uid, TexturePtr& outTexture);
 		SAILOR_API JobSystem::TaskPtr<bool> LoadTexture(UID uid, TexturePtr& outTexture);
 
+		SAILOR_API TexturePtr GetLoadedTexture(UID uid);
+		SAILOR_API JobSystem::TaskPtr<bool> GetLoadPromise(UID uid);
+
 	protected:
 
 		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
