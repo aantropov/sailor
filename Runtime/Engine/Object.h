@@ -4,11 +4,12 @@
 #include "JobSystem/JobSystem.h"
 #include "AssetRegistry/UID.h"
 #include "Containers/ConcurrentSet.h"
+#include "Memory/ObjectPtr.hpp"
 #include <typeindex>
 
 namespace Sailor
 {
-	using ObjectPtr = TWeakPtr<class Object>;
+	using ObjectPtr = TObjectPtr<class Object>;
 
 	class Object
 	{

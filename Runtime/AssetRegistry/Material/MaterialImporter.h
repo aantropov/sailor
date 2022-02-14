@@ -16,6 +16,8 @@
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
 #include "Engine/Object.h"
+#include "Memory/ObjectPtr.hpp"
+#include "Memory/ObjectAllocator.hpp"
 
 namespace Sailor
 {
@@ -64,7 +66,7 @@ namespace Sailor
 		friend class MaterialImporter;
 	};
 
-	using MaterialPtr = TWeakPtr<Material>;
+	using MaterialPtr = TObjectPtr<Material>;
 
 	class MaterialAsset : public IJsonSerializable
 	{
@@ -151,6 +153,8 @@ namespace Sailor
 		SAILOR_API bool IsMaterialLoaded(UID uid) const;
 
 		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
-		TConcurrentMap<UID, TSharedPtr<Material>> m_loadedMaterials;
+		TConcurrentMap<UID, MaterialPtr> m_loadedMaterials;
+
+		Memory::ObjectAllocatorPtr m_allocator;
 	};
 }

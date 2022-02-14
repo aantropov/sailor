@@ -13,6 +13,8 @@
 #include "JobSystem/JobSystem.h"
 #include "ModelAssetInfo.h"
 #include "Engine/Object.h"
+#include "Memory/ObjectPtr.hpp"
+#include "Memory/ObjectAllocator.hpp"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -24,6 +26,8 @@ namespace Sailor::RHI
 
 namespace Sailor
 {
+	using ModelPtr = TObjectPtr<class Model>;
+
 	class Model : public Object
 	{
 	public:
@@ -55,8 +59,6 @@ namespace Sailor
 		friend class ModelImporter;
 	};
 
-	using ModelPtr = TWeakPtr<Model>;
-
 	class ModelImporter final : public TSubmodule<ModelImporter>, public IAssetInfoHandlerListener
 	{
 	public:
@@ -73,12 +75,14 @@ namespace Sailor
 	protected:
 
 		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
-		TConcurrentMap<UID, TSharedPtr<Model>> m_loadedModels;
+		TConcurrentMap<UID, ModelPtr> m_loadedModels;
 
 		static SAILOR_API bool ImportObjModel(ModelAssetInfoPtr assetInfo,
 			TVector<RHI::MeshPtr>& outMeshes,
 			TVector<AssetInfoPtr>& outMaterialUIDs);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+
+		ObjectAllocatorPtr m_allocator;
 	};
 }

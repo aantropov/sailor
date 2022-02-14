@@ -247,6 +247,7 @@
     <ClInclude Include="..\Runtime\Memory\MemoryBlockAllocator.hpp" />
     <ClInclude Include="..\Runtime\Memory\MemoryMultiPoolAllocator.hpp" />
     <ClInclude Include="..\Runtime\Memory\MemoryPoolAllocator.hpp" />
+    <ClInclude Include="..\Runtime\Memory\ObjectAllocator.hpp" />
     <ClInclude Include="..\Runtime\Memory\RefPtr.hpp" />
     <ClInclude Include="..\Runtime\Memory\SharedPtr.hpp" />
     <ClInclude Include="..\Runtime\Memory\UniquePtr.hpp" />

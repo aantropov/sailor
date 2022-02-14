@@ -11,7 +11,7 @@ bool GameObject::RemoveComponent(ComponentPtr component)
 	if (m_components.RemoveFirst(component))
 	{
 		component->EndPlay();
-		component.DestroyObject();
+		component.ForcelyDestroyObject();
 		return true;
 	}
 
@@ -23,7 +23,7 @@ void GameObject::RemoveAllComponents()
 	for (auto& el : m_components)
 	{
 		el->EndPlay();
-		el.DestroyObject();
+		el.ForcelyDestroyObject();
 	}
 
 	m_components.Clear(true);

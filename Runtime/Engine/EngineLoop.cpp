@@ -117,7 +117,7 @@ void EngineLoop::CpuFrame(FrameState& state)
 				{
 					if (bRes)
 					{
-						Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture.Lock()->GetRHI(), 1);
+						Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture->GetRHI(), 1);
 					}
 				});
 		}
@@ -188,25 +188,16 @@ void EngineLoop::CpuFrame(FrameState& state)
 				RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("data"), &model, sizeof(model));
 			}
 
-			if (m_testMesh && m_testMesh.TryLock()->IsReady())
+			if (m_testMesh && m_testMesh->IsReady())
 			{
-				auto pMesh = m_testMesh.Lock();
-				for (auto& weakMaterial : pMesh->GetMaterials())
+				for (auto& material : m_testMesh->GetMaterials())
 				{
-					if (!weakMaterial)
+					if (material && material->IsReady() && material->GetRHI()->GetBindings()->HasBinding("material"))
 					{
-						continue;
-					}
-
-					if (auto material = weakMaterial.Lock())
-					{
-						if (material->IsReady() && material->GetRHI()->GetBindings()->HasBinding("material"))
-						{
-							RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList,
-								material->GetRHI(),
-								"material.color",
-								std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
-						}
+						RHI::Renderer::GetDriverCommands()->SetMaterialParameter(pCommandList,
+							material->GetRHI(),
+							"material.color",
+							std::max(0.5f, float(sin(0.001 * (double)state.GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
 					}
 				}
 			}

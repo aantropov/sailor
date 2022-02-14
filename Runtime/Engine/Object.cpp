@@ -24,12 +24,9 @@ void Object::TraceHotReload(ITaskPtr previousTask)
 		App::GetSubmodule<Scheduler>()->Run(hotReload);
 	}
 		
-	for (auto& obj : m_hotReloadDeps)
+	for (auto& ptr : m_hotReloadDeps)
 	{
-		if (auto ptr = std::move(obj.Lock()))
-		{
-			ptr->TraceHotReload(hotReload != nullptr ? hotReload : previousTask);
-		}
+		ptr->TraceHotReload(hotReload != nullptr ? hotReload : previousTask);
 	}
 }
 

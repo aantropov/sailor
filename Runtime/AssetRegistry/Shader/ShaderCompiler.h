@@ -15,6 +15,8 @@
 #include "ShaderCache.h"
 #include "JobSystem/Tasks.h"
 #include "Engine/Object.h"
+#include "Memory/ObjectPtr.hpp"
+#include "Memory/ObjectAllocator.hpp"
 
 namespace Sailor
 {
@@ -47,7 +49,7 @@ namespace Sailor
 		friend class ShaderCompiler;
 	};
 
-	using ShaderSetPtr = TWeakPtr<class ShaderSet>;
+	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 
 	class ShaderAsset : IJsonSerializable
 	{
@@ -99,10 +101,11 @@ namespace Sailor
 	protected:
 
 		ShaderCache m_shaderCache;
+		Memory::ObjectAllocatorPtr m_allocator;
 
 		TConcurrentMap<UID, TVector<TPair<uint32_t, JobSystem::TaskPtr<bool>>>> m_promises;
 		TConcurrentMap<UID, TSharedPtr<ShaderAsset>> m_shaderAssetsCache;
-		TConcurrentMap<UID, TVector<TPair<uint32_t, TSharedPtr<ShaderSet>>>> m_loadedShaders;
+		TConcurrentMap<UID, TVector<TPair<uint32_t, ShaderSetPtr>>> m_loadedShaders;
 
 		// ShaderAsset related functions
 		SAILOR_API static void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& defines = {});
@@ -118,7 +121,7 @@ namespace Sailor
 		SAILOR_API static uint32_t GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines);
 		SAILOR_API static TVector<std::string> GetDefines(const TVector<std::string>& defines, uint32_t permutation);
 
-		SAILOR_API bool UpdateRHIResource(TSharedPtr<ShaderSet> shader, uint32_t permutation);
+		SAILOR_API bool UpdateRHIResource(ShaderSetPtr shader, uint32_t permutation);
 
 	private:
 

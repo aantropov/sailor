@@ -8,6 +8,7 @@
 #include "Math/Math.h"
 #include "Core/Utils.h"
 #include "Memory/WeakPtr.hpp"
+#include "Memory/ObjectAllocator.hpp"
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -38,7 +39,7 @@ void Material::ClearSamplers()
 {
 	for (auto& sampler : m_samplers)
 	{
-		sampler.m_second.Lock()->RemoveHotReloadDependentObject(sampler.m_second);
+		sampler.m_second->RemoveHotReloadDependentObject(sampler.m_second);
 	}
 	m_samplers.Clear();
 }
@@ -74,7 +75,7 @@ void Material::UpdateRHIResource()
 	{
 		if (bindings->HasBinding(sampler.m_first))
 		{
-			RHI::Renderer::GetDriver()->UpdateShaderBinding(bindings, sampler.m_first, sampler.m_second.Lock()->GetRHI());
+			RHI::Renderer::GetDriver()->UpdateShaderBinding(bindings, sampler.m_first, sampler.m_second->GetRHI());
 		}
 	}
 
@@ -207,12 +208,16 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 MaterialImporter::MaterialImporter(MaterialAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_allocator = ObjectAllocatorPtr::Make();
 	infoHandler->Subscribe(this);
 }
 
 MaterialImporter::~MaterialImporter()
 {
-	m_loadedMaterials.Clear();
+	for (auto& instance : m_loadedMaterials)
+	{
+		instance.m_second.DestroyObject(m_allocator);
+	}
 }
 
 void MaterialImporter::OnImportAsset(AssetInfoPtr assetInfo)
@@ -229,9 +234,9 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 		{
 			auto updateMaterial = JobSystem::Scheduler::CreateTask("Update Material", [=]() {
 
-				auto pMaterial = material.Lock();
+				auto pMaterial = material;
 
-				pMaterial->GetShader().Lock()->RemoveHotReloadDependentObject(material);
+				pMaterial->GetShader()->RemoveHotReloadDependentObject(material);
 				pMaterial->ClearSamplers();
 				pMaterial->ClearUniforms();
 
@@ -241,7 +246,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 				pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
 
 				pMaterial->SetShader(pShader);
-				pShader.Lock()->AddHotReloadDependentObject(material);
+				pShader->AddHotReloadDependentObject(material);
 
 				auto updateRHI = JobSystem::Scheduler::CreateTask("Update material RHI resource", [=]()
 					{
@@ -259,7 +264,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 							{
 								if (bRes)
 								{
-									texture.Lock()->AddHotReloadDependentObject(material);
+									texture.GetRawPtr()->AddHotReloadDependentObject(material);
 									pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
 								}
 							}, "Set material texture binding", JobSystem::EThreadType::Rendering));
@@ -352,7 +357,7 @@ MaterialPtr MaterialImporter::GetLoadedMaterial(UID uid)
 	{
 		return (*materialIt).m_second;
 	}
-	return TWeakPtr<Material>(nullptr);
+	return MaterialPtr();
 }
 
 JobSystem::TaskPtr<bool> MaterialImporter::GetLoadPromise(UID uid)
@@ -410,7 +415,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 	// We need to start load the material
 	if (auto pMaterialAsset = LoadMaterialAsset(uid))
 	{
-		auto pMaterial = TSharedPtr<Material>::Make(uid);
+		MaterialPtr pMaterial = MaterialPtr::Make(m_allocator, uid);
 
 		ShaderSetPtr pShader;
 		auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
@@ -418,7 +423,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 		pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
 
 		pMaterial->SetShader(pShader);
-		pShader.Lock()->AddHotReloadDependentObject(pMaterial);
+		pShader->AddHotReloadDependentObject(pMaterial);
 
 		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
 			[pMaterial, pMaterialAsset]()
@@ -438,7 +443,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 							{
 								if (bRes)
 								{
-									texture.Lock()->AddHotReloadDependentObject(pMaterial);
+									texture.GetRawPtr()->AddHotReloadDependentObject(pMaterial);
 									pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
 								}
 							}, "Set material texture binding", JobSystem::EThreadType::Rendering));

@@ -3,7 +3,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/ObjectPtr.hpp"
 #include "JobSystem/JobSystem.h"
-//#include "Engine/GameObject.h"
+#include "Engine/Object.h"
 
 namespace Sailor
 {

@@ -14,7 +14,7 @@ namespace Sailor
 	template<typename, typename>
 	class TWeakPtr;
 
-	class TSmartPtrControlBlock
+	class TSmartPtrControlBlock final
 	{
 	public:
 		TSmartPtrCounter m_weakPtrCounter = 0;

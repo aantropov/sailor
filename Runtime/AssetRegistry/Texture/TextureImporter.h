@@ -11,6 +11,8 @@
 #include "TextureAssetInfo.h"
 #include "RHI/Renderer.h"
 #include "Engine/Object.h"
+#include "Memory/ObjectPtr.hpp"
+#include "Memory/ObjectAllocator.hpp"
 
 namespace Sailor
 {
@@ -32,7 +34,7 @@ namespace Sailor
 		friend class TextureImporter;
 	};
 
-	using TexturePtr = TWeakPtr<Texture>;
+	using TexturePtr = TObjectPtr<Texture>;
 
 	class TextureImporter final : public TSubmodule<TextureImporter>, public IAssetInfoHandlerListener
 	{
@@ -51,7 +53,9 @@ namespace Sailor
 	protected:
 
 		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
-		TConcurrentMap<UID, TSharedPtr<Texture>> m_loadedTextures;
+		TConcurrentMap<UID, TexturePtr> m_loadedTextures;
+
+		Memory::ObjectAllocatorPtr m_allocator;
 
 		SAILOR_API bool IsTextureLoaded(UID uid) const;
 		SAILOR_API static bool ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);

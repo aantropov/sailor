@@ -348,6 +348,9 @@
     <ClInclude Include="..\Runtime\Math\Transform.h">
       <Filter>Runtime\Math</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Memory\ObjectAllocator.hpp">
+      <Filter>Runtime\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

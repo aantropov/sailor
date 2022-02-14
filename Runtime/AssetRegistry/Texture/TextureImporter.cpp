@@ -25,12 +25,16 @@ bool Texture::IsReady() const
 TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-
+	m_allocator = ObjectAllocatorPtr::Make();
 	infoHandler->Subscribe(this);
 }
 
 TextureImporter::~TextureImporter()
 {
+	for (auto& instance : m_loadedTextures)
+	{
+		instance.m_second.DestroyObject(m_allocator);
+	}
 }
 
 void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
@@ -116,7 +120,7 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
-		auto pTexture = TSharedPtr<Texture>::Make(uid);
+		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
 
 		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load Texture",
 			[pTexture, assetInfo, this]()

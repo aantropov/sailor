@@ -567,7 +567,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		{
 			if (engineLoop->GetTestMesh())
 			{
-				auto pModel = engineLoop->GetTestMesh().Lock();
+				auto pModel = engineLoop->GetTestMesh();
 
 				auto& perInstanceBinding = engineLoop->GetPerInstanceBinding();
 
@@ -577,8 +577,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 					if (pModel->IsReady())
 					{
 						SAILOR_PROFILE_BLOCK("Get data");
-						auto& material = pModel->GetMaterials()[index].Lock()->GetRHI();
-						bool bIsMaterialReady = pModel->GetMaterials()[index] && pModel->GetMaterials()[index].Lock()->IsReady();
+						auto& material = pModel->GetMaterials()[index]->GetRHI();
+						bool bIsMaterialReady = pModel->GetMaterials()[index] && pModel->GetMaterials()[index]->IsReady();
 						auto& mesh = pModel->GetMeshes()[index];
 						SAILOR_PROFILE_END_BLOCK();
 

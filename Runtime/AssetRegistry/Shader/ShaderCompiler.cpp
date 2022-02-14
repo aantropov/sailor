@@ -68,7 +68,7 @@ void ShaderAsset::Deserialize(const nlohmann::json& inData)
 ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-
+	m_allocator = ObjectAllocatorPtr::Make();
 	m_shaderCache.Initialize();
 	infoHandler->Subscribe(this);
 
@@ -517,7 +517,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 
 		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
 		{
-			auto pShader = TSharedPtr<ShaderSet>::Make(uid);
+			auto pShader = ShaderSetPtr::Make(m_allocator, uid);
 
 			newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load shader",
 				[pShader, assetInfo, defines, this, permutation]()
@@ -551,7 +551,7 @@ bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, cons
 	return task->GetResult();
 }
 
-bool ShaderCompiler::UpdateRHIResource(TSharedPtr<ShaderSet> pShader, uint32_t permutation)
+bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutation)
 {
 	SAILOR_PROFILE_FUNCTION();
 

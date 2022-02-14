@@ -2,6 +2,7 @@
 #include <mutex>
 #include "AssetRegistry/UID.h"
 #include "Types.h"
+#include "Engine/Object.h"
 
 #define SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD(Name, Lambda) \
 { \
@@ -36,7 +37,7 @@ namespace Sailor
 	class FrameState;
 	class ShaderSet;
 
-	using ShaderSetPtr = TWeakPtr<ShaderSet>;
+	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 }
 
 namespace Sailor::Win32

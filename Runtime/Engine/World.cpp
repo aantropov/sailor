@@ -22,7 +22,7 @@ void World::Tick(float deltaTime)
 
 		el->EndPlay();
 		el->RemoveAllComponents();
-		el.DestroyObject();
+		el.ForcelyDestroyObject();
 
 		m_objects.RemoveFirst(el);
 	}

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include "RHI/Types.h"
+#include "Memory/ObjectAllocator.hpp"
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "JobSystem/JobSystem.h"
@@ -54,13 +55,17 @@ bool Model::IsReady() const
 
 ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
 {
-	SAILOR_PROFILE_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();	
+	m_allocator = ObjectAllocatorPtr::Make();
 	infoHandler->Subscribe(this);
 }
 
 ModelImporter::~ModelImporter()
 {
-	m_loadedModels.Clear();
+	for (auto& model : m_loadedModels)
+	{
+		model.m_second.DestroyObject(m_allocator);
+	}
 }
 
 void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
@@ -188,7 +193,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	// There is no promise, we need to load model
 	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
-		auto model = TSharedPtr<Model>::Make(uid);
+		ModelPtr model = ModelPtr::Make(m_allocator, uid);
 
 		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[model, assetInfo, this]()
@@ -211,7 +216,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 							if (material)
 							{
 								model.GetRawPtr()->m_materials.Add(material);
-								material.Lock()->AddHotReloadDependentObject(model);
+								material->AddHotReloadDependentObject(model);
 
 								if (loadMaterial)
 								{

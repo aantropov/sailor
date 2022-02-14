@@ -344,7 +344,7 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RenderState& re
 	TVector<RHI::ShaderLayoutBinding> bindings;
 
 	// We need debug shaders to get full names from reflection
-	VulkanApi::CreateDescriptorSetLayouts(device, { shader.Lock()->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader.Lock()->GetDebugFragmentShaderRHI()->m_vulkan.m_shader},
+	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader},
 		descriptorSetLayouts, bindings);
 
 #ifdef _DEBUG
@@ -353,8 +353,8 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RenderState& re
 	const bool bIsDebug = false;
 #endif
 
-	auto vertex = shader.Lock()->GetVertexShaderRHI();
-	auto fragment = shader.Lock()->GetFragmentShaderRHI();
+	auto vertex = shader->GetVertexShaderRHI();
+	auto fragment = shader->GetFragmentShaderRHI();
 
 	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState, vertex, fragment);
 
