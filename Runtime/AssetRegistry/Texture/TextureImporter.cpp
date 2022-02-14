@@ -82,9 +82,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 						return true;
 					}
 					return false;
-				});
-			
-			App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
+				})->Run();
 
 			pTexture->TraceHotReload(newPromise);
 		}

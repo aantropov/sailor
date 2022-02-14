@@ -83,6 +83,14 @@ ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 
 ShaderCompiler::~ShaderCompiler()
 {
+	for (auto& shaders : m_loadedShaders)
+	{
+		for (auto& shader : shaders.m_second)
+		{
+			shader.m_second.DestroyObject(m_allocator);
+		}
+	}
+
 	m_shaderCache.Shutdown();
 }
 
