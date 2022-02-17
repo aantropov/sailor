@@ -4,6 +4,7 @@
 #include "Memory/ObjectPtr.hpp"
 #include "Containers/Concepts.h"
 #include "Core/Submodule.h"
+#include "Memory/UniquePtr.hpp"
 
 namespace Sailor::ECS
 {
@@ -23,17 +24,18 @@ namespace Sailor::ECS
 		virtual size_t RegisterComponent() = 0;
 		virtual void UnregisterComponent(size_t index) = 0;
 
-		virtual void BeginPlay() = 0;
-		virtual void Tick(float deltaTime) = 0;
-		virtual void EndPlay() = 0;
+		virtual void BeginPlay() {}
+		virtual void Tick(float deltaTime) {}
+		virtual void EndPlay() {}
 
 		size_t GetType() const { return std::type_index(typeid(*this)).hash_code(); }
+		virtual size_t GetComponentType() const { return (size_t)-1; }
 	};
 
 	template<typename TData>
 	class TSystem : public TBaseSystem
 	{
-		static_assert(IsBaseOf<TData, TComponentData>::value, "TData must inherit from TComponentData");
+		//static_assert(IsBaseOf<TData, TComponentData>::value, "TData must inherit from TComponentData");
 
 	public:
 
@@ -41,7 +43,8 @@ namespace Sailor::ECS
 		{
 			if (m_freeList.Num() == 0)
 			{
-				return m_components.AddDefault(1);
+				m_components.AddDefault(1);
+				return m_components.Num() - 1;
 			}
 
 			size_t res = *(m_freeList.Last());
@@ -56,10 +59,15 @@ namespace Sailor::ECS
 
 		TData& GetComponentData(size_t index) { return m_components[index]; }
 
-		void RegisterECSFactoryMethod()
+		static void RegisterECSFactoryMethod()
 		{
-			App::GetSubmodule<ECSFactory>()->RegisterECS(GetType(), []() { return TUnique<TSystem>::Make(); });
+			App::GetSubmodule<ECSFactory>()->RegisterECS(GetComponentStaticType(), []() { return TUniquePtr<TSystem>::Make(); });
 		}
+
+		static size_t GetStaticType() { return std::type_index(typeid(TSystem)).hash_code(); }
+		static size_t GetComponentStaticType() { return std::type_index(typeid(TData)).hash_code(); }
+
+		virtual size_t GetComponentType() const override { return TSystem::GetComponentStaticType(); }
 
 	protected:
 

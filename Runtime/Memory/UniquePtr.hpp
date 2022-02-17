@@ -68,7 +68,13 @@ namespace Sailor
 			return *this;
 		}
 
-		T* GetRawPtr() const noexcept { return m_pRawPtr; }
+		__forceinline T* GetRawPtr() const noexcept { return m_pRawPtr; }
+
+		template<typename R>
+		__forceinline R* StaticCast() { return static_cast<R*>(m_pRawPtr); }
+
+		template<typename R>
+		__forceinline R* DynamicCast() { return dynamic_cast<R*>(m_pRawPtr); }
 
 		const T* operator->() const { return m_pRawPtr; }
 		T* operator->() { return m_pRawPtr; }

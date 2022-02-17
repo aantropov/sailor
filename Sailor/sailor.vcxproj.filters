@@ -336,9 +336,6 @@
     <ClInclude Include="..\Runtime\Components\StaticMeshComponent.h">
       <Filter>Runtime\Components</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Components\TransformComponent.h">
-      <Filter>Runtime\Components</Filter>
-    </ClInclude>
     <ClInclude Include="..\Runtime\Memory\ObjectPtr.hpp">
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
@@ -355,6 +352,9 @@
       <Filter>Runtime\Memory</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\ECS\ECS.h">
+      <Filter>Runtime\ECS</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\ECS\TransformECS.h">
       <Filter>Runtime\ECS</Filter>
     </ClInclude>
   </ItemGroup>
@@ -572,9 +572,6 @@
     <ClCompile Include="..\Runtime\Components\StaticMeshComponent.cpp">
       <Filter>Runtime\Components</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Components\TransformComponent.cpp">
-      <Filter>Runtime\Components</Filter>
-    </ClCompile>
     <ClCompile Include="..\Runtime\Memory\LockFreeHeapAllocator.cpp">
       <Filter>Runtime\Memory</Filter>
     </ClCompile>
@@ -582,6 +579,9 @@
       <Filter>Runtime\Math</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\ECS\ECS.cpp">
+      <Filter>Runtime\ECS</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\ECS\TransformECS.cpp">
       <Filter>Runtime\ECS</Filter>
     </ClCompile>
   </ItemGroup>

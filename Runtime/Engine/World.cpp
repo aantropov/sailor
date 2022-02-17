@@ -5,6 +5,13 @@ using namespace Sailor;
 World::World(std::string name) : m_name(std::move(name))
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make();
+
+	auto ecsArray = App::GetSubmodule<ECS::ECSFactory>()->CreateECS();
+
+	for (auto& ecs : ecsArray)
+	{
+		m_ecs[ecs->GetType()] = std::move(ecs);
+	}
 }
 
 void World::Tick(float deltaTime)
@@ -19,6 +26,11 @@ void World::Tick(float deltaTime)
 		{
 			el->Update(deltaTime);
 		}
+	}
+
+	for (auto& ecs : m_ecs)
+	{
+		ecs.m_second->Tick(deltaTime);
 	}
 
 	for (auto& el : m_pendingDestroyObjects)

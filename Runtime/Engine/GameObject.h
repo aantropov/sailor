@@ -18,7 +18,7 @@ namespace Sailor
 	public:
 
 		virtual void BeginPlay() {}
-		virtual void EndPlay() {}
+		virtual void EndPlay();
 		virtual void Update(float deltaTime) {}
 
 		void SetName(std::string name) { m_name = std::move(name); }
@@ -51,7 +51,7 @@ namespace Sailor
 		size_t m_transformHandle = (size_t)(-1);
 
 		// Only world can create GameObject
-		GameObject() : m_name("Untitled") {}
+		GameObject(WorldPtr world);
 
 		std::string m_name;
 

@@ -36,7 +36,7 @@ namespace Sailor
 			const int32_t typeId = TSubmodule<T>::GetTypeId();
 			if (typeId != SubmoduleBase::InvalidSubmoduleTypeId)
 			{
-				return static_cast<T*>(s_pInstance->m_submodules[(uint32_t)typeId].GetRawPtr());
+				return s_pInstance->m_submodules[(uint32_t)typeId].StaticCast<T>();
 			}
 			return nullptr;
 		}

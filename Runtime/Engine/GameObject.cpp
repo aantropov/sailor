@@ -1,9 +1,15 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "Components/Component.h"
+#include "ECS/TransformECS.h"
 
 using namespace Sailor;
 using namespace Sailor::JobSystem;
+
+GameObject::GameObject(WorldPtr world) : m_name("Untitled"), m_world(std::move(world))
+{
+	m_transformHandle = m_world.Lock()->GetECS<TransformECS>()->RegisterComponent();
+}
 
 bool GameObject::RemoveComponent(ComponentPtr component)
 {
@@ -28,4 +34,9 @@ void GameObject::RemoveAllComponents()
 	}
 
 	m_components.Clear(true);
+}
+
+void GameObject::EndPlay()
+{
+	m_world.Lock()->GetECS<TransformECS>()->UnregisterComponent(m_transformHandle);
 }

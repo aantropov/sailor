@@ -22,10 +22,10 @@ namespace Sailor
 		World(World&&) = default;
 		World& operator=(World&&) = default;
 
-		template<typename TObject, typename... TArgs >
-		TObjectPtr<TObject> Instantiate(TArgs&& ... args)
+		template<typename... TArgs >
+		GameObjectPtr Instantiate()
 		{
-			auto newObject = GameObjectPtr::Make(m_allocator, std::forward(args));
+			auto newObject = GameObjectPtr::Make(m_allocator, this);
 			assert(newObject);
 
 			newObject->m_world = this;
@@ -48,11 +48,20 @@ namespace Sailor
 		Memory::ObjectAllocatorPtr GetAllocator() { return m_allocator; }
 		const Memory::ObjectAllocatorPtr& GetAllocator() const { return m_allocator; }
 
+		template<typename T>
+		T* GetECS()
+		{
+			const size_t typeId = T::GetComponentStaticType();
+			return m_ecs[typeId].StaticCast<T>();
+		}
+
 	protected:
 
 		std::string m_name;
 		TVector<GameObjectPtr> m_objects;
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
+		TMap<size_t, ECS::TBaseSystemPtr> m_ecs;
+
 		Memory::ObjectAllocatorPtr m_allocator;
 	};
 }

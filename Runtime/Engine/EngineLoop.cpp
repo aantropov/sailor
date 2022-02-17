@@ -76,6 +76,12 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	timer.Start();
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
+	
+	for (auto& world : m_worlds)
+	{
+		world->Tick(currentInputState.GetDeltaTime());
+	}
+
 	CpuFrame(currentInputState);
 	SAILOR_PROFILE_END_BLOCK();
 

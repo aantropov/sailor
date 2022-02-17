@@ -17,6 +17,7 @@
 #include "Engine/EngineLoop.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "ECS/ECS.h"
+#include "ECS/TransformECS.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -78,6 +79,8 @@ void App::Initialize()
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
 	s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
+
+	TransformECS::RegisterECSFactoryMethod();
 
 	SAILOR_LOG("Sailor Engine initialized");
 }

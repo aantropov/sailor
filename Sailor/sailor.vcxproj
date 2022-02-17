@@ -191,7 +191,6 @@
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
     <ClInclude Include="..\Runtime\Components\Component.h" />
     <ClInclude Include="..\Runtime\Components\StaticMeshComponent.h" />
-    <ClInclude Include="..\Runtime\Components\TransformComponent.h" />
     <ClInclude Include="..\Runtime\Containers\Concepts.h" />
     <ClInclude Include="..\Runtime\Containers\ConcurrentMap.h" />
     <ClInclude Include="..\Runtime\Containers\ConcurrentSet.h" />
@@ -208,6 +207,7 @@
     <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
     <ClInclude Include="..\Runtime\ECS\ECS.h" />
+    <ClInclude Include="..\Runtime\ECS\TransformECS.h" />
     <ClInclude Include="..\Runtime\Engine\EngineLoop.h" />
     <ClInclude Include="..\Runtime\Engine\GameObject.h" />
     <ClInclude Include="..\Runtime\Engine\Object.h" />
@@ -287,7 +287,6 @@
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
     <ClCompile Include="..\Runtime\Components\Component.cpp" />
     <ClCompile Include="..\Runtime\Components\StaticMeshComponent.cpp" />
-    <ClCompile Include="..\Runtime\Components\TransformComponent.cpp" />
     <ClCompile Include="..\Runtime\Containers\ListBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\MapBenchmark.cpp" />
     <ClCompile Include="..\Runtime\Containers\SetBenchmark.cpp" />
@@ -296,6 +295,7 @@
     <ClCompile Include="..\Runtime\Core\Submodule.cpp" />
     <ClCompile Include="..\Runtime\Core\Utils.cpp" />
     <ClCompile Include="..\Runtime\ECS\ECS.cpp" />
+    <ClCompile Include="..\Runtime\ECS\TransformECS.cpp" />
     <ClCompile Include="..\Runtime\Engine\EngineLoop.cpp" />
     <ClCompile Include="..\Runtime\Engine\GameObject.cpp" />
     <ClCompile Include="..\Runtime\Engine\Object.cpp" />
