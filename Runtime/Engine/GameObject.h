@@ -4,6 +4,7 @@
 #include "Memory/ObjectPtr.hpp"
 #include "JobSystem/JobSystem.h"
 #include "Engine/Object.h"
+#include "ECS/ECS.h"
 #include "Components/Component.h"
 
 namespace Sailor
@@ -43,7 +44,11 @@ namespace Sailor
 		bool RemoveComponent(ComponentPtr component);
 		void RemoveAllComponents();
 
+		Math::Transform& GetTransform();
+
 	protected:
+
+		size_t m_transformHandle = (size_t)(-1);
 
 		// Only world can create GameObject
 		GameObject() : m_name("Untitled") {}
@@ -57,7 +62,5 @@ namespace Sailor
 		TVector<ComponentPtr> m_components;
 
 		friend class World;
-
-		//friend class TObjectPtr<T>;
 	};
 }

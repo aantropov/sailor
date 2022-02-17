@@ -16,6 +16,7 @@
 #include "Containers/List.h"
 #include "Engine/EngineLoop.h"
 #include "Memory/MemoryBlockAllocator.hpp"
+#include "ECS/ECS.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -72,6 +73,7 @@ void App::Initialize()
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
@@ -91,7 +93,7 @@ void App::Start()
 	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
 
-	std::unordered_map<std::string, std::function<void()>> consoleVars;
+	TMap<std::string, std::function<void()>> consoleVars;
 	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, GetSubmodule<AssetRegistry>());
 	consoleVars["memory.benchmark"] = &Memory::RunMemoryBenchmark;
 	consoleVars["vector.benchmark"] = &Sailor::RunVectorBenchmark;
@@ -115,10 +117,10 @@ void App::Start()
 			std::string cmd = std::string(line);
 			Utils::Trim(cmd);
 
-			auto it = consoleVars.find(cmd);
+			auto it = consoleVars.Find(cmd);
 			if (it != consoleVars.end())
 			{
-				it->second();
+				it->m_second();
 			}
 		}
 
@@ -195,7 +197,8 @@ void App::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
-	App::RemoveSubmodule<EngineLoop>();
+	RemoveSubmodule<EngineLoop>();
+	RemoveSubmodule<ECS::ECSFactory>();
 
 	// Release all resources before renderer
 	RemoveSubmodule<DefaultAssetInfoHandler>();
@@ -210,9 +213,9 @@ void App::Shutdown()
 	RemoveSubmodule<AssetRegistry>();
 
 	// We need to finish all jobs before release
-	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
-	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Worker);
-	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Rendering);
+	GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
+	GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Worker);
+	GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Rendering);
 
 	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<JobSystem::Scheduler>();

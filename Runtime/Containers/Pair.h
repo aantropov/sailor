@@ -9,10 +9,13 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API TPair() noexcept : m_first(), m_second() {}
+		SAILOR_API TPair() noexcept requires IsDefaultConstructible<TKeyType> && IsDefaultConstructible<TValueType> : m_first(), m_second() {}
 		SAILOR_API TPair(const TPair&) noexcept requires Sailor::IsCopyConstructible<TKeyType>&& Sailor::IsCopyConstructible<TValueType> = default;
 
-		SAILOR_API TPair(TPair&& rhs) noexcept requires Sailor::IsMoveConstructible<TKeyType> || Sailor::IsMoveConstructible<TValueType>
+		SAILOR_API TPair(TPair&& rhs) noexcept requires 
+			(Sailor::IsMoveConstructible<TKeyType> || Sailor::IsCopyConstructible<TKeyType>) &&
+			(Sailor::IsCopyConstructible<TValueType> || Sailor::IsMoveConstructible<TValueType>) && 
+			(Sailor::IsMoveConstructible<TKeyType> || Sailor::IsMoveConstructible<TValueType>)
 		{
 			if constexpr (Sailor::IsMoveConstructible<TKeyType>)
 			{
@@ -72,7 +75,10 @@ namespace Sailor
 			return *this;
 		}
 
-		SAILOR_API bool operator==(const TPair& rhs) const { return m_second == rhs.m_second && m_first == rhs.m_first; }
+		SAILOR_API bool operator==(const TPair& rhs) const
+		{
+			return Sailor::Equals(rhs.m_second, m_second) && Sailor::Equals(rhs.m_first, m_first);
+		}
 
 		SAILOR_API __forceinline const TKeyType& First() const { return m_first; }
 		SAILOR_API __forceinline const TValueType& Second() const { return m_second; }
