@@ -80,8 +80,6 @@ void App::Initialize()
 
 	s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
 
-	TransformECS::RegisterECSFactoryMethod();
-
 	SAILOR_LOG("Sailor Engine initialized");
 }
 

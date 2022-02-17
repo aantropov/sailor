@@ -6,16 +6,16 @@ using namespace Sailor;
 using namespace Sailor::JobSystem;
 using namespace Sailor::ECS;
 
-void ECSFactory::RegisterECS(size_t typeInfo, std::function<TBaseSystemPtr()> factoryMethod)
-{
-	m_factoryMethods[typeInfo] = factoryMethod;
-}
+template<typename T>
+TSystem<T>::RegistrationFactoryMethod TSystem<T>::s_registrationFactoryMethod;
+
+TMap<size_t, std::function<TBaseSystemPtr(void)>, Memory::MallocAllocator> ECSFactory::s_factoryMethods;
 
 TVector<TBaseSystemPtr> ECSFactory::CreateECS() const
 {
 	TVector<TBaseSystemPtr> res;
 
-	for (auto& ecs : m_factoryMethods)
+	for (auto& ecs : s_factoryMethods)
 	{
 		res.Emplace(ecs.m_second());
 	}

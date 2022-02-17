@@ -15,7 +15,25 @@ namespace Sailor::ECS
 		TCustomData m_data;
 	};
 
-	class ECSFactory;
+	using TBaseSystemPtr = TUniquePtr<class TBaseSystem>;
+
+	
+	class ECSFactory : public TSubmodule<ECSFactory>
+	{
+	public:
+
+		static void RegisterECS(size_t typeInfo, std::function<TBaseSystemPtr(void)> factoryMethod)
+		{
+			s_factoryMethods[typeInfo] = factoryMethod;
+		}
+
+		TVector<TBaseSystemPtr> CreateECS() const;
+
+	protected:
+
+		// Memory::MallocAllocator - due to there is no way to control the order of static members initialization
+		static TMap<size_t, std::function<TBaseSystemPtr(void)>, Memory::MallocAllocator> s_factoryMethods;
+	};
 
 	class TBaseSystem
 	{
@@ -59,11 +77,6 @@ namespace Sailor::ECS
 
 		TData& GetComponentData(size_t index) { return m_components[index]; }
 
-		static void RegisterECSFactoryMethod()
-		{
-			App::GetSubmodule<ECSFactory>()->RegisterECS(GetComponentStaticType(), []() { return TUniquePtr<TSystem>::Make(); });
-		}
-
 		static size_t GetStaticType() { return std::type_index(typeid(TSystem)).hash_code(); }
 		static size_t GetComponentStaticType() { return std::type_index(typeid(TData)).hash_code(); }
 
@@ -73,23 +86,18 @@ namespace Sailor::ECS
 
 		TVector<TData> m_components;
 		TList<size_t> m_freeList;
-	};
 
-	using TBaseSystemPtr = TUniquePtr<TBaseSystem>;
+		class RegistrationFactoryMethod
+		{
+			RegistrationFactoryMethod()
+			{
+				ECSFactory::RegisterECS(GetComponentStaticType(), []() { return TUniquePtr<TSystem>::Make(); });
+			}
+		};
+
+		static RegistrationFactoryMethod s_registrationFactoryMethod;
+	};
 
 	template<typename T>
-	using TSystemPtr = TUniquePtr<TSystem<T>>;
-
-	class ECSFactory : public TSubmodule<ECSFactory>
-	{
-	public:
-
-		void RegisterECS(size_t typeInfo, std::function<TBaseSystemPtr(void)> factoryMethod);
-
-		TVector<TBaseSystemPtr> CreateECS() const;
-
-	protected:
-
-		TMap<size_t, std::function<TBaseSystemPtr(void)>> m_factoryMethods;
-	};
+	using TSystemPtr = TUniquePtr<class TSystem<T>>;
 }
