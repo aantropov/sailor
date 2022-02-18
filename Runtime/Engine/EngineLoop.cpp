@@ -64,6 +64,7 @@ RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 void EngineLoop::CreateWorld(std::string name)
 {
 	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name)));
+	m_worlds[0]->Instantiate();
 }
 
 void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)

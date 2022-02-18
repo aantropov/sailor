@@ -1,4 +1,6 @@
 #pragma once
+#include <typeindex>
+#include <iostream>
 #include "Sailor.h"
 #include "Core/Defines.h"
 #include "JobSystem/JobSystem.h"
@@ -46,7 +48,6 @@ namespace Sailor::ECS
 		virtual void Tick(float deltaTime) {}
 		virtual void EndPlay() {}
 
-		size_t GetType() const { return std::type_index(typeid(*this)).hash_code(); }
 		virtual size_t GetComponentType() const { return (size_t)-1; }
 	};
 
@@ -56,6 +57,11 @@ namespace Sailor::ECS
 		//static_assert(IsBaseOf<TData, TComponentData>::value, "TData must inherit from TComponentData");
 
 	public:
+
+		TSystem()
+		{
+			TSystem::s_registrationFactoryMethod;
+		}
 
 		virtual size_t RegisterComponent() override
 		{
@@ -88,15 +94,33 @@ namespace Sailor::ECS
 
 		class SAILOR_API RegistrationFactoryMethod
 		{
+		public:
+
 			RegistrationFactoryMethod()
 			{
-				ECSFactory::RegisterECS(GetComponentStaticType(), []() { return TUniquePtr<TSystem>::Make(); });
+				if (!s_bRegistered)
+				{
+					ECSFactory::RegisterECS(GetComponentStaticType(), []() { return TUniquePtr<TSystem>::Make(); });
+					s_bRegistered = true;
+				}
 			}
+
+		protected:
+
+			static bool s_bRegistered;
 		};
 
-		static RegistrationFactoryMethod s_registrationFactoryMethod;
+		static volatile RegistrationFactoryMethod s_registrationFactoryMethod;
 	};
 
 	template<typename T>
 	using TSystemPtr = TUniquePtr<class TSystem<T>>;
+
+#ifndef _SAILOR_IMPORT_
+	template<typename T>
+	TSystem<T>::RegistrationFactoryMethod volatile TSystem<T>::s_registrationFactoryMethod;
+
+	template<typename T>
+	bool TSystem<T>::RegistrationFactoryMethod::s_bRegistered = false;
+#endif
 }

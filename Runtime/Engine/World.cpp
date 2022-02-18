@@ -1,4 +1,5 @@
 #include "Engine/World.h"
+#include "Engine/GameObject.h"
 
 using namespace Sailor;
 
@@ -10,7 +11,7 @@ World::World(std::string name) : m_name(std::move(name))
 
 	for (auto& ecs : ecsArray)
 	{
-		m_ecs[ecs->GetType()] = std::move(ecs);
+		m_ecs[ecs->GetComponentType()] = std::move(ecs);
 	}
 }
 
@@ -45,4 +46,23 @@ void World::Tick(float deltaTime)
 	}
 
 	m_pendingDestroyObjects.Clear();
+}
+
+GameObjectPtr World::Instantiate(const std::string& name)
+{
+	auto newObject = GameObjectPtr::Make(m_allocator, this, name);
+	assert(newObject);
+
+	m_objects.Add(newObject);
+
+	return newObject;
+}
+
+void World::Destroy(GameObjectPtr object)
+{
+	if (object && !object->bPendingDestroy)
+	{
+		object->bPendingDestroy = true;
+		m_pendingDestroyObjects.PushBack(std::move(object));
+	}
 }

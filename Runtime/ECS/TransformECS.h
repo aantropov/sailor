@@ -10,11 +10,11 @@
 
 namespace Sailor
 {
-	using WorldPtr = TWeakPtr<class World>;
+	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using TranfsormComponentPtr = TObjectPtr<class TranfsormComponent>;
 
-	class TransformECS : public ECS::TSystem<Math::Transform>
+	class SAILOR_API TransformECS : public ECS::TSystem<Math::Transform>
 	{
 	public:
 

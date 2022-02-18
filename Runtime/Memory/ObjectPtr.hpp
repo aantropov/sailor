@@ -29,7 +29,7 @@ namespace Sailor
 		static TObjectPtr<T> Make(Memory::ObjectAllocatorPtr pAllocator, TArgs&&... args) noexcept
 		{
 			void* ptr = pAllocator->Allocate(sizeof(T));
-			auto pRes = TObjectPtr<T>(new (ptr) T(std::forward<TArgs>(args)...), std::move(pAllocator));
+			auto pRes = TObjectPtr<T>(new (ptr) T(std::forward<TArgs>(args)...), pAllocator);
 			pRes.m_pControlBlock->bAllocatedByCustomAllocator = true;
 
 			return pRes;

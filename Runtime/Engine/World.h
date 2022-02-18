@@ -1,12 +1,14 @@
 #pragma once
 #include "Sailor.h"
-#include "GameObject.h"
+#include "Memory/ObjectPtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
+#include "ECS/ECS.h"
 
 namespace Sailor
 {
-	using WorldPtr = TWeakPtr<class World>;
+	using GameObjectPtr = TObjectPtr<class GameObject>;
+	using WorldPtr = class World*;
 
 	class World
 	{
@@ -22,26 +24,8 @@ namespace Sailor
 		World(World&&) = default;
 		World& operator=(World&&) = default;
 
-		template<typename... TArgs >
-		GameObjectPtr Instantiate()
-		{
-			auto newObject = GameObjectPtr::Make(m_allocator, this);
-			assert(newObject);
-
-			newObject->m_world = this;
-			m_objects.Add(newObject);
-
-			return newObject;
-		}
-
-		void Destroy(GameObjectPtr object)
-		{
-			if (object && !object->bPendingDestroy)
-			{
-				object->bPendingDestroy = true;
-				m_pendingDestroyObjects.PushBack(std::move(object));
-			}
-		}
+		GameObjectPtr Instantiate(const std::string& name = "Untitled");
+		void Destroy(GameObjectPtr object);
 
 		void Tick(float deltaTime);
 
@@ -60,7 +44,7 @@ namespace Sailor
 		std::string m_name;
 		TVector<GameObjectPtr> m_objects;
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
-		TMap<size_t, ECS::TBaseSystemPtr> m_ecs;
+		TMap<size_t, Sailor::ECS::TBaseSystemPtr> m_ecs;
 
 		Memory::ObjectAllocatorPtr m_allocator;
 	};

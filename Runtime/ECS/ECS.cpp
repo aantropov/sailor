@@ -6,9 +6,6 @@ using namespace Sailor;
 using namespace Sailor::JobSystem;
 using namespace Sailor::ECS;
 
-template<typename T>
-TSystem<T>::RegistrationFactoryMethod TSystem<T>::s_registrationFactoryMethod;
-
 TMap<size_t, std::function<TBaseSystemPtr(void)>, Memory::MallocAllocator> ECSFactory::s_factoryMethods;
 
 TVector<TBaseSystemPtr> ECSFactory::CreateECS() const

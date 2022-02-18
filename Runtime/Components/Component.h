@@ -7,7 +7,7 @@
 
 namespace Sailor
 {
-	using WorldPtr = TWeakPtr<class World>;
+	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using ComponentPtr = TObjectPtr<class Component>;
 
