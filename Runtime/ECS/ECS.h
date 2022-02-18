@@ -1,5 +1,6 @@
 #pragma once
 #include "Sailor.h"
+#include "Core/Defines.h"
 #include "JobSystem/JobSystem.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Containers/Concepts.h"
@@ -9,7 +10,7 @@
 namespace Sailor::ECS
 {
 	template<typename TCustomData>
-	struct TComponentData
+	struct SAILOR_API TComponentData
 	{
 		size_t m_lastProcessedFrame = 0;
 		TCustomData m_data;
@@ -17,8 +18,7 @@ namespace Sailor::ECS
 
 	using TBaseSystemPtr = TUniquePtr<class TBaseSystem>;
 
-	
-	class ECSFactory : public TSubmodule<ECSFactory>
+	class SAILOR_API ECSFactory : public TSubmodule<ECSFactory>
 	{
 	public:
 
@@ -35,7 +35,7 @@ namespace Sailor::ECS
 		static TMap<size_t, std::function<TBaseSystemPtr(void)>, Memory::MallocAllocator> s_factoryMethods;
 	};
 
-	class TBaseSystem
+	class SAILOR_API TBaseSystem
 	{
 	public:
 
@@ -51,7 +51,7 @@ namespace Sailor::ECS
 	};
 
 	template<typename TData>
-	class TSystem : public TBaseSystem
+	class SAILOR_API TSystem : public TBaseSystem
 	{
 		//static_assert(IsBaseOf<TData, TComponentData>::value, "TData must inherit from TComponentData");
 
@@ -78,16 +78,15 @@ namespace Sailor::ECS
 		TData& GetComponentData(size_t index) { return m_components[index]; }
 
 		static size_t GetStaticType() { return std::type_index(typeid(TSystem)).hash_code(); }
-		static size_t GetComponentStaticType() { return std::type_index(typeid(TData)).hash_code(); }
-
 		virtual size_t GetComponentType() const override { return TSystem::GetComponentStaticType(); }
+		static size_t GetComponentStaticType() { return std::type_index(typeid(TData)).hash_code(); }
 
 	protected:
 
 		TVector<TData> m_components;
 		TList<size_t> m_freeList;
 
-		class RegistrationFactoryMethod
+		class SAILOR_API RegistrationFactoryMethod
 		{
 			RegistrationFactoryMethod()
 			{
