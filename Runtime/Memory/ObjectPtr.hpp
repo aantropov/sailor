@@ -1,6 +1,7 @@
 #pragma once
 #include <cassert>
 #include <type_traits>
+#include "Core/Defines.h"
 #include "SharedPtr.hpp"
 #include "ObjectAllocator.hpp"
 
@@ -26,7 +27,7 @@ namespace Sailor
 	public:
 
 		template<typename... TArgs>
-		static TObjectPtr<T> Make(Memory::ObjectAllocatorPtr pAllocator, TArgs&&... args) noexcept
+		SAILOR_API static TObjectPtr<T> Make(Memory::ObjectAllocatorPtr pAllocator, TArgs&&... args) noexcept
 		{
 			void* ptr = pAllocator->Allocate(sizeof(T));
 			auto pRes = TObjectPtr<T>(new (ptr) T(std::forward<TArgs>(args)...), pAllocator);
@@ -38,7 +39,7 @@ namespace Sailor
 		TObjectPtr() noexcept = default;
 
 		// Raw pointers
-		TObjectPtr(T* pRawPtr, Memory::ObjectAllocatorPtr pAllocator) noexcept
+		SAILOR_API TObjectPtr(T* pRawPtr, Memory::ObjectAllocatorPtr pAllocator) noexcept
 		{
 			m_pAllocator = std::move(pAllocator);
 
@@ -49,33 +50,33 @@ namespace Sailor
 		}
 
 		// Basic copy/assignment
-		TObjectPtr(const TObjectPtr& pObjectPtr) noexcept
+		SAILOR_API TObjectPtr(const TObjectPtr& pObjectPtr) noexcept
 		{
 			m_pAllocator = pObjectPtr.m_pAllocator;
 			AssignRawPtr(pObjectPtr.m_pRawPtr, pObjectPtr.m_pControlBlock);
 		}
 
 		// Basic copy/assignment
-		TObjectPtr& operator=(const TObjectPtr& pObjectPtr) noexcept
+		SAILOR_API TObjectPtr& operator=(const TObjectPtr& pObjectPtr) noexcept
 		{
 			m_pAllocator = pObjectPtr.m_pAllocator;
 			AssignRawPtr(pObjectPtr.m_pRawPtr, pObjectPtr.m_pControlBlock);
 			return *this;
 		}
 
-		TObjectPtr(TObjectPtr&& pPtr) noexcept
+		SAILOR_API TObjectPtr(TObjectPtr&& pPtr) noexcept
 		{
 			Swap(std::move(pPtr));
 		}
 
-		TObjectPtr& operator=(TObjectPtr&& pPtr) noexcept
+		SAILOR_API TObjectPtr& operator=(TObjectPtr&& pPtr) noexcept
 		{
 			Swap(std::move(pPtr));
 			return *this;
 		}
 
 		// We support this operator to properly write next code TObjectPtr<T> p = nullptr;
-		TObjectPtr& operator=(T* pRaw) noexcept
+		SAILOR_API TObjectPtr& operator=(T* pRaw) noexcept
 		{
 			assert(!pRaw);
 			Clear();
@@ -83,68 +84,68 @@ namespace Sailor
 		}
 
 		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TObjectPtr(const TObjectPtr<R>& pDerivedPtr) noexcept
+		SAILOR_API TObjectPtr(const TObjectPtr<R>& pDerivedPtr) noexcept
 		{
 			m_pAllocator = pDerivedPtr.m_pAllocator;
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 		}
 
 		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TObjectPtr(TObjectPtr<R>&& pDerivedPtr) noexcept
+		SAILOR_API TObjectPtr(TObjectPtr<R>&& pDerivedPtr) noexcept
 		{
 			Swap(std::move(pDerivedPtr));
 		}
 
 		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
-		TObjectPtr& operator=(TObjectPtr<R> pDerivedPtr) noexcept
+		SAILOR_API TObjectPtr& operator=(TObjectPtr<R> pDerivedPtr) noexcept
 		{
 			Swap(std::move(pDerivedPtr));
 			return *this;
 		}
 
-		T* GetRawPtr() const noexcept 
+		SAILOR_API T* GetRawPtr() const noexcept
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return static_cast<T*>(m_pRawPtr);
 		}
 
-		T* operator->()  noexcept 
+		SAILOR_API T* operator->()  noexcept
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return static_cast<T*>(m_pRawPtr);
 		}
 
-		const T* operator->() const 
+		SAILOR_API const T* operator->() const
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return static_cast<T*>(m_pRawPtr);
 		}
 
-		T& operator*() noexcept 
+		SAILOR_API T& operator*() noexcept
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return *static_cast<T*>(m_pRawPtr);
 		}
 
-		const T& operator*() const 
+		SAILOR_API const T& operator*() const
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
-			return *static_cast<T*>(m_pRawPtr); 
+			return *static_cast<T*>(m_pRawPtr);
 		}
 
-		operator bool() const noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0; }
+		SAILOR_API operator bool() const noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0; }
 
-		bool operator==(const TObjectPtr<T>& pRhs) const
+		SAILOR_API bool operator==(const TObjectPtr<T>& pRhs) const
 		{
 			return m_pRawPtr == pRhs.m_pRawPtr;
 		}
 
-		bool operator!=(const TObjectPtr<T>& pRhs) const
+		SAILOR_API bool operator!=(const TObjectPtr<T>& pRhs) const
 		{
 			return m_pRawPtr != pRhs.m_pRawPtr;
 		}
 
-		void Clear() noexcept
+		SAILOR_API void Clear() noexcept
 		{
 			DecrementRefCounter();
 			m_pRawPtr = nullptr;
@@ -152,12 +153,12 @@ namespace Sailor
 			m_pAllocator.Clear();
 		}
 
-		~TObjectPtr()
+		SAILOR_API ~TObjectPtr()
 		{
 			DecrementRefCounter();
 		}
 
-		size_t GetHash() const
+		SAILOR_API size_t GetHash() const
 		{
 			// TODO: implement hash_combine
 			std::hash<const void*> p;
@@ -165,14 +166,14 @@ namespace Sailor
 		}
 
 		// Only allocator handler could destroy the object by design
-		void DestroyObject(Memory::ObjectAllocatorPtr pAllocator)
+		SAILOR_API void DestroyObject(Memory::ObjectAllocatorPtr pAllocator)
 		{
 			assert(pAllocator == m_pAllocator);
 			ForcelyDestroyObject();
 		}
 
 		// Only if you know what you're doing
-		void ForcelyDestroyObject()
+		SAILOR_API void ForcelyDestroyObject()
 		{
 			assert(m_pRawPtr && m_pControlBlock);
 			assert(m_pControlBlock->m_sharedPtrCounter > 0);
@@ -193,7 +194,7 @@ namespace Sailor
 		TSmartPtrControlBlock* m_pControlBlock = nullptr;
 		Memory::ObjectAllocatorPtr m_pAllocator = nullptr;
 
-		void AssignRawPtr(Object* pRawPtr, TSmartPtrControlBlock* pControlBlock)
+		SAILOR_API void AssignRawPtr(Object* pRawPtr, TSmartPtrControlBlock* pControlBlock)
 		{
 			if (m_pRawPtr == pRawPtr)
 			{
@@ -216,12 +217,12 @@ namespace Sailor
 			}
 		}
 
-		void IncrementRefCounter()
+		SAILOR_API void IncrementRefCounter()
 		{
 			m_pControlBlock->m_weakPtrCounter++;
 		}
 
-		void DecrementRefCounter()
+		SAILOR_API void DecrementRefCounter()
 		{
 			// If we destroy the last -> we destroy object
 			if (m_pControlBlock != nullptr && --m_pControlBlock->m_weakPtrCounter == 0)
@@ -238,7 +239,7 @@ namespace Sailor
 		}
 
 		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || std::is_same_v<T, R>>>
-		void Swap(TObjectPtr<R>&& pPtr)
+		SAILOR_API void Swap(TObjectPtr<R>&& pPtr)
 		{
 			if (m_pRawPtr == static_cast<T*>(pPtr.m_pRawPtr))
 			{

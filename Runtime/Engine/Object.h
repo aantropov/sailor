@@ -19,18 +19,18 @@ namespace Sailor
 
 #ifdef SAILOR_EDITOR
 
-		virtual JobSystem::ITaskPtr OnHotReload();
+		virtual JobSystem::ITaskPtr SAILOR_API OnHotReload();
 
-		void TraceHotReload(JobSystem::ITaskPtr previousTask);
-		void AddHotReloadDependentObject(ObjectPtr object);
-		void RemoveHotReloadDependentObject(ObjectPtr object);
-		void ClearHotReloadDependentObjects();
+		void SAILOR_API TraceHotReload(JobSystem::ITaskPtr previousTask);
+		void SAILOR_API AddHotReloadDependentObject(ObjectPtr object);
+		void SAILOR_API RemoveHotReloadDependentObject(ObjectPtr object);
+		void SAILOR_API ClearHotReloadDependentObjects();
 #endif
 
-		virtual bool IsReady() const { return true; }
+		virtual SAILOR_API bool IsReady() const { return true; }
 
-		Object() = default;
-		virtual ~Object() = default;
+		SAILOR_API Object() = default;
+		virtual SAILOR_API ~Object() = default;
 
 		Object(const Object&) = delete;
 		Object& operator=(const Object&) = delete;
@@ -39,9 +39,9 @@ namespace Sailor
 		Object& operator=(Object&&) = default;
 
 		// Object could be related to loaded asset, texture, material, etc..
-		const UID& GetUID() const { return m_UID; }
+		SAILOR_API const UID& GetUID() const { return m_UID; }
 
-		std::type_index GetType() const { return std::type_index(typeid(*this)); }
+		SAILOR_API std::type_index GetType() const { return std::type_index(typeid(*this)); }
 
 	protected:
 

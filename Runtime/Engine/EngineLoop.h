@@ -80,15 +80,15 @@ namespace Sailor
 		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
 		SAILOR_API void CpuFrame(FrameState& currentInputState);
 
-		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
+		SAILOR_API uint32_t GetSmoothFps() const { return m_pureFps.load(); }
 
 		EngineLoop() = default;
 		~EngineLoop() override = default;
 
-		ModelPtr& GetTestMesh() { return m_testMesh; }
-		RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_testBinding; }
+		SAILOR_API ModelPtr& GetTestMesh() { return m_testMesh; }
+		SAILOR_API RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_testBinding; }
 
-		void CreateWorld(std::string name);
+		SAILOR_API void CreateWorld(std::string name);
 
 	protected:
 

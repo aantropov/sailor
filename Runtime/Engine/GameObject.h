@@ -18,19 +18,19 @@ namespace Sailor
 	{
 	public:
 
-		virtual void BeginPlay() {}
-		virtual void EndPlay();
-		virtual void Update(float deltaTime) {}
+		SAILOR_API virtual void  BeginPlay() {}
+		SAILOR_API virtual void  EndPlay();
+		SAILOR_API virtual void  Update(float deltaTime) {}
 
-		void SetName(std::string name) { m_name = std::move(name); }
-		const std::string& GetName() const { return m_name; }
+		SAILOR_API void SetName(std::string name) { m_name = std::move(name); }
+		SAILOR_API const std::string& GetName() const { return m_name; }
 
-		WorldPtr GetWorld() const { return m_pWorld; }
+		SAILOR_API WorldPtr GetWorld() const { return m_pWorld; }
 
-		operator bool() const { return !bPendingDestroy; }
+		SAILOR_API operator bool() const { return !bPendingDestroy; }
 
 		template<typename TComponent, typename... TArgs >
-		TObjectPtr<TComponent> AddComponent(TArgs&& ... args)
+		SAILOR_API TObjectPtr<TComponent> AddComponent(TArgs&& ... args)
 		{
 			assert(m_pWorld);
 			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward(args));
@@ -42,10 +42,10 @@ namespace Sailor
 			return newObject;
 		}
 
-		bool RemoveComponent(ComponentPtr component);
-		void RemoveAllComponents();
+		SAILOR_API bool RemoveComponent(ComponentPtr component);
+		SAILOR_API void RemoveAllComponents();
 
-		Math::Transform& GetTransform();
+		SAILOR_API Math::Transform& GetTransform();
 
 	protected:
 

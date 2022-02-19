@@ -14,26 +14,26 @@ namespace Sailor
 	{
 	public:
 
-		World(std::string name);
+		SAILOR_API World(std::string name);
 
-		virtual ~World() = default;
+		virtual SAILOR_API ~World() = default;
 
-		World(const World&) = delete;
-		World& operator=(const World&) = delete;
+		SAILOR_API World(const World&) = delete;
+		SAILOR_API World& operator=(const World&) = delete;
 
-		World(World&&) = default;
-		World& operator=(World&&) = default;
+		SAILOR_API World(World&&) = default;
+		SAILOR_API World& operator=(World&&) = default;
 
-		GameObjectPtr Instantiate(const std::string& name = "Untitled");
-		void Destroy(GameObjectPtr object);
+		SAILOR_API GameObjectPtr Instantiate(const std::string& name = "Untitled");
+		SAILOR_API void Destroy(GameObjectPtr object);
 
-		void Tick(float deltaTime);
+		SAILOR_API void Tick(float deltaTime);
 
-		Memory::ObjectAllocatorPtr GetAllocator() { return m_allocator; }
-		const Memory::ObjectAllocatorPtr& GetAllocator() const { return m_allocator; }
+		SAILOR_API Memory::ObjectAllocatorPtr GetAllocator() { return m_allocator; }
+		SAILOR_API const Memory::ObjectAllocatorPtr& GetAllocator() const { return m_allocator; }
 
 		template<typename T>
-		T* GetECS()
+		SAILOR_API T* GetECS()
 		{
 			const size_t typeId = T::GetComponentStaticType();
 			return m_ecs[typeId].StaticCast<T>();
