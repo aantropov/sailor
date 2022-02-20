@@ -11,6 +11,11 @@ GameObject::GameObject(WorldPtr world, const std::string& name) : m_name(name), 
 	m_transformHandle = m_pWorld->GetECS<TransformECS>()->RegisterComponent();
 }
 
+Transform& GameObject::GetTransform()
+{
+	return m_pWorld->GetECS<TransformECS>()->GetComponentData(m_transformHandle);
+}
+
 bool GameObject::RemoveComponent(ComponentPtr component)
 {
 	assert(component);

@@ -11,12 +11,7 @@
 
 namespace Sailor::ECS
 {
-	template<typename TCustomData>
-	class SAILOR_API TComponentData
-	{
-		bool bIsDirty = true;
-		TCustomData m_data;
-	};
+	constexpr size_t InvalidIndex = ((size_t)-1);
 
 	using TBaseSystemPtr = TUniquePtr<class TBaseSystem>;
 

@@ -33,7 +33,7 @@ namespace Sailor
 		SAILOR_API const Memory::ObjectAllocatorPtr& GetAllocator() const { return m_allocator; }
 
 		template<typename T>
-		SAILOR_API T* GetECS()
+		SAILOR_API __forceinline T* GetECS()
 		{
 			const size_t typeId = T::GetComponentStaticType();
 			return m_ecs[typeId].StaticCast<T>();
