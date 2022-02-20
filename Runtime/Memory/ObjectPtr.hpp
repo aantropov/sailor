@@ -238,9 +238,10 @@ namespace Sailor
 			}
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> || std::is_same_v<T, R>>>
-		SAILOR_API void Swap(TObjectPtr<R>&& pPtr)
+		template<typename R>
+		SAILOR_API void Swap(TObjectPtr<R>&& pPtr) requires IsBaseOf<R, T> || IsSame<T, R>
 		{
+			// We are sure that all the types are safe
 			if (m_pRawPtr == static_cast<T*>(pPtr.m_pRawPtr))
 			{
 				return;
@@ -260,6 +261,7 @@ namespace Sailor
 			pPtr.m_pAllocator.Clear();
 		}
 
+		template<typename>
 		friend class TObjectPtr;
 	};
 }

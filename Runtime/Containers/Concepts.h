@@ -32,7 +32,10 @@ namespace Sailor
 
 	template<typename TDerived, typename TBase>
 	concept IsBaseOf = std::is_base_of<TDerived, TBase>::value;
-
+	
+	template<typename T, typename R>
+	concept IsSame = std::is_base_of<T, R>::value;
+	
 	template<typename T>
 	concept TIsFunction = std::is_function<T>::value;
 

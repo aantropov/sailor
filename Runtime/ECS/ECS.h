@@ -12,9 +12,9 @@
 namespace Sailor::ECS
 {
 	template<typename TCustomData>
-	struct SAILOR_API TComponentData
+	class SAILOR_API TComponentData
 	{
-		size_t m_lastProcessedFrame = 0;
+		bool bIsDirty = true;
 		TCustomData m_data;
 	};
 
@@ -81,7 +81,7 @@ namespace Sailor::ECS
 			m_freeList.PushBack(index);
 		}
 
-		TData& GetComponentData(size_t index) { return m_components[index]; }
+		__forceinline TData& GetComponentData(size_t index) { return m_components[index]; }
 
 		static size_t GetStaticType() { return std::type_index(typeid(TSystem)).hash_code(); }
 		virtual size_t GetComponentType() const override { return TSystem::GetComponentStaticType(); }

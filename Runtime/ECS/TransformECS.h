@@ -14,11 +14,20 @@ namespace Sailor
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using TranfsormComponentPtr = TObjectPtr<class TranfsormComponent>;
 
-	class SAILOR_API TransformECS : public ECS::TSystem<Math::Transform>
+	class Transform
 	{
 	public:
 
-		static size_t GetComponentStaticType() { return ECS::TSystem<Math::Transform>::GetComponentStaticType(); }
+		glm::mat4x4 m_cachedMatrix; 
+		Math::Transform m_transform;
+		TVector<size_t, Memory::TInlineAllocator<4 * sizeof(size_t)>> m_children;
+	};
+
+	class SAILOR_API TransformECS : public ECS::TSystem<Transform>
+	{
+	public:
+
+		static size_t GetComponentStaticType() { return ECS::TSystem<Transform>::GetComponentStaticType(); }
 
 	protected:
 
