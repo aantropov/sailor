@@ -109,6 +109,12 @@ namespace Sailor
 			return static_cast<T*>(m_pRawPtr);
 		}
 
+		template<typename R>
+		SAILOR_API __forceinline TObjectPtr<R> StaticCast() { return TObjectPtr<R>(static_cast<R*>(m_pRawPtr), m_pAllocator); }
+
+		template<typename R>
+		SAILOR_API __forceinline TObjectPtr<R> DynamicCast() { return TObjectPtr<R>(dynamic_cast<R*>(m_pRawPtr), m_pAllocator); }
+
 		SAILOR_API T* operator->()  noexcept
 		{
 			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);

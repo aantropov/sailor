@@ -46,6 +46,11 @@ void World::Tick(float deltaTime)
 	}
 
 	m_pendingDestroyObjects.Clear();
+
+	for (auto& el : m_ecs)
+	{
+		el.m_second->Tick(deltaTime);
+	}
 }
 
 GameObjectPtr World::Instantiate(const std::string& name)

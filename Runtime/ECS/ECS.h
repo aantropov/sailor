@@ -40,13 +40,13 @@ namespace Sailor::ECS
 		virtual void UnregisterComponent(size_t index) = 0;
 
 		virtual void BeginPlay() {}
-		virtual void Tick(float deltaTime) {}
+		virtual JobSystem::ITaskPtr Tick(float deltaTime) = 0;
 		virtual void EndPlay() {}
 
 		virtual size_t GetComponentType() const { return (size_t)-1; }
 	};
 
-	template<typename TData>
+	template<typename TECS, typename TData>
 	class SAILOR_API TSystem : public TBaseSystem
 	{
 		//static_assert(IsBaseOf<TData, TComponentData>::value, "TData must inherit from TComponentData");
@@ -82,6 +82,14 @@ namespace Sailor::ECS
 		virtual size_t GetComponentType() const override { return TSystem::GetComponentStaticType(); }
 		static size_t GetComponentStaticType() { return std::type_index(typeid(TData)).hash_code(); }
 
+		__forceinline size_t GetComponentIndex(TData* rawPtr) const
+		{
+			const auto lhs = (size_t)(rawPtr);
+			const auto rhs = (size_t)(&(m_components[0]));
+
+			return (lhs - rhs) / sizeof(TData);
+		}
+
 	protected:
 
 		TVector<TData> m_components;
@@ -95,7 +103,7 @@ namespace Sailor::ECS
 			{
 				if (!s_bRegistered)
 				{
-					ECSFactory::RegisterECS(GetComponentStaticType(), []() { return TUniquePtr<TSystem>::Make(); });
+					ECSFactory::RegisterECS(GetComponentStaticType(), []() { return TUniquePtr<TECS>::Make(); });
 					s_bRegistered = true;
 				}
 			}
@@ -108,14 +116,14 @@ namespace Sailor::ECS
 		static volatile RegistrationFactoryMethod s_registrationFactoryMethod;
 	};
 
-	template<typename T>
-	using TSystemPtr = TUniquePtr<class TSystem<T>>;
+	template<typename T, typename R>
+	using TSystemPtr = TUniquePtr<class TSystem<T, R>>;
 
 #ifndef _SAILOR_IMPORT_
-	template<typename T>
-	TSystem<T>::RegistrationFactoryMethod volatile TSystem<T>::s_registrationFactoryMethod;
+	template<typename T, typename R>
+	TSystem<T, R>::RegistrationFactoryMethod volatile TSystem<T, R>::s_registrationFactoryMethod;
 
-	template<typename T>
-	bool TSystem<T>::RegistrationFactoryMethod::s_bRegistered = false;
+	template<typename T, typename R>
+	bool TSystem<T, R>::RegistrationFactoryMethod::s_bRegistered = false;
 #endif
 }
