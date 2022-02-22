@@ -44,42 +44,69 @@ void TransformECS::MarkDirty(Transform* ptr)
 JobSystem::ITaskPtr TransformECS::Tick(float deltaTime)
 {
 	// We guess that the amount of changed transform during frame
-	// Much less than the whole transforms num
-	m_dirtyComponents.Sort();
+	// Could be much less than the whole transforms num
 
-	// Update only changed transforms
-	for (auto& i : m_dirtyComponents)
+	const float NLogN_Algo = 2.0f * (float)m_dirtyComponents.Num() * std::max(1.0f, std::logf((float)m_dirtyComponents.Num()));
+	const float N_Algo = 2.0f * (float)m_components.Num();
+
+	if (NLogN_Algo < N_Algo)
 	{
-		auto& data = m_components[i];
+		// We should sort the dirty components to make the pass
+		// more cache-friendly
+		m_dirtyComponents.Sort();
 
-		if (data.m_bIsActive)
+		// Update only changed transforms
+		for (auto& i : m_dirtyComponents)
 		{
-			data.m_cachedRelativeMatrix = data.m_transform.Matrix();
+			auto& data = m_components[i];
+
+			if (data.m_bIsActive)
+			{
+				data.m_cachedRelativeMatrix = data.m_transform.Matrix();
+			}
+		}
+
+		// Recalculate only root transforms
+		for (int32_t i = 0; i < m_dirtyComponents.Num(); i++)
+		{
+			auto& data = m_components[i];
+
+			if (data.m_parent == ECS::InvalidIndex && data.m_bIsActive)
+			{
+				CalculateMatrices(data);
+
+				m_dirtyComponents.RemoveAtSwap(i);
+				i--;
+			}
+		}
+
+		// Recalculate not calculated transforms
+		for (int32_t i = 0; i < m_dirtyComponents.Num(); i++)
+		{
+			auto& data = m_components[i];
+
+			if (data.m_bIsDirty)
+			{
+				CalculateMatrices(data);
+			}
 		}
 	}
-
-	// Recalculate only root transforms
-	for (int32_t i = 0; i < m_dirtyComponents.Num(); i++)
+	else
 	{
-		auto& data = m_components[i];
-
-		if (data.m_parent == ECS::InvalidIndex && data.m_bIsActive)
+		for (auto& data : m_components)
 		{
-			CalculateMatrices(data);
-
-			m_dirtyComponents.RemoveAt(i);
-			i--;
+			if (data.m_bIsDirty && data.m_bIsActive)
+			{
+				data.m_cachedRelativeMatrix = data.m_transform.Matrix();
+			}
 		}
-	}
 
-	// Recalculate not calculated transforms
-	for (int32_t i = 0; i < m_dirtyComponents.Num(); i++)
-	{
-		auto& data = m_components[i];
-
-		if (data.m_bIsDirty)
+		for (auto& data : m_components)
 		{
-			CalculateMatrices(data);
+			if (data.m_bIsDirty && data.m_bIsActive)
+			{
+				CalculateMatrices(data);
+			}
 		}
 	}
 
