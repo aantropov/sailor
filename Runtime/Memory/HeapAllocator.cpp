@@ -63,16 +63,16 @@ Header* Page::MoveHeader(Header* block, int64_t shift)
 {
 	const size_t headerSize = sizeof(Header);
 
-	Header* pPrevFree = static_cast<Header*>(block->m_prevFree != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_prevFree) : nullptr);
-	Header* pPrev = static_cast<Header*>(block->m_prev != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_prev) : nullptr);
-	Header* pNextFree = static_cast<Header*>(block->m_nextFree != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_nextFree) : nullptr);
-	Header* pNext = static_cast<Header*>(block->m_next != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_next) : nullptr);
-
 	Header* oldBlock = block;
 	block = static_cast<Header*>(ShiftPtr(oldBlock, shift));
 	memmove(block, oldBlock, headerSize);
 
 	block->m_size -= shift;
+
+	Header* pPrevFree = static_cast<Header*>(block->m_prevFree != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_prevFree) : nullptr);
+	Header* pPrev = static_cast<Header*>(block->m_prev != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_prev) : nullptr);
+	Header* pNextFree = static_cast<Header*>(block->m_nextFree != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_nextFree) : nullptr);
+	Header* pNext = static_cast<Header*>(block->m_next != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_next) : nullptr);
 
 	// we merge free space to left block
 	if (pPrev && pPrev != block)
@@ -746,7 +746,7 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 	}
 
 	void* res = Allocate(size, alignment);
-	std::memcpy(res, ptr, oldSize);
+	std::memmove(res, ptr, oldSize);
 	Free(ptr);
 
 	return res;
