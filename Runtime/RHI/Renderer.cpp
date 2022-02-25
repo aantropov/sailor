@@ -1,4 +1,3 @@
-#include <mutex>
 #include "Types.h"
 #include "Renderer.h"
 #include "Mesh.h"

@@ -2,7 +2,6 @@
 #include <cassert>
 #include <memory>
 #include <atomic>
-#include <mutex>
 #include "Core/Defines.h"
 
 namespace Sailor

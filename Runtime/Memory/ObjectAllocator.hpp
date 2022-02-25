@@ -1,7 +1,7 @@
 #pragma once
 #include <cassert>
 #include <memory>
-#include <mutex>
+#include "Core/SpinLock.h"
 #include "Core/Defines.h"
 #include "HeapAllocator.h"
 #include "SharedPtr.hpp"
@@ -18,20 +18,26 @@ namespace Sailor::Memory
 
 		void* Allocate(size_t size, size_t alignment = 8)
 		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
-			return m_heapAllocator.Allocate(size, alignment);
+			m_lock.Lock();
+			void* res = m_heapAllocator.Allocate(size, alignment);
+			m_lock.Unlock();
+			
+			return res;
 		}
 
 		void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
 		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
-			return m_heapAllocator.Reallocate(ptr, size, alignment);
+			m_lock.Lock();
+			void* res = m_heapAllocator.Reallocate(ptr, size, alignment);
+			m_lock.Unlock();
+			return res;
 		}
 
 		void Free(void* ptr, size_t size = 0)
 		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
-			return m_heapAllocator.Free(ptr);
+			m_lock.Lock();
+			m_heapAllocator.Free(ptr);
+			m_lock.Unlock();
 		}
 
 		ObjectAllocator() = default;
@@ -44,7 +50,7 @@ namespace Sailor::Memory
 
 	protected:
 
-		std::mutex m_mutex;
+		SpinLock m_lock;
 		HeapAllocator m_heapAllocator;
 	};
 }

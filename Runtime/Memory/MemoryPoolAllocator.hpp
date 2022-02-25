@@ -1,7 +1,7 @@
 #pragma once
 #include "Memory.h"
 #include <algorithm>
-#include <mutex>
+#include "Core/SpinLock.h"
 #include "Containers/Containers.h"
 
 namespace Sailor::Memory
@@ -225,7 +225,7 @@ namespace Sailor::Memory
 
 		TMemoryPtr<TPtr> Allocate(size_t size, size_t alignment)
 		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
+			m_lock.Lock();
 			//assert(size % m_elementSize == 0);
 
 			uint32_t layoutIndex;
@@ -242,13 +242,14 @@ namespace Sailor::Memory
 				std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
 				m_layout.pop_back();
 			}
+			m_lock.Unlock();
 
 			return res;
 		}
 
 		void Free(TMemoryPtr<TPtr>& data)
 		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
+			m_lock.Lock();
 			if (data.m_ptr)
 			{
 				const uint32_t index = data.m_blockIndex;
@@ -285,16 +286,18 @@ namespace Sailor::Memory
 					TryFreeBlock(m_blocks[index]);
 				}
 			}
+			m_lock.Unlock();
 		}
 
 		virtual ~TPoolAllocator()
 		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
+			m_lock.Lock();
 
 			m_blocks.clear();
 			m_layout.clear();
 			m_emptyBlocks.clear();
 
+			m_lock.Unlock();
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }
@@ -304,7 +307,7 @@ namespace Sailor::Memory
 
 	private:
 
-		std::mutex m_mutex;
+		SpinLock m_lock;
 
 		static constexpr uint32_t InvalidIndex = (uint32_t)-1;
 

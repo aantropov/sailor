@@ -49,7 +49,7 @@ TRefPtr<RHI::Mesh> IGraphicsDriver::CreateMesh()
 
 void IGraphicsDriver::TrackResources_ThreadSafe()
 {
-	std::scoped_lock<std::mutex> guard(m_mutexTrackedFences);
+	m_lockTrackedFences.Lock();
 
 	for (int32_t index = 0; index < m_trackedFences.Num(); index++)
 	{
@@ -67,6 +67,7 @@ void IGraphicsDriver::TrackResources_ThreadSafe()
 			index--;
 		}
 	}
+	m_lockTrackedFences.Unlock();
 }
 
 void IGraphicsDriver::TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle)
@@ -82,10 +83,12 @@ void IGraphicsDriver::TrackDelayedInitialization(IDelayedInitialization* pResour
 
 void IGraphicsDriver::TrackPendingCommandList_ThreadSafe(FencePtr handle)
 {
-	std::scoped_lock<std::mutex> guard(m_mutexTrackedFences);
+	m_lockTrackedFences.Lock();
 
 	// We should track fences to handle pending command list
 	m_trackedFences.Add(handle);
+
+	m_lockTrackedFences.Unlock();
 }
 
 void IGraphicsDriver::SubmitCommandList_Immediate(CommandListPtr commandList)

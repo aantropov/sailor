@@ -4,8 +4,6 @@
 #include <functional>
 #include <concepts>
 #include <type_traits>
-#include <atomic>
-#include <mutex>
 #include "Core/Defines.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/Memory.h"
@@ -333,19 +331,19 @@ namespace Sailor
 			m_num++;
 		}
 
-		__forceinline bool TryLock(size_t hash) { return m_mutexes[hash % concurrencyLevel].TryLock(); }
-		__forceinline void Lock(size_t hash) { m_mutexes[hash % concurrencyLevel].Lock(); }
-		__forceinline void Unlock(size_t hash) { m_mutexes[hash % concurrencyLevel].Unlock(); }
+		__forceinline bool TryLock(size_t hash) { return m_locks[hash % concurrencyLevel].TryLock(); }
+		__forceinline void Lock(size_t hash) { m_locks[hash % concurrencyLevel].Lock(); }
+		__forceinline void Unlock(size_t hash) { m_locks[hash % concurrencyLevel].Unlock(); }
 
 		__forceinline bool TryLockAll()
 		{
 			for (uint32_t i = 0; i < concurrencyLevel; i++)
 			{
-				if (!m_mutexes[i].TryLock())
+				if (!m_locks[i].TryLock())
 				{
 					for (uint32_t j = i; j >= 0; j--)
 					{
-						m_mutexes[j].Unlock();
+						m_locks[j].Unlock();
 					}
 					return false;
 				}
@@ -357,7 +355,7 @@ namespace Sailor
 		{
 			for (size_t i = 0; i < concurrencyLevel; i++)
 			{
-				m_mutexes[i].Lock();
+				m_locks[i].Lock();
 			}
 		}
 
@@ -365,7 +363,7 @@ namespace Sailor
 		{
 			for (size_t i = 0; i < concurrencyLevel; i++)
 			{
-				m_mutexes[i].Unlock();
+				m_locks[i].Unlock();
 			}
 		}
 
@@ -411,7 +409,7 @@ namespace Sailor
 		}
 
 		TBucketContainer m_buckets{};
-		SpinLock m_mutexes[concurrencyLevel];
+		SpinLock m_locks[concurrencyLevel];
 
 		size_t m_num = 0;
 

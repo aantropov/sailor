@@ -231,4 +231,4 @@ TUniquePtr<Win32::Window>& App::GetViewportWindow()
 	return s_pInstance->m_pViewportWindow;
 }
 
-std::mutex m_logMutex;
+SpinLock m_lockLog;

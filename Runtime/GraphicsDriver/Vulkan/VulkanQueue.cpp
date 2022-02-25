@@ -18,24 +18,36 @@ VulkanQueue::~VulkanQueue()
 
 VkResult VulkanQueue::Submit(const TVector<VkSubmitInfo>& submitInfos, VulkanFencePtr fence) const
 {
-	std::scoped_lock<std::mutex> guard(m_mutex);
-	return vkQueueSubmit(m_queue, static_cast<uint32_t>(submitInfos.Num()), submitInfos.GetData(), fence ? (VkFence)*fence : VK_NULL_HANDLE);
+	m_lock.Lock();
+	auto res = vkQueueSubmit(m_queue, static_cast<uint32_t>(submitInfos.Num()), submitInfos.GetData(), fence ? (VkFence)*fence : VK_NULL_HANDLE);
+	m_lock.Unlock();
+
+	return res;
 }
 
 VkResult VulkanQueue::Submit(const VkSubmitInfo& submitInfo, VulkanFencePtr fence) const
 {
-	std::scoped_lock<std::mutex> guard(m_mutex);
-	return vkQueueSubmit(m_queue, 1, &submitInfo, fence ? (VkFence)*fence : VK_NULL_HANDLE);
+	m_lock.Lock();
+	auto res = vkQueueSubmit(m_queue, 1, &submitInfo, fence ? (VkFence)*fence : VK_NULL_HANDLE);
+	m_lock.Unlock();
+
+	return res;
 }
 
 VkResult VulkanQueue::Present(const VkPresentInfoKHR& info)
 {
-	std::scoped_lock<std::mutex> guard(m_mutex);
-	return vkQueuePresentKHR(m_queue, &info);
+	m_lock.Lock();
+	auto res = vkQueuePresentKHR(m_queue, &info);
+	m_lock.Unlock();
+
+	return res;
 }
 
 VkResult VulkanQueue::WaitIdle()
 {
-	std::scoped_lock<std::mutex> guard(m_mutex);
-	return vkQueueWaitIdle(m_queue);
+	m_lock.Lock();
+	auto res = vkQueueWaitIdle(m_queue);
+	m_lock.Unlock();
+
+	return res;
 }

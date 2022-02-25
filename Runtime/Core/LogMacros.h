@@ -1,12 +1,13 @@
 #pragma once
-#include <mutex>
+#include "Core/SpinLock.h"
 #include <string>
 
-extern std::mutex m_logMutex;
+extern Sailor::SpinLock m_lockLog;
 
 #define SAILOR_LOG(Format, ...) \
 	{ \
-	const std::lock_guard<std::mutex> lock(m_logMutex); \
+	m_lockLog.Lock(); \
 	printf(Format, __VA_ARGS__); \
 	printf("\n"); \
+	m_lockLog.Unlock(); \
 	}

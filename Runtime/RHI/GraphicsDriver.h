@@ -1,5 +1,4 @@
 #pragma once
-#include <mutex>
 #include "AssetRegistry/UID.h"
 #include "Types.h"
 #include "Engine/Object.h"
@@ -129,7 +128,7 @@ namespace Sailor::RHI
 		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
 		SAILOR_API void TrackPendingCommandList_ThreadSafe(FencePtr handle);
 
-		std::mutex m_mutexTrackedFences;
+		SpinLock m_lockTrackedFences;
 		TVector<FencePtr> m_trackedFences;
 	};
 

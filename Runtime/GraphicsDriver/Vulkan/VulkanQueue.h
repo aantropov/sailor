@@ -37,6 +37,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		uint32_t m_queueFamilyIndex;
 		uint32_t m_queueIndex;
 		
-		mutable std::mutex m_mutex;
+		mutable SpinLock m_lock;
 	};
 }

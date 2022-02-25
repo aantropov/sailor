@@ -169,8 +169,5 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// We're sharing the same device memory between the different buffers
 		TMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>> m_memoryAllocators;
-
-		// We're creating rendering context with sync
-		std::mutex m_mutex;
 	};
 }

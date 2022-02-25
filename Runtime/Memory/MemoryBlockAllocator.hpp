@@ -1,7 +1,7 @@
 #pragma once
 #include "Memory.h"
 #include <algorithm>
-#include <mutex>
+#include "Core/SpinLock.h"
 
 namespace Sailor::Memory
 {
@@ -205,7 +205,7 @@ namespace Sailor::Memory
 		{
 			//SAILOR_LOG("Allocate memory: %zu", size);
 
-			std::scoped_lock<std::mutex> guard(m_mutex);
+			m_lock.Lock();
 
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;
@@ -221,6 +221,9 @@ namespace Sailor::Memory
 				std::iter_swap(m_layout.begin() + layoutIndex, m_layout.end() - 1);
 				m_layout.RemoveLast();
 			}
+
+			m_lock.Unlock();
+
 			return res;
 		}
 
@@ -228,7 +231,7 @@ namespace Sailor::Memory
 		{
 			//SAILOR_LOG("Free memory: %zu", data.m_size);
 
-			std::scoped_lock<std::mutex> guard(m_mutex);
+			m_lock.Lock();
 			if (data.m_ptr && m_blocks.Num() > 0)
 			{
 				const uint32_t index = data.m_blockIndex;
@@ -246,15 +249,18 @@ namespace Sailor::Memory
 					TryFreeBlock(m_blocks[index]);
 				}
 			}
+			m_lock.Unlock();
 		}
 
 		virtual ~TBlockAllocator()
 		{
-			std::scoped_lock<std::mutex> guard(m_mutex);
+			m_lock.Lock();
 
 			m_blocks.Clear();
 			m_layout.Clear();
 			m_emptyBlocks.Clear();
+
+			m_lock.Unlock();
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }
@@ -264,7 +270,7 @@ namespace Sailor::Memory
 
 	private:
 
-		std::mutex m_mutex;
+		SpinLock m_lock;
 		static constexpr uint32_t InvalidIndexUINT32 = (uint32_t)-1;
 
 		bool HeuristicToSkipBlocks(float occupation) const

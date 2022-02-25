@@ -1,6 +1,5 @@
 #pragma once
 #include <functional>
-#include <mutex>
 #include <atomic>
 #include <thread>
 #include <glm/glm/glm.hpp>
