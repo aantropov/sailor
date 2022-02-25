@@ -13,7 +13,7 @@ namespace Sailor
 {
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
-	using TranfsormComponentPtr = TObjectPtr<class TranfsormComponent>;
+	using TransformComponentPtr = TObjectPtr<class TransformComponent>;
 
 	class Transform
 	{
@@ -26,7 +26,7 @@ namespace Sailor
 		SAILOR_API __forceinline size_t GetParent() const { return m_parent; }
 		SAILOR_API __forceinline const TVector<size_t, Memory::TInlineAllocator<4 * sizeof(size_t)>>& GetChildren() const { return m_children; }
 
-		__forceinline ObjectPtr GetOwner() { return (m_owner); }
+		__forceinline ObjectPtr& GetOwner() { return m_owner; }
 
 		SAILOR_API __forceinline void SetPosition(const glm::vec4& position);
 		SAILOR_API __forceinline void SetRotation(const glm::quat& quat);

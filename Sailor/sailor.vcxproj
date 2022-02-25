@@ -204,6 +204,7 @@
     <ClInclude Include="..\Runtime\Core\JsonSerializable.h" />
     <ClInclude Include="..\Runtime\Core\LogMacros.h" />
     <ClInclude Include="..\Runtime\Core\Singleton.hpp" />
+    <ClInclude Include="..\Runtime\Core\SpinLock.h" />
     <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
     <ClInclude Include="..\Runtime\ECS\ECS.h" />

@@ -357,6 +357,9 @@
     <ClInclude Include="..\Runtime\ECS\TransformECS.h">
       <Filter>Runtime\ECS</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Core\SpinLock.h">
+      <Filter>Runtime\Core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

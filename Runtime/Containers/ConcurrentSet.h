@@ -13,6 +13,7 @@
 #include "Containers/List.h"
 #include "Containers/Vector.h"
 #include "Core/LogMacros.h"
+#include "Core/SpinLock.h"
 
 namespace Sailor
 {
@@ -332,19 +333,19 @@ namespace Sailor
 			m_num++;
 		}
 
-		__forceinline bool TryLock(size_t hash) { return m_mutexes[hash % concurrencyLevel].try_lock(); }
-		__forceinline void Lock(size_t hash) { m_mutexes[hash % concurrencyLevel].lock(); }
-		__forceinline void Unlock(size_t hash) { m_mutexes[hash % concurrencyLevel].unlock(); }
+		__forceinline bool TryLock(size_t hash) { return m_mutexes[hash % concurrencyLevel].TryLock(); }
+		__forceinline void Lock(size_t hash) { m_mutexes[hash % concurrencyLevel].Lock(); }
+		__forceinline void Unlock(size_t hash) { m_mutexes[hash % concurrencyLevel].Unlock(); }
 
 		__forceinline bool TryLockAll()
 		{
 			for (uint32_t i = 0; i < concurrencyLevel; i++)
 			{
-				if (!m_mutexes[i].try_lock())
+				if (!m_mutexes[i].TryLock())
 				{
 					for (uint32_t j = i; j >= 0; j--)
 					{
-						m_mutexes[j].unlock();
+						m_mutexes[j].Unlock();
 					}
 					return false;
 				}
@@ -356,7 +357,7 @@ namespace Sailor
 		{
 			for (size_t i = 0; i < concurrencyLevel; i++)
 			{
-				m_mutexes[i].lock();
+				m_mutexes[i].Lock();
 			}
 		}
 
@@ -364,7 +365,7 @@ namespace Sailor
 		{
 			for (size_t i = 0; i < concurrencyLevel; i++)
 			{
-				m_mutexes[i].unlock();
+				m_mutexes[i].Unlock();
 			}
 		}
 
@@ -410,7 +411,7 @@ namespace Sailor
 		}
 
 		TBucketContainer m_buckets{};
-		std::mutex m_mutexes[concurrencyLevel];
+		SpinLock m_mutexes[concurrencyLevel];
 
 		size_t m_num = 0;
 
