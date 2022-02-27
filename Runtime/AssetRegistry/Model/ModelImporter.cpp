@@ -55,7 +55,7 @@ bool Model::IsReady() const
 
 ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
 {
-	SAILOR_PROFILE_FUNCTION();	
+	SAILOR_PROFILE_FUNCTION();
 	m_allocator = ObjectAllocatorPtr::Make();
 	infoHandler->Subscribe(this);
 }
@@ -303,6 +303,13 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 			};
 
 			vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			vertex.m_normal =
+			{
+				attrib.normals[3 * index.normal_index + 0],
+				attrib.normals[3 * index.normal_index + 1],
+				attrib.normals[3 * index.normal_index + 2]
+			};
 
 			if (mesh.uniqueVertices.count(vertex) == 0)
 			{

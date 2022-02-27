@@ -418,6 +418,10 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
 	createInfo.pEnabledFeatures = &deviceFeatures;
 
+	VkPhysicalDeviceVulkan11Features core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+	core11.shaderDrawParameters = true;
+	createInfo.pNext = &core11;
+
 	// Compatibility with older Vulkan drivers
 	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 	if (VulkanApi::GetInstance()->IsEnabledValidationLayers())

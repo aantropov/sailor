@@ -49,6 +49,7 @@ layout(location=3) in vec4 inColor;
 
 layout(location=0) out vec4 fragColor;
 layout(location=1) out vec2 fragTexcoord;
+layout(location=2) out vec3 fragNormal;
 
 void main() 
 {
@@ -66,6 +67,7 @@ void main()
     fragColor *= material.color;
 #endif
 
+	fragNormal = worldNormal.xyz;
     fragTexcoord = inTexcoord;
 }
 END_CODE,
@@ -74,7 +76,7 @@ END_CODE,
 BEGIN_CODE
 layout(location=0) in vec4 fragColor;
 layout(location=1) in vec2 fragTexcoord;
-
+layout(location=2) in vec3 fragNormal;
 layout(set=0, binding=1) uniform sampler2D g_defaultSampler;
 
 #ifndef NO_DIFFUSE
@@ -90,6 +92,8 @@ void main()
 #else 
     outColor = fragColor * texture(g_defaultSampler, fragTexcoord);
 #endif
+
+    outColor.xyz += fragNormal.xyz;
 }
 END_CODE,
 
