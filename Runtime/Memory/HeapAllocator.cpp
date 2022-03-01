@@ -24,7 +24,7 @@ bool PoolAllocator::RequestPage(Page& page, size_t size, size_t pageIndex) const
 {
 	page.m_totalSize = size;
 	page.m_occupiedSpace = sizeof(Header);
-	page.m_pData = malloc(size);
+	page.m_pData = std::malloc(size);
 	page.m_firstFree = 0;
 	page.m_first = 0;
 	page.m_bIsInFreeList = true;
@@ -544,7 +544,7 @@ void SmallPoolAllocator::SmallPage::Free(void* ptr)
 
 void SmallPoolAllocator::SmallPage::Clear()
 {
-	delete m_pData;
+	std::free(m_pData);
 	m_pData = nullptr;
 }
 
