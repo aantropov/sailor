@@ -25,18 +25,18 @@ namespace Sailor
 	public:
 
 		// We aren't able to create shader without asset
-		ShaderSet(UID uid) : Object(std::move(uid)) {}
+		SAILOR_API ShaderSet(UID uid) : Object(std::move(uid)) {}
 
-		virtual bool IsReady() const override;
+		SAILOR_API virtual bool IsReady() const override;
 
-		const RHI::ShaderPtr& GetVertexShaderRHI() const { return m_rhiVertexShader; }
-		RHI::ShaderPtr& GetVertexShaderRHI() { return m_rhiVertexShader; }
+		SAILOR_API const RHI::ShaderPtr& GetVertexShaderRHI() const { return m_rhiVertexShader; }
+		SAILOR_API RHI::ShaderPtr& GetVertexShaderRHI() { return m_rhiVertexShader; }
 
-		const RHI::ShaderPtr& GetFragmentShaderRHI() const { return m_rhiFragmentShader; }
-		RHI::ShaderPtr& GetFragmentShaderRHI() { return m_rhiFragmentShader; }
+		SAILOR_API const RHI::ShaderPtr& GetFragmentShaderRHI() const { return m_rhiFragmentShader; }
+		SAILOR_API RHI::ShaderPtr& GetFragmentShaderRHI() { return m_rhiFragmentShader; }
 
-		const RHI::ShaderPtr& GetDebugVertexShaderRHI() const { return m_rhiVertexShaderDebug; }
-		const RHI::ShaderPtr& GetDebugFragmentShaderRHI() const { return m_rhiFragmentShaderDebug; }
+		SAILOR_API const RHI::ShaderPtr& GetDebugVertexShaderRHI() const { return m_rhiVertexShaderDebug; }
+		SAILOR_API const RHI::ShaderPtr& GetDebugFragmentShaderRHI() const { return m_rhiFragmentShaderDebug; }
 
 	protected:
 
@@ -55,19 +55,19 @@ namespace Sailor
 	{
 	public:
 
-		const std::string& GetGlslVertexCode() const { return m_glslVertex; }
-		const std::string& GetGlslFragmentCode() const { return m_glslFragment; }
-		const std::string& GetGlslCommonCode() const { return m_glslCommon; }
+		SAILOR_API __forceinline const std::string& GetGlslVertexCode() const { return m_glslVertex; }
+		SAILOR_API __forceinline const std::string& GetGlslFragmentCode() const { return m_glslFragment; }
+		SAILOR_API __forceinline const std::string& GetGlslCommonCode() const { return m_glslCommon; }
 
-		const TVector<std::string>& GetIncludes() const { return m_includes; }
-		const TVector<std::string>& GetSupportedDefines() const { return m_defines; }
+		SAILOR_API __forceinline const TVector<std::string>& GetIncludes() const { return m_includes; }
+		SAILOR_API __forceinline const TVector<std::string>& GetSupportedDefines() const { return m_defines; }
 
 		SAILOR_API bool ContainsFragment() const { return !m_glslFragment.empty(); }
 		SAILOR_API bool ContainsVertex() const { return !m_glslVertex.empty(); }
 		SAILOR_API bool ContainsCommon() const { return !m_glslCommon.empty(); }
 
-		virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
-		virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
+		SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
+		SAILOR_API virtual void Deserialize(const nlohmann::json& inData);
 
 	protected:
 

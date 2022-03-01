@@ -36,7 +36,7 @@ namespace Sailor
 			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward<TArgs>(args) ...);
 			assert(newObject);
 
-			newObject->m_gameObject = m_self;
+			newObject->m_owner = m_self;
 			m_components.Add(newObject);
 
 			newObject->BeginPlay();

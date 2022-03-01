@@ -104,7 +104,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	auto texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 	for (const auto& material : materials)
 	{
-		MaterialAsset::GetData data;
+		MaterialAsset::Data data;
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Simple.shader");
 

@@ -28,9 +28,9 @@ namespace Sailor
 
 		SAILOR_API MaterialAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
-		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;
+		SAILOR_API virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
+		SAILOR_API virtual AssetInfoPtr CreateAssetInfo() const;
 
-		virtual SAILOR_API ~MaterialAssetInfoHandler() = default;
+		SAILOR_API virtual ~MaterialAssetInfoHandler() = default;
 	};
 }

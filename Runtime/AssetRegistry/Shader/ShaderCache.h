@@ -43,9 +43,9 @@ namespace Sailor
 		SAILOR_API void ClearAll();
 		SAILOR_API void ClearExpired();
 
-		static SAILOR_API std::filesystem::path GetPrecompiledShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
-		static SAILOR_API std::filesystem::path GetCachedShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
-		static SAILOR_API std::filesystem::path GetCachedShaderWithDebugFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
+		SAILOR_API static std::filesystem::path GetPrecompiledShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
+		SAILOR_API static std::filesystem::path GetCachedShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
+		SAILOR_API static std::filesystem::path GetCachedShaderWithDebugFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
 
 	protected:
 
@@ -59,8 +59,8 @@ namespace Sailor
 			std::time_t m_timestamp;
 			uint32_t m_permutation;
 
-			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
-			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
+			SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
+			SAILOR_API virtual void Deserialize(const nlohmann::json& inData);
 		};
 
 		class ShaderCacheData final : IJsonSerializable
@@ -68,8 +68,8 @@ namespace Sailor
 		public:
 			TMap<UID, TVector<ShaderCache::ShaderCacheEntry*>> m_data;
 
-			virtual SAILOR_API void Serialize(nlohmann::json& outData) const;
-			virtual SAILOR_API void Deserialize(const nlohmann::json& inData);
+			SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
+			SAILOR_API virtual void Deserialize(const nlohmann::json& inData);
 		};
 
 		std::mutex m_saveToCacheMutex;

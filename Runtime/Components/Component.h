@@ -20,14 +20,14 @@ namespace Sailor
 		virtual void EndPlay() {}
 		virtual void Tick(float deltaTime) {}
 
-		GameObjectPtr GetOwner() const { return m_gameObject; }
+		GameObjectPtr GetOwner() const { return m_owner; }
 
 	protected:
 
 		Component() = default;
 		virtual ~Component() = default;
 
-		GameObjectPtr m_gameObject;
+		GameObjectPtr m_owner;
 
 		friend class TObjectPtr<Component>;
 		friend class GameObject;

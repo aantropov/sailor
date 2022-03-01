@@ -10,10 +10,10 @@ namespace Sailor
 	class ModelAssetInfo final : public AssetInfo
 	{
 	public:
-		virtual SAILOR_API ~ModelAssetInfo() = default;
+		SAILOR_API virtual ~ModelAssetInfo() = default;
 
-		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
-		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
+		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
+		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 
 		SAILOR_API bool ShouldGenerateMaterials() const { return m_bShouldGenerateMaterials; }
 		SAILOR_API bool ShouldBatchByMaterial() const { return m_bShouldBatchByMaterials; }
@@ -27,16 +27,16 @@ namespace Sailor
 
 	using ModelAssetInfoPtr = ModelAssetInfo*;
 
-	class ModelAssetInfoHandler final : public TSubmodule<ModelAssetInfoHandler>, public IAssetInfoHandler
+	class SAILOR_API ModelAssetInfoHandler final : public TSubmodule<ModelAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
 
-		SAILOR_API ModelAssetInfoHandler(AssetRegistry* assetRegistry);
+		ModelAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
-		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;
+		virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
+		virtual AssetInfoPtr CreateAssetInfo() const;
 
-		virtual SAILOR_API ~ModelAssetInfoHandler() = default;
+		virtual ~ModelAssetInfoHandler() = default;
 	};
 }

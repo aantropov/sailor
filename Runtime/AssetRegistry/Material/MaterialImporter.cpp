@@ -120,7 +120,7 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 
 void MaterialAsset::Deserialize(const nlohmann::json& outData)
 {
-	m_pData = TUniquePtr<GetData>::Make();
+	m_pData = TUniquePtr<Data>::Make();
 
 	bool bEnableDepthTest = true;
 	bool bEnableZWrite = true;
@@ -324,12 +324,12 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 	return TSharedPtr<MaterialAsset>();
 }
 
-const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::GetData data)
+const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
 {
 	json newMaterial;
 
 	MaterialAsset asset;
-	asset.m_pData = TUniquePtr<MaterialAsset::GetData>::Make(std::move(data));
+	asset.m_pData = TUniquePtr<MaterialAsset::Data>::Make(std::move(data));
 	asset.Serialize(newMaterial);
 
 	std::ofstream assetFile(assetFilepath);

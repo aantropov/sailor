@@ -12,7 +12,7 @@ namespace Sailor
 	{
 	public:
 
-		virtual ~TRefBase() = default;
+		SAILOR_API virtual ~TRefBase() = default;
 
 	protected:
 
@@ -20,7 +20,7 @@ namespace Sailor
 		friend class TRefPtrBase;
 	};
 
-	class TRefPtrBase
+	class SAILOR_API TRefPtrBase
 	{
 	protected:
 
@@ -32,7 +32,7 @@ namespace Sailor
 	};
 
 	template<typename T>
-	class TRefPtr final : public TRefPtrBase
+	class SAILOR_API TRefPtr final : public TRefPtrBase
 	{
 	public:
 

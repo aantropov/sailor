@@ -15,8 +15,8 @@ namespace Sailor
 
 	public:
 
-		AssetInfo();
-		virtual ~AssetInfo() = default;
+		SAILOR_API AssetInfo();
+		SAILOR_API virtual ~AssetInfo() = default;
 
 		SAILOR_API const UID& GetUID() const { return m_UID; }
 
@@ -34,8 +34,8 @@ namespace Sailor
 
 		SAILOR_API bool IsExpired() const;
 
-		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
-		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
+		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
+		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 
 	protected:
 
@@ -49,51 +49,51 @@ namespace Sailor
 
 	using AssetInfoPtr = AssetInfo*;
 
-	class IAssetInfoHandlerListener
+	class SAILOR_API IAssetInfoHandlerListener
 	{
 	public:
-		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) = 0;
-		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) = 0;
+		virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) = 0;
+		virtual void OnImportAsset(AssetInfoPtr assetInfo) = 0;
 
 	};
 
-	class IAssetInfoHandler
+	class SAILOR_API IAssetInfoHandler
 	{
 
 	public:
 
-		SAILOR_API void Subscribe(IAssetInfoHandlerListener* listener) { m_listeners.Add(listener); }
-		SAILOR_API void Unsubscribe(IAssetInfoHandlerListener* listener)
+		void Subscribe(IAssetInfoHandlerListener* listener) { m_listeners.Add(listener); }
+		void Unsubscribe(IAssetInfoHandlerListener* listener)
 		{
 			m_listeners.Remove(listener);
 		}
 
-		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const = 0;
+		virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const = 0;
 
-		virtual SAILOR_API AssetInfoPtr LoadAssetInfo(const std::string& metaFilepath) const;
-		virtual SAILOR_API AssetInfoPtr ImportAsset(const std::string& assetFilepath) const;
-		virtual SAILOR_API void ReloadAssetInfo(AssetInfoPtr assetInfo) const;
+		virtual AssetInfoPtr LoadAssetInfo(const std::string& metaFilepath) const;
+		virtual AssetInfoPtr ImportAsset(const std::string& assetFilepath) const;
+		virtual void ReloadAssetInfo(AssetInfoPtr assetInfo) const;
 
-		virtual SAILOR_API ~IAssetInfoHandler() = default;
+		virtual ~IAssetInfoHandler() = default;
 
 	protected:
 
-		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const = 0;
+		virtual AssetInfoPtr CreateAssetInfo() const = 0;
 		TVector<std::string> m_supportedExtensions;
 
 		TVector<IAssetInfoHandlerListener*> m_listeners;
 	};
 
-	class DefaultAssetInfoHandler final : public TSubmodule<DefaultAssetInfoHandler>, public IAssetInfoHandler
+	class SAILOR_API DefaultAssetInfoHandler final : public TSubmodule<DefaultAssetInfoHandler>, public IAssetInfoHandler
 	{
 
 	public:
 
-		SAILOR_API DefaultAssetInfoHandler(AssetRegistry* assetRegistry);
+		DefaultAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const override;
-		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const override;
+		virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const override;
+		virtual AssetInfoPtr CreateAssetInfo() const override;
 
-		virtual SAILOR_API ~DefaultAssetInfoHandler() override = default;
+		virtual ~DefaultAssetInfoHandler() override = default;
 	};
 }

@@ -20,12 +20,12 @@ namespace Sailor
 	{
 	public:
 
-		Texture(UID uid) : Object(uid) {}
+		SAILOR_API Texture(UID uid) : Object(uid) {}
 
-		virtual bool IsReady() const override;
+		SAILOR_API virtual bool IsReady() const override;
 
-		const RHI::TexturePtr& GetRHI() const { return m_rhiTexture; }
-		RHI::TexturePtr& GetRHI() { return m_rhiTexture; }
+		SAILOR_API const RHI::TexturePtr& GetRHI() const { return m_rhiTexture; }
+		SAILOR_API RHI::TexturePtr& GetRHI() { return m_rhiTexture; }
 
 	protected:
 
@@ -42,10 +42,10 @@ namespace Sailor
 		using ByteCode = TVector<uint8_t>;
 
 		SAILOR_API TextureImporter(TextureAssetInfoHandler* infoHandler);
-		virtual SAILOR_API ~TextureImporter() override;
+		SAILOR_API virtual ~TextureImporter() override;
 
-		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
-		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
+		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		SAILOR_API bool LoadTexture_Immediate(UID uid, TexturePtr& outTexture);
 		SAILOR_API JobSystem::TaskPtr<bool> LoadTexture(UID uid, TexturePtr& outTexture);

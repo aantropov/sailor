@@ -12,15 +12,15 @@
 
 namespace Sailor
 {
-	class RenderPipelineImporter final : public TSubmodule<RenderPipelineImporter>, public IAssetInfoHandlerListener
+	class SAILOR_API RenderPipelineImporter final : public TSubmodule<RenderPipelineImporter>, public IAssetInfoHandlerListener
 	{
 	public:
 		using ByteCode = TVector<uint8_t>;
 
-		SAILOR_API RenderPipelineImporter(RenderPipelineAssetInfoHandler* infoHandler);
-		virtual SAILOR_API ~RenderPipelineImporter() override;
+		RenderPipelineImporter(RenderPipelineAssetInfoHandler* infoHandler);
+		virtual ~RenderPipelineImporter() override;
 
-		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
-		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
+		virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 	};
 }

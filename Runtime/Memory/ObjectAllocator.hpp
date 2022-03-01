@@ -16,7 +16,7 @@ namespace Sailor::Memory
 	{
 	public:
 
-		void* Allocate(size_t size, size_t alignment = 8)
+		SAILOR_API void* Allocate(size_t size, size_t alignment = 8)
 		{
 			m_lock.Lock();
 			void* res = m_heapAllocator.Allocate(size, alignment);
@@ -25,7 +25,7 @@ namespace Sailor::Memory
 			return res;
 		}
 
-		void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
+		SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
 		{
 			m_lock.Lock();
 			void* res = m_heapAllocator.Reallocate(ptr, size, alignment);
@@ -33,20 +33,20 @@ namespace Sailor::Memory
 			return res;
 		}
 
-		void Free(void* ptr, size_t size = 0)
+		SAILOR_API void Free(void* ptr, size_t size = 0)
 		{
 			m_lock.Lock();
 			m_heapAllocator.Free(ptr);
 			m_lock.Unlock();
 		}
 
-		ObjectAllocator() = default;
+		SAILOR_API ObjectAllocator() = default;
 
-		ObjectAllocator(const ObjectAllocator&) = delete;
-		ObjectAllocator(ObjectAllocator&&) = delete;
+		SAILOR_API ObjectAllocator(const ObjectAllocator&) = delete;
+		SAILOR_API ObjectAllocator(ObjectAllocator&&) = delete;
 
-		ObjectAllocator& operator=(const ObjectAllocator&) = delete;
-		ObjectAllocator& operator=(ObjectAllocator&&) = delete;
+		SAILOR_API ObjectAllocator& operator=(const ObjectAllocator&) = delete;
+		SAILOR_API ObjectAllocator& operator=(ObjectAllocator&&) = delete;
 
 	protected:
 

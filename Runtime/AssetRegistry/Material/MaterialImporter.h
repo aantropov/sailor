@@ -94,7 +94,7 @@ namespace Sailor
 			}
 		};
 
-		struct GetData
+		struct Data
 		{
 			RHI::RenderState m_renderState;
 
@@ -123,7 +123,7 @@ namespace Sailor
 
 	protected:
 
-		TUniquePtr<GetData> m_pData;
+		TUniquePtr<Data> m_pData;
 		friend class MaterialImporter;
 	};
 
@@ -142,7 +142,7 @@ namespace Sailor
 		SAILOR_API bool LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial);
 		SAILOR_API JobSystem::TaskPtr<bool> LoadMaterial(UID uid, MaterialPtr& outMaterial);
 
-		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::GetData data);
+		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
 
 		SAILOR_API MaterialPtr GetLoadedMaterial(UID uid);
 		SAILOR_API JobSystem::TaskPtr<bool> GetLoadPromise(UID uid);
