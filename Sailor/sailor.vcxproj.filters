@@ -360,6 +360,9 @@
     <ClInclude Include="..\Runtime\Core\SpinLock.h">
       <Filter>Runtime\Core</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\ECS\StaticMeshRendererECS.h">
+      <Filter>Runtime\ECS</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -585,6 +588,9 @@
       <Filter>Runtime\ECS</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\ECS\TransformECS.cpp">
+      <Filter>Runtime\ECS</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\ECS\StaticMeshRendererECS.cpp">
       <Filter>Runtime\ECS</Filter>
     </ClCompile>
   </ItemGroup>

@@ -13,7 +13,6 @@ namespace Sailor
 {
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
-	using TransformComponentPtr = TObjectPtr<class TransformComponent>;
 
 	class Transform
 	{
