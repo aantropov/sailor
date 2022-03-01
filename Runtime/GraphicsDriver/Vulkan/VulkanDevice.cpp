@@ -581,8 +581,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 					if (pModel->IsReady())
 					{
 						SAILOR_PROFILE_BLOCK("Get data");
-						auto& material = pModel->GetMaterials()[index]->GetRHI();
-						bool bIsMaterialReady = pModel->GetMaterials()[index] && pModel->GetMaterials()[index]->IsReady();
+						auto& material = pModel->GetDefaultMaterials()[index]->GetRHI();
+						bool bIsMaterialReady = pModel->GetDefaultMaterials()[index] && pModel->GetDefaultMaterials()[index]->IsReady();
 						auto& mesh = pModel->GetMeshes()[index];
 						SAILOR_PROFILE_END_BLOCK();
 

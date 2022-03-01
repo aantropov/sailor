@@ -23,17 +23,16 @@ namespace Sailor
 		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
 
 		SAILOR_API __forceinline ModelPtr& GetModel() { return m_model; }
-		SAILOR_API __forceinline void SetModel(const ModelPtr& model) { m_model = model; }
-
-		SAILOR_API void SetTransform(size_t transformIndex) { m_transformIndex = transformIndex; }
-		SAILOR_API size_t GetTransform(size_t transformIndex) { return m_transformIndex; }
+		SAILOR_API __forceinline void SetModel(const ModelPtr& model);
 
 	protected:
 
-		bool m_bIsActive : 1 = false;
-		size_t m_transformIndex = ECS::InvalidIndex;
-		ObjectPtr m_owner;
 		ModelPtr m_model;
+		TVector<MaterialPtr, TInlineAllocator<8 * sizeof(MaterialPtr)>> m_materials;
+
+		bool m_bIsActive : 1 = false;
+		ObjectPtr m_owner;
+
 
 		friend class StaticMeshRendererECS;
 	};

@@ -14,13 +14,13 @@ namespace Sailor
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using WorldPtr = class World*;
 
-	class GameObject : public Object
+	class GameObject final : public Object
 	{
 	public:
 
-		SAILOR_API virtual void BeginPlay() {}
+		SAILOR_API virtual void BeginPlay();
 		SAILOR_API virtual void EndPlay();
-		SAILOR_API virtual void Update(float deltaTime) {}
+		SAILOR_API virtual void Tick(float deltaTime);
 
 		SAILOR_API void SetName(std::string name) { m_name = std::move(name); }
 		SAILOR_API const std::string& GetName() const { return m_name; }
@@ -33,11 +33,13 @@ namespace Sailor
 		SAILOR_API TObjectPtr<TComponent> AddComponent(TArgs&& ... args)
 		{
 			assert(m_pWorld);
-			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward(args));
+			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward<TArgs>(args) ...);
 			assert(newObject);
 
-			newObject->m_pWorld = this;
+			newObject->m_gameObject = m_self;
 			m_components.Add(newObject);
+
+			newObject->BeginPlay();
 
 			return newObject;
 		}
@@ -59,6 +61,7 @@ namespace Sailor
 		bool bBeginPlayCalled = false;
 		bool bPendingDestroy = false;
 		WorldPtr m_pWorld;
+		GameObjectPtr m_self;
 
 		TVector<ComponentPtr> m_components;
 

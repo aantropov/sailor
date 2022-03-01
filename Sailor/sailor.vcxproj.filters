@@ -333,7 +333,7 @@
     <ClInclude Include="..\Runtime\Components\Component.h">
       <Filter>Runtime\Components</Filter>
     </ClInclude>
-    <ClInclude Include="..\Runtime\Components\StaticMeshComponent.h">
+    <ClInclude Include="..\Runtime\Components\MeshRendererComponent.h">
       <Filter>Runtime\Components</Filter>
     </ClInclude>
     <ClInclude Include="..\Runtime\Memory\ObjectPtr.hpp">
@@ -575,7 +575,7 @@
     <ClCompile Include="..\Runtime\Components\Component.cpp">
       <Filter>Runtime\Components</Filter>
     </ClCompile>
-    <ClCompile Include="..\Runtime\Components\StaticMeshComponent.cpp">
+    <ClCompile Include="..\Runtime\Components\MeshRendererComponent.cpp">
       <Filter>Runtime\Components</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\Memory\LockFreeHeapAllocator.cpp">

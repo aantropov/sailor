@@ -16,11 +16,11 @@ namespace Sailor
 	{
 	public:
 
-		virtual void BeginPlay() = 0;
-		virtual void EndPlay() = 0;
-		virtual void Update() = 0;
+		virtual void BeginPlay() {}
+		virtual void EndPlay() {}
+		virtual void Tick(float deltaTime) {}
 
-		GameObjectPtr GetGameObject() const { return m_gameObject; }
+		GameObjectPtr GetOwner() const { return m_gameObject; }
 
 	protected:
 
@@ -30,5 +30,6 @@ namespace Sailor
 		GameObjectPtr m_gameObject;
 
 		friend class TObjectPtr<Component>;
+		friend class GameObject;
 	};
 }

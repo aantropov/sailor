@@ -19,17 +19,10 @@ namespace Sailor::ECS
 	{
 	public:
 
-		static void RegisterECS(size_t typeInfo, std::function<TBaseSystemPtr(void)> factoryMethod)
-		{
-			s_factoryMethods[typeInfo] = factoryMethod;
-		}
-
+		static void RegisterECS(size_t typeInfo, std::function<TBaseSystemPtr(void)> factoryMethod);
 		TVector<TBaseSystemPtr> CreateECS() const;
 
 	protected:
-
-		// Memory::MallocAllocator - due to there is no way to control the order of static members initialization
-		static TMap<size_t, std::function<TBaseSystemPtr(void)>, Memory::MallocAllocator> s_factoryMethods;
 	};
 
 	class SAILOR_API TBaseSystem

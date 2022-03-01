@@ -10,12 +10,12 @@ namespace Sailor
 {
 	const uint32_t JsonDumpIndent = 4;
 
-	class IJsonSerializable
+	class SAILOR_API IJsonSerializable
 	{
 	public:
 
-		virtual SAILOR_API void Serialize(nlohmann::json& outData) const = 0;
-		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) = 0;
+		virtual void Serialize(nlohmann::json& outData) const = 0;
+		virtual void Deserialize(const nlohmann::json& inData) = 0;
 	};
 
 	template<typename TEntryType>
@@ -107,12 +107,12 @@ namespace ns
 
 namespace glm
 {
-	void to_json(json& j, const glm::vec2& P);
-	void from_json(const json& j, glm::vec2& P);
-	void to_json(json& j, const glm::vec3& P);
-	void from_json(const json& j, glm::vec3& P);
-	void to_json(json& j, const glm::vec4& P);
-	void from_json(const json& j, glm::vec4& P);
-	void to_json(json& j, const glm::quat& P);
-	void from_json(const json& j, glm::quat& P);
+	SAILOR_API void to_json(json& j, const glm::vec2& P);
+	SAILOR_API void from_json(const json& j, glm::vec2& P);
+	SAILOR_API void to_json(json& j, const glm::vec3& P);
+	SAILOR_API void from_json(const json& j, glm::vec3& P);
+	SAILOR_API void to_json(json& j, const glm::vec4& P);
+	SAILOR_API void from_json(const json& j, glm::vec4& P);
+	SAILOR_API void to_json(json& j, const glm::quat& P);
+	SAILOR_API void from_json(const json& j, glm::quat& P);
 }

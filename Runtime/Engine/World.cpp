@@ -25,7 +25,7 @@ void World::Tick(float deltaTime)
 		}
 		else
 		{
-			el->Update(deltaTime);
+			el->Tick(deltaTime);
 		}
 	}
 
@@ -40,6 +40,7 @@ void World::Tick(float deltaTime)
 
 		el->EndPlay();
 		el->RemoveAllComponents();
+		el->m_self = nullptr;
 		el.DestroyObject(m_allocator);
 
 		m_objects.RemoveFirst(el);
@@ -57,6 +58,7 @@ GameObjectPtr World::Instantiate(const std::string& name)
 {
 	auto newObject = GameObjectPtr::Make(m_allocator, this, name);
 	assert(newObject);
+	newObject->m_self = newObject;
 
 	m_objects.Add(newObject);
 

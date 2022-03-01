@@ -13,6 +13,9 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 
+#include "Engine/GameObject.h"
+#include "Components/MeshRendererComponent.h"
+
 using namespace Sailor;
 
 FrameState::FrameState() noexcept
@@ -64,7 +67,22 @@ RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 void EngineLoop::CreateWorld(std::string name)
 {
 	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name)));
-	m_worlds[0]->Instantiate();
+	auto gameObject = m_worlds[0]->Instantiate();
+	auto meshRenderer = gameObject->AddComponent<MeshRendererComponent>();
+
+	if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
+	{
+		ModelPtr tempModel;
+		App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), tempModel)->Then<void, bool>(
+			[=](bool bRes)
+			{
+				if (bRes)
+				{
+					meshRenderer.GetRawPtr()->GetData().SetModel(tempModel);
+				}
+			});
+	}
+
 }
 
 void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
@@ -77,7 +95,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	timer.Start();
 
 	SAILOR_PROFILE_BLOCK("CPU Frame");
-	
+
 	for (auto& world : m_worlds)
 	{
 		world->Tick(currentInputState.GetDeltaTime());
@@ -109,11 +127,11 @@ void EngineLoop::CpuFrame(FrameState& state)
 			App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), m_testMesh);
 		}
 
-		m_testBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-		//bool bNeedsStorageBuffer = m_testMaterial->GetBindings()->NeedsStorageBuffer() ? EShaderBindingType::StorageBuffer : EShaderBindingType::UniformBuffer;
-		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_testBinding, "data", sizeof(glm::mat4x4), 0, RHI::EShaderBindingType::StorageBuffer);
-
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+		m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+
+		//bool bNeedsStorageBuffer = m_testMaterial->GetBindings()->NeedsStorageBuffer() ? EShaderBindingType::StorageBuffer : EShaderBindingType::UniformBuffer;
+		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_perInstanceData, "data", sizeof(glm::mat4x4), 0, RHI::EShaderBindingType::StorageBuffer);
 		Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
 
 		if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
@@ -177,7 +195,9 @@ void EngineLoop::CpuFrame(FrameState& state)
 	m_frameData.m_deltaTime = state.GetDeltaTime();
 	m_frameData.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Math::vec3_Up);
 
-	glm::mat4x4 model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), Math::vec3_Up);
+	static float angle = 0;
+	//angle += 0.01f;
+	glm::mat4x4 model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), Math::vec3_Up);
 
 	state.PushFrameBinding(m_frameDataBinding);
 
@@ -190,14 +210,14 @@ void EngineLoop::CpuFrame(FrameState& state)
 			RHI::Renderer::GetDriverCommands()->BeginCommandList(pCommandList);
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
 
-			if (m_testBinding->HasBinding("data"))
+			if (m_perInstanceData->HasBinding("data"))
 			{
-				RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_testBinding->GetOrCreateShaderBinding("data"), &model, sizeof(model));
+				RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(pCommandList, m_perInstanceData->GetOrCreateShaderBinding("data"), &model, sizeof(model));
 			}
 
 			if (m_testMesh && m_testMesh->IsReady())
 			{
-				for (auto& material : m_testMesh->GetMaterials())
+				for (auto& material : m_testMesh->GetDefaultMaterials())
 				{
 					if (material && material->IsReady() && material->GetRHI()->GetBindings()->HasBinding("material"))
 					{

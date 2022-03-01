@@ -32,29 +32,30 @@ namespace Sailor
 	{
 	public:
 
-		Model(UID uid, TVector<RHI::MeshPtr> meshes = {}, TVector<MaterialPtr> materials = {}) :
+		SAILOR_API Model(UID uid, TVector<RHI::MeshPtr> meshes = {}, TVector<MaterialPtr> materials = {}) :
 			Object(std::move(uid)),
 			m_meshes(std::move(meshes)),
 			m_materials(std::move(materials)) {}
 
-		const TVector<RHI::MeshPtr>& GetMeshes() const { return m_meshes; }
-		const TVector<MaterialPtr>& GetMaterials() const { return m_materials; }
+		SAILOR_API const TVector<RHI::MeshPtr>& GetMeshes() const { return m_meshes; }
+		SAILOR_API const TVector<MaterialPtr>& GetDefaultMaterials() const { return m_materials; }
 
-		TVector<RHI::MeshPtr>& GetMeshes() { return m_meshes; }
-		TVector<MaterialPtr>& GetMaterials() { return m_materials; }
+		SAILOR_API TVector<RHI::MeshPtr>& GetMeshes() { return m_meshes; }
+		SAILOR_API TVector<MaterialPtr>& GetDefaultMaterials() { return m_materials; }
 
 		// Should be triggered after mesh/material changes
-		void Flush();
+		SAILOR_API void Flush();
 
-		virtual bool IsReady() const override;
-		virtual ~Model() = default;
+		SAILOR_API virtual bool IsReady() const override;
+		SAILOR_API virtual ~Model() = default;
 
 	protected:
 
 		TVector<RHI::MeshPtr> m_meshes;
-		TVector<MaterialPtr> m_materials;
-
 		std::atomic<bool> m_bIsReady;
+
+		// TODO: Move materials to .asset
+		TVector<MaterialPtr> m_materials;
 
 		friend class ModelImporter;
 	};
@@ -64,10 +65,10 @@ namespace Sailor
 	public:
 
 		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);
-		virtual SAILOR_API ~ModelImporter() override;
+		SAILOR_API virtual ~ModelImporter() override;
 
-		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
-		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
+		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 
 		SAILOR_API JobSystem::TaskPtr<bool> LoadModel(UID uid, ModelPtr& outModel);
 		SAILOR_API bool LoadModel_Immediate(UID uid, ModelPtr& outModel);
@@ -77,7 +78,7 @@ namespace Sailor
 		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
 		TConcurrentMap<UID, ModelPtr> m_loadedModels;
 
-		static SAILOR_API bool ImportObjModel(ModelAssetInfoPtr assetInfo,
+		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo,
 			TVector<RHI::MeshPtr>& outMeshes,
 			TVector<AssetInfoPtr>& outMaterialUIDs);
 

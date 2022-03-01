@@ -59,7 +59,7 @@ void VulkanBuffer::Compile()
 	VK_CHECK(vkCreateBuffer(*m_device, &bufferInfo, nullptr, &m_buffer));
 }
 
-VulkanBuffer::~VulkanBuffer()
+VulkanBuffer::~VulkanBuffer() 
 {
 	Release();
 }

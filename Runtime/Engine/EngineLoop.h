@@ -86,7 +86,7 @@ namespace Sailor
 		~EngineLoop() override = default;
 
 		SAILOR_API ModelPtr& GetTestMesh() { return m_testMesh; }
-		SAILOR_API RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_testBinding; }
+		SAILOR_API RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_perInstanceData; }
 
 		SAILOR_API void CreateWorld(std::string name);
 
@@ -96,7 +96,7 @@ namespace Sailor
 
 		ModelPtr m_testMesh;
 
-		RHI::ShaderBindingSetPtr m_testBinding;
+		RHI::ShaderBindingSetPtr m_perInstanceData;
 
 		RHI::UboFrameData m_frameData;
 		RHI::ShaderBindingSetPtr m_frameDataBinding;

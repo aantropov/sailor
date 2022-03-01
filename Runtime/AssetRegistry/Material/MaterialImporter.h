@@ -25,35 +25,34 @@ namespace Sailor
 	{
 	public:
 
-		Material(UID uid) : Object(uid) {}
+		SAILOR_API Material(UID uid) : Object(uid) {}
 
-		virtual bool IsReady() const override;
+		SAILOR_API virtual bool IsReady() const override;
 
-		const RHI::MaterialPtr& GetRHI() const { return m_rhiMaterial; }
-		RHI::MaterialPtr& GetRHI() { return m_rhiMaterial; }
+		SAILOR_API const RHI::MaterialPtr& GetRHI() const { return m_rhiMaterial; }
+		SAILOR_API virtual JobSystem::ITaskPtr OnHotReload() override;
 
-		virtual JobSystem::ITaskPtr OnHotReload() override;
+		SAILOR_API ShaderSetPtr GetShader() { return m_shader; }
+		
+		SAILOR_API const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
+		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniforms() const { return m_uniforms; }
 
-		void SetSampler(const std::string& name, TexturePtr value);
-		void SetUniform(const std::string& name, glm::vec4 value);
+		SAILOR_API void ClearSamplers();
+		SAILOR_API void ClearUniforms();
 
-		void SetShader(ShaderSetPtr shader) { m_shader = shader; }
-		ShaderSetPtr GetShader() { return m_shader; }
+		SAILOR_API const RHI::RenderState& GetRenderState(const RHI::RenderState& renderState) const { return m_renderState; }
 
-		void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
+		SAILOR_API void UpdateRHIResource();
 
-		const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
-		const TConcurrentMap<std::string, glm::vec4>& GetUniforms() const { return m_uniforms; }
+		// TODO: Incapsulate & isolate
+		SAILOR_API RHI::MaterialPtr& GetRHI() { return m_rhiMaterial; }
+		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
+		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
+		SAILOR_API void SetShader(ShaderSetPtr shader) { m_shader = shader; }
+		SAILOR_API void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
 
-		void ClearSamplers();
-		void ClearUniforms();
-
-		const RHI::RenderState& GetRenderState(const RHI::RenderState& renderState) const { return m_renderState; }
-
-		void UpdateRHIResource();
-
-	protected:
-
+	protected:		
+		
 		RHI::MaterialPtr m_rhiMaterial;
 		std::atomic<bool> m_bIsReady;
 
@@ -76,19 +75,19 @@ namespace Sailor
 		{
 		public:
 
-			SamplerEntry() = default;
-			SamplerEntry(std::string name, const UID& uid) : m_name(std::move(name)), m_uid(uid) {}
+			SAILOR_API SamplerEntry() = default;
+			SAILOR_API SamplerEntry(std::string name, const UID& uid) : m_name(std::move(name)), m_uid(uid) {}
 
 			std::string m_name;
 			UID m_uid;
 
-			virtual SAILOR_API void Serialize(nlohmann::json& outData) const
+			SAILOR_API virtual void Serialize(nlohmann::json& outData) const
 			{
 				outData["name"] = m_name;
 				m_uid.Serialize(outData["uid"]);
 			}
 
-			virtual SAILOR_API void Deserialize(const nlohmann::json& inData)
+			SAILOR_API virtual void Deserialize(const nlohmann::json& inData)
 			{
 				m_name = inData["name"].get<std::string>();
 				m_uid.Deserialize(inData["uid"]);
@@ -109,10 +108,10 @@ namespace Sailor
 			UID m_shader;
 		};
 
-		virtual SAILOR_API ~MaterialAsset() = default;
+		SAILOR_API virtual ~MaterialAsset() = default;
 
-		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
-		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
+		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
+		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_pData->m_renderState; }
 		SAILOR_API bool IsTransparent() const { return m_pData->m_bIsTransparent; }
@@ -133,10 +132,10 @@ namespace Sailor
 	public:
 
 		SAILOR_API MaterialImporter(MaterialAssetInfoHandler* infoHandler);
-		virtual SAILOR_API ~MaterialImporter() override;
+		SAILOR_API virtual ~MaterialImporter() override;
 
-		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
-		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
+		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		SAILOR_API TSharedPtr<MaterialAsset> LoadMaterialAsset(UID uid);
 

@@ -11,6 +11,11 @@ GameObject::GameObject(WorldPtr world, const std::string& name) : m_name(name), 
 	m_transformHandle = m_pWorld->GetECS<TransformECS>()->RegisterComponent();
 }
 
+void GameObject::BeginPlay()
+{
+	GetTransform().SetOwner(m_self);
+}
+
 Transform& GameObject::GetTransform()
 {
 	return m_pWorld->GetECS<TransformECS>()->GetComponentData(m_transformHandle);
@@ -44,4 +49,12 @@ void GameObject::RemoveAllComponents()
 void GameObject::EndPlay()
 {
 	m_pWorld->GetECS<TransformECS>()->UnregisterComponent(m_transformHandle);
+}
+
+void GameObject::Tick(float deltaTime)
+{
+	for (auto& el : m_components)
+	{
+		el->Tick(deltaTime);
+	}
 }
