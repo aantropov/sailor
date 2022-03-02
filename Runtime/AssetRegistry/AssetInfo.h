@@ -37,6 +37,8 @@ namespace Sailor
 		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
 		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 
+		SAILOR_API virtual void SaveMetaFile();
+
 	protected:
 
 		std::time_t m_loadTime;

@@ -136,8 +136,11 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";
 		std::filesystem::create_directory(materialsFolder);
 
-		App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.name + ".mat", std::move(data));
+		UID materialUID = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.name + ".mat", std::move(data));
+		assetInfo->GetDefaultMaterials().Add(materialUID);
 	}
+
+	assetInfo->SaveMetaFile();
 }
 
 bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
@@ -264,7 +267,8 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 	auto assetFilepath = assetInfo->GetAssetFilepath();
 	auto materialFolder = Utils::GetFileFolder(assetFilepath);
 	const std::string materialsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath()) + "materials/";
-
+	const bool bHasMaterialUIDsInMeta = assetInfo->GetDefaultMaterials().Num() > 0;
+	
 	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str(), materialFolder.c_str()))
 	{
 		SAILOR_LOG("%s %s", warn.c_str(), err.c_str());
@@ -320,7 +324,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 			mesh.outIndices.Add(mesh.uniqueVertices[vertex]);
 		}
 
-		if (assetInfo->ShouldGenerateMaterials() && !assetInfo->ShouldBatchByMaterial())
+		if (!bHasMaterialUIDsInMeta && assetInfo->ShouldGenerateMaterials() && !assetInfo->ShouldBatchByMaterial())
 		{
 			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + materials[shape.mesh.material_ids[0]].name + ".mat"))
 			{
@@ -342,11 +346,26 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 		outMeshes.Emplace(ptr);
 	}
 
-	if (assetInfo->ShouldGenerateMaterials() && assetInfo->ShouldBatchByMaterial())
+	if (!bHasMaterialUIDsInMeta && assetInfo->ShouldGenerateMaterials() && assetInfo->ShouldBatchByMaterial())
 	{
 		for (const auto& material : materials)
 		{
 			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
+			{
+				outMaterialUIDs.Add(materialInfo);
+			}
+			else
+			{
+				outMaterialUIDs.Add(nullptr);
+			}
+		}
+	}
+	
+	if (bHasMaterialUIDsInMeta)
+	{
+		for (const auto& material : assetInfo->GetDefaultMaterials())
+		{
+			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(material))
 			{
 				outMaterialUIDs.Add(materialInfo);
 			}

@@ -22,6 +22,7 @@ void World::Tick(float deltaTime)
 		if (!el->bBeginPlayCalled)
 		{
 			el->BeginPlay();
+			el->bBeginPlayCalled = true;
 		}
 		else
 		{

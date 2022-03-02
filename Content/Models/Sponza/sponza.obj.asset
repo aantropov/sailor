@@ -1,8 +1,85 @@
 {
     "batch_by_material": true,
+    "defaultMaterials": [
+        {
+            "uid": "{81A903AA-0DE4-4EA9-A2D3-49802C625860}"
+        },
+        {
+            "uid": "{597B737E-D0F0-4647-9539-1BF661972036}"
+        },
+        {
+            "uid": "{9FFFEC6D-5771-4899-8C8B-FC0B0D7ECABF}"
+        },
+        {
+            "uid": "{74FCCEB3-2804-4948-81AE-71950943E95D}"
+        },
+        {
+            "uid": "{3B395DAB-EF2E-44C5-A9F5-FB70AD7281F3}"
+        },
+        {
+            "uid": "{C3F01FE4-30EB-4ACD-B943-A7768C3853FE}"
+        },
+        {
+            "uid": "{2630DACF-7067-4690-BA42-616C5DE44DA7}"
+        },
+        {
+            "uid": "{08DA7948-24F5-4E33-AF87-A8CDABE838BB}"
+        },
+        {
+            "uid": "{7F169DCB-364C-43F7-86DB-631BFB4BA15A}"
+        },
+        {
+            "uid": "{6DF63F7A-715E-43D2-B81B-2DDFD0101ADD}"
+        },
+        {
+            "uid": "{752FD7A2-F88C-4269-97E0-080D37D6F28D}"
+        },
+        {
+            "uid": "{3B2AB1D9-0076-43A4-8A33-CD3B951F95DA}"
+        },
+        {
+            "uid": "{069D0C02-47E1-44BA-82D5-8E7FB63A371D}"
+        },
+        {
+            "uid": "{2A21BB27-E62F-4785-961C-E0209B48E7AE}"
+        },
+        {
+            "uid": "{3ACAE131-6CFB-4DB6-8C4A-6B561E9CD855}"
+        },
+        {
+            "uid": "{AB25BADF-B23D-4BA0-B8B9-FED744CF46BD}"
+        },
+        {
+            "uid": "{01931C41-6F19-46FE-A9CC-4777B7815091}"
+        },
+        {
+            "uid": "{7F79EF39-CE76-483E-BCBB-415A19E4C901}"
+        },
+        {
+            "uid": "{6F423182-C0EE-4FBB-98E3-44FB44E97D08}"
+        },
+        {
+            "uid": "{0F280932-8D61-47C6-84B4-0870ECCE8CAD}"
+        },
+        {
+            "uid": "{85A06D8E-9F0D-4633-9A19-A7277D416567}"
+        },
+        {
+            "uid": "{56931FC5-AEAD-4439-AB37-A496CD4DA2A0}"
+        },
+        {
+            "uid": "{B23438DE-3DB8-4EF2-9F76-6A44F5756363}"
+        },
+        {
+            "uid": "{6EB0FC8E-7602-4F1E-A6A7-3DDE5F535ACB}"
+        },
+        {
+            "uid": "{EDFBF99F-3896-422A-A90A-E7808917B709}"
+        }
+    ],
     "filename": "sponza.obj",
     "generate_materials": true,
     "uid": {
-        "uid": "{FEE79B46-1B46-402E-8D79-21215F2AEB8A}"
+        "uid": "{A18C6EDA-DC6D-4864-96C2-7E03C5BD3299}"
     }
 }

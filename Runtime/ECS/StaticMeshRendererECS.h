@@ -22,17 +22,16 @@ namespace Sailor
 		SAILOR_API __forceinline ObjectPtr& GetOwner() { return m_owner; }
 		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
 
+		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return m_materials; }
 		SAILOR_API __forceinline ModelPtr& GetModel() { return m_model; }
-		SAILOR_API __forceinline void SetModel(const ModelPtr& model);
 
 	protected:
 
 		ModelPtr m_model;
-		TVector<MaterialPtr, TInlineAllocator<8 * sizeof(MaterialPtr)>> m_materials;
+		TVector<MaterialPtr> m_materials;
 
 		bool m_bIsActive : 1 = false;
 		ObjectPtr m_owner;
-
 
 		friend class StaticMeshRendererECS;
 	};

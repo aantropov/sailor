@@ -12,20 +12,26 @@ void ModelAssetInfo::Serialize(nlohmann::json& outData) const
 	AssetInfo::Serialize(outData);
 	outData["generate_materials"] = m_bShouldGenerateMaterials;
 	outData["batch_by_material"] = m_bShouldBatchByMaterials;
+	Sailor::SerializeArray(m_materials, outData["defaultMaterials"]);
 }
 
 void ModelAssetInfo::Deserialize(const nlohmann::json& outData)
 {
 	AssetInfo::Deserialize(outData);
-	
+
 	if (outData.contains("generate_materials"))
 	{
 		m_bShouldGenerateMaterials = outData["generate_materials"].get<bool>();;
 	}
-	
+
 	if (outData.contains("batch_by_material"))
 	{
 		m_bShouldBatchByMaterials = outData["batch_by_material"].get<bool>();;
+	}
+
+	if (outData.contains("defaultMaterials"))
+	{
+		Sailor::DeserializeArray(m_materials, outData["defaultMaterials"]);
 	}
 }
 

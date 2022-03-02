@@ -72,17 +72,15 @@ void EngineLoop::CreateWorld(std::string name)
 
 	if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 	{
-		ModelPtr tempModel;
-		App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), tempModel)->Then<void, bool>(
-			[=](bool bRes)
+		App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), meshRenderer->GetModel())->Then<void, bool>([=](bool bRes)
 			{
 				if (bRes)
 				{
-					meshRenderer.GetRawPtr()->GetData().SetModel(tempModel);
+					auto ptr = meshRenderer.GetRawPtr();
+					ptr->GetMaterials().AddRange(ptr->GetData().GetModel()->GetDefaultMaterials());
 				}
 			});
 	}
-
 }
 
 void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)

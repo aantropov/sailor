@@ -11,13 +11,25 @@ using namespace Sailor;
 void AssetInfo::Serialize(nlohmann::json& outData) const
 {
 	m_UID.Serialize(outData["uid"]);
-	outData["filename"] = GetAssetFilepath();
+	outData["filename"] = std::filesystem::path(GetAssetFilepath()).filename().string();
 }
 
 void AssetInfo::Deserialize(const nlohmann::json& inData)
 {
 	m_UID.Deserialize(inData["uid"]);
 	m_assetFilename = inData["filename"].get<std::string>();
+}
+
+void AssetInfo::SaveMetaFile()
+{
+	std::ofstream assetFile{ GetMetaFilepath() };
+
+	json newMeta;
+	Serialize(newMeta);
+	assetFile << newMeta.dump(Sailor::JsonDumpIndent);
+	assetFile.close();
+
+	m_loadTime = GetMetaLastModificationTime();
 }
 
 AssetInfo::AssetInfo()
