@@ -268,7 +268,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 	auto materialFolder = Utils::GetFileFolder(assetFilepath);
 	const std::string materialsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath()) + "materials/";
 	const bool bHasMaterialUIDsInMeta = assetInfo->GetDefaultMaterials().Num() > 0;
-	
+
 	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str(), materialFolder.c_str()))
 	{
 		SAILOR_LOG("%s %s", warn.c_str(), err.c_str());
@@ -326,14 +326,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 
 		if (!bHasMaterialUIDsInMeta && assetInfo->ShouldGenerateMaterials() && !assetInfo->ShouldBatchByMaterial())
 		{
-			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + materials[shape.mesh.material_ids[0]].name + ".mat"))
-			{
-				outMaterialUIDs.Add(materialInfo);
-			}
-			else
-			{
-				outMaterialUIDs.Add(nullptr);
-			}
+			outMaterialUIDs.Add(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + materials[shape.mesh.material_ids[0]].name + ".mat"));
 		}
 
 		idx++;
@@ -350,29 +343,15 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 	{
 		for (const auto& material : materials)
 		{
-			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"))
-			{
-				outMaterialUIDs.Add(materialInfo);
-			}
-			else
-			{
-				outMaterialUIDs.Add(nullptr);
-			}
+			outMaterialUIDs.Add(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"));
 		}
 	}
-	
+
 	if (bHasMaterialUIDsInMeta)
 	{
 		for (const auto& material : assetInfo->GetDefaultMaterials())
 		{
-			if (AssetInfoPtr materialInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(material))
-			{
-				outMaterialUIDs.Add(materialInfo);
-			}
-			else
-			{
-				outMaterialUIDs.Add(nullptr);
-			}
+			outMaterialUIDs.Add(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(material));
 		}
 	}
 
