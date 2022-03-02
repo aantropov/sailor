@@ -31,7 +31,6 @@ namespace Sailor
 		{
 			void* ptr = pAllocator->Allocate(sizeof(T));
 			auto pRes = TObjectPtr<T>(new (ptr) T(std::forward<TArgs>(args)...), pAllocator);
-			pRes.m_pControlBlock->bAllocatedByCustomAllocator = true;
 
 			return pRes;
 		}
@@ -230,7 +229,7 @@ namespace Sailor
 
 		SAILOR_API void DecrementRefCounter()
 		{
-			// If we destroy the last -> we destroy object
+			// If we destroy the last then we destroy object
 			if (m_pControlBlock != nullptr && --m_pControlBlock->m_weakPtrCounter == 0)
 			{
 				if (m_pControlBlock->m_sharedPtrCounter > 0)

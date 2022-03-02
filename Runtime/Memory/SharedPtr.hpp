@@ -19,7 +19,6 @@ namespace Sailor
 	public:
 		TSmartPtrCounter m_weakPtrCounter = 0;
 		TSmartPtrCounter m_sharedPtrCounter = 0;
-		bool bAllocatedByCustomAllocator = false;
 	};
 
 	template<typename T, typename TGlobalAllocator = Sailor::Memory::DefaultGlobalAllocator>
@@ -30,10 +29,7 @@ namespace Sailor
 		template<typename... TArgs>
 		static TSharedPtr<T> Make(TArgs&&... args) noexcept
 		{
-			void* ptr = TGlobalAllocator::allocate(sizeof(T));
-			auto pRes = TSharedPtr<T>(new (ptr) T(std::forward<TArgs>(args)...));
-			pRes.m_pControlBlock->bAllocatedByCustomAllocator = true;
-
+			auto pRes = TSharedPtr<T>(new T(std::forward<TArgs>(args)...));
 			return pRes;
 		}
 
@@ -178,20 +174,7 @@ namespace Sailor
 			{
 				if (--m_pControlBlock->m_sharedPtrCounter == 0)
 				{
-					if (m_pControlBlock->bAllocatedByCustomAllocator)
-					{
-						if constexpr (!IsTriviallyDestructible<T>)
-						{
-							m_pRawPtr->~T();
-						}
-
-						TGlobalAllocator::free(m_pRawPtr);
-					}
-					else
-					{
-						delete m_pRawPtr;
-					}
-
+					delete m_pRawPtr;
 					m_pRawPtr = nullptr;
 				}
 
