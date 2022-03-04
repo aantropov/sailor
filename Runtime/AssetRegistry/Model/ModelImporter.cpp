@@ -70,6 +70,13 @@ ModelImporter::~ModelImporter()
 
 void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
+	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
+	{
+		if (modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
+		{
+			GenerateMaterialAssets(modelAssetInfo);
+		}
+	}
 }
 
 void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)

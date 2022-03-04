@@ -351,6 +351,7 @@ namespace Sailor
 				return;
 			}
 
+			ResizeIfNeeded(m_arrayNum + 1);
 			MemMove(index + 1, index, m_arrayNum - index);
 			EmplaceAt(index, item);
 		}

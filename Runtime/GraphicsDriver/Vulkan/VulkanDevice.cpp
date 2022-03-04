@@ -196,13 +196,11 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 	if (!pAllocator)
 	{
 		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(1024 * 1024 * 64, 1024 * 512, 32 * 1024 * 1024);
+
 	}
-
 	auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
-
 	vulkanAllocator.SetMemoryProperties(properties);
 	vulkanAllocator.SetMemoryRequirements(requirements);
-
 	return *pAllocator;
 }
 
