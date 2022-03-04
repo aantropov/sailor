@@ -72,7 +72,7 @@ void EngineLoop::CreateWorld(std::string name)
 
 	if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 	{
-		App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), meshRenderer->GetModel())->Then<void, bool>([=](bool bRes)
+	/*	App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), meshRenderer->GetModel())->Then<void, bool>([=](bool bRes)
 			{
 				if (bRes)
 				{
@@ -80,6 +80,9 @@ void EngineLoop::CreateWorld(std::string name)
 					ptr->GetMaterials().AddRange(ptr->GetData().GetModel()->GetDefaultMaterials());
 				}
 			});
+
+		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelUID->GetUID(), meshRenderer->GetModel()->GetDefaultMaterials());
+	*/
 	}
 }
 
@@ -123,6 +126,7 @@ void EngineLoop::CpuFrame(FrameState& state)
 		if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 		{
 			App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), m_testMesh);
+			App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelUID->GetUID(), m_testMesh->GetDefaultMaterials());
 		}
 
 		m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();

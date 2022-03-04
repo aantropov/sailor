@@ -16,7 +16,7 @@ using Header = Memory::Internal::PoolAllocator::Header;
 
 #define SAILOR_SMALLEST_DATA_SIZE (255ull + sizeof(Header))
 
-#define ShiftPtr(ptr, numBytes) (void*)(&(((uint8_t*)ptr)[numBytes]))
+#define ShiftPtr(ptr, numBytes) (void*)((intptr_t)ptr + numBytes)
 #define Offset(to, from) ((int64_t)to - (int64_t)from)
 #define GetHeaderPtr(pPage, pBlock, member) (Header*)( pBlock->#member != InvalidIndexUINT64 ? ShiftPtr(pPage, pBlock->#member) : nullptr)
 
@@ -358,7 +358,6 @@ void Page::Free(void* pData)
 			if (pFirstFree->m_size > block->m_size)
 			{
 				Header* pFirstFreeNextFree = static_cast<Header*>(pFirstFree->m_nextFree != InvalidIndexUINT64 ? ShiftPtr(m_pData, pFirstFree->m_nextFree) : nullptr);
-
 				block->m_prevFree = m_firstFree;
 				block->m_nextFree = pFirstFree->m_nextFree;
 				pFirstFree->m_nextFree = blockAddress;
@@ -717,7 +716,8 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 		const int32_t headerSize = sizeof(Header);
 		Header* header = static_cast<Header*>(ShiftPtr(ptr, -headerSize));
 
-		if (size <= header->m_size - headerSize)
+		// m_size doesn't handle header size
+		if (size <= header->m_size)
 		{
 			// No need to reallocate, we already have slack that could be used
 			return ptr;
@@ -736,6 +736,7 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 		const int32_t headerSize = sizeof(SmallPoolAllocator::SmallHeader);
 		SmallPoolAllocator::SmallHeader* header = (SmallPoolAllocator::SmallHeader*)ShiftPtr(ptr, -headerSize);
 
+		// m_size does handle small header size
 		if (size <= header->m_size - headerSize)
 		{
 			// No need to reallocate, we already have slack that could be used

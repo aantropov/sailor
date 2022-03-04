@@ -168,6 +168,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TConcurrentMap<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 
 		// We're sharing the same device memory between the different buffers
-		TMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>> m_memoryAllocators;
+		TConcurrentMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>> m_memoryAllocators;
 	};
 }

@@ -21,7 +21,7 @@ using namespace Sailor;
 
 void Model::Flush()
 {
-	if (m_meshes.Num() == 0 || m_meshes.Num() != m_materials.Num())
+	if (m_meshes.Num() == 0)
 	{
 		m_bIsReady = false;
 		return;
@@ -102,7 +102,21 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	}
 
 	auto texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
-	for (const auto& material : materials)
+	std::vector<tinyobj::material_t> materialsOrder;
+
+	if (!assetInfo->ShouldBatchByMaterial())
+	{
+		for (const auto& shape : shapes)
+		{
+			materialsOrder.push_back(materials[shape.mesh.material_ids[0]]);
+		}
+	}
+	else
+	{
+		materialsOrder = materials;
+	}
+
+	for (const auto& material : materialsOrder)
 	{
 		MaterialAsset::Data data;
 
@@ -200,45 +214,11 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 
 		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
 			[model, assetInfo, this]()
-			{
-				TVector<AssetInfoPtr> outMaterialUIDs;
-				if (ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, outMaterialUIDs))
-				{
-					JobSystem::ITaskPtr flushModel = JobSystem::Scheduler::CreateTask("Flush model",
-						[model]()
-						{
-							model.GetRawPtr()->Flush();
-						});
-
-					for (auto& assetInfo : outMaterialUIDs)
-					{
-						MaterialPtr material;
-						JobSystem::ITaskPtr loadMaterial;
-						if (assetInfo && (loadMaterial = App::GetSubmodule<MaterialImporter>()->LoadMaterial(assetInfo->GetUID(), material)))
-						{
-							if (material)
-							{
-								model.GetRawPtr()->m_materials.Add(material);
-								material->AddHotReloadDependentObject(model);
-
-								if (loadMaterial)
-								{
-									flushModel->Join(loadMaterial);
-								}
-							}
-							else
-							{
-								//TODO: push missing material
-							}
-						}
-					}
-
-					App::GetSubmodule<JobSystem::Scheduler>()->Run(flushModel);
-
-					return true;
-				}
-				return false;
-			});
+		{
+			bool bRes = ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes);
+			model.GetRawPtr()->Flush();
+			return bRes;
+		});
 
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
 
@@ -253,11 +233,8 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
 
-bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
-	TVector<RHI::MeshPtr>& outMeshes,
-	TVector<AssetInfoPtr>& outMaterialUIDs)
+bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes)
 {
-
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
@@ -324,11 +301,6 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 			mesh.outIndices.Add(mesh.uniqueVertices[vertex]);
 		}
 
-		if (!bHasMaterialUIDsInMeta && assetInfo->ShouldGenerateMaterials() && !assetInfo->ShouldBatchByMaterial())
-		{
-			outMaterialUIDs.Add(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + materials[shape.mesh.material_ids[0]].name + ".mat"));
-		}
-
 		idx++;
 	}
 
@@ -339,21 +311,39 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo,
 		outMeshes.Emplace(ptr);
 	}
 
-	if (!bHasMaterialUIDsInMeta && assetInfo->ShouldGenerateMaterials() && assetInfo->ShouldBatchByMaterial())
-	{
-		for (const auto& material : materials)
-		{
-			outMaterialUIDs.Add(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(materialsFolder + material.name + ".mat"));
-		}
-	}
-
-	if (bHasMaterialUIDsInMeta)
-	{
-		for (const auto& material : assetInfo->GetDefaultMaterials())
-		{
-			outMaterialUIDs.Add(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(material));
-		}
-	}
-
 	return true;
+}
+
+JobSystem::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials)
+{
+	outMaterials.Clear();
+
+	if (ModelAssetInfoPtr modelInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
+	{
+		JobSystem::TaskPtr<bool> loadingFinished = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load Default Materials", []() { return true; });
+
+		for (auto& assetInfo : modelInfo->GetDefaultMaterials())
+		{
+			MaterialPtr material;
+			JobSystem::ITaskPtr loadMaterial;
+			if (assetInfo && (loadMaterial = App::GetSubmodule<MaterialImporter>()->LoadMaterial(assetInfo, material)))
+			{
+				if (material)
+				{
+					outMaterials.Add(material);
+					//TODO: Add hot reloading dependency
+					loadingFinished->Join(loadMaterial);
+				}
+				else
+				{
+					//TODO: push missing material
+				}
+			}
+		}
+
+		App::GetSubmodule<JobSystem::Scheduler>()->Run(loadingFinished);
+		return loadingFinished;
+	}
+
+	return JobSystem::TaskPtr<bool>::Make(false);
 }

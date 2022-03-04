@@ -73,15 +73,14 @@ namespace Sailor
 		SAILOR_API JobSystem::TaskPtr<bool> LoadModel(UID uid, ModelPtr& outModel);
 		SAILOR_API bool LoadModel_Immediate(UID uid, ModelPtr& outModel);
 
+		SAILOR_API JobSystem::TaskPtr<bool> LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials);
+
 	protected:
 
 		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
 		TConcurrentMap<UID, ModelPtr> m_loadedModels;
 
-		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo,
-			TVector<RHI::MeshPtr>& outMeshes,
-			TVector<AssetInfoPtr>& outMaterialUIDs);
-
+		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes);
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 
 		ObjectAllocatorPtr m_allocator;
