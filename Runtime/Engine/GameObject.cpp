@@ -55,6 +55,14 @@ void GameObject::Tick(float deltaTime)
 {
 	for (auto& el : m_components)
 	{
-		el->Tick(deltaTime);
+		if (el->m_bBeginPlayCalled)
+		{
+			el->Tick(deltaTime);
+		}
+		else
+		{
+			el->BeginPlay();
+			el->m_bBeginPlayCalled = true;
+		}
 	}
 }

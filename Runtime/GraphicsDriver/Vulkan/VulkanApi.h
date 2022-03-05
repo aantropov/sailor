@@ -129,7 +129,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
-		static SAILOR_API void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions) { requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME }; }
+		static SAILOR_API void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions) 
+		{
+			requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_dynamic_rendering" }; 
+		}
 
 		static SAILOR_API VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
 		static SAILOR_API VkAttachmentDescription GetDefaultDepthAttachment(VkFormat depthFormat);

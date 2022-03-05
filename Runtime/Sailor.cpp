@@ -103,7 +103,7 @@ void App::Start()
 	consoleVars["list.benchmark"] = &Sailor::RunListBenchmark;
 
 #ifdef SAILOR_EDITOR
-	App::GetSubmodule<EngineLoop>()->CreateWorld("WorldEditor");
+	TWeakPtr<World> pWorld = App::GetSubmodule<EngineLoop>()->CreateWorld("WorldEditor");
 #endif
 
 	while (s_pInstance->m_pViewportWindow->IsRunning())
@@ -143,14 +143,8 @@ void App::Start()
 
 		if (bCanCreateNewFrame)
 		{
-			if (GlobalInput::GetInputState().IsButtonDown(VK_LBUTTON))
-			{
-				ivec2 centerPosition = s_pInstance->m_pViewportWindow->GetCenterPointScreen();
-				GlobalInput::SetCursorPos(centerPosition.x, centerPosition.y);
-			}
-
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-			currentFrame = FrameState(Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
+			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
 			App::GetSubmodule<EngineLoop>()->ProcessCpuFrame(currentFrame);
 		}
 

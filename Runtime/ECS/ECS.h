@@ -83,6 +83,12 @@ namespace Sailor::ECS
 			return (lhs - rhs) / sizeof(TData);
 		}
 
+		virtual void EndPlay() override
+		{
+			m_components.Clear();
+			m_freeList.Clear();
+		}
+
 	protected:
 
 		TVector<TData> m_components;

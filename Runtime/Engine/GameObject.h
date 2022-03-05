@@ -38,10 +38,21 @@ namespace Sailor
 
 			newObject->m_owner = m_self;
 			m_components.Add(newObject);
-
-			newObject->BeginPlay();
-
 			return newObject;
+		}
+
+		template<typename TComponent>
+		SAILOR_API TObjectPtr<TComponent> GetComponent()
+		{
+			for(auto& el : m_components)
+			{ 
+				if (auto res = el.DynamicCast<TComponent>())
+				{
+					return res;
+				}
+			}
+
+			return TObjectPtr<TComponent>();
 		}
 
 		SAILOR_API bool RemoveComponent(ComponentPtr component);

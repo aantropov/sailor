@@ -40,6 +40,11 @@ namespace Sailor
 		// Raw pointers
 		SAILOR_API TObjectPtr(T* pRawPtr, Memory::ObjectAllocatorPtr pAllocator) noexcept
 		{
+			if (!pRawPtr || !pAllocator)
+			{
+				return;
+			}
+
 			m_pAllocator = std::move(pAllocator);
 
 			AssignRawPtr(pRawPtr, nullptr);
@@ -112,7 +117,18 @@ namespace Sailor
 		SAILOR_API __forceinline TObjectPtr<R> StaticCast() { return TObjectPtr<R>(static_cast<R*>(m_pRawPtr), m_pAllocator); }
 
 		template<typename R>
-		SAILOR_API __forceinline TObjectPtr<R> DynamicCast() { return TObjectPtr<R>(dynamic_cast<R*>(m_pRawPtr), m_pAllocator); }
+		SAILOR_API __forceinline TObjectPtr<R> DynamicCast()
+		{
+			if (R* pRes = dynamic_cast<R*>(m_pRawPtr))
+			{
+				TObjectPtr<R> ptr;
+				ptr.m_pAllocator = m_pAllocator;
+				ptr.AssignRawPtr(pRes, m_pControlBlock);
+
+				return ptr;
+			}
+			return TObjectPtr<R>();
+		}
 
 		SAILOR_API T* operator->()  noexcept
 		{
@@ -247,7 +263,7 @@ namespace Sailor
 		SAILOR_API void Swap(TObjectPtr<R>&& pPtr) requires IsBaseOf<R, T> || IsSame<T, R>
 		{
 			// We are sure that all the types are safe
-			if (m_pRawPtr == static_cast<T*>(pPtr.m_pRawPtr))
+			if ((void*)m_pRawPtr == (void*)pPtr.m_pRawPtr)
 			{
 				return;
 			}

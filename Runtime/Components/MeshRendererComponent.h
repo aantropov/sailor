@@ -12,7 +12,7 @@ namespace Sailor
 {
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
-	using StaticMeshComponentPtr = TObjectPtr<class MeshRendererComponent>;
+	using MeshRendererComponentPtr = TObjectPtr<class MeshRendererComponent>;
 
 	class MeshRendererComponent : public Component
 	{

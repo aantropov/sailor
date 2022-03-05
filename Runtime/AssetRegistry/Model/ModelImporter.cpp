@@ -27,24 +27,15 @@ void Model::Flush()
 		return;
 	}
 
-	/*
-		for (const auto& mesh : m_meshes)
+	for (const auto& mesh : m_meshes)
+	{
+		if (!mesh || !mesh->IsReady())
 		{
-			if (!mesh || !mesh->IsReady())
-			{
-				m_bIsReady = false;
-				return;
-			}
+			m_bIsReady = false;
+			return;
 		}
+	}
 
-		for (const auto& material : m_materials)
-		{
-			if (!material || !material.Lock()->IsReady())
-			{
-				m_bIsReady = false;
-			}
-		}
-	*/
 	m_bIsReady = true;
 }
 

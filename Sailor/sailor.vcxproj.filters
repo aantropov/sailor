@@ -363,6 +363,12 @@
     <ClInclude Include="..\Runtime\ECS\StaticMeshRendererECS.h">
       <Filter>Runtime\ECS</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Components\TestComponent.h">
+      <Filter>Runtime\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Runtime\Engine\Frame.h">
+      <Filter>Runtime\Engine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -592,6 +598,12 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\ECS\StaticMeshRendererECS.cpp">
       <Filter>Runtime\ECS</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Components\TestComponent.cpp">
+      <Filter>Runtime\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Engine\Frame.cpp">
+      <Filter>Runtime\Engine</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

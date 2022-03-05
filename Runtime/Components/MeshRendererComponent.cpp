@@ -11,6 +11,12 @@ void MeshRendererComponent::BeginPlay()
 	m_handle = ecs->RegisterComponent();
 
 	GetData().SetOwner(GetOwner());
+
+	if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
+	{
+		App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), GetModel());
+		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelUID->GetUID(), GetMaterials());
+	}
 }
 
 StaticMeshRendererData& MeshRendererComponent::GetData()

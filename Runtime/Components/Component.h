@@ -21,6 +21,7 @@ namespace Sailor
 		virtual void Tick(float deltaTime) {}
 
 		GameObjectPtr GetOwner() const { return m_owner; }
+		WorldPtr GetWorld() const;
 
 	protected:
 
@@ -28,6 +29,8 @@ namespace Sailor
 		virtual ~Component() = default;
 
 		GameObjectPtr m_owner;
+
+		bool m_bBeginPlayCalled = false;
 
 		friend class TObjectPtr<Component>;
 		friend class GameObject;

@@ -32,16 +32,12 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API Model(UID uid, TVector<RHI::MeshPtr> meshes = {}, TVector<MaterialPtr> materials = {}) :
+		SAILOR_API Model(UID uid, TVector<RHI::MeshPtr> meshes = {}) :
 			Object(std::move(uid)),
-			m_meshes(std::move(meshes)),
-			m_materials(std::move(materials)) {}
+			m_meshes(std::move(meshes)) {}
 
 		SAILOR_API const TVector<RHI::MeshPtr>& GetMeshes() const { return m_meshes; }
-		SAILOR_API const TVector<MaterialPtr>& GetDefaultMaterials() const { return m_materials; }
-
 		SAILOR_API TVector<RHI::MeshPtr>& GetMeshes() { return m_meshes; }
-		SAILOR_API TVector<MaterialPtr>& GetDefaultMaterials() { return m_materials; }
 
 		// Should be triggered after mesh/material changes
 		SAILOR_API void Flush();
@@ -53,9 +49,6 @@ namespace Sailor
 
 		TVector<RHI::MeshPtr> m_meshes;
 		std::atomic<bool> m_bIsReady;
-
-		// TODO: Move materials to .asset
-		TVector<MaterialPtr> m_materials;
 
 		friend class ModelImporter;
 	};

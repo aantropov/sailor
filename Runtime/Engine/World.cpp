@@ -1,5 +1,6 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
+#include "Engine/EngineLoop.h"
 
 using namespace Sailor;
 
@@ -15,8 +16,14 @@ World::World(std::string name) : m_name(std::move(name))
 	}
 }
 
-void World::Tick(float deltaTime)
+void World::Tick(FrameState& frameState)
 {
+	m_frameInput = frameState.GetInputState();
+	m_time = frameState.GetTime();
+	m_commandList = frameState.CreateCommandBuffer(0);
+
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList);
+	
 	for (auto& el : m_objects)
 	{
 		if (!el->bBeginPlayCalled)
@@ -26,13 +33,13 @@ void World::Tick(float deltaTime)
 		}
 		else
 		{
-			el->Tick(deltaTime);
+			el->Tick(frameState.GetDeltaTime());
 		}
 	}
 
 	for (auto& ecs : m_ecs)
 	{
-		ecs.m_second->Tick(deltaTime);
+		ecs.m_second->Tick(frameState.GetDeltaTime());
 	}
 
 	for (auto& el : m_pendingDestroyObjects)
@@ -51,8 +58,10 @@ void World::Tick(float deltaTime)
 
 	for (auto& el : m_ecs)
 	{
-		el.m_second->Tick(deltaTime);
+		el.m_second->Tick(frameState.GetDeltaTime());
 	}
+
+	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 }
 
 GameObjectPtr World::Instantiate(const std::string& name)
@@ -72,5 +81,24 @@ void World::Destroy(GameObjectPtr object)
 	{
 		object->bPendingDestroy = true;
 		m_pendingDestroyObjects.PushBack(std::move(object));
+	}
+}
+
+void World::Clear()
+{
+	for (auto& el : m_objects)
+	{
+		el->EndPlay();
+		el->RemoveAllComponents();
+		el->m_self = nullptr;
+		el.DestroyObject(m_allocator);
+	}
+
+	m_objects.Clear();
+	m_pendingDestroyObjects.Clear();
+
+	for (auto& ecs : m_ecs)
+	{
+		ecs.m_second->EndPlay();
 	}
 }
