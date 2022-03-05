@@ -154,7 +154,10 @@ namespace Sailor
 			return *static_cast<T*>(m_pRawPtr);
 		}
 
-		SAILOR_API operator bool() const noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0; }
+		SAILOR_API operator bool() const noexcept
+		{
+			return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0 && static_cast<Object*>(m_pRawPtr)->IsValid();
+		}
 
 		SAILOR_API bool operator==(const TObjectPtr<T>& pRhs) const
 		{

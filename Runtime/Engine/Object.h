@@ -21,16 +21,18 @@ namespace Sailor
 
 		virtual JobSystem::ITaskPtr SAILOR_API OnHotReload();
 
-		void SAILOR_API TraceHotReload(JobSystem::ITaskPtr previousTask);
-		void SAILOR_API AddHotReloadDependentObject(ObjectPtr object);
-		void SAILOR_API RemoveHotReloadDependentObject(ObjectPtr object);
-		void SAILOR_API ClearHotReloadDependentObjects();
+		SAILOR_API void TraceHotReload(JobSystem::ITaskPtr previousTask);
+		SAILOR_API void AddHotReloadDependentObject(ObjectPtr object);
+		SAILOR_API void RemoveHotReloadDependentObject(ObjectPtr object);
+		SAILOR_API void ClearHotReloadDependentObjects();
 #endif
 
-		virtual SAILOR_API bool IsReady() const { return true; }
+		SAILOR_API virtual bool IsReady() const { return true; }
 
 		SAILOR_API Object() = default;
-		virtual SAILOR_API ~Object() = default;
+		SAILOR_API virtual ~Object() = default;
+
+		SAILOR_API virtual bool IsValid() const { return true; }
 
 		Object(const Object&) = delete;
 		Object& operator=(const Object&) = delete;

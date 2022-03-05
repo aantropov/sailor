@@ -16,12 +16,14 @@ namespace Sailor
 	{
 	public:
 
-		virtual void BeginPlay() {}
-		virtual void EndPlay() {}
-		virtual void Tick(float deltaTime) {}
+		SAILOR_API virtual void BeginPlay() {}
+		SAILOR_API virtual void EndPlay() {}
+		SAILOR_API virtual void Tick(float deltaTime) {}
 
-		GameObjectPtr GetOwner() const { return m_owner; }
-		WorldPtr GetWorld() const;
+		SAILOR_API GameObjectPtr GetOwner() const { return m_owner; }
+		SAILOR_API WorldPtr GetWorld() const;
+
+		SAILOR_API virtual bool IsValid() const override { return m_bBeginPlayCalled; }
 
 	protected:
 
