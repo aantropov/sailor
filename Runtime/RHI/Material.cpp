@@ -9,13 +9,14 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 RHI::ShaderBindingPtr& ShaderBindingSet::GetOrCreateShaderBinding(const std::string& binding)
 {
-	auto it = m_shaderBindings.Find(binding);
-	if (it != m_shaderBindings.end())
+	auto& pBinding = m_shaderBindings.At_Lock(binding);
+	if (!pBinding)
 	{
-		return (*it).m_second;
+		pBinding = ShaderBindingPtr::Make();
 	}
-
-	return m_shaderBindings[binding] = ShaderBindingPtr::Make();
+	m_shaderBindings.Unlock(binding);
+	
+	return pBinding;
 }
 
 void ShaderBindingSet::AddLayoutShaderBinding(ShaderLayoutBinding layout)

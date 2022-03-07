@@ -131,7 +131,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
 		static SAILOR_API void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions) 
 		{
-			requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_dynamic_rendering" }; 
+			requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME/*, "VK_KHR_dynamic_rendering"*/};
 		}
 
 		static SAILOR_API VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);

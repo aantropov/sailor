@@ -23,7 +23,7 @@ namespace Sailor::RHI
 		SAILOR_API void SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings);
 		SAILOR_API const TVector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
 		SAILOR_API RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& binding);
-		SAILOR_API const TMap<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
+		SAILOR_API const TConcurrentMap<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
 
 		static SAILOR_API void ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable);
 
@@ -37,7 +37,7 @@ namespace Sailor::RHI
 		SAILOR_API bool PerInstanceDataStoredInSSBO() const;
 
 		TVector<RHI::ShaderLayoutBinding> m_layoutBindings;
-		TMap<std::string, RHI::ShaderBindingPtr> m_shaderBindings;
+		TConcurrentMap<std::string, RHI::ShaderBindingPtr> m_shaderBindings;
 		bool m_bNeedsStorageBuffer = false;
 	};
 
