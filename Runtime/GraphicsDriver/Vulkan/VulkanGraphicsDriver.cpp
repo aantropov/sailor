@@ -684,7 +684,10 @@ void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, 
 	assert(shaderBinding->IsBind());
 
 	RHI::ShaderLayoutBindingMember bindingLayout;
-	assert(shaderBinding->FindVariableInUniformBuffer(variable, bindingLayout));
+	if (!shaderBinding->FindVariableInUniformBuffer(variable, bindingLayout))
+	{
+		assert(false);
+	}
 
 	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset);
 }
