@@ -38,14 +38,14 @@ namespace Sailor::RHI
 		SAILOR_API Renderer(class Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API ~Renderer() override;
 
-		void SAILOR_API FixLostDevice();
-		bool SAILOR_API PushFrame(const Sailor::FrameState& frame);
+		SAILOR_API void FixLostDevice();
+		SAILOR_API bool PushFrame(const Sailor::FrameState& frame);
 
-		uint32_t SAILOR_API GetNumFrames() const { return m_numFrames.load(); }
-		uint32_t SAILOR_API GetSmoothFps() const { return m_pureFps.load(); }
+		SAILOR_API uint32_t GetNumFrames() const { return m_numFrames.load(); }
+		SAILOR_API uint32_t GetSmoothFps() const { return m_pureFps.load(); }
 
-		static SAILOR_API TUniquePtr<IGraphicsDriver>& GetDriver();
-		static SAILOR_API IGraphicsDriverCommands* GetDriverCommands();
+		SAILOR_API static TUniquePtr<IGraphicsDriver>& GetDriver();
+		SAILOR_API static IGraphicsDriverCommands* GetDriverCommands();
 
 	protected:
 

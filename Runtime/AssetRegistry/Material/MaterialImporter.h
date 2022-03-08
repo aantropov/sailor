@@ -28,6 +28,7 @@ namespace Sailor
 		SAILOR_API Material(UID uid) : Object(uid) {}
 
 		SAILOR_API virtual bool IsReady() const override;
+		SAILOR_API bool IsDirty() const { return m_bIsDirty.load(); }
 
 		SAILOR_API const RHI::MaterialPtr& GetRHI() const { return m_rhiMaterial; }
 		SAILOR_API virtual JobSystem::ITaskPtr OnHotReload() override;
@@ -55,6 +56,7 @@ namespace Sailor
 		
 		RHI::MaterialPtr m_rhiMaterial;
 		std::atomic<bool> m_bIsReady;
+		std::atomic<bool> m_bIsDirty;
 
 		ShaderSetPtr m_shader;
 

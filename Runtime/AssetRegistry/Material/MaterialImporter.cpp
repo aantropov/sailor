@@ -54,12 +54,14 @@ void Material::SetSampler(const std::string& name, TexturePtr value)
 	if (value)
 	{
 		m_samplers[name] = value;
+		m_bIsDirty = true;
 	}
 }
 
 void Material::SetUniform(const std::string& name, glm::vec4 value)
 {
 	m_uniforms[name] = value;
+	m_bIsDirty = true;
 }
 
 void Material::UpdateRHIResource()
@@ -111,6 +113,7 @@ void Material::UpdateRHIResource()
 		}
 	}));
 
+	m_bIsDirty = false;
 	m_bIsReady = true;
 }
 
