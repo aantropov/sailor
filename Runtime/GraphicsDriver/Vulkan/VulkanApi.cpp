@@ -745,9 +745,9 @@ VulkanBufferPtr VulkanApi::CreateBuffer(VulkanDevicePtr device, VkDeviceSize siz
 	return outBuffer;
 }
 
-VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
+VulkanBufferPtr VulkanApi::CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
-	outbuffer = VulkanApi::CreateBuffer(
+	VulkanBufferPtr outbuffer = VulkanApi::CreateBuffer(
 		device,
 		size,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
@@ -759,13 +759,11 @@ VulkanCommandBufferPtr VulkanApi::CreateBuffer(VulkanBufferPtr& outbuffer, Vulka
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
-	auto cmdBuffer = device->CreateCommandBuffer(true);
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer((*stagingBufferManagedPtr).m_buffer, outbuffer, size, (*stagingBufferManagedPtr).m_offset);
-	cmdBuffer->EndCommandList();
 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
 
-	return cmdBuffer;
+
+	return outbuffer;
 }
 
 VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Memory::VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size)
@@ -786,11 +784,13 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 
 VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
-	VulkanBufferPtr resBuffer;
-	auto cmd = CreateBuffer(resBuffer, device, pData, size, usage, sharingMode);
+	auto cmdBuffer = device->CreateCommandBuffer(true);
+	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage, sharingMode);;
+	cmdBuffer->EndCommandList();
 
 	auto fence = VulkanFencePtr::Make(device);
-	device->SubmitCommandBuffer(cmd, fence);
+	device->SubmitCommandBuffer(cmdBuffer, fence);
 	fence->Wait();
 
 	return resBuffer;
@@ -809,8 +809,8 @@ void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr src
 	fence->Wait();
 }
 
-VulkanCommandBufferPtr VulkanApi::CreateImage(
-	VulkanImagePtr& outImage,
+VulkanImagePtr VulkanApi::CreateImage(
+	VulkanCommandBufferPtr& cmdBuffer,
 	VulkanDevicePtr device,
 	const void* pData,
 	VkDeviceSize size,
@@ -825,7 +825,7 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
-	outImage = new VulkanImage(device);
+	VulkanImagePtr outImage = new VulkanImage(device);
 
 	outImage->m_extent = extent;
 	outImage->m_imageType = type;
@@ -848,8 +848,6 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 
 	outImage->Bind(data);
 
-	auto cmdBuffer = device->CreateCommandBuffer();
-	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->ImageMemoryBarrier(outImage, outImage->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 	cmdBuffer->CopyBufferToImage((*stagingBufferManagedPtr).m_buffer,
 		outImage,
@@ -868,9 +866,7 @@ VulkanCommandBufferPtr VulkanApi::CreateImage(
 		cmdBuffer->GenerateMipMaps(outImage);
 	}
 
-	cmdBuffer->EndCommandList();
-
-	return cmdBuffer;
+	return outImage;
 }
 
 VulkanImagePtr VulkanApi::CreateImage_Immediate(
@@ -886,11 +882,13 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 	VkSharingMode sharingMode)
 {
 
-	VulkanImagePtr res{};
-	auto cmd = CreateImage(res, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode);
+	auto cmdBuffer = device->CreateCommandBuffer();
+	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	VulkanImagePtr res = CreateImage(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode);
+	cmdBuffer->EndCommandList();
 
 	auto fence = VulkanFencePtr::Make(device);
-	device->SubmitCommandBuffer(cmd, fence);
+	device->SubmitCommandBuffer(cmdBuffer, fence);
 	fence->Wait();
 
 	return res;

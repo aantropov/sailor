@@ -39,7 +39,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		virtual SAILOR_API RHI::SemaphorePtr CreateWaitSemaphore();
 		virtual SAILOR_API RHI::CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
 		virtual SAILOR_API RHI::BufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
-		virtual SAILOR_API RHI::CommandListPtr CreateBuffer(RHI::BufferPtr& outbuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
+		virtual SAILOR_API RHI::BufferPtr CreateBuffer(RHI::CommandListPtr& cmdBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
 		virtual SAILOR_API RHI::ShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv);
 		virtual SAILOR_API RHI::TexturePtr CreateImage(
 			const void* pData,

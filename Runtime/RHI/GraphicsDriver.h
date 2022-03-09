@@ -77,7 +77,7 @@ namespace Sailor::RHI
 		virtual SAILOR_API SemaphorePtr CreateWaitSemaphore() = 0;
 		virtual SAILOR_API CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
 		virtual SAILOR_API BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
-		virtual SAILOR_API CommandListPtr CreateBuffer(BufferPtr& outbuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		virtual SAILOR_API BufferPtr CreateBuffer(CommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		virtual SAILOR_API MeshPtr CreateMesh();
 		virtual SAILOR_API void UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& vertices, const TVector<uint32_t>& indices);
 		virtual SAILOR_API ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;

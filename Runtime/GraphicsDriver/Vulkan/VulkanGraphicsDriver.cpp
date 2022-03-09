@@ -190,18 +190,17 @@ RHI::BufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUsage
 	return res;
 }
 
-RHI::CommandListPtr VulkanGraphicsDriver::CreateBuffer(RHI::BufferPtr& outBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
+RHI::BufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::CommandListPtr& cmdList, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	outBuffer = CreateBuffer(size, usage);
-	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
+	RHI::BufferPtr outBuffer = CreateBuffer(size, usage);
 
-	cmdList->m_vulkan.m_commandBuffer = m_vkInstance->CreateBuffer(outBuffer->m_vulkan.m_buffer,
+	outBuffer->m_vulkan.m_buffer = m_vkInstance->CreateBuffer(cmdList->m_vulkan.m_commandBuffer,
 		m_vkInstance->GetMainDevice(),
 		pData, size, (uint16_t)usage);
 
-	return cmdList;
+	return outBuffer;
 }
 
 RHI::ShaderPtr VulkanGraphicsDriver::CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv)
@@ -278,8 +277,12 @@ RHI::TexturePtr VulkanGraphicsDriver::CreateImage(
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	RHI::CommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList();
-	cmdList->m_vulkan.m_commandBuffer = m_vkInstance->CreateImage(outTexture->m_vulkan.m_image, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+	RHI::CommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
+
+	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+
+	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
@@ -344,7 +347,7 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RenderState& re
 	TVector<RHI::ShaderLayoutBinding> bindings;
 
 	// We need debug shaders to get full names from reflection
-	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader},
+	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
 
 #ifdef _DEBUG
@@ -515,7 +518,7 @@ void VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::ShaderBindingSetPtr& p
 
 	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
-	
+
 	pShaderBindings->AddLayoutShaderBinding(layout);
 
 	UpdateDescriptorSet(pShaderBindings);
@@ -548,17 +551,17 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings
 	const auto& layoutBindings = bindings->GetLayoutBindings();
 
 	auto index = layoutBindings.FindIf([&parameter](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
-		{
-			return shaderLayoutBinding.m_name == parameter;
-		});
+	{
+		return shaderLayoutBinding.m_name == parameter;
+	});
 
 	if (index != -1)
 	{
 		auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
 		auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [=](const VulkanDescriptorPtr& descriptor)
-			{
-				return descriptor->GetBinding() == layoutBindings[index].m_binding;
-			});
+		{
+			return descriptor->GetBinding() == layoutBindings[index].m_binding;
+		});
 
 		if (descrIt != descriptors.end())
 		{

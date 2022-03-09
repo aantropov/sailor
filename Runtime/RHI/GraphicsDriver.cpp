@@ -14,30 +14,31 @@ void IGraphicsDriver::UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& verti
 	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.Num();
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
 
-	auto updateVerticesCmd = CreateBuffer(mesh->m_vertexBuffer,
+	RHI::CommandListPtr cmdList = CreateCommandList(false, true);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
+
+	mesh->m_vertexBuffer = CreateBuffer(cmdList,
 		&vertices[0],
 		bufferSize,
 		EBufferUsageBit::VertexBuffer_Bit);
 
-	auto updateIndexCmd = CreateBuffer(mesh->m_indexBuffer,
+	mesh->m_indexBuffer = CreateBuffer(cmdList,
 		&indices[0],
 		indexBufferSize,
 		EBufferUsageBit::IndexBuffer_Bit);
 
-	// Create fences to track the state of mesh creation
-	RHI::FencePtr fenceUpdateVertices = RHI::FencePtr::Make();
-	RHI::FencePtr fenceUpdateIndex = RHI::FencePtr::Make();
+	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
-	TrackDelayedInitialization(mesh.GetRawPtr(), fenceUpdateVertices);
-	TrackDelayedInitialization(mesh.GetRawPtr(), fenceUpdateIndex);
+	// Create fences to track the state of mesh creation
+	RHI::FencePtr fence = RHI::FencePtr::Make();
+	TrackDelayedInitialization(mesh.GetRawPtr(), fence);
 
 	// Submit cmd lists
 	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
-		([this, updateVerticesCmd, fenceUpdateVertices, updateIndexCmd, fenceUpdateIndex]()
-			{
-				SubmitCommandList(updateVerticesCmd, fenceUpdateVertices);
-				SubmitCommandList(updateIndexCmd, fenceUpdateIndex);
-			}));
+		([this, cmdList, fence]()
+	{
+		SubmitCommandList(cmdList, fence);
+	}));
 }
 
 TRefPtr<RHI::Mesh> IGraphicsDriver::CreateMesh()
