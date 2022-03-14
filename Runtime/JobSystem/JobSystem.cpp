@@ -133,7 +133,7 @@ void Scheduler::Initialize()
 		m_workerThreads.Emplace(newThread);
 	}
 
-	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Threads count: %zd", coresCount, m_workerThreads.Num());
+	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
 }
 
 DWORD Scheduler::GetRendererThreadId() const

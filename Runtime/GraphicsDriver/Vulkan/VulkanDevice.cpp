@@ -197,16 +197,18 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 {
 	uint64_t hash = properties | ((uint64_t)requirements.memoryTypeBits) << 32;
 
-	auto& pAllocator = m_memoryAllocators[hash];
+	auto& pAllocator = m_memoryAllocators.At_Lock(hash);
 
 	if (!pAllocator)
 	{
 		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(1024 * 1024 * 64, 1024 * 512, 32 * 1024 * 1024);
-
 	}
 	auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
 	vulkanAllocator.SetMemoryProperties(properties);
 	vulkanAllocator.SetMemoryRequirements(requirements);
+
+	m_memoryAllocators.Unlock(hash);
+
 	return *pAllocator;
 }
 
