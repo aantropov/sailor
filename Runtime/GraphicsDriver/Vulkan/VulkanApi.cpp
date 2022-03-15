@@ -89,7 +89,14 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.pEngineName = "Sailor";
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+
+#ifdef VK_API_VERSION_1_3
 	appInfo.apiVersion = VK_API_VERSION_1_3;
+#elif VK_API_VERSION_1_2
+	appInfo.apiVersion = VK_API_VERSION_1_2;
+#else
+	appInfo.apiVersion = VK_API_VERSION_1_1;
+#endif
 
 	TVector<const char*> extensions =
 	{
