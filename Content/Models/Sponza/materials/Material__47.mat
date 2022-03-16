@@ -4,7 +4,7 @@
     "bIsTransparent": false,
     "blendMode": 0,
     "cullMode": 2,
-    "defines": null,
+    "defines": ["NO_DIFFUSE"],
     "depthBias": 0.0,
     "fillMode": 0,
     "renderQueue": "Opaque",
