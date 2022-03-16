@@ -61,27 +61,27 @@ namespace Sailor::RHI
 	{
 	public:
 
-		virtual SAILOR_API void Initialize(const Sailor::Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
-		virtual SAILOR_API ~IGraphicsDriver() = default;
+		SAILOR_API virtual void Initialize(const Sailor::Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
+		SAILOR_API virtual ~IGraphicsDriver() = default;
 
-		virtual SAILOR_API bool ShouldFixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
-		virtual SAILOR_API void FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
+		SAILOR_API virtual bool ShouldFixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
+		SAILOR_API virtual void FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
 
-		virtual SAILOR_API bool PresentFrame(const Sailor::FrameState& state,
+		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,
 			const TVector<CommandListPtr>* primaryCommandBuffers = nullptr,
 			const TVector<CommandListPtr>* secondaryCommandBuffers = nullptr,
 			TVector<SemaphorePtr> waitSemaphores = {}) const = 0;
 
-		virtual void SAILOR_API WaitIdle() = 0;
+		SAILOR_API virtual void WaitIdle() = 0;
 
-		virtual SAILOR_API SemaphorePtr CreateWaitSemaphore() = 0;
-		virtual SAILOR_API CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
-		virtual SAILOR_API BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
-		virtual SAILOR_API BufferPtr CreateBuffer(CommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		virtual SAILOR_API MeshPtr CreateMesh();
-		virtual SAILOR_API void UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& vertices, const TVector<uint32_t>& indices);
-		virtual SAILOR_API ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
-		virtual SAILOR_API TexturePtr CreateImage(
+		SAILOR_API virtual SemaphorePtr CreateWaitSemaphore() = 0;
+		SAILOR_API virtual CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
+		SAILOR_API virtual BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
+		SAILOR_API virtual BufferPtr CreateBuffer(CommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		SAILOR_API virtual MeshPtr CreateMesh();
+		SAILOR_API virtual void UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& vertices, const TVector<uint32_t>& indices);
+		SAILOR_API virtual ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
+		SAILOR_API virtual TexturePtr CreateImage(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,
@@ -91,25 +91,25 @@ namespace Sailor::RHI
 			ETextureFiltration filtration = ETextureFiltration::Linear,
 			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
-		virtual SAILOR_API MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
+		SAILOR_API virtual MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
 
-		virtual SAILOR_API void SubmitCommandList(CommandListPtr commandList, FencePtr fence = nullptr, SemaphorePtr signalSemaphore = nullptr, SemaphorePtr waitSemaphore = nullptr) = 0;
+		SAILOR_API virtual void SubmitCommandList(CommandListPtr commandList, FencePtr fence = nullptr, SemaphorePtr signalSemaphore = nullptr, SemaphorePtr waitSemaphore = nullptr) = 0;
 
 		// Shader binding set
-		virtual SAILOR_API ShaderBindingSetPtr CreateShaderBindings() = 0;
-		virtual SAILOR_API void AddBufferToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
-		virtual SAILOR_API void AddSamplerToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding) = 0;
+		SAILOR_API virtual ShaderBindingSetPtr CreateShaderBindings() = 0;
+		SAILOR_API virtual void AddBufferToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
+		SAILOR_API virtual void AddSamplerToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding) = 0;
 
 		// Used for full binding update
-		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
-		virtual SAILOR_API void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
+		SAILOR_API virtual void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
+		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 
 		//Immediate context
-		virtual SAILOR_API BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		virtual SAILOR_API void CopyBuffer_Immediate(BufferPtr src, BufferPtr dst, size_t size) = 0;
-		virtual SAILOR_API void SubmitCommandList_Immediate(CommandListPtr commandList);
+		SAILOR_API virtual BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		SAILOR_API virtual void CopyBuffer_Immediate(BufferPtr src, BufferPtr dst, size_t size) = 0;
+		SAILOR_API virtual void SubmitCommandList_Immediate(CommandListPtr commandList);
 
-		virtual SAILOR_API TexturePtr CreateImage_Immediate(
+		SAILOR_API virtual TexturePtr CreateImage_Immediate(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,
@@ -136,13 +136,13 @@ namespace Sailor::RHI
 	{
 	public:
 
-		virtual SAILOR_API void BeginCommandList(CommandListPtr cmd) = 0;
-		virtual SAILOR_API void EndCommandList(CommandListPtr cmd) = 0;
+		SAILOR_API virtual void BeginCommandList(CommandListPtr cmd) = 0;
+		SAILOR_API virtual void EndCommandList(CommandListPtr cmd) = 0;
 
-		virtual SAILOR_API void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);
-		virtual SAILOR_API void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
-		virtual SAILOR_API void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
-		virtual SAILOR_API void SetMaterialParameter(CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
+		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);
+		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
+		SAILOR_API virtual void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
+		SAILOR_API virtual void SetMaterialParameter(CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
