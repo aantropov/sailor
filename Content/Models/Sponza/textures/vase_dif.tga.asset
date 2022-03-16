@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"vase_dif.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{242484B6-A777-4C7D-84C7-03B90A9BE463}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "vase_dif.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{72078373-88F1-46BE-B11B-CD7509F77F75}"
+    }
+}

@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_floor_a_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{D7B7BF53-B3D1-46A1-873B-ECFF622C8958}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_floor_a_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{7664D8C2-ABE5-42A9-B6D2-987D4130F39A}"
+    }
+}

@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"chain_texture.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{2600E4F3-24F1-4037-B1AD-A20BAC7D893B}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "chain_texture.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{456C0340-4713-4EF7-90ED-B5290BFF8B6D}"
+    }
+}

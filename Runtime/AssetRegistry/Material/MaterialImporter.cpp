@@ -119,14 +119,14 @@ void Material::UpdateRHIResource()
 
 void MaterialAsset::Serialize(nlohmann::json& outData) const
 {
-	outData["enable_depth_test"] = m_pData->m_renderState.IsDepthTestEnabled();
-	outData["enable_z_write"] = m_pData->m_renderState.IsEnabledZWrite();
-	outData["depth_bias"] = m_pData->m_renderState.GetDepthBias();
-	outData["cull_mode"] = m_pData->m_renderState.GetCullMode();
-	outData["render_queue"] = GetRenderQueue();
-	outData["is_transparent"] = IsTransparent();
-	outData["blend_mode"] = m_pData->m_renderState.GetBlendMode();
-	outData["fill_mode"] = m_pData->m_renderState.GetFillMode();
+	outData["bEnableDepthTest"] = m_pData->m_renderState.IsDepthTestEnabled();
+	outData["bEnableZWrite"] = m_pData->m_renderState.IsEnabledZWrite();
+	outData["depthBias"] = m_pData->m_renderState.GetDepthBias();
+	outData["cullMode"] = m_pData->m_renderState.GetCullMode();
+	outData["renderQueue"] = GetRenderQueue();
+	outData["bIsTransparent"] = IsTransparent();
+	outData["blendMode"] = m_pData->m_renderState.GetBlendMode();
+	outData["fillMode"] = m_pData->m_renderState.GetFillMode();
 	outData["defines"] = m_pData->m_shaderDefines;
 
 	SerializeArray(m_pData->m_samplers, outData["samplers"]);
@@ -150,44 +150,44 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	m_pData->m_shaderDefines.Clear();
 	m_pData->m_uniformsVec4.Clear();
 
-	if (outData.contains("enable_depth_test"))
+	if (outData.contains("bEnableDepthTest"))
 	{
-		bEnableDepthTest = outData["enable_depth_test"].get<bool>();
+		bEnableDepthTest = outData["bEnableDepthTest"].get<bool>();
 	}
 
-	if (outData.contains("enable_z_write"))
+	if (outData.contains("bEnableZWrite"))
 	{
-		bEnableZWrite = outData["enable_z_write"].get<bool>();
+		bEnableZWrite = outData["bEnableZWrite"].get<bool>();
 	}
 
-	if (outData.contains("depth_bias"))
+	if (outData.contains("depthBias"))
 	{
-		depthBias = outData["depth_bias"].get<float>();
+		depthBias = outData["depthBias"].get<float>();
 	}
 
-	if (outData.contains("cull_mode"))
+	if (outData.contains("cullMode"))
 	{
-		cullMode = (RHI::ECullMode)outData["cull_mode"].get<uint8_t>();
+		cullMode = (RHI::ECullMode)outData["cullMode"].get<uint8_t>();
 	}
 
-	if (outData.contains("fill_mode"))
+	if (outData.contains("fillMode"))
 	{
-		fillMode = (RHI::EFillMode)outData["fill_mode"].get<uint8_t>();
+		fillMode = (RHI::EFillMode)outData["fillMode"].get<uint8_t>();
 	}
 
-	if (outData.contains("render_queue"))
+	if (outData.contains("renderQueue"))
 	{
-		renderQueue = outData["render_queue"].get<std::string>();
+		renderQueue = outData["renderQueue"].get<std::string>();
 	}
 
-	if (outData.contains("is_transparent"))
+	if (outData.contains("bIsTransparent"))
 	{
-		m_pData->m_bIsTransparent = outData["is_transparent"].get<bool>();
+		m_pData->m_bIsTransparent = outData["bIsTransparent"].get<bool>();
 	}
 
-	if (outData.contains("blend_mode"))
+	if (outData.contains("blendMode"))
 	{
-		blendMode = (RHI::EBlendMode)outData["blend_mode"].get<uint8_t>();
+		blendMode = (RHI::EBlendMode)outData["blendMode"].get<uint8_t>();
 	}
 
 	if (outData.contains("defines"))

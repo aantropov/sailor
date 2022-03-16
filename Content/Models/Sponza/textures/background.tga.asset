@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"background.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{018C8876-33A1-4B56-833C-899782235FCD}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "background.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{A4B100AD-FA9D-4EC2-AB36-EB641F4F9444}"
+    }
+}

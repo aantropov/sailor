@@ -1,85 +1,160 @@
 {
-    "batch_by_material": true,
+    "bShouldBatchByMaterial": true,
+    "bShouldGenerateMaterials": true,
     "defaultMaterials": [
         {
-            "uid": "{81A903AA-0DE4-4EA9-A2D3-49802C625860}"
+            "uid": "{4307F3FF-FC09-410B-8713-2866309BC5D1}"
         },
         {
-            "uid": "{597B737E-D0F0-4647-9539-1BF661972036}"
+            "uid": "{1BCF1A3C-2296-4A5E-851E-1CB85ED55C6F}"
         },
         {
-            "uid": "{9FFFEC6D-5771-4899-8C8B-FC0B0D7ECABF}"
+            "uid": "{0BBDEE8C-42F2-4C5E-B20F-F73BCE37FE64}"
         },
         {
-            "uid": "{74FCCEB3-2804-4948-81AE-71950943E95D}"
+            "uid": "{1C7462A1-60C3-476F-A7D7-F7F569A26D01}"
         },
         {
-            "uid": "{3B395DAB-EF2E-44C5-A9F5-FB70AD7281F3}"
+            "uid": "{1A2823F6-B872-4D74-B8FD-26686CF6143F}"
         },
         {
-            "uid": "{C3F01FE4-30EB-4ACD-B943-A7768C3853FE}"
+            "uid": "{CE0EB792-4012-448F-B3AF-6E4F35CB2D81}"
         },
         {
-            "uid": "{2630DACF-7067-4690-BA42-616C5DE44DA7}"
+            "uid": "{DDF75B2E-C4CF-4232-8208-DB07E2DAC0A0}"
         },
         {
-            "uid": "{08DA7948-24F5-4E33-AF87-A8CDABE838BB}"
+            "uid": "{86B3B045-96CB-435F-B979-0F32315E3FB9}"
         },
         {
-            "uid": "{7F169DCB-364C-43F7-86DB-631BFB4BA15A}"
+            "uid": "{57765860-BAF7-4AE8-A195-AA150B4696A9}"
         },
         {
-            "uid": "{6DF63F7A-715E-43D2-B81B-2DDFD0101ADD}"
+            "uid": "{2C553F0B-B55E-410F-B2F6-C3461FFE1553}"
         },
         {
-            "uid": "{752FD7A2-F88C-4269-97E0-080D37D6F28D}"
+            "uid": "{1F1AC49F-E6C0-4015-82C1-5A27217C8E4D}"
         },
         {
-            "uid": "{3B2AB1D9-0076-43A4-8A33-CD3B951F95DA}"
+            "uid": "{D5E989EB-4480-4EEF-8FD6-2D3A5B3D8808}"
         },
         {
-            "uid": "{069D0C02-47E1-44BA-82D5-8E7FB63A371D}"
+            "uid": "{A2D8CC29-BD63-4997-837D-BDB584E28A36}"
         },
         {
-            "uid": "{2A21BB27-E62F-4785-961C-E0209B48E7AE}"
+            "uid": "{03924DF6-F442-4C23-B98F-F5ECC2D8800B}"
         },
         {
-            "uid": "{3ACAE131-6CFB-4DB6-8C4A-6B561E9CD855}"
+            "uid": "{F4491C0B-3A3B-48C7-894B-6C871EB85AA3}"
         },
         {
-            "uid": "{AB25BADF-B23D-4BA0-B8B9-FED744CF46BD}"
+            "uid": "{6A0ECA2A-3400-4C23-A6D2-269814AA0392}"
         },
         {
-            "uid": "{01931C41-6F19-46FE-A9CC-4777B7815091}"
+            "uid": "{2A39FE0C-7177-42A5-946F-BA8B4E138C94}"
         },
         {
-            "uid": "{7F79EF39-CE76-483E-BCBB-415A19E4C901}"
+            "uid": "{EF0E11C8-F7C7-4BD1-85A6-0A04FE9E7F0A}"
         },
         {
-            "uid": "{6F423182-C0EE-4FBB-98E3-44FB44E97D08}"
+            "uid": "{A71433EA-E943-423C-BDD2-0A72DA22B969}"
         },
         {
-            "uid": "{0F280932-8D61-47C6-84B4-0870ECCE8CAD}"
+            "uid": "{0AD44C3A-1D2F-4B42-9D58-3194012AD525}"
         },
         {
-            "uid": "{85A06D8E-9F0D-4633-9A19-A7277D416567}"
+            "uid": "{B91B5783-945B-4444-867C-C9352E57304C}"
         },
         {
-            "uid": "{56931FC5-AEAD-4439-AB37-A496CD4DA2A0}"
+            "uid": "{396DE4A6-8F7D-4E69-9928-B71467A64170}"
         },
         {
-            "uid": "{B23438DE-3DB8-4EF2-9F76-6A44F5756363}"
+            "uid": "{2DA60AEB-5043-4959-82A7-D1FAAF94FFB2}"
         },
         {
-            "uid": "{6EB0FC8E-7602-4F1E-A6A7-3DDE5F535ACB}"
+            "uid": "{7995829E-DCA9-40EC-B981-143B82606CB6}"
         },
         {
-            "uid": "{EDFBF99F-3896-422A-A90A-E7808917B709}"
+            "uid": "{4150FE96-1986-4F49-96CD-3500D82DA9E8}"
+        },
+        {
+            "uid": "{4307F3FF-FC09-410B-8713-2866309BC5D1}"
+        },
+        {
+            "uid": "{1BCF1A3C-2296-4A5E-851E-1CB85ED55C6F}"
+        },
+        {
+            "uid": "{0BBDEE8C-42F2-4C5E-B20F-F73BCE37FE64}"
+        },
+        {
+            "uid": "{1C7462A1-60C3-476F-A7D7-F7F569A26D01}"
+        },
+        {
+            "uid": "{1A2823F6-B872-4D74-B8FD-26686CF6143F}"
+        },
+        {
+            "uid": "{CE0EB792-4012-448F-B3AF-6E4F35CB2D81}"
+        },
+        {
+            "uid": "{DDF75B2E-C4CF-4232-8208-DB07E2DAC0A0}"
+        },
+        {
+            "uid": "{86B3B045-96CB-435F-B979-0F32315E3FB9}"
+        },
+        {
+            "uid": "{57765860-BAF7-4AE8-A195-AA150B4696A9}"
+        },
+        {
+            "uid": "{2C553F0B-B55E-410F-B2F6-C3461FFE1553}"
+        },
+        {
+            "uid": "{1F1AC49F-E6C0-4015-82C1-5A27217C8E4D}"
+        },
+        {
+            "uid": "{D5E989EB-4480-4EEF-8FD6-2D3A5B3D8808}"
+        },
+        {
+            "uid": "{A2D8CC29-BD63-4997-837D-BDB584E28A36}"
+        },
+        {
+            "uid": "{03924DF6-F442-4C23-B98F-F5ECC2D8800B}"
+        },
+        {
+            "uid": "{F4491C0B-3A3B-48C7-894B-6C871EB85AA3}"
+        },
+        {
+            "uid": "{6A0ECA2A-3400-4C23-A6D2-269814AA0392}"
+        },
+        {
+            "uid": "{2A39FE0C-7177-42A5-946F-BA8B4E138C94}"
+        },
+        {
+            "uid": "{EF0E11C8-F7C7-4BD1-85A6-0A04FE9E7F0A}"
+        },
+        {
+            "uid": "{A71433EA-E943-423C-BDD2-0A72DA22B969}"
+        },
+        {
+            "uid": "{0AD44C3A-1D2F-4B42-9D58-3194012AD525}"
+        },
+        {
+            "uid": "{B91B5783-945B-4444-867C-C9352E57304C}"
+        },
+        {
+            "uid": "{396DE4A6-8F7D-4E69-9928-B71467A64170}"
+        },
+        {
+            "uid": "{2DA60AEB-5043-4959-82A7-D1FAAF94FFB2}"
+        },
+        {
+            "uid": "{7995829E-DCA9-40EC-B981-143B82606CB6}"
+        },
+        {
+            "uid": "{4150FE96-1986-4F49-96CD-3500D82DA9E8}"
         }
     ],
     "filename": "sponza.obj",
-    "generate_materials": true,
     "uid": {
-        "uid": "{A18C6EDA-DC6D-4864-96C2-7E03C5BD3299}"
+        "uid": "{587CB865-17F4-4D33-B01E-19389836E4F4}"
     }
 }

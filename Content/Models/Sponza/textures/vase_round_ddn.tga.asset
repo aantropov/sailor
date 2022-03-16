@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"vase_round_ddn.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{929D361D-5D29-4AFD-8F86-47202FD91EEE}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "vase_round_ddn.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{31DEBC08-015A-4AA7-B1D0-A7A7AC09048C}"
+    }
+}

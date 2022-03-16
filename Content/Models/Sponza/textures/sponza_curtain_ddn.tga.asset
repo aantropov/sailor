@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_curtain_ddn.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{0D6DB785-6E3E-498E-B73D-9A4377DA246F}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_curtain_ddn.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{3FCD9B52-169B-4855-8C05-4ADC204F7925}"
+    }
+}

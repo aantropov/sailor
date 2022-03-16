@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"vase_hanging_ddn.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{E84EF15F-2AAC-461A-900C-7A497F930395}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "vase_hanging_ddn.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{FD2036E9-3115-4DDC-A73E-A50A5406D259}"
+    }
+}

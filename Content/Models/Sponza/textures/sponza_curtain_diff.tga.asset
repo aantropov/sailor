@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_curtain_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{8217935F-BB07-4DFE-A61C-4364FBF445BD}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_curtain_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{B320A06D-FF15-4756-830D-F05B1C5BD831}"
+    }
+}

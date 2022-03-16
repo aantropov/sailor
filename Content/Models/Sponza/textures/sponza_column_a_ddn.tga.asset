@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_column_a_ddn.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{70F43E70-5118-4348-B01A-1B37EA932AB5}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_column_a_ddn.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{BF26EA09-E73E-47D9-90B3-871F570C87A6}"
+    }
+}

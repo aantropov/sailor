@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_column_c_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{EFBDD867-100B-4F08-91BF-39CECD70654E}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_column_c_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{B22C3C53-8DA6-4E4C-971F-E9BEAAFB291E}"
+    }
+}

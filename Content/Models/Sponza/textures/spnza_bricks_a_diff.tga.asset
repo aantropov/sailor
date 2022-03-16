@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"spnza_bricks_a_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{1CA17F81-9998-413A-872D-7BD5E22299EB}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "spnza_bricks_a_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{5B83FBEB-D646-45A9-9D3F-293F2AC7B064}"
+    }
+}

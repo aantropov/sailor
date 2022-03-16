@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_flagpole_ddn.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{0CA81753-6D13-4688-BC45-0DC3106BE0C9}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_flagpole_ddn.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{E049C738-C5D9-46D8-AAEF-463B7519AE93}"
+    }
+}

@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_roof_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{DBF6424A-60A2-486C-84D6-D7FF86A9EE87}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_roof_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{2BA8C365-1CAF-4B14-BCA9-EE830053A0D1}"
+    }
+}

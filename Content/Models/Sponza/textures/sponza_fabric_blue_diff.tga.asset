@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_fabric_blue_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{97E0C4B6-0EDE-42B1-9262-4FBB48292816}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_fabric_blue_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{3445BD35-C3EF-43E6-82DD-D86640905E1A}"
+    }
+}

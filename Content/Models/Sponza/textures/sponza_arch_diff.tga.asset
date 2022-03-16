@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_arch_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{DD7CB6BC-59F4-4A82-B4B4-1B06022F9C62}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_arch_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{7B80036B-EA82-47DE-BD01-9B93797AF4FD}"
+    }
+}

@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_thorn_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{DBAB449C-FE3C-48A3-A059-63F45AB95AEF}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_thorn_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{C0892634-7511-4567-A137-E5B708E386DF}"
+    }
+}

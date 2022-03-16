@@ -1,35 +1,35 @@
 {
-    "blend_mode": 0,
-    "cull_mode": 2,
+    "bEnableDepthTest": true,
+    "bEnableZWrite": true,
+    "bIsTransparent": false,
+    "blendMode": 0,
+    "cullMode": 2,
     "defines": null,
-    "depth_bias": 0.0,
-    "enable_depth_test": true,
-    "enable_z_write": true,
-    "fill_mode": 0,
-    "is_transparent": false,
-    "render_queue": "Opaque",
+    "depthBias": 0.0,
+    "fillMode": 0,
+    "renderQueue": "Opaque",
     "samplers": [
         {
             "name": "diffuseSampler",
             "uid": {
-                "uid": "{BB067052-7F76-4C9D-B56C-3B1717EB9C96}"
+                "uid": "{454DB212-4CFC-4EAE-9DEC-26703F8BC496}"
             }
         },
         {
             "name": "ambientSampler",
             "uid": {
-                "uid": "{BB067052-7F76-4C9D-B56C-3B1717EB9C96}"
+                "uid": "{454DB212-4CFC-4EAE-9DEC-26703F8BC496}"
             }
         }
     ],
     "shader": {
-        "uid": "{7C4C5270-3F13-49B9-A5FC-05EBDF2D70CD}"
+        "uid": "{F9096043-03E2-4BB1-A3D0-4EA692C986C7}"
     },
     "uniforms": [
         [
             "material.diffuse",
             {
-                "w": 1.0075335958495435e-42,
+                "w": 0.0,
                 "x": 0.47040000557899475,
                 "y": 0.47040000557899475,
                 "z": 0.47040000557899475
@@ -38,7 +38,7 @@
         [
             "material.ambient",
             {
-                "w": 0.0,
+                "w": 6.403933981964414e-43,
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0
@@ -47,7 +47,7 @@
         [
             "material.emission",
             {
-                "w": 4.5906537691281007e-41,
+                "w": 6.403933981964414e-43,
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0

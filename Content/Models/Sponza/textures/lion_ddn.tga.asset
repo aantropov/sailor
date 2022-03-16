@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"lion_ddn.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{E337A0FE-690C-4321-AA45-595765848A67}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "lion_ddn.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{D2371F20-E07D-4C24-A1BD-D824A1F67913}"
+    }
+}

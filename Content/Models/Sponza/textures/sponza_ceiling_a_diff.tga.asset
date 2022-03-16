@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_ceiling_a_diff.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{DB7BDA92-7B32-400F-AB76-79D4F59F0CE7}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_ceiling_a_diff.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{7D4AE478-F30D-46C3-8B04-CE08845FF302}"
+    }
+}

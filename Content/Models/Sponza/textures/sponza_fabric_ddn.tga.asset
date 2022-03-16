@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"sponza_fabric_ddn.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{76304C4A-FAC9-4A59-95C1-6C5E7A75557C}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "sponza_fabric_ddn.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{62A5C0D4-3A0E-4311-85D0-E19287CCA255}"
+    }
+}

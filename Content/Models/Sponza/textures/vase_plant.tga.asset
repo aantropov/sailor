@@ -1,1 +1,9 @@
-{"clamping":1,"filename":"vase_plant.tga","filtration":1,"generate_mips":true,"uid":{"uid":"{5B9807A4-2368-40F5-BBB5-83DB3F826641}"}}
+{
+    "bShouldGenerateMips": true,
+    "clamping": 1,
+    "filename": "vase_plant.tga",
+    "filtration": 1,
+    "uid": {
+        "uid": "{B9FD60E2-3BE7-4CA4-B0E3-6AD4D69ED7E8}"
+    }
+}
