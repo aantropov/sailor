@@ -41,7 +41,7 @@ namespace Sailor::RHI
 		bool m_bNeedsStorageBuffer = false;
 	};
 
-	class Material : public Resource
+	class Material : public Resource, public IDelayedInitialization
 	{
 	public:
 #if defined(VULKAN)

@@ -26,7 +26,7 @@ using namespace Sailor;
 
 bool Material::IsReady() const
 {
-	return m_bIsReady;
+	return m_rhiMaterial && m_rhiMaterial->IsReady();
 }
 
 JobSystem::ITaskPtr Material::OnHotReload()
@@ -68,7 +68,6 @@ void Material::UpdateRHIResource()
 {
 	SAILOR_LOG("Update material RHI resource: %s", GetUID().ToString().c_str());
 
-	m_bIsReady = false;
 	m_rhiMaterial = RHI::Renderer::GetDriver()->CreateMaterial(m_renderState, m_shader);
 
 	auto bindings = m_rhiMaterial->GetBindings();
@@ -94,27 +93,39 @@ void Material::UpdateRHIResource()
 		}
 	}
 
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD("Set material parameter", ([&](RHI::CommandListPtr& cmdList)
+	RHI::CommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
+
+	auto pBindings = m_rhiMaterial->GetBindings();
+	for (auto& uniform : m_uniforms)
 	{
-		auto pBindings = m_rhiMaterial->GetBindings();
-		for (auto& uniform : m_uniforms)
+		if (pBindings->HasParameter(uniform.m_first))
 		{
-			if (pBindings->HasParameter(uniform.m_first))
-			{
-				std::string outBinding;
-				std::string outVariable;
+			std::string outBinding;
+			std::string outVariable;
 
-				RHI::ShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-				RHI::ShaderBindingPtr& binding = pBindings->GetOrCreateShaderBinding(outBinding);
+			RHI::ShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
+			RHI::ShaderBindingPtr& binding = pBindings->GetOrCreateShaderBinding(outBinding);
 
-				const glm::vec4 value = uniform.m_second;
-				RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
-			}
+			const glm::vec4 value = uniform.m_second;
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
 		}
+	}
+
+	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
+
+	// Create fences to track the state of material update
+	RHI::FencePtr fence = RHI::FencePtr::Make();
+	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_rhiMaterial.GetRawPtr(), fence);
+
+	// Submit cmd lists
+	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Update material rhi",
+		([this, cmdList, fence]()
+	{
+		RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
 	}));
 
 	m_bIsDirty = false;
-	m_bIsReady = true;
 }
 
 void MaterialAsset::Serialize(nlohmann::json& outData) const

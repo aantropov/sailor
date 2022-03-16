@@ -55,7 +55,6 @@ namespace Sailor
 	protected:		
 		
 		RHI::MaterialPtr m_rhiMaterial;
-		std::atomic<bool> m_bIsReady;
 		std::atomic<bool> m_bIsDirty;
 
 		ShaderSetPtr m_shader;

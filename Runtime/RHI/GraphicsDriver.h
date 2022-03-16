@@ -122,10 +122,10 @@ namespace Sailor::RHI
 		//Immediate context
 
 		SAILOR_API void TrackResources_ThreadSafe();
+		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
 
 	protected:
 
-		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
 		SAILOR_API void TrackPendingCommandList_ThreadSafe(FencePtr handle);
 
 		SpinLock m_lockTrackedFences;
