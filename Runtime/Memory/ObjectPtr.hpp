@@ -202,11 +202,12 @@ namespace Sailor
 			assert(m_pRawPtr && m_pControlBlock);
 			assert(m_pControlBlock->m_sharedPtrCounter > 0);
 
-			m_pControlBlock->m_sharedPtrCounter = 0;
-
-			m_pRawPtr->~Object();
-			m_pAllocator->Free(m_pRawPtr);
-			m_pRawPtr = nullptr;
+			if (--m_pControlBlock->m_sharedPtrCounter == 0)
+			{
+				m_pRawPtr->~Object();
+				m_pAllocator->Free(m_pRawPtr);
+				m_pRawPtr = nullptr;
+			}
 		}
 
 	protected:
