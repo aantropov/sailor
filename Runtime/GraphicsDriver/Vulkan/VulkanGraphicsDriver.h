@@ -23,25 +23,25 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		virtual SAILOR_API void Initialize(const Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
-		virtual SAILOR_API ~VulkanGraphicsDriver() override;
+		SAILOR_API virtual void Initialize(const Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+		SAILOR_API virtual ~VulkanGraphicsDriver() override;
 
-		virtual SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport);
-		virtual SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
+		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport);
+		SAILOR_API virtual void FixLostDevice(const Win32::Window* pViewport);
 
-		virtual SAILOR_API bool PresentFrame(const class FrameState& state,
+		SAILOR_API virtual bool PresentFrame(const class FrameState& state,
 			const TVector<RHI::CommandListPtr>* primaryCommandBuffers = nullptr,
 			const TVector<RHI::CommandListPtr>* secondaryCommandBuffers = nullptr,
 			TVector<RHI::SemaphorePtr> waitSemaphores = {}) const;
 
-		virtual void SAILOR_API WaitIdle();
+		SAILOR_API virtual void WaitIdle();
 
-		virtual SAILOR_API RHI::SemaphorePtr CreateWaitSemaphore();
-		virtual SAILOR_API RHI::CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
-		virtual SAILOR_API RHI::BufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
-		virtual SAILOR_API RHI::BufferPtr CreateBuffer(RHI::CommandListPtr& cmdBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
-		virtual SAILOR_API RHI::ShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv);
-		virtual SAILOR_API RHI::TexturePtr CreateImage(
+		SAILOR_API virtual RHI::SemaphorePtr CreateWaitSemaphore();
+		SAILOR_API virtual RHI::CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
+		SAILOR_API virtual RHI::BufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
+		SAILOR_API virtual RHI::BufferPtr CreateBuffer(RHI::CommandListPtr& cmdBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
+		SAILOR_API virtual RHI::ShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv);
+		SAILOR_API virtual RHI::TexturePtr CreateImage(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,
@@ -52,24 +52,24 @@ namespace Sailor::GraphicsDriver::Vulkan
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
 
-		virtual SAILOR_API RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader);
+		SAILOR_API virtual RHI::MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader);
 
-		virtual SAILOR_API void SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence = nullptr, RHI::SemaphorePtr signalSemaphore = nullptr, RHI::SemaphorePtr waitSemaphore = nullptr);
+		SAILOR_API virtual void SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence = nullptr, RHI::SemaphorePtr signalSemaphore = nullptr, RHI::SemaphorePtr waitSemaphore = nullptr);
 
 		// Shader binding set
-		virtual SAILOR_API RHI::ShaderBindingSetPtr CreateShaderBindings();
-		virtual SAILOR_API void AddBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType);
-		virtual SAILOR_API void AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding);
+		SAILOR_API virtual RHI::ShaderBindingSetPtr CreateShaderBindings();
+		SAILOR_API virtual void AddBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType);
+		SAILOR_API virtual void AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding);
 
 		// Used for full binding update
-		virtual SAILOR_API void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, RHI::TexturePtr value);
-		virtual SAILOR_API void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);
+		SAILOR_API virtual void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, RHI::TexturePtr value);
+		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);
 
 		// Begin Immediate context
-		virtual SAILOR_API RHI::BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
-		virtual SAILOR_API void CopyBuffer_Immediate(RHI::BufferPtr src, RHI::BufferPtr dst, size_t size);
+		SAILOR_API virtual RHI::BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
+		SAILOR_API virtual void CopyBuffer_Immediate(RHI::BufferPtr src, RHI::BufferPtr dst, size_t size);
 
-		virtual SAILOR_API TRefPtr<RHI::Texture> CreateImage_Immediate(
+		SAILOR_API virtual TRefPtr<RHI::Texture> CreateImage_Immediate(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,
@@ -82,12 +82,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 		//End Immediate context
 
 		//Begin IGraphicsDriverCommands
-		virtual SAILOR_API void BeginCommandList(RHI::CommandListPtr cmd);
-		virtual SAILOR_API void EndCommandList(RHI::CommandListPtr cmd);
+		SAILOR_API virtual void BeginCommandList(RHI::CommandListPtr cmd);
+		SAILOR_API virtual void EndCommandList(RHI::CommandListPtr cmd);
 
-		virtual SAILOR_API void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size);
-		virtual SAILOR_API void UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t offset = 0);
-		virtual SAILOR_API void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size);
+		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size);
+		SAILOR_API virtual void UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t offset = 0);
+		SAILOR_API virtual void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size);
 		//End IGraphicsDriverCommands
 
 	protected:
