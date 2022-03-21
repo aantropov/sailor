@@ -114,7 +114,18 @@ namespace Sailor
 		}
 
 		template<typename R>
-		SAILOR_API __forceinline TObjectPtr<R> StaticCast() { return TObjectPtr<R>(static_cast<R*>(m_pRawPtr), m_pAllocator); }
+		SAILOR_API __forceinline TObjectPtr<R> StaticCast() 
+		{
+			if (R* pRes = static_cast<R*>(m_pRawPtr))
+			{
+				TObjectPtr<R> ptr;
+				ptr.m_pAllocator = m_pAllocator;
+				ptr.AssignRawPtr(pRes, m_pControlBlock);
+
+				return ptr;
+			}
+			return TObjectPtr<R>();
+		}
 
 		template<typename R>
 		SAILOR_API __forceinline TObjectPtr<R> DynamicCast()

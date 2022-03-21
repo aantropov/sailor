@@ -15,29 +15,26 @@ namespace Sailor
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 
-	class StaticMeshRendererData
+	class CameraData
 	{
 	public:
 
 		SAILOR_API __forceinline ObjectPtr& GetOwner() { return m_owner; }
 		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
 
-		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return m_materials; }
-		SAILOR_API __forceinline ModelPtr& GetModel() { return m_model; }
-
+		SAILOR_API __forceinline void SetProjectionMatrix(const glm::mat4& projection) { m_projectionMatrix = projection; }
+		SAILOR_API __forceinline const glm::mat4& GetProjectionMatrix() { return m_projectionMatrix; }
+		
 	protected:
 
-		ModelPtr m_model;
-		TVector<MaterialPtr> m_materials;
-
 		bool m_bIsActive : 1 = false;
-
+		glm::mat4 m_projectionMatrix;
 		ObjectPtr m_owner;
 
-		friend class StaticMeshRendererECS;
+		friend class CameraECS;
 	};
 
-	class SAILOR_API StaticMeshRendererECS : public ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>
+	class SAILOR_API CameraECS : public ECS::TSystem<CameraECS, CameraData>
 	{
 	public:
 

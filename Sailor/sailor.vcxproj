@@ -189,6 +189,7 @@
     <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\Texture\TextureImporter.h" />
     <ClInclude Include="..\Runtime\AssetRegistry\UID.h" />
+    <ClInclude Include="..\Runtime\Components\CameraComponent.h" />
     <ClInclude Include="..\Runtime\Components\Component.h" />
     <ClInclude Include="..\Runtime\Components\MeshRendererComponent.h" />
     <ClInclude Include="..\Runtime\Components\TestComponent.h" />
@@ -208,6 +209,7 @@
     <ClInclude Include="..\Runtime\Core\SpinLock.h" />
     <ClInclude Include="..\Runtime\Core\Submodule.h" />
     <ClInclude Include="..\Runtime\Core\Utils.h" />
+    <ClInclude Include="..\Runtime\ECS\CameraECS.h" />
     <ClInclude Include="..\Runtime\ECS\ECS.h" />
     <ClInclude Include="..\Runtime\ECS\StaticMeshRendererECS.h" />
     <ClInclude Include="..\Runtime\ECS\TransformECS.h" />
@@ -289,6 +291,7 @@
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureAssetInfo.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\Texture\TextureImporter.cpp" />
     <ClCompile Include="..\Runtime\AssetRegistry\UID.cpp" />
+    <ClCompile Include="..\Runtime\Components\CameraComponent.cpp" />
     <ClCompile Include="..\Runtime\Components\Component.cpp" />
     <ClCompile Include="..\Runtime\Components\MeshRendererComponent.cpp" />
     <ClCompile Include="..\Runtime\Components\TestComponent.cpp" />
@@ -299,6 +302,7 @@
     <ClCompile Include="..\Runtime\Core\JsonSerializable.cpp" />
     <ClCompile Include="..\Runtime\Core\Submodule.cpp" />
     <ClCompile Include="..\Runtime\Core\Utils.cpp" />
+    <ClCompile Include="..\Runtime\ECS\CameraECS.cpp" />
     <ClCompile Include="..\Runtime\ECS\ECS.cpp" />
     <ClCompile Include="..\Runtime\ECS\StaticMeshRendererECS.cpp" />
     <ClCompile Include="..\Runtime\ECS\TransformECS.cpp" />

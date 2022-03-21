@@ -27,6 +27,7 @@ namespace Sailor
 
 		__forceinline ObjectPtr& GetOwner() { return m_owner; }
 
+		SAILOR_API __forceinline void SetPosition(const glm::vec3& position);
 		SAILOR_API __forceinline void SetPosition(const glm::vec4& position);
 		SAILOR_API __forceinline void SetRotation(const glm::quat& quat);
 		SAILOR_API __forceinline void SetScale(const glm::vec4& scale);
@@ -40,7 +41,6 @@ namespace Sailor
 		glm::mat4x4 m_cachedWorldMatrix;
 
 		Math::Transform m_transform;
-		size_t m_index = ECS::InvalidIndex;
 		bool m_bIsDirty : 1 = false;
 		bool m_bIsActive : 1 = false;
 		size_t m_parent;

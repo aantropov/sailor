@@ -1,7 +1,9 @@
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Components/CameraComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
+#include "ECS/TransformECS.h"
 
 using namespace Sailor;
 using namespace Sailor::JobSystem;
@@ -28,8 +30,9 @@ void TestComponent::EndPlay()
 }
 
 void TestComponent::Tick(float deltaTime)
-{
-	static glm::vec3 cameraPosition = Math::vec3_Forward * -10.0f;
+{	
+	auto& transform = GetOwner()->GetTransform();
+
 	static glm::vec3 cameraViewDir = Math::vec3_Forward;
 
 	const float sensitivity = 500;
@@ -48,7 +51,10 @@ void TestComponent::Tick(float deltaTime)
 		delta += -cameraViewDir;
 
 	if (glm::length(delta) > 0)
-		cameraPosition += glm::normalize(delta) * sensitivity * deltaTime;
+	{
+		const vec4 newPosition = transform.GetTransform().m_position + vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);
+		transform.SetPosition(newPosition);
+	}
 
 	if (GetWorld()->GetInput().IsKeyDown(VK_LBUTTON))
 	{
@@ -62,15 +68,11 @@ void TestComponent::Tick(float deltaTime)
 		cameraViewDir = hRotation * cameraViewDir;
 	}
 
-	auto width = Sailor::App::GetViewportWindow()->GetWidth();
-	auto height = Sailor::App::GetViewportWindow()->GetHeight();
-
-	float aspect = (height + width) > 0 ? width / (float)height : 1.0f;
-	m_frameData.m_projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 10000.0f);
-	m_frameData.m_projection[1][1] *= -1;
+	m_frameData.m_projection = GetOwner()->GetComponent<CameraComponent>()->GetData().GetProjectionMatrix();
 	m_frameData.m_currentTime = (float)GetWorld()->GetTime();
 	m_frameData.m_deltaTime = deltaTime;
-	m_frameData.m_view = glm::lookAt(cameraPosition, cameraPosition + cameraViewDir, Math::vec3_Up);
+
+	m_frameData.m_view = glm::lookAt(vec3(transform.GetTransform().m_position), vec3(transform.GetTransform().m_position) + cameraViewDir, Math::vec3_Up);
 
 	static float angle = 0;
 	//angle += 0.01f;

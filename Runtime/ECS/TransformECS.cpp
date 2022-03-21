@@ -10,6 +10,12 @@ void Transform::SetPosition(const glm::vec4& position)
 	m_transform.m_position = position;
 }
 
+void Transform::SetPosition(const glm::vec3& position)
+{
+	MarkDirty();
+	m_transform.m_position = vec4(position, 1);
+}
+
 void Transform::SetRotation(const glm::quat& quat)
 {
 	MarkDirty();
