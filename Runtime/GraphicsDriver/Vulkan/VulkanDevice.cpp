@@ -164,13 +164,14 @@ void VulkanDevice::Shutdown()
 
 ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)
 {
-	auto res = m_threadContext.Find(threadId);
-	if (res != m_threadContext.end())
+	auto& res = m_threadContext.At_Lock(threadId);
+	if (!res)
 	{
-		return *(*res).m_second;
+		res = CreateThreadContext();
 	}
+	m_threadContext.Unlock(threadId);
 
-	return *(m_threadContext[threadId] = CreateThreadContext());
+	return *res;
 }
 
 ThreadContext& VulkanDevice::GetCurrentThreadContext()
