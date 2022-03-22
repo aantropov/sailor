@@ -30,7 +30,7 @@ namespace Sailor::Math
 	template<typename T>
 	T Lerp(const T& a, const T& b, float t) { return a + (b - a) * t; }
 
-	glm::mat4 MakeInfReversedZProjRH(float fovRadians, float aspectWbyH, float zNear);
+	glm::mat4 PerspectiveInfiniteRH(float fovRadians, float aspectWbyH, float zNear);
 }
 
 #if defined(min)

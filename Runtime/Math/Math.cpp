@@ -15,7 +15,7 @@ unsigned long Sailor::Math::UpperPowOf2(unsigned long v)
 	return v;
 }
 
-glm::mat4 Sailor::Math::MakeInfReversedZProjRH(float fovRadians, float aspectWbyH, float zNear)
+glm::mat4 Sailor::Math::PerspectiveInfiniteRH(float fovRadians, float aspectWbyH, float zNear)
 {
 	float f = 1.0f / tan(fovRadians / 2.0f);
 	return glm::mat4(

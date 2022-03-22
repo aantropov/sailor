@@ -18,11 +18,15 @@ namespace Sailor
 	public:
 
 		SAILOR_API virtual void BeginPlay() override;
+		SAILOR_API virtual void Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API __forceinline CameraData& GetData();
 
+		SAILOR_API static float CalculateAspect();
+
 	protected:
 
+		float m_aspect = 0.0f;
 		size_t m_handle = (size_t)(-1);
 	};
 }
