@@ -513,7 +513,7 @@ namespace Sailor::RHI
 	};
 
 	// Used to hold/track RHI resources
-	class IDependent
+	class SAILOR_API IDependent
 	{
 	public:
 
@@ -527,37 +527,37 @@ namespace Sailor::RHI
 			m_dependencies.Clear();
 		}
 
-		virtual SAILOR_API ~IDependent() = default;
+		virtual ~IDependent() = default;
 
 	protected:
 		TVector<TRefPtr<Resource>> m_dependencies;
 	};
 
-	class IObservable
+	class SAILOR_API IObservable
 	{
 	public:
-		SAILOR_API IObservable() = default;
-		SAILOR_API IObservable(IObservable&) = default;
-		SAILOR_API IObservable(IObservable&&) = default;
-		SAILOR_API IObservable& operator=(IObservable&) = default;
-		SAILOR_API IObservable& operator=(IObservable&&) = default;
-		virtual SAILOR_API ~IObservable() = default;
+		IObservable() = default;
+		IObservable(IObservable&) = default;
+		IObservable(IObservable&&) = default;
+		IObservable& operator=(IObservable&) = default;
+		IObservable& operator=(IObservable&&) = default;
+		virtual ~IObservable() = default;
 
-		virtual void SAILOR_API TraceVisit(TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) = 0;
+		virtual void TraceVisit(TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) = 0;
 	};
 
-	class IVisitor
+	class SAILOR_API IVisitor
 	{
 	public:
 
-		virtual SAILOR_API ~IVisitor() = default;
+		virtual ~IVisitor() = default;
 
-		void SAILOR_API AddObservable(TRefPtr<RHI::Resource> resource)
+		void AddObservable(TRefPtr<RHI::Resource> resource)
 		{
 			m_elements.Add(std::move(resource));
 		}
 
-		virtual SAILOR_API void TraceObservables()
+		virtual void TraceObservables()
 		{
 			for (int32_t i = 0; i < m_elements.Num(); i++)
 			{
@@ -577,7 +577,7 @@ namespace Sailor::RHI
 			}
 		}
 
-		SAILOR_API void ClearObservables()
+		void ClearObservables()
 		{
 			m_elements.Clear();
 		}
@@ -588,16 +588,16 @@ namespace Sailor::RHI
 	};
 
 	// Used to create resource after create the instance of class
-	class IExplicitInitialization
+	class SAILOR_API IExplicitInitialization
 	{
 	public:
 
-		SAILOR_API virtual void Compile() = 0;
-		SAILOR_API virtual void Release() = 0;
+		virtual void Compile() = 0;
+		virtual void Release() = 0;
 	};
 
 	// Used to track resource create/update with command lists
-	class IDelayedInitialization : public IObservable, public IDependent
+	class SAILOR_API IDelayedInitialization : public IObservable, public IDependent
 	{
 	public:
 
@@ -607,11 +607,11 @@ namespace Sailor::RHI
 
 	// Used as composing approach to build the object by functionality
 	template<typename TState>
-	class IStateModifier
+	class SAILOR_API IStateModifier
 	{
 	public:
-		SAILOR_API virtual void Apply(TState& State) const = 0;
-		SAILOR_API virtual ~IStateModifier() = default;
+		virtual void Apply(TState& State) const = 0;
+		virtual ~IStateModifier() = default;
 	};
 };
 
