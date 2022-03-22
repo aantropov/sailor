@@ -104,8 +104,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanApi : public TSingleton<VulkanApi>
 	{
 	public:
+
 		static constexpr int MaxFramesInFlight = 2;
-		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 1.0f, 0 };
+
+		// Reverse Z, 0.0f is the farest
+		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 0.0f, 0 };
 		static constexpr VkClearValue DefaultClearColor{ {0.0f,0.0f,0.0f,0.0f} };
 
 		static SAILOR_API void Initialize(const Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);

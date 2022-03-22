@@ -49,6 +49,15 @@ void TestComponent::Tick(float deltaTime)
 	if (GetWorld()->GetInput().IsKeyDown('S'))
 		delta += -cameraViewDirection;
 
+	if (GetWorld()->GetInput().IsKeyDown('X'))
+		delta += Math::vec3_Forward;
+
+	if (GetWorld()->GetInput().IsKeyDown('Y'))
+		delta += Math::vec3_Up;
+
+	if (GetWorld()->GetInput().IsKeyDown('Z'))
+		delta += Math::vec3_Right;
+
 	if (glm::length(delta) > 0)
 	{
 		const vec4 newPosition = transform.GetPosition() + vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);

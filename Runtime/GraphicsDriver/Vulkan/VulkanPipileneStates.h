@@ -127,7 +127,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanStateDepthStencil : public VulkanPipelineState
 	{
 	public:
-		VulkanStateDepthStencil(bool bEnableDepthTest = true, bool bEnableZWrite = true, VkCompareOp depthOp = VkCompareOp::VK_COMPARE_OP_LESS);
+		VulkanStateDepthStencil(bool bEnableDepthTest = true, bool bEnableZWrite = true, VkCompareOp depthOp = VkCompareOp::VK_COMPARE_OP_GREATER);
 		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:

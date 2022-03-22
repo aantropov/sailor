@@ -16,9 +16,13 @@ VulkanStateViewport::VulkanStateViewport(float x, float y, float width, float he
 	: m_viewport{}, m_scissor{}, m_viewportState{}
 {
 	m_viewport.x = x;
-	m_viewport.y = y;
 	m_viewport.width = width;
-	m_viewport.height = height;
+
+	// Flip Y to point Up
+	// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
+	m_viewport.y = height;
+	m_viewport.height = -height;
+
 	m_viewport.minDepth = minDepth;
 	m_viewport.maxDepth = maxDepth;
 
@@ -231,7 +235,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 			renderState.GetDepthBias(), (VkCullModeFlags)renderState.GetCullMode(), (VkPolygonMode)renderState.GetFillMode());
 
 		const VulkanStateDynamicPtr pDynamicState = VulkanStateDynamicPtr::Make();
-		const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_LESS);
+		const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_GREATER);
 		const VulkanStateMultisamplePtr pMultisample = VulkanStateMultisamplePtr::Make(m_pDevice->GetCurrentMsaaSamples());
 
 		res = TVector<VulkanPipelineStatePtr>

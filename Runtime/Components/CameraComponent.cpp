@@ -1,6 +1,7 @@
 #include "Components/CameraComponent.h"
 #include "Engine/GameObject.h"
 #include "ECS/CameraECS.h"
+#include "Math/Math.h"
 
 using namespace Sailor;
 using namespace Sailor::JobSystem;
@@ -16,9 +17,7 @@ void CameraComponent::BeginPlay()
 	auto height = Sailor::App::GetViewportWindow()->GetHeight();
 	
 	float aspect = (height + width) > 0 ? width / (float)height : 1.0f;
-	
-	glm::mat4 projection = glm::perspective(glm::radians(90.0f), aspect, 0.1f, 10000.0f);
-	projection[1][1] *= -1;
+	glm::mat4 projection = Math::MakeInfReversedZProjRH(glm::radians(90.0f), aspect, 0.01f);
 
 	GetData().SetProjectionMatrix(projection);
 }
