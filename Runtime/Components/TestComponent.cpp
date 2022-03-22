@@ -30,29 +30,28 @@ void TestComponent::EndPlay()
 }
 
 void TestComponent::Tick(float deltaTime)
-{	
+{
 	auto& transform = GetOwner()->GetTransform();
-
-	static glm::vec3 cameraViewDir = Math::vec3_Forward;
+	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec3_Forward;
 
 	const float sensitivity = 500;
 
 	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
 	if (GetWorld()->GetInput().IsKeyDown('A'))
-		delta += -cross(cameraViewDir, Math::vec3_Up);
+		delta += -cross(cameraViewDirection, Math::vec3_Up);
 
 	if (GetWorld()->GetInput().IsKeyDown('D'))
-		delta += cross(cameraViewDir, Math::vec3_Up);
+		delta += cross(cameraViewDirection, Math::vec3_Up);
 
 	if (GetWorld()->GetInput().IsKeyDown('W'))
-		delta += cameraViewDir;
+		delta += cameraViewDirection;
 
 	if (GetWorld()->GetInput().IsKeyDown('S'))
-		delta += -cameraViewDir;
+		delta += -cameraViewDirection;
 
 	if (glm::length(delta) > 0)
 	{
-		const vec4 newPosition = transform.GetTransform().m_position + vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);
+		const vec4 newPosition = transform.GetPosition() + vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);
 		transform.SetPosition(newPosition);
 	}
 
@@ -62,17 +61,17 @@ void TestComponent::Tick(float deltaTime)
 		const vec2 shift = vec2(GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos) * deltaTime * speed;
 
 		glm::quat hRotation = angleAxis(-glm::radians(shift.x), Math::vec3_Up);
-		glm::quat vRotation = angleAxis(glm::radians(shift.y), cross(Math::vec3_Up, cameraViewDir));
+		glm::quat vRotation = -angleAxis(glm::radians(shift.y), cross(Math::vec3_Up, cameraViewDirection));
 
-		cameraViewDir = vRotation * cameraViewDir;
-		cameraViewDir = hRotation * cameraViewDir;
+		transform.SetRotation(transform.GetRotation() * vRotation);
+		transform.SetRotation(transform.GetRotation() * hRotation);
 	}
 
 	m_frameData.m_projection = GetOwner()->GetComponent<CameraComponent>()->GetData().GetProjectionMatrix();
 	m_frameData.m_currentTime = (float)GetWorld()->GetTime();
 	m_frameData.m_deltaTime = deltaTime;
 
-	m_frameData.m_view = glm::lookAt(vec3(transform.GetTransform().m_position), vec3(transform.GetTransform().m_position) + cameraViewDir, Math::vec3_Up);
+	m_frameData.m_view = glm::lookAt(vec3(transform.GetPosition()), vec3(transform.GetPosition()) + transform.GetRotation() * Math::vec3_Forward, Math::vec3_Up);
 
 	static float angle = 0;
 	//angle += 0.01f;

@@ -33,6 +33,11 @@ namespace Sailor
 		SAILOR_API __forceinline void SetScale(const glm::vec4& scale);
 		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner);
 
+		SAILOR_API __forceinline const glm::vec4& GetPosition()const { return m_transform.m_position; }
+		SAILOR_API __forceinline const glm::quat& GetRotation()const { return m_transform.m_rotation; }
+		SAILOR_API __forceinline const glm::vec4& GetScale() const { return m_transform.m_scale; }
+		SAILOR_API __forceinline const ObjectPtr& GetOwner() const { return m_owner; }
+
 	protected:
 
 		SAILOR_API __forceinline void MarkDirty();
