@@ -22,6 +22,17 @@ namespace Sailor::Math
 	const glm::vec3 vec3_Down = -vec3_Up;
 	const glm::vec3 vec3_Left = -vec3_Right;
 
+	const glm::vec4 vec4_Zero = glm::vec4(0, 0, 0, 0);
+	const glm::vec4 vec4_One = glm::vec4(1, 1, 1, 1);
+
+	const glm::vec4 vec4_Up = glm::vec4(0, 1, 0, 0);
+	const glm::vec4 vec4_Forward = glm::vec4(1, 0, 0, 0);
+	const glm::vec4 vec4_Right = glm::vec4(0, 0, 1, 0);
+
+	const glm::vec4 vec4_Back = -vec4_Forward;
+	const glm::vec4 vec4_Down = -vec4_Up;
+	const glm::vec4 vec4_Left = -vec4_Right;
+
 	const quat quat_Identity = quat(1.0, 0.0, 0.0, 0.0);
 	const mat4 mat4_Identity = mat4(1);
 

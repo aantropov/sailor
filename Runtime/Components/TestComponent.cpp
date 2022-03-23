@@ -32,7 +32,7 @@ void TestComponent::EndPlay()
 void TestComponent::Tick(float deltaTime)
 {
 	auto& transform = GetOwner()->GetTransform();
-	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec3_Forward;
+	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec4_Forward;
 
 	const float sensitivity = 500;
 
@@ -70,17 +70,17 @@ void TestComponent::Tick(float deltaTime)
 		const vec2 shift = vec2(GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos) * deltaTime * speed;
 
 		glm::quat hRotation = angleAxis(-glm::radians(shift.x), Math::vec3_Up);
-		glm::quat vRotation = -angleAxis(glm::radians(shift.y), cross(Math::vec3_Up, cameraViewDirection));
-
-		transform.SetRotation(transform.GetRotation() * vRotation);
-		transform.SetRotation(transform.GetRotation() * hRotation);
+		glm::quat vRotation = angleAxis(glm::radians(shift.y), cross(Math::vec3_Up, cameraViewDirection));
+		transform.SetRotation(vRotation * hRotation * transform.GetRotation());
 	}
 
 	m_frameData.m_projection = GetOwner()->GetComponent<CameraComponent>()->GetData().GetProjectionMatrix();
 	m_frameData.m_currentTime = (float)GetWorld()->GetTime();
 	m_frameData.m_deltaTime = deltaTime;
 
-	m_frameData.m_view = glm::lookAt(vec3(transform.GetPosition()), vec3(transform.GetPosition()) + transform.GetRotation() * Math::vec3_Forward, Math::vec3_Up);
+	m_frameData.m_view = glm::lookAt(vec3(transform.GetPosition()), 
+		vec3(transform.GetPosition()) + transform.GetRotation() * Math::vec3_Forward,
+		Math::vec3_Up);
 
 	static float angle = 0;
 	//angle += 0.01f;
