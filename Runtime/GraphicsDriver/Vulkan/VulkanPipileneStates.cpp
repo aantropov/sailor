@@ -18,7 +18,7 @@ VulkanStateViewport::VulkanStateViewport(float x, float y, float width, float he
 	m_viewport.x = x;
 	m_viewport.width = width;
 
-	// Flip Y to point Up
+	// Flip Y-axis to point up in viewport
 	// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
 	m_viewport.y = height;
 	m_viewport.height = -height;
@@ -181,7 +181,7 @@ VulkanStateDepthStencil::VulkanStateDepthStencil(bool bEnableDepthTest, bool bEn
 	m_depthStencil.depthWriteEnable = bEnableZWrite;
 	m_depthStencil.depthCompareOp = depthOp;
 
-	// Min depth -> closier
+	// The higher depth value meand the closier fragment to camera
 	m_depthStencil.depthBoundsTestEnable = VK_FALSE;
 	m_depthStencil.minDepthBounds = 0.0f; // Optional
 	m_depthStencil.maxDepthBounds = 1.0f; // Optional
