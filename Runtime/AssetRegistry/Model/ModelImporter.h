@@ -18,6 +18,7 @@
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "Math/Bounds.h"
 
 namespace Sailor::RHI
 {
@@ -45,10 +46,16 @@ namespace Sailor
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API virtual ~Model() = default;
 
+		SAILOR_API const Math::AABB& GetBoundsAABB() const { return m_boundsAabb; }
+		SAILOR_API const Math::Sphere& GetBoundsSphere() const { return m_boundsSphere; }
+
 	protected:
 
 		TVector<RHI::MeshPtr> m_meshes;
 		std::atomic<bool> m_bIsReady;
+
+		Math::AABB m_boundsAabb;
+		Math::Sphere m_boundsSphere;
 
 		friend class ModelImporter;
 	};
@@ -70,7 +77,8 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes);
+		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
+
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 
 		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;

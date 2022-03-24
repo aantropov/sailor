@@ -210,10 +210,14 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	{
 		ModelPtr model = ModelPtr::Make(m_allocator, uid);
 
+		// The way to drop qualifiers inside lambda
+		auto& boundsSphere = model->m_boundsSphere;
+		auto& boundsAabb = model->m_boundsAabb;
+
 		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
-			[model, assetInfo, this]()
+			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 		{
-			bool bRes = ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes);
+			bool bRes = ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, boundsAabb, boundsSphere);
 			model.GetRawPtr()->Flush();
 			return bRes;
 		});
@@ -231,7 +235,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
 
-bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes)
+bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
@@ -290,6 +294,15 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 				attrib.normals[3 * index.normal_index + 2]
 			};
 
+			// Calculate bounds 
+			outBoundsAabb.m_min.x = std::min(vertex.m_position.x, outBoundsAabb.m_min.x);
+			outBoundsAabb.m_min.y = std::min(vertex.m_position.y, outBoundsAabb.m_min.y);
+			outBoundsAabb.m_min.z = std::min(vertex.m_position.z, outBoundsAabb.m_min.z);
+
+			outBoundsAabb.m_max.x = std::max(vertex.m_position.x, outBoundsAabb.m_max.x);
+			outBoundsAabb.m_max.y = std::max(vertex.m_position.y, outBoundsAabb.m_max.y);
+			outBoundsAabb.m_max.z = std::max(vertex.m_position.z, outBoundsAabb.m_max.z);
+
 			if (mesh.uniqueVertices.count(vertex) == 0)
 			{
 				mesh.uniqueVertices[vertex] = static_cast<uint32_t>(mesh.outVertices.Num());
@@ -301,6 +314,9 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 
 		idx++;
 	}
+
+	outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);
+	outBoundsSphere.m_radius = glm::distance(outBoundsAabb.m_max, outBoundsSphere.m_center);
 
 	for (const auto& mesh : meshes)
 	{
