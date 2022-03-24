@@ -26,6 +26,12 @@ namespace Sailor::Math
 		Sphere(glm::vec3 center, float radius) : m_center(center), m_radius(radius) {}
 	};
 
+	struct AABB
+	{
+		glm::vec3 m_min;
+		glm::vec3 m_max;
+	};
+
 	class Frustum
 	{
 		SAILOR_API Frustum() = default;
