@@ -13,8 +13,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanPipelineLayout();
-		VulkanPipelineLayout(VulkanDevicePtr pDevice,
+		SAILOR_API VulkanPipelineLayout();
+		SAILOR_API VulkanPipelineLayout(VulkanDevicePtr pDevice,
 			TVector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
 			TVector<VkPushConstantRange> pushConstantRanges,
 			VkPipelineLayoutCreateFlags flags = 0);
@@ -25,15 +25,15 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VkPushConstantRange> m_pushConstantRanges;
 
 		/// Vulkan VkPipelineLayout handle
-		VkPipelineLayout* GetHandle() { return &m_pipelineLayout; }
-		operator VkPipelineLayout() const { return m_pipelineLayout; }
+		SAILOR_API VkPipelineLayout* GetHandle() { return &m_pipelineLayout; }
+		SAILOR_API operator VkPipelineLayout() const { return m_pipelineLayout; }
 
-		virtual void Compile() override;
-		virtual void Release() override;
+		SAILOR_API virtual void Compile() override;
+		SAILOR_API virtual void Release() override;
 
 	protected:
 
-		virtual ~VulkanPipelineLayout() override;
+		SAILOR_API virtual ~VulkanPipelineLayout() override;
 		VulkanDevicePtr m_pDevice;
 		VkPipelineLayout m_pipelineLayout;
 	};

@@ -12,15 +12,15 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	public:
 
-		VulkanFence(VulkanDevicePtr device, VkFenceCreateFlags flags = 0);
+		SAILOR_API VulkanFence(VulkanDevicePtr device, VkFenceCreateFlags flags = 0);
 
-		VkResult Wait(uint64_t timeout = UINT64_MAX) const;
-		VkResult Reset() const;
-		VkResult Status() const;
+		SAILOR_API VkResult Wait(uint64_t timeout = UINT64_MAX) const;
+		SAILOR_API VkResult Reset() const;
+		SAILOR_API VkResult Status() const;
 
-		operator VkFence() const { return m_fence; }
+		SAILOR_API operator VkFence() const { return m_fence; }
 
-		const VkFence* GetHandle() const { return &m_fence; }
+		SAILOR_API const VkFence* GetHandle() const { return &m_fence; }
 
 	protected:
 

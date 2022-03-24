@@ -12,9 +12,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanShaderStage : public RHI::Resource, public RHI::IExplicitInitialization, public RHI::IStateModifier<VkPipelineShaderStageCreateInfo>
 	{
 	public:
-		VulkanShaderStage() = default;
-		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule);
-		VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
+		SAILOR_API VulkanShaderStage() = default;
+		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanShaderModulePtr shaderModule);
+		SAILOR_API VulkanShaderStage(VkShaderStageFlagBits stage, const std::string& entryPointName, VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
 
 		/// Vulkan VkPipelineShaderStageCreateInfo settings
 		VkPipelineShaderStageCreateFlags m_flags = 0;
@@ -22,16 +22,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanShaderModulePtr m_module;
 		std::string m_entryPointName;
 
-		virtual void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const override;
-		virtual void Compile() override;
-		virtual void Release() override {}
+		SAILOR_API virtual void Apply(VkPipelineShaderStageCreateInfo& stageInfo) const override;
+		SAILOR_API virtual void Compile() override;
+		SAILOR_API virtual void Release() override {}
 
-		const TVector<TVector<VkDescriptorSetLayoutBinding>>& GetDescriptorSetLayoutBindings() const { return m_layoutBindings; }
-		const TVector<TVector<RHI::ShaderLayoutBinding>>& GetBindings() const { return m_bindings; }
+		SAILOR_API const TVector<TVector<VkDescriptorSetLayoutBinding>>& GetDescriptorSetLayoutBindings() const { return m_layoutBindings; }
+		SAILOR_API const TVector<TVector<RHI::ShaderLayoutBinding>>& GetBindings() const { return m_bindings; }
 
 	protected:
 
-		void ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code);
+		SAILOR_API void ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code);
 
 		TVector<TVector<VkDescriptorSetLayoutBinding>> m_layoutBindings;
 		TVector<TVector<RHI::ShaderLayoutBinding>> m_bindings;
@@ -41,19 +41,19 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanShaderModule() = default;
-		VulkanShaderModule(VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
+		SAILOR_API VulkanShaderModule() = default;
+		SAILOR_API VulkanShaderModule(VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv);
 
-		operator VkShaderModule() const { return m_shaderModule; }
+		SAILOR_API operator VkShaderModule() const { return m_shaderModule; }
 
 		RHI::ShaderByteCode m_byteCode;
 
-		virtual void Compile() override;
-		virtual void Release() override;
+		SAILOR_API virtual void Compile() override;
+		SAILOR_API virtual void Release() override;
 
 	protected:
 
-		virtual ~VulkanShaderModule() override;
+		SAILOR_API virtual ~VulkanShaderModule() override;
 
 		VkShaderModule m_shaderModule = nullptr;
 		VulkanDevicePtr m_pDevice;

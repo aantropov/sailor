@@ -12,14 +12,14 @@ namespace Sailor::Memory
 	{
 	public:
 
-		VulkanBufferMemoryPtr() = default;
-		VulkanBufferMemoryPtr(TRefPtr<class Sailor::GraphicsDriver::Vulkan::VulkanBuffer> buffer);
-		VulkanBufferMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer> buffer, size_t offset, size_t size);
+		SAILOR_API VulkanBufferMemoryPtr() = default;
+		SAILOR_API VulkanBufferMemoryPtr(TRefPtr<class Sailor::GraphicsDriver::Vulkan::VulkanBuffer> buffer);
+		SAILOR_API VulkanBufferMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer> buffer, size_t offset, size_t size);
 
-		VulkanBufferMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer>& rhs);
+		SAILOR_API VulkanBufferMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer>& rhs);
 
-		operator bool() const;
-		VulkanMemoryPtr operator*();
+		SAILOR_API operator bool() const;
+		SAILOR_API VulkanMemoryPtr operator*();
 
 		TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer> m_buffer{};
 		size_t m_offset{};

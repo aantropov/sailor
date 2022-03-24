@@ -12,8 +12,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanImageView : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
-		VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image);
-		VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags);
+		SAILOR_API VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image);
+		SAILOR_API VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags);
 
 		/// VkImageViewCreateInfo settings
 		VkImageViewCreateFlags m_flags = 0;
@@ -24,12 +24,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkImageSubresourceRange m_subresourceRange;
 
 		/// Vulkan VkImageView handle
-		operator VkImageView() const { return m_imageView; }
+		SAILOR_API operator VkImageView() const { return m_imageView; }
 
-		virtual void Compile() override;
-		virtual void Release() override;
+		SAILOR_API virtual void Compile() override;
+		SAILOR_API virtual void Release() override;
 
-		virtual ~VulkanImageView();
+		SAILOR_API virtual ~VulkanImageView();
 
 	protected:
 

@@ -12,16 +12,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	public:
 
-		uint32_t GetQueueFamilyIndex() const { return m_queueFamilyIndex; }
+		SAILOR_API uint32_t GetQueueFamilyIndex() const { return m_queueFamilyIndex; }
 
-		const VkCommandPool* GetHandle() const { return &m_commandPool; }
-		operator VkCommandPool() const { return m_commandPool; }
+		SAILOR_API const VkCommandPool* GetHandle() const { return &m_commandPool; }
+		SAILOR_API operator VkCommandPool() const { return m_commandPool; }
 
-		void Reset(VkCommandPoolResetFlags flags = VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT) const;
+		SAILOR_API void Reset(VkCommandPoolResetFlags flags = VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT) const;
 
-		VulkanCommandPool(VulkanDevicePtr device, uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);
+		SAILOR_API VulkanCommandPool(VulkanDevicePtr device, uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);
 
-		virtual ~VulkanCommandPool() override;
+		SAILOR_API virtual ~VulkanCommandPool() override;
 
 	protected:
 

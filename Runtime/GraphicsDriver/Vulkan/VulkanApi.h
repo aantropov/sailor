@@ -97,8 +97,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		static SAILOR_API VkVertexInputBindingDescription GetBindingDescription();
-		static SAILOR_API TVector<VkVertexInputAttributeDescription> GetAttributeDescriptions();
+		SAILOR_API static VkVertexInputBindingDescription GetBindingDescription();
+		SAILOR_API static TVector<VkVertexInputAttributeDescription> GetAttributeDescriptions();
 	};
 
 	class VulkanApi : public TSingleton<VulkanApi>
@@ -111,58 +111,58 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 0.0f, 0 };
 		static constexpr VkClearValue DefaultClearColor{ {0.0f,0.0f,0.0f,0.0f} };
 
-		static SAILOR_API void Initialize(const Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
-		virtual SAILOR_API ~VulkanApi() override;
+		SAILOR_API static void Initialize(const Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+		SAILOR_API virtual ~VulkanApi() override;
 
-		static void SAILOR_API WaitIdle();
+		SAILOR_API static void WaitIdle();
 		SAILOR_API VulkanDevicePtr GetMainDevice() const;
 
-		bool SAILOR_API IsEnabledValidationLayers() const { return bIsEnabledValidationLayers; }
-		__forceinline static SAILOR_API VkInstance& GetVkInstance() { return s_pInstance->m_vkInstance; }
+		SAILOR_API bool IsEnabledValidationLayers() const { return bIsEnabledValidationLayers; }
+		SAILOR_API __forceinline static VkInstance& GetVkInstance() { return s_pInstance->m_vkInstance; }
 
-		static SAILOR_API VulkanQueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VulkanSurfacePtr surface);
+		SAILOR_API static VulkanQueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VulkanSurfacePtr surface);
 
-		static SAILOR_API VkFormat SelectFormatByFeatures(VkPhysicalDevice physicalDevice, const TVector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
-		static SAILOR_API bool HasStencilComponent(VkFormat format);
+		SAILOR_API static VkFormat SelectFormatByFeatures(VkPhysicalDevice physicalDevice, const TVector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+		SAILOR_API static bool HasStencilComponent(VkFormat format);
 
-		static SAILOR_API SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device, VulkanSurfacePtr surface);
+		SAILOR_API static SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device, VulkanSurfacePtr surface);
 
-		static SAILOR_API VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const TVector<VkSurfaceFormatKHR>& availableFormats);
-		static SAILOR_API VkPresentModeKHR ÑhooseSwapPresentMode(const TVector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
-		static SAILOR_API VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
+		SAILOR_API static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const TVector<VkSurfaceFormatKHR>& availableFormats);
+		SAILOR_API static VkPresentModeKHR ÑhooseSwapPresentMode(const TVector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
+		SAILOR_API static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
-		static SAILOR_API VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
-		static SAILOR_API void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions) 
+		SAILOR_API static VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
+		SAILOR_API static void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions) 
 		{
 			requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME/*, "VK_KHR_dynamic_rendering"*/};
 		}
 
-		static SAILOR_API VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
-		static SAILOR_API VkAttachmentDescription GetDefaultDepthAttachment(VkFormat depthFormat);
+		SAILOR_API static VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
+		SAILOR_API static VkAttachmentDescription GetDefaultDepthAttachment(VkFormat depthFormat);
 
-		static SAILOR_API VulkanRenderPassPtr CreateRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat);
-		static SAILOR_API VulkanRenderPassPtr CreateMSSRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
-		static SAILOR_API VulkanImageViewPtr CreateImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags);
-		static SAILOR_API uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
+		SAILOR_API static VulkanRenderPassPtr CreateRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat);
+		SAILOR_API static VulkanRenderPassPtr CreateMSSRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
+		SAILOR_API static VulkanImageViewPtr CreateImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags);
+		SAILOR_API static uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
-		static SAILOR_API bool CreateDescriptorSetLayouts(VulkanDevicePtr device,
+		SAILOR_API static bool CreateDescriptorSetLayouts(VulkanDevicePtr device,
 			const TVector<VulkanShaderStagePtr>& shaders,
 			TVector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
 			TVector<RHI::ShaderLayoutBinding>& outRhiLayout);
 
-		static SAILOR_API VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
+		SAILOR_API static VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
 			uint32_t              binding = 0,
 			VkDescriptorType      descriptorType = VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 			uint32_t              descriptorCount = 1,
 			VkShaderStageFlags    stageFlags = VK_SHADER_STAGE_ALL,
 			const VkSampler* pImmutableSamplers = nullptr);
 
-		static SAILOR_API VkDescriptorPoolSize CreateDescriptorPoolSize(VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uint32_t count = 1);
+		SAILOR_API static VkDescriptorPoolSize CreateDescriptorPoolSize(VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uint32_t count = 1);
 
-		static SAILOR_API VulkanBufferPtr CreateBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
-		static SAILOR_API VulkanBufferPtr CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
+		SAILOR_API static VulkanBufferPtr CreateBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
+		SAILOR_API static VulkanBufferPtr CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
-		static SAILOR_API VulkanImagePtr CreateImage(
+		SAILOR_API static VulkanImagePtr CreateImage(
 			VulkanCommandBufferPtr& cmdBuffer,
 			VulkanDevicePtr device,
 			const void* pData,
@@ -175,13 +175,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE);
 
-		static SAILOR_API VulkanCommandBufferPtr UpdateBuffer(VulkanDevicePtr device, const VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size);
+		SAILOR_API static VulkanCommandBufferPtr UpdateBuffer(VulkanDevicePtr device, const VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size);
 
 		//Immediate context
-		static SAILOR_API VulkanBufferPtr CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
-		static SAILOR_API void CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr  src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
+		SAILOR_API static VulkanBufferPtr CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
+		SAILOR_API static void CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr  src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
 
-		static SAILOR_API VulkanImagePtr CreateImage_Immediate(
+		SAILOR_API static VulkanImagePtr CreateImage_Immediate(
 			VulkanDevicePtr device,
 			const void* pData,
 			VkDeviceSize size,
@@ -194,22 +194,22 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE);
 		//Immediate context
 
-		static SAILOR_API VkImageAspectFlags ComputeAspectFlagsForFormat(VkFormat format);
+		SAILOR_API static VkImageAspectFlags ComputeAspectFlagsForFormat(VkFormat format);
 
 	private:
 
-		static SAILOR_API uint32_t GetNumSupportedExtensions();
-		static SAILOR_API void PrintSupportedExtensions();
+		SAILOR_API static uint32_t GetNumSupportedExtensions();
+		SAILOR_API static void PrintSupportedExtensions();
 
-		static SAILOR_API bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
-		static SAILOR_API bool CheckValidationLayerSupport(const TVector<const char*>& validationLayers);
+		SAILOR_API static bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
+		SAILOR_API static bool CheckValidationLayerSupport(const TVector<const char*>& validationLayers);
 
-		static SAILOR_API bool IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surface);
-		static SAILOR_API int32_t GetDeviceScore(VkPhysicalDevice device);
+		SAILOR_API static bool IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surface);
+		SAILOR_API static int32_t GetDeviceScore(VkPhysicalDevice device);
 
-		static SAILOR_API bool SetupDebugCallback();
-		static SAILOR_API VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
-		static SAILOR_API void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator);
+		SAILOR_API static bool SetupDebugCallback();
+		SAILOR_API static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const	VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
+		SAILOR_API static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const	VkAllocationCallbacks* pAllocator);
 
 		VkDebugUtilsMessengerEXT m_debugMessenger = 0;
 		bool bIsEnabledValidationLayers = false;

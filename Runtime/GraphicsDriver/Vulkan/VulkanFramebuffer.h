@@ -10,21 +10,21 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanFramebuffer : public RHI::Resource
 	{
 	public:
-		VulkanFramebuffer(VulkanRenderPassPtr renderPass, const TVector<VulkanImageViewPtr>& attachments, uint32_t width, uint32_t height, uint32_t layers);
+		SAILOR_API VulkanFramebuffer(VulkanRenderPassPtr renderPass, const TVector<VulkanImageViewPtr>& attachments, uint32_t width, uint32_t height, uint32_t layers);
 
-		operator VkFramebuffer() const { return m_framebuffer; }
+		SAILOR_API operator VkFramebuffer() const { return m_framebuffer; }
 
-		VulkanRenderPassPtr GetRenderPass() { return m_renderPass; }
+		SAILOR_API VulkanRenderPassPtr GetRenderPass() { return m_renderPass; }
 
-		TVector<VulkanImageViewPtr>& GetAttachments() { return m_attachments; }
-		const TVector<VulkanImageViewPtr>& GetAttachments() const { return m_attachments; }
+		SAILOR_API TVector<VulkanImageViewPtr>& GetAttachments() { return m_attachments; }
+		SAILOR_API const TVector<VulkanImageViewPtr>& GetAttachments() const { return m_attachments; }
 
-		uint32_t GetWidth() const { return m_width; }
-		uint32_t GetHeight() const { return m_height; }
-		uint32_t GetLayers() const { return m_layers; }
+		SAILOR_API uint32_t GetWidth() const { return m_width; }
+		SAILOR_API uint32_t GetHeight() const { return m_height; }
+		SAILOR_API uint32_t GetLayers() const { return m_layers; }
 
 	protected:
-		virtual ~VulkanFramebuffer();
+		SAILOR_API virtual ~VulkanFramebuffer();
 
 		VkFramebuffer m_framebuffer;
 		VulkanDevicePtr m_device;

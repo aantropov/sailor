@@ -16,8 +16,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanImage(VulkanDevicePtr device);
-		VulkanImage(VkImage image, VulkanDevicePtr device);
+		SAILOR_API VulkanImage(VulkanDevicePtr device);
+		SAILOR_API VulkanImage(VkImage image, VulkanDevicePtr device);
 
 		/// VkImageCreateInfo settings
 		VkImageCreateFlags m_flags = 0;
@@ -33,21 +33,21 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<uint32_t> m_queueFamilyIndices;
 		VkImageLayout m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		operator VkImage() const { return m_image; }
+		SAILOR_API operator VkImage() const { return m_image; }
 
-		virtual void Compile() override;
-		virtual void Release() override;
+		SAILOR_API virtual void Compile() override;
+		SAILOR_API virtual void Release() override;
 
-		VkResult Bind(TMemoryPtr<VulkanMemoryPtr> ptr);
-		VkResult Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset);
-		VkMemoryRequirements GetMemoryRequirements() const;
+		SAILOR_API VkResult Bind(TMemoryPtr<VulkanMemoryPtr> ptr);
+		SAILOR_API VkResult Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset);
+		SAILOR_API VkMemoryRequirements GetMemoryRequirements() const;
 
-		VulkanDeviceMemoryPtr GetMemoryDevice() { return m_deviceMemory; }
-		VulkanDevicePtr GetDevice() const { return m_device; }
+		SAILOR_API VulkanDeviceMemoryPtr GetMemoryDevice() { return m_deviceMemory; }
+		SAILOR_API VulkanDevicePtr GetDevice() const { return m_device; }
 
 	protected:
 
-		virtual ~VulkanImage() override;
+		SAILOR_API virtual ~VulkanImage() override;
 
 		VkImage m_image = nullptr;
 		VulkanDevicePtr m_device;

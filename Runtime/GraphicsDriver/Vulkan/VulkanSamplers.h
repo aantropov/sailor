@@ -12,10 +12,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanSampler(VulkanDevicePtr pDevice, VkFilter filter, VkSamplerAddressMode addressMode, bool bUseMips = true, bool bIsAnisotropyEnabled = true, float maxAnisotropy = 8);
-		~VulkanSampler();
+		SAILOR_API VulkanSampler(VulkanDevicePtr pDevice, VkFilter filter, VkSamplerAddressMode addressMode, bool bUseMips = true, bool bIsAnisotropyEnabled = true, float maxAnisotropy = 8);
+		SAILOR_API ~VulkanSampler();
 
-		operator VkSampler() const { return m_textureSampler; }
+		SAILOR_API operator VkSampler() const { return m_textureSampler; }
 
 	private:
 

@@ -12,18 +12,18 @@ namespace Sailor::Memory
 	{
 	public:
 
-		VulkanDeviceMemoryPtr() = default;
-		VulkanDeviceMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory> deviceMemory) : m_deviceMemory(deviceMemory) {}
-		VulkanDeviceMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory> deviceMemory, size_t offset, size_t size) :
+		SAILOR_API VulkanDeviceMemoryPtr() = default;
+		SAILOR_API VulkanDeviceMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory> deviceMemory) : m_deviceMemory(deviceMemory) {}
+		SAILOR_API VulkanDeviceMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory> deviceMemory, size_t offset, size_t size) :
 			m_deviceMemory(deviceMemory), m_offset(offset), m_size(size) {}
 
-		VulkanDeviceMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory>& rhs)
+		SAILOR_API VulkanDeviceMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory>& rhs)
 		{
 			m_deviceMemory = rhs;
 			return *this;
 		}
 
-		operator bool()
+		SAILOR_API operator bool()
 		{
 			return m_deviceMemory;
 		}

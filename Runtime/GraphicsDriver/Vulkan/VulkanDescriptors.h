@@ -12,19 +12,19 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDescriptorSetLayout : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
-		VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings);
+		SAILOR_API VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings);
 
-		VulkanDescriptorSetLayout() = default;
-		virtual ~VulkanDescriptorSetLayout() override;
+		SAILOR_API VulkanDescriptorSetLayout() = default;
+		SAILOR_API virtual ~VulkanDescriptorSetLayout() override;
 
 		/// VkDescriptorSetLayoutCreateInfo settings
 		TVector<struct VkDescriptorSetLayoutBinding> m_descriptorSetLayoutBindings;
 
 		/// Vulkan VkDescriptorSetLayout handle
-		operator VkDescriptorSetLayout() const { return m_descriptorSetLayout; }
+		SAILOR_API operator VkDescriptorSetLayout() const { return m_descriptorSetLayout; }
 
-		virtual void Compile() override;
-		virtual void Release() override;
+		SAILOR_API virtual void Compile() override;
+		SAILOR_API virtual void Release() override;
 
 	protected:
 
@@ -35,12 +35,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDescriptorPool : public RHI::Resource
 	{
 	public:
-		VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t maxSets, const TVector<VkDescriptorPoolSize>& descriptorPoolSizes);
+		SAILOR_API VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t maxSets, const TVector<VkDescriptorPoolSize>& descriptorPoolSizes);
 
-		operator VkDescriptorPool() const { return m_descriptorPool; }
+		SAILOR_API operator VkDescriptorPool() const { return m_descriptorPool; }
 
 	protected:
-		virtual ~VulkanDescriptorPool();
+		SAILOR_API virtual ~VulkanDescriptorPool();
 
 		VkDescriptorPool m_descriptorPool;
 		VulkanDevicePtr m_device;
@@ -50,11 +50,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanDescriptor(uint32_t dstBinding, uint32_t dstArrayElement, VkDescriptorType descriptorType);
-		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+		SAILOR_API VulkanDescriptor(uint32_t dstBinding, uint32_t dstArrayElement, VkDescriptorType descriptorType);
+		SAILOR_API virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
 
-		uint32_t GetBinding() const { return m_dstBinding; }
-		uint32_t GetArrayElement() const { return m_dstArrayElement; }
+		SAILOR_API uint32_t GetBinding() const { return m_dstBinding; }
+		SAILOR_API uint32_t GetArrayElement() const { return m_dstArrayElement; }
 
 	protected:
 		uint32_t m_dstBinding;
@@ -65,14 +65,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDescriptorBuffer : public VulkanDescriptor
 	{
 	public:
-		VulkanDescriptorBuffer(uint32_t dstBinding,
+		SAILOR_API VulkanDescriptorBuffer(uint32_t dstBinding,
 			uint32_t dstArrayElement,
 			VulkanBufferPtr buffer,
 			VkDeviceSize offset = 0,
 			VkDeviceSize range = VK_WHOLE_SIZE,
 			RHI::EShaderBindingType bufferType = RHI::EShaderBindingType::UniformBuffer);
 
-		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+		SAILOR_API virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
 
 	protected:
 
@@ -85,15 +85,15 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDescriptorImage : public VulkanDescriptor
 	{
 	public:
-		VulkanDescriptorImage(uint32_t dstBinding,
+		SAILOR_API VulkanDescriptorImage(uint32_t dstBinding,
 			uint32_t dstArrayElement,
 			VulkanSamplerPtr sampler,
 			VulkanImageViewPtr imageView,
 			VkImageLayout imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		void SetImageView(VulkanImageViewPtr imageView);
+		SAILOR_API void SetImageView(VulkanImageViewPtr imageView);
 
-		virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+		SAILOR_API virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
 
 	protected:
 
@@ -106,8 +106,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDescriptorSet : public RHI::Resource, public RHI::IExplicitInitialization
 	{
 	public:
-		VulkanDescriptorSet() = default;
-		VulkanDescriptorSet(VulkanDevicePtr pDevice,
+		SAILOR_API VulkanDescriptorSet() = default;
+		SAILOR_API VulkanDescriptorSet(VulkanDevicePtr pDevice,
 			VulkanDescriptorPoolPtr pool,
 			VulkanDescriptorSetLayoutPtr descriptorSetLayout,
 			TVector<VulkanDescriptorPtr> descriptors);
@@ -116,14 +116,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanDescriptorSetLayoutPtr setLayout;
 		TVector<VulkanDescriptorPtr> m_descriptors;
 
-		virtual void Compile() override;
-		virtual void Release() override;
+		SAILOR_API virtual void Compile() override;
+		SAILOR_API virtual void Release() override;
 
-		VkDescriptorSet* GetHandle() { return &m_descriptorSet; }
-		operator VkDescriptorSet() const { return m_descriptorSet; }
+		SAILOR_API VkDescriptorSet* GetHandle() { return &m_descriptorSet; }
+		SAILOR_API operator VkDescriptorSet() const { return m_descriptorSet; }
 
 	protected:
-		~VulkanDescriptorSet() override;
+		SAILOR_API ~VulkanDescriptorSet() override;
 
 		VulkanDevicePtr m_device{};
 		VkDescriptorSet m_descriptorSet{};

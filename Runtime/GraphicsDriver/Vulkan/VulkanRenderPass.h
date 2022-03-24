@@ -22,19 +22,19 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanRenderPass(VulkanDevicePtr device,
+		SAILOR_API VulkanRenderPass(VulkanDevicePtr device,
 			const TVector<VkAttachmentDescription>& attachments,
 			const TVector<VulkanSubpassDescription>& subpasses,
 			const TVector<VkSubpassDependency>& dependencies);
 
-		operator VkRenderPass() const { return m_renderPass; }
+		SAILOR_API operator VkRenderPass() const { return m_renderPass; }
 
-		VulkanDevicePtr GetDevice() const;
-		VkSampleCountFlagBits GetMaxMSSamples() const { return m_maxMsSamples; }
+		SAILOR_API VulkanDevicePtr GetDevice() const;
+		SAILOR_API VkSampleCountFlagBits GetMaxMSSamples() const { return m_maxMsSamples; }
 
 	protected:
 
-		virtual ~VulkanRenderPass();
+		SAILOR_API virtual ~VulkanRenderPass();
 
 		VkRenderPass m_renderPass;
 		VkSampleCountFlagBits m_maxMsSamples;

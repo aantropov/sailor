@@ -17,13 +17,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanStateViewport(float width, float height);
-		VulkanStateViewport(float x, float y, float width, float height, VkOffset2D scissorOffset, VkExtent2D scissorExtent, float minDepth = 0.0f, float maxDepth = 1.0f);
+		SAILOR_API VulkanStateViewport(float width, float height);
+		SAILOR_API VulkanStateViewport(float x, float y, float width, float height, VkOffset2D scissorOffset, VkExtent2D scissorExtent, float minDepth = 0.0f, float maxDepth = 1.0f);
 
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
-		const VkViewport& GetViewport() const { return m_viewport; }
-		const VkRect2D& GetScissor() const { return m_scissor; }
+		SAILOR_API const VkViewport& GetViewport() const { return m_viewport; }
+		SAILOR_API const VkRect2D& GetScissor() const { return m_scissor; }
 
 	private:
 
@@ -35,9 +35,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanStateDynamicViewport : public VulkanPipelineState
 	{
 	public:
-		VulkanStateDynamicViewport();
+		SAILOR_API VulkanStateDynamicViewport();
 
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 	private:
 
 		VkPipelineViewportStateCreateInfo m_viewportState;
@@ -47,9 +47,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const TVector<VkVertexInputAttributeDescription> attributes);
+		SAILOR_API VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const TVector<VkVertexInputAttributeDescription> attributes);
 
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 
@@ -62,8 +62,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanStateInputAssembly(VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, bool bPrimitiveRestartEnable = false);
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API VulkanStateInputAssembly(VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, bool bPrimitiveRestartEnable = false);
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 
@@ -74,8 +74,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanStateRasterization(bool bEnableDepthBias = false, float depthBias = 0.0f, VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT, VkPolygonMode fillMode = VK_POLYGON_MODE_FILL);
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API VulkanStateRasterization(bool bEnableDepthBias = false, float depthBias = 0.0f, VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT, VkPolygonMode fillMode = VK_POLYGON_MODE_FILL);
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 		VkPipelineRasterizationStateCreateInfo m_rasterizer;
@@ -85,8 +85,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		VulkanStateMultisample(VkSampleCountFlagBits samples);
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API VulkanStateMultisample(VkSampleCountFlagBits samples);
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 		VkPipelineMultisampleStateCreateInfo m_multisampling;
@@ -95,7 +95,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanStateColorBlending : public VulkanPipelineState
 	{
 	public:
-		VulkanStateColorBlending(bool blendEnable,
+		SAILOR_API VulkanStateColorBlending(bool blendEnable,
 			VkBlendFactor            srcColorBlendFactor,
 			VkBlendFactor            dstColorBlendFactor,
 			VkBlendOp                colorBlendOp,
@@ -104,7 +104,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkBlendOp                alphaBlendOp,
 			VkColorComponentFlags    colorWriteMask);
 
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 
@@ -115,8 +115,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanStateDynamic : public VulkanPipelineState
 	{
 	public:
-		VulkanStateDynamic();
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API VulkanStateDynamic();
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 
@@ -127,8 +127,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanStateDepthStencil : public VulkanPipelineState
 	{
 	public:
-		VulkanStateDepthStencil(bool bEnableDepthTest = true, bool bEnableZWrite = true, VkCompareOp depthOp = VkCompareOp::VK_COMPARE_OP_GREATER);
-		void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+		SAILOR_API VulkanStateDepthStencil(bool bEnableDepthTest = true, bool bEnableZWrite = true, VkCompareOp depthOp = VkCompareOp::VK_COMPARE_OP_GREATER);
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
 
@@ -137,8 +137,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	struct VulkanPipelineStateBuilder
 	{
-		VulkanPipelineStateBuilder(VulkanDevicePtr pDevice);
-		const TVector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::RenderState& renderState);
+		SAILOR_API VulkanPipelineStateBuilder(VulkanDevicePtr pDevice);
+		SAILOR_API const TVector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::RenderState& renderState);
 
 	protected:
 

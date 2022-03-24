@@ -15,10 +15,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	public:
 
-		const VkBuffer* GetHandle() const { return &m_buffer; }
-		operator VkBuffer() const { return m_buffer; }
+		SAILOR_API const VkBuffer* GetHandle() const { return &m_buffer; }
+		SAILOR_API operator VkBuffer() const { return m_buffer; }
 
-		VulkanBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode);
+		SAILOR_API VulkanBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode);
 
 		/// VkBufferCreateInfo settings
 		VkBufferCreateFlags m_flags = 0;
@@ -26,16 +26,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkBufferUsageFlags m_usage;
 		VkSharingMode m_sharingMode;
 
-		virtual void Compile() override;
-		virtual void Release() override;
+		SAILOR_API virtual void Compile() override;
+		SAILOR_API virtual void Release() override;
 
-		VkResult Bind(TMemoryPtr<VulkanMemoryPtr> ptr);
-		VkResult Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset);
-		VkMemoryRequirements GetMemoryRequirements() const;
+		SAILOR_API VkResult Bind(TMemoryPtr<VulkanMemoryPtr> ptr);
+		SAILOR_API VkResult Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset);
+		SAILOR_API VkMemoryRequirements GetMemoryRequirements() const;
 
-		TMemoryPtr<VulkanMemoryPtr> GetMemoryPtr() { return m_ptr; }
-		VulkanDeviceMemoryPtr GetMemoryDevice() { return m_deviceMemory; }
-		virtual ~VulkanBuffer() override;
+		SAILOR_API TMemoryPtr<VulkanMemoryPtr> GetMemoryPtr() { return m_ptr; }
+		SAILOR_API VulkanDeviceMemoryPtr GetMemoryDevice() { return m_deviceMemory; }
+		SAILOR_API virtual ~VulkanBuffer() override;
 
 	protected:
 

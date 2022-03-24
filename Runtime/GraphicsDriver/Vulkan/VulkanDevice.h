@@ -35,11 +35,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	public:
 
-		operator VkDevice() const { return m_device; }
+		SAILOR_API operator VkDevice() const { return m_device; }
 
-		VulkanDevice(const Win32::Window* pViewport, RHI::EMsaaSamples requestMsaa);
-		virtual ~VulkanDevice();
-		void Shutdown();
+		SAILOR_API VulkanDevice(const Win32::Window* pViewport, RHI::EMsaaSamples requestMsaa);
+		SAILOR_API virtual ~VulkanDevice();
+		SAILOR_API void Shutdown();
 
 		SAILOR_API VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
 		SAILOR_API VulkanSurfacePtr GetSurface() const;
@@ -48,13 +48,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const TUniquePtr<VulkanSamplerCache>& GetSamplers() const { return m_samplers; }
 		SAILOR_API TUniquePtr<VulkanPipelineStateBuilder>& GetPipelineBuilder() { return m_pipelineBuilder; }
 
-		void SAILOR_API WaitIdle();
-		void SAILOR_API WaitIdlePresentQueue();
-		bool SAILOR_API PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers = {},
+		SAILOR_API void WaitIdle();
+		SAILOR_API void WaitIdlePresentQueue();
+		SAILOR_API bool PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers = {},
 			TVector<VulkanCommandBufferPtr> secondaryCommandBuffers = {},
 			TVector<VulkanSemaphorePtr> waitSemaphores = {});
 
-		bool SAILOR_API IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
+		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 		
 		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(bool bOnlyTransferQueue = false);
 

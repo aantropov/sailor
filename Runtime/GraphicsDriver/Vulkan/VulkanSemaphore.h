@@ -11,16 +11,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	public:
 
-		VulkanSemaphore(VulkanDevicePtr device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, void* pNextCreateInfo = nullptr);
+		SAILOR_API VulkanSemaphore(VulkanDevicePtr device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, void* pNextCreateInfo = nullptr);
 
-		operator VkSemaphore() const { return m_semaphore; }
+		SAILOR_API operator VkSemaphore() const { return m_semaphore; }
 
-		VkPipelineStageFlags& PipelineStageFlags() { return m_pipelineStageFlags; }
-		const VkPipelineStageFlags& PipelineStageFlags() const { return m_pipelineStageFlags; }
-		const VkSemaphore* GetHandle() const { return &m_semaphore; }
+		SAILOR_API VkPipelineStageFlags& PipelineStageFlags() { return m_pipelineStageFlags; }
+		SAILOR_API const VkPipelineStageFlags& PipelineStageFlags() const { return m_pipelineStageFlags; }
+		SAILOR_API const VkSemaphore* GetHandle() const { return &m_semaphore; }
 
 	protected:
-		virtual ~VulkanSemaphore();
+		SAILOR_API virtual ~VulkanSemaphore();
 
 		VkSemaphore m_semaphore;
 		VkPipelineStageFlags m_pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;

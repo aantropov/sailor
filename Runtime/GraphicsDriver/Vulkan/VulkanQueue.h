@@ -13,21 +13,21 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	public:
 
-		operator VkQueue() const { return m_queue; }
+		SAILOR_API operator VkQueue() const { return m_queue; }
 
-		uint32_t QueueFamilyIndex() const { return m_queueFamilyIndex; }
-		uint32_t QueueIndex() const { return m_queueIndex; }
+		SAILOR_API uint32_t QueueFamilyIndex() const { return m_queueFamilyIndex; }
+		SAILOR_API uint32_t QueueIndex() const { return m_queueIndex; }
 
-		VkResult Submit(const TVector<VkSubmitInfo>& submitInfos, VulkanFencePtr fence = nullptr) const;
-		VkResult Submit(const VkSubmitInfo& submitInfo, VulkanFencePtr fence = nullptr) const;
-		VkResult Present(const VkPresentInfoKHR& info);
-		VkResult WaitIdle();
+		SAILOR_API VkResult Submit(const TVector<VkSubmitInfo>& submitInfos, VulkanFencePtr fence = nullptr) const;
+		SAILOR_API VkResult Submit(const VkSubmitInfo& submitInfo, VulkanFencePtr fence = nullptr) const;
+		SAILOR_API VkResult Present(const VkPresentInfoKHR& info);
+		SAILOR_API VkResult WaitIdle();
 
-		VulkanQueue(VkQueue queue, uint32_t queueFamilyIndex, uint32_t queueIndex);
+		SAILOR_API VulkanQueue(VkQueue queue, uint32_t queueFamilyIndex, uint32_t queueIndex);
 
 	protected:
 
-		virtual ~VulkanQueue();
+		SAILOR_API virtual ~VulkanQueue();
 
 		VulkanQueue() = delete;
 		VulkanQueue(const VulkanQueue&) = delete;

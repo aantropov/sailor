@@ -16,7 +16,7 @@ namespace Sailor
 		SAILOR_API uint32_t GetSmoothFps() const { return m_pureFps.load(); }
 
 		EngineLoop() = default;
-		~EngineLoop() override;
+		SAILOR_API ~EngineLoop() override;
 
 		SAILOR_API TSharedPtr<World> CreateWorld(std::string name);
 
