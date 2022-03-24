@@ -30,6 +30,8 @@ TVector<TBaseSystemPtr> ECSFactory::CreateECS() const
 	{
 		res.Emplace(ecs.m_second());
 	}
+	
+	res.Sort([](const auto& lhs, const auto& rhs) { return lhs->GetOrder() < rhs->GetOrder(); });
 
 	return res;
 }

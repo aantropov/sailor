@@ -6,8 +6,7 @@ using namespace Sailor::JobSystem;
 
 void Transform::SetPosition(const glm::vec4& position)
 {
-	MarkDirty();
-	m_transform.m_position = position;
+	SetPosition(vec3(position));
 }
 
 void Transform::SetPosition(const glm::vec3& position)

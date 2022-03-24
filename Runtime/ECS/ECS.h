@@ -37,6 +37,8 @@ namespace Sailor::ECS
 		virtual void EndPlay() {}
 
 		virtual size_t GetComponentType() const { return (size_t)-1; }
+
+		virtual uint32_t GetOrder() const { return 100; }
 	};
 
 	template<typename TECS, typename TData>

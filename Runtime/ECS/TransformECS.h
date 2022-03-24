@@ -64,6 +64,8 @@ namespace Sailor
 		void MarkDirty(Transform* ptr);
 		void CalculateMatrices(Transform& root);
 
+		virtual uint32_t GetOrder() const override { return 0; }
+
 	protected:
 
 		TVector<size_t> m_dirtyComponents;

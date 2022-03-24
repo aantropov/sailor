@@ -579,10 +579,10 @@ namespace Sailor
 			std::stable_sort(begin(), end());
 		}
 
-		void Sort(const TPredicate<TElementType>& predicate)
+		void Sort(const TCompare<TElementType>& compare)
 		{
 			// For now use std
-			std::stable_sort(begin(), end(), predicate);
+			std::stable_sort(begin(), end(), compare);
 		}
 
 		static void Swap(TVector& lhs, TVector& rhs)

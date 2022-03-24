@@ -45,6 +45,9 @@ namespace Sailor
 	template<typename T>
 	using TPredicate = std::function<bool(const T&)>;
 
+	template<typename T>
+	using TCompare = std::function<bool(const T&, const T&)>;
+
 	template<typename T, typename U>
 	__forceinline bool Equals(const T& lhs, const U& rhs)
 	{

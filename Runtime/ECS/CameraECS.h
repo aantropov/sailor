@@ -29,6 +29,8 @@ namespace Sailor
 
 		bool m_bIsActive : 1 = false;
 		glm::mat4 m_projectionMatrix;
+		glm::mat4 m_viewMatrix;
+
 		ObjectPtr m_owner;
 
 		friend class CameraECS;
