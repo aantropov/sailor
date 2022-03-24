@@ -27,7 +27,7 @@ namespace Sailor
 		
 	protected:
 
-		bool m_bIsActive : 1 = false;
+		bool m_bIsActive : 1 = true;
 		glm::mat4 m_projectionMatrix;
 		glm::mat4 m_viewMatrix;
 

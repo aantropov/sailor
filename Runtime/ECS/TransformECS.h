@@ -46,8 +46,8 @@ namespace Sailor
 		glm::mat4x4 m_cachedWorldMatrix;
 
 		Math::Transform m_transform;
-		bool m_bIsDirty : 1 = false;
-		bool m_bIsActive : 1 = false;
+		bool m_bIsDirty : 1 = true;
+		bool m_bIsActive : 1 = true;
 		size_t m_parent;
 		TVector<size_t, Memory::TInlineAllocator<4 * sizeof(size_t)>> m_children;
 		ObjectPtr m_owner;

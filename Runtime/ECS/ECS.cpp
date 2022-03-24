@@ -21,7 +21,6 @@ void ECSFactory::RegisterECS(size_t typeInfo, std::function<TBaseSystemPtr(void)
 	(*Sailor::Internal::g_factoryMethods)[typeInfo] = factoryMethod;
 }
 
-
 TVector<TBaseSystemPtr> ECSFactory::CreateECS() const
 {
 	TVector<TBaseSystemPtr> res;

@@ -70,11 +70,11 @@ namespace Sailor
 
 	protected:
 
-		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
-		TConcurrentMap<UID, ModelPtr> m_loadedModels;
-
 		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes);
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+
+		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
+		TConcurrentMap<UID, ModelPtr> m_loadedModels;
 
 		ObjectAllocatorPtr m_allocator;
 	};

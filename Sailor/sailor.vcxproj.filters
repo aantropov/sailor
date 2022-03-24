@@ -375,6 +375,9 @@
     <ClInclude Include="..\Runtime\Components\CameraComponent.h">
       <Filter>Runtime\Components</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Math\Bounds.h">
+      <Filter>Runtime\Math</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -616,6 +619,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Components\CameraComponent.cpp">
       <Filter>Runtime\Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\Math\Bounds.cpp">
+      <Filter>Runtime\Math</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
