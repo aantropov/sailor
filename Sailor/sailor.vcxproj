@@ -199,6 +199,7 @@
     <ClInclude Include="..\Runtime\Containers\Containers.h" />
     <ClInclude Include="..\Runtime\Containers\List.h" />
     <ClInclude Include="..\Runtime\Containers\Map.h" />
+    <ClInclude Include="..\Runtime\Containers\Octree.h" />
     <ClInclude Include="..\Runtime\Containers\Pair.h" />
     <ClInclude Include="..\Runtime\Containers\Set.h" />
     <ClInclude Include="..\Runtime\Containers\Vector.h" />
@@ -266,6 +267,7 @@
     <ClInclude Include="..\Runtime\Platform\Win32\Window.h" />
     <ClInclude Include="..\Runtime\RHI\Buffer.h" />
     <ClInclude Include="..\Runtime\RHI\CommandList.h" />
+    <ClInclude Include="..\Runtime\RHI\DebugContext.h" />
     <ClInclude Include="..\Runtime\RHI\Fence.h" />
     <ClInclude Include="..\Runtime\RHI\GraphicsDriver.h" />
     <ClInclude Include="..\Runtime\RHI\Material.h" />
@@ -349,6 +351,7 @@
     <ClCompile Include="..\Runtime\Platform\Win32\Window.cpp" />
     <ClCompile Include="..\Runtime\RHI\Buffer.cpp" />
     <ClCompile Include="..\Runtime\RHI\CommandList.cpp" />
+    <ClCompile Include="..\Runtime\RHI\DebugContext.cpp" />
     <ClCompile Include="..\Runtime\RHI\Fence.cpp" />
     <ClCompile Include="..\Runtime\RHI\GraphicsDriver.cpp" />
     <ClCompile Include="..\Runtime\RHI\Material.cpp" />
