@@ -56,6 +56,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
 	typedef TRefPtr<class ShaderBindingSet> ShaderBindingSetPtr;
 	typedef TRefPtr<class Semaphore> SemaphorePtr;
+	typedef TRefPtr<class VertexDescription> VertexDescriptionPtr;
 
 	class IGraphicsDriver
 	{
@@ -91,7 +92,7 @@ namespace Sailor::RHI
 			ETextureFiltration filtration = ETextureFiltration::Linear,
 			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
-		SAILOR_API virtual MaterialPtr CreateMaterial(RHI::EVertexDescription vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
+		SAILOR_API virtual MaterialPtr CreateMaterial(const RHI::VertexDescriptionPtr& vertexDescription, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
 
 		SAILOR_API virtual void SubmitCommandList(CommandListPtr commandList, FencePtr fence = nullptr, SemaphorePtr signalSemaphore = nullptr, SemaphorePtr waitSemaphore = nullptr) = 0;
 

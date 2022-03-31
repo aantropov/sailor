@@ -3,6 +3,8 @@
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
 #include "RHI/Types.h"
+#include "RHI/Renderer.h"
+#include "RHI/VertexDescription.h"
 
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
@@ -211,7 +213,7 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
 }
 
-const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(RHI::EVertexDescription vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState)
+const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::VertexDescriptionPtr& vertexDescription, const RHI::RenderState& renderState)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -225,24 +227,11 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 
 	if (res.Num() == 0)
 	{
-		VulkanStateVertexDescriptionPtr pVertexDescription;
+		const VulkanStateVertexDescriptionPtr pVertexDescription = VulkanStateVertexDescriptionPtr::Make(
+			VulkanApi::GetBindingDescription(vertexDescription),
+			VulkanApi::GetAttributeDescriptions(vertexDescription));
 
-		//TODO: Change to custom vertex building
-		switch (vertexDescription)
-		{
-		case RHI::EVertexDescription::VertexP3N3UV2C4:
-			pVertexDescription = VulkanStateVertexDescriptionPtr::Make(
-				VertexFactory<RHI::VertexP3N3UV2C4>::GetBindingDescription(),
-				VertexFactory<RHI::VertexP3N3UV2C4>::GetAttributeDescriptions());
-			break;
-		case RHI::EVertexDescription::VertexP3C4:
-			pVertexDescription = VulkanStateVertexDescriptionPtr::Make(
-				VertexFactory<RHI::VertexP3C4>::GetBindingDescription(),
-				VertexFactory<RHI::VertexP3C4>::GetAttributeDescriptions());
-			break;
-		}
-
-		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)topology);
+		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)vertexDescription->GetTopology());
 		const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();
 		const VulkanStateRasterizationPtr pStateRasterizer = VulkanStateRasterizationPtr::Make(renderState.GetDepthBias() != 0.0f,
 			renderState.GetDepthBias(), (VkCullModeFlags)renderState.GetCullMode(), (VkPolygonMode)renderState.GetFillMode());

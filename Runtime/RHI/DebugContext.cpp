@@ -1,6 +1,7 @@
 #include "Types.h"
 #include "Mesh.h"
 #include "DebugContext.h"
+#include "VertexDescription.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -25,6 +26,8 @@ void DebugContext::RenderAll(float deltaTime)
 	}
 
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
+	
+	m_mesh = renderer->CreateMesh();
 
 	if (!m_material)
 	{
@@ -32,15 +35,19 @@ void DebugContext::RenderAll(float deltaTime)
 
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;
-		
+
 		if (!App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
 			return;
 		}
 
-		m_material = renderer->CreateMaterial(RHI::EVertexDescription::VertexP3C4, RHI::EPrimitiveTopology::LineList, renderState, pShader);
+		m_mesh->m_vertexDescription = VertexDescriptionPtr::Make(RHI::EPrimitiveTopology::LineList, sizeof(RHI::VertexP3C4));
+		m_mesh->m_vertexDescription->AddAttribute(VertexDescription::DefaultPositionLocation, 0, EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_position));
+		m_mesh->m_vertexDescription->AddAttribute(VertexDescription::DefaultColorLocation, 0, EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_color));
+
+		m_material = renderer->CreateMaterial(m_mesh->m_vertexDescription, renderState, pShader);
 	}
-	
+
 	TVector<VertexP3C4> vertices;
 	TVector<uint32_t> indices;
 	for (uint32_t i = 0; i < m_lines.Num(); i++)
@@ -59,8 +66,6 @@ void DebugContext::RenderAll(float deltaTime)
 		indices.Add((uint32_t)indices.Num());
 		indices.Add((uint32_t)indices.Num());
 	}
-
-	m_mesh = renderer->CreateMesh();
 
 	const VkDeviceSize bufferSize = sizeof(RHI::VertexP3C4) * m_lines.Num() * 2;
 	const VkDeviceSize indexBufferSize = sizeof(uint32_t) * m_lines.Num() * 2;

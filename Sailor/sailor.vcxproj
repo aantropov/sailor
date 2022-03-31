@@ -276,6 +276,7 @@
     <ClInclude Include="..\Runtime\RHI\Shader.h" />
     <ClInclude Include="..\Runtime\RHI\Texture.h" />
     <ClInclude Include="..\Runtime\RHI\Types.h" />
+    <ClInclude Include="..\Runtime\RHI\VertexDescription.h" />
     <ClInclude Include="..\Runtime\Sailor.h" />
   </ItemGroup>
   <ItemGroup>
@@ -359,6 +360,7 @@
     <ClCompile Include="..\Runtime\RHI\Renderer.cpp" />
     <ClCompile Include="..\Runtime\RHI\Shader.cpp" />
     <ClCompile Include="..\Runtime\RHI\Texture.cpp" />
+    <ClCompile Include="..\Runtime\RHI\VertexDescription.cpp" />
     <ClCompile Include="..\Runtime\Sailor.cpp" />
     <ClCompile Include="dllmain.cpp" />
   </ItemGroup>

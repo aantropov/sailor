@@ -29,6 +29,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
 	typedef TRefPtr<class ShaderBindingSet> ShaderBindingSetPtr;
 	typedef TRefPtr<class Semaphore> SemaphorePtr;
+	typedef TRefPtr<class VertexDescription> VertexDescriptionPtr;
 
 	class Renderer : public TSubmodule<Renderer>
 	{

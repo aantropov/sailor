@@ -4,6 +4,7 @@
 #include "vulkan/vulkan.h"
 #include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
+#include "RHI/Renderer.h"
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
@@ -138,7 +139,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	struct VulkanPipelineStateBuilder
 	{
 		SAILOR_API VulkanPipelineStateBuilder(VulkanDevicePtr pDevice);
-		SAILOR_API const TVector<VulkanPipelineStatePtr>& BuildPipeline(RHI::EVertexDescription vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState);
+		SAILOR_API const TVector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::VertexDescriptionPtr& vertexDescription, const RHI::RenderState& renderState);
 
 	protected:
 

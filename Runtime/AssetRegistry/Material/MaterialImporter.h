@@ -50,15 +50,18 @@ namespace Sailor
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
 		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
 		SAILOR_API void SetShader(ShaderSetPtr shader) { m_shader = shader; }
+		SAILOR_API void SetShader(const RHI::VertexDescriptionPtr& vertexDescription) { m_vertexDescription = vertexDescription; }
 		SAILOR_API void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
 
 	protected:		
 		
 		RHI::MaterialPtr m_rhiMaterial;
+		RHI::VertexDescriptionPtr m_vertexDescription;
+
 		std::atomic<bool> m_bIsDirty;
 
 		ShaderSetPtr m_shader;
-
+		
 		RHI::RenderState m_renderState;
 		TConcurrentMap<std::string, TexturePtr> m_samplers;
 		TConcurrentMap<std::string, glm::vec4> m_uniforms;

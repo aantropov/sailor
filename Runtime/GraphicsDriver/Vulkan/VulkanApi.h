@@ -18,7 +18,7 @@ namespace Sailor
 {
 	class Win32::Window;
 	class FrameState;
-	namespace Memory 
+	namespace Memory
 	{
 		class VulkanBufferMemoryPtr;
 	}
@@ -67,7 +67,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	typedef TRefPtr<class VulkanStateInputAssembly> VulkanStateInputAssemblyPtr;
 	typedef TRefPtr<class VulkanStateVertexDescription> VulkanStateVertexDescriptionPtr;
 	typedef TRefPtr<class VulkanStateDynamic> VulkanStateDynamicPtr;
-	
+
 #define VK_CHECK(call) \
 	do { \
 		VkResult result_ = call; \
@@ -90,15 +90,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkSurfaceCapabilitiesKHR m_capabilities;
 		TVector<VkSurfaceFormatKHR> m_formats;
 		TVector<VkPresentModeKHR> m_presentModes;
-	};
-
-	template<typename TVertex = RHI::VertexP3N3UV2C4>
-	class VertexFactory
-	{
-	public:
-
-		SAILOR_API static VkVertexInputBindingDescription GetBindingDescription();
-		SAILOR_API static TVector<VkVertexInputAttributeDescription> GetAttributeDescriptions();
 	};
 
 	class VulkanApi : public TSingleton<VulkanApi>
@@ -132,9 +123,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
 		SAILOR_API static VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
-		SAILOR_API static void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions) 
+		SAILOR_API static void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions)
 		{
-			requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME/*, "VK_KHR_dynamic_rendering"*/};
+			requiredDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME/*, "VK_KHR_dynamic_rendering"*/ };
 		}
 
 		SAILOR_API static VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
@@ -195,6 +186,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		//Immediate context
 
 		SAILOR_API static VkImageAspectFlags ComputeAspectFlagsForFormat(VkFormat format);
+
+		SAILOR_API static VkVertexInputBindingDescription GetBindingDescription(const RHI::VertexDescriptionPtr& vertexDescription);
+		SAILOR_API static TVector<VkVertexInputAttributeDescription> GetAttributeDescriptions(const RHI::VertexDescriptionPtr& vertexDescription);
 
 	private:
 

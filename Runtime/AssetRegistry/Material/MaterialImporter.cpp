@@ -17,6 +17,7 @@
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "RHI/Renderer.h"
 #include "RHI/Material.h"
+#include "RHI/VertexDescription.h"
 #include "RHI/Shader.h"
 #include "RHI/Fence.h"
 #include "RHI/CommandList.h"
@@ -68,7 +69,13 @@ void Material::UpdateRHIResource()
 {
 	SAILOR_LOG("Update material RHI resource: %s", GetUID().ToString().c_str());
 
-	m_rhiMaterial = RHI::Renderer::GetDriver()->CreateMaterial(RHI::EVertexDescription::VertexP3N3UV2C4, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader);
+	m_vertexDescription = RHI::VertexDescriptionPtr::Make(RHI::EPrimitiveTopology::TriangleList, sizeof(RHI::VertexP3N3UV2C4));
+	m_vertexDescription->AddAttribute(RHI::VertexDescription::DefaultPositionLocation, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_position));
+	m_vertexDescription->AddAttribute(RHI::VertexDescription::DefaultNormalLocation, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_normal));
+	m_vertexDescription->AddAttribute(RHI::VertexDescription::DefaultTexcoordLocation, 0, RHI::EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_texcoord));
+	m_vertexDescription->AddAttribute(RHI::VertexDescription::DefaultColorLocation, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_color));
+
+	m_rhiMaterial = RHI::Renderer::GetDriver()->CreateMaterial(m_vertexDescription, m_renderState, m_shader);
 
 	auto bindings = m_rhiMaterial->GetBindings();
 

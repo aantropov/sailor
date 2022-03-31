@@ -11,6 +11,7 @@ namespace Sailor::RHI
 
 		BufferPtr m_vertexBuffer;
 		BufferPtr m_indexBuffer;
+		VertexDescriptionPtr m_vertexDescription;
 
 		SAILOR_API virtual bool IsReady() const override;
 

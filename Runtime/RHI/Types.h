@@ -55,7 +55,7 @@ namespace Sailor::RHI
 
 	typedef uint16_t EBufferUsageFlags;
 
-	enum class ETextureFormat : uint32_t
+	enum class EFormat : uint32_t
 	{
 		UNDEFINED = 0,
 		R4G4_UNORM_PACK8 = 1,
@@ -302,6 +302,8 @@ namespace Sailor::RHI
 		A4B4G4R4_UNORM_PACK16_EXT = 1000340001
 	};
 
+	using ETextureFormat = EFormat;
+
 	enum ETextureUsageBit : uint8_t
 	{
 		TextureTransferSrc_Bit = 0x00000001,
@@ -399,7 +401,7 @@ namespace Sailor::RHI
 			float depthBias = 0.0f,
 			ECullMode cullMode = ECullMode::Back,
 			EBlendMode blendMode = EBlendMode::None,
-			EFillMode fillMode = EFillMode::Fill) : 	 
+			EFillMode fillMode = EFillMode::Fill) :
 			m_bEnableDepthTest(bEnableDepthTest),
 			m_bEnableZWrite(bEnableZWrite),
 			m_depthBias(depthBias),
@@ -479,13 +481,6 @@ namespace Sailor::RHI
 		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};
 
-	// TODO: Implement vertex factory that allows to create vertex attributes/buffers by situation
-	enum class EVertexDescription
-	{
-		VertexP3C4 = 0,
-		VertexP3N3UV2C4 = 1
-	};
-
 	class VertexP3C4
 	{
 	public:
@@ -496,8 +491,6 @@ namespace Sailor::RHI
 		{
 			return m_position == other.m_position && m_color == other.m_color;
 		}
-
-		SAILOR_API static EVertexDescription GetDescription() { return EVertexDescription::VertexP3C4; }
 	};
 
 	class VertexP3N3UV2C4
@@ -515,8 +508,6 @@ namespace Sailor::RHI
 				m_color == other.m_color &&
 				m_texcoord == other.m_texcoord;
 		}
-
-		SAILOR_API static EVertexDescription GetDescription() { return EVertexDescription::VertexP3N3UV2C4; }
 	};
 
 	struct UboFrameData

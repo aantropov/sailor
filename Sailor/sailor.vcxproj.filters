@@ -384,6 +384,9 @@
     <ClInclude Include="..\Runtime\RHI\DebugContext.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\RHI\VertexDescription.h">
+      <Filter>Runtime\RHI</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -630,6 +633,9 @@
       <Filter>Runtime\Math</Filter>
     </ClCompile>
     <ClCompile Include="..\Runtime\RHI\DebugContext.cpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\VertexDescription.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
   </ItemGroup>
