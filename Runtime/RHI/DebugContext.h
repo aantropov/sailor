@@ -45,6 +45,7 @@ namespace Sailor::RHI
 		TVector<LineProxy> m_lines;
 
 		MeshPtr m_mesh;
+		MaterialPtr m_material;
 
 		CommandListPtr m_transferCmd;
 		CommandListPtr m_graphicsCmd;

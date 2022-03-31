@@ -227,7 +227,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 	{
 		VulkanStateVertexDescriptionPtr pVertexDescription;
 
-
+		//TODO: Change to custom vertex building
 		switch (vertexDescription)
 		{
 		case RHI::EVertexDescription::VertexP3N3UV2C4:
@@ -241,7 +241,6 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 				VertexFactory<RHI::VertexP3C4>::GetAttributeDescriptions());
 			break;
 		}
-
 
 		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)topology);
 		const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();

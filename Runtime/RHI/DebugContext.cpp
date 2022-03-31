@@ -19,8 +19,28 @@ void DebugContext::DrawLine(const glm::vec4& start, const glm::vec4& end, const 
 
 void DebugContext::RenderAll(float deltaTime)
 {
+	if (m_lines.Num() == 0)
+	{
+		return;
+	}
+
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 
+	if (!m_material)
+	{
+		RenderState renderState = RHI::RenderState(true, false, 0.001f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line);
+
+		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
+		ShaderSetPtr pShader;
+		
+		if (!App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
+		{
+			return;
+		}
+
+		m_material = renderer->CreateMaterial(RHI::EVertexDescription::VertexP3C4, RHI::EPrimitiveTopology::LineList, renderState, pShader);
+	}
+	
 	TVector<VertexP3C4> vertices;
 	TVector<uint32_t> indices;
 	for (uint32_t i = 0; i < m_lines.Num(); i++)
