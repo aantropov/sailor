@@ -31,7 +31,7 @@ void Model::Flush()
 
 	for (const auto& mesh : m_meshes)
 	{
-		if (!mesh || !mesh->IsReady())
+		if (!mesh)// || !mesh->IsReady())
 		{
 			m_bIsReady = false;
 			return;
