@@ -702,10 +702,10 @@ TVector<VkVertexInputAttributeDescription> VulkanApi::GetAttributeDescriptions(c
 
 	for (uint32_t i = 0; i < attributes.Num(); i++)
 	{
-		attributeDescriptions[0].binding = attributes[i].m_binding;
-		attributeDescriptions[0].location = attributes[i].m_location;
-		attributeDescriptions[0].format = (VkFormat)attributes[i].m_format;
-		attributeDescriptions[0].offset = attributes[i].m_offset;
+		attributeDescriptions[i].binding = attributes[i].m_binding;
+		attributeDescriptions[i].location = attributes[i].m_location;
+		attributeDescriptions[i].format = (VkFormat)attributes[i].m_format;
+		attributeDescriptions[i].offset = attributes[i].m_offset;
 	}
 
 	return attributeDescriptions;
