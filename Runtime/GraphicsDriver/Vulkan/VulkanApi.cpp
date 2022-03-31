@@ -685,38 +685,64 @@ VulkanImageViewPtr VulkanApi::CreateImageView(VulkanDevicePtr device, VulkanImag
 	return imageView;
 }
 
-VkVertexInputBindingDescription VertexFactory<RHI::Vertex>::GetBindingDescription()
+VkVertexInputBindingDescription VertexFactory<RHI::VertexP3N3UV2C4>::GetBindingDescription()
 {
 	VkVertexInputBindingDescription bindingDescription{};
 	bindingDescription.binding = 0;
-	bindingDescription.stride = sizeof(RHI::Vertex);
+	bindingDescription.stride = sizeof(RHI::VertexP3N3UV2C4);
 	bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	return bindingDescription;
 }
 
-TVector<VkVertexInputAttributeDescription> VertexFactory<RHI::Vertex>::GetAttributeDescriptions()
+TVector<VkVertexInputAttributeDescription> VertexFactory<RHI::VertexP3N3UV2C4>::GetAttributeDescriptions()
 {
 	TVector<VkVertexInputAttributeDescription> attributeDescriptions(4);
 
 	attributeDescriptions[0].binding = 0;
 	attributeDescriptions[0].location = 0;
 	attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	attributeDescriptions[0].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_position);
+	attributeDescriptions[0].offset = (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_position);
 
 	attributeDescriptions[1].binding = 0;
 	attributeDescriptions[1].location = 1;
 	attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_normal);
+	attributeDescriptions[1].offset = (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_normal);
 
 	attributeDescriptions[2].binding = 0;
 	attributeDescriptions[2].location = 2;
 	attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-	attributeDescriptions[2].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_texcoord);
+	attributeDescriptions[2].offset = (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_texcoord);
 
 	attributeDescriptions[3].binding = 0;
 	attributeDescriptions[3].location = 3;
 	attributeDescriptions[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-	attributeDescriptions[3].offset = (uint32_t)Sailor::OffsetOf(&RHI::Vertex::m_color);
+	attributeDescriptions[3].offset = (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_color);
+
+	return attributeDescriptions;
+}
+
+VkVertexInputBindingDescription VertexFactory<RHI::VertexP3C4>::GetBindingDescription()
+{
+	VkVertexInputBindingDescription bindingDescription{};
+	bindingDescription.binding = 0;
+	bindingDescription.stride = sizeof(RHI::VertexP3C4);
+	bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	return bindingDescription;
+}
+
+TVector<VkVertexInputAttributeDescription> VertexFactory<RHI::VertexP3C4>::GetAttributeDescriptions()
+{
+	TVector<VkVertexInputAttributeDescription> attributeDescriptions(4);
+
+	attributeDescriptions[0].binding = 0;
+	attributeDescriptions[0].location = 0;
+	attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attributeDescriptions[0].offset = (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_position);
+
+	attributeDescriptions[3].binding = 0;
+	attributeDescriptions[3].location = 3;
+	attributeDescriptions[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	attributeDescriptions[3].offset = (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_color);
 
 	return attributeDescriptions;
 }
@@ -768,7 +794,6 @@ VulkanBufferPtr VulkanApi::CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, Vulka
 
 	cmdBuffer->CopyBuffer((*stagingBufferManagedPtr).m_buffer, outbuffer, size, (*stagingBufferManagedPtr).m_offset);
 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
-
 
 	return outbuffer;
 }

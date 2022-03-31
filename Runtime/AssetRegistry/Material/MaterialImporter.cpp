@@ -68,7 +68,7 @@ void Material::UpdateRHIResource()
 {
 	SAILOR_LOG("Update material RHI resource: %s", GetUID().ToString().c_str());
 
-	m_rhiMaterial = RHI::Renderer::GetDriver()->CreateMaterial(m_renderState, m_shader);
+	m_rhiMaterial = RHI::Renderer::GetDriver()->CreateMaterial(RHI::EVertexDescription::VertexP3N3UV2C4, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader);
 
 	auto bindings = m_rhiMaterial->GetBindings();
 

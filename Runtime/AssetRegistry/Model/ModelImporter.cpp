@@ -256,8 +256,8 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 
 	struct MeshContext
 	{
-		std::unordered_map<RHI::Vertex, uint32_t> uniqueVertices;
-		TVector<RHI::Vertex> outVertices;
+		std::unordered_map<RHI::VertexP3N3UV2C4, uint32_t> uniqueVertices;
+		TVector<RHI::VertexP3N3UV2C4> outVertices;
 		TVector<uint32_t> outIndices;
 	};
 
@@ -270,7 +270,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 		auto& mesh = meshes[assetInfo->ShouldBatchByMaterial() ? shape.mesh.material_ids[0] : idx];
 		for (const auto& index : shape.mesh.indices)
 		{
-			RHI::Vertex vertex{};
+			RHI::VertexP3N3UV2C4 vertex{};
 
 			vertex.m_position =
 			{

@@ -9,7 +9,7 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void IGraphicsDriver::UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& vertices, const TVector<uint32_t>& indices)
+void IGraphicsDriver::UpdateMesh(RHI::MeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices)
 {
 	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.Num();
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();

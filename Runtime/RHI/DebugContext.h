@@ -23,20 +23,31 @@ namespace Sailor::RHI
 {
 	class DebugContext
 	{
+		struct LineProxy
+		{
+			// Locations are in world space
+			glm::vec4 m_startLocation{};
+			glm::vec4 m_endLocation{};
+
+			glm::vec4 m_color{};
+
+			// 0.0f means one frame
+			float m_lifetime = -1.0f;
+		};
+
 	public:
 
-		SAILOR_API void DrawLine(const glm::vec4& start, const glm::vec4& end, const glm::vec4 color);
+		SAILOR_API void DrawLine(const glm::vec4& start, const glm::vec4& end, const glm::vec4 color = {0.0f, 1.0f, 0.0f, 0.0f}, float duration = 0.0f);
+		SAILOR_API void RenderAll(float deltaTime);
 
 	protected:
 
-		BufferPtr m_vertexBuffer;
-		BufferPtr m_indexBuffer;
+		TVector<LineProxy> m_lines;
+
+		MeshPtr m_mesh;
 
 		CommandListPtr m_transferCmd;
 		CommandListPtr m_graphicsCmd;
-
-		SAILOR_API void Prepare();
-		SAILOR_API void SubmitBuffers();
 
 		friend class World;
 	};

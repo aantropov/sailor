@@ -377,6 +377,21 @@ namespace Sailor::RHI
 		Struct = 30
 	};
 
+	enum class EPrimitiveTopology : uint8_t
+	{
+		PointList = 0,
+		LineList = 1,
+		LineStrip = 2,
+		TriangleList = 3,
+		TriangleStrip = 4,
+		TriangleFan = 5,
+		LineListWithAdjancy = 6,
+		Line_StripWithAdjancy = 7,
+		TriangleListWithAdjancy = 8,
+		TriangleStripWithAdjancy = 9,
+		PatchList = 10
+	};
+
 	struct RenderState
 	{
 		RenderState(bool bEnableDepthTest = true,
@@ -384,7 +399,7 @@ namespace Sailor::RHI
 			float depthBias = 0.0f,
 			ECullMode cullMode = ECullMode::Back,
 			EBlendMode blendMode = EBlendMode::None,
-			EFillMode fillMode = EFillMode::Fill) :
+			EFillMode fillMode = EFillMode::Fill) : 	 
 			m_bEnableDepthTest(bEnableDepthTest),
 			m_bEnableZWrite(bEnableZWrite),
 			m_depthBias(depthBias),
@@ -464,7 +479,28 @@ namespace Sailor::RHI
 		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};
 
-	class Vertex
+	// TODO: Implement vertex factory that allows to create vertex attributes/buffers by situation
+	enum class EVertexDescription
+	{
+		VertexP3C4 = 0,
+		VertexP3N3UV2C4 = 1
+	};
+
+	class VertexP3C4
+	{
+	public:
+		glm::vec3 m_position;
+		glm::vec4 m_color;
+
+		SAILOR_API bool operator==(const VertexP3C4& other) const
+		{
+			return m_position == other.m_position && m_color == other.m_color;
+		}
+
+		SAILOR_API static EVertexDescription GetDescription() { return EVertexDescription::VertexP3C4; }
+	};
+
+	class VertexP3N3UV2C4
 	{
 	public:
 		glm::vec3 m_position;
@@ -472,13 +508,15 @@ namespace Sailor::RHI
 		glm::vec2 m_texcoord;
 		glm::vec4 m_color;
 
-		SAILOR_API bool operator==(const Vertex& other) const
+		SAILOR_API bool operator==(const VertexP3N3UV2C4& other) const
 		{
 			return m_position == other.m_position &&
 				m_normal == other.m_normal &&
 				m_color == other.m_color &&
 				m_texcoord == other.m_texcoord;
 		}
+
+		SAILOR_API static EVertexDescription GetDescription() { return EVertexDescription::VertexP3N3UV2C4; }
 	};
 
 	struct UboFrameData
@@ -627,9 +665,9 @@ namespace std
 		hash_combine(seed, rest...);
 	}
 
-	template<> struct hash<Sailor::RHI::Vertex>
+	template<> struct hash<Sailor::RHI::VertexP3N3UV2C4>
 	{
-		SAILOR_API size_t operator()(Sailor::RHI::Vertex const& vertex) const
+		SAILOR_API size_t operator()(Sailor::RHI::VertexP3N3UV2C4 const& vertex) const
 		{
 			return ((hash<glm::vec3>()(vertex.m_position) ^
 				(hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^

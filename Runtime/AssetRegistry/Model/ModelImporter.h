@@ -22,7 +22,7 @@
 
 namespace Sailor::RHI
 {
-	class Vertex;
+	class VertexP3N3UV2C4;
 }
 
 namespace Sailor

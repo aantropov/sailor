@@ -337,7 +337,7 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings
 	bindings->m_vulkan.m_descriptorSet->Compile();
 }
 
-RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader)
+RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(RHI::EVertexDescription vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -370,7 +370,7 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RenderState& re
 	res->m_vulkan.m_pipeline = VulkanPipelinePtr::Make(device,
 		pipelineLayout,
 		TVector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
-		device->GetPipelineBuilder()->BuildPipeline(renderState),
+		device->GetPipelineBuilder()->BuildPipeline(vertexDescription, topology, renderState),
 		0);
 
 	res->m_vulkan.m_pipeline->m_renderPass = device->GetRenderPass();

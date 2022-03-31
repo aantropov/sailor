@@ -79,7 +79,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual BufferPtr CreateBuffer(CommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual MeshPtr CreateMesh();
-		SAILOR_API virtual void UpdateMesh(RHI::MeshPtr mesh, const TVector<Vertex>& vertices, const TVector<uint32_t>& indices);
+		SAILOR_API virtual void UpdateMesh(RHI::MeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices);
 		SAILOR_API virtual ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
 		SAILOR_API virtual TexturePtr CreateImage(
 			const void* pData,
@@ -91,7 +91,7 @@ namespace Sailor::RHI
 			ETextureFiltration filtration = ETextureFiltration::Linear,
 			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
-		SAILOR_API virtual MaterialPtr CreateMaterial(const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
+		SAILOR_API virtual MaterialPtr CreateMaterial(RHI::EVertexDescription vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
 
 		SAILOR_API virtual void SubmitCommandList(CommandListPtr commandList, FencePtr fence = nullptr, SemaphorePtr signalSemaphore = nullptr, SemaphorePtr waitSemaphore = nullptr) = 0;
 

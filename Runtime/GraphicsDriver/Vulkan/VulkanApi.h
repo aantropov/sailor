@@ -92,7 +92,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VkPresentModeKHR> m_presentModes;
 	};
 
-	template<typename TVertex = RHI::Vertex>
+	template<typename TVertex = RHI::VertexP3N3UV2C4>
 	class VertexFactory
 	{
 	public:
