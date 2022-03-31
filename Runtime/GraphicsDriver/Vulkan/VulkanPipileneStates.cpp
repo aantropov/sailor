@@ -213,7 +213,7 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
 }
 
-const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::VertexDescriptionPtr& vertexDescription, const RHI::RenderState& renderState)
+const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -231,7 +231,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 			VulkanApi::GetBindingDescription(vertexDescription),
 			VulkanApi::GetAttributeDescriptions(vertexDescription));
 
-		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)vertexDescription->GetTopology());
+		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)topology);
 		const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();
 		const VulkanStateRasterizationPtr pStateRasterizer = VulkanStateRasterizationPtr::Make(renderState.GetDepthBias() != 0.0f,
 			renderState.GetDepthBias(), (VkCullModeFlags)renderState.GetCullMode(), (VkPolygonMode)renderState.GetFillMode());

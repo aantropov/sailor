@@ -10,12 +10,16 @@ namespace Sailor::RHI
 	public:
 
 		BufferPtr m_vertexBuffer;
-		BufferPtr m_indexBuffer;
+		BufferPtr m_indexBuffer;		
 		VertexDescriptionPtr m_vertexDescription;
 
 		SAILOR_API virtual bool IsReady() const override;
 
-	protected:
+		SAILOR_API void SetTopology(EPrimitiveTopology topology) { m_topology = topology; }
+		SAILOR_API EPrimitiveTopology GetTopology() const { return m_topology; }		
 
+	protected:
+		
+		EPrimitiveTopology m_topology = EPrimitiveTopology::TriangleList;
 	};
 };

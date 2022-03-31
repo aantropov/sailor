@@ -53,7 +53,6 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 
 	// Create default Vertices descriptions cache 
 	auto& vertexP3N3UV2C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-	vertexP3N3UV2C4->SetTopology(RHI::EPrimitiveTopology::TriangleList);
 	vertexP3N3UV2C4->SetVertexStride(sizeof(RHI::VertexP3N3UV2C4));
 	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultPositionLocation, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_position));
 	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultNormalLocation, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_normal));
@@ -61,7 +60,6 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultColorLocation, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_color));
 
 	auto& vertexP3C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3C4>();
-	vertexP3C4->SetTopology(RHI::EPrimitiveTopology::LineList);
 	vertexP3C4->SetVertexStride(sizeof(RHI::VertexP3C4));
 	vertexP3C4->AddAttribute(VertexDescription::DefaultPositionLocation, 0, EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_position));
 	vertexP3C4->AddAttribute(VertexDescription::DefaultColorLocation, 0, EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_color));

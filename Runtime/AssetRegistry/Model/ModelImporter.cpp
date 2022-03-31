@@ -324,6 +324,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 	{
 		RHI::MeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
 		ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+		ptr->SetTopology(RHI::EPrimitiveTopology::TriangleList);
 
 		RHI::Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
 		outMeshes.Emplace(ptr);

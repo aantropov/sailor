@@ -23,11 +23,8 @@ namespace Sailor::RHI
 		static constexpr uint32_t DefaultColorLocation = 3;
 
 		VertexDescription() {}
-
-		SAILOR_API void SetTopology(EPrimitiveTopology topology) { m_topology = topology; }
-		SAILOR_API void SetVertexStride(size_t stride) { m_vertexStride = stride; }
-
-		SAILOR_API EPrimitiveTopology GetTopology() const { return m_topology; }
+				
+		SAILOR_API void SetVertexStride(size_t stride) { m_vertexStride = stride; }		
 		SAILOR_API size_t GetVertexStride() const { return m_vertexStride; }
 
 		SAILOR_API void AddAttribute(uint32_t location, uint32_t binding, EFormat format, uint32_t offset);
@@ -38,6 +35,5 @@ namespace Sailor::RHI
 
 		TVector<AttributeDescription> m_attributes;
 		size_t m_vertexStride = 0;
-		EPrimitiveTopology m_topology = EPrimitiveTopology::TriangleList;
 	};
 };

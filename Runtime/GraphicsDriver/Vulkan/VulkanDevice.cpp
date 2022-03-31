@@ -599,7 +599,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 					auto& mesh = pModel->GetMeshes()[index];
 					SAILOR_PROFILE_END_BLOCK();
 
-					if (bIsMaterialReady && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
+					if (bIsMaterialReady && pMaterial->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
 					{
 						SAILOR_PROFILE_BLOCK("Bind pipelines");
 						m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
