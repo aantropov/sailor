@@ -2,6 +2,7 @@
 #include "Renderer.h"
 #include "Mesh.h"
 #include "GraphicsDriver.h"
+#include "VertexDescription.h"
 #include "Engine/EngineLoop.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
@@ -22,9 +23,9 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<Resource> visitor, bool& b
 		{
 			auto it = std::find_if(m_dependencies.begin(), m_dependencies.end(),
 				[&fence](const auto& lhs)
-				{
-					return fence.GetRawPtr() == lhs.GetRawPtr();
-				});
+			{
+				return fence.GetRawPtr() == lhs.GetRawPtr();
+			});
 
 			if (it != std::end(m_dependencies))
 			{
@@ -49,6 +50,21 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	m_driverInstance = TUniquePtr<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver>::Make();
 	m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
 #endif
+
+	// Create default Vertices descriptions cache 
+	auto& vertexP3N3UV2C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+	vertexP3N3UV2C4->SetTopology(RHI::EPrimitiveTopology::TriangleList);
+	vertexP3N3UV2C4->SetVertexStride(sizeof(RHI::VertexP3N3UV2C4));
+	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultPositionLocation, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_position));
+	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultNormalLocation, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_normal));
+	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultTexcoordLocation, 0, RHI::EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_texcoord));
+	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultColorLocation, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_color));
+
+	auto& vertexP3C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3C4>();
+	vertexP3C4->SetTopology(RHI::EPrimitiveTopology::LineList);
+	vertexP3C4->SetVertexStride(sizeof(RHI::VertexP3C4));
+	vertexP3C4->AddAttribute(VertexDescription::DefaultPositionLocation, 0, EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_position));
+	vertexP3C4->AddAttribute(VertexDescription::DefaultColorLocation, 0, EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_color));
 }
 
 Renderer::~Renderer()
@@ -92,58 +108,58 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	TSharedPtr<class JobSystem::ITask> preRenderingJob = JobSystem::Scheduler::CreateTask("Trace command lists & Track RHI resources",
 		[this]()
-		{
-			this->GetDriver()->TrackResources_ThreadSafe();
-		}, Sailor::JobSystem::EThreadType::Rendering);
+	{
+		this->GetDriver()->TrackResources_ThreadSafe();
+	}, Sailor::JobSystem::EThreadType::Rendering);
 
 	TSharedPtr<class JobSystem::ITask> renderingJob = JobSystem::Scheduler::CreateTask("Render Frame",
 		[this, frame]()
+	{
+
+		auto frameInstance = frame;
+		static Utils::Timer timer;
+		timer.Start();
+
+		SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
+		TVector<SemaphorePtr> waitFrameUpdate;
+		for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
 		{
-
-			auto frameInstance = frame;
-			static Utils::Timer timer;
-			timer.Start();
-
-			SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
-			TVector<SemaphorePtr> waitFrameUpdate;
-			for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
+			if (auto pCommandList = frameInstance.GetCommandBuffer(i))
 			{
-				if (auto pCommandList = frameInstance.GetCommandBuffer(i))
+				waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+				GetDriver()->SubmitCommandList(pCommandList, FencePtr::Make(), waitFrameUpdate[i]);
+			}
+		}
+		SAILOR_PROFILE_END_BLOCK();
+
+		do
+		{
+			static uint32_t totalFramesCount = 0U;
+
+			SAILOR_PROFILE_BLOCK("Present Frame");
+
+			if (m_driverInstance->PresentFrame(frame, nullptr, nullptr, waitFrameUpdate))
+			{
+				totalFramesCount++;
+				timer.Stop();
+
+				if (timer.ResultAccumulatedMs() > 1000)
 				{
-					waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-					GetDriver()->SubmitCommandList(pCommandList, FencePtr::Make(), waitFrameUpdate[i]);
+					m_pureFps = totalFramesCount;
+					totalFramesCount = 0;
+					timer.Clear();
 				}
 			}
+			else
+			{
+				m_pureFps = 0;
+			}
+
 			SAILOR_PROFILE_END_BLOCK();
 
-			do
-			{
-				static uint32_t totalFramesCount = 0U;
+		} while (m_pViewport->IsIconic());
 
-				SAILOR_PROFILE_BLOCK("Present Frame");
-
-				if (m_driverInstance->PresentFrame(frame, nullptr, nullptr, waitFrameUpdate))
-				{
-					totalFramesCount++;
-					timer.Stop();
-
-					if (timer.ResultAccumulatedMs() > 1000)
-					{
-						m_pureFps = totalFramesCount;
-						totalFramesCount = 0;
-						timer.Clear();
-					}
-				}
-				else
-				{
-					m_pureFps = 0;
-				}
-
-				SAILOR_PROFILE_END_BLOCK();
-
-			} while (m_pViewport->IsIconic());
-
-		}, Sailor::JobSystem::EThreadType::Rendering);
+	}, Sailor::JobSystem::EThreadType::Rendering);
 
 	renderingJob->Join(preRenderingJob);
 

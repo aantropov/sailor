@@ -40,11 +40,8 @@ void DebugContext::RenderAll(float deltaTime)
 		{
 			return;
 		}
-
-		m_mesh->m_vertexDescription = VertexDescriptionPtr::Make(RHI::EPrimitiveTopology::LineList, sizeof(RHI::VertexP3C4));
-		m_mesh->m_vertexDescription->AddAttribute(VertexDescription::DefaultPositionLocation, 0, EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_position));
-		m_mesh->m_vertexDescription->AddAttribute(VertexDescription::DefaultColorLocation, 0, EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_color));
-
+		
+		m_mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
 		m_material = renderer->CreateMaterial(m_mesh->m_vertexDescription, renderState, pShader);
 	}
 

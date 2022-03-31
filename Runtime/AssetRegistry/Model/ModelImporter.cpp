@@ -323,12 +323,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 	for (const auto& mesh : meshes)
 	{
 		RHI::MeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
-
-		ptr->m_vertexDescription = RHI::VertexDescriptionPtr::Make(RHI::EPrimitiveTopology::TriangleList, sizeof(RHI::VertexP3N3UV2C4));
-		ptr->m_vertexDescription->AddAttribute(RHI::VertexDescription::DefaultPositionLocation, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_position));
-		ptr->m_vertexDescription->AddAttribute(RHI::VertexDescription::DefaultNormalLocation, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_normal));
-		ptr->m_vertexDescription->AddAttribute(RHI::VertexDescription::DefaultTexcoordLocation, 0, RHI::EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_texcoord));
-		ptr->m_vertexDescription->AddAttribute(RHI::VertexDescription::DefaultColorLocation, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_color));
+		ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 
 		RHI::Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
 		outMeshes.Emplace(ptr);

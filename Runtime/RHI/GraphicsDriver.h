@@ -105,6 +105,21 @@ namespace Sailor::RHI
 		SAILOR_API virtual void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
 		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 
+		template<typename TVertex>
+		SAILOR_API VertexDescriptionPtr& GetOrAddVertexDescription()
+		{
+			const size_t vertexTypeHash = typeid(TVertex).hash_code();
+
+			auto& pDescription = m_cachedVertexDescriptions.At_Lock(vertexTypeHash);
+			if (!pDescription)
+			{
+				pDescription = VertexDescriptionPtr::Make();
+			}
+			m_cachedVertexDescriptions.Unlock(vertexTypeHash);
+
+			return pDescription;
+		}
+
 		//Immediate context
 		SAILOR_API virtual BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual void CopyBuffer_Immediate(BufferPtr src, BufferPtr dst, size_t size) = 0;
@@ -131,6 +146,8 @@ namespace Sailor::RHI
 
 		SpinLock m_lockTrackedFences;
 		TVector<FencePtr> m_trackedFences;
+
+		TConcurrentMap<size_t, VertexDescriptionPtr> m_cachedVertexDescriptions;
 	};
 
 	class IGraphicsDriverCommands
