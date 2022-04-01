@@ -34,7 +34,7 @@ namespace Sailor
 		SAILOR_API virtual JobSystem::ITaskPtr OnHotReload() override;
 
 		SAILOR_API ShaderSetPtr GetShader() { return m_shader; }
-		
+
 		SAILOR_API const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
 		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniforms() const { return m_uniforms; }
 
@@ -53,15 +53,15 @@ namespace Sailor
 		SAILOR_API void SetShader(const RHI::VertexDescriptionPtr& vertexDescription) { m_vertexDescription = vertexDescription; }
 		SAILOR_API void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
 
-	protected:		
-		
+	protected:
+
 		RHI::MaterialPtr m_rhiMaterial;
 		RHI::VertexDescriptionPtr m_vertexDescription;
 
 		std::atomic<bool> m_bIsDirty;
 
 		ShaderSetPtr m_shader;
-		
+
 		RHI::RenderState m_renderState;
 		TConcurrentMap<std::string, TexturePtr> m_samplers;
 		TConcurrentMap<std::string, glm::vec4> m_uniforms;

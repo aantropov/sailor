@@ -28,7 +28,6 @@ void DebugContext::RenderAll(float deltaTime)
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 
 	m_mesh = renderer->CreateMesh();
-	m_mesh->SetTopology(EPrimitiveTopology::LineList);
 
 	if (!m_material)
 	{
@@ -43,7 +42,7 @@ void DebugContext::RenderAll(float deltaTime)
 		}
 
 		m_mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
-		m_material = renderer->CreateMaterial(m_mesh->m_vertexDescription, m_mesh->GetTopology(), renderState, pShader);
+		m_material = renderer->CreateMaterial(m_mesh->m_vertexDescription, EPrimitiveTopology::LineList, renderState, pShader);
 	}
 
 	TVector<VertexP3C4> vertices;
