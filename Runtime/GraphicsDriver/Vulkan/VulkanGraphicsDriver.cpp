@@ -376,6 +376,7 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescripti
 	res->m_vulkan.m_pipeline->m_renderPass = device->GetRenderPass();
 	res->m_vulkan.m_pipeline->Compile();
 
+	// TODO: move initialization to external code
 	auto shaderBindings = CreateShaderBindings();
 	res->SetBindings(shaderBindings);
 

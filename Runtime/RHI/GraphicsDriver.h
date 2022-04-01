@@ -105,6 +105,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
 		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 
+		// Used only for static vertex types
 		template<typename TVertex>
 		SAILOR_API VertexDescriptionPtr& GetOrAddVertexDescription()
 		{
