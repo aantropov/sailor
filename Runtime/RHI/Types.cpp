@@ -4,7 +4,7 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-uint64_t Sailor::RHI::PackVertexAttributeFormat(EFormat format)
+uint64_t PackVertexAttributeFormat(EFormat format)
 {
 	switch (format)
 	{
@@ -21,7 +21,7 @@ uint64_t Sailor::RHI::PackVertexAttributeFormat(EFormat format)
 	}
 }
 
-EFormat Sailor::RHI::UnpackVertexAttributeFormat(uint64_t attribute)
+EFormat UnpackVertexAttributeFormat(uint64_t attribute)
 {
 	switch (attribute)
 	{
@@ -38,16 +38,31 @@ EFormat Sailor::RHI::UnpackVertexAttributeFormat(uint64_t attribute)
 	}
 }
 
+void Sailor::RHI::SetAttributeFormat(VertexAttributeBits& bits, uint32_t shaderBinding, EFormat format)
+{
+	bits |= (PackVertexAttributeFormat(format) << (shaderBinding * 3ull));
+}
+
+EFormat Sailor::RHI::GetAttributeFormat(const VertexAttributeBits& bits, uint32_t shaderBinding)
+{
+	return (EFormat)UnpackVertexAttributeFormat((bits >> (shaderBinding * 3ull)) & 0x111);
+}
+
 VertexAttributeBits VertexP3C4::GetVertexAttributeBits()
 {
-	return (VertexAttributeBits)WriteVertexAttribute(VertexDescription::DefaultPositionLocation, EFormat::R32G32B32_SFLOAT) |
-		WriteVertexAttribute(VertexDescription::DefaultColorLocation, EFormat::R32G32B32A32_SFLOAT);
+	VertexAttributeBits bits = 0;
+	SetAttributeFormat(bits, VertexDescription::DefaultPositionBinding, EFormat::R32G32B32_SFLOAT);
+	SetAttributeFormat(bits, VertexDescription::DefaultColorBinding, EFormat::R32G32B32A32_SFLOAT);
+	return bits;
 }
 
 VertexAttributeBits VertexP3N3UV2C4::GetVertexAttributeBits()
 {
-	return (VertexAttributeBits)WriteVertexAttribute(VertexDescription::DefaultPositionLocation, EFormat::R32G32B32_SFLOAT) |
-		WriteVertexAttribute(VertexDescription::DefaultNormalLocation, EFormat::R32G32B32_SFLOAT) |
-		WriteVertexAttribute(VertexDescription::DefaultTexcoordLocation, EFormat::R32G32_SFLOAT) |
-		WriteVertexAttribute(VertexDescription::DefaultColorLocation, EFormat::R32G32B32A32_SFLOAT);
+	VertexAttributeBits bits = 0;
+	SetAttributeFormat(bits, VertexDescription::DefaultPositionBinding, EFormat::R32G32B32_SFLOAT);
+	SetAttributeFormat(bits, VertexDescription::DefaultNormalBinding, EFormat::R32G32B32_SFLOAT);
+	SetAttributeFormat(bits, VertexDescription::DefaultTexcoordBinding, EFormat::R32G32_SFLOAT);
+	SetAttributeFormat(bits, VertexDescription::DefaultColorBinding, EFormat::R32G32B32A32_SFLOAT);
+	return  bits;
 }
+

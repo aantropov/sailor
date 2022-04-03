@@ -481,14 +481,11 @@ namespace Sailor::RHI
 		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};
 
-	uint64_t PackVertexAttributeFormat(EFormat format);
-	EFormat UnpackVertexAttributeFormat(uint64_t attribute);
-
 	using VertexAttributeBits = uint64_t;
 
-#define WriteVertexAttribute(Binding, AttributeFormat) (PackVertexAttributeFormat(AttributeFormat) << (Binding * 3ull))
-#define ReadVertexAttribute(Binding, VertexAttributes) (EFormat)UnpackVertexAttributeFormat(((uint64_t)VertexAttributes >> (Binding * 3ull)) && 0x111)
-		
+	void SetAttributeFormat(VertexAttributeBits& bits, uint32_t shaderBinding, EFormat format);
+	EFormat GetAttributeFormat(const VertexAttributeBits& bits, uint32_t shaderBinding);
+
 	class VertexP3C4
 	{
 	public:

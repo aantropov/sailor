@@ -150,7 +150,7 @@ namespace Sailor::RHI
 		SpinLock m_lockTrackedFences;
 		TVector<FencePtr> m_trackedFences;
 
-		TConcurrentMap<size_t, VertexDescriptionPtr> m_cachedVertexDescriptions;
+		TConcurrentMap<VertexAttributeBits, VertexDescriptionPtr> m_cachedVertexDescriptions;
 	};
 
 	class IGraphicsDriverCommands

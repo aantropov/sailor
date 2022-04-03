@@ -17,12 +17,12 @@ namespace Sailor::RHI
 			uint32_t m_offset;
 		};
 
-		static constexpr uint32_t DefaultPositionLocation = 0;
-		static constexpr uint32_t DefaultNormalLocation = 1;
-		static constexpr uint32_t DefaultTexcoordLocation = 2;
-		static constexpr uint32_t DefaultColorLocation = 3;
+		static constexpr uint32_t DefaultPositionBinding = 0;
+		static constexpr uint32_t DefaultNormalBinding = 1;
+		static constexpr uint32_t DefaultTexcoordBinding = 2;
+		static constexpr uint32_t DefaultColorBinding = 3;
 
-		VertexDescription() {}
+		VertexDescription() = default;
 
 		SAILOR_API void SetVertexStride(size_t stride) { m_vertexStride = stride; }
 		SAILOR_API size_t GetVertexStride() const { return m_vertexStride; }
@@ -31,10 +31,11 @@ namespace Sailor::RHI
 
 		SAILOR_API const TVector<AttributeDescription>& GetAttributeDescriptions() const { return m_attributes; }
 		SAILOR_API VertexAttributeBits GetVertexAttributeBits() const { return m_bits; }
+
 	protected:
 
 		TVector<AttributeDescription> m_attributes;
-		VertexAttributeBits m_bits;
+		VertexAttributeBits m_bits = 0u;
 		size_t m_vertexStride = 0;
 	};
 };
