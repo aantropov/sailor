@@ -481,6 +481,7 @@ namespace Sailor::RHI
 		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};
 
+	// Used as hash code function and adds the possibility to define static vertex classes
 	using VertexAttributeBits = uint64_t;
 
 	void SetAttributeFormat(VertexAttributeBits& bits, uint32_t shaderBinding, EFormat format);
