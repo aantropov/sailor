@@ -14,5 +14,7 @@ void VertexDescription::AddAttribute(uint32_t location, uint32_t binding, EForma
 	attribute.m_format = format;
 	attribute.m_offset = offset;
 
+	m_bits |= WriteVertexAttribute(binding, format);
+
 	m_attributes.Emplace(attribute);
 }

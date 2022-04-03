@@ -23,14 +23,14 @@ namespace Sailor::RHI
 		static constexpr uint32_t DefaultColorLocation = 3;
 
 		VertexDescription() {}
-				
-		SAILOR_API void SetVertexStride(size_t stride) { m_vertexStride = stride; }		
+
+		SAILOR_API void SetVertexStride(size_t stride) { m_vertexStride = stride; }
 		SAILOR_API size_t GetVertexStride() const { return m_vertexStride; }
 
 		SAILOR_API void AddAttribute(uint32_t location, uint32_t binding, EFormat format, uint32_t offset);
 
 		SAILOR_API const TVector<AttributeDescription>& GetAttributeDescriptions() const { return m_attributes; }
-
+		SAILOR_API VertexAttributeBits GetVertexAttributeBits() const { return m_bits; }
 	protected:
 
 		TVector<AttributeDescription> m_attributes;

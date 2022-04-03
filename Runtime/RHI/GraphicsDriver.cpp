@@ -4,6 +4,7 @@
 #include "Buffer.h"
 #include "Fence.h"
 #include "Mesh.h"
+#include "VertexDescription.h"
 #include "JobSystem/JobSystem.h"
 
 using namespace Sailor;
@@ -97,6 +98,18 @@ void IGraphicsDriver::SubmitCommandList_Immediate(CommandListPtr commandList)
 	FencePtr fence = FencePtr::Make();
 	SubmitCommandList(commandList, fence);
 	fence->Wait();
+}
+
+VertexDescriptionPtr& IGraphicsDriver::GetOrAddVertexDescription(VertexAttributeBits bits)
+{
+	auto& pDescription = m_cachedVertexDescriptions.At_Lock(bits);
+	if (!pDescription)
+	{
+		pDescription = VertexDescriptionPtr::Make();
+	}
+	m_cachedVertexDescriptions.Unlock(bits);
+
+	return pDescription;
 }
 
 void IGraphicsDriverCommands::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)

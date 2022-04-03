@@ -109,7 +109,7 @@ namespace Sailor::RHI
 		template<typename TVertex>
 		SAILOR_API VertexDescriptionPtr& GetOrAddVertexDescription()
 		{
-			const size_t vertexTypeHash = typeid(TVertex).hash_code();
+			const size_t vertexTypeHash = TVertex::GetVertexAttributeBits();
 
 			auto& pDescription = m_cachedVertexDescriptions.At_Lock(vertexTypeHash);
 			if (!pDescription)
@@ -120,6 +120,8 @@ namespace Sailor::RHI
 
 			return pDescription;
 		}
+
+		SAILOR_API VertexDescriptionPtr& GetOrAddVertexDescription(VertexAttributeBits bits);
 
 		//Immediate context
 		SAILOR_API virtual BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;

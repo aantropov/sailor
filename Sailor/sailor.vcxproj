@@ -360,6 +360,7 @@
     <ClCompile Include="..\Runtime\RHI\Renderer.cpp" />
     <ClCompile Include="..\Runtime\RHI\Shader.cpp" />
     <ClCompile Include="..\Runtime\RHI\Texture.cpp" />
+    <ClCompile Include="..\Runtime\RHI\Types.cpp" />
     <ClCompile Include="..\Runtime\RHI\VertexDescription.cpp" />
     <ClCompile Include="..\Runtime\Sailor.cpp" />
     <ClCompile Include="dllmain.cpp" />

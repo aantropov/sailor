@@ -481,24 +481,14 @@ namespace Sailor::RHI
 		SAILOR_API bool IsArray() const { return m_arrayCount; }
 	};
 
-	enum class EVertexAttribute : uint8_t
-	{
-		Position = 0,
-		Normal,
-		Tangent,
-		Color,
-		UV0,
-		UV1,
-		UV2,
-		UV3,
-		UV4
-	};
-
-#define WriteVertexAttribute(ShaderLocation, VertexAttributeType) ((uint64_t)VertexAttributeType << (ShaderLocation * 3ull))
-#define ReadVertexAttribute(ShaderLocation, VertexAttribute) (EVertexAttribute)(((uint64_t)VertexAttribute >> (ShaderLocation * 3ull)) && 0x111)
+	uint64_t PackVertexAttributeFormat(EFormat format);
+	EFormat UnpackVertexAttributeFormat(uint64_t attribute);
 
 	using VertexAttributeBits = uint64_t;
 
+#define WriteVertexAttribute(Binding, AttributeFormat) (PackVertexAttributeFormat(AttributeFormat) << (Binding * 3ull))
+#define ReadVertexAttribute(Binding, VertexAttributes) (EFormat)UnpackVertexAttributeFormat(((uint64_t)VertexAttributes >> (Binding * 3ull)) && 0x111)
+		
 	class VertexP3C4
 	{
 	public:
@@ -511,11 +501,7 @@ namespace Sailor::RHI
 			return m_position == other.m_position && m_color == other.m_color;
 		}
 
-		SAILOR_API static VertexAttributeBits GetVertexAttributeBits()
-		{
-			return (VertexAttributeBits)WriteVertexAttribute(VertexDescription::DefaultPositionLocation, EVertexAttribute::Position) |
-				WriteVertexAttribute(VertexDescription::DefaultColorLocation, EVertexAttribute::Color);
-		}
+		SAILOR_API static VertexAttributeBits GetVertexAttributeBits();
 	};
 
 	class VertexP3N3UV2C4
@@ -534,13 +520,7 @@ namespace Sailor::RHI
 				m_texcoord == other.m_texcoord;
 		}
 
-		SAILOR_API static VertexAttributeBits GetVertexAttributeBits()
-		{
-			return (VertexAttributeBits)WriteVertexAttribute(VertexDescription::DefaultPositionLocation, EVertexAttribute::Position) |
-				WriteVertexAttribute(VertexDescription::DefaultNormalLocation, EVertexAttribute::Normal) |
-				WriteVertexAttribute(VertexDescription::DefaultTexcoordLocation, EVertexAttribute::UV0) |
-				WriteVertexAttribute(VertexDescription::DefaultColorLocation, EVertexAttribute::Color);
-		}
+		SAILOR_API static VertexAttributeBits GetVertexAttributeBits();
 	};
 
 	struct UboFrameData

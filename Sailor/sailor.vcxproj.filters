@@ -638,6 +638,9 @@
     <ClCompile Include="..\Runtime\RHI\VertexDescription.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
+    <ClCompile Include="..\Runtime\RHI\Types.cpp">
+      <Filter>Runtime\RHI</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="..\Runtime\Sailor.natvis">
