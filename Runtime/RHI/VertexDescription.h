@@ -34,6 +34,7 @@ namespace Sailor::RHI
 	protected:
 
 		TVector<AttributeDescription> m_attributes;
+		VertexAttributeBits m_bits;
 		size_t m_vertexStride = 0;
 	};
 };
