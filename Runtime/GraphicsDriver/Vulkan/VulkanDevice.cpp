@@ -594,6 +594,11 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 				{
 					auto pMaterial = rendererComponent->GetMaterials()[index];
 
+					if (!pMaterial->IsReady())
+					{
+						continue;
+					}
+
 					SAILOR_PROFILE_BLOCK("Get data");
 					auto& mesh = pModel->GetMeshes()[index];
 					auto& material = pMaterial->GetOrAddRHI(mesh->m_vertexDescription);

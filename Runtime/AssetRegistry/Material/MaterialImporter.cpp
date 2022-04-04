@@ -27,7 +27,7 @@ using namespace Sailor;
 
 bool Material::IsReady() const
 {
-	return m_commonShaderBindings && m_commonShaderBindings->IsReady();
+	return m_shader && m_shader->IsReady() && m_commonShaderBindings && m_commonShaderBindings->IsReady();
 }
 
 JobSystem::ITaskPtr Material::OnHotReload()
@@ -515,7 +515,6 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 		});
 
 		newPromise->Join(pLoadShader);
-
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
 
 		outMaterial = m_loadedMaterials[uid] = pMaterial;
