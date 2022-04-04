@@ -27,7 +27,7 @@ using namespace Sailor;
 
 bool Material::IsReady() const
 {
-	return m_rhiMaterial && m_rhiMaterial->IsReady();
+	return m_commonShaderBindings && m_commonShaderBindings->IsReady();
 }
 
 JobSystem::ITaskPtr Material::OnHotReload()
@@ -65,50 +65,74 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 	m_bIsDirty = true;
 }
 
+RHI::MaterialPtr& Material::GetOrAddRHI(RHI::VertexDescriptionPtr vertexDescription)
+{
+	// TODO: Resolve collisions of VertexAttributeBits
+	auto& material = m_rhiMaterials.At_Lock(vertexDescription->GetVertexAttributeBits());
+	m_rhiMaterials.Unlock(vertexDescription->GetVertexAttributeBits());
+
+	if (!material)
+	{
+		SAILOR_LOG("Create RHI material for resource: %s, vertex attribute bits: %llu", GetUID().ToString().c_str(), vertexDescription->GetVertexAttributeBits());
+
+		if (!m_commonShaderBindings)
+		{
+			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader);
+			m_commonShaderBindings = material->GetBindings();
+		}
+		else
+		{
+			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader, m_commonShaderBindings);
+		}
+	}
+
+	return material;
+}
+
 void Material::UpdateRHIResource()
 {
 	SAILOR_LOG("Update material RHI resource: %s", GetUID().ToString().c_str());
 
-	// TODO: Create its own RHI for each of topology and vertex description
-	auto vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-	m_rhiMaterial = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader);
+	// All RHI materials are outdated now
+	m_rhiMaterials.Clear();
+	m_commonShaderBindings.Clear();
 
-	auto bindings = m_rhiMaterial->GetBindings();
+	// Create base material
+	GetOrAddRHI(RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>());
 
 	for (auto& sampler : m_samplers)
 	{
-		if (bindings->HasBinding(sampler.m_first))
+		if (m_commonShaderBindings->HasBinding(sampler.m_first))
 		{
-			RHI::Renderer::GetDriver()->UpdateShaderBinding(bindings, sampler.m_first, sampler.m_second->GetRHI());
+			RHI::Renderer::GetDriver()->UpdateShaderBinding(m_commonShaderBindings, sampler.m_first, sampler.m_second->GetRHI());
 		}
 	}
 
 	// Create all bindings first
 	for (auto& uniform : m_uniforms)
 	{
-		if (bindings->HasParameter(uniform.m_first))
+		if (m_commonShaderBindings->HasParameter(uniform.m_first))
 		{
 			std::string outBinding;
 			std::string outVariable;
 
 			RHI::ShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::ShaderBindingPtr& binding = bindings->GetOrCreateShaderBinding(outBinding);
+			RHI::ShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
 		}
 	}
 
 	RHI::CommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
 
-	auto pBindings = m_rhiMaterial->GetBindings();
 	for (auto& uniform : m_uniforms)
 	{
-		if (pBindings->HasParameter(uniform.m_first))
+		if (m_commonShaderBindings->HasParameter(uniform.m_first))
 		{
 			std::string outBinding;
 			std::string outVariable;
 
 			RHI::ShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::ShaderBindingPtr& binding = pBindings->GetOrCreateShaderBinding(outBinding);
+			RHI::ShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
 
 			const glm::vec4 value = uniform.m_second;
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
@@ -119,10 +143,10 @@ void Material::UpdateRHIResource()
 
 	// Create fences to track the state of material update
 	RHI::FencePtr fence = RHI::FencePtr::Make();
-	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_rhiMaterial.GetRawPtr(), fence);
+	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_commonShaderBindings.GetRawPtr(), fence);
 
 	// Submit cmd lists
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Update material rhi",
+	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Update shader bindings set rhi",
 		([this, cmdList, fence]()
 	{
 		RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);

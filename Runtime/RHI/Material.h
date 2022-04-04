@@ -8,7 +8,7 @@
 
 namespace Sailor::RHI
 {
-	class ShaderBindingSet : public Resource
+	class ShaderBindingSet : public Resource, public IDelayedInitialization
 	{
 	public:
 
@@ -41,7 +41,7 @@ namespace Sailor::RHI
 		bool m_bNeedsStorageBuffer = false;
 	};
 
-	class Material : public Resource, public IDelayedInitialization
+	class Material : public Resource
 	{
 	public:
 #if defined(VULKAN)

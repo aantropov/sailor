@@ -350,36 +350,8 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescripti
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
 
-#ifdef _DEBUG
-	const bool bIsDebug = true;
-#else
-	const bool bIsDebug = false;
-#endif
-
-	auto vertex = shader->GetVertexShaderRHI();
-	auto fragment = shader->GetFragmentShaderRHI();
-
-	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState, vertex, fragment);
-
-	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
-	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
-		descriptorSetLayouts,
-		TVector<VkPushConstantRange>(),
-		0);
-
-	res->m_vulkan.m_pipeline = VulkanPipelinePtr::Make(device,
-		pipelineLayout,
-		TVector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
-		device->GetPipelineBuilder()->BuildPipeline(vertexDescription, topology, renderState),
-		0);
-
-	res->m_vulkan.m_pipeline->m_renderPass = device->GetRenderPass();
-	res->m_vulkan.m_pipeline->Compile();
-
 	// TODO: move initialization to external code
 	auto shaderBindings = CreateShaderBindings();
-	res->SetBindings(shaderBindings);
-
 	for (uint32_t i = 0; i < bindings.Num(); i++)
 	{
 		auto& layoutBinding = bindings[i];
@@ -420,6 +392,49 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescripti
 
 	shaderBindings->SetLayoutShaderBindings(bindings);
 	UpdateDescriptorSet(shaderBindings);
+
+	return CreateMaterial(vertexDescription, topology, renderState, shader, shaderBindings);
+}
+
+RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::ShaderBindingSetPtr& shaderBindigs)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
+
+	TVector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
+	TVector<RHI::ShaderLayoutBinding> bindings;
+
+	// We need debug shaders to get full names from reflection
+	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
+		descriptorSetLayouts, bindings);
+
+#ifdef _DEBUG
+	const bool bIsDebug = true;
+#else
+	const bool bIsDebug = false;
+#endif
+
+	auto vertex = shader->GetVertexShaderRHI();
+	auto fragment = shader->GetFragmentShaderRHI();
+
+	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState, vertex, fragment);
+
+	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
+	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
+		descriptorSetLayouts,
+		TVector<VkPushConstantRange>(),
+		0);
+
+	res->m_vulkan.m_pipeline = VulkanPipelinePtr::Make(device,
+		pipelineLayout,
+		TVector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
+		device->GetPipelineBuilder()->BuildPipeline(vertexDescription, topology, renderState),
+		0);
+
+	res->m_vulkan.m_pipeline->m_renderPass = device->GetRenderPass();
+	res->m_vulkan.m_pipeline->Compile();
+	res->SetBindings(shaderBindigs);
 
 	return res;
 }
@@ -666,14 +681,14 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::Sha
 	SAILOR_PROFILE_END_BLOCK();
 }
 
-void VulkanGraphicsDriver::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size)
+void VulkanGraphicsDriver::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (material->GetBindings()->HasBinding(binding))
+	if (bindings->HasBinding(binding))
 	{
 		auto device = m_vkInstance->GetMainDevice();
-		auto& shaderBinding = material->GetBindings()->GetOrCreateShaderBinding(binding);
+		auto& shaderBinding = bindings->GetOrCreateShaderBinding(binding);
 		UpdateShaderBindingVariable(cmd, shaderBinding, variable, value, size);
 	}
 }

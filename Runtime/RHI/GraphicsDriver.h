@@ -93,6 +93,7 @@ namespace Sailor::RHI
 			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		SAILOR_API virtual MaterialPtr CreateMaterial(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
+		SAILOR_API virtual MaterialPtr CreateMaterial(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::ShaderBindingSetPtr& shaderBindigs) = 0;
 
 		SAILOR_API virtual void SubmitCommandList(CommandListPtr commandList, FencePtr fence = nullptr, SemaphorePtr signalSemaphore = nullptr, SemaphorePtr waitSemaphore = nullptr) = 0;
 
@@ -163,18 +164,18 @@ namespace Sailor::RHI
 		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);
 		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
 		SAILOR_API virtual void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
-		SAILOR_API virtual void SetMaterialParameter(CommandListPtr cmd, RHI::MaterialPtr material, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
+		SAILOR_API virtual void SetMaterialParameter(CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
 		template<typename TDataType>
-		void SetMaterialParameter(CommandListPtr cmd, RHI::MaterialPtr material, const std::string& parameter, const TDataType& value)
+		void SetMaterialParameter(CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& parameter, const TDataType& value)
 		{
 			std::string outBinding;
 			std::string outVariable;
 
 			ShaderBindingSet::ParseParameter(parameter, outBinding, outVariable);
-			SetMaterialParameter(cmd, material, outBinding, outVariable, &value, sizeof(value));
+			SetMaterialParameter(cmd, bindings, outBinding, outVariable, &value, sizeof(value));
 		}
 	};
 };

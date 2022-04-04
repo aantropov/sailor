@@ -407,6 +407,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	VkPhysicalDeviceFeatures deviceFeatures{};
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
+	deviceFeatures.fillModeNonSolid = VK_TRUE;
 
 #ifdef SAILOR_MSAA_IMPACTS_TEXTURE_SAMPLING
 	deviceFeatures.sampleRateShading = VK_TRUE;
@@ -594,9 +595,9 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 					auto pMaterial = rendererComponent->GetMaterials()[index];
 
 					SAILOR_PROFILE_BLOCK("Get data");
-					auto& material = pMaterial->GetRHI();
-					bool bIsMaterialReady = pMaterial && pMaterial->IsReady();
 					auto& mesh = pModel->GetMeshes()[index];
+					auto& material = pMaterial->GetOrAddRHI(mesh->m_vertexDescription);
+					bool bIsMaterialReady = pMaterial && pMaterial->IsReady();
 					SAILOR_PROFILE_END_BLOCK();
 
 					if (bIsMaterialReady && pMaterial->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)

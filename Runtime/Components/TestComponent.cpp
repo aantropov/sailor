@@ -100,10 +100,10 @@ void TestComponent::Tick(float deltaTime)
 	{
 		for (auto& material : meshRenderer->GetMaterials())
 		{
-			if (material && material->IsReady() && material->GetRHI()->GetBindings()->HasBinding("material"))
+			if (material && material->IsReady() && material->GetShaderBindings()->HasBinding("material"))
 			{
 				RHI::Renderer::GetDriverCommands()->SetMaterialParameter(GetWorld()->GetCommandList(),
-					material->GetRHI(),
+					material->GetShaderBindings(),
 					"material.color",
 					std::max(0.5f, float(sin(0.001 * (double)GetWorld()->GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
 			}
