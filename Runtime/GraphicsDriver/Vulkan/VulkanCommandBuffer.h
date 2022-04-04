@@ -63,6 +63,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void AddDependency(VulkanSemaphorePtr semaphore);
 		SAILOR_API void AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator);
 
+		SAILOR_API VkCommandBufferLevel GetLevel() const { return m_level; }
+
 	protected:
 
 		TVector<VulkanBufferPtr> m_bufferDependencies;

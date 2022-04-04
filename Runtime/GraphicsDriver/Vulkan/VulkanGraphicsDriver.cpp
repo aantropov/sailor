@@ -609,7 +609,13 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings
 
 void VulkanGraphicsDriver::BeginCommandList(RHI::CommandListPtr cmd)
 {
-	cmd->m_vulkan.m_commandBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	uint32_t flags = 0;
+	if (cmd->m_vulkan.m_commandBuffer->GetLevel() == VK_COMMAND_BUFFER_LEVEL_SECONDARY)
+	{
+		flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+	}
+
+	cmd->m_vulkan.m_commandBuffer->BeginCommandList(flags | VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 }
 
 void VulkanGraphicsDriver::EndCommandList(RHI::CommandListPtr cmd)

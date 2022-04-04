@@ -44,12 +44,12 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	auto duplicatedCommandBuffer = m_commandBuffer;
 
 	auto pReleaseResource = JobSystem::Scheduler::CreateTask("Release command buffer", [=]()
+	{
+		if (duplicatedCommandBuffer)
 		{
-			if (duplicatedCommandBuffer)
-			{
-				vkFreeCommandBuffers(*duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
-			}
-		});
+			vkFreeCommandBuffers(*duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
+		}
+	});
 
 	if (m_currentThreadId == currentThreadId)
 	{
@@ -147,6 +147,11 @@ void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, Vulkan
 
 	renderPassInfo.clearValueCount = bMSSA ? 3U : 2U;
 	renderPassInfo.pClearValues = bMSSA ? clearValues.data() : &clearValues.data()[1];
+
+	// TODO: Add support of secondary command buffesr
+	// specifying VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS means this
+	// render pass may
+	// ONLY call vkCmdExecuteCommands
 
 	vkCmdBeginRenderPass(m_commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
