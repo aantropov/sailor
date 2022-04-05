@@ -106,17 +106,23 @@ void DebugContext::Tick(float deltaTime)
 
 RHI::CommandListPtr DebugContext::CreateRenderingCommandList() const
 {
+	if (m_lines.Num() == 0)
+	{
+		return nullptr;
+	}
+
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 	RHI::CommandListPtr graphicsCmd = renderer->CreateCommandList(true, false);
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_graphicsCmd);
+
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(graphicsCmd);
 
 	RHI::Renderer::GetDriverCommands()->BindMaterial(graphicsCmd, m_material);
 	RHI::Renderer::GetDriverCommands()->BindVertexBuffers(graphicsCmd, { m_mesh->m_vertexBuffer });
 	RHI::Renderer::GetDriverCommands()->BindIndexBuffer(graphicsCmd, m_mesh->m_indexBuffer);
 	RHI::Renderer::GetDriverCommands()->SetDefaultViewport(graphicsCmd);
-
 	RHI::Renderer::GetDriverCommands()->BindShaderBindings(graphicsCmd, m_material, { m_material->GetBindings() });
 	RHI::Renderer::GetDriverCommands()->DrawIndexed(graphicsCmd, m_mesh->m_indexBuffer, 1, 0, 0, 0);
+
 	RHI::Renderer::GetDriverCommands()->EndCommandList(graphicsCmd);
 
 	return graphicsCmd;

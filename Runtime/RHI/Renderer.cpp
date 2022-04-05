@@ -130,13 +130,25 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		}
 		SAILOR_PROFILE_END_BLOCK();
 
+		auto& debugContext = frame.GetWorld()->GetDebugContext();
+		if (debugContext->GetSyncSemaphore())
+		{
+			waitFrameUpdate.Add(debugContext->GetSyncSemaphore());
+		}
+
+		TVector<RHI::CommandListPtr> secondaryCommandLists;
+		if (auto debugDraw = debugContext->CreateRenderingCommandList())
+		{
+			secondaryCommandLists.Add(debugDraw);
+		}
+
 		do
 		{
 			static uint32_t totalFramesCount = 0U;
 
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
-			if (m_driverInstance->PresentFrame(frame, nullptr, nullptr, waitFrameUpdate))
+			if (m_driverInstance->PresentFrame(frame, nullptr, &secondaryCommandLists, waitFrameUpdate))
 			{
 				totalFramesCount++;
 				timer.Stop();

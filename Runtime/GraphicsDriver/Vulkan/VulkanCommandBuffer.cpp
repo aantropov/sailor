@@ -79,6 +79,24 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 	ClearDependencies();
 }
 
+void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPass, uint32_t subpassIndex, VkCommandBufferUsageFlags flags)
+{
+	// We can omit framebuffer for now
+	VkCommandBufferInheritanceInfo inheritanceInfo{};
+	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+	inheritanceInfo.renderPass = *renderPass;
+	inheritanceInfo.subpass = subpassIndex;
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = flags;
+	beginInfo.pInheritanceInfo = &inheritanceInfo;
+
+	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
+
+	ClearDependencies();
+}
+
 void VulkanCommandBuffer::CopyBuffer(VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
 {
 	VkBufferCopy copyRegion{};
@@ -148,7 +166,7 @@ void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, Vulkan
 	renderPassInfo.clearValueCount = bMSSA ? 3U : 2U;
 	renderPassInfo.pClearValues = bMSSA ? clearValues.data() : &clearValues.data()[1];
 
-	// TODO: Add support of secondary command buffesr
+	// TODO: Add support of secondary command buffers
 	// specifying VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS means this
 	// render pass may
 	// ONLY call vkCmdExecuteCommands

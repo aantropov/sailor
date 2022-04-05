@@ -39,12 +39,10 @@ namespace Sailor::RHI
 
 		SAILOR_API void DrawLine(const glm::vec4& start, const glm::vec4& end, const glm::vec4 color = { 0.0f, 1.0f, 0.0f, 0.0f }, float duration = 0.0f);
 		SAILOR_API void Tick(float deltaTime);
-
-		SAILOR_API RHI::CommandListPtr GetRenderAllCommandList() const { return m_graphicsCmd; }
-	
-	protected:
-
 		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList() const;
+		SAILOR_API RHI::SemaphorePtr GetSyncSemaphore() { return m_syncSemaphore; }
+
+	protected:
 
 		TVector<LineProxy> m_lines;
 
@@ -52,9 +50,7 @@ namespace Sailor::RHI
 		MaterialPtr m_material;
 
 		RHI::SemaphorePtr m_syncSemaphore;
-
 		RHI::CommandListPtr m_transferCmd;
-		RHI::CommandListPtr m_graphicsCmd;
 
 		friend class World;
 	};

@@ -14,6 +14,8 @@ World::World(std::string name) : m_name(std::move(name))
 	{
 		m_ecs[ecs->GetComponentType()] = std::move(ecs);
 	}
+
+	m_pDebugContext = TUniquePtr<RHI::DebugContext>::Make();
 }
 
 void World::Tick(FrameState& frameState)
@@ -62,6 +64,8 @@ void World::Tick(FrameState& frameState)
 	}
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
+
+	GetDebugContext()->Tick(frameState.GetDeltaTime());	
 }
 
 GameObjectPtr World::Instantiate(const std::string& name)

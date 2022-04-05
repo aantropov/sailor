@@ -4,6 +4,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
 #include "Engine/Frame.h"
+#include "RHI/DebugContext.h"
 #include "ECS/ECS.h"
 
 namespace Sailor
@@ -37,6 +38,7 @@ namespace Sailor
 		SAILOR_API int64_t GetTime() const { return m_time; }
 
 		SAILOR_API RHI::CommandListPtr GetCommandList() const { return m_commandList; }
+		SAILOR_API TUniquePtr<class RHI::DebugContext>& GetDebugContext() { return m_pDebugContext; }
 
 		template<typename T>
 		SAILOR_API __forceinline T* GetECS()
@@ -55,10 +57,11 @@ namespace Sailor
 		TVector<GameObjectPtr> m_objects;
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
 		TMap<size_t, Sailor::ECS::TBaseSystemPtr> m_ecs;
-		
+
 		FrameInputState m_frameInput;
 		int64_t m_time;
 		RHI::CommandListPtr m_commandList;
+		TUniquePtr<RHI::DebugContext> m_pDebugContext;
 
 		Memory::ObjectAllocatorPtr m_allocator;
 	};

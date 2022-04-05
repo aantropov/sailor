@@ -26,6 +26,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual ~VulkanCommandBuffer() override;
 
 		SAILOR_API void BeginCommandList(VkCommandBufferUsageFlags flags = 0);
+		SAILOR_API void BeginSecondaryCommandList(VulkanRenderPassPtr renderPass, uint32_t subpassIndex = 0, VkCommandBufferUsageFlags flags = 0);
+
 		SAILOR_API void EndCommandList();
 
 		SAILOR_API void BeginRenderPass(VulkanRenderPassPtr renderPass,

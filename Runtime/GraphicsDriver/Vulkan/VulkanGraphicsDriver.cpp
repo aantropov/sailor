@@ -173,6 +173,7 @@ RHI::CommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary, b
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
+
 	cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device,
 		bOnlyTransferQueue ? device->GetCurrentThreadContext().m_transferCommandPool : device->GetCurrentThreadContext().m_commandPool,
 		bIsSecondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : VK_COMMAND_BUFFER_LEVEL_PRIMARY);
@@ -609,13 +610,19 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings
 
 void VulkanGraphicsDriver::BeginCommandList(RHI::CommandListPtr cmd)
 {
-	uint32_t flags = 0;
 	if (cmd->m_vulkan.m_commandBuffer->GetLevel() == VK_COMMAND_BUFFER_LEVEL_SECONDARY)
 	{
-		flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-	}
+		auto device = m_vkInstance->GetMainDevice();
 
-	cmd->m_vulkan.m_commandBuffer->BeginCommandList(flags | VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+		// This tells Vulkan that this secondary command buffer will be executed entirely inside a render pass.
+		const uint32_t flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(device->GetRenderPass(), 0, flags);
+	}
+	else
+	{
+		cmd->m_vulkan.m_commandBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	}
 }
 
 void VulkanGraphicsDriver::EndCommandList(RHI::CommandListPtr cmd)
