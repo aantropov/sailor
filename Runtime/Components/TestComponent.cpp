@@ -113,6 +113,8 @@ void TestComponent::Tick(float deltaTime)
 	SAILOR_PROFILE_END_BLOCK();
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
+
+	GetWorld()->GetDebugContext()->DrawLine(glm::vec4(0, 0, 0, 0), glm::vec4(0, 100, 0, 0));
 }
 
 

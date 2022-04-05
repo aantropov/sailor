@@ -18,16 +18,6 @@ layout(set = 0, binding = 0) uniform FrameData
     float deltaTime;
 } frame;
 
-struct PerInstanceData
-{
-    mat4 model;
-};
-
-layout(std140, set = 1, binding = 0) readonly buffer PerInstanceDataSSBO
-{
-    PerInstanceData instance[];
-} data;
-
 layout(location=0) in vec3 inPosition;
 layout(location=3) in vec4 inColor;
 layout(location=0) out vec4 fragColor;

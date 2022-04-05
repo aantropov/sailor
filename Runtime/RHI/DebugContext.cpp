@@ -89,8 +89,8 @@ void DebugContext::Tick(float deltaTime)
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_transferCmd);
 
-	m_syncSemaphore = RHI::SemaphorePtr::Make();
-	renderer->SubmitCommandList(m_transferCmd, nullptr, m_syncSemaphore);
+	m_syncSemaphore = App::GetSubmodule<Renderer>()->GetDriver()->CreateWaitSemaphore();
+	renderer->SubmitCommandList(m_transferCmd, RHI::FencePtr::Make(), m_syncSemaphore);
 
 	for (uint32_t i = 0; i < m_lines.Num(); i++)
 	{
@@ -104,9 +104,9 @@ void DebugContext::Tick(float deltaTime)
 	}
 }
 
-RHI::CommandListPtr DebugContext::CreateRenderingCommandList() const
+RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings) const
 {
-	if (m_lines.Num() == 0)
+	if (m_lines.Num() == 0 || !m_material)
 	{
 		return nullptr;
 	}
@@ -120,7 +120,7 @@ RHI::CommandListPtr DebugContext::CreateRenderingCommandList() const
 	RHI::Renderer::GetDriverCommands()->BindVertexBuffers(graphicsCmd, { m_mesh->m_vertexBuffer });
 	RHI::Renderer::GetDriverCommands()->BindIndexBuffer(graphicsCmd, m_mesh->m_indexBuffer);
 	RHI::Renderer::GetDriverCommands()->SetDefaultViewport(graphicsCmd);
-	RHI::Renderer::GetDriverCommands()->BindShaderBindings(graphicsCmd, m_material, { m_material->GetBindings() });
+	RHI::Renderer::GetDriverCommands()->BindShaderBindings(graphicsCmd, m_material, { frameBindings /*m_material->GetBindings()*/ });
 	RHI::Renderer::GetDriverCommands()->DrawIndexed(graphicsCmd, m_mesh->m_indexBuffer, 1, 0, 0, 0);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(graphicsCmd);

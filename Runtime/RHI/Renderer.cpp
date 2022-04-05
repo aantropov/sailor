@@ -4,11 +4,13 @@
 #include "GraphicsDriver.h"
 #include "VertexDescription.h"
 #include "Engine/EngineLoop.h"
+#include "Engine/GameObject.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "JobSystem/JobSystem.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
+#include <Components/TestComponent.h>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -130,16 +132,22 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		}
 		SAILOR_PROFILE_END_BLOCK();
 
-		auto& debugContext = frame.GetWorld()->GetDebugContext();
-		if (debugContext->GetSyncSemaphore())
-		{
-			waitFrameUpdate.Add(debugContext->GetSyncSemaphore());
-		}
 
 		TVector<RHI::CommandListPtr> secondaryCommandLists;
-		if (auto debugDraw = debugContext->CreateRenderingCommandList())
+
+		// Test Code
+		if (TestComponentPtr testComponent = frame.GetWorld()->GetGameObjects()[0]->GetComponent<TestComponent>())
 		{
-			secondaryCommandLists.Add(debugDraw);
+			auto& debugContext = frame.GetWorld()->GetDebugContext();
+			if (debugContext->GetSyncSemaphore())
+			{
+				waitFrameUpdate.Add(debugContext->GetSyncSemaphore());
+			}
+			
+			if (auto debugDraw = debugContext->CreateRenderingCommandList(testComponent->GetFrameBinding()))
+			{
+				secondaryCommandLists.Add(debugDraw);
+			}
 		}
 
 		do
