@@ -480,6 +480,8 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 		viewport->GetHeight(),
 		viewport->IsVsyncRequested(),
 		oldSwapchain);
+
+	m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 }
 
 void VulkanDevice::CleanupSwapChain()
@@ -550,7 +552,12 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
 	//////////////////////////////////////////////////
-	VulkanStateViewportPtr pStateViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
+	if (!m_pCurrentFrameViewport &&
+		m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
+		abs(m_pCurrentFrameViewport->GetViewport().height) != m_swapchain->GetExtent().height)
+	{
+		m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
+	}
 
 	TVector<VkCommandBuffer> commandBuffers;
 	if (primaryCommandBuffers.Num() > 0)
@@ -611,8 +618,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 						m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
 						SAILOR_PROFILE_END_BLOCK();
 
-						m_commandBuffers[imageIndex]->SetViewport(pStateViewport);
-						m_commandBuffers[imageIndex]->SetScissor(pStateViewport);
+						m_commandBuffers[imageIndex]->SetViewport(m_pCurrentFrameViewport);
+						m_commandBuffers[imageIndex]->SetScissor(m_pCurrentFrameViewport);
 
 						SAILOR_PROFILE_BLOCK("Bind buffers");
 						m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });

@@ -110,21 +110,13 @@ RHI::CommandListPtr DebugContext::CreateRenderingCommandList() const
 	RHI::CommandListPtr graphicsCmd = renderer->CreateCommandList(true, false);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_graphicsCmd);
 
-	// TODO: Adjust high level command lists API
-#ifdef  VULKAN
-	auto vulkamCmd = graphicsCmd->m_vulkan.m_commandBuffer;
-	vulkamCmd->BindPipeline(m_material->m_vulkan.m_pipeline);
-	vulkamCmd->BindVertexBuffers({ m_mesh->m_vertexBuffer->m_vulkan.m_buffer });
-	vulkamCmd->BindIndexBuffer(m_mesh->m_indexBuffer->m_vulkan.m_buffer);
+	RHI::Renderer::GetDriverCommands()->BindMaterial(graphicsCmd, m_material);
+	RHI::Renderer::GetDriverCommands()->BindVertexBuffers(graphicsCmd, { m_mesh->m_vertexBuffer });
+	RHI::Renderer::GetDriverCommands()->BindIndexBuffer(graphicsCmd, m_mesh->m_indexBuffer);
+	RHI::Renderer::GetDriverCommands()->SetDefaultViewport(graphicsCmd);
 
-	// TODO: Parse missing descriptor sets
-	TVector<VulkanDescriptorSetPtr> sets;
-	sets.Add(m_material->GetBindings()->m_vulkan.m_descriptorSet);
-
-	vulkamCmd->BindDescriptorSet(m_material->m_vulkan.m_pipeline->m_layout, sets);
-	vulkamCmd->DrawIndexed(m_mesh->m_indexBuffer->m_vulkan.m_buffer, 1, 0, 0, 0);
-#endif //  VULKAN
-
+	RHI::Renderer::GetDriverCommands()->BindShaderBindings(graphicsCmd, m_material, { m_material->GetBindings() });
+	RHI::Renderer::GetDriverCommands()->DrawIndexed(graphicsCmd, m_mesh->m_indexBuffer, 1, 0, 0, 0);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(graphicsCmd);
 
 	return graphicsCmd;

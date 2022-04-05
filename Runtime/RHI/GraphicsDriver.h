@@ -166,6 +166,14 @@ namespace Sailor::RHI
 		SAILOR_API virtual void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
 		SAILOR_API virtual void SetMaterialParameter(CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 
+		SAILOR_API virtual void BindMaterial(CommandListPtr cmd, RHI::MaterialPtr material) = 0;
+		SAILOR_API virtual void BindVertexBuffers(CommandListPtr cmd, RHI::BufferPtr vertexBuffer) = 0;
+		SAILOR_API virtual void BindIndexBuffer(CommandListPtr cmd, RHI::BufferPtr indexBuffer) = 0;
+		SAILOR_API virtual void SetViewport(CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
+		SAILOR_API virtual void SetDefaultViewport(CommandListPtr cmd) = 0;
+		SAILOR_API virtual void BindShaderBindings(CommandListPtr cmd, RHI::MaterialPtr, const TVector<RHI::ShaderBindingSetPtr>& bindings) = 0;
+		SAILOR_API virtual void DrawIndexed(CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance) = 0;
+
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
 		template<typename TDataType>

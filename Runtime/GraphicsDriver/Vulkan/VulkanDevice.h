@@ -55,7 +55,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			TVector<VulkanSemaphorePtr> waitSemaphores = {});
 
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
-		
+
 		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(bool bOnlyTransferQueue = false);
 
 		SAILOR_API void SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
@@ -108,7 +108,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API ThreadContext& GetOrCreateThreadContext(DWORD threadId);
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return GetCurrentThreadContext().m_stagingBufferAllocator; }
-
+		SAILOR_API VulkanStateViewportPtr GetCurrentFrameViewport() const { return m_pCurrentFrameViewport; }
 	protected:
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
@@ -152,6 +152,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Swapchain
 		VulkanSwapchainPtr m_swapchain;
 		TVector<VulkanFramebufferPtr> m_swapChainFramebuffers;
+
+		// TODO: Use VK_NV_inherited_viewport_scissor extension if possible
+		// TODO: Move current viewport settings to rendering pipeline
+		VulkanStateViewportPtr m_pCurrentFrameViewport;
 
 		// Frame sync
 		TVector<VulkanSemaphorePtr> m_imageAvailableSemaphores;

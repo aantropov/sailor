@@ -89,6 +89,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size);
 		SAILOR_API virtual void UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API virtual void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size);
+
+		SAILOR_API virtual void BindMaterial(RHI::CommandListPtr cmd, RHI::MaterialPtr material);
+		SAILOR_API virtual void BindVertexBuffers(RHI::CommandListPtr cmd, RHI::BufferPtr vertexBuffer);
+		SAILOR_API virtual void BindIndexBuffer(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer);
+		SAILOR_API virtual void SetViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth);
+		SAILOR_API virtual void SetDefaultViewport(RHI::CommandListPtr cmd);
+		SAILOR_API virtual void BindShaderBindings(RHI::CommandListPtr cmd, RHI::MaterialPtr, const TVector<RHI::ShaderBindingSetPtr>& bindings);
+		SAILOR_API virtual void DrawIndexed(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance);
 		//End IGraphicsDriverCommands
 
 	protected:

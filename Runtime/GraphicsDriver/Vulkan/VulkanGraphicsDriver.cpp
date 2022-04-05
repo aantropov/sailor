@@ -716,3 +716,53 @@ void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, 
 
 	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset);
 }
+
+void VulkanGraphicsDriver::BindMaterial(RHI::CommandListPtr cmd, RHI::MaterialPtr material)
+{
+	cmd->m_vulkan.m_commandBuffer->BindPipeline(material->m_vulkan.m_pipeline);
+}
+
+void VulkanGraphicsDriver::BindVertexBuffers(RHI::CommandListPtr cmd, RHI::BufferPtr vertexBuffer)
+{
+	cmd->m_vulkan.m_commandBuffer->BindVertexBuffers({ vertexBuffer->m_vulkan.m_buffer });
+}
+
+void VulkanGraphicsDriver::BindIndexBuffer(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer)
+{
+	cmd->m_vulkan.m_commandBuffer->BindIndexBuffer(indexBuffer->m_vulkan.m_buffer);
+}
+
+void VulkanGraphicsDriver::SetViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2  scissorExtent, float minDepth, float maxDepth)
+{
+	VulkanStateViewportPtr pStateViewport = new VulkanStateViewport(x, y, width, height,
+		VkOffset2D((int32_t)scissorOffset.x, (int32_t)scissorOffset.y),
+		VkExtent2D((uint32_t)scissorExtent.x, (uint32_t)scissorExtent.y), minDepth, maxDepth);
+
+	cmd->m_vulkan.m_commandBuffer->SetViewport(pStateViewport);
+	cmd->m_vulkan.m_commandBuffer->SetScissor(pStateViewport);
+}
+
+void VulkanGraphicsDriver::SetDefaultViewport(RHI::CommandListPtr cmd)
+{
+	auto device = m_vkInstance->GetMainDevice();
+	auto pStateViewport = device->GetCurrentFrameViewport();
+
+	cmd->m_vulkan.m_commandBuffer->SetViewport(pStateViewport);
+	cmd->m_vulkan.m_commandBuffer->SetScissor(pStateViewport);
+}
+
+void VulkanGraphicsDriver::BindShaderBindings(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const TVector<RHI::ShaderBindingSetPtr>& bindings)
+{
+	TVector<VulkanDescriptorSetPtr> sets;
+	for (auto& binding : bindings)
+	{
+		sets.Add(binding->m_vulkan.m_descriptorSet);
+	}
+
+	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
+}
+
+void VulkanGraphicsDriver::DrawIndexed(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
+{
+	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexBuffer->m_vulkan.m_buffer, 1, 0, 0, 0);
+}
