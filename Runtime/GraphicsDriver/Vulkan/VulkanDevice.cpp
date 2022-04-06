@@ -570,92 +570,11 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 
 	m_commandBuffers[imageIndex]->BeginCommandList();
 	{
-		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent());
-
-		if (secondaryCommandBuffers.Num() > 0)
+		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent(), VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+		for (auto cmdBuffer : secondaryCommandBuffers)
 		{
-			for (auto cmdBuffer : secondaryCommandBuffers)
-			{
-				m_commandBuffers[imageIndex]->Execute(cmdBuffer);
-			}
+			m_commandBuffers[imageIndex]->Execute(cmdBuffer);
 		}
-
-		// Temporary
-		for (auto& gameObject : state.GetWorld()->GetGameObjects())
-		{
-			TestComponentPtr testComponent = gameObject->GetComponent<TestComponent>();
-			MeshRendererComponentPtr rendererComponent = gameObject->GetComponent<MeshRendererComponent>();
-
-			if (testComponent && rendererComponent)
-			{
-				auto& perInstanceBinding = testComponent->GetPerInstanceBinding();
-				auto pModel = rendererComponent->GetModel();
-
-				if (!pModel || !pModel->IsReady())
-				{
-					continue;
-				}
-
-				SAILOR_PROFILE_BLOCK("Render meshes");
-				for (uint32_t index = 0; index < pModel->GetMeshes().Num(); index++)
-				{
-					auto pMaterial = rendererComponent->GetMaterials()[index];
-
-					if (!pMaterial->IsReady())
-					{
-						continue;
-					}
-
-					SAILOR_PROFILE_BLOCK("Get data");
-					auto& mesh = pModel->GetMeshes()[index];
-					auto& material = pMaterial->GetOrAddRHI(mesh->m_vertexDescription);
-					bool bIsMaterialReady = pMaterial && pMaterial->IsReady();
-					SAILOR_PROFILE_END_BLOCK();
-
-					if (bIsMaterialReady && pMaterial->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
-					{
-						SAILOR_PROFILE_BLOCK("Bind pipelines");
-						m_commandBuffers[imageIndex]->BindPipeline(material->m_vulkan.m_pipeline);
-						SAILOR_PROFILE_END_BLOCK();
-
-						m_commandBuffers[imageIndex]->SetViewport(m_pCurrentFrameViewport);
-						m_commandBuffers[imageIndex]->SetScissor(m_pCurrentFrameViewport);
-
-						SAILOR_PROFILE_BLOCK("Bind buffers");
-						m_commandBuffers[imageIndex]->BindVertexBuffers({ mesh->m_vertexBuffer->m_vulkan.m_buffer });
-						m_commandBuffers[imageIndex]->BindIndexBuffer(mesh->m_indexBuffer->m_vulkan.m_buffer);
-						SAILOR_PROFILE_END_BLOCK();
-
-						// TODO: Parse missing descriptor sets
-						TVector<VulkanDescriptorSetPtr> sets;
-						if (testComponent->GetFrameBinding()->GetShaderBindings().Num())
-						{
-							sets.Add(testComponent->GetFrameBinding()->m_vulkan.m_descriptorSet);
-						}
-						if (perInstanceBinding->GetShaderBindings().Num())
-						{
-							sets.Add(perInstanceBinding->m_vulkan.m_descriptorSet);
-						}
-						if (material->GetBindings()->GetShaderBindings().Num())
-						{
-							sets.Add(material->GetBindings()->m_vulkan.m_descriptorSet);
-						}
-
-						SAILOR_PROFILE_BLOCK("Bind descriptor sets");
-						m_commandBuffers[imageIndex]->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
-						SAILOR_PROFILE_END_BLOCK();
-
-						SAILOR_PROFILE_BLOCK("Draw Indexed");
-						m_commandBuffers[imageIndex]->DrawIndexed(mesh->m_indexBuffer->m_vulkan.m_buffer, 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
-						SAILOR_PROFILE_END_BLOCK();
-
-						SAILOR_PROFILE_END_BLOCK();
-					}
-					SAILOR_PROFILE_END_BLOCK();
-				}
-			}
-		}
-
 		m_commandBuffers[imageIndex]->EndRenderPass();
 	}
 	m_commandBuffers[imageIndex]->EndCommandList();

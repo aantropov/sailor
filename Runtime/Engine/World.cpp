@@ -1,6 +1,7 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
+#include <Components/TestComponent.h>
 
 using namespace Sailor;
 
@@ -65,7 +66,11 @@ void World::Tick(FrameState& frameState)
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 
-	GetDebugContext()->Tick(frameState.GetDeltaTime());	
+	// TODO: Move to rendering pipeline
+	if (TestComponentPtr testComponent = GetGameObjects()[0]->GetComponent<TestComponent>())
+	{
+		frameState.SetDebugFrame(GetDebugContext()->Tick(testComponent->GetFrameBinding(), frameState.GetDeltaTime()));
+	}
 }
 
 GameObjectPtr World::Instantiate(const std::string& name)

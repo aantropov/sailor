@@ -1,6 +1,7 @@
 #include "Types.h"
 #include "Renderer.h"
 #include "Mesh.h"
+#include "CommandList.h"
 #include "GraphicsDriver.h"
 #include "VertexDescription.h"
 #include "Engine/EngineLoop.h"
@@ -10,7 +11,8 @@
 #include "JobSystem/JobSystem.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
-#include <Components/TestComponent.h>
+#include "Components/TestComponent.h"
+#include "Components/MeshRendererComponent.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -115,7 +117,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	TSharedPtr<class JobSystem::ITask> renderingJob = JobSystem::Scheduler::CreateTask("Render Frame",
 		[this, frame]()
 	{
-
 		auto frameInstance = frame;
 		static Utils::Timer timer;
 		timer.Start();
@@ -132,21 +133,20 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		}
 		SAILOR_PROFILE_END_BLOCK();
 
-
 		TVector<RHI::CommandListPtr> secondaryCommandLists;
+		if (auto cmdList = DrawTestScene(frame))
+		{
+			secondaryCommandLists.Emplace(cmdList);
+		}
 
 		// Test Code
 		if (TestComponentPtr testComponent = frame.GetWorld()->GetGameObjects()[0]->GetComponent<TestComponent>())
 		{
-			auto& debugContext = frame.GetWorld()->GetDebugContext();
-			if (debugContext->GetSyncSemaphore())
+			const auto& debugFrame = frame.GetDebugFrame();
+			if (debugFrame.m_signalSemaphore && debugFrame.m_drawDebugMeshCmd)
 			{
-				waitFrameUpdate.Add(debugContext->GetSyncSemaphore());
-			}
-			
-			if (auto debugDraw = debugContext->CreateRenderingCommandList(testComponent->GetFrameBinding()))
-			{
-				secondaryCommandLists.Add(debugDraw);
+				waitFrameUpdate.Add(debugFrame.m_signalSemaphore);
+				secondaryCommandLists.Add(debugFrame.m_drawDebugMeshCmd);
 			}
 		}
 
@@ -187,4 +187,79 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	SAILOR_PROFILE_END_BLOCK();
 
 	return true;
+}
+
+// Temporary
+RHI::CommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
+{
+	for (auto& gameObject : frame.GetWorld()->GetGameObjects())
+	{
+		TestComponentPtr testComponent = gameObject->GetComponent<TestComponent>();
+		MeshRendererComponentPtr rendererComponent = gameObject->GetComponent<MeshRendererComponent>();
+
+		if (testComponent && rendererComponent)
+		{
+			auto& perInstanceBinding = testComponent->GetPerInstanceBinding();
+			auto pModel = rendererComponent->GetModel();
+
+			if (!pModel || !pModel->IsReady())
+			{
+				continue;
+			}
+
+			SAILOR_PROFILE_BLOCK("Render meshes");
+			auto cmdList = GetDriver()->CreateCommandList(true, false);
+			GetDriverCommands()->BeginCommandList(cmdList);
+
+			for (uint32_t index = 0; index < pModel->GetMeshes().Num(); index++)
+			{
+				auto pMaterial = rendererComponent->GetMaterials()[index];
+
+				if (!pMaterial->IsReady())
+				{
+					continue;
+				}
+
+				SAILOR_PROFILE_BLOCK("Get data");
+				auto& mesh = pModel->GetMeshes()[index];
+				auto& material = pMaterial->GetOrAddRHI(mesh->m_vertexDescription);
+				bool bIsMaterialReady = pMaterial && pMaterial->IsReady();
+				SAILOR_PROFILE_END_BLOCK();
+
+				if (bIsMaterialReady && pMaterial->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
+				{
+					GetDriverCommands()->BindMaterial(cmdList, material);
+					GetDriverCommands()->SetDefaultViewport(cmdList);
+
+					GetDriverCommands()->BindVertexBuffers(cmdList, { mesh->m_vertexBuffer });
+					GetDriverCommands()->BindIndexBuffer(cmdList, mesh->m_indexBuffer);
+
+					// TODO: Parse missing descriptor sets
+					TVector<ShaderBindingSetPtr> sets;
+					if (testComponent->GetFrameBinding()->GetShaderBindings().Num())
+					{
+						sets.Add(testComponent->GetFrameBinding());
+					}
+					if (perInstanceBinding->GetShaderBindings().Num())
+					{
+						sets.Add(perInstanceBinding);
+					}
+					if (material->GetBindings()->GetShaderBindings().Num())
+					{
+						sets.Add(material->GetBindings());
+					}
+
+					GetDriverCommands()->BindShaderBindings(cmdList, material, sets);
+					GetDriverCommands()->DrawIndexed(cmdList, mesh->m_indexBuffer, 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
+					
+				}
+				SAILOR_PROFILE_END_BLOCK();
+			}
+
+			GetDriverCommands()->EndCommandList(cmdList);
+			return cmdList;
+		}
+	}
+
+	return nullptr;
 }

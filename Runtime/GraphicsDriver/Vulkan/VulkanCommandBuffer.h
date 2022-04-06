@@ -11,6 +11,7 @@
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
+	// TODO: Implement the possibility to reuse command lists (read: NOT one_time_submit for secondary command buffers?)
 	class VulkanCommandBuffer final : public RHI::Resource
 	{
 
@@ -33,10 +34,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void BeginRenderPass(VulkanRenderPassPtr renderPass,
 			VulkanFramebufferPtr frameBuffer,
 			VkExtent2D extent,
+			VkSubpassContents content = VK_SUBPASS_CONTENTS_INLINE,
 			VkOffset2D offset = { 0,0 },
 			VkClearValue clearColor = VulkanApi::DefaultClearColor);
 
 		SAILOR_API void EndRenderPass();
+
+		SAILOR_API void SetDepthBias(float depthBiasConstantFactor, float depthBiasClamp = 0.0f, float depthBiasSlopeFactor = 0.0f);
 
 		SAILOR_API void BindVertexBuffers(TVector<VulkanBufferPtr> buffers, TVector <VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
 		SAILOR_API void BindIndexBuffer(VulkanBufferPtr indexBuffer);
@@ -73,6 +77,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanImagePtr> m_imageDependencies;
 		TVector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;
 		TVector<VulkanPipelinePtr> m_pipelineDependencies;
+		TVector<VulkanCommandBufferPtr> m_commandBufferDependencies;
 		TVector<VulkanSemaphorePtr> m_semaphoreDependencies;
 		TVector<TPair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
 

@@ -21,6 +21,13 @@ namespace Sailor
 
 namespace Sailor::RHI
 {
+	class DebugFrame
+	{
+	public:
+		RHI::CommandListPtr m_drawDebugMeshCmd{};
+		RHI::SemaphorePtr m_signalSemaphore{};
+	};
+
 	class DebugContext
 	{
 		struct LineProxy
@@ -37,20 +44,18 @@ namespace Sailor::RHI
 
 	public:
 
-		SAILOR_API void DrawLine(const glm::vec4& start, const glm::vec4& end, const glm::vec4 color = { 0.0f, 1.0f, 0.0f, 0.0f }, float duration = 0.0f);
-		SAILOR_API void Tick(float deltaTime);
-		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings) const;
-		SAILOR_API RHI::SemaphorePtr GetSyncSemaphore() { return m_syncSemaphore; }
+		SAILOR_API __forceinline void DrawLine(const glm::vec4& start, const glm::vec4& end, const glm::vec4 color = { 0.0f, 1.0f, 0.0f, 0.0f }, float duration = 0.0f);
+		SAILOR_API void DrawOrigin(const glm::vec4& position, float size = 1.0f, float duration = 0.0f);
+
+		// TODO: Split logic and rendering
+		SAILOR_API DebugFrame Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime);
 
 	protected:
 
+		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const;
+
 		TVector<LineProxy> m_lines;
-
-		MeshPtr m_mesh;
 		MaterialPtr m_material;
-
-		RHI::SemaphorePtr m_syncSemaphore;
-		RHI::CommandListPtr m_transferCmd;
 
 		friend class World;
 	};

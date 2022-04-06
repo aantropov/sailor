@@ -78,7 +78,7 @@ void TestComponent::Tick(float deltaTime)
 	m_frameData.m_currentTime = (float)GetWorld()->GetTime();
 	m_frameData.m_deltaTime = deltaTime;
 
-	m_frameData.m_view = glm::lookAt(vec3(transform.GetPosition()), 
+	m_frameData.m_view = glm::lookAt(vec3(transform.GetPosition()),
 		vec3(transform.GetPosition()) + transform.GetRotation() * Math::vec3_Forward,
 		Math::vec3_Up);
 
@@ -114,7 +114,7 @@ void TestComponent::Tick(float deltaTime)
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 
-	GetWorld()->GetDebugContext()->DrawLine(glm::vec4(0, 0, 0, 0), glm::vec4(0, 100, 0, 0));
+	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 10.0f);
 }
 
 

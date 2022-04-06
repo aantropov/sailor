@@ -22,34 +22,42 @@ void DebugContext::DrawLine(const glm::vec4& start, const glm::vec4& end, const 
 
 	m_lines.Add(std::move(proxy));
 }
-
-void DebugContext::Tick(float deltaTime)
+void DebugContext::DrawOrigin(const glm::vec4& position, float size, float duration)
 {
+	DrawLine(position, position + glm::vec4(size, 0, 0, 0), glm::vec4(1, 0, 0, 0), duration);
+	DrawLine(position, position + glm::vec4(0, size, 0, 0), glm::vec4(0, 1, 0, 0), duration);
+	DrawLine(position, position + glm::vec4(0, 0, size, 0), glm::vec4(0, 0, 1, 0), duration);
+}
+
+DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime)
+{
+	DebugFrame result;
+
 	SAILOR_PROFILE_FUNCTION();
 
 	if (m_lines.Num() == 0)
 	{
-		return;
+		return result;
 	}
 
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 
-	m_mesh = renderer->CreateMesh();
+	MeshPtr debugMesh = renderer->CreateMesh();
 
 	if (!m_material)
 	{
-		RenderState renderState = RHI::RenderState(true, false, 0.001f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line);
+		RenderState renderState = RHI::RenderState(true, false, 0.0f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line);
 
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;
 
 		if (!App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
-			return;
+			return result;
 		}
 
-		m_mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
-		m_material = renderer->CreateMaterial(m_mesh->m_vertexDescription, EPrimitiveTopology::LineList, renderState, pShader);
+		debugMesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
+		m_material = renderer->CreateMaterial(debugMesh->m_vertexDescription, EPrimitiveTopology::LineList, renderState, pShader);
 	}
 
 	TVector<VertexP3C4> vertices;
@@ -74,23 +82,33 @@ void DebugContext::Tick(float deltaTime)
 	const VkDeviceSize bufferSize = sizeof(RHI::VertexP3C4) * m_lines.Num() * 2;
 	const VkDeviceSize indexBufferSize = sizeof(uint32_t) * m_lines.Num() * 2;
 
-	m_transferCmd = renderer->CreateCommandList(false, true);
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_transferCmd);
+	RHI::CommandListPtr updateMeshCmd = renderer->CreateCommandList(false, true);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(updateMeshCmd);
 
-	m_mesh->m_vertexBuffer = renderer->CreateBuffer(m_transferCmd,
+	debugMesh->m_vertexBuffer = renderer->CreateBuffer(updateMeshCmd,
 		&vertices[0],
 		bufferSize,
 		EBufferUsageBit::VertexBuffer_Bit);
 
-	m_mesh->m_indexBuffer = renderer->CreateBuffer(m_transferCmd,
+	debugMesh->m_indexBuffer = renderer->CreateBuffer(updateMeshCmd,
 		&indices[0],
 		indexBufferSize,
 		EBufferUsageBit::IndexBuffer_Bit);
 
-	RHI::Renderer::GetDriverCommands()->EndCommandList(m_transferCmd);
+	RHI::Renderer::GetDriverCommands()->EndCommandList(updateMeshCmd);
 
-	m_syncSemaphore = App::GetSubmodule<Renderer>()->GetDriver()->CreateWaitSemaphore();
-	renderer->SubmitCommandList(m_transferCmd, RHI::FencePtr::Make(), m_syncSemaphore);
+	auto semaphore = App::GetSubmodule<Renderer>()->GetDriver()->CreateWaitSemaphore();
+	result.m_signalSemaphore = semaphore;
+
+	//renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), result.m_signalSemaphore);
+
+	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
+		([&renderer, updateMeshCmd, semaphore]()
+	{
+		renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), semaphore);
+	}));
+
+	result.m_drawDebugMeshCmd = CreateRenderingCommandList(frameBindings, debugMesh);
 
 	for (uint32_t i = 0; i < m_lines.Num(); i++)
 	{
@@ -102,9 +120,11 @@ void DebugContext::Tick(float deltaTime)
 			i--;
 		}
 	}
+
+	return result;
 }
 
-RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings) const
+RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const
 {
 	if (m_lines.Num() == 0 || !m_material)
 	{
@@ -117,11 +137,11 @@ RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingS
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(graphicsCmd);
 
 	RHI::Renderer::GetDriverCommands()->BindMaterial(graphicsCmd, m_material);
-	RHI::Renderer::GetDriverCommands()->BindVertexBuffers(graphicsCmd, { m_mesh->m_vertexBuffer });
-	RHI::Renderer::GetDriverCommands()->BindIndexBuffer(graphicsCmd, m_mesh->m_indexBuffer);
+	RHI::Renderer::GetDriverCommands()->BindVertexBuffers(graphicsCmd, { debugMesh->m_vertexBuffer });
+	RHI::Renderer::GetDriverCommands()->BindIndexBuffer(graphicsCmd, debugMesh->m_indexBuffer);
 	RHI::Renderer::GetDriverCommands()->SetDefaultViewport(graphicsCmd);
 	RHI::Renderer::GetDriverCommands()->BindShaderBindings(graphicsCmd, m_material, { frameBindings /*m_material->GetBindings()*/ });
-	RHI::Renderer::GetDriverCommands()->DrawIndexed(graphicsCmd, m_mesh->m_indexBuffer, 1, 0, 0, 0);
+	RHI::Renderer::GetDriverCommands()->DrawIndexed(graphicsCmd, debugMesh->m_indexBuffer, 1, 0, 0, 0);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(graphicsCmd);
 

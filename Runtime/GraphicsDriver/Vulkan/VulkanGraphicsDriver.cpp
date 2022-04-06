@@ -727,6 +727,10 @@ void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, 
 void VulkanGraphicsDriver::BindMaterial(RHI::CommandListPtr cmd, RHI::MaterialPtr material)
 {
 	cmd->m_vulkan.m_commandBuffer->BindPipeline(material->m_vulkan.m_pipeline);
+	if (material->GetRenderState().GetDepthBias() != 0.0f)
+	{
+		cmd->m_vulkan.m_commandBuffer->SetDepthBias(material->GetRenderState().GetDepthBias());
+	}
 }
 
 void VulkanGraphicsDriver::BindVertexBuffers(RHI::CommandListPtr cmd, RHI::BufferPtr vertexBuffer)

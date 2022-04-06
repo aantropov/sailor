@@ -5,6 +5,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "RHI/Renderer.h"
+#include "RHI/DebugContext.h"
 #include "Platform/Win32/Input.h"
 
 namespace Sailor
@@ -45,6 +46,9 @@ namespace Sailor
 		SAILOR_API size_t GetNumCommandLists() const { return NumCommandLists; }
 		SAILOR_API WorldPtr GetWorld() const;
 
+		SAILOR_API const RHI::DebugFrame& GetDebugFrame() const { return m_pData->m_debugFrame; }
+		SAILOR_API void SetDebugFrame(const RHI::DebugFrame& debugFrame) { m_pData->m_debugFrame = debugFrame; }
+
 	protected:
 
 		struct FrameData
@@ -56,6 +60,7 @@ namespace Sailor
 			FrameInputState m_inputState;
 			std::array<RHI::CommandListPtr, NumCommandLists> m_updateResourcesCommandBuffers;
 			WorldPtr m_world;
+			RHI::DebugFrame m_debugFrame;
 		};
 
 		TUniquePtr<FrameData> m_pData;

@@ -147,7 +147,7 @@ void VulkanCommandBuffer::EndCommandList()
 	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
 }
 
-void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkOffset2D offset, VkClearValue clearColor)
+void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkSubpassContents content, VkOffset2D offset, VkClearValue clearColor)
 {
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -166,12 +166,12 @@ void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, Vulkan
 	renderPassInfo.clearValueCount = bMSSA ? 3U : 2U;
 	renderPassInfo.pClearValues = bMSSA ? clearValues.data() : &clearValues.data()[1];
 
-	// TODO: Add support of secondary command buffers
-	// specifying VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS means this
-	// render pass may
-	// ONLY call vkCmdExecuteCommands
+	vkCmdBeginRenderPass(m_commandBuffer, &renderPassInfo, content);
+}
 
-	vkCmdBeginRenderPass(m_commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+void VulkanCommandBuffer::SetDepthBias(float depthBiasConstantFactor, float depthBiasClamp, float depthBiasSlopeFactor)
+{
+	vkCmdSetDepthBias(m_commandBuffer, depthBiasConstantFactor, depthBiasClamp, depthBiasSlopeFactor);
 }
 
 void VulkanCommandBuffer::BindVertexBuffers(TVector<VulkanBufferPtr> buffers, TVector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
@@ -247,6 +247,7 @@ void VulkanCommandBuffer::ClearDependencies()
 	m_descriptorSetDependencies.Clear();
 	m_pipelineDependencies.Clear();
 	m_semaphoreDependencies.Clear();
+	m_commandBufferDependencies.Clear();
 
 	for (auto& managedPtr : m_memoryPtrs)
 	{
@@ -262,6 +263,7 @@ void VulkanCommandBuffer::ClearDependencies()
 void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)
 {
 	vkCmdExecuteCommands(m_commandBuffer, 1, secondaryCommandBuffer->GetHandle());
+	m_commandBufferDependencies.Add(secondaryCommandBuffer);
 }
 
 void VulkanCommandBuffer::SetViewport(VulkanStateViewportPtr viewport)

@@ -50,6 +50,8 @@ namespace Sailor::RHI
 
 	protected:
 
+		RHI::CommandListPtr DrawTestScene(const Sailor::FrameState& frame);
+
 		std::atomic<bool> m_bForceStop = false;
 		std::atomic<uint32_t> m_pureFps = 0u;
 		std::atomic<uint32_t> m_numFrames = 0u;
