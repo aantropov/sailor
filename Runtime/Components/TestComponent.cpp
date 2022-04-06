@@ -23,6 +23,8 @@ void TestComponent::BeginPlay()
 			[=](bool bRes) { Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture->GetRHI(), 1);
 		});
 	}
+
+	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0,2,0,0), 10.0f, 1000.0f);
 }
 
 void TestComponent::EndPlay()
@@ -114,10 +116,6 @@ void TestComponent::Tick(float deltaTime)
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 
-	for (float i = 0.0f; i < 10000.0f; i++)
-	{
-		GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(rand() % 1000, rand() % 1000, rand() % 1000 - 500, 0), 5.0f);
-	}
 }
 
 
