@@ -2,6 +2,7 @@
 #include "Memory/RefPtr.hpp"
 #include "Renderer.h"
 #include "Types.h"
+#include "Math/Math.h"
 
 namespace Sailor::RHI
 {
@@ -9,9 +10,10 @@ namespace Sailor::RHI
 	{
 	public:
 
-		BufferPtr m_vertexBuffer;
-		BufferPtr m_indexBuffer;
-		VertexDescriptionPtr m_vertexDescription;
+		BufferPtr m_vertexBuffer{};
+		BufferPtr m_indexBuffer{};
+		VertexDescriptionPtr m_vertexDescription{};
+		Math::AABB m_bounds{};
 
 		SAILOR_API virtual bool IsReady() const override;
 

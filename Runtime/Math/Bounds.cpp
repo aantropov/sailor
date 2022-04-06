@@ -69,3 +69,15 @@ bool Frustum::CheckSphere(const Sphere& sphere) const
 
 	return true;
 }
+
+void AABB::Extend(const AABB& inner)
+{
+	m_min = glm::min(inner.m_min, m_min);
+	m_max = glm::max(inner.m_max, m_max);
+}
+
+void AABB::Extend(const glm::vec3& inner)
+{
+	m_min = glm::min(inner, m_min);
+	m_max = glm::max(inner, m_max);
+}

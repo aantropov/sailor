@@ -30,6 +30,9 @@ namespace Sailor::Math
 	{
 		glm::vec3 m_min{};
 		glm::vec3 m_max{};
+
+		SAILOR_API __forceinline void Extend(const AABB& inner);
+		SAILOR_API __forceinline void Extend(const glm::vec3& inner);
 	};
 
 	class Frustum

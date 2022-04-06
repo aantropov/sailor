@@ -11,7 +11,7 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void DebugContext::DrawLine(const glm::vec4& start, const glm::vec4& end, const glm::vec4 color, float duration)
+void DebugContext::DrawLine(const glm::vec3& start, const glm::vec3& end, const glm::vec4 color, float duration)
 {
 	LineProxy proxy;
 
@@ -22,11 +22,30 @@ void DebugContext::DrawLine(const glm::vec4& start, const glm::vec4& end, const 
 
 	m_lines.Add(std::move(proxy));
 }
-void DebugContext::DrawOrigin(const glm::vec4& position, float size, float duration)
+
+void DebugContext::DrawAABB(const Math::AABB& aabb, const glm::vec4 color, float duration)
 {
-	DrawLine(position, position + glm::vec4(size, 0, 0, 0), glm::vec4(1, 0, 0, 0), duration);
-	DrawLine(position, position + glm::vec4(0, size, 0, 0), glm::vec4(0, 1, 0, 0), duration);
-	DrawLine(position, position + glm::vec4(0, 0, size, 0), glm::vec4(0, 0, 1, 0), duration);
+	DrawLine(aabb.m_min, vec3(aabb.m_max.x, aabb.m_min.y, aabb.m_min.z), color, duration);
+	DrawLine(aabb.m_min, vec3(aabb.m_min.x, aabb.m_max.y, aabb.m_min.z), color, duration);
+	DrawLine(aabb.m_min, vec3(aabb.m_min.x, aabb.m_min.y, aabb.m_max.z), color, duration);
+
+	DrawLine(aabb.m_max, vec3(aabb.m_min.x, aabb.m_max.y, aabb.m_max.z), color, duration);
+	DrawLine(aabb.m_max, vec3(aabb.m_max.x, aabb.m_min.y, aabb.m_max.z), color, duration);
+	DrawLine(aabb.m_max, vec3(aabb.m_max.x, aabb.m_max.y, aabb.m_min.z), color, duration);
+
+	DrawLine(vec3(aabb.m_min.x, aabb.m_max.y, aabb.m_max.z), vec3(aabb.m_min.x, aabb.m_max.y, aabb.m_min.z), color, duration);
+	DrawLine(vec3(aabb.m_min.x, aabb.m_max.y, aabb.m_max.z), vec3(aabb.m_min.x, aabb.m_min.y, aabb.m_max.z), color, duration);
+	DrawLine(vec3(aabb.m_min.x, aabb.m_min.y, aabb.m_max.z), vec3(aabb.m_max.x, aabb.m_min.y, aabb.m_max.z), color, duration);
+	DrawLine(vec3(aabb.m_max.x, aabb.m_min.y, aabb.m_max.z), vec3(aabb.m_max.x, aabb.m_min.y, aabb.m_min.z), color, duration);
+	DrawLine(vec3(aabb.m_max.x, aabb.m_min.y, aabb.m_min.z), vec3(aabb.m_max.x, aabb.m_max.y, aabb.m_min.z), color, duration);
+	DrawLine(vec3(aabb.m_max.x, aabb.m_max.y, aabb.m_min.z), vec3(aabb.m_min.x, aabb.m_max.y, aabb.m_min.z), color, duration);
+}
+
+void DebugContext::DrawOrigin(const glm::vec3& position, float size, float duration)
+{
+	DrawLine(position, position + glm::vec3(size, 0, 0), glm::vec4(1, 0, 0, 1), duration);
+	DrawLine(position, position + glm::vec3(0, size, 0), glm::vec4(0, 1, 0, 1), duration);
+	DrawLine(position, position + glm::vec3(0, 0, size), glm::vec4(0, 0, 1, 1), duration);
 }
 
 DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime)
@@ -78,7 +97,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 		indices[i * 2] = (uint32_t)(i * 2);
 		indices[i * 2 + 1] = (uint32_t)(i * 2 + 1);
-	}	
+	}
 
 	const VkDeviceSize bufferSize = sizeof(RHI::VertexP3C4) * m_lines.Num() * 2;
 	const VkDeviceSize indexBufferSize = sizeof(uint32_t) * m_lines.Num() * 2;
@@ -97,10 +116,10 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		EBufferUsageBit::IndexBuffer_Bit);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(updateMeshCmd);
-	
+
 	auto semaphore = App::GetSubmodule<Renderer>()->GetDriver()->CreateWaitSemaphore();
 	result.m_signalSemaphore = semaphore;
-	
+
 	//renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), result.m_signalSemaphore);
 
 	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",

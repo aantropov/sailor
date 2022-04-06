@@ -261,6 +261,8 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 		std::unordered_map<RHI::VertexP3N3UV2C4, uint32_t> uniqueVertices;
 		TVector<RHI::VertexP3N3UV2C4> outVertices;
 		TVector<uint32_t> outIndices;
+		Math::AABB bounds{};
+		bool bIsInited = false;
 	};
 
 	TVector<MeshContext> meshes;
@@ -297,13 +299,14 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 			};
 
 			// Calculate bounds 
-			outBoundsAabb.m_min.x = std::min(vertex.m_position.x, outBoundsAabb.m_min.x);
-			outBoundsAabb.m_min.y = std::min(vertex.m_position.y, outBoundsAabb.m_min.y);
-			outBoundsAabb.m_min.z = std::min(vertex.m_position.z, outBoundsAabb.m_min.z);
-
-			outBoundsAabb.m_max.x = std::max(vertex.m_position.x, outBoundsAabb.m_max.x);
-			outBoundsAabb.m_max.y = std::max(vertex.m_position.y, outBoundsAabb.m_max.y);
-			outBoundsAabb.m_max.z = std::max(vertex.m_position.z, outBoundsAabb.m_max.z);
+			if (!mesh.bIsInited)
+			{
+				mesh.bounds.m_max = mesh.bounds.m_min = vertex.m_position;
+				mesh.bIsInited = true;
+			}
+			
+			mesh.bounds.Extend(vertex.m_position);
+			outBoundsAabb.Extend(mesh.bounds);
 
 			if (mesh.uniqueVertices.count(vertex) == 0)
 			{
@@ -324,6 +327,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 	{
 		RHI::MeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
 		ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+		ptr->m_bounds = mesh.bounds;
 		RHI::Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
 		outMeshes.Emplace(ptr);
 	}

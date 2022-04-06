@@ -110,12 +110,18 @@ void TestComponent::Tick(float deltaTime)
 					std::max(0.5f, float(sin(0.001 * (double)GetWorld()->GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
 			}
 		}
+
+		for (auto& mesh : meshRenderer->GetModel()->GetMeshes())
+		{
+			GetWorld()->GetDebugContext()->DrawAABB(mesh->m_bounds);
+		}
+
+		GetWorld()->GetDebugContext()->DrawAABB(meshRenderer->GetModel()->GetBoundsAABB());
 	}
 
 	SAILOR_PROFILE_END_BLOCK();
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
-
 }
 
 

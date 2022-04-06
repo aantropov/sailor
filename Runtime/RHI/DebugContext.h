@@ -33,8 +33,8 @@ namespace Sailor::RHI
 		struct LineProxy
 		{
 			// Locations are in world space
-			glm::vec4 m_startLocation{};
-			glm::vec4 m_endLocation{};
+			glm::vec3 m_startLocation{};
+			glm::vec3 m_endLocation{};
 
 			glm::vec4 m_color{};
 
@@ -44,8 +44,11 @@ namespace Sailor::RHI
 
 	public:
 
-		SAILOR_API __forceinline void DrawLine(const glm::vec4& start, const glm::vec4& end, const glm::vec4 color = { 0.0f, 1.0f, 0.0f, 0.0f }, float duration = 0.0f);
-		SAILOR_API void DrawOrigin(const glm::vec4& position, float size = 1.0f, float duration = 0.0f);
+		SAILOR_API __forceinline void DrawLine(const glm::vec3& start, const glm::vec3& end, const glm::vec4 color = { 0.0f, 1.0f, 0.0f, 0.0f }, float duration = 0.0f);
+		SAILOR_API void DrawOrigin(const glm::vec3& position, float size = 1.0f, float duration = 0.0f);
+		SAILOR_API void DrawAABB(const Math::AABB& aabb, const glm::vec4 color = { 0.0f, 0.0f, 1.0f, 0.0f }, float duration = 0.0f);
+		SAILOR_API void DrawSphere(const glm::vec3& position, float size = 1.0f, const glm::vec4 color = { 0.0f, 0.0f, 0.0f, 1.0f }, float duration = 0.0f);
+
 
 		// TODO: Split logic and rendering
 		SAILOR_API DebugFrame Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime);
