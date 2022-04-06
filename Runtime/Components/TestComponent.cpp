@@ -114,7 +114,10 @@ void TestComponent::Tick(float deltaTime)
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 
-	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 10.0f);
+	for (float i = 0.0f; i < 10000.0f; i++)
+	{
+		GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(rand() % 1000, rand() % 1000, rand() % 1000 - 500, 0), 5.0f);
+	}
 }
 
 

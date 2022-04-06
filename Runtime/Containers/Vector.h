@@ -113,7 +113,7 @@ namespace Sailor
 			AddDefault(countDefaultElements);
 		}
 
-		~TVector() { Clear(); }
+		~TVector() { Clear(true); }
 
 		TVector(std::initializer_list<TElementType> initList) : TVector(initList.begin(), initList.size()) {}
 

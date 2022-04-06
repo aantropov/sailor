@@ -46,7 +46,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 	if (!m_material)
 	{
-		RenderState renderState = RHI::RenderState(true, false, 0.0f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line);
+		RenderState renderState = RHI::RenderState(true, false, 0.1f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line);
 
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;
@@ -60,8 +60,8 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		m_material = renderer->CreateMaterial(debugMesh->m_vertexDescription, EPrimitiveTopology::LineList, renderState, pShader);
 	}
 
-	TVector<VertexP3C4> vertices;
-	TVector<uint32_t> indices;
+	TVector<VertexP3C4> vertices(m_lines.Num() * 2);
+	TVector<uint32_t> indices(m_lines.Num() * 2);
 	for (uint32_t i = 0; i < m_lines.Num(); i++)
 	{
 		VertexP3C4 start{};
@@ -72,11 +72,11 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		end.m_color = m_lines[i].m_color;
 		end.m_position = m_lines[i].m_endLocation;
 
-		vertices.Emplace(std::move(start));
-		vertices.Emplace(std::move(end));
+		vertices[i * 2] = start;
+		vertices[i * 2 + 1] = end;
 
-		indices.Add((uint32_t)indices.Num());
-		indices.Add((uint32_t)indices.Num());
+		indices[i * 2] = (uint32_t)(i * 2);
+		indices[i * 2 + 1] = (uint32_t)(i * 2 + 1);
 	}
 
 	const VkDeviceSize bufferSize = sizeof(RHI::VertexP3C4) * m_lines.Num() * 2;
