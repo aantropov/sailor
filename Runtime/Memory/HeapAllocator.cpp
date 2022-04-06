@@ -259,12 +259,7 @@ void Page::Free(void* pData)
 	// merge freespace
 	if (bShouldMergeRight && !bShouldMergeLeft)
 	{
-		m_occupiedSpace -= sizeof(Header);
-
-		if (!pNext->m_bIsFree)
-		{
-			m_occupiedSpace -= pNext->m_size;
-		}
+		m_occupiedSpace -= sizeof(Header) + block->m_size;
 
 		const size_t blockAddr = Offset(block, m_pData);
 		Header* pNextNextFree = static_cast<Header*>(pNext->m_nextFree != InvalidIndexUINT64 ? ShiftPtr(m_pData, pNext->m_nextFree) : nullptr);

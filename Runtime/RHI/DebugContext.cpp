@@ -60,8 +60,9 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		m_material = renderer->CreateMaterial(debugMesh->m_vertexDescription, EPrimitiveTopology::LineList, renderState, pShader);
 	}
 
-	TVector<VertexP3C4> vertices(m_lines.Num() * 2);
 	TVector<uint32_t> indices(m_lines.Num() * 2);
+	TVector<VertexP3C4> vertices(m_lines.Num() * 2);
+
 	for (uint32_t i = 0; i < m_lines.Num(); i++)
 	{
 		VertexP3C4 start{};
@@ -77,7 +78,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 		indices[i * 2] = (uint32_t)(i * 2);
 		indices[i * 2 + 1] = (uint32_t)(i * 2 + 1);
-	}
+	}	
 
 	const VkDeviceSize bufferSize = sizeof(RHI::VertexP3C4) * m_lines.Num() * 2;
 	const VkDeviceSize indexBufferSize = sizeof(uint32_t) * m_lines.Num() * 2;
@@ -96,10 +97,10 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		EBufferUsageBit::IndexBuffer_Bit);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(updateMeshCmd);
-
+	
 	auto semaphore = App::GetSubmodule<Renderer>()->GetDriver()->CreateWaitSemaphore();
 	result.m_signalSemaphore = semaphore;
-
+	
 	//renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), result.m_signalSemaphore);
 
 	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
