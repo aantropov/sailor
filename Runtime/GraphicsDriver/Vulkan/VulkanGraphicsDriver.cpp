@@ -617,8 +617,13 @@ void VulkanGraphicsDriver::BeginCommandList(RHI::CommandListPtr cmd, bool bOneTi
 	{
 		auto device = m_vkInstance->GetMainDevice();
 
-		// This tells Vulkan that this secondary command buffer will be executed entirely inside a render pass.
+		// This tells Vulkan that this secondary command buffer will be executed entirely inside a render pass.		
 		flags |= VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+
+		if (!bOneTimeSubmit)
+		{
+			flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+		}
 
 		cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(device->GetRenderPass(), 0, flags);
 	}

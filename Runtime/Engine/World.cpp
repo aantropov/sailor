@@ -105,6 +105,7 @@ void World::Clear()
 
 	m_objects.Clear();
 	m_pendingDestroyObjects.Clear();
+	m_pDebugContext.Clear();
 
 	for (auto& ecs : m_ecs)
 	{

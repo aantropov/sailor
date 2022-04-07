@@ -26,6 +26,7 @@ namespace Sailor::RHI
 	public:
 		RHI::CommandListPtr m_drawDebugMeshCmd{};
 		RHI::SemaphorePtr m_signalSemaphore{};
+		uint32_t m_linesCount{};
 	};
 
 	class DebugContext
@@ -55,12 +56,13 @@ namespace Sailor::RHI
 	protected:
 
 		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const;
-		
-		TVector<uint32_t> m_cachedIndices;
-		RHI::MeshPtr m_cachedMesh;
 
-		TVector<LineProxy> m_lines;
-		MaterialPtr m_material;
+		TVector<uint32_t> m_cachedIndices{};
+		RHI::MeshPtr m_cachedMesh{};		
+		DebugFrame m_cachedFrame{};
+
+		TVector<LineProxy> m_lines{};
+		MaterialPtr m_material{};
 
 		friend class World;
 	};

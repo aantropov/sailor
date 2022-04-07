@@ -50,13 +50,11 @@ void DebugContext::DrawOrigin(const glm::vec3& position, float size, float durat
 
 DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime)
 {
-	DebugFrame result;
-
 	SAILOR_PROFILE_FUNCTION();
 
 	if (m_lines.Num() == 0)
 	{
-		return result;
+		return DebugFrame();
 	}
 
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
@@ -70,7 +68,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 		if (!App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
-			return result;
+			return DebugFrame();
 		}
 
 		m_cachedMesh = renderer->CreateMesh();
@@ -142,7 +140,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 	RHI::Renderer::GetDriverCommands()->EndCommandList(updateMeshCmd);
 
 	auto semaphore = App::GetSubmodule<Renderer>()->GetDriver()->CreateWaitSemaphore();
-	result.m_signalSemaphore = semaphore;
+	m_cachedFrame.m_signalSemaphore = semaphore;
 
 	//renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), result.m_signalSemaphore);
 
@@ -152,7 +150,13 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), semaphore);
 	}));
 
-	result.m_drawDebugMeshCmd = CreateRenderingCommandList(frameBindings, m_cachedMesh);
+	if (!m_cachedFrame.m_drawDebugMeshCmd ||
+		!RHI::Renderer::GetDriverCommands()->FitsDefaultViewport(m_cachedFrame.m_drawDebugMeshCmd) ||
+		m_cachedFrame.m_linesCount != m_lines.Num())
+	{
+		m_cachedFrame.m_drawDebugMeshCmd = CreateRenderingCommandList(frameBindings, m_cachedMesh);
+		m_cachedFrame.m_linesCount = (uint32_t)m_lines.Num();
+	}
 
 	for (uint32_t i = 0; i < m_lines.Num(); i++)
 	{
@@ -165,20 +169,15 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		}
 	}
 
-	return result;
+	return m_cachedFrame;
 }
 
 RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const
 {
-	if (m_lines.Num() == 0 || !m_material || !frameBindings->IsReady())
-	{
-		return nullptr;
-	}
-
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 	RHI::CommandListPtr graphicsCmd = renderer->CreateCommandList(true, false);
 
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(graphicsCmd, true);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(graphicsCmd);
 
 	RHI::Renderer::GetDriverCommands()->BindMaterial(graphicsCmd, m_material);
 	RHI::Renderer::GetDriverCommands()->BindVertexBuffers(graphicsCmd, { debugMesh->m_vertexBuffer });
