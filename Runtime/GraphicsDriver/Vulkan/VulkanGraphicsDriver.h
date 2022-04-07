@@ -83,7 +83,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		//End Immediate context
 
 		//Begin IGraphicsDriverCommands
-		SAILOR_API virtual void BeginCommandList(RHI::CommandListPtr cmd);
+		SAILOR_API virtual bool FitsViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth);
+		SAILOR_API virtual bool FitsDefaultViewport(RHI::CommandListPtr cmd);
+
+		SAILOR_API virtual void BeginCommandList(RHI::CommandListPtr cmd, bool bOneTimeSubmit = false);
 		SAILOR_API virtual void EndCommandList(RHI::CommandListPtr cmd);
 
 		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size);

@@ -15,6 +15,7 @@
 #include "VulkanImage.h"
 #include "VulkanCommandBuffer.h"
 #include "VulkanPipeline.h"
+#include "VulkanPipileneStates.h"
 #include "VulkanShaderModule.h"
 #include "VulkanBufferMemory.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
@@ -608,20 +609,22 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings
 
 // IGraphicsDriverCommands
 
-void VulkanGraphicsDriver::BeginCommandList(RHI::CommandListPtr cmd)
+void VulkanGraphicsDriver::BeginCommandList(RHI::CommandListPtr cmd, bool bOneTimeSubmit)
 {
+	uint32_t flags = bOneTimeSubmit ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
+
 	if (cmd->m_vulkan.m_commandBuffer->GetLevel() == VK_COMMAND_BUFFER_LEVEL_SECONDARY)
 	{
 		auto device = m_vkInstance->GetMainDevice();
 
 		// This tells Vulkan that this secondary command buffer will be executed entirely inside a render pass.
-		const uint32_t flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		flags |= VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
 		cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(device->GetRenderPass(), 0, flags);
 	}
 	else
 	{
-		cmd->m_vulkan.m_commandBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+		cmd->m_vulkan.m_commandBuffer->BeginCommandList(flags);
 	}
 }
 
@@ -776,4 +779,22 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::CommandListPtr cmd, RHI::Mate
 void VulkanGraphicsDriver::DrawIndexed(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
 	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexBuffer->m_vulkan.m_buffer, 1, 0, 0, 0);
+}
+
+bool VulkanGraphicsDriver::FitsViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth)
+{
+	VulkanStateViewport viewport(x, y, width, height,
+		VkOffset2D((int32_t)scissorOffset.x, (int32_t)scissorOffset.y),
+		VkExtent2D((uint32_t)scissorExtent.x, (uint32_t)scissorExtent.y),
+		minDepth, maxDepth);
+
+	return cmd->m_vulkan.m_commandBuffer->FitsViewport(viewport.GetViewport());
+}
+
+bool VulkanGraphicsDriver::FitsDefaultViewport(RHI::CommandListPtr cmd)
+{
+	auto device = m_vkInstance->GetMainDevice();
+	auto pStateViewport = device->GetCurrentFrameViewport();
+
+	return cmd->m_vulkan.m_commandBuffer->FitsViewport(pStateViewport->GetViewport());
 }

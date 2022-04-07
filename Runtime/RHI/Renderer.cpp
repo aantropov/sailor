@@ -209,7 +209,7 @@ RHI::CommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 
 			SAILOR_PROFILE_BLOCK("Render meshes");
 			auto cmdList = GetDriver()->CreateCommandList(true, false);
-			GetDriverCommands()->BeginCommandList(cmdList);
+			GetDriverCommands()->BeginCommandList(cmdList, true);
 
 			for (uint32_t index = 0; index < pModel->GetMeshes().Num(); index++)
 			{

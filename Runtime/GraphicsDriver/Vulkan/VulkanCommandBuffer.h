@@ -71,6 +71,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API VkCommandBufferLevel GetLevel() const { return m_level; }
 
+		// Used to get that the command list should be re-recorded
+		SAILOR_API bool FitsViewport(const VkViewport& viewport) const;
+
 	protected:
 
 		TVector<VulkanBufferPtr> m_bufferDependencies;
@@ -87,5 +90,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkCommandBufferLevel m_level;
 
 		DWORD m_currentThreadId = 0;
+		
+		// We're tracking only viewport due to scissor almost never changed
+		bool m_bHasViewport = false;
+		VkViewport m_cachedViewportSettings{};
 	};
 }

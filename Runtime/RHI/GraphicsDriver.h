@@ -9,7 +9,7 @@ auto lambda = Lambda; \
 auto submit = [lambda]() \
 { \
 	Sailor::RHI::CommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, false); \
-	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList); \
+	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
 	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
@@ -23,7 +23,7 @@ auto lambda = Lambda; \
 auto submit = [lambda]() \
 { \
 	Sailor::RHI::CommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, true); \
-	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList); \
+	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
 	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
@@ -158,7 +158,10 @@ namespace Sailor::RHI
 	{
 	public:
 
-		SAILOR_API virtual void BeginCommandList(CommandListPtr cmd) = 0;
+		SAILOR_API virtual bool FitsViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
+		SAILOR_API virtual bool FitsDefaultViewport(RHI::CommandListPtr cmd) = 0;
+
+		SAILOR_API virtual void BeginCommandList(CommandListPtr cmd, bool bOneTimeSubmit = false) = 0;
 		SAILOR_API virtual void EndCommandList(CommandListPtr cmd) = 0;
 
 		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);

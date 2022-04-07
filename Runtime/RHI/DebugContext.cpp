@@ -154,7 +154,7 @@ RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingS
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 	RHI::CommandListPtr graphicsCmd = renderer->CreateCommandList(true, false);
 
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(graphicsCmd);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(graphicsCmd, true);
 
 	RHI::Renderer::GetDriverCommands()->BindMaterial(graphicsCmd, m_material);
 	RHI::Renderer::GetDriverCommands()->BindVertexBuffers(graphicsCmd, { debugMesh->m_vertexBuffer });

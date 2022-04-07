@@ -268,7 +268,15 @@ void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)
 
 void VulkanCommandBuffer::SetViewport(VulkanStateViewportPtr viewport)
 {
-	vkCmdSetViewport(m_commandBuffer, 0, 1, &viewport->GetViewport());
+	m_bHasViewport = true;
+	m_cachedViewportSettings = viewport->GetViewport();
+
+	vkCmdSetViewport(m_commandBuffer, 0, 1, &m_cachedViewportSettings);
+}
+
+bool VulkanCommandBuffer::FitsViewport(const VkViewport& viewport) const
+{
+	return !m_bHasViewport || std::memcmp(&m_cachedViewportSettings, &viewport, sizeof(VkViewport)) == 0;
 }
 
 void VulkanCommandBuffer::SetScissor(VulkanStateViewportPtr viewport)
