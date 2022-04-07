@@ -64,7 +64,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Used for full binding update
 		SAILOR_API virtual void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, RHI::TexturePtr value);
-		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);
+		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);		
 
 		// Begin Immediate context
 		SAILOR_API virtual RHI::BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
@@ -91,6 +91,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size);
 		SAILOR_API virtual void UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t offset = 0);
+		SAILOR_API virtual void UpdateBuffer(RHI::CommandListPtr cmd, RHI::BufferPtr buffer, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API virtual void SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size);
 
 		SAILOR_API virtual void BindMaterial(RHI::CommandListPtr cmd, RHI::MaterialPtr material);
@@ -99,8 +100,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void SetViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth);
 		SAILOR_API virtual void SetDefaultViewport(RHI::CommandListPtr cmd);
 		SAILOR_API virtual void BindShaderBindings(RHI::CommandListPtr cmd, RHI::MaterialPtr, const TVector<RHI::ShaderBindingSetPtr>& bindings);
-		SAILOR_API virtual void DrawIndexed(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance);
+		SAILOR_API virtual void DrawIndexed(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance);
 		//End IGraphicsDriverCommands
+
+		// Vulkan specific
+		SAILOR_API void Copy(RHI::CommandListPtr cmd, VulkanBufferPtr buffer, const void* data, size_t size, size_t offset = 0);
 
 	protected:
 

@@ -47,7 +47,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, TVector<VulkanDescriptorSetPtr> descriptorSet);
 		SAILOR_API void BindPipeline(VulkanPipelinePtr pipeline);
 
-		SAILOR_API void DrawIndexed(VulkanBufferPtr indexBuffer, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0);
+		SAILOR_API void DrawIndexed(VulkanBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0);
 
 		SAILOR_API void Execute(VulkanCommandBufferPtr secondaryCommandBuffer);
 		SAILOR_API void CopyBuffer(VulkanBufferPtr  src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
@@ -90,7 +90,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkCommandBufferLevel m_level;
 
 		DWORD m_currentThreadId = 0;
-		
+
 		// We're tracking only viewport due to scissor almost never changed
 		bool m_bHasViewport = false;
 		VkViewport m_cachedViewportSettings{};

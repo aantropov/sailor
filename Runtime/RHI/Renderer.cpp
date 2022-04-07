@@ -250,8 +250,7 @@ RHI::CommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 					}
 
 					GetDriverCommands()->BindShaderBindings(cmdList, material, sets);
-					GetDriverCommands()->DrawIndexed(cmdList, mesh->m_indexBuffer, 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
-					
+					GetDriverCommands()->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
 				}
 				SAILOR_PROFILE_END_BLOCK();
 			}

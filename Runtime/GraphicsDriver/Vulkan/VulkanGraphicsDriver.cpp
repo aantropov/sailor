@@ -642,6 +642,20 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::Sha
 	auto& binding = parameter->m_vulkan.m_valueBinding;
 	auto dstBuffer = binding.m_ptr.m_buffer;
 
+	Copy(cmd, dstBuffer, pData, size, binding.m_offset + variableOffset);
+}
+
+void VulkanGraphicsDriver::UpdateBuffer(RHI::CommandListPtr cmd, RHI::BufferPtr buffer, const void* pData, size_t size, size_t offset)
+{
+	Copy(cmd, buffer->m_vulkan.m_buffer, pData, size, offset);
+}
+
+void VulkanGraphicsDriver::Copy(RHI::CommandListPtr cmd, VulkanBufferPtr dstBuffer, const void* data, size_t size, size_t offset)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
+
 	const auto& requirements = dstBuffer->GetMemoryRequirements();
 
 	VulkanBufferPtr stagingBuffer;
@@ -689,11 +703,11 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::Sha
 #endif
 
 	SAILOR_PROFILE_BLOCK("Copy data to staging buffer");
-	stagingBuffer->GetMemoryDevice()->Copy(m_memoryOffset, size, pData);
+	stagingBuffer->GetMemoryDevice()->Copy(m_memoryOffset, size, data);
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command");
-	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, m_bufferOffset, binding.m_offset + variableOffset);
+	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer, dstBuffer, size, m_bufferOffset, offset);
 	SAILOR_PROFILE_END_BLOCK();
 }
 
@@ -776,9 +790,9 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::CommandListPtr cmd, RHI::Mate
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
 }
 
-void VulkanGraphicsDriver::DrawIndexed(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
+void VulkanGraphicsDriver::DrawIndexed(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
-	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexBuffer->m_vulkan.m_buffer, 1, 0, 0, 0);
+	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexBuffer->m_vulkan.m_buffer, indexCount, 1, 0, 0, 0);
 }
 
 bool VulkanGraphicsDriver::FitsViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth)

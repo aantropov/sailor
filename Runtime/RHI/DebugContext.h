@@ -55,6 +55,9 @@ namespace Sailor::RHI
 	protected:
 
 		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const;
+		
+		TVector<uint32_t> m_cachedIndices;
+		RHI::MeshPtr m_cachedMesh;
 
 		TVector<LineProxy> m_lines;
 		MaterialPtr m_material;
