@@ -164,9 +164,10 @@ namespace Sailor::RHI
 		SAILOR_API virtual void BeginCommandList(CommandListPtr cmd, bool bOneTimeSubmit = false) = 0;
 		SAILOR_API virtual void EndCommandList(CommandListPtr cmd) = 0;
 
-		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);
-		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
+		SAILOR_API virtual void UpdateShaderBindingVariable(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);
+		SAILOR_API virtual void UpdateShaderBindingVariable(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
 		SAILOR_API virtual void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
+		SAILOR_API virtual void UpdateBuffer(CommandListPtr cmd, RHI::BufferPtr buffer, const void* data, size_t size, size_t offset = 0) = 0;
 		SAILOR_API virtual void SetMaterialParameter(CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 
 		SAILOR_API virtual void BindMaterial(CommandListPtr cmd, RHI::MaterialPtr material) = 0;

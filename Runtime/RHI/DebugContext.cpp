@@ -81,6 +81,11 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 	TVector<VertexP3C4> vertices(m_lines.Num() * 2);
 
 	const bool bNeedUpdateIndexBuffer = m_cachedIndices.Num() < m_lines.Num() * 2;
+	if (bNeedUpdateIndexBuffer)
+	{
+		m_cachedIndices.Resize(m_lines.Num() * 2);
+	}
+
 	for (uint32_t i = 0; i < m_lines.Num(); i++)
 	{
 		VertexP3C4 start{};
@@ -94,9 +99,10 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		vertices[i * 2] = start;
 		vertices[i * 2 + 1] = end;
 
-		if (m_cachedIndices.Num() < i)
+		if (bNeedUpdateIndexBuffer)
 		{
-			m_cachedIndices.AddRange({ i * 2,i * 2 + 1 });
+			m_cachedIndices[i * 2] = i * 2;
+			m_cachedIndices[i * 2 + 1] = i * 2 + 1;
 		}
 	}
 
@@ -115,7 +121,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 	}
 	else
 	{
-		// TODO: Update existing buffer
+		RHI::Renderer::GetDriverCommands()->UpdateBuffer(updateMeshCmd, m_cachedMesh->m_vertexBuffer, &vertices[0], bufferSize);
 	}
 
 	if (bNeedUpdateIndexBuffer)
@@ -129,7 +135,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		}
 		else
 		{
-			// TODO: Update existing buffer
+			RHI::Renderer::GetDriverCommands()->UpdateBuffer(updateMeshCmd, m_cachedMesh->m_indexBuffer, &m_cachedIndices[0], indexBufferSize);
 		}
 	}
 

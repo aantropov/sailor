@@ -642,15 +642,15 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::Sha
 	auto& binding = parameter->m_vulkan.m_valueBinding;
 	auto dstBuffer = binding.m_ptr.m_buffer;
 
-	Copy(cmd, dstBuffer, pData, size, binding.m_offset + variableOffset);
+	Update(cmd, dstBuffer, pData, size, binding.m_offset + variableOffset);
 }
 
 void VulkanGraphicsDriver::UpdateBuffer(RHI::CommandListPtr cmd, RHI::BufferPtr buffer, const void* pData, size_t size, size_t offset)
 {
-	Copy(cmd, buffer->m_vulkan.m_buffer, pData, size, offset);
+	Update(cmd, buffer->m_vulkan.m_buffer, pData, size, offset);
 }
 
-void VulkanGraphicsDriver::Copy(RHI::CommandListPtr cmd, VulkanBufferPtr dstBuffer, const void* data, size_t size, size_t offset)
+void VulkanGraphicsDriver::Update(RHI::CommandListPtr cmd, VulkanBufferPtr dstBuffer, const void* data, size_t size, size_t offset)
 {
 	SAILOR_PROFILE_FUNCTION();
 

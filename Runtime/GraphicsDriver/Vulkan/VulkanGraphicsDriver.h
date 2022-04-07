@@ -104,7 +104,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		//End IGraphicsDriverCommands
 
 		// Vulkan specific
-		SAILOR_API void Copy(RHI::CommandListPtr cmd, VulkanBufferPtr buffer, const void* data, size_t size, size_t offset = 0);
+		SAILOR_API void Update(RHI::CommandListPtr cmd, VulkanBufferPtr buffer, const void* data, size_t size, size_t offset = 0);
 
 	protected:
 
