@@ -174,6 +174,11 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const
 {
+	if (m_lines.Num() == 0)
+	{
+		return nullptr;
+	}
+
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 	RHI::CommandListPtr graphicsCmd = renderer->CreateCommandList(true, false);
 

@@ -73,6 +73,7 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = flags;
+	beginInfo.pInheritanceInfo = nullptr;
 
 	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
 
@@ -80,7 +81,9 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 }
 
 void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPass, uint32_t subpassIndex, VkCommandBufferUsageFlags flags)
-{
+{	
+	ClearDependencies();
+
 	// We can omit framebuffer for now
 	VkCommandBufferInheritanceInfo inheritanceInfo{};
 	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
@@ -94,7 +97,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPa
 
 	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
 
-	ClearDependencies();
+	m_renderPass = renderPass;
 }
 
 void VulkanCommandBuffer::CopyBuffer(VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
@@ -144,11 +147,14 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr 
 
 void VulkanCommandBuffer::EndCommandList()
 {
+	m_bIsRecorded = true;
 	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
 }
 
 void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkSubpassContents content, VkOffset2D offset, VkClearValue clearColor)
 {
+	m_renderPass = renderPass;
+
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassInfo.renderPass = *renderPass;
@@ -248,6 +254,7 @@ void VulkanCommandBuffer::ClearDependencies()
 	m_pipelineDependencies.Clear();
 	m_semaphoreDependencies.Clear();
 	m_commandBufferDependencies.Clear();
+	m_renderPass.Clear();
 
 	for (auto& managedPtr : m_memoryPtrs)
 	{
@@ -262,6 +269,8 @@ void VulkanCommandBuffer::ClearDependencies()
 
 void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)
 {
+	assert(secondaryCommandBuffer->IsRecorded());
+
 	vkCmdExecuteCommands(m_commandBuffer, 1, secondaryCommandBuffer->GetHandle());
 	m_commandBufferDependencies.Add(secondaryCommandBuffer);
 }

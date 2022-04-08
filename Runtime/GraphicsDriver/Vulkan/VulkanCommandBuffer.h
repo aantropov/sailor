@@ -73,6 +73,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Used to get that the command list should be re-recorded
 		SAILOR_API bool FitsViewport(const VkViewport& viewport) const;
+		SAILOR_API bool IsRecorded() const { return m_bIsRecorded; }
 
 	protected:
 
@@ -86,10 +87,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		VulkanDevicePtr m_device;
 		VulkanCommandPoolPtr m_commandPool;
+		VulkanRenderPassPtr m_renderPass;
 		VkCommandBuffer m_commandBuffer;
 		VkCommandBufferLevel m_level;
 
 		DWORD m_currentThreadId = 0;
+
+		bool m_bIsRecorded = false;
 
 		// We're tracking only viewport due to scissor almost never changed
 		bool m_bHasViewport = false;
