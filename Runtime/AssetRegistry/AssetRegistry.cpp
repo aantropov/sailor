@@ -105,7 +105,7 @@ const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 			if (assetInfoIt != m_loadedAssetInfo.end())
 			{
 				AssetInfoPtr assetInfo = assetInfoIt->m_second;
-				if (assetInfo->IsExpired())
+				if (assetInfo->IsMetaExpired() || assetInfo->IsAssetExpired())
 				{
 					SAILOR_LOG("Reload asset info: %s", assetInfoFile.c_str());
 					assetInfoHandler->ReloadAssetInfo(assetInfo);

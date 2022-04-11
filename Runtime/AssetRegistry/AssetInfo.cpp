@@ -12,12 +12,15 @@ void AssetInfo::Serialize(nlohmann::json& outData) const
 {
 	m_UID.Serialize(outData["uid"]);
 	outData["filename"] = std::filesystem::path(GetAssetFilepath()).filename().string();
+	outData["assetImportTime"] = m_assetImportTime;
 }
 
 void AssetInfo::Deserialize(const nlohmann::json& inData)
 {
 	m_UID.Deserialize(inData["uid"]);
 	m_assetFilename = inData["filename"].get<std::string>();
+	m_assetImportTime = inData["assetImportTime"].get<std::time_t>();
+
 }
 
 void AssetInfo::SaveMetaFile()
@@ -29,22 +32,33 @@ void AssetInfo::SaveMetaFile()
 	assetFile << newMeta.dump(Sailor::JsonDumpIndent);
 	assetFile.close();
 
-	m_loadTime = GetMetaLastModificationTime();
+	m_metaLoadTime = GetMetaLastModificationTime();
 }
 
 AssetInfo::AssetInfo()
 {
-	m_loadTime = std::time(nullptr);
+	m_metaLoadTime = std::time(nullptr);
+	m_assetImportTime = 0;
 }
 
-bool AssetInfo::IsExpired() const
+bool AssetInfo::IsAssetExpired() const
 {
 	if (!(std::filesystem::exists(m_folder)))
 	{
 		return true;
 	}
 
-	return m_loadTime < GetMetaLastModificationTime() || m_loadTime < GetAssetLastModificationTime();
+	return m_assetImportTime < GetAssetLastModificationTime();
+}
+
+bool AssetInfo::IsMetaExpired() const
+{
+	if (!(std::filesystem::exists(m_folder)))
+	{
+		return true;
+	}
+
+	return m_metaLoadTime < GetMetaLastModificationTime();
 }
 
 DefaultAssetInfoHandler::DefaultAssetInfoHandler(AssetRegistry* assetRegistry)
@@ -55,6 +69,11 @@ DefaultAssetInfoHandler::DefaultAssetInfoHandler(AssetRegistry* assetRegistry)
 std::time_t AssetInfo::GetAssetLastModificationTime() const
 {
 	return Sailor::Utils::GetFileModificationTime(GetAssetFilepath());
+}
+
+std::time_t AssetInfo::GetAssetImportTime() const
+{
+	return m_assetImportTime;
 }
 
 std::time_t AssetInfo::GetMetaLastModificationTime() const
@@ -92,6 +111,7 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) co
 	UID::CreateNewUID().Serialize(newMeta["uid"]);
 
 	newMeta["filename"] = std::filesystem::path(assetFilepath).filename().string();
+	newMeta["assetImportTime"] = std::time(nullptr);
 
 	assetFile << newMeta.dump(Sailor::JsonDumpIndent);
 	assetFile.close();
@@ -101,6 +121,8 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) co
 	{
 		listener->OnImportAsset(assetInfoPtr);
 	}
+
+	assetInfoPtr->SaveMetaFile();
 
 	return assetInfoPtr;
 }
@@ -121,7 +143,8 @@ AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) 
 
 void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 {
-	bool bWasExpired = assetInfo->IsExpired();
+	const bool bWasAssetExpired = assetInfo->IsAssetExpired();
+	const bool bWasMetaExpired = assetInfo->IsMetaExpired();
 
 	std::ifstream assetFile(assetInfo->GetMetaFilepath());
 
@@ -129,13 +152,19 @@ void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 	assetFile >> meta;
 
 	assetInfo->Deserialize(meta);
-	assetInfo->m_loadTime = std::time(nullptr);
+	assetInfo->m_metaLoadTime = std::time(nullptr);
+	assetInfo->m_assetImportTime = std::time(nullptr);
 
 	assetFile.close();
 
 	for (IAssetInfoHandlerListener* listener : m_listeners)
 	{
-		listener->OnUpdateAssetInfo(assetInfo, bWasExpired);
+		listener->OnUpdateAssetInfo(assetInfo, bWasMetaExpired || bWasAssetExpired);
+	}
+
+	if (bWasAssetExpired)
+	{
+		assetInfo->SaveMetaFile();
 	}
 }
 

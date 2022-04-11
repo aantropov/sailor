@@ -153,8 +153,6 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		UID materialUID = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.name + ".mat", std::move(data));
 		assetInfo->GetDefaultMaterials().Add(materialUID);
 	}
-
-	assetInfo->SaveMetaFile();
 }
 
 bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)

@@ -21,7 +21,7 @@ namespace Sailor
 		static constexpr const char* ContentRootFolder = "../Content/";
 		static constexpr const char* MetaFileExtension = "asset";
 
-		virtual SAILOR_API ~AssetRegistry() override;
+		SAILOR_API virtual ~AssetRegistry() override;
 
 		template<typename TBinaryType, typename TFilepath>
 		static bool ReadBinaryFile(const TFilepath& filename, TVector<TBinaryType>& buffer)
@@ -50,7 +50,7 @@ namespace Sailor
 			return true;
 		}
 
-		static SAILOR_API bool ReadAllTextFile(const std::string& filename, std::string& text);
+		SAILOR_API static bool ReadAllTextFile(const std::string& filename, std::string& text);
 
 		SAILOR_API void ScanContentFolder();
 		SAILOR_API void ScanFolder(const std::string& folderPath);
@@ -83,7 +83,7 @@ namespace Sailor
 		}
 
 		SAILOR_API bool RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions, class IAssetInfoHandler* pAssetInfoHandler);
-		static SAILOR_API std::string GetMetaFilePath(const std::string& assetFilePath);
+		SAILOR_API static std::string GetMetaFilePath(const std::string& assetFilePath);
 
 	protected:
 

@@ -213,9 +213,14 @@ RHI::CommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 
 			for (uint32_t index = 0; index < pModel->GetMeshes().Num(); index++)
 			{
+				if (index >= rendererComponent->GetMaterials().Num())
+				{
+					continue;
+				}
+
 				auto pMaterial = rendererComponent->GetMaterials()[index];
 
-				if (!pMaterial->IsReady())
+				if (!pMaterial || !pMaterial->IsReady())
 				{
 					continue;
 				}

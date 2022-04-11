@@ -29,10 +29,12 @@ namespace Sailor
 		// That includes "../Content/" in the beginning
 		SAILOR_API std::string GetMetaFilepath() const;
 
+		SAILOR_API std::time_t GetAssetImportTime() const;
 		SAILOR_API std::time_t GetAssetLastModificationTime() const;
 		SAILOR_API std::time_t GetMetaLastModificationTime() const;
 
-		SAILOR_API bool IsExpired() const;
+		SAILOR_API bool IsMetaExpired() const;
+		SAILOR_API bool IsAssetExpired() const;
 
 		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
 		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
@@ -41,7 +43,8 @@ namespace Sailor
 
 	protected:
 
-		std::time_t m_loadTime;
+		std::time_t m_metaLoadTime;
+		std::time_t m_assetImportTime;
 		std::string m_folder;
 		std::string m_assetFilename;
 		UID m_UID;

@@ -189,5 +189,7 @@ namespace Sailor::RHI
 			ShaderBindingSet::ParseParameter(parameter, outBinding, outVariable);
 			SetMaterialParameter(cmd, bindings, outBinding, outVariable, &value, sizeof(value));
 		}
+
+		virtual ~IGraphicsDriverCommands() = default;
 	};
 };
