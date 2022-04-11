@@ -31,17 +31,6 @@ namespace Sailor::RHI
 
 	class DebugContext
 	{
-		struct LineProxy
-		{
-			// Locations are in world space
-			glm::vec3 m_startLocation{};
-			glm::vec3 m_endLocation{};
-
-			glm::vec4 m_color{};
-
-			// 0.0f means one frame
-			float m_lifetime = -1.0f;
-		};
 
 	public:
 
@@ -58,10 +47,13 @@ namespace Sailor::RHI
 		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const;
 
 		TVector<uint32_t> m_cachedIndices{};
-		RHI::MeshPtr m_cachedMesh{};		
+		RHI::MeshPtr m_cachedMesh{};
 		DebugFrame m_cachedFrame{};
 
-		TVector<LineProxy> m_lines{};
+		TVector<VertexP3C4> m_lineVertices{};
+		TVector<float> m_lifetimes;
+		int32_t m_lineVerticesOffset = -1;
+
 		MaterialPtr m_material{};
 
 		friend class World;

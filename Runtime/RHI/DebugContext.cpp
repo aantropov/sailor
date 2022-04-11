@@ -13,14 +13,19 @@ using namespace Sailor::RHI;
 
 void DebugContext::DrawLine(const glm::vec3& start, const glm::vec3& end, const glm::vec4 color, float duration)
 {
-	LineProxy proxy;
+	VertexP3C4 startVertex;
+	VertexP3C4 endVertex;
 
-	proxy.m_startLocation = start;
-	proxy.m_endLocation = end;
-	proxy.m_lifetime = duration;
-	proxy.m_color = color;
+	startVertex.m_position = start;
+	startVertex.m_color = color;
 
-	m_lines.Add(std::move(proxy));
+	endVertex.m_position = end;
+	endVertex.m_color = color;
+
+	m_lineVertices.Add(startVertex);
+	m_lineVertices.Add(endVertex);
+
+	m_lifetimes.Add(duration);
 }
 
 void DebugContext::DrawAABB(const Math::AABB& aabb, const glm::vec4 color, float duration)
@@ -52,7 +57,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (m_lines.Num() == 0)
+	if (m_lineVertices.Num() == 0)
 	{
 		return DebugFrame();
 	}
@@ -76,96 +81,96 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		m_material = renderer->CreateMaterial(m_cachedMesh->m_vertexDescription, EPrimitiveTopology::LineList, renderState, pShader);
 	}
 
-	TVector<VertexP3C4> vertices(m_lines.Num() * 2);
-
-	const bool bNeedUpdateIndexBuffer = m_cachedIndices.Num() < m_lines.Num() * 2;
+	const bool bNeedUpdateIndexBuffer = m_cachedIndices.Num() < m_lineVertices.Num();
 	if (bNeedUpdateIndexBuffer)
 	{
-		m_cachedIndices.Resize(m_lines.Num() * 2);
-	}
+		uint32_t start = (uint32_t)m_cachedIndices.Num();
+		m_cachedIndices.Resize(m_lineVertices.Num());
 
-	for (uint32_t i = 0; i < m_lines.Num(); i++)
-	{
-		VertexP3C4 start{};
-		start.m_color = m_lines[i].m_color;
-		start.m_position = m_lines[i].m_startLocation;
-
-		VertexP3C4 end{};
-		end.m_color = m_lines[i].m_color;
-		end.m_position = m_lines[i].m_endLocation;
-
-		vertices[i * 2] = start;
-		vertices[i * 2 + 1] = end;
-
-		if (bNeedUpdateIndexBuffer)
+		for (uint32_t i = start; i < m_lineVertices.Num(); i++)
 		{
-			m_cachedIndices[i * 2] = i * 2;
-			m_cachedIndices[i * 2 + 1] = i * 2 + 1;
+			m_cachedIndices[i] = i;
 		}
 	}
 
-	const VkDeviceSize bufferSize = sizeof(RHI::VertexP3C4) * m_lines.Num() * 2;
-	const VkDeviceSize indexBufferSize = sizeof(uint32_t) * m_lines.Num() * 2;
+	const VkDeviceSize bufferSize = sizeof(RHI::VertexP3C4) * m_lineVertices.Num();
+	const VkDeviceSize indexBufferSize = sizeof(uint32_t) * m_lineVertices.Num();
 
-	RHI::CommandListPtr updateMeshCmd = renderer->CreateCommandList(false, true);
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(updateMeshCmd);
+	const bool bShouldCreateVertexBuffer = !m_cachedMesh->m_vertexBuffer || m_cachedMesh->m_vertexBuffer->GetSize() < bufferSize;
+	const bool bNeedUpdateVertexBuffer = m_lineVerticesOffset != -1 || bShouldCreateVertexBuffer;
 
-	if (!m_cachedMesh->m_vertexBuffer || m_cachedMesh->m_vertexBuffer->GetSize() < bufferSize)
+	if (bNeedUpdateVertexBuffer || bNeedUpdateIndexBuffer)
 	{
-		m_cachedMesh->m_vertexBuffer = renderer->CreateBuffer(updateMeshCmd,
-			&vertices[0],
-			bufferSize,
-			EBufferUsageBit::VertexBuffer_Bit);
-	}
-	else
-	{
-		RHI::Renderer::GetDriverCommands()->UpdateBuffer(updateMeshCmd, m_cachedMesh->m_vertexBuffer, &vertices[0], bufferSize);
-	}
+		RHI::CommandListPtr updateMeshCmd = renderer->CreateCommandList(false, true);
+		RHI::Renderer::GetDriverCommands()->BeginCommandList(updateMeshCmd);
 
-	if (bNeedUpdateIndexBuffer)
-	{
-		if (!m_cachedMesh->m_indexBuffer || m_cachedMesh->m_indexBuffer->GetSize() < indexBufferSize)
+		if (bShouldCreateVertexBuffer)
 		{
-			m_cachedMesh->m_indexBuffer = renderer->CreateBuffer(updateMeshCmd,
-				&m_cachedIndices[0],
-				indexBufferSize,
-				EBufferUsageBit::IndexBuffer_Bit);
+			m_cachedMesh->m_vertexBuffer = renderer->CreateBuffer(updateMeshCmd,
+				&m_lineVertices[0],
+				bufferSize,
+				EBufferUsageBit::VertexBuffer_Bit);
 		}
 		else
 		{
-			RHI::Renderer::GetDriverCommands()->UpdateBuffer(updateMeshCmd, m_cachedMesh->m_indexBuffer, &m_cachedIndices[0], indexBufferSize);
+			RHI::Renderer::GetDriverCommands()->UpdateBuffer(updateMeshCmd, m_cachedMesh->m_vertexBuffer,
+				&m_lineVertices[m_lineVerticesOffset],
+				bufferSize - sizeof(VertexP3C4) * m_lineVerticesOffset,
+				sizeof(VertexP3C4) * m_lineVerticesOffset);
 		}
+
+		if (bNeedUpdateIndexBuffer)
+		{
+			if (!m_cachedMesh->m_indexBuffer || m_cachedMesh->m_indexBuffer->GetSize() < indexBufferSize)
+			{
+				m_cachedMesh->m_indexBuffer = renderer->CreateBuffer(updateMeshCmd,
+					&m_cachedIndices[0],
+					indexBufferSize,
+					EBufferUsageBit::IndexBuffer_Bit);
+			}
+			else
+			{
+				RHI::Renderer::GetDriverCommands()->UpdateBuffer(updateMeshCmd, m_cachedMesh->m_indexBuffer, &m_cachedIndices[0], indexBufferSize);
+			}
+		}
+
+		RHI::Renderer::GetDriverCommands()->EndCommandList(updateMeshCmd);
+
+		auto semaphore = App::GetSubmodule<Renderer>()->GetDriver()->CreateWaitSemaphore();
+		m_cachedFrame.m_signalSemaphore = semaphore;
+
+		//renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), result.m_signalSemaphore);
+
+		SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
+			([&renderer, updateMeshCmd, semaphore]()
+		{
+			renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), semaphore);
+		}));
 	}
-
-	RHI::Renderer::GetDriverCommands()->EndCommandList(updateMeshCmd);
-
-	auto semaphore = App::GetSubmodule<Renderer>()->GetDriver()->CreateWaitSemaphore();
-	m_cachedFrame.m_signalSemaphore = semaphore;
-
-	//renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), result.m_signalSemaphore);
-
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
-		([&renderer, updateMeshCmd, semaphore]()
-	{
-		renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), semaphore);
-	}));
 
 	if (!m_cachedFrame.m_drawDebugMeshCmd ||
 		!RHI::Renderer::GetDriverCommands()->FitsDefaultViewport(m_cachedFrame.m_drawDebugMeshCmd) ||
-		m_cachedFrame.m_linesCount != m_lines.Num())
+		m_cachedFrame.m_linesCount != m_lineVertices.Num() / 2)
 	{
 		m_cachedFrame.m_drawDebugMeshCmd = CreateRenderingCommandList(frameBindings, m_cachedMesh);
-		m_cachedFrame.m_linesCount = (uint32_t)m_lines.Num();
+		m_cachedFrame.m_linesCount = (uint32_t)m_lineVertices.Num() / 2;
 	}
 
-	for (uint32_t i = 0; i < m_lines.Num(); i++)
+	m_lineVerticesOffset = -1;
+	for (uint32_t i = 0; i < m_lifetimes.Num(); i++)
 	{
-		m_lines[i].m_lifetime -= deltaTime;
+		m_lifetimes[i] -= deltaTime;
 
-		if (m_lines[i].m_lifetime < 0.0f)
+		if (m_lifetimes[i] < 0.0f)
 		{
-			m_lines.RemoveAtSwap(i, 1);
+			m_lifetimes.RemoveAtSwap(i, 1);
+			m_lineVertices.RemoveAtSwap(i * 2, 2);
 			i--;
+
+			if (m_lineVerticesOffset == -1)
+			{
+				m_lineVerticesOffset = i;
+			}
 		}
 	}
 
@@ -174,7 +179,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const
 {
-	if (m_lines.Num() == 0)
+	if (m_lineVertices.Num() == 0)
 	{
 		return nullptr;
 	}
