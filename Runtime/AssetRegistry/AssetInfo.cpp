@@ -20,7 +20,6 @@ void AssetInfo::Deserialize(const nlohmann::json& inData)
 	m_UID.Deserialize(inData["uid"]);
 	m_assetFilename = inData["filename"].get<std::string>();
 	m_assetImportTime = inData["assetImportTime"].get<std::time_t>();
-
 }
 
 void AssetInfo::SaveMetaFile()
@@ -143,7 +142,6 @@ AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(const std::string& assetInfoPath) 
 
 void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 {
-	const bool bWasAssetExpired = assetInfo->IsAssetExpired();
 	const bool bWasMetaExpired = assetInfo->IsMetaExpired();
 
 	std::ifstream assetFile(assetInfo->GetMetaFilepath());
@@ -153,7 +151,10 @@ void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 
 	assetInfo->Deserialize(meta);
 	assetInfo->m_metaLoadTime = std::time(nullptr);
-	assetInfo->m_assetImportTime = std::time(nullptr);
+	
+	const bool bWasAssetExpired = assetInfo->IsAssetExpired();
+
+	assetInfo->m_assetImportTime = assetInfo->GetAssetLastModificationTime();
 
 	assetFile.close();
 
