@@ -99,6 +99,8 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 	const bool bShouldCreateVertexBuffer = !m_cachedMesh->m_vertexBuffer || m_cachedMesh->m_vertexBuffer->GetSize() < bufferSize;
 	const bool bNeedUpdateVertexBuffer = m_lineVerticesOffset != -1 || bShouldCreateVertexBuffer;
 
+	m_cachedFrame.m_signalSemaphore = nullptr;
+
 	if (bNeedUpdateVertexBuffer || bNeedUpdateIndexBuffer)
 	{
 		RHI::CommandListPtr updateMeshCmd = renderer->CreateCommandList(false, true);
