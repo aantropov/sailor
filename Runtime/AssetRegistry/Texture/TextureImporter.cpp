@@ -161,8 +161,8 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 	// We have promise
 	if (promise)
 	{
-		m_promises.Unlock(uid);
 		outTexture = m_loadedTextures[uid];
+		m_promises.Unlock(uid);
 		return promise;
 	}
 
