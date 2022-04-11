@@ -102,6 +102,7 @@ void TestComponent::Tick(float deltaTime)
 	{
 		for (auto& material : meshRenderer->GetMaterials())
 		{
+			// TODO: Move updating shader uniforms to render thread as part of rendering pipeline
 			if (material && material->IsReady() && material->GetShaderBindings()->HasBinding("material"))
 			{
 				RHI::Renderer::GetDriverCommands()->SetMaterialParameter(GetWorld()->GetCommandList(),

@@ -32,8 +32,14 @@ bool Material::IsReady() const
 
 JobSystem::ITaskPtr Material::OnHotReload()
 {
-	UpdateRHIResource();
-	return nullptr;
+	m_bIsDirty = true;
+
+	auto updateRHI = JobSystem::Scheduler::CreateTask("Update material RHI resource", [=]()
+	{
+		UpdateRHIResource();
+	}, JobSystem::EThreadType::Rendering);
+
+	return updateRHI;
 }
 
 void Material::ClearSamplers()
