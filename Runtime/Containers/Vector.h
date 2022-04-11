@@ -366,7 +366,7 @@ namespace Sailor
 			Insert(initList.begin(), initList.size(), index);
 		}
 
-		void Insert(TElementType* first, size_t count, size_t index)
+		void Insert(const TElementType* first, size_t count, size_t index)
 		{
 			if (count == 0)
 			{
@@ -382,7 +382,7 @@ namespace Sailor
 			}
 
 			MemMove(index + count, index, m_arrayNum - index);
-			ConstructElements(index, first, count);
+			ConstructElements(index, *first, count);
 			m_arrayNum += count;
 		}
 
