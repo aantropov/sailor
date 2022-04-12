@@ -167,6 +167,7 @@ namespace Sailor
 
 		SAILOR_API operator bool() const noexcept
 		{
+			//Object ptr is not valid if object is not valid
 			return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0 && static_cast<Object*>(m_pRawPtr)->IsValid();
 		}
 
