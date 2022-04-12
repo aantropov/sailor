@@ -152,11 +152,7 @@ void Material::UpdateRHIResource()
 	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_commonShaderBindings.GetRawPtr(), fence);
 
 	// Submit cmd lists
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Update shader bindings set rhi",
-		([this, cmdList, fence]()
-	{
-		RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
-	}));
+	RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
 
 	m_bIsDirty = false;
 }
@@ -313,7 +309,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 				{
 					pMaterial.GetRawPtr()->UpdateRHIResource();
 					pMaterial.GetRawPtr()->TraceHotReload(nullptr);
-				});
+				}, JobSystem::EThreadType::Rendering);
 
 				// Preload textures
 				for (auto& sampler : pMaterialAsset->GetSamplers())
@@ -492,7 +488,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 			auto updateRHI = JobSystem::Scheduler::CreateTask("Update material RHI resource", [=]()
 			{
 				pMaterial.GetRawPtr()->UpdateRHIResource();
-			});
+			}, JobSystem::EThreadType::Rendering);
 
 			// Preload textures
 			for (auto& sampler : pMaterialAsset->GetSamplers())
