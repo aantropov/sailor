@@ -143,9 +143,14 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		if (TestComponentPtr testComponent = frame.GetWorld()->GetGameObjects()[0]->GetComponent<TestComponent>())
 		{
 			const auto& debugFrame = frame.GetDebugFrame();
-			if (debugFrame.m_signalSemaphore && debugFrame.m_drawDebugMeshCmd)
+
+			if (debugFrame.m_drawDebugMeshCmd)
 			{
-				waitFrameUpdate.Add(debugFrame.m_signalSemaphore);
+				if (debugFrame.m_signalSemaphore)
+				{
+					waitFrameUpdate.Add(debugFrame.m_signalSemaphore);
+				}
+
 				secondaryCommandLists.Add(debugFrame.m_drawDebugMeshCmd);
 			}
 		}
