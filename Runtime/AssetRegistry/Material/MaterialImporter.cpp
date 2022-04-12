@@ -488,7 +488,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 			auto updateRHI = JobSystem::Scheduler::CreateTask("Update material RHI resource", [=]()
 			{
 				pMaterial.GetRawPtr()->UpdateRHIResource();
-			}, JobSystem::EThreadType::Rendering);
+			});
 
 			// Preload textures
 			for (auto& sampler : pMaterialAsset->GetSamplers())
