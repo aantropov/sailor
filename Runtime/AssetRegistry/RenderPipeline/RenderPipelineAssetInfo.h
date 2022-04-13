@@ -10,10 +10,10 @@ namespace Sailor
 	class RenderPipelineAssetInfo final : public AssetInfo
 	{
 	public:
-		virtual SAILOR_API ~RenderPipelineAssetInfo() = default;
+		SAILOR_API virtual ~RenderPipelineAssetInfo() = default;
 
-		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
-		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
+		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
+		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 	};
 
 	using RenderPipelineAssetInfoPtr = RenderPipelineAssetInfo*;

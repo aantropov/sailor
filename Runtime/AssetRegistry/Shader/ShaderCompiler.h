@@ -90,10 +90,10 @@ namespace Sailor
 		SAILOR_API JobSystem::TaskPtr<bool> CompileAllPermutations(const UID& assetUID);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
-		virtual SAILOR_API ~ShaderCompiler() override;
+		SAILOR_API virtual ~ShaderCompiler() override;
 
-		virtual SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
-		virtual SAILOR_API void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
+		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		SAILOR_API bool LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
 		SAILOR_API JobSystem::TaskPtr<bool> LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});

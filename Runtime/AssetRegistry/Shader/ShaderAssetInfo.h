@@ -9,7 +9,7 @@ namespace Sailor
 	class ShaderAssetInfo final : public AssetInfo
 	{
 	public:
-		virtual SAILOR_API ~ShaderAssetInfo() = default;
+		SAILOR_API virtual ~ShaderAssetInfo() = default;
 	};
 
 	using ShaderAssetInfoPtr = ShaderAssetInfo*;
@@ -21,9 +21,9 @@ namespace Sailor
 
 		SAILOR_API ShaderAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		virtual SAILOR_API void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
-		virtual SAILOR_API AssetInfoPtr CreateAssetInfo() const;
+		SAILOR_API virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
+		SAILOR_API virtual AssetInfoPtr CreateAssetInfo() const;
 
-		virtual SAILOR_API ~ShaderAssetInfoHandler() = default;
+		SAILOR_API virtual ~ShaderAssetInfoHandler() = default;
 	};
 }

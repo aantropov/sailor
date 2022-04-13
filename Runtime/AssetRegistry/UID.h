@@ -14,7 +14,7 @@ namespace Sailor
 
 		static const UID Invalid;
 
-		static SAILOR_API UID CreateNewUID();
+		SAILOR_API static UID CreateNewUID();
 		SAILOR_API const std::string& ToString() const;
 
 		SAILOR_API UID() = default;
@@ -31,8 +31,8 @@ namespace Sailor
 
 		SAILOR_API ~UID() = default;
 
-		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
-		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
+		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
+		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 
 	protected:
 
