@@ -24,12 +24,17 @@ namespace Sailor
 
 		struct TNodeElement
 		{
-			TNodeElement(TElementType&& data, const glm::ivec3& pos, const glm::ivec3& extents) : m_element(std::move(data)), m_extents(extents), m_position(pos) {}
-			TNodeElement(const TElementType& data, const glm::ivec3& pos, const glm::ivec3& extents) : m_element(data), m_extents(extents), m_position(pos) {}
+			TNodeElement(const TElementType& data, const glm::ivec3& pos, const glm::ivec3& extents) : m_element(data), m_extents(extents), m_position(pos)
+			{
+				m_volume = m_extents.x * m_extents.y * m_extents.z;
+			}
+
+			__forceinline bool operator<(const TNodeElement& rhs) const { return this->m_volume < rhs.m_volume; }
 
 			TElementType m_element{};
 			glm::ivec3 m_position{};
 			glm::ivec3 m_extents{};
+			uint32_t m_volume{};
 		};
 
 		struct TNode
@@ -75,16 +80,43 @@ namespace Sailor
 				return true;
 			}
 
+			__forceinline void Insert(const TElementType& element, const glm::ivec3& pos, const glm::ivec3& extents)
+			{
+				size_t index = std::distance(m_elements.begin(),
+					std::upper_bound(m_elements.begin(), m_elements.end(), TNodeElement(element, pos, extents)));
+
+				m_elements.Insert(TNodeElement(element, pos, extents), index);
+			}
+
+			__forceinline bool Remove(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
+			{
+				auto it = std::lower_bound(m_elements.begin(), m_elements.end(), TNodeElement(element, pos, extents));
+				if (it != m_elements.end())
+				{
+					const size_t index = std::distance(m_elements.begin(), it);
+					for (size_t i = index; i < m_elements.Num(); i++)
+					{
+						if (m_elements[i].m_element == element)
+						{
+							m_elements.RemoveAt(index);
+							return true;
+						}
+					}
+				}
+
+				return false;
+			}
+
 			uint32_t m_size = 0;
 			glm::ivec3 m_center{};
 			TNode* m_internal[8]{};
-			TVector<TNodeElement, Memory::TInlineAllocator<NumElementsInNode * 8u, TAllocator>> m_elements{};
+			TVector<TNodeElement, Memory::TInlineAllocator<NumElementsInNode * 8u + 64u, TAllocator>> m_elements{};
 		};
 
 	public:
 
 		// Constructors & Destructor
-		TOctree(glm::ivec3 center, uint32_t size = 16536u, uint32_t minSize = 4)
+		TOctree(glm::ivec3 center, uint32_t size = 16536u, uint32_t minSize = 4) : m_map(size)
 		{
 			m_minSize = minSize;
 			m_root = Memory::New<TNode>(m_allocator);
@@ -133,10 +165,14 @@ namespace Sailor
 
 		//TVector<TElementType, TAllocator> GetElements(glm::ivec3 extents) const { return TVector(); }
 
-		void Insert(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
+		bool Insert(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
-			Insert_Internal(m_root, pos, extents, element);
-			m_num++;
+			if (Insert_Internal(m_root, pos, extents, element))
+			{
+				m_num++;
+				return true;
+			}
+			return false;
 		}
 
 		bool Remove(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
@@ -144,10 +180,8 @@ namespace Sailor
 			TNode** node;
 			if (m_map.Find(element, node))
 			{
-				auto index = (*node)->m_elements.FindIf([&](const auto& lhs) { return lhs.m_element == element; });
-				if (index != -1)
+				if ((*node)->Remove(pos, extents, element))
 				{
-					(*node)->m_elements.RemoveAtSwap(index);
 					Resolve_Internal(*node);
 					return true;
 				}
@@ -156,7 +190,7 @@ namespace Sailor
 			return false;
 		}
 
-		void Resolve()
+		__forceinline void Resolve()
 		{
 			Resolve_Internal(m_root);
 		}
@@ -199,7 +233,7 @@ namespace Sailor
 			Collapse(node);
 		}
 
-		void Subdivide(TNode* node)
+		__forceinline void Subdivide(TNode* node)
 		{
 			assert(node->IsLeaf());
 
@@ -221,7 +255,7 @@ namespace Sailor
 			m_numNodes += 8;
 		}
 
-		void Collapse(TNode* node)
+		__forceinline void Collapse(TNode* node)
 		{
 			for (uint32_t i = 0; i < 8; i++)
 			{
@@ -232,6 +266,7 @@ namespace Sailor
 			m_numNodes -= 8;
 		}
 
+		// Not used
 		bool Remove_Internal(TNode* node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
 			const bool bIsLeaf = node->IsLeaf();
@@ -246,13 +281,7 @@ namespace Sailor
 			if (index != -1)
 			{
 				node->m_elements.RemoveAtSwap(index);
-
-				/*Resolve_Internal(node);
-				if (node->CanCollapse())
-				{
-					Collapse(node);
-				}*/
-
+				Resolve_Internal(node);
 				return true;
 			}
 
@@ -298,8 +327,8 @@ namespace Sailor
 					return true;
 				}
 
+				node->Insert(element, pos, extents);
 				m_map[element] = node;
-				node->m_elements.Add(TNodeElement(element, pos, extents));
 
 				return true;
 			}
@@ -313,8 +342,8 @@ namespace Sailor
 					}
 				}
 
+				node->Insert(element, pos, extents);
 				m_map[element] = node;
-				node->m_elements.Add(TNodeElement(element, pos, extents));
 			}
 
 			return true;

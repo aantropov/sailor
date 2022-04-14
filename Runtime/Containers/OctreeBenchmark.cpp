@@ -28,7 +28,7 @@ public:
 
 	static void PerformanceTests()
 	{
-		const uint32_t count = 1000000;
+		const uint32_t count = 10000;
 
 		struct Data
 		{
@@ -37,12 +37,12 @@ public:
 			size_t m_data;
 		};
 
-		TVector<Data> data(count);
+		Data data[count];
 
 		for (size_t i = 0; i < count; i++)
 		{
-			data[i].m_pos = glm::ivec3(rand() % 2048 - 1024, rand() % 2048 - 1024, rand() % 2048 - 1024);
-			data[i].m_extents = glm::ivec3(rand() % 256, rand() % 256, rand() % 256);
+			data[i].m_pos = glm::ivec3(rand() % 1000, rand() % 1000, rand() % 1000);
+			data[i].m_extents = glm::ivec3(rand() % 100, rand() % 100, rand() % 100);
 			data[i].m_data = i;
 		}
 
@@ -52,7 +52,8 @@ public:
 		tOctree.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			container.Insert(data[i].m_pos, data[i].m_extents, data[i].m_data);
+			const bool bInserted = container.Insert(data[i].m_pos, data[i].m_extents, data[i].m_data);
+			assert(bInserted);
 		}
 		tOctree.Stop();
 
