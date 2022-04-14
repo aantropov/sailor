@@ -641,6 +641,9 @@
     <ClCompile Include="..\Runtime\RHI\Types.cpp">
       <Filter>Runtime\RHI</Filter>
     </ClCompile>
+    <ClCompile Include="..\Runtime\Containers\OctreeBenchmark.cpp">
+      <Filter>Runtime\Containers</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="..\Runtime\Sailor.natvis">

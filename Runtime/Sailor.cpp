@@ -14,6 +14,7 @@
 #include "Containers/Set.h"
 #include "Containers/Map.h"
 #include "Containers/List.h"
+#include "Containers/Octree.h"
 #include "Engine/EngineLoop.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "ECS/ECS.h"
@@ -101,6 +102,7 @@ void App::Start()
 	consoleVars["set.benchmark"] = &Sailor::RunSetBenchmark;
 	consoleVars["map.benchmark"] = &Sailor::RunMapBenchmark;
 	consoleVars["list.benchmark"] = &Sailor::RunListBenchmark;
+	consoleVars["octree.benchmark"] = &Sailor::RunOctreeBenchmark;
 
 #ifdef SAILOR_EDITOR
 	TWeakPtr<World> pWorld = App::GetSubmodule<EngineLoop>()->CreateWorld("WorldEditor");
