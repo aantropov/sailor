@@ -50,9 +50,10 @@ namespace Sailor
 			__forceinline bool Overlaps(const glm::ivec3& pos, const glm::ivec3& extents) const
 			{
 				const int32_t halfSize = m_size / 2;
-				return (m_center.x - halfSize < pos.x + extents.x || m_center.x + halfSize < pos.x - extents.x) &&
-					(m_center.y - halfSize < pos.y + extents.y || m_center.y + halfSize < pos.y - extents.y) &&
-					(m_center.z - halfSize < pos.z + extents.z || m_center.z + halfSize < pos.z - extents.z);
+				return
+					(m_center.x - halfSize < pos.x + extents.x) && (m_center.x + halfSize > pos.x - extents.x) &&
+					(m_center.y - halfSize < pos.y + extents.y) && (m_center.y + halfSize > pos.y - extents.y) &&
+					(m_center.z - halfSize < pos.z + extents.z) && (m_center.z + halfSize > pos.z - extents.z);
 			}
 
 			__forceinline bool CanCollapse() const
@@ -125,6 +126,7 @@ namespace Sailor
 		}
 
 		size_t GetNum() const { return m_num; }
+		size_t GetNumNodes() const { return m_numNodes; }
 
 		//TVector<TElementType, TAllocator> GetElements(glm::ivec3 extents) const { return TVector(); }
 
@@ -175,6 +177,8 @@ namespace Sailor
 				node->m_internal[i]->m_size = quarterSize * 2;
 				node->m_internal[i]->m_center = offset[i] * quarterSize + node->m_center;
 			}
+
+			m_numNodes += 8;
 		}
 
 		void Collapse(TNode* node)
@@ -184,6 +188,8 @@ namespace Sailor
 				Memory::Delete<TNode>(m_allocator, node->m_internal[i]);
 				node->m_internal[i] = nullptr;
 			}
+
+			m_numNodes -= 8;
 		}
 
 		bool Remove_Internal(TNode* node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
@@ -272,6 +278,7 @@ namespace Sailor
 		TNode* m_root{};
 		size_t m_num = 0u;
 		uint32_t m_minSize = 1;
+		size_t m_numNodes = 1u;
 		TAllocator m_allocator{};
 	};
 

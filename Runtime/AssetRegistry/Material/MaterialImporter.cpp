@@ -152,7 +152,11 @@ void Material::UpdateRHIResource()
 	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_commonShaderBindings.GetRawPtr(), fence);
 
 	// Submit cmd lists
-	RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
+	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Update shader bindings set rhi",
+		([this, cmdList, fence]()
+	{
+		RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
+	}));
 
 	m_bIsDirty = false;
 }

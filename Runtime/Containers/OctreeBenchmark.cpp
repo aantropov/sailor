@@ -37,7 +37,7 @@ public:
 			size_t m_data;
 		};
 
-		Data data[count];
+		TVector<Data> data(count);
 
 		for (size_t i = 0; i < count; i++)
 		{
@@ -47,7 +47,7 @@ public:
 		}
 
 		Timer tOctree;
-		TContainer container(glm::ivec3(0, 0, 0), 2048u);
+		TContainer container(glm::ivec3(0, 0, 0), 2048u, 2u);
 
 		tOctree.Start();
 		for (size_t i = 0; i < count; i++)
@@ -56,18 +56,19 @@ public:
 		}
 		tOctree.Stop();
 
-		SAILOR_LOG("Performance test insert:\n\t TOctree %llums", tOctree.ResultMs());
+		SAILOR_LOG("Performance test insert:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.GetNumNodes());
 
 		tOctree.Clear();
 
 		tOctree.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			container.Remove(data[i].m_pos, data[i].m_extents, data[i].m_data);
+			const bool bRemoved = container.Remove(data[i].m_pos, data[i].m_extents, data[i].m_data);
+			assert(bRemoved);
 		}
 		tOctree.Stop();
 
-		SAILOR_LOG("Performance test remove:\n\t TOctree %llums", tOctree.ResultMs());
+		SAILOR_LOG("Performance test remove:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.GetNumNodes());
 	}
 };
 
