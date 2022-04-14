@@ -25,8 +25,8 @@ namespace Sailor
 			TNode(TArgs&& ... args) noexcept : m_data(std::forward<TArgs>(args) ...), m_pNext(nullptr), m_pPrev(nullptr) {}
 
 			TElementType m_data;
-			TNode* m_pNext;
-			TNode* m_pPrev;
+			TNode* m_pNext{};
+			TNode* m_pPrev{};
 		};
 
 		template<typename TDataType = TElementType>

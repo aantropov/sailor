@@ -30,20 +30,44 @@ public:
 	{
 		const uint32_t count = 10000;
 
+		struct Data
+		{
+			glm::ivec3 m_pos;
+			glm::ivec3 m_extents;
+			size_t m_data;
+		};
+
+		Data data[count];
+
+		for (size_t i = 0; i < count; i++)
+		{
+			data[i].m_pos = glm::ivec3(rand() % 1000, rand() % 1000, rand() % 1000);
+			data[i].m_extents = glm::ivec3(rand() % 100, rand() % 100, rand() % 100);
+			data[i].m_data = i;
+		}
+
 		Timer tOctree;
 		TContainer container(glm::ivec3(0, 0, 0), 2048u);
 
 		tOctree.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			auto pos = glm::ivec3(rand() % 1000, rand() % 1000, rand() % 1000);
-			auto extents = glm::ivec3(rand() % 100, rand() % 100, rand() % 100);
-
-			container.Insert(pos, extents, i);
+			container.Insert(data[i].m_pos, data[i].m_extents, data[i].m_data);
 		}
 		tOctree.Stop();
 
 		SAILOR_LOG("Performance test insert:\n\t TOctree %llums", tOctree.ResultMs());
+
+		tOctree.Clear();
+
+		tOctree.Start();
+		for (size_t i = 0; i < count; i++)
+		{
+			container.Remove(data[i].m_pos, data[i].m_extents, data[i].m_data);
+		}
+		tOctree.Stop();
+
+		SAILOR_LOG("Performance test remove:\n\t TOctree %llums", tOctree.ResultMs());
 	}
 };
 

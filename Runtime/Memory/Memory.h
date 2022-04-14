@@ -10,6 +10,31 @@
 
 namespace Sailor::Memory
 {
+	template<typename T, typename TAllocator = DefaultGlobalAllocator>
+	SAILOR_API __forceinline T* New(TAllocator& allocator)
+	{
+		void* ptr = allocator.Allocate(sizeof(T), 8);
+		return new (ptr) T();
+	}
+
+	template<typename T, typename TAllocator, typename... TArgs>
+	SAILOR_API __forceinline T* New(TAllocator& allocator, TArgs&& ... args)
+	{
+		void* ptr = allocator.Allocate(sizeof(T));
+		return new (ptr) T(std::forward(args) ...);
+	}
+
+	template<typename T, typename TAllocator = DefaultGlobalAllocator>
+	SAILOR_API __forceinline void Delete(TAllocator& allocator, T* ptr)
+	{
+		if (ptr)
+		{
+			ptr->~T();
+		}
+
+		allocator.Free(ptr);
+	}
+
 	template<uint16_t stackSize = 1024, typename TAllocator = DefaultGlobalAllocator>
 	class SAILOR_API TInlineAllocator final
 	{
@@ -116,31 +141,31 @@ namespace Sailor::Memory
 	class TMemoryPtr;
 
 	template<typename TPtr>
-	inline uint8_t* GetAddress(TPtr ptr)
+	__forceinline uint8_t* GetAddress(TPtr ptr)
 	{
 		return reinterpret_cast<uint8_t*>(ptr);
 	}
 
 	template<typename TPtr>
-	inline TPtr Shift(const TPtr& ptr, size_t offset)
+	__forceinline TPtr Shift(const TPtr& ptr, size_t offset)
 	{
 		return reinterpret_cast<TPtr>(&((GetAddress(ptr)[offset])));
 	}
 
 	template<typename TPtr>
-	inline uint32_t SizeOf(const TPtr& ptr)
+	__forceinline uint32_t SizeOf(const TPtr& ptr)
 	{
 		return sizeof(typename std::remove_pointer<TPtr>::type);
 	}
 
 	template<typename TPtr>
-	inline uint32_t OffsetAlignment(const TPtr& from)
+	__forceinline uint32_t OffsetAlignment(const TPtr& from)
 	{
 		return alignof(typename std::remove_pointer<TPtr>::type);
 	}
 
 	template<typename TPtr>
-	inline TPtr GetPointer(const TPtr& pStartBlock, size_t offset, size_t size)
+	__forceinline TPtr GetPointer(const TPtr& pStartBlock, size_t offset, size_t size)
 	{
 		return Shift(pStartBlock, offset);
 	}
@@ -161,7 +186,7 @@ namespace Sailor::Memory
 	}
 
 	template<typename TPtr>
-	inline bool Align(size_t sizeToEmplace, size_t alignment, const TPtr& startPtr, size_t blockSize, uint32_t& alignmentOffset)
+	__forceinline bool Align(size_t sizeToEmplace, size_t alignment, const TPtr& startPtr, size_t blockSize, uint32_t& alignmentOffset)
 	{
 		uint8_t* ptr = GetAddress(startPtr);
 		void* alignedPtr = ptr;
