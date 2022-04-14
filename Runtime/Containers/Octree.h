@@ -10,6 +10,7 @@
 #include "Math/Math.h"
 #include "Memory/Memory.h"
 #include "Containers/Concepts.h"
+#include "Containers/Map.h"
 #include "Containers/Vector.h"
 
 namespace Sailor
@@ -74,9 +75,9 @@ namespace Sailor
 				return true;
 			}
 
-			TNode* m_internal[8]{};
 			uint32_t m_size = 0;
 			glm::ivec3 m_center{};
+			TNode* m_internal[8]{};
 			TVector<TNodeElement, Memory::TInlineAllocator<NumElementsInNode * 8u, TAllocator>> m_elements{};
 		};
 
@@ -115,6 +116,7 @@ namespace Sailor
 			std::swap(rhs->m_allocator, lhs->m_allocator);
 			std::swap(rhs->m_num, lhs->m_num);
 			std::swap(rhs->m_minSize, lhs->m_minSize);
+			std::swap(rhs->m_map, lhs->m_map);
 		}
 
 		void Clear()
@@ -123,6 +125,7 @@ namespace Sailor
 			{
 				Clear_Internal(m_root);
 			}
+			m_map.Clear();
 		}
 
 		size_t GetNum() const { return m_num; }
@@ -138,11 +141,48 @@ namespace Sailor
 
 		bool Remove(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
-			m_num--;
-			return Remove_Internal(m_root, pos, extents, element);
+			TNode** node;
+			if (m_map.Find(element, node))
+			{
+				auto index = (*node)->m_elements.FindIf([&](const auto& lhs) { return lhs.m_element == element; });
+				if (index != -1)
+				{
+					(*node)->m_elements.RemoveAtSwap(index);
+					Resolve_Internal(*node);
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		void Resolve()
+		{
+			Resolve_Internal(m_root);
 		}
 
 	protected:
+
+		void Resolve_Internal(TNode* node)
+		{
+			if (node->m_elements.Num())
+			{
+				return;
+			}
+
+			for (uint32_t i = 0; i < 8; i++)
+			{
+				if (!node->IsLeaf())
+				{
+					Resolve_Internal(node->m_internal[i]);
+				}
+			}
+
+			if (node->CanCollapse())
+			{
+				Collapse(node);
+			}
+		}
 
 		void Clear_Internal(TNode* node)
 		{
@@ -207,10 +247,11 @@ namespace Sailor
 			{
 				node->m_elements.RemoveAtSwap(index);
 
+				/*Resolve_Internal(node);
 				if (node->CanCollapse())
 				{
 					Collapse(node);
-				}
+				}*/
 
 				return true;
 			}
@@ -257,7 +298,9 @@ namespace Sailor
 					return true;
 				}
 
+				m_map[element] = node;
 				node->m_elements.Add(TNodeElement(element, pos, extents));
+
 				return true;
 			}
 			else
@@ -269,6 +312,8 @@ namespace Sailor
 						return true;
 					}
 				}
+
+				m_map[element] = node;
 				node->m_elements.Add(TNodeElement(element, pos, extents));
 			}
 
@@ -280,6 +325,7 @@ namespace Sailor
 		uint32_t m_minSize = 1;
 		size_t m_numNodes = 1u;
 		TAllocator m_allocator{};
+		TMap<TElementType, TNode*> m_map{};
 	};
 
 	SAILOR_API void RunOctreeBenchmark();

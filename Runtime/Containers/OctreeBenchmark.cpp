@@ -28,7 +28,7 @@ public:
 
 	static void PerformanceTests()
 	{
-		const uint32_t count = 10000;
+		const uint32_t count = 1000000;
 
 		struct Data
 		{
@@ -41,8 +41,8 @@ public:
 
 		for (size_t i = 0; i < count; i++)
 		{
-			data[i].m_pos = glm::ivec3(rand() % 1000, rand() % 1000, rand() % 1000);
-			data[i].m_extents = glm::ivec3(rand() % 100, rand() % 100, rand() % 100);
+			data[i].m_pos = glm::ivec3(rand() % 2048 - 1024, rand() % 2048 - 1024, rand() % 2048 - 1024);
+			data[i].m_extents = glm::ivec3(rand() % 256, rand() % 256, rand() % 256);
 			data[i].m_data = i;
 		}
 
@@ -59,7 +59,6 @@ public:
 		SAILOR_LOG("Performance test insert:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.GetNumNodes());
 
 		tOctree.Clear();
-
 		tOctree.Start();
 		for (size_t i = 0; i < count; i++)
 		{
@@ -67,8 +66,13 @@ public:
 			assert(bRemoved);
 		}
 		tOctree.Stop();
-
 		SAILOR_LOG("Performance test remove:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.GetNumNodes());
+
+		tOctree.Clear();
+		tOctree.Start();
+		container.Resolve();
+		tOctree.Stop();
+		SAILOR_LOG("Performance test resolve:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.GetNumNodes());
 	}
 };
 
