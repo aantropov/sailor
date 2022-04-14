@@ -13,6 +13,7 @@
 #include "GraphicsDriver.h"
 #include "Renderer.h"
 #include "Buffer.h"
+#include "Containers/Octree.h"
 
 namespace Sailor
 {
@@ -43,6 +44,31 @@ namespace Sailor::RHI
 		SAILOR_API DebugFrame Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime);
 
 	protected:
+
+		/*
+		template<typename T>
+		SAILOR_API void DrawOctree(const TOctree<T>& octree, float duration = 0.0f)
+		{
+			DrawOctree_Internal(octree.m_root, duration);
+		}
+
+		template<typename T>
+		SAILOR_API void DrawOctree_Internal(const TOctree<T>::TNode& node, float duration = 0.0f)
+		{
+			if (!node->IsLeaf())
+			{
+				for (uint32_t i = 0; i < 8; i++)
+				{
+					DrawOctree_Internal(node.m_internal[i], duration))
+				}
+			}
+
+			Math::AABB aabb;
+			aabb.m_min = node.m_center - node.m_size * glm::vec3(0.5f, 0.5f, 0.5f);
+			aabb.m_min = node.m_center + node.m_size * glm::vec3(0.5f, 0.5f, 0.5f);
+
+			DrawAABB(aabb, duration);
+		}*/
 
 		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const;
 
