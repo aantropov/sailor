@@ -157,6 +157,36 @@ namespace Sailor
 			return false;
 		}
 
+		bool Update(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
+		{
+			TNode** node;
+			if (m_map.Find(element, node))
+			{
+				// If we're still in the octant then we just update the bounds
+				if ((*node)->Contains(pos, extents))
+				{
+					(*node)->m_elements[element] = TBounds(pos, extents);
+					return true;
+				}
+
+				// If not then remove & insert
+				if ((*node)->Remove(element))
+				{
+					Resolve_Internal(*node);
+				}
+
+				if (Insert_Internal(m_root, pos, extents, element))
+				{
+					return true;
+				}
+
+				// Cannot insert the element into octree
+				m_map.Remove(element);
+			}
+
+			return false;
+		}
+
 		bool Remove(const TElementType& element)
 		{
 			TNode** node;

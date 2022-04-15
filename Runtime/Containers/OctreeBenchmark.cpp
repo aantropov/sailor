@@ -56,15 +56,26 @@ public:
 			assert(bInserted);
 		}
 		tOctree.Stop();
-
 		SAILOR_LOG("Performance test insert:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.NumNodes());
+
+		tOctree.Clear();
+		tOctree.Start();
+		const auto shiftMax = 4;
+		for (size_t i = 0; i < count; i++)
+		{
+			const auto shift = glm::ivec3(rand() % shiftMax - shiftMax /2, rand() % shiftMax - shiftMax / 2, rand() % shiftMax - shiftMax / 2);
+			const bool bUpdated = container.Update(data[i].m_pos + shift, data[i].m_extents, data[i].m_data);
+			//assert(bUpdated);
+		}
+		tOctree.Stop();
+		SAILOR_LOG("Performance test update:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.NumNodes());
 
 		tOctree.Clear();
 		tOctree.Start();
 		for (size_t i = 0; i < count; i++)
 		{
 			const bool bRemoved = container.Remove(data[i].m_data);
-			assert(bRemoved);
+			//assert(bRemoved);
 		}
 		tOctree.Stop();
 		SAILOR_LOG("Performance test remove:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.NumNodes());

@@ -66,7 +66,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 	if (!m_material)
 	{
-		RenderState renderState = RHI::RenderState(true, false, 0.1f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line);
+		RenderState renderState = RHI::RenderState(true, true, 0.1f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line);
 
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;
