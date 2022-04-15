@@ -63,7 +63,7 @@ public:
 		tOctree.Start();
 		for (size_t i = 0; i < count; i++)
 		{
-			const bool bRemoved = container.RemoveSlow(data[i].m_data);
+			const bool bRemoved = container.Remove(data[i].m_data);
 			assert(bRemoved);
 		}
 		tOctree.Stop();

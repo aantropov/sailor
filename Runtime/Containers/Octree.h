@@ -23,19 +23,15 @@ namespace Sailor
 
 	protected:
 
-		struct TNodeElement
+		struct TBounds
 		{
-			TNodeElement(const TElementType& data, const glm::ivec3& pos, const glm::ivec3& extents) : m_element(data), m_extents(extents), m_position(pos)
-			{
-				m_volume = m_extents.x * m_extents.y * m_extents.z;
-			}
+			TBounds() {}
+			TBounds(const glm::ivec3& pos, const glm::ivec3& extents) : m_position(pos), m_extents(extents) {}
 
-			__forceinline bool operator<(const TNodeElement& rhs) const { return this->m_volume < rhs.m_volume; }
+			bool operator==(const TBounds& rhs) const { return m_position == rhs.m_position || m_extents == rhs.m_extents; }
 
-			TElementType m_element{};
 			glm::ivec3 m_position{};
 			glm::ivec3 m_extents{};
-			uint32_t m_volume{};
 		};
 
 		struct TNode
@@ -83,48 +79,19 @@ namespace Sailor
 
 			__forceinline void Insert(const TElementType& element, const glm::ivec3& pos, const glm::ivec3& extents)
 			{
-				size_t index = std::distance(m_elements.begin(),
-					std::upper_bound(m_elements.begin(), m_elements.end(), TNodeElement(element, pos, extents)));
-
-				m_elements.Insert(TNodeElement(element, pos, extents), index);
+				m_elements[element] = TBounds(pos, extents);
 			}
 
-			__forceinline bool RemoveSlow(const TElementType& element)
+			__forceinline bool Remove(const TElementType& element)
 			{
-				size_t index = m_elements.FindIf([&](const auto& el) { return el.m_element == element; });
-
-				if (index != -1)
-				{
-					m_elements.RemoveAt(index);
-					return true;
-				}
-
-				return false;
-			}
-
-			__forceinline bool Remove(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
-			{
-				auto it = std::lower_bound(m_elements.begin(), m_elements.end(), TNodeElement(element, pos, extents));
-				if (it != m_elements.end())
-				{
-					const size_t index = std::distance(m_elements.begin(), it);
-					for (size_t i = index; i < m_elements.Num(); i++)
-					{
-						if (m_elements[i].m_element == element)
-						{
-							m_elements.RemoveAt(index);
-							return true;
-						}
-					}
-				}
-
-				return false;
+				return m_elements.Remove(element);
 			}
 
 			uint32_t m_size = 0;
 			glm::ivec3 m_center{};
 			TNode* m_internal[8]{};
-			TVector<TNodeElement, Memory::TInlineAllocator<NumElementsInNode * 8u + 64u, TAllocator>> m_elements{};
+
+			TMap<TElementType, TBounds> m_elements{};
 		};
 
 	public:
@@ -174,7 +141,7 @@ namespace Sailor
 			m_map.Clear();
 		}
 
-		bool Contains(const TElementType& element) const { return m_map.ContainsKey(element); }
+		bool Contains(const TElementType& element) const { return m_root && m_map.ContainsKey(element); }
 		size_t Num() const { return m_num; }
 		size_t NumNodes() const { return m_numNodes; }
 
@@ -190,28 +157,12 @@ namespace Sailor
 			return false;
 		}
 
-		bool RemoveSlow(const TElementType& element)
+		bool Remove(const TElementType& element)
 		{
 			TNode** node;
 			if (m_map.Find(element, node))
 			{
-				if ((*node)->RemoveSlow(element))
-				{
-					Resolve_Internal(*node);
-					*node = nullptr;
-
-					return true;
-				}
-			}
-			return false;
-		}
-
-		bool Remove(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
-		{
-			TNode** node;
-			if (m_map.Find(element, node))
-			{
-				if ((*node)->Remove(pos, extents, element))
+				if ((*node)->Remove(element))
 				{
 					Resolve_Internal(*node);
 					m_map.Remove(element);
@@ -219,9 +170,6 @@ namespace Sailor
 					return true;
 				}
 			}
-
-			//return Remove_Internal(m_root, pos, extents, element);
-
 			return false;
 		}
 
@@ -261,8 +209,8 @@ namespace Sailor
 			for (auto& el : node->m_elements)
 			{
 				Math::AABB aabb;
-				aabb.m_min = glm::vec3(el.m_position - el.m_extents);
-				aabb.m_max = glm::vec3(el.m_position + el.m_extents);
+				aabb.m_min = glm::vec3(el.m_second.m_position - el.m_second.m_extents);
+				aabb.m_max = glm::vec3(el.m_second.m_position + el.m_second.m_extents);
 
 				const auto color = glm::vec4((0x4 & reinterpret_cast<size_t>(node)) / 16.0f,
 					(0x4 & reinterpret_cast<size_t>(node) >> 4) / 16.0f,
@@ -388,16 +336,16 @@ namespace Sailor
 			{
 				if (node->m_elements.Num() == NumElementsInNode && node->m_size > m_minSize)
 				{
+					node->Insert(element, pos, extents);
+
 					auto elements = std::move(node->m_elements);
 					node->m_elements.Clear();
-
-					elements.Add(TNodeElement(element, pos, extents));
 
 					Subdivide(node);
 
 					for (auto& el : elements)
 					{
-						assert(Insert_Internal(node, el.m_position, el.m_extents, el.m_element));
+						assert(Insert_Internal(node, el.m_second.m_position, el.m_second.m_extents, el.m_first));
 					}
 
 					return true;
