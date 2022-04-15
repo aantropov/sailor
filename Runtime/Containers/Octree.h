@@ -19,7 +19,7 @@ namespace Sailor
 	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class SAILOR_API TOctree final
 	{
-		static constexpr uint32_t NumElementsInNode = 4u;
+		static constexpr uint32_t NumElementsInNode = 12u;
 
 	protected:
 
@@ -36,7 +36,7 @@ namespace Sailor
 
 		struct TNode
 		{
-			constexpr uint32_t GetIndex(int32_t x, int32_t y, int32_t z) { return (x == -1 ? 0 : 1) + (z == -1 ? 1 : 0) * 2 + (y == -1 ? 0 : 1) * 4; }
+			__forceinline constexpr uint32_t GetIndex(int32_t x, int32_t y, int32_t z) const { return (x == -1 ? 0 : 1) + (z == -1 ? 1 : 0) * 2 + (y == -1 ? 0 : 1) * 4; }
 
 			__forceinline bool IsLeaf() const { return m_internal[0] == nullptr; }
 			__forceinline bool Contains(const glm::ivec3& pos, const glm::ivec3& extents) const
@@ -87,11 +87,11 @@ namespace Sailor
 				return m_elements.Remove(element);
 			}
 
-			uint32_t m_size = 0;
+			uint32_t m_size = 1;
 			glm::ivec3 m_center{};
 			TNode* m_internal[8]{};
 
-			TMap<TElementType, TBounds> m_elements{};
+			TMap<TElementType, TBounds> m_elements{ NumElementsInNode };
 		};
 
 	public:
