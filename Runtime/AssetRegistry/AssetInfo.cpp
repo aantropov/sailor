@@ -163,10 +163,11 @@ void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 		listener->OnUpdateAssetInfo(assetInfo, bWasMetaExpired || bWasAssetExpired);
 	}
 
-	if (bWasAssetExpired)
+/*	if (bWasAssetExpired)
 	{
 		assetInfo->SaveMetaFile();
 	}
+	*/
 }
 
 void DefaultAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const

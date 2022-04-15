@@ -68,6 +68,7 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 		if (modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
 		{
 			GenerateMaterialAssets(modelAssetInfo);
+			assetInfo->SaveMetaFile();
 		}
 	}
 }
@@ -122,7 +123,11 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Simple.shader");
 
-		glm::vec4 diffuse, ambient, emission, specular;
+		glm::vec4 diffuse{};
+		glm::vec4 ambient{};
+		glm::vec4 emission{};
+		glm::vec4 specular{};
+
 		memcpy(&diffuse, material.diffuse, 3 * sizeof(tinyobj::real_t));
 		memcpy(&ambient, material.ambient, 3 * sizeof(tinyobj::real_t));
 		memcpy(&emission, material.emission, 3 * sizeof(tinyobj::real_t));
@@ -302,7 +307,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 				mesh.bounds.m_max = mesh.bounds.m_min = vertex.m_position;
 				mesh.bIsInited = true;
 			}
-			
+
 			mesh.bounds.Extend(vertex.m_position);
 			outBoundsAabb.Extend(mesh.bounds);
 
