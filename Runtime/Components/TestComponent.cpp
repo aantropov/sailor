@@ -24,7 +24,7 @@ void TestComponent::BeginPlay()
 		});
 	}
 
-	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0,2,0,0), 10.0f, 1000.0f);
+	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 10.0f, 1000.0f);
 }
 
 void TestComponent::EndPlay()
@@ -112,12 +112,22 @@ void TestComponent::Tick(float deltaTime)
 			}
 		}
 
-		for (auto& mesh : meshRenderer->GetModel()->GetMeshes())
+		if (m_octree.Num() != meshRenderer->GetModel()->GetMeshes().Num())
 		{
-			GetWorld()->GetDebugContext()->DrawAABB(mesh->m_bounds);
-		}
+			for (auto& mesh : meshRenderer->GetModel()->GetMeshes())
+			{
+				if (!m_octree.Contains(mesh))
+				{
+					m_octree.Insert(mesh->m_bounds.GetCenter(), mesh->m_bounds.GetExtents(), mesh);
+				}
+				//GetWorld()->GetDebugContext()->DrawAABB(mesh->m_bounds);
+			}
 
-		GetWorld()->GetDebugContext()->DrawAABB(meshRenderer->GetModel()->GetBoundsAABB());
+			if (m_octree.Num() == meshRenderer->GetModel()->GetMeshes().Num())
+			{
+				m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
+			}
+		}
 	}
 
 	SAILOR_PROFILE_END_BLOCK();

@@ -7,6 +7,7 @@
 #include "Components/Component.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "ECS/StaticMeshRendererECS.h"
+#include "Containers/Octree.h"
 
 namespace Sailor
 {
@@ -32,7 +33,8 @@ namespace Sailor
 		RHI::ShaderBindingSetPtr m_frameDataBinding;
 
 		TexturePtr defaultTexture;
-
 		glm::ivec2 m_lastCursorPos;
+
+		TOctree<RHI::MeshPtr> m_octree{};
 	};
 }

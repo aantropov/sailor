@@ -22,6 +22,14 @@ namespace Sailor
 
 	class SAILOR_API TRefPtrBase
 	{
+	public:
+
+		size_t GetHash() const
+		{
+			std::hash<const void*> p;
+			return p(m_pRawPtr);
+		}
+
 	protected:
 
 		TRefBase* m_pRawPtr = nullptr;
@@ -185,5 +193,26 @@ namespace Sailor
 			pRefPtr.m_pRawPtr = nullptr;
 		}
 		friend class TRefPtr;
+	};
+}
+
+namespace std
+{
+	template<>
+	struct std::hash<Sailor::TRefPtrBase>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::TRefPtrBase& p) const
+		{
+			return p.GetHash();
+		}
+	};
+
+	template<typename T>
+	struct std::hash<Sailor::TRefPtr<T>>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::TRefPtr<T>& p) const
+		{
+			return p.GetHash();
+		}
 	};
 }

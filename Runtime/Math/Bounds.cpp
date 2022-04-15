@@ -81,3 +81,13 @@ void AABB::Extend(const glm::vec3& inner)
 	m_min = glm::min(inner, m_min);
 	m_max = glm::max(inner, m_max);
 }
+
+glm::vec3 AABB::GetCenter() const
+{
+	return (m_min + m_max) * 0.5f;
+}
+
+glm::vec3 AABB::GetExtents() const
+{
+	return (m_max - m_min) * 0.5f;
+}

@@ -41,7 +41,7 @@ public:
 
 		for (size_t i = 0; i < count; i++)
 		{
-			data[i].m_pos = glm::ivec3(rand() % 1000, rand() % 1000, rand() % 1000);
+			data[i].m_pos = glm::ivec3(rand() % 1000 - 512, rand() % 1000 - 512, rand() % 1000 - 512);
 			data[i].m_extents = glm::ivec3(rand() % 100, rand() % 100, rand() % 100);
 			data[i].m_data = i;
 		}
@@ -57,7 +57,7 @@ public:
 		}
 		tOctree.Stop();
 
-		SAILOR_LOG("Performance test insert:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.GetNumNodes());
+		SAILOR_LOG("Performance test insert:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.NumNodes());
 
 		tOctree.Clear();
 		tOctree.Start();
@@ -67,13 +67,13 @@ public:
 			assert(bRemoved);
 		}
 		tOctree.Stop();
-		SAILOR_LOG("Performance test remove:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.GetNumNodes());
+		SAILOR_LOG("Performance test remove:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.NumNodes());
 
 		tOctree.Clear();
 		tOctree.Start();
 		container.Resolve();
 		tOctree.Stop();
-		SAILOR_LOG("Performance test resolve:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.GetNumNodes());
+		SAILOR_LOG("Performance test resolve:\n\t TOctree %llums, nodes:%llu", tOctree.ResultMs(), container.NumNodes());
 	}
 };
 

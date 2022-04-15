@@ -4,7 +4,7 @@
     "bIsTransparent": false,
     "blendMode": 0,
     "cullMode": 2,
-    "defines": ["NO_DIFFUSE"],
+    "defines": null,
     "depthBias": 0.0,
     "fillMode": 0,
     "renderQueue": "Opaque",
@@ -25,7 +25,7 @@
         [
             "material.ambient",
             {
-                "w": 6.403933981964414e-43,
+                "w": 0.47040000557899475,
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0
@@ -34,7 +34,7 @@
         [
             "material.emission",
             {
-                "w": 6.403933981964414e-43,
+                "w": 7.843136787414551,
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0

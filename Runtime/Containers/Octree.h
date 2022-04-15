@@ -12,6 +12,7 @@
 #include "Containers/Concepts.h"
 #include "Containers/Map.h"
 #include "Containers/Vector.h"
+#include "RHI/DebugContext.h"
 
 namespace Sailor
 {
@@ -88,6 +89,19 @@ namespace Sailor
 				m_elements.Insert(TNodeElement(element, pos, extents), index);
 			}
 
+			__forceinline bool RemoveSlow(const TElementType& element)
+			{
+				size_t index = m_elements.FindIf([&](const auto& el) { return el.m_element == element; });
+
+				if (index != -1)
+				{
+					m_elements.RemoveAt(index);
+					return true;
+				}
+
+				return false;
+			}
+
 			__forceinline bool Remove(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 			{
 				auto it = std::lower_bound(m_elements.begin(), m_elements.end(), TNodeElement(element, pos, extents));
@@ -116,7 +130,7 @@ namespace Sailor
 	public:
 
 		// Constructors & Destructor
-		TOctree(glm::ivec3 center, uint32_t size = 16536u, uint32_t minSize = 4) : m_map(size)
+		TOctree(glm::ivec3 center = glm::ivec3(0, 0, 0), uint32_t size = 16536u, uint32_t minSize = 4) : m_map(size)
 		{
 			m_minSize = minSize;
 			m_root = Memory::New<TNode>(m_allocator);
@@ -160,8 +174,9 @@ namespace Sailor
 			m_map.Clear();
 		}
 
-		size_t GetNum() const { return m_num; }
-		size_t GetNumNodes() const { return m_numNodes; }
+		bool Contains(const TElementType& element) const { return m_map.ContainsKey(element); }
+		size_t Num() const { return m_num; }
+		size_t NumNodes() const { return m_numNodes; }
 
 		//TVector<TElementType, TAllocator> GetElements(glm::ivec3 extents) const { return TVector(); }
 
@@ -175,6 +190,22 @@ namespace Sailor
 			return false;
 		}
 
+		bool RemoveSlow(const TElementType& element)
+		{
+			TNode** node;
+			if (m_map.Find(element, node))
+			{
+				if ((*node)->RemoveSlow(element))
+				{
+					Resolve_Internal(*node);
+					*node = nullptr;
+
+					return true;
+				}
+			}
+			return false;
+		}
+
 		bool Remove(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
 			TNode** node;
@@ -183,9 +214,13 @@ namespace Sailor
 				if ((*node)->Remove(pos, extents, element))
 				{
 					Resolve_Internal(*node);
+					m_map.Remove(element);
+
 					return true;
 				}
 			}
+
+			//return Remove_Internal(m_root, pos, extents, element);
 
 			return false;
 		}
@@ -195,7 +230,48 @@ namespace Sailor
 			Resolve_Internal(m_root);
 		}
 
+		void DrawOctree(RHI::DebugContext& context, float duration = 0.0f) const
+		{
+			DrawOctree_Internal(m_root, context, duration);
+		}
+
 	protected:
+
+		void DrawOctree_Internal(const TNode* node, RHI::DebugContext& context, float duration = 0.0f) const
+		{
+			if (!node->IsLeaf())
+			{
+				for (uint32_t i = 0; i < 8; i++)
+				{
+					DrawOctree_Internal(node->m_internal[i], context, duration);
+				}
+			}
+
+			if (node->IsLeaf() && node->m_elements.Num() == 0)
+			{
+				return;
+			}
+
+			Math::AABB aabb;
+			aabb.m_min = glm::vec3(node->m_center) - (float)node->m_size * glm::vec3(0.5f, 0.5f, 0.5f);
+			aabb.m_max = glm::vec3(node->m_center) + (float)node->m_size * glm::vec3(0.5f, 0.5f, 0.5f);
+
+			context.DrawAABB(aabb, glm::vec4(0.2f, 1.0f, 0.2f, 1.0f), duration);
+
+			for (auto& el : node->m_elements)
+			{
+				Math::AABB aabb;
+				aabb.m_min = glm::vec3(el.m_position - el.m_extents);
+				aabb.m_max = glm::vec3(el.m_position + el.m_extents);
+
+				const auto color = glm::vec4((0x4 & reinterpret_cast<size_t>(node)) / 16.0f,
+					(0x4 & reinterpret_cast<size_t>(node) >> 4) / 16.0f,
+					(0x4 & reinterpret_cast<size_t>(node) >> 8) / 16.0f,
+					(0x4 & reinterpret_cast<size_t>(node) >> 12) / 16.0f);
+
+				context.DrawAABB(aabb, color, duration);
+			}
+		}
 
 		void Resolve_Internal(TNode* node)
 		{
