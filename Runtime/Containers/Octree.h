@@ -19,7 +19,7 @@ namespace Sailor
 	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class SAILOR_API TOctree final
 	{
-		static constexpr uint32_t NumElementsInNode = 12u;
+		static constexpr uint32_t NumElementsInNode = 8u;
 
 	protected:
 
@@ -38,7 +38,7 @@ namespace Sailor
 		{
 			__forceinline constexpr uint32_t GetIndex(int32_t x, int32_t y, int32_t z) const { return (x < 0 ? 0 : 1) + (z < 0 ? 1 : 0) * 2 + (y < 0 ? 0 : 1) * 4; }
 
-			__forceinline bool IsLeaf() const { return m_bIsLeaf; }
+			__forceinline bool IsLeaf() const { return m_internal == nullptr; }
 			__forceinline bool Contains(const glm::ivec3& pos, const glm::ivec3& extents) const
 			{
 				const int32_t halfSize = m_size / 2;
@@ -68,7 +68,7 @@ namespace Sailor
 
 				for (uint32_t i = 0; i < 8; i++)
 				{
-					if (!m_internal[i]->IsLeaf() || m_internal[i]->m_elements.Num() > 0)
+					if (!m_internal[i].IsLeaf() || m_internal[i].m_elements.Num() > 0)
 					{
 						return false;
 					}
@@ -89,8 +89,7 @@ namespace Sailor
 
 			uint32_t m_size = 1;
 			glm::ivec3 m_center{};
-			TNode* m_internal[8]{};
-			bool m_bIsLeaf = true;
+			TNode* m_internal = nullptr;
 			TMap<TElementType, TBounds> m_elements{ NumElementsInNode };
 		};
 
@@ -136,7 +135,7 @@ namespace Sailor
 		{
 			if (m_root)
 			{
-				Clear_Internal(m_root);
+				Clear_Internal(*m_root);
 			}
 			m_map.Clear();
 		}
@@ -149,7 +148,7 @@ namespace Sailor
 
 		bool Insert(const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
-			if (Insert_Internal(m_root, pos, extents, element))
+			if (Insert_Internal(*m_root, pos, extents, element))
 			{
 				m_num++;
 				return true;
@@ -172,10 +171,10 @@ namespace Sailor
 				// If not then remove & reinsert
 				if ((*node)->Remove(element))
 				{
-					Resolve_Internal(*node);
+					Resolve_Internal(**node);
 				}
 
-				if (Insert_Internal(m_root, pos, extents, element))
+				if (Insert_Internal(*m_root, pos, extents, element))
 				{
 					return true;
 				}
@@ -184,7 +183,7 @@ namespace Sailor
 				m_map.Remove(element);
 			}
 
-			return Insert_Internal(m_root, pos, extents, element);
+			return Insert_Internal(*m_root, pos, extents, element);
 		}
 
 		bool Remove(const TElementType& element)
@@ -194,8 +193,9 @@ namespace Sailor
 			{
 				if ((*node)->Remove(element))
 				{
-					Resolve_Internal(*node);
+					Resolve_Internal(**node);
 					m_map.Remove(element);
+					m_num--;
 
 					return true;
 				}
@@ -205,157 +205,126 @@ namespace Sailor
 
 		__forceinline void Resolve()
 		{
-			Resolve_Internal(m_root);
+			Resolve_Internal(*m_root);
 		}
 
 		void DrawOctree(RHI::DebugContext& context, float duration = 0.0f) const
 		{
-			DrawOctree_Internal(m_root, context, duration);
+			DrawOctree_Internal(*m_root, context, duration);
 		}
 
 	protected:
 
-		void DrawOctree_Internal(const TNode* node, RHI::DebugContext& context, float duration = 0.0f) const
+		void DrawOctree_Internal(const TNode& node, RHI::DebugContext& context, float duration = 0.0f) const
 		{
-			if (!node->IsLeaf())
+			if (!node.IsLeaf())
 			{
 				for (uint32_t i = 0; i < 8; i++)
 				{
-					DrawOctree_Internal(node->m_internal[i], context, duration);
+					DrawOctree_Internal(node.m_internal[i], context, duration);
 				}
 			}
 
-			if (node->IsLeaf() && node->m_elements.Num() == 0)
+			glm::vec4 color = glm::vec4(0.2f, 1.0f, 0.2f, 1.0f);
+
+			if (node.IsLeaf() && node.m_elements.Num() == 0)
 			{
+				color = glm::vec4(1.0f, 0.2f, 0.2f, 1.0f);
 				return;
 			}
 
 			Math::AABB aabb;
-			aabb.m_min = glm::vec3(node->m_center) - (float)node->m_size * glm::vec3(0.5f, 0.5f, 0.5f);
-			aabb.m_max = glm::vec3(node->m_center) + (float)node->m_size * glm::vec3(0.5f, 0.5f, 0.5f);
+			aabb.m_min = glm::vec3(node.m_center) - (float)node.m_size * glm::vec3(0.5f, 0.5f, 0.5f);
+			aabb.m_max = glm::vec3(node.m_center) + (float)node.m_size * glm::vec3(0.5f, 0.5f, 0.5f);
 
-			context.DrawAABB(aabb, glm::vec4(0.2f, 1.0f, 0.2f, 1.0f), duration);
+			context.DrawAABB(aabb, color, duration);
 
-			for (auto& el : node->m_elements)
+			for (auto& el : node.m_elements)
 			{
 				Math::AABB aabb;
 				aabb.m_min = glm::vec3(el.m_second.m_position - el.m_second.m_extents);
 				aabb.m_max = glm::vec3(el.m_second.m_position + el.m_second.m_extents);
 
-				const auto color = glm::vec4((0x4 & reinterpret_cast<size_t>(node)) / 16.0f,
-					(0x4 & reinterpret_cast<size_t>(node) >> 4) / 16.0f,
-					(0x4 & reinterpret_cast<size_t>(node) >> 8) / 16.0f,
-					(0x4 & reinterpret_cast<size_t>(node) >> 12) / 16.0f);
+				const auto color = glm::vec4((0x4 & reinterpret_cast<size_t>(&node)) / 16.0f,
+					(0x4 & reinterpret_cast<size_t>(&node) >> 4) / 16.0f,
+					(0x4 & reinterpret_cast<size_t>(&node) >> 8) / 16.0f,
+					(0x4 & reinterpret_cast<size_t>(&node) >> 12) / 16.0f);
 
 				context.DrawAABB(aabb, color, duration);
 			}
 		}
 
-		void Resolve_Internal(TNode* node)
+		void Resolve_Internal(TNode& node)
 		{
-			if (node->m_elements.Num())
+			if (node.m_elements.Num())
 			{
 				return;
 			}
 
-			for (uint32_t i = 0; i < 8; i++)
+			if (!node.IsLeaf())
 			{
-				if (!node->IsLeaf())
+				for (uint32_t i = 0; i < 8; i++)
 				{
-					Resolve_Internal(node->m_internal[i]);
+					Resolve_Internal(node.m_internal[i]);
 				}
 			}
 
-			if (node->CanCollapse())
+			if (node.CanCollapse())
 			{
 				Collapse(node);
 			}
 		}
 
-		void Clear_Internal(TNode* node)
+		void Clear_Internal(TNode& node)
 		{
-			if (node->IsLeaf())
+			if (node.IsLeaf())
 			{
 				return;
 			}
 
 			for (uint32_t i = 0; i < 8; i++)
 			{
-				Clear_Internal(node->m_internal[i]);
+				Clear_Internal(node.m_internal[i]);
 			}
 
 			Collapse(node);
 		}
 
-		__forceinline void Subdivide(TNode* node)
+		__forceinline void Subdivide(TNode& node)
 		{
-			assert(node->IsLeaf());
+			assert(node.IsLeaf());
 
-			// Bottom   Top    
+			// Bottom   Top
 			// |0|1|    |4|5|
 			// |2|3|    |6|7|
 			const glm::ivec3 offset[] = { glm::ivec3(1, -1, -1), glm::ivec3(1, -1, 1), glm::ivec3(-1, -1, -1), glm::ivec3(-1, -1, 1),
 										  glm::ivec3(1, 1, -1), glm::ivec3(1, 1, 1), glm::ivec3(-1, 1, -1), glm::ivec3(-1, 1, 1) };
 
-			const int32_t quarterSize = node->m_size / 4;
+			const int32_t quarterSize = node.m_size / 4;
 
-			TNode* pRaw = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode) * 8));
+			node.m_internal = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode) * 8));
 
 			for (uint32_t i = 0; i < 8; i++)
 			{
-				node->m_internal[i] = new (pRaw + i) TNode();
-				node->m_internal[i]->m_size = quarterSize * 2;
-				node->m_internal[i]->m_center = offset[i] * quarterSize + node->m_center;
+				new (node.m_internal + i) TNode();
+				node.m_internal[i].m_size = quarterSize * 2;
+				node.m_internal[i].m_center = offset[i] * quarterSize + node.m_center;
 			}
-
-			node->m_bIsLeaf = false;
 
 			m_numNodes += 8;
 		}
 
-		__forceinline void Collapse(TNode* node)
+		__forceinline void Collapse(TNode& node)
 		{
-			m_allocator.Free(node->m_internal[0]);
-			node->m_bIsLeaf = true;
+			m_allocator.Free(node.m_internal);
+			node.m_internal = nullptr;
 			m_numNodes -= 8;
 		}
 
-		// Not used
-		bool Remove_Internal(TNode* node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
+		bool Insert_Internal(TNode& node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
-			const bool bIsLeaf = node->IsLeaf();
-			const bool bOverlaps = node->Overlaps(pos, extents);
-
-			if (!bOverlaps)
-			{
-				return false;
-			}
-
-			const size_t index = node->m_elements.FindIf([&](const auto& lhs) { return lhs.m_element == element; });
-			if (index != -1)
-			{
-				node->m_elements.RemoveAtSwap(index);
-				Resolve_Internal(node);
-				return true;
-			}
-
-			if (!bIsLeaf)
-			{
-				for (uint32_t i = 0; i < 8; i++)
-				{
-					if (Remove_Internal(node->m_internal[i], pos, extents, element))
-					{
-						return true;
-					}
-				}
-			}
-			return false;
-		}
-
-		bool Insert_Internal(TNode* node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
-		{
-			const bool bIsLeaf = node->IsLeaf();
-			const bool bContains = node->Contains(pos, extents);
+			const bool bIsLeaf = node.IsLeaf();
+			const bool bContains = node.Contains(pos, extents);
 
 			if (!bContains)
 			{
@@ -364,12 +333,12 @@ namespace Sailor
 
 			if (bIsLeaf)
 			{
-				node->Insert(element, pos, extents);
+				node.Insert(element, pos, extents);
 
-				if (node->m_elements.Num() == NumElementsInNode && node->m_size > m_minSize)
+				if (node.m_elements.Num() == NumElementsInNode && node.m_size > m_minSize)
 				{
-					auto elements = std::move(node->m_elements);
-					node->m_elements.Clear();
+					auto elements = std::move(node.m_elements);
+					node.m_elements.Clear();
 
 					Subdivide(node);
 
@@ -381,21 +350,21 @@ namespace Sailor
 					return true;
 				}
 
-				m_map[element] = node;
+				m_map[element] = &node;
 
 				return true;
 			}
 			else
 			{
-				const glm::ivec3 delta = pos - node->m_center;
-				auto innerNodeIndex = node->GetIndex(delta.x, delta.y, delta.z);
-				if (Insert_Internal(node->m_internal[innerNodeIndex], pos, extents, element))
+				const glm::ivec3 delta = pos - node.m_center;
+				auto innerNodeIndex = node.GetIndex(delta.x, delta.y, delta.z);
+				if (Insert_Internal(node.m_internal[innerNodeIndex], pos, extents, element))
 				{
 					return true;
 				}
 
-				node->Insert(element, pos, extents);
-				m_map[element] = node;
+				node.Insert(element, pos, extents);
+				m_map[element] = &node;
 			}
 
 			return true;
