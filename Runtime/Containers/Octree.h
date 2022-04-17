@@ -36,9 +36,12 @@ namespace Sailor
 
 		struct TNode
 		{
-			__forceinline constexpr uint32_t GetIndex(int32_t x, int32_t y, int32_t z) const { return (x < 0 ? 0 : 1) + (z < 0 ? 1 : 0) * 2 + (y < 0 ? 0 : 1) * 4; }
+			// Bottom   Top
+			// |0|1|    |4|5|
+			// |2|3|    |6|7|
+			__forceinline constexpr uint32_t GetIndex(int32_t x, int32_t y, int32_t z) const { return (z < 0 ? 0 : 1) + (x < 0 ? 1 : 0) * 2 + (y < 0 ? 0 : 1) * 4; }
 
-			__forceinline bool IsLeaf() const { return m_internal == nullptr; }
+			__forceinline bool IsLeaf() const { return m_bIsLeaf; }
 			__forceinline bool Contains(const glm::ivec3& pos, const glm::ivec3& extents) const
 			{
 				const int32_t halfSize = m_size / 2;
@@ -68,7 +71,7 @@ namespace Sailor
 
 				for (uint32_t i = 0; i < 8; i++)
 				{
-					if (!m_internal[i].IsLeaf() || m_internal[i].m_elements.Num() > 0)
+					if (m_internal[i] && (!m_internal[i]->IsLeaf() || m_internal[i]->m_elements.Num() > 0))
 					{
 						return false;
 					}
@@ -89,7 +92,8 @@ namespace Sailor
 
 			uint32_t m_size = 1;
 			glm::ivec3 m_center{};
-			TNode* m_internal = nullptr;
+			TNode* m_internal[8]{};
+			bool m_bIsLeaf = true;
 			TMap<TElementType, TBounds> m_elements{ NumElementsInNode };
 		};
 
@@ -221,7 +225,10 @@ namespace Sailor
 			{
 				for (uint32_t i = 0; i < 8; i++)
 				{
-					DrawOctree_Internal(node.m_internal[i], context, duration);
+					if (node.m_internal[i])
+					{
+						DrawOctree_Internal(*node.m_internal[i], context, duration);
+					}
 				}
 			}
 
@@ -230,7 +237,7 @@ namespace Sailor
 			if (node.IsLeaf() && node.m_elements.Num() == 0)
 			{
 				color = glm::vec4(1.0f, 0.2f, 0.2f, 1.0f);
-				return;
+				//return;
 			}
 
 			Math::AABB aabb;
@@ -265,7 +272,10 @@ namespace Sailor
 			{
 				for (uint32_t i = 0; i < 8; i++)
 				{
-					Resolve_Internal(node.m_internal[i]);
+					if (node.m_internal[i])
+					{
+						Resolve_Internal(*node.m_internal[i]);
+					}
 				}
 			}
 
@@ -277,6 +287,8 @@ namespace Sailor
 
 		void Clear_Internal(TNode& node)
 		{
+			node.m_elements.Clear();
+
 			if (node.IsLeaf())
 			{
 				return;
@@ -284,16 +296,17 @@ namespace Sailor
 
 			for (uint32_t i = 0; i < 8; i++)
 			{
-				Clear_Internal(node.m_internal[i]);
+				if (node.m_internal[i] != nullptr)
+				{
+					Clear_Internal(*node.m_internal[i]);
+				}
 			}
 
 			Collapse(node);
 		}
 
-		__forceinline void Subdivide(TNode& node)
+		__forceinline TNode& GetOrAddChildNode(TNode& node, size_t i)
 		{
-			assert(node.IsLeaf());
-
 			// Bottom   Top
 			// |0|1|    |4|5|
 			// |2|3|    |6|7|
@@ -302,23 +315,33 @@ namespace Sailor
 
 			const int32_t quarterSize = node.m_size / 4;
 
-			node.m_internal = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode) * 8));
-
-			for (uint32_t i = 0; i < 8; i++)
+			if (!node.m_internal[i])
 			{
-				new (node.m_internal + i) TNode();
-				node.m_internal[i].m_size = quarterSize * 2;
-				node.m_internal[i].m_center = offset[i] * quarterSize + node.m_center;
+				node.m_internal[i] = Memory::New<TNode>(m_allocator);
+				node.m_internal[i]->m_size = quarterSize * 2;
+				node.m_internal[i]->m_center = offset[i] * quarterSize + node.m_center;
+				node.m_bIsLeaf = false;
+				m_numNodes += 1;
 			}
 
-			m_numNodes += 8;
+			return *node.m_internal[i];
 		}
 
 		__forceinline void Collapse(TNode& node)
 		{
-			m_allocator.Free(node.m_internal);
-			node.m_internal = nullptr;
-			m_numNodes -= 8;
+			for (uint32_t i = 0; i < 8; i++)
+			{
+				if (node.m_internal[i] == nullptr)
+				{
+					continue;
+				}
+
+				m_numNodes -= 1;
+				Memory::Delete<TNode>(m_allocator, node.m_internal[i]);
+				node.m_internal[i] = nullptr;
+			}
+
+			node.m_bIsLeaf = true;
 		}
 
 		bool Insert_Internal(TNode& node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
@@ -339,8 +362,7 @@ namespace Sailor
 				{
 					auto elements = std::move(node.m_elements);
 					node.m_elements.Clear();
-
-					Subdivide(node);
+					node.m_bIsLeaf = false;
 
 					for (auto& el : elements)
 					{
@@ -357,10 +379,19 @@ namespace Sailor
 			else
 			{
 				const glm::ivec3 delta = pos - node.m_center;
-				auto innerNodeIndex = node.GetIndex(delta.x, delta.y, delta.z);
-				if (Insert_Internal(node.m_internal[innerNodeIndex], pos, extents, element))
+				const size_t innerNodeIndex = node.GetIndex(delta.x, delta.y, delta.z);
+
+				// Octant contains the object
+				if (std::min(abs(delta.x), (int32_t)node.m_size / 2 - abs(delta.x)) > extents.x &&
+					std::min(abs(delta.y), (int32_t)node.m_size / 2 - abs(delta.y)) > extents.y &&
+					std::min(abs(delta.z), (int32_t)node.m_size / 2 - abs(delta.z)) > extents.z)
 				{
-					return true;
+					if (Insert_Internal(GetOrAddChildNode(node, innerNodeIndex), pos, extents, element))
+					{
+						return true;
+					}
+
+					assert(false);
 				}
 
 				node.Insert(element, pos, extents);
