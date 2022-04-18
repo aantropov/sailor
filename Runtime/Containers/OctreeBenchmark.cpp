@@ -17,7 +17,12 @@ public:
 
 		printf("%s\n", tOctreeClassName.c_str());
 		printf("Sanity check passed: %d\n", SanityCheck());
-		PerformanceTests();
+		printf("\n");
+		PerformanceTests(10000);
+		printf("\n");
+		PerformanceTests(25000);
+		printf("\n");
+		PerformanceTests(1000000);
 		printf("\n");
 	}
 
@@ -26,10 +31,8 @@ public:
 		return true;
 	}
 
-	static void PerformanceTests()
+	static void PerformanceTests(const uint32_t count)
 	{
-		const uint32_t count = 1000000;
-
 		struct Data
 		{
 			glm::ivec3 m_pos;
