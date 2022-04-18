@@ -1,4 +1,5 @@
 #include "Containers/Octree.h"
+#include "Containers/Octree2.h"
 #include "Core/Utils.h"
 #include <random>
 
@@ -96,4 +97,5 @@ void Sailor::RunOctreeBenchmark()
 	printf("\nStarting Octree benchmark...\n");
 
 	TestCase_OctreePerfromance<Sailor::TOctree<size_t>>::RunTests();
+	//TestCase_OctreePerfromance<Sailor::TOctree2<size_t>>::RunTests();
 }

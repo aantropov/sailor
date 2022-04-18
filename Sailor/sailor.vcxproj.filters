@@ -387,6 +387,9 @@
     <ClInclude Include="..\Runtime\RHI\VertexDescription.h">
       <Filter>Runtime\RHI</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\Octree2.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

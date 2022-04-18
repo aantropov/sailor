@@ -200,6 +200,7 @@
     <ClInclude Include="..\Runtime\Containers\List.h" />
     <ClInclude Include="..\Runtime\Containers\Map.h" />
     <ClInclude Include="..\Runtime\Containers\Octree.h" />
+    <ClInclude Include="..\Runtime\Containers\Octree2.h" />
     <ClInclude Include="..\Runtime\Containers\Pair.h" />
     <ClInclude Include="..\Runtime\Containers\Set.h" />
     <ClInclude Include="..\Runtime\Containers\Vector.h" />
