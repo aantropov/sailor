@@ -17,9 +17,14 @@ using namespace Sailor::JobSystem;
 
 void ITask::Join(const TWeakPtr<ITask>& job)
 {
+	if (!job)
+	{
+		return;
+	}
+
 	TSharedPtr<ITask> pOtherJob = job.Lock();
 
-	if (pOtherJob && pOtherJob->AddDependency(m_self.Lock()))
+	if (pOtherJob->AddDependency(m_self.Lock()))
 	{
 		this->m_numBlockers++;
 	}

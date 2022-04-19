@@ -57,8 +57,8 @@ void main()
     gl_Position = frame.projection * frame.view * data.instance.model * vec4(inPosition, 1.0);
     vec4 worldNormal = data.instance.model * vec4(inNormal, 1.0);
 #else
-    gl_Position = frame.projection * frame.view * data.instance[gl_BaseInstance].model * vec4(inPosition, 1.0);
-    vec4 worldNormal = data.instance[gl_BaseInstance].model * vec4(inNormal, 1.0);
+    gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 1.0);
 #endif
 
     fragColor = 1 - inColor * gl_Position.z / 3000;

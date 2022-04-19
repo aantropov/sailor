@@ -35,18 +35,18 @@ namespace Sailor
 		{
 		public:
 
-			virtual SAILOR_API float GetProgress() { return 0.0f; }
-			virtual SAILOR_API bool IsFinished() const { return m_bIsFinished; }
-			virtual SAILOR_API bool IsExecuting() const { return m_bIsStarted && !m_bIsFinished; }
-			virtual SAILOR_API bool IsStarted() const { return m_bIsStarted; }
-			virtual SAILOR_API bool IsReadyToStart() const
+			SAILOR_API virtual float GetProgress() { return 0.0f; }
+			SAILOR_API virtual bool IsFinished() const { return m_bIsFinished; }
+			SAILOR_API virtual bool IsExecuting() const { return m_bIsStarted && !m_bIsFinished; }
+			SAILOR_API virtual bool IsStarted() const { return m_bIsStarted; }
+			SAILOR_API virtual bool IsReadyToStart() const
 			{
 				return !m_bIsStarted && !m_bIsFinished && m_numBlockers == 0;
 			}
 
-			virtual SAILOR_API void Execute() = 0;
+			SAILOR_API virtual void Execute() = 0;
 
-			virtual SAILOR_API ~ITask() = default;
+			SAILOR_API virtual ~ITask() = default;
 
 			SAILOR_API const std::string& GetName() const { return m_name; }
 
@@ -88,7 +88,7 @@ namespace Sailor
 
 			SAILOR_API bool AddDependency(TSharedPtr<ITask> dependentJob);
 
-			virtual SAILOR_API void Complete();
+			SAILOR_API virtual void Complete();
 
 			SAILOR_API ITask(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_threadType(thread)
 			{
@@ -147,7 +147,7 @@ namespace Sailor
 
 		public:
 
-			virtual SAILOR_API ~Task() = default;
+			SAILOR_API virtual ~Task() = default;
 
 			SAILOR_API void Execute() override
 			{
