@@ -6,6 +6,7 @@
 
 #include "Core/Defines.h"
 #include "Types.h"
+#include "Math/Bounds.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/UniquePtr.hpp"
 #include "Core/Submodule.h"

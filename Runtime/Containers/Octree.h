@@ -218,6 +218,24 @@ namespace Sailor
 
 	protected:
 
+		void GetElementsInChildren(TNode& node, TVector<TElementType>& outElements)
+		{
+			for (auto& el : node.m_elements)
+			{
+				outElements.Add(el.m_first);
+			}
+
+			if (node.IsLeaf())
+			{
+				return;
+			}
+
+			for (uint32_t i = 0; i < 8; i++)
+			{
+				GetElements(node.m_internal[i]);
+			}
+		}
+
 		void DrawOctree_Internal(const TNode& node, RHI::DebugContext& context, float duration = 0.0f) const
 		{
 			if (!node.IsLeaf())
@@ -294,36 +312,6 @@ namespace Sailor
 			Collapse(node);
 		}
 
-		__forceinline void Subdivide(TNode& node)
-		{
-			assert(node.IsLeaf());
-
-			// Bottom   Top
-			// |0|1|    |4|5|
-			// |2|3|    |6|7|
-			const glm::ivec3 offset[] = { glm::ivec3(1, -1, -1), glm::ivec3(1, -1, 1), glm::ivec3(-1, -1, -1), glm::ivec3(-1, -1, 1),
-										  glm::ivec3(1, 1, -1), glm::ivec3(1, 1, 1), glm::ivec3(-1, 1, -1), glm::ivec3(-1, 1, 1) };
-
-			const int32_t quarterSize = node.m_size / 4;
-			node.m_internal = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode) * 8));
-
-			for (uint32_t i = 0; i < 8; i++)
-			{
-				new (node.m_internal + i) TNode();
-				node.m_internal[i].m_size = quarterSize * 2;
-				node.m_internal[i].m_center = offset[i] * quarterSize + node.m_center;
-			}
-
-			m_numNodes += 8;
-		}
-
-		__forceinline void Collapse(TNode& node)
-		{
-			m_allocator.Free(node.m_internal);
-			node.m_internal = nullptr;
-			m_numNodes -= 8;
-		}
-
 		bool Insert_Internal(TNode& node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
 		{
 			const bool bIsLeaf = node.IsLeaf();
@@ -371,6 +359,36 @@ namespace Sailor
 			}
 
 			return true;
+		}
+
+		__forceinline void Subdivide(TNode& node)
+		{
+			assert(node.IsLeaf());
+
+			// Bottom   Top
+			// |0|1|    |4|5|
+			// |2|3|    |6|7|
+			const glm::ivec3 offset[] = { glm::ivec3(1, -1, -1), glm::ivec3(1, -1, 1), glm::ivec3(-1, -1, -1), glm::ivec3(-1, -1, 1),
+										  glm::ivec3(1, 1, -1), glm::ivec3(1, 1, 1), glm::ivec3(-1, 1, -1), glm::ivec3(-1, 1, 1) };
+
+			const int32_t quarterSize = node.m_size / 4;
+			node.m_internal = static_cast<TNode*>(m_allocator.Allocate(sizeof(TNode) * 8));
+
+			for (uint32_t i = 0; i < 8; i++)
+			{
+				new (node.m_internal + i) TNode();
+				node.m_internal[i].m_size = quarterSize * 2;
+				node.m_internal[i].m_center = offset[i] * quarterSize + node.m_center;
+			}
+
+			m_numNodes += 8;
+		}
+
+		__forceinline void Collapse(TNode& node)
+		{
+			m_allocator.Free(node.m_internal);
+			node.m_internal = nullptr;
+			m_numNodes -= 8;
 		}
 
 		TNode* m_root{};

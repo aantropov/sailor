@@ -3,6 +3,7 @@
 #include "Renderer.h"
 #include "Types.h"
 #include "Math/Math.h"
+#include "Math/Bounds.h"
 
 namespace Sailor::RHI
 {

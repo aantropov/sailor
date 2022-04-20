@@ -31,6 +31,23 @@ namespace Sailor::Math
 		glm::vec3 m_min{};
 		glm::vec3 m_max{};
 
+		AABB() = default;
+		AABB(glm::vec3 center, glm::vec3 extents);
+
+		template<typename TContainer>
+		SAILOR_API __forceinline void GetPoints(TContainer& outPoints) const
+		{
+			outPoints.AddRange({
+			glm::vec3(m_min.x, m_min.y, m_min.z),
+			glm::vec3(m_max.x, m_max.y, m_max.z),
+			glm::vec3(m_min.x, m_max.y, m_max.z),
+			glm::vec3(m_max.x, m_min.y, m_max.z),
+			glm::vec3(m_max.x, m_max.y, m_min.z),
+			glm::vec3(m_max.x, m_min.y, m_min.z),
+			glm::vec3(m_min.x, m_max.y, m_min.z),
+			glm::vec3(m_min.x, m_min.y, m_max.z) });
+		}
+
 		SAILOR_API __forceinline glm::vec3 GetCenter() const;
 		SAILOR_API __forceinline glm::vec3 GetExtents() const;
 
@@ -43,8 +60,9 @@ namespace Sailor::Math
 		SAILOR_API Frustum() = default;
 		SAILOR_API Frustum(const glm::mat4& matrix) { ExtractFrustumPlanes(matrix); }
 
-		SAILOR_API __forceinline bool CheckPoint(const glm::vec3& point) const;
-		SAILOR_API __forceinline bool CheckSphere(const Sphere& sphere) const;
+		SAILOR_API __forceinline bool OverlapsAABB(const AABB& aabb) const;
+		SAILOR_API __forceinline bool ContainsPoint(const glm::vec3& point) const;
+		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& matrix);
 

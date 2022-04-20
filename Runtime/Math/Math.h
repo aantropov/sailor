@@ -2,7 +2,6 @@
 
 #include "Core/Defines.h"
 #include "Transform.h"
-#include "Bounds.h"
 
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/quaternion.hpp>

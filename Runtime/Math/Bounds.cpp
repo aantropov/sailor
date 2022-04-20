@@ -1,4 +1,6 @@
 #include "Bounds.h"
+#include "Containers/Vector.h"
+#include "Memory/LockFreeHeapAllocator.h"
 
 using namespace Sailor;
 using namespace Sailor::Math;
@@ -38,7 +40,7 @@ void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix)
 	m_planes[5][3] = matrix[3][3] - matrix[2][3];
 }
 
-bool Frustum::CheckPoint(const glm::vec3& point) const
+bool Frustum::ContainsPoint(const glm::vec3& point) const
 {
 	for (uint32_t p = 0; p < 6; p++)
 	{
@@ -54,7 +56,7 @@ bool Frustum::CheckPoint(const glm::vec3& point) const
 	return true;
 }
 
-bool Frustum::CheckSphere(const Sphere& sphere) const
+bool Frustum::ContainsSphere(const Sphere& sphere) const
 {
 	for (uint32_t p = 0; p < 6; p++)
 	{
@@ -68,6 +70,24 @@ bool Frustum::CheckSphere(const Sphere& sphere) const
 	}
 
 	return true;
+}
+
+
+// TODO: Redo
+bool Frustum::OverlapsAABB(const AABB& aabb) const
+{
+	TVector<glm::vec3> points;
+	aabb.GetPoints(points);
+
+	for (auto& point : points)
+	{
+		if (ContainsPoint(point))
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void AABB::Extend(const AABB& inner)
@@ -90,4 +110,10 @@ glm::vec3 AABB::GetCenter() const
 glm::vec3 AABB::GetExtents() const
 {
 	return (m_max - m_min) * 0.5f;
+}
+
+AABB::AABB(glm::vec3 center, glm::vec3 extents)
+{
+	m_min = center - extents;
+	m_max = center + extents;
 }
