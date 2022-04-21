@@ -60,7 +60,11 @@ namespace Sailor::Math
 		SAILOR_API Frustum() = default;
 		SAILOR_API Frustum(const glm::mat4& matrix) { ExtractFrustumPlanes(matrix); }
 
+		// Slow version for individual culling
 		SAILOR_API __forceinline bool OverlapsAABB(const AABB& aabb) const;
+
+		// SSE version, the most optimized
+		SAILOR_API __forceinline void OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults) const;
 		SAILOR_API __forceinline bool ContainsPoint(const glm::vec3& point) const;
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 

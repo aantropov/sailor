@@ -72,22 +72,89 @@ bool Frustum::ContainsSphere(const Sphere& sphere) const
 	return true;
 }
 
-
-// TODO: Redo
 bool Frustum::OverlapsAABB(const AABB& aabb) const
 {
-	TVector<glm::vec3> points;
-	aabb.GetPoints(points);
+	bool bInside = true;
 
-	for (auto& point : points)
+	for (uint32_t i = 0; i < 6; i++)
 	{
-		if (ContainsPoint(point))
-		{
-			return true;
-		}
+		float d = max(aabb.m_min.x * m_planes[i].m_abcd.x, aabb.m_max.x * m_planes[i].m_abcd.x)
+			+ max(aabb.m_min.y * m_planes[i].m_abcd.y, aabb.m_max.y * m_planes[i].m_abcd.y)
+			+ max(aabb.m_min.z * m_planes[i].m_abcd.z, aabb.m_max.z * m_planes[i].m_abcd.z)
+			+ m_planes[i].m_abcd.w;
+
+		bInside &= d > 0;
 	}
 
-	return false;
+	return bInside;
+
+}
+
+// https://gamedev.ru/code/articles/FrustumCulling
+void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults) const
+{
+	float* pAabbData = reinterpret_cast<float*>(&aabb[0]);
+	int32_t* cullingResSse = &outResults[0];
+
+	__m128 zero_v = _mm_setzero_ps();
+	__m128 planesX[6];
+	__m128 planesY[6];
+	__m128 planesZ[6];
+	__m128 planesD[6];
+
+	uint32_t i, j;
+	for (i = 0; i < 6; i++)
+	{
+		planesX[i] = _mm_set1_ps(m_planes[i].m_abcd.x);
+		planesY[i] = _mm_set1_ps(m_planes[i].m_abcd.y);
+		planesZ[i] = _mm_set1_ps(m_planes[i].m_abcd.z);
+		planesD[i] = _mm_set1_ps(m_planes[i].m_abcd.w);
+	}
+
+	__m128 zero = _mm_setzero_ps();
+	for (i = 0; i < numObjects; i += 4)
+	{
+		__m128 aabbMinX = _mm_load_ps(pAabbData);
+		__m128 aabbMinY = _mm_load_ps(pAabbData + 8);
+		__m128 aabbMinZ = _mm_load_ps(pAabbData + 16);
+		__m128 aabbMinW = _mm_load_ps(pAabbData + 24);
+
+		__m128 aabbMaxX = _mm_load_ps(pAabbData + 4);
+		__m128 aabbMaxY = _mm_load_ps(pAabbData + 12);
+		__m128 aabbMaxZ = _mm_load_ps(pAabbData + 20);
+		__m128 aabbMaxW = _mm_load_ps(pAabbData + 28);
+
+		pAabbData += 32;
+
+		_MM_TRANSPOSE4_PS(aabbMinX, aabbMinY, aabbMinZ, aabbMinW);
+		_MM_TRANSPOSE4_PS(aabbMaxX, aabbMaxY, aabbMaxZ, aabbMaxW);
+
+		__m128 intersectionRes = _mm_setzero_ps();
+		for (j = 0; j < 6; j++)
+		{
+			__m128 aabbMin_frustumPlaneX = _mm_mul_ps(aabbMinX, planesX[j]);
+			__m128 aabbMin_frustumPlaneY = _mm_mul_ps(aabbMinY, planesY[j]);
+			__m128 aabbMin_frustumPlaneZ = _mm_mul_ps(aabbMinZ, planesZ[j]);
+
+			__m128 aabbMax_frustumPlaneX = _mm_mul_ps(aabbMaxX, planesX[j]);
+			__m128 aabbMax_frustumPlaneY = _mm_mul_ps(aabbMaxY, planesY[j]);
+			__m128 aabbMax_frustumPlaneZ = _mm_mul_ps(aabbMaxZ, planesZ[j]);
+
+			__m128 resX = _mm_max_ps(aabbMin_frustumPlaneX, aabbMax_frustumPlaneX);
+			__m128 resY = _mm_max_ps(aabbMin_frustumPlaneY, aabbMax_frustumPlaneY);
+			__m128 resZ = _mm_max_ps(aabbMin_frustumPlaneZ, aabbMax_frustumPlaneZ);
+
+			__m128 sumXy = _mm_add_ps(resX, resY);
+			__m128 sumZw = _mm_add_ps(resZ, planesD[j]);
+			__m128 distanceToPlane = _mm_add_ps(sumXy, sumZw);
+
+			__m128 planeRes = _mm_cmple_ps(distanceToPlane, zero);
+			intersectionRes = _mm_or_ps(intersectionRes, planeRes);
+		}
+
+		__m128i intersectionResI = _mm_cvtps_epi32(intersectionRes);
+		_mm_store_si128((__m128i*) & cullingResSse[i], intersectionResI);
+	}
 }
 
 void AABB::Extend(const AABB& inner)
