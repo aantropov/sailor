@@ -3,6 +3,8 @@
 #include "Containers/ConcurrentSet.h"
 #include "Core/Utils.h"
 #include <random>
+#include "JobSystem/Tasks.h"
+#include "JobSystem/JobSystem.h"
 
 using namespace Sailor;
 using namespace Sailor::Memory;

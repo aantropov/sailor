@@ -16,8 +16,9 @@
 #include <thread>
 #include <mutex>
 
-#include "JobSystem/JobSystem.h"
 #include "Containers/Set.h"
+#include "JobSystem/Tasks.h"
+#include "JobSystem/JobSystem.h"
 
 #ifdef _DEBUG
 #pragma comment(lib, "shaderc_combinedd.lib")

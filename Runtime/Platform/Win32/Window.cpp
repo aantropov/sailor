@@ -6,6 +6,8 @@
 
 #include "Input.h"
 #include "Sailor.h"
+#include "JobSystem/Tasks.h"
+#include "JobSystem/JobSystem.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;

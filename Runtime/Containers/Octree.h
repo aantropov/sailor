@@ -118,13 +118,6 @@ namespace Sailor
 		TOctree(const TOctree& octree) {}
 		TOctree& operator= (const TOctree& octree) {}
 
-		TOctree(TOctree&& octree) { Swap(std::move(*this), octree); }
-		TOctree& operator= (TOctree&& octree)
-		{
-			Swap(std::move(*this), octree);
-			return this;
-		}
-
 		static void Swap(TOctree&& lhs, TOctree&& rhs)
 		{
 			std::swap(rhs->m_root, lhs->m_root);

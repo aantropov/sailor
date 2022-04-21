@@ -1,13 +1,31 @@
 #pragma once
-#include "Core/SpinLock.h"
 #include <string>
-
-extern Sailor::SpinLock m_lockLog;
+#include <iostream>
+#include "Core/SpinLock.h"
 
 #define SAILOR_LOG(Format, ...) \
+{ \
+	char buffer[4096]; \
+	sprintf_s(buffer, Format, __VA_ARGS__); \
+	auto scheduler = App::GetSubmodule<JobSystem::Scheduler>(); \
+	if (scheduler && !scheduler->IsMainThread()) \
 	{ \
-	m_lockLog.Lock(); \
-	printf(Format, __VA_ARGS__); \
-	printf("\n"); \
-	m_lockLog.Unlock(); \
-	}
+		const bool bIsRendererThread = scheduler->IsRendererThread(); \
+		const uint64_t currentThread = (uint64_t)GetCurrentThread(); \
+		scheduler->CreateTask("Log", [=]() \
+		{ \
+			if(!bIsRendererThread) \
+			{ \
+				std::cout << /* "Worker(" << currentThread << ") thread: " <<*/ (buffer) << std::endl; \
+			} \
+			else \
+			{ \
+				std::cout << "Renderer thread: " << (buffer) << std::endl; \
+			} \
+		}, JobSystem::EThreadType::Main)->Run(); \
+	} \
+	else \
+	{ \
+		std::cout /*<< "Main thread: " */ << (buffer) << std::endl; \
+	} \
+}

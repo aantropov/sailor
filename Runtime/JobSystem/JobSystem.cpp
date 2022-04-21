@@ -138,7 +138,7 @@ void Scheduler::Initialize()
 
 DWORD Scheduler::GetRendererThreadId() const
 {
-	return App::GetSubmodule<Scheduler>()->m_workerThreads[0]->GetThreadId();
+	return m_workerThreads[0]->GetThreadId();
 }
 
 Scheduler::~Scheduler()
@@ -397,4 +397,14 @@ void Scheduler::WaitIdle(EThreadType type)
 			worker->WaitIdle();
 		}
 	}
+}
+
+bool Scheduler::IsMainThread() const
+{
+	return m_mainThreadId == GetCurrentThreadId();
+}
+
+bool Scheduler::IsRendererThread() const
+{
+	return m_renderingThreadId == GetCurrentThreadId();
 }

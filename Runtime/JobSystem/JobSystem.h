@@ -120,7 +120,10 @@ namespace Sailor
 
 			SAILOR_API void NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads = false);
 
-			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; };
+			SAILOR_API bool IsMainThread() const;
+			SAILOR_API bool IsRendererThread() const;
+
+			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; }
 			SAILOR_API DWORD GetRendererThreadId() const;
 
 			SAILOR_API Scheduler() = default;
