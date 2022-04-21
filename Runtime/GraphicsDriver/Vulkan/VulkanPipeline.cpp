@@ -104,6 +104,8 @@ void VulkanPipeline::Release()
 
 void VulkanPipeline::Compile()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	if(m_pipeline)
 	{
 		return;

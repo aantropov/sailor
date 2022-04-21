@@ -915,6 +915,8 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	TVector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
 	TVector<RHI::ShaderLayoutBinding>& outRhiLayout)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	TVector<TVector<VkDescriptorSetLayoutBinding>> vulkanLayouts;
 	TVector<TVector<RHI::ShaderLayoutBinding>> rhiLayouts;
 

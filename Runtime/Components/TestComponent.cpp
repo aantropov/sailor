@@ -23,7 +23,6 @@ void TestComponent::BeginPlay()
 			[=](bool bRes) { Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture->GetRHI(), 1);
 		});
 	}
-
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 10.0f, 1000.0f);
 }
 
@@ -129,6 +128,18 @@ void TestComponent::Tick(float deltaTime)
 			}
 		}
 	}
+	/*
+	const int count = 73;
+	for (int x = -count; x < count; x++)
+	{
+		for (int y = -count; y < count; y++)
+		{
+			for (int z = -count; z < count; z++)
+			{
+				GetWorld()->GetDebugContext()->DrawLine(glm::vec3(x, y, z * 2), glm::vec3(x, y, z * 2 + 1));
+			}
+		}
+	}*/
 
 	SAILOR_PROFILE_END_BLOCK();
 

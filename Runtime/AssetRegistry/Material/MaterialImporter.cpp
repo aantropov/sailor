@@ -44,6 +44,8 @@ JobSystem::ITaskPtr Material::OnHotReload()
 
 void Material::ClearSamplers()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	for (auto& sampler : m_samplers)
 	{
 		sampler.m_second->RemoveHotReloadDependentObject(sampler.m_second);
@@ -58,6 +60,8 @@ void Material::ClearUniforms()
 
 void Material::SetSampler(const std::string& name, TexturePtr value)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	if (value)
 	{
 		m_samplers[name] = value;
@@ -67,15 +71,21 @@ void Material::SetSampler(const std::string& name, TexturePtr value)
 
 void Material::SetUniform(const std::string& name, glm::vec4 value)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	m_uniforms[name] = value;
 	m_bIsDirty = true;
 }
 
 RHI::MaterialPtr& Material::GetOrAddRHI(RHI::VertexDescriptionPtr vertexDescription)
 {
+	SAILOR_PROFILE_FUNCTION();
+
+	SAILOR_PROFILE_BLOCK("Achieve exclusive access to rhi");
 	// TODO: Resolve collisions of VertexAttributeBits
 	auto& material = m_rhiMaterials.At_Lock(vertexDescription->GetVertexAttributeBits());
 	m_rhiMaterials.Unlock(vertexDescription->GetVertexAttributeBits());
+	SAILOR_PROFILE_END_BLOCK();
 
 	if (!material)
 	{
@@ -106,6 +116,7 @@ void Material::UpdateRHIResource()
 	// Create base material
 	GetOrAddRHI(RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>());
 
+	SAILOR_PROFILE_BLOCK("Update samplers");
 	for (auto& sampler : m_samplers)
 	{
 		if (m_commonShaderBindings->HasBinding(sampler.m_first))
@@ -113,7 +124,9 @@ void Material::UpdateRHIResource()
 			RHI::Renderer::GetDriver()->UpdateShaderBinding(m_commonShaderBindings, sampler.m_first, sampler.m_second->GetRHI());
 		}
 	}
+	SAILOR_PROFILE_END_BLOCK();
 
+	SAILOR_PROFILE_BLOCK("Update shader bindings");
 	// Create all bindings first
 	for (auto& uniform : m_uniforms)
 	{
@@ -126,7 +139,9 @@ void Material::UpdateRHIResource()
 			RHI::ShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
 		}
 	}
+	SAILOR_PROFILE_END_BLOCK();
 
+	SAILOR_PROFILE_BLOCK("Create command list");
 	RHI::CommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
 
@@ -146,6 +161,7 @@ void Material::UpdateRHIResource()
 	}
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
+	SAILOR_PROFILE_END_BLOCK();
 
 	// Create fences to track the state of material update
 	RHI::FencePtr fence = RHI::FencePtr::Make();
@@ -489,6 +505,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
 			[pMaterial, pMaterialAsset]()
 		{
+			// We're updating rhi on worker thread during load since we have no deps
 			auto updateRHI = JobSystem::Scheduler::CreateTask("Update material RHI resource", [=]()
 			{
 				pMaterial.GetRawPtr()->UpdateRHIResource();

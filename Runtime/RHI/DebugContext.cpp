@@ -167,12 +167,13 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		{
 			m_lifetimes.RemoveAtSwap(i, 1);
 			m_lineVertices.RemoveAtSwap(i * 2, 2);
-			i--;
 
 			if (m_lineVerticesOffset == -1)
 			{
 				m_lineVerticesOffset = i;
 			}
+
+			i--;
 		}
 	}
 

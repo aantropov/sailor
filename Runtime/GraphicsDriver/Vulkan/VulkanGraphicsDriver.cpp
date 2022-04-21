@@ -352,6 +352,7 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescripti
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
 
+	SAILOR_PROFILE_BLOCK("Create and update shader bindings");
 	// TODO: move initialization to external code
 	auto shaderBindings = CreateShaderBindings();
 	for (uint32_t i = 0; i < bindings.Num(); i++)
@@ -391,6 +392,7 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescripti
 			binding->SetLayout(layoutBinding);
 		}
 	}
+	SAILOR_PROFILE_END_BLOCK();
 
 	shaderBindings->SetLayoutShaderBindings(bindings);
 	UpdateDescriptorSet(shaderBindings);
