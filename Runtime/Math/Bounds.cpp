@@ -83,11 +83,13 @@ bool Frustum::OverlapsAABB(const AABB& aabb) const
 			+ max(aabb.m_min.z * m_planes[i].m_abcd.z, aabb.m_max.z * m_planes[i].m_abcd.z)
 			+ m_planes[i].m_abcd.w;
 
-		bInside &= d > 0;
+		if (!(bInside &= d > 0))
+		{
+			return false;
+		}
 	}
 
 	return bInside;
-
 }
 
 // We're using SSE intrinsincts to significantly speed-up the culling test
