@@ -59,6 +59,14 @@ void TestComponent::Tick(float deltaTime)
 	if (GetWorld()->GetInput().IsKeyDown('Z'))
 		delta += Math::vec3_Right;
 
+	if (GetWorld()->GetInput().IsKeyPressed('F'))
+	{
+		if (auto camera = GetOwner()->GetComponent<CameraComponent>())
+		{
+			GetWorld()->GetDebugContext()->DrawFrustum(GetOwner()->GetTransform().GetCachedWorldMatrix(), 45, 100.0f, 1.0f, camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f), 1000.0f);
+		}
+	}
+
 	if (glm::length(delta) > 0)
 	{
 		const vec4 newPosition = transform.GetPosition() + vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);
@@ -124,7 +132,7 @@ void TestComponent::Tick(float deltaTime)
 
 			if (m_octree.Num() == meshRenderer->GetModel()->GetMeshes().Num())
 			{
-				m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
+				//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
 			}
 		}
 	}

@@ -124,6 +124,11 @@ void TransformECS::CalculateMatrices(Transform& parent)
 {
 	const glm::mat4x4& parentMatrix = parent.GetCachedRelativeMatrix();
 
+	if (parent.m_parent == ECS::InvalidIndex)
+	{
+		parent.m_cachedWorldMatrix = parent.m_cachedRelativeMatrix;
+	}
+
 	for (auto& child : parent.GetChildren())
 	{
 		m_components[child].m_cachedWorldMatrix = parentMatrix * m_components[child].m_cachedRelativeMatrix;

@@ -22,11 +22,15 @@ namespace Sailor
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API __forceinline CameraData& GetData();
 
+		SAILOR_API float GetFov() const { return m_fovDegrees; }
+		SAILOR_API float GetAspect() const { return m_aspect; }
+
 		SAILOR_API static float CalculateAspect();
 
 	protected:
 
 		float m_aspect = 0.0f;
+		float m_fovDegrees = 0.0f;
 		size_t m_handle = (size_t)(-1);
 	};
 }

@@ -53,6 +53,52 @@ void DebugContext::DrawOrigin(const glm::vec3& position, float size, float durat
 	DrawLine(position, position + glm::vec3(0, 0, size), glm::vec4(0, 0, 1, 1), duration);
 }
 
+void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color, float duration)
+{
+	float tanfov = tanf(glm::radians(fovDegrees));
+
+	glm::vec3 farEnd(maxRange, 0, 0);
+	glm::vec3 endSizeHorizontal(0, 0, maxRange * tanfov * aspect);
+	glm::vec3 endSizeVertical(0, maxRange * tanfov / aspect, 0);
+
+	glm::vec3 s1, s2, s3, s4;
+	glm::vec3 e1 = worldMatrix * glm::vec4(farEnd + endSizeHorizontal + endSizeVertical, 1);
+	glm::vec3 e2 = worldMatrix * glm::vec4(farEnd - endSizeHorizontal + endSizeVertical, 1);
+	glm::vec3 e3 = worldMatrix * glm::vec4(farEnd - endSizeHorizontal - endSizeVertical, 1);
+	glm::vec3 e4 = worldMatrix * glm::vec4(farEnd + endSizeHorizontal - endSizeVertical, 1);
+
+	if (minRange <= 0.0f)
+	{
+		s1 = s2 = s3 = s4 = glm::vec3(0, 0, 0);
+	}
+	else
+	{
+		glm::vec3 startSizeX(0, 0, minRange * tanfov * aspect);
+		glm::vec3 startSizeY(0, minRange * tanfov / aspect, 0);
+		glm::vec3 startPoint = glm::vec3(minRange, 0, 0);
+
+		s1 = worldMatrix * glm::vec4(startPoint + startSizeX + startSizeY, 1);
+		s2 = worldMatrix * glm::vec4(startPoint - startSizeX + startSizeY, 1);
+		s3 = worldMatrix * glm::vec4(startPoint - startSizeX - startSizeY, 1);
+		s4 = worldMatrix * glm::vec4(startPoint + startSizeX - startSizeY, 1);
+
+		DrawLine(s1, s2, color, duration);
+		DrawLine(s2, s3, color, duration);
+		DrawLine(s3, s4, color, duration);
+		DrawLine(s4, s1, color, duration);
+	}
+
+	DrawLine(e1, e2, color, duration);
+	DrawLine(e2, e3, color, duration);
+	DrawLine(e3, e4, color, duration);
+	DrawLine(e4, e1, color, duration);
+
+	DrawLine(s1, e1);
+	DrawLine(s2, e2);
+	DrawLine(s3, e3);
+	DrawLine(s4, e4);
+}
+
 DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();

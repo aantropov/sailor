@@ -58,18 +58,19 @@ bool Frustum::ContainsPoint(const glm::vec3& point) const
 
 bool Frustum::ContainsSphere(const Sphere& sphere) const
 {
+	bool bRes = true;
 	for (uint32_t p = 0; p < 6; p++)
 	{
 		if (m_planes[p][0] * sphere.m_center.x +
 			m_planes[p][1] * sphere.m_center.y +
 			m_planes[p][2] * sphere.m_center.z +
-			m_planes[p][3] <= -sphere.m_radius)
+			m_planes[p][3] < sphere.m_radius)
 		{
-			return false;
+			bRes = false;
 		}
 	}
 
-	return true;
+	return bRes;
 }
 
 bool Frustum::OverlapsAABB(const AABB& aabb) const
@@ -120,17 +121,15 @@ void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults)
 		__m128 aabbMinX = _mm_load_ps(pAabbData);
 		__m128 aabbMinY = _mm_load_ps(pAabbData + 8);
 		__m128 aabbMinZ = _mm_load_ps(pAabbData + 16);
-		__m128 aabbMinW = _mm_load_ps(pAabbData + 24);
 
 		__m128 aabbMaxX = _mm_load_ps(pAabbData + 4);
 		__m128 aabbMaxY = _mm_load_ps(pAabbData + 12);
 		__m128 aabbMaxZ = _mm_load_ps(pAabbData + 20);
-		__m128 aabbMaxW = _mm_load_ps(pAabbData + 28);
 
-		pAabbData += 32;
+		pAabbData += 24;
 
-		_MM_TRANSPOSE4_PS(aabbMinX, aabbMinY, aabbMinZ, aabbMinW);
-		_MM_TRANSPOSE4_PS(aabbMaxX, aabbMaxY, aabbMaxZ, aabbMaxW);
+		_MM_TRANSPOSE4_PS(aabbMinX, aabbMinY, aabbMinZ, zero);
+		_MM_TRANSPOSE4_PS(aabbMaxX, aabbMaxY, aabbMaxZ, zero);
 
 		__m128 intersectionRes = _mm_setzero_ps();
 		for (j = 0; j < 6; j++)

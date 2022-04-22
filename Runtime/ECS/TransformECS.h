@@ -42,13 +42,13 @@ namespace Sailor
 
 		SAILOR_API __forceinline void MarkDirty();
 
-		glm::mat4x4 m_cachedRelativeMatrix;
-		glm::mat4x4 m_cachedWorldMatrix;
+		glm::mat4x4 m_cachedRelativeMatrix = glm::identity<glm::mat4>();
+		glm::mat4x4 m_cachedWorldMatrix = glm::identity<glm::mat4>();
 
 		Math::Transform m_transform;
-		bool m_bIsDirty : 1 = true;
+		bool m_bIsDirty : 1 = false;
 		bool m_bIsActive : 1 = true;
-		size_t m_parent;
+		size_t m_parent = ECS::InvalidIndex;
 		TVector<size_t, Memory::TInlineAllocator<4 * sizeof(size_t)>> m_children;
 		ObjectPtr m_owner;
 

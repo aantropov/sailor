@@ -22,7 +22,9 @@ void CameraComponent::BeginPlay()
 	GetData().SetOwner(GetOwner());
 
 	m_aspect = CalculateAspect();
-	GetData().SetProjectionMatrix(Math::PerspectiveInfiniteRH(glm::radians(90.0f), m_aspect, 0.01f));
+	m_fovDegrees = 90.0f;
+
+	GetData().SetProjectionMatrix(Math::PerspectiveInfiniteRH(glm::radians(m_fovDegrees), m_aspect, 0.01f));
 }
 
 CameraData& CameraComponent::GetData()
