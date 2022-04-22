@@ -63,7 +63,8 @@ void TestComponent::Tick(float deltaTime)
 	{
 		if (auto camera = GetOwner()->GetComponent<CameraComponent>())
 		{
-			GetWorld()->GetDebugContext()->DrawFrustum(GetOwner()->GetTransform().GetCachedWorldMatrix(), 45, 100.0f, 1.0f, camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f), 1000.0f);
+			GetWorld()->GetDebugContext()->DrawFrustum(GetOwner()->GetTransform().GetCachedWorldMatrix(), camera->GetFov(), 20.0f, 1.0f, camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f), 1000.0f);
+			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransform().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
 		}
 	}
 

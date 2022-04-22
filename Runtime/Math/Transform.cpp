@@ -39,9 +39,10 @@ Transform& Transform::operator*= (const Transform& parent)
 mat4 Transform::Matrix() const
 {
 	mat4 res(1.0f);
-	res = glm::scale(res, vec3(m_scale));
-	res *= glm::toMat4(m_rotation);
 	res = glm::translate(res, vec3(m_position));
+	res *= glm::toMat4(-m_rotation);
+	res = glm::scale(res, vec3(m_scale));
+
 	return res;
 }
 
