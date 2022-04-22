@@ -37,12 +37,13 @@ namespace Sailor::Math
 	const quat quat_Identity = quat(1.0, 0.0, 0.0, 0.0);
 	const mat4 mat4_Identity = mat4(1);
 
-	unsigned long SAILOR_API UpperPowOf2(unsigned long v);
+	SAILOR_API unsigned long UpperPowOf2(unsigned long v);
 
 	template<typename T>
 	T Lerp(const T& a, const T& b, float t) { return a + (b - a) * t; }
 
-	glm::mat4 PerspectiveInfiniteRH(float fovRadians, float aspectWbyH, float zNear);
+	SAILOR_API __forceinline glm::mat4 PerspectiveInfiniteRH(float fovRadians, float aspectWbyH, float zNear);
+	SAILOR_API __forceinline glm::mat4 PerspectiveRH(float fovRadians, float aspectWbyH, float zNear, float zFar);
 }
 
 #if defined(min)

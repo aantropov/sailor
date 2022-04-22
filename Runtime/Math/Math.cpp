@@ -15,6 +15,8 @@ unsigned long Sailor::Math::UpperPowOf2(unsigned long v)
 	return v;
 }
 
+// Reversed Z matrix
+//https://nlguillemot.wordpress.com/2016/12/07/reversed-z-in-opengl/
 glm::mat4 Sailor::Math::PerspectiveInfiniteRH(float fovRadians, float aspectWbyH, float zNear)
 {
 	float f = 1.0f / tan(fovRadians / 2.0f);
@@ -23,4 +25,10 @@ glm::mat4 Sailor::Math::PerspectiveInfiniteRH(float fovRadians, float aspectWbyH
 		0.0f, f, 0.0f, 0.0f,
 		0.0f, 0.0f, 0.0f, -1.0f,
 		0.0f, 0.0f, zNear, 0.0f);
+}
+
+// Reversed Z matrix
+glm::mat4 Sailor::Math::PerspectiveRH(float fovRadians, float aspectWbyH, float zNear, float zFar)
+{
+	return glm::perspective(fovRadians, aspectWbyH, zFar, zNear);
 }
