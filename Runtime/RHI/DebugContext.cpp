@@ -93,10 +93,10 @@ void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, f
 	DrawLine(e3, e4, color, duration);
 	DrawLine(e4, e1, color, duration);
 
-	DrawLine(s1, e1);
-	DrawLine(s2, e2);
-	DrawLine(s3, e3);
-	DrawLine(s4, e4);
+	DrawLine(s1, e1, color, duration);
+	DrawLine(s2, e2, color, duration);
+	DrawLine(s3, e3, color, duration);
+	DrawLine(s4, e4, color, duration);
 }
 
 DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime)
