@@ -227,27 +227,29 @@ namespace Sailor
 
 		void Trace_Internal(const TNode& node, const Math::Frustum& frustum, TVector<TElementType>& outElements) const
 		{
-			TVector<Math::AABB> aabb;
-			TVector<const TElementType*> elements;
-			TVector<int32_t> bElements;
-
-			aabb.Reserve(node.m_elements.Num());
-			bElements.Reserve(node.m_elements.Num());
-			elements.Reserve(node.m_elements.Num());
-
-			for (const auto& el : node.m_elements)
+			if (node.m_elements.Num())
 			{
-				aabb.Add(Math::AABB(el.m_second.m_position, el.m_second.m_extents));
-				elements.Add(&el.m_first);
-			}
+				TVector<Math::AABB> aabb;
+				TVector<const TElementType*> elements;
+				TVector<int32_t> bElements(node.m_elements.Num());
 
-			frustum.OverlapsAABB(&aabb[0], (uint32_t)aabb.Num(), &bElements[0]);
+				aabb.Reserve(node.m_elements.Num());
+				elements.Reserve(node.m_elements.Num());
 
-			for (uint32_t i = 0; i < node.m_elements.Num(); i++)
-			{
-				if (bElements[i])
+				for (const auto& el : node.m_elements)
 				{
-					outElements.Add(*elements[i]);
+					aabb.Add(Math::AABB(el.m_second.m_position, el.m_second.m_extents));
+					elements.Add(&el.m_first);
+				}
+
+				frustum.OverlapsAABB(&aabb[0], (uint32_t)aabb.Num(), &bElements[0]);
+
+				for (uint32_t i = 0; i < node.m_elements.Num(); i++)
+				{
+					if (bElements[i])
+					{
+						outElements.Add(*elements[i]);
+					}
 				}
 			}
 
