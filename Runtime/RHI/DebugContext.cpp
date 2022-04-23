@@ -55,11 +55,11 @@ void DebugContext::DrawOrigin(const glm::vec3& position, float size, float durat
 
 void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color, float duration)
 {
-	float tanfov = tanf(glm::radians(fovDegrees));
+	float tanfov = tanf(glm::radians(fovDegrees / 2));
 
 	glm::vec3 farEnd(maxRange, 0, 0);
 	glm::vec3 endSizeHorizontal(0, 0, maxRange * tanfov * aspect);
-	glm::vec3 endSizeVertical(0, maxRange * tanfov / aspect, 0);
+	glm::vec3 endSizeVertical(0, maxRange * tanfov, 0);
 
 	glm::vec3 s1, s2, s3, s4;
 	glm::vec3 e1 = worldMatrix * glm::vec4(farEnd + endSizeHorizontal + endSizeVertical, 1);
@@ -74,7 +74,7 @@ void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, f
 	else
 	{
 		glm::vec3 startSizeX(0, 0, minRange * tanfov * aspect);
-		glm::vec3 startSizeY(0, minRange * tanfov / aspect, 0);
+		glm::vec3 startSizeY(0, minRange * tanfov, 0);
 		glm::vec3 startPoint = glm::vec3(minRange, 0, 0);
 
 		s1 = worldMatrix * glm::vec4(startPoint + startSizeX + startSizeY, 1);
