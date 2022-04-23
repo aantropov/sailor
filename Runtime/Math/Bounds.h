@@ -55,7 +55,7 @@ namespace Sailor::Math
 		SAILOR_API __forceinline void Extend(const glm::vec3& inner);
 	};
 
-	class Frustum
+	struct Frustum
 	{
 		SAILOR_API Frustum() = default;
 		SAILOR_API Frustum(const glm::mat4& matrix) { ExtractFrustumPlanes(matrix); }

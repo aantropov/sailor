@@ -63,7 +63,14 @@ void TestComponent::Tick(float deltaTime)
 	{
 		if (auto camera = GetOwner()->GetComponent<CameraComponent>())
 		{
-			GetWorld()->GetDebugContext()->DrawFrustum(GetOwner()->GetTransform().GetCachedWorldMatrix(), camera->GetFov(), 20.0f, 1.0f, camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f), 1000.0f);
+			GetWorld()->GetDebugContext()->DrawFrustum(GetOwner()->GetTransform().GetCachedWorldMatrix(), camera->GetFov(), 2000.0f, 1.0f, camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f), 1000.0f);
+
+			Math::Frustum frustum;
+			frustum.ExtractFrustumPlanes(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
+			
+			TVector<RHI::MeshPtr> meshes;
+			m_octree.Trace(frustum, meshes);
+
 			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransform().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
 		}
 	}
@@ -76,7 +83,7 @@ void TestComponent::Tick(float deltaTime)
 
 	if (GetWorld()->GetInput().IsKeyDown(VK_LBUTTON))
 	{
-		const float speed = 50.0f;
+		const float speed = 500.0f;
 		const vec2 shift = vec2(GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos) * deltaTime * speed;
 
 		m_yaw += -shift.x;
@@ -136,7 +143,7 @@ void TestComponent::Tick(float deltaTime)
 
 			if (m_octree.Num() == meshRenderer->GetModel()->GetMeshes().Num())
 			{
-				m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
+				//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
 			}
 		}
 	}

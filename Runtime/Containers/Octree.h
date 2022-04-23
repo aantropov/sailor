@@ -8,6 +8,7 @@
 #include <algorithm>
 #include "Core/Defines.h"
 #include "Math/Math.h"
+#include "Math/Bounds.h"
 #include "Memory/Memory.h"
 #include "Containers/Concepts.h"
 #include "Containers/Map.h"
@@ -210,19 +211,76 @@ namespace Sailor
 			return false;
 		}
 
-		__forceinline void Resolve()
+		__forceinline void Resolve() { Resolve_Internal(*m_root); }
+		__forceinline void DrawOctree(RHI::DebugContext& context, float duration = 0.0f) const { DrawOctree_Internal(*m_root, context, duration); }
+		__forceinline void Trace(const Math::Frustum& frustum, TVector<TElementType>& outElements) const
 		{
-			Resolve_Internal(*m_root);
-		}
+			outElements.Clear(false);
 
-		void DrawOctree(RHI::DebugContext& context, float duration = 0.0f) const
-		{
-			DrawOctree_Internal(*m_root, context, duration);
+			if (frustum.OverlapsAABB(Math::AABB(m_root->m_center, (float)m_root->m_size * glm::vec3(0.5f, 0.5f, 0.5f))))
+			{
+				Trace_Internal(*m_root, frustum, outElements);
+			}
 		}
 
 	protected:
 
-		void GetElementsInChildren(TNode& node, TVector<TElementType>& outElements)
+		void Trace_Internal(const TNode& node, const Math::Frustum& frustum, TVector<TElementType>& outElements) const
+		{
+			TVector<Math::AABB> aabb;
+			TVector<const TElementType*> elements;
+			TVector<int32_t> bElements;
+
+			aabb.Reserve(node.m_elements.Num());
+			bElements.Reserve(node.m_elements.Num());
+			elements.Reserve(node.m_elements.Num());
+
+			for (const auto& el : node.m_elements)
+			{
+				aabb.Add(Math::AABB(el.m_second.m_position, el.m_second.m_extents));
+				elements.Add(&el.m_first);
+			}
+
+			frustum.OverlapsAABB(&aabb[0], (uint32_t)aabb.Num(), &bElements[0]);
+
+			for (uint32_t i = 0; i < node.m_elements.Num(); i++)
+			{
+				if (bElements[i])
+				{
+					outElements.Add(*elements[i]);
+				}
+			}
+
+			if (!node.IsLeaf())
+			{
+				Math::Sphere octants[8];
+				int32_t bContains[8];
+				int32_t bOverlaps[8];
+
+				for (uint32_t i = 0; i < 8; i++)
+				{
+					octants->m_center = node.m_internal[i].m_center;
+					octants->m_radius = (float)node.m_internal[i].m_size;
+				}
+
+				frustum.ContainsSphere(octants, 8u, bContains);
+				frustum.OverlapsSphere(octants, 8u, bOverlaps);
+
+				for (uint32_t i = 0; i < 8; i++)
+				{
+					if (bContains[i])
+					{
+						GetElementsInChildren(node.m_internal[i], outElements);
+					}
+					else if (bOverlaps[i])
+					{
+						Trace_Internal(node.m_internal[i], frustum, outElements);
+					}
+				}
+			}
+		}
+
+		void GetElementsInChildren(const TNode& node, TVector<TElementType>& outElements) const
 		{
 			for (auto& el : node.m_elements)
 			{
@@ -236,7 +294,7 @@ namespace Sailor
 
 			for (uint32_t i = 0; i < 8; i++)
 			{
-				GetElements(node.m_internal[i]);
+				GetElementsInChildren(node.m_internal[i], outElements);
 			}
 		}
 
