@@ -38,12 +38,7 @@ Transform& Transform::operator*= (const Transform& parent)
 
 mat4 Transform::Matrix() const
 {
-	mat4 res(1.0f);
-	res = glm::translate(res, vec3(m_position));
-	res *= glm::toMat4(-m_rotation);
-	res = glm::scale(res, vec3(m_scale));
-
-	return res;
+	return glm::translate(glm::mat4(1), vec3(m_position)) * glm::toMat4(m_rotation) * glm::scale(glm::mat4(1), vec3(m_scale));
 }
 
 vec4 Transform::TransformPosition(const vec4& position) const

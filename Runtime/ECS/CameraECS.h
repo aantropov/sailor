@@ -23,8 +23,10 @@ namespace Sailor
 		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
 
 		SAILOR_API __forceinline void SetProjectionMatrix(const glm::mat4& projection) { m_projectionMatrix = projection; }
-		SAILOR_API __forceinline const glm::mat4& GetProjectionMatrix() { return m_projectionMatrix; }
-		
+
+		SAILOR_API __forceinline const glm::mat4& GetProjectionMatrix() const { return m_projectionMatrix; }
+		SAILOR_API __forceinline const glm::mat4& GetViewMatrix() const { return m_viewMatrix; }
+
 	protected:
 
 		bool m_bIsActive : 1 = true;

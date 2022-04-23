@@ -23,7 +23,7 @@ void TestComponent::BeginPlay()
 			[=](bool bRes) { Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture->GetRHI(), 1);
 		});
 	}
-	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 10.0f, 1000.0f);
+	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 20.0f, 1000.0f);
 }
 
 void TestComponent::EndPlay()
@@ -76,21 +76,24 @@ void TestComponent::Tick(float deltaTime)
 
 	if (GetWorld()->GetInput().IsKeyDown(VK_LBUTTON))
 	{
-		const float speed = 500.0f;
+		const float speed = 50.0f;
 		const vec2 shift = vec2(GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos) * deltaTime * speed;
 
-		glm::quat hRotation = angleAxis(-glm::radians(shift.x), Math::vec3_Up);
-		glm::quat vRotation = angleAxis(glm::radians(shift.y), cross(Math::vec3_Up, cameraViewDirection));
-		transform.SetRotation(vRotation * hRotation * transform.GetRotation());
+		m_yaw += -shift.x;
+		m_pitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
+
+		glm::quat hRotation = angleAxis(glm::radians(m_yaw), Math::vec3_Up);
+		glm::quat vRotation = angleAxis(glm::radians(m_pitch), hRotation * Math::vec3_Right);
+
+		transform.SetRotation(vRotation * hRotation);
 	}
 
-	m_frameData.m_projection = GetOwner()->GetComponent<CameraComponent>()->GetData().GetProjectionMatrix();
+	auto cameraData = GetOwner()->GetComponent<CameraComponent>()->GetData();
+	m_frameData.m_projection = cameraData.GetProjectionMatrix();
 	m_frameData.m_currentTime = (float)GetWorld()->GetTime();
 	m_frameData.m_deltaTime = deltaTime;
 
-	m_frameData.m_view = glm::lookAt(vec3(transform.GetPosition()),
-		vec3(transform.GetPosition()) + transform.GetRotation() * Math::vec3_Forward,
-		Math::vec3_Up);
+	m_frameData.m_view = cameraData.GetViewMatrix();
 
 	static float angle = 0;
 	//angle += 0.01f;
@@ -133,7 +136,7 @@ void TestComponent::Tick(float deltaTime)
 
 			if (m_octree.Num() == meshRenderer->GetModel()->GetMeshes().Num())
 			{
-				//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
+				m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
 			}
 		}
 	}

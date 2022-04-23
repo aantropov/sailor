@@ -28,6 +28,9 @@ namespace Sailor
 
 	protected:
 
+		float m_yaw = 0.0f;
+		float m_pitch = 0.0f;
+
 		RHI::ShaderBindingSetPtr m_perInstanceData;
 		RHI::UboFrameData m_frameData;
 		RHI::ShaderBindingSetPtr m_frameDataBinding;
