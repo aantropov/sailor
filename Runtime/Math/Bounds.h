@@ -69,6 +69,7 @@ namespace Sailor::Math
 		// SSE version, the most optimized
 		SAILOR_API __forceinline void OverlapsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const;
 
+		SAILOR_API __forceinline void ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const;
 		SAILOR_API __forceinline bool ContainsPoint(const glm::vec3& point) const;
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 

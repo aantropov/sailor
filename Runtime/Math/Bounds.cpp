@@ -159,6 +159,58 @@ void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults)
 	}
 }
 
+void Frustum::ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const
+{
+	float* pSpheres = reinterpret_cast<float*>(&spheres[0]);
+	int* cullingResults = &outResults[0];
+
+	__m128 zero_v = _mm_setzero_ps();
+	__m128 planesX[6];
+	__m128 planesY[6];
+	__m128 planesZ[6];
+	__m128 planesD[6];
+
+	uint32_t i, j;
+	for (i = 0; i < 6; i++)
+	{
+		planesX[i] = _mm_set1_ps(m_planes[i].m_abcd.x);
+		planesY[i] = _mm_set1_ps(m_planes[i].m_abcd.y);
+		planesZ[i] = _mm_set1_ps(m_planes[i].m_abcd.z);
+		planesD[i] = _mm_set1_ps(m_planes[i].m_abcd.w);
+	}
+
+	for (i = 0; i < numObjects; i += 4)
+	{
+		__m128 spheresPosX = _mm_load_ps(pSpheres);
+		__m128 spheresPosY = _mm_load_ps(pSpheres + 4);
+		__m128 spheresPosZ = _mm_load_ps(pSpheres + 8);
+		__m128 spheresRadius = _mm_load_ps(pSpheres + 12);
+		pSpheres += 16;
+
+		_MM_TRANSPOSE4_PS(spheresPosX, spheresPosY, spheresPosZ, spheresRadius);
+
+		__m128 intersectionRes = _mm_setzero_ps();
+
+		for (j = 0; j < 6; j++)
+		{
+			__m128 dotX = _mm_mul_ps(spheresPosX, planesX[j]);
+			__m128 dotY = _mm_mul_ps(spheresPosY, planesY[j]);
+			__m128 dotZ = _mm_mul_ps(spheresPosZ, planesZ[j]);
+
+			__m128 sumXY = _mm_add_ps(dotX, dotY);
+			__m128 sumZW = _mm_add_ps(dotZ, planesD[j]); //z+w
+
+			__m128 distanceToPlane = _mm_add_ps(sumXY, sumZW);
+			__m128 planeRes = _mm_cmpge_ps(distanceToPlane, spheresRadius);
+
+			intersectionRes = _mm_and_ps(intersectionRes, planeRes);
+		}
+
+		__m128i intersectionResI = _mm_cvtps_epi32(intersectionRes);
+		_mm_store_si128((__m128i*) & cullingResults[i], intersectionResI);
+	}
+}
+
 void Frustum::OverlapsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const
 {
 	float* pSpheres = reinterpret_cast<float*>(&spheres[0]);
