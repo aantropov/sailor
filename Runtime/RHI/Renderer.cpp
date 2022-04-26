@@ -232,6 +232,12 @@ RHI::CommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 
 				SAILOR_PROFILE_BLOCK("Get data");
 				auto& mesh = pModel->GetMeshes()[index];
+
+				if (!testComponent->GetCulledMeshes().Contains(mesh))
+				{
+					continue;
+				}
+
 				auto& material = pMaterial->GetOrAddRHI(mesh->m_vertexDescription);
 				bool bIsMaterialReady = pMaterial && pMaterial->IsReady();
 				SAILOR_PROFILE_END_BLOCK();

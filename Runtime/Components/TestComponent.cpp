@@ -67,9 +67,7 @@ void TestComponent::Tick(float deltaTime)
 
 			Math::Frustum frustum;
 			frustum.ExtractFrustumPlanes(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
-			
-			TVector<RHI::MeshPtr> meshes;
-			m_octree.Trace(frustum, meshes);
+			m_octree.Trace(frustum, m_culledMeshes);
 
 			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransform().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
 		}

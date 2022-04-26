@@ -55,7 +55,7 @@ void main()
 {
 #ifdef USE_UNIFORM_BUFFER
     gl_Position = frame.projection * frame.view * data.instance.model * vec4(inPosition, 1.0);
-    vec4 worldNormal = data.instance.model * vec4(inNormal, 1.0);
+    vec4 worldNormal = data.instance.model * vec4(inNormal, 0.0);
 #else
     gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);

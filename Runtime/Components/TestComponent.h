@@ -26,6 +26,8 @@ namespace Sailor
 		SAILOR_API RHI::ShaderBindingSetPtr& GetPerInstanceBinding() { return m_perInstanceData; }
 		SAILOR_API RHI::ShaderBindingSetPtr& GetFrameBinding() { return m_frameDataBinding; }
 
+		SAILOR_API const TVector<RHI::MeshPtr>& GetCulledMeshes() const { return m_culledMeshes; }
+
 	protected:
 
 		float m_yaw = 0.0f;
@@ -38,6 +40,7 @@ namespace Sailor
 		TexturePtr defaultTexture;
 		glm::ivec2 m_lastCursorPos;
 
+		TVector<RHI::MeshPtr> m_culledMeshes;
 		TOctree<RHI::MeshPtr> m_octree{};
 	};
 }

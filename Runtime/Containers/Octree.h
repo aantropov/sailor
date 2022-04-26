@@ -229,6 +229,7 @@ namespace Sailor
 		{
 			if (node.m_elements.Num())
 			{
+				/*
 				TVector<Math::AABB> aabb;
 				TVector<const TElementType*> elements;
 				TVector<int32_t> bElements(node.m_elements.Num());
@@ -250,6 +251,14 @@ namespace Sailor
 					{
 						outElements.Add(*elements[i]);
 					}
+				}*/
+
+				for (auto& el : node.m_elements)
+				{
+					if (frustum.OverlapsAABB(Math::AABB(el.m_second.m_position, el.m_second.m_extents)))
+					{
+						outElements.Add(el.m_first);
+					}
 				}
 			}
 
@@ -263,10 +272,13 @@ namespace Sailor
 				{
 					octants->m_center = node.m_internal[i].m_center;
 					octants->m_radius = (float)node.m_internal[i].m_size;
+					
+					bContains[i] = frustum.ContainsSphere(octants[i]);
+					bOverlaps[i] = frustum.OverlapsSphere(octants[i]);
 				}
-
-				frustum.ContainsSphere(octants, 8u, bContains);
-				frustum.OverlapsSphere(octants, 8u, bOverlaps);
+				
+				//frustum.ContainsSphere(octants, 8u, bContains);
+				//frustum.OverlapsSphere(octants, 8u, bOverlaps);
 
 				for (uint32_t i = 0; i < 8; i++)
 				{

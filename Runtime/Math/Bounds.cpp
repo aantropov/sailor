@@ -6,38 +6,28 @@ using namespace Sailor;
 using namespace Sailor::Math;
 using namespace glm;
 
-void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix)
+void Plane::Normalize()
 {
-	// Left clipping plane
-	m_planes[0][0] = matrix[3][0] + matrix[0][0];
-	m_planes[0][1] = matrix[3][1] + matrix[0][1];
-	m_planes[0][2] = matrix[3][2] + matrix[0][2];
-	m_planes[0][3] = matrix[3][3] + matrix[0][3];
-	// Right clipping plane
-	m_planes[1][0] = matrix[3][0] - matrix[0][0];
-	m_planes[1][1] = matrix[3][1] - matrix[0][1];
-	m_planes[1][2] = matrix[3][2] - matrix[0][2];
-	m_planes[1][3] = matrix[3][3] - matrix[0][3];
-	// Top clipping plane
-	m_planes[2][0] = matrix[3][0] - matrix[1][0];
-	m_planes[2][1] = matrix[3][1] - matrix[1][1];
-	m_planes[2][2] = matrix[3][2] - matrix[1][2];
-	m_planes[2][3] = matrix[3][3] - matrix[1][3];
-	// Bottom clipping plane
-	m_planes[3][0] = matrix[3][0] + matrix[1][0];
-	m_planes[3][1] = matrix[3][1] + matrix[1][1];
-	m_planes[3][2] = matrix[3][2] + matrix[1][2];
-	m_planes[3][3] = matrix[3][3] + matrix[1][3];
-	// Near clipping plane
-	m_planes[4][0] = matrix[3][0] + matrix[2][0];
-	m_planes[4][1] = matrix[3][1] + matrix[2][1];
-	m_planes[4][2] = matrix[3][2] + matrix[2][2];
-	m_planes[4][3] = matrix[3][3] + matrix[2][3];
-	// Far clipping plane
-	m_planes[5][0] = matrix[3][0] - matrix[2][0];
-	m_planes[5][1] = matrix[3][1] - matrix[2][1];
-	m_planes[5][2] = matrix[3][2] - matrix[2][2];
-	m_planes[5][3] = matrix[3][3] - matrix[2][3];
+	const float mag = glm::length(glm::vec3(m_abcd));
+	m_abcd /= mag;
+}
+
+void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes)
+{
+	m_planes[0] = Plane(matrix[3] + matrix[0]);       // left
+	m_planes[1] = Plane(matrix[3] - matrix[0]);       // right
+	m_planes[2] = Plane(matrix[3] - matrix[1]);       // top
+	m_planes[3] = Plane(matrix[3] + matrix[1]);       // bottom
+	m_planes[4] = Plane(matrix[3] + matrix[2]);       // near
+	m_planes[5] = Plane(matrix[3] - matrix[2]);       // far
+
+	if (bNormalizePlanes)
+	{
+		for (uint32_t i = 0; i < 6; i++)
+		{
+			m_planes[i].Normalize();
+		}
+	}
 }
 
 bool Frustum::ContainsPoint(const glm::vec3& point) const
@@ -54,6 +44,23 @@ bool Frustum::ContainsPoint(const glm::vec3& point) const
 	}
 
 	return true;
+}
+
+bool Frustum::OverlapsSphere(const Sphere& sphere) const
+{
+	bool bRes = true;
+	for (uint32_t p = 0; p < 6; p++)
+	{
+		if (m_planes[p][0] * sphere.m_center.x +
+			m_planes[p][1] * sphere.m_center.y +
+			m_planes[p][2] * sphere.m_center.z +
+			m_planes[p][3] < -sphere.m_radius)
+		{
+			bRes = false;
+		}
+	}
+
+	return bRes;
 }
 
 bool Frustum::ContainsSphere(const Sphere& sphere) const
@@ -75,8 +82,6 @@ bool Frustum::ContainsSphere(const Sphere& sphere) const
 
 bool Frustum::OverlapsAABB(const AABB& aabb) const
 {
-	bool bInside = true;
-
 	for (uint32_t i = 0; i < 6; i++)
 	{
 		float d = max(aabb.m_min.x * m_planes[i].m_abcd.x, aabb.m_max.x * m_planes[i].m_abcd.x)
@@ -84,13 +89,13 @@ bool Frustum::OverlapsAABB(const AABB& aabb) const
 			+ max(aabb.m_min.z * m_planes[i].m_abcd.z, aabb.m_max.z * m_planes[i].m_abcd.z)
 			+ m_planes[i].m_abcd.w;
 
-		if (!(bInside &= d > 0))
+		if (d < 0)
 		{
 			return false;
 		}
 	}
 
-	return bInside;
+	return true;
 }
 
 // We're using SSE intrinsincts to significantly speed-up the culling test
@@ -119,11 +124,11 @@ void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults)
 	for (i = 0; i < numObjects; i += 4)
 	{
 		__m128 aabbMinX = _mm_load_ps(pAabbData);
-		__m128 aabbMinY = _mm_load_ps(pAabbData + 8);
-		__m128 aabbMinZ = _mm_load_ps(pAabbData + 16);
+		__m128 aabbMinY = _mm_load_ps(pAabbData + 4);
+		__m128 aabbMinZ = _mm_load_ps(pAabbData + 8);
 
-		__m128 aabbMaxX = _mm_load_ps(pAabbData + 4);
-		__m128 aabbMaxY = _mm_load_ps(pAabbData + 12);
+		__m128 aabbMaxX = _mm_load_ps(pAabbData + 12);
+		__m128 aabbMaxY = _mm_load_ps(pAabbData + 16);
 		__m128 aabbMaxZ = _mm_load_ps(pAabbData + 20);
 
 		pAabbData += 24;
