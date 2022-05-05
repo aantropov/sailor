@@ -23,7 +23,23 @@ void TestComponent::BeginPlay()
 			[=](bool bRes) { Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture->GetRHI(), 1);
 		});
 	}
+
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 20.0f, 1000.0f);
+
+	for (int32_t i = -500; i < 500; i += 3)
+	{
+		for (int32_t j = -500; j < 500; j += 3)
+		{
+			m_boxes.Add(Math::AABB(glm::vec3(i, 10.0f, j), glm::vec3(1.0f, 1.0f, 1.0f)));
+			const auto& aabb = m_boxes[m_boxes.Num() - 1];
+
+			//GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f));
+
+			m_octree.Insert(aabb.GetCenter(), aabb.GetExtents(), aabb);
+		}
+	}
+
+	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
 }
 
 void TestComponent::EndPlay()
@@ -67,7 +83,12 @@ void TestComponent::Tick(float deltaTime)
 
 			Math::Frustum frustum;
 			frustum.ExtractFrustumPlanes(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
-			m_octree.Trace(frustum, m_culledMeshes);
+			m_octree.Trace(frustum, m_culledBoxes);
+
+			for (const auto& aabb : m_culledBoxes)
+			{
+				GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 10.0f);
+			}
 
 			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransform().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
 		}
@@ -128,7 +149,7 @@ void TestComponent::Tick(float deltaTime)
 			}
 		}
 
-		if (m_octree.Num() != meshRenderer->GetModel()->GetMeshes().Num())
+		/*if (m_octree.Num() != meshRenderer->GetModel()->GetMeshes().Num())
 		{
 			for (auto& mesh : meshRenderer->GetModel()->GetMeshes())
 			{
@@ -143,7 +164,7 @@ void TestComponent::Tick(float deltaTime)
 			{
 				//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
 			}
-		}
+		}*/
 	}
 	/*
 	const int count = 73;

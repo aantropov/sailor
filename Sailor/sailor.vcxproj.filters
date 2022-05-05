@@ -390,6 +390,9 @@
     <ClInclude Include="..\Runtime\Containers\Octree2.h">
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\Containers\Hash.h">
+      <Filter>Runtime\Containers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

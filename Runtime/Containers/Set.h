@@ -11,16 +11,10 @@
 #include "Containers/Pair.h"
 #include "Containers/List.h"
 #include "Core/LogMacros.h"
+#include "Containers/Hash.h"
 
 namespace Sailor
 {
-	template<typename Type>
-	size_t GetHash(const Type& instance)
-	{
-		static std::hash<Type> p;
-		return p(instance);
-	}
-
 	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class SAILOR_API TSet
 	{

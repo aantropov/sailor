@@ -2,6 +2,8 @@
 
 #include "Core/Defines.h"
 #include <glm/glm/glm.hpp>
+#include "Containers/Hash.h"
+#include <glm/glm/gtx/hash.hpp>
 
 namespace Sailor::Math
 {
@@ -55,6 +57,8 @@ namespace Sailor::Math
 
 		SAILOR_API __forceinline void Extend(const AABB& inner);
 		SAILOR_API __forceinline void Extend(const glm::vec3& inner);
+
+		SAILOR_API bool operator==(const AABB& rhs) const { return this->m_max == rhs.m_max && this->m_min == rhs.m_min; }
 	};
 
 	struct Frustum
@@ -81,5 +85,22 @@ namespace Sailor::Math
 
 		// The order is: Left, Right, Top, Bottom, Near, Far
 		Plane m_planes[6];
+	};
+}
+
+namespace std
+{
+	template<>
+	struct std::hash<Sailor::Math::AABB>
+	{
+		SAILOR_API size_t operator()(Sailor::Math::AABB const& instance) const
+		{
+			static std::hash<glm::vec3> p;
+
+			size_t h = 0;
+			Sailor::HashCombine(h, p(instance.m_min), p(instance.m_max));
+
+			return h;
+		}
 	};
 }

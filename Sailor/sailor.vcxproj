@@ -197,6 +197,7 @@
     <ClInclude Include="..\Runtime\Containers\ConcurrentMap.h" />
     <ClInclude Include="..\Runtime\Containers\ConcurrentSet.h" />
     <ClInclude Include="..\Runtime\Containers\Containers.h" />
+    <ClInclude Include="..\Runtime\Containers\Hash.h" />
     <ClInclude Include="..\Runtime\Containers\List.h" />
     <ClInclude Include="..\Runtime\Containers\Map.h" />
     <ClInclude Include="..\Runtime\Containers\Octree.h" />

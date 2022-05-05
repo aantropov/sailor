@@ -3,6 +3,7 @@
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtx/hash.hpp>
 #include "Containers/Containers.h"
+#include "Containers/Hash.h"
 
 namespace Sailor::RHI
 {
@@ -657,31 +658,21 @@ namespace Sailor::RHI
 
 namespace std
 {
-	inline void hash_combine(std::size_t& seed) { }
-
-	template <typename T, typename... Rest>
-	inline void hash_combine(std::size_t& seed, const T& v, Rest... rest)
-	{
-		std::hash<T> hasher;
-		seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-		hash_combine(seed, rest...);
-	}
-
-	template<> struct hash<Sailor::RHI::VertexP3N3UV2C4>
+	template<> struct std::hash<Sailor::RHI::VertexP3N3UV2C4>
 	{
 		SAILOR_API size_t operator()(Sailor::RHI::VertexP3N3UV2C4 const& vertex) const
 		{
-			return ((hash<glm::vec3>()(vertex.m_position) ^
-				(hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^
-				(hash<glm::vec2>()(vertex.m_texcoord) << 1);
+			return ((std::hash<glm::vec3>()(vertex.m_position) ^
+				(std::hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^
+				(std::hash<glm::vec2>()(vertex.m_texcoord) << 1);
 		}
 	};
 
-	template<> struct hash<Sailor::RHI::RenderState>
+	template<> struct std::hash<Sailor::RHI::RenderState>
 	{
 		SAILOR_API size_t operator()(Sailor::RHI::RenderState const& state) const
 		{
-			auto hash1 = hash<uint8_t>()((uint8_t)state.GetBlendMode() ^
+			auto hash1 = std::hash<uint8_t>()((uint8_t)state.GetBlendMode() ^
 				((uint8_t)state.GetCullMode() << 2) ^
 				((uint8_t)state.GetFillMode() << 4) ^
 				((uint8_t)state.IsDepthTestEnabled() << 5) ^
@@ -690,7 +681,7 @@ namespace std
 			auto hash2 = hash<float>()((float)state.GetDepthBias());
 
 			std::size_t hash = 0;
-			hash_combine(hash, hash1, hash2);
+			Sailor::HashCombine(hash, hash1, hash2);
 
 			return hash;
 		}

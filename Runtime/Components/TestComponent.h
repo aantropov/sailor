@@ -41,6 +41,9 @@ namespace Sailor
 		glm::ivec2 m_lastCursorPos;
 
 		TVector<RHI::MeshPtr> m_culledMeshes;
-		TOctree<RHI::MeshPtr> m_octree{};
+		TOctree<Math::AABB> m_octree{};
+
+		TVector<Math::AABB> m_culledBoxes{};
+		TVector<Math::AABB> m_boxes{};
 	};
 }
