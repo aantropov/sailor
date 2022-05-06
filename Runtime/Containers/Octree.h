@@ -252,7 +252,7 @@ namespace Sailor
 						outElements.Add(*elements[i]);
 					}
 				}*/
-
+				/**/
 				for (auto& el : node.m_elements)
 				{
 					if (frustum.OverlapsAABB(Math::AABB(el.m_second.m_position, el.m_second.m_extents)))
@@ -270,13 +270,15 @@ namespace Sailor
 
 				for (uint32_t i = 0; i < 8; i++)
 				{
-					octants->m_center = node.m_internal[i].m_center;
-					octants->m_radius = (float)node.m_internal[i].m_size;
-					
-					bContains[i] = frustum.ContainsSphere(octants[i]);
-					bOverlaps[i] = frustum.OverlapsSphere(octants[i]);
+					octants[i].m_center = node.m_internal[i].m_center;
+					octants[i].m_radius = (float)node.m_internal[i].m_size * 0.5f;
+
+					if (!(bContains[i] = frustum.ContainsSphere(octants[i])))
+					{
+						bOverlaps[i] = frustum.OverlapsSphere(octants[i]);
+					}
 				}
-				
+
 				//frustum.ContainsSphere(octants, 8u, bContains);
 				//frustum.OverlapsSphere(octants, 8u, bOverlaps);
 
@@ -411,7 +413,8 @@ namespace Sailor
 
 					for (auto& el : elements)
 					{
-						assert(Insert_Internal(node, el.m_second.m_position, el.m_second.m_extents, el.m_first));
+						const bool bWasPlaced = Insert_Internal(node, el.m_second.m_position, el.m_second.m_extents, el.m_first);
+						assert(bWasPlaced);
 					}
 
 					return true;

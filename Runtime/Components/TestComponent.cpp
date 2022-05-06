@@ -26,20 +26,24 @@ void TestComponent::BeginPlay()
 
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 20.0f, 1000.0f);
 
-	for (int32_t i = -500; i < 500; i += 8)
+	for (int32_t i = -1000; i < 1000; i += 32)
 	{
-		for (int32_t j = -500; j < 500; j += 8)
+		for (int32_t j = -1000; j < 1000; j += 32)
 		{
-			m_boxes.Add(Math::AABB(glm::vec3(i, 10.0f, j), glm::vec3(1.0f, 1.0f, 1.0f)));
-			const auto& aabb = m_boxes[m_boxes.Num() - 1];
+			int k = 10;
+			//for (int32_t k = -1000; k < 1000; k += 32) 
+			{
+				m_boxes.Add(Math::AABB(glm::vec3(i, k, j), glm::vec3(1.0f, 1.0f, 1.0f)));
+				const auto& aabb = m_boxes[m_boxes.Num() - 1];
 
-			//GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
+				GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
 
-			m_octree.Insert(aabb.GetCenter(), aabb.GetExtents(), aabb);
+				m_octree.Insert(aabb.GetCenter(), aabb.GetExtents(), aabb);
+			}
 		}
 	}
 
-	m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
+	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
 
 void TestComponent::EndPlay()
@@ -87,6 +91,14 @@ void TestComponent::Tick(float deltaTime)
 
 			m_octree.Trace(frustum, m_culledBoxes);
 
+			/*m_culledBoxes.Clear();
+			for (const auto& aabb : m_boxes)
+			{
+				if (frustum.OverlapsAABB(aabb))
+				{
+					m_culledBoxes.Add(aabb);
+				}
+			}*/
 			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransform().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
 		}
 	}
