@@ -23,8 +23,10 @@ void CameraComponent::BeginPlay()
 
 	m_aspect = CalculateAspect();
 	m_fovDegrees = 90.0f;
+	m_zNear = 0.01f;
+	m_zFar = 5000.0f;
 
-	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(m_fovDegrees), m_aspect, 0.01f, 3000.0f));
+	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(m_fovDegrees), m_aspect, m_zNear, m_zFar));
 }
 
 CameraData& CameraComponent::GetData()
@@ -40,7 +42,7 @@ void CameraComponent::Tick(float deltaTime)
 	if (m_aspect != aspect)
 	{
 		m_aspect = aspect;
-		GetData().SetProjectionMatrix(Math::PerspectiveInfiniteRH(glm::radians(90.0f), aspect, 0.01f));
+		GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(90.0f), aspect, m_zNear, m_zFar));
 	}
 }
 

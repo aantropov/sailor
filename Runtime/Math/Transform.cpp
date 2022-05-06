@@ -71,4 +71,8 @@ Transform Transform::Inverse() const
 	return Transform(-scaledTranslation, invRotation, invScale);
 }
 
+vec3 Transform::GetForward() const { return Math::vec3_Forward * m_rotation; }
+vec3 Transform::GetRight() const { return Math::vec3_Right * m_rotation; }
+vec3 Transform::GetUp() const { return Math::vec3_Up * m_rotation; }
+
 const Transform Transform::Identity;

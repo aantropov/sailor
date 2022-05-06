@@ -25,6 +25,9 @@ namespace Sailor
 		SAILOR_API float GetFov() const { return m_fovDegrees; }
 		SAILOR_API float GetAspect() const { return m_aspect; }
 
+		SAILOR_API float GetZNear() const { return m_zNear; }
+		SAILOR_API float GetZFar() const { return m_zFar; }
+
 		SAILOR_API static float CalculateAspect();
 
 	protected:
@@ -32,5 +35,7 @@ namespace Sailor
 		float m_aspect = 0.0f;
 		float m_fovDegrees = 0.0f;
 		size_t m_handle = (size_t)(-1);
+		float m_zNear = 0.01f;
+		float m_zFar = 3000.0f;
 	};
 }

@@ -18,6 +18,10 @@ namespace Sailor::Math
 		glm::quat m_rotation;
 		glm::vec4 m_scale;
 
+		SAILOR_API vec3 GetForward() const;
+		SAILOR_API vec3 GetRight() const;
+		SAILOR_API vec3 GetUp() const;
+
 		SAILOR_API Transform operator*(const Transform& parent) const;
 		SAILOR_API Transform& operator*=(const Transform& parent);
 

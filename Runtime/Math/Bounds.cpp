@@ -30,6 +30,27 @@ void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlane
 	}
 }
 
+void Frustum::ExtractFrustumPlanes(const Math::Transform& world, float aspect, float fovY, float zNear, float zFar)
+{
+	const float halfVSide = zFar * tanf(glm::radians(fovY) * .5f);
+	const float halfHSide = halfVSide * aspect;
+	const glm::vec3 frontMultFar = zFar * world.GetForward();
+
+	const auto& forward = world.GetForward();
+	m_planes[4] = Plane(forward, dot(glm::vec3(world.m_position), forward) + zNear);
+	m_planes[5] = Plane(-forward, -(dot(glm::vec3(world.m_position), forward) + zFar));
+
+	const glm::vec3 leftNormal = glm::normalize(glm::cross(frontMultFar - world.GetRight() * halfHSide, world.GetUp()));
+	const glm::vec3 rightNormal = glm::normalize(glm::cross(world.GetUp(), frontMultFar + world.GetRight() * halfHSide));
+	m_planes[0] = Plane(leftNormal, dot(glm::vec3(world.m_position), leftNormal));
+	m_planes[1] = Plane(rightNormal, dot(glm::vec3(world.m_position), rightNormal));
+
+	const glm::vec3 topNormal = glm::normalize(glm::cross(world.GetRight(), frontMultFar - world.GetUp() * halfVSide));
+	const glm::vec3 bottomNormal = glm::normalize(glm::cross(frontMultFar + world.GetUp() * halfVSide, world.GetRight()));
+	m_planes[2] = Plane(topNormal, dot(glm::vec3(world.m_position), topNormal));
+	m_planes[3] = Plane(bottomNormal, dot(glm::vec3(world.m_position), bottomNormal));
+}
+
 bool Frustum::ContainsPoint(const glm::vec3& point) const
 {
 	for (uint32_t p = 0; p < 6; p++)

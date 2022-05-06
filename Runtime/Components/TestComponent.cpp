@@ -82,7 +82,9 @@ void TestComponent::Tick(float deltaTime)
 			GetWorld()->GetDebugContext()->DrawFrustum(GetOwner()->GetTransform().GetCachedWorldMatrix(), camera->GetFov(), 2000.0f, 1.0f, camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f), 1000.0f);
 
 			Math::Frustum frustum;
-			frustum.ExtractFrustumPlanes(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
+			//frustum.ExtractFrustumPlanes(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
+			frustum.ExtractFrustumPlanes(transform.GetTransform(), camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
+
 			m_octree.Trace(frustum, m_culledBoxes);
 
 			for (const auto& aabb : m_culledBoxes)

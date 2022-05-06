@@ -1,6 +1,6 @@
 #pragma once
-
 #include "Core/Defines.h"
+#include "Math/Transform.h"
 #include <glm/glm/glm.hpp>
 #include "Containers/Hash.h"
 #include <glm/glm/gtx/hash.hpp>
@@ -80,6 +80,7 @@ namespace Sailor::Math
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes = true);
+		SAILOR_API __forceinline void ExtractFrustumPlanes(const Math::Transform& world, float aspect, float fovY, float zNear, float zFar);
 
 	protected:
 
