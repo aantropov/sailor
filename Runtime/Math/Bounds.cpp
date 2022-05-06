@@ -37,18 +37,23 @@ void Frustum::ExtractFrustumPlanes(const Math::Transform& world, float aspect, f
 	const glm::vec3 frontMultFar = zFar * world.GetForward();
 
 	const auto& forward = world.GetForward();
-	m_planes[4] = Plane(forward, dot(glm::vec3(world.m_position), forward) + zNear);
-	m_planes[5] = Plane(-forward, -(dot(glm::vec3(world.m_position), forward) + zFar));
+	m_planes[4] = Plane(forward, glm::vec3(world.m_position) + forward * zNear);
+	m_planes[5] = Plane(-forward, glm::vec3(world.m_position) + forward * zFar);
 
 	const glm::vec3 leftNormal = glm::normalize(glm::cross(frontMultFar - world.GetRight() * halfHSide, world.GetUp()));
 	const glm::vec3 rightNormal = glm::normalize(glm::cross(world.GetUp(), frontMultFar + world.GetRight() * halfHSide));
-	m_planes[0] = Plane(leftNormal, dot(glm::vec3(world.m_position), leftNormal));
-	m_planes[1] = Plane(rightNormal, dot(glm::vec3(world.m_position), rightNormal));
+	m_planes[0] = Plane(leftNormal, world.m_position);
+	m_planes[1] = Plane(rightNormal, world.m_position);
 
 	const glm::vec3 topNormal = glm::normalize(glm::cross(world.GetRight(), frontMultFar - world.GetUp() * halfVSide));
 	const glm::vec3 bottomNormal = glm::normalize(glm::cross(frontMultFar + world.GetUp() * halfVSide, world.GetRight()));
-	m_planes[2] = Plane(topNormal, dot(glm::vec3(world.m_position), topNormal));
-	m_planes[3] = Plane(bottomNormal, dot(glm::vec3(world.m_position), bottomNormal));
+	m_planes[2] = Plane(topNormal, world.m_position);
+	m_planes[3] = Plane(bottomNormal, world.m_position);
+
+	for (uint32_t i = 0; i < 6; i++)
+	{
+		m_planes[i].Normalize();
+	}
 }
 
 bool Frustum::ContainsPoint(const glm::vec3& point) const
@@ -74,8 +79,8 @@ bool Frustum::OverlapsSphere(const Sphere& sphere) const
 	{
 		if (m_planes[p][0] * sphere.m_center.x +
 			m_planes[p][1] * sphere.m_center.y +
-			m_planes[p][2] * sphere.m_center.z +
-			m_planes[p][3] < -sphere.m_radius)
+			m_planes[p][2] * sphere.m_center.z + 
+			m_planes[p][3] <  -sphere.m_radius * 2)
 		{
 			bRes = false;
 		}
@@ -91,8 +96,7 @@ bool Frustum::ContainsSphere(const Sphere& sphere) const
 	{
 		if (m_planes[p][0] * sphere.m_center.x +
 			m_planes[p][1] * sphere.m_center.y +
-			m_planes[p][2] * sphere.m_center.z +
-			m_planes[p][3] < sphere.m_radius)
+			m_planes[p][2] * sphere.m_center.z < m_planes[p][3] + sphere.m_radius * 2)
 		{
 			bRes = false;
 		}
@@ -103,20 +107,19 @@ bool Frustum::ContainsSphere(const Sphere& sphere) const
 
 bool Frustum::OverlapsAABB(const AABB& aabb) const
 {
+	bool bIsInside = true;
+
 	for (uint32_t i = 0; i < 6; i++)
 	{
-		float d = max(aabb.m_min.x * m_planes[i].m_abcd.x, aabb.m_max.x * m_planes[i].m_abcd.x)
+		const float d = max(aabb.m_min.x * m_planes[i].m_abcd.x, aabb.m_max.x * m_planes[i].m_abcd.x)
 			+ max(aabb.m_min.y * m_planes[i].m_abcd.y, aabb.m_max.y * m_planes[i].m_abcd.y)
 			+ max(aabb.m_min.z * m_planes[i].m_abcd.z, aabb.m_max.z * m_planes[i].m_abcd.z)
 			+ m_planes[i].m_abcd.w;
 
-		if (d < 0)
-		{
-			return false;
-		}
+		bIsInside &= d > 0;
 	}
 
-	return true;
+	return bIsInside;
 }
 
 // We're using SSE intrinsincts to significantly speed-up the culling test

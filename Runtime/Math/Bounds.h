@@ -14,6 +14,14 @@ namespace Sailor::Math
 		Plane() : m_abcd(0.0f, 0.0f, 0.0f, 0.0f) {}
 		Plane(glm::vec4 abcd) : m_abcd(abcd) {}
 		Plane(glm::vec3 normal, float distance) : m_abcd(normal.x, normal.y, normal.z, distance) {}
+		Plane(glm::vec3 normal, glm::vec3 point)
+		{
+			m_abcd.x = normal.x;
+			m_abcd.y = normal.y;
+			m_abcd.z = normal.z;
+
+			m_abcd.w = -glm::dot(glm::vec3(point), normal);
+		}
 
 		float& operator[] (uint32_t i) { return m_abcd[i]; }
 		float operator[] (uint32_t i) const { return m_abcd[i]; }

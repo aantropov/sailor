@@ -30,16 +30,16 @@ void TestComponent::BeginPlay()
 	{
 		for (int32_t j = -500; j < 500; j += 8)
 		{
-			m_boxes.Add(Math::AABB(glm::vec3(i, 0.0f, j), glm::vec3(1.0f, 1.0f, 1.0f)));
+			m_boxes.Add(Math::AABB(glm::vec3(i, 10.0f, j), glm::vec3(1.0f, 1.0f, 1.0f)));
 			const auto& aabb = m_boxes[m_boxes.Num() - 1];
 
-			GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
+			//GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
 
 			m_octree.Insert(aabb.GetCenter(), aabb.GetExtents(), aabb);
 		}
 	}
 
-	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
+	m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
 
 void TestComponent::EndPlay()
