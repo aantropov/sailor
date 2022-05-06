@@ -24,8 +24,11 @@ void DebugContext::DrawLine(const glm::vec3& start, const glm::vec3& end, const 
 
 	m_lineVertices.Add(startVertex);
 	m_lineVertices.Add(endVertex);
-
+	
 	m_lifetimes.Add(duration);
+	m_lineVerticesOffset = (int32_t)m_lifetimes.Num() - 1;
+
+	m_bShouldUpdateMeshThisFrame = true;
 }
 
 void DebugContext::DrawAABB(const Math::AABB& aabb, const glm::vec4 color, float duration)
@@ -143,7 +146,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 	const VkDeviceSize indexBufferSize = sizeof(uint32_t) * m_lineVertices.Num();
 
 	const bool bShouldCreateVertexBuffer = !m_cachedMesh->m_vertexBuffer || m_cachedMesh->m_vertexBuffer->GetSize() < bufferSize;
-	const bool bNeedUpdateVertexBuffer = m_lineVerticesOffset != -1 || bShouldCreateVertexBuffer;
+	const bool bNeedUpdateVertexBuffer = m_lineVerticesOffset != -1 || bShouldCreateVertexBuffer || m_bShouldUpdateMeshThisFrame;
 
 	m_cachedFrame.m_signalSemaphore = nullptr;
 
@@ -216,12 +219,19 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 			if (m_lineVerticesOffset == -1)
 			{
-				m_lineVerticesOffset = i;
+				m_lineVerticesOffset = i * 2;
 			}
 
 			i--;
 		}
 	}
+
+	if (m_lineVerticesOffset == m_lineVertices.Num())
+	{
+		m_lineVerticesOffset = -1;
+	}
+
+	m_bShouldUpdateMeshThisFrame = false;
 
 	return m_cachedFrame;
 }
@@ -243,7 +253,7 @@ RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingS
 	RHI::Renderer::GetDriverCommands()->BindIndexBuffer(graphicsCmd, debugMesh->m_indexBuffer);
 	RHI::Renderer::GetDriverCommands()->SetDefaultViewport(graphicsCmd);
 	RHI::Renderer::GetDriverCommands()->BindShaderBindings(graphicsCmd, m_material, { frameBindings /*m_material->GetBindings()*/ });
-	RHI::Renderer::GetDriverCommands()->DrawIndexed(graphicsCmd, debugMesh->m_indexBuffer, (uint32_t)debugMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1, 0, 0, 0);
+	RHI::Renderer::GetDriverCommands()->DrawIndexed(graphicsCmd, debugMesh->m_indexBuffer, (uint32_t)m_lineVertices.Num(), 1, 0, 0, 0);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(graphicsCmd);
 

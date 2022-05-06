@@ -33,7 +33,7 @@ void TestComponent::BeginPlay()
 			m_boxes.Add(Math::AABB(glm::vec3(i, 10.0f, j), glm::vec3(1.0f, 1.0f, 1.0f)));
 			const auto& aabb = m_boxes[m_boxes.Num() - 1];
 
-			//GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f));
+			GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
 
 			m_octree.Insert(aabb.GetCenter(), aabb.GetExtents(), aabb);
 		}
@@ -87,13 +87,13 @@ void TestComponent::Tick(float deltaTime)
 
 			m_octree.Trace(frustum, m_culledBoxes);
 
-			for (const auto& aabb : m_culledBoxes)
-			{
-				GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 10.0f);
-			}
-
 			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransform().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
 		}
+	}
+
+	for (const auto& aabb : m_culledBoxes)
+	{
+		GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f));
 	}
 
 	if (glm::length(delta) > 0)

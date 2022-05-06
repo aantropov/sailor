@@ -47,6 +47,7 @@ namespace Sailor::RHI
 
 		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const;
 
+		bool m_bShouldUpdateMeshThisFrame = false;
 		TVector<uint32_t> m_cachedIndices{};
 		RHI::MeshPtr m_cachedMesh{};
 		DebugFrame m_cachedFrame{};
