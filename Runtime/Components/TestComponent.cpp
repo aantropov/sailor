@@ -67,19 +67,19 @@ void TestComponent::Tick(float deltaTime)
 		delta += -cameraViewDirection;
 
 	if (GetWorld()->GetInput().IsKeyDown('X'))
-		delta += Math::vec3_Forward;
+		delta += vec3(1, 0, 0);
 
 	if (GetWorld()->GetInput().IsKeyDown('Y'))
-		delta += Math::vec3_Up;
+		delta += vec3(0, 1, 0);
 
 	if (GetWorld()->GetInput().IsKeyDown('Z'))
-		delta += Math::vec3_Right;
+		delta += vec3(0, 0, 1);
 
 	if (GetWorld()->GetInput().IsKeyPressed('F'))
 	{
 		if (auto camera = GetOwner()->GetComponent<CameraComponent>())
 		{
-			m_cachedFrustum = GetOwner()->GetTransform().GetCachedWorldMatrix();			
+			m_cachedFrustum = GetOwner()->GetTransform().GetCachedWorldMatrix();
 
 			Math::Frustum frustum;
 			//frustum.ExtractFrustumPlanes(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
@@ -98,7 +98,7 @@ void TestComponent::Tick(float deltaTime)
 
 	if (auto camera = GetOwner()->GetComponent<CameraComponent>())
 	{
-		GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), camera->GetZFar(), camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
+		GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
 	}
 
 	if (glm::length(delta) > 0)

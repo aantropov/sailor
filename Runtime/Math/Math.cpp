@@ -30,5 +30,5 @@ glm::mat4 Sailor::Math::PerspectiveInfiniteRH(float fovRadians, float aspectWbyH
 // Reversed Z matrix
 glm::mat4 Sailor::Math::PerspectiveRH(float fovRadians, float aspectWbyH, float zNear, float zFar)
 {
-	return glm::perspective(fovRadians, aspectWbyH, zFar, zNear);
+	return glm::perspectiveRH(fovRadians, aspectWbyH, zFar, zNear);
 }
