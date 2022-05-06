@@ -80,7 +80,7 @@ bool Frustum::OverlapsSphere(const Sphere& sphere) const
 		if (m_planes[p][0] * sphere.m_center.x +
 			m_planes[p][1] * sphere.m_center.y +
 			m_planes[p][2] * sphere.m_center.z + 
-			m_planes[p][3] <  -sphere.m_radius * 2)
+			m_planes[p][3] < -sphere.m_radius * 2)
 		{
 			bRes = false;
 		}
@@ -96,7 +96,8 @@ bool Frustum::ContainsSphere(const Sphere& sphere) const
 	{
 		if (m_planes[p][0] * sphere.m_center.x +
 			m_planes[p][1] * sphere.m_center.y +
-			m_planes[p][2] * sphere.m_center.z < m_planes[p][3] + sphere.m_radius * 2)
+			m_planes[p][2] * sphere.m_center.z + 
+			m_planes[p][3] < sphere.m_radius * 2)
 		{
 			bRes = false;
 		}
