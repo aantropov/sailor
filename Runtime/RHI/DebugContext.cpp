@@ -24,9 +24,13 @@ void DebugContext::DrawLine(const glm::vec3& start, const glm::vec3& end, const 
 
 	m_lineVertices.Add(startVertex);
 	m_lineVertices.Add(endVertex);
-	
+
 	m_lifetimes.Add(duration);
-	m_lineVerticesOffset = (int32_t)m_lifetimes.Num() - 1;
+
+	if (m_lineVerticesOffset == -1)
+	{
+		m_lineVerticesOffset = (int32_t)m_lifetimes.Num() - 1;
+	}
 
 	m_bShouldUpdateMeshThisFrame = true;
 }

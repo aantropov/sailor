@@ -45,5 +45,7 @@ namespace Sailor
 
 		TVector<Math::AABB> m_culledBoxes{};
 		TVector<Math::AABB> m_boxes{};
+
+		glm::mat4 m_cachedFrustum{1};
 	};
 }
