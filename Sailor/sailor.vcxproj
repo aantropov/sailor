@@ -267,6 +267,7 @@
     <ClInclude Include="..\Runtime\Platform\Win32\ConsoleWindow.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Input.h" />
     <ClInclude Include="..\Runtime\Platform\Win32\Window.h" />
+    <ClInclude Include="..\Runtime\RenderPipeline\RenderPipeline.h" />
     <ClInclude Include="..\Runtime\RHI\Buffer.h" />
     <ClInclude Include="..\Runtime\RHI\CommandList.h" />
     <ClInclude Include="..\Runtime\RHI\DebugContext.h" />
@@ -353,6 +354,7 @@
     <ClCompile Include="..\Runtime\Platform\Win32\ConsoleWindow.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\Input.cpp" />
     <ClCompile Include="..\Runtime\Platform\Win32\Window.cpp" />
+    <ClCompile Include="..\Runtime\RenderPipeline\RenderPipeline.cpp" />
     <ClCompile Include="..\Runtime\RHI\Buffer.cpp" />
     <ClCompile Include="..\Runtime\RHI\CommandList.cpp" />
     <ClCompile Include="..\Runtime\RHI\DebugContext.cpp" />

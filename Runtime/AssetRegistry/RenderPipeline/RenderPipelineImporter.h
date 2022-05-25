@@ -22,5 +22,10 @@ namespace Sailor
 
 		virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+
+		bool LoadRenderPipeline_Immediate(UID uid, RenderPipelinePtr& outRenderPipeline);
+
+	protected:
+
 	};
 }

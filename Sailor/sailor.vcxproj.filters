@@ -73,6 +73,9 @@
     <Filter Include="Runtime\ECS">
       <UniqueIdentifier>{f85cc86a-2bde-491e-8e76-4686f9e46cd4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Runtime\RenderPipeline">
+      <UniqueIdentifier>{0261810d-3167-44d1-a066-0293bcd788c3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Runtime\Sailor.h">
@@ -393,6 +396,9 @@
     <ClInclude Include="..\Runtime\Containers\Hash.h">
       <Filter>Runtime\Containers</Filter>
     </ClInclude>
+    <ClInclude Include="..\Runtime\RenderPipeline\RenderPipeline.h">
+      <Filter>Runtime\RenderPipeline</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -649,6 +655,9 @@
     </ClCompile>
     <ClCompile Include="..\Runtime\Containers\OctreeBenchmark.cpp">
       <Filter>Runtime\Containers</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Runtime\RenderPipeline\RenderPipeline.cpp">
+      <Filter>Runtime\RenderPipeline</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
