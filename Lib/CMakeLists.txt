@@ -11,11 +11,11 @@ file (GLOB_RECURSE SAILOR_LIB_SOURCES
       
 source_group("" FILES ${SAILOR_LIB_SOURCES})
 
-foreach(_source IN ITEMS ${SAILOR_RUNTIME_SOURCES})
-    get_filename_component(_source_path "${_source}" PATH)
-    file(RELATIVE_PATH _source_path_rel "${SAILOR_RUNTIME_DIR}" "${_source_path}")
-    string(REPLACE "/" "\\" _group_path "${_source_path_rel}")
-    source_group("Runtime/${_group_path}" FILES "${_source}")
+foreach(Source IN ITEMS ${SAILOR_RUNTIME_SOURCES})
+    get_filename_component(SourcePath "${Source}" PATH)
+    file(RELATIVE_PATH SourcePathRelative "${SAILOR_RUNTIME_DIR}" "${SourcePath}")
+    string(REPLACE "/" "\\" GroupPath "${SourcePathRelative}")
+    source_group("Runtime/${GroupPath}" FILES "${Source}")
 endforeach()
 
 # Properties->C/C++->General->Additional Include Directories
