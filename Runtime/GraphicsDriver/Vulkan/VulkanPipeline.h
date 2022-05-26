@@ -67,7 +67,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		void ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const;
 		virtual ~VulkanPipeline();
 
-		VkPipeline m_pipeline;
+		VkPipeline m_pipeline{};
 		VulkanDevicePtr m_pDevice;
 	};
 }

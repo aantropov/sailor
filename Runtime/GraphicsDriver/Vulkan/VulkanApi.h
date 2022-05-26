@@ -68,11 +68,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	typedef TRefPtr<class VulkanStateVertexDescription> VulkanStateVertexDescriptionPtr;
 	typedef TRefPtr<class VulkanStateDynamic> VulkanStateDynamicPtr;
 
-#define VK_CHECK(call) \
-	do { \
-		VkResult result_ = call; \
-		assert(result_ == VK_SUCCESS); \
-	} while (0)
+#define VK_CHECK(call) 	do { VkResult result_ = call; assert(result_ == VK_SUCCESS); } while (0)
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
@@ -87,7 +83,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	struct SwapChainSupportDetails
 	{
-		VkSurfaceCapabilitiesKHR m_capabilities;
+		VkSurfaceCapabilitiesKHR m_capabilities{};
 		TVector<VkSurfaceFormatKHR> m_formats;
 		TVector<VkPresentModeKHR> m_presentModes;
 	};

@@ -50,7 +50,7 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 {
 	m_pViewport = pViewport;
 
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 	m_driverInstance = TUniquePtr<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver>::Make();
 	m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
 #endif
@@ -83,7 +83,7 @@ TUniquePtr<IGraphicsDriver>& Renderer::GetDriver()
 IGraphicsDriverCommands* Renderer::GetDriverCommands()
 {
 
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 	return dynamic_cast<IGraphicsDriverCommands*>(App::GetSubmodule<Renderer>()->m_driverInstance.GetRawPtr());
 #endif
 
@@ -235,7 +235,7 @@ RHI::CommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 
 				if (!testComponent->GetCulledMeshes().Contains(mesh))
 				{
-					continue;
+					//continue;
 				}
 
 				auto& material = pMaterial->GetOrAddRHI(mesh->m_vertexDescription);

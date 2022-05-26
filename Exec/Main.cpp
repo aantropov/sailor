@@ -12,16 +12,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 {
 	Sailor::App::Initialize();
 
-	//auto assetRegistry = App::GetSubmodule<AssetRegistry>();
-	/*auto shaderCompiler = ShaderCompiler::GetInstance();
-
-	if (auto shaderUID = assetRegistry->GetAssetInfoPtr("Shaders\\Simple.shader"))
-	{
-		ShaderCompiler::GetInstance()->CompileAllPermutations(shaderUID->GetUID());
-
-		//ShaderCompiler::GetInstance()->GetSpirvCode(shaderUID->GetUID(), "TEST_DEFINE1",);
-	}
-	*/
 	App::Start();
 	App::Stop();
 

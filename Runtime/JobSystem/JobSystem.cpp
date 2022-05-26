@@ -70,7 +70,11 @@ bool WorkerThread::TryFetchJob(ITaskPtr& pOutJob)
 void WorkerThread::Process()
 {
 	Sailor::Utils::SetThreadName(m_threadName);
+
+#if defined(BUILD_WITH_EASY_PROFILER)
 	EASY_THREAD_SCOPE(m_threadName.c_str());
+#endif
+
 	m_threadId = GetCurrentThreadId();
 
 	Scheduler* scheduler = App::GetSubmodule<JobSystem::Scheduler>();

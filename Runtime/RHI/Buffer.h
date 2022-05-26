@@ -11,7 +11,7 @@ namespace Sailor::RHI
 
 		Buffer(EBufferUsageFlags usage) : m_usage(usage) {}
 
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
 			Sailor::GraphicsDriver::Vulkan::VulkanBufferPtr m_buffer;

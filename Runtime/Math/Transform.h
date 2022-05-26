@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Defines.h"
 #include <glm/glm/glm.hpp>
 #include <glm/glm/vec4.hpp>
 #include <glm/glm/gtc/quaternion.hpp>

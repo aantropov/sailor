@@ -10,7 +10,7 @@ namespace Sailor::RHI
 	class Texture : public Resource, public IDelayedInitialization
 	{
 	public:
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
 			VulkanImagePtr m_image{};

@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include "Core/Defines.h"
 #include "Containers/Vector.h"
 #include "Memory/MallocAllocator.hpp"
 #include "Memory/UniquePtr.hpp"
@@ -134,6 +135,8 @@ namespace Sailor::Memory
 	public:
 
 		HeapAllocator();
+		HeapAllocator(const HeapAllocator&) = delete;
+
 		void* Allocate(size_t size, size_t alignment = 8);
 		void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
 		void Free(void* ptr);

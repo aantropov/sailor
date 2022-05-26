@@ -10,7 +10,7 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 bool ShaderBinding::IsBind() const
 {
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 	return (bool)(m_textureBinding) || (bool)(m_vulkan.m_valueBinding);
 #endif
 
@@ -35,7 +35,7 @@ bool ShaderBinding::FindVariableInUniformBuffer(const std::string& variable, Sha
 
 ShaderBinding::~ShaderBinding()
 {
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 	if (m_vulkan.m_valueBinding)
 	{
 		if (m_vulkan.m_bufferAllocator)

@@ -14,7 +14,7 @@ using namespace Sailor::Win32;
 
 TVector<Window*> Window::g_windows;
 
-bool Window::Create(LPCWSTR title, LPCWSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested)
+bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested)
 {
 	m_windowClassName = className;
 	m_bIsVsyncRequested = bIsVsyncRequested;
@@ -64,7 +64,7 @@ bool Window::Create(LPCWSTR title, LPCWSTR className, int32_t inWidth, int32_t i
 	AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 
 	// Create window
-	m_hWnd = CreateWindowEx(exStyle, (LPCWSTR)m_windowClassName.c_str(), title, style, rect.left, rect.top,
+	m_hWnd = CreateWindowEx(exStyle, m_windowClassName.c_str(), title, style, rect.left, rect.top,
 		rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, m_hInstance, NULL);
 
 	if (!m_hWnd)
@@ -275,7 +275,7 @@ void Window::Destroy()
 	// Release window class
 	if (m_hInstance)
 	{
-		UnregisterClass((LPCWSTR)m_windowClassName.c_str(), m_hInstance);
+		UnregisterClass(m_windowClassName.c_str(), m_hInstance);
 	}
 
 	g_windows.Remove(this);

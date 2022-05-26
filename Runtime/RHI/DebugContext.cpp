@@ -4,9 +4,9 @@
 #include "CommandList.h"
 #include "VertexDescription.h"
 
-#ifdef  VULKAN
+#ifdef SAILOR_BUILD_WITH_VULKAN
 #include "GraphicsDriver/Vulkan/VulkanPipeline.h"
-#endif 
+#endif //SAILOR_BUILD_WITH_VULKAN
 
 using namespace Sailor;
 using namespace Sailor::RHI;

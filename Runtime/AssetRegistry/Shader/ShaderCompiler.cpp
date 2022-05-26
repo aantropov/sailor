@@ -20,12 +20,6 @@
 #include "JobSystem/Tasks.h"
 #include "JobSystem/JobSystem.h"
 
-#ifdef _DEBUG
-#pragma comment(lib, "shaderc_combinedd.lib")
-#else
-#pragma comment(lib, "shaderc_combined.lib")
-#endif
-
 using namespace Sailor;
 
 bool ShaderSet::IsReady() const

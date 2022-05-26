@@ -39,6 +39,9 @@
 *.pdb
 *.ilk
 
+# CMake folder
+Build/
+
 # Sailor Debug/Release folders
 Cache/
 sailor/Debug

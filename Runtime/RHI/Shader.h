@@ -14,7 +14,7 @@ namespace Sailor::RHI
 	class ShaderBinding : public Resource
 	{
 	public:
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 		using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
 
 		struct
@@ -34,7 +34,7 @@ namespace Sailor::RHI
 	
 		SAILOR_API uint32_t GetStorageInstanceIndex()
 		{
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 			return m_vulkan.m_storageInstanceIndex;
 #endif
 			return 0;
@@ -57,7 +57,7 @@ namespace Sailor::RHI
 
 		SAILOR_API Shader(EShaderStage stage) : m_stage(stage) {}
 
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
 			Sailor::GraphicsDriver::Vulkan::VulkanShaderStagePtr m_shader{};

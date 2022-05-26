@@ -15,7 +15,7 @@
 #include "Platform/Win32/Window.h"
 #include "Containers/ConcurrentMap.h"
 
-#ifdef VULKAN
+#ifdef SAILOR_BUILD_WITH_VULKAN
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
@@ -122,4 +122,4 @@ namespace Sailor::GraphicsDriver::Vulkan
 	};
 };
 
-#endif
+#endif //SAILOR_BUILD_WITH_VULKAN

@@ -12,7 +12,7 @@ namespace Sailor::RHI
 	{
 	public:
 
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
 			GraphicsDriver::Vulkan::VulkanDescriptorSetPtr m_descriptorSet;
@@ -44,7 +44,7 @@ namespace Sailor::RHI
 	class Material : public Resource
 	{
 	public:
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
 			Sailor::GraphicsDriver::Vulkan::VulkanPipelinePtr m_pipeline;

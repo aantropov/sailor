@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Core/Defines.h"
 #include "Transform.h"
 
 #include <glm/glm/glm.hpp>
@@ -37,7 +36,18 @@ namespace Sailor::Math
 	const quat quat_Identity = quat(1.0, 0.0, 0.0, 0.0);
 	const mat4 mat4_Identity = mat4(1);
 
-	SAILOR_API unsigned long UpperPowOf2(unsigned long v);
+	template<typename T>
+	SAILOR_API __forceinline T UpperPowOf2(T v)
+	{
+		v--;
+		v |= v >> 1;
+		v |= v >> 2;
+		v |= v >> 4;
+		v |= v >> 8;
+		v |= v >> 16;
+		v++;
+		return v;
+	}
 
 	template<typename T>
 	T Lerp(const T& a, const T& b, float t) { return a + (b - a) * t; }

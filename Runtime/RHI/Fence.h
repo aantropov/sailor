@@ -12,7 +12,7 @@ namespace Sailor::RHI
 	{
 	public:
 
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
 			VulkanSemaphorePtr m_semaphore;
@@ -26,7 +26,7 @@ namespace Sailor::RHI
 	class Fence : public Resource, public IVisitor, public IDependent
 	{
 	public:
-#if defined(VULKAN)
+#if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
 			VulkanFencePtr m_fence;

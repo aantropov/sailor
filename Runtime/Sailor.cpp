@@ -38,21 +38,19 @@ void App::Initialize()
 
 	Win32::ConsoleWindow::Initialize(false);
 
-	//#ifdef _DEBUG
+#ifdef SAILOR_WITH_CONSOLE
 	Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
-	//#endif
+#endif
 
 	s_pInstance = new App();
 	s_pInstance->m_pViewportWindow = TUniquePtr<Win32::Window>::Make();
-	s_pInstance->m_pViewportWindow->Create(L"Sailor Viewport", L"SailorViewport", 1024, 768);
+	s_pInstance->m_pViewportWindow->Create("Sailor Viewport", "SailorViewport", 1024, 768);
 
-#ifdef _DEBUG
+#ifdef SAILOR_VULKAN_ENABLE_VALIDATION_LAYER
 	const bool bIsEnabledVulkanValidationLayers = true;
-#endif
-
-#ifndef _DEBUG
+#else
 	const bool bIsEnabledVulkanValidationLayers = false;
-#endif 
+#endif
 
 	s_pInstance->AddSubmodule(TSubmodule<JobSystem::Scheduler>::Make())->Initialize();
 
@@ -164,8 +162,8 @@ void App::Start()
 		{
 			SAILOR_PROFILE_BLOCK("Track FPS");
 
-			WCHAR Buff[50];
-			wsprintf(Buff, L"Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u", frameCounter,
+			CHAR Buff[50];
+			sprintf_s(Buff, "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u", frameCounter,
 				GetSubmodule<Renderer>()->GetSmoothFps(),
 				(uint32_t)App::GetSubmodule<EngineLoop>()->GetSmoothFps());
 

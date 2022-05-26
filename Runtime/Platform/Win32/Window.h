@@ -19,7 +19,7 @@ namespace Sailor::Win32
 		std::atomic<int> m_width = 1024;
 		std::atomic<int> m_height = 768;
 		
-		std::wstring m_windowClassName;
+		std::string m_windowClassName;
 
 		std::atomic<bool> m_bIsFullscreen = false;
 		std::atomic<bool> m_bIsActive = false;
@@ -44,7 +44,7 @@ namespace Sailor::Win32
 		SAILOR_API void SetActive(bool value) { m_bIsActive = value; }
 		SAILOR_API void SetRunning(bool value) { m_bIsRunning = value; }
 		SAILOR_API void SetFullscreen(bool value) { m_bIsFullscreen = value; }
-		SAILOR_API void SetWindowTitle(LPCWSTR lString) { SetWindowText(m_hWnd, lString); }
+		SAILOR_API void SetWindowTitle(LPCSTR lString) { SetWindowText(m_hWnd, lString); }
 
 		// Getters for handles
 		SAILOR_API HWND GetHWND() const { return m_hWnd; }
@@ -58,7 +58,7 @@ namespace Sailor::Win32
 		SAILOR_API bool IsVsyncRequested() const { return m_bIsVsyncRequested; }
 
 		// Create window
-		SAILOR_API bool Create(LPCWSTR title = L"Sailor", LPCWSTR className = L"SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false);
+		SAILOR_API bool Create(LPCSTR title = "Sailor", LPCSTR className = "SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false);
 		SAILOR_API void Destroy();
 
 		// Window size
