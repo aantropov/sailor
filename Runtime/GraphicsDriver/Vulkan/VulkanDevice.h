@@ -30,7 +30,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TSharedPtr<VulkanBufferAllocator> m_stagingBufferAllocator;
 	};
 
-	class VulkanDevice final : public RHI::Resource
+	class VulkanDevice final : public RHI::RHIResource
 	{
 
 	public:

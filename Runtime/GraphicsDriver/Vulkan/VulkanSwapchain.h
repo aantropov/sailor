@@ -9,7 +9,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanSemaphore;
 	class VulkanImageView;
 
-	class VulkanSurface : public RHI::Resource
+	class VulkanSurface : public RHI::RHIResource
 	{
 	public:
 		SAILOR_API VulkanSurface(VkSurfaceKHR surface, VkInstance instance);
@@ -32,7 +32,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual ~VulkanSwapchainImage();
 	};
 
-	class VulkanSwapchain final : public RHI::Resource
+	class VulkanSwapchain final : public RHI::RHIResource
 	{
 	public:
 

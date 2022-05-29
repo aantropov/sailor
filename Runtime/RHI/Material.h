@@ -8,7 +8,7 @@
 
 namespace Sailor::RHI
 {
-	class RHIShaderBindingSet : public Resource, public IDelayedInitialization
+	class RHIShaderBindingSet : public RHIResource, public IDelayedInitialization
 	{
 	public:
 
@@ -41,7 +41,7 @@ namespace Sailor::RHI
 		bool m_bNeedsStorageBuffer = false;
 	};
 
-	class RHIMaterial : public Resource
+	class RHIMaterial : public RHIResource
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)

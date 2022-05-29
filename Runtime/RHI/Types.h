@@ -535,22 +535,22 @@ namespace Sailor::RHI
 		alignas(16) glm::mat4 m_model;
 	};
 
-	class Resource : public TRefBase
+	class RHIResource : public TRefBase
 	{
 	public:
 
 	protected:
 
-		SAILOR_API Resource() = default;
-		SAILOR_API virtual ~Resource() = default;
+		SAILOR_API RHIResource() = default;
+		SAILOR_API virtual ~RHIResource() = default;
 
 	private:
 
-		SAILOR_API Resource(Resource& copy) = delete;
-		SAILOR_API Resource& operator =(Resource& rhs) = delete;
+		SAILOR_API RHIResource(RHIResource& copy) = delete;
+		SAILOR_API RHIResource& operator =(RHIResource& rhs) = delete;
 
-		SAILOR_API Resource(Resource&& copy) = default;
-		SAILOR_API Resource& operator =(Resource&& rhs) = default;
+		SAILOR_API RHIResource(RHIResource&& copy) = default;
+		SAILOR_API RHIResource& operator =(RHIResource&& rhs) = default;
 	};
 
 	// Used to hold/track RHI resources
@@ -558,7 +558,7 @@ namespace Sailor::RHI
 	{
 	public:
 
-		void AddDependency(TRefPtr<Resource> dependency)
+		void AddDependency(TRefPtr<RHIResource> dependency)
 		{
 			m_dependencies.Add(std::move(dependency));
 		}
@@ -571,7 +571,7 @@ namespace Sailor::RHI
 		virtual ~IDependent() = default;
 
 	protected:
-		TVector<TRefPtr<Resource>> m_dependencies;
+		TVector<TRefPtr<RHIResource>> m_dependencies;
 	};
 
 	class SAILOR_API IObservable
@@ -584,7 +584,7 @@ namespace Sailor::RHI
 		IObservable& operator=(IObservable&&) = default;
 		virtual ~IObservable() = default;
 
-		virtual void TraceVisit(TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) = 0;
+		virtual void TraceVisit(TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList) = 0;
 	};
 
 	class SAILOR_API IVisitor
@@ -593,7 +593,7 @@ namespace Sailor::RHI
 
 		virtual ~IVisitor() = default;
 
-		void AddObservable(TRefPtr<RHI::Resource> resource)
+		void AddObservable(TRefPtr<RHI::RHIResource> resource)
 		{
 			m_elements.Add(std::move(resource));
 		}
@@ -608,7 +608,7 @@ namespace Sailor::RHI
 				assert(visit);
 
 				bool bShouldRemove = false;
-				visit->TraceVisit((TRefPtr<Resource>(dynamic_cast<Resource*>(this))), bShouldRemove);
+				visit->TraceVisit((TRefPtr<RHIResource>(dynamic_cast<RHIResource*>(this))), bShouldRemove);
 
 				if (bShouldRemove)
 				{
@@ -625,7 +625,7 @@ namespace Sailor::RHI
 
 	protected:
 
-		TVector<TRefPtr<RHI::Resource>> m_elements;
+		TVector<TRefPtr<RHI::RHIResource>> m_elements;
 	};
 
 	// Used to create resource after create the instance of class
@@ -642,7 +642,7 @@ namespace Sailor::RHI
 	{
 	public:
 
-		virtual void TraceVisit(class TRefPtr<Resource> visitor, bool& bShouldRemoveFromList) override;
+		virtual void TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList) override;
 		virtual bool IsReady() const;
 	};
 

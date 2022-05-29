@@ -6,7 +6,7 @@
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
-	class VulkanSemaphore final : public RHI::Resource
+	class VulkanSemaphore final : public RHI::RHIResource
 	{
 
 	public:

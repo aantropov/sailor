@@ -74,7 +74,7 @@ void IGraphicsDriver::TrackResources_ThreadSafe()
 
 void IGraphicsDriver::TrackDelayedInitialization(IDelayedInitialization* pResource, RHIFencePtr handle)
 {
-	auto resource = dynamic_cast<Resource*>(pResource);
+	auto resource = dynamic_cast<RHIResource*>(pResource);
 
 	// Fence should notify res, when cmd list is finished
 	handle->AddObservable(resource);

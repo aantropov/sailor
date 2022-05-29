@@ -9,7 +9,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDevice;
 	class VulkanImage;
 
-	class VulkanImageView : public RHI::Resource, public RHI::IExplicitInitialization
+	class VulkanImageView : public RHI::RHIResource, public RHI::IExplicitInitialization
 	{
 	public:
 		SAILOR_API VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image);

@@ -7,7 +7,7 @@
 
 namespace Sailor::RHI
 {
-	class RHIMesh : public Resource, public IDelayedInitialization
+	class RHIMesh : public RHIResource, public IDelayedInitialization
 	{
 	public:
 

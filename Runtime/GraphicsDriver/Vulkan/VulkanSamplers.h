@@ -8,7 +8,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 {
 	class VulkanDevice;
 
-	class VulkanSampler : public RHI::Resource
+	class VulkanSampler : public RHI::RHIResource
 	{
 	public:
 

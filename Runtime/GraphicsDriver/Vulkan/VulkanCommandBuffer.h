@@ -12,7 +12,7 @@
 namespace Sailor::GraphicsDriver::Vulkan
 {
 	// TODO: Implement the possibility to reuse command lists (read: NOT one_time_submit for secondary command buffers?)
-	class VulkanCommandBuffer final : public RHI::Resource
+	class VulkanCommandBuffer final : public RHI::RHIResource
 	{
 
 	public:

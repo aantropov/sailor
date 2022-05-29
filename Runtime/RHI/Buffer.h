@@ -5,7 +5,7 @@
 
 namespace Sailor::RHI
 {
-	class RHIBuffer : public Resource
+	class RHIBuffer : public RHIResource
 	{
 	public:
 

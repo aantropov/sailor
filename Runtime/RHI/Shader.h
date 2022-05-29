@@ -11,7 +11,7 @@
 
 namespace Sailor::RHI
 {
-	class RHIShaderBinding : public Resource
+	class RHIShaderBinding : public RHIResource
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -51,7 +51,7 @@ namespace Sailor::RHI
 		ShaderLayoutBinding m_bindingLayout{};
 	};
 
-	class RHIShader : public Resource
+	class RHIShader : public RHIResource
 	{
 	public:
 

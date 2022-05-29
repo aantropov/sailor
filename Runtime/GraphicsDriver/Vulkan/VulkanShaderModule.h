@@ -9,7 +9,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 {
 	class VulkanShaderModule;
 
-	class VulkanShaderStage : public RHI::Resource, public RHI::IExplicitInitialization, public RHI::IStateModifier<VkPipelineShaderStageCreateInfo>
+	class VulkanShaderStage : public RHI::RHIResource, public RHI::IExplicitInitialization, public RHI::IStateModifier<VkPipelineShaderStageCreateInfo>
 	{
 	public:
 		SAILOR_API VulkanShaderStage() = default;
@@ -37,7 +37,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<TVector<RHI::ShaderLayoutBinding>> m_bindings;
 	};
 
-	class VulkanShaderModule : public RHI::Resource, public RHI::IExplicitInitialization
+	class VulkanShaderModule : public RHI::RHIResource, public RHI::IExplicitInitialization
 	{
 	public:
 

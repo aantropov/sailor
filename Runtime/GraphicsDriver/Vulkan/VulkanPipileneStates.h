@@ -12,7 +12,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	typedef TRefPtr<class VulkanPipelineState> VulkanPipelineStatePtr;
 	typedef TRefPtr<class VulkanStateColorBlending> VulkanStateColorBlendingPtr;
 
-	class VulkanPipelineState : public RHI::Resource, public RHI::IStateModifier<VkGraphicsPipelineCreateInfo> {};
+	class VulkanPipelineState : public RHI::RHIResource, public RHI::IStateModifier<VkGraphicsPipelineCreateInfo> {};
 
 	class VulkanStateViewport : public VulkanPipelineState
 	{

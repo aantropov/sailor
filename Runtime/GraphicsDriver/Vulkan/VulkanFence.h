@@ -7,7 +7,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 {
 	class VulkanDevice;
 
-	class VulkanFence final : public RHI::Resource
+	class VulkanFence final : public RHI::RHIResource
 	{
 
 	public:

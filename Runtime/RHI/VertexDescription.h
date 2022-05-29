@@ -5,7 +5,7 @@
 
 namespace Sailor::RHI
 {
-	class RHIVertexDescription : public Resource
+	class RHIVertexDescription : public RHIResource
 	{
 	public:
 

@@ -7,7 +7,7 @@ using namespace GraphicsDriver::Vulkan;
 
 namespace Sailor::RHI
 {
-	class RHITexture : public Resource, public IDelayedInitialization
+	class RHITexture : public RHIResource, public IDelayedInitialization
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)

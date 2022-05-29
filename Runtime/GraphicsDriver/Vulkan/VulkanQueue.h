@@ -8,7 +8,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 {
 	class VulkanFence;
 
-	class VulkanQueue final : public RHI::Resource
+	class VulkanQueue final : public RHI::RHIResource
 	{
 
 	public:

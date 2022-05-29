@@ -10,7 +10,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 {
 	class VulkanDeviceMemory;
 
-	class VulkanBuffer final : public RHI::Resource, public RHI::IExplicitInitialization
+	class VulkanBuffer final : public RHI::RHIResource, public RHI::IExplicitInitialization
 	{
 
 	public:

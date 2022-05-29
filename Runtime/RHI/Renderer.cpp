@@ -17,7 +17,7 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void IDelayedInitialization::TraceVisit(class TRefPtr<Resource> visitor, bool& bShouldRemoveFromList)
+void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList)
 {
 	bShouldRemoveFromList = false;
 

@@ -8,7 +8,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 {
 	class VulkanBuffer;
 
-	class VulkanDeviceMemory final : public RHI::Resource
+	class VulkanDeviceMemory final : public RHI::RHIResource
 	{
 	public:
 		SAILOR_API VulkanDeviceMemory(TRefPtr<class VulkanDevice> device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, void* pNextAllocInfo = nullptr);

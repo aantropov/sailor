@@ -18,7 +18,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<uint32_t> m_preserveAttachments;
 	};
 
-	class VulkanRenderPass final : public RHI::Resource
+	class VulkanRenderPass final : public RHI::RHIResource
 	{
 	public:
 

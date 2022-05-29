@@ -7,7 +7,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDevice;
 	class VulkanImageView;
 
-	class VulkanFramebuffer : public RHI::Resource
+	class VulkanFramebuffer : public RHI::RHIResource
 	{
 	public:
 		SAILOR_API VulkanFramebuffer(VulkanRenderPassPtr renderPass, const TVector<VulkanImageViewPtr>& attachments, uint32_t width, uint32_t height, uint32_t layers);
