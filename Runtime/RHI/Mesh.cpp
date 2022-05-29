@@ -8,7 +8,7 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-bool Mesh::IsReady() const
+bool RHIMesh::IsReady() const
 {
 	return m_vertexBuffer->GetSize() > 0 && m_indexBuffer->GetSize() > 0 && m_dependencies.Num() == 0;
 }

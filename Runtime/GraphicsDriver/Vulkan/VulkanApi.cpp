@@ -686,7 +686,7 @@ VulkanImageViewPtr VulkanApi::CreateImageView(VulkanDevicePtr device, VulkanImag
 	return imageView;
 }
 
-VkVertexInputBindingDescription VulkanApi::GetBindingDescription(const RHI::VertexDescriptionPtr& vertexDescription)
+VkVertexInputBindingDescription VulkanApi::GetBindingDescription(const RHI::RHIVertexDescriptionPtr& vertexDescription)
 {
 	VkVertexInputBindingDescription bindingDescription{};
 	bindingDescription.binding = 0;
@@ -695,7 +695,7 @@ VkVertexInputBindingDescription VulkanApi::GetBindingDescription(const RHI::Vert
 	return bindingDescription;
 }
 
-TVector<VkVertexInputAttributeDescription> VulkanApi::GetAttributeDescriptions(const RHI::VertexDescriptionPtr& vertexDescription)
+TVector<VkVertexInputAttributeDescription> VulkanApi::GetAttributeDescriptions(const RHI::RHIVertexDescriptionPtr& vertexDescription)
 {
 	const auto& attributes = vertexDescription->GetAttributeDescriptions();
 	TVector<VkVertexInputAttributeDescription> attributeDescriptions(attributes.Num());

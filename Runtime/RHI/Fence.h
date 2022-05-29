@@ -8,7 +8,7 @@ using namespace GraphicsDriver::Vulkan;
 
 namespace Sailor::RHI
 {
-	class Semaphore : public Resource
+	class RHISemaphore : public Resource
 	{
 	public:
 
@@ -23,7 +23,7 @@ namespace Sailor::RHI
 	};
 
 
-	class Fence : public Resource, public IVisitor, public IDependent
+	class RHIFence : public Resource, public IVisitor, public IDependent
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)

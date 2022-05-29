@@ -10,12 +10,12 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void IGraphicsDriver::UpdateMesh(RHI::MeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices)
+void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices)
 {
 	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.Num();
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
 
-	RHI::CommandListPtr cmdList = CreateCommandList(false, true);
+	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
 
 	mesh->m_vertexBuffer = CreateBuffer(cmdList,
@@ -31,7 +31,7 @@ void IGraphicsDriver::UpdateMesh(RHI::MeshPtr mesh, const TVector<VertexP3N3UV2C
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 	// Create fences to track the state of mesh creation
-	RHI::FencePtr fence = RHI::FencePtr::Make();
+	RHI::RHIFencePtr fence = RHI::RHIFencePtr::Make();
 	TrackDelayedInitialization(mesh.GetRawPtr(), fence);
 
 	// Submit cmd lists
@@ -42,9 +42,9 @@ void IGraphicsDriver::UpdateMesh(RHI::MeshPtr mesh, const TVector<VertexP3N3UV2C
 	}));
 }
 
-TRefPtr<RHI::Mesh> IGraphicsDriver::CreateMesh()
+TRefPtr<RHI::RHIMesh> IGraphicsDriver::CreateMesh()
 {
-	TRefPtr<RHI::Mesh> res = TRefPtr<RHI::Mesh>::Make();
+	TRefPtr<RHI::RHIMesh> res = TRefPtr<RHI::RHIMesh>::Make();
 
 	return res;
 }
@@ -55,7 +55,7 @@ void IGraphicsDriver::TrackResources_ThreadSafe()
 
 	for (int32_t index = 0; index < m_trackedFences.Num(); index++)
 	{
-		FencePtr fence = m_trackedFences[index];
+		RHIFencePtr fence = m_trackedFences[index];
 
 		if (fence->IsFinished())
 		{
@@ -72,7 +72,7 @@ void IGraphicsDriver::TrackResources_ThreadSafe()
 	m_lockTrackedFences.Unlock();
 }
 
-void IGraphicsDriver::TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle)
+void IGraphicsDriver::TrackDelayedInitialization(IDelayedInitialization* pResource, RHIFencePtr handle)
 {
 	auto resource = dynamic_cast<Resource*>(pResource);
 
@@ -83,7 +83,7 @@ void IGraphicsDriver::TrackDelayedInitialization(IDelayedInitialization* pResour
 	pResource->AddDependency(handle);
 }
 
-void IGraphicsDriver::TrackPendingCommandList_ThreadSafe(FencePtr handle)
+void IGraphicsDriver::TrackPendingCommandList_ThreadSafe(RHIFencePtr handle)
 {
 	m_lockTrackedFences.Lock();
 
@@ -93,26 +93,26 @@ void IGraphicsDriver::TrackPendingCommandList_ThreadSafe(FencePtr handle)
 	m_lockTrackedFences.Unlock();
 }
 
-void IGraphicsDriver::SubmitCommandList_Immediate(CommandListPtr commandList)
+void IGraphicsDriver::SubmitCommandList_Immediate(RHICommandListPtr commandList)
 {
-	FencePtr fence = FencePtr::Make();
+	RHIFencePtr fence = RHIFencePtr::Make();
 	SubmitCommandList(commandList, fence);
 	fence->Wait();
 }
 
-VertexDescriptionPtr& IGraphicsDriver::GetOrAddVertexDescription(VertexAttributeBits bits)
+RHIVertexDescriptionPtr& IGraphicsDriver::GetOrAddVertexDescription(VertexAttributeBits bits)
 {
 	auto& pDescription = m_cachedVertexDescriptions.At_Lock(bits);
 	if (!pDescription)
 	{
-		pDescription = VertexDescriptionPtr::Make();
+		pDescription = RHIVertexDescriptionPtr::Make();
 	}
 	m_cachedVertexDescriptions.Unlock(bits);
 
 	return pDescription;
 }
 
-void IGraphicsDriverCommands::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)
+void IGraphicsDriverCommands::UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)
 {
 	SAILOR_PROFILE_FUNCTION();
 

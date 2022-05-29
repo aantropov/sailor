@@ -11,7 +11,7 @@
 
 namespace Sailor::RHI
 {
-	class ShaderBinding : public Resource
+	class RHIShaderBinding : public Resource
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -26,10 +26,10 @@ namespace Sailor::RHI
 		} m_vulkan;
 #endif
 
-		SAILOR_API ~ShaderBinding() override;
+		SAILOR_API ~RHIShaderBinding() override;
 		SAILOR_API bool IsBind() const;
 
-		SAILOR_API const TexturePtr& GetTextureBinding() const { return m_textureBinding; }
+		SAILOR_API const RHITexturePtr& GetTextureBinding() const { return m_textureBinding; }
 		SAILOR_API const ShaderLayoutBinding& GetLayout() const { return m_bindingLayout; }
 	
 		SAILOR_API uint32_t GetStorageInstanceIndex()
@@ -40,22 +40,22 @@ namespace Sailor::RHI
 			return 0;
 		}
 
-		SAILOR_API void SetTextureBinding(TexturePtr textureBinding) { m_textureBinding = textureBinding; }
+		SAILOR_API void SetTextureBinding(RHITexturePtr textureBinding) { m_textureBinding = textureBinding; }
 		SAILOR_API void SetLayout(const ShaderLayoutBinding& layout) { m_bindingLayout = layout; }
 
 		SAILOR_API bool FindVariableInUniformBuffer(const std::string& variable, ShaderLayoutBindingMember& outVariable) const;
 
 	protected:
 
-		TexturePtr m_textureBinding;
+		RHITexturePtr m_textureBinding;
 		ShaderLayoutBinding m_bindingLayout{};
 	};
 
-	class Shader : public Resource
+	class RHIShader : public Resource
 	{
 	public:
 
-		SAILOR_API Shader(EShaderStage stage) : m_stage(stage) {}
+		SAILOR_API RHIShader(EShaderStage stage) : m_stage(stage) {}
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct

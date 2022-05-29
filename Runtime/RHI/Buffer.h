@@ -5,11 +5,11 @@
 
 namespace Sailor::RHI
 {
-	class Buffer : public Resource
+	class RHIBuffer : public Resource
 	{
 	public:
 
-		Buffer(EBufferUsageFlags usage) : m_usage(usage) {}
+		RHIBuffer(EBufferUsageFlags usage) : m_usage(usage) {}
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct

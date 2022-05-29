@@ -40,8 +40,8 @@ namespace Sailor
 		SAILOR_API int64_t GetTime() const { return m_pData->m_currentTime; }
 		SAILOR_API float GetDeltaTime() const { return m_pData->m_deltaTimeSeconds; }
 
-		SAILOR_API RHI::CommandListPtr CreateCommandBuffer(uint32_t index);
-		SAILOR_API RHI::CommandListPtr GetCommandBuffer(uint32_t index) { return m_pData->m_updateResourcesCommandBuffers[index]; }
+		SAILOR_API RHI::RHICommandListPtr CreateCommandBuffer(uint32_t index);
+		SAILOR_API RHI::RHICommandListPtr GetCommandBuffer(uint32_t index) { return m_pData->m_updateResourcesCommandBuffers[index]; }
 
 		SAILOR_API size_t GetNumCommandLists() const { return NumCommandLists; }
 		SAILOR_API WorldPtr GetWorld() const;
@@ -58,7 +58,7 @@ namespace Sailor
 			glm::ivec2 m_mouseDelta{ 0.0f, 0.0f };
 			glm::ivec2 m_mouseDeltaToCenter{ 0.0f,0.0f };
 			FrameInputState m_inputState;
-			std::array<RHI::CommandListPtr, NumCommandLists> m_updateResourcesCommandBuffers;
+			std::array<RHI::RHICommandListPtr, NumCommandLists> m_updateResourcesCommandBuffers;
 			WorldPtr m_world;
 			RHI::DebugFrame m_debugFrame;
 		};

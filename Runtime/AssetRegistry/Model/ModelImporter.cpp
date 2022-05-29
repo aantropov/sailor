@@ -240,7 +240,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	return JobSystem::TaskPtr<bool>::Make(false);
 }
 
-bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
+bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHIMeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
@@ -328,7 +328,7 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::Mes
 
 	for (const auto& mesh : meshes)
 	{
-		RHI::MeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
+		RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
 		ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		ptr->m_bounds = mesh.bounds;
 		RHI::Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);

@@ -37,7 +37,7 @@ namespace Sailor
 		SAILOR_API const FrameInputState& GetInput() const { return m_frameInput; }
 		SAILOR_API int64_t GetTime() const { return m_time; }
 
-		SAILOR_API RHI::CommandListPtr GetCommandList() const { return m_commandList; }
+		SAILOR_API RHI::RHICommandListPtr GetCommandList() const { return m_commandList; }
 		SAILOR_API TUniquePtr<class RHI::DebugContext>& GetDebugContext() { return m_pDebugContext; }
 
 		template<typename T>
@@ -60,7 +60,7 @@ namespace Sailor
 
 		FrameInputState m_frameInput;
 		int64_t m_time;
-		RHI::CommandListPtr m_commandList;
+		RHI::RHICommandListPtr m_commandList;
 		TUniquePtr<RHI::DebugContext> m_pDebugContext;
 
 		Memory::ObjectAllocatorPtr m_allocator;

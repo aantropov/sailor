@@ -106,7 +106,7 @@ void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, f
 	DrawLine(s4, e4, color, duration);
 }
 
-DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime)
+DebugFrame DebugContext::Tick(RHI::RHIShaderBindingSetPtr frameBindings, float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -156,7 +156,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 
 	if (bNeedUpdateVertexBuffer || bNeedUpdateIndexBuffer)
 	{
-		RHI::CommandListPtr updateMeshCmd = renderer->CreateCommandList(false, true);
+		RHI::RHICommandListPtr updateMeshCmd = renderer->CreateCommandList(false, true);
 		RHI::Renderer::GetDriverCommands()->BeginCommandList(updateMeshCmd);
 
 		if (bShouldCreateVertexBuffer)
@@ -199,7 +199,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 		SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
 			([&renderer, updateMeshCmd, semaphore]()
 		{
-			renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), semaphore);
+			renderer->SubmitCommandList(updateMeshCmd, RHI::RHIFencePtr::Make(), semaphore);
 		}));
 	}
 
@@ -240,7 +240,7 @@ DebugFrame DebugContext::Tick(RHI::ShaderBindingSetPtr frameBindings, float delt
 	return m_cachedFrame;
 }
 
-RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const
+RHI::RHICommandListPtr DebugContext::CreateRenderingCommandList(RHI::RHIShaderBindingSetPtr frameBindings, RHI::RHIMeshPtr debugMesh) const
 {
 	if (m_lineVertices.Num() == 0)
 	{
@@ -248,7 +248,7 @@ RHI::CommandListPtr DebugContext::CreateRenderingCommandList(RHI::ShaderBindingS
 	}
 
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
-	RHI::CommandListPtr graphicsCmd = renderer->CreateCommandList(true, false);
+	RHI::RHICommandListPtr graphicsCmd = renderer->CreateCommandList(true, false);
 
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(graphicsCmd);
 

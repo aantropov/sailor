@@ -66,9 +66,9 @@ void VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 }
 
 bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
-	const TVector<RHI::CommandListPtr>* primaryCommandBuffers,
-	const TVector<RHI::CommandListPtr>* secondaryCommandBuffers,
-	TVector<RHI::SemaphorePtr> waitSemaphores) const
+	const TVector<RHI::RHICommandListPtr>* primaryCommandBuffers,
+	const TVector<RHI::RHICommandListPtr>* secondaryCommandBuffers,
+	TVector<RHI::RHISemaphorePtr> waitSemaphores) const
 {
 	TVector<VulkanCommandBufferPtr> primaryBuffers;
 	TVector<VulkanCommandBufferPtr> secondaryBuffers;
@@ -108,7 +108,7 @@ void VulkanGraphicsDriver::WaitIdle()
 	m_vkInstance->WaitIdle();
 }
 
-void VulkanGraphicsDriver::SubmitCommandList(RHI::CommandListPtr commandList, RHI::FencePtr fence, RHI::SemaphorePtr signalSemaphore, RHI::SemaphorePtr waitSemaphore)
+void VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence, RHI::RHISemaphorePtr signalSemaphore, RHI::RHISemaphorePtr waitSemaphore)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -157,23 +157,23 @@ void VulkanGraphicsDriver::SubmitCommandList(RHI::CommandListPtr commandList, RH
 	}
 }
 
-RHI::SemaphorePtr VulkanGraphicsDriver::CreateWaitSemaphore()
+RHI::RHISemaphorePtr VulkanGraphicsDriver::CreateWaitSemaphore()
 {
 	SAILOR_PROFILE_FUNCTION();
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::SemaphorePtr res = RHI::SemaphorePtr::Make();
+	RHI::RHISemaphorePtr res = RHI::RHISemaphorePtr::Make();
 	res->m_vulkan.m_semaphore = VulkanSemaphorePtr::Make(device);
 	return res;
 }
 
-RHI::CommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary, bool bOnlyTransferQueue)
+RHI::RHICommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary, bool bOnlyTransferQueue)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::CommandListPtr cmdList = RHI::CommandListPtr::Make();
+	RHI::RHICommandListPtr cmdList = RHI::RHICommandListPtr::Make();
 
 	cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device,
 		bOnlyTransferQueue ? device->GetCurrentThreadContext().m_transferCommandPool : device->GetCurrentThreadContext().m_commandPool,
@@ -182,21 +182,21 @@ RHI::CommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary, b
 	return cmdList;
 }
 
-RHI::BufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
+RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::BufferPtr res = RHI::BufferPtr::Make(usage);
+	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage);
 	res->m_vulkan.m_buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	return res;
 }
 
-RHI::BufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::CommandListPtr& cmdList, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
+RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::RHICommandListPtr& cmdList, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::BufferPtr outBuffer = CreateBuffer(size, usage);
+	RHI::RHIBufferPtr outBuffer = CreateBuffer(size, usage);
 
 	outBuffer->m_vulkan.m_buffer = m_vkInstance->CreateBuffer(cmdList->m_vulkan.m_commandBuffer,
 		m_vkInstance->GetMainDevice(),
@@ -205,32 +205,32 @@ RHI::BufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::CommandListPtr& cmdList, 
 	return outBuffer;
 }
 
-RHI::ShaderPtr VulkanGraphicsDriver::CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv)
+RHI::RHIShaderPtr VulkanGraphicsDriver::CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto res = RHI::ShaderPtr::Make(shaderStage);
+	auto res = RHI::RHIShaderPtr::Make(shaderStage);
 	res->m_vulkan.m_shader = VulkanShaderStagePtr::Make((VkShaderStageFlagBits)shaderStage, "main", m_vkInstance->GetMainDevice(), shaderSpirv);
 	res->m_vulkan.m_shader->Compile();
 
 	return res;
 }
 
-RHI::BufferPtr VulkanGraphicsDriver::CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage)
+RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::BufferPtr res = RHI::BufferPtr::Make(usage);
+	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage);
 	res->m_vulkan.m_buffer = m_vkInstance->CreateBuffer_Immediate(m_vkInstance->GetMainDevice(), pData, size, (uint32_t)usage);
 	return res;
 }
 
-void VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::BufferPtr src, RHI::BufferPtr dst, size_t size)
+void VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size)
 {
 	m_vkInstance->CopyBuffer_Immediate(m_vkInstance->GetMainDevice(), src->m_vulkan.m_buffer, dst->m_vulkan.m_buffer, size);
 }
 
-RHI::TexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
+RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	const void* pData,
 	size_t size,
 	glm::ivec3 extent,
@@ -250,7 +250,7 @@ RHI::TexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	RHI::TexturePtr res = RHI::TexturePtr::Make(filtration, clamping, mipLevels > 1);
+	RHI::RHITexturePtr res = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1);
 	res->m_vulkan.m_image = m_vkInstance->CreateImage_Immediate(m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
 	res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, res->m_vulkan.m_image);
 	res->m_vulkan.m_imageView->Compile();
@@ -258,7 +258,7 @@ RHI::TexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	return res;
 }
 
-RHI::TexturePtr VulkanGraphicsDriver::CreateImage(
+RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage(
 	const void* pData,
 	size_t size,
 	glm::ivec3 extent,
@@ -272,14 +272,14 @@ RHI::TexturePtr VulkanGraphicsDriver::CreateImage(
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::TexturePtr outTexture = RHI::TexturePtr::Make(filtration, clamping, mipLevels > 1);
+	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	RHI::CommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
 
 	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
@@ -289,14 +289,14 @@ RHI::TexturePtr VulkanGraphicsDriver::CreateImage(
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
 
-	RHI::FencePtr fenceUpdateRes = RHI::FencePtr::Make();
+	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
 	SubmitCommandList(cmdList, fenceUpdateRes);
 
 	return outTexture;
 }
 
-void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings)
+void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -339,7 +339,7 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::ShaderBindingSetPtr bindings
 	bindings->m_vulkan.m_descriptorSet->Compile();
 }
 
-RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader)
+RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -400,7 +400,7 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescripti
 	return CreateMaterial(vertexDescription, topology, renderState, shader, shaderBindings);
 }
 
-RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::ShaderBindingSetPtr& shaderBindigs)
+RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -422,7 +422,7 @@ RHI::MaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::VertexDescripti
 	auto vertex = shader->GetVertexShaderRHI();
 	auto fragment = shader->GetFragmentShaderRHI();
 
-	RHI::MaterialPtr res = RHI::MaterialPtr::Make(renderState, vertex, fragment);
+	RHI::RHIMaterialPtr res = RHI::RHIMaterialPtr::Make(renderState, vertex, fragment);
 
 	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
 	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
@@ -475,13 +475,13 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetUniformBufferAllocat
 	return uniformAllocator;
 }
 
-void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
+void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, const void* value, size_t size)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::CommandListPtr commandList = RHI::CommandListPtr::Make();
+	RHI::RHICommandListPtr commandList = RHI::RHICommandListPtr::Make();
 	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 
 	auto& shaderBinding = bindings->GetOrCreateShaderBinding(parameter);
@@ -495,23 +495,23 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPt
 	SubmitCommandList_Immediate(commandList);
 }
 
-RHI::ShaderBindingSetPtr VulkanGraphicsDriver::CreateShaderBindings()
+RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CreateShaderBindings()
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::ShaderBindingSetPtr res = RHI::ShaderBindingSetPtr::Make();
+	RHI::RHIShaderBindingSetPtr res = RHI::RHIShaderBindingSetPtr::Make();
 	return res;
 }
 
-void VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType)
+void VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::ShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
 	TSharedPtr<VulkanBufferAllocator> allocator;
 
 	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
@@ -544,12 +544,12 @@ void VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::ShaderBindingSetPtr& p
 	UpdateDescriptorSet(pShaderBindings);
 }
 
-void VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding)
+void VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::ShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_binding = shaderBinding;
@@ -563,7 +563,7 @@ void VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::ShaderBindingSetPtr& 
 	UpdateDescriptorSet(pShaderBindings);
 }
 
-void VulkanGraphicsDriver::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& parameter, RHI::TexturePtr value)
+void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, RHI::RHITexturePtr value)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -611,7 +611,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings
 
 // IGraphicsDriverCommands
 
-void VulkanGraphicsDriver::BeginCommandList(RHI::CommandListPtr cmd, bool bOneTimeSubmit)
+void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit)
 {
 	uint32_t flags = bOneTimeSubmit ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
 
@@ -635,12 +635,12 @@ void VulkanGraphicsDriver::BeginCommandList(RHI::CommandListPtr cmd, bool bOneTi
 	}
 }
 
-void VulkanGraphicsDriver::EndCommandList(RHI::CommandListPtr cmd)
+void VulkanGraphicsDriver::EndCommandList(RHI::RHICommandListPtr cmd)
 {
 	cmd->m_vulkan.m_commandBuffer->EndCommandList();
 }
 
-void VulkanGraphicsDriver::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr parameter, const void* pData, size_t size, size_t variableOffset)
+void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr parameter, const void* pData, size_t size, size_t variableOffset)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -652,12 +652,12 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::CommandListPtr cmd, RHI::Sha
 	Update(cmd, dstBuffer, pData, size, binding.m_offset + variableOffset);
 }
 
-void VulkanGraphicsDriver::UpdateBuffer(RHI::CommandListPtr cmd, RHI::BufferPtr buffer, const void* pData, size_t size, size_t offset)
+void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* pData, size_t size, size_t offset)
 {
 	Update(cmd, buffer->m_vulkan.m_buffer, pData, size, offset);
 }
 
-void VulkanGraphicsDriver::Update(RHI::CommandListPtr cmd, VulkanBufferPtr dstBuffer, const void* data, size_t size, size_t offset)
+void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferPtr dstBuffer, const void* data, size_t size, size_t offset)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -718,7 +718,7 @@ void VulkanGraphicsDriver::Update(RHI::CommandListPtr cmd, VulkanBufferPtr dstBu
 	SAILOR_PROFILE_END_BLOCK();
 }
 
-void VulkanGraphicsDriver::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size)
+void VulkanGraphicsDriver::SetMaterialParameter(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -730,7 +730,7 @@ void VulkanGraphicsDriver::SetMaterialParameter(RHI::CommandListPtr cmd, RHI::Sh
 	}
 }
 
-void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, RHI::ShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size)
+void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -748,7 +748,7 @@ void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::CommandListPtr cmd, 
 	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset);
 }
 
-void VulkanGraphicsDriver::BindMaterial(RHI::CommandListPtr cmd, RHI::MaterialPtr material)
+void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material)
 {
 	cmd->m_vulkan.m_commandBuffer->BindPipeline(material->m_vulkan.m_pipeline);
 	if (material->GetRenderState().GetDepthBias() != 0.0f)
@@ -757,17 +757,17 @@ void VulkanGraphicsDriver::BindMaterial(RHI::CommandListPtr cmd, RHI::MaterialPt
 	}
 }
 
-void VulkanGraphicsDriver::BindVertexBuffers(RHI::CommandListPtr cmd, RHI::BufferPtr vertexBuffer)
+void VulkanGraphicsDriver::BindVertexBuffers(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer)
 {
 	cmd->m_vulkan.m_commandBuffer->BindVertexBuffers({ vertexBuffer->m_vulkan.m_buffer });
 }
 
-void VulkanGraphicsDriver::BindIndexBuffer(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer)
+void VulkanGraphicsDriver::BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer)
 {
 	cmd->m_vulkan.m_commandBuffer->BindIndexBuffer(indexBuffer->m_vulkan.m_buffer);
 }
 
-void VulkanGraphicsDriver::SetViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2  scissorExtent, float minDepth, float maxDepth)
+void VulkanGraphicsDriver::SetViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2  scissorExtent, float minDepth, float maxDepth)
 {
 	VulkanStateViewportPtr pStateViewport = new VulkanStateViewport(x, y, width, height,
 		VkOffset2D((int32_t)scissorOffset.x, (int32_t)scissorOffset.y),
@@ -777,7 +777,7 @@ void VulkanGraphicsDriver::SetViewport(RHI::CommandListPtr cmd, float x, float y
 	cmd->m_vulkan.m_commandBuffer->SetScissor(pStateViewport);
 }
 
-void VulkanGraphicsDriver::SetDefaultViewport(RHI::CommandListPtr cmd)
+void VulkanGraphicsDriver::SetDefaultViewport(RHI::RHICommandListPtr cmd)
 {
 	auto device = m_vkInstance->GetMainDevice();
 	auto pStateViewport = device->GetCurrentFrameViewport();
@@ -786,7 +786,7 @@ void VulkanGraphicsDriver::SetDefaultViewport(RHI::CommandListPtr cmd)
 	cmd->m_vulkan.m_commandBuffer->SetScissor(pStateViewport);
 }
 
-void VulkanGraphicsDriver::BindShaderBindings(RHI::CommandListPtr cmd, RHI::MaterialPtr material, const TVector<RHI::ShaderBindingSetPtr>& bindings)
+void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
 {
 	TVector<VulkanDescriptorSetPtr> sets;
 	for (auto& binding : bindings)
@@ -797,12 +797,12 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::CommandListPtr cmd, RHI::Mate
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
 }
 
-void VulkanGraphicsDriver::DrawIndexed(RHI::CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
+void VulkanGraphicsDriver::DrawIndexed(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
 	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexBuffer->m_vulkan.m_buffer, indexCount, 1, 0, 0, 0);
 }
 
-bool VulkanGraphicsDriver::FitsViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth)
+bool VulkanGraphicsDriver::FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth)
 {
 	VulkanStateViewport viewport(x, y, width, height,
 		VkOffset2D((int32_t)scissorOffset.x, (int32_t)scissorOffset.y),
@@ -812,7 +812,7 @@ bool VulkanGraphicsDriver::FitsViewport(RHI::CommandListPtr cmd, float x, float 
 	return cmd->m_vulkan.m_commandBuffer->FitsViewport(viewport.GetViewport());
 }
 
-bool VulkanGraphicsDriver::FitsDefaultViewport(RHI::CommandListPtr cmd)
+bool VulkanGraphicsDriver::FitsDefaultViewport(RHI::RHICommandListPtr cmd)
 {
 	auto device = m_vkInstance->GetMainDevice();
 	auto pStateViewport = device->GetCurrentFrameViewport();

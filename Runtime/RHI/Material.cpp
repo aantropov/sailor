@@ -7,42 +7,42 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-RHI::ShaderBindingPtr& ShaderBindingSet::GetOrCreateShaderBinding(const std::string& binding)
+RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrCreateShaderBinding(const std::string& binding)
 {
 	auto& pBinding = m_shaderBindings.At_Lock(binding);
 	if (!pBinding)
 	{
-		pBinding = ShaderBindingPtr::Make();
+		pBinding = RHIShaderBindingPtr::Make();
 	}
 	m_shaderBindings.Unlock(binding);
 	
 	return pBinding;
 }
 
-void ShaderBindingSet::AddLayoutShaderBinding(ShaderLayoutBinding layout)
+void RHIShaderBindingSet::AddLayoutShaderBinding(ShaderLayoutBinding layout)
 {
 	m_layoutBindings.Emplace(std::move(layout));
 }
 
-bool ShaderBindingSet::PerInstanceDataStoredInSSBO() const
+bool RHIShaderBindingSet::PerInstanceDataStoredInSSBO() const
 {
 	return std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [](const auto& binding) { return binding.m_type == EShaderBindingType::StorageBuffer; }) != m_layoutBindings.end();
 }
 
-void ShaderBindingSet::SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings)
+void RHIShaderBindingSet::SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings)
 {
 	m_layoutBindings = std::move(layoutBindings);
 	m_bNeedsStorageBuffer = PerInstanceDataStoredInSSBO();
 }
 
-void ShaderBindingSet::ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable)
+void RHIShaderBindingSet::ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable)
 {
 	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
 	outBinding = splittedString[0];
 	outVariable = splittedString[1];
 }
 
-bool ShaderBindingSet::HasBinding(const std::string& binding) const
+bool RHIShaderBindingSet::HasBinding(const std::string& binding) const
 {
 	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
 		{
@@ -52,7 +52,7 @@ bool ShaderBindingSet::HasBinding(const std::string& binding) const
 	return it != m_layoutBindings.end();
 }
 
-bool ShaderBindingSet::HasParameter(const std::string& parameter) const
+bool RHIShaderBindingSet::HasParameter(const std::string& parameter) const
 {
 	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
 	const std::string& binding = splittedString[0];

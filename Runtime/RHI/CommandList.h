@@ -6,7 +6,7 @@
 
 namespace Sailor::RHI
 {
-	class CommandList : public Resource
+	class RHICommandList : public Resource
 	{
 	public:
 

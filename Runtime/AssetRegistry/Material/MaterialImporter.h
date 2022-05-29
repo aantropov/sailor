@@ -33,7 +33,7 @@ namespace Sailor
 		SAILOR_API virtual JobSystem::ITaskPtr OnHotReload() override;
 
 		SAILOR_API ShaderSetPtr GetShader() { return m_shader; }
-		SAILOR_API RHI::ShaderBindingSetPtr GetShaderBindings() { return m_commonShaderBindings; }
+		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_commonShaderBindings; }
 
 		SAILOR_API const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
 		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniforms() const { return m_uniforms; }
@@ -46,7 +46,7 @@ namespace Sailor
 		SAILOR_API void UpdateRHIResource();
 
 		// TODO: Incapsulate & isolate
-		SAILOR_API RHI::MaterialPtr& GetOrAddRHI(RHI::VertexDescriptionPtr vertexDescription);
+		SAILOR_API RHI::RHIMaterialPtr& GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription);
 
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
 		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
@@ -58,11 +58,11 @@ namespace Sailor
 		std::atomic<bool> m_bIsDirty;
 
 		ShaderSetPtr m_shader;
-		RHI::ShaderBindingSetPtr m_commonShaderBindings;
+		RHI::RHIShaderBindingSetPtr m_commonShaderBindings;
 
 		RHI::RenderState m_renderState;
 
-		TConcurrentMap<RHI::VertexAttributeBits, RHI::MaterialPtr> m_rhiMaterials;
+		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_rhiMaterials;
 		TConcurrentMap<std::string, TexturePtr> m_samplers;
 		TConcurrentMap<std::string, glm::vec4> m_uniforms;
 

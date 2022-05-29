@@ -8,7 +8,7 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-bool ShaderBinding::IsBind() const
+bool RHIShaderBinding::IsBind() const
 {
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 	return (bool)(m_textureBinding) || (bool)(m_vulkan.m_valueBinding);
@@ -17,7 +17,7 @@ bool ShaderBinding::IsBind() const
 	return false;
 }
 
-bool ShaderBinding::FindVariableInUniformBuffer(const std::string& variable, ShaderLayoutBindingMember& outVariable) const
+bool RHIShaderBinding::FindVariableInUniformBuffer(const std::string& variable, ShaderLayoutBindingMember& outVariable) const
 {
 	auto it = std::find_if(m_bindingLayout.m_members.begin(), m_bindingLayout.m_members.end(), [&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
 		{
@@ -33,7 +33,7 @@ bool ShaderBinding::FindVariableInUniformBuffer(const std::string& variable, Sha
 	return false;
 }
 
-ShaderBinding::~ShaderBinding()
+RHIShaderBinding::~RHIShaderBinding()
 {
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 	if (m_vulkan.m_valueBinding)

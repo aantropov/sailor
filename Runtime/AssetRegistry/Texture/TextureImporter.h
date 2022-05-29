@@ -24,12 +24,12 @@ namespace Sailor
 
 		SAILOR_API virtual bool IsReady() const override;
 
-		SAILOR_API const RHI::TexturePtr& GetRHI() const { return m_rhiTexture; }
-		SAILOR_API RHI::TexturePtr& GetRHI() { return m_rhiTexture; }
+		SAILOR_API const RHI::RHITexturePtr& GetRHI() const { return m_rhiTexture; }
+		SAILOR_API RHI::RHITexturePtr& GetRHI() { return m_rhiTexture; }
 
 	protected:
 
-		RHI::TexturePtr m_rhiTexture;
+		RHI::RHITexturePtr m_rhiTexture;
 
 		friend class TextureImporter;
 	};

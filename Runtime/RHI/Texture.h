@@ -7,7 +7,7 @@ using namespace GraphicsDriver::Vulkan;
 
 namespace Sailor::RHI
 {
-	class Texture : public Resource, public IDelayedInitialization
+	class RHITexture : public Resource, public IDelayedInitialization
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -18,7 +18,7 @@ namespace Sailor::RHI
 		} m_vulkan;
 #endif
 
-		SAILOR_API Texture(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips) :
+		SAILOR_API RHITexture(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips) :
 			m_filtration(filtration),
 			m_clamping(clamping),
 			m_bShouldGenerateMips(bShouldGenerateMips)

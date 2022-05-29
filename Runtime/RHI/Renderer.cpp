@@ -21,7 +21,7 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<Resource> visitor, bool& b
 {
 	bShouldRemoveFromList = false;
 
-	if (auto fence = TRefPtr<RHI::Fence>(visitor.GetRawPtr()))
+	if (auto fence = TRefPtr<RHI::RHIFence>(visitor.GetRawPtr()))
 	{
 		if (fence->IsFinished())
 		{
@@ -58,15 +58,15 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	// Create default Vertices descriptions cache 
 	auto& vertexP3N3UV2C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 	vertexP3N3UV2C4->SetVertexStride(sizeof(RHI::VertexP3N3UV2C4));
-	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultPositionBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_position));
-	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultNormalBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_normal));
-	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultTexcoordBinding, 0, RHI::EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_texcoord));
-	vertexP3N3UV2C4->AddAttribute(RHI::VertexDescription::DefaultColorBinding, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_color));
+	vertexP3N3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultPositionBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_position));
+	vertexP3N3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultNormalBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_normal));
+	vertexP3N3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultTexcoordBinding, 0, RHI::EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_texcoord));
+	vertexP3N3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultColorBinding, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3UV2C4::m_color));
 
 	auto& vertexP3C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3C4>();
 	vertexP3C4->SetVertexStride(sizeof(RHI::VertexP3C4));
-	vertexP3C4->AddAttribute(VertexDescription::DefaultPositionBinding, 0, EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_position));
-	vertexP3C4->AddAttribute(VertexDescription::DefaultColorBinding, 0, EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_color));
+	vertexP3C4->AddAttribute(RHIVertexDescription::DefaultPositionBinding, 0, EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_position));
+	vertexP3C4->AddAttribute(RHIVertexDescription::DefaultColorBinding, 0, EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3C4::m_color));
 }
 
 Renderer::~Renderer()
@@ -122,18 +122,18 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		timer.Start();
 
 		SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
-		TVector<SemaphorePtr> waitFrameUpdate;
+		TVector<RHISemaphorePtr> waitFrameUpdate;
 		for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
 		{
 			if (auto pCommandList = frameInstance.GetCommandBuffer(i))
 			{
 				waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-				GetDriver()->SubmitCommandList(pCommandList, FencePtr::Make(), waitFrameUpdate[i]);
+				GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), waitFrameUpdate[i]);
 			}
 		}
 		SAILOR_PROFILE_END_BLOCK();
 
-		TVector<RHI::CommandListPtr> secondaryCommandLists;
+		TVector<RHI::RHICommandListPtr> secondaryCommandLists;
 		if (auto cmdList = DrawTestScene(frame))
 		{
 			secondaryCommandLists.Emplace(cmdList);
@@ -195,7 +195,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 }
 
 // Temporary
-RHI::CommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
+RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 {
 	for (auto& gameObject : frame.GetWorld()->GetGameObjects())
 	{
@@ -251,7 +251,7 @@ RHI::CommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 					GetDriverCommands()->BindIndexBuffer(cmdList, mesh->m_indexBuffer);
 
 					// TODO: Parse missing descriptor sets
-					TVector<ShaderBindingSetPtr> sets;
+					TVector<RHIShaderBindingSetPtr> sets;
 					if (testComponent->GetFrameBinding()->GetShaderBindings().Num())
 					{
 						sets.Add(testComponent->GetFrameBinding());

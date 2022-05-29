@@ -25,8 +25,8 @@ namespace Sailor::RHI
 	class DebugFrame
 	{
 	public:
-		RHI::CommandListPtr m_drawDebugMeshCmd{};
-		RHI::SemaphorePtr m_signalSemaphore{};
+		RHI::RHICommandListPtr m_drawDebugMeshCmd{};
+		RHI::RHISemaphorePtr m_signalSemaphore{};
 		uint32_t m_linesCount{};
 	};
 
@@ -41,22 +41,22 @@ namespace Sailor::RHI
 		SAILOR_API void DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 
 		// TODO: Split logic and rendering
-		SAILOR_API DebugFrame Tick(RHI::ShaderBindingSetPtr frameBindings, float deltaTime);
+		SAILOR_API DebugFrame Tick(RHI::RHIShaderBindingSetPtr frameBindings, float deltaTime);
 
 	protected:
 
-		SAILOR_API RHI::CommandListPtr CreateRenderingCommandList(RHI::ShaderBindingSetPtr frameBindings, RHI::MeshPtr debugMesh) const;
+		SAILOR_API RHI::RHICommandListPtr CreateRenderingCommandList(RHI::RHIShaderBindingSetPtr frameBindings, RHI::RHIMeshPtr debugMesh) const;
 
 		bool m_bShouldUpdateMeshThisFrame = false;
 		TVector<uint32_t> m_cachedIndices{};
-		RHI::MeshPtr m_cachedMesh{};
+		RHI::RHIMeshPtr m_cachedMesh{};
 		DebugFrame m_cachedFrame{};
 
 		TVector<VertexP3C4> m_lineVertices{};
 		TVector<float> m_lifetimes;
 		int32_t m_lineVerticesOffset = -1;
 
-		MaterialPtr m_material{};
+		RHIMaterialPtr m_material{};
 
 		friend class World;
 	};

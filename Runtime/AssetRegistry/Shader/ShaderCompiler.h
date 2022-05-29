@@ -29,22 +29,22 @@ namespace Sailor
 
 		SAILOR_API virtual bool IsReady() const override;
 
-		SAILOR_API const RHI::ShaderPtr& GetVertexShaderRHI() const { return m_rhiVertexShader; }
-		SAILOR_API RHI::ShaderPtr& GetVertexShaderRHI() { return m_rhiVertexShader; }
+		SAILOR_API const RHI::RHIShaderPtr& GetVertexShaderRHI() const { return m_rhiVertexShader; }
+		SAILOR_API RHI::RHIShaderPtr& GetVertexShaderRHI() { return m_rhiVertexShader; }
 
-		SAILOR_API const RHI::ShaderPtr& GetFragmentShaderRHI() const { return m_rhiFragmentShader; }
-		SAILOR_API RHI::ShaderPtr& GetFragmentShaderRHI() { return m_rhiFragmentShader; }
+		SAILOR_API const RHI::RHIShaderPtr& GetFragmentShaderRHI() const { return m_rhiFragmentShader; }
+		SAILOR_API RHI::RHIShaderPtr& GetFragmentShaderRHI() { return m_rhiFragmentShader; }
 
-		SAILOR_API const RHI::ShaderPtr& GetDebugVertexShaderRHI() const { return m_rhiVertexShaderDebug; }
-		SAILOR_API const RHI::ShaderPtr& GetDebugFragmentShaderRHI() const { return m_rhiFragmentShaderDebug; }
+		SAILOR_API const RHI::RHIShaderPtr& GetDebugVertexShaderRHI() const { return m_rhiVertexShaderDebug; }
+		SAILOR_API const RHI::RHIShaderPtr& GetDebugFragmentShaderRHI() const { return m_rhiFragmentShaderDebug; }
 
 	protected:
 
-		RHI::ShaderPtr m_rhiVertexShader;
-		RHI::ShaderPtr m_rhiFragmentShader;
+		RHI::RHIShaderPtr m_rhiVertexShader;
+		RHI::RHIShaderPtr m_rhiFragmentShader;
 
-		RHI::ShaderPtr m_rhiVertexShaderDebug;
-		RHI::ShaderPtr m_rhiFragmentShaderDebug;
+		RHI::RHIShaderPtr m_rhiVertexShaderDebug;
+		RHI::RHIShaderPtr m_rhiFragmentShaderDebug;
 
 		friend class ShaderCompiler;
 	};

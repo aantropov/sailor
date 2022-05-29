@@ -33,12 +33,12 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API Model(UID uid, TVector<RHI::MeshPtr> meshes = {}) :
+		SAILOR_API Model(UID uid, TVector<RHI::RHIMeshPtr> meshes = {}) :
 			Object(std::move(uid)),
 			m_meshes(std::move(meshes)) {}
 
-		SAILOR_API const TVector<RHI::MeshPtr>& GetMeshes() const { return m_meshes; }
-		SAILOR_API TVector<RHI::MeshPtr>& GetMeshes() { return m_meshes; }
+		SAILOR_API const TVector<RHI::RHIMeshPtr>& GetMeshes() const { return m_meshes; }
+		SAILOR_API TVector<RHI::RHIMeshPtr>& GetMeshes() { return m_meshes; }
 
 		// Should be triggered after mesh/material changes
 		SAILOR_API void Flush();
@@ -51,7 +51,7 @@ namespace Sailor
 
 	protected:
 
-		TVector<RHI::MeshPtr> m_meshes;
+		TVector<RHI::RHIMeshPtr> m_meshes;
 		std::atomic<bool> m_bIsReady;
 
 		Math::AABB m_boundsAabb;
@@ -77,7 +77,7 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::MeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
+		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHIMeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 

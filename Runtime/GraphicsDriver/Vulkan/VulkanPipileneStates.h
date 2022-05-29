@@ -139,7 +139,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	struct VulkanPipelineStateBuilder
 	{
 		SAILOR_API VulkanPipelineStateBuilder(VulkanDevicePtr pDevice);
-		SAILOR_API const TVector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState);
+		SAILOR_API const TVector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState);
 
 	protected:
 

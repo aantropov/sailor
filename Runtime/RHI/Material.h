@@ -8,7 +8,7 @@
 
 namespace Sailor::RHI
 {
-	class ShaderBindingSet : public Resource, public IDelayedInitialization
+	class RHIShaderBindingSet : public Resource, public IDelayedInitialization
 	{
 	public:
 
@@ -22,8 +22,8 @@ namespace Sailor::RHI
 		SAILOR_API void AddLayoutShaderBinding(ShaderLayoutBinding layout);
 		SAILOR_API void SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings);
 		SAILOR_API const TVector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
-		SAILOR_API RHI::ShaderBindingPtr& GetOrCreateShaderBinding(const std::string& binding);
-		SAILOR_API const TConcurrentMap<std::string, RHI::ShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
+		SAILOR_API RHI::RHIShaderBindingPtr& GetOrCreateShaderBinding(const std::string& binding);
+		SAILOR_API const TConcurrentMap<std::string, RHI::RHIShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
 
 		static SAILOR_API void ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable);
 
@@ -37,11 +37,11 @@ namespace Sailor::RHI
 		SAILOR_API bool PerInstanceDataStoredInSSBO() const;
 
 		TVector<RHI::ShaderLayoutBinding> m_layoutBindings;
-		TConcurrentMap<std::string, RHI::ShaderBindingPtr> m_shaderBindings;
+		TConcurrentMap<std::string, RHI::RHIShaderBindingPtr> m_shaderBindings;
 		bool m_bNeedsStorageBuffer = false;
 	};
 
-	class Material : public Resource
+	class RHIMaterial : public Resource
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -50,7 +50,7 @@ namespace Sailor::RHI
 			Sailor::GraphicsDriver::Vulkan::VulkanPipelinePtr m_pipeline;
 		} m_vulkan;
 #endif
-		SAILOR_API Material(RenderState renderState, ShaderPtr vertexShader, ShaderPtr fragmentShader) :
+		SAILOR_API RHIMaterial(RenderState renderState, RHIShaderPtr vertexShader, RHIShaderPtr fragmentShader) :
 			m_renderState(std::move(renderState)),
 			m_vertexShader(vertexShader),
 			m_fragmentShader(fragmentShader)
@@ -58,20 +58,20 @@ namespace Sailor::RHI
 
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_renderState; }
 
-		SAILOR_API ShaderPtr GetVertexShader() const { return m_vertexShader; }
-		SAILOR_API ShaderPtr GetFragmentShader() const { return m_fragmentShader; }
+		SAILOR_API RHIShaderPtr GetVertexShader() const { return m_vertexShader; }
+		SAILOR_API RHIShaderPtr GetFragmentShader() const { return m_fragmentShader; }
 
-		SAILOR_API ShaderBindingSetPtr GetBindings() const { return m_bindings; }
-		SAILOR_API void SetBindings(ShaderBindingSetPtr bindings) { m_bindings = bindings; }
+		SAILOR_API RHIShaderBindingSetPtr GetBindings() const { return m_bindings; }
+		SAILOR_API void SetBindings(RHIShaderBindingSetPtr bindings) { m_bindings = bindings; }
 
 	protected:
 
 		RHI::RenderState m_renderState;
 
-		ShaderPtr m_vertexShader;
-		ShaderPtr m_fragmentShader;
+		RHIShaderPtr m_vertexShader;
+		RHIShaderPtr m_fragmentShader;
 
-		ShaderBindingSetPtr m_bindings;
+		RHIShaderBindingSetPtr m_bindings;
 
 		friend class IGraphicsDriver;
 	};

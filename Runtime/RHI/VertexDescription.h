@@ -5,7 +5,7 @@
 
 namespace Sailor::RHI
 {
-	class VertexDescription : public Resource
+	class RHIVertexDescription : public Resource
 	{
 	public:
 
@@ -22,7 +22,7 @@ namespace Sailor::RHI
 		static constexpr uint32_t DefaultTexcoordBinding = 2;
 		static constexpr uint32_t DefaultColorBinding = 3;
 
-		VertexDescription() = default;
+		RHIVertexDescription() = default;
 
 		SAILOR_API void SetVertexStride(size_t stride) { m_vertexStride = stride; }
 		SAILOR_API size_t GetVertexStride() const { return m_vertexStride; }

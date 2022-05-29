@@ -77,7 +77,7 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 	m_bIsDirty = true;
 }
 
-RHI::MaterialPtr& Material::GetOrAddRHI(RHI::VertexDescriptionPtr vertexDescription)
+RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -135,14 +135,14 @@ void Material::UpdateRHIResource()
 			std::string outBinding;
 			std::string outVariable;
 
-			RHI::ShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::ShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
+			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
+			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
 		}
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Create command list");
-	RHI::CommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
 
 	for (auto& uniform : m_uniforms)
@@ -152,8 +152,8 @@ void Material::UpdateRHIResource()
 			std::string outBinding;
 			std::string outVariable;
 
-			RHI::ShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::ShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
+			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
+			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
 
 			const glm::vec4 value = uniform.m_second;
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
@@ -164,7 +164,7 @@ void Material::UpdateRHIResource()
 	SAILOR_PROFILE_END_BLOCK();
 
 	// Create fences to track the state of material update
-	RHI::FencePtr fence = RHI::FencePtr::Make();
+	RHI::RHIFencePtr fence = RHI::RHIFencePtr::Make();
 	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_commonShaderBindings.GetRawPtr(), fence);
 
 	// Submit cmd lists

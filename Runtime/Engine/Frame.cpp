@@ -55,7 +55,7 @@ FrameState& FrameState::operator=(FrameState frameState)
 	return *this;
 }
 
-RHI::CommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
+RHI::RHICommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 {
 	return m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
 }

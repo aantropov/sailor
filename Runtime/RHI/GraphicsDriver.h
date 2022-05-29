@@ -8,11 +8,11 @@
 auto lambda = Lambda; \
 auto submit = [lambda]() \
 { \
-	Sailor::RHI::CommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, false); \
+	Sailor::RHI::RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, false); \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
-	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
+	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::RHIFencePtr::Make()); \
 }; \
 Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateTask(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
 }\
@@ -22,11 +22,11 @@ Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Schedu
 auto lambda = Lambda; \
 auto submit = [lambda]() \
 { \
-	Sailor::RHI::CommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, true); \
+	Sailor::RHI::RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, true); \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
-	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::FencePtr::Make()); \
+	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::RHIFencePtr::Make()); \
 }; \
 Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateTask(Name, submit, Sailor::JobSystem::EThreadType::Rendering)); \
 }\
@@ -46,17 +46,17 @@ namespace Sailor::Win32
 
 namespace Sailor::RHI
 {
-	typedef TRefPtr<class Buffer> BufferPtr;
-	typedef TRefPtr<class CommandList> CommandListPtr;
-	typedef TRefPtr<class Fence> FencePtr;
-	typedef TRefPtr<class Mesh> MeshPtr;
-	typedef TRefPtr<class Texture> TexturePtr;
-	typedef TRefPtr<class Shader> ShaderPtr;
-	typedef TRefPtr<class Material> MaterialPtr;
-	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
-	typedef TRefPtr<class ShaderBindingSet> ShaderBindingSetPtr;
-	typedef TRefPtr<class Semaphore> SemaphorePtr;
-	typedef TRefPtr<class VertexDescription> VertexDescriptionPtr;
+	typedef TRefPtr<class RHIBuffer> RHIBufferPtr;
+	typedef TRefPtr<class RHICommandList> RHICommandListPtr;
+	typedef TRefPtr<class RHIFence> RHIFencePtr;
+	typedef TRefPtr<class RHIMesh> RHIMeshPtr;
+	typedef TRefPtr<class RHITexture> RHITexturePtr;
+	typedef TRefPtr<class RHIShader> RHIShaderPtr;
+	typedef TRefPtr<class RHIMaterial> RHIMaterialPtr;
+	typedef TRefPtr<class RHIShaderBinding> RHIShaderBindingPtr;
+	typedef TRefPtr<class RHIShaderBindingSet> RHIShaderBindingSetPtr;
+	typedef TRefPtr<class RHISemaphore> RHISemaphorePtr;
+	typedef TRefPtr<class RHIVertexDescription> RHIVertexDescriptionPtr;
 
 	class IGraphicsDriver
 	{
@@ -69,20 +69,20 @@ namespace Sailor::RHI
 		SAILOR_API virtual void FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
 
 		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,
-			const TVector<CommandListPtr>* primaryCommandBuffers = nullptr,
-			const TVector<CommandListPtr>* secondaryCommandBuffers = nullptr,
-			TVector<SemaphorePtr> waitSemaphores = {}) const = 0;
+			const TVector<RHICommandListPtr>* primaryCommandBuffers = nullptr,
+			const TVector<RHICommandListPtr>* secondaryCommandBuffers = nullptr,
+			TVector<RHISemaphorePtr> waitSemaphores = {}) const = 0;
 
 		SAILOR_API virtual void WaitIdle() = 0;
 
-		SAILOR_API virtual SemaphorePtr CreateWaitSemaphore() = 0;
-		SAILOR_API virtual CommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
-		SAILOR_API virtual BufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
-		SAILOR_API virtual BufferPtr CreateBuffer(CommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		SAILOR_API virtual MeshPtr CreateMesh();
-		SAILOR_API virtual void UpdateMesh(RHI::MeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices);
-		SAILOR_API virtual ShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
-		SAILOR_API virtual TexturePtr CreateImage(
+		SAILOR_API virtual RHISemaphorePtr CreateWaitSemaphore() = 0;
+		SAILOR_API virtual RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
+		SAILOR_API virtual RHIBufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
+		SAILOR_API virtual RHIBufferPtr CreateBuffer(RHICommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		SAILOR_API virtual RHIMeshPtr CreateMesh();
+		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices);
+		SAILOR_API virtual RHIShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
+		SAILOR_API virtual RHITexturePtr CreateImage(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,
@@ -92,44 +92,44 @@ namespace Sailor::RHI
 			ETextureFiltration filtration = ETextureFiltration::Linear,
 			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
-		SAILOR_API virtual MaterialPtr CreateMaterial(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
-		SAILOR_API virtual MaterialPtr CreateMaterial(const RHI::VertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::ShaderBindingSetPtr& shaderBindigs) = 0;
+		SAILOR_API virtual RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
+		SAILOR_API virtual RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs) = 0;
 
-		SAILOR_API virtual void SubmitCommandList(CommandListPtr commandList, FencePtr fence = nullptr, SemaphorePtr signalSemaphore = nullptr, SemaphorePtr waitSemaphore = nullptr) = 0;
+		SAILOR_API virtual void SubmitCommandList(RHICommandListPtr commandList, RHIFencePtr fence = nullptr, RHISemaphorePtr signalSemaphore = nullptr, RHISemaphorePtr waitSemaphore = nullptr) = 0;
 
 		// Shader binding set
-		SAILOR_API virtual ShaderBindingSetPtr CreateShaderBindings() = 0;
-		SAILOR_API virtual void AddBufferToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
-		SAILOR_API virtual void AddSamplerToShaderBindings(ShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::TexturePtr texture, uint32_t shaderBinding) = 0;
+		SAILOR_API virtual RHIShaderBindingSetPtr CreateShaderBindings() = 0;
+		SAILOR_API virtual void AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
+		SAILOR_API virtual void AddSamplerToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding) = 0;
 
 		// Used for full binding update
-		SAILOR_API virtual void UpdateShaderBinding(RHI::ShaderBindingSetPtr bindings, const std::string& binding, TexturePtr value) = 0;
-		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::ShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
+		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value) = 0;
+		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 
 		// Used only for static vertex types
 		template<typename TVertex>
-		SAILOR_API VertexDescriptionPtr& GetOrAddVertexDescription()
+		SAILOR_API RHIVertexDescriptionPtr& GetOrAddVertexDescription()
 		{
 			const size_t vertexTypeHash = TVertex::GetVertexAttributeBits();
 
 			auto& pDescription = m_cachedVertexDescriptions.At_Lock(vertexTypeHash);
 			if (!pDescription)
 			{
-				pDescription = VertexDescriptionPtr::Make();
+				pDescription = RHIVertexDescriptionPtr::Make();
 			}
 			m_cachedVertexDescriptions.Unlock(vertexTypeHash);
 
 			return pDescription;
 		}
 
-		SAILOR_API VertexDescriptionPtr& GetOrAddVertexDescription(VertexAttributeBits bits);
+		SAILOR_API RHIVertexDescriptionPtr& GetOrAddVertexDescription(VertexAttributeBits bits);
 
 		//Immediate context
-		SAILOR_API virtual BufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		SAILOR_API virtual void CopyBuffer_Immediate(BufferPtr src, BufferPtr dst, size_t size) = 0;
-		SAILOR_API virtual void SubmitCommandList_Immediate(CommandListPtr commandList);
+		SAILOR_API virtual RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		SAILOR_API virtual void CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size) = 0;
+		SAILOR_API virtual void SubmitCommandList_Immediate(RHICommandListPtr commandList);
 
-		SAILOR_API virtual TexturePtr CreateImage_Immediate(
+		SAILOR_API virtual RHITexturePtr CreateImage_Immediate(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,
@@ -142,51 +142,51 @@ namespace Sailor::RHI
 		//Immediate context
 
 		SAILOR_API void TrackResources_ThreadSafe();
-		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, FencePtr handle);
+		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, RHIFencePtr handle);
 
 	protected:
 
-		SAILOR_API void TrackPendingCommandList_ThreadSafe(FencePtr handle);
+		SAILOR_API void TrackPendingCommandList_ThreadSafe(RHIFencePtr handle);
 
 		SpinLock m_lockTrackedFences;
-		TVector<FencePtr> m_trackedFences;
+		TVector<RHIFencePtr> m_trackedFences;
 
-		TConcurrentMap<VertexAttributeBits, VertexDescriptionPtr> m_cachedVertexDescriptions;
+		TConcurrentMap<VertexAttributeBits, RHIVertexDescriptionPtr> m_cachedVertexDescriptions;
 	};
 
 	class IGraphicsDriverCommands
 	{
 	public:
 
-		SAILOR_API virtual bool FitsViewport(RHI::CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
-		SAILOR_API virtual bool FitsDefaultViewport(RHI::CommandListPtr cmd) = 0;
+		SAILOR_API virtual bool FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
+		SAILOR_API virtual bool FitsDefaultViewport(RHI::RHICommandListPtr cmd) = 0;
 
-		SAILOR_API virtual void BeginCommandList(CommandListPtr cmd, bool bOneTimeSubmit = false) = 0;
-		SAILOR_API virtual void EndCommandList(CommandListPtr cmd) = 0;
+		SAILOR_API virtual void BeginCommandList(RHICommandListPtr cmd, bool bOneTimeSubmit = false) = 0;
+		SAILOR_API virtual void EndCommandList(RHICommandListPtr cmd) = 0;
 
-		SAILOR_API virtual void UpdateShaderBindingVariable(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);
-		SAILOR_API virtual void UpdateShaderBindingVariable(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
-		SAILOR_API virtual void UpdateShaderBinding(CommandListPtr cmd, RHI::ShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
-		SAILOR_API virtual void UpdateBuffer(CommandListPtr cmd, RHI::BufferPtr buffer, const void* data, size_t size, size_t offset = 0) = 0;
-		SAILOR_API virtual void SetMaterialParameter(CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
+		SAILOR_API virtual void UpdateShaderBindingVariable(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);
+		SAILOR_API virtual void UpdateShaderBindingVariable(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const std::string& variable, const void* value, size_t size) = 0;
+		SAILOR_API virtual void UpdateShaderBinding(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const void* data, size_t size, size_t variableOffset = 0) = 0;
+		SAILOR_API virtual void UpdateBuffer(RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* data, size_t size, size_t offset = 0) = 0;
+		SAILOR_API virtual void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 
-		SAILOR_API virtual void BindMaterial(CommandListPtr cmd, RHI::MaterialPtr material) = 0;
-		SAILOR_API virtual void BindVertexBuffers(CommandListPtr cmd, RHI::BufferPtr vertexBuffer) = 0;
-		SAILOR_API virtual void BindIndexBuffer(CommandListPtr cmd, RHI::BufferPtr indexBuffer) = 0;
-		SAILOR_API virtual void SetViewport(CommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
-		SAILOR_API virtual void SetDefaultViewport(CommandListPtr cmd) = 0;
-		SAILOR_API virtual void BindShaderBindings(CommandListPtr cmd, RHI::MaterialPtr, const TVector<RHI::ShaderBindingSetPtr>& bindings) = 0;
-		SAILOR_API virtual void DrawIndexed(CommandListPtr cmd, RHI::BufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0) = 0;
+		SAILOR_API virtual void BindMaterial(RHICommandListPtr cmd, RHI::RHIMaterialPtr material) = 0;
+		SAILOR_API virtual void BindVertexBuffers(RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer) = 0;
+		SAILOR_API virtual void BindIndexBuffer(RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer) = 0;
+		SAILOR_API virtual void SetViewport(RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
+		SAILOR_API virtual void SetDefaultViewport(RHICommandListPtr cmd) = 0;
+		SAILOR_API virtual void BindShaderBindings(RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) = 0;
+		SAILOR_API virtual void DrawIndexed(RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0) = 0;
 
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
 		template<typename TDataType>
-		void SetMaterialParameter(CommandListPtr cmd, RHI::ShaderBindingSetPtr bindings, const std::string& parameter, const TDataType& value)
+		void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, const TDataType& value)
 		{
 			std::string outBinding;
 			std::string outVariable;
 
-			ShaderBindingSet::ParseParameter(parameter, outBinding, outVariable);
+			RHIShaderBindingSet::ParseParameter(parameter, outBinding, outVariable);
 			SetMaterialParameter(cmd, bindings, outBinding, outVariable, &value, sizeof(value));
 		}
 

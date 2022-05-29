@@ -8,10 +8,22 @@
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/RenderPipeline/RenderPipelineAssetInfo.h"
 #include "RHI/Renderer.h"
-#include "RenderPipeline/RenderPipeline.h"
+#include "RHI/RenderPipeline/RenderPipeline.h"
 
 namespace Sailor
 {
+	class RenderPipeline : public Object
+	{
+	public:
+
+		SAILOR_API virtual bool IsReady() const override { return true; }
+
+	protected:
+
+	};
+
+	using RenderPipelinePtr = TObjectPtr<RenderPipeline>;
+
 	class SAILOR_API RenderPipelineImporter final : public TSubmodule<RenderPipelineImporter>, public IAssetInfoHandlerListener
 	{
 	public:

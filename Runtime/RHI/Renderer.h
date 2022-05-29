@@ -19,17 +19,17 @@ namespace Sailor
 
 namespace Sailor::RHI
 {
-	typedef TRefPtr<class Buffer> BufferPtr;
-	typedef TRefPtr<class CommandList> CommandListPtr;
-	typedef TRefPtr<class Fence> FencePtr;
-	typedef TRefPtr<class Mesh> MeshPtr;
-	typedef TRefPtr<class Texture> TexturePtr;
-	typedef TRefPtr<class Material> MaterialPtr;
-	typedef TRefPtr<class Shader> ShaderPtr;
-	typedef TRefPtr<class ShaderBinding> ShaderBindingPtr;
-	typedef TRefPtr<class ShaderBindingSet> ShaderBindingSetPtr;
-	typedef TRefPtr<class Semaphore> SemaphorePtr;
-	typedef TRefPtr<class VertexDescription> VertexDescriptionPtr;
+	typedef TRefPtr<class RHIBuffer> RHIBufferPtr;
+	typedef TRefPtr<class RHICommandList> RHICommandListPtr;
+	typedef TRefPtr<class RHIFence> RHIFencePtr;
+	typedef TRefPtr<class RHIMesh> RHIMeshPtr;
+	typedef TRefPtr<class RHITexture> RHITexturePtr;
+	typedef TRefPtr<class RHIMaterial> RHIMaterialPtr;
+	typedef TRefPtr<class RHIShader> RHIShaderPtr;
+	typedef TRefPtr<class RHIShaderBinding> RHIShaderBindingPtr;
+	typedef TRefPtr<class RHIShaderBindingSet> RHIShaderBindingSetPtr;
+	typedef TRefPtr<class RHISemaphore> RHISemaphorePtr;
+	typedef TRefPtr<class RHIVertexDescription> RHIVertexDescriptionPtr;
 
 	class Renderer : public TSubmodule<Renderer>
 	{
@@ -50,7 +50,7 @@ namespace Sailor::RHI
 
 	protected:
 
-		RHI::CommandListPtr DrawTestScene(const Sailor::FrameState& frame);
+		RHI::RHICommandListPtr DrawTestScene(const Sailor::FrameState& frame);
 
 		std::atomic<bool> m_bForceStop = false;
 		std::atomic<uint32_t> m_pureFps = 0u;

@@ -7,13 +7,13 @@
 
 namespace Sailor::RHI
 {
-	class Mesh : public Resource, public IDelayedInitialization
+	class RHIMesh : public Resource, public IDelayedInitialization
 	{
 	public:
 
-		BufferPtr m_vertexBuffer{};
-		BufferPtr m_indexBuffer{};
-		VertexDescriptionPtr m_vertexDescription{};
+		RHIBufferPtr m_vertexBuffer{};
+		RHIBufferPtr m_indexBuffer{};
+		RHIVertexDescriptionPtr m_vertexDescription{};
 		Math::AABB m_bounds{};
 
 		SAILOR_API virtual bool IsReady() const override;
