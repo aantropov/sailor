@@ -21,8 +21,6 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #define GLM_SWIZZLE_XYZW
 //#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 
-#define NOMINMAX
-
 #ifndef _WINDEF_
 typedef unsigned long DWORD;
 #endif

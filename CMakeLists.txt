@@ -65,6 +65,8 @@ endif(VULKAN_COMBINE_STAGING_BUFFERS)
 #endif(VULKAN_ENABLE_VALIDATION_LAYER)
 
 add_compile_definitions($<$<NOT:$<CONFIG:RELEASE>>:SAILOR_VULKAN_ENABLE_VALIDATION_LAYER>)
+add_compile_definitions(NOMINMAX)
+add_compile_definitions(WIN32_LEAN_AND_MEAN)
 
 message ("cxx Flags:" ${CMAKE_CXX_FLAGS})
 

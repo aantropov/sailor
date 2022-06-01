@@ -1,5 +1,6 @@
 #include "AssetRegistry/UID.h"
 #include <corecrt_io.h>
+#include <combaseapi.h>
 
 using namespace Sailor;
 using namespace nlohmann;
