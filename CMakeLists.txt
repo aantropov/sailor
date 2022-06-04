@@ -22,6 +22,7 @@ add_compile_options($<$<NOT:$<CONFIG:DEBUG>>:/Ot>)
 add_compile_options($<$<NOT:$<CONFIG:DEBUG>>:/GT>)
 add_compile_options(/GF)
 add_compile_options(/WX)
+add_compile_options(/arch:AVX512)
 
 option(CONSOLE "Enable console" ON)
 if(CONSOLE)
