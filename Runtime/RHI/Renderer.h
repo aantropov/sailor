@@ -30,7 +30,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class RHIShaderBindingSet> RHIShaderBindingSetPtr;
 	typedef TRefPtr<class RHISemaphore> RHISemaphorePtr;
 	typedef TRefPtr<class RHIVertexDescription> RHIVertexDescriptionPtr;
-
+	
 	class Renderer : public TSubmodule<Renderer>
 	{
 	public:

@@ -20,7 +20,6 @@ namespace Sailor
 
 	class SAILOR_API RenderPipelineAssetInfoHandler final : public TSubmodule<RenderPipelineAssetInfoHandler>, public IAssetInfoHandler
 	{
-
 	public:
 
 		RenderPipelineAssetInfoHandler(AssetRegistry* assetRegistry);

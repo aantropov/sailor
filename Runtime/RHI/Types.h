@@ -552,6 +552,8 @@ namespace Sailor::RHI
 		SAILOR_API RHIResource(RHIResource&& copy) = default;
 		SAILOR_API RHIResource& operator =(RHIResource&& rhs) = default;
 	};
+	
+	typedef TRefPtr<class RHIResource> RHIResourcePtr;
 
 	// Used to hold/track RHI resources
 	class SAILOR_API IDependent

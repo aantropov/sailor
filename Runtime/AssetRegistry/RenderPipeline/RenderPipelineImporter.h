@@ -20,6 +20,7 @@ namespace Sailor
 
 	protected:
 
+		RHI::RHIRenderPipelinePtr m_renderPipeline;
 	};
 
 	using RenderPipelinePtr = TObjectPtr<RenderPipeline>;

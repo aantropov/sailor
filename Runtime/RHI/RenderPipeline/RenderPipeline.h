@@ -7,5 +7,11 @@ namespace Sailor::RHI
 {
 	class RHIRenderPipeline : public RHIResource
 	{
+	public:
+
+		RHIRenderPipeline() = default;
+
 	};
+
+	using RHIRenderPipelinePtr = TRefPtr<RHIRenderPipeline>;
 };
