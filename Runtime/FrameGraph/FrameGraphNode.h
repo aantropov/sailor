@@ -10,7 +10,7 @@
 namespace Sailor
 {
 	template<typename TRenderNode>
-	class TFrameGraphNode : public IBaseFrameGraphNode
+	class TFrameGraphNode : public BaseFrameGraphNode
 	{
 	public:
 

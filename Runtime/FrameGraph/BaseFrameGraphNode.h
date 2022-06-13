@@ -8,13 +8,13 @@ namespace Sailor
 {
 	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
 
-	// Don't derive from the interface
+	// Don't derive from the base class
 	// You should derive from TFrameGraphNode<YourNodeType, "YourNodeName">
-	class IBaseFrameGraphNode : public RHI::RHIResource
+	class BaseFrameGraphNode : public RHI::RHIResource
 	{
 	public:
 
-		virtual ~IBaseFrameGraphNode() = default;
+		virtual ~BaseFrameGraphNode() = default;
 
 		void SetVectorParam(std::string name, const glm::vec4& value);
 		void SetResourceParam(std::string name, RHI::RHIResourcePtr value);
@@ -35,5 +35,5 @@ namespace Sailor
 	};
 
 
-	using FrameGraphNodePtr = TRefPtr<IBaseFrameGraphNode>;
+	using FrameGraphNodePtr = TRefPtr<BaseFrameGraphNode>;
 };
