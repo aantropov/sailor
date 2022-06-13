@@ -4,7 +4,6 @@
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "ECS/TransformECS.h"
-#include "RHI/RenderPipeline/RenderPipelineNode.h"
 
 using namespace Sailor;
 using namespace Sailor::JobSystem;

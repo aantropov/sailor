@@ -7,26 +7,26 @@ using namespace std;
 
 namespace Sailor
 {
-	class RenderPipelineAssetInfo final : public AssetInfo
+	class FrameGraphAssetInfo final : public AssetInfo
 	{
 	public:
-		SAILOR_API virtual ~RenderPipelineAssetInfo() = default;
+		SAILOR_API virtual ~FrameGraphAssetInfo() = default;
 
 		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
 		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 	};
 
-	using RenderPipelineAssetInfoPtr = RenderPipelineAssetInfo*;
+	using FrameGraphAssetInfoPtr = FrameGraphAssetInfo*;
 
-	class SAILOR_API RenderPipelineAssetInfoHandler final : public TSubmodule<RenderPipelineAssetInfoHandler>, public IAssetInfoHandler
+	class SAILOR_API FrameGraphAssetInfoHandler final : public TSubmodule<FrameGraphAssetInfoHandler>, public IAssetInfoHandler
 	{
 	public:
 
-		RenderPipelineAssetInfoHandler(AssetRegistry* assetRegistry);
+		FrameGraphAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
 		virtual AssetInfoPtr CreateAssetInfo() const;
 
-		virtual ~RenderPipelineAssetInfoHandler() = default;
+		virtual ~FrameGraphAssetInfoHandler() = default;
 	};
 }
