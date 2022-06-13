@@ -31,7 +31,7 @@ namespace Sailor
 		TMap<std::string, glm::vec4> m_vectorParams;
 		TMap<std::string, RHI::RHIResourcePtr> m_resourceParams;
 
-		RHIFrameGraphPtr m_FrameGraph{};
+		RHIFrameGraphPtr m_frameGraph{};
 	};
 
 
