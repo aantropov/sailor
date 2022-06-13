@@ -91,8 +91,58 @@ void FrameGraphImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpi
 {
 }
 
-
 void FrameGraphImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
 
+TSharedPtr<FrameGraphAsset> FrameGraphImporter::LoadFrameGraphAsset(UID uid)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (FrameGraphAssetInfoPtr assetInfo = dynamic_cast<FrameGraphAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
+	{
+		const std::string& filepath = assetInfo->GetAssetFilepath();
+
+		std::string json;
+
+		AssetRegistry::ReadAllTextFile(filepath, json);
+
+		nlohmann::json j_frameGraph;
+		if (j_frameGraph.parse(json.c_str()) == nlohmann::detail::value_t::discarded)
+		{
+			SAILOR_LOG("Cannot parse frameGraph asset file: %s", filepath.c_str());
+			return TSharedPtr<FrameGraphAsset>();
+		}
+
+		j_frameGraph = json::parse(json);
+
+		FrameGraphAsset* frameGraphAsset = new FrameGraphAsset();
+		frameGraphAsset->Deserialize(j_frameGraph);
+
+		return TSharedPtr<FrameGraphAsset>(frameGraphAsset);
+	}
+
+	SAILOR_LOG("Cannot find frameGraph asset info with UID: %s", uid.ToString().c_str());
+	return TSharedPtr<FrameGraphAsset>();
+}
+
+bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFrameGraph)
+{
+	auto it = m_loadedFrameGraphs.Find(uid);
+	if (it != m_loadedFrameGraphs.end())
+	{
+		outFrameGraph = (*it).m_second;
+		return true;
+	}
+
+	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
+	{
+		FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
+		
+		// TODO: Parse
+
+		m_loadedFrameGraphs[uid] = pFrameGraph;
+	}
+
+	return true;
+}

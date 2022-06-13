@@ -2,6 +2,7 @@
 #include "Core/Defines.h"
 #include <string>
 #include "Containers/Vector.h"
+#include "Containers/ConcurrentMap.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
@@ -18,6 +19,7 @@ namespace Sailor
 	{
 	public:
 
+		SAILOR_API FrameGraph(const UID& uid) : Object(uid) {}
 		SAILOR_API virtual bool IsReady() const override { return true; }
 
 	protected:
@@ -112,30 +114,34 @@ namespace Sailor
 		virtual void Serialize(nlohmann::json& outData) const { }
 		virtual void Deserialize(const nlohmann::json& inData);
 
-		TMap<std::string, Resource> m_samplers;
-		TMap<std::string, Value> m_values;
-		TMap<std::string, RenderTarget> m_renderTargets;
+		TConcurrentMap<std::string, Resource> m_samplers;
+		TConcurrentMap<std::string, Value> m_values;
+		TConcurrentMap<std::string, RenderTarget> m_renderTargets;
 		TVector<std::string> m_nodes;
 	};
 
-	class SAILOR_API FrameGraphImporter final : public TSubmodule<FrameGraphImporter>, public IAssetInfoHandlerListener
+	class FrameGraphImporter final : public TSubmodule<FrameGraphImporter>, public IAssetInfoHandlerListener
 	{
 	public:
-		using ByteCode = TVector<uint8_t>;
 
-		FrameGraphImporter(FrameGraphAssetInfoHandler* infoHandler);
-		virtual ~FrameGraphImporter() override;
+		SAILOR_API FrameGraphImporter(FrameGraphAssetInfoHandler* infoHandler);
+		SAILOR_API virtual ~FrameGraphImporter() override;
 
-		virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
-		virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
+		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		bool LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFrameGraph);
+		SAILOR_API TSharedPtr<FrameGraphAsset> LoadFrameGraphAsset(UID uid);
 
-		static void RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
+		SAILOR_API bool LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFrameGraph);
+
+		SAILOR_API static void RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
 
 	protected:
 
-		FrameGraphNodePtr CreateNode(const std::string& nodeName) const;
-		static TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>> s_pNodeFactoryMethods;
+		SAILOR_API FrameGraphNodePtr CreateNode(const std::string& nodeName) const;
+		SAILOR_API static TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>> s_pNodeFactoryMethods;
+
+		TConcurrentMap<UID, FrameGraphPtr> m_loadedFrameGraphs;
+		Memory::ObjectAllocatorPtr m_allocator;
 	};
 }
