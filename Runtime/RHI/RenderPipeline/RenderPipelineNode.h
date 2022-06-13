@@ -1,36 +1,60 @@
 #pragma once
+#include "Core/Defines.h"
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
+#include "BaseRenderPipelineNode.h"
 #include "RHI/RenderPipeline/RenderPipeline.h"
+#include "AssetRegistry/RenderPipeline/RenderPipelineImporter.h"
 
 namespace Sailor::RHI
 {
-	class RHIRenderPipelineNode : RHIResource
+	template<typename TRenderNode>
+	class TRHIRenderPipelineNode : public IBaseRenderPipelineNode
 	{
 	public:
 
-		RHIRenderPipelineNode(const std::string& name) : m_name(name) {}
-
-		void SetVectorParam(std::string name, const glm::vec4& value);
-		void SetResourceParam(std::string name, RHIResourcePtr value);
-
-		RHIResourcePtr GetResourceParam(std::string name) const;
-		glm::vec4 GetVectorParam(std::string name) const;
-
-		virtual void Initialize(RHIRenderPipelinePtr renderPipeline) = 0;
-		virtual void Process() = 0;
-		virtual void Clear() = 0;
+		TRHIRenderPipelineNode() { TRHIRenderPipelineNode::s_registrationFactoryMethod; }
+		static const std::string& GetName() { return TRenderNode::GetName(); }
 
 	protected:
 
-		TMap<std::string, glm::vec4> m_vectorParams;
-		TMap<std::string, RHIResourcePtr> m_resourceParams;
+		class SAILOR_API RegistrationFactoryMethod
+		{
+		public:
 
-		RHIRenderPipelinePtr m_renderPipeline{};
+			RegistrationFactoryMethod()
+			{
+				if (!s_bRegistered)
+				{
+					RenderPipelineImporter::RegisterRenderPipelineNode(TRenderNode::GetName(), []() { return TRefPtr<TRenderNode>::Make(); });
+					s_bRegistered = true;
+				}
+			}
 
-		std::string m_name;
+		protected:
+
+			static bool s_bRegistered;
+		};
+
+		static volatile RegistrationFactoryMethod s_registrationFactoryMethod;
 	};
 
-	using RHIRenderPipelineNodePtr = TRefPtr<RHIRenderPipelineNode>;
+#ifndef _SAILOR_IMPORT_
+	template<typename T>
+	TRHIRenderPipelineNode<T>::RegistrationFactoryMethod volatile TRHIRenderPipelineNode<T>::s_registrationFactoryMethod;
+
+	template<typename T>
+	bool TRHIRenderPipelineNode<T>::RegistrationFactoryMethod::s_bRegistered = false;
+#endif
+
+	class RHINodeDefault : public TRHIRenderPipelineNode<RHINodeDefault>
+	{
+	public:
+		static const char* GetName() { return "untitled"; }
+
+		virtual void Initialize(RHIRenderPipelinePtr renderPipeline) {}
+		virtual void Process() {}
+		virtual void Clear() {}
+	};
 };

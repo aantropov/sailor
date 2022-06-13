@@ -9,6 +9,7 @@
 #include "AssetRegistry/RenderPipeline/RenderPipelineAssetInfo.h"
 #include "RHI/Renderer.h"
 #include "RHI/RenderPipeline/RenderPipeline.h"
+#include "RHI/RenderPipeline/BaseRenderPipelineNode.h"
 
 namespace Sailor
 {
@@ -38,7 +39,11 @@ namespace Sailor
 
 		bool LoadRenderPipeline_Immediate(UID uid, RenderPipelinePtr& outRenderPipeline);
 
+		static void RegisterRenderPipelineNode(const std::string& nodeName, std::function<RHI::RHIRenderPipelineNodePtr(void)> factoryMethod);
+
 	protected:
 
+		RHI::RHIRenderPipelineNodePtr CreateNode(const std::string& nodeName) const;
+		static TUniquePtr<TMap<std::string, std::function<RHI::RHIRenderPipelineNodePtr(void)>>> s_pNodeFactoryMethods;
 	};
 }
