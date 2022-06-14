@@ -1,5 +1,6 @@
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
-
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "RHI/Texture.h"
 #include "AssetRegistry/UID.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "FrameGraphAssetInfo.h"
@@ -95,7 +96,7 @@ void FrameGraphImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
 
-TSharedPtr<FrameGraphAsset> FrameGraphImporter::LoadFrameGraphAsset(UID uid)
+FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(UID uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -111,7 +112,7 @@ TSharedPtr<FrameGraphAsset> FrameGraphImporter::LoadFrameGraphAsset(UID uid)
 		if (j_frameGraph.parse(json.c_str()) == nlohmann::detail::value_t::discarded)
 		{
 			SAILOR_LOG("Cannot parse frameGraph asset file: %s", filepath.c_str());
-			return TSharedPtr<FrameGraphAsset>();
+			return FrameGraphAssetPtr();
 		}
 
 		j_frameGraph = json::parse(json);
@@ -119,11 +120,11 @@ TSharedPtr<FrameGraphAsset> FrameGraphImporter::LoadFrameGraphAsset(UID uid)
 		FrameGraphAsset* frameGraphAsset = new FrameGraphAsset();
 		frameGraphAsset->Deserialize(j_frameGraph);
 
-		return TSharedPtr<FrameGraphAsset>(frameGraphAsset);
+		return FrameGraphAssetPtr(frameGraphAsset);
 	}
 
 	SAILOR_LOG("Cannot find frameGraph asset info with UID: %s", uid.ToString().c_str());
-	return TSharedPtr<FrameGraphAsset>();
+	return FrameGraphAssetPtr();
 }
 
 bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFrameGraph)
@@ -137,12 +138,46 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFra
 
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{
-		FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
-		
-		// TODO: Parse
-
+		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
 		m_loadedFrameGraphs[uid] = pFrameGraph;
 	}
 
 	return true;
+}
+
+FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const
+{
+	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
+	RHIFrameGraphPtr pRhiFramGraph = RHIFrameGraphPtr::Make();
+
+	auto& graph = pRhiFramGraph->GetGraph();
+
+	for (auto& node : frameGraphAsset->m_nodes)
+	{
+		graph.Add(CreateNode(node));
+	}
+
+	for (auto& renderTarget : frameGraphAsset->m_renderTargets)
+	{
+		 RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
+			1, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
+
+		pRhiFramGraph->SetSampler(renderTarget.m_first, rhiRenderTarget);
+	}
+
+	for (auto& value: frameGraphAsset->m_values)
+	{
+		pRhiFramGraph->SetValue(value.m_first, value.m_second.m_float);
+	}
+
+	for (auto& sampler: frameGraphAsset->m_samplers)
+	{
+		TexturePtr texture;
+		App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second.m_uid, texture);
+		pRhiFramGraph->SetSampler(sampler.m_first, texture->GetRHI());
+	}
+
+	pFrameGraph->m_frameGraph = pRhiFramGraph;
+
+	return pFrameGraph;
 }

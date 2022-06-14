@@ -258,7 +258,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	return res;
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage(
+RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	const void* pData,
 	size_t size,
 	glm::ivec3 extent,
@@ -292,6 +292,33 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage(
 	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
 	SubmitCommandList(cmdList, fenceUpdateRes);
+
+	return outTexture;
+}
+
+RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
+	glm::ivec3 extent,
+	uint32_t mipLevels,
+	RHI::ETextureType type,
+	RHI::ETextureFormat format,
+	RHI::ETextureFiltration filtration,
+	RHI::ETextureClamping clamping,
+	RHI::ETextureUsageFlags usage)
+{
+
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
+	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, false);
+
+	VkExtent3D vkExtent;
+	vkExtent.width = extent.x;
+	vkExtent.height = extent.y;
+	vkExtent.depth = extent.z;
+
+	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(), vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
+	outTexture->m_vulkan.m_imageView->Compile();
 
 	return outTexture;
 }

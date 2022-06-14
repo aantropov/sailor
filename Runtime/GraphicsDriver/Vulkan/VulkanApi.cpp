@@ -865,6 +865,42 @@ VulkanImagePtr VulkanApi::CreateImage(
 	return outImage;
 }
 
+VulkanImagePtr VulkanApi::CreateImage(
+	VulkanDevicePtr device,
+	VkExtent3D extent,
+	uint32_t mipLevels,
+	VkImageType type,
+	VkFormat format,
+	VkImageTiling tiling,
+	VkImageUsageFlags usage,
+	VkSharingMode sharingMode)
+{
+	VulkanImagePtr outImage = new VulkanImage(device);
+
+	outImage->m_extent = extent;
+	outImage->m_imageType = type;
+	outImage->m_format = format;
+	outImage->m_tiling = tiling;
+	outImage->m_usage = usage;
+	outImage->m_mipLevels = mipLevels;
+	outImage->m_samples = VK_SAMPLE_COUNT_1_BIT;
+	outImage->m_arrayLayers = 1;
+	outImage->m_sharingMode = sharingMode;
+	outImage->m_initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+	outImage->m_flags = 0;
+
+	outImage->Compile();
+
+	const auto requirements = outImage->GetMemoryRequirements();
+
+	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
+	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
+
+	outImage->Bind(data);
+
+	return outImage;
+}
+
 VulkanImagePtr VulkanApi::CreateImage_Immediate(
 	VulkanDevicePtr device,
 	const void* pData,

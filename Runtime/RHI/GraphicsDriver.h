@@ -56,8 +56,7 @@ namespace Sailor::RHI
 	typedef TRefPtr<class RHIShaderBinding> RHIShaderBindingPtr;
 	typedef TRefPtr<class RHIShaderBindingSet> RHIShaderBindingSetPtr;
 	typedef TRefPtr<class RHISemaphore> RHISemaphorePtr;
-	typedef TRefPtr<class RHIVertexDescription> RHIVertexDescriptionPtr;
-	typedef TRefPtr<class RHIFrameGraph> RHIFrameGraphPtr;
+	typedef TRefPtr<class RHIVertexDescription> RHIVertexDescriptionPtr;	
 
 	class IGraphicsDriver
 	{
@@ -83,7 +82,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHIMeshPtr CreateMesh();
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices);
 		SAILOR_API virtual RHIShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
-		SAILOR_API virtual RHITexturePtr CreateImage(
+		SAILOR_API virtual RHITexturePtr CreateTexture(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,
@@ -93,6 +92,16 @@ namespace Sailor::RHI
 			ETextureFiltration filtration = ETextureFiltration::Linear,
 			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
+
+		SAILOR_API virtual RHI::RHITexturePtr CreateRenderTarget(
+			glm::ivec3 extent,
+			uint32_t mipMapLevel = 1,
+			RHI::ETextureType type = RHI::ETextureType::Texture2D,
+			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
+			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
+			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
+			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) = 0;
+
 		SAILOR_API virtual RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
 		SAILOR_API virtual RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs) = 0;
 

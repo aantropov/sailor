@@ -76,7 +76,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 
 					if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
 					{
-						pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
+						pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
 							mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 							assetInfo->GetClamping());
 						return true;
@@ -180,7 +180,7 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 
 				if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
 				{
-					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateImage(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
+					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
 						mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 						assetInfo->GetClamping());
 					return true;

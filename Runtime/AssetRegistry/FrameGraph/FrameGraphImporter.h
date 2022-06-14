@@ -25,6 +25,8 @@ namespace Sailor
 	protected:
 
 		RHIFrameGraphPtr m_frameGraph;
+
+		friend class FrameGraphImporter;
 	};
 
 	using FrameGraphPtr = TObjectPtr<FrameGraph>;
@@ -120,6 +122,8 @@ namespace Sailor
 		TVector<std::string> m_nodes;
 	};
 
+	using FrameGraphAssetPtr = TSharedPtr<FrameGraphAsset>;
+
 	class FrameGraphImporter final : public TSubmodule<FrameGraphImporter>, public IAssetInfoHandlerListener
 	{
 	public:
@@ -130,7 +134,7 @@ namespace Sailor
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		SAILOR_API TSharedPtr<FrameGraphAsset> LoadFrameGraphAsset(UID uid);
+		SAILOR_API FrameGraphAssetPtr LoadFrameGraphAsset(UID uid);
 
 		SAILOR_API bool LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFrameGraph);
 
@@ -138,7 +142,9 @@ namespace Sailor
 
 	protected:
 
+		SAILOR_API FrameGraphPtr BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const;
 		SAILOR_API FrameGraphNodePtr CreateNode(const std::string& nodeName) const;
+
 		SAILOR_API static TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>> s_pNodeFactoryMethods;
 
 		TConcurrentMap<UID, FrameGraphPtr> m_loadedFrameGraphs;
