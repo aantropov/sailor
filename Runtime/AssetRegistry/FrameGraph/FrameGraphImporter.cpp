@@ -82,12 +82,16 @@ void FrameGraphAsset::Deserialize(const nlohmann::json& inData)
 FrameGraphImporter::FrameGraphImporter(FrameGraphAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-
+	m_allocator = ObjectAllocatorPtr::Make();
 	infoHandler->Subscribe(this);
 }
 
 FrameGraphImporter::~FrameGraphImporter()
 {
+	for (auto& instance : m_loadedFrameGraphs)
+	{
+		instance.m_second.DestroyObject(m_allocator);
+	}
 }
 
 void FrameGraphImporter::OnImportAsset(AssetInfoPtr assetInfo)

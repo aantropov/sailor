@@ -14,8 +14,8 @@ namespace Sailor
 	{
 	public:
 
-		TFrameGraphNode() { TFrameGraphNode::s_registrationFactoryMethod; }
-		static const std::string& GetName() { return TRenderNode::GetName(); }
+		SAILOR_API TFrameGraphNode() { TFrameGraphNode::s_registrationFactoryMethod; }
+		SAILOR_API static const std::string& GetName() { return TRenderNode::GetName(); }
 
 	protected:
 
@@ -51,10 +51,10 @@ namespace Sailor
 	class RHINodeDefault : public TFrameGraphNode<RHINodeDefault>
 	{
 	public:
-		static const char* GetName() { return "untitled"; }
+		SAILOR_API static const char* GetName() { return "untitled"; }
 
-		virtual void Initialize(FrameGraphPtr FrameGraph) {}
-		virtual void Process() {}
-		virtual void Clear() {}
+		SAILOR_API virtual void Initialize(FrameGraphPtr FrameGraph) {}
+		SAILOR_API virtual void Process() {}
+		SAILOR_API virtual void Clear() {}
 	};
 };

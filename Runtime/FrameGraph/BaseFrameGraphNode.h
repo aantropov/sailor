@@ -14,17 +14,17 @@ namespace Sailor
 	{
 	public:
 
-		virtual ~BaseFrameGraphNode() = default;
+		SAILOR_API virtual ~BaseFrameGraphNode() = default;
 
-		void SetVectorParam(std::string name, const glm::vec4& value);
-		void SetResourceParam(std::string name, RHI::RHIResourcePtr value);
+		SAILOR_API void SetVectorParam(std::string name, const glm::vec4& value);
+		SAILOR_API void SetResourceParam(std::string name, RHI::RHIResourcePtr value);
 
-		RHI::RHIResourcePtr GetResourceParam(std::string name) const;
-		glm::vec4 GetVectorParam(std::string name) const;
+		SAILOR_API RHI::RHIResourcePtr GetResourceParam(std::string name) const;
+		SAILOR_API glm::vec4 GetVectorParam(std::string name) const;
 
-		virtual void Initialize(RHIFrameGraphPtr frameGraph) = 0;
-		virtual void Process() = 0;
-		virtual void Clear() = 0;
+		SAILOR_API virtual void Initialize(RHIFrameGraphPtr frameGraph) = 0;
+		SAILOR_API virtual void Process() = 0;
+		SAILOR_API virtual void Clear() = 0;
 
 	protected:
 

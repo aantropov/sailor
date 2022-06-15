@@ -13,15 +13,15 @@ namespace Sailor
 	{
 	public:
 
-		RHIFrameGraph() = default;
+		SAILOR_API RHIFrameGraph() = default;
 
-		TVector<FrameGraphNodePtr>& GetGraph() { return m_graph; }
+		SAILOR_API TVector<FrameGraphNodePtr>& GetGraph() { return m_graph; }
 
-		void SetSampler(const std::string& name, TexturePtr sampler);
-		void SetRenderTarget(const std::string& name, RHI::RHITexturePtr sampler);
+		SAILOR_API void SetSampler(const std::string& name, TexturePtr sampler);
+		SAILOR_API void SetRenderTarget(const std::string& name, RHI::RHITexturePtr sampler);
 
-		TexturePtr GetSampler(const std::string& name);
-		RHI::RHITexturePtr GetRenderTarget(const std::string& name);
+		SAILOR_API TexturePtr GetSampler(const std::string& name);
+		SAILOR_API RHI::RHITexturePtr GetRenderTarget(const std::string& name);
 
 		template<typename T>
 		void SetValue(const std::string& name, T value)
@@ -35,9 +35,9 @@ namespace Sailor
 			m_values[name] = value;
 		}
 
-		void Process();
+		SAILOR_API void Process();
 
-		void Clear();
+		SAILOR_API void Clear();
 
 	protected:
 
