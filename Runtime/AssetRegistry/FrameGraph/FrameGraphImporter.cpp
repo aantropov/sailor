@@ -90,11 +90,11 @@ FrameGraphImporter::~FrameGraphImporter()
 {
 }
 
-void FrameGraphImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
+void FrameGraphImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
 
-void FrameGraphImporter::OnImportAsset(AssetInfoPtr assetInfo)
+void FrameGraphImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 }
 
@@ -142,9 +142,11 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFra
 	{
 		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
 		m_loadedFrameGraphs[uid] = pFrameGraph;
+
+		return true;
 	}
 
-	return true;
+	return false;
 }
 
 FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const
@@ -153,25 +155,27 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 	RHIFrameGraphPtr pRhiFrameGraph = RHIFrameGraphPtr::Make();
 
 	auto& graph = pRhiFrameGraph->GetGraph();
-		
+
 	for (auto& renderTarget : frameGraphAsset->m_renderTargets)
 	{
-		 RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
+		RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
 			1, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
 
 		pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
 	}
 
-	for (auto& value: frameGraphAsset->m_values)
+	for (auto& value : frameGraphAsset->m_values)
 	{
 		pRhiFrameGraph->SetValue(value.m_first, value.m_second.m_float);
 	}
 
-	for (auto& sampler: frameGraphAsset->m_samplers)
+	for (auto& sampler : frameGraphAsset->m_samplers)
 	{
 		TexturePtr texture;
 		App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second.m_uid, texture);
 		pRhiFrameGraph->SetSampler(sampler.m_first, texture);
+
+		texture->AddHotReloadDependentObject(pFrameGraph);
 	}
 
 	for (auto& node : frameGraphAsset->m_nodes)

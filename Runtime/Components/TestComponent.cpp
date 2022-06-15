@@ -1,3 +1,4 @@
+#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
@@ -22,6 +23,12 @@ void TestComponent::BeginPlay()
 		App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID(), defaultTexture)->Then<void, bool>(
 			[=](bool bRes) { Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", defaultTexture->GetRHI(), 1);
 		});
+	}
+
+	if (auto frameGraphUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
+	{
+		FrameGraphPtr frameGraph;
+		App::GetSubmodule<FrameGraphImporter>()->LoadFrameGraph_Immediate(frameGraphUID->GetUID(), frameGraph);
 	}
 
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 20.0f, 1000.0f);
