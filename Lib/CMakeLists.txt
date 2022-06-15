@@ -55,3 +55,7 @@ set_target_properties(SailorLib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BI
 set_target_properties(SailorLib PROPERTIES PREFIX "")
 set_target_properties(SailorLib PROPERTIES OUTPUT_NAME "Sailor")
 set_target_properties(SailorLib PROPERTIES COMPILE_FLAGS "/Zc:wchar_t")
+
+if(MSVC)
+ target_compile_options(SailorLib PRIVATE "/MP")
+endif()
