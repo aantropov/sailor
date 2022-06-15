@@ -159,7 +159,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		 RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
 			1, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
 
-		pRhiFrameGraph->SetSampler(renderTarget.m_first, rhiRenderTarget);
+		pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
 	}
 
 	for (auto& value: frameGraphAsset->m_values)
@@ -171,12 +171,36 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 	{
 		TexturePtr texture;
 		App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second.m_uid, texture);
-		pRhiFrameGraph->SetSampler(sampler.m_first, texture->GetRHI());
+		pRhiFrameGraph->SetSampler(sampler.m_first, texture);
 	}
 
 	for (auto& node : frameGraphAsset->m_nodes)
 	{
 		auto pNewNode = CreateNode(node.m_name);
+
+		for (const auto& param : node.m_values)
+		{
+			if (param.m_second.IsVec4())
+			{
+				pNewNode->SetVectorParam(param.m_first, param.m_second.m_vec4);
+			}
+			else if (param.m_second.IsFloat())
+			{
+				pNewNode->SetVectorParam(param.m_first, glm::vec4(param.m_second.m_float));
+			}
+		}
+
+		for (const auto& param : node.m_renderTargets)
+		{
+			if (auto pRenderTarget = pRhiFrameGraph->GetRenderTarget(param.m_first))
+			{
+				pNewNode->SetResourceParam(param.m_first, pRenderTarget);
+			}
+			else if (auto pTextureTarget = pRhiFrameGraph->GetSampler(param.m_first))
+			{
+				pNewNode->SetResourceParam(param.m_first, pTextureTarget->GetRHI());
+			}
+		}
 		// TODO: Build params
 		graph.Add(pNewNode);
 	}

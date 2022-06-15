@@ -1,9 +1,9 @@
 {
 "resources": [{"name":"g_defaultSampler", "uid":"", "path":"Content/Textures/VulkanLogo.png"}],
 "values": [{"name":"PI", "value":3.1415926}],
-"renderTargets": [{"name":"Main", "type":"R16G16B16A16_SFLOAT"}],
+"renderTargets": [{"name":"Main", "format":"R16G16B16A16_SFLOAT", "width":"FullRes", "height":"FullRes"}],
 "frame":[
-    {"node":"RenderScene", "params":[{"type":"Opaque"}, {"renderTarget":"Main"}]},
-    {"node":"Blit", "params":[{"src":"Main"}, {"dst":"BackBuffer"}]}
+    {"node":"RenderScene", "values":[{"name":"Tag", "value":"Opaque"}], "renderTargets":[{"name":"output", "value":"Main"}]},
+    {"node":"Blit", "renderTargets":[{"name":"Src", "value":"Main"}, {"name":"Dst", "value":"BackBuffer"}]}
 ]
 }
