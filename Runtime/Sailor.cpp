@@ -4,6 +4,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "Platform/Win32/ConsoleWindow.h"
 #include "Platform/Win32/Input.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
@@ -19,6 +20,7 @@
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "ECS/ECS.h"
 #include "ECS/TransformECS.h"
+
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -68,11 +70,13 @@ void App::Initialize()
 	auto shaderInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ShaderAssetInfoHandler>::Make(assetRegistry));
 	auto modelInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ModelAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
-
+	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
+		
 	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make(textureInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
@@ -200,7 +204,9 @@ void App::Shutdown()
 	RemoveSubmodule<ShaderAssetInfoHandler>();
 	RemoveSubmodule<TextureAssetInfoHandler>();
 	RemoveSubmodule<ModelAssetInfoHandler>();
+	RemoveSubmodule<FrameGraphAssetInfoHandler>();
 
+	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<MaterialImporter>();
 	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<ShaderCompiler>();
