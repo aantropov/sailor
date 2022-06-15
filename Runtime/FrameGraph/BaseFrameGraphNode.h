@@ -8,7 +8,7 @@ namespace Sailor
 {
 	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
 
-	// Don't derive from the base class
+	// Don't derive from the base class, that is CRTP (Curiously recurrent template pattern)
 	// You should derive from TFrameGraphNode<YourNodeType, "YourNodeName">
 	class BaseFrameGraphNode : public RHI::RHIResource
 	{

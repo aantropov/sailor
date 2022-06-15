@@ -41,6 +41,7 @@ namespace Sailor::ECS
 		virtual uint32_t GetOrder() const { return 100; }
 	};
 
+	// Derive from TSystem (not from TBaseSystem), that is CRTP(Curiously recurrent template pattern)
 	template<typename TECS, typename TData>
 	class SAILOR_API TSystem : public TBaseSystem
 	{

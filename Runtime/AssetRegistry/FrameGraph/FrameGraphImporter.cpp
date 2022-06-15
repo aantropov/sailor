@@ -72,7 +72,9 @@ void FrameGraphAsset::Deserialize(const nlohmann::json& inData)
 	{
 		for (const auto& el : inData["frame"])
 		{
-			m_nodes.Add(el.get<std::string>());
+			FrameGraphAsset::Node node;
+			node.Deserialize(el);
+			m_nodes.Add(std::move(node));
 		}
 	}
 }
@@ -148,36 +150,38 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFra
 FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const
 {
 	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
-	RHIFrameGraphPtr pRhiFramGraph = RHIFrameGraphPtr::Make();
+	RHIFrameGraphPtr pRhiFrameGraph = RHIFrameGraphPtr::Make();
 
-	auto& graph = pRhiFramGraph->GetGraph();
-
-	for (auto& node : frameGraphAsset->m_nodes)
-	{
-		graph.Add(CreateNode(node));
-	}
-
+	auto& graph = pRhiFrameGraph->GetGraph();
+		
 	for (auto& renderTarget : frameGraphAsset->m_renderTargets)
 	{
 		 RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
 			1, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
 
-		pRhiFramGraph->SetSampler(renderTarget.m_first, rhiRenderTarget);
+		pRhiFrameGraph->SetSampler(renderTarget.m_first, rhiRenderTarget);
 	}
 
 	for (auto& value: frameGraphAsset->m_values)
 	{
-		pRhiFramGraph->SetValue(value.m_first, value.m_second.m_float);
+		pRhiFrameGraph->SetValue(value.m_first, value.m_second.m_float);
 	}
 
 	for (auto& sampler: frameGraphAsset->m_samplers)
 	{
 		TexturePtr texture;
 		App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second.m_uid, texture);
-		pRhiFramGraph->SetSampler(sampler.m_first, texture->GetRHI());
+		pRhiFrameGraph->SetSampler(sampler.m_first, texture->GetRHI());
 	}
 
-	pFrameGraph->m_frameGraph = pRhiFramGraph;
+	for (auto& node : frameGraphAsset->m_nodes)
+	{
+		auto pNewNode = CreateNode(node.m_name);
+		// TODO: Build params
+		graph.Add(pNewNode);
+	}
+
+	pFrameGraph->m_frameGraph = pRhiFrameGraph;
 
 	return pFrameGraph;
 }

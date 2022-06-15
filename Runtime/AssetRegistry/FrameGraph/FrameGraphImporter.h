@@ -113,13 +113,35 @@ namespace Sailor
 			}
 		};
 
+		class Node : public IJsonSerializable
+		{
+		public:
+
+			std::string m_name;
+			TVector<TPair<std::string, std::string>> m_params;
+
+			virtual void Serialize(nlohmann::json& outData) const { }
+			virtual void Deserialize(const nlohmann::json& inData)
+			{
+				m_name = inData["name"].get<std::string>();
+
+				if (inData.contains("params"))
+				{
+					for (const auto& el : inData["params"])
+					{
+						m_params.Add(TPair(el[0].get<std::string>(), el[1].get<std::string>()));
+					}
+				}
+			}
+		};
+
 		virtual void Serialize(nlohmann::json& outData) const { }
 		virtual void Deserialize(const nlohmann::json& inData);
 
 		TConcurrentMap<std::string, Resource> m_samplers;
 		TConcurrentMap<std::string, Value> m_values;
 		TConcurrentMap<std::string, RenderTarget> m_renderTargets;
-		TVector<std::string> m_nodes;
+		TVector<Node> m_nodes;
 	};
 
 	using FrameGraphAssetPtr = TSharedPtr<FrameGraphAsset>;
