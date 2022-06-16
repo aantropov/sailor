@@ -16,23 +16,6 @@
 
 using namespace Sailor;
 
-TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>> FrameGraphImporter::s_pNodeFactoryMethods;
-
-void FrameGraphImporter::RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod)
-{
-	if (!s_pNodeFactoryMethods)
-	{
-		s_pNodeFactoryMethods = TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>>::Make();
-	}
-
-	(*s_pNodeFactoryMethods)[nodeName] = factoryMethod;
-}
-
-FrameGraphNodePtr FrameGraphImporter::CreateNode(const std::string& nodeName) const
-{
-	return (*s_pNodeFactoryMethods)[nodeName]();
-}
-
 void FrameGraphAsset::Deserialize(const nlohmann::json& inData)
 {
 	if (inData.contains("samplers"))
@@ -184,7 +167,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 
 	for (auto& node : frameGraphAsset->m_nodes)
 	{
-		auto pNewNode = CreateNode(node.m_name);
+		auto pNewNode = App::GetSubmodule<FrameGraphBuilder>()->CreateNode(node.m_name);
 
 		for (const auto& param : node.m_values)
 		{

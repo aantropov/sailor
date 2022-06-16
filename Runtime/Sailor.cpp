@@ -19,8 +19,9 @@
 #include "Engine/EngineLoop.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "ECS/ECS.h"
+#include "FrameGraph/RHIFrameGraph.h"
+#include "FrameGraph/FrameGraphNode.h"
 #include "ECS/TransformECS.h"
-
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -71,13 +72,14 @@ void App::Initialize()
 	auto modelInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ModelAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
 	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
-		
+
 	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make(textureInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
+	s_pInstance->AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
@@ -198,6 +200,7 @@ void App::Shutdown()
 
 	RemoveSubmodule<EngineLoop>();
 	RemoveSubmodule<ECS::ECSFactory>();
+	RemoveSubmodule<FrameGraphBuilder>();
 
 	// Release all resources before renderer
 	RemoveSubmodule<DefaultAssetInfoHandler>();

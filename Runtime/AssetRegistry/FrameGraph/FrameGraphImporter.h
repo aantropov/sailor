@@ -202,9 +202,6 @@ namespace Sailor
 	protected:
 
 		SAILOR_API FrameGraphPtr BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const;
-		SAILOR_API FrameGraphNodePtr CreateNode(const std::string& nodeName) const;
-
-		SAILOR_API static TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>> s_pNodeFactoryMethods;
 
 		TConcurrentMap<UID, FrameGraphPtr> m_loadedFrameGraphs;
 		Memory::ObjectAllocatorPtr m_allocator;

@@ -9,6 +9,15 @@
 
 namespace Sailor
 {
+	class SAILOR_API FrameGraphBuilder : public TSubmodule<FrameGraphBuilder>
+	{
+	public:
+
+		static void RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
+
+		FrameGraphNodePtr CreateNode(const std::string& nodeName) const;
+	};
+
 	template<typename TRenderNode>
 	class TFrameGraphNode : public BaseFrameGraphNode
 	{
@@ -27,7 +36,7 @@ namespace Sailor
 			{
 				if (!s_bRegistered)
 				{
-					FrameGraphImporter::RegisterFrameGraphNode(TRenderNode::GetName(), []() { return TRefPtr<TRenderNode>::Make(); });
+					FrameGraphBuilder::RegisterFrameGraphNode(TRenderNode::GetName(), []() { return TRefPtr<TRenderNode>::Make(); });
 					s_bRegistered = true;
 				}
 			}
@@ -53,8 +62,8 @@ namespace Sailor
 	public:
 		SAILOR_API static const char* GetName() { return "untitled"; }
 
-		SAILOR_API virtual void Initialize(FrameGraphPtr FrameGraph) {}
-		SAILOR_API virtual void Process() {}
-		SAILOR_API virtual void Clear() {}
+		SAILOR_API virtual void Initialize(RHIFrameGraphPtr FrameGraph) override {}
+		SAILOR_API virtual void Process() override {}
+		SAILOR_API virtual void Clear() override {}
 	};
 };
