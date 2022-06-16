@@ -24,7 +24,7 @@ namespace Sailor
 	public:
 
 		SAILOR_API TFrameGraphNode() { TFrameGraphNode::s_registrationFactoryMethod; }
-		SAILOR_API static const std::string& GetName() { return TRenderNode::GetName(); }
+		SAILOR_API static const char* GetName() { return TRenderNode::GetName(); }
 
 	protected:
 
@@ -36,7 +36,7 @@ namespace Sailor
 			{
 				if (!s_bRegistered)
 				{
-					FrameGraphBuilder::RegisterFrameGraphNode(TRenderNode::GetName(), []() { return TRefPtr<TRenderNode>::Make(); });
+					FrameGraphBuilder::RegisterFrameGraphNode(std::string(TRenderNode::GetName()), []() { return TRefPtr<TRenderNode>::Make(); });
 					s_bRegistered = true;
 				}
 			}
@@ -49,6 +49,7 @@ namespace Sailor
 		static volatile RegistrationFactoryMethod s_registrationFactoryMethod;
 	};
 
+
 #ifndef _SAILOR_IMPORT_
 	template<typename T>
 	TFrameGraphNode<T>::RegistrationFactoryMethod volatile TFrameGraphNode<T>::s_registrationFactoryMethod;
@@ -60,10 +61,16 @@ namespace Sailor
 	class RHINodeDefault : public TFrameGraphNode<RHINodeDefault>
 	{
 	public:
-		SAILOR_API static const char* GetName() { return "untitled"; }
+		SAILOR_API static const char* GetName() { return m_name; }
 
 		SAILOR_API virtual void Initialize(RHIFrameGraphPtr FrameGraph) override {}
 		SAILOR_API virtual void Process() override {}
 		SAILOR_API virtual void Clear() override {}
+	
+	protected:
+
+		static const char* m_name;
 	};
+
+	template class TFrameGraphNode<RHINodeDefault>;
 };

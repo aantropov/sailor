@@ -77,6 +77,11 @@ void WorkerThread::Process()
 
 	m_threadId = GetCurrentThreadId();
 
+	if (m_threadType == EThreadType::Rendering)
+	{
+		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+	}
+
 	Scheduler* scheduler = App::GetSubmodule<JobSystem::Scheduler>();
 
 	ITaskPtr pCurrentJob;
@@ -86,11 +91,11 @@ void WorkerThread::Process()
 	{
 		std::unique_lock<std::mutex> lk(threadExecutionMutex);
 		m_refresh.wait(lk, [this, &pCurrentJob, scheduler]
-			{
-				return TryFetchJob(pCurrentJob) ||
-					scheduler->TryFetchNextAvailiableJob(pCurrentJob, m_threadType) ||
-					(bool)scheduler->m_bIsTerminating;
-			});
+		{
+			return TryFetchJob(pCurrentJob) ||
+				scheduler->TryFetchNextAvailiableJob(pCurrentJob, m_threadType) ||
+				(bool)scheduler->m_bIsTerminating;
+		});
 
 		if (pCurrentJob)
 		{
@@ -113,6 +118,8 @@ void WorkerThread::Process()
 void Scheduler::Initialize()
 {
 	m_mainThreadId = GetCurrentThreadId();
+
+	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numThreads = std::max(1u, coresCount - 2u);
@@ -269,9 +276,9 @@ void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTa
 
 	auto result = m_workerThreads.FindIf(
 		[&](const auto& worker)
-		{
-			return worker->GetThreadId() == threadId;
-		});
+	{
+		return worker->GetThreadId() == threadId;
+	});
 
 	if (result != -1)
 	{
@@ -323,9 +330,9 @@ bool Scheduler::TryFetchNextAvailiableJob(ITaskPtr& pOutJob, EThreadType threadT
 	{
 		const auto result = (*pOutQueue).FindIf(
 			[&](const ITaskPtr& job)
-			{
-				return job->IsReadyToStart();
-			});
+		{
+			return job->IsReadyToStart();
+		});
 
 		if (result != -1)
 		{

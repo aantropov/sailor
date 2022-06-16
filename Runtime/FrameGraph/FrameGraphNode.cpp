@@ -3,6 +3,10 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
+#ifndef _SAILOR_IMPORT_
+const char* RHINodeDefault::m_name = "untitled";
+#endif
+
 namespace Sailor::Internal
 {
 	TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>> g_pNodeFactoryMethods;
