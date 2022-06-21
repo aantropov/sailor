@@ -103,8 +103,8 @@ namespace Sailor
 		public:
 
 			std::string m_name;
-			uint32_t m_width;
-			uint32_t m_height;
+			uint32_t m_width = 1;
+			uint32_t m_height = 1;
 			//RHI::EFormat m_format;
 			std::string m_format;
 
@@ -121,6 +121,10 @@ namespace Sailor
 					{
 						m_width = inData["width"].get<uint32_t>();
 					}
+					else if (inData["width"].get<std::string>() == "ViewportWidth")
+					{
+						m_width = App::GetViewportWindow()->GetWidth();
+					}
 				}
 
 				if (inData.contains("height"))
@@ -128,6 +132,10 @@ namespace Sailor
 					if (inData["height"].is_number())
 					{
 						m_height = inData["height"].get<uint32_t>();
+					}
+					else if (inData["height"].get<std::string>() == "ViewportHeight")
+					{
+						m_height = App::GetViewportWindow()->GetHeight();
 					}
 				}
 
@@ -203,7 +211,7 @@ namespace Sailor
 
 		SAILOR_API FrameGraphPtr BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const;
 
-		TConcurrentMap<UID, FrameGraphPtr> m_loadedFrameGraphs;
-		Memory::ObjectAllocatorPtr m_allocator;
+		TConcurrentMap<UID, FrameGraphPtr> m_loadedFrameGraphs{};
+		Memory::ObjectAllocatorPtr m_allocator{};
 	};
 }

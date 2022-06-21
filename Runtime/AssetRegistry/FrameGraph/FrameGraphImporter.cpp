@@ -169,6 +169,12 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 	{
 		auto pNewNode = App::GetSubmodule<FrameGraphBuilder>()->CreateNode(node.m_name);
 
+		if (!pNewNode)
+		{
+			SAILOR_LOG("FrameGraph Node %s is not implemented!", node.m_name.c_str());
+			continue;
+		}
+
 		for (const auto& param : node.m_values)
 		{
 			if (param.m_second.IsVec4())

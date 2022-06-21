@@ -214,6 +214,7 @@ void App::Shutdown()
 	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<ShaderCompiler>();
 	RemoveSubmodule<TextureImporter>();
+
 	RemoveSubmodule<AssetRegistry>();
 
 	// We need to finish all jobs before release
