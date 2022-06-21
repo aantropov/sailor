@@ -3,22 +3,32 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void BaseFrameGraphNode::SetVectorParam(std::string name, const glm::vec4& value)
+void BaseFrameGraphNode::SetStringParam(const std::string& name, const std::string& value)
+{
+	m_stringParams[name] = value;
+}
+
+void BaseFrameGraphNode::SetVectorParam(const std::string& name, const glm::vec4& value)
 {
 	m_vectorParams[name] = value;
 }
 
-glm::vec4 BaseFrameGraphNode::GetVectorParam(std::string name) const
+const glm::vec4& BaseFrameGraphNode::GetVectorParam(const std::string& name) const
 {
 	return m_vectorParams[name];
 }
 
-void BaseFrameGraphNode::SetResourceParam(std::string name, RHIResourcePtr value)
+void BaseFrameGraphNode::SetResourceParam(const std::string& name, RHIResourcePtr value)
 {
 	m_resourceParams[name] = value;
 }
 
-RHIResourcePtr BaseFrameGraphNode::GetResourceParam(std::string name) const
+RHIResourcePtr BaseFrameGraphNode::GetResourceParam(const std::string& name) const
 {
 	return m_resourceParams[name];
+}
+
+const std::string& BaseFrameGraphNode::GetStringParam(const std::string& name) const
+{
+	return m_stringParams[name];
 }

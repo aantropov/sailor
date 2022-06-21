@@ -3,7 +3,7 @@
 "values": [{"name":"PI", "value":3.1415926}],
 "renderTargets": [{"name":"Main", "format":"R16G16B16A16_SFLOAT", "width":"ViewportWidth", "height":"ViewportHeight"}],
 "frame":[
-    {"name":"RenderScene", "values":[{"name":"Tag", "value":"Opaque"}], "renderTargets":[{"name":"output", "value":"Main"}]},
+    {"name":"RenderScene", "values":[{"name":"Tag", "string":"Opaque"}], "renderTargets":[{"name":"output", "value":"Main"}]},
     {"name":"Blit", "renderTargets":[{"name":"Src", "value":"Main"}, {"name":"Dst", "value":"BackBuffer"}]}
 ]
 }

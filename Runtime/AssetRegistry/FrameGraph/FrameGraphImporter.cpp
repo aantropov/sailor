@@ -185,6 +185,10 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 			{
 				pNewNode->SetVectorParam(param.m_first, glm::vec4(param.m_second.m_float));
 			}
+			else if (param.m_second.IsString())
+			{
+				pNewNode->SetStringParam(param.m_first, param.m_second.m_string);
+			}
 		}
 
 		for (const auto& param : node.m_renderTargets)

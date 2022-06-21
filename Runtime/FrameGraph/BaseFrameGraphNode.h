@@ -16,11 +16,13 @@ namespace Sailor
 
 		SAILOR_API virtual ~BaseFrameGraphNode() = default;
 
-		SAILOR_API void SetVectorParam(std::string name, const glm::vec4& value);
-		SAILOR_API void SetResourceParam(std::string name, RHI::RHIResourcePtr value);
+		SAILOR_API void SetStringParam(const std::string& name, const std::string& value);
+		SAILOR_API void SetVectorParam(const std::string& name, const glm::vec4& value);
+		SAILOR_API void SetResourceParam(const std::string& name, RHI::RHIResourcePtr value);
 
-		SAILOR_API RHI::RHIResourcePtr GetResourceParam(std::string name) const;
-		SAILOR_API glm::vec4 GetVectorParam(std::string name) const;
+		SAILOR_API RHI::RHIResourcePtr GetResourceParam(const std::string& name) const;
+		SAILOR_API const glm::vec4& GetVectorParam(const std::string& name) const;
+		SAILOR_API const std::string& GetStringParam(const std::string& name) const;
 
 		SAILOR_API virtual void Initialize(RHIFrameGraphPtr frameGraph) = 0;
 		SAILOR_API virtual void Process() = 0;
@@ -28,6 +30,7 @@ namespace Sailor
 
 	protected:
 
+		TMap<std::string, std::string> m_stringParams;
 		TMap<std::string, glm::vec4> m_vectorParams;
 		TMap<std::string, RHI::RHIResourcePtr> m_resourceParams;
 
