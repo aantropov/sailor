@@ -29,7 +29,7 @@ namespace Sailor::RHI
 	public:
 
 		TUniquePtr<class CameraData> m_camera;
-		TVector<RHISceneViewProxy>& m_meshes;
+		TVector<RHISceneViewProxy> m_meshes;
 	};
 
 	class RHISceneViewFamily
