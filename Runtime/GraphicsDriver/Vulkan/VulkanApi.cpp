@@ -104,9 +104,6 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		"VK_KHR_win32_surface",
 
-#ifdef SAILOR_VULKAN_ENABLE_VALIDATION_LAYER
-		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-#endif
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #endif
@@ -114,7 +111,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
-		//extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+		extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	}
 
 	VkInstanceCreateInfo createInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
