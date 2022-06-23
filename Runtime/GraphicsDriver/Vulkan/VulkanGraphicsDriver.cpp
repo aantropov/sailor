@@ -649,6 +649,13 @@ void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOn
 		// This tells Vulkan that this secondary command buffer will be executed entirely inside a render pass.		
 		flags |= VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
+		/*
+		VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT specifies that a command buffer can be resubmitted to a queue while it is in the pending state, 
+		and recorded into multiple primary command buffers.
+		
+		TODO: That could affect the performance, so we don't want to use the bit
+		*/
+		
 		if (!bOneTimeSubmit)
 		{
 			flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
