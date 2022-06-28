@@ -18,6 +18,20 @@ namespace Sailor
 		virtual void Deserialize(const nlohmann::json& inData) = 0;
 	};
 
+	template<typename T>
+	void SerializeEnum(json& j, typename std::enable_if< std::is_enum<T>::value, T >::type enumeration)
+	{
+		j = magic_enum::enum_name(enumeration);
+	}
+
+	template<typename T>
+	void DeserializeEnum(const json& j, typename std::enable_if< std::is_enum<T>::value, T >::type& outEnumeration)
+	{
+		auto value = magic_enum::enum_cast<T>(j.get<std::string>());
+		assert(value.has_value());
+		outEnumeration = value.value();
+	}
+
 	template<typename TEntryType>
 	void SerializeArray(const TVector<TEntryType>& inArray, nlohmann::json& outJson)
 	{

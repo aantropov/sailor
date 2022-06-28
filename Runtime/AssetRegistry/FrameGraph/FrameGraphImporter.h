@@ -141,11 +141,7 @@ namespace Sailor
 
 				if (inData.contains("format"))
 				{
-					auto value = magic_enum::enum_cast<RHI::ETextureFormat>(inData["format"].get<std::string>());
-					if (value.has_value())
-					{
-						m_format = value.value();
-					}
+					DeserializeEnum<RHI::ETextureFormat>(inData["format"], m_format);
 				}
 			}
 		};

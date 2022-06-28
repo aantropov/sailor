@@ -182,12 +182,13 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	outData["bEnableDepthTest"] = m_pData->m_renderState.IsDepthTestEnabled();
 	outData["bEnableZWrite"] = m_pData->m_renderState.IsEnabledZWrite();
 	outData["depthBias"] = m_pData->m_renderState.GetDepthBias();
-	outData["cullMode"] = magic_enum::enum_name(m_pData->m_renderState.GetCullMode());
 	outData["renderQueue"] = GetRenderQueue();
 	outData["bIsTransparent"] = IsTransparent();
-	outData["blendMode"] = magic_enum::enum_name(m_pData->m_renderState.GetBlendMode());
-	outData["fillMode"] = magic_enum::enum_name(m_pData->m_renderState.GetFillMode());
 	outData["defines"] = m_pData->m_shaderDefines;
+
+	SerializeEnum<RHI::ECullMode>(outData["cullMode"], m_pData->m_renderState.GetCullMode());
+	SerializeEnum<RHI::EBlendMode>(outData["blendMode"],m_pData->m_renderState.GetBlendMode());
+	SerializeEnum<RHI::EFillMode>(outData["fillMode"], m_pData->m_renderState.GetFillMode());
 
 	SerializeArray(m_pData->m_samplers, outData["samplers"]);
 	outData["uniforms"] = m_pData->m_uniformsVec4;
@@ -227,12 +228,12 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 
 	if (outData.contains("cullMode"))
 	{
-		cullMode = magic_enum::enum_cast<RHI::ECullMode>(outData["cullMode"].get<std::string>()).value();
+		DeserializeEnum<RHI::ECullMode>(outData["cullMode"], cullMode);
 	}
 
 	if (outData.contains("fillMode"))
 	{
-		fillMode = magic_enum::enum_cast<RHI::EFillMode>(outData["fillMode"].get<std::string>()).value();
+		DeserializeEnum<RHI::EFillMode>(outData["fillMode"], fillMode);
 	}
 
 	if (outData.contains("renderQueue"))
@@ -247,7 +248,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 
 	if (outData.contains("blendMode"))
 	{
-		blendMode = magic_enum::enum_cast<RHI::EBlendMode>(outData["blendMode"].get<std::string>()).value();
+		DeserializeEnum<RHI::EBlendMode>(outData["blendMode"], blendMode);
 	}
 
 	if (outData.contains("defines"))

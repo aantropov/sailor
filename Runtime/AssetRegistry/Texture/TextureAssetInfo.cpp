@@ -11,8 +11,9 @@ void TextureAssetInfo::Serialize(nlohmann::json& outData) const
 {
 	AssetInfo::Serialize(outData);
 	outData["bShouldGenerateMips"] = m_bShouldGenerateMips;
-	outData["clamping"] = magic_enum::enum_name(m_clamping);
-	outData["filtration"] = magic_enum::enum_name(m_filtration);
+
+	SerializeEnum<RHI::ETextureClamping>(outData["clamping"], m_clamping);
+	SerializeEnum<RHI::ETextureFiltration>(outData["filtration"], m_filtration);
 }
 
 void TextureAssetInfo::Deserialize(const nlohmann::json& outData)
@@ -20,12 +21,12 @@ void TextureAssetInfo::Deserialize(const nlohmann::json& outData)
 	AssetInfo::Deserialize(outData);
 	if (outData.contains("clamping"))
 	{
-		m_clamping = magic_enum::enum_cast<RHI::ETextureClamping>(outData["clamping"].get<std::string>()).value();
+		DeserializeEnum<RHI::ETextureClamping>(outData["clamping"], m_clamping);
 	}
 
 	if (outData.contains("filtration"))
 	{
-		m_filtration = magic_enum::enum_cast<RHI::ETextureFiltration>(outData["filtration"].get<std::string>()).value();
+		DeserializeEnum<RHI::ETextureFiltration>(outData["filtration"], m_filtration);
 	}
 
 	if (outData.contains("bShouldGenerateMips"))
