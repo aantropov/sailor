@@ -13,3 +13,6 @@
 [submodule "External/spirv_reflect"]
 	path = External/spirv_reflect
 	url = https://github.com/KhronosGroup/SPIRV-Reflect.git
+[submodule "External/magic_enum"]
+	path = External/magic_enum
+	url = https://github.com/Neargye/magic_enum.git

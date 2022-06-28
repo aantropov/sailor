@@ -146,7 +146,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 	for (auto& renderTarget : frameGraphAsset->m_renderTargets)
 	{
 		RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
-			1, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
+			1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
 
 		pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
 	}

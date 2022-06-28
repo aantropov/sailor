@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906232,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "lion_ddn.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{D2371F20-E07D-4C24-A1BD-D824A1F67913}"
+        "uid": "{0C6F5C21-8AD7-476B-85CC-FE5BDCCAF5E6}"
     }
 }

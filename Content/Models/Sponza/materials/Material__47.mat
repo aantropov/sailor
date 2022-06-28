@@ -2,11 +2,11 @@
     "bEnableDepthTest": true,
     "bEnableZWrite": true,
     "bIsTransparent": false,
-    "blendMode": 0,
-    "cullMode": 2,
+    "blendMode": "None",
+    "cullMode": "Back",
     "defines": ["NO_DIFFUSE"],
     "depthBias": 0.0,
-    "fillMode": 0,
+    "fillMode": "Fill",
     "renderQueue": "Opaque",
     "samplers": [],
     "shader": {
@@ -25,7 +25,7 @@
         [
             "material.ambient",
             {
-                "w": 6.403933981964414e-43,
+                "w": 0.0,
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0
@@ -34,7 +34,7 @@
         [
             "material.emission",
             {
-                "w": 6.403933981964414e-43,
+                "w": 0.0,
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0

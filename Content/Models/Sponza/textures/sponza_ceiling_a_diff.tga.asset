@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906232,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "sponza_ceiling_a_diff.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{7D4AE478-F30D-46C3-8B04-CE08845FF302}"
+        "uid": "{E0439307-D7E6-4A25-A2A9-45734AF36601}"
     }
 }

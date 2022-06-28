@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906232,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "sponza_column_c_ddn.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{5658BB2D-1C57-4F73-8227-BB9903533761}"
+        "uid": "{BC9F0204-4C80-4CB2-BF89-9534395741CA}"
     }
 }

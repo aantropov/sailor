@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906232,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "sponza_fabric_diff.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{454DB212-4CFC-4EAE-9DEC-26703F8BC496}"
+        "uid": "{E84B8495-B676-4790-912F-FB203985010A}"
     }
 }

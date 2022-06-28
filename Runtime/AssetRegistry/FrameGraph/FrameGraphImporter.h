@@ -9,6 +9,7 @@
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "RHI/Renderer.h"
+#include "RHI/Types.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
@@ -105,8 +106,7 @@ namespace Sailor
 			std::string m_name;
 			uint32_t m_width = 1;
 			uint32_t m_height = 1;
-			//RHI::EFormat m_format;
-			std::string m_format;
+			RHI::ETextureFormat m_format;
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
@@ -141,7 +141,11 @@ namespace Sailor
 
 				if (inData.contains("format"))
 				{
-					m_format = inData["format"].get<std::string>();
+					auto value = magic_enum::enum_cast<RHI::ETextureFormat>(inData["format"].get<std::string>());
+					if (value.has_value())
+					{
+						m_format = value.value();
+					}
 				}
 			}
 		};

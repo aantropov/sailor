@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906232,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "spnza_bricks_a_diff.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{5B83FBEB-D646-45A9-9D3F-293F2AC7B064}"
+        "uid": "{320B4B38-B79C-440C-BA9D-D9920AD8C09E}"
     }
 }

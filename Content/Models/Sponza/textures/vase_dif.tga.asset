@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906233,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "vase_dif.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{72078373-88F1-46BE-B11B-CD7509F77F75}"
+        "uid": "{A32F08A0-5509-41CE-9BEC-19BD2D183AD1}"
     }
 }

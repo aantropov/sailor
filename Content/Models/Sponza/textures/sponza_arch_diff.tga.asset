@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906232,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "sponza_arch_diff.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{7B80036B-EA82-47DE-BD01-9B93797AF4FD}"
+        "uid": "{5779782E-11B9-494D-A4A1-627C3408DDD2}"
     }
 }

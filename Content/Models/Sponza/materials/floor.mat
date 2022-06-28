@@ -2,23 +2,23 @@
     "bEnableDepthTest": true,
     "bEnableZWrite": true,
     "bIsTransparent": false,
-    "blendMode": 0,
-    "cullMode": 2,
+    "blendMode": "None",
+    "cullMode": "Back",
     "defines": null,
     "depthBias": 0.0,
-    "fillMode": 0,
+    "fillMode": "Fill",
     "renderQueue": "Opaque",
     "samplers": [
         {
             "name": "diffuseSampler",
             "uid": {
-                "uid": "{7664D8C2-ABE5-42A9-B6D2-987D4130F39A}"
+                "uid": "{B3A259F6-1790-4277-A91C-4A4DE99F2B84}"
             }
         },
         {
             "name": "ambientSampler",
             "uid": {
-                "uid": "{7664D8C2-ABE5-42A9-B6D2-987D4130F39A}"
+                "uid": "{B3A259F6-1790-4277-A91C-4A4DE99F2B84}"
             }
         }
     ],

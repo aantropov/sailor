@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906233,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "vase_hanging.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{ACAC0B48-CEA8-4191-8038-7D9E86CBAF5F}"
+        "uid": "{FBF043C5-69FC-4DB0-8D84-84606596D8EA}"
     }
 }

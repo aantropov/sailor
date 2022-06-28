@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649750560,
+    "assetImportTime": 1645173101,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "VulkanLogo.png",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{5800DB53-123D-4F9B-AC51-49DBE2740367}"
+        "uid": "{C3A34018-26A3-4304-A433-6C43FBBAB31B}"
     }
 }

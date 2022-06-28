@@ -1,10 +1,10 @@
 {
-    "assetImportTime": 1649696538,
+    "assetImportTime": 1632906232,
     "bShouldGenerateMips": true,
-    "clamping": 1,
+    "clamping": "Repeat",
     "filename": "chain_texture.tga",
-    "filtration": 1,
+    "filtration": "Linear",
     "uid": {
-        "uid": "{456C0340-4713-4EF7-90ED-B5290BFF8B6D}"
+        "uid": "{19657F81-BA28-4573-97D6-C59AA017888F}"
     }
 }

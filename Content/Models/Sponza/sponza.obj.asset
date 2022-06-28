@@ -1,82 +1,82 @@
 {
-    "assetImportTime": 1649714313,
+    "assetImportTime": 1649697317,
     "bShouldBatchByMaterial": true,
     "bShouldGenerateMaterials": true,
     "defaultMaterials": [
         {
-            "uid": "{4307F3FF-FC09-410B-8713-2866309BC5D1}"
+            "uid": "{36ECA75F-ED1B-4A6F-ADE7-CA048914DE30}"
         },
         {
-            "uid": "{1BCF1A3C-2296-4A5E-851E-1CB85ED55C6F}"
+            "uid": "{50D3FF47-669B-4A9D-BBA8-2A18AAB84373}"
         },
         {
-            "uid": "{0BBDEE8C-42F2-4C5E-B20F-F73BCE37FE64}"
+            "uid": "{7801D757-346B-4299-B3A2-C7672D9CB542}"
         },
         {
-            "uid": "{1C7462A1-60C3-476F-A7D7-F7F569A26D01}"
+            "uid": "{515978CE-7B97-465B-B9A9-C2AAE2E4006C}"
         },
         {
-            "uid": "{1A2823F6-B872-4D74-B8FD-26686CF6143F}"
+            "uid": "{6E5BDE50-2C76-4D56-9161-F8EE5BAE39B4}"
         },
         {
-            "uid": "{CE0EB792-4012-448F-B3AF-6E4F35CB2D81}"
+            "uid": "{587B2A51-E4B2-45CE-A1A6-99663AB6B185}"
         },
         {
-            "uid": "{DDF75B2E-C4CF-4232-8208-DB07E2DAC0A0}"
+            "uid": "{5795DED0-67EE-4D29-A90D-26E05C478FC8}"
         },
         {
-            "uid": "{86B3B045-96CB-435F-B979-0F32315E3FB9}"
+            "uid": "{07D44677-32F1-4249-904D-A8AE1735083E}"
         },
         {
-            "uid": "{57765860-BAF7-4AE8-A195-AA150B4696A9}"
+            "uid": "{A6073C3F-72EA-4E71-9B97-F1CC2D19B81A}"
         },
         {
-            "uid": "{2C553F0B-B55E-410F-B2F6-C3461FFE1553}"
+            "uid": "{68250C59-DC23-43DF-9B6F-D4E05477D64F}"
         },
         {
-            "uid": "{1F1AC49F-E6C0-4015-82C1-5A27217C8E4D}"
+            "uid": "{22E971E3-A8DB-4ACF-B36A-D9E07284413F}"
         },
         {
-            "uid": "{D5E989EB-4480-4EEF-8FD6-2D3A5B3D8808}"
+            "uid": "{5C2EEAB1-600D-4BF5-9267-D8EA0637B031}"
         },
         {
-            "uid": "{A2D8CC29-BD63-4997-837D-BDB584E28A36}"
+            "uid": "{E571EC28-7FEE-430C-8D41-6C867356A8F7}"
         },
         {
-            "uid": "{03924DF6-F442-4C23-B98F-F5ECC2D8800B}"
+            "uid": "{645E4D88-7AB7-4C9B-A41E-A5959F87F67B}"
         },
         {
-            "uid": "{F4491C0B-3A3B-48C7-894B-6C871EB85AA3}"
+            "uid": "{3388B327-E977-45C0-B398-9B6FBEC5985D}"
         },
         {
-            "uid": "{6A0ECA2A-3400-4C23-A6D2-269814AA0392}"
+            "uid": "{B2CE1F06-6FB0-4B3E-95A9-10F16A259928}"
         },
         {
-            "uid": "{2A39FE0C-7177-42A5-946F-BA8B4E138C94}"
+            "uid": "{3CE3C2C8-1D3D-4727-918F-8F9C60DA0941}"
         },
         {
-            "uid": "{EF0E11C8-F7C7-4BD1-85A6-0A04FE9E7F0A}"
+            "uid": "{A7229E83-0F90-4EAD-A8F7-EC4F23DFBFD5}"
         },
         {
-            "uid": "{A71433EA-E943-423C-BDD2-0A72DA22B969}"
+            "uid": "{06C67527-7DAC-466A-818B-E2908AD31F8D}"
         },
         {
-            "uid": "{0AD44C3A-1D2F-4B42-9D58-3194012AD525}"
+            "uid": "{9406B49A-6E60-454E-B53C-FA847535C926}"
         },
         {
-            "uid": "{B91B5783-945B-4444-867C-C9352E57304C}"
+            "uid": "{19C16F7D-4A90-4E34-A58F-78193ABBD44E}"
         },
         {
-            "uid": "{396DE4A6-8F7D-4E69-9928-B71467A64170}"
+            "uid": "{B259EF13-FC5A-4D8E-BB9F-6B61848A4DE2}"
         },
         {
-            "uid": "{2DA60AEB-5043-4959-82A7-D1FAAF94FFB2}"
+            "uid": "{8018CF9E-8C35-4421-B18E-8820E11D4A74}"
         },
         {
-            "uid": "{7995829E-DCA9-40EC-B981-143B82606CB6}"
+            "uid": "{51B2499F-D4AA-4A40-94FC-15AAF66CD172}"
         },
         {
-            "uid": "{4150FE96-1986-4F49-96CD-3500D82DA9E8}"
+            "uid": "{B36D4C07-3FBC-426B-8AAE-666310610595}"
         }
     ],
     "filename": "sponza.obj",

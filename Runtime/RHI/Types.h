@@ -1,4 +1,5 @@
 #pragma once
+#include "Core/Defines.h"
 #include "Memory/RefPtr.hpp"
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtx/hash.hpp>
@@ -243,6 +244,7 @@ namespace Sailor::RHI
 		ASTC_12x10_SRGB_BLOCK = 182,
 		ASTC_12x12_UNORM_BLOCK = 183,
 		ASTC_12x12_SRGB_BLOCK = 184,
+		/*
 		G8B8G8R8_422_UNORM = 1000156000,
 		B8G8R8G8_422_UNORM = 1000156001,
 		G8_B8_R8_3PLANE_420_UNORM = 1000156002,
@@ -301,6 +303,7 @@ namespace Sailor::RHI
 		ASTC_12x12_SFLOAT_BLOCK_EXT = 1000066013,
 		A4R4G4B4_UNORM_PACK16_EXT = 1000340000,
 		A4B4G4R4_UNORM_PACK16_EXT = 1000340001
+		*/
 	};
 
 	using ETextureFormat = EFormat;
