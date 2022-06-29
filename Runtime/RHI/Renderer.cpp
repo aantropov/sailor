@@ -96,6 +96,16 @@ void Renderer::FixLostDevice()
 	m_driverInstance->FixLostDevice(m_pViewport);
 }
 
+RHISceneViewPtr& Renderer::GetOrCreateSceneView(WorldPtr worldPtr)
+{
+	return m_cachedSceneViews[worldPtr];
+}
+
+void Renderer::RemoveSceneView(WorldPtr worldPtr)
+{
+	m_cachedSceneViews.Remove(worldPtr);
+}
+
 bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
 	SAILOR_PROFILE_BLOCK("Wait for render thread");

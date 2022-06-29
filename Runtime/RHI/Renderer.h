@@ -38,6 +38,9 @@ namespace Sailor::RHI
 
 		SAILOR_API static TUniquePtr<IGraphicsDriver>& GetDriver();
 		SAILOR_API static IGraphicsDriverCommands* GetDriverCommands();
+		
+		SAILOR_API RHISceneViewPtr& GetOrCreateSceneView(WorldPtr worldPtr);
+		SAILOR_API void RemoveSceneView(WorldPtr worldPtr);
 
 	protected:
 
