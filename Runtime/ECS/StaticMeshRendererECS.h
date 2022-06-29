@@ -50,4 +50,6 @@ namespace Sailor
 
 		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
 	};
+
+	template ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>;
 }
