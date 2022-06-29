@@ -46,18 +46,6 @@ namespace Sailor::Win32
 
 namespace Sailor::RHI
 {
-	typedef TRefPtr<class RHIBuffer> RHIBufferPtr;
-	typedef TRefPtr<class RHICommandList> RHICommandListPtr;
-	typedef TRefPtr<class RHIFence> RHIFencePtr;
-	typedef TRefPtr<class RHIMesh> RHIMeshPtr;
-	typedef TRefPtr<class RHITexture> RHITexturePtr;
-	typedef TRefPtr<class RHIShader> RHIShaderPtr;
-	typedef TRefPtr<class RHIMaterial> RHIMaterialPtr;
-	typedef TRefPtr<class RHIShaderBinding> RHIShaderBindingPtr;
-	typedef TRefPtr<class RHIShaderBindingSet> RHIShaderBindingSetPtr;
-	typedef TRefPtr<class RHISemaphore> RHISemaphorePtr;
-	typedef TRefPtr<class RHIVertexDescription> RHIVertexDescriptionPtr;	
-
 	class IGraphicsDriver
 	{
 	public:

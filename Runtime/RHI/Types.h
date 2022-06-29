@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include "Memory/RefPtr.hpp"
+#include "Memory/SharedPtr.hpp"
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtx/hash.hpp>
 #include "Containers/Containers.h"
@@ -555,7 +556,7 @@ namespace Sailor::RHI
 		SAILOR_API RHIResource(RHIResource&& copy) = default;
 		SAILOR_API RHIResource& operator =(RHIResource&& rhs) = default;
 	};
-	
+
 	typedef TRefPtr<class RHIResource> RHIResourcePtr;
 
 	// Used to hold/track RHI resources
@@ -660,17 +661,18 @@ namespace Sailor::RHI
 		virtual ~IStateModifier() = default;
 	};
 
-	typedef TRefPtr<class RHIBuffer> RHIBufferPtr;
-	typedef TRefPtr<class RHICommandList> RHICommandListPtr;
-	typedef TRefPtr<class RHIFence> RHIFencePtr;
-	typedef TRefPtr<class RHIMesh> RHIMeshPtr;
-	typedef TRefPtr<class RHITexture> RHITexturePtr;
-	typedef TRefPtr<class RHIMaterial> RHIMaterialPtr;
-	typedef TRefPtr<class RHIShader> RHIShaderPtr;
-	typedef TRefPtr<class RHIShaderBinding> RHIShaderBindingPtr;
-	typedef TRefPtr<class RHIShaderBindingSet> RHIShaderBindingSetPtr;
-	typedef TRefPtr<class RHISemaphore> RHISemaphorePtr;
-	typedef TRefPtr<class RHIVertexDescription> RHIVertexDescriptionPtr;
+	using RHIBufferPtr = TRefPtr<class RHIBuffer>;
+	using RHICommandListPtr = TRefPtr<class RHICommandList>;
+	using RHIFencePtr = TRefPtr<class RHIFence>;
+	using RHIMeshPtr = TRefPtr<class RHIMesh>;
+	using RHITexturePtr = TRefPtr<class RHITexture>;
+	using RHIMaterialPtr = TRefPtr<class RHIMaterial>;
+	using RHIShaderPtr = TRefPtr<class RHIShader>;
+	using RHIShaderBindingPtr = TRefPtr<class RHIShaderBinding>;
+	using RHIShaderBindingSetPtr = TRefPtr<class RHIShaderBindingSet>;
+	using RHISemaphorePtr = TRefPtr<class RHISemaphore>;
+	using RHIVertexDescriptionPtr = TRefPtr<class RHIVertexDescription>;
+	using RHISceneViewPtr = TSharedPtr<struct RHISceneView>;
 };
 
 namespace std

@@ -20,8 +20,8 @@ namespace Sailor::RHI
 		TVector<RHIMaterialPtr> m_overrideMaterials;
 		glm::mat4 m_worldMatrix;
 
-		bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
-		const TVector<RHIMaterialPtr>& GetMaterials() const;
+		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
+		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;
 
 		size_t m_staticMeshEcs;
 	};
@@ -34,7 +34,7 @@ namespace Sailor::RHI
 
 	struct RHISceneView
 	{
-		RHISceneViewSnapshot Snapshot(const CameraData& camera);
+		SAILOR_API RHISceneViewSnapshot Snapshot(const CameraData& camera);
 
 		TOctree<RHISceneViewProxy> m_octree;
 	};
