@@ -19,7 +19,7 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API __forceinline const ObjectPtr& GetOwner() const { return m_owner; }
+		SAILOR_API __forceinline ObjectPtr GetOwner() const { return m_owner; }
 
 		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
 

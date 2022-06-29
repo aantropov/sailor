@@ -57,7 +57,7 @@ namespace Sailor
 		SAILOR_API bool RemoveComponent(ComponentPtr component);
 		SAILOR_API void RemoveAllComponents();
 
-		SAILOR_API __forceinline class Transform& GetTransform();
+		SAILOR_API __forceinline class TransformComponent& GetTransformComponent();
 
 	protected:
 

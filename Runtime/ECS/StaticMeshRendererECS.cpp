@@ -13,7 +13,7 @@ JobSystem::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	{
 		if (data.m_bIsActive && data.GetModel()->IsReady())
 		{
-			const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransform();
+			const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
 
 			RHI::RHISceneViewProxy proxy;
 			//proxy.m_overrideMaterials = data.GetMaterials();

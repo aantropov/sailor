@@ -14,7 +14,7 @@ namespace Sailor
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 
-	class Transform
+	class TransformComponent
 	{
 	public:
 
@@ -57,14 +57,14 @@ namespace Sailor
 		friend class TransformECS;
 	};
 
-	class SAILOR_API TransformECS : public ECS::TSystem<TransformECS, Transform>
+	class SAILOR_API TransformECS : public ECS::TSystem<TransformECS, TransformComponent>
 	{
 	public:
 
 		virtual JobSystem::ITaskPtr Tick(float deltaTime) override;
 
-		void MarkDirty(Transform* ptr);
-		void CalculateMatrices(Transform& root);
+		void MarkDirty(TransformComponent* ptr);
+		void CalculateMatrices(TransformComponent& root);
 
 		virtual uint32_t GetOrder() const override { return 0; }
 

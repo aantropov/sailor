@@ -13,10 +13,10 @@ GameObject::GameObject(WorldPtr world, const std::string& name) : m_name(name), 
 
 void GameObject::BeginPlay()
 {
-	GetTransform().SetOwner(m_self);
+	GetTransformComponent().SetOwner(m_self);
 }
 
-Transform& GameObject::GetTransform()
+TransformComponent& GameObject::GetTransformComponent()
 {
 	return m_pWorld->GetECS<TransformECS>()->GetComponentData(m_transformHandle);
 }

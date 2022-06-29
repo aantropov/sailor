@@ -1,5 +1,4 @@
 #include "SceneView.h"
-#include "SceneViewProxy.h"
 #include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
 #include "ECS/StaticMeshRendererECS.h"
@@ -9,17 +8,23 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void RHISceneViewSnapshot::Snapshot(const CameraData& camera, const RHISceneViewPtr& sceneView)
+RHISceneViewSnapshot RHISceneView::Snapshot(const CameraData& camera)
 {
-	assert(sceneView);
+	RHISceneViewSnapshot res;
 
 	Math::Frustum frustum;
-	auto pCameraOwner = camera.GetOwner();
-	auto cameraOwner = pCameraOwner.StaticCast<GameObject>();
-	auto transform = cameraOwner->GetTransform().GetTransform();
+	
+	auto pCameraOwner = camera.GetOwner().StaticCast<GameObject>();
+	auto transform = pCameraOwner->GetTransformComponent().GetTransform();
 
 	frustum.ExtractFrustumPlanes(transform, camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
-	sceneView->m_octree.Trace(frustum, m_meshes);
+
+	res.m_camera = TUniquePtr<CameraData>::Make();
+	*res.m_camera = camera;
+
+	m_octree.Trace(frustum, res.m_meshes);
+
+	return res;
 }
 
 const TVector<RHIMaterialPtr>& RHISceneViewProxy::GetMaterials() const

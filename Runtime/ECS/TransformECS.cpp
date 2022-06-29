@@ -4,30 +4,30 @@
 using namespace Sailor;
 using namespace Sailor::JobSystem;
 
-void Transform::SetPosition(const glm::vec4& position)
+void TransformComponent::SetPosition(const glm::vec4& position)
 {
 	SetPosition(vec3(position));
 }
 
-void Transform::SetPosition(const glm::vec3& position)
+void TransformComponent::SetPosition(const glm::vec3& position)
 {
 	MarkDirty();
 	m_transform.m_position = vec4(position, 1);
 }
 
-void Transform::SetRotation(const glm::quat& quat)
+void TransformComponent::SetRotation(const glm::quat& quat)
 {
 	MarkDirty();
 	m_transform.m_rotation = quat;
 }
 
-void Transform::SetScale(const glm::vec4& scale)
+void TransformComponent::SetScale(const glm::vec4& scale)
 {
 	MarkDirty();
 	m_transform.m_scale = scale;
 }
 
-void Transform::MarkDirty()
+void TransformComponent::MarkDirty()
 {
 	if (!m_bIsDirty)
 	{
@@ -36,12 +36,12 @@ void Transform::MarkDirty()
 	}
 }
 
-void Transform::SetOwner(const ObjectPtr& owner)
+void TransformComponent::SetOwner(const ObjectPtr& owner)
 {
 	m_owner = owner;
 }
 
-void TransformECS::MarkDirty(Transform* ptr)
+void TransformECS::MarkDirty(TransformComponent* ptr)
 {
 	m_dirtyComponents.Add(TransformECS::GetComponentIndex(ptr));
 }
@@ -120,7 +120,7 @@ JobSystem::ITaskPtr TransformECS::Tick(float deltaTime)
 	return nullptr;
 }
 
-void TransformECS::CalculateMatrices(Transform& parent)
+void TransformECS::CalculateMatrices(TransformComponent& parent)
 {
 	const glm::mat4x4& parentMatrix = parent.GetCachedRelativeMatrix();
 

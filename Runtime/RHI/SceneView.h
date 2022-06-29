@@ -14,10 +14,8 @@ namespace Sailor
 
 namespace Sailor::RHI
 {
-	class RHISceneViewProxy
+	struct RHISceneViewProxy
 	{
-	public:
-
 		TVector<RHIMeshPtr> m_meshes;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
 		glm::mat4 m_worldMatrix;
@@ -28,25 +26,20 @@ namespace Sailor::RHI
 		size_t m_staticMeshEcs;
 	};
 
-	class RHISceneView
+	struct RHISceneViewSnapshot
 	{
-	public:
+		TUniquePtr<CameraData> m_camera;
+		TVector<RHISceneViewProxy> m_meshes;
+	};
+
+	struct RHISceneView
+	{
+		RHISceneViewSnapshot Snapshot(const CameraData& camera);
+
 		TOctree<RHISceneViewProxy> m_octree;
 	};
 
 	using RHISceneViewPtr = TSharedPtr<RHISceneView>;
-
-	class RHISceneViewSnapshot
-	{
-	public:
-
-		void Snapshot(const CameraData& camera, const RHISceneViewPtr& sceneView);
-
-	protected:
-
-		TUniquePtr<CameraData> m_camera;
-		TVector<RHISceneViewProxy> m_meshes;
-	};
 };
 
 namespace std

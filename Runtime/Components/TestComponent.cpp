@@ -60,7 +60,7 @@ void TestComponent::EndPlay()
 
 void TestComponent::Tick(float deltaTime)
 {
-	auto& transform = GetOwner()->GetTransform();
+	auto& transform = GetOwner()->GetTransformComponent();
 	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec4_Forward;
 
 	const float sensitivity = 500;
@@ -91,7 +91,7 @@ void TestComponent::Tick(float deltaTime)
 	{
 		if (auto camera = GetOwner()->GetComponent<CameraComponent>())
 		{
-			m_cachedFrustum = GetOwner()->GetTransform().GetCachedWorldMatrix();
+			m_cachedFrustum = GetOwner()->GetTransformComponent().GetCachedWorldMatrix();
 
 			Math::Frustum frustum;
 			//frustum.ExtractFrustumPlanes(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
@@ -107,7 +107,7 @@ void TestComponent::Tick(float deltaTime)
 					m_culledBoxes.Add(aabb);
 				}
 			}*/
-			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransform().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
+			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransformComponent().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
 		}
 	}
 
