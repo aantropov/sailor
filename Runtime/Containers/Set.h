@@ -16,7 +16,7 @@
 namespace Sailor
 {
 	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
-	class TSet
+	class SAILOR_API TSet
 	{
 	public:
 
