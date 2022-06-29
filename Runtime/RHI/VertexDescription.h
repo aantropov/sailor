@@ -1,6 +1,5 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
-#include "Renderer.h"
 #include "Types.h"
 
 namespace Sailor::RHI

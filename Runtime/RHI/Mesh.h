@@ -1,6 +1,5 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
-#include "Renderer.h"
 #include "Types.h"
 #include "Math/Math.h"
 #include "Math/Bounds.h"

@@ -12,7 +12,6 @@
 #include "Core/Submodule.h"
 #include "Jobsystem/JobSystem.h"
 #include "GraphicsDriver.h"
-#include "Renderer.h"
 #include "Buffer.h"
 
 namespace Sailor

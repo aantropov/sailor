@@ -12,6 +12,7 @@
 #include "Core/Submodule.h"
 #include "Jobsystem/JobSystem.h"
 #include "GraphicsDriver.h"
+#include "SceneView.h"
 
 namespace Sailor
 {
@@ -48,6 +49,7 @@ namespace Sailor::RHI
 
 		class Win32::Window const* m_pViewport;
 
+		TMap<WorldPtr, RHISceneViewPtr> m_cachedSceneViews;
 		TUniquePtr<IGraphicsDriver> m_driverInstance;
 	};
 };

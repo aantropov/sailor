@@ -1,8 +1,7 @@
 #pragma once
-#include "Renderer.h"
+#include "Types.h"
 #include "Memory/RefPtr.hpp"
 #include "GraphicsDriver/Vulkan/VulkanFence.h"
-#include "Types.h"
 
 using namespace GraphicsDriver::Vulkan;
 
