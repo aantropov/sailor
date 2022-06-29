@@ -14,6 +14,7 @@
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Engine/World.h"
+#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -108,6 +109,14 @@ void Renderer::RemoveSceneView(WorldPtr worldPtr)
 
 bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
+	if (!m_frameGraph)
+	{
+		if (auto frameGraphUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
+		{
+			App::GetSubmodule<FrameGraphImporter>()->LoadFrameGraph_Immediate(frameGraphUID->GetUID(), m_frameGraph);
+		}
+	}
+
 	SAILOR_PROFILE_BLOCK("Wait for render thread");
 
 	if (m_bForceStop || App::GetSubmodule<JobSystem::Scheduler>()->GetNumRenderingJobs() > MaxFramesInQueue)

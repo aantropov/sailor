@@ -26,12 +26,6 @@ void TestComponent::BeginPlay()
 		});
 	}
 
-	if (auto frameGraphUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
-	{
-		FrameGraphPtr frameGraph;
-		App::GetSubmodule<FrameGraphImporter>()->LoadFrameGraph_Immediate(frameGraphUID->GetUID(), frameGraph);
-	}
-
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 20.0f, 1000.0f);
 
 	for (int32_t i = -1000; i < 1000; i += 32)

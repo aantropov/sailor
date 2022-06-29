@@ -8,7 +8,6 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
-#include "RHI/Renderer.h"
 #include "RHI/Types.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/BaseFrameGraphNode.h"

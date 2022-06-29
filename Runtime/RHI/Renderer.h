@@ -9,6 +9,7 @@
 #include "Memory/RefPtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/UniquePtr.hpp"
+#include "Memory/ObjectPtr.hpp"
 #include "Core/Submodule.h"
 #include "Jobsystem/JobSystem.h"
 #include "GraphicsDriver.h"
@@ -18,6 +19,7 @@ namespace Sailor
 {
 	class FrameState;
 	using WorldPtr = class World*;
+	using FrameGraphPtr = TObjectPtr<class FrameGraph>;
 }
 
 namespace Sailor::RHI
@@ -38,7 +40,7 @@ namespace Sailor::RHI
 
 		SAILOR_API static TUniquePtr<IGraphicsDriver>& GetDriver();
 		SAILOR_API static IGraphicsDriverCommands* GetDriverCommands();
-		
+
 		SAILOR_API RHISceneViewPtr& GetOrCreateSceneView(WorldPtr worldPtr);
 		SAILOR_API void RemoveSceneView(WorldPtr worldPtr);
 
@@ -52,6 +54,7 @@ namespace Sailor::RHI
 
 		class Win32::Window const* m_pViewport;
 
+		FrameGraphPtr m_frameGraph;
 		TMap<WorldPtr, RHISceneViewPtr> m_cachedSceneViews;
 		TUniquePtr<IGraphicsDriver> m_driverInstance;
 	};
