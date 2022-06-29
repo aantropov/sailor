@@ -8,7 +8,6 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
-#include "RHI/Renderer.h"
 #include "ModelAssetInfo.h"
 #include "JobSystem/JobSystem.h"
 #include "ModelAssetInfo.h"

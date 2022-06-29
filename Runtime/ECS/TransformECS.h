@@ -27,6 +27,8 @@ namespace Sailor
 
 		__forceinline ObjectPtr& GetOwner() { return m_owner; }
 
+		SAILOR_API __forceinline glm::vec4 GetWorldPosition() const { return glm::vec4(m_cachedWorldMatrix[3]); }
+
 		SAILOR_API __forceinline void SetPosition(const glm::vec3& position);
 		SAILOR_API __forceinline void SetPosition(const glm::vec4& position);
 		SAILOR_API __forceinline void SetRotation(const glm::quat& quat);

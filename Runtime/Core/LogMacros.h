@@ -1,7 +1,6 @@
 #pragma once
 #include <string>
 #include <iostream>
-#include "Core/SpinLock.h"
 
 #define SAILOR_LOG(Format, ...) \
 { \

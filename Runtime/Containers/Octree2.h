@@ -18,7 +18,7 @@
 namespace Sailor
 {
 	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
-	class SAILOR_API TOctree2 final
+	class TOctree2 final
 	{
 		static constexpr uint32_t NumElementsInNode = 8u;
 

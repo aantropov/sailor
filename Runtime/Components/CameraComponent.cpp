@@ -19,17 +19,25 @@ void CameraComponent::BeginPlay()
 	auto ecs = GetOwner()->GetWorld()->GetECS<CameraECS>();
 	m_handle = ecs->RegisterComponent();
 
-	GetData().SetOwner(GetOwner());
+	auto& ecsData = GetData();
 
-	m_aspect = CalculateAspect();
-	m_fovDegrees = 90.0f;
-	m_zNear = 0.01f;
-	m_zFar = 5000.0f;
+	ecsData.SetOwner(GetOwner());
 
-	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(m_fovDegrees), m_aspect, m_zNear, m_zFar));
+	ecsData.SetFov(CalculateAspect());
+	ecsData.SetFov(90.0f);
+	ecsData.SetZNear(0.01f);
+	ecsData.SetZFar(5000.0f);
+
+	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), GetAspect(), GetZNear(), GetZFar()));
 }
 
 CameraData& CameraComponent::GetData()
+{
+	auto ecs = GetOwner()->GetWorld()->GetECS<CameraECS>();
+	return ecs->GetComponentData(m_handle);
+}
+
+const CameraData& CameraComponent::GetData() const
 {
 	auto ecs = GetOwner()->GetWorld()->GetECS<CameraECS>();
 	return ecs->GetComponentData(m_handle);
@@ -39,10 +47,10 @@ void CameraComponent::Tick(float deltaTime)
 {
 	const float aspect = CalculateAspect();
 
-	if (m_aspect != aspect)
+	if (GetAspect() != aspect)
 	{
-		m_aspect = aspect;
-		GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(90.0f), aspect, m_zNear, m_zFar));
+		GetData().SetAspect(aspect);
+		GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(90.0f), aspect, GetZNear(), GetZFar()));
 	}
 }
 

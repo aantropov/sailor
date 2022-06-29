@@ -1,4 +1,5 @@
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"

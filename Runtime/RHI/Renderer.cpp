@@ -13,6 +13,7 @@
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Engine/World.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;

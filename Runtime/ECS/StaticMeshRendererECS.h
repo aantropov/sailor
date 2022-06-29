@@ -9,6 +9,8 @@
 #include "Math/Transform.h"
 #include "Memory/Memory.h"
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "RHI/SceneView.h"
+#include "Memory/UniquePtr.hpp"
 
 namespace Sailor
 {
@@ -37,13 +39,15 @@ namespace Sailor
 		friend class StaticMeshRendererECS;
 	};
 
-	class SAILOR_API StaticMeshRendererECS : public ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>
+	class StaticMeshRendererECS : public ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>
 	{
 	public:
 
 		virtual JobSystem::ITaskPtr Tick(float deltaTime) override;
+		void TakeSceneView(RHI::RHISceneViewPtr& outProxies);
 
 	protected:
 
+		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
 	};
 }

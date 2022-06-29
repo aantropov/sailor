@@ -1,46 +1,63 @@
 #pragma once
-#include "Memory/RefPtr.hpp"
-#include "Renderer.h"
-#include "Types.h"
+#include "Core/Defines.h"
+#include "Memory/Memory.h"
 #include "Containers/Octree.h"
-#include "Math/Math.h"
-#include "Math/Bounds.h"
-#include "ECS/TransformECS.h"
-#include "AssetRegistry/Model/ModelImporter.h"
+#include "RHI/Mesh.h"
+#include "RHI/Material.h"
+
+namespace Sailor
+{
+	class CameraData;
+	using ModelPtr = TObjectPtr<class Model>;
+	using MaterialPtr = TObjectPtr<class Material>;
+};
 
 namespace Sailor::RHI
 {
-	struct RHISceneViewProxy
+	class RHISceneViewProxy
 	{
 	public:
 
-		ModelPtr m_model;
-		TVector<MaterialPtr> m_materials;
-		Transform m_transform;
+		TVector<RHIMeshPtr> m_meshes;
+		TVector<RHIMaterialPtr> m_overrideMaterials;
+		glm::mat4 m_worldMatrix;
 
-		bool operator==(const RHISceneViewProxy& rhs) const { return m_transformEcs == rhs.m_transformEcs && m_staticMeshEcs == rhs.m_staticMeshEcs; }
+		bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
+		const TVector<RHIMaterialPtr>& GetMaterials() const;
 
-		size_t m_transformEcs;
 		size_t m_staticMeshEcs;
 	};
 
 	class RHISceneView
 	{
 	public:
-
-		TUniquePtr<class CameraData> m_camera;
-		TVector<RHISceneViewProxy> m_meshes;
+		TOctree<RHISceneViewProxy> m_octree;
 	};
 
-	class RHISceneViewFamily
+	using RHISceneViewPtr = TSharedPtr<RHISceneView>;
+
+	class RHISceneViewSnapshot
 	{
 	public:
 
-		void Snapshot(WorldPtr world);
-		RHISceneView CreateSceneView(class CameraData& cameraData);
+		void Snapshot(const CameraData& camera, const RHISceneViewPtr& sceneView);
 
 	protected:
 
-		TOctree<RHISceneViewProxy> m_octree{};
+		TUniquePtr<CameraData> m_camera;
+		TVector<RHISceneViewProxy> m_meshes;
 	};
 };
+
+namespace std
+{
+	template<>
+	struct std::hash<Sailor::RHI::RHISceneViewProxy>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::RHI::RHISceneViewProxy& p) const
+		{
+			std::hash<size_t> p1;
+			return p1(p.m_staticMeshEcs);
+		}
+	};
+}

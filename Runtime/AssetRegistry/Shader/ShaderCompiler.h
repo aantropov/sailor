@@ -11,7 +11,6 @@
 #include "AssetRegistry/AssetInfo.h"
 #include "ShaderAssetInfo.h"
 #include "RHI/Types.h"
-#include "RHI/Renderer.h"
 #include "ShaderCache.h"
 #include "JobSystem/Tasks.h"
 #include "Engine/Object.h"

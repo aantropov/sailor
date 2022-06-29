@@ -9,7 +9,7 @@
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
 #include "TextureAssetInfo.h"
-#include "RHI/Renderer.h"
+#include "RHI/Types.h"
 #include "Engine/Object.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"

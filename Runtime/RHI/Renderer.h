@@ -7,6 +7,7 @@
 #include "Core/Defines.h"
 #include "Types.h"
 #include "Memory/RefPtr.hpp"
+#include "Memory/SharedPtr.hpp"
 #include "Memory/UniquePtr.hpp"
 #include "Core/Submodule.h"
 #include "Jobsystem/JobSystem.h"
@@ -15,22 +16,11 @@
 namespace Sailor
 {
 	class FrameState;
+	using WorldPtr = class World*;
 }
 
 namespace Sailor::RHI
 {
-	typedef TRefPtr<class RHIBuffer> RHIBufferPtr;
-	typedef TRefPtr<class RHICommandList> RHICommandListPtr;
-	typedef TRefPtr<class RHIFence> RHIFencePtr;
-	typedef TRefPtr<class RHIMesh> RHIMeshPtr;
-	typedef TRefPtr<class RHITexture> RHITexturePtr;
-	typedef TRefPtr<class RHIMaterial> RHIMaterialPtr;
-	typedef TRefPtr<class RHIShader> RHIShaderPtr;
-	typedef TRefPtr<class RHIShaderBinding> RHIShaderBindingPtr;
-	typedef TRefPtr<class RHIShaderBindingSet> RHIShaderBindingSetPtr;
-	typedef TRefPtr<class RHISemaphore> RHISemaphorePtr;
-	typedef TRefPtr<class RHIVertexDescription> RHIVertexDescriptionPtr;
-	
 	class Renderer : public TSubmodule<Renderer>
 	{
 	public:

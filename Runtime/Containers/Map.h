@@ -12,7 +12,7 @@
 namespace Sailor
 {
 	template<typename TKeyType, typename TValueType, typename TAllocator = Memory::DefaultGlobalAllocator>
-	class SAILOR_API TMap final: public TSet<TPair<TKeyType, TValueType>, TAllocator>
+	class TMap final: public TSet<TPair<TKeyType, TValueType>, TAllocator>
 	{
 	public:
 
