@@ -11,6 +11,19 @@ namespace Sailor::RHI
 {
 	using ShaderByteCode = Sailor::TVector<uint32_t>;
 
+	using RHIBufferPtr = TRefPtr<class RHIBuffer>;
+	using RHICommandListPtr = TRefPtr<class RHICommandList>;
+	using RHIFencePtr = TRefPtr<class RHIFence>;
+	using RHIMeshPtr = TRefPtr<class RHIMesh>;
+	using RHITexturePtr = TRefPtr<class RHITexture>;
+	using RHIMaterialPtr = TRefPtr<class RHIMaterial>;
+	using RHIShaderPtr = TRefPtr<class RHIShader>;
+	using RHIShaderBindingPtr = TRefPtr<class RHIShaderBinding>;
+	using RHIShaderBindingSetPtr = TRefPtr<class RHIShaderBindingSet>;
+	using RHISemaphorePtr = TRefPtr<class RHISemaphore>;
+	using RHIVertexDescriptionPtr = TRefPtr<class RHIVertexDescription>;
+	using RHISceneViewPtr = TSharedPtr<struct RHISceneView>;
+
 	enum class ETextureFiltration : uint8_t
 	{
 		Nearest = 0,
@@ -660,19 +673,6 @@ namespace Sailor::RHI
 		virtual void Apply(TState& State) const = 0;
 		virtual ~IStateModifier() = default;
 	};
-
-	using RHIBufferPtr = TRefPtr<class RHIBuffer>;
-	using RHICommandListPtr = TRefPtr<class RHICommandList>;
-	using RHIFencePtr = TRefPtr<class RHIFence>;
-	using RHIMeshPtr = TRefPtr<class RHIMesh>;
-	using RHITexturePtr = TRefPtr<class RHITexture>;
-	using RHIMaterialPtr = TRefPtr<class RHIMaterial>;
-	using RHIShaderPtr = TRefPtr<class RHIShader>;
-	using RHIShaderBindingPtr = TRefPtr<class RHIShaderBinding>;
-	using RHIShaderBindingSetPtr = TRefPtr<class RHIShaderBindingSet>;
-	using RHISemaphorePtr = TRefPtr<class RHISemaphore>;
-	using RHIVertexDescriptionPtr = TRefPtr<class RHIVertexDescription>;
-	using RHISceneViewPtr = TSharedPtr<struct RHISceneView>;
 };
 
 namespace std
