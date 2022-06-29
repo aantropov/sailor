@@ -97,8 +97,13 @@ void Renderer::FixLostDevice()
 	m_driverInstance->FixLostDevice(m_pViewport);
 }
 
-RHISceneViewPtr& Renderer::GetOrCreateSceneView(WorldPtr worldPtr)
+RHISceneViewPtr& Renderer::GetOrAddSceneView(WorldPtr worldPtr)
 {
+	if (!m_cachedSceneViews.ContainsKey(worldPtr))
+	{
+		return m_cachedSceneViews[worldPtr] = RHISceneViewPtr::Make();
+	}
+
 	return m_cachedSceneViews[worldPtr];
 }
 
@@ -138,6 +143,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		[this, frame]()
 	{
 		auto frameInstance = frame;
+		auto& sceneView = GetOrAddSceneView(frameInstance.GetWorld());
+		frameInstance.GetWorld()->GetECS<StaticMeshRendererECS>()->TakeSceneView(sceneView);
+
 		static Utils::Timer timer;
 		timer.Start();
 
