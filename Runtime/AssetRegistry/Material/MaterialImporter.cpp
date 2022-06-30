@@ -438,7 +438,7 @@ MaterialPtr MaterialImporter::GetLoadedMaterial(UID uid)
 	return MaterialPtr();
 }
 
-JobSystem::TaskPtr<bool> MaterialImporter::GetLoadPromise(UID uid)
+JobSystem::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(UID uid)
 {
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
@@ -446,14 +446,14 @@ JobSystem::TaskPtr<bool> MaterialImporter::GetLoadPromise(UID uid)
 		return (*it).m_second;
 	}
 
-	return JobSystem::TaskPtr<bool>(nullptr);
+	return JobSystem::TaskPtr<MaterialPtr>();
 }
 
-JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial)
+JobSystem::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<bool> newPromise;
+	JobSystem::TaskPtr<MaterialPtr> newPromise;
 	outMaterial = nullptr;
 
 	// Check promises first
@@ -473,7 +473,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 		{
 			if (!newPromise)
 			{
-				return JobSystem::TaskPtr<bool>::Make(true);
+				return JobSystem::TaskPtr<MaterialPtr>::Make(outMaterial);
 			}
 
 			return newPromise;
@@ -503,7 +503,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 		pMaterial->SetShader(pShader);
 		pShader->AddHotReloadDependentObject(pMaterial);
 
-		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load material",
+		newPromise = JobSystem::Scheduler::CreateTaskWithResult<MaterialPtr>("Load material",
 			[pMaterial, pMaterialAsset]()
 		{
 			// We're updating rhi on worker thread during load since we have no deps
@@ -535,7 +535,7 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 
 			updateRHI->Run();
 
-			return true;
+			return pMaterial;
 		});
 
 		newPromise->Join(pLoadShader);
@@ -550,6 +550,6 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 
 	m_promises.Unlock(uid);
 
-	return JobSystem::TaskPtr<bool>::Make(false);
+	return JobSystem::TaskPtr<MaterialPtr>();
 }
 

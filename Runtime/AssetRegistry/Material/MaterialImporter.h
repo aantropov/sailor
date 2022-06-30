@@ -144,18 +144,18 @@ namespace Sailor
 		SAILOR_API TSharedPtr<MaterialAsset> LoadMaterialAsset(UID uid);
 
 		SAILOR_API bool LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial);
-		SAILOR_API JobSystem::TaskPtr<bool> LoadMaterial(UID uid, MaterialPtr& outMaterial);
+		SAILOR_API JobSystem::TaskPtr<MaterialPtr> LoadMaterial(UID uid, MaterialPtr& outMaterial);
 
 		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
 
 		SAILOR_API MaterialPtr GetLoadedMaterial(UID uid);
-		SAILOR_API JobSystem::TaskPtr<bool> GetLoadPromise(UID uid);
+		SAILOR_API JobSystem::TaskPtr<MaterialPtr> GetLoadPromise(UID uid);
 
 	protected:
 
 		SAILOR_API bool IsMaterialLoaded(UID uid) const;
 
-		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
+		TConcurrentMap<UID, JobSystem::TaskPtr<MaterialPtr>> m_promises;
 		TConcurrentMap<UID, MaterialPtr> m_loadedMaterials;
 
 		Memory::ObjectAllocatorPtr m_allocator;

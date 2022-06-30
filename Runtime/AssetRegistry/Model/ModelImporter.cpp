@@ -169,11 +169,11 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 	return task->GetResult();
 }
 
-JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
+JobSystem::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<bool> newPromise;
+	JobSystem::TaskPtr<ModelPtr> newPromise;
 	outModel = nullptr;
 
 	// Check promises first
@@ -193,7 +193,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 		{
 			if (!newPromise)
 			{
-				return JobSystem::TaskPtr<bool>::Make(true);
+				return JobSystem::TaskPtr<ModelPtr>::Make(outModel);
 			}
 
 			return newPromise;
@@ -219,12 +219,12 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 		auto& boundsSphere = model->m_boundsSphere;
 		auto& boundsAabb = model->m_boundsAabb;
 
-		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load model",
+		newPromise = JobSystem::Scheduler::CreateTaskWithResult<ModelPtr>("Load model",
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 		{
 			bool bRes = ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, boundsAabb, boundsSphere);
 			model.GetRawPtr()->Flush();
-			return bRes;
+			return model;
 		});
 
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
@@ -237,7 +237,7 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	}
 
 	m_promises.Unlock(uid);
-	return JobSystem::TaskPtr<bool>::Make(false);
+	return JobSystem::TaskPtr<ModelPtr>();
 }
 
 bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHIMeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)

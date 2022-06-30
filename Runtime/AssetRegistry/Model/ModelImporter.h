@@ -69,7 +69,7 @@ namespace Sailor
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 
-		SAILOR_API JobSystem::TaskPtr<bool> LoadModel(UID uid, ModelPtr& outModel);
+		SAILOR_API JobSystem::TaskPtr<ModelPtr> LoadModel(UID uid, ModelPtr& outModel);
 		SAILOR_API bool LoadModel_Immediate(UID uid, ModelPtr& outModel);
 
 		SAILOR_API JobSystem::TaskPtr<bool> LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials);
@@ -80,7 +80,7 @@ namespace Sailor
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 
-		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
+		TConcurrentMap<UID, JobSystem::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<UID, ModelPtr> m_loadedModels;
 
 		ObjectAllocatorPtr m_allocator;
