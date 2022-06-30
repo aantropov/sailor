@@ -99,12 +99,14 @@ void Renderer::FixLostDevice()
 
 RHISceneViewPtr& Renderer::GetOrAddSceneView(WorldPtr worldPtr)
 {
-	if (!m_cachedSceneViews.ContainsKey(worldPtr))
+	auto& res = m_cachedSceneViews.At_Lock(worldPtr);
+	if (!res)
 	{
-		return m_cachedSceneViews[worldPtr] = RHISceneViewPtr::Make();
+		res = RHISceneViewPtr::Make();
 	}
+	m_cachedSceneViews.Unlock(worldPtr);
 
-	return m_cachedSceneViews[worldPtr];
+	return res;
 }
 
 void Renderer::RemoveSceneView(WorldPtr worldPtr)
@@ -131,6 +133,11 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	SAILOR_PROFILE_END_BLOCK();
 
+	SAILOR_PROFILE_BLOCK("Copy scene view to render thread");
+	auto& rhiSceneView = GetOrAddSceneView(frame.GetWorld());
+	frame.GetWorld()->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
+	SAILOR_PROFILE_END_BLOCK();
+
 	SAILOR_PROFILE_BLOCK("Push frame");
 
 	TSharedPtr<class JobSystem::ITask> preRenderingJob = JobSystem::Scheduler::CreateTask("Trace command lists & Track RHI resources",
@@ -140,11 +147,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	}, Sailor::JobSystem::EThreadType::Rendering);
 
 	TSharedPtr<class JobSystem::ITask> renderingJob = JobSystem::Scheduler::CreateTask("Render Frame",
-		[this, frame]()
+		[this, frame, &rhiSceneView]()
 	{
 		auto frameInstance = frame;
-		auto& sceneView = GetOrAddSceneView(frameInstance.GetWorld());
-		frameInstance.GetWorld()->GetECS<StaticMeshRendererECS>()->CopySceneView(sceneView);
 
 		static Utils::Timer timer;
 		timer.Start();

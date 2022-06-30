@@ -32,7 +32,7 @@ namespace Sailor
 		ModelPtr m_model;
 		TVector<MaterialPtr> m_materials;
 
-		bool m_bIsActive : 1 = false;
+		bool m_bIsActive : 1 = true;
 
 		ObjectPtr m_owner;
 

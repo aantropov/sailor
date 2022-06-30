@@ -6,6 +6,7 @@
 
 #include "Core/Defines.h"
 #include "Types.h"
+#include "Containers/ConcurrentMap.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/UniquePtr.hpp"
@@ -55,7 +56,7 @@ namespace Sailor::RHI
 		class Win32::Window const* m_pViewport;
 
 		FrameGraphPtr m_frameGraph;
-		TMap<WorldPtr, RHISceneViewPtr> m_cachedSceneViews;
+		TConcurrentMap<WorldPtr, RHISceneViewPtr> m_cachedSceneViews;
 		TUniquePtr<IGraphicsDriver> m_driverInstance;
 	};
 };

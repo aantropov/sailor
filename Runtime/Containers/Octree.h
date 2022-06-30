@@ -152,6 +152,7 @@ namespace Sailor
 
 		void Clear()
 		{
+			m_num = 0;
 			if (m_root)
 			{
 				Clear_Internal(*m_root);
