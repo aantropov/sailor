@@ -149,7 +149,7 @@ JobSystem::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr&
 		{
 			if (!newPromise)
 			{
-				return JobSystem::TaskPtr<TexturePtr>();
+				return JobSystem::TaskPtr<TexturePtr>::Make(outTexture);
 			}
 
 			return newPromise;

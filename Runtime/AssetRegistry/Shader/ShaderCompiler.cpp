@@ -459,11 +459,11 @@ bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI
 	return false;
 }
 
-JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)
+JobSystem::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<bool> newPromise;
+	JobSystem::TaskPtr<ShaderSetPtr> newPromise;
 	outShader = nullptr;
 
 	if (auto pShader = LoadShaderAsset(uid).TryLock())
@@ -495,7 +495,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 				{
 					if (!newPromise)
 					{
-						return JobSystem::TaskPtr<bool>::Make(true);
+						return JobSystem::TaskPtr<ShaderSetPtr>::Make(outShader);
 					}
 
 					return newPromise;
@@ -522,10 +522,11 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 		{
 			auto pShader = ShaderSetPtr::Make(m_allocator, uid);
 
-			newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load shader",
+			newPromise = JobSystem::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
 				[pShader, assetInfo, defines, this, permutation]()
 				{
-					return UpdateRHIResource(pShader, permutation);
+					UpdateRHIResource(pShader, permutation);
+					return pShader;
 				});
 
 			App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
@@ -543,7 +544,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outSh
 	m_promises.Unlock(uid);
 
 	SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
-	return JobSystem::TaskPtr<bool>::Make(false);
+	return JobSystem::TaskPtr<ShaderSetPtr>();
 }
 
 bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)
