@@ -48,14 +48,14 @@ namespace Sailor
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		SAILOR_API bool LoadTexture_Immediate(UID uid, TexturePtr& outTexture);
-		SAILOR_API JobSystem::TaskPtr<bool> LoadTexture(UID uid, TexturePtr& outTexture);
+		SAILOR_API JobSystem::TaskPtr<TexturePtr> LoadTexture(UID uid, TexturePtr& outTexture);
 
 		SAILOR_API TexturePtr GetLoadedTexture(UID uid);
-		SAILOR_API JobSystem::TaskPtr<bool> GetLoadPromise(UID uid);
+		SAILOR_API JobSystem::TaskPtr<TexturePtr> GetLoadPromise(UID uid);
 
 	protected:
 
-		TConcurrentMap<UID, JobSystem::TaskPtr<bool>> m_promises;
+		TConcurrentMap<UID, JobSystem::TaskPtr<TexturePtr>> m_promises;
 		TConcurrentMap<UID, TexturePtr> m_loadedTextures;
 
 		Memory::ObjectAllocatorPtr m_allocator;

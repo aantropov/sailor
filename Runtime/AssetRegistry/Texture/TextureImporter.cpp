@@ -48,7 +48,7 @@ TexturePtr TextureImporter::GetLoadedTexture(UID uid)
 	return TexturePtr();
 }
 
-JobSystem::TaskPtr<bool> TextureImporter::GetLoadPromise(UID uid)
+JobSystem::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(UID uid)
 {
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
@@ -56,7 +56,7 @@ JobSystem::TaskPtr<bool> TextureImporter::GetLoadPromise(UID uid)
 		return (*it).m_second;
 	}
 
-	return JobSystem::TaskPtr<bool>(nullptr);
+	return JobSystem::TaskPtr<TexturePtr>();
 }
 
 void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpired)
@@ -126,11 +126,11 @@ bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 	return task->GetResult();
 }
 
-JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)
+JobSystem::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<bool> newPromise;
+	JobSystem::TaskPtr<TexturePtr> newPromise;
 	outTexture = nullptr;
 
 	// Check promises first
@@ -149,7 +149,7 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 		{
 			if (!newPromise)
 			{
-				return JobSystem::TaskPtr<bool>::Make(true);
+				return JobSystem::TaskPtr<TexturePtr>();
 			}
 
 			return newPromise;
@@ -170,7 +170,7 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 	{
 		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
 
-		newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load Texture",
+		newPromise = JobSystem::Scheduler::CreateTaskWithResult<TexturePtr>("Load Texture",
 			[pTexture, assetInfo, this]()
 			{
 				ByteCode decodedData;
@@ -183,9 +183,8 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
 						mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 						assetInfo->GetClamping());
-					return true;
 				}
-				return false;
+				return pTexture;
 			});
 
 		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
@@ -200,5 +199,5 @@ JobSystem::TaskPtr<bool> TextureImporter::LoadTexture(UID uid, TexturePtr& outTe
 	m_promises.Unlock(uid);
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
-	return JobSystem::TaskPtr<bool>::Make(false);
+	return JobSystem::TaskPtr<TexturePtr>();
 }

@@ -337,12 +337,12 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 				{
 					TexturePtr texture;
 					updateRHI->Join(
-						App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, bool>(
-							[=](bool bRes)
+						App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, TexturePtr>(
+							[=](TexturePtr pTexture)
 					{
-						if (bRes)
+						if (pTexture)
 						{
-							texture.GetRawPtr()->AddHotReloadDependentObject(material);
+							pTexture.GetRawPtr()->AddHotReloadDependentObject(material);
 							pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
 						}
 					}, "Set material texture binding", JobSystem::EThreadType::Rendering));
@@ -515,12 +515,12 @@ JobSystem::TaskPtr<bool> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& ou
 			// Preload textures
 			for (auto& sampler : pMaterialAsset->GetSamplers())
 			{
-				TexturePtr texture;
+				TexturePtr pTexture;
 				updateRHI->Join(
-					App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, bool>(
-						[=](bool bRes)
+					App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, pTexture)->Then<void, TexturePtr>(
+						[=](TexturePtr texture)
 				{
-					if (bRes)
+					if (texture)
 					{
 						texture.GetRawPtr()->AddHotReloadDependentObject(pMaterial);
 						pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
