@@ -5,7 +5,7 @@
 
 using namespace Sailor;
 
-World::World(std::string name) : m_name(std::move(name))
+World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false)
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make();
 
@@ -21,6 +21,16 @@ World::World(std::string name) : m_name(std::move(name))
 
 void World::Tick(FrameState& frameState)
 {
+	if (!m_bIsBeginPlayCalled)
+	{
+		for (auto& ecs : m_ecs)
+		{
+			ecs.m_second->BeginPlay();
+		}
+
+		m_bIsBeginPlayCalled = true;
+	}
+
 	m_frameInput = frameState.GetInputState();
 	m_time = frameState.GetTime();
 	m_commandList = frameState.CreateCommandBuffer(0);

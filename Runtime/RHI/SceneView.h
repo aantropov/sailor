@@ -35,7 +35,6 @@ namespace Sailor::RHI
 	struct RHISceneView
 	{
 		SAILOR_API RHISceneViewSnapshot Snapshot(const CameraData& camera);
-
 		TOctree<RHISceneViewProxy> m_octree;
 	};
 

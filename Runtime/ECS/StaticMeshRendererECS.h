@@ -43,8 +43,9 @@ namespace Sailor
 	{
 	public:
 
+		virtual void BeginPlay() override;
 		virtual JobSystem::ITaskPtr Tick(float deltaTime) override;
-		void TakeSceneView(RHI::RHISceneViewPtr& outProxies);
+		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 
 	protected:
 

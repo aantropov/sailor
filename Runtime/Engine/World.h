@@ -64,5 +64,6 @@ namespace Sailor
 		TUniquePtr<RHI::DebugContext> m_pDebugContext;
 
 		Memory::ObjectAllocatorPtr m_allocator;
+		bool m_bIsBeginPlayCalled;
 	};
 }

@@ -148,9 +148,24 @@ namespace Sailor
 
 		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
 		TSet(TSet&&) = default;
-		TSet(const TSet&) = default;
+		TSet(const TSet& rhs) : TSet(rhs.m_buckets.Num())
+		{
+			for (const auto& el : rhs)
+			{
+				Insert(el);
+			}
+		}
+
 		TSet& operator=(TSet&&) noexcept = default;
-		TSet& operator=(const TSet&) = default;
+		TSet& operator=(const TSet& rhs) 
+		{
+			Clear((uint32_t)rhs.m_buckets.Num());
+			for (const auto& el : rhs)
+			{
+				Insert(el);
+			}
+			return *this; 
+		}
 
 		TSet(std::initializer_list<TElementType> initList)
 		{

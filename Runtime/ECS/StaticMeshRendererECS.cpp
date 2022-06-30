@@ -5,9 +5,14 @@
 using namespace Sailor;
 using namespace Sailor::JobSystem;
 
-JobSystem::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
+void StaticMeshRendererECS::BeginPlay()
 {
 	m_sceneViewProxiesCache = RHI::RHISceneViewPtr::Make();
+}
+
+JobSystem::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
+{
+	m_sceneViewProxiesCache->m_octree.Clear();
 
 	for (auto& data : m_components)
 	{
@@ -28,8 +33,8 @@ JobSystem::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	return nullptr;
 }
 
-void StaticMeshRendererECS::TakeSceneView(RHI::RHISceneViewPtr& outProxies)
+void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)
 {
-	outProxies = std::move(m_sceneViewProxiesCache);
+	outProxies->m_octree = m_sceneViewProxiesCache->m_octree;
 }
 

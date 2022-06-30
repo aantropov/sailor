@@ -20,11 +20,6 @@ namespace Sailor
 		using TElementType = Sailor::TPair<TKeyType, TValueType>;
 
 		TMap(const uint32_t desiredNumBuckets = 16) : Super(desiredNumBuckets) {  }
-		TMap(TMap&&) = default;
-		TMap(const TMap&) = default;
-		TMap& operator=(TMap&&) noexcept = default;
-		TMap& operator=(const TMap&) = default;
-
 		TMap(std::initializer_list<TElementType> initList)
 		{
 			for (const auto& el : initList)

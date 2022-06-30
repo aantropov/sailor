@@ -144,7 +144,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	{
 		auto frameInstance = frame;
 		auto& sceneView = GetOrAddSceneView(frameInstance.GetWorld());
-		frameInstance.GetWorld()->GetECS<StaticMeshRendererECS>()->TakeSceneView(sceneView);
+		frameInstance.GetWorld()->GetECS<StaticMeshRendererECS>()->CopySceneView(sceneView);
 
 		static Utils::Timer timer;
 		timer.Start();

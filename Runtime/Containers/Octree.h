@@ -116,8 +116,19 @@ namespace Sailor
 			m_root = nullptr;
 		}
 
-		TOctree(const TOctree& octree) {}
-		TOctree& operator= (const TOctree& octree) {}
+		TOctree(const TOctree& octree) : TOctree(octree.m_center, octree.m_root->m_size, octree.m_minSize)
+		{
+			CopyFrom_Internal(*m_root, *octree.m_root);
+		}
+
+		TOctree& operator= (const TOctree& octree) 
+		{
+			Clear();
+			m_minSize = octree.m_minSize;
+			CopyFrom_Internal(*m_root, *octree.m_root);
+			
+			return *this;
+		}
 
 		TOctree(TOctree&& octree)
 		{
@@ -388,6 +399,23 @@ namespace Sailor
 			}
 
 			Collapse(node);
+		}
+
+		void CopyFrom_Internal(TNode& node, const TNode& rhsNode)
+		{
+			node.m_size = rhsNode.m_size;
+			node.m_center = rhsNode.m_center;
+			node.m_elements = rhsNode.m_elements;
+
+			if (rhsNode.m_internal != nullptr)
+			{
+				Subdivide(node);
+
+				for (uint32_t i = 0; i < 8; i++)
+				{
+					CopyFrom_Internal(node.m_internal[i], rhsNode.m_internal[i]);
+				}
+			}
 		}
 
 		bool Insert_Internal(TNode& node, const glm::ivec3& pos, const glm::ivec3& extents, const TElementType& element)
