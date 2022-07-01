@@ -2,9 +2,7 @@
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
-#include "RHI/Renderer.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
-#include "RHI/Texture.h"
+#include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 
 namespace Sailor
@@ -35,7 +33,7 @@ namespace Sailor
 			m_values[name] = value;
 		}
 
-		SAILOR_API void Process();
+		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView);
 
 		SAILOR_API void Clear();
 

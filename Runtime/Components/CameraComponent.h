@@ -3,16 +3,13 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/ObjectPtr.hpp"
 #include "JobSystem/JobSystem.h"
+#include "Engine/Types.h"
 #include "Engine/Object.h"
 #include "Components/Component.h"
 #include "ECS/CameraECS.h"
 
 namespace Sailor
-{
-	using WorldPtr = class World*;
-	using GameObjectPtr = TObjectPtr<class GameObject>;
-	using CameraComponentPtr = TObjectPtr<class CameraComponent>;
-
+{	
 	class CameraComponent : public Component
 	{
 	public:

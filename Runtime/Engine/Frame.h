@@ -2,6 +2,7 @@
 #include <array>
 #include "Memory/RefPtr.hpp"
 #include "Core/Submodule.h"
+#include "Engine/Types.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "RHI/Renderer.h"
@@ -11,7 +12,6 @@
 namespace Sailor
 {
 	using FrameInputState = Sailor::Win32::InputState;
-	using WorldPtr = class World*;
 
 	class FrameState
 	{

@@ -1,10 +1,8 @@
 #pragma once
+#include "Core/Defines.h"
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
-#include "RHI/Renderer.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
-#include "RHI/Texture.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 
@@ -16,7 +14,7 @@ namespace Sailor
 		SAILOR_API static const char* GetName() { return m_name; }
 
 		SAILOR_API virtual void Initialize(RHIFrameGraphPtr FrameGraph) override;
-		SAILOR_API virtual void Process() override;
+		SAILOR_API virtual void Process(const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
 	protected:

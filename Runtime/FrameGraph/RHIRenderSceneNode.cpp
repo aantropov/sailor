@@ -1,4 +1,5 @@
 #include "RHIRenderSceneNode.h"
+#include "RHI/SceneView.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -11,7 +12,7 @@ void RHIRenderSceneNode::Initialize(RHIFrameGraphPtr FrameGraph)
 {
 }
 
-void RHIRenderSceneNode::Process()
+void RHIRenderSceneNode::Process(const RHI::RHISceneViewSnapshot& sceneView)
 {
 }
 

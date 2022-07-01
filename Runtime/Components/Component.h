@@ -3,14 +3,11 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/ObjectPtr.hpp"
 #include "JobSystem/JobSystem.h"
+#include "Engine/Types.h"
 #include "Engine/Object.h"
 
 namespace Sailor
-{
-	using WorldPtr = class World*;
-	using GameObjectPtr = TObjectPtr<class GameObject>;
-	using ComponentPtr = TObjectPtr<class Component>;
-
+{	
 	// All components are tracked
 	class Component : public Object
 	{

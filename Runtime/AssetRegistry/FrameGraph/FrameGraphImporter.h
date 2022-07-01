@@ -1,5 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Engine/Types.h"
+#include "RHI/Types.h"
 #include <string>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
@@ -8,11 +10,9 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
-#include "RHI/Types.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "AssetRegistry/FrameGraph/FrameGraphParser.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
 
 namespace Sailor
 {

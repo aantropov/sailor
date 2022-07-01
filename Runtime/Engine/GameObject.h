@@ -4,16 +4,13 @@
 #include "Memory/ObjectPtr.hpp"
 #include "JobSystem/JobSystem.h"
 #include "Engine/Object.h"
+#include "Engine/Types.h"
 #include "ECS/ECS.h"
 #include "Components/Component.h"
 #include "Engine/World.h"
 
 namespace Sailor
-{
-	//using ComponentPtr = TObjectPtr<class Component>;
-	using GameObjectPtr = TObjectPtr<class GameObject>;
-	using WorldPtr = class World*;
-
+{	
 	class GameObject final : public Object
 	{
 	public:

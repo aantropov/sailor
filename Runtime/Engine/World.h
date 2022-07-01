@@ -4,14 +4,12 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
 #include "Engine/Frame.h"
+#include "Engine/Types.h"
 #include "RHI/DebugContext.h"
 #include "ECS/ECS.h"
 
 namespace Sailor
 {
-	using GameObjectPtr = TObjectPtr<class GameObject>;
-	using WorldPtr = class World*;
-
 	class World
 	{
 	public:

@@ -8,23 +8,29 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-RHISceneViewSnapshot RHISceneView::Snapshot(const CameraData& camera)
+TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 {
-	RHISceneViewSnapshot res;
+	TVector<RHISceneViewSnapshot> snapshots;
+	for (auto& camera : m_cameras)
+	{
+		RHISceneViewSnapshot res;
 
-	Math::Frustum frustum;
-	
-	auto pCameraOwner = camera.GetOwner().StaticCast<GameObject>();
-	auto transform = pCameraOwner->GetTransformComponent().GetTransform();
+		Math::Frustum frustum;
 
-	frustum.ExtractFrustumPlanes(transform, camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
+		auto pCameraOwner = camera.GetOwner().StaticCast<GameObject>();
+		auto transform = pCameraOwner->GetTransformComponent().GetTransform();
 
-	res.m_camera = TUniquePtr<CameraData>::Make();
-	*res.m_camera = camera;
+		frustum.ExtractFrustumPlanes(transform, camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
 
-	m_octree.Trace(frustum, res.m_meshes);
+		res.m_camera = TUniquePtr<CameraData>::Make();
+		*res.m_camera = camera;
 
-	return res;
+		m_octree.Trace(frustum, res.m_meshes);
+
+		snapshots.Emplace(std::move(res));
+	}
+
+	return snapshots;
 }
 
 const TVector<RHIMaterialPtr>& RHISceneViewProxy::GetMaterials() const

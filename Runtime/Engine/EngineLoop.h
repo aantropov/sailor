@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include "Engine/World.h"
+#include "Engine/Types.h"
 #include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/SharedPtr.hpp"

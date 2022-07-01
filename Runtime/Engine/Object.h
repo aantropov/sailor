@@ -5,12 +5,11 @@
 #include "AssetRegistry/UID.h"
 #include "Containers/ConcurrentSet.h"
 #include "Memory/ObjectPtr.hpp"
+#include "Engine/Types.h"
 #include <typeindex>
 
 namespace Sailor
 {
-	using ObjectPtr = TObjectPtr<class Object>;
-
 	class Object
 	{
 	public:

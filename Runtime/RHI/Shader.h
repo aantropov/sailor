@@ -1,7 +1,8 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
 #include "Memory/WeakPtr.hpp"
-#include "Types.h"
+#include "RHI/Types.h"
+#include "Engine/Types.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "GraphicsDriver/Vulkan/VulkanMemory.h"
 #include "GraphicsDriver/Vulkan/VulkanBufferMemory.h"

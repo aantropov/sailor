@@ -2,15 +2,10 @@
 #include "Core/Defines.h"
 #include "Memory/Memory.h"
 #include "Containers/Octree.h"
+#include "Engine/Types.h"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
-
-namespace Sailor
-{
-	class CameraData;
-	using ModelPtr = TObjectPtr<class Model>;
-	using MaterialPtr = TObjectPtr<class Material>;
-};
+#include "ECS/CameraECS.h"
 
 namespace Sailor::RHI
 {
@@ -34,8 +29,10 @@ namespace Sailor::RHI
 
 	struct RHISceneView
 	{
-		SAILOR_API RHISceneViewSnapshot Snapshot(const CameraData& camera);
+		SAILOR_API TVector<RHISceneViewSnapshot> GetSnapshots();
+
 		TOctree<RHISceneViewProxy> m_octree;
+		TVector<CameraData> m_cameras;
 	};
 
 	using RHISceneViewPtr = TSharedPtr<RHISceneView>;

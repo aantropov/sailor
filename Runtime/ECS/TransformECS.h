@@ -1,9 +1,7 @@
 #pragma once
 #include "Sailor.h"
-#include "Memory/SharedPtr.hpp"
-#include "Memory/ObjectPtr.hpp"
-#include "JobSystem/JobSystem.h"
 #include "Engine/Object.h"
+#include "JobSystem/JobSystem.h"
 #include "ECS/ECS.h"
 #include "Components/Component.h"
 #include "Math/Transform.h"

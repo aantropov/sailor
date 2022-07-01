@@ -1,20 +1,15 @@
 #pragma once
 #include "Sailor.h"
-#include "Memory/SharedPtr.hpp"
-#include "Memory/ObjectPtr.hpp"
-#include "JobSystem/JobSystem.h"
 #include "Engine/Object.h"
+#include "JobSystem/JobSystem.h"
 #include "ECS/ECS.h"
 #include "Components/Component.h"
 #include "Math/Transform.h"
+#include "RHI/Types.h"
 #include "Memory/Memory.h"
-#include "AssetRegistry/Model/ModelImporter.h"
 
 namespace Sailor
 {
-	using WorldPtr = class World*;
-	using GameObjectPtr = TObjectPtr<class GameObject>;
-
 	class CameraData
 	{
 	public:
@@ -60,8 +55,6 @@ namespace Sailor
 	public:
 
 		virtual JobSystem::ITaskPtr Tick(float deltaTime) override;
-
-	protected:
-
+		void CopyCameraData(RHI::RHISceneViewPtr& outCameras);
 	};
 }

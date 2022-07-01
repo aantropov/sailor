@@ -5,7 +5,8 @@
 #include <glm/glm/glm.hpp>
 
 #include "Core/Defines.h"
-#include "Types.h"
+#include "Engine/Types.h"
+#include "RHI/Types.h"
 #include "Containers/ConcurrentMap.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/SharedPtr.hpp"
@@ -19,8 +20,6 @@
 namespace Sailor
 {
 	class FrameState;
-	using WorldPtr = class World*;
-	using FrameGraphPtr = TObjectPtr<class FrameGraph>;
 }
 
 namespace Sailor::RHI

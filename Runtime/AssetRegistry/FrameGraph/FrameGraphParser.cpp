@@ -11,6 +11,9 @@
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "JobSystem/JobSystem.h"
+#include "RHI/Renderer.h"
+#include "RHI/Texture.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 
 using namespace Sailor;
 

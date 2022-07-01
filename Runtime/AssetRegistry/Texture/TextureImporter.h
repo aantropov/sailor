@@ -5,6 +5,7 @@
 #include "Containers/ConcurrentMap.h"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
+#include "Engine/Types.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"

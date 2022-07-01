@@ -7,6 +7,7 @@
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
+#include "Engine/Types.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "ModelAssetInfo.h"
 #include "JobSystem/JobSystem.h"
@@ -16,7 +17,6 @@
 #include "Memory/ObjectAllocator.hpp"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
-#include "AssetRegistry/Material/MaterialImporter.h"
 #include "Math/Bounds.h"
 
 namespace Sailor::RHI

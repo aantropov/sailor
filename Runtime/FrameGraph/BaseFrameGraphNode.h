@@ -25,7 +25,7 @@ namespace Sailor
 		SAILOR_API const std::string& GetStringParam(const std::string& name) const;
 
 		SAILOR_API virtual void Initialize(RHIFrameGraphPtr frameGraph) = 0;
-		SAILOR_API virtual void Process() = 0;
+		SAILOR_API virtual void Process(const RHI::RHISceneViewSnapshot& sceneView) = 0;
 		SAILOR_API virtual void Clear() = 0;
 
 	protected:
@@ -36,7 +36,6 @@ namespace Sailor
 
 		RHIFrameGraphPtr m_frameGraph{};
 	};
-
 
 	using FrameGraphNodePtr = TRefPtr<BaseFrameGraphNode>;
 };

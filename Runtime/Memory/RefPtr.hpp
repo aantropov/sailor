@@ -127,7 +127,7 @@ namespace Sailor
 
 		bool operator==(const TRefPtr& pRhs) const
 		{
-			return m_pRawPtr == pRhs.GetRawPtr();
+			return m_pRawPtr == pRhs.m_pRawPtr;
 		}
 
 		void Clear() noexcept

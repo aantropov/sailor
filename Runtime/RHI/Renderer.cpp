@@ -15,6 +15,8 @@
 #include "Components/MeshRendererComponent.h"
 #include "Engine/World.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
+#include "ECS/CameraECS.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -136,6 +138,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	SAILOR_PROFILE_BLOCK("Copy scene view to render thread");
 	auto& rhiSceneView = GetOrAddSceneView(frame.GetWorld());
 	frame.GetWorld()->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
+	frame.GetWorld()->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Push frame");
@@ -147,10 +150,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	}, Sailor::JobSystem::EThreadType::Rendering);
 
 	TSharedPtr<class JobSystem::ITask> renderingJob = JobSystem::Scheduler::CreateTask("Render Frame",
-		[this, frame, &rhiSceneView]()
+		[this, frame, rhiSceneView]()
 	{
 		auto frameInstance = frame;
-
 		static Utils::Timer timer;
 		timer.Start();
 

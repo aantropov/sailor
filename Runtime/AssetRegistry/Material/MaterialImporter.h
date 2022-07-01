@@ -12,8 +12,7 @@
 #include "AssetRegistry/UID.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
-#include "AssetRegistry/Shader/ShaderCompiler.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
+#include "Engine/Types.h"
 #include "RHI/Types.h"
 #include "Engine/Object.h"
 #include "Memory/ObjectPtr.hpp"
@@ -68,8 +67,6 @@ namespace Sailor
 
 		friend class MaterialImporter;
 	};
-
-	using MaterialPtr = TObjectPtr<Material>;
 
 	class MaterialAsset : public IJsonSerializable
 	{
@@ -160,4 +157,6 @@ namespace Sailor
 
 		Memory::ObjectAllocatorPtr m_allocator;
 	};
+
+	using MaterialPtr = TObjectPtr<Material>;
 }

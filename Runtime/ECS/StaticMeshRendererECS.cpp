@@ -1,6 +1,7 @@
 #include "ECS/StaticMeshRendererECS.h"
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 
 using namespace Sailor;
 using namespace Sailor::JobSystem;

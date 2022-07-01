@@ -23,6 +23,9 @@ namespace Sailor::RHI
 	using RHISemaphorePtr = TRefPtr<class RHISemaphore>;
 	using RHIVertexDescriptionPtr = TRefPtr<class RHIVertexDescription>;
 	using RHISceneViewPtr = TSharedPtr<struct RHISceneView>;
+	
+	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
+	struct RHISceneViewSnapshot;
 
 	enum class ETextureFiltration : uint8_t
 	{

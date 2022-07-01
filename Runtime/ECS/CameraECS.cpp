@@ -1,6 +1,7 @@
 #include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
+#include "RHI/SceneView.h"
 
 using namespace Sailor;
 using namespace Sailor::JobSystem;
@@ -18,4 +19,16 @@ JobSystem::ITaskPtr CameraECS::Tick(float deltaTime)
 	}
 
 	return nullptr;
+}
+
+void CameraECS::CopyCameraData(RHI::RHISceneViewPtr& outCameras)
+{
+	outCameras->m_cameras.Clear(false);
+	for (auto& data : m_components)
+	{
+		if (data.m_bIsActive)
+		{
+			outCameras->m_cameras.Add(data);
+		}
+	}
 }
