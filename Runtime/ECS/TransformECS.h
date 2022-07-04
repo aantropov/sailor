@@ -1,7 +1,7 @@
 #pragma once
 #include "Sailor.h"
 #include "Engine/Object.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "ECS/ECS.h"
 #include "Components/Component.h"
 #include "Math/Transform.h"
@@ -59,7 +59,7 @@ namespace Sailor
 	{
 	public:
 
-		virtual JobSystem::ITaskPtr Tick(float deltaTime) override;
+		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 
 		void MarkDirty(TransformComponent* ptr);
 		void CalculateMatrices(TransformComponent& root);

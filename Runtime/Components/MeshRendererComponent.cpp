@@ -3,7 +3,7 @@
 #include "ECS/StaticMeshRendererECS.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 void MeshRendererComponent::BeginPlay()
 {

@@ -1,7 +1,7 @@
 #include "Engine/Object.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 #ifdef SAILOR_EDITOR
 

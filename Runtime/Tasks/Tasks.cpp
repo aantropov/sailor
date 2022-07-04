@@ -1,4 +1,4 @@
-#include "JobSystem.h"
+#include "Scheduler.h"
 #include <windows.h>
 #include <fcntl.h>
 #include <conio.h>
@@ -8,12 +8,12 @@
 #include <string>
 #include "Core/Utils.h"
 #include "Core/Submodule.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Tasks.h"
 #include "Containers/Map.h"
 
 using namespace std;
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 void ITask::Join(const TWeakPtr<ITask>& job)
 {
@@ -87,7 +87,7 @@ void ITask::Complete()
 
 	for (auto& threadType : threadTypesToRefresh)
 	{
-		App::GetSubmodule<JobSystem::Scheduler>()->NotifyWorkerThread(threadType.m_first, threadType.m_second > 1);
+		App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread(threadType.m_first, threadType.m_second > 1);
 	}
 
 	m_bIsFinished = true;

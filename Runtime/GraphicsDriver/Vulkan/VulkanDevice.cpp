@@ -34,7 +34,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanPipeline.h"
 #include "VulkanDescriptors.h"
 #include "VulkanPipileneStates.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "Platform/Win32/Input.h"
 #include "Winuser.h"
 #include "Engine/EngineLoop.h"

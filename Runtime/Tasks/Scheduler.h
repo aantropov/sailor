@@ -6,15 +6,15 @@
 #include <thread>
 #include "Sailor.h"
 #include "Core/Submodule.h"
-#include "Tasks.h"
 #include "Memory/UniquePtr.hpp"
+#include "Tasks/Tasks.h"
 
-#define SAILOR_ENQUEUE_JOB(Name, Lambda) Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateTask(Name, Lambda))
-#define SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<JobSystem::Scheduler>()->Run(Sailor::JobSystem::Scheduler::CreateTask(Name, Lambda, Sailor::JobSystem::EThreadType::Rendering))
+#define SAILOR_ENQUEUE_JOB(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda))
+#define SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Rendering))
 
 namespace Sailor
 {
-	namespace JobSystem
+	namespace Tasks
 	{
 		class WorkerThread;
 		class Scheduler;

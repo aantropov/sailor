@@ -118,7 +118,7 @@ void VulkanDescriptorSet::Release()
 	auto duplicatedPool = m_descriptorPool;
 	auto duplicatedSet = m_descriptorSet;
 
-	auto pReleaseResource = JobSystem::Scheduler::CreateTask("Release descriptor set", [=]()
+	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release descriptor set", [=]()
 		{
 			if (m_descriptorSet)
 			{
@@ -133,7 +133,7 @@ void VulkanDescriptorSet::Release()
 	}
 	else
 	{
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
+		App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
 	}
 }
 

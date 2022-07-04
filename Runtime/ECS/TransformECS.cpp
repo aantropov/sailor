@@ -2,7 +2,7 @@
 #include "Engine/GameObject.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 void TransformComponent::SetPosition(const glm::vec4& position)
 {
@@ -46,7 +46,7 @@ void TransformECS::MarkDirty(TransformComponent* ptr)
 	m_dirtyComponents.Add(TransformECS::GetComponentIndex(ptr));
 }
 
-JobSystem::ITaskPtr TransformECS::Tick(float deltaTime)
+Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 {
 	// We guess that the amount of changed transform during frame
 	// Could be much less than the whole transforms num

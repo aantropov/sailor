@@ -1,7 +1,7 @@
 #pragma once
 #include "Sailor.h"
 #include "Memory/SharedPtr.hpp"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "AssetRegistry/UID.h"
 #include "Containers/ConcurrentSet.h"
 #include "Memory/ObjectPtr.hpp"
@@ -18,9 +18,9 @@ namespace Sailor
 
 #ifdef SAILOR_EDITOR
 
-		SAILOR_API virtual JobSystem::ITaskPtr OnHotReload();
+		SAILOR_API virtual Tasks::ITaskPtr OnHotReload();
 
-		SAILOR_API void TraceHotReload(JobSystem::ITaskPtr previousTask);
+		SAILOR_API void TraceHotReload(Tasks::ITaskPtr previousTask);
 		SAILOR_API void AddHotReloadDependentObject(ObjectPtr object);
 		SAILOR_API void RemoveHotReloadDependentObject(ObjectPtr object);
 		SAILOR_API void ClearHotReloadDependentObjects();

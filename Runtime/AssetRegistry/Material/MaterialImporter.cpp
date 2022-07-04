@@ -30,14 +30,14 @@ bool Material::IsReady() const
 	return m_shader && m_shader->IsReady() && m_commonShaderBindings && m_commonShaderBindings->IsReady();
 }
 
-JobSystem::ITaskPtr Material::OnHotReload()
+Tasks::ITaskPtr Material::OnHotReload()
 {
 	m_bIsDirty = true;
 
-	auto updateRHI = JobSystem::Scheduler::CreateTask("Update material RHI resource", [=]()
+	auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 	{
 		UpdateRHIResource();
-	}, JobSystem::EThreadType::Rendering);
+	}, Tasks::EThreadType::Rendering);
 
 	return updateRHI;
 }
@@ -310,7 +310,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 		// We need to start load the material
 		if (auto pMaterialAsset = LoadMaterialAsset(assetInfo->GetUID()))
 		{
-			auto updateMaterial = JobSystem::Scheduler::CreateTask("Update Material", [=]() {
+			auto updateMaterial = Tasks::Scheduler::CreateTask("Update Material", [=]() {
 
 				auto pMaterial = material;
 
@@ -326,11 +326,11 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 				pMaterial->SetShader(pShader);
 				pShader->AddHotReloadDependentObject(material);
 
-				auto updateRHI = JobSystem::Scheduler::CreateTask("Update material RHI resource", [=]()
+				auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 				{
 					pMaterial.GetRawPtr()->UpdateRHIResource();
 					pMaterial.GetRawPtr()->TraceHotReload(nullptr);
-				}, JobSystem::EThreadType::Rendering);
+				}, Tasks::EThreadType::Rendering);
 
 				// Preload textures
 				for (auto& sampler : pMaterialAsset->GetSamplers())
@@ -345,7 +345,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 							pTexture.GetRawPtr()->AddHotReloadDependentObject(material);
 							pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
 						}
-					}, "Set material texture binding", JobSystem::EThreadType::Rendering));
+					}, "Set material texture binding", Tasks::EThreadType::Rendering));
 				}
 
 				for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())
@@ -438,7 +438,7 @@ MaterialPtr MaterialImporter::GetLoadedMaterial(UID uid)
 	return MaterialPtr();
 }
 
-JobSystem::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(UID uid)
+Tasks::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(UID uid)
 {
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
@@ -446,14 +446,14 @@ JobSystem::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(UID uid)
 		return (*it).m_second;
 	}
 
-	return JobSystem::TaskPtr<MaterialPtr>();
+	return Tasks::TaskPtr<MaterialPtr>();
 }
 
-JobSystem::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial)
+Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<MaterialPtr> newPromise;
+	Tasks::TaskPtr<MaterialPtr> newPromise;
 	outMaterial = nullptr;
 
 	// Check promises first
@@ -473,7 +473,7 @@ JobSystem::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, Material
 		{
 			if (!newPromise)
 			{
-				return JobSystem::TaskPtr<MaterialPtr>::Make(outMaterial);
+				return Tasks::TaskPtr<MaterialPtr>::Make(outMaterial);
 			}
 
 			return newPromise;
@@ -503,11 +503,11 @@ JobSystem::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, Material
 		pMaterial->SetShader(pShader);
 		pShader->AddHotReloadDependentObject(pMaterial);
 
-		newPromise = JobSystem::Scheduler::CreateTaskWithResult<MaterialPtr>("Load material",
+		newPromise = Tasks::Scheduler::CreateTaskWithResult<MaterialPtr>("Load material",
 			[pMaterial, pMaterialAsset]()
 		{
 			// We're updating rhi on worker thread during load since we have no deps
-			auto updateRHI = JobSystem::Scheduler::CreateTask("Update material RHI resource", [=]()
+			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 			{
 				pMaterial.GetRawPtr()->UpdateRHIResource();
 			});
@@ -525,7 +525,7 @@ JobSystem::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, Material
 						texture.GetRawPtr()->AddHotReloadDependentObject(pMaterial);
 						pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
 					}
-				}, "Set material texture binding", JobSystem::EThreadType::Rendering));
+				}, "Set material texture binding", Tasks::EThreadType::Rendering));
 			}
 
 			for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())
@@ -539,7 +539,7 @@ JobSystem::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, Material
 		});
 
 		newPromise->Join(pLoadShader);
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
+		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 
 		outMaterial = m_loadedMaterials[uid] = pMaterial;
 		promise = newPromise;
@@ -550,6 +550,6 @@ JobSystem::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, Material
 
 	m_promises.Unlock(uid);
 
-	return JobSystem::TaskPtr<MaterialPtr>();
+	return Tasks::TaskPtr<MaterialPtr>();
 }
 

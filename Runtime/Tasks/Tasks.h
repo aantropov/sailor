@@ -10,7 +10,7 @@
 
 namespace Sailor
 {
-	namespace JobSystem
+	namespace Tasks
 	{
 		class Scheduler;
 

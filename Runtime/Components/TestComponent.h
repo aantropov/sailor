@@ -1,6 +1,6 @@
 #pragma once
 #include "Sailor.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "Engine/Types.h"
 #include "Engine/Object.h"
 #include "Components/Component.h"

@@ -12,7 +12,7 @@
 #include "ShaderAssetInfo.h"
 #include "RHI/Types.h"
 #include "ShaderCache.h"
-#include "JobSystem/Tasks.h"
+#include "Tasks/Tasks.h"
 #include "Engine/Object.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
@@ -86,7 +86,7 @@ namespace Sailor
 	public:
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
-		SAILOR_API JobSystem::TaskPtr<bool> CompileAllPermutations(const UID& assetUID);
+		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(const UID& assetUID);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
 
 		SAILOR_API virtual ~ShaderCompiler() override;
@@ -95,14 +95,14 @@ namespace Sailor
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		SAILOR_API bool LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
-		SAILOR_API JobSystem::TaskPtr<ShaderSetPtr> LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
+		SAILOR_API Tasks::TaskPtr<ShaderSetPtr> LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
 
 	protected:
 
 		ShaderCache m_shaderCache;
 		Memory::ObjectAllocatorPtr m_allocator;
 
-		TConcurrentMap<UID, TVector<TPair<uint32_t, JobSystem::TaskPtr<ShaderSetPtr>>>> m_promises;
+		TConcurrentMap<UID, TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>>> m_promises;
 		TConcurrentMap<UID, TSharedPtr<ShaderAsset>> m_shaderAssetsCache;
 		TConcurrentMap<UID, TVector<TPair<uint32_t, ShaderSetPtr>>> m_loadedShaders;
 

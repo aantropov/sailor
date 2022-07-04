@@ -1,5 +1,5 @@
 #include "Engine/Scene.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;

@@ -6,7 +6,7 @@
 { \
 	char buffer[4096]; \
 	sprintf_s(buffer, Format, __VA_ARGS__); \
-	auto scheduler = App::GetSubmodule<JobSystem::Scheduler>(); \
+	auto scheduler = App::GetSubmodule<Tasks::Scheduler>(); \
 	if (scheduler && !scheduler->IsMainThread()) \
 	{ \
 		const bool bIsRendererThread = scheduler->IsRendererThread(); \
@@ -21,7 +21,7 @@
 			{ \
 				std::cout << "Renderer thread: " << (buffer) << std::endl; \
 			} \
-		}, JobSystem::EThreadType::Main)->Run(); \
+		}, Tasks::EThreadType::Main)->Run(); \
 	} \
 	else \
 	{ \

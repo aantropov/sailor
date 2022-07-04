@@ -1,4 +1,4 @@
-#include "JobSystem.h"
+#include "Scheduler.h"
 #include <windows.h>
 #include <fcntl.h>
 #include <conio.h>
@@ -10,7 +10,7 @@
 
 using namespace std;
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 WorkerThread::WorkerThread(
 	std::string threadName,
@@ -82,7 +82,7 @@ void WorkerThread::Process()
 		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 	}
 
-	Scheduler* scheduler = App::GetSubmodule<JobSystem::Scheduler>();
+	Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>();
 
 	ITaskPtr pCurrentJob;
 
@@ -170,7 +170,7 @@ Scheduler::~Scheduler()
 	}
 	m_workerThreads.Clear();
 
-	App::GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
+	App::GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
 }
 
 uint32_t Scheduler::GetNumWorkerThreads() const

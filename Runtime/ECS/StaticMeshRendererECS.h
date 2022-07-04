@@ -2,7 +2,7 @@
 #include "Sailor.h"
 #include "Engine/Object.h"
 #include "ECS/ECS.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "Components/Component.h"
 #include "Math/Transform.h"
 #include "Memory/Memory.h"
@@ -41,7 +41,7 @@ namespace Sailor
 	public:
 
 		virtual void BeginPlay() override;
-		virtual JobSystem::ITaskPtr Tick(float deltaTime) override;
+		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 
 	protected:

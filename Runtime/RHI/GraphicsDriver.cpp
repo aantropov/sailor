@@ -5,7 +5,7 @@
 #include "Fence.h"
 #include "Mesh.h"
 #include "VertexDescription.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;

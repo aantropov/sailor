@@ -4,7 +4,7 @@
 #include "Math/Math.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 float CameraComponent::CalculateAspect()
 {

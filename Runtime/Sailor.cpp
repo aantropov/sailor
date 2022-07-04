@@ -8,7 +8,7 @@
 #include "Platform/Win32/ConsoleWindow.h"
 #include "Platform/Win32/Input.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"
 #include "Containers/Vector.h"
@@ -55,7 +55,7 @@ void App::Initialize()
 	const bool bIsEnabledVulkanValidationLayers = false;
 #endif
 
-	s_pInstance->AddSubmodule(TSubmodule<JobSystem::Scheduler>::Make())->Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
 
 #ifdef BUILD_WITH_EASY_PROFILER
 	SAILOR_ENQUEUE_JOB("Initialize profiler", ([]() {profiler::startListen(); }));
@@ -134,7 +134,7 @@ void App::Start()
 		Win32::Window::ProcessWin32Msgs();
 		GetSubmodule<Renderer>()->FixLostDevice();
 
-		GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
+		GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
 
 		if (GlobalInput::GetInputState().IsKeyPressed(VK_ESCAPE))
 		{
@@ -185,8 +185,8 @@ void App::Start()
 	s_pInstance->m_pViewportWindow->SetActive(false);
 	s_pInstance->m_pViewportWindow->SetRunning(false);
 
-	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Worker);
-	App::GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Rendering);
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Rendering);
 }
 
 void App::Stop()
@@ -218,12 +218,12 @@ void App::Shutdown()
 	RemoveSubmodule<AssetRegistry>();
 
 	// We need to finish all jobs before release
-	GetSubmodule<JobSystem::Scheduler>()->ProcessJobsOnMainThread();
-	GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Worker);
-	GetSubmodule<JobSystem::Scheduler>()->WaitIdle(JobSystem::EThreadType::Rendering);
+	GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
+	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
+	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Rendering);
 
 	RemoveSubmodule<Renderer>();
-	RemoveSubmodule<JobSystem::Scheduler>();
+	RemoveSubmodule<Tasks::Scheduler>();
 
 	Win32::ConsoleWindow::Shutdown();
 

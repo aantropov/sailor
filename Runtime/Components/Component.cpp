@@ -2,7 +2,7 @@
 #include "Engine/GameObject.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 WorldPtr Component::GetWorld() const 
 {

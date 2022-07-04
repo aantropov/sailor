@@ -12,7 +12,7 @@
 #include "FrameGraph/FrameGraphNode.h"
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 
 using namespace Sailor;
 

@@ -11,7 +11,7 @@
 #include "VulkanPipeline.h"
 #include "VulkanPipileneStates.h"
 #include "VulkanDescriptors.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "VulkanImage.h"
 #include "Containers/Pair.h"
 #include "Memory/RefPtr.hpp"
@@ -43,7 +43,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	auto duplicatedCommandPool = m_commandPool;
 	auto duplicatedCommandBuffer = m_commandBuffer;
 
-	auto pReleaseResource = JobSystem::Scheduler::CreateTask("Release command buffer", [=]()
+	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release command buffer", [=]()
 	{
 		if (duplicatedCommandBuffer)
 		{
@@ -58,7 +58,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	}
 	else
 	{
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
+		App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
 	}
 	ClearDependencies();
 }

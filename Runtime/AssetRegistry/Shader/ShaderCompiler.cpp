@@ -17,8 +17,8 @@
 #include <mutex>
 
 #include "Containers/Set.h"
-#include "JobSystem/Tasks.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Tasks.h"
+#include "Tasks/Scheduler.h"
 
 using namespace Sailor;
 
@@ -213,7 +213,7 @@ bool ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 	return bResultCompileVertexShader && bResultCompileFragmentShader;
 }
 
-JobSystem::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
+Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 {
 	SAILOR_PROFILE_FUNCTION();
 	if (TWeakPtr<ShaderAsset> pWeakShader = LoadShaderAsset(assetUID))
@@ -225,7 +225,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& asset
 		{
 			SAILOR_LOG("Skip shader compilation (missing fragment/vertex module): %s", assetInfo->GetAssetFilepath().c_str());
 
-			return JobSystem::TaskPtr<bool>::Make(false);
+			return Tasks::TaskPtr<bool>::Make(false);
 		}
 
 		const uint32_t NumPermutations = (uint32_t)std::pow(2, pShader->GetSupportedDefines().Num());
@@ -242,14 +242,14 @@ JobSystem::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& asset
 
 		if (permutationsToCompile.IsEmpty())
 		{
-			return JobSystem::TaskPtr<bool>::Make(false);
+			return Tasks::TaskPtr<bool>::Make(false);
 		}
 
-		auto scheduler = App::GetSubmodule<JobSystem::Scheduler>();
+		auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
-		JobSystem::TaskPtr<bool> saveCacheJob = scheduler->CreateTaskWithResult<bool>("Save Shader Cache", [=]()
+		Tasks::TaskPtr<bool> saveCacheJob = scheduler->CreateTaskWithResult<bool>("Save Shader Cache", [=]()
 			{
 				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
 				m_shaderCache.SaveCache();
@@ -262,7 +262,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& asset
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
 		{
-			JobSystem::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
+			Tasks::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
 				{
 					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
 					App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetUID, permutationsToCompile[i]);
@@ -280,7 +280,7 @@ JobSystem::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& asset
 		SAILOR_LOG("Cannot find shader asset %s", assetUID.ToString().c_str());
 	}
 
-	return JobSystem::TaskPtr<bool>::Make(false);
+	return Tasks::TaskPtr<bool>::Make(false);
 }
 
 TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
@@ -459,11 +459,11 @@ bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI
 	return false;
 }
 
-JobSystem::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)
+Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<ShaderSetPtr> newPromise;
+	Tasks::TaskPtr<ShaderSetPtr> newPromise;
 	outShader = nullptr;
 
 	if (auto pShader = LoadShaderAsset(uid).TryLock())
@@ -495,7 +495,7 @@ JobSystem::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPt
 				{
 					if (!newPromise)
 					{
-						return JobSystem::TaskPtr<ShaderSetPtr>::Make(outShader);
+						return Tasks::TaskPtr<ShaderSetPtr>::Make(outShader);
 					}
 
 					return newPromise;
@@ -522,14 +522,14 @@ JobSystem::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPt
 		{
 			auto pShader = ShaderSetPtr::Make(m_allocator, uid);
 
-			newPromise = JobSystem::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
+			newPromise = Tasks::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
 				[pShader, assetInfo, defines, this, permutation]()
 				{
 					UpdateRHIResource(pShader, permutation);
 					return pShader;
 				});
 
-			App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
+			App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 
 			m_loadedShaders[uid].Add({ permutation, pShader });
 			entry.Add({ permutation, newPromise });
@@ -544,7 +544,7 @@ JobSystem::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPt
 	m_promises.Unlock(uid);
 
 	SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
-	return JobSystem::TaskPtr<ShaderSetPtr>();
+	return Tasks::TaskPtr<ShaderSetPtr>();
 }
 
 bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines)

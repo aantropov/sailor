@@ -4,14 +4,14 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 void StaticMeshRendererECS::BeginPlay()
 {
 	m_sceneViewProxiesCache = RHI::RHISceneViewPtr::Make();
 }
 
-JobSystem::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
+Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 {
 	m_sceneViewProxiesCache->m_octree.Clear();
 

@@ -13,7 +13,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Memory/ObjectPtr.hpp"
 #include "Core/Submodule.h"
-#include "Jobsystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "GraphicsDriver.h"
 #include "SceneView.h"
 

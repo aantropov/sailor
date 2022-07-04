@@ -3,7 +3,7 @@
 #include <iostream>
 #include "Sailor.h"
 #include "Core/Defines.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Containers/Concepts.h"
 #include "Core/Submodule.h"
@@ -33,7 +33,7 @@ namespace Sailor::ECS
 		virtual void UnregisterComponent(size_t index) = 0;
 
 		virtual void BeginPlay() {}
-		virtual JobSystem::ITaskPtr Tick(float deltaTime) = 0;
+		virtual Tasks::ITaskPtr Tick(float deltaTime) = 0;
 		virtual void EndPlay() {}
 
 		virtual size_t GetComponentType() const { return (size_t)-1; }

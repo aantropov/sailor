@@ -8,7 +8,7 @@
 #include "Engine/GameObject.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Components/TestComponent.h"
@@ -128,7 +128,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	SAILOR_PROFILE_BLOCK("Wait for render thread");
 
-	if (m_bForceStop || App::GetSubmodule<JobSystem::Scheduler>()->GetNumRenderingJobs() > MaxFramesInQueue)
+	if (m_bForceStop || App::GetSubmodule<Tasks::Scheduler>()->GetNumRenderingJobs() > MaxFramesInQueue)
 	{
 		return false;
 	}
@@ -143,13 +143,13 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	SAILOR_PROFILE_BLOCK("Push frame");
 
-	TSharedPtr<class JobSystem::ITask> preRenderingJob = JobSystem::Scheduler::CreateTask("Trace command lists & Track RHI resources",
+	auto preRenderingJob = Tasks::Scheduler::CreateTask("Trace command lists & Track RHI resources",
 		[this]()
 	{
 		this->GetDriver()->TrackResources_ThreadSafe();
-	}, Sailor::JobSystem::EThreadType::Rendering);
+	}, Sailor::Tasks::EThreadType::Rendering);
 
-	TSharedPtr<class JobSystem::ITask> renderingJob = JobSystem::Scheduler::CreateTask("Render Frame",
+	auto renderingJob = Tasks::Scheduler::CreateTask("Render Frame",
 		[this, frame, rhiSceneView]()
 	{
 		auto frameInstance = frame;
@@ -217,12 +217,12 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		} while (m_pViewport->IsIconic());
 
-	}, Sailor::JobSystem::EThreadType::Rendering);
+	}, Sailor::Tasks::EThreadType::Rendering);
 
 	renderingJob->Join(preRenderingJob);
 
-	App::GetSubmodule<JobSystem::Scheduler>()->Run(preRenderingJob);
-	App::GetSubmodule<JobSystem::Scheduler>()->Run(renderingJob);
+	App::GetSubmodule<Tasks::Scheduler>()->Run(preRenderingJob);
+	App::GetSubmodule<Tasks::Scheduler>()->Run(renderingJob);
 
 	SAILOR_PROFILE_END_BLOCK();
 

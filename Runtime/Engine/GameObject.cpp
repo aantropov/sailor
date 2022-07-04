@@ -4,7 +4,7 @@
 #include "ECS/TransformECS.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
 GameObject::GameObject(WorldPtr world, const std::string& name) : m_name(name), m_pWorld(world)
 {

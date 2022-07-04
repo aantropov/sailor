@@ -14,7 +14,7 @@
 #include "Memory/ObjectAllocator.hpp"
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION 
 #include "tiny_obj_loader/tiny_obj_loader.h"
@@ -169,11 +169,11 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 	return task->GetResult();
 }
 
-JobSystem::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
+Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<ModelPtr> newPromise;
+	Tasks::TaskPtr<ModelPtr> newPromise;
 	outModel = nullptr;
 
 	// Check promises first
@@ -193,7 +193,7 @@ JobSystem::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outMode
 		{
 			if (!newPromise)
 			{
-				return JobSystem::TaskPtr<ModelPtr>::Make(outModel);
+				return Tasks::TaskPtr<ModelPtr>::Make(outModel);
 			}
 
 			return newPromise;
@@ -219,7 +219,7 @@ JobSystem::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outMode
 		auto& boundsSphere = model->m_boundsSphere;
 		auto& boundsAabb = model->m_boundsAabb;
 
-		newPromise = JobSystem::Scheduler::CreateTaskWithResult<ModelPtr>("Load model",
+		newPromise = Tasks::Scheduler::CreateTaskWithResult<ModelPtr>("Load model",
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 		{
 			bool bRes = ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, boundsAabb, boundsSphere);
@@ -227,7 +227,7 @@ JobSystem::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outMode
 			return model;
 		});
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
+		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 
 		outModel = m_loadedModels[uid] = model;
 		promise = newPromise;
@@ -237,7 +237,7 @@ JobSystem::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outMode
 	}
 
 	m_promises.Unlock(uid);
-	return JobSystem::TaskPtr<ModelPtr>();
+	return Tasks::TaskPtr<ModelPtr>();
 }
 
 bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHIMeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
@@ -338,18 +338,18 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHI
 	return true;
 }
 
-JobSystem::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials)
+Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials)
 {
 	outMaterials.Clear();
 
 	if (ModelAssetInfoPtr modelInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
-		JobSystem::TaskPtr<bool> loadingFinished = JobSystem::Scheduler::CreateTaskWithResult<bool>("Load Default Materials", []() { return true; });
+		Tasks::TaskPtr<bool> loadingFinished = Tasks::Scheduler::CreateTaskWithResult<bool>("Load Default Materials", []() { return true; });
 
 		for (auto& assetInfo : modelInfo->GetDefaultMaterials())
 		{
 			MaterialPtr material;
-			JobSystem::ITaskPtr loadMaterial;
+			Tasks::ITaskPtr loadMaterial;
 			if (assetInfo && (loadMaterial = App::GetSubmodule<MaterialImporter>()->LoadMaterial(assetInfo, material)))
 			{
 				if (material)
@@ -365,9 +365,9 @@ JobSystem::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(UID uid, TVector<Ma
 			}
 		}
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(loadingFinished);
+		App::GetSubmodule<Tasks::Scheduler>()->Run(loadingFinished);
 		return loadingFinished;
 	}
 
-	return JobSystem::TaskPtr<bool>::Make(false);
+	return Tasks::TaskPtr<bool>::Make(false);
 }

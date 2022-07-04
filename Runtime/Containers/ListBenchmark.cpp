@@ -6,8 +6,8 @@
 #include "Core/Utils.h"
 #include "List.h"
 #include "Memory/Memory.h"
-#include "JobSystem/Tasks.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Tasks.h"
+#include "Tasks/Scheduler.h"
 
 using namespace Sailor;
 using namespace Sailor::Memory;

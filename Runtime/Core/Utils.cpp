@@ -15,8 +15,8 @@
 
 #include <windows.h>
 #include "Containers/Vector.h"
-#include "JobSystem/Tasks.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Tasks.h"
+#include "Tasks/Scheduler.h"
 
 using namespace Sailor;
 using namespace Sailor::Utils;

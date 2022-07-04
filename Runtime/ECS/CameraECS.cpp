@@ -4,9 +4,9 @@
 #include "RHI/SceneView.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 
-JobSystem::ITaskPtr CameraECS::Tick(float deltaTime)
+Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 {
 	for (auto& data : m_components)
 	{

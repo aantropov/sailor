@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <iostream>
 #include "nlohmann_json/include/nlohmann/json.hpp"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "RHI/Texture.h"
 #include "RHI/Renderer.h"
 
@@ -48,7 +48,7 @@ TexturePtr TextureImporter::GetLoadedTexture(UID uid)
 	return TexturePtr();
 }
 
-JobSystem::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(UID uid)
+Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(UID uid)
 {
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
@@ -56,7 +56,7 @@ JobSystem::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(UID uid)
 		return (*it).m_second;
 	}
 
-	return JobSystem::TaskPtr<TexturePtr>();
+	return Tasks::TaskPtr<TexturePtr>();
 }
 
 void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpired)
@@ -66,7 +66,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 	{
 		if (TextureAssetInfoPtr assetInfo = dynamic_cast<TextureAssetInfo*>(inAssetInfo))
 		{
-			auto newPromise = JobSystem::Scheduler::CreateTaskWithResult<bool>("Update Texture",
+			auto newPromise = Tasks::Scheduler::CreateTaskWithResult<bool>("Update Texture",
 				[pTexture, assetInfo, this]()
 				{
 					ByteCode decodedData;
@@ -126,11 +126,11 @@ bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 	return task->GetResult();
 }
 
-JobSystem::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)
+Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	JobSystem::TaskPtr<TexturePtr> newPromise;
+	Tasks::TaskPtr<TexturePtr> newPromise;
 	outTexture = nullptr;
 
 	// Check promises first
@@ -149,7 +149,7 @@ JobSystem::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr&
 		{
 			if (!newPromise)
 			{
-				return JobSystem::TaskPtr<TexturePtr>::Make(outTexture);
+				return Tasks::TaskPtr<TexturePtr>::Make(outTexture);
 			}
 
 			return newPromise;
@@ -170,7 +170,7 @@ JobSystem::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr&
 	{
 		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
 
-		newPromise = JobSystem::Scheduler::CreateTaskWithResult<TexturePtr>("Load Texture",
+		newPromise = Tasks::Scheduler::CreateTaskWithResult<TexturePtr>("Load Texture",
 			[pTexture, assetInfo, this]()
 			{
 				ByteCode decodedData;
@@ -187,7 +187,7 @@ JobSystem::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr&
 				return pTexture;
 			});
 
-		App::GetSubmodule<JobSystem::Scheduler>()->Run(newPromise);
+		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 
 		outTexture = m_loadedTextures[uid] = pTexture;
 		promise = newPromise;
@@ -199,5 +199,5 @@ JobSystem::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr&
 	m_promises.Unlock(uid);
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
-	return JobSystem::TaskPtr<TexturePtr>();
+	return Tasks::TaskPtr<TexturePtr>();
 }

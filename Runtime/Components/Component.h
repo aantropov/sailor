@@ -2,7 +2,7 @@
 #include "Sailor.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/ObjectPtr.hpp"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "Engine/Types.h"
 #include "Engine/Object.h"
 

@@ -3,7 +3,7 @@
 #include "Sailor.h"
 
 using namespace Sailor;
-using namespace Sailor::JobSystem;
+using namespace Sailor::Tasks;
 using namespace Sailor::ECS;
 
 namespace Sailor::Internal

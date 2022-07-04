@@ -10,7 +10,7 @@
 #include "FrameGraph/FrameGraphNode.h"
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
 #include "AssetRegistry/Texture/TextureImporter.h"

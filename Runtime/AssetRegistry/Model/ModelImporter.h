@@ -10,7 +10,7 @@
 #include "Engine/Types.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "ModelAssetInfo.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Scheduler.h"
 #include "ModelAssetInfo.h"
 #include "Engine/Object.h"
 #include "Memory/ObjectPtr.hpp"
@@ -69,10 +69,10 @@ namespace Sailor
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 
-		SAILOR_API JobSystem::TaskPtr<ModelPtr> LoadModel(UID uid, ModelPtr& outModel);
+		SAILOR_API Tasks::TaskPtr<ModelPtr> LoadModel(UID uid, ModelPtr& outModel);
 		SAILOR_API bool LoadModel_Immediate(UID uid, ModelPtr& outModel);
 
-		SAILOR_API JobSystem::TaskPtr<bool> LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials);
+		SAILOR_API Tasks::TaskPtr<bool> LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials);
 
 	protected:
 
@@ -80,7 +80,7 @@ namespace Sailor
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 
-		TConcurrentMap<UID, JobSystem::TaskPtr<ModelPtr>> m_promises;
+		TConcurrentMap<UID, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<UID, ModelPtr> m_loadedModels;
 
 		ObjectAllocatorPtr m_allocator;

@@ -10,8 +10,8 @@
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
 #include "Core/Utils.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
-#include "JobSystem/Tasks.h"
-#include "JobSystem/JobSystem.h"
+#include "Tasks/Tasks.h"
+#include "Tasks/Scheduler.h"
 
 using namespace Sailor;
 using namespace nlohmann;
