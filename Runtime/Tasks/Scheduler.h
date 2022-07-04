@@ -9,8 +9,8 @@
 #include "Memory/UniquePtr.hpp"
 #include "Tasks/Tasks.h"
 
-#define SAILOR_ENQUEUE_JOB(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda))
-#define SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Render))
+#define SAILOR_ENQUEUE_TASK(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda))
+#define SAILOR_ENQUEUE_TASK_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Render))
 
 namespace Sailor
 {

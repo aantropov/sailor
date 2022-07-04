@@ -3,7 +3,7 @@
 #include "Types.h"
 #include "Engine/Object.h"
 
-#define SAILOR_ENQUEUE_JOB_RENDER_THREAD_CMD(Name, Lambda) \
+#define SAILOR_ENQUEUE_TASK_RENDER_THREAD_CMD(Name, Lambda) \
 { \
 auto lambda = Lambda; \
 auto submit = [lambda]() \
@@ -17,7 +17,7 @@ auto submit = [lambda]() \
 Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Render)); \
 }\
 
-#define SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD(Name, Lambda) \
+#define SAILOR_ENQUEUE_TASK_RENDER_THREAD_TRANSFER_CMD(Name, Lambda) \
 { \
 auto lambda = Lambda; \
 auto submit = [lambda]() \

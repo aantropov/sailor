@@ -196,7 +196,7 @@ DebugFrame DebugContext::Tick(RHI::RHIShaderBindingSetPtr frameBindings, float d
 
 		//renderer->SubmitCommandList(updateMeshCmd, RHI::FencePtr::Make(), result.m_signalSemaphore);
 
-		SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
+		SAILOR_ENQUEUE_TASK_RENDER_THREAD("Create mesh",
 			([&renderer, updateMeshCmd, semaphore]()
 		{
 			renderer->SubmitCommandList(updateMeshCmd, RHI::RHIFencePtr::Make(), semaphore);

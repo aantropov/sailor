@@ -35,7 +35,7 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3U
 	TrackDelayedInitialization(mesh.GetRawPtr(), fence);
 
 	// Submit cmd lists
-	SAILOR_ENQUEUE_JOB_RENDER_THREAD("Create mesh",
+	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Create mesh",
 		([this, cmdList, fence]()
 	{
 		SubmitCommandList(cmdList, fence);

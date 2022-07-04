@@ -58,7 +58,7 @@ void App::Initialize()
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
 
 #ifdef BUILD_WITH_EASY_PROFILER
-	SAILOR_ENQUEUE_JOB("Initialize profiler", ([]() {profiler::startListen(); }));
+	SAILOR_ENQUEUE_TASK("Initialize profiler", ([]() {profiler::startListen(); }));
 	EASY_MAIN_THREAD;
 #endif
 
