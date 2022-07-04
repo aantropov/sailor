@@ -10,7 +10,7 @@
 #include "Tasks/Tasks.h"
 
 #define SAILOR_ENQUEUE_JOB(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda))
-#define SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Rendering))
+#define SAILOR_ENQUEUE_JOB_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Render))
 
 namespace Sailor
 {

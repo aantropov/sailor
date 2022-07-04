@@ -147,7 +147,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		[this]()
 	{
 		this->GetDriver()->TrackResources_ThreadSafe();
-	}, Sailor::Tasks::EThreadType::Rendering);
+	}, Sailor::Tasks::EThreadType::Render);
 
 	auto renderingJob = Tasks::Scheduler::CreateTask("Render Frame",
 		[this, frame, rhiSceneView]()
@@ -217,7 +217,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		} while (m_pViewport->IsIconic());
 
-	}, Sailor::Tasks::EThreadType::Rendering);
+	}, Sailor::Tasks::EThreadType::Render);
 
 	renderingJob->Join(preRenderingJob);
 

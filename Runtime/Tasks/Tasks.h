@@ -16,11 +16,11 @@ namespace Sailor
 
 		enum class EThreadType : uint8_t
 		{
-			Rendering = 0,
+			Render = 0,
 			Worker = 1,
-			Main = 2
+			Main = 2,
+			RHI = 4
 		};
-
 
 		/* The tasks are using JobSystem::Scheduler to run the activities on other threads.
 		*  The main point to use tasks is to handle/get results of long term tasks without blocking the current thread.

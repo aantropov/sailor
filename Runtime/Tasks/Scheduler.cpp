@@ -77,7 +77,7 @@ void WorkerThread::Process()
 
 	m_threadId = GetCurrentThreadId();
 
-	if (m_threadType == EThreadType::Rendering)
+	if (m_threadType == EThreadType::Render)
 	{
 		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 	}
@@ -126,10 +126,10 @@ void Scheduler::Initialize()
 
 	WorkerThread* newRenderingThread = new WorkerThread(
 		"Rendering Thread",
-		EThreadType::Rendering,
-		m_refreshCondVar[(uint32_t)EThreadType::Rendering],
-		m_queueMutex[(uint32_t)EThreadType::Rendering],
-		m_pCommonJobsQueue[(uint32_t)EThreadType::Rendering]);
+		EThreadType::Render,
+		m_refreshCondVar[(uint32_t)EThreadType::Render],
+		m_queueMutex[(uint32_t)EThreadType::Render],
+		m_pCommonJobsQueue[(uint32_t)EThreadType::Render]);
 
 	m_workerThreads.Emplace(newRenderingThread);
 
@@ -157,7 +157,7 @@ Scheduler::~Scheduler()
 	m_bIsTerminating = true;
 
 	NotifyWorkerThread(EThreadType::Worker, true);
-	NotifyWorkerThread(EThreadType::Rendering, true);
+	NotifyWorkerThread(EThreadType::Render, true);
 
 	for (auto& worker : m_workerThreads)
 	{
@@ -368,7 +368,7 @@ void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThread
 
 uint32_t Scheduler::GetNumRenderingJobs() const
 {
-	return (uint32_t)m_pCommonJobsQueue[(uint32_t)EThreadType::Rendering].Num();
+	return (uint32_t)m_pCommonJobsQueue[(uint32_t)EThreadType::Render].Num();
 }
 
 void Scheduler::WaitIdle(EThreadType type)

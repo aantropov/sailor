@@ -37,7 +37,7 @@ Tasks::ITaskPtr Material::OnHotReload()
 	auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 	{
 		UpdateRHIResource();
-	}, Tasks::EThreadType::Rendering);
+	}, Tasks::EThreadType::Render);
 
 	return updateRHI;
 }
@@ -330,7 +330,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 				{
 					pMaterial.GetRawPtr()->UpdateRHIResource();
 					pMaterial.GetRawPtr()->TraceHotReload(nullptr);
-				}, Tasks::EThreadType::Rendering);
+				}, Tasks::EThreadType::Render);
 
 				// Preload textures
 				for (auto& sampler : pMaterialAsset->GetSamplers())
@@ -345,7 +345,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 							pTexture.GetRawPtr()->AddHotReloadDependentObject(material);
 							pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
 						}
-					}, "Set material texture binding", Tasks::EThreadType::Rendering));
+					}, "Set material texture binding", Tasks::EThreadType::Render));
 				}
 
 				for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())
@@ -525,7 +525,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 						texture.GetRawPtr()->AddHotReloadDependentObject(pMaterial);
 						pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
 					}
-				}, "Set material texture binding", Tasks::EThreadType::Rendering));
+				}, "Set material texture binding", Tasks::EThreadType::Render));
 			}
 
 			for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())

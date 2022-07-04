@@ -14,7 +14,7 @@ auto submit = [lambda]() \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
 	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::RHIFencePtr::Make()); \
 }; \
-Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Rendering)); \
+Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Render)); \
 }\
 
 #define SAILOR_ENQUEUE_JOB_RENDER_THREAD_TRANSFER_CMD(Name, Lambda) \
@@ -28,7 +28,7 @@ auto submit = [lambda]() \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
 	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::RHIFencePtr::Make()); \
 }; \
-Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Rendering)); \
+Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Render)); \
 }\
 
 namespace Sailor

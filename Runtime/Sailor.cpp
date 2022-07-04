@@ -186,7 +186,7 @@ void App::Start()
 	s_pInstance->m_pViewportWindow->SetRunning(false);
 
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
-	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Rendering);
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 }
 
 void App::Stop()
@@ -220,7 +220,7 @@ void App::Shutdown()
 	// We need to finish all jobs before release
 	GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
 	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
-	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Rendering);
+	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 
 	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<Tasks::Scheduler>();

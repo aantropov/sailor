@@ -39,7 +39,7 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 
 	// Waiting finishing releasing of rendering resources
 	App::GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
-	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Rendering);
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
 
 	GraphicsDriver::Vulkan::VulkanApi::Shutdown();
