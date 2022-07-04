@@ -125,6 +125,12 @@ namespace Sailor
 			return p(m_pControlBlock);
 		}
 
+		template<typename R>
+		__forceinline R* StaticCast() { return static_cast<R*>(m_pRawPtr); }
+
+		template<typename R>
+		__forceinline R* DynamicCast() { return dynamic_cast<R*>(m_pRawPtr); }
+
 	protected:
 
 	private:

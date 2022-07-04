@@ -19,7 +19,7 @@ namespace Sailor
 			Render = 0,
 			Worker = 1,
 			Main = 2,
-			RHI = 4
+			RHI = 3
 		};
 
 		/* The tasks are using JobSystem::Scheduler to run the activities on other threads.
@@ -172,7 +172,7 @@ namespace Sailor
 				m_bIsFinished = true;
 			}
 
-			SAILOR_API Task(const std::string& name, std::function<TResult(TArgs)> function, EThreadType thread)
+			SAILOR_API Task(const std::string& name, std::function<TResult(TArgs)> function, EThreadType thread) : ITask(name, thread)
 			{
 				m_function = std::move(function);
 			}
@@ -184,6 +184,24 @@ namespace Sailor
 				res->SetChainedTaskPrev(m_self);
 				m_chainedTasksNext.Add(res);
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
+				res->Join(m_self);
+
+				if (m_bIsStarted || m_bIsInQueue)
+				{
+					App::GetSubmodule<Scheduler>()->Run(res);
+				}
+				return res;
+			}
+
+			SAILOR_API TSharedPtr<Task<TResult, void>> ToTaskWithResult()
+			{
+				auto res = Scheduler::CreateTaskWithResult<TResult>("Get result task", std::move([=]() 
+				{
+					return m_self.Lock().DynamicCast<ITaskWithResult<TResult>>()->GetResult(); 
+				}), m_threadType);
+
+				res->SetChainedTaskPrev(m_self);
+				m_chainedTasksNext.Add(res);
 				res->Join(m_self);
 
 				if (m_bIsStarted || m_bIsInQueue)

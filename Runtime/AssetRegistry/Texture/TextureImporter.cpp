@@ -169,7 +169,24 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
 		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
-
+/*
+		newPromise = Tasks::Scheduler::CreateTaskWithResult<Data>("Load Texture",
+			[pTexture, assetInfo, this]()
+		{
+			Data data;
+			ImportTexture(assetInfo->GetUID(), data.decodedData, data.width, data.height, data.mipLevels);
+			return data;
+		})->Then<TexturePtr, Data>([pTexture, assetInfo, this](Data data)
+		{
+			if (ImportTexture(assetInfo->GetUID(), data.decodedData, data.width, data.height, data.mipLevels))
+			{
+				pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data.decodedData[0], data.decodedData.Num(), glm::vec3(data.width, data.height, 1.0f),
+					data.mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
+					assetInfo->GetClamping());
+			}
+			return pTexture;
+		}, "Create RHI Texture", Tasks::EThreadType::Worker)->ToTaskWithResult();
+*/
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<TexturePtr>("Load Texture",
 			[pTexture, assetInfo, this]()
 			{

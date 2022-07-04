@@ -69,6 +69,8 @@ namespace Sailor
 
 		class Scheduler final : public TSubmodule<Scheduler>
 		{
+			const uint8_t MaxRHIThreadsNum = 4;
+
 		public:
 
 			SAILOR_API void Initialize();
@@ -140,9 +142,9 @@ namespace Sailor
 				TVector<ITaskPtr>*& pOutQueue,
 				std::condition_variable*& pOutCondVar);
 
-			std::mutex m_queueMutex[3];
-			std::condition_variable m_refreshCondVar[3];
-			TVector<ITaskPtr> m_pCommonJobsQueue[3];
+			std::mutex m_queueMutex[4];
+			std::condition_variable m_refreshCondVar[4];
+			TVector<ITaskPtr> m_pCommonJobsQueue[4];
 
 			std::atomic<uint32_t> m_numBusyThreads;
 			TVector<WorkerThread*> m_workerThreads;

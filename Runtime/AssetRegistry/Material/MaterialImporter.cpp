@@ -510,7 +510,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 			{
 				pMaterial.GetRawPtr()->UpdateRHIResource();
-			});
+			}, Tasks::EThreadType::RHI);
 
 			// Preload textures
 			for (auto& sampler : pMaterialAsset->GetSamplers())

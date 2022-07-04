@@ -77,7 +77,7 @@ void WorkerThread::Process()
 
 	m_threadId = GetCurrentThreadId();
 
-	if (m_threadType == EThreadType::Render)
+	if (m_threadType == EThreadType::Render || m_threadType == EThreadType::RHI)
 	{
 		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 	}
@@ -123,9 +123,10 @@ void Scheduler::Initialize()
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numThreads = std::max(1u, coresCount - 2u);
+	const unsigned numRHIThreads = numThreads > 12 ? MaxRHIThreadsNum : 2;
 
 	WorkerThread* newRenderingThread = new WorkerThread(
-		"Rendering Thread",
+		"Render Thread",
 		EThreadType::Render,
 		m_refreshCondVar[(uint32_t)EThreadType::Render],
 		m_queueMutex[(uint32_t)EThreadType::Render],
@@ -144,6 +145,17 @@ void Scheduler::Initialize()
 		m_workerThreads.Emplace(newThread);
 	}
 
+	for (uint32_t i = 0; i < numRHIThreads; i++)
+	{
+		const std::string threadName = std::string("RHI Thread ") + std::to_string(i);
+		WorkerThread* newThread = new WorkerThread(threadName, EThreadType::RHI,
+			m_refreshCondVar[(uint32_t)EThreadType::RHI],
+			m_queueMutex[(uint32_t)EThreadType::RHI],
+			m_pCommonJobsQueue[(uint32_t)EThreadType::RHI]);
+
+		m_workerThreads.Emplace(newThread);
+	}
+
 	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
 }
 
@@ -158,6 +170,7 @@ Scheduler::~Scheduler()
 
 	NotifyWorkerThread(EThreadType::Worker, true);
 	NotifyWorkerThread(EThreadType::Render, true);
+	NotifyWorkerThread(EThreadType::RHI, true);
 
 	for (auto& worker : m_workerThreads)
 	{
