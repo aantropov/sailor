@@ -219,13 +219,14 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 		auto& boundsSphere = model->m_boundsSphere;
 		auto& boundsAabb = model->m_boundsAabb;
 
+		// TODO: Split Worker & RHI thread related tasks
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<ModelPtr>("Load model",
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 		{
 			bool bRes = ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, boundsAabb, boundsSphere);
 			model.GetRawPtr()->Flush();
 			return model;
-		});
+		}, Tasks::EThreadType::RHI);
 
 		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 

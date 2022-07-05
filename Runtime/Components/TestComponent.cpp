@@ -24,7 +24,7 @@ void TestComponent::BeginPlay()
 	{
 		App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID(), defaultTexture)->Then<void, TexturePtr>(
 			[=](TexturePtr pTexture) { Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", pTexture->GetRHI(), 1);
-		});
+		}, "Update RHI", EThreadType::RHI);
 	}
 
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 20.0f, 1000.0f);

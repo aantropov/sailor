@@ -69,7 +69,7 @@ namespace Sailor
 
 		class Scheduler final : public TSubmodule<Scheduler>
 		{
-			const uint8_t MaxRHIThreadsNum = 4;
+			const uint8_t RHIThreadsNum = 2u;
 
 		public:
 

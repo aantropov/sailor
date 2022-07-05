@@ -123,7 +123,7 @@ void Scheduler::Initialize()
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numThreads = std::max(1u, coresCount - 2u);
-	const unsigned numRHIThreads = numThreads > 12 ? MaxRHIThreadsNum : 2;
+	const unsigned numRHIThreads = RHIThreadsNum;
 
 	WorkerThread* newRenderingThread = new WorkerThread(
 		"Render Thread",
@@ -212,7 +212,7 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pJob, const ITaskPtr& p
 	for (auto& chainedTasksNext : pJob->GetChainedTasksNext())
 	{
 		ITaskPtr pCurrentChainedTask;
-		while (pCurrentChainedTask = chainedTasksNext.TryLock())
+		if (pCurrentChainedTask = chainedTasksNext.TryLock())
 		{
 			if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted())
 			{
@@ -229,12 +229,12 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pJob, const ITaskPtr& p
 	}
 
 	ITaskPtr pCurrentChainedTask;
-	while (pCurrentChainedTask = pJob->GetChainedTaskPrev().TryLock())
+	if (pCurrentChainedTask = pJob->GetChainedTaskPrev())
 	{
 		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted() || pCurrentChainedTask == pJobToIgnore)
 		{
 			// No point to trace next
-			break;
+			return;
 		}
 
 		Run(pCurrentChainedTask, false);

@@ -68,21 +68,21 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 		{
 			auto newPromise = Tasks::Scheduler::CreateTaskWithResult<bool>("Update Texture",
 				[pTexture, assetInfo, this]()
-				{
-					ByteCode decodedData;
-					int32_t width;
-					int32_t height;
-					uint32_t mipLevels;
+			{
+				ByteCode decodedData;
+				int32_t width;
+				int32_t height;
+				uint32_t mipLevels;
 
-					if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
-					{
-						pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
-							mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
-							assetInfo->GetClamping());
-						return true;
-					}
-					return false;
-				})->Run();
+				if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
+				{
+					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
+						mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
+						assetInfo->GetClamping());
+					return true;
+				}
+				return false;
+			})->Run();
 
 			pTexture->TraceHotReload(newPromise);
 		}
@@ -169,42 +169,34 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
 		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
-/*
-		newPromise = Tasks::Scheduler::CreateTaskWithResult<Data>("Load Texture",
+
+		struct Data
+		{
+			ByteCode decodedData;
+			int32_t width;
+			int32_t height;
+			uint32_t mipLevels;
+			bool bImported;
+		};
+
+		newPromise = Tasks::Scheduler::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
 			[pTexture, assetInfo, this]()
 		{
-			Data data;
-			ImportTexture(assetInfo->GetUID(), data.decodedData, data.width, data.height, data.mipLevels);
-			return data;
-		})->Then<TexturePtr, Data>([pTexture, assetInfo, this](Data data)
+			TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
+			pData->bImported = ImportTexture(assetInfo->GetUID(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
+			return pData;
+		})->Then<TexturePtr, TSharedPtr<Data>>([pTexture, assetInfo, this](TSharedPtr<Data> data)
 		{
-			if (ImportTexture(assetInfo->GetUID(), data.decodedData, data.width, data.height, data.mipLevels))
+			if (data->bImported)
 			{
-				pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data.decodedData[0], data.decodedData.Num(), glm::vec3(data.width, data.height, 1.0f),
-					data.mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
+				pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data->decodedData[0], data->decodedData.Num(), glm::vec3(data->width, data->height, 1.0f),
+					data->mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 					assetInfo->GetClamping());
 			}
 			return pTexture;
-		}, "Create RHI Texture", Tasks::EThreadType::Worker)->ToTaskWithResult();
-*/
-		newPromise = Tasks::Scheduler::CreateTaskWithResult<TexturePtr>("Load Texture",
-			[pTexture, assetInfo, this]()
-			{
-				ByteCode decodedData;
-				int32_t width;
-				int32_t height;
-				uint32_t mipLevels;
-
-				if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
-				{
-					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
-						mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
-						assetInfo->GetClamping());
-				}
-				return pTexture;
-			});
-
-		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
+		}, "Create RHI Texture", Tasks::EThreadType::RHI)->ToTaskWithResult();
+		
+		newPromise->Run();
 
 		outTexture = m_loadedTextures[uid] = pTexture;
 		promise = newPromise;

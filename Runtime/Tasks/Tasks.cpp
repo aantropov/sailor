@@ -46,7 +46,11 @@ bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
 void ITask::SetChainedTaskPrev(TWeakPtr<ITask>& job)
 {
 	assert(!m_chainedTaskPrev);
-	m_chainedTaskPrev = job;
+	if (job)
+	{
+		//Job could be equal null
+		m_chainedTaskPrev = job.Lock();
+	}
 }
 
 void ITask::Join(const TVector<TWeakPtr<ITask>>& jobs)

@@ -209,6 +209,12 @@ void App::Shutdown()
 	RemoveSubmodule<ModelAssetInfoHandler>();
 	RemoveSubmodule<FrameGraphAssetInfoHandler>();
 
+	// We need to finish all jobs before release
+	GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
+	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
+	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::RHI);
+	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
+
 	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<MaterialImporter>();
 	RemoveSubmodule<ModelImporter>();
@@ -216,11 +222,6 @@ void App::Shutdown()
 	RemoveSubmodule<TextureImporter>();
 
 	RemoveSubmodule<AssetRegistry>();
-
-	// We need to finish all jobs before release
-	GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
-	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
-	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 
 	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<Tasks::Scheduler>();
