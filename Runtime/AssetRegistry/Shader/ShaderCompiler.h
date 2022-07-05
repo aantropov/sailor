@@ -97,6 +97,8 @@ namespace Sailor
 		SAILOR_API bool LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
 		SAILOR_API Tasks::TaskPtr<ShaderSetPtr> LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
 
+		SAILOR_API virtual void CollectGarbage() override;
+
 	protected:
 
 		ShaderCache m_shaderCache;

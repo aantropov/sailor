@@ -4,6 +4,7 @@
 #include "Core/SpinLock.h"
 #include "Core/Defines.h"
 #include "HeapAllocator.h"
+#include "MallocAllocator.hpp"
 #include "SharedPtr.hpp"
 
 namespace Sailor::Memory
@@ -19,7 +20,7 @@ namespace Sailor::Memory
 		SAILOR_API void* Allocate(size_t size, size_t alignment = 8)
 		{
 			m_lock.Lock();
-			void* res = m_heapAllocator.Allocate(size, alignment);
+			void* res = m_globalAllocator.Allocate(size, alignment);
 			m_lock.Unlock();
 			
 			return res;
@@ -28,7 +29,7 @@ namespace Sailor::Memory
 		SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
 		{
 			m_lock.Lock();
-			void* res = m_heapAllocator.Reallocate(ptr, size, alignment);
+			void* res = m_globalAllocator.Reallocate(ptr, size, alignment);
 			m_lock.Unlock();
 			return res;
 		}
@@ -36,7 +37,7 @@ namespace Sailor::Memory
 		SAILOR_API void Free(void* ptr, size_t size = 0)
 		{
 			m_lock.Lock();
-			m_heapAllocator.Free(ptr);
+			m_globalAllocator.Free(ptr);
 			m_lock.Unlock();
 		}
 
@@ -51,6 +52,6 @@ namespace Sailor::Memory
 	protected:
 
 		SpinLock m_lock;
-		HeapAllocator m_heapAllocator;
+		DefaultGlobalAllocator m_globalAllocator;
 	};
 }

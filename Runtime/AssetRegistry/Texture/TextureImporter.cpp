@@ -195,10 +195,10 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 			}
 			return pTexture;
 		}, "Create RHI Texture", Tasks::EThreadType::RHI)->ToTaskWithResult();
-		
-		newPromise->Run();
 
 		outTexture = m_loadedTextures[uid] = pTexture;
+		
+		newPromise->Run();
 		promise = newPromise;
 		m_promises.Unlock(uid);
 
@@ -209,4 +209,22 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
 	return Tasks::TaskPtr<TexturePtr>();
+}
+
+void TextureImporter::CollectGarbage()
+{
+	TVector<UID> uidsToRemove;
+	for (auto& promise : m_promises)
+	{
+		if (promise.m_second->IsFinished())
+		{
+			UID uid = promise.m_first;
+			uidsToRemove.Emplace(uid);
+		}
+	}
+
+	for (auto& uid : uidsToRemove)
+	{
+		m_promises.Remove(uid);
+	}
 }

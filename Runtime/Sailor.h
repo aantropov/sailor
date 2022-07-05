@@ -30,6 +30,11 @@ namespace Sailor
 
 		static TUniquePtr<Win32::Window>& GetViewportWindow();
 
+		static SubmoduleBase* GetSubmodule(uint32_t index)
+		{
+			return s_pInstance->m_submodules[index].GetRawPtr();
+		}
+
 		template<typename T>
 		static T* GetSubmodule()
 		{

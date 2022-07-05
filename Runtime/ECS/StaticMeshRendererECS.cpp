@@ -17,7 +17,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 	for (auto& data : m_components)
 	{
-		if (data.m_bIsActive && data.GetModel()->IsReady())
+		if (data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
 		{
 			const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
 

@@ -53,6 +53,7 @@ namespace Sailor
 
 		SAILOR_API TexturePtr GetLoadedTexture(UID uid);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> GetLoadPromise(UID uid);
+		SAILOR_API virtual void CollectGarbage() override;
 
 	protected:
 

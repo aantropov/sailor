@@ -538,10 +538,11 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 			return pMaterial;
 		});
 
+		outMaterial = m_loadedMaterials[uid] = pMaterial;
+
 		newPromise->Join(pLoadShader);
 		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 
-		outMaterial = m_loadedMaterials[uid] = pMaterial;
 		promise = newPromise;
 		m_promises.Unlock(uid);
 
@@ -553,3 +554,20 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 	return Tasks::TaskPtr<MaterialPtr>();
 }
 
+void MaterialImporter::CollectGarbage()
+{
+	TVector<UID> uidsToRemove;
+	for (auto& promise : m_promises)
+	{
+		if (promise.m_second->IsFinished())
+		{
+			UID uid = promise.m_first;
+			uidsToRemove.Emplace(uid);
+		}
+	}
+
+	for (auto& uid : uidsToRemove)
+	{
+		m_promises.Remove(uid);
+	}
+}

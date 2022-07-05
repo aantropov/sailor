@@ -228,9 +228,9 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 			return model;
 		}, Tasks::EThreadType::RHI);
 
-		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
-
 		outModel = m_loadedModels[uid] = model;
+
+		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 		promise = newPromise;
 		m_promises.Unlock(uid);
 
@@ -371,4 +371,22 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(UID uid, TVector<Materi
 	}
 
 	return Tasks::TaskPtr<bool>::Make(false);
+}
+
+void ModelImporter::CollectGarbage()
+{
+	TVector<UID> uidsToRemove;
+	for (auto& promise : m_promises)
+	{
+		if (promise.m_second->IsFinished())
+		{
+			UID uid = promise.m_first;
+			uidsToRemove.Emplace(uid);
+		}
+	}
+
+	for (auto& uid : uidsToRemove)
+	{
+		m_promises.Remove(uid);
+	}
 }

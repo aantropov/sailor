@@ -74,6 +74,8 @@ namespace Sailor
 
 		SAILOR_API Tasks::TaskPtr<bool> LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials);
 
+		SAILOR_API virtual void CollectGarbage() override;
+
 	protected:
 
 		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHIMeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);

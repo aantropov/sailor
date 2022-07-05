@@ -148,6 +148,8 @@ namespace Sailor
 		SAILOR_API MaterialPtr GetLoadedMaterial(UID uid);
 		SAILOR_API Tasks::TaskPtr<MaterialPtr> GetLoadPromise(UID uid);
 
+		SAILOR_API virtual void CollectGarbage() override;
+
 	protected:
 
 		SAILOR_API bool IsMaterialLoaded(UID uid) const;

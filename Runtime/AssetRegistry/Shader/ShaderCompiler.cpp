@@ -250,23 +250,23 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
 		Tasks::TaskPtr<bool> saveCacheJob = scheduler->CreateTaskWithResult<bool>("Save Shader Cache", [=]()
-			{
-				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
-				m_shaderCache.SaveCache();
+		{
+			SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
+			m_shaderCache.SaveCache();
 
-				//Unload shader asset text
-				m_shaderAssetsCache.Remove(assetInfo->GetUID());
+			//Unload shader asset text
+			m_shaderAssetsCache.Remove(assetInfo->GetUID());
 
-				return true;
-			});
+			return true;
+		});
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
 		{
 			Tasks::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
-				{
-					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
-					App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetUID, permutationsToCompile[i]);
-				});
+			{
+				SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
+				App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetUID, permutationsToCompile[i]);
+			});
 
 			saveCacheJob->Join(job);
 			scheduler->Run(job);
@@ -332,20 +332,20 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 		if (compileTask)
 		{
 			compileTask->Then<void, bool>([=](bool bRes)
+			{
+				if (bRes)
 				{
-					if (bRes)
+					for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
 					{
-						for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
-						{
-							SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+						SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
 
-							if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
-							{
-								loadedShader.m_second->TraceHotReload(nullptr);
-							}
+						if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+						{
+							loadedShader.m_second->TraceHotReload(nullptr);
 						}
 					}
 				}
+			}
 			);
 		}
 	}
@@ -524,17 +524,17 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& o
 
 			newPromise = Tasks::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
 				[pShader, assetInfo, defines, this, permutation]()
-				{
-					UpdateRHIResource(pShader, permutation);
-					return pShader;
-				});
-
-			App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
+			{
+				UpdateRHIResource(pShader, permutation);
+				return pShader;
+			});
+						
 
 			m_loadedShaders[uid].Add({ permutation, pShader });
 			entry.Add({ permutation, newPromise });
 			outShader = (*(m_loadedShaders[uid].end() - 1)).m_second;
 
+			App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 			m_promises.Unlock(uid);
 
 			return (entry.end() - 1)->m_second;
@@ -583,4 +583,31 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 	pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);
 
 	return true;
+}
+
+void ShaderCompiler::CollectGarbage()
+{
+	TVector<UID> uidsToRemove;
+	for (auto& promiseSet : m_promises)
+	{
+		bool bFullyCompiled = true;
+		for (auto& promise : promiseSet.m_second)
+		{
+			if (!promise.m_second->IsFinished())
+			{
+				bFullyCompiled = false;
+				break;
+			}
+		}
+
+		if (bFullyCompiled)
+		{
+			uidsToRemove.Emplace(promiseSet.m_first);
+		}
+	}
+
+	for (auto& uid : uidsToRemove)
+	{
+		m_promises.Remove(uid);
+	}
 }

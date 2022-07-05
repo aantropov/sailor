@@ -11,6 +11,7 @@ namespace Sailor
 		static constexpr int32_t InvalidSubmoduleTypeId = -1;
 
 		virtual ~SubmoduleBase() noexcept = default;
+		virtual void CollectGarbage() {}
 
 	protected:
 		static int32_t s_nextTypeId;

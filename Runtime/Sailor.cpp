@@ -162,6 +162,14 @@ void App::Start()
 			frameCounter++;
 		}
 
+		// Collect garbage
+		uint32_t index = 0;
+		while (auto submodule = GetSubmodule(index))
+		{
+			submodule->CollectGarbage();
+			index++;
+		}
+
 		timer.Stop();
 
 		if (timer.ResultAccumulatedMs() > 1000)
