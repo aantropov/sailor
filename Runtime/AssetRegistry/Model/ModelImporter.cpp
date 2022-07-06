@@ -219,18 +219,38 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 		auto& boundsSphere = model->m_boundsSphere;
 		auto& boundsAabb = model->m_boundsAabb;
 
-		// TODO: Split Worker & RHI thread related tasks
-		newPromise = Tasks::Scheduler::CreateTaskWithResult<ModelPtr>("Load model",
+		struct Data
+		{
+			TVector<MeshContext> m_parsedMeshes;
+			bool m_bIsImported;
+		};
+
+		newPromise = Tasks::Scheduler::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 		{
-			bool bRes = ImportObjModel(assetInfo, model.GetRawPtr()->m_meshes, boundsAabb, boundsSphere);
-			model.GetRawPtr()->Flush();
+			TSharedPtr<Data> res = TSharedPtr<Data>::Make();
+			res->m_bIsImported = ImportObjModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
+			return res;
+		})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data)
+		{
+			if (data->m_bIsImported)
+			{
+				for (const auto& mesh : data->m_parsedMeshes)
+				{
+					RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
+					ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+					ptr->m_bounds = mesh.bounds;
+					RHI::Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
+					model.GetRawPtr()->m_meshes.Emplace(ptr);
+				}
+
+				model.GetRawPtr()->Flush();
+			}
 			return model;
-		}, Tasks::EThreadType::RHI);
+		}, "Update RHI Meshes", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
 		outModel = m_loadedModels[uid] = model;
-
-		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
+		newPromise->Run();
 		promise = newPromise;
 		m_promises.Unlock(uid);
 
@@ -241,7 +261,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	return Tasks::TaskPtr<ModelPtr>();
 }
 
-bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHIMeshPtr>& outMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
+bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
@@ -260,22 +280,12 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHI
 		return false;
 	}
 
-	struct MeshContext
-	{
-		std::unordered_map<RHI::VertexP3N3UV2C4, uint32_t> uniqueVertices;
-		TVector<RHI::VertexP3N3UV2C4> outVertices;
-		TVector<uint32_t> outIndices;
-		Math::AABB bounds{};
-		bool bIsInited = false;
-	};
-
-	TVector<MeshContext> meshes;
-	meshes.Resize(assetInfo->ShouldBatchByMaterial() ? materials.size() : shapes.size());
+	outParsedMeshes.Resize(assetInfo->ShouldBatchByMaterial() ? materials.size() : shapes.size());
 
 	uint32_t idx = 0;
 	for (const auto& shape : shapes)
 	{
-		auto& mesh = meshes[assetInfo->ShouldBatchByMaterial() ? shape.mesh.material_ids[0] : idx];
+		auto& mesh = outParsedMeshes[assetInfo->ShouldBatchByMaterial() ? shape.mesh.material_ids[0] : idx];
 		for (const auto& index : shape.mesh.indices)
 		{
 			RHI::VertexP3N3UV2C4 vertex{};
@@ -326,15 +336,6 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<RHI::RHI
 
 	outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);
 	outBoundsSphere.m_radius = glm::distance(outBoundsAabb.m_max, outBoundsSphere.m_center);
-
-	for (const auto& mesh : meshes)
-	{
-		RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
-		ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		ptr->m_bounds = mesh.bounds;
-		RHI::Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
-		outMeshes.Emplace(ptr);
-	}
 
 	return true;
 }
