@@ -82,6 +82,7 @@ namespace Sailor
 
 			SAILOR_API uint32_t GetNumWorkerThreads() const;
 			SAILOR_API uint32_t GetNumRenderingJobs() const;
+			SAILOR_API uint32_t GetNumRHIThreads() const { return RHIThreadsNum; }
 
 			template<typename TResult = void, typename TArgs = void>
 			SAILOR_API static TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs)> lambda, EThreadType thread = EThreadType::Worker)

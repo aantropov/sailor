@@ -168,6 +168,9 @@ ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)
 	if (!res)
 	{
 		res = CreateThreadContext();
+
+		// We don't want to create ThreadContext for each thread, only for Main, RHI and Render
+		assert(m_threadContext.Num() <= Tasks::Scheduler::GetNumRHIThreads() + 2);
 	}
 	m_threadContext.Unlock(threadId);
 
@@ -649,3 +652,29 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	return true;
 }
 
+void VulkanDevice::GetOccupiedVideoMemory(VkMemoryHeapFlags memFlags, size_t& outHeapBudget, size_t& outHeapUsage)
+{
+	VkPhysicalDeviceMemoryBudgetPropertiesEXT memBudget;
+	memBudget.sType = VkStructureType::VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+	memBudget.pNext = nullptr;
+
+	VkPhysicalDeviceMemoryProperties2 memProps = { };
+	memProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+	memProps.pNext = &memBudget;
+
+	vkGetPhysicalDeviceMemoryProperties2(m_physicalDevice, &memProps);
+
+	outHeapBudget = 0;
+	outHeapUsage = 0;
+
+	for (uint32_t i = 0; i < 16; i++)
+	{
+		const auto flags = memProps.memoryProperties.memoryHeaps[i].flags;
+
+		if (flags == memFlags)
+		{
+			outHeapBudget += memBudget.heapBudget[i];
+			outHeapUsage += memBudget.heapUsage[i];
+		}
+	}
+}

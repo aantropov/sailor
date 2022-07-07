@@ -122,8 +122,8 @@ void Scheduler::Initialize()
 	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
-	const unsigned numThreads = std::max(1u, coresCount - 2u);
 	const unsigned numRHIThreads = RHIThreadsNum;
+	const unsigned numThreads = std::max(1u, coresCount - 2u - numRHIThreads);
 
 	WorkerThread* newRenderingThread = new WorkerThread(
 		"Render Thread",

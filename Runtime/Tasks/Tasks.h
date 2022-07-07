@@ -19,6 +19,10 @@ namespace Sailor
 			Render = 0,
 			Worker = 1,
 			Main = 2,
+
+			// RHI Threads are used for creating RHI resources 
+			// to decrease the num of RHIThreadContext that could lead to
+			// cache misses and extra consumed memory (ram and vram)
 			RHI = 3
 		};
 
