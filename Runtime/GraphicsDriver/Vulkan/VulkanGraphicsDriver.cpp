@@ -38,9 +38,8 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	m_storageBuffer.Clear();
 
 	// Waiting finishing releasing of rendering resources
-	App::GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
-	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::RHI);
 
 	GraphicsDriver::Vulkan::VulkanApi::Shutdown();
 }
