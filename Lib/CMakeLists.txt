@@ -42,6 +42,7 @@ target_link_libraries(SailorLib "${Vulkan_LIBRARIES}")
 get_filename_component(VulkanLibPath "${Vulkan_LIBRARIES}" DIRECTORY )
 
 target_link_libraries(SailorLib debug "${VulkanLibPath}/shaderc_combinedd.lib" optimized "${VulkanLibPath}/shaderc_combined.lib")
+target_link_libraries(SailorLib winmm.lib)
 
 set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
 

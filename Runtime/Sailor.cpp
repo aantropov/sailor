@@ -22,6 +22,7 @@
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "ECS/TransformECS.h"
+#include "timeApi.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -32,6 +33,8 @@ const char* App::EngineName = "Sailor";
 
 void App::Initialize()
 {
+	timeBeginPeriod(1);
+
 	SAILOR_PROFILE_FUNCTION();
 
 	if (s_pInstance != nullptr)
@@ -182,7 +185,7 @@ void App::Start()
 				(uint32_t)App::GetSubmodule<EngineLoop>()->GetSmoothFps(),
 				(float)GetSubmodule<Renderer>()->GetVramUsage() / (1024.0f * 1024.0f),
 				(float)GetSubmodule<Renderer>()->GetVramBudget() / (1024.0f * 1024.0f)
-				);
+			);
 
 			s_pInstance->m_pViewportWindow->SetWindowTitle(Buff);
 
