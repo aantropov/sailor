@@ -26,7 +26,7 @@ namespace Sailor
 
 		SAILOR_API void Trim(std::string& s);
 
-		SAILOR_API void SetThreadName(uint32_t dwThreadID, const std::string& threadName);
+		SAILOR_API void SetThreadName(size_t dwThreadID, const std::string& threadName);
 		SAILOR_API void SetThreadName(const std::string& threadName);
 		SAILOR_API void SetThreadName(std::thread* thread, const std::string& threadName);
 
