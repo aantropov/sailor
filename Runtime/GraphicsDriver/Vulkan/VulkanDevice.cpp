@@ -205,7 +205,7 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 
 	if (!pAllocator)
 	{
-		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(1024 * 1024 * 64, 1024 * 512, 32 * 1024 * 1024);
+		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(1024 * 1024, 1024 * 512, 2 * 1024 * 1024);
 	}
 	auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
 	vulkanAllocator.SetMemoryProperties(properties);
@@ -305,7 +305,7 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 1024, descriptorSizes);
 
-	context->m_stagingBufferAllocator = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 2048, 2 * 1024 * 1024);
+	context->m_stagingBufferAllocator = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 1024 * 512, 2 * 1024 * 1024);
 	context->m_stagingBufferAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 	//m_stagingBufferAllocator->GetGlobalAllocator().SetSharingMode(VK_SHARING_MODE_EXCLUSIVE);
 	context->m_stagingBufferAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -671,7 +671,7 @@ void VulkanDevice::GetOccupiedVideoMemory(VkMemoryHeapFlags memFlags, size_t& ou
 	{
 		const auto flags = memProps.memoryProperties.memoryHeaps[i].flags;
 
-		if (flags == memFlags)
+		if (flags & memFlags)
 		{
 			outHeapBudget += memBudget.heapBudget[i];
 			outHeapUsage += memBudget.heapUsage[i];
