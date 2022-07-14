@@ -124,8 +124,8 @@ void TestComponent::Tick(float deltaTime)
 
 	if (GetWorld()->GetInput().IsKeyDown(VK_LBUTTON))
 	{
-		const float speed = 500.0f;
-		const vec2 shift = vec2(GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos) * deltaTime * speed;
+		const float speed = 1.0f;
+		const vec2 shift = vec2(GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos) * speed;
 
 		m_yaw += -shift.x;
 		m_pitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
