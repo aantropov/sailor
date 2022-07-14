@@ -75,6 +75,7 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 
 Renderer::~Renderer()
 {
+	m_cachedSceneViews.Clear();
 	Renderer::GetDriver()->WaitIdle();
 	m_driverInstance.Clear();
 }

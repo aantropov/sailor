@@ -41,6 +41,8 @@ namespace Sailor
 	public:
 
 		virtual void BeginPlay() override;
+		virtual void EndPlay() override;
+
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 
