@@ -100,8 +100,6 @@ namespace Sailor
 			RHI::RenderState m_renderState;
 
 			std::string m_renderQueue = "Opaque";
-			bool m_bIsTransparent = false;
-
 			TVector<std::string> m_shaderDefines;
 			TVector<SamplerEntry> m_samplers;
 			TVector<TPair<std::string, glm::vec4>> m_uniformsVec4;
@@ -115,7 +113,6 @@ namespace Sailor
 		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_pData->m_renderState; }
-		SAILOR_API bool IsTransparent() const { return m_pData->m_bIsTransparent; }
 		SAILOR_API const std::string& GetRenderQueue() const { return m_pData->m_renderQueue; }
 		SAILOR_API const UID& GetShader() const { return m_pData->m_shader; }
 		SAILOR_API const TVector<std::string>& GetShaderDefines() const { return  m_pData->m_shaderDefines; }

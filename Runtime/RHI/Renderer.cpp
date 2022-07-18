@@ -176,9 +176,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		}
 
 		// Test Code
-		if (TestComponentPtr testComponent = frame.GetWorld()->GetGameObjects()[0]->GetComponent<TestComponent>())
-		{
-			const auto& debugFrame = frame.GetDebugFrame();
+		{	const auto& debugFrame = frame.GetDebugFrame();
 
 			if (debugFrame.m_drawDebugMeshCmd)
 			{
@@ -240,14 +238,24 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 // Temporary
 RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 {
-	for (auto& gameObject : frame.GetWorld()->GetGameObjects())
+	auto world = frame.GetWorld();
+	TestComponentPtr testComponent;
+
+	for (auto& gameObject : world->GetGameObjects())
 	{
-		TestComponentPtr testComponent = gameObject->GetComponent<TestComponent>();
+		if (testComponent = gameObject->GetComponent<TestComponent>())
+		{
+			break;
+		}
+	}
+
+	for (auto& gameObject : world->GetGameObjects())
+	{
 		MeshRendererComponentPtr rendererComponent = gameObject->GetComponent<MeshRendererComponent>();
 
 		if (testComponent && rendererComponent)
 		{
-			auto& perInstanceBinding = testComponent->GetPerInstanceBinding();
+			auto perInstanceBinding = world->GetECS<StaticMeshRendererECS>()->GetPerInstanceBinding();
 			auto pModel = rendererComponent->GetModel();
 
 			if (!pModel || !pModel->IsReady())
@@ -275,11 +283,6 @@ RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 
 				SAILOR_PROFILE_BLOCK("Get data");
 				auto& mesh = pModel->GetMeshes()[index];
-
-				if (!testComponent->GetCulledMeshes().Contains(mesh))
-				{
-					//continue;
-				}
 
 				auto& material = pMaterial->GetOrAddRHI(mesh->m_vertexDescription);
 				bool bIsMaterialReady = pMaterial && pMaterial->IsReady();

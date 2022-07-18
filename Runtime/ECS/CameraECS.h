@@ -56,5 +56,7 @@ namespace Sailor
 
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopyCameraData(RHI::RHISceneViewPtr& outCameras);
+
+		virtual uint32_t GetOrder() const override { return 100; }
 	};
 }

@@ -422,13 +422,15 @@ namespace Sailor::RHI
 			float depthBias = 0.0f,
 			ECullMode cullMode = ECullMode::Back,
 			EBlendMode blendMode = EBlendMode::None,
-			EFillMode fillMode = EFillMode::Fill) :
+			EFillMode fillMode = EFillMode::Fill,
+			size_t tag = 0u) :
 			m_bEnableDepthTest(bEnableDepthTest),
 			m_bEnableZWrite(bEnableZWrite),
 			m_depthBias(depthBias),
 			m_cullMode(cullMode),
 			m_blendMode(blendMode),
-			m_fillMode(fillMode)
+			m_fillMode(fillMode),
+			m_tag(tag)
 		{}
 
 		bool IsDepthTestEnabled() const { return m_bEnableDepthTest; }
@@ -437,6 +439,7 @@ namespace Sailor::RHI
 		EBlendMode GetBlendMode() const { return m_blendMode; }
 		EFillMode GetFillMode() const { return m_fillMode; }
 		float GetDepthBias() const { return m_depthBias; }
+		size_t GetTag() const { return m_tag; }
 
 		bool operator==(const RenderState& rhs) const
 		{
@@ -451,6 +454,7 @@ namespace Sailor::RHI
 		ECullMode m_cullMode = ECullMode::Back;
 		EBlendMode m_blendMode = EBlendMode::None;
 		EFillMode m_fillMode = EFillMode::Fill;
+		size_t m_tag = 0;
 	};
 
 	struct ShaderLayoutBindingMember

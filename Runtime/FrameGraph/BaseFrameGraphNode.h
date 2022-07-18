@@ -25,7 +25,7 @@ namespace Sailor
 		SAILOR_API const std::string& GetStringParam(const std::string& name) const;
 
 		SAILOR_API virtual void Initialize(RHIFrameGraphPtr frameGraph) = 0;
-		SAILOR_API virtual void Process(const RHI::RHISceneViewSnapshot& sceneView) = 0;
+		SAILOR_API virtual void Process(RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
 		SAILOR_API virtual void Clear() = 0;
 
 	protected:

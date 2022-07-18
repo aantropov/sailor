@@ -183,7 +183,6 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	outData["bEnableZWrite"] = m_pData->m_renderState.IsEnabledZWrite();
 	outData["depthBias"] = m_pData->m_renderState.GetDepthBias();
 	outData["renderQueue"] = GetRenderQueue();
-	outData["bIsTransparent"] = IsTransparent();
 	outData["defines"] = m_pData->m_shaderDefines;
 
 	SerializeEnum<RHI::ECullMode>(outData["cullMode"], m_pData->m_renderState.GetCullMode());
@@ -241,11 +240,6 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 		renderQueue = outData["renderQueue"].get<std::string>();
 	}
 
-	if (outData.contains("bIsTransparent"))
-	{
-		m_pData->m_bIsTransparent = outData["bIsTransparent"].get<bool>();
-	}
-
 	if (outData.contains("blendMode"))
 	{
 		DeserializeEnum<RHI::EBlendMode>(outData["blendMode"], blendMode);
@@ -280,7 +274,8 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 		m_pData->m_shader.Deserialize(outData["shader"]);
 	}
 
-	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, cullMode, blendMode, fillMode);
+	const size_t tag = GetHash(renderQueue);
+	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, cullMode, blendMode, fillMode, tag);
 }
 
 MaterialImporter::MaterialImporter(MaterialAssetInfoHandler* infoHandler)

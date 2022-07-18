@@ -25,7 +25,7 @@ TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;
 
-		m_octree.Trace(frustum, res.m_meshes);
+		m_octree.Trace(frustum, res.m_proxies);
 
 		snapshots.Emplace(std::move(res));
 	}

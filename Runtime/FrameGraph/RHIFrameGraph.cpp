@@ -1,5 +1,7 @@
 #include "RHIFrameGraph.h"
 #include "RHI/SceneView.h"
+#include "RHI/Renderer.h"
+#include "RHI/GraphicsDriver.h"
 
 using namespace Sailor;
 
@@ -20,16 +22,27 @@ void RHIFrameGraph::SetRenderTarget(const std::string& name, RHI::RHITexturePtr 
 	m_renderTargets[name] = sampler;
 }
 
-void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView)
+void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outCommandLists)
 {
 	auto snapshots = rhiSceneView->GetSnapshots();
 
 	for (auto& snapshot : snapshots)
 	{
+		SAILOR_PROFILE_BLOCK("Render meshes");
+		auto renderer = App::GetSubmodule<RHI::Renderer>();
+		auto driverCommands = renderer->GetDriverCommands();
+		auto cmdList = renderer->GetDriver()->CreateCommandList(true, false);
+		driverCommands->BeginCommandList(cmdList, true);
+
 		for (auto& node : m_graph)
 		{
-			node->Process(snapshot);
+			node->Process(cmdList, snapshot);
 		}
+
+		driverCommands->EndCommandList(cmdList);
+		SAILOR_PROFILE_END_BLOCK();
+
+		outCommandLists.Emplace(std::move(cmdList));
 	}
 }
 

@@ -13,11 +13,7 @@ using namespace Sailor::Tasks;
 
 void TestComponent::BeginPlay()
 {
-	m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-	m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-
-	//bool bNeedsStorageBuffer = m_testMaterial->GetBindings()->NeedsStorageBuffer() ? EShaderBindingType::StorageBuffer : EShaderBindingType::UniformBuffer;
-	Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_perInstanceData, "data", sizeof(glm::mat4x4), 0, RHI::EShaderBindingType::StorageBuffer);
+	m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();	
 	Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
 
 	if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
@@ -151,11 +147,7 @@ void TestComponent::Tick(float deltaTime)
 
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(GetWorld()->GetCommandList(), m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
 
-	if (m_perInstanceData->HasBinding("data"))
-	{
-		RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(GetWorld()->GetCommandList(), m_perInstanceData->GetOrCreateShaderBinding("data"), &model, sizeof(model));
-	}
-
+	/*
 	auto meshRenderer = GetOwner()->GetComponent<MeshRendererComponent>();
 	if (meshRenderer->GetModel() && meshRenderer->GetModel()->IsReady())
 	{
@@ -171,7 +163,7 @@ void TestComponent::Tick(float deltaTime)
 			}
 		}
 
-		/*if (m_octree.Num() != meshRenderer->GetModel()->GetMeshes().Num())
+		if (m_octree.Num() != meshRenderer->GetModel()->GetMeshes().Num())
 		{
 			for (auto& mesh : meshRenderer->GetModel()->GetMeshes())
 			{
@@ -186,9 +178,9 @@ void TestComponent::Tick(float deltaTime)
 			{
 				//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
 			}
-		}*/
+		}
 	}
-	/*
+	
 	const int count = 73;
 	for (int x = -count; x < count; x++)
 	{

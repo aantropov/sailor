@@ -33,7 +33,7 @@ namespace Sailor
 			m_values[name] = value;
 		}
 
-		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView);
+		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outCommandLists);
 
 		SAILOR_API void Clear();
 

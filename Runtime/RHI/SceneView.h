@@ -24,7 +24,7 @@ namespace Sailor::RHI
 	struct RHISceneViewSnapshot
 	{
 		TUniquePtr<CameraData> m_camera;
-		TVector<RHISceneViewProxy> m_meshes;
+		TVector<RHISceneViewProxy> m_proxies;
 	};
 
 	struct RHISceneView

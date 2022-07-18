@@ -10,6 +10,7 @@
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
 #include "Components/TestComponent.h"
+#include "ECS/TransformECS.h"
 
 using namespace Sailor;
 
@@ -18,9 +19,11 @@ TSharedPtr<World> EngineLoop::CreateWorld(std::string name)
 	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name)));	
 
 	auto gameObject = m_worlds[0]->Instantiate();
-	auto meshRenderer = gameObject->AddComponent<MeshRendererComponent>();
 	auto cameraComponent = gameObject->AddComponent<CameraComponent>();
 	auto testComponent = gameObject->AddComponent<TestComponent>();
+
+	auto gameObject2 = m_worlds[0]->Instantiate();
+	auto meshRenderer = gameObject2->AddComponent<MeshRendererComponent>();
 
 	return m_worlds[m_worlds.Num() - 1];
 }

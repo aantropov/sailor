@@ -213,10 +213,10 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 
 void TextureImporter::CollectGarbage()
 {
-	TVector<UID> uidsToRemove;
+	TVector<UID> uidsToRemove;	
 	for (auto& promise : m_promises)
 	{
-		if (promise.m_second->IsFinished())
+		if (promise.m_second && promise.m_second->IsFinished())
 		{
 			UID uid = promise.m_first;
 			uidsToRemove.Emplace(uid);

@@ -170,7 +170,7 @@ ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)
 		res = CreateThreadContext();
 
 		// We don't want to create ThreadContext for each thread, only for Main, RHI and Render
-		assert(m_threadContext.Num() <= Tasks::Scheduler::GetNumRHIThreads() + 2);
+		assert(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
 	}
 	m_threadContext.Unlock(threadId);
 

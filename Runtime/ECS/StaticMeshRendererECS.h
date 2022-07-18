@@ -46,9 +46,14 @@ namespace Sailor
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 
+		RHI::RHIShaderBindingSetPtr GetPerInstanceBinding() { return m_perInstanceData; }
+
+		virtual uint32_t GetOrder() const override { return 1000; }
+
 	protected:
 
 		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
+		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 	};
 
 	template ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>;
