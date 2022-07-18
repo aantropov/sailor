@@ -42,6 +42,15 @@ void TestComponent::BeginPlay()
 		}
 	}
 
+	//
+	auto gameObject2 = GetWorld()->Instantiate();
+	gameObject2->GetTransformComponent().SetPosition(vec3(0, 0, 2500));
+	gameObject2->AddComponent<MeshRendererComponent>();
+
+	auto gameObject3 = GetWorld()->Instantiate();
+	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
+	gameObject3->AddComponent<MeshRendererComponent>();
+	//
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
 

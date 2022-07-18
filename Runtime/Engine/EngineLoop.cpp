@@ -22,9 +22,6 @@ TSharedPtr<World> EngineLoop::CreateWorld(std::string name)
 	auto cameraComponent = gameObject->AddComponent<CameraComponent>();
 	auto testComponent = gameObject->AddComponent<TestComponent>();
 
-	auto gameObject2 = m_worlds[0]->Instantiate();
-	auto meshRenderer = gameObject2->AddComponent<MeshRendererComponent>();
-
 	return m_worlds[m_worlds.Num() - 1];
 }
 

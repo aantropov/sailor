@@ -249,6 +249,11 @@ RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 		}
 	}
 
+	SAILOR_PROFILE_BLOCK("Render meshes");
+	auto cmdList = GetDriver()->CreateCommandList(true, false);
+	GetDriverCommands()->BeginCommandList(cmdList, true);
+	GetDriverCommands()->SetDefaultViewport(cmdList);
+
 	for (auto& gameObject : world->GetGameObjects())
 	{
 		MeshRendererComponentPtr rendererComponent = gameObject->GetComponent<MeshRendererComponent>();
@@ -262,10 +267,6 @@ RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 			{
 				continue;
 			}
-
-			SAILOR_PROFILE_BLOCK("Render meshes");
-			auto cmdList = GetDriver()->CreateCommandList(true, false);
-			GetDriverCommands()->BeginCommandList(cmdList, true);
 
 			for (uint32_t index = 0; index < pModel->GetMeshes().Num(); index++)
 			{
@@ -291,8 +292,6 @@ RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 				if (bIsMaterialReady && pMaterial->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
 				{
 					GetDriverCommands()->BindMaterial(cmdList, material);
-					GetDriverCommands()->SetDefaultViewport(cmdList);
-
 					GetDriverCommands()->BindVertexBuffers(cmdList, { mesh->m_vertexBuffer });
 					GetDriverCommands()->BindIndexBuffer(cmdList, mesh->m_indexBuffer);
 
@@ -312,15 +311,14 @@ RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 					}
 
 					GetDriverCommands()->BindShaderBindings(cmdList, material, sets);
-					GetDriverCommands()->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1, 0, 0, perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex());
+					GetDriverCommands()->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1, 
+						0, 0, (uint32_t)rendererComponent->GetComponentIndex());
 				}
 				SAILOR_PROFILE_END_BLOCK();
 			}
-
-			GetDriverCommands()->EndCommandList(cmdList);
-			return cmdList;
 		}
 	}
 
-	return nullptr;
+	GetDriverCommands()->EndCommandList(cmdList);
+	return cmdList;
 }

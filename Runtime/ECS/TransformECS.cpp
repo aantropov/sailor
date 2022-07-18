@@ -74,7 +74,7 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 		// Recalculate only root transforms
 		for (int32_t i = 0; i < m_dirtyComponents.Num(); i++)
 		{
-			auto& data = m_components[i];
+			auto& data = m_components[m_dirtyComponents[i]];
 
 			if (data.m_parent == ECS::InvalidIndex && data.m_bIsActive)
 			{
@@ -88,7 +88,7 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 		// Recalculate not calculated transforms
 		for (int32_t i = 0; i < m_dirtyComponents.Num(); i++)
 		{
-			auto& data = m_components[i];
+			auto& data = m_components[m_dirtyComponents[i]];
 
 			if (data.m_bIsDirty)
 			{

@@ -832,7 +832,7 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 
 void VulkanGraphicsDriver::DrawIndexed(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
-	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexBuffer->m_vulkan.m_buffer, indexCount, 1, 0, 0, 0);
+	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexBuffer->m_vulkan.m_buffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
 bool VulkanGraphicsDriver::FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth)

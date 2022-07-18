@@ -19,6 +19,7 @@ namespace Sailor
 		SAILOR_API __forceinline ModelPtr& GetModel() { return GetData().GetModel(); }
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return GetData().GetMaterials(); }
 		SAILOR_API __forceinline StaticMeshRendererData& GetData();
+		SAILOR_API __forceinline size_t GetComponentIndex() const { return m_handle; }
 
 	protected:
 

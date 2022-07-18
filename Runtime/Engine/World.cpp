@@ -89,6 +89,9 @@ GameObjectPtr World::Instantiate(const std::string& name)
 	assert(newObject);
 	newObject->m_self = newObject;
 
+	newObject->BeginPlay();
+	newObject->bBeginPlayCalled = true;
+
 	m_objects.Add(newObject);
 
 	return newObject;
