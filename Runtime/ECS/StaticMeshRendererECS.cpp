@@ -16,7 +16,7 @@ void StaticMeshRendererECS::BeginPlay()
 
 	// Do we need support UBO & SSBO simulteniously?
 	//bool bNeedsStorageBuffer = m_testMaterial->GetBindings()->NeedsStorageBuffer() ? EShaderBindingType::StorageBuffer : EShaderBindingType::UniformBuffer;
-	Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_perInstanceData, "data", sizeof(glm::mat4x4), 0, RHI::EShaderBindingType::StorageBuffer);
+	Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(glm::mat4x4), 7, 0);
 }
 
 Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
@@ -50,8 +50,13 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 			m_sceneViewProxiesCache->m_octree.Insert(ownerTransform.GetWorldPosition(), data.GetModel()->GetBoundsAABB().GetExtents(), proxy);
 
+
 			//TODO: only if dirty
-			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, m_perInstanceData->GetOrCreateShaderBinding("data"), &ownerTransform.GetCachedWorldMatrix(), sizeof(glm::mat4x4), sizeof(glm::mat4x4) * proxy.m_staticMeshEcs);
+			auto& binding = m_perInstanceData->GetOrCreateShaderBinding("data");
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, binding,
+				&ownerTransform.GetCachedWorldMatrix(), 
+				sizeof(glm::mat4x4), 
+				sizeof(glm::mat4x4) * (proxy.m_staticMeshEcs + binding->GetStorageInstanceIndex()));
 			bShouldExecuteCmdList = true;
 		}
 	}
@@ -77,5 +82,6 @@ void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)
 
 void StaticMeshRendererECS::EndPlay()
 {
+	m_perInstanceData.Clear();
 	m_sceneViewProxiesCache.Clear();
 }

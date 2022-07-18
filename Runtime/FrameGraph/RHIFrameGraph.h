@@ -43,6 +43,9 @@ namespace Sailor
 		TMap<std::string, RHI::RHITexturePtr> m_renderTargets;
 		TMap<std::string, glm::vec4> m_values;
 		TVector<FrameGraphNodePtr> m_graph;
+
+		RHI::UboFrameData m_frameData;
+		RHI::RHIShaderBindingSetPtr m_frameDataBinding;
 	};
 
 	using RHIFrameGraphPtr = TRefPtr<RHIFrameGraph>;

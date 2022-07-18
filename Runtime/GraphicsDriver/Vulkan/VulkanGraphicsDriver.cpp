@@ -473,8 +473,8 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetStorageBufferAllocat
 {
 	if (!m_storageBuffer)
 	{
-		const size_t StorageBufferBlockSize = 256 * 1024 * 1024u;
-		const size_t ReservedSize = 64 * 1024 * 1024u;
+		const size_t StorageBufferBlockSize = 16 * 1024 * 1024u;
+		const size_t ReservedSize = 8 * 1024 * 1024u;
 
 		m_storageBuffer = TSharedPtr<VulkanBufferAllocator>::Make(StorageBufferBlockSize, 1024 * 1024u, StorageBufferBlockSize);
 		m_storageBuffer->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
@@ -530,6 +530,37 @@ RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CreateShaderBindings()
 	RHI::RHIShaderBindingSetPtr res = RHI::RHIShaderBindingSetPtr::Make();
 	return res;
 }
+
+void VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
+
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
+	
+	TSharedPtr<VulkanBufferAllocator> allocator = GetStorageBufferAllocator();
+	binding->m_vulkan.m_valueBinding = allocator->Allocate(elementSize * numElements, device->GetSsboOffsetAlignment(elementSize));
+	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding).m_offset / elementSize);
+
+	binding->m_vulkan.m_bufferAllocator = allocator;
+
+	auto valueBinding = *(binding->m_vulkan.m_valueBinding);
+
+	RHI::ShaderLayoutBinding layout;
+	layout.m_binding = shaderBinding;
+	layout.m_name = name;
+	layout.m_size = (uint32_t)(numElements * elementSize);
+	layout.m_type = RHI::EShaderBindingType::StorageBuffer;
+
+	binding->SetLayout(layout);
+	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
+
+	pShaderBindings->AddLayoutShaderBinding(layout);
+
+	UpdateDescriptorSet(pShaderBindings);
+}
+
 
 void VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType)
 {
@@ -649,12 +680,12 @@ void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOn
 		flags |= VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
 		/*
-		VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT specifies that a command buffer can be resubmitted to a queue while it is in the pending state, 
+		VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT specifies that a command buffer can be resubmitted to a queue while it is in the pending state,
 		and recorded into multiple primary command buffers.
-		
+
 		TODO: That could affect the performance, so we don't want to use the bit
 		*/
-		
+
 		if (!bOneTimeSubmit)
 		{
 			flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
@@ -682,7 +713,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::
 	auto& binding = parameter->m_vulkan.m_valueBinding;
 	auto dstBuffer = binding.m_ptr.m_buffer;
 
-	Update(cmd, dstBuffer, pData, size, binding.m_offset + variableOffset);
+	Update(cmd, dstBuffer, pData, size, binding.m_offset + binding.m_alignmentOffset + variableOffset);
 }
 
 void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* pData, size_t size, size_t offset)

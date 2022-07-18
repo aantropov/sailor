@@ -19,12 +19,17 @@ RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrCreateShaderBinding(const st
 	return pBinding;
 }
 
+void RHIShaderBindingSet::RemoveShaderBinding(const std::string& binding)
+{
+	m_shaderBindings.Remove(binding);
+}
+
 void RHIShaderBindingSet::AddLayoutShaderBinding(ShaderLayoutBinding layout)
 {
 	m_layoutBindings.Emplace(std::move(layout));
 }
 
-bool RHIShaderBindingSet::PerInstanceDataStoredInSSBO() const
+bool RHIShaderBindingSet::PerInstanceDataStoredInSsbo() const
 {
 	return std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [](const auto& binding) { return binding.m_type == EShaderBindingType::StorageBuffer; }) != m_layoutBindings.end();
 }
@@ -32,7 +37,7 @@ bool RHIShaderBindingSet::PerInstanceDataStoredInSSBO() const
 void RHIShaderBindingSet::SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings)
 {
 	m_layoutBindings = std::move(layoutBindings);
-	m_bNeedsStorageBuffer = PerInstanceDataStoredInSSBO();
+	m_bNeedsStorageBuffer = PerInstanceDataStoredInSsbo();
 }
 
 void RHIShaderBindingSet::ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable)

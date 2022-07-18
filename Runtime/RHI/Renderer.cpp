@@ -178,15 +178,15 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		// Test Code
 		{	const auto& debugFrame = frame.GetDebugFrame();
 
-			if (debugFrame.m_drawDebugMeshCmd)
+		if (debugFrame.m_drawDebugMeshCmd)
+		{
+			if (debugFrame.m_signalSemaphore)
 			{
-				if (debugFrame.m_signalSemaphore)
-				{
-					waitFrameUpdate.Add(debugFrame.m_signalSemaphore);
-				}
-
-				secondaryCommandLists.Add(debugFrame.m_drawDebugMeshCmd);
+				waitFrameUpdate.Add(debugFrame.m_signalSemaphore);
 			}
+
+			secondaryCommandLists.Add(debugFrame.m_drawDebugMeshCmd);
+		}
 		}
 
 		do
@@ -311,8 +311,11 @@ RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
 					}
 
 					GetDriverCommands()->BindShaderBindings(cmdList, material, sets);
-					GetDriverCommands()->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1, 
-						0, 0, (uint32_t)rendererComponent->GetComponentIndex());
+
+					uint32_t ssboOffset = perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex();
+
+					GetDriverCommands()->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1,
+						0, 0, ssboOffset + (uint32_t)rendererComponent->GetComponentIndex());
 				}
 				SAILOR_PROFILE_END_BLOCK();
 			}
