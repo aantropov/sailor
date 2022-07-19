@@ -140,6 +140,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	auto& rhiSceneView = GetOrAddSceneView(frame.GetWorld());
 	frame.GetWorld()->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 	frame.GetWorld()->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
+	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
+	rhiSceneView->m_currentTime = (float)frame.GetWorld()->GetTime();
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Push frame");

@@ -39,6 +39,8 @@ namespace Sailor
 
 	protected:
 
+		void FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const;
+
 		TMap<std::string, TexturePtr> m_samplers;
 		TMap<std::string, RHI::RHITexturePtr> m_renderTargets;
 		TMap<std::string, glm::vec4> m_values;

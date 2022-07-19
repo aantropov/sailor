@@ -34,6 +34,8 @@ namespace Sailor::RHI
 
 		TOctree<RHISceneViewProxy> m_octree;
 		TVector<CameraData> m_cameras;
+		float m_deltaTime;
+		float m_currentTime;
 	};
 
 	using RHISceneViewPtr = TSharedPtr<RHISceneView>;
