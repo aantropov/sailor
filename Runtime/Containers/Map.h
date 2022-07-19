@@ -183,6 +183,32 @@ namespace Sailor
 			return res;
 		}
 
+		bool operator==(const TMap& rhs) const
+		{
+			if (rhs.Num() != this->Num())
+			{
+				return false;
+			}
+
+			for (auto& el : rhs)
+			{
+				if (!this->Contains(el))
+				{
+					return false;
+				}
+			}
+
+			for (auto& el : *this)
+			{
+				if (!rhs.Contains(el))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+
 	protected:
 
 		TElementType& GetOrAdd(const TKeyType& key)

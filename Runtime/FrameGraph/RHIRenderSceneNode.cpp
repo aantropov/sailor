@@ -1,5 +1,7 @@
 #include "RHIRenderSceneNode.h"
 #include "RHI/SceneView.h"
+#include "RHI/Renderer.h"
+#include "RHI/Shader.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -29,40 +31,19 @@ https://developer.nvidia.com/vulkan-shader-resource-binding
 */
 void RHIRenderSceneNode::Process(RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
-	/*
-	for each view {
-	  bind view resources          // camera, environment...
-	  for each shader {
-		bind shader pipeline
-		bind shader resources      // shader control values
-		for each material {
-		  bind material resources  // material parameters and textures
-		  for each object {
-			bind object resources  // object transforms
-			draw object
-		  }
-		}
-	  }
-	}
-	*/
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+
 	static TVector<RHIMeshPtr> meshesToRender(64);
 	static TVector<RHIMaterialPtr> materialsToRender(64);
 
 	meshesToRender.Clear(false);
 	materialsToRender.Clear(false);
 
-	struct DrawMesh
-	{
-		bool operator==(const DrawMesh& rhs) const { return rhs.m_mesh == m_mesh && m_worldMatrix == rhs.m_worldMatrix; }
-		bool operator<(const DrawMesh& rhs) const { return rhs.m_mesh < m_mesh; }
-
-		RHIMeshPtr m_mesh;
-		glm::mat4x4 m_worldMatrix;
-	};
-
-	static TMap<RHIMaterialPtr, TVector<DrawMesh>> drawCalls(32);
+	static TMap<RHIMaterialPtr, TMap<RHI::RHIMeshPtr, TVector<glm::mat4x4>>> drawCalls;
 	static TSet<RHIMaterialPtr> materials;
+
 	drawCalls.Clear();
+	uint32_t numMeshes = 0;
 
 	for (auto& proxy : sceneView.m_proxies)
 	{
@@ -73,20 +54,55 @@ void RHIRenderSceneNode::Process(RHICommandListPtr commandList, const RHI::RHISc
 
 			if (material->GetRenderState().GetTag() == GetHash(GetStringParam("Tag")))
 			{
-				DrawMesh meshToDraw;
-				meshToDraw.m_mesh = mesh;
-				meshToDraw.m_worldMatrix = proxy.m_worldMatrix;
-
-				drawCalls[material].Emplace(std::move(meshToDraw));
+				drawCalls[material][mesh].Add(proxy.m_worldMatrix);
 				materials.Insert(material);
+
+				numMeshes++;
 			}
 		}
 	}
+	
+	RHI::RHIShaderBindingSetPtr perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(glm::mat4x4), numMeshes, 0);
+	size_t ssboIndex = storageBinding->GetStorageInstanceIndex();
+	
+	RHICommandListPtr updateMatricesCmdList = App::GetSubmodule<Renderer>()->GetDriver()->CreateCommandList(false, true);
+	commands->BeginCommandList(updateMatricesCmdList, true);
+
+	TVector<RHIShaderBindingSetPtr> sets;
+
+	sets.AddRange({ sceneView.m_frameBindings, perInstanceData, nullptr });
 
 	for (auto& material : materials)
 	{
-		drawCalls[material].Sort();
+		sets[2] = material->GetBindings();
+
+		commands->BindMaterial(commandList, material);
+		commands->BindShaderBindings(commandList, material, sets);
+
+		for (auto& instancedDrawCall : drawCalls[material])
+		{
+			auto& mesh = instancedDrawCall.First();
+			auto& matrices = instancedDrawCall.Second();
+
+			commands->BindVertexBuffers(commandList, { mesh->m_vertexBuffer });
+			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer);
+
+			commands->DrawIndexed(commandList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
+				(uint32_t)matrices.Num(), 0, 0, (uint32_t)ssboIndex);
+			
+			// Update matrices
+			commands->UpdateShaderBinding(updateMatricesCmdList, storageBinding,
+				matrices.GetData(),
+				sizeof(glm::mat4x4) * matrices.Num(),
+				sizeof(glm::mat4x4) * ssboIndex);
+
+			ssboIndex += matrices.Num();
+		}
 	}
+
+	commands->EndCommandList(updateMatricesCmdList);
+	App::GetSubmodule<Renderer>()->GetDriver()->SubmitCommandList_Immediate(updateMatricesCmdList);
 }
 
 void RHIRenderSceneNode::Clear()

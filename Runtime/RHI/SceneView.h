@@ -25,6 +25,7 @@ namespace Sailor::RHI
 	{
 		TUniquePtr<CameraData> m_camera;
 		TVector<RHISceneViewProxy> m_proxies;
+		RHIShaderBindingSetPtr m_frameBindings;
 	};
 
 	struct RHISceneView

@@ -531,7 +531,7 @@ RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CreateShaderBindings()
 	return res;
 }
 
-void VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding)
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -559,10 +559,12 @@ void VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& 
 	pShaderBindings->AddLayoutShaderBinding(layout);
 
 	UpdateDescriptorSet(pShaderBindings);
+
+	return binding;
 }
 
 
-void VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType)
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -599,9 +601,11 @@ void VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr
 	pShaderBindings->AddLayoutShaderBinding(layout);
 
 	UpdateDescriptorSet(pShaderBindings);
+
+	return binding;
 }
 
-void VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding)
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -618,6 +622,8 @@ void VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPt
 	binding->SetTextureBinding(texture);
 
 	UpdateDescriptorSet(pShaderBindings);
+
+	return binding;
 }
 
 void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, RHI::RHITexturePtr value)
