@@ -54,13 +54,15 @@ void RHIRenderSceneNode::Process(RHICommandListPtr commandList, const RHI::RHISc
 	struct DrawMesh
 	{
 		bool operator==(const DrawMesh& rhs) const { return rhs.m_mesh == m_mesh && m_worldMatrix == rhs.m_worldMatrix; }
+		bool operator<(const DrawMesh& rhs) const { return rhs.m_mesh < m_mesh; }
 
 		RHIMeshPtr m_mesh;
 		glm::mat4x4 m_worldMatrix;
 	};
 
-	static TMap<RHIMaterialPtr, TVector<DrawMesh>> m_drawCalls(32);
-	m_drawCalls.Clear();
+	static TMap<RHIMaterialPtr, TVector<DrawMesh>> drawCalls(32);
+	static TSet<RHIMaterialPtr> materials;
+	drawCalls.Clear();
 
 	for (auto& proxy : sceneView.m_proxies)
 	{
@@ -75,9 +77,15 @@ void RHIRenderSceneNode::Process(RHICommandListPtr commandList, const RHI::RHISc
 				meshToDraw.m_mesh = mesh;
 				meshToDraw.m_worldMatrix = proxy.m_worldMatrix;
 
-				m_drawCalls[material].Emplace(std::move(meshToDraw));
+				drawCalls[material].Emplace(std::move(meshToDraw));
+				materials.Insert(material);
 			}
 		}
+	}
+
+	for (auto& material : materials)
+	{
+		drawCalls[material].Sort();
 	}
 }
 

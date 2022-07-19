@@ -12,7 +12,7 @@
 namespace Sailor
 {
 	template<typename TKeyType, typename TValueType, typename TAllocator = Memory::DefaultGlobalAllocator>
-	class TMap final: public TSet<TPair<TKeyType, TValueType>, TAllocator>
+	class TMap final : public TSet<TPair<TKeyType, TValueType>, TAllocator>
 	{
 	public:
 
@@ -169,6 +169,18 @@ namespace Sailor
 				}
 			}
 			return false;
+		}
+
+		TVector<TKeyType> GetKeys() const
+		{
+			TVector<TKeyType> res(Super::Num());
+
+			for (const auto& pair : *this)
+			{
+				res.Add(pair->m_first);
+			}
+
+			return res;
 		}
 
 	protected:
