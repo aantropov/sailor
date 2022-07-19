@@ -27,6 +27,12 @@ namespace Sailor::RHI
 	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
 	struct RHISceneViewSnapshot;
 
+	enum class ESortingOrder : uint8_t
+	{
+		FrontToBack = 0,
+		BackToFront
+	};
+
 	enum class ETextureFiltration : uint8_t
 	{
 		Nearest = 0,

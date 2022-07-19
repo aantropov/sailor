@@ -16,6 +16,7 @@ namespace Sailor
 		SAILOR_API virtual void Initialize(RHIFrameGraphPtr FrameGraph) override;
 		SAILOR_API virtual void Process(RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
+		SAILOR_API RHI::ESortingOrder GetSortingOrder() const;
 
 	protected:
 
