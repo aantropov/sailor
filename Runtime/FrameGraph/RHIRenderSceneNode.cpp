@@ -79,13 +79,13 @@ void RHIRenderSceneNode::Process(TVector<RHI::RHICommandListPtr>& transferComman
 
 	for (auto& material : materials)
 	{
-		const bool bMaterialIsReady = material &&
+		const bool bIsMaterialReady = material &&
 			material->GetVertexShader() &&
 			material->GetFragmentShader() &&
 			material->GetBindings() &&
 			material->GetBindings()->GetShaderBindings().Num() > 0;
 
-		if (!bMaterialIsReady)
+		if (!bIsMaterialReady)
 		{
 			continue;
 		}

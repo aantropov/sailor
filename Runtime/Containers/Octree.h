@@ -496,6 +496,11 @@ namespace Sailor
 
 		__forceinline void Collapse(TNode& node)
 		{
+			for (uint32_t i = 0; i < 8; i++)
+			{
+				node.m_internal[i].~TNode();
+			}
+
 			m_allocator.Free(node.m_internal);
 			node.m_internal = nullptr;
 			m_numNodes -= 8;
