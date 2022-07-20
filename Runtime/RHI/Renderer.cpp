@@ -161,6 +161,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		static Utils::Timer timer;
 		timer.Start();
 
+		TVector<RHI::RHICommandListPtr> secondaryCommandLists;
+		TVector<RHI::RHICommandListPtr> transferCommandLists;
+		m_frameGraph->GetRHI()->Process(rhiSceneView, transferCommandLists, secondaryCommandLists);
+
 		SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
 		TVector<RHISemaphorePtr> waitFrameUpdate;
 		for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
@@ -171,10 +175,14 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), waitFrameUpdate[i]);
 			}
 		}
-		SAILOR_PROFILE_END_BLOCK();
 
-		TVector<RHI::RHICommandListPtr> secondaryCommandLists;
-		m_frameGraph->GetRHI()->Process(rhiSceneView, secondaryCommandLists);
+		for (auto& cmdList : transferCommandLists)
+		{
+			//waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+			GetDriver()->SubmitCommandList_Immediate(cmdList);
+			//GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
+		}
+		SAILOR_PROFILE_END_BLOCK();
 
 		/*if (auto cmdList = DrawTestScene(frame))
 		{

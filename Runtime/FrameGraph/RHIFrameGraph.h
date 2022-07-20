@@ -33,13 +33,13 @@ namespace Sailor
 			m_values[name] = value;
 		}
 
-		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outCommandLists);
+		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outTransferCommandLists, TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists);
 
 		SAILOR_API void Clear();
 
 	protected:
 
-		void FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const;
+		RHI::RHICommandListPtr FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const;
 
 		TMap<std::string, TexturePtr> m_samplers;
 		TMap<std::string, RHI::RHITexturePtr> m_renderTargets;

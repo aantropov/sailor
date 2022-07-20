@@ -24,7 +24,7 @@ void RHIFrameGraph::SetRenderTarget(const std::string& name, RHI::RHITexturePtr 
 	m_renderTargets[name] = sampler;
 }
 
-void RHIFrameGraph::FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const
+RHI::RHICommandListPtr RHIFrameGraph::FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -52,10 +52,10 @@ void RHIFrameGraph::FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float del
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, snapshot.m_frameBindings->GetOrCreateShaderBinding("frameData"), &frameData, sizeof(frameData));
 	driverCommands->EndCommandList(cmdList);
 
-	renderer->GetDriver()->SubmitCommandList_Immediate(cmdList);
+	return cmdList;
 }
 
-void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outCommandLists)
+void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outTransferCommandLists, TVector<RHI::RHICommandListPtr>& outCommandLists)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -63,7 +63,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 
 	for (auto& snapshot : snapshots)
 	{
-		FillFrameData(snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
+		outTransferCommandLists.Add(FillFrameData(snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime));
 
 		SAILOR_PROFILE_BLOCK("FrameGraph");
 		auto renderer = App::GetSubmodule<RHI::Renderer>();
@@ -74,7 +74,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 
 		for (auto& node : m_graph)
 		{
-			node->Process(cmdList, snapshot);
+			node->Process(outTransferCommandLists, cmdList, snapshot);
 		}
 
 		driverCommands->EndCommandList(cmdList);

@@ -29,7 +29,7 @@ RHI::ESortingOrder RHIRenderSceneNode::GetSortingOrder() const
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
-void RHIRenderSceneNode::Process(RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void RHIRenderSceneNode::Process(TVector<RHI::RHICommandListPtr>& transferCommandLists, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -53,7 +53,7 @@ void RHIRenderSceneNode::Process(RHICommandListPtr commandList, const RHI::RHISc
 
 			const auto& mesh = proxy.m_meshes[i];
 			const auto& material = proxy.GetMaterials()[i];
-			
+
 			if (material->GetRenderState().GetTag() == GetHash(GetStringParam("Tag")))
 			{
 				drawCalls[material][mesh].Add(proxy.m_worldMatrix);
@@ -68,17 +68,21 @@ void RHIRenderSceneNode::Process(RHICommandListPtr commandList, const RHI::RHISc
 	SAILOR_PROFILE_BLOCK("Create storage for matrices");
 	RHI::RHIShaderBindingSetPtr perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(glm::mat4x4), numMeshes, 0);
-	size_t ssboIndex = storageBinding->GetStorageInstanceIndex();
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Prepare command list");
 	TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, nullptr });
+
+	TVector<glm::mat4x4> gpuMatricesData;
+	gpuMatricesData.AddDefault(numMeshes);
+	size_t ssboIndex = 0;
+
 	for (auto& material : materials)
 	{
-		const bool bMaterialIsReady = material && 
-			material->GetVertexShader() && 
-			material->GetFragmentShader() && 
-			material->GetBindings() && 
+		const bool bMaterialIsReady = material &&
+			material->GetVertexShader() &&
+			material->GetFragmentShader() &&
+			material->GetBindings() &&
 			material->GetBindings()->GetShaderBindings().Num() > 0;
 
 		if (!bMaterialIsReady)
@@ -99,18 +103,27 @@ void RHIRenderSceneNode::Process(RHICommandListPtr commandList, const RHI::RHISc
 			commands->BindVertexBuffers(commandList, { mesh->m_vertexBuffer });
 			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer);
 
-			// Update matrices
-			commands->UpdateShaderBinding(commandList, storageBinding,
-				matrices.GetData(),
-				sizeof(glm::mat4x4) * matrices.Num(),
-				sizeof(glm::mat4x4) * ssboIndex);
+			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(glm::mat4x4) * matrices.Num());
 
 			// Draw Batch
 			commands->DrawIndexed(commandList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
 				(uint32_t)matrices.Num(), 0, 0, (uint32_t)ssboIndex);
-			
+
 			ssboIndex += matrices.Num();
 		}
+	}
+
+	// Update matrices
+	if (gpuMatricesData.Num() > 0)
+	{
+		RHICommandListPtr updateMatricesCmdList = App::GetSubmodule<Renderer>()->GetDriver()->CreateCommandList(false, true);
+		commands->BeginCommandList(updateMatricesCmdList, true);
+		commands->UpdateShaderBinding(updateMatricesCmdList, storageBinding,
+			gpuMatricesData.GetData(),
+			sizeof(glm::mat4x4) * gpuMatricesData.Num(),
+			sizeof(glm::mat4x4) * storageBinding->GetStorageInstanceIndex());
+		commands->EndCommandList(updateMatricesCmdList);
+		transferCommandLists.Add(updateMatricesCmdList);
 	}
 }
 

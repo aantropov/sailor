@@ -64,7 +64,7 @@ namespace Sailor
 		SAILOR_API static const char* GetName() { return m_name; }
 
 		SAILOR_API virtual void Initialize(RHIFrameGraphPtr FrameGraph) override {}
-		SAILOR_API virtual void Process(RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override {}
+		SAILOR_API virtual void Process(TVector<RHI::RHICommandListPtr>& transferCommandLists, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override {}
 		SAILOR_API virtual void Clear() override {}
 	
 	protected:
