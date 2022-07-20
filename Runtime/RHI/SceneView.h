@@ -32,7 +32,7 @@ namespace Sailor::RHI
 	{
 		SAILOR_API TVector<RHISceneViewSnapshot> GetSnapshots();
 
-		TOctree<RHISceneViewProxy> m_octree;
+		TOctree<RHISceneViewProxy> m_octree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
 		TVector<CameraData> m_cameras;
 		float m_deltaTime;
 		float m_currentTime;

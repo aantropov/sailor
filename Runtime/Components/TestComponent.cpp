@@ -43,11 +43,11 @@ void TestComponent::BeginPlay()
 	}
 
 	//
-	for(int i = 0; i < 10; i++)
-		for (int j = 0; j < 10; j++)
+	for(int i = 0; i < 3; i++)
+		for (int j = 0; j < 3; j++)
 		{
 			auto gameObject2 = GetWorld()->Instantiate();
-			gameObject2->GetTransformComponent().SetPosition(vec3(j * 2500, 0, i * 2500));
+			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, 0, i * 2500));
 			gameObject2->AddComponent<MeshRendererComponent>();
 		}
 
