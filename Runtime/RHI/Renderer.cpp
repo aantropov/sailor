@@ -178,16 +178,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		for (auto& cmdList : transferCommandLists)
 		{
-			//waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-			GetDriver()->SubmitCommandList_Immediate(cmdList);
-			//GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
+			waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+			GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
 		}
 		SAILOR_PROFILE_END_BLOCK();
-
-		/*if (auto cmdList = DrawTestScene(frame))
-		{
-			secondaryCommandLists.Emplace(cmdList);
-		}*/
 
 		// Test Code
 		{	const auto& debugFrame = frame.GetDebugFrame();
