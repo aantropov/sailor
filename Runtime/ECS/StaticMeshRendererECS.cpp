@@ -23,13 +23,6 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 {
 	m_sceneViewProxiesCache->m_octree.Clear();
 
-	auto renderer = App::GetSubmodule<RHI::Renderer>();
-	auto driverCommands = renderer->GetDriverCommands();
-
-	auto cmdList = renderer->GetDriver()->CreateCommandList(false, false);
-	driverCommands->BeginCommandList(cmdList, true);
-
-	bool bShouldExecuteCmdList = false;
 	for (auto& data : m_components)
 	{
 		if (data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
@@ -49,26 +42,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			}
 
 			m_sceneViewProxiesCache->m_octree.Insert(ownerTransform.GetWorldPosition(), data.GetModel()->GetBoundsAABB().GetExtents(), proxy);
-
-			//TODO: only if dirty
-			auto& binding = m_perInstanceData->GetOrCreateShaderBinding("data");
-			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, binding,
-				&ownerTransform.GetCachedWorldMatrix(), 
-				sizeof(glm::mat4x4), 
-				sizeof(glm::mat4x4) * (proxy.m_staticMeshEcs + binding->GetStorageInstanceIndex()));
-			bShouldExecuteCmdList = true;
 		}
-	}
-
-	driverCommands->EndCommandList(cmdList);
-
-	if (bShouldExecuteCmdList)
-	{
-		//SAILOR_ENQUEUE_TASK_RENDER_THREAD("Update shader bindings set rhi",
-			//([renderer, cmdList]()
-		//{
-			renderer->GetDriver()->SubmitCommandList(cmdList, RHI::RHIFencePtr::Make());
-		//}));
 	}
 
 	return nullptr;

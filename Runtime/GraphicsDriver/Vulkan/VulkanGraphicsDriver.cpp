@@ -412,7 +412,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		else if (layoutBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
 		{
 			auto& storageAllocator = GetStorageBufferAllocator();
-			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, 0);
+			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, device->GetSsboOffsetAlignment(layoutBinding.m_size));
 			binding->m_vulkan.m_bufferAllocator = storageAllocator;
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
 			binding->SetLayout(layoutBinding);

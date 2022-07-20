@@ -124,7 +124,7 @@ void RHIRenderSceneNode::Process(TVector<RHI::RHICommandListPtr>& transferComman
 			sizeof(glm::mat4x4) * storageBinding->GetStorageInstanceIndex());
 		commands->EndCommandList(updateMatricesCmdList);
 		transferCommandLists.Add(updateMatricesCmdList);
-	}
+	}	
 }
 
 void RHIRenderSceneNode::Clear()
