@@ -33,6 +33,12 @@ void RHIFrameGraph::FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float del
 	snapshot.m_frameBindings = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 	Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(snapshot.m_frameBindings, "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
 
+	for (auto& sampler : m_samplers)
+	{
+		// TODO: Bind sampler by name
+		Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(snapshot.m_frameBindings, sampler.m_first, sampler.m_second->GetRHI(), 1);
+	}
+
 	frameData.m_projection = snapshot.m_camera->GetProjectionMatrix();
 	frameData.m_currentTime = worldTime;
 	frameData.m_deltaTime = deltaTime;
@@ -64,6 +70,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		auto driverCommands = renderer->GetDriverCommands();
 		auto cmdList = renderer->GetDriver()->CreateCommandList(true, false);
 		driverCommands->BeginCommandList(cmdList, true);
+		driverCommands->SetDefaultViewport(cmdList);
 
 		for (auto& node : m_graph)
 		{

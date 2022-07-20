@@ -1,5 +1,5 @@
 {
-"resources": [{"name":"g_defaultSampler", "uid":"", "path":"Content/Textures/VulkanLogo.png"}],
+"samplers": [{"name":"g_defaultSampler", "uid": {"uid": ""}, "path":"Textures/VulkanLogo.png"}],
 "values": [{"name":"PI", "value":3.1415926}],
 "renderTargets": [{"name":"Main", "format":"R16G16B16A16_SFLOAT", "width":"ViewportWidth", "height":"ViewportHeight"}],
 "frame":[

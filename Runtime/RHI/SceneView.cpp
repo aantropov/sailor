@@ -10,6 +10,8 @@ using namespace Sailor::RHI;
 
 TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	TVector<RHISceneViewSnapshot> snapshots;
 	for (auto& camera : m_cameras)
 	{

@@ -183,30 +183,16 @@ namespace Sailor
 			return res;
 		}
 
-		bool operator==(const TMap& rhs) const
+		TVector<TValueType> GetValues() const
 		{
-			if (rhs.Num() != this->Num())
+			TVector<TValueType> res(Super::Num());
+
+			for (const auto& pair : *this)
 			{
-				return false;
+				res.Add(pair->m_second);
 			}
 
-			for (auto& el : rhs)
-			{
-				if (!this->Contains(el))
-				{
-					return false;
-				}
-			}
-
-			for (auto& el : *this)
-			{
-				if (!rhs.Contains(el))
-				{
-					return false;
-				}
-			}
-
-			return true;
+			return res;
 		}
 
 	protected:

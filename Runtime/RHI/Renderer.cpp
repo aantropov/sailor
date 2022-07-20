@@ -100,8 +100,10 @@ void Renderer::FixLostDevice()
 	m_driverInstance->FixLostDevice(m_pViewport);
 }
 
-RHISceneViewPtr& Renderer::GetOrAddSceneView(WorldPtr worldPtr)
+RHISceneViewPtr Renderer::GetOrAddSceneView(WorldPtr worldPtr)
 {
+	return RHISceneViewPtr::Make();
+	/*
 	auto& res = m_cachedSceneViews.At_Lock(worldPtr);
 	if (!res)
 	{
@@ -109,7 +111,7 @@ RHISceneViewPtr& Renderer::GetOrAddSceneView(WorldPtr worldPtr)
 	}
 	m_cachedSceneViews.Unlock(worldPtr);
 
-	return res;
+	return res;*/
 }
 
 void Renderer::RemoveSceneView(WorldPtr worldPtr)
@@ -137,7 +139,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Copy scene view to render thread");
-	auto& rhiSceneView = GetOrAddSceneView(frame.GetWorld());
+	auto rhiSceneView = GetOrAddSceneView(frame.GetWorld());
 	frame.GetWorld()->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 	frame.GetWorld()->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
@@ -172,10 +174,12 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		SAILOR_PROFILE_END_BLOCK();
 
 		TVector<RHI::RHICommandListPtr> secondaryCommandLists;
-		if (auto cmdList = DrawTestScene(frame))
+		m_frameGraph->GetRHI()->Process(rhiSceneView, secondaryCommandLists);
+
+		/*if (auto cmdList = DrawTestScene(frame))
 		{
 			secondaryCommandLists.Emplace(cmdList);
-		}
+		}*/
 
 		// Test Code
 		{	const auto& debugFrame = frame.GetDebugFrame();

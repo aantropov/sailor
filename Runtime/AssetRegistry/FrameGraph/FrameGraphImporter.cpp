@@ -82,7 +82,7 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFra
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{
 		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
-		m_loadedFrameGraphs[uid] = pFrameGraph;
+		outFrameGraph = m_loadedFrameGraphs[uid] = pFrameGraph;
 
 		return true;
 	}

@@ -86,7 +86,17 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 	for (auto& sampler : frameGraphAsset->m_samplers)
 	{
 		TexturePtr texture;
-		App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second.m_uid, texture);
+		if (sampler.m_second.m_uid)
+		{
+			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second.m_uid, texture);
+		}
+		else
+		{
+			if (auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(sampler.m_second.m_path))
+			{
+				App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetUID(), texture);
+			}
+		}
 		pRhiFrameGraph->SetSampler(sampler.m_first, texture);
 
 		texture->AddHotReloadDependentObject(pFrameGraph);

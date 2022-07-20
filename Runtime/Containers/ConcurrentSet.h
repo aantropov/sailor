@@ -297,6 +297,32 @@ namespace Sailor
 		TConstIterator begin() const { return TConstIterator(m_first, m_first ? ((TEntry*)m_first)->GetContainer().begin() : nullptr); }
 		TConstIterator end() const { return TConstIterator(m_last, nullptr); }
 
+		bool operator==(const TConcurrentSet& rhs) const
+		{
+			if (rhs.Num() != this->Num())
+			{
+				return false;
+			}
+
+			for (auto& el : rhs)
+			{
+				if (!this->Contains(el))
+				{
+					return false;
+				}
+			}
+
+			for (auto& el : *this)
+			{
+				if (!rhs.Contains(el))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+
 	protected:
 
 		__forceinline void Insert_Internal(TElementType inElement, const size_t& hash)

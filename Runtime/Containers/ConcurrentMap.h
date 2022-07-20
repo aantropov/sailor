@@ -204,6 +204,30 @@ namespace Sailor
 			return false;
 		}
 
+		SAILOR_API TVector<TKeyType> GetKeys() const
+		{
+			TVector<TKeyType> res(Super::Num());
+
+			for (const auto& pair : *this)
+			{
+				res.Add(pair->m_first);
+			}
+
+			return res;
+		}
+
+		SAILOR_API TVector<TValueType> GetValues() const
+		{
+			TVector<TValueType> res(Super::Num());
+
+			for (const auto& pair : *this)
+			{
+				res.Add(pair->m_second);
+			}
+
+			return res;
+		}
+
 	protected:
 
 		SAILOR_API TElementType& GetOrAdd(const TKeyType& key)
