@@ -125,8 +125,10 @@ namespace Sailor
 		TOctree& operator= (const TOctree& octree) 
 		{
 			Clear();
+
 			m_num = octree.m_num;
 			m_minSize = octree.m_minSize;
+
 			CopyFrom_Internal(*m_root, *octree.m_root);
 			
 			return *this;

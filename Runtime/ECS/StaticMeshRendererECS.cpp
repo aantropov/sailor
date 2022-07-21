@@ -41,7 +41,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				proxy.m_overrideMaterials.Add(data.GetMaterials()[materialIndex]->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
 			}
 
-			m_sceneViewProxiesCache->m_octree.Insert(ownerTransform.GetWorldPosition(), data.GetModel()->GetBoundsAABB().GetExtents(), proxy);
+			const auto& bounds = data.GetModel()->GetBoundsAABB();
+			m_sceneViewProxiesCache->m_octree.Insert(bounds.GetCenter(), bounds.GetExtents(), proxy);
 		}
 	}
 

@@ -412,7 +412,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		else if (layoutBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
 		{
 			auto& storageAllocator = GetStorageBufferAllocator();
-			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, device->GetSsboOffsetAlignment(layoutBinding.m_size));
+			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, 0 /*device->GetSsboOffsetAlignment(layoutBinding.m_size)*/);
 			binding->m_vulkan.m_bufferAllocator = storageAllocator;
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
 			binding->SetLayout(layoutBinding);
@@ -540,7 +540,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
 	
 	TSharedPtr<VulkanBufferAllocator> allocator = GetStorageBufferAllocator();
-	binding->m_vulkan.m_valueBinding = allocator->Allocate(elementSize * numElements, device->GetSsboOffsetAlignment(elementSize));
+	binding->m_vulkan.m_valueBinding = allocator->Allocate(elementSize * numElements, 0 /*device->GetSsboOffsetAlignment(elementSize)*/);
 	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding).m_offset / elementSize);
 
 	binding->m_vulkan.m_bufferAllocator = allocator;
@@ -576,7 +576,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
 		allocator = GetStorageBufferAllocator();
-		binding->m_vulkan.m_valueBinding = allocator->Allocate(size, device->GetSsboOffsetAlignment(size));
+		binding->m_vulkan.m_valueBinding = allocator->Allocate(size, 0);
 		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding).m_offset / size);
 	}
 	else

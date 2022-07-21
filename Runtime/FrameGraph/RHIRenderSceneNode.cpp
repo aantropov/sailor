@@ -107,7 +107,7 @@ void RHIRenderSceneNode::Process(TVector<RHI::RHICommandListPtr>& transferComman
 
 			// Draw Batch
 			commands->DrawIndexed(commandList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-				(uint32_t)matrices.Num(), 0, 0, (uint32_t)ssboIndex);
+				(uint32_t)matrices.Num(), 0, 0, storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex);
 
 			ssboIndex += matrices.Num();
 		}
