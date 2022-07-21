@@ -42,7 +42,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			}
 
 			const auto& bounds = data.GetModel()->GetBoundsAABB();
-			m_sceneViewProxiesCache->m_octree.Insert(bounds.GetCenter(), bounds.GetExtents(), proxy);
+			const auto& center = proxy.m_worldMatrix * glm::vec4(bounds.GetCenter(), 1);
+			m_sceneViewProxiesCache->m_octree.Insert(center, bounds.GetExtents(), proxy);
 		}
 	}
 
