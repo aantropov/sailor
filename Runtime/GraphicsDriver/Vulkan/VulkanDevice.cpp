@@ -114,7 +114,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	CreateSwapchain(pViewport);
 
 	// Create graphics
-	CreateRenderPass();
+	CreateDefaultRenderPass();
 	CreateFramebuffers();
 	CreateCommandBuffers();
 	CreateFrameSyncSemaphores();
@@ -283,7 +283,7 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	_freea(waitStages);
 }
 
-void VulkanDevice::CreateRenderPass()
+void VulkanDevice::CreateDefaultRenderPass()
 {
 	VkFormat depthFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; // VK_FORMAT_D24_UNORM_S8_UINT or VK_FORMAT_D32_SFLOAT_S8_UINT or VK_FORMAT_D24_SFLOAT_S8_UINT
 	m_renderPass = VulkanApi::CreateMSSRenderPass(VulkanDevicePtr(this), m_swapchain->GetImageFormat(), depthFormat, (VkSampleCountFlagBits)m_currentMsaaSamples);
@@ -337,7 +337,7 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 	CleanupSwapChain();
 
 	CreateSwapchain(pViewport);
-	CreateRenderPass();
+	CreateDefaultRenderPass();
 	CreateFramebuffers();
 
 	m_bIsSwapChainOutdated = false;
@@ -416,11 +416,18 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	deviceFeatures.sampleRateShading = VK_TRUE;
 #endif
 
-	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
+	// Create device that supports VK_KHR_dynamic_rendering
+	VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature
+	{
+	.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+	.dynamicRendering = VK_TRUE,
+	};
 
 	TVector<const char*> deviceExtensions;
 	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
+	
+	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
 	createInfo.ppEnabledExtensionNames = deviceExtensions.GetData();
@@ -431,6 +438,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	VkPhysicalDeviceVulkan11Features core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	core11.shaderDrawParameters = true;
+	core11.pNext = &dynamicRenderingFeature;
 	createInfo.pNext = &core11;
 
 	// Compatibility with older Vulkan drivers

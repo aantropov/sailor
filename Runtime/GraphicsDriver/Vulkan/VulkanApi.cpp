@@ -511,7 +511,7 @@ VkAttachmentDescription VulkanApi::GetDefaultDepthAttachment(VkFormat depthForma
 	return depthAttachment;
 }
 
-VulkanRenderPassPtr VulkanApi::CreateRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat)
+VulkanRenderPassPtr VulkanApi::CreateDefaultRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat)
 {
 	VkAttachmentReference colorAttachmentRef = {};
 	colorAttachmentRef.attachment = 0;
@@ -556,7 +556,7 @@ VulkanRenderPassPtr VulkanApi::CreateMSSRenderPass(VulkanDevicePtr device, VkFor
 {
 	if (samples == VK_SAMPLE_COUNT_1_BIT)
 	{
-		return CreateRenderPass(device, imageFormat, depthFormat);
+		return CreateDefaultRenderPass(device, imageFormat, depthFormat);
 	}
 
 	// First attachment is multisampled target.

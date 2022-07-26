@@ -121,13 +121,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
 		SAILOR_API static void GetRequiredExtensions(TVector<const char*>& requiredDeviceExtensions, TVector<const char*>& requiredInstanceExtensions)
 		{
-			requiredDeviceExtensions = { VK_EXT_MEMORY_BUDGET_EXTENSION_NAME, VK_KHR_SWAPCHAIN_EXTENSION_NAME/*, "VK_KHR_dynamic_rendering"*/ };
+			requiredDeviceExtensions = { VK_EXT_MEMORY_BUDGET_EXTENSION_NAME, VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_dynamic_rendering" };
 		}
 
 		SAILOR_API static VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);
 		SAILOR_API static VkAttachmentDescription GetDefaultDepthAttachment(VkFormat depthFormat);
 
-		SAILOR_API static VulkanRenderPassPtr CreateRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat);
+		SAILOR_API static VulkanRenderPassPtr CreateDefaultRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat);
 		SAILOR_API static VulkanRenderPassPtr CreateMSSRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples);
 		SAILOR_API static VulkanImageViewPtr CreateImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags);
 		SAILOR_API static uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);

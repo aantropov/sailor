@@ -120,7 +120,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void CreateWin32Surface(const Win32::Window* pViewport);
 		SAILOR_API void CreateSwapchain(const Win32::Window* pViewport);
 		SAILOR_API bool RecreateSwapchain(const Win32::Window* pViewport);
-		SAILOR_API void CreateRenderPass();
+		SAILOR_API void CreateDefaultRenderPass();
 		SAILOR_API void CreateFramebuffers();
 		SAILOR_API void CreateCommandBuffers();
 		SAILOR_API void CreateFrameSyncSemaphores();
