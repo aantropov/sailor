@@ -66,6 +66,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanSwapchainImagePtr> m_swapchainImages;
 		TVector<VulkanImageViewPtr> m_swapchainImageViews;
 
+		// Used only for resolving MSAA
 		VulkanImagePtr m_colorBuffer;
 		VulkanImageViewPtr m_colorBufferView;
 

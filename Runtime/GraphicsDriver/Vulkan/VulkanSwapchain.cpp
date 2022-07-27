@@ -106,6 +106,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_swapchainImages.Add(VulkanSwapchainImagePtr::Make(vkSwapchainImages[i], m_device));
 		m_swapchainImageViews.Add(VulkanImageViewPtr::Make(m_device, m_swapchainImages[i]));
 
+		m_swapchainImages[i]->m_mipLevels = 1;
 		m_swapchainImageViews[i]->m_format = m_surfaceFormat.format;
 
 		m_swapchainImageViews[i]->m_components.r = VK_COMPONENT_SWIZZLE_IDENTITY;

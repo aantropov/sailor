@@ -15,24 +15,20 @@ VulkanStateDynamicRendering::VulkanStateDynamicRendering(const TVector<VkFormat>
 	m_depthAttachment(depthAttachment),
 	m_stencilAttachment(stencilAttachment)
 {
+	m_dynamicRenderingExtension.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+	m_dynamicRenderingExtension.colorAttachmentCount = (uint32_t)m_colorAttachments.Num();
+	m_dynamicRenderingExtension.pColorAttachmentFormats = m_colorAttachments.GetData();
+	m_dynamicRenderingExtension.depthAttachmentFormat = m_depthAttachment;
+	m_dynamicRenderingExtension.stencilAttachmentFormat = m_stencilAttachment;
+
+	m_dynamicRenderingExtension.pNext = VK_NULL_HANDLE;
 }
 
 void VulkanStateDynamicRendering::Apply(VkGraphicsPipelineCreateInfo& state) const
 {
-	state.renderPass = nullptr;
 	assert(state.pNext == nullptr);
-
-	VkPipelineRenderingCreateInfoKHR dynamicRenderingExtension{};
-
-	dynamicRenderingExtension.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
-	dynamicRenderingExtension.colorAttachmentCount = (uint32_t)m_colorAttachments.Num();
-	dynamicRenderingExtension.pColorAttachmentFormats = m_colorAttachments.GetData();
-	dynamicRenderingExtension.depthAttachmentFormat = m_depthAttachment;
-	dynamicRenderingExtension.stencilAttachmentFormat = m_stencilAttachment;
-
-	dynamicRenderingExtension.pNext = nullptr;
-
-	state.pNext = &dynamicRenderingExtension;
+	state.pNext = &m_dynamicRenderingExtension;
+	state.renderPass = nullptr;
 }
 
 VulkanStateViewport::VulkanStateViewport(float width, float height) :

@@ -24,6 +24,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:
+
+		VkPipelineRenderingCreateInfoKHR m_dynamicRenderingExtension{};
 		TVector<VkFormat> m_colorAttachments;
 		VkFormat m_depthAttachment;
 		VkFormat m_stencilAttachment;
