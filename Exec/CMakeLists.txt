@@ -9,7 +9,7 @@ add_compile_definitions(_SAILOR_IMPORT_)
 
 # Properties->General->Output Directory
 set_target_properties(SailorExec PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/Binaries) 
-set_property(TARGET SailorExec PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Build")
+set_property(TARGET SailorExec PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Adds logic to INSTALL.vcproj to copy app.exe to destination directory
 #install (TARGETS SailorExec RUNTIME DESTINATION ${CMAKE_SOURCE_DIR}/Binaries/${CMAKE_CONFIGURATION_TYPE})
