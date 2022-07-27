@@ -9,6 +9,7 @@
 #include "VulkanFramebuffer.h"
 #include "VulkanBuffer.h"
 #include "VulkanPipeline.h"
+#include "VulkanImageView.h"
 #include "VulkanPipileneStates.h"
 #include "VulkanDescriptors.h"
 #include "Tasks/Scheduler.h"
@@ -149,6 +150,38 @@ void VulkanCommandBuffer::EndCommandList()
 {
 	m_bIsRecorded = true;
 	VK_CHECK(vkEndCommandBuffer(m_commandBuffer));
+}
+
+void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+	VulkanImageViewPtr depthStencilAttachment,
+	VkRect2D renderArea,
+	VkSubpassContents content,
+	VkOffset2D offset,
+	VkClearValue clearColor)
+{
+	const VkRenderingAttachmentInfoKHR colorAttachmentInfo{
+		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+		.imageView = *(colorAttachments[0]),
+		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.clearValue = clearColor,
+	};
+
+	const VkRenderingInfoKHR renderInfo{
+		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+		.renderArea = renderArea,
+		.layerCount = 1,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &colorAttachmentInfo,
+	};
+
+	vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
+}
+
+void VulkanCommandBuffer::EndRenderPassEx()
+{
+	vkCmdEndRenderingKHR(m_commandBuffer);
 }
 
 void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkSubpassContents content, VkOffset2D offset, VkClearValue clearColor)

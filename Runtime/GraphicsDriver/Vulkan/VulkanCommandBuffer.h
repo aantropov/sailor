@@ -31,6 +31,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void EndCommandList();
 
+		SAILOR_API void BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+			VulkanImageViewPtr depthStencilAttachment,
+			VkRect2D renderArea,
+			VkSubpassContents content = VK_SUBPASS_CONTENTS_INLINE,
+			VkOffset2D offset = { 0,0 },
+			VkClearValue clearColor = VulkanApi::DefaultClearColor);
+		SAILOR_API void EndRenderPassEx();
+
 		SAILOR_API void BeginRenderPass(VulkanRenderPassPtr renderPass,
 			VulkanFramebufferPtr frameBuffer,
 			VkExtent2D extent,
