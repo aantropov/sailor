@@ -24,12 +24,14 @@ void VulkanStateDynamicRendering::Apply(VkGraphicsPipelineCreateInfo& state) con
 	VkPipelineRenderingCreateInfoKHR dynamicRenderingExtension{};
 
 	dynamicRenderingExtension.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
-	dynamicRenderingExtension.colorAttachmentCount = m_colorAttachments.Num();
+	dynamicRenderingExtension.colorAttachmentCount = (uint32_t)m_colorAttachments.Num();
 	dynamicRenderingExtension.pColorAttachmentFormats = m_colorAttachments.GetData();
 	dynamicRenderingExtension.depthAttachmentFormat = m_depthAttachment;
 	dynamicRenderingExtension.stencilAttachmentFormat = m_stencilAttachment;
 
 	dynamicRenderingExtension.pNext = nullptr;
+
+	state.pNext = &dynamicRenderingExtension;
 }
 
 VulkanStateViewport::VulkanStateViewport(float width, float height) :
