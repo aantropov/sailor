@@ -122,9 +122,10 @@ namespace Sailor
 		const T& operator*() const { return *static_cast<T*>(m_pRawPtr); }
 
 		bool IsShared() const  noexcept { return GetRefCounter() > 1; }
+		bool IsValid() const noexcept { return m_pRawPtr != nullptr; }
 
-		operator bool() const  noexcept { return m_pRawPtr != nullptr; }
-
+		explicit operator bool() const noexcept { return m_pRawPtr != nullptr; }
+		
 		bool operator==(const TRefPtr& pRhs) const
 		{
 			return m_pRawPtr == pRhs.m_pRawPtr;

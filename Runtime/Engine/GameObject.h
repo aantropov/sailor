@@ -24,7 +24,7 @@ namespace Sailor
 
 		SAILOR_API WorldPtr GetWorld() const { return m_pWorld; }
 
-		SAILOR_API operator bool() const { return !bPendingDestroy; }
+		SAILOR_API explicit operator bool() const { return !bPendingDestroy; }
 
 		template<typename TComponent, typename... TArgs >
 		SAILOR_API TObjectPtr<TComponent> AddComponent(TArgs&& ... args)

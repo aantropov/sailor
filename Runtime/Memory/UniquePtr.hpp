@@ -82,7 +82,9 @@ namespace Sailor
 		T& operator*()  noexcept { return *m_pRawPtr; }
 		const T& operator*() const { return *m_pRawPtr; }
 
-		operator bool() const  noexcept { return m_pRawPtr != nullptr; }
+		bool IsValid() const noexcept { return m_pRawPtr != nullptr; }
+		
+		explicit operator bool() const  noexcept { return m_pRawPtr != nullptr; }
 
 		bool operator==(const TUniquePtr& pRhs) const
 		{

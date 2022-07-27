@@ -39,7 +39,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	m_device(device),
 	m_surface(device->GetSurface())
 {
-	const bool bIsRecreating = oldSwapchain;
+	const bool bIsRecreating = oldSwapchain.IsValid();
 
 	SwapChainSupportDetails swapChainSupport = VulkanApi::QuerySwapChainSupport(device->GetPhysicalDevice(), m_surface);
 

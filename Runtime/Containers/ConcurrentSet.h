@@ -50,7 +50,7 @@ namespace Sailor
 				return *this;
 			}
 
-			__forceinline operator bool() const { return m_elements.Num() > 0; }
+			__forceinline explicit operator bool() const { return m_elements.Num() > 0; }
 			virtual ~TEntry() = default;
 
 			__forceinline TElementContainer& GetContainer() { return m_elements; }

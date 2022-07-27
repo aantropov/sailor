@@ -18,7 +18,7 @@ VulkanMemoryPtr& VulkanMemoryPtr::operator=(const TRefPtr<Sailor::GraphicsDriver
 
 VulkanMemoryPtr::operator bool() const
 {
-	return m_deviceMemory;
+	return m_deviceMemory.IsValid();
 }
 
 VulkanMemoryPtr GlobalVulkanMemoryAllocator::Allocate(size_t size)

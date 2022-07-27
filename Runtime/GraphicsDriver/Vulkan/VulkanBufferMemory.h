@@ -18,7 +18,7 @@ namespace Sailor::Memory
 
 		SAILOR_API VulkanBufferMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer>& rhs);
 
-		SAILOR_API operator bool() const;
+		SAILOR_API explicit operator bool() const;
 		SAILOR_API VulkanMemoryPtr operator*();
 
 		TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer> m_buffer{};

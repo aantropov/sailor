@@ -93,8 +93,9 @@ namespace Sailor
 		const T& operator*() const { return *m_pRawPtr; }
 
 		bool IsShared() const  noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 1; }
+		bool IsValid() const noexcept { return m_pRawPtr != nullptr; }
 
-		operator bool() const  noexcept { return m_pRawPtr != nullptr; }
+		explicit operator bool() const  noexcept { return m_pRawPtr != nullptr; }
 
 		bool operator==(const TSharedPtr& pRhs) const
 		{

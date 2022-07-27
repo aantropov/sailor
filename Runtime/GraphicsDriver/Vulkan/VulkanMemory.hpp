@@ -23,7 +23,7 @@ namespace Sailor::Memory
 			return *this;
 		}
 
-		SAILOR_API operator bool()
+		SAILOR_API explicit operator bool()
 		{
 			return m_deviceMemory;
 		}

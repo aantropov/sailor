@@ -18,7 +18,7 @@ namespace Sailor::Memory
 
 		SAILOR_API VulkanMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory>& rhs);
 
-		SAILOR_API operator bool() const;
+		SAILOR_API explicit operator bool() const;
 
 		TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory> m_deviceMemory{};
 		size_t m_offset{};

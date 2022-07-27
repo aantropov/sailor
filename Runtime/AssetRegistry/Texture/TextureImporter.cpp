@@ -123,7 +123,7 @@ bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
 {
 	auto task = LoadTexture(uid, outTexture);
 	task->Wait();
-	return task->GetResult();
+	return task->GetResult().IsValid();
 }
 
 Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)

@@ -419,7 +419,7 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 	auto task = LoadMaterial(uid, outMaterial);
 	task->Wait();
 
-	return task->GetResult();
+	return task->GetResult().IsValid();
 }
 
 MaterialPtr MaterialImporter::GetLoadedMaterial(UID uid)

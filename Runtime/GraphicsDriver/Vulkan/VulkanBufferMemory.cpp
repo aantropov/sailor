@@ -18,7 +18,7 @@ VulkanBufferMemoryPtr& VulkanBufferMemoryPtr::operator=(const TRefPtr<Sailor::Gr
 
 VulkanBufferMemoryPtr::operator bool() const
 {
-	return m_buffer;
+	return m_buffer.IsValid();
 }
 
 VulkanMemoryPtr VulkanBufferMemoryPtr::operator*()

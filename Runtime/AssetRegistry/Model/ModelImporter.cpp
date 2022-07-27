@@ -166,7 +166,7 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 
 	auto task = LoadModel(uid, outModel);
 	task->Wait();
-	return task->GetResult();
+	return task->GetResult().IsValid();
 }
 
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)

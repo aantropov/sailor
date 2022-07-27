@@ -552,7 +552,7 @@ bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, cons
 	SAILOR_PROFILE_FUNCTION();
 	auto task = LoadShader(uid, outShader, defines);
 	task->Wait();
-	return task->GetResult();
+	return task->GetResult().IsValid();
 }
 
 bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutation)
