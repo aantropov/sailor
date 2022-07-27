@@ -112,6 +112,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void GetOccupiedVideoMemory(VkMemoryHeapFlags memFlags, size_t& outHeapBudget, size_t& outHeapUsage);
 
+		// Device specific extensions
+		SAILOR_API void vkCmdBeginRenderingKHR(VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo);
+		SAILOR_API void vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer);
+
 	protected:
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
@@ -176,5 +180,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// We're sharing the same device memory between the different buffers
 		TConcurrentMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>> m_memoryAllocators;
+
+		// Dynamic rendering extension
+		PFN_vkCmdBeginRenderingKHR pVkCmdBeginRenderingKHR;
+		PFN_vkCmdEndRenderingKHR pVkCmdEndRenderingKHR;
 	};
 }

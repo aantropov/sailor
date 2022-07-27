@@ -176,12 +176,12 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.pColorAttachments = &colorAttachmentInfo,
 	};
 
-	vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
+	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
 }
 
 void VulkanCommandBuffer::EndRenderPassEx()
 {
-	vkCmdEndRenderingKHR(m_commandBuffer);
+	m_device->vkCmdEndRenderingKHR(m_commandBuffer);
 }
 
 void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkSubpassContents content, VkOffset2D offset, VkClearValue clearColor)

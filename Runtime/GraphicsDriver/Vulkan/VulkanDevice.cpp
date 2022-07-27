@@ -120,6 +120,20 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	CreateFrameSyncSemaphores();
 
 	m_bIsSwapChainOutdated = false;
+
+	// Get dynamic rendering extension
+	pVkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdBeginRenderingKHR");
+	pVkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdEndRenderingKHR");
+}
+
+void VulkanDevice::vkCmdBeginRenderingKHR(VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo)
+{
+	pVkCmdBeginRenderingKHR(commandBuffer, pRenderingInfo);
+}
+
+void VulkanDevice::vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer)
+{
+	pVkCmdEndRenderingKHR(commandBuffer);
 }
 
 VulkanDevice::~VulkanDevice()
