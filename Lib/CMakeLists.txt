@@ -35,7 +35,7 @@ if(BUILD_WITH_EASY_PROFILER)
 endif(BUILD_WITH_EASY_PROFILER)
 
 # Vulkan
-find_package(Vulkan REQUIRED)
+find_package(Vulkan 1.3 REQUIRED)
 include_directories ("${Vulkan_INCLUDE_DIR}")
 target_link_libraries(SailorLib "${Vulkan_LIBRARIES}")
 
