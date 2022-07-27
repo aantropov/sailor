@@ -9,6 +9,29 @@
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
+VulkanStateDynamicRendering::VulkanStateDynamicRendering(const TVector<VkFormat>& colorAttachments, VkFormat depthAttachment, VkFormat stencilAttachment) :
+	m_colorAttachments(colorAttachments),
+	m_depthAttachment(depthAttachment),
+	m_stencilAttachment(stencilAttachment)
+{
+}
+
+void VulkanStateDynamicRendering::Apply(VkGraphicsPipelineCreateInfo& state) const
+{
+	state.renderPass = nullptr;
+	assert(state.pNext == nullptr);
+
+	VkPipelineRenderingCreateInfoKHR dynamicRenderingExtension{};
+
+	dynamicRenderingExtension.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+	dynamicRenderingExtension.colorAttachmentCount = m_colorAttachments.Num();
+	dynamicRenderingExtension.pColorAttachmentFormats = m_colorAttachments.GetData();
+	dynamicRenderingExtension.depthAttachmentFormat = m_depthAttachment;
+	dynamicRenderingExtension.stencilAttachmentFormat = m_stencilAttachment;
+
+	dynamicRenderingExtension.pNext = nullptr;
+}
+
 VulkanStateViewport::VulkanStateViewport(float width, float height) :
 	VulkanStateViewport(0.0f, 0.0f, width, height, { 0,0 }, { (uint32_t)width, (uint32_t)height }, 0.0f, 1.0f)
 {
@@ -160,7 +183,7 @@ void VulkanStateColorBlending::Apply(struct VkGraphicsPipelineCreateInfo& state)
 	state.pColorBlendState = &m_colorBlending;
 }
 
-VulkanStateDynamic::VulkanStateDynamic() : m_dynamicState{}
+VulkanStateDynamicState::VulkanStateDynamicState() : m_dynamicState{}
 {
 	m_dynamicStates.Add(VK_DYNAMIC_STATE_VIEWPORT);
 	m_dynamicStates.Add(VK_DYNAMIC_STATE_SCISSOR);
@@ -171,7 +194,7 @@ VulkanStateDynamic::VulkanStateDynamic() : m_dynamicState{}
 	m_dynamicState.pDynamicStates = m_dynamicStates.GetData();
 }
 
-void VulkanStateDynamic::Apply(struct VkGraphicsPipelineCreateInfo& state) const
+void VulkanStateDynamicState::Apply(struct VkGraphicsPipelineCreateInfo& state) const
 {
 	state.pDynamicState = &m_dynamicState;
 }

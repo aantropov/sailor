@@ -14,6 +14,21 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	class VulkanPipelineState : public RHI::RHIResource, public RHI::IStateModifier<VkGraphicsPipelineCreateInfo> {};
 
+	// This state allows to use VK_KHR_dynamic_rendering
+	// and avoid the needs to create RenderPass & FrameBuffer
+	class VulkanStateDynamicRendering : public VulkanPipelineState
+	{
+	public:
+		SAILOR_API VulkanStateDynamicRendering(const TVector<VkFormat>& colorAttachments, VkFormat depthAttachment, VkFormat stencilAttachment);
+
+		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+
+	private:
+		TVector<VkFormat> m_colorAttachments;
+		VkFormat m_depthAttachment;
+		VkFormat m_stencilAttachment;
+	};
+
 	class VulkanStateViewport : public VulkanPipelineState
 	{
 	public:
@@ -113,10 +128,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkPipelineColorBlendStateCreateInfo m_colorBlending;
 	};
 
-	class VulkanStateDynamic : public VulkanPipelineState
+	class VulkanStateDynamicState : public VulkanPipelineState
 	{
 	public:
-		SAILOR_API VulkanStateDynamic();
+		SAILOR_API VulkanStateDynamicState();
 		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
 	private:

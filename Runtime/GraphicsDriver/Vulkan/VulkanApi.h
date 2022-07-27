@@ -66,7 +66,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	typedef TRefPtr<class VulkanStateDepthStencil> VulkanStateDepthStencilPtr;
 	typedef TRefPtr<class VulkanStateInputAssembly> VulkanStateInputAssemblyPtr;
 	typedef TRefPtr<class VulkanStateVertexDescription> VulkanStateVertexDescriptionPtr;
-	typedef TRefPtr<class VulkanStateDynamic> VulkanStateDynamicPtr;
+	typedef TRefPtr<class VulkanStateDynamicState> VulkanStateDynamicPtr;
 
 #define VK_CHECK(call) 	do { VkResult result_ = call; assert(result_ == VK_SUCCESS); } while (0)
 
