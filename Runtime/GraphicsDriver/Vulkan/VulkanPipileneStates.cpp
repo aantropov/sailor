@@ -2,6 +2,7 @@
 #include "Memory/RefPtr.hpp"
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
+#include "VulkanSwapchain.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
 #include "RHI/VertexDescription.h"
@@ -256,6 +257,8 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 			VulkanApi::GetBindingDescription(vertexDescription),
 			VulkanApi::GetAttributeDescriptions(vertexDescription));
 
+		const VulkanStateDynamicRenderingPtr pStateDynamicRendering = VulkanStateDynamicRenderingPtr::Make(TVector<VkFormat>{m_pDevice->GetSwapchain()->GetImageFormat()}, m_pDevice->GetDepthFormat(), m_pDevice->GetDepthFormat());
+
 		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)topology);
 		const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();
 		const VulkanStateRasterizationPtr pStateRasterizer = VulkanStateRasterizationPtr::Make(renderState.GetDepthBias() != 0.0f,
@@ -274,7 +277,8 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 				pDynamicState,
 				pDepthStencil,
 				GetBlendState(renderState.GetBlendMode()),
-				pMultisample
+				pMultisample,
+				pStateDynamicRendering
 		};
 	}
 

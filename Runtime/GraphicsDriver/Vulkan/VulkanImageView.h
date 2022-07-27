@@ -30,6 +30,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void Release() override;
 
 		SAILOR_API virtual ~VulkanImageView();
+		SAILOR_API VulkanImagePtr GetImage() const { return m_image; }
 
 	protected:
 

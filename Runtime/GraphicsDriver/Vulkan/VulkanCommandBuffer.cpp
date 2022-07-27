@@ -82,7 +82,7 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 }
 
 void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPass, uint32_t subpassIndex, VkCommandBufferUsageFlags flags)
-{	
+{
 	ClearDependencies();
 
 	// We can omit framebuffer for now
@@ -155,11 +155,24 @@ void VulkanCommandBuffer::EndCommandList()
 void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
 	VulkanImageViewPtr depthStencilAttachment,
 	VkRect2D renderArea,
-	VkSubpassContents content,
+	VkRenderingFlags renderingFlags,
 	VkOffset2D offset,
 	VkClearValue clearColor)
 {
-	const VkRenderingAttachmentInfoKHR colorAttachmentInfo{
+	VkClearValue depthClear{};
+	depthClear.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+
+	const VkRenderingAttachmentInfoKHR depthStencilAttachmentInfo
+	{
+		.imageView = *depthStencilAttachment,
+		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.clearValue = depthClear,
+	};
+
+	const VkRenderingAttachmentInfoKHR colorAttachmentInfo
+	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
 		.imageView = *(colorAttachments[0]),
 		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
@@ -168,13 +181,24 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.clearValue = clearColor,
 	};
 
-	const VkRenderingInfoKHR renderInfo{
+	const VkRenderingInfoKHR renderInfo
+	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+		.pNext = VK_NULL_HANDLE,
+		.flags = renderingFlags,
 		.renderArea = renderArea,
 		.layerCount = 1,
-		.colorAttachmentCount = 1,
+		.colorAttachmentCount = (uint32_t)colorAttachments.Num(),
 		.pColorAttachments = &colorAttachmentInfo,
+		.pDepthAttachment = &depthStencilAttachmentInfo,
+		.pStencilAttachment = &depthStencilAttachmentInfo,
 	};
+
+	for (auto& attachment : colorAttachments)
+	{
+		m_colorAttachmentDependencies.Add(attachment->GetImage());
+	}
+	m_depthStencilAttachmentDependency = depthStencilAttachment->GetImage();
 
 	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
 }
@@ -288,6 +312,8 @@ void VulkanCommandBuffer::ClearDependencies()
 	m_semaphoreDependencies.Clear();
 	m_commandBufferDependencies.Clear();
 	m_renderPass.Clear();
+	m_colorAttachmentDependencies.Clear();
+	m_depthStencilAttachmentDependency.Clear();
 
 	for (auto& managedPtr : m_memoryPtrs)
 	{
@@ -439,14 +465,16 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	VkPipelineStageFlags sourceStage;
 	VkPipelineStageFlags destinationStage;
 
-	if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+	if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+	{
 		barrier.srcAccessMask = 0;
 		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
 		sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 		destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	}
-	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+	{
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
@@ -460,6 +488,22 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 
 		sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 		destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+	{
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+		sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+	{
+		barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+		sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 	else
 	{

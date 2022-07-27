@@ -440,7 +440,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	TVector<const char*> deviceExtensions;
 	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
-	
+
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
@@ -595,12 +595,30 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 
 	m_commandBuffers[imageIndex]->BeginCommandList();
 	{
-		m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent(), VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+		/*m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent(), VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 		for (auto cmdBuffer : secondaryCommandBuffers)
 		{
 			m_commandBuffers[imageIndex]->Execute(cmdBuffer);
 		}
-		m_commandBuffers[imageIndex]->EndRenderPass();
+		m_commandBuffers[imageIndex]->EndRenderPass();*/
+
+		VkRect2D renderArea{};
+		renderArea.extent = m_swapchain->GetExtent();
+		auto currentImageView = m_swapchain->GetImageViews()[imageIndex];
+
+		m_commandBuffers[imageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		m_commandBuffers[imageIndex]->BeginRenderPassEx(TVector<VulkanImageViewPtr>{currentImageView},
+			m_swapchain->GetDepthBufferView(),
+			renderArea,
+			VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR);
+
+		for (auto cmdBuffer : secondaryCommandBuffers)
+		{
+			m_commandBuffers[imageIndex]->Execute(cmdBuffer);
+		}
+
+		m_commandBuffers[imageIndex]->EndRenderPassEx();
+		m_commandBuffers[imageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 	m_commandBuffers[imageIndex]->EndCommandList();
 	commandBuffers.Add(*m_commandBuffers[imageIndex]->GetHandle());

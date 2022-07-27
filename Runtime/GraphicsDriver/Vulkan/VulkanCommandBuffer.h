@@ -34,7 +34,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
 			VulkanImageViewPtr depthStencilAttachment,
 			VkRect2D renderArea,
-			VkSubpassContents content = VK_SUBPASS_CONTENTS_INLINE,
+			VkRenderingFlags renderingFlags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
 			VkOffset2D offset = { 0,0 },
 			VkClearValue clearColor = VulkanApi::DefaultClearColor);
 		SAILOR_API void EndRenderPassEx();
@@ -84,6 +84,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool IsRecorded() const { return m_bIsRecorded; }
 
 	protected:
+
+		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
+		VulkanImagePtr m_depthStencilAttachmentDependency;
 
 		TVector<VulkanBufferPtr> m_bufferDependencies;
 		TVector<VulkanImagePtr> m_imageDependencies;

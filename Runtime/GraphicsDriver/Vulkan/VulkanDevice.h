@@ -116,6 +116,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void vkCmdBeginRenderingKHR(VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo);
 		SAILOR_API void vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer);
 
+		SAILOR_API VulkanSwapchainPtr GetSwapchain() { return m_swapchain; }
+
 	protected:
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
