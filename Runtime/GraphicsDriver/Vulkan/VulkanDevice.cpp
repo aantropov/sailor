@@ -201,6 +201,11 @@ VulkanSurfacePtr VulkanDevice::GetSurface() const
 	return m_surface;
 }
 
+VkFormat VulkanDevice::GetColorFormat() const
+{
+	return m_swapchain->GetImageFormat();
+}
+
 VkFormat VulkanDevice::GetDepthFormat() const
 {
 	return VulkanApi::SelectFormatByFeatures(

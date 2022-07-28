@@ -101,6 +101,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			return dynamicAlignment;
 		}
 
+		SAILOR_API VkFormat GetColorFormat() const;
 		SAILOR_API VkFormat GetDepthFormat() const;
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 

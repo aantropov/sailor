@@ -538,7 +538,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 	auto device = m_vkInstance->GetMainDevice();
 
 	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
-	
+
 	TSharedPtr<VulkanBufferAllocator> allocator = GetStorageBufferAllocator();
 	binding->m_vulkan.m_valueBinding = allocator->Allocate(elementSize * numElements, 0 /*device->GetSsboOffsetAlignment(elementSize)*/);
 	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding).m_offset / elementSize);
@@ -697,7 +697,7 @@ void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOn
 			flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 		}
 
-		cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(device->GetRenderPass(), 0, flags);
+		cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(TVector<VkFormat>{device->GetColorFormat()}, device->GetDepthFormat(), flags);
 	}
 	else
 	{

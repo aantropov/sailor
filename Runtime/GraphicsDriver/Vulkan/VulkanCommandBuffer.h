@@ -28,6 +28,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void BeginCommandList(VkCommandBufferUsageFlags flags = 0);
 		SAILOR_API void BeginSecondaryCommandList(VulkanRenderPassPtr renderPass, uint32_t subpassIndex = 0, VkCommandBufferUsageFlags flags = 0);
+		SAILOR_API void BeginSecondaryCommandList(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment, VkCommandBufferUsageFlags flags = 0, VkRenderingFlags inheritanceFlags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT);
 
 		SAILOR_API void EndCommandList();
 

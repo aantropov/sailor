@@ -54,6 +54,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanShaderStagePtr> m_stages;
 		TVector<VulkanPipelineStatePtr> m_pipelineStates;
 		VulkanPipelineLayoutPtr m_layout;
+
+		// Actually not used and disabled by VulkanStateDynamicRendering
 		VulkanRenderPassPtr m_renderPass;
 		uint32_t m_subpass;
 

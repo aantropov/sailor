@@ -81,6 +81,34 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 	ClearDependencies();
 }
 
+void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment, VkCommandBufferUsageFlags flags, VkRenderingFlags inheritanceFlags)
+{
+	ClearDependencies();
+
+	VkCommandBufferInheritanceRenderingInfoKHR attachments{};
+	attachments.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO;
+	attachments.colorAttachmentCount = (uint32_t)colorAttachments.Num();
+	attachments.depthAttachmentFormat = depthStencilAttachment;
+	attachments.stencilAttachmentFormat = depthStencilAttachment;
+	attachments.pColorAttachmentFormats = colorAttachments.GetData();
+
+	// TODO: Should we always use MSAA?
+	attachments.rasterizationSamples = m_device->GetCurrentMsaaSamples();
+
+	VkCommandBufferInheritanceInfo inheritanceInfo{};
+	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+	inheritanceInfo.renderPass = nullptr;
+	inheritanceInfo.subpass = 0;
+	inheritanceInfo.pNext = &attachments;
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = flags;
+	beginInfo.pInheritanceInfo = &inheritanceInfo;
+
+	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
+}
+
 void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPass, uint32_t subpassIndex, VkCommandBufferUsageFlags flags)
 {
 	ClearDependencies();
@@ -164,6 +192,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	const VkRenderingAttachmentInfoKHR depthStencilAttachmentInfo
 	{
+		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = *depthStencilAttachment,
 		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
