@@ -164,6 +164,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		VulkanDevicePtr m_pDevice;
 		TVector<VulkanStateColorBlendingPtr> m_blendModes;
-		TConcurrentMap<RHI::RenderState, TVector<VulkanPipelineStatePtr>> m_cache;
+		TConcurrentMap<size_t, TVector<VulkanPipelineStatePtr>> m_cache;
 	};
 }

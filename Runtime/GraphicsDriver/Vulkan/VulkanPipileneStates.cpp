@@ -239,13 +239,16 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_cache.Find(renderState);
+	size_t hashCode = 0;
+	Sailor::HashCombine(hashCode, renderState, topology);
+
+	auto it = m_cache.Find(hashCode);
 	if (it != m_cache.end() && (*it).m_second.Num() > 0)
 	{
 		return (*it).m_second;
 	}
 
-	TVector<VulkanPipelineStatePtr>& res = m_cache.At_Lock(renderState);
+	TVector<VulkanPipelineStatePtr>& res = m_cache.At_Lock(hashCode);
 
 	if (res.Num() == 0)
 	{
@@ -253,7 +256,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 			VulkanApi::GetBindingDescription(vertexDescription),
 			VulkanApi::GetAttributeDescriptions(vertexDescription));
 
-		const VulkanStateDynamicRenderingPtr pStateDynamicRendering = VulkanStateDynamicRenderingPtr::Make(TVector<VkFormat>{m_pDevice->GetSwapchain()->GetImageFormat()}, m_pDevice->GetDepthFormat(), m_pDevice->GetDepthFormat());
+		const VulkanStateDynamicRenderingPtr pStateDynamicRendering = VulkanStateDynamicRenderingPtr::Make(TVector<VkFormat>{m_pDevice->GetColorFormat()}, m_pDevice->GetDepthFormat(), m_pDevice->GetDepthFormat());
 
 		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)topology);
 		const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();
@@ -273,12 +276,12 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 				pDynamicState,
 				pDepthStencil,
 				GetBlendState(renderState.GetBlendMode()),
-				pMultisample,
-				pStateDynamicRendering
+				pStateDynamicRendering,
+				pMultisample
 		};
 	}
 
-	m_cache.Unlock(renderState);
+	m_cache.Unlock(hashCode);
 	return res;
 }
 

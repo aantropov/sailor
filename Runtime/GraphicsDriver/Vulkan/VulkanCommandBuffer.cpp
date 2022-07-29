@@ -12,6 +12,7 @@
 #include "VulkanImageView.h"
 #include "VulkanPipileneStates.h"
 #include "VulkanDescriptors.h"
+#include "VulkanSwapchain.h"
 #include "Tasks/Scheduler.h"
 #include "VulkanImage.h"
 #include "Containers/Pair.h"
@@ -196,11 +197,11 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.imageView = *depthStencilAttachment,
 		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 		.clearValue = depthClear,
 	};
 
-	const VkRenderingAttachmentInfoKHR colorAttachmentInfo
+	VkRenderingAttachmentInfoKHR colorAttachmentInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
 		.imageView = *(colorAttachments[0]),
@@ -209,6 +210,17 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 		.clearValue = clearColor,
 	};
+
+	// MSAA enabled
+	if (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT)
+	{
+		colorAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetColorBufferView());
+		colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+		colorAttachmentInfo.resolveImageView = *(colorAttachments[0]);
+		colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+		m_colorAttachmentDependencies.Add(m_device->GetSwapchain()->GetColorBufferView()->GetImage());
+	}
 
 	const VkRenderingInfoKHR renderInfo
 	{

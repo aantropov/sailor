@@ -150,6 +150,7 @@ void VulkanDevice::Shutdown()
 
 	CleanupSwapChain();
 
+	m_oldSwapchain.Clear();
 	m_swapchain.Clear();
 
 	m_commandBuffers.Clear();
@@ -501,15 +502,14 @@ void VulkanDevice::CreateWin32Surface(const Window* viewport)
 
 void VulkanDevice::CreateSwapchain(const Window* viewport)
 {
-	VulkanSwapchainPtr oldSwapchain = m_swapchain;
-	m_swapchain.Clear();
+	m_oldSwapchain = m_swapchain;
 
 	m_swapchain = VulkanSwapchainPtr::Make(
 		VulkanDevicePtr(this),
 		viewport->GetWidth(),
 		viewport->GetHeight(),
 		viewport->IsVsyncRequested(),
-		oldSwapchain);
+		m_oldSwapchain);
 
 	m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 }

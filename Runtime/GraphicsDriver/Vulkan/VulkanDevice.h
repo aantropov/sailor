@@ -161,6 +161,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Swapchain
 		VulkanSwapchainPtr m_swapchain;
+		VulkanSwapchainPtr m_oldSwapchain;
 		TVector<VulkanFramebufferPtr> m_swapChainFramebuffers;
 
 		// TODO: Use VK_NV_inherited_viewport_scissor extension if possible
