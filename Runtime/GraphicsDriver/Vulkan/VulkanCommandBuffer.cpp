@@ -211,7 +211,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.clearValue = clearColor,
 	};
 
-	// MSAA enabled
+	// MSAA enabled -> we use the temporary buffer to resolve
 	if (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT)
 	{
 		colorAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetColorBufferView());

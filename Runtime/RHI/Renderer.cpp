@@ -159,41 +159,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		static Utils::Timer timer;
 		timer.Start();
 
+		bool bRunCommandLists = false;
 		TVector<RHI::RHICommandListPtr> secondaryCommandLists;
 		TVector<RHI::RHICommandListPtr> transferCommandLists;
-		m_frameGraph->GetRHI()->Process(rhiSceneView, transferCommandLists, secondaryCommandLists);
-
-		SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
 		TVector<RHISemaphorePtr> waitFrameUpdate;
-		for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
-		{
-			if (auto pCommandList = frameInstance.GetCommandBuffer(i))
-			{
-				waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-				GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), waitFrameUpdate[i]);
-			}
-		}
-
-		for (auto& cmdList : transferCommandLists)
-		{
-			waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-			GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
-		}
-		SAILOR_PROFILE_END_BLOCK();
-
-		// Test Code
-		{	const auto& debugFrame = frame.GetDebugFrame();
-
-		if (debugFrame.m_drawDebugMeshCmd)
-		{
-			if (debugFrame.m_signalSemaphore)
-			{
-				waitFrameUpdate.Add(debugFrame.m_signalSemaphore);
-			}
-
-			secondaryCommandLists.Add(debugFrame.m_drawDebugMeshCmd);
-		}
-		}
 
 		do
 		{
@@ -201,28 +170,68 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
-			if (m_driverInstance->PresentFrame(frame, nullptr, &secondaryCommandLists, waitFrameUpdate))
+			if (m_driverInstance->AcquireNextImage())
 			{
-				totalFramesCount++;
-				timer.Stop();
-
-				if (timer.ResultAccumulatedMs() > 1000)
+				if (!bRunCommandLists)
 				{
-					m_pureFps = totalFramesCount;
-					totalFramesCount = 0;
-					timer.Clear();
-#if defined(SAILOR_BUILD_WITH_VULKAN)
-					size_t heapUsage = 0;
-					size_t heapBudget = 0;
-					VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
-					m_heapUsage = heapUsage;
-					m_heapBudget = heapBudget;
-#endif // SAILOR_BUILD_WITH_VULKAN
+					m_frameGraph->GetRHI()->SetRenderTarget("Backbuffer", m_driverInstance->GetBackbuffer());
+					m_frameGraph->GetRHI()->Process(rhiSceneView, transferCommandLists, secondaryCommandLists);
+
+					SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
+					for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
+					{
+						if (auto pCommandList = frameInstance.GetCommandBuffer(i))
+						{
+							waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+							GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), waitFrameUpdate[i]);
+						}
+					}
+
+					for (auto& cmdList : transferCommandLists)
+					{
+						waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+						GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
+					}
+					SAILOR_PROFILE_END_BLOCK();
+
+					// Test Code
+					const auto& debugFrame = frame.GetDebugFrame();
+					if (debugFrame.m_drawDebugMeshCmd)
+					{
+						if (debugFrame.m_signalSemaphore)
+						{
+							waitFrameUpdate.Add(debugFrame.m_signalSemaphore);
+						}
+
+						secondaryCommandLists.Add(debugFrame.m_drawDebugMeshCmd);
+					}
+
+					bRunCommandLists = true;
 				}
-			}
-			else
-			{
-				m_pureFps = 0;
+
+				if (m_driverInstance->PresentFrame(frame, nullptr, &secondaryCommandLists, waitFrameUpdate))
+				{
+					totalFramesCount++;
+					timer.Stop();
+
+					if (timer.ResultAccumulatedMs() > 1000)
+					{
+						m_pureFps = totalFramesCount;
+						totalFramesCount = 0;
+						timer.Clear();
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+						size_t heapUsage = 0;
+						size_t heapBudget = 0;
+						VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
+						m_heapUsage = heapUsage;
+						m_heapBudget = heapBudget;
+#endif // SAILOR_BUILD_WITH_VULKAN
+					}
+				}
+				else
+				{
+					m_pureFps = 0;
+				}
 			}
 
 			SAILOR_PROFILE_END_BLOCK();

@@ -56,6 +56,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual bool ShouldFixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
 		SAILOR_API virtual void FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
 
+		SAILOR_API virtual bool AcquireNextImage() = 0;
 		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,
 			const TVector<RHICommandListPtr>* primaryCommandBuffers = nullptr,
 			const TVector<RHICommandListPtr>* secondaryCommandBuffers = nullptr,
@@ -63,6 +64,7 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void WaitIdle() = 0;
 
+		SAILOR_API virtual RHITexturePtr GetBackbuffer() = 0;
 		SAILOR_API virtual RHISemaphorePtr CreateWaitSemaphore() = 0;
 		SAILOR_API virtual RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;

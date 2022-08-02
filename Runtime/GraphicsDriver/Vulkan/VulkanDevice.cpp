@@ -542,9 +542,12 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	RecreateSwapchain(pViewport);
 }
 
-bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers,
-	TVector<VulkanCommandBufferPtr> secondaryCommandBuffers,
-	TVector<VulkanSemaphorePtr> semaphoresToWait)
+VulkanImageViewPtr VulkanDevice::GetBackbuffer()
+{
+	return m_swapchain->GetImageViews()[m_currentSwapchainImageIndex];
+}
+
+bool VulkanDevice::AcquireNextImage()
 {
 	// Wait while we recreate swapchain from main thread to sync with Win32Api
 	if (m_bIsSwapChainOutdated)
@@ -555,8 +558,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();
 
-	uint32_t imageIndex;
-	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VulkanFencePtr(), imageIndex);
+	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VulkanFencePtr(), m_currentSwapchainImageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
@@ -570,14 +572,21 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	}
 
 	// Check if a previous frame is using this image (i.e. there is its fence to wait on)
-	if (m_syncImages[imageIndex] && *m_syncImages[imageIndex] != VK_NULL_HANDLE)
+	if (m_syncImages[m_currentSwapchainImageIndex] && *m_syncImages[m_currentSwapchainImageIndex] != VK_NULL_HANDLE)
 	{
 		// Wait while previous frame frees the image
-		m_syncImages[imageIndex]->Wait();
+		m_syncImages[m_currentSwapchainImageIndex]->Wait();
 	}
 	// Mark the image as now being in use by this frame
-	m_syncImages[imageIndex] = m_syncFences[m_currentFrame];
+	m_syncImages[m_currentSwapchainImageIndex] = m_syncFences[m_currentFrame];
 
+	return true;
+}
+
+bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers,
+	TVector<VulkanCommandBufferPtr> secondaryCommandBuffers,
+	TVector<VulkanSemaphorePtr> semaphoresToWait)
+{
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -598,35 +607,35 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		}
 	}
 
-	m_commandBuffers[imageIndex]->BeginCommandList();
+	m_commandBuffers[m_currentSwapchainImageIndex]->BeginCommandList();
 	{
-		/*m_commandBuffers[imageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[imageIndex], m_swapchain->GetExtent(), VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+		/*m_commandBuffers[m_currentSwapchainImageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[m_currentSwapchainImageIndex], m_swapchain->GetExtent(), VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 		for (auto cmdBuffer : secondaryCommandBuffers)
 		{
-			m_commandBuffers[imageIndex]->Execute(cmdBuffer);
+			m_commandBuffers[m_currentSwapchainImageIndex]->Execute(cmdBuffer);
 		}
-		m_commandBuffers[imageIndex]->EndRenderPass();*/
+		m_commandBuffers[m_currentSwapchainImageIndex]->EndRenderPass();*/
 
 		VkRect2D renderArea{};
 		renderArea.extent = m_swapchain->GetExtent();
-		auto currentImageView = m_swapchain->GetImageViews()[imageIndex];
+		auto currentImageView = m_swapchain->GetImageViews()[m_currentSwapchainImageIndex];
 
-		m_commandBuffers[imageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-		m_commandBuffers[imageIndex]->BeginRenderPassEx(TVector<VulkanImageViewPtr>{currentImageView},
+		m_commandBuffers[m_currentSwapchainImageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		m_commandBuffers[m_currentSwapchainImageIndex]->BeginRenderPassEx(TVector<VulkanImageViewPtr>{currentImageView},
 			m_swapchain->GetDepthBufferView(),
 			renderArea,
 			VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR);
 
 		for (auto cmdBuffer : secondaryCommandBuffers)
 		{
-			m_commandBuffers[imageIndex]->Execute(cmdBuffer);
+			m_commandBuffers[m_currentSwapchainImageIndex]->Execute(cmdBuffer);
 		}
 
-		m_commandBuffers[imageIndex]->EndRenderPassEx();
-		m_commandBuffers[imageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+		m_commandBuffers[m_currentSwapchainImageIndex]->EndRenderPassEx();
+		m_commandBuffers[m_currentSwapchainImageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
-	m_commandBuffers[imageIndex]->EndCommandList();
-	commandBuffers.Add(*m_commandBuffers[imageIndex]->GetHandle());
+	m_commandBuffers[m_currentSwapchainImageIndex]->EndCommandList();
+	commandBuffers.Add(*m_commandBuffers[m_currentSwapchainImageIndex]->GetHandle());
 
 	TVector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait.Num() > 0)
@@ -635,7 +644,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		for (auto semaphore : semaphoresToWait)
 		{
 			waitSemaphores.Add(*semaphore);
-			m_commandBuffers[imageIndex]->AddDependency(semaphore);
+			m_commandBuffers[m_currentSwapchainImageIndex]->AddDependency(semaphore);
 		}
 	}
 
@@ -677,10 +686,10 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	VkSwapchainKHR swapChains[] = { *m_swapchain };
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = swapChains;
-	presentInfo.pImageIndices = &imageIndex;
+	presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
 	presentInfo.pResults = nullptr; // Optional
 
-	result = m_presentQueue->Present(presentInfo);
+	VkResult result = m_presentQueue->Present(presentInfo);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 	{

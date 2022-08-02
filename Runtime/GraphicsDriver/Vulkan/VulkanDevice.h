@@ -50,6 +50,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void WaitIdle();
 		SAILOR_API void WaitIdlePresentQueue();
+
+		SAILOR_API bool AcquireNextImage();
+		VulkanImageViewPtr GetBackbuffer();
+
 		SAILOR_API bool PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers = {},
 			TVector<VulkanCommandBufferPtr> secondaryCommandBuffers = {},
 			TVector<VulkanSemaphorePtr> waitSemaphores = {});
@@ -174,6 +178,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanFencePtr> m_syncFences;
 		TVector<VulkanFencePtr> m_syncImages;
 		size_t m_currentFrame = 0;
+		uint32_t m_currentSwapchainImageIndex = 0;
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
 

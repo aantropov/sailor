@@ -29,12 +29,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport);
 		SAILOR_API virtual void FixLostDevice(const Win32::Window* pViewport);
 
+		SAILOR_API virtual bool AcquireNextImage();
 		SAILOR_API virtual bool PresentFrame(const class FrameState& state,
 			const TVector<RHI::RHICommandListPtr>* primaryCommandBuffers = nullptr,
 			const TVector<RHI::RHICommandListPtr>* secondaryCommandBuffers = nullptr,
 			TVector<RHI::RHISemaphorePtr> waitSemaphores = {}) const;
 
 		SAILOR_API virtual void WaitIdle();
+		SAILOR_API virtual RHI::RHITexturePtr GetBackbuffer();
 
 		SAILOR_API virtual RHI::RHISemaphorePtr CreateWaitSemaphore();
 		SAILOR_API virtual RHI::RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
@@ -128,6 +130,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TSharedPtr<VulkanBufferAllocator> m_storageBuffer;
 
 		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
+
+		RHI::RHITexturePtr m_backBuffer;
 	};
 };
 

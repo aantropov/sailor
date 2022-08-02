@@ -27,10 +27,14 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 {
 	GraphicsDriver::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
 	m_vkInstance = GraphicsDriver::Vulkan::VulkanApi::GetInstance();
+
+	m_backBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false);
 }
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
+	m_backBuffer.Clear();
+
 	TrackResources_ThreadSafe();
 
 	m_trackedFences.Clear();
@@ -62,6 +66,21 @@ void VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 
 		SAILOR_PROFILE_END_BLOCK();
 	}
+}
+
+RHI::RHITexturePtr VulkanGraphicsDriver::GetBackbuffer()
+{
+	return m_backBuffer;
+}
+
+bool VulkanGraphicsDriver::AcquireNextImage()
+{
+	const bool bRes = m_vkInstance->GetMainDevice()->AcquireNextImage();
+
+	m_backBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetBackbuffer();
+	m_backBuffer->m_vulkan.m_image = m_backBuffer->m_vulkan.m_imageView->m_image;
+
+	return bRes;
 }
 
 bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
