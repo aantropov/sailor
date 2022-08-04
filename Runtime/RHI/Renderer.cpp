@@ -174,7 +174,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			{
 				if (!bRunCommandLists)
 				{
-					m_frameGraph->GetRHI()->SetRenderTarget("Backbuffer", m_driverInstance->GetBackbuffer());
+					m_frameGraph->GetRHI()->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
+					m_frameGraph->GetRHI()->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
 					m_frameGraph->GetRHI()->Process(rhiSceneView, transferCommandLists, secondaryCommandLists);
 
 					SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");

@@ -29,11 +29,13 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 	m_vkInstance = GraphicsDriver::Vulkan::VulkanApi::GetInstance();
 
 	m_backBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false);
+	m_depthStencilBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false);
 }
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
 	m_backBuffer.Clear();
+	m_depthStencilBuffer.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -68,18 +70,26 @@ void VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 	}
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::GetBackbuffer()
+RHI::RHITexturePtr VulkanGraphicsDriver::GetBackBuffer() const
 {
 	return m_backBuffer;
+}
+
+RHI::RHITexturePtr VulkanGraphicsDriver::GetDepthBuffer() const
+{
+	return m_depthStencilBuffer;
 }
 
 bool VulkanGraphicsDriver::AcquireNextImage()
 {
 	const bool bRes = m_vkInstance->GetMainDevice()->AcquireNextImage();
 
-	m_backBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetBackbuffer();
+	m_backBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetBackBuffer();
 	m_backBuffer->m_vulkan.m_image = m_backBuffer->m_vulkan.m_imageView->m_image;
-
+	
+	m_depthStencilBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetDepthBuffer();
+	m_depthStencilBuffer->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_imageView->m_image;
+	
 	return bRes;
 }
 

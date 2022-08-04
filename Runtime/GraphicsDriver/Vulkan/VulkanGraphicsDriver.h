@@ -36,7 +36,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			TVector<RHI::RHISemaphorePtr> waitSemaphores = {}) const;
 
 		SAILOR_API virtual void WaitIdle();
-		SAILOR_API virtual RHI::RHITexturePtr GetBackbuffer();
+		SAILOR_API virtual RHI::RHITexturePtr GetBackBuffer() const;
+		SAILOR_API virtual RHI::RHITexturePtr GetDepthBuffer() const;
 
 		SAILOR_API virtual RHI::RHISemaphorePtr CreateWaitSemaphore();
 		SAILOR_API virtual RHI::RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
@@ -132,6 +133,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
 
 		RHI::RHITexturePtr m_backBuffer;
+		RHI::RHITexturePtr m_depthStencilBuffer;
 	};
 };
 

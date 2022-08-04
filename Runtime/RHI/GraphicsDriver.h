@@ -64,7 +64,9 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void WaitIdle() = 0;
 
-		SAILOR_API virtual RHITexturePtr GetBackbuffer() = 0;
+		SAILOR_API virtual RHITexturePtr GetBackBuffer() const = 0;
+		SAILOR_API virtual RHITexturePtr GetDepthBuffer() const = 0;
+
 		SAILOR_API virtual RHISemaphorePtr CreateWaitSemaphore() = 0;
 		SAILOR_API virtual RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;

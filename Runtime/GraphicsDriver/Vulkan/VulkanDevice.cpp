@@ -542,9 +542,14 @@ void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
 	RecreateSwapchain(pViewport);
 }
 
-VulkanImageViewPtr VulkanDevice::GetBackbuffer()
+VulkanImageViewPtr VulkanDevice::GetBackBuffer() const
 {
 	return m_swapchain->GetImageViews()[m_currentSwapchainImageIndex];
+}
+
+VulkanImageViewPtr VulkanDevice::GetDepthBuffer() const
+{
+	return m_swapchain->GetDepthBufferView();
 }
 
 bool VulkanDevice::AcquireNextImage()

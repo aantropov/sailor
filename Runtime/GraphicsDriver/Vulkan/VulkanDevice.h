@@ -52,7 +52,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void WaitIdlePresentQueue();
 
 		SAILOR_API bool AcquireNextImage();
-		VulkanImageViewPtr GetBackbuffer();
+		VulkanImageViewPtr GetBackBuffer() const;
+		VulkanImageViewPtr GetDepthBuffer() const;
 
 		SAILOR_API bool PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers = {},
 			TVector<VulkanCommandBufferPtr> secondaryCommandBuffers = {},
