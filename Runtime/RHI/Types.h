@@ -421,6 +421,32 @@ namespace Sailor::RHI
 		PatchList = 10
 	};
 
+	enum class EImageLayout : uint32_t
+	{
+		Undefined = 0,
+		General = 1,
+		ColorAttachmentOptimal = 2,
+		DepthStencilAttachmentOptimal = 3,
+		DepthStencilReadOnlyOptimal = 4,
+		ShaderReadOnlyOptimal = 5,
+		TransferSrcOptimal = 6,
+		TransferDSTOptimal = 7,
+		PreInitialized = 8,
+		DepthReadOnlyStencilAttachmentOptimal = 1000117000,
+		DepthAttachmentStencilReadOnlyOptimal = 1000117001,
+		DepthAttachmentOptimal = 1000241000,
+		DepthReadOnlyOptimal = 1000241001,
+		StencilAttachmentOptimal = 1000241002,
+		StencilReadOnlyOptimal = 1000241003,
+		ReadOnlyOptimal = 1000314000,
+		AttachmentOptimal = 1000314001,
+		PresentSrc = 1000001002,
+		SharedPresent = 1000111000,
+		FragmentDensityMapOptimalEXT = 1000218000,
+		FragmentShadingRateAttachmentOptimalKHR = 1000164003,
+		MaxEnum = 0x7FFFFFFF
+	};
+
 	struct RenderState
 	{
 		RenderState(bool bEnableDepthTest = true,

@@ -86,10 +86,10 @@ bool VulkanGraphicsDriver::AcquireNextImage()
 
 	m_backBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetBackBuffer();
 	m_backBuffer->m_vulkan.m_image = m_backBuffer->m_vulkan.m_imageView->m_image;
-	
+
 	m_depthStencilBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetDepthBuffer();
 	m_depthStencilBuffer->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_imageView->m_image;
-	
+
 	return bRes;
 }
 
@@ -702,6 +702,38 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 }
 
 // IGraphicsDriverCommands
+
+void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
+{
+	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_image, (VkFormat)format, (VkImageLayout)oldLayout, (VkImageLayout)newLayout);
+}
+
+void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
+	RHI::RHITexturePtr depthStencilAttachment,
+	glm::ivec4 renderArea,
+	glm::vec2 offset,
+	glm::vec4 clearColor)
+{
+	TVector<VulkanImageViewPtr> attachments(colorAttachments.Num());
+	for (uint32_t i = 0; i < colorAttachments.Num(); i++)
+	{
+		attachments[i] = colorAttachments[i]->m_vulkan.m_imageView;
+	}
+
+	VkRect2D rect{};
+
+	rect.extent.width = (uint32_t)renderArea.z;
+	rect.extent.height = (uint32_t)renderArea.w;
+	rect.offset.x = renderArea.x;
+	rect.offset.y = renderArea.y;
+
+	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments, depthStencilAttachment->m_vulkan.m_imageView, rect);
+}
+
+void VulkanGraphicsDriver::EndRenderPass(RHI::RHICommandListPtr cmd)
+{
+	cmd->m_vulkan.m_commandBuffer->EndRenderPassEx();
+}
 
 void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit)
 {
