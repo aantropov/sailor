@@ -24,8 +24,7 @@ namespace Sailor
 		SAILOR_API const glm::vec4& GetVectorParam(const std::string& name) const;
 		SAILOR_API const std::string& GetStringParam(const std::string& name) const;
 
-		SAILOR_API virtual void Initialize(RHIFrameGraphPtr frameGraph) = 0;
-		SAILOR_API virtual void Process(TVector<RHI::RHICommandListPtr>& transferCommandLists, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
+		SAILOR_API virtual void Process(RHIFrameGraph* frameGraph, TVector<RHI::RHICommandListPtr>& transferCommandLists, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
 		SAILOR_API virtual void Clear() = 0;
 
 	protected:
@@ -33,8 +32,6 @@ namespace Sailor
 		TMap<std::string, std::string> m_stringParams;
 		TMap<std::string, glm::vec4> m_vectorParams;
 		TMap<std::string, RHI::RHIResourcePtr> m_resourceParams;
-
-		RHIFrameGraphPtr m_frameGraph{};
 	};
 
 	using FrameGraphNodePtr = TRefPtr<BaseFrameGraphNode>;

@@ -27,7 +27,8 @@ namespace Sailor::RHI
 		SAILOR_API ETextureFiltration GetFiltration() const { return m_filtration; }
 		SAILOR_API ETextureClamping GetClamping() const { return m_clamping; }
 		SAILOR_API bool ShouldGenerateMips() const { return m_bShouldGenerateMips; }
-
+		SAILOR_API EFormat GetFormat() const;
+		SAILOR_API glm::ivec2 GetExtent() const;
 	private:
 
 		ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;

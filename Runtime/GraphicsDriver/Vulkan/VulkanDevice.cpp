@@ -603,24 +603,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 	}
 
-	TVector<VkCommandBuffer> commandBuffers;
-	if (primaryCommandBuffers.Num() > 0)
-	{
-		for (auto cmdBuffer : primaryCommandBuffers)
-		{
-			commandBuffers.Add(*cmdBuffer);
-		}
-	}
-
 	m_commandBuffers[m_currentSwapchainImageIndex]->BeginCommandList();
 	{
-		/*m_commandBuffers[m_currentSwapchainImageIndex]->BeginRenderPass(m_renderPass, m_swapChainFramebuffers[m_currentSwapchainImageIndex], m_swapchain->GetExtent(), VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-		for (auto cmdBuffer : secondaryCommandBuffers)
-		{
-			m_commandBuffers[m_currentSwapchainImageIndex]->Execute(cmdBuffer);
-		}
-		m_commandBuffers[m_currentSwapchainImageIndex]->EndRenderPass();*/
-
 		VkRect2D renderArea{};
 		renderArea.extent = m_swapchain->GetExtent();
 		auto currentImageView = m_swapchain->GetImageViews()[m_currentSwapchainImageIndex];
@@ -640,7 +624,18 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		m_commandBuffers[m_currentSwapchainImageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 	m_commandBuffers[m_currentSwapchainImageIndex]->EndCommandList();
-	commandBuffers.Add(*m_commandBuffers[m_currentSwapchainImageIndex]->GetHandle());
+
+	TVector<VkCommandBuffer> commandBuffers;
+	if (primaryCommandBuffers.Num() > 0)
+	{
+		for (auto cmdBuffer : primaryCommandBuffers)
+		{
+			commandBuffers.Add(*cmdBuffer);
+			m_commandBuffers[m_currentSwapchainImageIndex]->AddDependency(cmdBuffer);
+		}
+	}
+
+	//commandBuffers.Add(*m_commandBuffers[m_currentSwapchainImageIndex]->GetHandle());
 
 	TVector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait.Num() > 0)

@@ -12,6 +12,7 @@ void RHIFrameGraph::Clear()
 	m_samplers.Clear();
 	m_graph.Clear();
 	m_values.Clear();
+	m_renderTargets.Clear();
 }
 
 void RHIFrameGraph::SetSampler(const std::string& name, TexturePtr sampler)
@@ -68,13 +69,13 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		SAILOR_PROFILE_BLOCK("FrameGraph");
 		auto renderer = App::GetSubmodule<RHI::Renderer>();
 		auto driverCommands = renderer->GetDriverCommands();
-		auto cmdList = renderer->GetDriver()->CreateCommandList(true, false);
+		auto cmdList = renderer->GetDriver()->CreateCommandList(false, false);
 		driverCommands->BeginCommandList(cmdList, true);
 		driverCommands->SetDefaultViewport(cmdList);
 
 		for (auto& node : m_graph)
 		{
-			node->Process(outTransferCommandLists, cmdList, snapshot);
+			node->Process(this, outTransferCommandLists, cmdList, snapshot);
 		}
 
 		driverCommands->EndCommandList(cmdList);

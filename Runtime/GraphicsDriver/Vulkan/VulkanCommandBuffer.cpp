@@ -334,6 +334,11 @@ void VulkanCommandBuffer::Reset()
 	ClearDependencies();
 }
 
+void VulkanCommandBuffer::AddDependency(VulkanCommandBufferPtr commandBuffer)
+{
+	m_commandBufferDependencies.Add(commandBuffer);
+}
+
 void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator)
 {
 	m_memoryPtrs.Add(TPair(ptr, allocator));

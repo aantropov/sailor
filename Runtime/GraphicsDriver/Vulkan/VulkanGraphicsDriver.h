@@ -100,7 +100,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
-			glm::vec2 offset,
+			glm::ivec2 offset,
 			glm::vec4 clearColor);
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd);

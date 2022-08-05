@@ -108,7 +108,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 		m_swapchainImages[i]->m_mipLevels = 1;
 		m_swapchainImages[i]->m_arrayLayers = 1;
-
+		m_swapchainImages[i]->m_extent = VkExtent3D(m_swapchainExtent.width, m_swapchainExtent.height, 1);
 		m_swapchainImageViews[i]->m_format = m_surfaceFormat.format;
 
 		m_swapchainImageViews[i]->m_components.r = VK_COMPONENT_SWIZZLE_IDENTITY;

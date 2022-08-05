@@ -75,6 +75,7 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 
 Renderer::~Renderer()
 {
+	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
 	Renderer::GetDriver()->WaitIdle();
 	m_driverInstance.Clear();
@@ -161,9 +162,11 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		timer.Start();
 
 		bool bRunCommandLists = false;
+		TVector<RHI::RHICommandListPtr> primaryCommandLists;
 		TVector<RHI::RHICommandListPtr> secondaryCommandLists;
 		TVector<RHI::RHICommandListPtr> transferCommandLists;
 		TVector<RHISemaphorePtr> waitFrameUpdate;
+		TVector<RHISemaphorePtr> waitTransfer;
 
 		do
 		{
@@ -177,7 +180,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				{
 					m_frameGraph->GetRHI()->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
 					m_frameGraph->GetRHI()->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-					m_frameGraph->GetRHI()->Process(rhiSceneView, transferCommandLists, secondaryCommandLists);
+					m_frameGraph->GetRHI()->Process(rhiSceneView, transferCommandLists, primaryCommandLists);
 
 					SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
 					for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
@@ -194,6 +197,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
 						GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
 					}
+
 					SAILOR_PROFILE_END_BLOCK();
 
 					// Test Code
@@ -211,7 +215,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					bRunCommandLists = true;
 				}
 
-				if (m_driverInstance->PresentFrame(frame, nullptr, &secondaryCommandLists, waitFrameUpdate))
+				if (m_driverInstance->PresentFrame(frame, &primaryCommandLists, &secondaryCommandLists, waitFrameUpdate))
 				{
 					totalFramesCount++;
 					timer.Stop();

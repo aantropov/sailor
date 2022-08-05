@@ -25,6 +25,10 @@ void BaseFrameGraphNode::SetResourceParam(const std::string& name, RHIResourcePt
 
 RHIResourcePtr BaseFrameGraphNode::GetResourceParam(const std::string& name) const
 {
+	if (!m_resourceParams.ContainsKey(name))
+	{
+		return RHIResourcePtr();
+	}
 	return m_resourceParams[name];
 }
 

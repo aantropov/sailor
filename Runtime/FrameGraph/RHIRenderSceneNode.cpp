@@ -2,6 +2,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
+#include "RHI/Texture.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -9,10 +10,6 @@ using namespace Sailor::RHI;
 #ifndef _SAILOR_IMPORT_
 const char* RHIRenderSceneNode::m_name = "RenderScene";
 #endif
-
-void RHIRenderSceneNode::Initialize(RHIFrameGraphPtr FrameGraph)
-{
-}
 
 RHI::ESortingOrder RHIRenderSceneNode::GetSortingOrder() const
 {
@@ -29,7 +26,7 @@ RHI::ESortingOrder RHIRenderSceneNode::GetSortingOrder() const
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
-void RHIRenderSceneNode::Process(TVector<RHI::RHICommandListPtr>& transferCommandLists, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHICommandListPtr>& transferCommandLists, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -77,6 +74,23 @@ void RHIRenderSceneNode::Process(TVector<RHI::RHICommandListPtr>& transferComman
 	gpuMatricesData.AddDefault(numMeshes);
 	size_t ssboIndex = 0;
 
+	auto colorAttachment = GetResourceParam("color").StaticCast<RHI::RHITexture>();
+	if (!colorAttachment)
+	{
+		colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
+	}
+
+	auto depthAttachment = GetResourceParam("depthStencil").StaticCast<RHI::RHITexture>();
+	if (!depthAttachment)
+	{
+		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+	}
+	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::Undefined, EImageLayout::ColorAttachmentOptimal);
+	commands->BeginRenderPass(commandList,
+		TVector<RHI::RHITexturePtr>{ colorAttachment },
+		depthAttachment,
+		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y), glm::ivec2(0, 0), glm::vec4(0.0f));
+
 	for (auto& material : materials)
 	{
 		const bool bIsMaterialReady = material &&
@@ -112,6 +126,8 @@ void RHIRenderSceneNode::Process(TVector<RHI::RHICommandListPtr>& transferComman
 			ssboIndex += matrices.Num();
 		}
 	}
+	commands->EndRenderPass(commandList);
+	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, EImageLayout::PresentSrc);
 
 	// Update matrices
 	if (gpuMatricesData.Num() > 0)
@@ -124,7 +140,7 @@ void RHIRenderSceneNode::Process(TVector<RHI::RHICommandListPtr>& transferComman
 			sizeof(glm::mat4x4) * storageBinding->GetStorageInstanceIndex());
 		commands->EndCommandList(updateMatricesCmdList);
 		transferCommandLists.Add(updateMatricesCmdList);
-	}	
+	}
 }
 
 void RHIRenderSceneNode::Clear()
