@@ -9,16 +9,24 @@
 
 namespace Sailor::RHI
 {
+	struct RHIMeshProxy
+	{
+		size_t m_staticMeshEcs;
+		glm::mat4 m_worldMatrix;
+		SAILOR_API bool operator==(const RHIMeshProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
+	};
+
 	struct RHISceneViewProxy
 	{
+		size_t m_staticMeshEcs;
+		glm::mat4 m_worldMatrix;
+
 		TVector<RHIMeshPtr> m_meshes;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
-		glm::mat4 m_worldMatrix;
 
 		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;
-
-		size_t m_staticMeshEcs;
+		
 	};
 
 	struct RHISceneViewSnapshot
@@ -32,8 +40,9 @@ namespace Sailor::RHI
 	{
 		SAILOR_API TVector<RHISceneViewSnapshot> GetSnapshots();
 
-		TOctree<RHISceneViewProxy> m_octree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
+		TOctree<RHIMeshProxy> m_octree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
 		TVector<CameraData> m_cameras;
+		WorldPtr m_world;
 		float m_deltaTime;
 		float m_currentTime;
 	};
@@ -47,6 +56,16 @@ namespace std
 	struct std::hash<Sailor::RHI::RHISceneViewProxy>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::RHI::RHISceneViewProxy& p) const
+		{
+			std::hash<size_t> p1;
+			return p1(p.m_staticMeshEcs);
+		}
+	};
+
+	template<>
+	struct std::hash<Sailor::RHI::RHIMeshProxy>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::RHI::RHIMeshProxy& p) const
 		{
 			std::hash<size_t> p1;
 			return p1(p.m_staticMeshEcs);

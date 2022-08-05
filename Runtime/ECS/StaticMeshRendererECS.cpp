@@ -29,20 +29,14 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		{
 			const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
 
-			RHI::RHISceneViewProxy proxy;
+			RHI::RHIMeshProxy proxy;
 			proxy.m_staticMeshEcs = GetComponentIndex(&data);
 			proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
-			proxy.m_meshes = data.GetModel()->GetMeshes();
-
-			proxy.m_overrideMaterials.Clear();
-			for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
-			{
-				size_t materialIndex = (std::min)(i, data.GetMaterials().Num() - 1);
-				proxy.m_overrideMaterials.Add(data.GetMaterials()[materialIndex]->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
-			}
 
 			const auto& bounds = data.GetModel()->GetBoundsAABB();
 			const auto& center = proxy.m_worldMatrix * glm::vec4(bounds.GetCenter(), 1);
+			
+			// TODO: world matrix should impact on bounds
 			m_sceneViewProxiesCache->m_octree.Insert(center, bounds.GetExtents(), proxy);
 		}
 	}

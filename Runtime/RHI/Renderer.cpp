@@ -138,6 +138,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	SAILOR_PROFILE_BLOCK("Copy scene view to render thread");
 	auto rhiSceneView = RHISceneViewPtr::Make();
+	rhiSceneView->m_world = frame.GetWorld();
 	frame.GetWorld()->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 	frame.GetWorld()->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
