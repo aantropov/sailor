@@ -30,8 +30,9 @@ TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;
 
+		// Stationary
 		TVector<RHIMeshProxy> meshProxies;
-		m_octree.Trace(frustum, meshProxies);
+		m_stationaryOctree.Trace(frustum, meshProxies);
 
 		res.m_proxies.Reserve(meshProxies.Num());
 		for (auto& meshProxy : meshProxies)
@@ -55,6 +56,16 @@ TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 			}
 
 			res.m_proxies.Emplace(std::move(viewProxy));
+		}
+
+		// Static
+		TVector<RHISceneViewProxy> proxies;
+		m_staticOctree.Trace(frustum, proxies);
+		res.m_proxies.Reserve(meshProxies.Num() + proxies.Num());
+
+		for (auto& proxy : proxies)
+		{
+			res.m_proxies.Emplace(std::move(proxy));
 		}
 
 		snapshots.Emplace(std::move(res));

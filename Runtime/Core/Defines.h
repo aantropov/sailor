@@ -41,6 +41,14 @@ typedef unsigned long DWORD;
 #define MAGIC_ENUM_RANGE_MAX 256
 #include "magic_enum/include/magic_enum.hpp"
 
+#ifndef min
+#define min(a,b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a,b) ((a) > (b) ? (a) : (b))
+#endif
+
 //Memory
 namespace Sailor::Memory
 {

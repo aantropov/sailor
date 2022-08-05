@@ -13,6 +13,13 @@ namespace Sailor
 {
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
+	
+	enum class ERenderType : uint8_t
+	{
+		Static = 0,
+		Stationary = 1,
+		Dynamic = 2
+	};
 
 	class StaticMeshRendererData
 	{
@@ -24,6 +31,8 @@ namespace Sailor
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return m_materials; }
 		SAILOR_API __forceinline ModelPtr& GetModel() { return m_model; }
 		SAILOR_API __forceinline const size_t& GetLastFrameChanged() const { return m_lastChanges; }
+		SAILOR_API __forceinline ERenderType GetRenderType() const { return m_type; }
+		SAILOR_API __forceinline void SetRenderType(ERenderType type) { m_type = type; }
 
 	protected:
 
@@ -31,7 +40,7 @@ namespace Sailor
 		TVector<MaterialPtr> m_materials;
 
 		bool m_bIsActive : 1 = true;
-
+		ERenderType m_type = ERenderType::Stationary;
 		ObjectPtr m_owner;
 		size_t m_lastChanges = 0;
 		friend class StaticMeshRendererECS;

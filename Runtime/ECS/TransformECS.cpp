@@ -50,6 +50,8 @@ void TransformECS::MarkDirty(TransformComponent* ptr)
 
 Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	// We guess that the amount of changed transform during frame
 	// Could be much less than the whole transforms num
 
