@@ -188,7 +188,7 @@ namespace Sailor
 				// If we're still in the octant then we just update the bounds
 				if ((*node)->Contains(pos, extents))
 				{
-					(*node)->m_elements[element] = TBounds(pos, extents);
+					(*node)->m_elements.UpdateKey(element) = TBounds(pos, extents);
 					return true;
 				}
 

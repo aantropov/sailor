@@ -48,13 +48,16 @@ namespace Sailor
 		SAILOR_API TVector<GameObjectPtr> GetGameObjects() { return m_objects; }
 
 		SAILOR_API void Clear();
-
+		SAILOR_API size_t GetCurrentFrame() const { return m_currentFrame; }
+	
 	protected:
 
+		size_t m_currentFrame;
 		std::string m_name;
 		TVector<GameObjectPtr> m_objects;
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
 		TMap<size_t, Sailor::ECS::TBaseSystemPtr> m_ecs;
+		TVector<size_t> m_sortedEcs;
 
 		FrameInputState m_frameInput;
 		int64_t m_time;

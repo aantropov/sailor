@@ -37,6 +37,7 @@ namespace Sailor
 		SAILOR_API __forceinline const glm::quat& GetRotation()const { return m_transform.m_rotation; }
 		SAILOR_API __forceinline const glm::vec4& GetScale() const { return m_transform.m_scale; }
 		SAILOR_API __forceinline const ObjectPtr& GetOwner() const { return m_owner; }
+		SAILOR_API __forceinline const size_t& GetLastFrameChanged() const { return m_lastChanges; }
 
 	protected:
 
@@ -51,7 +52,7 @@ namespace Sailor
 		size_t m_parent = ECS::InvalidIndex;
 		TVector<size_t, Memory::TInlineAllocator<4 * sizeof(size_t)>> m_children;
 		ObjectPtr m_owner;
-
+		size_t m_lastChanges = 0;
 		friend class TransformECS;
 	};
 

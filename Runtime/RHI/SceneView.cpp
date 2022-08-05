@@ -46,7 +46,12 @@ TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 			for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
 			{
 				size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);
-				viewProxy.m_overrideMaterials.Add(ecsData.GetMaterials()[materialIndex]->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
+				auto& material = ecsData.GetMaterials()[materialIndex];
+
+				if (material && material->IsReady())
+				{
+					viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
+				}
 			}
 
 			res.m_proxies.Emplace(std::move(viewProxy));

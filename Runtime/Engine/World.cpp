@@ -5,7 +5,7 @@
 
 using namespace Sailor;
 
-World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false)
+World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false), m_currentFrame(0)
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make();
 
@@ -16,16 +16,27 @@ World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(f
 		m_ecs[ecs->GetComponentType()] = std::move(ecs);
 	}
 
+	m_sortedEcs.Reserve(ecsArray.Num());
+	for (auto& ecs : m_ecs)
+	{
+		auto it = upper_bound(m_sortedEcs.begin(), m_sortedEcs.end(), ecs.m_first,
+			[&](auto& lhs, auto& rhs) { return m_ecs[lhs]->GetOrder() < m_ecs[rhs]->GetOrder(); });
+
+		m_sortedEcs.Insert(ecs.m_first, it - m_sortedEcs.begin());
+	}
+
 	m_pDebugContext = TUniquePtr<RHI::DebugContext>::Make();
 }
 
 void World::Tick(FrameState& frameState)
 {
+	m_currentFrame++;
+
 	if (!m_bIsBeginPlayCalled)
 	{
-		for (auto& ecs : m_ecs)
+		for (auto& ecs : m_sortedEcs)
 		{
-			ecs.m_second->BeginPlay();
+			m_ecs[ecs]->BeginPlay();
 		}
 
 		m_bIsBeginPlayCalled = true;
@@ -36,7 +47,7 @@ void World::Tick(FrameState& frameState)
 	m_commandList = frameState.CreateCommandBuffer(0);
 
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList);
-	
+
 	for (auto& el : m_objects)
 	{
 		if (!el->bBeginPlayCalled)
@@ -50,9 +61,9 @@ void World::Tick(FrameState& frameState)
 		}
 	}
 
-	for (auto& ecs : m_ecs)
+	for (auto& ecs : m_sortedEcs)
 	{
-		ecs.m_second->Tick(frameState.GetDeltaTime());
+		m_ecs[ecs]->Tick(frameState.GetDeltaTime());
 	}
 
 	for (auto& el : m_pendingDestroyObjects)
@@ -68,12 +79,6 @@ void World::Tick(FrameState& frameState)
 	}
 
 	m_pendingDestroyObjects.Clear();
-
-	for (auto& el : m_ecs)
-	{
-		el.m_second->Tick(frameState.GetDeltaTime());
-	}
-
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 
 	// TODO: Move to rendering pipeline

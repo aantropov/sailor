@@ -23,6 +23,7 @@ namespace Sailor
 
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return m_materials; }
 		SAILOR_API __forceinline ModelPtr& GetModel() { return m_model; }
+		SAILOR_API __forceinline const size_t& GetLastFrameChanged() const { return m_lastChanges; }
 
 	protected:
 
@@ -32,7 +33,7 @@ namespace Sailor
 		bool m_bIsActive : 1 = true;
 
 		ObjectPtr m_owner;
-
+		size_t m_lastChanges = 0;
 		friend class StaticMeshRendererECS;
 	};
 

@@ -86,6 +86,13 @@ namespace Sailor
 			return false;
 		}
 
+		TValueType& UpdateKey(const TKeyType& key)
+		{
+			auto& pair = GetOrAdd(key);
+			pair.m_first = key;
+			return pair.m_second;
+		}
+
 		TValueType& operator[] (const TKeyType& key)
 		{
 			return GetOrAdd(key).m_second;

@@ -532,7 +532,11 @@ namespace Sailor
 
 		void Reserve(size_t newCapacity)
 		{
-			assert(newCapacity > m_capacity);
+			if (newCapacity <= m_capacity)
+			{
+				return;
+			}
+
 			const size_t slack = newCapacity - m_capacity;
 
 			m_capacity = newCapacity;

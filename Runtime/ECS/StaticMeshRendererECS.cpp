@@ -21,23 +21,26 @@ void StaticMeshRendererECS::BeginPlay()
 
 Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 {
-	m_sceneViewProxiesCache->m_octree.Clear();
-
+	//TODO: Resolve New/Delete components
 	for (auto& data : m_components)
 	{
 		if (data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
 		{
 			const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
+			if (ownerTransform.GetLastFrameChanged() > data.m_lastChanges)
+			{
+				RHI::RHIMeshProxy proxy;
+				proxy.m_staticMeshEcs = GetComponentIndex(&data);
+				proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
 
-			RHI::RHIMeshProxy proxy;
-			proxy.m_staticMeshEcs = GetComponentIndex(&data);
-			proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
+				const auto& bounds = data.GetModel()->GetBoundsAABB();
+				const auto& center = proxy.m_worldMatrix * glm::vec4(bounds.GetCenter(), 1);
 
-			const auto& bounds = data.GetModel()->GetBoundsAABB();
-			const auto& center = proxy.m_worldMatrix * glm::vec4(bounds.GetCenter(), 1);
-			
-			// TODO: world matrix should impact on bounds
-			m_sceneViewProxiesCache->m_octree.Insert(center, bounds.GetExtents(), proxy);
+				// TODO: world matrix should impact on bounds
+				m_sceneViewProxiesCache->m_octree.Update(center, bounds.GetExtents(), proxy);
+
+				data.m_lastChanges = ownerTransform.GetLastFrameChanged();
+			}
 		}
 	}
 
