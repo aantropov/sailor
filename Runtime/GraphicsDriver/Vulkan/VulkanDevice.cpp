@@ -613,7 +613,9 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		m_commandBuffers[m_currentSwapchainImageIndex]->BeginRenderPassEx(TVector<VulkanImageViewPtr>{currentImageView},
 			m_swapchain->GetDepthBufferView(),
 			renderArea,
-			VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR);
+			VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
+			VkOffset2D{ .x = 0, .y = 0 },
+			false);
 
 		for (auto cmdBuffer : secondaryCommandBuffers)
 		{
@@ -635,7 +637,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		}
 	}
 
-	//commandBuffers.Add(*m_commandBuffers[m_currentSwapchainImageIndex]->GetHandle());
+	commandBuffers.Add(*m_commandBuffers[m_currentSwapchainImageIndex]->GetHandle());
 
 	TVector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait.Num() > 0)

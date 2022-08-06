@@ -89,7 +89,10 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComm
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y), glm::ivec2(0, 0), glm::vec4(0.0f));
+		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y), 
+		glm::ivec2(0, 0),
+		true,
+		glm::vec4(0.0f));
 
 	for (auto& material : materials)
 	{

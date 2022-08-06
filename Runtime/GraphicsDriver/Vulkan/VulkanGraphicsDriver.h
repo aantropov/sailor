@@ -96,11 +96,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 		//End Immediate context
 
 		//Begin IGraphicsDriverCommands
-
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
+			bool bClearRenderTargets,
 			glm::vec4 clearColor);
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd);

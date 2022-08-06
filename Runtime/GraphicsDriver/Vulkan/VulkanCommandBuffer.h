@@ -37,6 +37,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkRect2D renderArea,
 			VkRenderingFlags renderingFlags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
 			VkOffset2D offset = { 0,0 },
+			bool bClearRenderTargets = true,
 			VkClearValue clearColor = VulkanApi::DefaultClearColor);
 		SAILOR_API void EndRenderPassEx();
 

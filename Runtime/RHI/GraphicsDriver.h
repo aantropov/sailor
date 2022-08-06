@@ -169,7 +169,9 @@ namespace Sailor::RHI
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
+			bool bClearRenderTargets,
 			glm::vec4 clearColor) = 0;
+
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) = 0;
 

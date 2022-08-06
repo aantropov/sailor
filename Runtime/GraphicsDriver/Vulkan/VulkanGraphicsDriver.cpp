@@ -712,6 +712,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 	RHI::RHITexturePtr depthStencilAttachment,
 	glm::ivec4 renderArea,
 	glm::ivec2 offset,
+	bool bClearRenderTargets,
 	glm::vec4 clearColor)
 {
 	TVector<VulkanImageViewPtr> attachments(colorAttachments.Num());
@@ -728,7 +729,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 	rect.offset.y = renderArea.y;
 
 	// We don't record draw commands in secondary command lists
-	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments, depthStencilAttachment->m_vulkan.m_imageView, rect, 0, VkOffset2D{.x = offset.x, .y = offset.y});
+	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments, depthStencilAttachment->m_vulkan.m_imageView, rect, 0, VkOffset2D{.x = offset.x, .y = offset.y}, bClearRenderTargets);
 }
 
 void VulkanGraphicsDriver::EndRenderPass(RHI::RHICommandListPtr cmd)
