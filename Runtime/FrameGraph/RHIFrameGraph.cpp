@@ -76,6 +76,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		for (auto& node : m_graph)
 		{
 			node->Process(this, outTransferCommandLists, cmdList, snapshot);
+			//TODO: Submit Transfer command lists
 		}
 
 		driverCommands->EndCommandList(cmdList);

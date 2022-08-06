@@ -21,14 +21,6 @@ namespace Sailor
 
 namespace Sailor::RHI
 {
-	class DebugFrame
-	{
-	public:
-		RHI::RHICommandListPtr m_drawDebugMeshCmd{};
-		RHI::RHISemaphorePtr m_signalSemaphore{};
-		uint32_t m_linesCount{};
-	};
-
 	class DebugContext
 	{
 	public:
@@ -39,24 +31,20 @@ namespace Sailor::RHI
 		SAILOR_API void DrawSphere(const glm::vec3& position, float size = 1.0f, const glm::vec4 color = { 0.0f, 0.0f, 0.0f, 1.0f }, float duration = 0.0f);
 		SAILOR_API void DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 
-		// TODO: Split logic and rendering
-		SAILOR_API DebugFrame Tick(RHI::RHIShaderBindingSetPtr frameBindings, float deltaTime);
+		SAILOR_API void Tick(float deltaTime);
+		SAILOR_API void RecordCommandLists(RHI::RHICommandListPtr transferCmdList, RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings);
 
 	protected:
 
-		SAILOR_API RHI::RHICommandListPtr CreateRenderingCommandList(RHI::RHIShaderBindingSetPtr frameBindings, RHI::RHIMeshPtr debugMesh) const;
-
+		
 		bool m_bShouldUpdateMeshThisFrame = false;
 		TVector<uint32_t> m_cachedIndices{};
 		RHI::RHIMeshPtr m_cachedMesh{};
-		DebugFrame m_cachedFrame{};
 
 		TVector<VertexP3C4> m_lineVertices{};
 		TVector<float> m_lifetimes;
 		int32_t m_lineVerticesOffset = -1;
 
 		RHIMaterialPtr m_material{};
-
-		friend class World;
 	};
 };

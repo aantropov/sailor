@@ -199,20 +199,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 
 					SAILOR_PROFILE_END_BLOCK();
-
-					// Test Code
-					const auto& debugFrame = frame.GetDebugFrame();
-					if (debugFrame.m_drawDebugMeshCmd)
-					{
-						if (debugFrame.m_signalSemaphore)
-						{
-							waitFrameUpdate.Add(debugFrame.m_signalSemaphore);
-						}
-
-						secondaryCommandLists.Add(debugFrame.m_drawDebugMeshCmd);
-					}
-
-					bRunCommandLists = true;
 				}
 
 				if (m_driverInstance->PresentFrame(frame, &primaryCommandLists, &secondaryCommandLists, waitFrameUpdate))

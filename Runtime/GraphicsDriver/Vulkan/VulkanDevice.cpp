@@ -116,7 +116,6 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	// Create graphics
 	CreateDefaultRenderPass();
 	CreateFramebuffers();
-	CreateCommandBuffers();
 	CreateFrameSyncSemaphores();
 
 	m_bIsSwapChainOutdated = false;
@@ -153,7 +152,7 @@ void VulkanDevice::Shutdown()
 	m_oldSwapchain.Clear();
 	m_swapchain.Clear();
 
-	m_commandBuffers.Clear();
+	m_frameDeps.Clear();
 	m_commandPool.Clear();
 
 	for (auto& pair : m_threadContext)
@@ -393,18 +392,10 @@ void VulkanDevice::CreateFramebuffers()
 			m_swapchain->GetExtent().height,
 			1);
 	}
-}
 
-void VulkanDevice::CreateCommandBuffers()
-{
-	// We use internal independent command pool with reset + to handle present command lists
-	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-
-	for (int i = 0; i < m_swapChainFramebuffers.Num(); i++)
+	if (m_frameDeps.Num() < m_swapChainFramebuffers.Num())
 	{
-		// Command buffer would be released fine if we initialize render in the main thread
-		m_commandBuffers.Add(VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY));
+		m_frameDeps.AddDefault(m_swapChainFramebuffers.Num() - m_frameDeps.Num());
 	}
 }
 
@@ -562,7 +553,7 @@ bool VulkanDevice::AcquireNextImage()
 
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();
-
+		
 	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VulkanFencePtr(), m_currentSwapchainImageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
@@ -602,30 +593,9 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	{
 		m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 	}
-
-	m_commandBuffers[m_currentSwapchainImageIndex]->BeginCommandList();
-	{
-		VkRect2D renderArea{};
-		renderArea.extent = m_swapchain->GetExtent();
-		auto currentImageView = m_swapchain->GetImageViews()[m_currentSwapchainImageIndex];
-
-		m_commandBuffers[m_currentSwapchainImageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-		m_commandBuffers[m_currentSwapchainImageIndex]->BeginRenderPassEx(TVector<VulkanImageViewPtr>{currentImageView},
-			m_swapchain->GetDepthBufferView(),
-			renderArea,
-			VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
-			VkOffset2D{ .x = 0, .y = 0 },
-			false);
-
-		for (auto cmdBuffer : secondaryCommandBuffers)
-		{
-			m_commandBuffers[m_currentSwapchainImageIndex]->Execute(cmdBuffer);
-		}
-
-		m_commandBuffers[m_currentSwapchainImageIndex]->EndRenderPassEx();
-		m_commandBuffers[m_currentSwapchainImageIndex]->ImageMemoryBarrier(currentImageView->m_image, currentImageView->m_format, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-	}
-	m_commandBuffers[m_currentSwapchainImageIndex]->EndCommandList();
+	
+	// Clear previous frame deps
+	m_frameDeps[m_currentFrame].Clear();
 
 	TVector<VkCommandBuffer> commandBuffers;
 	if (primaryCommandBuffers.Num() > 0)
@@ -633,11 +603,9 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		for (auto cmdBuffer : primaryCommandBuffers)
 		{
 			commandBuffers.Add(*cmdBuffer);
-			m_commandBuffers[m_currentSwapchainImageIndex]->AddDependency(cmdBuffer);
+			m_frameDeps[m_currentFrame].Add(cmdBuffer);
 		}
 	}
-
-	commandBuffers.Add(*m_commandBuffers[m_currentSwapchainImageIndex]->GetHandle());
 
 	TVector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait.Num() > 0)
@@ -646,7 +614,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 		for (auto semaphore : semaphoresToWait)
 		{
 			waitSemaphores.Add(*semaphore);
-			m_commandBuffers[m_currentSwapchainImageIndex]->AddDependency(semaphore);
+			m_frameDeps[m_currentFrame].Add(semaphore);
 		}
 	}
 

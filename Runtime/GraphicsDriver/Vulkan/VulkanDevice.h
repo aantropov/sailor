@@ -60,7 +60,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 			TVector<VulkanSemaphorePtr> waitSemaphores = {});
 
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
-
 		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(bool bOnlyTransferQueue = false);
 
 		SAILOR_API void SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
@@ -148,7 +147,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Internal command buffers
 		VulkanCommandPoolPtr m_commandPool;
-		TVector<VulkanCommandBufferPtr> m_commandBuffers;
+		TVector<TVector<RHI::RHIResourcePtr>> m_frameDeps;
 
 		// Render Pass
 		VulkanRenderPassPtr m_renderPass;

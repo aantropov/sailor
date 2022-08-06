@@ -46,9 +46,6 @@ namespace Sailor
 		SAILOR_API size_t GetNumCommandLists() const { return NumCommandLists; }
 		SAILOR_API WorldPtr GetWorld() const;
 
-		SAILOR_API const RHI::DebugFrame& GetDebugFrame() const { return m_pData->m_debugFrame; }
-		SAILOR_API void SetDebugFrame(const RHI::DebugFrame& debugFrame) { m_pData->m_debugFrame = debugFrame; }
-
 	protected:
 
 		struct FrameData
@@ -60,7 +57,6 @@ namespace Sailor
 			FrameInputState m_inputState;
 			std::array<RHI::RHICommandListPtr, NumCommandLists> m_updateResourcesCommandBuffers;
 			WorldPtr m_world;
-			RHI::DebugFrame m_debugFrame;
 		};
 
 		TUniquePtr<FrameData> m_pData;

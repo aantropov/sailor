@@ -81,11 +81,7 @@ void World::Tick(FrameState& frameState)
 	m_pendingDestroyObjects.Clear();
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 
-	// TODO: Move to rendering pipeline
-	if (TestComponentPtr testComponent = GetGameObjects()[0]->GetComponent<TestComponent>())
-	{
-		frameState.SetDebugFrame(GetDebugContext()->Tick(testComponent->GetFrameBinding(), frameState.GetDeltaTime()));
-	}
+	GetDebugContext()->Tick(frameState.GetDeltaTime());
 }
 
 GameObjectPtr World::Instantiate(const std::string& name)
