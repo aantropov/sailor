@@ -166,7 +166,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		TVector<RHI::RHICommandListPtr> secondaryCommandLists;
 		TVector<RHI::RHICommandListPtr> transferCommandLists;
 		TVector<RHISemaphorePtr> waitFrameUpdate;
-		TVector<RHISemaphorePtr> waitTransfer;
 
 		do
 		{
@@ -240,95 +239,4 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	SAILOR_PROFILE_END_BLOCK();
 
 	return true;
-}
-
-// Temporary
-RHI::RHICommandListPtr Renderer::DrawTestScene(const Sailor::FrameState& frame)
-{
-	auto world = frame.GetWorld();
-	TestComponentPtr testComponent;
-
-	for (auto& gameObject : world->GetGameObjects())
-	{
-		if (testComponent = gameObject->GetComponent<TestComponent>())
-		{
-			break;
-		}
-	}
-
-	SAILOR_PROFILE_BLOCK("Render meshes");
-	auto cmdList = GetDriver()->CreateCommandList(true, false);
-	GetDriverCommands()->BeginCommandList(cmdList, true);
-	GetDriverCommands()->SetDefaultViewport(cmdList);
-
-	for (auto& gameObject : world->GetGameObjects())
-	{
-		MeshRendererComponentPtr rendererComponent = gameObject->GetComponent<MeshRendererComponent>();
-
-		if (testComponent && rendererComponent)
-		{
-			auto perInstanceBinding = world->GetECS<StaticMeshRendererECS>()->GetPerInstanceBinding();
-			auto pModel = rendererComponent->GetModel();
-
-			if (!pModel || !pModel->IsReady())
-			{
-				continue;
-			}
-
-			for (uint32_t index = 0; index < pModel->GetMeshes().Num(); index++)
-			{
-				if (index >= rendererComponent->GetMaterials().Num())
-				{
-					continue;
-				}
-
-				auto pMaterial = rendererComponent->GetMaterials()[index];
-
-				if (!pMaterial || !pMaterial->IsReady())
-				{
-					continue;
-				}
-
-				SAILOR_PROFILE_BLOCK("Get data");
-				auto& mesh = pModel->GetMeshes()[index];
-
-				auto& material = pMaterial->GetOrAddRHI(mesh->m_vertexDescription);
-				bool bIsMaterialReady = pMaterial && pMaterial->IsReady();
-				SAILOR_PROFILE_END_BLOCK();
-
-				if (bIsMaterialReady && pMaterial->IsReady() && material && material->m_vulkan.m_pipeline && perInstanceBinding && perInstanceBinding->m_vulkan.m_descriptorSet)
-				{
-					GetDriverCommands()->BindMaterial(cmdList, material);
-					GetDriverCommands()->BindVertexBuffers(cmdList, { mesh->m_vertexBuffer });
-					GetDriverCommands()->BindIndexBuffer(cmdList, mesh->m_indexBuffer);
-
-					// TODO: Parse missing descriptor sets
-					TVector<RHIShaderBindingSetPtr> sets;
-					if (testComponent->GetFrameBinding()->GetShaderBindings().Num())
-					{
-						sets.Add(testComponent->GetFrameBinding());
-					}
-					if (perInstanceBinding->GetShaderBindings().Num())
-					{
-						sets.Add(perInstanceBinding);
-					}
-					if (material->GetBindings()->GetShaderBindings().Num())
-					{
-						sets.Add(material->GetBindings());
-					}
-
-					GetDriverCommands()->BindShaderBindings(cmdList, material, sets);
-
-					uint32_t ssboOffset = perInstanceBinding->GetOrCreateShaderBinding("data")->GetStorageInstanceIndex();
-
-					GetDriverCommands()->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1,
-						0, 0, ssboOffset + (uint32_t)rendererComponent->GetComponentIndex());
-				}
-				SAILOR_PROFILE_END_BLOCK();
-			}
-		}
-	}
-
-	GetDriverCommands()->EndCommandList(cmdList);
-	return cmdList;
 }

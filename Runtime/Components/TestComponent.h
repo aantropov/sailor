@@ -20,21 +20,14 @@ namespace Sailor
 		SAILOR_API virtual void Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
 
-		SAILOR_API RHI::RHIShaderBindingSetPtr& GetFrameBinding() { return m_frameDataBinding; }
-		SAILOR_API const TVector<RHI::RHIMeshPtr>& GetCulledMeshes() const { return m_culledMeshes; }
-
 	protected:
 
 		float m_yaw = 0.0f;
 		float m_pitch = 0.0f;
 				
-		RHI::UboFrameData m_frameData;
-		RHI::RHIShaderBindingSetPtr m_frameDataBinding;
-
 		TexturePtr defaultTexture;
 		glm::ivec2 m_lastCursorPos;
 
-		TVector<RHI::RHIMeshPtr> m_culledMeshes;
 		TOctree<Math::AABB> m_octree{};
 
 		TVector<Math::AABB> m_culledBoxes{};

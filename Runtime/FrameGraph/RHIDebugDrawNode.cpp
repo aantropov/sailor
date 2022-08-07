@@ -24,8 +24,6 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 
 	auto& debugContext = sceneView.m_camera->GetOwner().StaticCast<GameObject>()->GetWorld()->GetDebugContext();
 
-	RHICommandListPtr updateDebugMesh = App::GetSubmodule<Renderer>()->GetDriver()->CreateCommandList(false, true);
-	commands->BeginCommandList(updateDebugMesh, true);
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
@@ -33,10 +31,8 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f));
-	debugContext->RecordCommandLists(updateDebugMesh, commandList, sceneView.m_frameBindings);
+	debugContext->DrawDebugMesh(commandList, sceneView.m_frameBindings);
 	commands->EndRenderPass(commandList);
-	commands->EndCommandList(updateDebugMesh);
-	transferCommandLists.Add(updateDebugMesh);
 }
 
 void RHIDebugDrawNode::Clear()

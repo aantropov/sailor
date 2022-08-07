@@ -31,12 +31,13 @@ namespace Sailor::RHI
 		SAILOR_API void DrawSphere(const glm::vec3& position, float size = 1.0f, const glm::vec4 color = { 0.0f, 0.0f, 0.0f, 1.0f }, float duration = 0.0f);
 		SAILOR_API void DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 
-		SAILOR_API void Tick(float deltaTime);
-		SAILOR_API void RecordCommandLists(RHI::RHICommandListPtr transferCmdList, RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings);
+		SAILOR_API void Tick(RHI::RHICommandListPtr cmdList, float deltaTime);		
+		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings) const;
 
 	protected:
 
-		
+		SAILOR_API void UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList);
+
 		bool m_bShouldUpdateMeshThisFrame = false;
 		TVector<uint32_t> m_cachedIndices{};
 		RHI::RHIMeshPtr m_cachedMesh{};

@@ -13,16 +13,6 @@ using namespace Sailor::Tasks;
 
 void TestComponent::BeginPlay()
 {
-	m_frameDataBinding = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();	
-	Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_frameDataBinding, "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
-
-	if (auto textureUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("Textures/VulkanLogo.png"))
-	{
-		App::GetSubmodule<TextureImporter>()->LoadTexture(textureUID->GetUID(), defaultTexture)->Then<void, TexturePtr>(
-			[=](TexturePtr pTexture) { Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_frameDataBinding, "g_defaultSampler", pTexture->GetRHI(), 1);
-		}, "Update RHI", EThreadType::RHI);
-	}
-
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 20.0f, 1000.0f);
 
 	for (int32_t i = -1000; i < 1000; i += 32)
@@ -98,20 +88,8 @@ void TestComponent::Tick(float deltaTime)
 			m_cachedFrustum = GetOwner()->GetTransformComponent().GetCachedWorldMatrix();
 
 			Math::Frustum frustum;
-			//frustum.ExtractFrustumPlanes(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
 			frustum.ExtractFrustumPlanes(transform.GetTransform(), camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
-
 			m_octree.Trace(frustum, m_culledBoxes);
-
-			/*m_culledBoxes.Clear();
-			for (const auto& aabb : m_boxes)
-			{
-				if (frustum.OverlapsAABB(aabb))
-				{
-					m_culledBoxes.Add(aabb);
-				}
-			}*/
-			//GetWorld()->GetDebugContext()->DrawOrigin(GetOwner()->GetTransformComponent().GetCachedWorldMatrix() * glm::vec4(0, 0, 0, 1.0f), 10.0f, 1000.0f);
 		}
 	}
 
@@ -144,69 +122,6 @@ void TestComponent::Tick(float deltaTime)
 
 		transform.SetRotation(vRotation * hRotation);
 	}
-
-	auto cameraData = GetOwner()->GetComponent<CameraComponent>()->GetData();
-	m_frameData.m_projection = cameraData.GetProjectionMatrix();
-	m_frameData.m_currentTime = (float)GetWorld()->GetTime();
-	m_frameData.m_deltaTime = deltaTime;
-
-	m_frameData.m_view = cameraData.GetViewMatrix();
-
-	static float angle = 0;
-	//angle += 0.01f;
-	glm::mat4x4 model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), Math::vec3_Up);
-
-	SAILOR_PROFILE_BLOCK("Test Performance");
-
-	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(GetWorld()->GetCommandList(), m_frameDataBinding->GetOrCreateShaderBinding("frameData"), &m_frameData, sizeof(m_frameData));
-
-	/*
-	auto meshRenderer = GetOwner()->GetComponent<MeshRendererComponent>();
-	if (meshRenderer->GetModel() && meshRenderer->GetModel()->IsReady())
-	{
-		for (auto& material : meshRenderer->GetMaterials())
-		{
-			// TODO: Move updating shader uniforms to render thread as part of rendering pipeline
-			if (material && material->IsReady() && material->GetShaderBindings()->HasBinding("material"))
-			{
-				RHI::Renderer::GetDriverCommands()->SetMaterialParameter(GetWorld()->GetCommandList(),
-					material->GetShaderBindings(),
-					"material.color",
-					std::max(0.5f, float(sin(0.001 * (double)GetWorld()->GetTime()))) * glm::vec4(1.0, 1.0, 1.0, 1.0f));
-			}
-		}
-
-		if (m_octree.Num() != meshRenderer->GetModel()->GetMeshes().Num())
-		{
-			for (auto& mesh : meshRenderer->GetModel()->GetMeshes())
-			{
-				if (!m_octree.Contains(mesh))
-				{
-					m_octree.Insert(mesh->m_bounds.GetCenter(), mesh->m_bounds.GetExtents(), mesh);
-				}
-				//GetWorld()->GetDebugContext()->DrawAABB(mesh->m_bounds);
-			}
-
-			if (m_octree.Num() == meshRenderer->GetModel()->GetMeshes().Num())
-			{
-				//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 1000);
-			}
-		}
-	}
-	
-	const int count = 73;
-	for (int x = -count; x < count; x++)
-	{
-		for (int y = -count; y < count; y++)
-		{
-			for (int z = -count; z < count; z++)
-			{
-				GetWorld()->GetDebugContext()->DrawLine(glm::vec3(x, y, z * 2), glm::vec3(x, y, z * 2 + 1));
-			}
-		}
-	}*/
-
-	SAILOR_PROFILE_END_BLOCK();
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 }

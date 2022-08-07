@@ -106,7 +106,7 @@ void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, f
 	DrawLine(s4, e4, color, duration);
 }
 
-void DebugContext::Tick(float deltaTime)
+void DebugContext::Tick(RHI::RHICommandListPtr cmdList, float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -134,7 +134,6 @@ void DebugContext::Tick(float deltaTime)
 		m_material = renderer->CreateMaterial(m_cachedMesh->m_vertexDescription, EPrimitiveTopology::LineList, renderState, pShader);
 	}
 
-
 	m_lineVerticesOffset = -1;
 	for (uint32_t i = 0; i < m_lifetimes.Num(); i++)
 	{
@@ -158,9 +157,11 @@ void DebugContext::Tick(float deltaTime)
 	{
 		m_lineVerticesOffset = -1;
 	}
+
+	UpdateDebugMesh(cmdList);
 }
 
-void DebugContext::RecordCommandLists(RHI::RHICommandListPtr transferCmdList, RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings)
+void DebugContext::UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList)
 {
 	if (m_lineVertices.Num() == 0)
 	{
@@ -187,9 +188,9 @@ void DebugContext::RecordCommandLists(RHI::RHICommandListPtr transferCmdList, RH
 
 	const bool bShouldCreateVertexBuffer = !m_cachedMesh->m_vertexBuffer || m_cachedMesh->m_vertexBuffer->GetSize() < bufferSize;
 	const bool bNeedUpdateVertexBuffer = m_lineVerticesOffset != -1 || bShouldCreateVertexBuffer || m_bShouldUpdateMeshThisFrame;
-		
+
 	if (bNeedUpdateVertexBuffer || bNeedUpdateIndexBuffer)
-	{		
+	{
 		if (bShouldCreateVertexBuffer)
 		{
 			m_cachedMesh->m_vertexBuffer = renderer->CreateBuffer(transferCmdList,
@@ -199,6 +200,8 @@ void DebugContext::RecordCommandLists(RHI::RHICommandListPtr transferCmdList, RH
 		}
 		else
 		{
+			m_lineVerticesOffset = std::max(m_lineVerticesOffset, 0);
+
 			RHI::Renderer::GetDriverCommands()->UpdateBuffer(transferCmdList, m_cachedMesh->m_vertexBuffer,
 				&m_lineVertices[m_lineVerticesOffset],
 				bufferSize - sizeof(VertexP3C4) * m_lineVerticesOffset,
@@ -222,6 +225,18 @@ void DebugContext::RecordCommandLists(RHI::RHICommandListPtr transferCmdList, RH
 	}
 
 	m_bShouldUpdateMeshThisFrame = false;
+
+}
+
+void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings) const
+{
+	if (m_lineVertices.Num() == 0 || !m_cachedMesh || !m_cachedMesh->IsReady())
+	{
+		return;
+	}
+
+	auto commands = RHI::Renderer::GetDriverCommands();
+	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 
 	commands->BindMaterial(drawCmdList, m_material);
 	commands->BindVertexBuffers(drawCmdList, { m_cachedMesh->m_vertexBuffer });

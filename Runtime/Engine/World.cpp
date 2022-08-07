@@ -79,9 +79,9 @@ void World::Tick(FrameState& frameState)
 	}
 
 	m_pendingDestroyObjects.Clear();
-	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 
-	GetDebugContext()->Tick(frameState.GetDeltaTime());
+	GetDebugContext()->Tick(m_commandList, frameState.GetDeltaTime());
+	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 }
 
 GameObjectPtr World::Instantiate(const std::string& name)
