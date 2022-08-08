@@ -708,12 +708,19 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_image, (VkFormat)format, (VkImageLayout)oldLayout, (VkImageLayout)newLayout);
 }
 
+void VulkanGraphicsDriver::ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary)
+{
+	//TODO: Check secondary
+	cmd->m_vulkan.m_commandBuffer->Execute(cmdSecondary->m_vulkan.m_commandBuffer);
+}
+
 void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
 	RHI::RHITexturePtr depthStencilAttachment,
 	glm::ivec4 renderArea,
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
-	glm::vec4 clearColor)
+	glm::vec4 clearColor,
+	bool bRecordDrawCommandsInSecondaryList)
 {
 	TVector<VulkanImageViewPtr> attachments(colorAttachments.Num());
 	for (uint32_t i = 0; i < colorAttachments.Num(); i++)
@@ -728,8 +735,13 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 	rect.offset.x = renderArea.x;
 	rect.offset.y = renderArea.y;
 
-	// We don't record draw commands in secondary command lists
-	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments, depthStencilAttachment->m_vulkan.m_imageView, rect, 0, VkOffset2D{.x = offset.x, .y = offset.y}, bClearRenderTargets);
+	
+	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments, 
+		depthStencilAttachment->m_vulkan.m_imageView, 
+		rect, 
+		bRecordDrawCommandsInSecondaryList ? VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR : 0, 
+		VkOffset2D{.x = offset.x, .y = offset.y}, 
+		bClearRenderTargets);
 }
 
 void VulkanGraphicsDriver::EndRenderPass(RHI::RHICommandListPtr cmd)

@@ -170,7 +170,8 @@ namespace Sailor::RHI
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
-			glm::vec4 clearColor) = 0;
+			glm::vec4 clearColor,
+			bool bRecordDrawCommandsInSecondaryList = false) = 0;
 
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) = 0;
@@ -186,6 +187,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void UpdateBuffer(RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* data, size_t size, size_t offset = 0) = 0;
 		SAILOR_API virtual void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size) = 0;
 
+		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary) = 0;
 		SAILOR_API virtual void BindMaterial(RHICommandListPtr cmd, RHI::RHIMaterialPtr material) = 0;
 		SAILOR_API virtual void BindVertexBuffers(RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer) = 0;
 		SAILOR_API virtual void BindIndexBuffer(RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer) = 0;

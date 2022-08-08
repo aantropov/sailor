@@ -106,7 +106,7 @@ void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, f
 	DrawLine(s4, e4, color, duration);
 }
 
-void DebugContext::Tick(RHI::RHICommandListPtr cmdList, float deltaTime)
+void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -158,7 +158,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr cmdList, float deltaTime)
 		m_lineVerticesOffset = -1;
 	}
 
-	UpdateDebugMesh(cmdList);
+	UpdateDebugMesh(transferCmd);
 }
 
 void DebugContext::UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList)

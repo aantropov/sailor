@@ -13,6 +13,7 @@
 #include "Tasks/Scheduler.h"
 #include "GraphicsDriver.h"
 #include "Buffer.h"
+#include "Core/SpinLock.h"
 
 namespace Sailor
 {
@@ -31,11 +32,12 @@ namespace Sailor::RHI
 		SAILOR_API void DrawSphere(const glm::vec3& position, float size = 1.0f, const glm::vec4 color = { 0.0f, 0.0f, 0.0f, 1.0f }, float duration = 0.0f);
 		SAILOR_API void DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 
-		SAILOR_API void Tick(RHI::RHICommandListPtr cmdList, float deltaTime);		
-		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings) const;
+		SAILOR_API void Tick(RHI::RHICommandListPtr transferCmd, float deltaTime);
+
 
 	protected:
 
+		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings) const;
 		SAILOR_API void UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList);
 
 		bool m_bShouldUpdateMeshThisFrame = false;

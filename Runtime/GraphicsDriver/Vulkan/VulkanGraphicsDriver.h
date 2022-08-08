@@ -101,7 +101,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
-			glm::vec4 clearColor);
+			glm::vec4 clearColor,
+			bool bRecordDrawCommandsInSecondaryList = false);
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd);
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout);
@@ -122,6 +123,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void SetDefaultViewport(RHI::RHICommandListPtr cmd);
 		SAILOR_API virtual void BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings);
 		SAILOR_API virtual void DrawIndexed(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance);
+		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary);
 		//End IGraphicsDriverCommands
 
 		// Vulkan specific
