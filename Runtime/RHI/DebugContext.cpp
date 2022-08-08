@@ -228,7 +228,7 @@ void DebugContext::UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList)
 
 }
 
-void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings) const
+void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const
 {
 	if (m_lineVertices.Num() == 0 || !m_cachedMesh || !m_cachedMesh->IsReady())
 	{
@@ -238,10 +238,11 @@ void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr drawCmdList, RHI::RHISha
 	auto commands = RHI::Renderer::GetDriverCommands();
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 
-	commands->BindMaterial(drawCmdList, m_material);
-	commands->BindVertexBuffers(drawCmdList, { m_cachedMesh->m_vertexBuffer });
-	commands->BindIndexBuffer(drawCmdList, m_cachedMesh->m_indexBuffer);
-	commands->SetDefaultViewport(drawCmdList);
-	commands->BindShaderBindings(drawCmdList, m_material, { frameBindings /*m_material->GetBindings()*/ });
-	commands->DrawIndexed(drawCmdList, m_cachedMesh->m_indexBuffer, (uint32_t)m_lineVertices.Num(), 1, 0, 0, 0);
+	commands->BindMaterial(secondaryDrawCmdList, m_material);
+	commands->BindVertexBuffers(secondaryDrawCmdList, { m_cachedMesh->m_vertexBuffer });
+	commands->BindIndexBuffer(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer);
+	commands->SetDefaultViewport(secondaryDrawCmdList);
+	commands->PushConstants(secondaryDrawCmdList, m_material, sizeof(viewProjection), &viewProjection);
+	//commands->BindShaderBindings(secondaryDrawCmdList, m_material, { frameBindings /*m_material->GetBindings()*/ });
+	commands->DrawIndexed(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, (uint32_t)m_lineVertices.Num(), 1, 0, 0, 0);
 }

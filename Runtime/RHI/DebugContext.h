@@ -33,11 +33,10 @@ namespace Sailor::RHI
 		SAILOR_API void DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 
 		SAILOR_API void Tick(RHI::RHICommandListPtr transferCmd, float deltaTime);
-
+		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const;
 
 	protected:
 
-		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr drawCmdList, RHI::RHIShaderBindingSetPtr frameBindings) const;
 		SAILOR_API void UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList);
 
 		bool m_bShouldUpdateMeshThisFrame = false;

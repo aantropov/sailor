@@ -467,7 +467,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	// We need debug shaders to get full names from reflection
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
-
+	
 #ifdef _DEBUG
 	const bool bIsDebug = true;
 #else
@@ -479,10 +479,22 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 
 	RHI::RHIMaterialPtr res = RHI::RHIMaterialPtr::Make(renderState, vertex, fragment);
 
+	TVector<VkPushConstantRange> pushConstants;
+
+	for (const auto& pushConstant : shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader->GetPushConstants())
+	{
+		VkPushConstantRange vkPushConstant;
+		vkPushConstant.offset = 0;
+		vkPushConstant.size = 256;
+		vkPushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+		pushConstants.Emplace(vkPushConstant);
+	}
+
 	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
 	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
 		descriptorSetLayouts,
-		TVector<VkPushConstantRange>(),
+		pushConstants,
 		0);
 
 	res->m_vulkan.m_pipeline = VulkanPipelinePtr::Make(device,
@@ -702,6 +714,10 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 }
 
 // IGraphicsDriverCommands
+void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr)
+{
+	cmd->m_vulkan.m_commandBuffer->PushConstants(material->m_vulkan.m_pipeline->m_layout, 0, size, ptr);
+}
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
 {

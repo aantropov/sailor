@@ -312,6 +312,11 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 	_freea(sets);
 }
 
+void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
+{
+	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_ALL, (uint32_t)offset, (uint32_t)size, ptr);
+}
+
 void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)
 {
 	m_pipelineDependencies.Add(pipeline);

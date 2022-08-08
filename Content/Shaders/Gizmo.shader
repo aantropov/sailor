@@ -6,9 +6,14 @@ BEGIN_CODE
 #version 460
 #extension GL_ARB_separate_shader_objects : enable
 END_CODE,
-
+ 
 "glslVertex":
 BEGIN_CODE
+
+layout(push_constant) uniform Constants
+{
+	mat4 viewProjection;
+} PushConstants; 
 
 layout(set = 0, binding = 0) uniform FrameData
 {
@@ -24,7 +29,7 @@ layout(location=0) out vec4 fragColor;
 
 void main() 
 {
-    gl_Position = frame.projection * frame.view * vec4(inPosition, 1.0);
+    gl_Position = PushConstants.viewProjection * vec4(inPosition, 1.0);
     fragColor = inColor;
 }
 END_CODE,

@@ -147,6 +147,17 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 		}
 	}
 
+	size_t pushConstantsCount = 0;
+	uint32_t* pRawPushConstants = nullptr;
+	result = EnumerateAllPushConstants(&module, &pushConstantsCount, &pRawPushConstants);
+	assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+	m_pushConstants.Resize(pushConstantsCount);
+	for (uint32_t i = 0; i < pushConstantsCount; i++)
+	{
+		m_pushConstants[i] = pRawPushConstants[i];
+	}
+
 	spvReflectDestroyShaderModule(&module);
 
 	m_layoutBindings.Clear();
