@@ -28,7 +28,7 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
-		glm::vec4(0.0f), 
+		glm::vec4(0.0f),
 		true);
 
 	commands->ExecuteSecondaryCommandList(commandList, sceneView.m_debugDrawSecondaryCmdList);

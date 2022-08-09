@@ -134,6 +134,10 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 		m_material = renderer->CreateMaterial(m_cachedMesh->m_vertexDescription, EPrimitiveTopology::LineList, renderState, pShader);
 	}
 
+	UpdateDebugMesh(transferCmd);
+
+	m_numRenderedVertices = (uint32_t)m_lineVertices.Num();
+
 	m_lineVerticesOffset = -1;
 	for (uint32_t i = 0; i < m_lifetimes.Num(); i++)
 	{
@@ -157,8 +161,6 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 	{
 		m_lineVerticesOffset = -1;
 	}
-
-	UpdateDebugMesh(transferCmd);
 }
 
 void DebugContext::UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList)
@@ -230,7 +232,7 @@ void DebugContext::UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList)
 
 void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const
 {
-	if (m_lineVertices.Num() == 0 || !m_cachedMesh || !m_cachedMesh->IsReady())
+	if (m_numRenderedVertices == 0 || !m_cachedMesh || !m_cachedMesh->IsReady())
 	{
 		return;
 	}
@@ -244,5 +246,5 @@ void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, co
 	commands->SetDefaultViewport(secondaryDrawCmdList);
 	commands->PushConstants(secondaryDrawCmdList, m_material, sizeof(viewProjection), &viewProjection);
 	//commands->BindShaderBindings(secondaryDrawCmdList, m_material, { frameBindings /*m_material->GetBindings()*/ });
-	commands->DrawIndexed(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, (uint32_t)m_lineVertices.Num(), 1, 0, 0, 0);
+	commands->DrawIndexed(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, (uint32_t)m_numRenderedVertices, 1, 0, 0, 0);
 }

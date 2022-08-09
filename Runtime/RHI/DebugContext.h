@@ -46,6 +46,7 @@ namespace Sailor::RHI
 		TVector<VertexP3C4> m_lineVertices{};
 		TVector<float> m_lifetimes;
 		int32_t m_lineVerticesOffset = -1;
+		uint32_t m_numRenderedVertices = 0;
 
 		RHIMaterialPtr m_material{};
 	};
