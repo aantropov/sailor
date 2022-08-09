@@ -7,17 +7,36 @@
 #include "Engine/World.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "RHI/DebugContext.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
+
+void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
+{
+	m_debugDraw.Reserve(m_cameras.Num());
+
+	for (const auto& camera : m_cameras)
+	{
+		const auto& matrix = camera.GetViewMatrix() * camera.GetProjectionMatrix();
+		RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, false);
+		auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
+		commands->BeginCommandList(secondaryCmdList, true);
+		world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix);
+		commands->EndCommandList(secondaryCmdList);
+
+		m_debugDraw.Emplace(std::move(secondaryCmdList));
+	}
+}
 
 TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	TVector<RHISceneViewSnapshot> snapshots;
-	for (auto& camera : m_cameras)
+	for (uint32_t i = 0; i < m_cameras.Num(); i++)
 	{
+		auto& camera = m_cameras[i];
 		RHISceneViewSnapshot res;
 
 		Math::Frustum frustum;
@@ -38,7 +57,7 @@ TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 		for (auto& meshProxy : meshProxies)
 		{
 			auto& ecsData = m_world->GetECS<StaticMeshRendererECS>()->GetComponentData(meshProxy.m_staticMeshEcs);
-			
+
 			RHISceneViewProxy viewProxy;
 			viewProxy.m_staticMeshEcs = meshProxy.m_staticMeshEcs;
 			viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
@@ -68,6 +87,7 @@ TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 			res.m_proxies.Emplace(std::move(proxy));
 		}
 
+		res.m_debugDrawSecondaryCmdList = m_debugDraw[i];
 		snapshots.Emplace(std::move(res));
 	}
 

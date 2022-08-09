@@ -34,16 +34,20 @@ namespace Sailor::RHI
 		TUniquePtr<CameraData> m_camera;
 		TVector<RHISceneViewProxy> m_proxies;
 		RHIShaderBindingSetPtr m_frameBindings;
+		RHICommandListPtr m_debugDrawSecondaryCmdList;
 	};
 
 	struct RHISceneView
 	{
 		SAILOR_API TVector<RHISceneViewSnapshot> GetSnapshots();
+		SAILOR_API void PrepareDebugDrawCommandLists(WorldPtr world);
 
 		TOctree<RHIMeshProxy> m_stationaryOctree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
 		TOctree<RHISceneViewProxy> m_staticOctree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
 
 		TVector<CameraData> m_cameras;
+		TVector<RHI::RHICommandListPtr> m_debugDraw;
+
 		WorldPtr m_world;
 		float m_deltaTime;
 		float m_currentTime;

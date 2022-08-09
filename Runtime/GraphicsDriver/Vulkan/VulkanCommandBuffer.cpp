@@ -314,7 +314,7 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
 {
-	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_ALL, (uint32_t)offset, (uint32_t)size, ptr);
+	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, (uint32_t)offset, (uint32_t)size, ptr);
 }
 
 void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)

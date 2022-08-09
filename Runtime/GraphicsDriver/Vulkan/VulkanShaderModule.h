@@ -28,13 +28,15 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API const TVector<TVector<VkDescriptorSetLayoutBinding>>& GetDescriptorSetLayoutBindings() const { return m_layoutBindings; }
 		SAILOR_API const TVector<TVector<RHI::ShaderLayoutBinding>>& GetBindings() const { return m_bindings; }
-
+		SAILOR_API const TVector<uint32_t>& GetPushConstants() const { return m_pushConstants; }
+		
 	protected:
 
 		SAILOR_API void ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code);
 
 		TVector<TVector<VkDescriptorSetLayoutBinding>> m_layoutBindings;
 		TVector<TVector<RHI::ShaderLayoutBinding>> m_bindings;
+		TVector<uint32_t> m_pushConstants;
 	};
 
 	class VulkanShaderModule : public RHI::RHIResource, public RHI::IExplicitInitialization

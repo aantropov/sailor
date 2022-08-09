@@ -22,18 +22,17 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 	auto colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
 	auto depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
-	/*auto& debugContext = sceneView.m_camera->GetOwner().StaticCast<GameObject>()->GetWorld()->GetDebugContext();
-
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
 		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
-		glm::vec4(0.0f));
-	debugContext->DrawDebugMesh(commandList, sceneView.m_frameBindings);
+		glm::vec4(0.0f), 
+		true);
+
+	commands->ExecuteSecondaryCommandList(commandList, sceneView.m_debugDrawSecondaryCmdList);
 	commands->EndRenderPass(commandList);
-	*/
 }
 
 void RHIDebugDrawNode::Clear()
