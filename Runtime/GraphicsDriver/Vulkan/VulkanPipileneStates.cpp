@@ -265,7 +265,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 
 		const VulkanStateDynamicPtr pDynamicState = VulkanStateDynamicPtr::Make();
 		const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_GREATER);
-		const VulkanStateMultisamplePtr pMultisample = VulkanStateMultisamplePtr::Make(m_pDevice->GetCurrentMsaaSamples());
+		const VulkanStateMultisamplePtr pMultisample = VulkanStateMultisamplePtr::Make(renderState.SupportMultisampling() ? m_pDevice->GetCurrentMsaaSamples() : VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT);
 
 		res = TVector<VulkanPipelineStatePtr>
 		{

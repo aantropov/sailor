@@ -455,14 +455,16 @@ namespace Sailor::RHI
 			ECullMode cullMode = ECullMode::Back,
 			EBlendMode blendMode = EBlendMode::None,
 			EFillMode fillMode = EFillMode::Fill,
-			size_t tag = 0u) :
+			size_t tag = 0u,
+			bool bSupportMultisampling = true) :
 			m_bEnableDepthTest(bEnableDepthTest),
 			m_bEnableZWrite(bEnableZWrite),
 			m_depthBias(depthBias),
 			m_cullMode(cullMode),
 			m_blendMode(blendMode),
 			m_fillMode(fillMode),
-			m_tag(tag)
+			m_tag(tag),
+			m_bSupportMultisampling(bSupportMultisampling)
 		{}
 
 		bool IsDepthTestEnabled() const { return m_bEnableDepthTest; }
@@ -472,6 +474,7 @@ namespace Sailor::RHI
 		EFillMode GetFillMode() const { return m_fillMode; }
 		float GetDepthBias() const { return m_depthBias; }
 		size_t GetTag() const { return m_tag; }
+		bool SupportMultisampling() const { return m_bSupportMultisampling; }
 
 		bool operator==(const RenderState& rhs) const
 		{
@@ -487,6 +490,7 @@ namespace Sailor::RHI
 		EBlendMode m_blendMode = EBlendMode::None;
 		EFillMode m_fillMode = EFillMode::Fill;
 		size_t m_tag = 0;
+		bool m_bSupportMultisampling = true;
 	};
 
 	struct ShaderLayoutBindingMember
@@ -732,9 +736,10 @@ namespace std
 		{
 			auto hash1 = std::hash<uint8_t>()((uint8_t)state.GetBlendMode() ^
 				((uint8_t)state.GetCullMode() << 2) ^
-				((uint8_t)state.GetFillMode() << 4) ^
-				((uint8_t)state.IsDepthTestEnabled() << 5) ^
-				((uint8_t)state.IsEnabledZWrite() << 6));
+				((uint8_t)state.GetFillMode() << 3) ^
+				((uint8_t)state.IsDepthTestEnabled() << 4) ^
+				((uint8_t)state.IsEnabledZWrite() << 5) ^
+				((uint8_t)state.SupportMultisampling() << 6));
 
 			auto hash2 = hash<float>()((float)state.GetDepthBias());
 

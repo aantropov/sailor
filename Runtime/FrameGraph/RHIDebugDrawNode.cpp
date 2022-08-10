@@ -30,6 +30,7 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
+		false,
 		true);
 
 	commands->ExecuteSecondaryCommandList(commandList, sceneView.m_debugDrawSecondaryCmdList);

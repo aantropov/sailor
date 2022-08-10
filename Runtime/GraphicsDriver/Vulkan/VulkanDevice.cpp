@@ -374,7 +374,7 @@ void VulkanDevice::CreateFramebuffers()
 	uint8_t swapchainIndex = 1;
 	if ((VkSampleCountFlagBits)m_currentMsaaSamples != VK_SAMPLE_COUNT_1_BIT)
 	{
-		attachments = { m_swapchain->GetColorBufferView(), nullptr, m_swapchain->GetDepthBufferView() };
+		attachments = { m_swapchain->GetMSColorBufferView(), nullptr, m_swapchain->GetMSDepthBufferView() };
 	}
 	else
 	{

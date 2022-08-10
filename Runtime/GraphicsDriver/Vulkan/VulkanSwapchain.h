@@ -45,7 +45,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const VkExtent2D& GetExtent() const { return m_swapchainExtent; }
 
 		SAILOR_API VulkanImageViewPtr GetDepthBufferView() const { return m_depthBufferView; }
-		SAILOR_API VulkanImageViewPtr GetColorBufferView() const { return m_colorBufferView; }
+		SAILOR_API VulkanImageViewPtr GetMSDepthBufferView() const { return m_msDepthBufferView; }
+		SAILOR_API VulkanImageViewPtr GetMSColorBufferView() const { return m_msColorBufferView; }
 
 		SAILOR_API TVector<VulkanImageViewPtr>& GetImageViews() { return m_swapchainImageViews; }
 		SAILOR_API const TVector<VulkanImageViewPtr>& GetImageViews() const { return m_swapchainImageViews; }
@@ -67,8 +68,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanImageViewPtr> m_swapchainImageViews;
 
 		// Used only for resolving MSAA
-		VulkanImagePtr m_colorBuffer;
-		VulkanImageViewPtr m_colorBufferView;
+		VulkanImagePtr m_msColorBuffer;
+		VulkanImageViewPtr m_msColorBufferView;
+		VulkanImagePtr m_msDepthBuffer;
+		VulkanImageViewPtr m_msDepthBufferView;
 
 		VulkanImagePtr m_depthBuffer;
 		VulkanImageViewPtr m_depthBufferView;

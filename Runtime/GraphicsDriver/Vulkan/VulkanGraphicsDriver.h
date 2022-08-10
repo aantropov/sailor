@@ -102,6 +102,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			bool bSupportMultisampling = true,
 			bool bRecordDrawCommandsInSecondaryList = false);
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd);
@@ -109,7 +110,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth);
 		SAILOR_API virtual bool FitsDefaultViewport(RHI::RHICommandListPtr cmd);
 
-		SAILOR_API virtual void BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit = false);
+		SAILOR_API virtual void BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit = false, bool bSupportMultisampling = true);
 		SAILOR_API virtual void EndCommandList(RHI::RHICommandListPtr cmd);
 
 		SAILOR_API virtual void UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const std::string& variable, const void* value, size_t size);

@@ -82,7 +82,7 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 	ClearDependencies();
 }
 
-void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment, VkCommandBufferUsageFlags flags, VkRenderingFlags inheritanceFlags)
+void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment, VkCommandBufferUsageFlags flags, VkRenderingFlags inheritanceFlags, bool bSupportMultisampling)
 {
 	ClearDependencies();
 
@@ -94,7 +94,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& col
 	attachments.pColorAttachmentFormats = colorAttachments.GetData();
 
 	// TODO: Should we always use MSAA?
-	attachments.rasterizationSamples = m_device->GetCurrentMsaaSamples();
+	attachments.rasterizationSamples = bSupportMultisampling ? m_device->GetCurrentMsaaSamples() : VK_SAMPLE_COUNT_1_BIT;
 
 	VkCommandBufferInheritanceInfo inheritanceInfo{};
 	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
@@ -186,13 +186,24 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkRect2D renderArea,
 	VkRenderingFlags renderingFlags,
 	VkOffset2D offset,
+	bool bSupportMultisampling,
 	bool bClearRenderTargets,
 	VkClearValue clearColor)
 {
 	VkClearValue depthClear{};
 	depthClear.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
 
-	const VkRenderingAttachmentInfoKHR depthStencilAttachmentInfo
+	VkRenderingAttachmentInfoKHR depthAttachmentInfo
+	{
+		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+		.imageView = *depthStencilAttachment,
+		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.clearValue = depthClear,
+	};
+
+	VkRenderingAttachmentInfoKHR stencilAttachmentInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = *depthStencilAttachment,
@@ -209,18 +220,29 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue = clearColor,
+		.clearValue = clearColor
 	};
 
 	// MSAA enabled -> we use the temporary buffer to resolve
-	if (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT)
+	if (bSupportMultisampling && (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT))
 	{
-		colorAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetColorBufferView());
+		colorAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetMSColorBufferView());
 		colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
 		colorAttachmentInfo.resolveImageView = *(colorAttachments[0]);
 		colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-		m_colorAttachmentDependencies.Add(m_device->GetSwapchain()->GetColorBufferView()->GetImage());
+		depthAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetMSDepthBufferView());
+		depthAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+		depthAttachmentInfo.resolveImageView = *depthStencilAttachment;
+		depthAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+
+		stencilAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetMSDepthBufferView());
+		stencilAttachmentInfo.resolveMode = VK_RESOLVE_MODE_NONE_KHR;
+		stencilAttachmentInfo.resolveImageView = *depthStencilAttachment;
+		stencilAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
+
+		m_colorAttachmentDependencies.Add(m_device->GetSwapchain()->GetMSColorBufferView()->GetImage());
+		m_colorAttachmentDependencies.Add(m_device->GetSwapchain()->GetMSDepthBufferView()->GetImage());
 	}
 
 	const VkRenderingInfoKHR renderInfo
@@ -232,8 +254,8 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.layerCount = 1,
 		.colorAttachmentCount = (uint32_t)colorAttachments.Num(),
 		.pColorAttachments = &colorAttachmentInfo,
-		.pDepthAttachment = &depthStencilAttachmentInfo,
-		.pStencilAttachment = &depthStencilAttachmentInfo,
+		.pDepthAttachment = &depthAttachmentInfo,
+		.pStencilAttachment = &stencilAttachmentInfo,
 	};
 
 	for (auto& attachment : colorAttachments)

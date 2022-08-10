@@ -736,6 +736,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
 	glm::vec4 clearColor,
+	bool bSupportMultisampling,
 	bool bRecordDrawCommandsInSecondaryList)
 {
 	TVector<VulkanImageViewPtr> attachments(colorAttachments.Num());
@@ -756,7 +757,8 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 		depthStencilAttachment->m_vulkan.m_imageView, 
 		rect, 
 		bRecordDrawCommandsInSecondaryList ? VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR : 0, 
-		VkOffset2D{.x = offset.x, .y = offset.y}, 
+		VkOffset2D{.x = offset.x, .y = offset.y},
+		bSupportMultisampling,
 		bClearRenderTargets);
 }
 
@@ -765,7 +767,7 @@ void VulkanGraphicsDriver::EndRenderPass(RHI::RHICommandListPtr cmd)
 	cmd->m_vulkan.m_commandBuffer->EndRenderPassEx();
 }
 
-void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit)
+void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit, bool bSupportMultisampling)
 {
 	uint32_t flags = bOneTimeSubmit ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
 
@@ -788,7 +790,7 @@ void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOn
 			flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 		}
 
-		cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(TVector<VkFormat>{device->GetColorFormat()}, device->GetDepthFormat(), flags);
+		cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(TVector<VkFormat>{device->GetColorFormat()}, device->GetDepthFormat(), flags, VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, bSupportMultisampling);
 	}
 	else
 	{
