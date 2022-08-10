@@ -22,6 +22,7 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 	auto colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
 	auto depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
+	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::Undefined, EImageLayout::ColorAttachmentOptimal);
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
@@ -33,6 +34,7 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 
 	commands->ExecuteSecondaryCommandList(commandList, sceneView.m_debugDrawSecondaryCmdList);
 	commands->EndRenderPass(commandList);
+	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, EImageLayout::PresentSrc);
 }
 
 void RHIDebugDrawNode::Clear()

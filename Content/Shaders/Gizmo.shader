@@ -15,14 +15,6 @@ layout(push_constant) uniform Constants
 	mat4 viewProjection;
 } PushConstants; 
 
-layout(set = 0, binding = 0) uniform FrameData
-{
-    mat4 view;
-    mat4 projection;
-    float currentTime;
-    float deltaTime;
-} frame;
-
 layout(location=0) in vec3 inPosition;
 layout(location=3) in vec4 inColor;
 layout(location=0) out vec4 fragColor;

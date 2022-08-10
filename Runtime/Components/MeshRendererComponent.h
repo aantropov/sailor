@@ -20,9 +20,11 @@ namespace Sailor
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return GetData().GetMaterials(); }
 		SAILOR_API __forceinline StaticMeshRendererData& GetData();
 		SAILOR_API __forceinline size_t GetComponentIndex() const { return m_handle; }
+		SAILOR_API __forceinline void SetRenderType(ERenderType type) { m_renderType = type; }
 
 	protected:
 
 		size_t m_handle = (size_t)(-1);
+		ERenderType m_renderType = ERenderType::Stationary;
 	};
 }
