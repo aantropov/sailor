@@ -423,7 +423,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 
-#ifdef SAILOR_MSAA_IMPACTS_TEXTURE_SAMPLING
+#ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
 	deviceFeatures.sampleRateShading = VK_TRUE;
 #endif
 

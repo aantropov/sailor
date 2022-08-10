@@ -140,7 +140,7 @@ VulkanStateMultisample::VulkanStateMultisample(VkSampleCountFlagBits samples) : 
 	m_multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
 	m_multisampling.alphaToOneEnable = VK_FALSE; // Optional
 
-#ifdef SAILOR_MSAA_IMPACTS_TEXTURE_SAMPLING
+#ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
 	m_multisampling.sampleShadingEnable = VK_TRUE;
 	m_multisampling.minSampleShading = 0.2f;
 #endif
