@@ -889,7 +889,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	VkFormat format,
 	VkImageTiling tiling,
 	VkImageUsageFlags usage,
-	VkSharingMode sharingMode)
+	VkSharingMode sharingMode,
+	VkSampleCountFlagBits sampleCount)
 {
 	VulkanImagePtr outImage = new VulkanImage(device);
 
@@ -899,7 +900,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->m_tiling = tiling;
 	outImage->m_usage = usage;
 	outImage->m_mipLevels = mipLevels;
-	outImage->m_samples = VK_SAMPLE_COUNT_1_BIT;
+	outImage->m_samples = sampleCount;
 	outImage->m_arrayLayers = 1;
 	outImage->m_sharingMode = sharingMode;
 	outImage->m_initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;

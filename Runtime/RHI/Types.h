@@ -23,7 +23,7 @@ namespace Sailor::RHI
 	using RHISemaphorePtr = TRefPtr<class RHISemaphore>;
 	using RHIVertexDescriptionPtr = TRefPtr<class RHIVertexDescription>;
 	using RHISceneViewPtr = TSharedPtr<struct RHISceneView>;
-	
+	using RHISurfacePtr = TRefPtr<class RHISurface>;
 	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
 	struct RHISceneViewSnapshot;
 

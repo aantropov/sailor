@@ -1,5 +1,6 @@
 #include "VulkanGraphicsDriver.h"
 #include "RHI/Texture.h"
+#include "RHI/Surface.h"
 #include "RHI/Fence.h"
 #include "RHI/Mesh.h"
 #include "RHI/Buffer.h"
@@ -333,7 +334,6 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::ETextureClamping clamping,
 	RHI::ETextureUsageFlags usage)
 {
-
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
@@ -349,6 +349,45 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	outTexture->m_vulkan.m_imageView->Compile();
 
 	return outTexture;
+}
+
+
+RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
+	glm::ivec3 extent,
+	uint32_t mipLevels,
+	RHI::ETextureType type,
+	RHI::ETextureFormat format,
+	RHI::ETextureFiltration filtration,
+	RHI::ETextureClamping clamping,
+	RHI::ETextureUsageFlags usage)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
+	
+	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(filtration, clamping, false);
+
+	VkExtent3D vkExtent;
+	vkExtent.width = extent.x;
+	vkExtent.height = extent.y;
+	vkExtent.depth = extent.z;
+
+	target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(), 
+		vkExtent, 
+		mipLevels, 
+		(VkImageType)type, 
+		(VkFormat)format, 
+		VK_IMAGE_TILING_OPTIMAL, 
+		(uint32_t)usage,
+		(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+		device->GetCurrentMsaaSamples());
+
+	target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
+	target->m_vulkan.m_imageView->Compile();
+
+	RHI::RHITexturePtr resolved = CreateRenderTarget(extent, mipLevels, type, format, filtration, clamping, usage);
+
+	return RHI::RHISurfacePtr::Make(target, resolved);
 }
 
 void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings)
@@ -467,7 +506,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	// We need debug shaders to get full names from reflection
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
-	
+
 #ifdef _DEBUG
 	const bool bIsDebug = true;
 #else
@@ -752,12 +791,12 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 	rect.offset.x = renderArea.x;
 	rect.offset.y = renderArea.y;
 
-	
-	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments, 
-		depthStencilAttachment->m_vulkan.m_imageView, 
-		rect, 
-		bRecordDrawCommandsInSecondaryList ? VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR : 0, 
-		VkOffset2D{.x = offset.x, .y = offset.y},
+
+	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
+		depthStencilAttachment->m_vulkan.m_imageView,
+		rect,
+		bRecordDrawCommandsInSecondaryList ? VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR : 0,
+		VkOffset2D{ .x = offset.x, .y = offset.y },
 		bSupportMultisampling,
 		bClearRenderTargets);
 }

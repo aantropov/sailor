@@ -171,7 +171,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB,
 			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE);
+			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+			VkSampleCountFlagBits sampleCount = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT);
 
 		SAILOR_API static VulkanCommandBufferPtr UpdateBuffer(VulkanDevicePtr device, const VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size);
 
