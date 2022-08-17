@@ -13,6 +13,7 @@
 #include "Tasks/Scheduler.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
+#include "RHI/Surface.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 
 using namespace Sailor;
@@ -72,10 +73,21 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 
 	for (auto& renderTarget : frameGraphAsset->m_renderTargets)
 	{
-		RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
-			1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
+		if (!renderTarget.m_second.m_bIsSurface)
+		{
+			RHI::RHISurfacePtr rhiSurface = RHI::Renderer::GetDriver()->CreateSurface(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
+				1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
 
-		pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
+			pRhiFrameGraph->SetSurface(renderTarget.m_first, rhiSurface);
+			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiSurface->GetResolved());
+		}
+		else
+		{
+			RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
+				1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
+
+			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
+		}
 	}
 
 	for (auto& value : frameGraphAsset->m_values)

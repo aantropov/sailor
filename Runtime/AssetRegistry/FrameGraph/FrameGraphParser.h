@@ -85,6 +85,7 @@ namespace Sailor
 			uint32_t m_width = 1;
 			uint32_t m_height = 1;
 			RHI::ETextureFormat m_format;
+			bool m_bIsSurface = false;
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
@@ -120,6 +121,11 @@ namespace Sailor
 				if (inData.contains("format"))
 				{
 					DeserializeEnum<RHI::ETextureFormat>(inData["format"], m_format);
+				}
+
+				if (inData.contains("bIsSurface"))
+				{
+					m_bIsSurface = inData["bIsSurface"].get<bool>();
 				}
 			}
 		};

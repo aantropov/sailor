@@ -119,7 +119,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 
 	if (!m_material)
 	{
-		RenderState renderState = RHI::RenderState(true, true, 0.1f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line, GetHash(std::string("Debug")), false);
+		RenderState renderState = RHI::RenderState(true, true, 0.1f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line, GetHash(std::string("Debug")));
 
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;

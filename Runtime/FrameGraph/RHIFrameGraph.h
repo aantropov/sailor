@@ -2,7 +2,6 @@
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
-#include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 
 namespace Sailor
@@ -17,9 +16,11 @@ namespace Sailor
 
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr sampler);
 		SAILOR_API void SetRenderTarget(const std::string& name, RHI::RHITexturePtr sampler);
+		SAILOR_API void SetSurface(const std::string& name, RHI::RHISurfacePtr surface);
 
 		SAILOR_API TexturePtr GetSampler(const std::string& name);
 		SAILOR_API RHI::RHITexturePtr GetRenderTarget(const std::string& name);
+		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
 
 		template<typename T>
 		void SetValue(const std::string& name, T value)
@@ -43,6 +44,7 @@ namespace Sailor
 
 		TMap<std::string, TexturePtr> m_samplers;
 		TMap<std::string, RHI::RHITexturePtr> m_renderTargets;
+		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
 		TMap<std::string, glm::vec4> m_values;
 		TVector<FrameGraphNodePtr> m_graph;
 	};

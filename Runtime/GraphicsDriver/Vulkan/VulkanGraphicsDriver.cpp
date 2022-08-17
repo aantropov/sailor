@@ -351,7 +351,6 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	return outTexture;
 }
 
-
 RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 	glm::ivec3 extent,
 	uint32_t mipLevels,
@@ -363,31 +362,38 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	RHI::RHISurfacePtr res;
+
 	auto device = m_vkInstance->GetMainDevice();
-	
-	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(filtration, clamping, false);
-
-	VkExtent3D vkExtent;
-	vkExtent.width = extent.x;
-	vkExtent.height = extent.y;
-	vkExtent.depth = extent.z;
-
-	target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(), 
-		vkExtent, 
-		mipLevels, 
-		(VkImageType)type, 
-		(VkFormat)format, 
-		VK_IMAGE_TILING_OPTIMAL, 
-		(uint32_t)usage,
-		(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-		device->GetCurrentMsaaSamples());
-
-	target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
-	target->m_vulkan.m_imageView->Compile();
 
 	RHI::RHITexturePtr resolved = CreateRenderTarget(extent, mipLevels, type, format, filtration, clamping, usage);
+	RHI::RHITexturePtr target = resolved;
 
-	return RHI::RHISurfacePtr::Make(target, resolved);
+	bool bNeedsResolved = m_vkInstance->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
+	if (bNeedsResolved)
+	{
+		target = RHI::RHITexturePtr::Make(filtration, clamping, false);
+
+		VkExtent3D vkExtent;
+		vkExtent.width = extent.x;
+		vkExtent.height = extent.y;
+		vkExtent.depth = extent.z;
+
+		target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
+			vkExtent,
+			mipLevels,
+			(VkImageType)type,
+			(VkFormat)format,
+			VK_IMAGE_TILING_OPTIMAL,
+			(uint32_t)usage,
+			(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+			device->GetCurrentMsaaSamples());
+
+		target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
+		target->m_vulkan.m_imageView->Compile();
+	}
+
+	return  RHI::RHISurfacePtr::Make(target, resolved, bNeedsResolved);
 }
 
 void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings)
@@ -790,7 +796,6 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 	rect.extent.height = (uint32_t)renderArea.w;
 	rect.offset.x = renderArea.x;
 	rect.offset.y = renderArea.y;
-
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment->m_vulkan.m_imageView,

@@ -13,6 +13,7 @@ void RHIFrameGraph::Clear()
 	m_graph.Clear();
 	m_values.Clear();
 	m_renderTargets.Clear();
+	m_surfaces.Clear();
 }
 
 void RHIFrameGraph::SetSampler(const std::string& name, TexturePtr sampler)
@@ -23,6 +24,11 @@ void RHIFrameGraph::SetSampler(const std::string& name, TexturePtr sampler)
 void RHIFrameGraph::SetRenderTarget(const std::string& name, RHI::RHITexturePtr sampler)
 {
 	m_renderTargets[name] = sampler;
+}
+
+void RHIFrameGraph::SetSurface(const std::string& name, RHI::RHISurfacePtr surface)
+{
+	m_surfaces[name] = surface;
 }
 
 RHI::RHICommandListPtr RHIFrameGraph::FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const
@@ -104,4 +110,14 @@ RHI::RHITexturePtr RHIFrameGraph::GetRenderTarget(const std::string& name)
 	}
 
 	return m_renderTargets[name];
+}
+
+RHI::RHISurfacePtr RHIFrameGraph::GetSurface(const std::string& name)
+{
+	if (!m_surfaces.ContainsKey(name))
+	{
+		return nullptr;
+	}
+
+	return m_surfaces[name];
 }
