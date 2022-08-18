@@ -32,6 +32,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkSharingMode m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		TVector<uint32_t> m_queueFamilyIndices;
 		VkImageLayout m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VkImageLayout m_defaultLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 		SAILOR_API operator VkImage() const { return m_image; }
 

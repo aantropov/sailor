@@ -3,12 +3,15 @@
 "values": [{"name":"PI", "value":3.1415926}],
 "renderTargets": [{"name":"Main", "format":"R16G16B16A16_SFLOAT", "width":"ViewportWidth", "height":"ViewportHeight"}],
 "frame":[
-    {"name":"RenderScene", 
+	{"name":"RenderScene", 
 		"values":[{"name":"Tag", "string":"Opaque"}], 
-		"renderTargets":[{"name":"color", "value":"BackBuffer"}, {"name":"depthStencil", "value":"DepthBuffer"}]
+		"renderTargets":[{"name":"color", "value":"Main"}, {"name":"depthStencil", "value":"DepthBuffer"}]
 	},
 	
-    {"name":"Blit", "renderTargets":[{"name":"Src", "value":"Main"}, {"name":"Dst", "value":"BackBuffer"}]},
+	{"name":"Blit", 
+		"renderTargets":[{"name":"src", "value":"Main"}, {"name":"dst", "value":"BackBuffer"}]
+	},
+	
 	{"name":"DebugDraw"}
 ]
 }

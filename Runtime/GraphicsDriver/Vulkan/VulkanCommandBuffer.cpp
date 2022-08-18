@@ -423,8 +423,8 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 		// Blit (format conversion)
 		VkImageBlit blit{};
 		blit.dstOffsets[0].x = dstRegion.offset.x;
-		blit.dstOffsets[0].y = dstRegion.offset.y;
-		blit.dstOffsets[1].x = dstRegion.extent.width;
+		blit.dstOffsets[0].y = dstRegion.extent.width;
+		blit.dstOffsets[1].x = dstRegion.offset.y;
 		blit.dstOffsets[1].y = dstRegion.extent.height;
 		blit.dstSubresource.mipLevel = 0;
 		blit.dstSubresource.layerCount = 1;
@@ -432,8 +432,8 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 		blit.dstSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
 
 		blit.srcOffsets[0].x = srcRegion.offset.x;
-		blit.srcOffsets[0].y = srcRegion.offset.y;
-		blit.srcOffsets[1].x = srcRegion.extent.width;
+		blit.srcOffsets[0].y = srcRegion.extent.width;
+		blit.srcOffsets[1].x = srcRegion.offset.y;
 		blit.srcOffsets[1].y = srcRegion.extent.height;
 		blit.srcSubresource.mipLevel = 0;
 		blit.srcSubresource.layerCount = 1;
@@ -451,8 +451,8 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 			filtration);
 	}
 
-	ImageMemoryBarrier(src, src->m_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src->m_initialLayout);
-	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->m_initialLayout);
+	ImageMemoryBarrier(src, src->m_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src->m_defaultLayout);
+	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->m_defaultLayout);
 }
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)

@@ -13,6 +13,7 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 VulkanSwapchainImage::VulkanSwapchainImage(VkImage image, VulkanDevicePtr device) : VulkanImage(image, device)
 {
+
 }
 
 VulkanSwapchainImage::~VulkanSwapchainImage()
@@ -106,6 +107,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_swapchainImages.Add(VulkanSwapchainImagePtr::Make(vkSwapchainImages[i], m_device));
 		m_swapchainImageViews.Add(VulkanImageViewPtr::Make(m_device, m_swapchainImages[i]));
 
+		m_swapchainImages[i]->m_defaultLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 		m_swapchainImages[i]->m_mipLevels = 1;
 		m_swapchainImages[i]->m_arrayLayers = 1;
 		m_swapchainImages[i]->m_extent = VkExtent3D(m_swapchainExtent.width, m_swapchainExtent.height, 1);
@@ -199,6 +201,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	m_depthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	m_depthBuffer->m_arrayLayers = 1;
 	m_depthBuffer->m_samples = VK_SAMPLE_COUNT_1_BIT;
+	m_depthBuffer->m_defaultLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
 	m_depthBuffer->Compile();
 
