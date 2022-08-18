@@ -228,7 +228,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	{
 		VkImageView msaaAttachment = *(m_device->GetSwapchain()->GetMSColorBufferView());
 		VkImageView msaaDepthAttachment = *(m_device->GetSwapchain()->GetMSDepthBufferView());
-		
+
 		const bool bIsRenderingIntoFrameBuffer = depthStencilAttachment == m_device->GetSwapchain()->GetDepthBufferView();
 		if (!bIsRenderingIntoFrameBuffer)
 		{
@@ -347,6 +347,106 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 	}
 	vkCmdBindDescriptorSets(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelineLayout, 0, (uint32_t)descriptorSet.Num(), &sets[0], 0, nullptr);
 	_freea(sets);
+}
+
+void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration)
+{
+	m_imageDependencies.AddRange({ dst, src });
+
+	if (src->m_format == dst->m_format && std::memcmp(&src->m_extent, &dst->m_extent, sizeof(VkExtent3D)) == 0)
+	{
+		// Resolve Multisampling 
+		if (src->m_samples != VK_SAMPLE_COUNT_1_BIT && dst->m_samples == VK_SAMPLE_COUNT_1_BIT)
+		{
+			VkImageResolve resolve{};
+			resolve.dstOffset.x = dstRegion.offset.x;
+			resolve.dstOffset.y = dstRegion.offset.y;
+			resolve.dstSubresource.mipLevel = 0;
+			resolve.dstSubresource.layerCount = 1;
+			resolve.dstSubresource.baseArrayLayer = 0;
+			resolve.dstSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
+
+			resolve.srcOffset.x = srcRegion.offset.x;
+			resolve.srcOffset.y = srcRegion.offset.y;
+			resolve.srcSubresource.mipLevel = 0;
+			resolve.srcSubresource.layerCount = 1;
+			resolve.srcSubresource.baseArrayLayer = 0;
+			resolve.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
+
+			resolve.extent = src->m_extent;
+
+			vkCmdResolveImage(
+				m_commandBuffer,
+				*src,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //src->m_initialLayout,
+				*dst,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //dst->m_initialLayout,
+				1,
+				&resolve);
+		}
+
+		// Copy texture (no format conversion)
+		if ((src->m_samples & VK_SAMPLE_COUNT_1_BIT) && (dst->m_samples & VK_SAMPLE_COUNT_1_BIT))
+		{
+			VkImageCopy copy{};
+			copy.dstOffset.x = dstRegion.offset.x;
+			copy.dstOffset.y = dstRegion.offset.y;
+			copy.dstSubresource.mipLevel = 0;
+			copy.dstSubresource.layerCount = 1;
+			copy.dstSubresource.baseArrayLayer = 0;
+			copy.dstSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
+
+			copy.srcOffset.x = srcRegion.offset.x;
+			copy.srcOffset.y = srcRegion.offset.y;
+			copy.srcSubresource.mipLevel = 0;
+			copy.srcSubresource.layerCount = 1;
+			copy.srcSubresource.baseArrayLayer = 0;
+			copy.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
+
+			copy.extent = src->m_extent;
+
+			vkCmdCopyImage(
+				m_commandBuffer,
+				*src,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //src->m_initialLayout,
+				*dst,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //dst->m_initialLayout,
+				1,
+				&copy);
+		}
+	}
+	else
+	{
+		// Blit (format conversion)
+		VkImageBlit blit{};
+		blit.dstOffsets[0].x = dstRegion.offset.x;
+		blit.dstOffsets[0].y = dstRegion.offset.y;
+		blit.dstOffsets[1].x = dstRegion.extent.width;
+		blit.dstOffsets[1].y = dstRegion.extent.height;
+		blit.dstSubresource.mipLevel = 0;
+		blit.dstSubresource.layerCount = 1;
+		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
+
+		blit.srcOffsets[0].x = srcRegion.offset.x;
+		blit.srcOffsets[0].y = srcRegion.offset.y;
+		blit.srcOffsets[1].x = srcRegion.extent.width;
+		blit.srcOffsets[1].y = srcRegion.extent.height;
+		blit.srcSubresource.mipLevel = 0;
+		blit.srcSubresource.layerCount = 1;
+		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
+
+		vkCmdBlitImage(
+			m_commandBuffer,
+			*src,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //src->m_initialLayout,
+			*dst,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //dst->m_initialLayout,
+			1,
+			&blit,
+			filtration);
+	}
 }
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)

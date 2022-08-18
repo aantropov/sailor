@@ -781,7 +781,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrCreateMsaaRenderTarget(RHI::EForma
 		textureFormat == RHI::EFormat::D32_SFLOAT_S8_UINT;
 	const auto usage = (uint32_t)(VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
 		(!bIsDepthFormat ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT));
-	
+
 	target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
 		vkExtent,
 		1,
@@ -807,6 +807,23 @@ void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMat
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
 {
 	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_image, (VkFormat)format, (VkImageLayout)oldLayout, (VkImageLayout)newLayout);
+}
+
+void VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHITexturePtr dst, glm::ivec4 srcRegionRect, glm::ivec4 dstRegionRect, RHI::ETextureFiltration filtration)
+{
+	VkRect2D srcRect{};
+	srcRect.offset.x = srcRegionRect.x;
+	srcRect.offset.y = srcRegionRect.y;
+	srcRect.extent.height = srcRegionRect.z;
+	srcRect.extent.width = srcRegionRect.w;
+
+	VkRect2D dstRect{};
+	dstRect.offset.x = dstRegionRect.x;
+	dstRect.offset.y = dstRegionRect.y;
+	dstRect.extent.height = dstRegionRect.z;
+	dstRect.extent.width = dstRegionRect.w;
+
+	cmd->m_vulkan.m_commandBuffer->BlitImage(src->m_vulkan.m_image, dst->m_vulkan.m_image, srcRect, dstRect, (VkFilter)filtration);
 }
 
 void VulkanGraphicsDriver::ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary)

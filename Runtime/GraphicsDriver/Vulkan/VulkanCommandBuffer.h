@@ -82,6 +82,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void AddDependency(VulkanCommandBufferPtr commandBuffer);
 		SAILOR_API void AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator);
 
+		SAILOR_API void BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration = VkFilter::VK_FILTER_LINEAR);
+
 		SAILOR_API VkCommandBufferLevel GetLevel() const { return m_level; }
 
 		// Used to get that the command list should be re-recorded
