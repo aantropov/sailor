@@ -23,18 +23,17 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 	auto depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::Undefined, EImageLayout::ColorAttachmentOptimal);
-	commands->BeginRenderPass(commandList,
+	
+	commands->RenderSecondaryCommandBuffers(commandList,
+		TVector<RHI::RHICommandListPtr> {sceneView.m_debugDrawSecondaryCmdList},
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
 		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
-		true,
 		true);
 
-	commands->ExecuteSecondaryCommandList(commandList, sceneView.m_debugDrawSecondaryCmdList);
-	commands->EndRenderPass(commandList);
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, EImageLayout::PresentSrc);
 }
 

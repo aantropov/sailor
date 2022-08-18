@@ -105,14 +105,24 @@ namespace Sailor::GraphicsDriver::Vulkan
 		//End Immediate context
 
 		//Begin IGraphicsDriverCommands
+
+		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+			TVector<RHI::RHICommandListPtr> secondaryCmds,
+			const TVector<RHI::RHITexturePtr>& colorAttachments,
+			RHI::RHITexturePtr depthStencilAttachment,
+			glm::ivec4 renderArea,
+			glm::ivec2 offset,
+			bool bClearRenderTargets,
+			glm::vec4 clearColor,
+			bool bSupportMultisampling = true);
+
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
-			bool bSupportMultisampling = true,
-			bool bRecordDrawCommandsInSecondaryList = false);
+			bool bSupportMultisampling = true);
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd);
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout);

@@ -173,6 +173,16 @@ namespace Sailor::RHI
 		SAILOR_API virtual bool FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
 		SAILOR_API virtual bool FitsDefaultViewport(RHI::RHICommandListPtr cmd) = 0;
 
+		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+			TVector<RHI::RHICommandListPtr> secondaryCmds,
+			const TVector<RHI::RHITexturePtr>& colorAttachments,
+			RHI::RHITexturePtr depthStencilAttachment,
+			glm::ivec4 renderArea,
+			glm::ivec2 offset,
+			bool bClearRenderTargets,
+			glm::vec4 clearColor,
+			bool bSupportMultisampling = true) = 0;
+
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
@@ -180,8 +190,7 @@ namespace Sailor::RHI
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
-			bool bSupportMultisampling = true,
-			bool bRecordDrawCommandsInSecondaryList = false) = 0;
+			bool bSupportMultisampling = true) = 0;
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) = 0;
 

@@ -775,14 +775,15 @@ void VulkanGraphicsDriver::ExecuteSecondaryCommandList(RHI::RHICommandListPtr cm
 	cmd->m_vulkan.m_commandBuffer->Execute(cmdSecondary->m_vulkan.m_commandBuffer);
 }
 
-void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
+void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+	TVector<RHI::RHICommandListPtr> secondaryCmds,
+	const TVector<RHI::RHITexturePtr>& colorAttachments,
 	RHI::RHITexturePtr depthStencilAttachment,
 	glm::ivec4 renderArea,
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
 	glm::vec4 clearColor,
-	bool bSupportMultisampling,
-	bool bRecordDrawCommandsInSecondaryList)
+	bool bSupportMultisampling)
 {
 	TVector<VulkanImageViewPtr> attachments(colorAttachments.Num());
 	for (uint32_t i = 0; i < colorAttachments.Num(); i++)
@@ -800,7 +801,44 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment->m_vulkan.m_imageView,
 		rect,
-		bRecordDrawCommandsInSecondaryList ? VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR : 0,
+		VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
+		VkOffset2D{ .x = offset.x, .y = offset.y },
+		bSupportMultisampling,
+		bClearRenderTargets);
+
+	for (auto& el : secondaryCmds)
+	{
+		ExecuteSecondaryCommandList(cmd, el);
+	}
+
+	EndRenderPass(cmd);
+}
+
+void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
+	RHI::RHITexturePtr depthStencilAttachment,
+	glm::ivec4 renderArea,
+	glm::ivec2 offset,
+	bool bClearRenderTargets,
+	glm::vec4 clearColor,
+	bool bSupportMultisampling)
+{
+	TVector<VulkanImageViewPtr> attachments(colorAttachments.Num());
+	for (uint32_t i = 0; i < colorAttachments.Num(); i++)
+	{
+		attachments[i] = colorAttachments[i]->m_vulkan.m_imageView;
+	}
+
+	VkRect2D rect{};
+
+	rect.extent.width = (uint32_t)renderArea.z;
+	rect.extent.height = (uint32_t)renderArea.w;
+	rect.offset.x = renderArea.x;
+	rect.offset.y = renderArea.y;
+
+	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
+		depthStencilAttachment->m_vulkan.m_imageView,
+		rect,
+		0,
 		VkOffset2D{ .x = offset.x, .y = offset.y },
 		bSupportMultisampling,
 		bClearRenderTargets);
