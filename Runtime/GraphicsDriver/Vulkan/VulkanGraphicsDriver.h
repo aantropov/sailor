@@ -116,6 +116,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 			glm::vec4 clearColor,
 			bool bSupportMultisampling = true);
 
+		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+			const TVector<RHI::RHISurfacePtr>& colorAttachments,
+			RHI::RHISurfacePtr depthStencilAttachment,
+			glm::ivec4 renderArea,
+			glm::ivec2 offset,
+			bool bClearRenderTargets,
+			glm::vec4 clearColor);
+
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
@@ -150,6 +158,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferPtr buffer, const void* data, size_t size, size_t offset = 0);
+		SAILOR_API RHI::RHITexturePtr GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
 
 	protected:
 
@@ -162,6 +171,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Storage buffers to store everything
 		TSharedPtr<VulkanBufferAllocator> m_storageBuffer;
+
+		// Cached MSAA render targets to support MSAA
+		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};
 
 		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
 

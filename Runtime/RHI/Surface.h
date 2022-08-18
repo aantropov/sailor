@@ -16,12 +16,12 @@ namespace Sailor::RHI
 			m_bNeedsResolve(needsResolve)
 		{}
 
-		SAILOR_API RHITexturePtr GetTarget() { return m_target; }
-		SAILOR_API RHITexturePtr GetResolved() { return m_resolved; }
+		SAILOR_API RHITexturePtr GetTarget() const { return m_target; }
+		SAILOR_API RHITexturePtr GetResolved() const { return m_resolved; }
 		SAILOR_API bool NeedsResolve() const { return m_bNeedsResolve; }
 
 	private:
-		
+
 		RHITexturePtr m_target;
 		RHITexturePtr m_resolved;
 		bool m_bNeedsResolve;

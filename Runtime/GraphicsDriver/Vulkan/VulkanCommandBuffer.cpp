@@ -223,20 +223,35 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.clearValue = clearColor
 	};
 
-	// MSAA enabled -> we use the temporary buffer to resolve
+	// MSAA enabled -> we use the temporary buffers to resolve
 	if (bSupportMultisampling && (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT))
 	{
-		colorAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetMSColorBufferView());
+		VkImageView msaaAttachment = *(m_device->GetSwapchain()->GetMSColorBufferView());
+		VkImageView msaaDepthAttachment = *(m_device->GetSwapchain()->GetMSDepthBufferView());
+		
+		const bool bIsRenderingIntoFrameBuffer = depthStencilAttachment == m_device->GetSwapchain()->GetDepthBufferView();
+		if (!bIsRenderingIntoFrameBuffer)
+		{
+			// TODO: Add support for multiple MSAA targets
+			auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
+			const auto extents = glm::ivec2(colorAttachments[0]->GetImage()->m_extent.width, colorAttachments[0]->GetImage()->m_extent.height);
+			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
+
+			msaaAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
+			msaaDepthAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView);
+		}
+
+		colorAttachmentInfo.imageView = msaaAttachment;
 		colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
 		colorAttachmentInfo.resolveImageView = *(colorAttachments[0]);
 		colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-		depthAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetMSDepthBufferView());
+		depthAttachmentInfo.imageView = msaaDepthAttachment;
 		depthAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
 		depthAttachmentInfo.resolveImageView = *depthStencilAttachment;
 		depthAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
-		stencilAttachmentInfo.imageView = *(m_device->GetSwapchain()->GetMSDepthBufferView());
+		stencilAttachmentInfo.imageView = msaaDepthAttachment;
 		stencilAttachmentInfo.resolveMode = VK_RESOLVE_MODE_NONE_KHR;
 		stencilAttachmentInfo.resolveImageView = *depthStencilAttachment;
 		stencilAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;

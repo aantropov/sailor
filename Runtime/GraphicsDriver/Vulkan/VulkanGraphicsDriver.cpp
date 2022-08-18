@@ -37,6 +37,7 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
+	m_cachedMsaaRenderTargets.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -758,6 +759,45 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 	SAILOR_LOG("Trying to update not bind uniform sampler");
 }
 
+RHI::RHITexturePtr VulkanGraphicsDriver::GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
+{
+	// TODO: Handle the extents too
+	size_t hash = (size_t)textureFormat;
+	if (m_cachedMsaaRenderTargets.ContainsKey(hash))
+	{
+		return m_cachedMsaaRenderTargets[hash];
+	}
+
+	auto device = m_vkInstance->GetMainDevice();
+
+	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, false);
+
+	VkExtent3D vkExtent;
+	vkExtent.width = extent.x;
+	vkExtent.height = extent.y;
+	vkExtent.depth = 1;
+
+	const bool bIsDepthFormat = textureFormat == RHI::EFormat::D16_UNORM || textureFormat == RHI::EFormat::D32_SFLOAT || textureFormat == RHI::EFormat::X8_D24_UNORM_PACK32 ||
+		textureFormat == RHI::EFormat::D32_SFLOAT_S8_UINT;
+	const auto usage = (uint32_t)(VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+		(!bIsDepthFormat ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT));
+	
+	target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
+		vkExtent,
+		1,
+		(VkImageType)RHI::ETextureType::Texture2D,
+		(VkFormat)textureFormat,
+		VK_IMAGE_TILING_OPTIMAL,
+		usage,
+		(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+		device->GetCurrentMsaaSamples());
+
+	target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
+	target->m_vulkan.m_imageView->Compile();
+
+	return m_cachedMsaaRenderTargets[hash] = target;
+}
+
 // IGraphicsDriverCommands
 void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr)
 {
@@ -842,6 +882,35 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 		VkOffset2D{ .x = offset.x, .y = offset.y },
 		bSupportMultisampling,
 		bClearRenderTargets);
+}
+
+void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
+	const TVector<RHI::RHISurfacePtr>& colorAttachments,
+	RHI::RHISurfacePtr depthStencilAttachment,
+	glm::ivec4 renderArea,
+	glm::ivec2 offset,
+	bool bClearRenderTargets,
+	glm::vec4 clearColor)
+{
+	const bool bNeedsResolve = depthStencilAttachment->NeedsResolve() || (colorAttachments.Num() > 0 && colorAttachments[0]->NeedsResolve());
+
+	TVector<RHI::RHITexturePtr> atts;
+	atts.Reserve(colorAttachments.Num());
+	for (uint32_t i = 0; i < colorAttachments.Num(); i++)
+	{
+		atts.Add(colorAttachments[i]->GetResolved());
+	}
+
+	if (!bNeedsResolve)
+	{
+		BeginRenderPass(cmd, atts, depthStencilAttachment->GetResolved(),
+			renderArea, offset, bClearRenderTargets, clearColor, false);
+
+		return;
+	}
+
+	// TODO: Use surface target as msaa target
+	assert(0);
 }
 
 void VulkanGraphicsDriver::EndRenderPass(RHI::RHICommandListPtr cmd)

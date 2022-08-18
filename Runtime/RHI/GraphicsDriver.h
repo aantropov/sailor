@@ -192,6 +192,14 @@ namespace Sailor::RHI
 			glm::vec4 clearColor,
 			bool bSupportMultisampling = true) = 0;
 
+		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+			const TVector<RHI::RHISurfacePtr>& colorAttachments,
+			RHI::RHISurfacePtr depthStencilAttachment,
+			glm::ivec4 renderArea,
+			glm::ivec2 offset,
+			bool bClearRenderTargets,
+			glm::vec4 clearColor) = 0;
+
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) = 0;
 
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout) = 0;

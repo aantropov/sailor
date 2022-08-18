@@ -32,7 +32,7 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComman
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
-		true);
+		false);
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, EImageLayout::PresentSrc);
 }
