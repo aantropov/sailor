@@ -309,7 +309,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	vkExtent.depth = extent.z;
 
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
 
@@ -811,35 +811,38 @@ void VulkanGraphicsDriver::EndRenderPass(RHI::RHICommandListPtr cmd)
 	cmd->m_vulkan.m_commandBuffer->EndRenderPassEx();
 }
 
-void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit, bool bSupportMultisampling)
+void VulkanGraphicsDriver::BeginSecondaryCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit, bool bSupportMultisampling)
 {
 	uint32_t flags = bOneTimeSubmit ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
 
-	if (cmd->m_vulkan.m_commandBuffer->GetLevel() == VK_COMMAND_BUFFER_LEVEL_SECONDARY)
+	assert(cmd->m_vulkan.m_commandBuffer->GetLevel() == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+
+	auto device = m_vkInstance->GetMainDevice();
+
+	// This tells Vulkan that this secondary command buffer will be executed entirely inside a render pass.		
+	flags |= VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+
+	/*
+	VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT specifies that a command buffer can be resubmitted to a queue while it is in the pending state,
+	and recorded into multiple primary command buffers.
+
+	TODO: That could affect the performance, so we don't want to use the bit
+	*/
+
+	if (!bOneTimeSubmit)
 	{
-		auto device = m_vkInstance->GetMainDevice();
-
-		// This tells Vulkan that this secondary command buffer will be executed entirely inside a render pass.		
-		flags |= VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-
-		/*
-		VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT specifies that a command buffer can be resubmitted to a queue while it is in the pending state,
-		and recorded into multiple primary command buffers.
-
-		TODO: That could affect the performance, so we don't want to use the bit
-		*/
-
-		if (!bOneTimeSubmit)
-		{
-			flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-		}
-
-		cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(TVector<VkFormat>{device->GetColorFormat()}, device->GetDepthFormat(), flags, VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, bSupportMultisampling);
+		flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 	}
-	else
-	{
-		cmd->m_vulkan.m_commandBuffer->BeginCommandList(flags);
-	}
+
+	cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(TVector<VkFormat>{device->GetColorFormat()}, device->GetDepthFormat(), flags, VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, bSupportMultisampling);
+}
+
+void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit)
+{
+	assert(cmd->m_vulkan.m_commandBuffer->GetLevel() != VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+
+	uint32_t flags = bOneTimeSubmit ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
+	cmd->m_vulkan.m_commandBuffer->BeginCommandList(flags);
 }
 
 void VulkanGraphicsDriver::EndCommandList(RHI::RHICommandListPtr cmd)

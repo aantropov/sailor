@@ -46,7 +46,7 @@ void World::Tick(FrameState& frameState)
 	m_time = frameState.GetTime();
 	m_commandList = frameState.CreateCommandBuffer(0);
 
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList, true);
 
 	for (auto& el : m_objects)
 	{

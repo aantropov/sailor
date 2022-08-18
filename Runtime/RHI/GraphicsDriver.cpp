@@ -16,7 +16,7 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3U
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
 
 	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	mesh->m_vertexBuffer = CreateBuffer(cmdList,
 		&vertices[0],

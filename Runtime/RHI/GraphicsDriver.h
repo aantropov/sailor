@@ -187,7 +187,8 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout) = 0;
 
-		SAILOR_API virtual void BeginCommandList(RHICommandListPtr cmd, bool bOneTimeSubmit = false, bool bSupportMultisampling = true) = 0;
+		SAILOR_API virtual void BeginSecondaryCommandList(RHICommandListPtr cmd, bool bOneTimeSubmit = false, bool bSupportMultisampling = true) = 0;
+		SAILOR_API virtual void BeginCommandList(RHICommandListPtr cmd, bool bOneTimeSubmit) = 0;
 		SAILOR_API virtual void EndCommandList(RHICommandListPtr cmd) = 0;
 
 		SAILOR_API virtual void UpdateShaderBindingVariable(RHICommandListPtr cmd, RHI::RHIShaderBindingPtr binding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray);

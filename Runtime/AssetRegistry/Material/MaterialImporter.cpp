@@ -143,7 +143,7 @@ void Material::UpdateRHIResource()
 
 	SAILOR_PROFILE_BLOCK("Create command list");
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	for (auto& uniform : m_uniforms)
 	{
