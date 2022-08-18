@@ -353,6 +353,9 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 {
 	m_imageDependencies.AddRange({ dst, src });
 
+	ImageMemoryBarrier(src, src->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
 	if (src->m_format == dst->m_format && std::memcmp(&src->m_extent, &dst->m_extent, sizeof(VkExtent3D)) == 0)
 	{
 		// Resolve Multisampling 
@@ -447,6 +450,9 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 			&blit,
 			filtration);
 	}
+
+	ImageMemoryBarrier(src, src->m_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src->m_initialLayout);
+	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->m_initialLayout);
 }
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
