@@ -29,7 +29,7 @@ void RHIBlitNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHICommandList
 	//glm::vec4 srcRegion = GetVectorParam("srcRegion");
 	//glm::vec4 dstRegion = GetVectorParam("dstRegion");
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
-	glm::ivec4 dstRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
+	glm::ivec4 dstRegion(0, 0, dst->GetExtent().x, dst->GetExtent().y);
 
 	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion);
 }

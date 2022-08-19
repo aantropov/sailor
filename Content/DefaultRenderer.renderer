@@ -1,7 +1,7 @@
 {
 "samplers": [{"name":"g_defaultSampler", "uid": {"uid": ""}, "path":"Textures/VulkanLogo.png"}],
 "values": [{"name":"PI", "value":3.1415926}],
-"renderTargets": [{"name":"Main", "format":"R16G16B16A16_SFLOAT", "width":"ViewportWidth", "height":"ViewportHeight"}],
+"renderTargets": [{"name":"Main", "format":"B8G8R8A8_SRGB", "width":"ViewportWidth", "height":"ViewportHeight"}],
 "frame":[
 	{"name":"RenderScene", 
 		"values":[{"name":"Tag", "string":"Opaque"}], 

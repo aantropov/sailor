@@ -832,7 +832,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	VkFormat format,
 	VkImageTiling tiling,
 	VkImageUsageFlags usage,
-	VkSharingMode sharingMode)
+	VkSharingMode sharingMode,
+	VkImageLayout defaultLayout)
 {
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
@@ -848,7 +849,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->m_samples = VK_SAMPLE_COUNT_1_BIT;
 	outImage->m_arrayLayers = 1;
 	outImage->m_sharingMode = sharingMode;
-	outImage->m_initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+	outImage->m_defaultLayout = defaultLayout;
+	outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	outImage->m_flags = 0;
 
 	outImage->Compile();
@@ -871,7 +873,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 
 	if (outImage->m_mipLevels == 1)
 	{
-		cmdBuffer->ImageMemoryBarrier(outImage, outImage->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		cmdBuffer->ImageMemoryBarrier(outImage, outImage->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, defaultLayout);
 	}
 	else
 	{
@@ -890,7 +892,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	VkImageTiling tiling,
 	VkImageUsageFlags usage,
 	VkSharingMode sharingMode,
-	VkSampleCountFlagBits sampleCount)
+	VkSampleCountFlagBits sampleCount,
+	VkImageLayout defaultLayout)
 {
 	VulkanImagePtr outImage = new VulkanImage(device);
 
@@ -903,7 +906,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->m_samples = sampleCount;
 	outImage->m_arrayLayers = 1;
 	outImage->m_sharingMode = sharingMode;
-	outImage->m_initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+	outImage->m_defaultLayout = defaultLayout;
+	outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	outImage->m_flags = 0;
 
 	outImage->Compile();
@@ -928,12 +932,13 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 	VkFormat format,
 	VkImageTiling tiling,
 	VkImageUsageFlags usage,
-	VkSharingMode sharingMode)
+	VkSharingMode sharingMode,
+	VkImageLayout defaultLayout)
 {
 
 	auto cmdBuffer = device->CreateCommandBuffer();
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanImagePtr res = CreateImage(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode);
+	VulkanImagePtr res = CreateImage(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout);
 	cmdBuffer->EndCommandList();
 
 	auto fence = VulkanFencePtr::Make(device);

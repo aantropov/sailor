@@ -431,7 +431,7 @@ namespace Sailor::RHI
 		DepthStencilReadOnlyOptimal = 4,
 		ShaderReadOnlyOptimal = 5,
 		TransferSrcOptimal = 6,
-		TransferDSTOptimal = 7,
+		TransferDstOptimal = 7,
 		PreInitialized = 8,
 		DepthReadOnlyStencilAttachmentOptimal = 1000117000,
 		DepthAttachmentStencilReadOnlyOptimal = 1000117001,

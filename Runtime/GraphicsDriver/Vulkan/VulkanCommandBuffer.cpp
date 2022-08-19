@@ -226,19 +226,25 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	// MSAA enabled -> we use the temporary buffers to resolve
 	if (bSupportMultisampling && (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT))
 	{
+		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
+
 		VkImageView msaaAttachment = *(m_device->GetSwapchain()->GetMSColorBufferView());
 		VkImageView msaaDepthAttachment = *(m_device->GetSwapchain()->GetMSDepthBufferView());
 
-		const bool bIsRenderingIntoFrameBuffer = depthStencilAttachment == m_device->GetSwapchain()->GetDepthBufferView();
+		const bool bIsRenderingIntoDepthBuffer = depthStencilAttachment == vulkanRenderer->GetDepthBuffer()->m_vulkan.m_imageView;
+		const bool bIsRenderingIntoFrameBuffer = colorAttachments[0] == vulkanRenderer->GetBackBuffer()->m_vulkan.m_imageView;
+		
+		if (!bIsRenderingIntoDepthBuffer)
+		{
+			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
+			msaaDepthAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView);
+		}
+
 		if (!bIsRenderingIntoFrameBuffer)
 		{
 			// TODO: Add support for multiple MSAA targets
-			auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
 			const auto extents = glm::ivec2(colorAttachments[0]->GetImage()->m_extent.width, colorAttachments[0]->GetImage()->m_extent.height);
-			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
-
 			msaaAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
-			msaaDepthAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView);
 		}
 
 		colorAttachmentInfo.imageView = msaaAttachment;
@@ -353,8 +359,8 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 {
 	m_imageDependencies.AddRange({ dst, src });
 
-	ImageMemoryBarrier(src, src->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	ImageMemoryBarrier(src, src->m_format, src->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	ImageMemoryBarrier(dst, dst->m_format, dst->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	if (src->m_format == dst->m_format && std::memcmp(&src->m_extent, &dst->m_extent, sizeof(VkExtent3D)) == 0)
 	{
@@ -381,9 +387,9 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 			vkCmdResolveImage(
 				m_commandBuffer,
 				*src,
-				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //src->m_initialLayout,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 				*dst,
-				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //dst->m_initialLayout,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				1,
 				&resolve);
 		}
@@ -411,9 +417,9 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 			vkCmdCopyImage(
 				m_commandBuffer,
 				*src,
-				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //src->m_initialLayout,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 				*dst,
-				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //dst->m_initialLayout,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				1,
 				&copy);
 		}
@@ -423,18 +429,25 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 		// Blit (format conversion)
 		VkImageBlit blit{};
 		blit.dstOffsets[0].x = dstRegion.offset.x;
-		blit.dstOffsets[0].y = dstRegion.extent.width;
-		blit.dstOffsets[1].x = dstRegion.offset.y;
-		blit.dstOffsets[1].y = dstRegion.extent.height;
+		blit.dstOffsets[0].y = dstRegion.offset.y;
+		blit.dstOffsets[0].z = 0;
+
+		blit.dstOffsets[1].x = dstRegion.offset.x + dstRegion.extent.width;
+		blit.dstOffsets[1].y = dstRegion.offset.y + dstRegion.extent.height;
+		blit.dstOffsets[1].z = 1;
+
 		blit.dstSubresource.mipLevel = 0;
 		blit.dstSubresource.layerCount = 1;
 		blit.dstSubresource.baseArrayLayer = 0;
 		blit.dstSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
 
 		blit.srcOffsets[0].x = srcRegion.offset.x;
-		blit.srcOffsets[0].y = srcRegion.extent.width;
-		blit.srcOffsets[1].x = srcRegion.offset.y;
-		blit.srcOffsets[1].y = srcRegion.extent.height;
+		blit.srcOffsets[0].y = srcRegion.offset.y;
+		blit.srcOffsets[0].z = 0;
+		blit.srcOffsets[1].x = srcRegion.offset.x + srcRegion.extent.width;
+		blit.srcOffsets[1].y = srcRegion.offset.y + srcRegion.extent.height;
+		blit.srcOffsets[1].z = 1;
+		
 		blit.srcSubresource.mipLevel = 0;
 		blit.srcSubresource.layerCount = 1;
 		blit.srcSubresource.baseArrayLayer = 0;
@@ -443,9 +456,9 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 		vkCmdBlitImage(
 			m_commandBuffer,
 			*src,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //src->m_initialLayout,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			*dst,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, //dst->m_initialLayout,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			1,
 			&blit,
 			filtration);
@@ -629,7 +642,7 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 	}
 	barrier.subresourceRange.baseMipLevel = image->m_mipLevels - 1;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	barrier.newLayout = image->m_defaultLayout;
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
@@ -640,8 +653,51 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 		1, &barrier);
 }
 
+VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout) const
+{
+	switch (layout)
+	{
+	case VK_IMAGE_LAYOUT_UNDEFINED:
+		return 0;
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		return VK_ACCESS_TRANSFER_READ_BIT;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		return VK_ACCESS_TRANSFER_WRITE_BIT;
+	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+		return 0;
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+		return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	default:
+		return 0;
+	}
+}
+
+VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout) const
+{
+	switch (layout)
+	{
+	case VK_IMAGE_LAYOUT_UNDEFINED:
+		return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		return VK_PIPELINE_STAGE_TRANSFER_BIT;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		return VK_PIPELINE_STAGE_TRANSFER_BIT;
+	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+		return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	default:
+		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	}
+}
+
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
+	if (oldLayout == newLayout)
+	{
+		return;
+	}
+
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.oldLayout = oldLayout;
@@ -657,9 +713,13 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	barrier.srcAccessMask = 0; // TODO
 	barrier.dstAccessMask = 0; // TODO
 
-	VkPipelineStageFlags sourceStage;
-	VkPipelineStageFlags destinationStage;
+	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout);
+	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout);
 
+	barrier.srcAccessMask = GetAccessFlags(oldLayout);
+	barrier.dstAccessMask = GetAccessFlags(newLayout);
+
+	/*
 	if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
 	{
 		barrier.srcAccessMask = 0;
@@ -667,6 +727,54 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 
 		sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 		destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+	{
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+		sourceStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+		destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+	{
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = 0;
+
+		sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+	{
+		barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+		sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+	{
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+		sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+	{
+		barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+		sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+	{
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+		sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	}
 	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 	{
@@ -695,7 +803,7 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
 	{
 		barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		barrier.dstAccessMask = 0;
 
 		sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
@@ -704,6 +812,7 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	{
 		assert("Unsupported layout transition!");
 	}
+	*/
 
 	vkCmdPipelineBarrier(
 		m_commandBuffer,

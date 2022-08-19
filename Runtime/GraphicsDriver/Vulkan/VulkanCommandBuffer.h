@@ -92,6 +92,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	protected:
 
+		SAILOR_API VkAccessFlags GetAccessFlags(VkImageLayout layout) const;
+		SAILOR_API VkPipelineStageFlags GetPipelineStage(VkImageLayout layout) const;
+
 		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
 		VulkanImagePtr m_depthStencilAttachmentDependency;
 

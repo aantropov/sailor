@@ -85,7 +85,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComm
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
-	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::Undefined, EImageLayout::ColorAttachmentOptimal);
+	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), colorAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
@@ -131,7 +131,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComm
 		}
 	}
 	commands->EndRenderPass(commandList);
-	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, EImageLayout::PresentSrc);
+	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
 
 	// Update matrices
 	if (gpuMatricesData.Num() > 0)

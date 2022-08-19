@@ -29,8 +29,8 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 	GraphicsDriver::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
 	m_vkInstance = GraphicsDriver::Vulkan::VulkanApi::GetInstance();
 
-	m_backBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false);
-	m_depthStencilBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false);
+	m_backBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
+	m_depthStencilBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::DepthStencilAttachmentOptimal);
 }
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
@@ -280,8 +280,19 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	RHI::RHITexturePtr res = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1);
-	res->m_vulkan.m_image = m_vkInstance->CreateImage_Immediate(m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+	RHI::RHITexturePtr res = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, RHI::EImageLayout::ShaderReadOnlyOptimal);
+	res->m_vulkan.m_image = m_vkInstance->CreateImage_Immediate(m_vkInstance->GetMainDevice(),
+		pData,
+		size, 
+		vkExtent, 
+		mipLevels, 
+		(VkImageType)type, 
+		(VkFormat)format, 
+		VK_IMAGE_TILING_OPTIMAL, 
+		(uint32_t)usage,
+		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal);
+
 	res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, res->m_vulkan.m_image);
 	res->m_vulkan.m_imageView->Compile();
 
@@ -302,7 +313,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1);
+	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, RHI::EImageLayout::ShaderReadOnlyOptimal);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
@@ -312,12 +323,24 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
-	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer, m_vkInstance->GetMainDevice(), pData, size, vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer, 
+		m_vkInstance->GetMainDevice(),
+		pData, 
+		size,
+		vkExtent,
+		mipLevels,
+		(VkImageType)type,
+		(VkFormat)format,
+		VK_IMAGE_TILING_OPTIMAL, 
+		(uint32_t)usage,
+		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
+	outTexture->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(outTexture->GetDefaultLayout());
 
 	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
@@ -338,16 +361,41 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, false);
+	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, false, RHI::EImageLayout::ColorAttachmentOptimal);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(), vkExtent, mipLevels, (VkImageType)type, (VkFormat)format, VK_IMAGE_TILING_OPTIMAL, (uint32_t)usage);
+	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(), 
+		vkExtent, 
+		mipLevels, 
+		(VkImageType)type, 
+		(VkFormat)format, 
+		VK_IMAGE_TILING_OPTIMAL, 
+		(uint32_t)usage,
+		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+		VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
+		(VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal);
+
+	outTexture->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(outTexture->GetDefaultLayout());
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
+
+	// Update layout
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+	RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList, 
+		outTexture,
+		outTexture->GetFormat(),
+		RHI::EImageLayout::Undefined,
+		RHI::EImageLayout::ColorAttachmentOptimal);
+	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
+
+	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
+	SubmitCommandList(cmdList, fenceUpdateRes);
 
 	return outTexture;
 }
@@ -373,7 +421,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 	bool bNeedsResolved = m_vkInstance->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
 	if (bNeedsResolved)
 	{
-		target = RHI::RHITexturePtr::Make(filtration, clamping, false);
+		target = RHI::RHITexturePtr::Make(filtration, clamping, false, RHI::EImageLayout::ColorAttachmentOptimal);
 
 		VkExtent3D vkExtent;
 		vkExtent.width = extent.x;
@@ -388,10 +436,27 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 			VK_IMAGE_TILING_OPTIMAL,
 			(uint32_t)usage,
 			(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-			device->GetCurrentMsaaSamples());
+			device->GetCurrentMsaaSamples(),
+			(VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal);
+		
+		target->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(target->GetDefaultLayout());
 
 		target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 		target->m_vulkan.m_imageView->Compile();
+
+
+		RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+		RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+		RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
+			target,
+			target->GetFormat(),
+			RHI::EImageLayout::Undefined,
+			RHI::EImageLayout::ColorAttachmentOptimal);
+		RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
+
+		RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+		TrackDelayedInitialization(target.GetRawPtr(), fenceUpdateRes);
+		SubmitCommandList(cmdList, fenceUpdateRes);
 	}
 
 	return  RHI::RHISurfacePtr::Make(target, resolved, bNeedsResolved);
@@ -814,14 +879,14 @@ void VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexture
 	VkRect2D srcRect{};
 	srcRect.offset.x = srcRegionRect.x;
 	srcRect.offset.y = srcRegionRect.y;
-	srcRect.extent.height = srcRegionRect.z;
-	srcRect.extent.width = srcRegionRect.w;
+	srcRect.extent.width = srcRegionRect.z;
+	srcRect.extent.height = srcRegionRect.w;
 
 	VkRect2D dstRect{};
 	dstRect.offset.x = dstRegionRect.x;
 	dstRect.offset.y = dstRegionRect.y;
-	dstRect.extent.height = dstRegionRect.z;
-	dstRect.extent.width = dstRegionRect.w;
+	dstRect.extent.width = dstRegionRect.z;
+	dstRect.extent.height = dstRegionRect.w;
 
 	cmd->m_vulkan.m_commandBuffer->BlitImage(src->m_vulkan.m_image, dst->m_vulkan.m_image, srcRect, dstRect, (VkFilter)filtration);
 }
