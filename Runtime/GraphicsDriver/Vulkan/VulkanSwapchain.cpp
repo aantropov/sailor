@@ -140,6 +140,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_msColorBuffer->m_usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		m_msColorBuffer->m_arrayLayers = 1;
 		m_msColorBuffer->m_samples = device->GetCurrentMsaaSamples();
+		m_msColorBuffer->m_defaultLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		m_msColorBuffer->Compile();
 
 		if (bIsRecreating)
@@ -172,7 +173,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_msDepthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 		m_msDepthBuffer->m_arrayLayers = 1;
 		m_msDepthBuffer->m_samples = device->GetCurrentMsaaSamples();
-
+		m_msDepthBuffer->m_defaultLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 		m_msDepthBuffer->Compile();
 
 		if (bIsRecreating)

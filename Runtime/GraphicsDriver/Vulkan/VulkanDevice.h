@@ -179,6 +179,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanFencePtr> m_syncImages;
 		size_t m_currentFrame = 0;
 		uint32_t m_currentSwapchainImageIndex = 0;
+		bool m_bNeedToTransitSwapchainToPresent = true;
 
 		std::atomic<bool> m_bIsSwapChainOutdated = true;
 

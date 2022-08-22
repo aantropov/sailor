@@ -360,6 +360,7 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 	CreateFramebuffers();
 
 	m_bIsSwapChainOutdated = false;
+	m_bNeedToTransitSwapchainToPresent = true;
 	return true;
 }
 
@@ -503,6 +504,7 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 		m_oldSwapchain);
 
 	m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
+	m_bNeedToTransitSwapchainToPresent = true;
 }
 
 void VulkanDevice::CleanupSwapChain()
@@ -598,6 +600,39 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	m_frameDeps[m_currentFrame].Clear();
 
 	TVector<VkCommandBuffer> commandBuffers;
+	
+	if (m_bNeedToTransitSwapchainToPresent)
+	{
+		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(false);
+
+		transitCmd->BeginCommandList();
+		for (const auto& swapchain : m_swapchain->GetImageViews())
+		{
+			transitCmd->ImageMemoryBarrier(swapchain->GetImage(), swapchain->m_format, VK_IMAGE_LAYOUT_UNDEFINED, swapchain->GetImage()->m_defaultLayout);
+		}
+
+		transitCmd->ImageMemoryBarrier(m_swapchain->GetDepthBufferView()->GetImage(),
+			m_swapchain->GetDepthBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
+			m_swapchain->GetDepthBufferView()->GetImage()->m_defaultLayout);
+
+		if (GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT)
+		{
+			transitCmd->ImageMemoryBarrier(m_swapchain->GetMSColorBufferView()->GetImage(),
+				m_swapchain->GetMSColorBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
+				m_swapchain->GetMSColorBufferView()->GetImage()->m_defaultLayout);
+
+			transitCmd->ImageMemoryBarrier(m_swapchain->GetMSDepthBufferView()->GetImage(),
+				m_swapchain->GetMSDepthBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
+				m_swapchain->GetMSDepthBufferView()->GetImage()->m_defaultLayout);
+		}
+
+		transitCmd->EndCommandList();
+
+		commandBuffers.Add(*transitCmd);
+		m_frameDeps[m_currentFrame].Add(transitCmd);
+		m_bNeedToTransitSwapchainToPresent = false;
+	}
+
 	if (primaryCommandBuffers.Num() > 0)
 	{
 		for (auto cmdBuffer : primaryCommandBuffers)
