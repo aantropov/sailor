@@ -75,10 +75,14 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 
 Renderer::~Renderer()
 {
-	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
 	Renderer::GetDriver()->WaitIdle();
 	m_driverInstance.Clear();
+}
+
+void Renderer::Clear()
+{
+	m_frameGraph.Clear();
 }
 
 TUniquePtr<IGraphicsDriver>& Renderer::GetDriver()
@@ -98,7 +102,10 @@ IGraphicsDriverCommands* Renderer::GetDriverCommands()
 
 void Renderer::FixLostDevice()
 {
-	m_driverInstance->FixLostDevice(m_pViewport);
+	if (m_driverInstance->FixLostDevice(m_pViewport))
+	{
+		m_bFrameGraphOutdated = true;		
+	}
 }
 
 RHISceneViewPtr Renderer::GetOrAddSceneView(WorldPtr worldPtr)
@@ -120,14 +127,6 @@ void Renderer::RemoveSceneView(WorldPtr worldPtr)
 
 bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
-	if (!m_frameGraph)
-	{
-		if (auto frameGraphUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
-		{
-			App::GetSubmodule<FrameGraphImporter>()->LoadFrameGraph_Immediate(frameGraphUID->GetUID(), m_frameGraph);
-		}
-	}
-
 	SAILOR_PROFILE_BLOCK("Wait for render thread");
 
 	if (m_bForceStop || App::GetSubmodule<Tasks::Scheduler>()->GetNumRenderingJobs() > MaxFramesInQueue)
@@ -136,6 +135,18 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	}
 
 	SAILOR_PROFILE_END_BLOCK();
+
+	if (!m_frameGraph || m_bFrameGraphOutdated)
+	{
+		m_frameGraph.Clear();
+
+		if (auto frameGraphUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
+		{
+			App::GetSubmodule<FrameGraphImporter>()->Instantiate_Immediate(frameGraphUID->GetUID(), m_frameGraph);
+		}
+
+		m_bFrameGraphOutdated = false;
+	}
 
 	SAILOR_PROFILE_BLOCK("Copy scene view to render thread");
 	auto world = frame.GetWorld();
@@ -176,12 +187,14 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
 			if (m_driverInstance->AcquireNextImage())
-			{
-				if (!bRunCommandLists)
+			{	
+				if (!bRunCommandLists && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 				{
-					m_frameGraph->GetRHI()->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
-					m_frameGraph->GetRHI()->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-					m_frameGraph->GetRHI()->Process(rhiSceneView, transferCommandLists, primaryCommandLists);
+					auto rhiFrameGraph = m_frameGraph->GetRHI();
+
+					rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
+					rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
+					rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists);
 
 					SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
 					for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
@@ -200,6 +213,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 
 					SAILOR_PROFILE_END_BLOCK();
+
+					bRunCommandLists = true;
 				}
 
 				if (m_driverInstance->PresentFrame(frame, &primaryCommandLists, &secondaryCommandLists, waitFrameUpdate))

@@ -555,7 +555,7 @@ bool VulkanDevice::AcquireNextImage()
 
 	// Wait while GPU is finishing frame
 	m_syncFences[m_currentFrame]->Wait();
-		
+
 	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VulkanFencePtr(), m_currentSwapchainImageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
@@ -585,9 +585,6 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	TVector<VulkanCommandBufferPtr> secondaryCommandBuffers,
 	TVector<VulkanSemaphorePtr> semaphoresToWait)
 {
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
 	//////////////////////////////////////////////////
 	if (!m_pCurrentFrameViewport &&
 		m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
@@ -595,12 +592,12 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	{
 		m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
 	}
-	
+
 	// Clear previous frame deps
 	m_frameDeps[m_currentFrame].Clear();
 
 	TVector<VkCommandBuffer> commandBuffers;
-	
+
 	if (m_bNeedToTransitSwapchainToPresent)
 	{
 		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(false);
@@ -656,51 +653,72 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	waitSemaphores.Add(*m_imageAvailableSemaphores[m_currentFrame]);
 
 	///////////////////////////////////////////////////
-
-	VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.Num() * sizeof(VkPipelineStageFlags)));
-
-	for (uint32_t i = 0; i < waitSemaphores.Num(); i++)
+	VkResult presentResult;
+	if (commandBuffers.Num() > 0)
 	{
-		waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+		submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.Num());
+		submitInfo.pWaitSemaphores = &waitSemaphores[0];
+
+		VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.Num() * sizeof(VkPipelineStageFlags)));
+
+		for (uint32_t i = 0; i < waitSemaphores.Num(); i++)
+		{
+			waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		}
+
+		submitInfo.pWaitDstStageMask = waitStages;
+
+		submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
+		submitInfo.pCommandBuffers = &commandBuffers[0];
+
+		VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[m_currentFrame] };
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = signalSemaphores;
+
+		m_syncFences[m_currentFrame]->Reset();
+
+		//TODO: Transfer queue for transfer family command lists
+		VK_CHECK(m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
+
+		_freea(waitStages);
+
+		VkPresentInfoKHR presentInfo{};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = signalSemaphores;
+
+		VkSwapchainKHR swapChains[] = { *m_swapchain };
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = swapChains;
+		presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
+		presentInfo.pResults = nullptr; // Optional
+
+		presentResult = m_presentQueue->Present(presentInfo);
+	}
+	else
+	{
+		VkPresentInfoKHR presentInfo{};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+		presentInfo.waitSemaphoreCount = 0;
+		VkSwapchainKHR swapChains[] = { *m_swapchain };
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = swapChains;
+		presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
+		presentInfo.pResults = nullptr; // Optional
+
+		presentResult = m_presentQueue->Present(presentInfo);
 	}
 
-	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.Num());
-	submitInfo.pWaitSemaphores = &waitSemaphores[0];
-	submitInfo.pWaitDstStageMask = waitStages;
-
-	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
-	submitInfo.pCommandBuffers = &commandBuffers[0];
-
-	VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[m_currentFrame] };
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = signalSemaphores;
-
-	m_syncFences[m_currentFrame]->Reset();
-
-	//TODO: Transfer queue for transfer family command lists
-	VK_CHECK(m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
-
-	_freea(waitStages);
-
-	VkPresentInfoKHR presentInfo{};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = signalSemaphores;
-
-	VkSwapchainKHR swapChains[] = { *m_swapchain };
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = swapChains;
-	presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
-	presentInfo.pResults = nullptr; // Optional
-
-	VkResult result = m_presentQueue->Present(presentInfo);
-
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR)
 	{
 		m_bIsSwapChainOutdated = true;
 	}
-	else if (result != VK_SUCCESS)
+	else if (presentResult != VK_SUCCESS)
 	{
 		SAILOR_LOG("Failed to present swap chain image!");
 		return false;

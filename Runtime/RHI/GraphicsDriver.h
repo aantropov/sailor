@@ -54,7 +54,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual ~IGraphicsDriver() = default;
 
 		SAILOR_API virtual bool ShouldFixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
-		SAILOR_API virtual void FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
+		SAILOR_API virtual bool FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
 
 		SAILOR_API virtual bool AcquireNextImage() = 0;
 		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,

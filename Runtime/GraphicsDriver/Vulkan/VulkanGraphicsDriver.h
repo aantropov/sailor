@@ -27,7 +27,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual ~VulkanGraphicsDriver() override;
 
 		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport);
-		SAILOR_API virtual void FixLostDevice(const Win32::Window* pViewport);
+		SAILOR_API virtual bool FixLostDevice(const Win32::Window* pViewport);
 
 		SAILOR_API virtual bool AcquireNextImage();
 		SAILOR_API virtual bool PresentFrame(const class FrameState& state,

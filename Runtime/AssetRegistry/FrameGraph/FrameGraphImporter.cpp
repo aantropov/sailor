@@ -89,3 +89,16 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFra
 
 	return false;
 }
+
+bool FrameGraphImporter::Instantiate_Immediate(UID uid, FrameGraphPtr& outFrameGraph)
+{
+	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
+	{
+		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
+		outFrameGraph = pFrameGraph;
+
+		return outFrameGraph.IsValid();
+	}
+
+	return false;
+}

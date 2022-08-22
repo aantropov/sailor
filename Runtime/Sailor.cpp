@@ -229,6 +229,8 @@ void App::Shutdown()
 	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::RHI);
 	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 
+	App::GetSubmodule<Renderer>()->Clear();
+
 	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<MaterialImporter>();
 	RemoveSubmodule<ModelImporter>();

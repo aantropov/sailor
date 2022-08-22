@@ -47,6 +47,7 @@ namespace Sailor
 		SAILOR_API FrameGraphAssetPtr LoadFrameGraphAsset(UID uid);
 
 		SAILOR_API bool LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFrameGraph);
+		SAILOR_API bool Instantiate_Immediate(UID uid, FrameGraphPtr& outFrameGraph);
 
 		SAILOR_API static void RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
 

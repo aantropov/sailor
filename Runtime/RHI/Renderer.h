@@ -47,7 +47,11 @@ namespace Sailor::RHI
 		SAILOR_API RHISceneViewPtr GetOrAddSceneView(WorldPtr worldPtr);
 		SAILOR_API void RemoveSceneView(WorldPtr worldPtr);
 
+		SAILOR_API void Clear();
+
 	protected:
+
+		std::atomic<bool> m_bFrameGraphOutdated = false;
 
 		std::atomic<bool> m_bForceStop = false;
 		std::atomic<uint32_t> m_pureFps = 0u;

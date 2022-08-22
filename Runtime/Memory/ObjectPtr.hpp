@@ -46,7 +46,7 @@ namespace Sailor
 			}
 
 			m_pAllocator = std::move(pAllocator);
-
+			assert(m_pAllocator);
 			AssignRawPtr(pRawPtr, nullptr);
 
 			// We're storing object
@@ -89,7 +89,7 @@ namespace Sailor
 
 		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
 		SAILOR_API TObjectPtr(const TObjectPtr<R>& pDerivedPtr) noexcept
-		{
+		{			
 			m_pAllocator = pDerivedPtr.m_pAllocator;
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 		}
@@ -269,6 +269,8 @@ namespace Sailor
 				{
 					ForcelyDestroyObject();
 				}
+
+				assert(m_pAllocator);
 
 				m_pAllocator->Free(m_pControlBlock);
 				m_pControlBlock = nullptr;

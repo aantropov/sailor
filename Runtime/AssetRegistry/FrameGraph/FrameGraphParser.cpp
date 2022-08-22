@@ -110,8 +110,6 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 			}
 		}
 		pRhiFrameGraph->SetSampler(sampler.m_first, texture);
-
-		texture->AddHotReloadDependentObject(pFrameGraph);
 	}
 
 	for (auto& node : frameGraphAsset->m_nodes)

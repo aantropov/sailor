@@ -102,7 +102,7 @@ namespace Sailor
 					}
 					else if (inData["width"].get<std::string>() == "ViewportWidth")
 					{
-						m_width = App::GetViewportWindow()->GetWidth();
+						m_width = std::max(1, App::GetViewportWindow()->GetWidth());
 					}
 				}
 
@@ -114,7 +114,7 @@ namespace Sailor
 					}
 					else if (inData["height"].get<std::string>() == "ViewportHeight")
 					{
-						m_height = App::GetViewportWindow()->GetHeight();
+						m_height = std::max(1, App::GetViewportWindow()->GetHeight());
 					}
 				}
 

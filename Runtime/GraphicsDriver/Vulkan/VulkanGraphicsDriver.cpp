@@ -57,7 +57,7 @@ bool VulkanGraphicsDriver::ShouldFixLostDevice(const Win32::Window* pViewport)
 	return m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport);
 }
 
-void VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
+bool VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -69,7 +69,24 @@ void VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 		m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
 
 		SAILOR_PROFILE_END_BLOCK();
+
+		if (App::GetViewportWindow()->IsIconic())
+		{
+			m_cachedMsaaRenderTargets.Clear();
+		}
+		else
+		{
+			SAILOR_ENQUEUE_TASK_RENDER_THREAD("Clear MSAA cache",
+				([this]()
+			{
+				m_cachedMsaaRenderTargets.Clear();
+			}));
+		}
+
+		return true;
 	}
+
+	return false;
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::GetBackBuffer() const
@@ -826,8 +843,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 
 RHI::RHITexturePtr VulkanGraphicsDriver::GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
 {
-	// TODO: Handle the extents too
-	size_t hash = (size_t)textureFormat;
+	size_t hash = (size_t)((size_t)textureFormat | (extent.x << 1) | (extent.y << 5));
 	if (m_cachedMsaaRenderTargets.ContainsKey(hash))
 	{
 		return m_cachedMsaaRenderTargets[hash];
