@@ -155,6 +155,9 @@ void VulkanDevice::Shutdown()
 	m_frameDeps.Clear();
 	m_commandPool.Clear();
 
+	// 1 Main, 1 Render, 2 RHI
+	assert(m_threadContext.Num() == 4);
+
 	for (auto& pair : m_threadContext)
 	{
 		pair.m_second.Clear();
