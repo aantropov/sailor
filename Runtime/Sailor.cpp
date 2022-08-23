@@ -179,12 +179,14 @@ void App::Start()
 		{
 			SAILOR_PROFILE_BLOCK("Track FPS");
 
+			const Stats& stats = GetSubmodule<Renderer>()->GetStats();
+
 			CHAR Buff[256];
 			sprintf_s(Buff, "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb", frameCounter,
-				GetSubmodule<Renderer>()->GetSmoothFps(),
-				(uint32_t)App::GetSubmodule<EngineLoop>()->GetSmoothFps(),
-				(float)GetSubmodule<Renderer>()->GetVramUsage() / (1024.0f * 1024.0f),
-				(float)GetSubmodule<Renderer>()->GetVramBudget() / (1024.0f * 1024.0f)
+				stats.m_gpuFps,
+				(uint32_t)App::GetSubmodule<EngineLoop>()->GetCpuFps(),
+				(float)stats.m_gpuHeapUsage / (1024.0f * 1024.0f),
+				(float)stats.m_gpuHeapBudget / (1024.0f * 1024.0f)
 			);
 
 			s_pInstance->m_pViewportWindow->SetWindowTitle(Buff);

@@ -14,7 +14,7 @@ namespace Sailor
 	public:
 
 		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
-		SAILOR_API uint32_t GetSmoothFps() const { return m_pureFps.load(); }
+		SAILOR_API uint32_t GetCpuFps() const { return m_cpuFps; }
 
 		EngineLoop() = default;
 		SAILOR_API ~EngineLoop() override;
@@ -23,7 +23,7 @@ namespace Sailor
 
 	protected:
 
-		std::atomic<uint32_t> m_pureFps = 0u;
+		uint32_t m_cpuFps = 0u;
 		TVector<TSharedPtr<World>> m_worlds;
 	};
 }

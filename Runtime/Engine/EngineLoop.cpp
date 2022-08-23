@@ -49,7 +49,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	if (timer.ResultAccumulatedMs() > 1000)
 	{
-		m_pureFps = totalFramesCount;
+		m_cpuFps = totalFramesCount;
 		totalFramesCount = 0;
 		timer.Clear();
 	}

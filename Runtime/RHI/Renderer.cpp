@@ -224,21 +224,21 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 					if (timer.ResultAccumulatedMs() > 1000)
 					{
-						m_pureFps = totalFramesCount;
+						m_stats.m_gpuFps = totalFramesCount;
 						totalFramesCount = 0;
 						timer.Clear();
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 						size_t heapUsage = 0;
 						size_t heapBudget = 0;
 						VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
-						m_heapUsage = heapUsage;
-						m_heapBudget = heapBudget;
+						m_stats.m_gpuHeapUsage = heapUsage;
+						m_stats.m_gpuHeapBudget = heapBudget;
 #endif // SAILOR_BUILD_WITH_VULKAN
 					}
 				}
 				else
 				{
-					m_pureFps = 0;
+					m_stats.m_gpuFps = 0;
 				}
 			}
 

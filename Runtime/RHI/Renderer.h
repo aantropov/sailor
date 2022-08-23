@@ -35,11 +35,7 @@ namespace Sailor::RHI
 		SAILOR_API void FixLostDevice();
 		SAILOR_API bool PushFrame(const Sailor::FrameState& frame);
 
-		SAILOR_API uint32_t GetNumFrames() const { return m_numFrames.load(); }
-		SAILOR_API uint32_t GetSmoothFps() const { return m_pureFps.load(); }
-		
-		SAILOR_API size_t GetVramBudget() const { return m_heapBudget.load(); }
-		SAILOR_API size_t GetVramUsage() const { return m_heapUsage.load(); }
+		SAILOR_API const Stats& GetStats() const { return m_stats; }
 
 		SAILOR_API static TUniquePtr<IGraphicsDriver>& GetDriver();
 		SAILOR_API static IGraphicsDriverCommands* GetDriverCommands();
@@ -52,13 +48,9 @@ namespace Sailor::RHI
 	protected:
 
 		std::atomic<bool> m_bFrameGraphOutdated = false;
-
 		std::atomic<bool> m_bForceStop = false;
-		std::atomic<uint32_t> m_pureFps = 0u;
-		std::atomic<uint32_t> m_numFrames = 0u;
-		
-		std::atomic<size_t> m_heapBudget = 0u;
-		std::atomic<size_t> m_heapUsage = 0u;
+
+		RHI::Stats m_stats;
 
 		class Win32::Window const* m_pViewport;
 
