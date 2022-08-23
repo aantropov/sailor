@@ -85,6 +85,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComm
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
+
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), colorAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
@@ -145,6 +146,8 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComm
 		commands->EndCommandList(updateMatricesCmdList);
 		transferCommandLists.Add(updateMatricesCmdList);
 	}
+
+	SAILOR_PROFILE_END_BLOCK();
 }
 
 void RHIRenderSceneNode::Clear()

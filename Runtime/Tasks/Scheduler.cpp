@@ -203,6 +203,8 @@ void Scheduler::ProcessJobsOnMainThread()
 
 			pCurrentJob->Execute();
 			pCurrentJob.Clear();
+
+			SAILOR_PROFILE_END_BLOCK();
 		}
 	}
 }
@@ -298,9 +300,7 @@ void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTa
 		m_workerThreads[result]->ForcelyPushJob(pJob);
 		return;
 	}
-
 	assert(m_mainThreadId == threadId);
-
 	// Add to Main thread if cannot find the thread in workers
 	{
 		std::mutex* pOutMutex;
