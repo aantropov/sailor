@@ -210,9 +210,9 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		glm::vec4(0.0f),
 		true);
 
-	for (size_t j = secondaryCommandLists.Num() * materialsPerThread; j < vecMaterials.Num(); j++)
+	for (size_t i = secondaryCommandLists.Num() * materialsPerThread; i < vecMaterials.Num(); i++)
 	{
-		auto& material = vecMaterials[j];
+		auto& material = vecMaterials[i];
 
 		const bool bIsMaterialReady = material &&
 			material->GetVertexShader() &&
@@ -241,7 +241,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 			// Draw Batch
 			commands->DrawIndexed(commandList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-				(uint32_t)matrices.Num(), 0, 0, storageIndex[j] + ssboOffset);
+				(uint32_t)matrices.Num(), 0, 0, storageIndex[i] + ssboOffset);
 
 			ssboOffset += (uint32_t)matrices.Num();
 		}
@@ -262,9 +262,10 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		depthAttachment,
 		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
 		glm::ivec2(0, 0),
-		true,
+		false,
 		glm::vec4(0.0f),
 		true);
+
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
 
 	SAILOR_PROFILE_END_BLOCK();
