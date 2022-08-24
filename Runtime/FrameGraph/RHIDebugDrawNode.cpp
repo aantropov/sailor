@@ -18,9 +18,18 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	SAILOR_PROFILE_FUNCTION();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	
+	auto colorAttachment = GetResourceParam("color").StaticCast<RHI::RHITexture>();
+	if (!colorAttachment)
+	{
+		colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
+	}
 
-	auto colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
-	auto depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+	auto depthAttachment = GetResourceParam("depthStencil").StaticCast<RHI::RHITexture>();
+	if (!depthAttachment)
+	{
+		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+	}
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), colorAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 

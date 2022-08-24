@@ -8,10 +8,13 @@
 		"renderTargets":[{"name":"color", "value":"Main"}, {"name":"depthStencil", "value":"DepthBuffer"}]
 	},
 	
+    {"name":"DebugDraw",
+        "renderTargets":[{"name":"color", "value":"Main"}, {"name":"depthStencil", "value":"DepthBuffer"}]
+    },
+    
 	{"name":"Blit", 
 		"renderTargets":[{"name":"src", "value":"Main"}, {"name":"dst", "value":"BackBuffer"}]
-	},
-	
-	{"name":"DebugDraw"}
+	}
+    
 ]
 }
