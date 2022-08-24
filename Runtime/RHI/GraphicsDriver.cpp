@@ -18,15 +18,18 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3U
 	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
+	// Handle both buffers in memory closier each other
+	const EBufferUsageFlags flags = EBufferUsageBit::VertexBuffer_Bit | EBufferUsageBit::IndexBuffer_Bit;
+
 	mesh->m_vertexBuffer = CreateBuffer(cmdList,
 		&vertices[0],
 		bufferSize,
-		EBufferUsageBit::VertexBuffer_Bit);
+		flags);
 
 	mesh->m_indexBuffer = CreateBuffer(cmdList,
 		&indices[0],
 		indexBufferSize,
-		EBufferUsageBit::IndexBuffer_Bit);
+		flags);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
