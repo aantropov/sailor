@@ -303,6 +303,8 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	_freea(waits);
 	_freea(signals);
 	_freea(waitStages);
+
+	m_numSubmittedCommandBuffersAcc++;
 }
 
 void VulkanDevice::CreateDefaultRenderPass()
@@ -584,9 +586,7 @@ bool VulkanDevice::AcquireNextImage()
 	return true;
 }
 
-bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers,
-	TVector<VulkanCommandBufferPtr> secondaryCommandBuffers,
-	TVector<VulkanSemaphorePtr> semaphoresToWait)
+bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
 	//////////////////////////////////////////////////
 	if (!m_pCurrentFrameViewport &&
@@ -685,6 +685,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 
 		//TODO: Transfer queue for transfer family command lists
 		VK_CHECK(m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
+		m_numSubmittedCommandBuffersAcc += (uint32_t)commandBuffers.Num();
 
 		_freea(waitStages);
 
@@ -728,6 +729,9 @@ bool VulkanDevice::PresentFrame(const FrameState& state, TVector<VulkanCommandBu
 	}
 
 	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
+
+	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
+	m_numSubmittedCommandBuffersAcc = 0;
 
 	return true;
 }

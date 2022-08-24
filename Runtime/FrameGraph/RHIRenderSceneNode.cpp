@@ -26,7 +26,7 @@ RHI::ESortingOrder RHIRenderSceneNode::GetSortingOrder() const
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
-void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHICommandListPtr>& transferCommandLists, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -137,14 +137,10 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, TVector<RHI::RHIComm
 	// Update matrices
 	if (gpuMatricesData.Num() > 0)
 	{
-		RHICommandListPtr updateMatricesCmdList = App::GetSubmodule<Renderer>()->GetDriver()->CreateCommandList(false, true);
-		commands->BeginCommandList(updateMatricesCmdList, true);
-		commands->UpdateShaderBinding(updateMatricesCmdList, storageBinding,
+		commands->UpdateShaderBinding(transferCommandList, storageBinding,
 			gpuMatricesData.GetData(),
 			sizeof(glm::mat4x4) * gpuMatricesData.Num(),
 			sizeof(glm::mat4x4) * storageBinding->GetStorageInstanceIndex());
-		commands->EndCommandList(updateMatricesCmdList);
-		transferCommandLists.Add(updateMatricesCmdList);
 	}
 
 	SAILOR_PROFILE_END_BLOCK();

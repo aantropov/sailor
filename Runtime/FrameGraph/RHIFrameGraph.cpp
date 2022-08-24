@@ -31,7 +31,7 @@ void RHIFrameGraph::SetSurface(const std::string& name, RHI::RHISurfacePtr surfa
 	m_surfaces[name] = surface;
 }
 
-RHI::RHICommandListPtr RHIFrameGraph::FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const
+void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -51,44 +51,42 @@ RHI::RHICommandListPtr RHIFrameGraph::FillFrameData(RHI::RHISceneViewSnapshot& s
 	frameData.m_deltaTime = deltaTime;
 	frameData.m_view = snapshot.m_camera->GetViewMatrix();
 
-	// Update GPU side
-	auto renderer = App::GetSubmodule<RHI::Renderer>();
-	auto driverCommands = renderer->GetDriverCommands();
-	RHI::RHICommandListPtr cmdList = App::GetSubmodule<RHI::Renderer>()->GetDriver()->CreateCommandList(false, true);
-	driverCommands->BeginCommandList(cmdList, true);
-	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, snapshot.m_frameBindings->GetOrCreateShaderBinding("frameData"), &frameData, sizeof(frameData));
-	driverCommands->EndCommandList(cmdList);
-
-	return cmdList;
+	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrCreateShaderBinding("frameData"), &frameData, sizeof(frameData));
 }
 
 void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outTransferCommandLists, TVector<RHI::RHICommandListPtr>& outCommandLists)
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	auto renderer = App::GetSubmodule<RHI::Renderer>();
+	auto driverCommands = renderer->GetDriverCommands();
+
 	auto snapshots = rhiSceneView->GetSnapshots();
 
 	for (auto& snapshot : snapshots)
 	{
-		outTransferCommandLists.Add(FillFrameData(snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime));
-
 		SAILOR_PROFILE_BLOCK("FrameGraph");
-		auto renderer = App::GetSubmodule<RHI::Renderer>();
-		auto driverCommands = renderer->GetDriverCommands();
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, false);
+		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, true);
+
 		driverCommands->BeginCommandList(cmdList, true);
+		driverCommands->BeginCommandList(transferCmdList, true);
+		FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
+		
 		driverCommands->SetDefaultViewport(cmdList);
 
 		for (auto& node : m_graph)
 		{
-			node->Process(this, outTransferCommandLists, cmdList, snapshot);
+			node->Process(this, transferCmdList, cmdList, snapshot);
 			//TODO: Submit Transfer command lists
 		}
 
 		driverCommands->EndCommandList(cmdList);
+		driverCommands->EndCommandList(transferCmdList);
 		SAILOR_PROFILE_END_BLOCK();
 
 		outCommandLists.Emplace(std::move(cmdList));
+		outTransferCommandLists.Emplace(transferCmdList);		
 	}
 }
 

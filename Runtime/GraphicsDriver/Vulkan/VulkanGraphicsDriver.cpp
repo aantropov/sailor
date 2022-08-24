@@ -52,6 +52,11 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	GraphicsDriver::Vulkan::VulkanApi::Shutdown();
 }
 
+uint32_t VulkanGraphicsDriver::GetNumSubmittedCommandBuffers() const
+{
+	return m_vkInstance->GetMainDevice()->GetNumSubmittedCommandBufers();
+}
+
 bool VulkanGraphicsDriver::ShouldFixLostDevice(const Win32::Window* pViewport)
 {
 	return m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport);
@@ -113,39 +118,31 @@ bool VulkanGraphicsDriver::AcquireNextImage()
 }
 
 bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
-	const TVector<RHI::RHICommandListPtr>* primaryCommandBuffers,
-	const TVector<RHI::RHICommandListPtr>* secondaryCommandBuffers,
-	TVector<RHI::RHISemaphorePtr> waitSemaphores) const
+	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
+	const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const
 {
 	TVector<VulkanCommandBufferPtr> primaryBuffers;
-	TVector<VulkanCommandBufferPtr> secondaryBuffers;
 	TVector<VulkanSemaphorePtr> vkWaitSemaphores;
 
-	if (primaryCommandBuffers != nullptr)
+	if (primaryCommandBuffers.Num() > 0)
 	{
-		for (auto& buffer : *primaryCommandBuffers)
+		primaryBuffers.Reserve(primaryCommandBuffers.Num());
+		for (auto& buffer : primaryCommandBuffers)
 		{
 			primaryBuffers.Add(buffer->m_vulkan.m_commandBuffer);
 		}
 	}
 
-	if (secondaryCommandBuffers != nullptr)
-	{
-		for (auto& buffer : *secondaryCommandBuffers)
-		{
-			secondaryBuffers.Add(buffer->m_vulkan.m_commandBuffer);
-		}
-	}
-
 	if (waitSemaphores.Num() > 0)
 	{
+		vkWaitSemaphores.Reserve(waitSemaphores.Num());
 		for (auto& buffer : waitSemaphores)
 		{
 			vkWaitSemaphores.Add(buffer->m_vulkan.m_semaphore);
 		}
 	}
 
-	return m_vkInstance->GetMainDevice()->PresentFrame(state, std::move(primaryBuffers), std::move(secondaryBuffers), std::move(vkWaitSemaphores));
+	return m_vkInstance->GetMainDevice()->PresentFrame(state, std::move(primaryBuffers), std::move(vkWaitSemaphores));
 }
 
 void VulkanGraphicsDriver::WaitIdle()

@@ -40,7 +40,7 @@ namespace Sailor
 
 	protected:
 
-		RHI::RHICommandListPtr FillFrameData(RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const;
+		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const;
 
 		TMap<std::string, TexturePtr> m_samplers;
 		TMap<std::string, RHI::RHITexturePtr> m_renderTargets;

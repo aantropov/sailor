@@ -55,9 +55,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanImageViewPtr GetBackBuffer() const;
 		VulkanImageViewPtr GetDepthBuffer() const;
 
-		SAILOR_API bool PresentFrame(const FrameState& state, TVector<VulkanCommandBufferPtr> primaryCommandBuffers = {},
-			TVector<VulkanCommandBufferPtr> secondaryCommandBuffers = {},
-			TVector<VulkanSemaphorePtr> waitSemaphores = {});
+		SAILOR_API bool PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(bool bOnlyTransferQueue = false);
@@ -122,6 +120,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer);
 
 		SAILOR_API VulkanSwapchainPtr GetSwapchain() { return m_swapchain; }
+
+		SAILOR_API uint32_t GetNumSubmittedCommandBufers() const { return m_numSubmittedCommandBuffers; }
 
 	protected:
 
@@ -194,5 +194,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Dynamic rendering extension
 		PFN_vkCmdBeginRenderingKHR pVkCmdBeginRenderingKHR;
 		PFN_vkCmdEndRenderingKHR pVkCmdEndRenderingKHR;
+
+		// Stats
+		uint32_t m_numSubmittedCommandBuffersAcc = 0;
+		uint32_t m_numSubmittedCommandBuffers = 0;
 	};
 }

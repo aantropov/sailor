@@ -176,7 +176,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		bool bRunCommandLists = false;
 		TVector<RHI::RHICommandListPtr> primaryCommandLists;
-		TVector<RHI::RHICommandListPtr> secondaryCommandLists;
 		TVector<RHI::RHICommandListPtr> transferCommandLists;
 		TVector<RHISemaphorePtr> waitFrameUpdate;
 
@@ -217,7 +216,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					bRunCommandLists = true;
 				}
 
-				if (m_driverInstance->PresentFrame(frame, &primaryCommandLists, &secondaryCommandLists, waitFrameUpdate))
+				if (m_driverInstance->PresentFrame(frame, std::move(primaryCommandLists), std::move(waitFrameUpdate)))
 				{
 					totalFramesCount++;
 					timer.Stop();
@@ -230,9 +229,12 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 						size_t heapUsage = 0;
 						size_t heapBudget = 0;
+						
 						VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
+
 						m_stats.m_gpuHeapUsage = heapUsage;
 						m_stats.m_gpuHeapBudget = heapBudget;
+						m_stats.m_numSubmittedCommandBuffers = m_driverInstance->GetNumSubmittedCommandBuffers();
 #endif // SAILOR_BUILD_WITH_VULKAN
 					}
 				}
