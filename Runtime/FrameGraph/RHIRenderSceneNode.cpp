@@ -30,6 +30,8 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	TMap<RHIMaterialPtr, TMap<RHI::RHIMeshPtr, TVector<glm::mat4x4>>> drawCalls;
@@ -72,8 +74,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 	TVector<glm::mat4x4> gpuMatricesData;
 	gpuMatricesData.AddDefault(numMeshes);
-	size_t ssboIndex = 0;
-
+	
 	auto colorAttachment = GetResourceParam("color").StaticCast<RHI::RHITexture>();
 	if (!colorAttachment)
 	{
@@ -86,18 +87,21 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), colorAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHITexturePtr>{ colorAttachment },
-		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
-		glm::ivec2(0, 0),
-		true,
-		glm::vec4(0.0f),
-		true);
+	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
+	const size_t materialsPerThread = (materials.Num() + materials.Num() % numThreads) / numThreads;
 
-	for (auto& material : materials)
+	TVector<RHICommandListPtr> secondaryCommandLists(std::min(numThreads, materials.Num()));
+	TVector<Tasks::ITaskPtr> tasks;
+
+	auto vecMaterials = materials.ToVector();
+
+	SAILOR_PROFILE_BLOCK("Calculate SSBO offsets");
+	size_t ssboIndex = 0;
+	TVector<uint32_t> storageIndex(vecMaterials.Num());
+	for (uint32_t j = 0; j < vecMaterials.Num(); j++)
 	{
+		auto& material = vecMaterials[j];
+
 		const bool bIsMaterialReady = material &&
 			material->GetVertexShader() &&
 			material->GetFragmentShader() &&
@@ -109,32 +113,75 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			continue;
 		}
 
-		sets[2] = material->GetBindings();
-
-		commands->BindMaterial(commandList, material);
-		commands->BindShaderBindings(commandList, material, sets);
-
 		for (auto& instancedDrawCall : drawCalls[material])
 		{
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
 
-			commands->BindVertexBuffers(commandList, { mesh->m_vertexBuffer });
-			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer);
-
 			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(glm::mat4x4) * matrices.Num());
-
-			// Draw Batch
-			commands->DrawIndexed(commandList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-				(uint32_t)matrices.Num(), 0, 0, storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex);
-
+			storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
 			ssboIndex += matrices.Num();
 		}
 	}
-	commands->EndRenderPass(commandList);
-	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
+	SAILOR_PROFILE_END_BLOCK();
 
-	// Update matrices
+	SAILOR_PROFILE_BLOCK("Create secondary command lists");
+	for (uint32_t i = 0; i < secondaryCommandLists.Num(); i++)
+	{
+		const uint32_t start = (uint32_t)materialsPerThread * i;
+		const uint32_t end = std::min((uint32_t)materials.Num(), (uint32_t)materialsPerThread * (i + 1));
+
+		auto task = Tasks::Scheduler::CreateTask("Record secondary command list",
+			[&, i = i, start = start, end = end]()
+		{
+			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
+			commands->BeginSecondaryCommandList(cmdList, true, true);
+			commands->SetDefaultViewport(cmdList);
+
+			for (uint32_t j = start; j < end; j++)
+			{
+				auto& material = vecMaterials[j];
+
+				const bool bIsMaterialReady = material &&
+					material->GetVertexShader() &&
+					material->GetFragmentShader() &&
+					material->GetBindings() &&
+					material->GetBindings()->GetShaderBindings().Num() > 0;
+
+				if (!bIsMaterialReady)
+				{
+					continue;
+				}
+
+				sets[2] = material->GetBindings();
+
+				commands->BindMaterial(cmdList, material);
+				commands->BindShaderBindings(cmdList, material, sets);
+
+				for (auto& instancedDrawCall : drawCalls[material])
+				{
+					auto& mesh = instancedDrawCall.First();
+					auto& matrices = instancedDrawCall.Second();
+
+					commands->BindVertexBuffers(cmdList, { mesh->m_vertexBuffer });
+					commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer);
+
+					// Draw Batch
+					commands->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
+						(uint32_t)matrices.Num(), 0, 0, storageIndex[j]);
+				}
+			}
+
+			commands->EndCommandList(cmdList);
+			secondaryCommandLists[i] = std::move(cmdList);
+		}, Tasks::EThreadType::RHI);
+
+		task->Run();
+		tasks.Add(task);
+	}
+	SAILOR_PROFILE_END_BLOCK();
+
+	SAILOR_PROFILE_BLOCK("Fill transfer command list with matrices data");
 	if (gpuMatricesData.Num() > 0)
 	{
 		commands->UpdateShaderBinding(transferCommandList, storageBinding,
@@ -142,6 +189,29 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			sizeof(glm::mat4x4) * gpuMatricesData.Num(),
 			sizeof(glm::mat4x4) * storageBinding->GetStorageInstanceIndex());
 	}
+	SAILOR_PROFILE_END_BLOCK();
+
+	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), colorAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+
+	SAILOR_PROFILE_BLOCK("Wait for secondary command lists");
+	for (auto& task : tasks)
+	{
+		task->Wait();
+	}
+	SAILOR_PROFILE_END_BLOCK();
+
+	commands->RenderSecondaryCommandBuffers(commandList,
+		secondaryCommandLists,
+		TVector<RHI::RHITexturePtr>{ colorAttachment },
+		depthAttachment,
+		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
+		glm::ivec2(0, 0),
+		true,
+		glm::vec4(0.0f),
+		true);
+	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
+
+
 
 	SAILOR_PROFILE_END_BLOCK();
 }

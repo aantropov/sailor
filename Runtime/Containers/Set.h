@@ -203,6 +203,19 @@ namespace Sailor
 			return false;
 		}
 
+		TVector<TElementType> ToVector() const
+		{
+			TVector<TElementType> res;
+			res.Reserve(Num());
+
+			for (const auto& el : *this)
+			{
+				res.Add(el);
+			}
+
+			return res;
+		}
+
 		void Insert(TElementType inElement)
 		{
 			if (ShouldRehash())

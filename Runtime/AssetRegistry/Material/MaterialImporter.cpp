@@ -27,7 +27,7 @@ using namespace Sailor;
 
 bool Material::IsReady() const
 {
-	return m_shader && m_shader->IsReady() && m_commonShaderBindings && m_commonShaderBindings->IsReady();
+	return m_shader && m_shader->IsReady() && m_commonShaderBindings.IsValid() && m_commonShaderBindings->IsReady();
 }
 
 Tasks::ITaskPtr Material::OnHotReload()

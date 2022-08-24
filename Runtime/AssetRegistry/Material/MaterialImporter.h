@@ -56,8 +56,8 @@ namespace Sailor
 
 		std::atomic<bool> m_bIsDirty;
 
-		ShaderSetPtr m_shader;
-		RHI::RHIShaderBindingSetPtr m_commonShaderBindings;
+		ShaderSetPtr m_shader{};
+		RHI::RHIShaderBindingSetPtr m_commonShaderBindings{};
 
 		RHI::RenderState m_renderState;
 
