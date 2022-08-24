@@ -29,11 +29,10 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 	}
 }
 
-TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
+void RHISceneView::PrepareSnapshots()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	TVector<RHISceneViewSnapshot> snapshots;
 	for (uint32_t i = 0; i < m_cameras.Num(); i++)
 	{
 		auto& camera = m_cameras[i];
@@ -41,10 +40,7 @@ TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 
 		Math::Frustum frustum;
 
-		auto pCameraOwner = camera.GetOwner().StaticCast<GameObject>();
-		auto transform = pCameraOwner->GetTransformComponent().GetTransform();
-
-		frustum.ExtractFrustumPlanes(transform, camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
+		frustum.ExtractFrustumPlanes(m_cameraTransforms[i], camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
 
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;
@@ -88,10 +84,8 @@ TVector<RHISceneViewSnapshot> RHISceneView::GetSnapshots()
 		}
 
 		res.m_debugDrawSecondaryCmdList = m_debugDraw[i];
-		snapshots.Emplace(std::move(res));
+		m_snapshots.Emplace(std::move(res));
 	}
-
-	return snapshots;
 }
 
 const TVector<RHIMaterialPtr>& RHISceneViewProxy::GetMaterials() const

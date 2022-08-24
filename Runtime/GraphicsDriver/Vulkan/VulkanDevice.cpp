@@ -645,7 +645,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	TVector<VkSemaphore> waitSemaphores;
 	if (semaphoresToWait.Num() > 0)
 	{
-		//waitSemaphores.reserve(semaphoresToWait.size() + 1);
+		waitSemaphores.Reserve(semaphoresToWait.Num() + 1);
 		for (auto semaphore : semaphoresToWait)
 		{
 			waitSemaphores.Add(*semaphore);

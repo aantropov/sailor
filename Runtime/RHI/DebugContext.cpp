@@ -227,7 +227,6 @@ void DebugContext::UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList)
 	}
 
 	m_bShouldUpdateMeshThisFrame = false;
-
 }
 
 void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const

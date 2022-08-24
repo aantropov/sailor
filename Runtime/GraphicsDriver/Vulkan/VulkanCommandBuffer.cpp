@@ -41,11 +41,12 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 {
 	DWORD currentThreadId = GetCurrentThreadId();
 
-	auto duplicatedDevice = m_device;
-	auto duplicatedCommandPool = m_commandPool;
-	auto duplicatedCommandBuffer = m_commandBuffer;
-
-	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release command buffer", [=]()
+	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release command buffer",
+		[
+			duplicatedCommandBuffer = m_commandBuffer,
+			duplicatedCommandPool = m_commandPool,
+			duplicatedDevice = m_device
+		]()
 	{
 		if (duplicatedCommandBuffer)
 		{
@@ -233,7 +234,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 		const bool bIsRenderingIntoDepthBuffer = depthStencilAttachment == vulkanRenderer->GetDepthBuffer()->m_vulkan.m_imageView;
 		const bool bIsRenderingIntoFrameBuffer = colorAttachments[0] == vulkanRenderer->GetBackBuffer()->m_vulkan.m_imageView;
-		
+
 		if (!bIsRenderingIntoDepthBuffer)
 		{
 			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
@@ -447,7 +448,7 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 		blit.srcOffsets[1].x = srcRegion.offset.x + srcRegion.extent.width;
 		blit.srcOffsets[1].y = srcRegion.offset.y + srcRegion.extent.height;
 		blit.srcOffsets[1].z = 1;
-		
+
 		blit.srcSubresource.mipLevel = 0;
 		blit.srcSubresource.layerCount = 1;
 		blit.srcSubresource.baseArrayLayer = 0;

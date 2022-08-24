@@ -61,9 +61,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto driverCommands = renderer->GetDriverCommands();
 
-	auto snapshots = rhiSceneView->GetSnapshots();
-
-	for (auto& snapshot : snapshots)
+	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
 		SAILOR_PROFILE_BLOCK("FrameGraph");
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, false);
@@ -86,7 +84,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		SAILOR_PROFILE_END_BLOCK();
 
 		outCommandLists.Emplace(std::move(cmdList));
-		outTransferCommandLists.Emplace(transferCmdList);		
+		outTransferCommandLists.Emplace(transferCmdList);
 	}
 }
 

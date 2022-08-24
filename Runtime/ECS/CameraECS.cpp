@@ -28,7 +28,10 @@ void CameraECS::CopyCameraData(RHI::RHISceneViewPtr& outCameras)
 	{
 		if (data.m_bIsActive)
 		{
+			const Sailor::Math::Transform& transform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent().GetTransform();
+
 			outCameras->m_cameras.Add(data);
+			outCameras->m_cameraTransforms.Add(transform);
 		}
 	}
 }

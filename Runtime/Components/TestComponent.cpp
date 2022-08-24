@@ -81,28 +81,6 @@ void TestComponent::Tick(float deltaTime)
 	if (GetWorld()->GetInput().IsKeyDown('Z'))
 		delta += vec3(0, 0, 1);
 
-	if (GetWorld()->GetInput().IsKeyPressed('F'))
-	{
-		if (auto camera = GetOwner()->GetComponent<CameraComponent>())
-		{
-			m_cachedFrustum = GetOwner()->GetTransformComponent().GetCachedWorldMatrix();
-
-			Math::Frustum frustum;
-			frustum.ExtractFrustumPlanes(transform.GetTransform(), camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
-			m_octree.Trace(frustum, m_culledBoxes);
-		}
-	}
-
-	for (const auto& aabb : m_culledBoxes)
-	{
-		GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f));
-	}
-
-	if (auto camera = GetOwner()->GetComponent<CameraComponent>())
-	{
-		GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
-	}
-
 	if (glm::length(delta) > 0)
 	{
 		const vec4 newPosition = transform.GetPosition() + vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);
@@ -121,6 +99,28 @@ void TestComponent::Tick(float deltaTime)
 		glm::quat vRotation = angleAxis(glm::radians(m_pitch), hRotation * Math::vec3_Right);
 
 		transform.SetRotation(vRotation * hRotation);
+	}
+
+	if (GetWorld()->GetInput().IsKeyPressed('F'))
+	{
+		if (auto camera = GetOwner()->GetComponent<CameraComponent>())
+		{
+			m_cachedFrustum = transform.GetTransform().Matrix();
+
+			Math::Frustum frustum;
+			frustum.ExtractFrustumPlanes(transform.GetTransform(), camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
+			m_octree.Trace(frustum, m_culledBoxes);
+		}
+	}
+
+	for (const auto& aabb : m_culledBoxes)
+	{
+		GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f));
+	}
+
+	if (auto camera = GetOwner()->GetComponent<CameraComponent>())
+	{
+		GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
 	}
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
