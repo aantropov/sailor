@@ -72,7 +72,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	SAILOR_PROFILE_BLOCK("Prepare command list");
 	TVector<glm::mat4x4> gpuMatricesData;
 	gpuMatricesData.AddDefault(numMeshes);
-	
+
 	auto colorAttachment = GetResourceParam("color").StaticCast<RHI::RHITexture>();
 	if (!colorAttachment)
 	{
@@ -85,10 +85,10 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	const size_t numThreads = scheduler->GetNumRHIThreads();
-	const size_t materialsPerThread = (materials.Num() + materials.Num() % numThreads) / numThreads;
+	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
+	const size_t materialsPerThread = (materials.Num()) / numThreads;
 
-	TVector<RHICommandListPtr> secondaryCommandLists(std::min(numThreads, materials.Num()));
+	TVector<RHICommandListPtr> secondaryCommandLists(materials.Num() > numThreads ? (numThreads - 1) : 0);
 	TVector<Tasks::ITaskPtr> tasks;
 
 	auto vecMaterials = materials.ToVector();
@@ -118,7 +118,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			auto& matrices = instancedDrawCall.Second();
 
 			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(glm::mat4x4) * matrices.Num());
-			
+
 			if (!bIsInited)
 			{
 				storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
@@ -133,9 +133,9 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	for (uint32_t i = 0; i < secondaryCommandLists.Num(); i++)
 	{
 		const uint32_t start = (uint32_t)materialsPerThread * i;
-		const uint32_t end = std::min((uint32_t)materials.Num(), (uint32_t)materialsPerThread * (i + 1));
+		const uint32_t end = (uint32_t)materialsPerThread * (i + 1);
 
-		auto task = Tasks::Scheduler::CreateTask("Record secondary command list",
+		auto task = Tasks::Scheduler::CreateTask("Record draw calls in secondary command list",
 			[&, i = i, start = start, end = end]()
 		{
 			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
@@ -199,6 +199,55 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	SAILOR_PROFILE_END_BLOCK();
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), colorAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+
+	SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
+	commands->BeginRenderPass(commandList,
+		TVector<RHI::RHITexturePtr>{ colorAttachment },
+		depthAttachment,
+		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
+		glm::ivec2(0, 0),
+		true,
+		glm::vec4(0.0f),
+		true);
+
+	for (size_t j = secondaryCommandLists.Num() * materialsPerThread; j < vecMaterials.Num(); j++)
+	{
+		auto& material = vecMaterials[j];
+
+		const bool bIsMaterialReady = material &&
+			material->GetVertexShader() &&
+			material->GetFragmentShader() &&
+			material->GetBindings() &&
+			material->GetBindings()->GetShaderBindings().Num() > 0;
+
+		if (!bIsMaterialReady)
+		{
+			continue;
+		}
+
+		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
+
+		commands->BindMaterial(commandList, material);
+		commands->BindShaderBindings(commandList, material, sets);
+
+		uint32_t ssboOffset = 0;
+		for (auto& instancedDrawCall : drawCalls[material])
+		{
+			auto& mesh = instancedDrawCall.First();
+			auto& matrices = instancedDrawCall.Second();
+
+			commands->BindVertexBuffers(commandList, { mesh->m_vertexBuffer });
+			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer);
+
+			// Draw Batch
+			commands->DrawIndexed(commandList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
+				(uint32_t)matrices.Num(), 0, 0, storageIndex[j] + ssboOffset);
+
+			ssboOffset += (uint32_t)matrices.Num();
+		}
+	}
+	commands->EndRenderPass(commandList);
+	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Wait for secondary command lists");
 	for (auto& task : tasks)
