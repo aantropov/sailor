@@ -70,8 +70,6 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Prepare command list");
-	TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, nullptr });
-
 	TVector<glm::mat4x4> gpuMatricesData;
 	gpuMatricesData.AddDefault(numMeshes);
 	
@@ -87,7 +85,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
+	const size_t numThreads = scheduler->GetNumRHIThreads();
 	const size_t materialsPerThread = (materials.Num() + materials.Num() % numThreads) / numThreads;
 
 	TVector<RHICommandListPtr> secondaryCommandLists(std::min(numThreads, materials.Num()));
@@ -113,13 +111,19 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			continue;
 		}
 
+		bool bIsInited = false;
 		for (auto& instancedDrawCall : drawCalls[material])
 		{
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
 
 			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(glm::mat4x4) * matrices.Num());
-			storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
+			
+			if (!bIsInited)
+			{
+				storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
+				bIsInited = true;
+			}
 			ssboIndex += matrices.Num();
 		}
 	}
@@ -153,11 +157,12 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 					continue;
 				}
 
-				sets[2] = material->GetBindings();
+				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
 
 				commands->BindMaterial(cmdList, material);
 				commands->BindShaderBindings(cmdList, material, sets);
 
+				uint32_t ssboOffset = 0;
 				for (auto& instancedDrawCall : drawCalls[material])
 				{
 					auto& mesh = instancedDrawCall.First();
@@ -168,7 +173,9 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 					// Draw Batch
 					commands->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-						(uint32_t)matrices.Num(), 0, 0, storageIndex[j]);
+						(uint32_t)matrices.Num(), 0, 0, storageIndex[j] + ssboOffset);
+
+					ssboOffset += (uint32_t)matrices.Num();
 				}
 			}
 
@@ -210,8 +217,6 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		glm::vec4(0.0f),
 		true);
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
-
-
 
 	SAILOR_PROFILE_END_BLOCK();
 }
