@@ -31,6 +31,7 @@ namespace Sailor::RHI
 		SAILOR_API bool HasParameter(const std::string& parameter) const;
 
 		SAILOR_API bool NeedsStorageBuffer() const { return m_bNeedsStorageBuffer; }
+		SAILOR_API uint32_t GetStorageInstanceIndex(const std::string& binding) const;
 
 	protected:
 

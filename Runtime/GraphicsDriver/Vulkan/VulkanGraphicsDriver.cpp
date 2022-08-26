@@ -297,12 +297,12 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	RHI::RHITexturePtr res = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, RHI::EImageLayout::ShaderReadOnlyOptimal);
 	res->m_vulkan.m_image = m_vkInstance->CreateImage_Immediate(m_vkInstance->GetMainDevice(),
 		pData,
-		size, 
-		vkExtent, 
-		mipLevels, 
-		(VkImageType)type, 
-		(VkFormat)format, 
-		VK_IMAGE_TILING_OPTIMAL, 
+		size,
+		vkExtent,
+		mipLevels,
+		(VkImageType)type,
+		(VkFormat)format,
+		VK_IMAGE_TILING_OPTIMAL,
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal);
@@ -337,15 +337,15 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
-	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer, 
+	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer,
 		m_vkInstance->GetMainDevice(),
-		pData, 
+		pData,
 		size,
 		vkExtent,
 		mipLevels,
 		(VkImageType)type,
 		(VkFormat)format,
-		VK_IMAGE_TILING_OPTIMAL, 
+		VK_IMAGE_TILING_OPTIMAL,
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal);
@@ -382,12 +382,12 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(), 
-		vkExtent, 
-		mipLevels, 
-		(VkImageType)type, 
-		(VkFormat)format, 
-		VK_IMAGE_TILING_OPTIMAL, 
+	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
+		vkExtent,
+		mipLevels,
+		(VkImageType)type,
+		(VkFormat)format,
+		VK_IMAGE_TILING_OPTIMAL,
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 		VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
@@ -400,7 +400,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	// Update layout
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
-	RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList, 
+	RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
 		outTexture,
 		outTexture->GetFormat(),
 		RHI::EImageLayout::Undefined,
@@ -452,7 +452,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 			(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 			device->GetCurrentMsaaSamples(),
 			(VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal);
-		
+
 		target->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(target->GetDefaultLayout());
 
 		target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
@@ -566,9 +566,16 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		else if (layoutBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
 		{
 			auto& storageAllocator = GetStorageBufferAllocator();
-			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, 0 /*device->GetSsboOffsetAlignment(layoutBinding.m_size)*/);
+			
+			// We're storing different material's data with its different size in one SSBO, we need to allign properly
+			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, sizeof(layoutBinding.m_size));// 0 /*device->GetSsboOffsetAlignment(layoutBinding.m_size)*/);
 			binding->m_vulkan.m_bufferAllocator = storageAllocator;
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
+
+			assert((binding->m_vulkan.m_valueBinding.m_offset % layoutBinding.m_size) == 0);
+			uint32_t instanceIndex = (uint32_t)(binding->m_vulkan.m_valueBinding.m_offset / layoutBinding.m_size);
+
+			binding->m_vulkan.m_storageInstanceIndex = instanceIndex;
 			binding->SetLayout(layoutBinding);
 		}
 	}
@@ -728,7 +735,6 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	return binding;
 }
-
 
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType)
 {

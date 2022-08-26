@@ -12,11 +12,6 @@ using namespace Sailor::Tasks;
 void StaticMeshRendererECS::BeginPlay()
 {
 	m_sceneViewProxiesCache = RHI::RHISceneViewPtr::Make();
-	m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-
-	// Do we need support UBO & SSBO simulteniously?
-	//bool bNeedsStorageBuffer = m_testMaterial->GetBindings()->NeedsStorageBuffer() ? EShaderBindingType::StorageBuffer : EShaderBindingType::UniformBuffer;
-	Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(glm::mat4x4), 7, 0);
 }
 
 Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
@@ -98,6 +93,5 @@ void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)
 
 void StaticMeshRendererECS::EndPlay()
 {
-	m_perInstanceData.Clear();
 	m_sceneViewProxiesCache.Clear();
 }

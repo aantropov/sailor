@@ -32,8 +32,8 @@ void TestComponent::BeginPlay()
 		}
 	}
 
-	//
-	for(int i = 0; i < 3; i++)
+
+	for (int i = 0; i < 3; i++)
 		for (int j = 0; j < 3; j++)
 		{
 			auto gameObject2 = GetWorld()->Instantiate();
@@ -124,6 +124,28 @@ void TestComponent::Tick(float deltaTime)
 	}
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
+
+	if (GetWorld()->GetInput().IsKeyDown('R'))
+	{
+		glm::vec4 colors[] = { glm::vec4(1.0f, 0.0f, 0.0f, 1.0f) , glm::vec4(0.0f, 1.0f, 0.0f, 1.0f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f) };
+		uint32_t index = 0;
+
+		for (auto& go : GetWorld()->GetGameObjects())
+		{
+			if (auto mr = go->GetComponent<MeshRendererComponent>())
+			{
+				for (auto& mat : mr->GetMaterials())
+				{
+					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.color"))
+					{
+						App::GetSubmodule<Sailor::RHI::Renderer>()->GetDriverCommands()->SetMaterialParameter(GetWorld()->GetCommandList(),
+							mat->GetShaderBindings(), "material.color", colors[(index++) % 3]);
+					}
+				}
+
+			}
+		}
+	}
 }
 
 

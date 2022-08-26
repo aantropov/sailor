@@ -28,13 +28,27 @@ https://developer.nvidia.com/vulkan-shader-resource-binding
 */
 void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
+	struct PerInstanceData
+	{
+		alignas(16) glm::mat4 model;
+		alignas(16) uint32_t materialInstance = 0;
+
+		bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
+
+		size_t GetHash() const
+		{
+			hash<glm::mat4> p;
+			return p(model);
+		}
+	};
+
 	SAILOR_PROFILE_FUNCTION();
 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	TMap<RHIMaterialPtr, TMap<RHI::RHIMeshPtr, TVector<glm::mat4x4>>> drawCalls;
+	TMap<RHIMaterialPtr, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
 	TSet<RHIMaterialPtr> materials;
 
 	uint32_t numMeshes = 0;
@@ -55,7 +69,17 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 			if (material->GetRenderState().GetTag() == GetHash(GetStringParam("Tag")))
 			{
-				drawCalls[material][mesh].Add(proxy.m_worldMatrix);
+				RHIShaderBindingPtr shaderBinding;
+				if (material->GetBindings()->GetShaderBindings().ContainsKey("material"))
+				{
+					shaderBinding = material->GetBindings()->GetShaderBindings()["material"];
+				}
+
+				PerInstanceData data;
+				data.model = proxy.m_worldMatrix;
+				data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
+
+				drawCalls[material][mesh].Add(data);
 				materials.Insert(material);
 
 				numMeshes++;
@@ -66,11 +90,11 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 	SAILOR_PROFILE_BLOCK("Create storage for matrices");
 	RHI::RHIShaderBindingSetPtr perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(glm::mat4x4), numMeshes, 0);
+	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(PerInstanceData), numMeshes, 0);
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Prepare command list");
-	TVector<glm::mat4x4> gpuMatricesData;
+	TVector<PerInstanceData> gpuMatricesData;
 	gpuMatricesData.AddDefault(numMeshes);
 
 	auto colorAttachment = GetResourceParam("color").StaticCast<RHI::RHITexture>();
@@ -117,7 +141,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
 
-			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(glm::mat4x4) * matrices.Num());
+			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(PerInstanceData) * matrices.Num());
 
 			if (!bIsInited)
 			{
@@ -193,8 +217,8 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	{
 		commands->UpdateShaderBinding(transferCommandList, storageBinding,
 			gpuMatricesData.GetData(),
-			sizeof(glm::mat4x4) * gpuMatricesData.Num(),
-			sizeof(glm::mat4x4) * storageBinding->GetStorageInstanceIndex());
+			sizeof(PerInstanceData) * gpuMatricesData.Num(),
+			sizeof(PerInstanceData) * storageBinding->GetStorageInstanceIndex());
 	}
 	SAILOR_PROFILE_END_BLOCK();
 

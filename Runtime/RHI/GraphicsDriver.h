@@ -117,7 +117,6 @@ namespace Sailor::RHI
 
 		// Used for full binding update
 		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value) = 0;
-		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 
 		// Used only for static vertex types
 		template<typename TVertex>
@@ -138,6 +137,7 @@ namespace Sailor::RHI
 		SAILOR_API RHIVertexDescriptionPtr& GetOrAddVertexDescription(VertexAttributeBits bits);
 
 		//Immediate context
+		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual void CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size) = 0;
 		SAILOR_API virtual void SubmitCommandList_Immediate(RHICommandListPtr commandList);

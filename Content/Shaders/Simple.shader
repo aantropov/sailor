@@ -21,25 +21,29 @@ layout(set = 0, binding = 0) uniform FrameData
 struct PerInstanceData
 {
     mat4 model;
+    uint materialInstance;     
 };
 
-#ifdef USE_UNIFORM_BUFFER
-layout(set = 1, binding = 0) uniform PerInstanceDataUBO
+struct MaterialData
 {
-    PerInstanceData instance;
-} data;
-#else
+    vec4 color;
+};
+
 layout(std140, set = 1, binding = 0) readonly buffer PerInstanceDataSSBO
 {
     PerInstanceData instance[];
 } data;
-#endif
 
 #ifdef CUSTOM_DATA
-layout(set=2, binding=0) uniform MaterialData
+layout(std140, set=2, binding=0) readonly buffer MaterialDataSSBO
 {
-    vec4 color;
+    MaterialData instance[];
 } material;
+
+MaterialData GetMaterialData()
+{
+    return material.instance[data.instance[gl_InstanceIndex].materialInstance];
+}
 #endif
 
 layout(location=0) in vec3 inPosition;
@@ -53,18 +57,13 @@ layout(location=2) out vec3 fragNormal;
 
 void main() 
 {
-#ifdef USE_UNIFORM_BUFFER
-    gl_Position = frame.projection * frame.view * data.instance.model * vec4(inPosition, 1.0);
-    vec4 worldNormal = data.instance.model * vec4(inNormal, 0.0);
-#else
     gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
-#endif
 
     fragColor = 1 - inColor * gl_Position.z / 3000;
 
 #ifdef CUSTOM_DATA
-    fragColor *= material.color;
+    fragColor *= GetMaterialData().color;
 #endif
 
 	fragNormal = worldNormal.xyz;
@@ -98,5 +97,5 @@ void main()
 }
 END_CODE,
 
-"defines":["CUSTOM_DATA", "USE_UNIFORM_BUFFER", "NO_DIFFUSE"]
+"defines":["CUSTOM_DATA", "NO_DIFFUSE"]
 }

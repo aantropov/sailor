@@ -4,7 +4,7 @@
     "bIsTransparent": false,
     "blendMode": "None",
     "cullMode": "Back",
-    "defines": null,
+    "defines": ["CUSTOM_DATA"],
     "depthBias": 0.0,
     "fillMode": "Fill",
     "renderQueue": "Opaque",
@@ -26,6 +26,15 @@
         "uid": "{F9096043-03E2-4BB1-A3D0-4EA692C986C7}"
     },
     "uniforms": [
+        [
+            "material.color",
+            {
+                "w": 1.0,
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+            }
+        ],
         [
             "material.diffuse",
             {

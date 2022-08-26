@@ -34,6 +34,16 @@ bool RHIShaderBindingSet::PerInstanceDataStoredInSsbo() const
 	return std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [](const auto& binding) { return binding.m_type == EShaderBindingType::StorageBuffer; }) != m_layoutBindings.end();
 }
 
+uint32_t RHIShaderBindingSet::GetStorageInstanceIndex(const std::string& bindingName) const
+{
+	if (m_shaderBindings.ContainsKey(bindingName))
+	{
+		return m_shaderBindings[bindingName]->GetStorageInstanceIndex();
+	}
+
+	return 0;
+}
+
 void RHIShaderBindingSet::SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings)
 {
 	m_layoutBindings = std::move(layoutBindings);

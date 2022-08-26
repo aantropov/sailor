@@ -92,26 +92,38 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				rhiBinding.m_size = reflBinding.block.size;
 				rhiBinding.m_set = reflBinding.set;
 				rhiBinding.m_arrayCount = layoutBinding.descriptorCount;
-
+				
 				uint32_t membersSize = 0;
-				for (uint32_t i = 0; i < reflBinding.block.member_count; i++)
+				
+				// We handle UBO as POD
+				SpvReflectBlockVariable* blockContent = reflBinding.block.members;
+				uint32_t blockCount = reflBinding.block.member_count;
+
+				// We handle SSBO as instance's POD
+				if (rhiBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
+				{
+					blockContent = reflBinding.block.members[0].members;
+					blockCount = reflBinding.block.members[0].member_count;
+				}
+
+				for (uint32_t i = 0; i < blockCount; i++)
 				{
 					RHI::ShaderLayoutBindingMember member;
 
-					member.m_name = std::string(reflBinding.block.members[i].name);
-					member.m_absoluteOffset = reflBinding.block.members[i].absolute_offset;
-					member.m_size = reflBinding.block.members[i].size;
-					member.m_type = (RHI::EShaderBindingMemberType)(reflBinding.block.members[i].type_description->op);
-					member.m_arrayDimensions = reflBinding.block.members[i].array.dims_count;
+					member.m_name = std::string(blockContent[i].name);
+					member.m_absoluteOffset = blockContent[i].absolute_offset;
+					member.m_size = blockContent[i].size;
+					member.m_type = (RHI::EShaderBindingMemberType)(blockContent[i].type_description->op);
+					member.m_arrayDimensions = blockContent[i].array.dims_count;
 					// TODO: implement multiple arrays
-					member.m_arrayCount = reflBinding.block.members[i].array.dims[0];
-					member.m_arrayStride = reflBinding.block.members[i].array.stride;
+					member.m_arrayCount = blockContent[i].array.dims[0];
+					member.m_arrayStride = blockContent[i].array.stride;
 					
-					membersSize += reflBinding.block.members[i].padded_size;
+					membersSize += blockContent[i].padded_size;
 
-					if (member.m_type == RHI::EShaderBindingMemberType::Array && reflBinding.block.members[i].type_description)
+					if (member.m_type == RHI::EShaderBindingMemberType::Array && blockContent[i].type_description)
 					{
-						const auto& typeFlags = reflBinding.block.members[i].type_description->type_flags;
+						const auto& typeFlags = blockContent[i].type_description->type_flags;
 						if (typeFlags & SPV_REFLECT_TYPE_FLAG_FLOAT)
 						{
 							member.m_type = RHI::EShaderBindingMemberType::Float;

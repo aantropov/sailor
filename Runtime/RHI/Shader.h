@@ -32,7 +32,7 @@ namespace Sailor::RHI
 		SAILOR_API const RHITexturePtr& GetTextureBinding() const { return m_textureBinding; }
 		SAILOR_API const ShaderLayoutBinding& GetLayout() const { return m_bindingLayout; }
 	
-		SAILOR_API uint32_t GetStorageInstanceIndex()
+		SAILOR_API uint32_t GetStorageInstanceIndex() const
 		{
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 			return m_vulkan.m_storageInstanceIndex;
