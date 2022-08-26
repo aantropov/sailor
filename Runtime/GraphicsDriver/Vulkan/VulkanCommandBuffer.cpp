@@ -87,6 +87,8 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& col
 {
 	ClearDependencies();
 
+	//TODO: Pass inheritanceFlags
+
 	VkCommandBufferInheritanceRenderingInfoKHR attachments{};
 	attachments.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO;
 	attachments.colorAttachmentCount = (uint32_t)colorAttachments.Num();
