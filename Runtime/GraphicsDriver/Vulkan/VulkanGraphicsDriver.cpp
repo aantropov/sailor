@@ -568,12 +568,12 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 			auto& storageAllocator = GetStorageBufferAllocator();
 			
 			// We're storing different material's data with its different size in one SSBO, we need to allign properly
-			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, sizeof(layoutBinding.m_size));// 0 /*device->GetSsboOffsetAlignment(layoutBinding.m_size)*/);
+			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, layoutBinding.m_size);// 0 /*device->GetSsboOffsetAlignment(layoutBinding.m_size)*/);
 			binding->m_vulkan.m_bufferAllocator = storageAllocator;
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
 
-			assert((binding->m_vulkan.m_valueBinding.m_offset % layoutBinding.m_size) == 0);
-			uint32_t instanceIndex = (uint32_t)(binding->m_vulkan.m_valueBinding.m_offset / layoutBinding.m_size);
+			assert(((*(binding->m_vulkan.m_valueBinding)).m_offset % layoutBinding.m_size) == 0);
+			uint32_t instanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding)).m_offset / layoutBinding.m_size);
 
 			binding->m_vulkan.m_storageInstanceIndex = instanceIndex;
 			binding->SetLayout(layoutBinding);
