@@ -82,14 +82,25 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	{
 		for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 		{
-			const bool bIsMaterialReady = proxy.GetMaterials().Num() > i;
-			if (!bIsMaterialReady)
+			const bool bHasMaterial = proxy.GetMaterials().Num() > i;
+			if (!bHasMaterial)
 			{
 				break;
 			}
 
 			const auto& mesh = proxy.m_meshes[i];
 			const auto& material = proxy.GetMaterials()[i];
+
+			const bool bIsMaterialReady = material &&
+				material->GetVertexShader() &&
+				material->GetFragmentShader() &&
+				material->GetBindings() &&
+				material->GetBindings()->GetShaderBindings().Num() > 0;
+
+			if (!bIsMaterialReady)
+			{
+				continue;
+			}
 
 			if (material->GetRenderState().GetTag() == GetHash(GetStringParam("Tag")))
 			{
@@ -148,21 +159,8 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	TVector<uint32_t> storageIndex(vecBatches.Num());
 	for (uint32_t j = 0; j < vecBatches.Num(); j++)
 	{
-		auto& material = vecBatches[j].m_material;
-
-		const bool bIsMaterialReady = material &&
-			material->GetVertexShader() &&
-			material->GetFragmentShader() &&
-			material->GetBindings() &&
-			material->GetBindings()->GetShaderBindings().Num() > 0;
-
-		if (!bIsMaterialReady)
-		{
-			continue;
-		}
-
 		bool bIsInited = false;
-		for (auto& instancedDrawCall : drawCalls[material])
+		for (auto& instancedDrawCall : drawCalls[vecBatches[j]])
 		{
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
@@ -195,17 +193,6 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			for (uint32_t j = start; j < end; j++)
 			{
 				auto& material = vecBatches[j].m_material;
-
-				const bool bIsMaterialReady = material &&
-					material->GetVertexShader() &&
-					material->GetFragmentShader() &&
-					material->GetBindings() &&
-					material->GetBindings()->GetShaderBindings().Num() > 0;
-
-				if (!bIsMaterialReady)
-				{
-					continue;
-				}
 
 				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
 
@@ -263,17 +250,6 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	for (size_t i = secondaryCommandLists.Num() * materialsPerThread; i < vecBatches.Num(); i++)
 	{
 		auto& material = vecBatches[i].m_material;
-
-		const bool bIsMaterialReady = material &&
-			material->GetVertexShader() &&
-			material->GetFragmentShader() &&
-			material->GetBindings() &&
-			material->GetBindings()->GetShaderBindings().Num() > 0;
-
-		if (!bIsMaterialReady)
-		{
-			continue;
-		}
 
 		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
 
