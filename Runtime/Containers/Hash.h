@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include "Concepts.h"
 
 namespace Sailor
 {
@@ -16,7 +17,39 @@ namespace Sailor
 	template<typename Type>
 	size_t GetHash(const Type& instance)
 	{
-		static std::hash<Type> p;
-		return p(instance);
+		constexpr bool bHasGetHash = requires(const Type & t) { t.GetHash(); };
+
+		if constexpr (bHasGetHash)
+		{
+			return instance.GetHash();
+		}
+		else
+		{
+			static std::hash<Type> p;
+			return p(instance);
+		}
 	}
 }
+
+// TODO: Should we implement the basic class?
+/*
+class IHashable
+{
+public:
+
+	virtual ~IHashable() = default;
+	virtual size_t GetHash() const = 0;
+};
+
+namespace std
+{
+	template<>
+	struct std::hash<Sailor::IHashable>
+	{
+		SAILOR_API std::size_t operator()(const Sailor::IHashable& p) const
+		{
+			return p.GetHash();
+		}
+	};
+}
+*/

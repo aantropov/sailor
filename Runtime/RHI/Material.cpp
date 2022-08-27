@@ -1,11 +1,22 @@
 #include "Material.h"
 #include "Types.h"
 #include "Shader.h"
+#include "RHI/Texture.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
+
+void RHIShaderBindingSet::RecalculateCompatibility()
+{
+	m_compatibilityHashCode = 0;
+
+	for (auto& shaderBinding : m_shaderBindings)
+	{
+		HashCombine(m_compatibilityHashCode, shaderBinding.Second()->GetCompatibilityHash());
+	}
+}
 
 RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrCreateShaderBinding(const std::string& binding)
 {

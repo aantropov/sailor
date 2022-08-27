@@ -100,6 +100,8 @@ RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDe
 		{
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader, m_commonShaderBindings);
 		}
+
+		m_commonShaderBindings->RecalculateCompatibility();
 	}
 
 	return material;
@@ -174,6 +176,7 @@ void Material::UpdateRHIResource()
 		RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
 	}));
 
+	m_commonShaderBindings->RecalculateCompatibility();
 	m_bIsDirty = false;
 }
 

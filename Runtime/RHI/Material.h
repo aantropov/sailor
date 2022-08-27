@@ -33,6 +33,9 @@ namespace Sailor::RHI
 		SAILOR_API bool NeedsStorageBuffer() const { return m_bNeedsStorageBuffer; }
 		SAILOR_API uint32_t GetStorageInstanceIndex(const std::string& binding) const;
 
+		SAILOR_API size_t GetCompatibilityHashCode() const { return m_compatibilityHashCode; }
+		SAILOR_API void RecalculateCompatibility();
+
 	protected:
 
 		SAILOR_API bool PerInstanceDataStoredInSsbo() const;
@@ -40,6 +43,7 @@ namespace Sailor::RHI
 		TVector<RHI::ShaderLayoutBinding> m_layoutBindings;
 		TConcurrentMap<std::string, RHI::RHIShaderBindingPtr> m_shaderBindings;
 		bool m_bNeedsStorageBuffer = false;
+		size_t m_compatibilityHashCode = 0;
 	};
 
 	class RHIMaterial : public RHIResource

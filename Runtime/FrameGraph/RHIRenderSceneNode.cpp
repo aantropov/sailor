@@ -23,33 +23,57 @@ RHI::ESortingOrder RHIRenderSceneNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
+struct PerInstanceData
+{
+	alignas(16) glm::mat4 model;
+	alignas(16) uint32_t materialInstance = 0;
+
+	bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
+
+	size_t GetHash() const
+	{
+		hash<glm::mat4> p;
+		return p(model);
+	}
+};
+
+class Batch
+{
+public:
+
+	RHIMaterialPtr m_material;
+
+	Batch() = default;
+	Batch(const RHIMaterialPtr& material) : m_material(material) {}
+
+	bool operator==(const Batch& rhs) const
+	{
+		return
+			m_material->GetBindings()->GetCompatibilityHashCode() == rhs.m_material->GetBindings()->GetCompatibilityHashCode() &&
+			m_material->GetVertexShader() == rhs.m_material->GetVertexShader() &&
+			m_material->GetFragmentShader() == rhs.m_material->GetFragmentShader() &&
+			m_material->GetRenderState() == rhs.m_material->GetRenderState();
+	}
+
+	size_t GetHash() const
+	{
+		return m_material->GetBindings()->GetCompatibilityHashCode();
+	}
+};
+
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
 void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
-	struct PerInstanceData
-	{
-		alignas(16) glm::mat4 model;
-		alignas(16) uint32_t materialInstance = 0;
-
-		bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
-
-		size_t GetHash() const
-		{
-			hash<glm::mat4> p;
-			return p(model);
-		}
-	};
-
 	SAILOR_PROFILE_FUNCTION();
 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	TMap<RHIMaterialPtr, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
-	TSet<RHIMaterialPtr> materials;
+	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
+	TSet<Batch> batches;
 
 	uint32_t numMeshes = 0;
 
@@ -79,8 +103,10 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 				data.model = proxy.m_worldMatrix;
 				data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 
-				drawCalls[material][mesh].Add(data);
-				materials.Insert(material);
+				Batch batch(material);
+
+				drawCalls[batch][mesh].Add(data);
+				batches.Insert(batch);
 
 				numMeshes++;
 			}
@@ -110,19 +136,19 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	}
 
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
-	const size_t materialsPerThread = (materials.Num()) / numThreads;
+	const size_t materialsPerThread = (batches.Num()) / numThreads;
 
-	TVector<RHICommandListPtr> secondaryCommandLists(materials.Num() > numThreads ? (numThreads - 1) : 0);
+	TVector<RHICommandListPtr> secondaryCommandLists(batches.Num() > numThreads ? (numThreads - 1) : 0);
 	TVector<Tasks::ITaskPtr> tasks;
 
-	auto vecMaterials = materials.ToVector();
+	auto vecBatches = batches.ToVector();
 
 	SAILOR_PROFILE_BLOCK("Calculate SSBO offsets");
 	size_t ssboIndex = 0;
-	TVector<uint32_t> storageIndex(vecMaterials.Num());
-	for (uint32_t j = 0; j < vecMaterials.Num(); j++)
+	TVector<uint32_t> storageIndex(vecBatches.Num());
+	for (uint32_t j = 0; j < vecBatches.Num(); j++)
 	{
-		auto& material = vecMaterials[j];
+		auto& material = vecBatches[j].m_material;
 
 		const bool bIsMaterialReady = material &&
 			material->GetVertexShader() &&
@@ -168,7 +194,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 			for (uint32_t j = start; j < end; j++)
 			{
-				auto& material = vecMaterials[j];
+				auto& material = vecBatches[j].m_material;
 
 				const bool bIsMaterialReady = material &&
 					material->GetVertexShader() &&
@@ -234,9 +260,9 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		glm::vec4(0.0f),
 		true);
 
-	for (size_t i = secondaryCommandLists.Num() * materialsPerThread; i < vecMaterials.Num(); i++)
+	for (size_t i = secondaryCommandLists.Num() * materialsPerThread; i < vecBatches.Num(); i++)
 	{
-		auto& material = vecMaterials[i];
+		auto& material = vecBatches[i].m_material;
 
 		const bool bIsMaterialReady = material &&
 			material->GetVertexShader() &&

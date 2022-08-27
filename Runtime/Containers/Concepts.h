@@ -67,4 +67,5 @@ namespace Sailor
 	{
 		return GetAddress(lhs) == GetAddress(rhs);
 	}
+
 }
