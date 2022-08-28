@@ -10,7 +10,7 @@
 
 namespace Sailor
 {
-	class CameraData
+	class CameraData : public ECS::TComponent
 	{
 	public:
 

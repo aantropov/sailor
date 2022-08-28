@@ -21,7 +21,7 @@ namespace Sailor
 		Dynamic = 2
 	};
 
-	class StaticMeshRendererData
+	class StaticMeshRendererData : public ECS::TComponent
 	{
 	public:
 

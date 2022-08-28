@@ -13,6 +13,14 @@ namespace Sailor::ECS
 {
 	constexpr size_t InvalidIndex = ((size_t)-1);
 
+	class TComponent
+	{
+	public:
+
+		SAILOR_API virtual void Clear() {}
+		SAILOR_API virtual ~TComponent() = default;
+	};
+
 	using TBaseSystemPtr = TUniquePtr<class TBaseSystem>;
 
 	class SAILOR_API ECSFactory : public TSubmodule<ECSFactory>
@@ -45,7 +53,7 @@ namespace Sailor::ECS
 	template<typename TECS, typename TData>
 	class SAILOR_API TSystem : public TBaseSystem
 	{
-		//static_assert(IsBaseOf<TData, TComponentData>::value, "TData must inherit from TComponentData");
+		static_assert(IsBaseOf<TComponent, TData>, "TData must inherit from TComponent");
 
 	public:
 
@@ -69,7 +77,11 @@ namespace Sailor::ECS
 
 		virtual void UnregisterComponent(size_t index) override
 		{
-			// TODO: Implement Clear
+			if (index != InvalidIndex)
+			{
+				m_components[index].Clear();
+			}
+
 			m_freeList.PushBack(index);
 		}
 
