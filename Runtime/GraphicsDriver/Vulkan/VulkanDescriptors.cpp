@@ -90,6 +90,7 @@ void VulkanDescriptorSet::Compile()
 		descriptSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		descriptSetAllocateInfo.descriptorPool = *m_descriptorPool;
 		descriptSetAllocateInfo.descriptorSetCount = 1;
+
 		descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
 
 		VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
@@ -114,13 +115,14 @@ void VulkanDescriptorSet::Release()
 {
 	DWORD currentThreadId = GetCurrentThreadId();
 
-	auto duplicatedDevice = m_device;
-	auto duplicatedPool = m_descriptorPool;
-	auto duplicatedSet = m_descriptorSet;
-
-	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release descriptor set", [=]()
+	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release descriptor set", 
+		[
+			duplicatedPool = m_descriptorPool,
+			duplicatedSet = m_descriptorSet,
+			duplicatedDevice = m_device
+		]()
 		{
-			if (m_descriptorSet)
+			if (duplicatedSet)
 			{
 				vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
 			}
