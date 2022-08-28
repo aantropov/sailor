@@ -24,6 +24,8 @@ namespace Sailor
 	{
 	public:
 
+		static SAILOR_API MaterialPtr CreateInstance(WorldPtr world, const MaterialPtr& material);
+
 		SAILOR_API Material(UID uid) : Object(uid) {}
 
 		SAILOR_API virtual bool IsReady() const override;
@@ -40,7 +42,7 @@ namespace Sailor
 		SAILOR_API void ClearSamplers();
 		SAILOR_API void ClearUniforms();
 
-		SAILOR_API const RHI::RenderState& GetRenderState(const RHI::RenderState& renderState) const { return m_renderState; }
+		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_renderState; }
 
 		SAILOR_API void UpdateRHIResource();
 
@@ -52,7 +54,12 @@ namespace Sailor
 		SAILOR_API void SetShader(ShaderSetPtr shader) { m_shader = shader; }
 		SAILOR_API void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
 
+		SAILOR_API ShaderSetPtr GetShader() const { return m_shader; }
+
 	protected:
+
+		void ForcelyUpdateUniforms();
+		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
 		std::atomic<bool> m_bIsDirty;
 
@@ -146,6 +153,8 @@ namespace Sailor
 		SAILOR_API Tasks::TaskPtr<MaterialPtr> GetLoadPromise(UID uid);
 
 		SAILOR_API virtual void CollectGarbage() override;
+
+		SAILOR_API Memory::ObjectAllocatorPtr& GetAllocator() { return m_allocator; }
 
 	protected:
 

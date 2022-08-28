@@ -148,7 +148,7 @@ namespace Sailor
 
 		TSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
 		TSet(TSet&&) = default;
-		TSet(const TSet& rhs) : TSet((uint32_t)rhs.m_buckets.Num())
+		TSet(const TSet& rhs) requires IsCopyConstructible<TElementType> : TSet((uint32_t)rhs.m_buckets.Num())
 		{
 			for (const auto& el : rhs)
 			{
@@ -157,14 +157,14 @@ namespace Sailor
 		}
 
 		TSet& operator=(TSet&&) noexcept = default;
-		TSet& operator=(const TSet& rhs) 
+		TSet& operator=(const TSet& rhs) requires IsCopyConstructible<TElementType>
 		{
 			Clear((uint32_t)rhs.m_buckets.Num());
 			for (const auto& el : rhs)
 			{
 				Insert(el);
 			}
-			return *this; 
+			return *this;
 		}
 
 		TSet(std::initializer_list<TElementType> initList)

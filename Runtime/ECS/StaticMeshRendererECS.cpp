@@ -93,5 +93,6 @@ void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)
 
 void StaticMeshRendererECS::EndPlay()
 {
+	ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>::EndPlay();
 	m_sceneViewProxiesCache.Clear();
 }

@@ -7,6 +7,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Math/Math.h"
 #include "Core/Utils.h"
+#include "Engine/World.h"
 #include "Memory/WeakPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
 #include <filesystem>
@@ -28,6 +29,24 @@ using namespace Sailor;
 bool Material::IsReady() const
 {
 	return m_shader && m_shader->IsReady() && m_commonShaderBindings.IsValid() && m_commonShaderBindings->IsReady();
+}
+
+MaterialPtr Material::CreateInstance(WorldPtr world, const MaterialPtr& material)
+{
+	auto allocator = world->GetAllocator();
+
+	MaterialPtr newMaterial = MaterialPtr::Make(allocator, material->GetUID());
+
+	newMaterial->m_uniforms = material->m_uniforms;
+	newMaterial->m_renderState = material->GetRenderState();
+	newMaterial->m_samplers = material->GetSamplers();
+	newMaterial->m_shader = material->GetShader();
+	newMaterial->m_bIsDirty = true;
+		
+	newMaterial->UpdateRHIResource();
+	newMaterial->UpdateUniforms(world->GetCommandList());
+
+	return newMaterial;
 }
 
 Tasks::ITaskPtr Material::OnHotReload()
@@ -143,10 +162,12 @@ void Material::UpdateRHIResource()
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
-	SAILOR_PROFILE_BLOCK("Create command list");
-	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+	m_commonShaderBindings->RecalculateCompatibility();
+	m_bIsDirty = false;
+}
 
+void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
+{
 	for (auto& uniform : m_uniforms)
 	{
 		if (m_commonShaderBindings->HasParameter(uniform.m_first))
@@ -161,7 +182,14 @@ void Material::UpdateRHIResource()
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
 		}
 	}
+}
 
+void Material::ForcelyUpdateUniforms()
+{
+	SAILOR_PROFILE_BLOCK("Create command list");
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+	UpdateUniforms(cmdList);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 	SAILOR_PROFILE_END_BLOCK();
 
@@ -175,9 +203,6 @@ void Material::UpdateRHIResource()
 	{
 		RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
 	}));
-
-	m_commonShaderBindings->RecalculateCompatibility();
-	m_bIsDirty = false;
 }
 
 void MaterialAsset::Serialize(nlohmann::json& outData) const
@@ -190,7 +215,7 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	outData["defines"] = m_pData->m_shaderDefines;
 
 	SerializeEnum<RHI::ECullMode>(outData["cullMode"], m_pData->m_renderState.GetCullMode());
-	SerializeEnum<RHI::EBlendMode>(outData["blendMode"],m_pData->m_renderState.GetBlendMode());
+	SerializeEnum<RHI::EBlendMode>(outData["blendMode"], m_pData->m_renderState.GetBlendMode());
 	SerializeEnum<RHI::EFillMode>(outData["fillMode"], m_pData->m_renderState.GetFillMode());
 
 	SerializeArray(m_pData->m_samplers, outData["samplers"]);
@@ -334,6 +359,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 				auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 				{
 					pMaterial.GetRawPtr()->UpdateRHIResource();
+					pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
 					pMaterial.GetRawPtr()->TraceHotReload(nullptr);
 				}, Tasks::EThreadType::Render);
 
@@ -515,6 +541,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 			{
 				pMaterial.GetRawPtr()->UpdateRHIResource();
+				pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
 			}, Tasks::EThreadType::RHI);
 
 			// Preload textures

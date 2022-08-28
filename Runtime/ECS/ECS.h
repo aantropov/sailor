@@ -69,6 +69,7 @@ namespace Sailor::ECS
 
 		virtual void UnregisterComponent(size_t index) override
 		{
+			// TODO: Implement Clear
 			m_freeList.PushBack(index);
 		}
 

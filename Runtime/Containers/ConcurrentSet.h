@@ -166,9 +166,25 @@ namespace Sailor
 
 		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
 		SAILOR_API TConcurrentSet(TConcurrentSet&&) = default;
-		SAILOR_API TConcurrentSet(const TConcurrentSet&) = default;
+		SAILOR_API TConcurrentSet(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType> : TConcurrentSet((uint32_t)rhs.m_buckets.Num())
+		{
+			for (const auto& el : rhs)
+			{
+				Insert(el);
+			}
+		}
+
 		SAILOR_API TConcurrentSet& operator=(TConcurrentSet&&) = default;
-		SAILOR_API TConcurrentSet& operator=(const TConcurrentSet&) = default;
+		SAILOR_API TConcurrentSet& operator=(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType>
+		{
+			Clear((uint32_t)rhs.m_buckets.Num());
+			for (const auto& el : rhs)
+			{
+				Insert(el);
+			}
+
+			return *this;
+		}
 
 		SAILOR_API TConcurrentSet(std::initializer_list<TElementType> initList)
 		{
