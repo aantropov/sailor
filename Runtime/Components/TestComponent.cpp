@@ -125,11 +125,8 @@ void TestComponent::Tick(float deltaTime)
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 
-	static bool bTrigger = true;
-	if (bTrigger && GetWorld()->GetInput().IsKeyPressed('R'))
+	if (GetWorld()->GetInput().IsKeyPressed('R'))
 	{
-		bTrigger = false;
-
 		for (auto& go : GetWorld()->GetGameObjects())
 		{
 			if (auto mr = go->GetComponent<MeshRendererComponent>())
@@ -138,19 +135,15 @@ void TestComponent::Tick(float deltaTime)
 				{
 					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.color"))
 					{
-						glm::vec4 color = glm::vec4(glm::ballRand(1.0f), 1);
 						mat = Material::CreateInstance(GetWorld(), mat);
+
+						const glm::vec4 color = glm::vec4(glm::ballRand(1.0f), 1);
 
 						App::GetSubmodule<Sailor::RHI::Renderer>()->GetDriverCommands()->SetMaterialParameter(GetWorld()->GetCommandList(),
 							mat->GetShaderBindings(), "material.color", color);
 					}
-
 				}
-
 			}
 		}
-
 	}
 }
-
-
