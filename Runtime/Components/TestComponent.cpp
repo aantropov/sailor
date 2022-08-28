@@ -7,6 +7,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "ECS/TransformECS.h"
+#include "glm/glm/gtc/random.hpp"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -129,8 +130,6 @@ void TestComponent::Tick(float deltaTime)
 	{
 		bTrigger = false;
 
-		glm::vec4 colors[] = { glm::vec4(1.0f, 0.0f, 0.0f, 1.0f) , glm::vec4(0.0f, 1.0f, 0.0f, 1.0f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f) };
-
 		for (auto& go : GetWorld()->GetGameObjects())
 		{
 			if (auto mr = go->GetComponent<MeshRendererComponent>())
@@ -139,10 +138,11 @@ void TestComponent::Tick(float deltaTime)
 				{
 					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.color"))
 					{
+						glm::vec4 color = glm::vec4(glm::ballRand(1.0f), 1);
 						mat = Material::CreateInstance(GetWorld(), mat);
 
 						App::GetSubmodule<Sailor::RHI::Renderer>()->GetDriverCommands()->SetMaterialParameter(GetWorld()->GetCommandList(),
-							mat->GetShaderBindings(), "material.color", colors[rand() % 3]);
+							mat->GetShaderBindings(), "material.color", color);
 					}
 
 				}
