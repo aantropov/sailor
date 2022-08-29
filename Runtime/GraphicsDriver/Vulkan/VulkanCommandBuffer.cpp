@@ -359,10 +359,10 @@ void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferPtr>& buff
 	_freea(vertexBuffers);
 }
 
-void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer)
+void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer, uint32_t offset)
 {
 	m_bufferDependencies.Add(indexBuffer);
-	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, offset, VK_INDEX_TYPE_UINT32);
 }
 
 void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet)

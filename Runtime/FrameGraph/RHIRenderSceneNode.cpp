@@ -190,6 +190,8 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			commands->BeginSecondaryCommandList(cmdList, true, true);
 			commands->SetDefaultViewport(cmdList);
 
+			bool bAreBuffersBind = false;
+
 			for (uint32_t j = start; j < end; j++)
 			{
 				auto& material = vecBatches[j].m_material;
@@ -205,12 +207,20 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 					auto& mesh = instancedDrawCall.First();
 					auto& matrices = instancedDrawCall.Second();
 
-					commands->BindVertexBuffers(cmdList, { mesh->m_vertexBuffer });
-					commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer);
+					if (!bAreBuffersBind)
+					{
+						commands->BindVertexBufferEx(cmdList, mesh->m_vertexBuffer, 0);
+						commands->BindIndexBufferEx(cmdList, mesh->m_indexBuffer, 0);
+
+						bAreBuffersBind = true;
+					}
 
 					// Draw Batch
 					commands->DrawIndexed(cmdList, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-						(uint32_t)matrices.Num(), 0, 0, storageIndex[j] + ssboOffset);
+						(uint32_t)matrices.Num(),
+						(uint32_t)mesh->m_indexBuffer->m_vulkan.m_buffer.m_offset / sizeof(uint32_t),
+						(uint32_t)mesh->m_vertexBuffer->m_vulkan.m_buffer.m_offset,
+						storageIndex[j] + ssboOffset);
 
 					ssboOffset += (uint32_t)matrices.Num();
 				}
@@ -256,18 +266,27 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		commands->BindMaterial(commandList, material);
 		commands->BindShaderBindings(commandList, material, sets);
 
+		bool bAreBuffersBind = false;
 		uint32_t ssboOffset = 0;
 		for (auto& instancedDrawCall : drawCalls[material])
 		{
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
 
-			commands->BindVertexBuffers(commandList, { mesh->m_vertexBuffer });
-			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer);
+			if (!bAreBuffersBind)
+			{
+				commands->BindVertexBufferEx(commandList, mesh->m_vertexBuffer, 0);
+				commands->BindIndexBufferEx(commandList, mesh->m_indexBuffer, 0);
+
+				bAreBuffersBind = true;
+			}
 
 			// Draw Batch
 			commands->DrawIndexed(commandList, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-				(uint32_t)matrices.Num(), 0, 0, storageIndex[i] + ssboOffset);
+				(uint32_t)matrices.Num(),
+				(uint32_t)mesh->m_indexBuffer->m_vulkan.m_buffer.m_offset / sizeof(uint32_t),
+				(uint32_t)mesh->m_vertexBuffer->m_vulkan.m_buffer.m_offset,
+				storageIndex[i] + ssboOffset);
 
 			ssboOffset += (uint32_t)matrices.Num();
 		}
