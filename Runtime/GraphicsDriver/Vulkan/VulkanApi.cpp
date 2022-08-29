@@ -808,7 +808,7 @@ VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const 
 	return resBuffer;
 }
 
-void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
+void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryPtr src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
 {
 	auto fence = VulkanFencePtr::Make(device);
 

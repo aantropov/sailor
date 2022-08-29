@@ -209,7 +209,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 					commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer);
 
 					// Draw Batch
-					commands->DrawIndexed(cmdList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
+					commands->DrawIndexed(cmdList, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
 						(uint32_t)matrices.Num(), 0, 0, storageIndex[j] + ssboOffset);
 
 					ssboOffset += (uint32_t)matrices.Num();
@@ -266,7 +266,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer);
 
 			// Draw Batch
-			commands->DrawIndexed(commandList, mesh->m_indexBuffer, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
+			commands->DrawIndexed(commandList, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
 				(uint32_t)matrices.Num(), 0, 0, storageIndex[i] + ssboOffset);
 
 			ssboOffset += (uint32_t)matrices.Num();

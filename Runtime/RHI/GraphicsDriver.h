@@ -223,7 +223,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void SetViewport(RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
 		SAILOR_API virtual void SetDefaultViewport(RHICommandListPtr cmd) = 0;
 		SAILOR_API virtual void BindShaderBindings(RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) = 0;
-		SAILOR_API virtual void DrawIndexed(RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0) = 0;
+		SAILOR_API virtual void DrawIndexed(RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0) = 0;
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr) = 0;
 
 		// Used for variables inside uniform buffer 

@@ -133,17 +133,17 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPa
 	m_renderPass = renderPass;
 }
 
-void VulkanCommandBuffer::CopyBuffer(VulkanBufferPtr src, VulkanBufferPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
+void VulkanCommandBuffer::CopyBuffer(VulkanBufferMemoryPtr src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
 {
 	VkBufferCopy copyRegion{};
-	copyRegion.srcOffset = srcOffset; // Optional
-	copyRegion.dstOffset = dstOffset; // Optional
+	copyRegion.srcOffset = srcOffset + src.m_offset; // Optional
+	copyRegion.dstOffset = dstOffset + dst.m_offset; // Optional
 	copyRegion.size = size;
 
-	vkCmdCopyBuffer(m_commandBuffer, *src, *dst, 1, &copyRegion);
+	vkCmdCopyBuffer(m_commandBuffer, *src.m_buffer, *dst.m_buffer, 1, &copyRegion);
 
-	m_bufferDependencies.Add(src);
-	m_bufferDependencies.Add(dst);
+	m_bufferDependencies.Add(src.m_buffer);
+	m_bufferDependencies.Add(dst.m_buffer);
 }
 
 void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, VkDeviceSize srcOffset)
@@ -503,9 +503,8 @@ void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 }
 
-void VulkanCommandBuffer::DrawIndexed(VulkanBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
+void VulkanCommandBuffer::DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
-	m_bufferDependencies.Add(indexBuffer);
 	vkCmdDrawIndexed(m_commandBuffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 

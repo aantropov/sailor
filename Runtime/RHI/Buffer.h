@@ -1,7 +1,7 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
 #include "Types.h"
-#include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanBufferMemory.h"
 
 namespace Sailor::RHI
 {
@@ -10,11 +10,15 @@ namespace Sailor::RHI
 	public:
 
 		RHIBuffer(EBufferUsageFlags usage) : m_usage(usage) {}
+		virtual ~RHIBuffer();
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
+		using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;
+
 		struct
 		{
-			Sailor::GraphicsDriver::Vulkan::VulkanBufferPtr m_buffer;
+			TWeakPtr<VulkanBufferAllocator> m_bufferAllocator;
+			TMemoryPtr<Memory::VulkanBufferMemoryPtr> m_buffer;
 		} m_vulkan;
 #endif
 
@@ -24,6 +28,5 @@ namespace Sailor::RHI
 	protected:
 
 		EBufferUsageFlags m_usage;
-
 	};
 };

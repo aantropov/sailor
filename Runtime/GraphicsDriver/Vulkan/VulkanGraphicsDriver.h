@@ -74,6 +74,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual RHI::RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader);
 		SAILOR_API virtual RHI::RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs);
+		
+		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<RHI::VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices) override;
 
 		SAILOR_API virtual void SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence = nullptr, RHI::RHISemaphorePtr signalSemaphore = nullptr, RHI::RHISemaphorePtr waitSemaphore = nullptr);
 
@@ -104,7 +106,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		//End Immediate context
 
 		//Begin IGraphicsDriverCommands
-
 		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 			TVector<RHI::RHICommandListPtr> secondaryCmds,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
@@ -151,13 +152,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void SetViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth);
 		SAILOR_API virtual void SetDefaultViewport(RHI::RHICommandListPtr cmd);
 		SAILOR_API virtual void BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings);
-		SAILOR_API virtual void DrawIndexed(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance);
+		SAILOR_API virtual void DrawIndexed(RHI::RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance);
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary);
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr);
 		//End IGraphicsDriverCommands
 
 		// Vulkan specific
-		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferPtr buffer, const void* data, size_t size, size_t offset = 0);
+		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API RHI::RHITexturePtr GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
 
 	protected:

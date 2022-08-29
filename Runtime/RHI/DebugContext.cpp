@@ -245,5 +245,5 @@ void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, co
 	commands->SetDefaultViewport(secondaryDrawCmdList);
 	commands->PushConstants(secondaryDrawCmdList, m_material, sizeof(viewProjection), &viewProjection);
 	//commands->BindShaderBindings(secondaryDrawCmdList, m_material, { frameBindings /*m_material->GetBindings()*/ });
-	commands->DrawIndexed(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, (uint32_t)m_numRenderedVertices, 1, 0, 0, 0);
+	commands->DrawIndexed(secondaryDrawCmdList, (uint32_t)m_numRenderedVertices, 1, 0, 0, 0);
 }
