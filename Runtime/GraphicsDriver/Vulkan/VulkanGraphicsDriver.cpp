@@ -1257,26 +1257,18 @@ void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMate
 	}
 }
 
-void VulkanGraphicsDriver::BindVertexBufferEx(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset)
+void VulkanGraphicsDriver::BindVertexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset)
 {
-	TVector<VulkanBufferPtr> buffers{ vertexBuffer->m_vulkan.m_buffer.m_ptr.m_buffer };
+	auto ptr = *vertexBuffer->m_vulkan.m_buffer;
+	TVector<VulkanBufferPtr> buffers{ ptr.m_buffer };
+
+	//The offset is handled by RHI::RHIBuffer
 	cmd->m_vulkan.m_commandBuffer->BindVertexBuffers(buffers, { offset });
 }
 
-void VulkanGraphicsDriver::BindIndexBufferEx(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t offset)
+void VulkanGraphicsDriver::BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t offset)
 {
 	cmd->m_vulkan.m_commandBuffer->BindIndexBuffer(indexBuffer->m_vulkan.m_buffer.m_ptr.m_buffer, offset);
-}
-
-void VulkanGraphicsDriver::BindVertexBuffers(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer)
-{
-	TVector<VulkanBufferMemoryPtr> buffers{ *vertexBuffer->m_vulkan.m_buffer };
-	cmd->m_vulkan.m_commandBuffer->BindVertexBuffers(buffers);
-}
-
-void VulkanGraphicsDriver::BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer)
-{
-	cmd->m_vulkan.m_commandBuffer->BindIndexBuffer(*indexBuffer->m_vulkan.m_buffer);
 }
 
 void VulkanGraphicsDriver::SetViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2  scissorExtent, float minDepth, float maxDepth)

@@ -23,6 +23,7 @@ namespace Sailor::RHI
 #endif
 
 		SAILOR_API EBufferUsageFlags GetUsage() const { return m_usage; }
+		SAILOR_API uint32_t GetOffset() const;
 		SAILOR_API size_t GetSize() const;
 
 	protected:

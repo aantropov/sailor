@@ -14,6 +14,13 @@ size_t RHIBuffer::GetSize() const
 	return 0;
 }
 
+uint32_t RHIBuffer::GetOffset() const
+{
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+	return (uint32_t)(*m_vulkan.m_buffer).m_offset;
+#endif
+	return 0;
+}
 
 RHIBuffer::~RHIBuffer()
 {

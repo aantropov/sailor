@@ -218,11 +218,9 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary) = 0;
 		SAILOR_API virtual void BindMaterial(RHICommandListPtr cmd, RHI::RHIMaterialPtr material) = 0;
-		SAILOR_API virtual void BindVertexBuffers(RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer) = 0;
-		SAILOR_API virtual void BindIndexBuffer(RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer) = 0;
 		
-		SAILOR_API virtual void BindVertexBufferEx(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset) = 0;
-		SAILOR_API virtual void BindIndexBufferEx(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t offset) = 0;
+		SAILOR_API virtual void BindVertexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset) = 0;
+		SAILOR_API virtual void BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t offset) = 0;
 
 		SAILOR_API virtual void SetViewport(RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
 		SAILOR_API virtual void SetDefaultViewport(RHICommandListPtr cmd) = 0;
