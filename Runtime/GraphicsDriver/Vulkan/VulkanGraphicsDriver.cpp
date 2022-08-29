@@ -43,7 +43,8 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 
 	m_trackedFences.Clear();
 	m_uniformBuffers.Clear();
-	m_storageBuffer.Clear();
+	m_materialSsboAllocator.Clear();
+	m_meshSsboAllocator.Clear();
 
 	// Waiting finishing releasing of rendering resources
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
@@ -565,8 +566,8 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		}
 		else if (layoutBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
 		{
-			auto& storageAllocator = GetStorageBufferAllocator();
-			
+			auto& storageAllocator = GetMaterialSsboAllocator();
+
 			// We're storing different material's data with its different size in one SSBO, we need to allign properly
 			binding->m_vulkan.m_valueBinding = storageAllocator->Allocate(layoutBinding.m_size, layoutBinding.m_size);// 0 /*device->GetSsboOffsetAlignment(layoutBinding.m_size)*/);
 			binding->m_vulkan.m_bufferAllocator = storageAllocator;
@@ -642,19 +643,35 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	return res;
 }
 
-TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetStorageBufferAllocator()
+TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetMeshSsboAllocator()
 {
-	if (!m_storageBuffer)
+	if (!m_meshSsboAllocator)
 	{
-		const size_t StorageBufferBlockSize = 16 * 1024 * 1024u;
-		const size_t ReservedSize = 8 * 1024 * 1024u;
+		// 128 mb is a good point to start
+		const size_t StorageBufferBlockSize = 128 * 1024 * 1024u;
 
-		m_storageBuffer = TSharedPtr<VulkanBufferAllocator>::Make(StorageBufferBlockSize, 1024 * 1024u, StorageBufferBlockSize);
-		m_storageBuffer->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-		m_storageBuffer->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		m_meshSsboAllocator = TSharedPtr<VulkanBufferAllocator>::Make(StorageBufferBlockSize, 1024 * 1024u, StorageBufferBlockSize);
+		m_meshSsboAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+		m_meshSsboAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	}
-	return m_storageBuffer;
+	return m_meshSsboAllocator;
+}
+
+TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetMaterialSsboAllocator()
+{
+	if (!m_materialSsboAllocator)
+	{
+		// 8 mb should be enough to store all material data, 
+		// pessimistically ~256b per material instance, ~32000 materials per world
+		const size_t StorageBufferBlockSize = 8 * 1024 * 1024u;
+
+		m_materialSsboAllocator = TSharedPtr<VulkanBufferAllocator>::Make(StorageBufferBlockSize, 1024 * 1024u, StorageBufferBlockSize);
+		m_materialSsboAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+		m_materialSsboAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	}
+	return m_materialSsboAllocator;
 }
 
 TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetUniformBufferAllocator(const std::string& uniformTypeId)
@@ -712,7 +729,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
 
-	TSharedPtr<VulkanBufferAllocator> allocator = GetStorageBufferAllocator();
+	TSharedPtr<VulkanBufferAllocator> allocator = GetMaterialSsboAllocator();
 	binding->m_vulkan.m_valueBinding = allocator->Allocate(elementSize * numElements, 0 /*device->GetSsboOffsetAlignment(elementSize)*/);
 	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding).m_offset / elementSize);
 
@@ -747,7 +764,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 
 	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
-		allocator = GetStorageBufferAllocator();
+		allocator = GetMaterialSsboAllocator();
 		binding->m_vulkan.m_valueBinding = allocator->Allocate(size, 0);
 		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding).m_offset / size);
 	}
@@ -1177,12 +1194,13 @@ void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMate
 
 void VulkanGraphicsDriver::BindVertexBuffers(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer)
 {
-	cmd->m_vulkan.m_commandBuffer->BindVertexBuffers({ vertexBuffer->m_vulkan.m_buffer });
+	TVector<VulkanBufferMemoryPtr> buffers{ vertexBuffer->m_vulkan.m_buffer->GetBufferMemoryPtr() };
+	cmd->m_vulkan.m_commandBuffer->BindVertexBuffers(buffers);
 }
 
 void VulkanGraphicsDriver::BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer)
 {
-	cmd->m_vulkan.m_commandBuffer->BindIndexBuffer(indexBuffer->m_vulkan.m_buffer);
+	cmd->m_vulkan.m_commandBuffer->BindIndexBuffer(indexBuffer->m_vulkan.m_buffer->GetBufferMemoryPtr());
 }
 
 void VulkanGraphicsDriver::SetViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2  scissorExtent, float minDepth, float maxDepth)

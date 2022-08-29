@@ -29,6 +29,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void Compile() override;
 		SAILOR_API virtual void Release() override;
 
+		SAILOR_API VulkanBufferMemoryPtr GetBufferMemoryPtr();
+
 		SAILOR_API VkResult Bind(TMemoryPtr<VulkanMemoryPtr> ptr);
 		SAILOR_API VkResult Bind(VulkanDeviceMemoryPtr deviceMemory, VkDeviceSize memoryOffset);
 		SAILOR_API VkMemoryRequirements GetMemoryRequirements() const;

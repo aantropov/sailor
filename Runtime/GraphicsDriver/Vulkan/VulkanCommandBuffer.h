@@ -53,9 +53,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void SetDepthBias(float depthBiasConstantFactor, float depthBiasClamp = 0.0f, float depthBiasSlopeFactor = 0.0f);
 
-		SAILOR_API void BindVertexBuffers(TVector<VulkanBufferPtr> buffers, TVector <VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
+		SAILOR_API void BindVertexBuffers(const TVector<VulkanBufferMemoryPtr>& buffers, TVector<VkDeviceSize> offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
+		SAILOR_API void BindIndexBuffer(VulkanBufferMemoryPtr indexBuffer);
+
+		SAILOR_API void BindVertexBuffers(const TVector<VulkanBufferPtr>& buffers, const TVector<VkDeviceSize>& offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
 		SAILOR_API void BindIndexBuffer(VulkanBufferPtr indexBuffer);
-		SAILOR_API void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, TVector<VulkanDescriptorSetPtr> descriptorSet);
+		SAILOR_API void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet);
 		SAILOR_API void BindPipeline(VulkanPipelinePtr pipeline);
 
 		SAILOR_API void DrawIndexed(VulkanBufferPtr indexBuffer, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0);

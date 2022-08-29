@@ -325,7 +325,28 @@ void VulkanCommandBuffer::SetDepthBias(float depthBiasConstantFactor, float dept
 	vkCmdSetDepthBias(m_commandBuffer, depthBiasConstantFactor, depthBiasClamp, depthBiasSlopeFactor);
 }
 
-void VulkanCommandBuffer::BindVertexBuffers(TVector<VulkanBufferPtr> buffers, TVector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
+void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferMemoryPtr>& buffers, TVector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
+{
+	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(_malloca(buffers.Num() * sizeof(VkBuffer)));
+	for (int i = 0; i < buffers.Num(); i++)
+	{
+		vertexBuffers[i] = *(buffers[i].m_buffer);
+		offsets[i] += buffers[i].m_offset;
+		m_bufferDependencies.Add(buffers[i].m_buffer);
+	}
+
+	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
+
+	_freea(vertexBuffers);
+}
+
+void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferMemoryPtr indexBuffer)
+{
+	m_bufferDependencies.Add(indexBuffer.m_buffer);
+	vkCmdBindIndexBuffer(m_commandBuffer, *(indexBuffer.m_buffer), indexBuffer.m_offset, VK_INDEX_TYPE_UINT32);
+}
+
+void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferPtr>& buffers, const TVector<VkDeviceSize>& offsets, uint32_t firstBinding, uint32_t bindingCount)
 {
 	VkBuffer* vertexBuffers = reinterpret_cast<VkBuffer*>(_malloca(buffers.Num() * sizeof(VkBuffer)));
 
@@ -344,7 +365,7 @@ void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer)
 	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 }
 
-void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, TVector<VulkanDescriptorSetPtr> descriptorSet)
+void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet)
 {
 	VkDescriptorSet* sets = reinterpret_cast<VkDescriptorSet*>(_malloca(descriptorSet.Num() * sizeof(VkDescriptorSet)));
 

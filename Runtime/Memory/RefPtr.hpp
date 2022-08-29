@@ -8,11 +8,17 @@ namespace Sailor
 	using TSmartPtrCounter = std::atomic<uint32_t>;
 	class TRefPtrBase;
 
+	template<typename T>
+	class TRefPtr;
+
 	class TRefBase
 	{
 	public:
 
 		SAILOR_API virtual ~TRefBase() = default;
+
+		template<typename T> requires IsBaseOf<TRefBase, T>
+		SAILOR_API TRefPtr<T> ToRefPtr();
 
 	protected:
 
@@ -125,7 +131,7 @@ namespace Sailor
 		bool IsValid() const noexcept { return m_pRawPtr != nullptr; }
 
 		explicit operator bool() const noexcept { return m_pRawPtr != nullptr; }
-		
+
 		bool operator==(const TRefPtr& pRhs) const
 		{
 			return m_pRawPtr == pRhs.m_pRawPtr;
@@ -195,6 +201,12 @@ namespace Sailor
 		}
 		friend class TRefPtr;
 	};
+
+	template<typename T> requires IsBaseOf<TRefBase, T>
+	TRefPtr<T> TRefBase::ToRefPtr()
+	{
+		return TRefPtr<T>(static_cast<T*>(this));
+	}
 }
 
 namespace std

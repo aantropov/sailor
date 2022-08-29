@@ -164,13 +164,15 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
-		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetStorageBufferAllocator();
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
 
 		// Uniform buffers to store uniforms
 		TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
 
 		// Storage buffers to store everything
-		TSharedPtr<VulkanBufferAllocator> m_storageBuffer;
+		TSharedPtr<VulkanBufferAllocator> m_materialSsboAllocator;
+		TSharedPtr<VulkanBufferAllocator> m_meshSsboAllocator;
 
 		// Cached MSAA render targets to support MSAA
 		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};

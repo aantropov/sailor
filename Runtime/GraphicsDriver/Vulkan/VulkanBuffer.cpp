@@ -71,6 +71,16 @@ VkMemoryRequirements VulkanBuffer::GetMemoryRequirements() const
 	return memRequirements;
 }
 
+VulkanBufferMemoryPtr VulkanBuffer::GetBufferMemoryPtr()
+{
+	auto ptr = VulkanBufferMemoryPtr();
+	ptr.m_buffer = this->ToRefPtr<VulkanBuffer>();
+	ptr.m_offset = 0;
+	ptr.m_size = m_size;
+
+	return ptr;
+}
+
 VkResult VulkanBuffer::Bind(TMemoryPtr<VulkanMemoryPtr> ptr)
 {
 	m_ptr = ptr;
