@@ -259,8 +259,8 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	{
 		commands->UpdateShaderBinding(transferCommandList, storageBinding,
 			gpuMatricesData.GetData(),
-			sizeof(PerInstanceData) * gpuMatricesData.Num(),
-			sizeof(PerInstanceData) * storageBinding->GetStorageInstanceIndex());
+			sizeof(PerInstanceData) * gpuMatricesData.Num(), 
+			0);
 	}
 	SAILOR_PROFILE_END_BLOCK();
 

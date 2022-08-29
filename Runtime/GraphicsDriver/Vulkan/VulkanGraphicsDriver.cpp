@@ -1164,7 +1164,7 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command");
-	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer->GetBufferMemoryPtr(), bufferPtr, size, 0, offset);
+	cmd->m_vulkan.m_commandBuffer->CopyBuffer(*stagingBufferManagedPtr, bufferPtr, size, 0, offset);
 	SAILOR_PROFILE_END_BLOCK();
 }
 
