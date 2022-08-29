@@ -6,6 +6,7 @@
 #include "RHI/Buffer.h"
 #include "RHI/Material.h"
 #include "RHI/Shader.h"
+#include "RHI/VertexDescription.h"
 #include "RHI/CommandList.h"
 #include "RHI/Types.h"
 #include "Memory.h"
@@ -743,8 +744,11 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
 
 	TSharedPtr<VulkanBufferAllocator> allocator = GetMaterialSsboAllocator();
-	binding->m_vulkan.m_valueBinding = allocator->Allocate(elementSize * numElements, 0 /*device->GetSsboOffsetAlignment(elementSize)*/);
-	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding).m_offset / elementSize);
+	binding->m_vulkan.m_valueBinding = allocator->Allocate(elementSize * numElements, elementSize);
+
+	assert((*binding->m_vulkan.m_valueBinding).m_offset % elementSize == 0);
+
+	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((*binding->m_vulkan.m_valueBinding).m_offset / elementSize);
 
 	binding->m_vulkan.m_bufferAllocator = allocator;
 
@@ -778,7 +782,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
 		allocator = GetMaterialSsboAllocator();
-		binding->m_vulkan.m_valueBinding = allocator->Allocate(size, 0);
+		binding->m_vulkan.m_valueBinding = allocator->Allocate(size, size);
 		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding).m_offset / size);
 	}
 	else
@@ -1095,9 +1099,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::
 	auto device = m_vkInstance->GetMainDevice();
 
 	auto& binding = parameter->m_vulkan.m_valueBinding;
-	auto dstBuffer = binding.m_ptr.m_buffer;
-
-	Update(cmd, dstBuffer, pData, size, binding.m_offset + binding.m_alignmentOffset + variableOffset);
+	Update(cmd, *binding, pData, size, variableOffset);
 }
 
 void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* pData, size_t size, size_t offset)
@@ -1162,7 +1164,7 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command");
-	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer->GetBufferMemoryPtr(), dstBuffer, size, m_bufferOffset, offset + bufferPtr.m_offset);
+	cmd->m_vulkan.m_commandBuffer->CopyBuffer(stagingBuffer->GetBufferMemoryPtr(), bufferPtr, size, 0, offset);
 	SAILOR_PROFILE_END_BLOCK();
 }
 
@@ -1214,7 +1216,9 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<RHI::V
 	mesh->m_vertexBuffer = RHI::RHIBufferPtr::Make(flags);
 	mesh->m_indexBuffer = RHI::RHIBufferPtr::Make(flags);
 
-	mesh->m_vertexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(bufferSize, device->GetMinSsboOffsetAlignment());
+	const auto& vertexDescription = GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+
+	mesh->m_vertexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(bufferSize, vertexDescription->GetVertexStride());
 	mesh->m_vertexBuffer->m_vulkan.m_bufferAllocator = ssboAllocator;
 
 	mesh->m_indexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(indexBufferSize, device->GetMinSsboOffsetAlignment());

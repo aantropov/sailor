@@ -3,6 +3,7 @@
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
+#include "RHI/VertexDescription.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -61,6 +62,55 @@ public:
 	}
 };
 
+
+void RecordDrawCall(uint32_t start,
+	uint32_t end,
+	const TVector<Batch>& vecBatches,
+	RHI::RHICommandListPtr cmdList,
+	const RHI::RHISceneViewSnapshot& sceneView,
+	RHI::RHIShaderBindingSetPtr perInstanceData,
+	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>>& drawCalls,
+	const TVector<uint32_t>& storageIndex)
+{
+	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+
+	bool bBuffersBind = false;
+	for (uint32_t j = start; j < end; j++)
+	{
+		auto& material = vecBatches[j].m_material;
+
+		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
+
+		commands->BindMaterial(cmdList, material);
+		commands->BindShaderBindings(cmdList, material, sets);
+
+		uint32_t ssboOffset = 0;
+		for (auto& instancedDrawCall : drawCalls[material])
+		{
+			auto& mesh = instancedDrawCall.First();
+			auto& matrices = instancedDrawCall.Second();
+
+			if (!bBuffersBind)
+			{
+				commands->BindVertexBuffer(cmdList, mesh->m_vertexBuffer, 0);
+				commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer, 0);
+
+				bBuffersBind = true;
+			}
+
+			// Draw Batch
+			commands->DrawIndexed(cmdList,
+				(uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
+				(uint32_t)matrices.Num(),
+				mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t),
+				mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride(),
+				storageIndex[j] + ssboOffset);
+
+			ssboOffset += (uint32_t)matrices.Num();
+		}
+	}
+}
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
@@ -124,6 +174,11 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		}
 	}
 	SAILOR_PROFILE_END_BLOCK();
+
+	if (numMeshes == 0)
+	{
+		return;
+	}
 
 	SAILOR_PROFILE_BLOCK("Create storage for matrices");
 	RHI::RHIShaderBindingSetPtr perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
@@ -189,33 +244,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
 			commands->BeginSecondaryCommandList(cmdList, true, true);
 			commands->SetDefaultViewport(cmdList);
-
-			for (uint32_t j = start; j < end; j++)
-			{
-				auto& material = vecBatches[j].m_material;
-
-				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
-
-				commands->BindMaterial(cmdList, material);
-				commands->BindShaderBindings(cmdList, material, sets);
-
-				uint32_t ssboOffset = 0;
-				for (auto& instancedDrawCall : drawCalls[material])
-				{
-					auto& mesh = instancedDrawCall.First();
-					auto& matrices = instancedDrawCall.Second();
-
-					commands->BindVertexBuffer(cmdList, mesh->m_vertexBuffer, mesh->m_vertexBuffer->GetOffset());
-					commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer, mesh->m_indexBuffer->GetOffset());
-
-					// Draw Batch
-					commands->DrawIndexed(cmdList, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-						(uint32_t)matrices.Num(), 0, 0, storageIndex[j] + ssboOffset);
-
-					ssboOffset += (uint32_t)matrices.Num();
-				}
-			}
-
+			RecordDrawCall(start, end, vecBatches, cmdList, sceneView, perInstanceData, drawCalls, storageIndex);
 			commands->EndCommandList(cmdList);
 			secondaryCommandLists[i] = std::move(cmdList);
 		}, Tasks::EThreadType::RHI);
@@ -247,31 +276,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		glm::vec4(0.0f),
 		true);
 
-	for (size_t i = secondaryCommandLists.Num() * materialsPerThread; i < vecBatches.Num(); i++)
-	{
-		auto& material = vecBatches[i].m_material;
-
-		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
-
-		commands->BindMaterial(commandList, material);
-		commands->BindShaderBindings(commandList, material, sets);
-
-		uint32_t ssboOffset = 0;
-		for (auto& instancedDrawCall : drawCalls[material])
-		{
-			auto& mesh = instancedDrawCall.First();
-			auto& matrices = instancedDrawCall.Second();
-
-			commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, mesh->m_vertexBuffer->GetOffset());
-			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, mesh->m_indexBuffer->GetOffset());
-
-			// Draw Batch
-			commands->DrawIndexed(commandList, (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-				(uint32_t)matrices.Num(), 0, 0, storageIndex[i] + ssboOffset);
-
-			ssboOffset += (uint32_t)matrices.Num();
-		}
-	}
+	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex);
 	commands->EndRenderPass(commandList);
 	SAILOR_PROFILE_END_BLOCK();
 

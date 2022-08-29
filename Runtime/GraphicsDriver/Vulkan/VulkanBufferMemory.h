@@ -13,7 +13,7 @@ namespace Sailor::Memory
 	public:
 
 		SAILOR_API VulkanBufferMemoryPtr() = default;
-		SAILOR_API VulkanBufferMemoryPtr(TRefPtr<class Sailor::GraphicsDriver::Vulkan::VulkanBuffer> buffer);
+		SAILOR_API explicit VulkanBufferMemoryPtr(TRefPtr<class Sailor::GraphicsDriver::Vulkan::VulkanBuffer> buffer);
 		SAILOR_API VulkanBufferMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer> buffer, size_t offset, size_t size);
 
 		SAILOR_API VulkanBufferMemoryPtr& operator=(const TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanBuffer>& rhs);
@@ -44,7 +44,7 @@ namespace Sailor::Memory
 		VkSharingMode m_sharing = VkSharingMode::VK_SHARING_MODE_CONCURRENT;
 	};
 
-// VulkanBufferMemoryPtr & GlobalVulkanBufferAllocator
+	// VulkanBufferMemoryPtr & GlobalVulkanBufferAllocator
 
 	template<typename TDataType, typename TPtr = VulkanBufferMemoryPtr>
 	inline VulkanBufferMemoryPtr GetPointer(TDataType& pData)
@@ -109,11 +109,11 @@ namespace Sailor::Memory
 	template<>
 	inline bool Align<VulkanBufferMemoryPtr>(size_t sizeToEmplace, size_t alignment, const VulkanBufferMemoryPtr& startPtr, size_t blockSize, uint32_t& alignmentOffset)
 	{
-		// try to carve out _Size bytes on boundary _Bound
-		alignmentOffset = static_cast<uint32_t>(((uint32_t)startPtr.m_offset) & (alignment - 1));
-		if (alignmentOffset != 0)
+		alignmentOffset = 0;
+		size_t r = startPtr.m_offset % alignment;
+		if (r > 0)
 		{
-			alignmentOffset = (uint32_t)(alignment - alignmentOffset); // number of bytes to skip
+			alignmentOffset = (uint32_t)(alignment - r); // number of bytes to skip
 		}
 
 		if (blockSize < alignmentOffset || blockSize - alignmentOffset < sizeToEmplace)

@@ -126,11 +126,11 @@ namespace Sailor::Memory
 	template<>
 	inline bool Align<VulkanDeviceMemoryPtr>(size_t sizeToEmplace, size_t alignment, const VulkanDeviceMemoryPtr& startPtr, size_t blockSize, uint32_t& alignmentOffset)
 	{
-		// try to carve out _Size bytes on boundary _Bound
-		alignmentOffset = static_cast<uint32_t>(((uint32_t)startPtr.m_offset) & (alignment - 1));
-		if (alignmentOffset != 0)
+		alignmentOffset = 0;
+		size_t r = startPtr.m_offset % alignment;
+		if (r > 0)
 		{
-			alignmentOffset = (uint32_t)(alignment - alignmentOffset); // number of bytes to skip
+			alignmentOffset = (uint32_t)(alignment - r); // number of bytes to skip
 		}
 
 		if (blockSize < alignmentOffset || blockSize - alignmentOffset < sizeToEmplace)
