@@ -591,6 +591,15 @@ namespace Sailor::RHI
 		SAILOR_API static VertexAttributeBits GetVertexAttributeBits();
 	};
 
+	struct DrawIndexedIndirectData
+	{
+		uint32_t m_indexCount;
+		uint32_t m_instanceCount;
+		uint32_t m_firstIndex;
+		int32_t m_vertexOffset;
+		uint32_t m_firstInstance;
+	};
+
 	struct UboFrameData
 	{
 		alignas(16) glm::mat4 m_view;

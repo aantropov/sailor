@@ -72,6 +72,8 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer(RHICommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		SAILOR_API virtual RHIBufferPtr CreateIndirectBuffer(const void* pData, size_t size) = 0;
+
 		SAILOR_API virtual RHIMeshPtr CreateMesh();
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices);
 		SAILOR_API virtual RHIShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
@@ -226,6 +228,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void SetDefaultViewport(RHICommandListPtr cmd) = 0;
 		SAILOR_API virtual void BindShaderBindings(RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) = 0;
 		SAILOR_API virtual void DrawIndexed(RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0) = 0;
+		SAILOR_API virtual void DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride) = 0;
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr) = 0;
 
 		// Used for variables inside uniform buffer 

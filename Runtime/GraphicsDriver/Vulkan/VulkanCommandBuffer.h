@@ -61,6 +61,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet);
 		SAILOR_API void BindPipeline(VulkanPipelinePtr pipeline);
 
+		SAILOR_API void DrawIndexedIndirect(VulkanBufferMemoryPtr buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride);
 		SAILOR_API void DrawIndexed(uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0);
 
 		SAILOR_API void PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr);

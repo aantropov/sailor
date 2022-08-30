@@ -42,6 +42,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(RHI::RHICommandListPtr& cmdBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
+		SAILOR_API virtual RHI::RHIBufferPtr CreateIndirectBuffer(const void* pData, size_t size);
 		SAILOR_API virtual RHI::RHIShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv);
 		SAILOR_API virtual RHI::RHITexturePtr CreateTexture(
 			const void* pData,
@@ -154,6 +155,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void SetViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth);
 		SAILOR_API virtual void SetDefaultViewport(RHI::RHICommandListPtr cmd);
 		SAILOR_API virtual void BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr, const TVector<RHI::RHIShaderBindingSetPtr>& bindings);
+		SAILOR_API virtual void DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride);
 		SAILOR_API virtual void DrawIndexed(RHI::RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance);
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary);
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr);

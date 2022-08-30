@@ -228,6 +228,23 @@ RHI::RHICommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary
 	return cmdList;
 }
 
+RHI::RHIBufferPtr VulkanGraphicsDriver::CreateIndirectBuffer(const void* pData, size_t size)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	const uint32_t usage = RHI::EBufferUsageBit::IndirectBuffer_Bit | RHI::EBufferUsageBit::BufferTransferDst_Bit | RHI::EBufferUsageBit::BufferTransferSrc_Bit;
+
+	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage);
+	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+	buffer->GetMemoryDevice()->Copy((*buffer->GetBufferMemoryPtr()).m_offset, size, pData);
+
+	// Hack to store ordinary buffer in TMemoryPtr
+	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
+
+	return res;
+}
+
 RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -1303,6 +1320,11 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 	}
 
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
+}
+
+void VulkanGraphicsDriver::DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride)
+{
+	cmd->m_vulkan.m_commandBuffer->DrawIndexedIndirect(*buffer->m_vulkan.m_buffer, offset, drawCount, stride);
 }
 
 void VulkanGraphicsDriver::DrawIndexed(RHI::RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)

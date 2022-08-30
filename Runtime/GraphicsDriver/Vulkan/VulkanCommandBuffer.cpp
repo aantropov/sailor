@@ -503,6 +503,12 @@ void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 }
 
+void VulkanCommandBuffer::DrawIndexedIndirect(VulkanBufferMemoryPtr buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride)
+{
+	m_bufferDependencies.Add(buffer.m_buffer);
+	vkCmdDrawIndexedIndirect(m_commandBuffer, *buffer.m_buffer, buffer.m_offset + offset, drawCount, stride);
+}
+
 void VulkanCommandBuffer::DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
 	vkCmdDrawIndexed(m_commandBuffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);

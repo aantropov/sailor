@@ -3,6 +3,7 @@
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
+#include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 
 using namespace Sailor;
@@ -43,9 +44,10 @@ class Batch
 public:
 
 	RHIMaterialPtr m_material;
+	RHIMeshPtr m_mesh;
 
 	Batch() = default;
-	Batch(const RHIMaterialPtr& material) : m_material(material) {}
+	Batch(const RHIMaterialPtr& material, const RHIMeshPtr& mesh) : m_material(material), m_mesh(mesh) {}
 
 	bool operator==(const Batch& rhs) const
 	{
@@ -53,15 +55,18 @@ public:
 			m_material->GetBindings()->GetCompatibilityHashCode() == rhs.m_material->GetBindings()->GetCompatibilityHashCode() &&
 			m_material->GetVertexShader() == rhs.m_material->GetVertexShader() &&
 			m_material->GetFragmentShader() == rhs.m_material->GetFragmentShader() &&
-			m_material->GetRenderState() == rhs.m_material->GetRenderState();
+			m_material->GetRenderState() == rhs.m_material->GetRenderState() &&
+			m_mesh->m_vertexBuffer->GetCompatibilityHashCode() == rhs.m_mesh->m_vertexBuffer->GetCompatibilityHashCode() &&
+			m_mesh->m_indexBuffer->GetCompatibilityHashCode() == rhs.m_mesh->m_indexBuffer->GetCompatibilityHashCode();
 	}
 
 	size_t GetHash() const
 	{
-		return m_material->GetBindings()->GetCompatibilityHashCode();
+		size_t hash = m_material->GetBindings()->GetCompatibilityHashCode();
+		HashCombine(hash, m_mesh->m_vertexBuffer->GetCompatibilityHashCode(), m_mesh->m_indexBuffer->GetCompatibilityHashCode());
+		return hash;
 	}
 };
-
 
 void RecordDrawCall(uint32_t start,
 	uint32_t end,
@@ -75,40 +80,50 @@ void RecordDrawCall(uint32_t start,
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	bool bBuffersBind = false;
 	for (uint32_t j = start; j < end; j++)
 	{
 		auto& material = vecBatches[j].m_material;
+		auto& mesh = vecBatches[j].m_mesh;
 
 		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
 
 		commands->BindMaterial(cmdList, material);
 		commands->BindShaderBindings(cmdList, material, sets);
 
+		commands->BindVertexBuffer(cmdList, mesh->m_vertexBuffer, 0);
+		commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer, 0);
+
+		TVector<RHI::DrawIndexedIndirectData> drawIndirect;
+		drawIndirect.Reserve(drawCalls[vecBatches[j]].Num());
+
 		uint32_t ssboOffset = 0;
-		for (auto& instancedDrawCall : drawCalls[material])
+		for (auto& instancedDrawCall : drawCalls[vecBatches[j]])
 		{
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
 
-			if (!bBuffersBind)
-			{
-				commands->BindVertexBuffer(cmdList, mesh->m_vertexBuffer, 0);
-				commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer, 0);
-
-				bBuffersBind = true;
-			}
-
-			// Draw Batch
-			commands->DrawIndexed(cmdList,
+			/*commands->DrawIndexed(cmdList,
 				(uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
 				(uint32_t)matrices.Num(),
 				mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t),
 				mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride(),
-				storageIndex[j] + ssboOffset);
+				storageIndex[j] + ssboOffset);*/
+
+			RHI::DrawIndexedIndirectData data{};
+			data.m_indexCount = (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t);
+			data.m_instanceCount = (uint32_t)matrices.Num();
+			data.m_firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+			data.m_vertexOffset = mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+			data.m_firstInstance = storageIndex[j] + ssboOffset;
+			
+			drawIndirect.Emplace(std::move(data));
 
 			ssboOffset += (uint32_t)matrices.Num();
 		}
+
+		RHIBufferPtr indirectCommandBuffer = driver->CreateIndirectBuffer(drawIndirect.GetData(), sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num());
+
+		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, 0, (uint32_t)drawCalls[vecBatches[j]].Num(), sizeof(RHI::DrawIndexedIndirectData));
 	}
 }
 /*
@@ -164,7 +179,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 				data.model = proxy.m_worldMatrix;
 				data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 
-				Batch batch(material);
+				Batch batch(material, mesh);
 
 				drawCalls[batch][mesh].Add(data);
 				batches.Insert(batch);
@@ -259,7 +274,7 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	{
 		commands->UpdateShaderBinding(transferCommandList, storageBinding,
 			gpuMatricesData.GetData(),
-			sizeof(PerInstanceData) * gpuMatricesData.Num(), 
+			sizeof(PerInstanceData) * gpuMatricesData.Num(),
 			0);
 	}
 	SAILOR_PROFILE_END_BLOCK();

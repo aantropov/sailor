@@ -35,3 +35,15 @@ RHIBuffer::~RHIBuffer()
 	}
 #endif
 }
+
+size_t RHIBuffer::GetCompatibilityHashCode() const
+{
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+	if (m_vulkan.m_buffer)
+	{
+		return m_vulkan.m_buffer.m_ptr.m_buffer.GetHash();
+	}
+#endif
+
+	return 0;
+}
