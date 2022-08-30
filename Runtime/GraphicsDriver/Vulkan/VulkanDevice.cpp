@@ -79,7 +79,6 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 
 	// Pick & Create device
 	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
-	CreateLogicalDevice(m_physicalDevice);
 
 	// Calculate max anisotropy
 	VkPhysicalDeviceProperties properties{};
@@ -87,9 +86,13 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	m_maxAllowedAnisotropy = properties.limits.maxSamplerAnisotropy;
 	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts);
 	m_currentMsaaSamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMsaaSamples));
+	m_bSupportsMultiDrawIndirect = properties.limits.maxDrawIndirectCount > 1;
+
+	CreateLogicalDevice(m_physicalDevice);
 
 	SAILOR_LOG("m_maxAllowedAnisotropy = %.2f", m_maxAllowedAnisotropy);
 	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMsaaSamples, m_currentMsaaSamples);
+	SAILOR_LOG("m_bSupportsMultiDrawIndirect = %d", (int32_t)m_bSupportsMultiDrawIndirect);
 
 	// Cache samplers & states
 	m_samplers = TUniquePtr<VulkanSamplerCache>::Make(VulkanDevicePtr(this));
@@ -428,7 +431,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkPhysicalDeviceFeatures deviceFeatures{};
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
-
+	deviceFeatures.multiDrawIndirect = m_bSupportsMultiDrawIndirect;
 #ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
 	deviceFeatures.sampleRateShading = VK_TRUE;
 #endif

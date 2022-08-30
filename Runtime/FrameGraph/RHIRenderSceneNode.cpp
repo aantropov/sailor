@@ -122,8 +122,7 @@ void RecordDrawCall(uint32_t start,
 		}
 
 		RHIBufferPtr indirectCommandBuffer = driver->CreateIndirectBuffer(drawIndirect.GetData(), sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num());
-
-		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, 0, (uint32_t)drawCalls[vecBatches[j]].Num(), sizeof(RHI::DrawIndexedIndirectData));
+		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, 0, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 	}
 }
 /*

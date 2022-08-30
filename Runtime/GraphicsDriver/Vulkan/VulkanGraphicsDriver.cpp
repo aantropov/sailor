@@ -1324,7 +1324,18 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 
 void VulkanGraphicsDriver::DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride)
 {
-	cmd->m_vulkan.m_commandBuffer->DrawIndexedIndirect(*buffer->m_vulkan.m_buffer, offset, drawCount, stride);
+	auto mainDevice = m_vkInstance->GetMainDevice();
+	if (mainDevice->IsMultiDrawIndirectSupported())
+	{
+		cmd->m_vulkan.m_commandBuffer->DrawIndexedIndirect(*buffer->m_vulkan.m_buffer, offset, drawCount, stride);
+	}
+	else
+	{
+		for (size_t j = 0; j < drawCount; j++)
+		{
+			cmd->m_vulkan.m_commandBuffer->DrawIndexedIndirect(*buffer->m_vulkan.m_buffer, offset + j * stride, 1, stride);
+		}
+	}
 }
 
 void VulkanGraphicsDriver::DrawIndexed(RHI::RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
