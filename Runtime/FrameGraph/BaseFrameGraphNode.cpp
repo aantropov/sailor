@@ -2,6 +2,7 @@
 
 using namespace Sailor;
 using namespace Sailor::RHI;
+using namespace Sailor::Framegraph;
 
 void BaseFrameGraphNode::SetStringParam(const std::string& name, const std::string& value)
 {

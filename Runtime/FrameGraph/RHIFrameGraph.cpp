@@ -6,6 +6,7 @@
 #include "Tasks/Tasks.h"
 
 using namespace Sailor;
+using namespace Sailor::RHI;
 
 void RHIFrameGraph::Clear()
 {

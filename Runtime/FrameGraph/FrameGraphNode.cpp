@@ -2,6 +2,7 @@
 
 using namespace Sailor;
 using namespace Sailor::RHI;
+using namespace Sailor::Framegraph;
 
 #ifndef _SAILOR_IMPORT_
 const char* RHINodeDefault::m_name = "untitled";

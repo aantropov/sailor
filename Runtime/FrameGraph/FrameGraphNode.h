@@ -7,7 +7,7 @@
 #include "FrameGraph/RHIFrameGraph.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 
-namespace Sailor
+namespace Sailor::Framegraph
 {
 	class SAILOR_API FrameGraphBuilder : public TSubmodule<FrameGraphBuilder>
 	{
@@ -63,7 +63,7 @@ namespace Sailor
 	public:
 		SAILOR_API static const char* GetName() { return m_name; }
 
-		SAILOR_API virtual void Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override {}
+		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override {}
 		SAILOR_API virtual void Clear() override {}
 	
 	protected:

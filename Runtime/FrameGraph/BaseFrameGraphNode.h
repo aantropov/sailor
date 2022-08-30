@@ -4,10 +4,13 @@
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 
-namespace Sailor
+namespace Sailor::RHI
 {
 	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
+}
 
+namespace Sailor::Framegraph
+{
 	// Don't derive from the base class, that is CRTP (Curiously recurrent template pattern)
 	// You should derive from TFrameGraphNode<YourNodeType, "YourNodeName">
 	class BaseFrameGraphNode : public RHI::RHIResource
@@ -24,7 +27,7 @@ namespace Sailor
 		SAILOR_API const glm::vec4& GetVectorParam(const std::string& name) const;
 		SAILOR_API const std::string& GetStringParam(const std::string& name) const;
 
-		SAILOR_API virtual void Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
+		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
 		SAILOR_API virtual void Clear() = 0;
 
 	protected:

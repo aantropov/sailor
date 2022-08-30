@@ -4,7 +4,9 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 
-namespace Sailor
+using namespace Sailor::Framegraph;
+
+namespace Sailor::RHI
 {
 	class RHIFrameGraph : public RHI::RHIResource
 	{
@@ -46,7 +48,7 @@ namespace Sailor
 		TMap<std::string, RHI::RHITexturePtr> m_renderTargets;
 		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
 		TMap<std::string, glm::vec4> m_values;
-		TVector<FrameGraphNodePtr> m_graph;
+		TVector<Framegraph::FrameGraphNodePtr> m_graph;
 	};
 
 	using RHIFrameGraphPtr = TRefPtr<RHIFrameGraph>;

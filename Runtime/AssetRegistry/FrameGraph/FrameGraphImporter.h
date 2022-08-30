@@ -23,11 +23,11 @@ namespace Sailor
 		SAILOR_API FrameGraph(const UID& uid) : Object(uid) {}
 		SAILOR_API virtual bool IsReady() const override { return true; }
 
-		SAILOR_API RHIFrameGraphPtr GetRHI() { return m_frameGraph; }
+		SAILOR_API RHI::RHIFrameGraphPtr GetRHI() { return m_frameGraph; }
 
 	protected:
 
-		RHIFrameGraphPtr m_frameGraph;
+		RHI::RHIFrameGraphPtr m_frameGraph;
 
 		friend class FrameGraphImporter;
 	};

@@ -6,14 +6,14 @@
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 
-namespace Sailor
+namespace Sailor::Framegraph
 {
-	class RHIDepthPrepassNode : public TFrameGraphNode<RHIDepthPrepassNode>
+	class RenderSceneNode : public TFrameGraphNode<RenderSceneNode>
 	{
 	public:
 		SAILOR_API static const char* GetName() { return m_name; }
 
-		SAILOR_API virtual void Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
+		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 		SAILOR_API RHI::ESortingOrder GetSortingOrder() const;
 
@@ -22,5 +22,5 @@ namespace Sailor
 		static const char* m_name;
 	};
 
-	template class TFrameGraphNode<RHIDepthPrepassNode>;
+	template class TFrameGraphNode<RenderSceneNode>;
 };

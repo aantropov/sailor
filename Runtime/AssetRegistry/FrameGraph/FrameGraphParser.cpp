@@ -67,7 +67,7 @@ void FrameGraphAsset::Deserialize(const nlohmann::json& inData)
 FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const
 {
 	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
-	RHIFrameGraphPtr pRhiFrameGraph = RHIFrameGraphPtr::Make();
+	RHI::RHIFrameGraphPtr pRhiFrameGraph = RHI::RHIFrameGraphPtr::Make();
 
 	auto& graph = pRhiFrameGraph->GetGraph();
 

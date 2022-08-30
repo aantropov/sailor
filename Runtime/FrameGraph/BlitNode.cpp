@@ -1,4 +1,4 @@
-#include "RHIBlitNode.h"
+#include "BlitNode.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
@@ -8,12 +8,13 @@
 
 using namespace Sailor;
 using namespace Sailor::RHI;
+using namespace Sailor::Framegraph;
 
 #ifndef _SAILOR_IMPORT_
-const char* RHIBlitNode::m_name = "Blit";
+const char* BlitNode::m_name = "Blit";
 #endif
 
-void RHIBlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -34,6 +35,6 @@ void RHIBlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tran
 	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion);
 }
 
-void RHIBlitNode::Clear()
+void BlitNode::Clear()
 {
 }

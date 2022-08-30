@@ -1,4 +1,4 @@
-#include "RHIDebugDrawNode.h"
+#include "DebugDrawNode.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
@@ -8,12 +8,13 @@
 
 using namespace Sailor;
 using namespace Sailor::RHI;
+using namespace Sailor::Framegraph;
 
 #ifndef _SAILOR_IMPORT_
-const char* RHIDebugDrawNode::m_name = "DebugDraw";
+const char* DebugDrawNode::m_name = "DebugDraw";
 #endif
 
-void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -46,6 +47,6 @@ void RHIDebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
 }
 
-void RHIDebugDrawNode::Clear()
+void DebugDrawNode::Clear()
 {
 }

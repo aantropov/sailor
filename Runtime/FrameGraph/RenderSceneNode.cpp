@@ -1,4 +1,4 @@
-#include "RHIRenderSceneNode.h"
+#include "RenderSceneNode.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
@@ -8,12 +8,13 @@
 
 using namespace Sailor;
 using namespace Sailor::RHI;
+using namespace Sailor::Framegraph;
 
 #ifndef _SAILOR_IMPORT_
-const char* RHIRenderSceneNode::m_name = "RenderScene";
+const char* RenderSceneNode::m_name = "RenderScene";
 #endif
 
-RHI::ESortingOrder RHIRenderSceneNode::GetSortingOrder() const
+RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 {
 	const std::string& sortOrder = GetStringParam("Sorting");
 
@@ -128,7 +129,7 @@ void RecordDrawCall(uint32_t start,
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
-void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -316,6 +317,6 @@ void RHIRenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	SAILOR_PROFILE_END_BLOCK();
 }
 
-void RHIRenderSceneNode::Clear()
+void RenderSceneNode::Clear()
 {
 }

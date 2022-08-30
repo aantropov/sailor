@@ -1,4 +1,4 @@
-#include "RHIDepthPrepassNode.h"
+#include "DepthPrepassNode.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
@@ -10,10 +10,10 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 
 #ifndef _SAILOR_IMPORT_
-const char* RHIDepthPrepassNode::m_name = "DepthPrepass";
+const char* DepthPrepassNode::m_name = "DepthPrepass";
 #endif
 
-RHI::ESortingOrder RHIDepthPrepassNode::GetSortingOrder() const
+RHI::ESortingOrder DepthPrepassNode::GetSortingOrder() const
 {
 	const std::string& sortOrder = GetStringParam("Sorting");
 
@@ -61,11 +61,11 @@ public:
 	}
 };
 
-void RHIDepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 }
 
-void RHIDepthPrepassNode::Clear()
+void DepthPrepassNode::Clear()
 {
 }
