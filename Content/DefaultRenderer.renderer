@@ -3,6 +3,11 @@
 "values": [{"name":"PI", "value":3.1415926}],
 "renderTargets": [{"name":"Main", "format":"B8G8R8A8_SRGB", "width":"ViewportWidth", "height":"ViewportHeight"}],
 "frame":[
+	{"name":"DepthPrepass", 
+		"values":[{"name":"Tag", "string":"Opaque"}], 
+		"renderTargets":[{"name":"depthStencil", "value":"DepthBuffer"}]
+	},
+
 	{"name":"RenderScene", 
 		"values":[{"name":"Tag", "string":"Opaque"}], 
 		"renderTargets":[{"name":"color", "value":"Main"}, {"name":"depthStencil", "value":"DepthBuffer"}]
@@ -15,6 +20,5 @@
 	{"name":"Blit", 
 		"renderTargets":[{"name":"src", "value":"Main"}, {"name":"dst", "value":"BackBuffer"}]
 	}
-    
 ]
 }
