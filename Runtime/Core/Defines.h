@@ -53,7 +53,7 @@ typedef unsigned long DWORD;
 //Memory
 namespace Sailor::Memory
 {
-#ifdef SAILOR_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT
+#ifdef SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT
 	using DefaultGlobalAllocator = class LockFreeHeapAllocator;
 #else
 	using DefaultGlobalAllocator = class MallocAllocator;
