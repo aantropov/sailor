@@ -19,6 +19,10 @@ namespace Sailor
 
 	protected:
 
+		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_depthOnlyMaterials;
+
+		RHI::RHIMaterialPtr GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertex);
+
 		static const char* m_name;
 	};
 
