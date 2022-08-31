@@ -75,7 +75,7 @@ void RecordDrawCall(uint32_t start,
 	RHI::RHICommandListPtr cmdList,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHIShaderBindingSetPtr perInstanceData,
-	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>>& drawCalls,
+	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData, Memory::MallocAllocator>>>& drawCalls,
 	const TVector<uint32_t>& storageIndex)
 {
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
@@ -137,7 +137,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
+	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData, Memory::MallocAllocator>>> drawCalls;
 	TSet<Batch> batches;
 
 	uint32_t numMeshes = 0;

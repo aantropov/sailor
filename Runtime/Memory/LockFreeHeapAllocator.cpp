@@ -8,24 +8,25 @@ using namespace Sailor::Memory;
 
 // For now TConcurrentMap doesn't have dll interface, so cannot 
 // handle that in class
-std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>> g_lockFreeAllocators;
+std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>& GetAllocator()
+{
+	static std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>> g_lockFreeAllocators;
+	static std::once_flag s_bIsInitedAllocator;
+	std::call_once(s_bIsInitedAllocator, [&]()
+	{
+		g_lockFreeAllocators = std::make_unique<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>();
+	});
+
+	return g_lockFreeAllocators;
+}
 
 void* LockFreeHeapAllocator::allocate(size_t size, size_t alignment)
 {
-	static std::once_flag s_bIsInitedAllocator;
-
-	if (!g_lockFreeAllocators)
-	{
-		std::call_once(s_bIsInitedAllocator, [&]() 
-		{
-			g_lockFreeAllocators = std::make_unique<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>();
-		});
-	}
-
+	auto& allocator = GetAllocator();
 	const DWORD currentThreadId = GetCurrentThreadId();
 	void* res = nullptr;
 
-	auto& pAllocator = g_lockFreeAllocators->At_Lock(currentThreadId);
+	auto& pAllocator = allocator->At_Lock(currentThreadId);
 
 	if (!pAllocator)
 	{
@@ -33,7 +34,7 @@ void* LockFreeHeapAllocator::allocate(size_t size, size_t alignment)
 	}
 
 	res = pAllocator->Allocate(size + sizeof(DWORD), alignment);
-	g_lockFreeAllocators->Unlock(currentThreadId);
+	allocator->Unlock(currentThreadId);
 
 	if (!res)
 	{
@@ -47,11 +48,12 @@ void* LockFreeHeapAllocator::allocate(size_t size, size_t alignment)
 
 void* LockFreeHeapAllocator::reallocate(void* ptr, size_t size, size_t alignment)
 {
+	auto& allocator = GetAllocator();
 	const DWORD allocatedThreadId = *(((DWORD*)ptr) - 1);
 	void* pRaw = (((DWORD*)ptr) - 1);
 
-	void* res = g_lockFreeAllocators->At_Lock(allocatedThreadId)->Reallocate(pRaw, size + sizeof(DWORD), alignment);
-	g_lockFreeAllocators->Unlock(allocatedThreadId);
+	void* res = allocator->At_Lock(allocatedThreadId)->Reallocate(pRaw, size + sizeof(DWORD), alignment);
+	allocator->Unlock(allocatedThreadId);
 
 	if (res == pRaw)
 	{
@@ -70,10 +72,12 @@ void LockFreeHeapAllocator::free(void* ptr, size_t size)
 {
 	if (ptr != nullptr)
 	{
+		auto& allocator = GetAllocator();
 		void* pRaw = (((DWORD*)ptr) - 1);
 		const DWORD allocatedThreadId = *(((DWORD*)ptr) - 1);
 
-		g_lockFreeAllocators->At_Lock(allocatedThreadId)->Free(pRaw);
-		g_lockFreeAllocators->Unlock(allocatedThreadId);
+		assert(allocator->ContainsKey(allocatedThreadId));
+		allocator->At_Lock(allocatedThreadId)->Free(pRaw);
+		allocator->Unlock(allocatedThreadId);
 	}
 }
