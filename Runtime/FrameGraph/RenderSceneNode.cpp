@@ -26,8 +26,9 @@ RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
-struct PerInstanceData
+class PerInstanceData
 {
+public:
 	alignas(16) glm::mat4 model;
 	alignas(16) uint32_t materialInstance = 0;
 
@@ -49,7 +50,7 @@ public:
 
 	Batch() = default;
 	Batch(const RHIMaterialPtr& material, const RHIMeshPtr& mesh) : m_material(material), m_mesh(mesh) {}
-
+	
 	bool operator==(const Batch& rhs) const
 	{
 		return
@@ -75,7 +76,7 @@ void RecordDrawCall(uint32_t start,
 	RHI::RHICommandListPtr cmdList,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHIShaderBindingSetPtr perInstanceData,
-	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData, Memory::MallocAllocator>>>& drawCalls,
+	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>>& drawCalls,
 	const TVector<uint32_t>& storageIndex)
 {
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
@@ -116,7 +117,7 @@ void RecordDrawCall(uint32_t start,
 			data.m_firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 			data.m_vertexOffset = mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
 			data.m_firstInstance = storageIndex[j] + ssboOffset;
-			
+
 			drawIndirect.Emplace(std::move(data));
 
 			ssboOffset += (uint32_t)matrices.Num();
@@ -137,7 +138,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData, Memory::MallocAllocator>>> drawCalls;
+	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
 	TSet<Batch> batches;
 
 	uint32_t numMeshes = 0;

@@ -118,7 +118,7 @@ bool Page::TryAddMoreSpace(void* ptr, size_t size)
 
 	if (pNext && pNext->m_bIsFree && block->m_size + pNext->m_size >= size + 2 * headerSize + SAILOR_SMALLEST_DATA_SIZE)
 	{
-		MoveHeader(pNext, size - (block->m_size - headerSize));
+		MoveHeader(pNext, size - block->m_size + headerSize);
 		return true;
 	}
 
@@ -698,10 +698,7 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 
 void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 {
-	if (!ptr)
-	{
-		return Allocate(size, alignment);
-	}
+	assert(ptr);
 
 	size_t oldSize = 0;
 
@@ -738,8 +735,10 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 			return ptr;
 		}
 
-		oldSize = header->m_size;
+		oldSize = header->m_size - headerSize;
 	}
+
+	assert(oldSize < size);
 
 	void* res = Allocate(size, alignment);
 	std::memmove(res, ptr, oldSize);
