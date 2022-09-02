@@ -138,7 +138,7 @@ namespace Sailor::Memory
 		HeapAllocator(const HeapAllocator&) = delete;
 
 		void* Allocate(size_t size, size_t alignment = 8);
-		void* Reallocate(void* ptr, size_t size, size_t alignment = 8);
+		bool Reallocate(void* ptr, size_t size, size_t alignment = 8);
 		void Free(void* ptr);
 
 	private:

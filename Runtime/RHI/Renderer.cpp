@@ -219,7 +219,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					bRunCommandLists = true;
 				}
 
-				if (m_driverInstance->PresentFrame(frame, std::move(primaryCommandLists), std::move(waitFrameUpdate)))
+				if (m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
 				{
 					totalFramesCount++;
 					timer.Stop();

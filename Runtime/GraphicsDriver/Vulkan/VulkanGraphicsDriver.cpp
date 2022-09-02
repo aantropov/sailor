@@ -126,25 +126,19 @@ bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	TVector<VulkanCommandBufferPtr> primaryBuffers;
 	TVector<VulkanSemaphorePtr> vkWaitSemaphores;
 
-	if (primaryCommandBuffers.Num() > 0)
+	primaryBuffers.Reserve(primaryCommandBuffers.Num());
+	for (auto& buffer : primaryCommandBuffers)
 	{
-		primaryBuffers.Reserve(primaryCommandBuffers.Num());
-		for (auto& buffer : primaryCommandBuffers)
-		{
-			primaryBuffers.Add(buffer->m_vulkan.m_commandBuffer);
-		}
+		primaryBuffers.Add(buffer->m_vulkan.m_commandBuffer);
 	}
 
-	if (waitSemaphores.Num() > 0)
+	vkWaitSemaphores.Reserve(waitSemaphores.Num());
+	for (auto& buffer : waitSemaphores)
 	{
-		vkWaitSemaphores.Reserve(waitSemaphores.Num());
-		for (auto& buffer : waitSemaphores)
-		{
-			vkWaitSemaphores.Add(buffer->m_vulkan.m_semaphore);
-		}
+		vkWaitSemaphores.Add(buffer->m_vulkan.m_semaphore);
 	}
 
-	return m_vkInstance->GetMainDevice()->PresentFrame(state, std::move(primaryBuffers), std::move(vkWaitSemaphores));
+	return m_vkInstance->GetMainDevice()->PresentFrame(state, primaryBuffers, vkWaitSemaphores);
 }
 
 void VulkanGraphicsDriver::WaitIdle()

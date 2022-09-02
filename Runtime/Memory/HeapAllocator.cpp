@@ -719,7 +719,7 @@ bool HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 		}
 
 		// TODO: Investigate why TryAddMoreSpace causes randomly crash (allocatedThread is corrupted, maybe that is related to Vector implementation)
-		return false;// m_allocator.TryAddMoreSpace(ptr, size);
+		return m_allocator.TryAddMoreSpace(ptr, size);
 	}
 	else
 	{

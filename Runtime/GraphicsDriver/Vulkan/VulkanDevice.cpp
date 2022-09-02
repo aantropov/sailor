@@ -638,7 +638,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 
 	if (primaryCommandBuffers.Num() > 0)
 	{
-		for (auto cmdBuffer : primaryCommandBuffers)
+		for (const auto& cmdBuffer : primaryCommandBuffers)
 		{
 			commandBuffers.Add(*cmdBuffer);
 			m_frameDeps[m_currentFrame].Add(cmdBuffer);
@@ -649,7 +649,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	if (semaphoresToWait.Num() > 0)
 	{
 		waitSemaphores.Reserve(semaphoresToWait.Num() + 1);
-		for (auto semaphore : semaphoresToWait)
+		for (const auto& semaphore : semaphoresToWait)
 		{
 			waitSemaphores.Add(*semaphore);
 			m_frameDeps[m_currentFrame].Add(semaphore);
