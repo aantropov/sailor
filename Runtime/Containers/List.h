@@ -90,7 +90,7 @@ namespace Sailor
 		TList(std::initializer_list<TElementType> initList) requires IsCopyConstructible<TElementType> { AddRange(initList.begin(), initList.size()); }
 		TList(const TList& other) requires IsCopyConstructible<TElementType>
 		{
-			for (auto it : other)
+			for (const auto& it : other)
 			{
 				PushBack(it);
 			}
@@ -103,9 +103,9 @@ namespace Sailor
 
 		TList& operator=(const TList& other) requires IsCopyConstructible<TElementType>
 		{
-			for (auto it : other)
+			for (const auto& it : other)
 			{
-				PushBack(it);
+				EmplaceBack(it);
 			}
 
 			return *this;

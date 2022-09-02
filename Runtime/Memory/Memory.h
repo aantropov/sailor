@@ -79,7 +79,7 @@ namespace Sailor::Memory
 			return res + sizeof(uint16_t);
 		}
 
-		void* Reallocate(void* pData, size_t size, size_t alignment = 8)
+		bool Reallocate(void* pData, size_t size, size_t alignment = 8)
 		{
 			if (Contains(pData) && size < 65536)
 			{
@@ -95,18 +95,12 @@ namespace Sailor::Memory
 					{
 						*(uint16_t*)((uint8_t*)pData - sizeof(uint16_t)) = (uint16_t)size;
 						m_index += extraSpace;
-						return pData;
+						return true;
 					}
 				}
-
-				void* res = m_allocator.Allocate(size, alignment);
-				memmove(res, pData, usedSpace - sizeof(uint16_t));
-				Free(pData);
-
-				return res;
 			}
 
-			return m_allocator.Reallocate(pData, size, alignment);
+			return false;
 		}
 
 		void Free(void* pData, size_t size = 0)

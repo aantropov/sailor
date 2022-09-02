@@ -10,6 +10,7 @@
 #include "Math/Math.h"
 #include "Containers/Concepts.h"
 
+
 namespace Sailor
 {
 	template<typename TDataType>
@@ -540,39 +541,31 @@ namespace Sailor
 			const size_t slack = newCapacity - m_capacity;
 
 			m_capacity = newCapacity;
-			if constexpr (IsTriviallyCopyable<TElementType>)
+
+			if (m_pRawPtr && m_allocator.Reallocate(m_pRawPtr, newCapacity * sizeof(TElementType)))
 			{
-				if (m_pRawPtr)
-				{
-					m_pRawPtr = static_cast<TElementType*>(m_allocator.Reallocate(m_pRawPtr, newCapacity * sizeof(TElementType)));
-				}
-				else
-				{
-					m_pRawPtr = static_cast<TElementType*>(m_allocator.Allocate(newCapacity * sizeof(TElementType)));
-				}
+				return;
+			}
+
+			TElementType* pRawPtr = static_cast<TElementType*>(m_allocator.Allocate(newCapacity * sizeof(TElementType)));
+			std::swap(m_pRawPtr, pRawPtr);
+
+			if constexpr (IsMoveConstructible<TElementType>)
+			{
+				ConstructMoveElements(0, pRawPtr[0], newCapacity - slack);
 			}
 			else
 			{
-				TElementType* pRawPtr = static_cast<TElementType*>(m_allocator.Allocate(newCapacity * sizeof(TElementType)));
-				std::swap(m_pRawPtr, pRawPtr);
-
-				if constexpr (IsMoveConstructible<TElementType>)
-				{
-					ConstructMoveElements(0, pRawPtr[0], newCapacity - slack);
-				}
-				else
-				{
-					ConstructElements(0, pRawPtr[0], newCapacity - slack);
-				}
-
-				// Destruct old elements
-				for (size_t i = 0; i < newCapacity - slack; i++)
-				{
-					pRawPtr[i].~TElementType();
-				}
-
-				m_allocator.Free(pRawPtr);
+				ConstructElements(0, pRawPtr[0], newCapacity - slack);
 			}
+
+			// Destruct old elements
+			for (size_t i = 0; i < newCapacity - slack; i++)
+			{
+				pRawPtr[i].~TElementType();
+			}
+
+			m_allocator.Free(pRawPtr);
 		}
 
 		__forceinline bool IsEmpty() const { return m_arrayNum == 0; }

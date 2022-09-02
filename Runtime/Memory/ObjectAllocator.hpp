@@ -19,26 +19,17 @@ namespace Sailor::Memory
 
 		SAILOR_API void* Allocate(size_t size, size_t alignment = 8)
 		{
-			m_lock.Lock();
-			void* res = m_globalAllocator.Allocate(size, alignment);
-			m_lock.Unlock();
-			
-			return res;
+			return m_globalAllocator.Allocate(size, alignment);
 		}
 
-		SAILOR_API void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
+		SAILOR_API bool Reallocate(void* ptr, size_t size, size_t alignment = 8)
 		{
-			m_lock.Lock();
-			void* res = m_globalAllocator.Reallocate(ptr, size, alignment);
-			m_lock.Unlock();
-			return res;
+			return m_globalAllocator.Reallocate(ptr, size, alignment);
 		}
 
 		SAILOR_API void Free(void* ptr, size_t size = 0)
 		{
-			m_lock.Lock();
 			m_globalAllocator.Free(ptr);
-			m_lock.Unlock();
 		}
 
 		SAILOR_API ObjectAllocator() = default;
@@ -51,7 +42,6 @@ namespace Sailor::Memory
 
 	protected:
 
-		SpinLock m_lock;
 		DefaultGlobalAllocator m_globalAllocator;
 	};
 }

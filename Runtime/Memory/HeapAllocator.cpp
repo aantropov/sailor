@@ -5,6 +5,7 @@
 #include <cassert>
 #include <algorithm>
 
+
 using namespace Sailor;
 using namespace Sailor::Memory;
 using namespace Sailor::Memory::Internal;
@@ -78,22 +79,22 @@ Header* Page::MoveHeader(Header* block, int64_t shift)
 	if (pPrev && pPrev != block)
 	{
 		pPrev->m_size += shift;
-		pPrev->m_next += shift;
+		pPrev->m_next = Offset(block, m_pData);
 	}
 
 	if (pNext && pNext != block)
 	{
-		pNext->m_prev += shift;
+		pNext->m_prev = Offset(block, m_pData);
 	}
 
 	if (pPrevFree && pPrevFree != block)
 	{
-		pPrevFree->m_nextFree += shift;
+		pPrevFree->m_nextFree = Offset(block, m_pData);
 	}
 
 	if (pNextFree && pNextFree != block)
 	{
-		pNextFree->m_prevFree += shift;
+		pNextFree->m_prevFree = Offset(block, m_pData);
 	}
 
 	// that's the first block
@@ -116,9 +117,13 @@ bool Page::TryAddMoreSpace(void* ptr, size_t size)
 	Header* block = static_cast<Header*>(ShiftPtr(ptr, -headerSize));
 	Header* pNext = static_cast<Header*>(block->m_next != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_next) : nullptr);
 
-	if (pNext && pNext->m_bIsFree && block->m_size + pNext->m_size >= size + 2 * headerSize + SAILOR_SMALLEST_DATA_SIZE)
+	assert(!block->m_bIsFree);
+
+	if (pNext && pNext->m_bIsFree && pNext->m_size > ((size - block->m_size) + headerSize + SAILOR_SMALLEST_DATA_SIZE))
 	{
-		MoveHeader(pNext, size - block->m_size + headerSize);
+		assert(size > block->m_size);
+
+		MoveHeader(pNext, size - block->m_size);
 		return true;
 	}
 
@@ -376,7 +381,6 @@ bool PoolAllocator::TryAddMoreSpace(void* ptr, size_t newSize)
 {
 	const int32_t headerSize = sizeof(Header);
 	Header* block = static_cast<Header*>(ShiftPtr(ptr, -headerSize));
-
 	return m_pages[block->m_pageIndex].TryAddMoreSpace(ptr, newSize);
 }
 
@@ -670,7 +674,6 @@ HeapAllocator::HeapAllocator()
 void* HeapAllocator::Allocate(size_t size, size_t alignment)
 {
 	size_t alignedSize = CalculateAlignedSize(size);
-
 	bool bSmallAllocator = alignedSize < 256 && size < 256;
 
 	void* res = nullptr;
@@ -696,7 +699,7 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 	return res;
 }
 
-void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
+bool HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 {
 	assert(ptr);
 
@@ -712,16 +715,11 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 		if (size <= header->m_size)
 		{
 			// No need to reallocate, we already have slack that could be used
-			return ptr;
+			return true;
 		}
 
-		if (m_allocator.TryAddMoreSpace(ptr, size))
-		{
-			// We succesfully reallocated 
-			return ptr;
-		}
-
-		oldSize = header->m_size;
+		// TODO: Investigate why TryAddMoreSpace causes randomly crash (allocatedThread is corrupted, maybe that is related to Vector implementation)
+		return false;// m_allocator.TryAddMoreSpace(ptr, size);
 	}
 	else
 	{
@@ -729,22 +727,14 @@ void* HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 		SmallPoolAllocator::SmallHeader* header = (SmallPoolAllocator::SmallHeader*)ShiftPtr(ptr, -headerSize);
 
 		// m_size does handle small header size
-		if (size <= header->m_size - headerSize)
+		if (size <= (header->m_size - headerSize))
 		{
 			// No need to reallocate, we already have slack that could be used
-			return ptr;
+			return true;
 		}
-
-		oldSize = header->m_size - headerSize;
 	}
 
-	assert(oldSize < size);
-
-	void* res = Allocate(size, alignment);
-	std::memmove(res, ptr, oldSize);
-	Free(ptr);
-
-	return res;
+	return false;
 }
 
 void HeapAllocator::Free(void* ptr)

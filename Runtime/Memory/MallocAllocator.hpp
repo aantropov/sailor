@@ -15,7 +15,7 @@ namespace Sailor::Memory
 			return MallocAllocator::allocate(size, alignment);
 		}
 
-		__forceinline void* Reallocate(void* ptr, size_t size, size_t alignment = 8)
+		__forceinline bool Reallocate(void* ptr, size_t size, size_t alignment = 8)
 		{
 			return MallocAllocator::reallocate(ptr, size, alignment);
 		}
@@ -31,9 +31,9 @@ namespace Sailor::Memory
 			return std::malloc(size);
 		}
 
-		static void* reallocate(void* ptr, size_t size, size_t alignment = 8)
+		static bool reallocate(void* ptr, size_t size, size_t alignment = 8)
 		{
-			return std::realloc(ptr, size);
+			return false;
 		}
 
 		static void free(void* ptr, size_t size = 0)
