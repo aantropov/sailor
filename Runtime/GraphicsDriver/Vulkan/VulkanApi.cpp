@@ -19,12 +19,14 @@
 #include "VulkanFence.h"
 #include "VulkanCommandBuffer.h"
 #include "VulkanDescriptors.h"
+#include "VulkanPipeline.h"
 #include "VulkanShaderModule.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "Engine/EngineLoop.h"
 #include "VulkanMemory.h"
 #include "VulkanBufferMemory.h"
+#include "VulkanDescriptors.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -966,6 +968,66 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 	poolSize.type = type;
 	poolSize.descriptorCount = static_cast<uint32_t>(count);
 	return poolSize;
+}
+
+bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)
+{
+	size_t numDescriptors = 0;
+	TMap<uint32_t, TVector<VulkanDescriptorPtr>> descriptors;
+
+	for (uint32_t i = 0; i < descriptorSets.Num(); i++)
+	{
+		const auto& descriptorSet = descriptorSets[i];
+		descriptors[i].AddRange(descriptorSet->m_descriptors);
+
+		numDescriptors += descriptorSet->m_descriptors.Num();
+	}
+
+	if (pipelineLayout->m_descriptionSetLayouts.Num() != descriptorSets.Num())
+	{
+		return false;
+	}
+
+	for (uint32_t i = 0; i < pipelineLayout->m_descriptionSetLayouts.Num(); i++)
+	{
+		const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[i];
+
+		if (descriptors[i].Num() != layout->m_descriptorSetLayoutBindings.Num())
+		{
+			return false;
+		}
+
+		for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
+		{
+			if (!descriptors[i].ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
+			{
+				// We haven't needed descriptor
+				return false;
+			}
+		}
+	}
+
+	/*
+	for (const auto& pair : descriptors)
+	{
+		const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[pair.m_first];
+
+		if (pair.m_second.Num() != layout->m_descriptorSetLayoutBindings.Num())
+		{
+			return false;
+		}
+
+		for (const auto& descriptor : pair.m_second)
+		{
+			if (!layout->m_descriptorSetLayoutBindings.ContainsIf([&](const auto& lhs) { return lhs.binding == descriptor->GetBinding() && lhs.descriptorType == descriptor->GetType(); }))
+			{
+				// We have extra descriptor
+				return false;
+			}
+		}
+	}*/
+
+	return true;
 }
 
 bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,

@@ -184,7 +184,8 @@ namespace Sailor::RHI
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
-			bool bSupportMultisampling = true) = 0;
+			bool bSupportMultisampling = true,
+			bool bStoreDepth = true) = 0;
 
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
@@ -193,7 +194,8 @@ namespace Sailor::RHI
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
-			bool bSupportMultisampling = true) = 0;
+			bool bSupportMultisampling = true,
+			bool bStoreDepth = true) = 0;
 
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHISurfacePtr>& colorAttachments,

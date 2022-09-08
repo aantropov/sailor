@@ -39,7 +39,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkOffset2D offset = { 0,0 },
 			bool bSupportMultisampling = true,
 			bool bClearRenderTargets = true,
-			VkClearValue clearColor = VulkanApi::DefaultClearColor);
+			VkClearValue clearColor = VulkanApi::DefaultClearColor,
+			bool bStoreDepth = true);
 		SAILOR_API void EndRenderPassEx();
 
 		SAILOR_API void BeginRenderPass(VulkanRenderPassPtr renderPass,

@@ -20,6 +20,7 @@
 #include "VulkanPipileneStates.h"
 #include "VulkanShaderModule.h"
 #include "VulkanBufferMemory.h"
+#include "VulkanDescriptors.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 
 using namespace Sailor;
@@ -94,6 +95,17 @@ bool VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 	}
 
 	return false;
+}
+
+bool VulkanGraphicsDriver::IsCompatible(RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const
+{
+	TVector<VulkanDescriptorSetPtr> sets;
+	for (auto& binding : bindings)
+	{
+		sets.Add(binding->m_vulkan.m_descriptorSet);
+	}
+
+	return VulkanApi::IsCompatible(material->m_vulkan.m_pipeline->m_layout, sets);
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::GetBackBuffer() const
@@ -969,7 +981,8 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
 	glm::vec4 clearColor,
-	bool bSupportMultisampling)
+	bool bSupportMultisampling,
+	bool bStoreDepth)
 {
 	TVector<VulkanImageViewPtr> attachments(colorAttachments.Num());
 	for (uint32_t i = 0; i < colorAttachments.Num(); i++)
@@ -984,13 +997,19 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 	rect.offset.x = renderArea.x;
 	rect.offset.y = renderArea.y;
 
+	VkClearValue clearValue;
+	clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+	clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment->m_vulkan.m_imageView,
 		rect,
 		VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
 		VkOffset2D{ .x = offset.x, .y = offset.y },
 		bSupportMultisampling,
-		bClearRenderTargets);
+		bClearRenderTargets,
+		clearValue,
+		bStoreDepth);
 
 	for (auto& el : secondaryCmds)
 	{
@@ -1000,13 +1019,15 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 	EndRenderPass(cmd);
 }
 
-void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
+void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, 
+	const TVector<RHI::RHITexturePtr>& colorAttachments,
 	RHI::RHITexturePtr depthStencilAttachment,
 	glm::ivec4 renderArea,
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
 	glm::vec4 clearColor,
-	bool bSupportMultisampling)
+	bool bSupportMultisampling,
+	bool bStoreDepth)
 {
 	TVector<VulkanImageViewPtr> attachments(colorAttachments.Num());
 	for (uint32_t i = 0; i < colorAttachments.Num(); i++)
@@ -1020,6 +1041,10 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 	rect.extent.height = (uint32_t)renderArea.w;
 	rect.offset.x = renderArea.x;
 	rect.offset.y = renderArea.y;
+	
+	VkClearValue clearValue;
+	clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+	clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment->m_vulkan.m_imageView,
@@ -1027,7 +1052,9 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, const TVe
 		0,
 		VkOffset2D{ .x = offset.x, .y = offset.y },
 		bSupportMultisampling,
-		bClearRenderTargets);
+		bClearRenderTargets,
+		clearValue,
+		bStoreDepth);
 }
 
 void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
@@ -1312,6 +1339,8 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 	{
 		sets.Add(binding->m_vulkan.m_descriptorSet);
 	}
+
+	bool bIsCompatible = IsCompatible(material, bindings);
 
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
 }

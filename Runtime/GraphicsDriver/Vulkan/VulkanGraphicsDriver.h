@@ -115,7 +115,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
-			bool bSupportMultisampling = true);
+			bool bSupportMultisampling = true,
+			bool bStoreDepth = true);
 
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHISurfacePtr>& colorAttachments,
@@ -125,13 +126,15 @@ namespace Sailor::GraphicsDriver::Vulkan
 			bool bClearRenderTargets,
 			glm::vec4 clearColor);
 
-		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd, const TVector<RHI::RHITexturePtr>& colorAttachments,
+		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
+			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
-			bool bSupportMultisampling = true);
+			bool bSupportMultisampling = true,
+			bool bStoreDepth = true);
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd);
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout);
@@ -164,6 +167,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API RHI::RHITexturePtr GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
+		SAILOR_API bool IsCompatible(RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
 
 	protected:
 

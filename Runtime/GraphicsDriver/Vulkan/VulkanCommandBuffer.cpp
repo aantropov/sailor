@@ -191,7 +191,8 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkOffset2D offset,
 	bool bSupportMultisampling,
 	bool bClearRenderTargets,
-	VkClearValue clearColor)
+	VkClearValue clearColor,
+	bool bStoreDepth)
 {
 	VkClearValue depthClear{};
 	depthClear.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
@@ -202,7 +203,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.imageView = *depthStencilAttachment,
 		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.storeOp = bStoreDepth ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
 		.clearValue = depthClear,
 	};
 
@@ -219,12 +220,16 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkRenderingAttachmentInfoKHR colorAttachmentInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
-		.imageView = *(colorAttachments[0]),
 		.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 		.clearValue = clearColor
 	};
+
+	if (colorAttachments.Num() > 0)
+	{
+		colorAttachmentInfo.imageView = *(colorAttachments[0]);
+	}
 
 	// MSAA enabled -> we use the temporary buffers to resolve
 	if (bSupportMultisampling && (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT))

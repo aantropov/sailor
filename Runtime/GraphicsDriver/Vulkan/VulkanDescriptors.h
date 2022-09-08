@@ -55,6 +55,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API uint32_t GetBinding() const { return m_dstBinding; }
 		SAILOR_API uint32_t GetArrayElement() const { return m_dstArrayElement; }
+		SAILOR_API VkDescriptorType GetType() const { return m_descriptorType; }
 
 	protected:
 		uint32_t m_dstBinding;

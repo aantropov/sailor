@@ -104,13 +104,6 @@ void RecordDrawCall(uint32_t start,
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
 
-			/*commands->DrawIndexed(cmdList,
-				(uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t),
-				(uint32_t)matrices.Num(),
-				mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t),
-				mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride(),
-				storageIndex[j] + ssboOffset);*/
-
 			RHI::DrawIndexedIndirectData data{};
 			data.m_indexCount = (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t);
 			data.m_instanceCount = (uint32_t)matrices.Num();
@@ -288,9 +281,10 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		depthAttachment,
 		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
 		glm::ivec2(0, 0),
-		true,
+		false,
 		glm::vec4(0.0f),
-		true);
+		true,
+		false);
 
 	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex);
 	commands->EndRenderPass(commandList);
@@ -311,7 +305,8 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
-		true);
+		true,
+		false);
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
 
