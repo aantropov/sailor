@@ -20,6 +20,22 @@ VulkanDescriptorSetLayout::~VulkanDescriptorSetLayout()
 	Release();
 }
 
+bool VulkanDescriptorSetLayout::operator==(const VulkanDescriptorSetLayout& rhs) const
+{
+	return this->m_descriptorSetLayoutBindings == rhs.m_descriptorSetLayoutBindings;
+}
+
+size_t VulkanDescriptorSetLayout::GetHash() const
+{
+	size_t hash = 0;
+	for (const auto& binding : m_descriptorSetLayoutBindings)
+	{
+		HashCombine(hash, binding.binding, binding.descriptorType);
+	}
+
+	return hash;
+}
+
 void VulkanDescriptorSetLayout::Compile()
 {
 	if (m_descriptorSetLayout)
@@ -115,18 +131,18 @@ void VulkanDescriptorSet::Release()
 {
 	DWORD currentThreadId = GetCurrentThreadId();
 
-	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release descriptor set", 
+	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release descriptor set",
 		[
 			duplicatedPool = m_descriptorPool,
 			duplicatedSet = m_descriptorSet,
 			duplicatedDevice = m_device
 		]()
+	{
+		if (duplicatedSet)
 		{
-			if (duplicatedSet)
-			{
-				vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
-			}
-		});
+			vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
+		}
+	});
 
 	if (m_currentThreadId == currentThreadId)
 	{

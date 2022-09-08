@@ -26,6 +26,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void Compile() override;
 		SAILOR_API virtual void Release() override;
 
+		SAILOR_API size_t GetHash() const;
+		SAILOR_API bool operator==(const VulkanDescriptorSetLayout& rhs) const;
+
 	protected:
 
 		VulkanDevicePtr m_device{};

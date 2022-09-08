@@ -40,6 +40,7 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
 	m_cachedMsaaRenderTargets.Clear();
+	m_cachedDescriptorSets.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -1019,7 +1020,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 	EndRenderPass(cmd);
 }
 
-void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd, 
+void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	const TVector<RHI::RHITexturePtr>& colorAttachments,
 	RHI::RHITexturePtr depthStencilAttachment,
 	glm::ivec4 renderArea,
@@ -1041,7 +1042,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	rect.extent.height = (uint32_t)renderArea.w;
 	rect.offset.x = renderArea.x;
 	rect.offset.y = renderArea.y;
-	
+
 	VkClearValue clearValue;
 	clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 	clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
@@ -1332,16 +1333,80 @@ void VulkanGraphicsDriver::SetDefaultViewport(RHI::RHICommandListPtr cmd)
 	cmd->m_vulkan.m_commandBuffer->SetScissor(pStateViewport);
 }
 
+const TVector<VulkanDescriptorSetPtr>& VulkanGraphicsDriver::GetOrAddDescriptorSets(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings)
+{
+	const bool bIsCompatible = IsCompatible(material, shaderBindings);
+
+	if (!bIsCompatible)
+	{
+		auto cache = DescriptorSetCache(material, shaderBindings);
+		auto& sets = m_cachedDescriptorSets.At_Lock(cache);
+
+		if (sets.Num() == 0)
+		{
+			// TODO: Create adjusted descriptor sets and track them
+
+			auto device = m_vkInstance->GetMainDevice();
+			
+			// Should we just update descriptor set instead of recreation?
+			auto descriptorSet = VulkanDescriptorSetPtr::Make(device,
+				device->GetCurrentThreadContext().m_descriptorPool,
+				VulkanDescriptorSetLayoutPtr::Make(device, material->m_vulkan.m_pipeline->m_layout),
+				descriptors);
+
+			bindings->m_vulkan.m_descriptorSet->Compile();
+
+		}
+
+		m_cachedDescriptorSets.Unlock(cache);
+
+		return sets;
+	}
+	else
+	{
+		TVector<VulkanDescriptorSetPtr> sets;
+		for (auto& binding : shaderBindings)
+		{
+			sets.Add(binding->m_vulkan.m_descriptorSet);
+		}
+
+		return sets;
+	}
+}
+
+VulkanGraphicsDriver::DescriptorSetCache& VulkanGraphicsDriver::DescriptorSetCache::operator=(const DescriptorSetCache& rhs)
+{
+	m_material = rhs.m_material;
+	m_bindings = rhs.m_bindings;
+	m_compatibilityHash = rhs.m_compatibilityHash;
+
+	return *this;
+}
+
+bool VulkanGraphicsDriver::DescriptorSetCache::operator==(const DescriptorSetCache& rhs) const
+{
+	return m_compatibilityHash == rhs.m_compatibilityHash && m_material == rhs.m_material && m_bindings == rhs.m_bindings;
+}
+
+size_t VulkanGraphicsDriver::DescriptorSetCache::GetHash() const
+{
+	return m_compatibilityHash;
+}
+
+VulkanGraphicsDriver::DescriptorSetCache::DescriptorSetCache(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) noexcept :
+	m_material(material),
+	m_bindings(bindings)
+{
+	m_compatibilityHash = m_material.GetHash();
+	for (const auto& binding : m_bindings)
+	{
+		HashCombine(m_compatibilityHash, binding->GetCompatibilityHashCode());
+	}
+}
+
 void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
 {
-	TVector<VulkanDescriptorSetPtr> sets;
-	for (auto& binding : bindings)
-	{
-		sets.Add(binding->m_vulkan.m_descriptorSet);
-	}
-
-	bool bIsCompatible = IsCompatible(material, bindings);
-
+	const TVector<VulkanDescriptorSetPtr>& sets = GetOrAddDescriptorSets(material, bindings);
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
 }
 

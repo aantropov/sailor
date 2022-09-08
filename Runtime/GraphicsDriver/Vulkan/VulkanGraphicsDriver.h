@@ -32,7 +32,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool FixLostDevice(const Win32::Window* pViewport);
 
 		SAILOR_API virtual bool AcquireNextImage();
-		SAILOR_API virtual bool PresentFrame(const class FrameState& state,	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const;
+		SAILOR_API virtual bool PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const;
 
 		SAILOR_API virtual void WaitIdle();
 		SAILOR_API virtual RHI::RHITexturePtr GetBackBuffer() const;
@@ -75,7 +75,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual RHI::RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader);
 		SAILOR_API virtual RHI::RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs);
-		
+
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<RHI::VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices) override;
 
 		SAILOR_API virtual void SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence = nullptr, RHI::RHISemaphorePtr signalSemaphore = nullptr, RHI::RHISemaphorePtr waitSemaphore = nullptr);
@@ -88,7 +88,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Used for full binding update
 		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHI::RHITexturePtr value);
-		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);		
+		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);
 
 		// Begin Immediate context
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
@@ -151,7 +151,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API virtual void SetMaterialParameter(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size);
 		SAILOR_API virtual void BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material);
-		
+
 		SAILOR_API virtual void BindVertexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset);
 		SAILOR_API virtual void BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t offset);
 
@@ -168,8 +168,24 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API RHI::RHITexturePtr GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
 		SAILOR_API bool IsCompatible(RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
+		SAILOR_API const TVector<VulkanDescriptorSetPtr>& GetOrAddDescriptorSets(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 
 	protected:
+
+		class DescriptorSetCache
+		{
+			RHI::RHIMaterialPtr m_material{};
+			TVector<RHI::RHIShaderBindingSetPtr> m_bindings{};
+			size_t m_compatibilityHash{};
+
+		public:
+
+			DescriptorSetCache() = default;
+			DescriptorSetCache& operator=(const DescriptorSetCache& rhs);
+			DescriptorSetCache(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) noexcept;
+			bool operator==(const DescriptorSetCache& rhs) const;
+			size_t GetHash() const;
+		};
 
 		SAILOR_API void UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
@@ -182,6 +198,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Storage buffers to store everything
 		TSharedPtr<VulkanBufferAllocator> m_materialSsboAllocator;
 		TSharedPtr<VulkanBufferAllocator> m_meshSsboAllocator;
+
+		// Descriptor Sets variants cache
+		TConcurrentMap<DescriptorSetCache, TVector<VulkanDescriptorSetPtr>> m_cachedDescriptorSets;
 
 		// Cached MSAA render targets to support MSAA
 		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};

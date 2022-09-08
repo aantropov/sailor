@@ -133,6 +133,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VulkanImageViewPtr CreateImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags);
 		SAILOR_API static uint32_t FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
+		SAILOR_API static bool IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const VulkanDescriptorSetPtr& descriptorSet, uint32_t binding);
 		SAILOR_API static bool IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets);
 
 		SAILOR_API static bool CreateDescriptorSetLayouts(VulkanDevicePtr device,

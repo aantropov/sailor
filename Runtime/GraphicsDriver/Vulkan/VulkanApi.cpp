@@ -970,43 +970,44 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 	return poolSize;
 }
 
-bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)
+bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const VulkanDescriptorSetPtr& descriptorSet, uint32_t binding)
 {
 	size_t numDescriptors = 0;
-	TMap<uint32_t, TVector<VulkanDescriptorPtr>> descriptors;
+	TVector<VulkanDescriptorPtr> descriptors;
+	descriptors.AddRange(descriptorSet->m_descriptors);
+	numDescriptors += descriptorSet->m_descriptors.Num();
 
-	for (uint32_t i = 0; i < descriptorSets.Num(); i++)
-	{
-		const auto& descriptorSet = descriptorSets[i];
-		descriptors[i].AddRange(descriptorSet->m_descriptors);
-
-		numDescriptors += descriptorSet->m_descriptors.Num();
-	}
-
-	if (pipelineLayout->m_descriptionSetLayouts.Num() != descriptorSets.Num())
+	if (pipelineLayout->m_descriptionSetLayouts.Num() <= binding)
 	{
 		return false;
 	}
 
-	for (uint32_t i = 0; i < pipelineLayout->m_descriptionSetLayouts.Num(); i++)
-	{
-		const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[i];
+	const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[binding];
 
-		if (descriptors[i].Num() != layout->m_descriptorSetLayoutBindings.Num())
+	if (descriptors.Num() != layout->m_descriptorSetLayoutBindings.Num())
+	{
+		return false;
+	}
+
+	for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
+	{
+		if (!descriptors.ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
 		{
 			return false;
 		}
+	}
+	return true;
+}
 
-		for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
+bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)
+{
+	for (uint32_t i = 0; i < descriptorSets.Num(); i++)
+	{
+		if (!IsCompatible(pipelineLayout, descriptorSets[i], i))
 		{
-			if (!descriptors[i].ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
-			{
-				// We haven't needed descriptor
-				return false;
-			}
+			return false;
 		}
 	}
-
 	/*
 	for (const auto& pair : descriptors)
 	{
