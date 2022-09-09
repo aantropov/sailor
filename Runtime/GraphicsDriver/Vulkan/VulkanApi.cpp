@@ -1008,26 +1008,6 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 			return false;
 		}
 	}
-	/*
-	for (const auto& pair : descriptors)
-	{
-		const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[pair.m_first];
-
-		if (pair.m_second.Num() != layout->m_descriptorSetLayoutBindings.Num())
-		{
-			return false;
-		}
-
-		for (const auto& descriptor : pair.m_second)
-		{
-			if (!layout->m_descriptorSetLayoutBindings.ContainsIf([&](const auto& lhs) { return lhs.binding == descriptor->GetBinding() && lhs.descriptorType == descriptor->GetType(); }))
-			{
-				// We have extra descriptor
-				return false;
-			}
-		}
-	}*/
-
 	return true;
 }
 

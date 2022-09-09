@@ -58,6 +58,21 @@ void ShaderAsset::Deserialize(const nlohmann::json& inData)
 	{
 		m_includes = inData["includes"].get<TVector<std::string>>();
 	}
+
+	if (inData.contains("colorAttachments"))
+	{
+		for (const auto& str : inData["colorAttachments"])
+		{
+			RHI::EFormat format;
+			DeserializeEnum<RHI::EFormat>(str, format);
+			m_colorAttachments.Add(format);
+		}
+	}
+
+	if (inData.contains("depthStencilAttachment"))
+	{
+		DeserializeEnum<RHI::EFormat>(inData["depthStencilAttachment"], m_depthStencilAttachment);
+	}
 }
 
 ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
@@ -523,14 +538,13 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& o
 		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
 		{
 			auto pShader = ShaderSetPtr::Make(m_allocator, uid);
-
+			
 			newPromise = Tasks::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
 				[pShader, assetInfo, defines, this, permutation]()
 			{
 				UpdateRHIResource(pShader, permutation);
 				return pShader;
 			});
-						
 
 			m_loadedShaders[uid].Add({ permutation, pShader });
 			entry.Add({ permutation, newPromise });
@@ -583,6 +597,11 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 
 	pRaw->m_rhiVertexShader = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, vertexByteCode);
 	pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);
+
+	auto pShaderAsset = LoadShaderAsset(pShader->GetUID()).Lock();
+
+	pRaw->m_colorAttachments = pShaderAsset->GetColorAttachments();
+	pRaw->m_depthStencilAttachment = pShaderAsset->GetDepthStencilAttachment();
 
 	return true;
 }

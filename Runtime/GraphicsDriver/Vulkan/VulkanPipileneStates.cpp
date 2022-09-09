@@ -235,9 +235,11 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
 }
 
-const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::RHIVertexDescriptionPtr& vertexDescription, 
-	RHI::EPrimitiveTopology topology, 
-	const RHI::RenderState& renderState)
+const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::RHIVertexDescriptionPtr& vertexDescription,
+	RHI::EPrimitiveTopology topology,
+	const RHI::RenderState& renderState,
+	const TVector<VkFormat>& colorAttachmentFormats,
+	VkFormat depthStencilFormat)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -258,7 +260,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 			VulkanApi::GetBindingDescription(vertexDescription),
 			VulkanApi::GetAttributeDescriptions(vertexDescription));
 
-		const VulkanStateDynamicRenderingPtr pStateDynamicRendering = VulkanStateDynamicRenderingPtr::Make(TVector<VkFormat>{m_pDevice->GetColorFormat()}, m_pDevice->GetDepthFormat(), m_pDevice->GetDepthFormat());
+		const VulkanStateDynamicRenderingPtr pStateDynamicRendering = VulkanStateDynamicRenderingPtr::Make(colorAttachmentFormats, depthStencilFormat, depthStencilFormat);
 
 		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)topology);
 		const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();

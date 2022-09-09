@@ -37,13 +37,19 @@ namespace Sailor
 		SAILOR_API const RHI::RHIShaderPtr& GetDebugVertexShaderRHI() const { return m_rhiVertexShaderDebug; }
 		SAILOR_API const RHI::RHIShaderPtr& GetDebugFragmentShaderRHI() const { return m_rhiFragmentShaderDebug; }
 
+		SAILOR_API const TVector<RHI::EFormat>& GetColorAttachments() const { return m_colorAttachments; }
+		SAILOR_API RHI::EFormat GetDepthStencilAttachment() const { return m_depthStencilAttachment; }
+
 	protected:
 
-		RHI::RHIShaderPtr m_rhiVertexShader;
-		RHI::RHIShaderPtr m_rhiFragmentShader;
+		RHI::RHIShaderPtr m_rhiVertexShader{};
+		RHI::RHIShaderPtr m_rhiFragmentShader{};
 
-		RHI::RHIShaderPtr m_rhiVertexShaderDebug;
-		RHI::RHIShaderPtr m_rhiFragmentShaderDebug;
+		RHI::RHIShaderPtr m_rhiVertexShaderDebug{};
+		RHI::RHIShaderPtr m_rhiFragmentShaderDebug{};
+
+		TVector<RHI::EFormat> m_colorAttachments{};
+		RHI::EFormat m_depthStencilAttachment = RHI::EFormat::UNDEFINED;
 
 		friend class ShaderCompiler;
 	};
@@ -61,6 +67,9 @@ namespace Sailor
 		SAILOR_API __forceinline const TVector<std::string>& GetIncludes() const { return m_includes; }
 		SAILOR_API __forceinline const TVector<std::string>& GetSupportedDefines() const { return m_defines; }
 
+		SAILOR_API const TVector<RHI::EFormat>& GetColorAttachments() const { return m_colorAttachments; }
+		SAILOR_API RHI::EFormat GetDepthStencilAttachment() const { return m_depthStencilAttachment; }
+
 		SAILOR_API bool ContainsFragment() const { return !m_glslFragment.empty(); }
 		SAILOR_API bool ContainsVertex() const { return !m_glslVertex.empty(); }
 		SAILOR_API bool ContainsCommon() const { return !m_glslCommon.empty(); }
@@ -76,6 +85,9 @@ namespace Sailor
 
 		// Library code
 		std::string m_glslCommon;
+
+		TVector<RHI::EFormat> m_colorAttachments;
+		RHI::EFormat m_depthStencilAttachment = RHI::EFormat::UNDEFINED;
 
 		TVector<std::string> m_includes;
 		TVector<std::string> m_defines;

@@ -168,7 +168,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API RHI::RHITexturePtr GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
 		SAILOR_API bool IsCompatible(RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
-		SAILOR_API const TVector<VulkanDescriptorSetPtr>& GetOrAddDescriptorSets(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
+		SAILOR_API TVector<VulkanDescriptorSetPtr> GetOrAddDescriptorSets(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 
 	protected:
 

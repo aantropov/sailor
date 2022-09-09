@@ -151,6 +151,29 @@ namespace Sailor
 			return m_pRawPtr[index];
 		}
 
+
+		template<typename TElementType1>
+		TVector<TElementType1> ToVector() const
+		{
+			/*if constexpr (IsTriviallyCopyable<TElementType1> && IsTriviallyCopyable<TElementType>)
+			{
+				TVector<TElementType1> res((TElementType1*)(&m_pRawPtr), m_arrayNum);
+				return res;
+			}
+			else*/
+			{
+				TVector<TElementType1> res;
+				res.Reserve(m_arrayNum);
+
+				for (uint32_t i = 0; i < m_arrayNum; i++)
+				{
+					res.Add((TElementType1)m_pRawPtr[i]);
+				}
+
+				return res;
+			}
+		}
+
 		template<typename TAllocator1>
 		__forceinline bool operator==(const TVector<TElementType, TAllocator1>& otherArray) const
 		{
