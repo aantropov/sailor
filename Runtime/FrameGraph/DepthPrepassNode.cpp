@@ -24,7 +24,7 @@ RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescri
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, ECullMode::Front, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), false);
+			RenderState renderState = RHI::RenderState(true, true, 0.0f, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), true);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -47,7 +47,7 @@ RHI::ESortingOrder DepthPrepassNode::GetSortingOrder() const
 
 struct PerInstanceData
 {
-	alignas(16) glm::mat4 model;
+	glm::mat4 model;
 
 	bool operator==(const PerInstanceData& rhs) const { return this->model == model; }
 
@@ -237,7 +237,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
-
+	
 	SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{},
@@ -246,7 +246,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		glm::ivec2(0, 0),
 		true,
 		glm::vec4(0.0f),
-		false,
+		true,
 		true);
 
 	RecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex);

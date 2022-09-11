@@ -284,7 +284,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		false,
 		glm::vec4(0.0f),
 		true,
-		false);
+		true);
 
 	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex);
 	commands->EndRenderPass(commandList);
@@ -306,7 +306,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		false,
 		glm::vec4(0.0f),
 		true,
-		false);
+		true);
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
 

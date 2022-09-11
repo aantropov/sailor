@@ -240,25 +240,27 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		VkImageView msaaDepthAttachment = *(m_device->GetSwapchain()->GetMSDepthBufferView());
 
 		const bool bIsRenderingIntoDepthBuffer = depthStencilAttachment == vulkanRenderer->GetDepthBuffer()->m_vulkan.m_imageView;
-		const bool bIsRenderingIntoFrameBuffer = colorAttachments[0] == vulkanRenderer->GetBackBuffer()->m_vulkan.m_imageView;
-
 		if (!bIsRenderingIntoDepthBuffer)
 		{
 			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
 			msaaDepthAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView);
 		}
 
-		if (!bIsRenderingIntoFrameBuffer)
+		if (colorAttachments.Num() > 0)
 		{
-			// TODO: Add support for multiple MSAA targets
-			const auto extents = glm::ivec2(colorAttachments[0]->GetImage()->m_extent.width, colorAttachments[0]->GetImage()->m_extent.height);
-			msaaAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
-		}
+			const bool bIsRenderingIntoFrameBuffer = colorAttachments[0] == vulkanRenderer->GetBackBuffer()->m_vulkan.m_imageView;
+			if (!bIsRenderingIntoFrameBuffer)
+			{
+				// TODO: Add support for multiple MSAA targets
+				const auto extents = glm::ivec2(colorAttachments[0]->GetImage()->m_extent.width, colorAttachments[0]->GetImage()->m_extent.height);
+				msaaAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
+			}
 
-		colorAttachmentInfo.imageView = msaaAttachment;
-		colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-		colorAttachmentInfo.resolveImageView = *(colorAttachments[0]);
-		colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			colorAttachmentInfo.imageView = msaaAttachment;
+			colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+			colorAttachmentInfo.resolveImageView = *(colorAttachments[0]);
+			colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		}
 
 		depthAttachmentInfo.imageView = msaaDepthAttachment;
 		depthAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
@@ -530,6 +532,11 @@ void VulkanCommandBuffer::Reset()
 	ClearDependencies();
 }
 
+void VulkanCommandBuffer::AddDependency(RHI::RHIResourcePtr resource)
+{
+	m_rhiDependecies.Add(resource);
+}
+
 void VulkanCommandBuffer::AddDependency(VulkanCommandBufferPtr commandBuffer)
 {
 	m_commandBufferDependencies.Add(commandBuffer);
@@ -547,6 +554,7 @@ void VulkanCommandBuffer::AddDependency(VulkanSemaphorePtr semaphore)
 
 void VulkanCommandBuffer::ClearDependencies()
 {
+	m_rhiDependecies.Clear();
 	m_bufferDependencies.Clear();
 	m_imageDependencies.Clear();
 	m_descriptorSetDependencies.Clear();

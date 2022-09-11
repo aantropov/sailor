@@ -1,7 +1,6 @@
 {
 "includes": [] ,
 "colorAttachments":["UNDEFINED"],
-"depthStencilAttachment":"D32_SFLOAT_S8_UINT",
 "glslCommon" :
 BEGIN_CODE
 #version 460

@@ -83,6 +83,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void ClearDependencies();
 		SAILOR_API void Reset();
 
+		SAILOR_API void AddDependency(RHI::RHIResourcePtr resource);
 		SAILOR_API void AddDependency(VulkanSemaphorePtr semaphore);
 		SAILOR_API void AddDependency(VulkanCommandBufferPtr commandBuffer);
 		SAILOR_API void AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator);
@@ -103,6 +104,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
 		VulkanImagePtr m_depthStencilAttachmentDependency;
 
+		TVector<RHI::RHIResourcePtr> m_rhiDependecies;
 		TVector<VulkanBufferPtr> m_bufferDependencies;
 		TVector<VulkanImagePtr> m_imageDependencies;
 		TVector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;

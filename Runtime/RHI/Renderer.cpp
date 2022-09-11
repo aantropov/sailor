@@ -53,6 +53,7 @@ bool IDelayedInitialization::IsReady() const
 Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	m_pViewport = pViewport;
+	m_msaaSamples = msaaSamples;
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 	m_driverInstance = TUniquePtr<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver>::Make();
@@ -104,7 +105,7 @@ void Renderer::FixLostDevice()
 {
 	if (m_driverInstance->FixLostDevice(m_pViewport))
 	{
-		m_bFrameGraphOutdated = true;		
+		m_bFrameGraphOutdated = true;
 	}
 }
 
@@ -189,7 +190,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			SAILOR_PROFILE_BLOCK("Present Frame");
 
 			if (m_driverInstance->AcquireNextImage())
-			{	
+			{
 				if (!bRunCommandLists && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 				{
 					auto rhiFrameGraph = m_frameGraph->GetRHI();
@@ -232,7 +233,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 						size_t heapUsage = 0;
 						size_t heapBudget = 0;
-						
+
 						VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
 
 						m_stats.m_gpuHeapUsage = heapUsage;

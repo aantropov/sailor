@@ -188,6 +188,8 @@ VulkanStateDynamicState::VulkanStateDynamicState() : m_dynamicState{}
 	m_dynamicStates.Add(VK_DYNAMIC_STATE_SCISSOR);
 	m_dynamicStates.Add(VK_DYNAMIC_STATE_DEPTH_BIAS);
 
+	// TODO: Use vkCmdSetColorWriteEnableEXT
+
 	m_dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
 	m_dynamicState.dynamicStateCount = (uint32_t)m_dynamicStates.Num();
 	m_dynamicState.pDynamicStates = m_dynamicStates.GetData();
@@ -244,7 +246,12 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 	SAILOR_PROFILE_FUNCTION();
 
 	size_t hashCode = 0;
-	Sailor::HashCombine(hashCode, renderState, topology);
+	Sailor::HashCombine(hashCode, renderState, topology, depthStencilFormat);
+
+	for (const auto& colorAttachmentFormat : colorAttachmentFormats)
+	{
+		Sailor::HashCombine(hashCode, colorAttachmentFormat);
+	}
 
 	auto it = m_cache.Find(hashCode);
 	if (it != m_cache.end() && (*it).m_second.Num() > 0)
@@ -268,7 +275,9 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 			renderState.GetDepthBias(), (VkCullModeFlags)renderState.GetCullMode(), (VkPolygonMode)renderState.GetFillMode());
 
 		const VulkanStateDynamicPtr pDynamicState = VulkanStateDynamicPtr::Make();
-		const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_GREATER);
+
+		//VkCompareOp::VK_COMPARE_OP_GREATER_OR_EQUAL - We support depth prepass
+		const VulkanStateDepthStencilPtr pDepthStencil = VulkanStateDepthStencilPtr::Make(renderState.IsDepthTestEnabled(), renderState.IsEnabledZWrite(), VkCompareOp::VK_COMPARE_OP_GREATER_OR_EQUAL);
 		const VulkanStateMultisamplePtr pMultisample = VulkanStateMultisamplePtr::Make(renderState.SupportMultisampling() ? m_pDevice->GetCurrentMsaaSamples() : VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT);
 
 		res = TVector<VulkanPipelineStatePtr>

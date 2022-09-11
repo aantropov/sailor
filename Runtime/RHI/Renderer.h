@@ -32,6 +32,8 @@ namespace Sailor::RHI
 		SAILOR_API Renderer(class Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API ~Renderer() override;
 
+		SAILOR_API RHI::EMsaaSamples GetMsaaSamples() const { return m_msaaSamples; }
+
 		SAILOR_API void FixLostDevice();
 		SAILOR_API bool PushFrame(const Sailor::FrameState& frame);
 
@@ -46,6 +48,8 @@ namespace Sailor::RHI
 		SAILOR_API void Clear();
 
 	protected:
+
+		RHI::EMsaaSamples m_msaaSamples;
 
 		std::atomic<bool> m_bFrameGraphOutdated = false;
 		std::atomic<bool> m_bForceStop = false;

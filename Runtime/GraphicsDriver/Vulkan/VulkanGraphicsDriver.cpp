@@ -41,7 +41,6 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
 	m_cachedMsaaRenderTargets.Clear();
-	m_cachedDescriptorSets.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -1350,93 +1349,83 @@ void VulkanGraphicsDriver::SetDefaultViewport(RHI::RHICommandListPtr cmd)
 	cmd->m_vulkan.m_commandBuffer->SetScissor(pStateViewport);
 }
 
-TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetOrAddDescriptorSets(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings)
+TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSets(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings)
 {
-	const bool bIsCompatible = IsCompatible(material, shaderBindings);
+	TVector<VulkanDescriptorSetPtr> descriptorSets;
+	descriptorSets.Reserve(shaderBindings.Num());
 
-	if (!bIsCompatible)
+	if (const bool bIsCompatible = IsCompatible(material, shaderBindings))
 	{
-		auto cache = DescriptorSetCache(material, shaderBindings);
-		TVector<VulkanDescriptorSetPtr>& descriptorSets = m_cachedDescriptorSets.At_Lock(cache);
-
-		if (descriptorSets.Num() == 0)
+		for (auto& binding : shaderBindings)
 		{
-			auto device = m_vkInstance->GetMainDevice();
-			for (uint32_t i = 0; i < shaderBindings.Num(); i++)
-			{
-				const auto& materialLayout = material->m_vulkan.m_pipeline->m_layout->m_descriptionSetLayouts[i];
-
-				if (VulkanApi::IsCompatible(material->m_vulkan.m_pipeline->m_layout, shaderBindings[i]->m_vulkan.m_descriptorSet, i))
-				{
-					descriptorSets.Add(shaderBindings[i]->m_vulkan.m_descriptorSet);
-					continue;
-				}
-
-				TVector<VulkanDescriptorPtr> descriptors;
-				TVector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
-
-				for (const auto& binding : shaderBindings[i]->GetShaderBindings())
-				{
-					if (binding.m_second->IsBind())
-					{
-						if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
-							[&](const auto& lhs)
-						{
-							auto& layout = binding.m_second->GetLayout();
-							return lhs.binding == layout.m_binding && lhs.descriptorType == (VkDescriptorType)layout.m_type;
-						}))
-						{
-							// We don't add extra bindings 
-							continue;
-						}
-
-						if (binding.m_second->GetTextureBinding())
-						{
-							auto& texture = binding.m_second->GetTextureBinding();
-							auto descr = VulkanDescriptorImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-								device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
-								texture->m_vulkan.m_imageView);
-
-							descriptors.Add(descr);
-							descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
-						}
-						else if (binding.m_second->m_vulkan.m_valueBinding)
-						{
-							auto& valueBinding = (*binding.m_second->m_vulkan.m_valueBinding);
-							auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-								valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.m_second->GetLayout().m_type);
-
-							descriptors.Add(descr);
-							descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
-						}
-					}
-				}
-
-				auto descriptorSet = VulkanDescriptorSetPtr::Make(device,
-					device->GetCurrentThreadContext().m_descriptorPool,
-					VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
-					descriptors);
-
-				descriptorSet->Compile();
-
-				descriptorSets.Add(descriptorSet);
-			}
+			descriptorSets.Add(binding->m_vulkan.m_descriptorSet);
 		}
-
-		m_cachedDescriptorSets.Unlock(cache);
-
-		return descriptorSets;
 	}
 	else
 	{
-		TVector<VulkanDescriptorSetPtr> sets;
-		for (auto& binding : shaderBindings)
-		{
-			sets.Add(binding->m_vulkan.m_descriptorSet);
-		}
+		auto device = m_vkInstance->GetMainDevice();
 
-		return sets;
+		for (uint32_t i = 0; i < shaderBindings.Num(); i++)
+		{
+			const auto& materialLayout = material->m_vulkan.m_pipeline->m_layout->m_descriptionSetLayouts[i];
+
+			if (VulkanApi::IsCompatible(material->m_vulkan.m_pipeline->m_layout, shaderBindings[i]->m_vulkan.m_descriptorSet, i))
+			{
+				descriptorSets.Add(shaderBindings[i]->m_vulkan.m_descriptorSet);
+				continue;
+			}
+
+			TVector<VulkanDescriptorPtr> descriptors;
+			TVector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
+
+			for (const auto& binding : shaderBindings[i]->GetShaderBindings())
+			{
+				if (binding.m_second->IsBind())
+				{
+					if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
+						[&](const auto& lhs)
+					{
+						auto& layout = binding.m_second->GetLayout();
+						return lhs.binding == layout.m_binding && lhs.descriptorType == (VkDescriptorType)layout.m_type;
+					}))
+					{
+						// We don't add extra bindings 
+						continue;
+					}
+
+					if (binding.m_second->GetTextureBinding())
+					{
+						auto& texture = binding.m_second->GetTextureBinding();
+						auto descr = VulkanDescriptorImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
+							device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
+							texture->m_vulkan.m_imageView);
+
+						descriptors.Add(descr);
+						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+					}
+					else if (binding.m_second->m_vulkan.m_valueBinding)
+					{
+						auto& valueBinding = (*binding.m_second->m_vulkan.m_valueBinding);
+						auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
+							valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.m_second->GetLayout().m_type);
+
+						descriptors.Add(descr);
+						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+					}
+				}
+			}
+
+			auto descriptorSet = VulkanDescriptorSetPtr::Make(device,
+				device->GetCurrentThreadContext().m_descriptorPool,
+				VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
+				descriptors);
+
+			descriptorSet->Compile();
+			descriptorSets.Add(descriptorSet);
+		}
 	}
+
+	return descriptorSets;
 }
 
 VulkanGraphicsDriver::DescriptorSetCache& VulkanGraphicsDriver::DescriptorSetCache::operator=(const DescriptorSetCache& rhs)
@@ -1471,8 +1460,14 @@ VulkanGraphicsDriver::DescriptorSetCache::DescriptorSetCache(const RHI::RHIMater
 
 void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
 {
-	const TVector<VulkanDescriptorSetPtr>& sets = GetOrAddDescriptorSets(material, bindings);
+	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material, bindings);
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
+
+	// Need to handle ShaderBindingSet, since it is auto destructs all binding's buffers
+	for (const auto& dep : bindings)
+	{
+		cmd->m_vulkan.m_commandBuffer->AddDependency(dep);
+	}
 }
 
 void VulkanGraphicsDriver::DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, size_t offset, uint32_t drawCount, uint32_t stride)
