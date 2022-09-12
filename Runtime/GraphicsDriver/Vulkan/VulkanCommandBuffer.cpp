@@ -185,15 +185,18 @@ void VulkanCommandBuffer::EndCommandList()
 }
 
 void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+	const TVector<VulkanImageViewPtr>& colorAttachmentResolves,
 	VulkanImageViewPtr depthStencilAttachment,
+	VulkanImageViewPtr depthStencilAttachmentResolve,
 	VkRect2D renderArea,
 	VkRenderingFlags renderingFlags,
 	VkOffset2D offset,
-	bool bSupportMultisampling,
 	bool bClearRenderTargets,
 	VkClearValue clearColor,
 	bool bStoreDepth)
 {
+	// TODO: Support more than color 1 attachment
+
 	VkClearValue depthClear{};
 	depthClear.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
 
@@ -231,49 +234,28 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		colorAttachmentInfo.imageView = *(colorAttachments[0]);
 	}
 
-	// MSAA enabled -> we use the temporary buffers to resolve
-	if (bSupportMultisampling && (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT))
+	if (colorAttachmentResolves.Num() > 0)
 	{
-		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		const auto extents = glm::ivec2(colorAttachmentResolves[0]->GetImage()->m_extent.width, colorAttachmentResolves[0]->GetImage()->m_extent.height);
 
-		VkImageView msaaAttachment = *(m_device->GetSwapchain()->GetMSColorBufferView());
-		VkImageView msaaDepthAttachment = *(m_device->GetSwapchain()->GetMSDepthBufferView());
+		colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+		colorAttachmentInfo.resolveImageView = *(colorAttachmentResolves[0]);
+		colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	}
 
-		const bool bIsRenderingIntoDepthBuffer = depthStencilAttachment == vulkanRenderer->GetDepthBuffer()->m_vulkan.m_imageView;
-		if (!bIsRenderingIntoDepthBuffer)
-		{
-			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
-			msaaDepthAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView);
-		}
+	if (depthStencilAttachmentResolve)
+	{
+		const auto depthExtents = glm::ivec2(depthStencilAttachmentResolve->GetImage()->m_extent.width, depthStencilAttachmentResolve->GetImage()->m_extent.height);
 
-		if (colorAttachments.Num() > 0)
-		{
-			const bool bIsRenderingIntoFrameBuffer = colorAttachments[0] == vulkanRenderer->GetBackBuffer()->m_vulkan.m_imageView;
-			if (!bIsRenderingIntoFrameBuffer)
-			{
-				// TODO: Add support for multiple MSAA targets
-				const auto extents = glm::ivec2(colorAttachments[0]->GetImage()->m_extent.width, colorAttachments[0]->GetImage()->m_extent.height);
-				msaaAttachment = *(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
-			}
-
-			colorAttachmentInfo.imageView = msaaAttachment;
-			colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-			colorAttachmentInfo.resolveImageView = *(colorAttachments[0]);
-			colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		}
-
-		depthAttachmentInfo.imageView = msaaDepthAttachment;
 		depthAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-		depthAttachmentInfo.resolveImageView = *depthStencilAttachment;
+		depthAttachmentInfo.resolveImageView = *depthStencilAttachmentResolve;
 		depthAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
-		stencilAttachmentInfo.imageView = msaaDepthAttachment;
 		stencilAttachmentInfo.resolveMode = VK_RESOLVE_MODE_NONE_KHR;
-		stencilAttachmentInfo.resolveImageView = *depthStencilAttachment;
+		stencilAttachmentInfo.resolveImageView = *depthStencilAttachmentResolve;
 		stencilAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
 
-		m_colorAttachmentDependencies.Add(m_device->GetSwapchain()->GetMSColorBufferView()->GetImage());
-		m_colorAttachmentDependencies.Add(m_device->GetSwapchain()->GetMSDepthBufferView()->GetImage());
+		m_colorAttachmentDependencies.Add(depthStencilAttachmentResolve->GetImage());
 	}
 
 	const VkRenderingInfoKHR renderInfo
@@ -293,9 +275,73 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	{
 		m_colorAttachmentDependencies.Add(attachment->GetImage());
 	}
+
+	for (auto& attachment : colorAttachmentResolves)
+	{
+		m_colorAttachmentDependencies.Add(attachment->GetImage());
+	}
+
 	m_depthStencilAttachmentDependency = depthStencilAttachment->GetImage();
 
 	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
+}
+
+void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,
+	VulkanImageViewPtr depthStencilAttachment,
+	VkRect2D renderArea,
+	VkRenderingFlags renderingFlags,
+	VkOffset2D offset,
+	bool bSupportMultisampling,
+	bool bClearRenderTargets,
+	VkClearValue clearColor,
+	bool bStoreDepth)
+{
+	// MSAA enabled -> we use the temporary buffers to resolve
+	if (bSupportMultisampling && (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT))
+	{
+		TVector<VulkanImageViewPtr> msaaColorTargets;
+		VulkanImageViewPtr msaaDepthStencilTarget;
+
+		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
+
+		const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
+		msaaDepthStencilTarget = vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView;
+
+		if (colorAttachments.Num() > 0)
+		{
+			const bool bIsRenderingIntoFrameBuffer = colorAttachments[0] == vulkanRenderer->GetBackBuffer()->m_vulkan.m_imageView;
+			if (!bIsRenderingIntoFrameBuffer)
+			{
+				// TODO: Add support for multiple MSAA targets
+				const auto extents = glm::ivec2(colorAttachments[0]->GetImage()->m_extent.width, colorAttachments[0]->GetImage()->m_extent.height);
+				msaaColorTargets.Add(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
+			}
+		}
+
+		BeginRenderPassEx(msaaColorTargets,
+			colorAttachments,
+			msaaDepthStencilTarget,
+			depthStencilAttachment,
+			renderArea,
+			renderingFlags,
+			offset,
+			bClearRenderTargets,
+			clearColor,
+			bStoreDepth);
+	}
+	else
+	{
+		BeginRenderPassEx(colorAttachments,
+			{},
+			depthStencilAttachment,
+			nullptr,
+			renderArea,
+			renderingFlags,
+			offset,
+			bClearRenderTargets,
+			clearColor,
+			bStoreDepth);
+	}
 }
 
 void VulkanCommandBuffer::EndRenderPassEx()

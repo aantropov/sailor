@@ -2,6 +2,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
+#include "RHI/Surface.h"
 #include "RHI/Texture.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
@@ -50,7 +51,7 @@ public:
 
 	Batch() = default;
 	Batch(const RHIMaterialPtr& material, const RHIMeshPtr& mesh) : m_material(material), m_mesh(mesh) {}
-	
+
 	bool operator==(const Batch& rhs) const
 	{
 		return
@@ -198,13 +199,8 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	TVector<PerInstanceData> gpuMatricesData;
 	gpuMatricesData.AddDefault(numMeshes);
 
-	auto colorAttachment = GetResourceParam("color").StaticCast<RHI::RHITexture>();
-	if (!colorAttachment)
-	{
-		colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
-	}
-
-	auto depthAttachment = GetResourceParam("depthStencil").StaticCast<RHI::RHITexture>();
+	RHI::RHISurfacePtr colorAttachment = GetResourceParam("color").DynamicCast<RHI::RHISurface>();
+	RHI::RHITexturePtr depthAttachment = GetResourceParam("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
@@ -273,17 +269,16 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
-	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), colorAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+	commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), colorAttachment->GetTarget()->GetFormat(), colorAttachment->GetTarget()->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 	SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
 	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHITexturePtr>{ colorAttachment },
+		TVector<RHI::RHISurfacePtr>{ colorAttachment },
 		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
+		glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
-		true,
 		true);
 
 	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex);
@@ -299,16 +294,19 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	commands->RenderSecondaryCommandBuffers(commandList,
 		secondaryCommandLists,
-		TVector<RHI::RHITexturePtr>{ colorAttachment },
+		TVector<RHI::RHISurfacePtr>{ colorAttachment },
 		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
+		glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
-		true,
 		true);
 
-	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
+	commands->ImageMemoryBarrier(commandList,
+		colorAttachment->GetTarget(),
+		colorAttachment->GetTarget()->GetFormat(),
+		EImageLayout::ColorAttachmentOptimal,
+		colorAttachment->GetTarget()->GetDefaultLayout());
 
 	SAILOR_PROFILE_END_BLOCK();
 }

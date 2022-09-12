@@ -997,6 +997,82 @@ void VulkanGraphicsDriver::ExecuteSecondaryCommandList(RHI::RHICommandListPtr cm
 
 void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 	TVector<RHI::RHICommandListPtr> secondaryCmds,
+	const TVector<RHI::RHISurfacePtr>& colorAttachments,
+	RHI::RHITexturePtr depthStencilAttachment,
+	glm::ivec4 renderArea,
+	glm::ivec2 offset,
+	bool bClearRenderTargets,
+	glm::vec4 clearColor,
+	bool bStoreDepth)
+{
+	const bool bNeedsResolve = (colorAttachments.Num() > 0 && colorAttachments[0]->NeedsResolve());
+	if (!bNeedsResolve)
+	{
+		TVector<RHI::RHITexturePtr> resolved;
+		resolved.Reserve(colorAttachments.Num());
+		for (uint32_t i = 0; i < colorAttachments.Num(); i++)
+		{
+			resolved.Add(colorAttachments[i]->GetResolved());
+		}
+
+		RenderSecondaryCommandBuffers(cmd,
+			secondaryCmds,
+			resolved,
+			depthStencilAttachment,
+			renderArea,
+			offset,
+			bClearRenderTargets,
+			clearColor,
+			bStoreDepth);
+	}
+	else
+	{
+		TVector<VulkanImageViewPtr> targets(colorAttachments.Num());
+		TVector<VulkanImageViewPtr> resolved(colorAttachments.Num());
+		for (uint32_t i = 0; i < colorAttachments.Num(); i++)
+		{
+			targets[i] = colorAttachments[i]->GetTarget()->m_vulkan.m_imageView;
+			resolved[i] = colorAttachments[i]->GetResolved()->m_vulkan.m_imageView;;
+		}
+
+		VkRect2D rect{};
+
+		rect.extent.width = (uint32_t)renderArea.z;
+		rect.extent.height = (uint32_t)renderArea.w;
+		rect.offset.x = renderArea.x;
+		rect.offset.y = renderArea.y;
+
+		VkClearValue clearValue;
+		clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+		clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+
+		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
+
+		const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
+		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+
+		cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(targets, resolved,
+			msaaDepthStencilTarget,
+			depthStencilAttachment->m_vulkan.m_imageView,
+			rect,
+			VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR,
+			VkOffset2D{ .x = offset.x, .y = offset.y },
+			bClearRenderTargets,
+			clearValue,
+			bStoreDepth);
+
+		for (auto& el : secondaryCmds)
+		{
+			ExecuteSecondaryCommandList(cmd, el);
+		}
+
+		EndRenderPass(cmd);
+	}
+}
+
+void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+	TVector<RHI::RHICommandListPtr> secondaryCmds,
 	const TVector<RHI::RHITexturePtr>& colorAttachments,
 	RHI::RHITexturePtr depthStencilAttachment,
 	glm::ivec4 renderArea,
@@ -1081,31 +1157,68 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 
 void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	const TVector<RHI::RHISurfacePtr>& colorAttachments,
-	RHI::RHISurfacePtr depthStencilAttachment,
+	RHI::RHITexturePtr depthStencilAttachment,
 	glm::ivec4 renderArea,
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
-	glm::vec4 clearColor)
+	glm::vec4 clearColor,
+	bool bStoreDepth)
 {
-	const bool bNeedsResolve = depthStencilAttachment->NeedsResolve() || (colorAttachments.Num() > 0 && colorAttachments[0]->NeedsResolve());
-
-	TVector<RHI::RHITexturePtr> atts;
-	atts.Reserve(colorAttachments.Num());
-	for (uint32_t i = 0; i < colorAttachments.Num(); i++)
-	{
-		atts.Add(colorAttachments[i]->GetResolved());
-	}
-
+	const bool bNeedsResolve = (colorAttachments.Num() > 0 && colorAttachments[0]->NeedsResolve());
 	if (!bNeedsResolve)
 	{
-		BeginRenderPass(cmd, atts, depthStencilAttachment->GetResolved(),
+		TVector<RHI::RHITexturePtr> resolved;
+		resolved.Reserve(colorAttachments.Num());
+		for (uint32_t i = 0; i < colorAttachments.Num(); i++)
+		{
+			resolved.Add(colorAttachments[i]->GetResolved());
+		}
+
+		BeginRenderPass(cmd, resolved, depthStencilAttachment,
 			renderArea, offset, bClearRenderTargets, clearColor, false);
-
-		return;
 	}
+	else
+	{
+		TVector<VulkanImageViewPtr> resolved;
+		TVector<VulkanImageViewPtr> target;
+		resolved.Reserve(colorAttachments.Num());
+		target.Reserve(colorAttachments.Num());
 
-	// TODO: Use surface target as msaa target
-	assert(0);
+		for (uint32_t i = 0; i < colorAttachments.Num(); i++)
+		{
+			resolved.Add(colorAttachments[i]->GetResolved()->m_vulkan.m_imageView);
+			target.Add(colorAttachments[i]->GetTarget()->m_vulkan.m_imageView);
+		}
+
+		VkRect2D rect{};
+
+		rect.extent.width = (uint32_t)renderArea.z;
+		rect.extent.height = (uint32_t)renderArea.w;
+		rect.offset.x = renderArea.x;
+		rect.offset.y = renderArea.y;
+
+		VkClearValue clearValue;
+		clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+		clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+
+		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
+		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
+
+		const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
+		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+
+		cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(
+			target,
+			resolved,
+			msaaDepthStencilTarget,
+			vulkanDepthStencil,
+			rect,
+			0,
+			VkOffset2D{ .x = offset.x, .y = offset.y },
+			bClearRenderTargets,
+			clearValue,
+			bStoreDepth);
+	}
 }
 
 void VulkanGraphicsDriver::EndRenderPass(RHI::RHICommandListPtr cmd)

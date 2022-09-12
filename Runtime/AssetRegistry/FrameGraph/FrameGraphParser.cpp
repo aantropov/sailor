@@ -73,7 +73,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 
 	for (auto& renderTarget : frameGraphAsset->m_renderTargets)
 	{
-		if (renderTarget.m_second.m_bIsSurface && App::GetSubmodule<RHI::Renderer>()->GetMsaaSamples() != RHI::EMsaaSamples::Samples_1)
+		if (renderTarget.m_second.m_bIsSurface)
 		{
 			RHI::RHISurfacePtr rhiSurface = RHI::Renderer::GetDriver()->CreateSurface(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
 				1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
@@ -140,7 +140,11 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 
 		for (const auto& param : node.m_renderTargets)
 		{
-			if (auto pRenderTarget = pRhiFrameGraph->GetRenderTarget(param.m_second))
+			if (auto pSurface = pRhiFrameGraph->GetSurface(param.m_second))
+			{
+				pNewNode->SetResourceParam(param.m_first, pSurface);
+			}
+			else if (auto pRenderTarget = pRhiFrameGraph->GetRenderTarget(param.m_second))
 			{
 				pNewNode->SetResourceParam(param.m_first, pRenderTarget);
 			}

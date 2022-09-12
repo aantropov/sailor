@@ -2,6 +2,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
+#include "RHI/Surface.h"
 #include "RHI/Texture.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
@@ -20,8 +21,17 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	RHI::RHITexturePtr src = GetResourceParam("src").StaticCast<RHITexture>();
-	RHI::RHITexturePtr dst = GetResourceParam("dst").StaticCast<RHITexture>();
+	RHI::RHITexturePtr src;
+	if (RHISurfacePtr surface = GetResourceParam("src").DynamicCast<RHISurface>())
+	{
+		src = surface->GetResolved();
+	}
+	else
+	{
+		src = GetResourceParam("src").DynamicCast<RHITexture>();
+	}
+
+	RHI::RHITexturePtr dst = GetResourceParam("dst").DynamicCast<RHITexture>();
 	if (!dst)
 	{
 		dst = frameGraph->GetRenderTarget("BackBuffer");

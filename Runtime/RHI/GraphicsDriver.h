@@ -187,6 +187,16 @@ namespace Sailor::RHI
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true) = 0;
 
+		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
+			TVector<RHI::RHICommandListPtr> secondaryCmds,
+			const TVector<RHI::RHISurfacePtr>& colorAttachments,
+			RHI::RHITexturePtr depthStencilAttachment,
+			glm::ivec4 renderArea,
+			glm::ivec2 offset,
+			bool bClearRenderTargets,
+			glm::vec4 clearColor,
+			bool bStoreDepth = true) = 0;
+
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,
 			RHI::RHITexturePtr depthStencilAttachment,
@@ -199,11 +209,12 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
 			const TVector<RHI::RHISurfacePtr>& colorAttachments,
-			RHI::RHISurfacePtr depthStencilAttachment,
+			RHI::RHITexturePtr depthStencilAttachment,
 			glm::ivec4 renderArea,
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
-			glm::vec4 clearColor) = 0;
+			glm::vec4 clearColor,
+			bool bStoreDepth) = 0;
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) = 0;
 
