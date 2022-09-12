@@ -92,7 +92,7 @@ void main()
     outColor = fragColor * texture(g_defaultSampler, fragTexcoord);
 #endif
 
-	outColor.xyz *= max(0.065, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));
+	outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));
 	outColor.xyz += 0.007;
 }
 END_CODE,

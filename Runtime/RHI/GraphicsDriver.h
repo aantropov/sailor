@@ -209,6 +209,7 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout) = 0;
 		SAILOR_API virtual void BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHITexturePtr dst, glm::ivec4 srcRegionRect, glm::ivec4 dstRegionRect, RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear) = 0;
+		SAILOR_API virtual void ClearImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr dst, const glm::vec4& clearColor) = 0;
 
 		SAILOR_API virtual void BeginSecondaryCommandList(RHICommandListPtr cmd, bool bOneTimeSubmit = false, bool bSupportMultisampling = true) = 0;
 		SAILOR_API virtual void BeginCommandList(RHICommandListPtr cmd, bool bOneTimeSubmit) = 0;

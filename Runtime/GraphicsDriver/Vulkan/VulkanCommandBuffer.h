@@ -79,6 +79,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLayout, VulkanImagePtr dstImage, VkImageLayout dstImageLayout,
 			uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter);
 
+		SAILOR_API void ClearImage(VulkanImagePtr dst, const glm::vec4& clearColor);
+
 		SAILOR_API void GenerateMipMaps(VulkanImagePtr image);
 		SAILOR_API void ClearDependencies();
 		SAILOR_API void Reset();

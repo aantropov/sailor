@@ -12,7 +12,7 @@ namespace Sailor::RHI
 	public:
 		SAILOR_API RHISurface(RHITexturePtr target, RHITexturePtr resolved, bool needsResolve) :
 			m_target(target),
-			m_resolved(m_resolved),
+			m_resolved(resolved),
 			m_bNeedsResolve(needsResolve)
 		{}
 
@@ -22,9 +22,9 @@ namespace Sailor::RHI
 
 	private:
 
-		RHITexturePtr m_target;
-		RHITexturePtr m_resolved;
-		bool m_bNeedsResolve;
+		RHITexturePtr m_target{};
+		RHITexturePtr m_resolved{};
+		bool m_bNeedsResolve = false;
 
 		friend class IGraphicsDriver;
 	};

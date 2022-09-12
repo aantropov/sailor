@@ -499,6 +499,24 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->m_defaultLayout);
 }
 
+void VulkanCommandBuffer::ClearImage(VulkanImagePtr dst, const glm::vec4& clearColor)
+{
+	m_imageDependencies.Add(dst);
+
+	const VkClearColorValue clearColorValue{ clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+
+	VkImageSubresourceRange range{};
+	range.baseMipLevel = 0;
+	range.baseArrayLayer = 0;
+	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
+	range.layerCount = 1;
+	range.levelCount = 1;
+
+	ImageMemoryBarrier(dst, dst->m_format, dst->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	vkCmdClearColorImage(m_commandBuffer, *dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColorValue, 1, &range);
+	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->m_defaultLayout);
+}
+
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
 {
 	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, (uint32_t)offset, (uint32_t)size, ptr);

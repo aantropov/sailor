@@ -464,7 +464,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHITexturePtr resolved = CreateRenderTarget(extent, mipLevels, type, format, filtration, clamping, usage);
+	const RHI::RHITexturePtr resolved = CreateRenderTarget(extent, mipLevels, type, format, filtration, clamping, usage);
 	RHI::RHITexturePtr target = resolved;
 
 	bool bNeedsResolved = m_vkInstance->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
@@ -982,6 +982,11 @@ void VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexture
 	dstRect.extent.height = dstRegionRect.w;
 
 	cmd->m_vulkan.m_commandBuffer->BlitImage(src->m_vulkan.m_image, dst->m_vulkan.m_image, srcRect, dstRect, (VkFilter)filtration);
+}
+
+void VulkanGraphicsDriver::ClearImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr dst, const glm::vec4& clearColor)
+{
+	cmd->m_vulkan.m_commandBuffer->ClearImage(dst->m_vulkan.m_image, clearColor);
 }
 
 void VulkanGraphicsDriver::ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary)
