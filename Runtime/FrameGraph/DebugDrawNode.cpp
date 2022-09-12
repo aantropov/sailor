@@ -2,6 +2,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
+#include "RHI/Surface.h"
 #include "RHI/Texture.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
@@ -19,13 +20,8 @@ void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tr
 	SAILOR_PROFILE_FUNCTION();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	
-	auto colorAttachment = GetResourceParam("color").DynamicCast<RHI::RHITexture>();
-	if (!colorAttachment)
-	{
-		colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
-	}
 
+	auto colorAttachment = GetResourceParam("color").DynamicCast<RHI::RHISurface>()->GetResolved();
 	auto depthAttachment = GetResourceParam("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
