@@ -1,5 +1,6 @@
 #include "Components/LightComponent.h"
 #include "Engine/GameObject.h"
+#include "ECS/TransformECS.h"
 #include "ECS/LightingECS.h"
 #include "Math/Math.h"
 
@@ -31,4 +32,10 @@ const LightData& LightComponent::GetData() const
 void LightComponent::EndPlay()
 {
 	GetOwner()->GetWorld()->GetECS<LightingECS>()->UnregisterComponent(m_handle);
+}
+
+void LightComponent::OnGizmo()
+{
+	const glm::vec4 worldPosition = GetOwner()->GetTransformComponent().GetWorldPosition();
+	GetOwner()->GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, 30.0f);
 }

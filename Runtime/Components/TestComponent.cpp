@@ -4,6 +4,7 @@
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
+#include "Components/LightComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "ECS/TransformECS.h"
@@ -44,7 +45,11 @@ void TestComponent::BeginPlay()
 	auto gameObject3 = GetWorld()->Instantiate();
 	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	gameObject3->AddComponent<MeshRendererComponent>();
-	//
+
+	auto lightGameObject = GetWorld()->Instantiate();
+	lightGameObject->GetTransformComponent().SetPosition(vec3(0, 20, 0));
+	lightGameObject->AddComponent<LightComponent>();
+
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
 

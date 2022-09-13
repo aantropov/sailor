@@ -64,5 +64,9 @@ void GameObject::Tick(float deltaTime)
 			el->BeginPlay();
 			el->m_bBeginPlayCalled = true;
 		}
+
+#ifdef SAILOR_EDITOR
+		el->OnGizmo();
+#endif
 	}
 }

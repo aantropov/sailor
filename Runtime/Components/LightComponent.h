@@ -15,8 +15,8 @@ namespace Sailor
 	public:
 
 		SAILOR_API virtual void BeginPlay() override;
-		SAILOR_API virtual void Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
+		SAILOR_API virtual void OnGizmo() override;
 		SAILOR_API __forceinline LightData& GetData();
 		SAILOR_API __forceinline const LightData& GetData() const;
 
