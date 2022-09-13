@@ -25,7 +25,9 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	{
 		for (auto& data : m_components)
 		{
-			if (data.GetRenderType() == ERenderType::Stationary && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
+			EMobilityType mobilityType = data.GetOwner().StaticCast<GameObject>()->GetMobilityType();
+
+			if (mobilityType == EMobilityType::Stationary && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
 			{
 				const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
 				if (ownerTransform.GetLastFrameChanged() > data.m_lastChanges)
@@ -51,7 +53,9 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	{
 		for (auto& data : m_components)
 		{
-			if (data.GetRenderType() == ERenderType::Static && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
+			EMobilityType mobilityType = data.GetOwner().StaticCast<GameObject>()->GetMobilityType();
+
+			if (mobilityType == EMobilityType::Static && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
 			{
 				const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
 				if (ownerTransform.GetLastFrameChanged() > data.m_lastChanges)

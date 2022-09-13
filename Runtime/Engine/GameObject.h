@@ -10,7 +10,14 @@
 #include "Engine/World.h"
 
 namespace Sailor
-{	
+{
+	enum class EMobilityType : uint8_t
+	{
+		Static = 0,
+		Stationary = 1,
+		Dynamic = 2
+	};
+
 	class GameObject final : public Object
 	{
 	public:
@@ -40,8 +47,8 @@ namespace Sailor
 		template<typename TComponent>
 		SAILOR_API TObjectPtr<TComponent> GetComponent()
 		{
-			for(auto& el : m_components)
-			{ 
+			for (auto& el : m_components)
+			{
 				if (auto res = el.DynamicCast<TComponent>())
 				{
 					return res;
@@ -56,9 +63,14 @@ namespace Sailor
 
 		SAILOR_API __forceinline class TransformComponent& GetTransformComponent();
 
+		SAILOR_API __forceinline EMobilityType GetMobilityType() const { return m_type; }
+		SAILOR_API __forceinline void SetMobilityType(EMobilityType type) { m_type = type; }
+
 	protected:
 
 		size_t m_transformHandle = (size_t)(-1);
+
+		EMobilityType m_type = EMobilityType::Stationary;
 
 		// Only world can create GameObject
 		GameObject(WorldPtr world, const std::string& name);

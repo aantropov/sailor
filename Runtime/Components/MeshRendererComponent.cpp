@@ -11,7 +11,6 @@ void MeshRendererComponent::BeginPlay()
 	m_handle = ecs->RegisterComponent();
 
 	GetData().SetOwner(GetOwner());
-	GetData().SetRenderType(m_renderType);
 
 	if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 	{
