@@ -37,6 +37,9 @@ namespace Sailor::ECS
 	{
 	public:
 
+		void Initialize(WorldPtr world) { m_world = world; }
+		WorldPtr GetWorld() const { return m_world; }
+
 		virtual size_t RegisterComponent() = 0;
 		virtual void UnregisterComponent(size_t index) = 0;
 
@@ -47,6 +50,10 @@ namespace Sailor::ECS
 		virtual size_t GetComponentType() const { return (size_t)-1; }
 
 		virtual uint32_t GetOrder() const { return 100; }
+
+	private:
+
+		WorldPtr m_world{};
 	};
 
 	// Derive from TSystem (not from TBaseSystem), that is CRTP(Curiously recurrent template pattern)

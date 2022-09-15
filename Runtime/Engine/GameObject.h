@@ -11,13 +11,6 @@
 
 namespace Sailor
 {
-	enum class EMobilityType : uint8_t
-	{
-		Static = 0,
-		Stationary = 1,
-		Dynamic = 2
-	};
-
 	class GameObject final : public Object
 	{
 	public:

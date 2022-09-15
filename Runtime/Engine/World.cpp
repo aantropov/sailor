@@ -13,6 +13,7 @@ World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(f
 
 	for (auto& ecs : ecsArray)
 	{
+		ecs->Initialize(this);
 		m_ecs[ecs->GetComponentType()] = std::move(ecs);
 	}
 

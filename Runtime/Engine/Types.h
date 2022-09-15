@@ -19,4 +19,19 @@ namespace Sailor
 	using ComponentPtr = TObjectPtr<class Component>;
 	using CameraComponentPtr = TObjectPtr<class CameraComponent>;
 	using MeshRendererComponentPtr = TObjectPtr<class MeshRendererComponent>;
+
+	enum class EMobilityType : uint8_t
+	{
+		Static = 0,
+		Stationary = 1,
+		Dynamic = 2
+	};
+
+	enum class ELightType : uint8_t
+	{
+		Directional = 0,
+		Point,
+		Spot,
+		Area
+	};
 }
