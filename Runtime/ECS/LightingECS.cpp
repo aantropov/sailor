@@ -23,10 +23,13 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 
 	for (auto& data : m_components)
 	{
-		if (data.m_bIsActive)
-		{
-			const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
+		if (!data.m_bIsActive)
+			continue;
 
+		const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
+
+		if (data.m_bIsDirty || ownerTransform.GetLastFrameChanged() == GetWorld()->GetCurrentFrame())
+		{
 			size_t index = GetComponentIndex(&data);
 			auto& binding = m_lightsData->GetOrCreateShaderBinding("lightsData");
 
@@ -44,6 +47,8 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 				&shaderData,
 				sizeof(LightingECS::ShaderData),
 				sizeof(LightingECS::ShaderData) * (index + binding->GetStorageInstanceIndex()));
+
+			data.m_bIsDirty = false;
 		}
 	}
 

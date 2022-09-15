@@ -21,6 +21,8 @@ namespace Sailor
 		SAILOR_API __forceinline ObjectPtr& GetOwner() { return m_owner; }
 		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
 
+		void SetDirty() { m_bIsDirty = true; }
+
 		glm::vec3 m_intensity{ 1.0f, 1.0f, 1.0f };
 		glm::vec3 m_attenuation{ 1.0f, 0.0f, 0.0f };
 		glm::vec3 m_bounds{ 10.0f, 10.0f,10.0f };
@@ -29,12 +31,13 @@ namespace Sailor
 	protected:
 
 		bool m_bIsActive : 1 = true;
+		bool m_bIsDirty : 1 = true;
 
 		ObjectPtr m_owner;
 		friend class LightingECS;
 	};
 
-	class SAILOR_API LightingECS : public ECS::TSystem<LightingECS, LightData>
+	class LightingECS : public ECS::TSystem<LightingECS, LightData>
 	{
 	public:
 
@@ -50,14 +53,16 @@ namespace Sailor
 			int32_t m_type;
 		};
 
-		virtual void BeginPlay() override;
-		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
-		virtual void EndPlay() override;
-		virtual uint32_t GetOrder() const override { return 150; }
+		SAILOR_API virtual void BeginPlay() override;
+		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		SAILOR_API virtual void EndPlay() override;
+		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
 	protected:
 
 		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
 		RHI::RHIShaderBindingSetPtr m_lightsData;
 	};
+
+	template ECS::TSystem<LightingECS, LightData>;
 }

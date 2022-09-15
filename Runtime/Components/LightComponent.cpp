@@ -39,3 +39,35 @@ void LightComponent::OnGizmo()
 	const glm::vec4 worldPosition = GetOwner()->GetTransformComponent().GetWorldPosition();
 	GetOwner()->GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, 30.0f);
 }
+
+void LightComponent::SetIntensity(const glm::vec3& value)
+{
+	LightData& lightData = GetData();
+
+	lightData.m_intensity = value;
+	lightData.SetDirty();
+}
+
+void LightComponent::SetAttenuation(const glm::vec3& value)
+{
+	LightData& lightData = GetData();
+
+	lightData.m_attenuation = value;
+	lightData.SetDirty();
+}
+
+void LightComponent::SetBounds(const glm::vec3& value)
+{
+	LightData& lightData = GetData();
+
+	lightData.m_bounds = value;
+	lightData.SetDirty();
+}
+
+void LightComponent::SetLightType(ELightType value)
+{
+	LightData& lightData = GetData();
+
+	lightData.m_type = value;
+	lightData.SetDirty();
+}
