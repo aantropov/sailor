@@ -415,6 +415,8 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			}
 			);
 		}
+
+		assetInfo->SaveMetaFile();
 	}
 }
 

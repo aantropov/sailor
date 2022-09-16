@@ -82,7 +82,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 					return true;
 				}
 				return false;
-			})->Run();
+			}, Tasks::EThreadType::Render)->Run();
 
 			pTexture->TraceHotReload(newPromise);
 		}
@@ -197,7 +197,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 		}, "Create RHI Texture", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
 		outTexture = m_loadedTextures[uid] = pTexture;
-		
+
 		newPromise->Run();
 		promise = newPromise;
 		m_promises.Unlock(uid);
@@ -213,7 +213,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 
 void TextureImporter::CollectGarbage()
 {
-	TVector<UID> uidsToRemove;	
+	TVector<UID> uidsToRemove;
 	for (auto& promise : m_promises)
 	{
 		if (promise.m_second && promise.m_second->IsFinished())
