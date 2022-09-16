@@ -146,7 +146,6 @@ void VulkanPipeline::Compile()
 	_freea(shaderStageCreateInfo);
 }
 
-
 void VulkanPipeline::ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const
 {
 	for (auto pipelineState : m_pipelineStates)

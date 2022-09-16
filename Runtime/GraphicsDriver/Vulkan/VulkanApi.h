@@ -78,8 +78,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 		std::optional<uint32_t> m_graphicsFamily;
 		std::optional<uint32_t> m_presentFamily;
 		std::optional<uint32_t> m_transferFamily;
+		std::optional<uint32_t> m_computeFamily;
 
-		SAILOR_API bool IsComplete() const { return m_graphicsFamily.has_value() && m_presentFamily.has_value() && m_transferFamily.has_value(); }
+		SAILOR_API bool IsComplete() const
+		{
+			return m_graphicsFamily.has_value() && m_presentFamily.has_value() && m_transferFamily.has_value() && m_computeFamily.has_value();
+		}
 	};
 
 	struct SwapChainSupportDetails
@@ -145,7 +149,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			uint32_t              binding = 0,
 			VkDescriptorType      descriptorType = VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 			uint32_t              descriptorCount = 1,
-			VkShaderStageFlags    stageFlags = VK_SHADER_STAGE_ALL,
+			VkShaderStageFlags    stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS,
 			const VkSampler* pImmutableSamplers = nullptr);
 
 		SAILOR_API static VkDescriptorPoolSize CreateDescriptorPoolSize(VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uint32_t count = 1);

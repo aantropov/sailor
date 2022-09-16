@@ -80,7 +80,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			}
 
 			// We store different stages in one descriptor set
-			layoutBinding.stageFlags = VK_SHADER_STAGE_ALL;
+			layoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
 			// static_cast<VkShaderStageFlagBits>(module.shader_stage);
 
 			// If we have type description then we have all info

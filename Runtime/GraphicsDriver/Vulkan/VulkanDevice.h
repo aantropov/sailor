@@ -52,8 +52,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void WaitIdlePresentQueue();
 
 		SAILOR_API bool AcquireNextImage();
-		VulkanImageViewPtr GetBackBuffer() const;
-		VulkanImageViewPtr GetDepthBuffer() const;
+
+		SAILOR_API VulkanImageViewPtr GetBackBuffer() const;
+		SAILOR_API VulkanImageViewPtr GetDepthBuffer() const;
 
 		SAILOR_API bool PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 
@@ -134,7 +135,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool RecreateSwapchain(const Win32::Window* pViewport);
 		SAILOR_API void CreateDefaultRenderPass();
 		SAILOR_API void CreateFrameDependencies();
-		SAILOR_API void CreateCommandBuffers();
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
 
@@ -157,6 +157,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// We have one global present queeueu
 		VulkanQueuePtr m_presentQueue;
 		VulkanQueuePtr m_graphicsQueue;
+		VulkanQueuePtr m_computeQueue;
 		VulkanQueuePtr m_transferQueue;
 
 		VulkanSurfacePtr m_surface;

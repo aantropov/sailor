@@ -298,8 +298,29 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, V
 			indices.m_graphicsFamily = i;
 		}
 
+		// Find first a queue that has just the transfer bit set
 		if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0 &&
+			(queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) == 0 &&
 			(queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT))
+		{
+			indices.m_transferFamily = i;
+		}
+
+		// Find first a queue that has just the compute bit set
+		if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0 &&
+			(queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT))
+		{
+			indices.m_computeFamily = i;
+		}
+
+		// Get queue that is shared 
+		if (!indices.m_computeFamily.has_value() && (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT))
+		{
+			indices.m_computeFamily = i;
+		}
+
+		// Get queue that is shared 
+		if (!indices.m_transferFamily.has_value() && (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT))
 		{
 			indices.m_transferFamily = i;
 		}

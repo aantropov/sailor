@@ -173,6 +173,7 @@ void VulkanDevice::Shutdown()
 
 	m_presentQueue.Clear();
 	m_graphicsQueue.Clear();
+	m_computeQueue.Clear();
 	m_transferQueue.Clear();
 
 	m_samplers.Clear();
@@ -461,6 +462,10 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkQueue transferQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_transferFamily.value(), 0, &transferQueue);
 	m_transferQueue = VulkanQueuePtr::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
+
+	VkQueue computeQueue;
+	vkGetDeviceQueue(m_device, m_queueFamilies.m_computeFamily.value(), 0, &computeQueue);
+	m_computeQueue = VulkanQueuePtr::Make(computeQueue, m_queueFamilies.m_computeFamily.value(), 0);
 }
 
 void VulkanDevice::CreateWin32Surface(const Window* viewport)

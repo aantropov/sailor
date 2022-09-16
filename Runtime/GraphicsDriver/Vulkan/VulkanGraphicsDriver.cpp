@@ -653,7 +653,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		VkPushConstantRange vkPushConstant;
 		vkPushConstant.offset = 0;
 		vkPushConstant.size = 256;
-		vkPushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+		vkPushConstant.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
 
 		pushConstants.Emplace(vkPushConstant);
 	}
