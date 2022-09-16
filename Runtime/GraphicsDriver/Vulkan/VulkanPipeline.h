@@ -38,13 +38,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkPipelineLayout m_pipelineLayout;
 	};
 
-	class VulkanPipeline : public RHI::RHIResource
+	class VulkanGraphicsPipeline : public RHI::RHIResource
 	{
 	public:
 
-		VulkanPipeline() = default;
+		VulkanGraphicsPipeline() = default;
 
-		VulkanPipeline(VulkanDevicePtr pDevice,
+		VulkanGraphicsPipeline(VulkanDevicePtr pDevice,
 			VulkanPipelineLayoutPtr pipelineLayout,
 			TVector<VulkanShaderStagePtr> shaderStages,
 			TVector<VulkanPipelineStatePtr> pipelineStates,
@@ -67,7 +67,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	protected:
 
 		void ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const;
-		virtual ~VulkanPipeline();
+		virtual ~VulkanGraphicsPipeline();
 
 		VkPipeline m_pipeline{};
 		VulkanDevicePtr m_pDevice;

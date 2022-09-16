@@ -52,7 +52,7 @@ namespace Sailor::RHI
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
-			Sailor::GraphicsDriver::Vulkan::VulkanPipelinePtr m_pipeline;
+			Sailor::GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr m_pipeline;
 		} m_vulkan;
 #endif
 		SAILOR_API RHIMaterial(RenderState renderState, RHIShaderPtr vertexShader, RHIShaderPtr fragmentShader) :

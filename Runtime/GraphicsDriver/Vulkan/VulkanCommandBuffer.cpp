@@ -568,7 +568,7 @@ void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, 
 	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_ALL_GRAPHICS, (uint32_t)offset, (uint32_t)size, ptr);
 }
 
-void VulkanCommandBuffer::BindPipeline(VulkanPipelinePtr pipeline)
+void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
 {
 	m_pipelineDependencies.Add(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);

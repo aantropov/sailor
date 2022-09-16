@@ -680,7 +680,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		depthStencilFormat = device->GetDepthFormat();
 	}
 
-	res->m_vulkan.m_pipeline = VulkanPipelinePtr::Make(device,
+	res->m_vulkan.m_pipeline = VulkanGraphicsPipelinePtr::Make(device,
 		pipelineLayout,
 		TVector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
 		device->GetPipelineBuilder()->BuildPipeline(vertexDescription, topology, renderState, colorAttachments, depthStencilFormat),

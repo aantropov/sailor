@@ -71,7 +71,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void BindVertexBuffers(const TVector<VulkanBufferPtr>& buffers, const TVector<VkDeviceSize>& offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
 		SAILOR_API void BindIndexBuffer(VulkanBufferPtr indexBuffer, uint32_t offset = 0);
 		SAILOR_API void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet);
-		SAILOR_API void BindPipeline(VulkanPipelinePtr pipeline);
+		SAILOR_API void BindPipeline(VulkanGraphicsPipelinePtr pipeline);
 
 		SAILOR_API void DrawIndexedIndirect(VulkanBufferMemoryPtr buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride);
 		SAILOR_API void DrawIndexed(uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, uint32_t vertexOffset = 0, uint32_t firstInstance = 0);
@@ -121,7 +121,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TVector<VulkanBufferPtr> m_bufferDependencies;
 		TVector<VulkanImagePtr> m_imageDependencies;
 		TVector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;
-		TVector<VulkanPipelinePtr> m_pipelineDependencies;
+		TVector<VulkanGraphicsPipelinePtr> m_pipelineDependencies;
 		TVector<VulkanCommandBufferPtr> m_commandBufferDependencies;
 		TVector<VulkanSemaphorePtr> m_semaphoreDependencies;
 		TVector<TPair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;

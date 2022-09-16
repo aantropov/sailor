@@ -74,7 +74,7 @@ void VulkanPipelineLayout::Compile()
 	_freea(ptr);
 }
 
-VulkanPipeline::VulkanPipeline(VulkanDevicePtr pDevice,
+VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevicePtr pDevice,
 	VulkanPipelineLayoutPtr pipelineLayout,
 	TVector<VulkanShaderStagePtr> shaderStages,
 	TVector<VulkanPipelineStatePtr> pipelineStates,
@@ -87,13 +87,13 @@ VulkanPipeline::VulkanPipeline(VulkanDevicePtr pDevice,
 {
 }
 
-VulkanPipeline::~VulkanPipeline()
+VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
 {
 	Release();
 }
 
 
-void VulkanPipeline::Release()
+void VulkanGraphicsPipeline::Release()
 {
 	if (m_pipeline)
 	{
@@ -102,7 +102,7 @@ void VulkanPipeline::Release()
 	}
 }
 
-void VulkanPipeline::Compile()
+void VulkanGraphicsPipeline::Compile()
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -146,7 +146,7 @@ void VulkanPipeline::Compile()
 	_freea(shaderStageCreateInfo);
 }
 
-void VulkanPipeline::ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const
+void VulkanGraphicsPipeline::ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const
 {
 	for (auto pipelineState : m_pipelineStates)
 	{
