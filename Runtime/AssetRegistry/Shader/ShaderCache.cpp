@@ -197,11 +197,13 @@ void ShaderCache::ClearExpired()
 				if (!IsExpired(entry->m_UID, entry->m_permutation))
 				{
 					//Convert to the same path format
-					auto vertexFilepath = GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, "VERTEX");
-					auto fragmentFilepath = GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, "FRAGMENT");
+					auto vertexFilepath = GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, ShaderCache::VertexShaderTag);
+					auto fragmentFilepath = GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, ShaderCache::FragmentShaderTag);
+					auto computeFilepath = GetCachedShaderFilepath(entry->m_UID, entry->m_permutation, ShaderCache::ComputeShaderTag);
 
 					whiteListSpirv.Insert(vertexFilepath.string());
 					whiteListSpirv.Insert(fragmentFilepath.string());
+					whiteListSpirv.Insert(computeFilepath.string());
 				}
 				else
 				{
@@ -236,14 +238,17 @@ void ShaderCache::Remove(ShaderCacheEntry* pEntry)
 	{
 		UID uid = pEntry->m_UID;
 
-		std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX"));
-		std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
+		std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::VertexShaderTag));
+		std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
+		std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
 
-		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX"));
-		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
+		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::VertexShaderTag));
+		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
+		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
 
-		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX"));
-		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
+		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::VertexShaderTag));
+		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
+		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
 
 		auto& entries = m_cache.m_data[pEntry->m_UID];
 
@@ -270,14 +275,17 @@ void ShaderCache::Remove(const UID& uid)
 
 		for (const auto& pEntry : entries.m_second)
 		{
-			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX"));
-			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::VertexShaderTag));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
 
-			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX"));
-			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
+			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::VertexShaderTag));
+			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
+			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
 
-			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "VERTEX"));
-			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, "FRAGMENT"));
+			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::VertexShaderTag));
+			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
+			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_UID, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
 
 			delete pEntry;
 		}
@@ -292,36 +300,62 @@ bool ShaderCache::Contains(const UID& uid) const
 	return m_cache.m_data.ContainsKey(uid);
 }
 
-void ShaderCache::CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const
+void ShaderCache::CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl, const std::string& computeGlsl) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (m_bSavePrecompiledGlsl)
 	{
-		std::ofstream vertexPrecompiled(GetPrecompiledShaderFilepath(uid, permutation, "VERTEX"));
-		vertexPrecompiled << vertexGlsl;
-		vertexPrecompiled.close();
+		if (!vertexGlsl.empty())
+		{
+			std::ofstream vertexPrecompiled(GetPrecompiledShaderFilepath(uid, permutation, ShaderCache::VertexShaderTag));
+			vertexPrecompiled << vertexGlsl;
+			vertexPrecompiled.close();
+		}
 
-		std::ofstream fragmentPrecompiled(GetPrecompiledShaderFilepath(uid, permutation, "FRAGMENT"));
-		fragmentPrecompiled << fragmentGlsl;
-		fragmentPrecompiled.close();
+		if (!fragmentGlsl.empty())
+		{
+			std::ofstream fragmentPrecompiled(GetPrecompiledShaderFilepath(uid, permutation, ShaderCache::FragmentShaderTag));
+			fragmentPrecompiled << fragmentGlsl;
+			fragmentPrecompiled.close();
+		}
+
+		if (!computeGlsl.empty())
+		{
+			std::ofstream computePrecompiled(GetPrecompiledShaderFilepath(uid, permutation, ShaderCache::ComputeShaderTag));
+			computePrecompiled << computeGlsl;
+			computePrecompiled.close();
+		}
 	}
 }
 
-void ShaderCache::CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv) const
+void ShaderCache::CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv) const
 {
 	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
 
-	std::ofstream vertexCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, "VERTEX"), std::ofstream::binary);
-	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.Num() * sizeof(uint32_t));
-	vertexCompiled.close();
+	if (vertexSpirv.Num() > 0)
+	{
+		std::ofstream vertexCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, ShaderCache::VertexShaderTag), std::ofstream::binary);
+		vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.Num() * sizeof(uint32_t));
+		vertexCompiled.close();
+	}
 
-	std::ofstream fragmentCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, "FRAGMENT"), std::ofstream::binary);
-	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.Num() * sizeof(uint32_t));
-	fragmentCompiled.close();
+	if (fragmentSpirv.Num() > 0)
+	{
+		std::ofstream fragmentCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, ShaderCache::FragmentShaderTag), std::ofstream::binary);
+		fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.Num() * sizeof(uint32_t));
+		fragmentCompiled.close();
+	}
+
+	if (computeSpirv.Num() > 0)
+	{
+		std::ofstream computeCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, ShaderCache::ComputeShaderTag), std::ofstream::binary);
+		computeCompiled.write(reinterpret_cast<const char*>(&computeSpirv[0]), computeSpirv.Num() * sizeof(uint32_t));
+		computeCompiled.close();
+	}
 }
 
-void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv)
+void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -339,13 +373,26 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 	newEntry->m_UID = uid;
 	newEntry->m_timestamp = assetInfo->GetAssetLastModificationTime();
 
-	std::ofstream vertexCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, "VERTEX"), std::ofstream::binary);
-	vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.Num() * sizeof(uint32_t));
-	vertexCompiled.close();
+	if (vertexSpirv.Num() > 0)
+	{
+		std::ofstream vertexCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, ShaderCache::VertexShaderTag), std::ofstream::binary);
+		vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.Num() * sizeof(uint32_t));
+		vertexCompiled.close();
+	}
 
-	std::ofstream fragmentCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, "FRAGMENT"), std::ofstream::binary);
-	fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.Num() * sizeof(uint32_t));
-	fragmentCompiled.close();
+	if (fragmentSpirv.Num() > 0)
+	{
+		std::ofstream fragmentCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, ShaderCache::FragmentShaderTag), std::ofstream::binary);
+		fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.Num() * sizeof(uint32_t));
+		fragmentCompiled.close();
+	}
+
+	if (computeSpirv.Num() > 0)
+	{
+		std::ofstream computeCompiled(GetCachedShaderFilepath(newEntry->m_UID, newEntry->m_permutation, ShaderCache::ComputeShaderTag), std::ofstream::binary);
+		computeCompiled.write(reinterpret_cast<const char*>(&computeSpirv[0]), computeSpirv.Num() * sizeof(uint32_t));
+		computeCompiled.close();
+	}
 
 	if (!bAlreadyContains)
 	{
@@ -355,7 +402,7 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 	m_bIsDirty = true;
 }
 
-bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, bool bIsDebug) const
+bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, TVector<uint32_t>& computeSpirv, bool bIsDebug) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -369,15 +416,20 @@ bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uin
 		[permutation](const ShaderCacheEntry* arg) { return arg->m_permutation == permutation; });
 
 	std::filesystem::path vertexFilepath = bIsDebug ?
-		GetCachedShaderWithDebugFilepath((*it)->m_UID, (*it)->m_permutation, "VERTEX") :
-		GetCachedShaderFilepath((*it)->m_UID, (*it)->m_permutation, "VERTEX");
+		GetCachedShaderWithDebugFilepath((*it)->m_UID, (*it)->m_permutation, ShaderCache::VertexShaderTag) :
+		GetCachedShaderFilepath((*it)->m_UID, (*it)->m_permutation, ShaderCache::VertexShaderTag);
 
 	std::filesystem::path fragmentFilepath = bIsDebug ?
-		GetCachedShaderWithDebugFilepath((*it)->m_UID, (*it)->m_permutation, "FRAGMENT") :
-		GetCachedShaderFilepath((*it)->m_UID, (*it)->m_permutation, "FRAGMENT");
+		GetCachedShaderWithDebugFilepath((*it)->m_UID, (*it)->m_permutation, ShaderCache::FragmentShaderTag) :
+		GetCachedShaderFilepath((*it)->m_UID, (*it)->m_permutation, ShaderCache::FragmentShaderTag);
+
+	std::filesystem::path computeFilepath = bIsDebug ?
+		GetCachedShaderWithDebugFilepath((*it)->m_UID, (*it)->m_permutation, ShaderCache::ComputeShaderTag) :
+		GetCachedShaderFilepath((*it)->m_UID, (*it)->m_permutation, ShaderCache::ComputeShaderTag);
 
 	AssetRegistry::ReadBinaryFile(vertexFilepath, vertexSpirv);
 	AssetRegistry::ReadBinaryFile(fragmentFilepath, fragmentSpirv);
+	AssetRegistry::ReadBinaryFile(fragmentFilepath, computeSpirv);
 
 	return true;
 }
@@ -399,10 +451,11 @@ bool ShaderCache::IsExpired(const UID& uid, uint32_t permutation) const
 		return true;
 	}
 
-	auto vertexFilepath = std::filesystem::path(GetCachedShaderFilepath(uid, permutation, "VERTEX"));
-	auto fragmentFilepath = std::filesystem::path(GetCachedShaderFilepath(uid, permutation, "FRAGMENT"));
+	auto vertexFilepath = std::filesystem::path(GetCachedShaderFilepath(uid, permutation, ShaderCache::VertexShaderTag));
+	auto fragmentFilepath = std::filesystem::path(GetCachedShaderFilepath(uid, permutation, ShaderCache::FragmentShaderTag));
+	auto computeFilepath = std::filesystem::path(GetCachedShaderFilepath(uid, permutation, ShaderCache::ComputeShaderTag));
 
-	if (!(std::filesystem::exists(vertexFilepath) && std::filesystem::exists(fragmentFilepath)))
+	if (!(std::filesystem::exists(vertexFilepath) && std::filesystem::exists(fragmentFilepath)) && !std::filesystem::exists(computeFilepath))
 	{
 		return true;
 	}

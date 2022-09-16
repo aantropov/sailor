@@ -28,6 +28,9 @@ namespace Sailor
 
 		SAILOR_API virtual bool IsReady() const override;
 
+		SAILOR_API const RHI::RHIShaderPtr& GetComputeShaderRHI() const { return m_rhiComputeShader; }
+		SAILOR_API RHI::RHIShaderPtr& GetComputeShaderRHI() { return m_rhiComputeShader; }
+
 		SAILOR_API const RHI::RHIShaderPtr& GetVertexShaderRHI() const { return m_rhiVertexShader; }
 		SAILOR_API RHI::RHIShaderPtr& GetVertexShaderRHI() { return m_rhiVertexShader; }
 
@@ -36,6 +39,7 @@ namespace Sailor
 
 		SAILOR_API const RHI::RHIShaderPtr& GetDebugVertexShaderRHI() const { return m_rhiVertexShaderDebug; }
 		SAILOR_API const RHI::RHIShaderPtr& GetDebugFragmentShaderRHI() const { return m_rhiFragmentShaderDebug; }
+		SAILOR_API const RHI::RHIShaderPtr& GetDebugComputeShaderRHI() const { return m_rhiComputeShaderDebug; }
 
 		SAILOR_API const TVector<RHI::EFormat>& GetColorAttachments() const { return m_colorAttachments; }
 		SAILOR_API RHI::EFormat GetDepthStencilAttachment() const { return m_depthStencilAttachment; }
@@ -47,6 +51,9 @@ namespace Sailor
 
 		RHI::RHIShaderPtr m_rhiVertexShaderDebug{};
 		RHI::RHIShaderPtr m_rhiFragmentShaderDebug{};
+
+		RHI::RHIShaderPtr m_rhiComputeShader;
+		RHI::RHIShaderPtr m_rhiComputeShaderDebug;
 
 		TVector<RHI::EFormat> m_colorAttachments{};
 		RHI::EFormat m_depthStencilAttachment = RHI::EFormat::UNDEFINED;
@@ -62,6 +69,7 @@ namespace Sailor
 
 		SAILOR_API __forceinline const std::string& GetGlslVertexCode() const { return m_glslVertex; }
 		SAILOR_API __forceinline const std::string& GetGlslFragmentCode() const { return m_glslFragment; }
+		SAILOR_API __forceinline const std::string& GetGlslComputeCode() const { return m_glslCompute; }
 		SAILOR_API __forceinline const std::string& GetGlslCommonCode() const { return m_glslCommon; }
 
 		SAILOR_API __forceinline const TVector<std::string>& GetIncludes() const { return m_includes; }
@@ -73,6 +81,7 @@ namespace Sailor
 		SAILOR_API bool ContainsFragment() const { return !m_glslFragment.empty(); }
 		SAILOR_API bool ContainsVertex() const { return !m_glslVertex.empty(); }
 		SAILOR_API bool ContainsCommon() const { return !m_glslCommon.empty(); }
+		SAILOR_API bool ContainsCompute() const { return !m_glslCompute.empty(); }
 
 		SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
 		SAILOR_API virtual void Deserialize(const nlohmann::json& inData);
@@ -82,6 +91,7 @@ namespace Sailor
 		// Shader's code
 		std::string m_glslVertex;
 		std::string m_glslFragment;
+		std::string m_glslCompute;
 
 		// Library code
 		std::string m_glslCommon;
@@ -127,8 +137,8 @@ namespace Sailor
 
 		// Compile related functions
 		SAILOR_API bool ForceCompilePermutation(const UID& assetUID, uint32_t permutation);
-		SAILOR_API bool GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
-		SAILOR_API bool GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug);
+		SAILOR_API bool GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
+		SAILOR_API bool GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
 		SAILOR_API static bool CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderKind, const TVector<std::string>& defines, const TVector<std::string>& includes, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
 		SAILOR_API static uint32_t GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines);

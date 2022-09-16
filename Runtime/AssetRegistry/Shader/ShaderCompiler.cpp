@@ -44,6 +44,11 @@ void ShaderAsset::Deserialize(const nlohmann::json& inData)
 		m_glslFragment = inData["glslFragment"].get<std::string>();
 	}
 
+	if (inData.contains("glslCompute"))
+	{
+		m_glslCompute = inData["glslCompute"].get<std::string>();
+	}
+
 	if (inData.contains("glslCommon"))
 	{
 		m_glslCommon = inData["glslCommon"].get<std::string>();
@@ -112,11 +117,28 @@ void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& o
 
 	std::string vertexGlsl;
 	std::string fragmentGlsl;
+	std::string computeGlsl;
 	std::string commonGlsl;
 
-	ConvertFromJsonToGlslCode(shader->GetGlslVertexCode(), vertexGlsl);
-	ConvertFromJsonToGlslCode(shader->GetGlslFragmentCode(), fragmentGlsl);
-	ConvertFromJsonToGlslCode(shader->GetGlslCommonCode(), commonGlsl);
+	if (shader->ContainsVertex())
+	{
+		ConvertFromJsonToGlslCode(shader->GetGlslVertexCode(), vertexGlsl);
+	}
+
+	if (shader->ContainsFragment())
+	{
+		ConvertFromJsonToGlslCode(shader->GetGlslFragmentCode(), fragmentGlsl);
+	}
+
+	if (shader->ContainsCompute())
+	{
+		ConvertFromJsonToGlslCode(shader->GetGlslComputeCode(), computeGlsl);
+	}
+
+	if (shader->ContainsCommon())
+	{
+		ConvertFromJsonToGlslCode(shader->GetGlslCommonCode(), commonGlsl);
+	}
 
 	outGLSLCode += commonGlsl + "\n";
 
@@ -125,8 +147,20 @@ void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& o
 		outGLSLCode += "#define " + define + "\n";
 	}
 
-	outGLSLCode += "\n#ifdef VERTEX\n" + vertexGlsl + "\n#endif\n";
-	outGLSLCode += "\n#ifdef FRAGMENT\n" + fragmentGlsl + "\n#endif\n";
+	if (!vertexGlsl.empty())
+	{
+		outGLSLCode += "\n#ifdef VERTEX\n" + vertexGlsl + "\n#endif\n";
+	}
+
+	if (!fragmentGlsl.empty())
+	{
+		outGLSLCode += "\n#ifdef FRAGMENT\n" + fragmentGlsl + "\n#endif\n";
+	}
+
+	if (!computeGlsl.empty())
+	{
+		outGLSLCode += "\n#ifdef COMPUTE\n" + computeGlsl + "\n#endif\n";
+	}
 }
 
 void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON)
@@ -190,42 +224,60 @@ bool ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 	auto pShader = LoadShaderAsset(assetUID).Lock();
 	const auto defines = GetDefines(pShader->GetSupportedDefines(), permutation);
 
-	TVector<std::string> vertexDefines = defines;
-	vertexDefines.Add("VERTEX");
-
-	TVector<std::string> fragmentDefines = defines;
-	fragmentDefines.Add("FRAGMENT");
-
 	std::string vertexGlsl;
 	std::string fragmentGlsl;
-	GeneratePrecompiledGlsl(pShader.GetRawPtr(), vertexGlsl, vertexDefines);
-	GeneratePrecompiledGlsl(pShader.GetRawPtr(), fragmentGlsl, fragmentDefines);
+	std::string computeGlsl;
 
-	m_shaderCache.CachePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl);
+	if (pShader->ContainsVertex())
+	{
+		TVector<std::string> vertexDefines = defines;
+		vertexDefines.Add("VERTEX");
+		GeneratePrecompiledGlsl(pShader.GetRawPtr(), vertexGlsl, vertexDefines);
+	}
+
+	if (pShader->ContainsFragment())
+	{
+		TVector<std::string> fragmentDefines = defines;
+		fragmentDefines.Add("FRAGMENT");
+		GeneratePrecompiledGlsl(pShader.GetRawPtr(), fragmentGlsl, fragmentDefines);
+	}
+
+	if (pShader->ContainsCompute())
+	{
+		TVector<std::string> computeDefines = defines;
+		computeDefines.Add("COMPUTE");
+		GeneratePrecompiledGlsl(pShader.GetRawPtr(), computeGlsl, computeDefines);
+	}
+
+	m_shaderCache.CachePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl, computeGlsl);
 
 	RHI::ShaderByteCode spirvVertexByteCode;
 	RHI::ShaderByteCode spirvFragmentByteCode;
+	RHI::ShaderByteCode spirvComputeByteCode;
 
-	const bool bResultCompileVertexShader = CompileGlslToSpirv(vertexGlsl, RHI::EShaderStage::Vertex, {}, {}, spirvVertexByteCode, false);
-	const bool bResultCompileFragmentShader = CompileGlslToSpirv(fragmentGlsl, RHI::EShaderStage::Fragment, {}, {}, spirvFragmentByteCode, false);
+	const bool bResultCompileVertexShader = pShader->ContainsVertex() && CompileGlslToSpirv(vertexGlsl, RHI::EShaderStage::Vertex, {}, {}, spirvVertexByteCode, false);
+	const bool bResultCompileFragmentShader = pShader->ContainsFragment() && CompileGlslToSpirv(fragmentGlsl, RHI::EShaderStage::Fragment, {}, {}, spirvFragmentByteCode, false);
+	const bool bResultCompileComputeShader = pShader->ContainsCompute() && CompileGlslToSpirv(computeGlsl, RHI::EShaderStage::Compute, {}, {}, spirvComputeByteCode, false);
 
-	if (bResultCompileVertexShader && bResultCompileFragmentShader)
+	if ((bResultCompileVertexShader && bResultCompileFragmentShader) || bResultCompileComputeShader)
 	{
-		m_shaderCache.CacheSpirv_ThreadSafe(assetUID, permutation, spirvVertexByteCode, spirvFragmentByteCode);
+		m_shaderCache.CacheSpirv_ThreadSafe(assetUID, permutation, spirvVertexByteCode, spirvFragmentByteCode, spirvComputeByteCode);
 	}
 
 	RHI::ShaderByteCode spirvVertexByteCodeDebug;
 	RHI::ShaderByteCode spirvFragmentByteCodeDebug;
+	RHI::ShaderByteCode spirvComputeByteCodeDebug;
 
-	const bool bResultCompileVertexShaderDebug = CompileGlslToSpirv(vertexGlsl, RHI::EShaderStage::Vertex, {}, {}, spirvVertexByteCodeDebug, true);
-	const bool bResultCompileFragmentShaderDebug = CompileGlslToSpirv(fragmentGlsl, RHI::EShaderStage::Fragment, {}, {}, spirvFragmentByteCodeDebug, true);
+	const bool bResultCompileVertexShaderDebug = pShader->ContainsVertex() && CompileGlslToSpirv(vertexGlsl, RHI::EShaderStage::Vertex, {}, {}, spirvVertexByteCodeDebug, true);
+	const bool bResultCompileFragmentShaderDebug = pShader->ContainsFragment() && CompileGlslToSpirv(fragmentGlsl, RHI::EShaderStage::Fragment, {}, {}, spirvFragmentByteCodeDebug, true);
+	const bool bResultCompileComputeShaderDebug = pShader->ContainsCompute() && CompileGlslToSpirv(computeGlsl, RHI::EShaderStage::Compute, {}, {}, spirvComputeByteCodeDebug, true);
 
-	if (bResultCompileVertexShaderDebug && bResultCompileFragmentShaderDebug)
+	if ((bResultCompileVertexShaderDebug && bResultCompileFragmentShaderDebug) || bResultCompileComputeShaderDebug)
 	{
-		m_shaderCache.CacheSpirvWithDebugInfo(assetUID, permutation, spirvVertexByteCodeDebug, spirvFragmentByteCodeDebug);
+		m_shaderCache.CacheSpirvWithDebugInfo(assetUID, permutation, spirvVertexByteCodeDebug, spirvFragmentByteCodeDebug, spirvComputeByteCodeDebug);
 	}
 
-	return bResultCompileVertexShader && bResultCompileFragmentShader;
+	return (bResultCompileVertexShader && bResultCompileFragmentShader) || bResultCompileComputeShader;
 }
 
 Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
@@ -236,7 +288,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 		TSharedPtr<ShaderAsset> pShader = pWeakShader.Lock();
 		AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(assetUID);
 
-		if (!pShader->ContainsFragment() || !pShader->ContainsVertex())
+		if ((!pShader->ContainsFragment() || !pShader->ContainsVertex()) && !pShader->ContainsCompute())
 		{
 			SAILOR_LOG("Skip shader compilation (missing fragment/vertex module): %s", assetInfo->GetAssetFilepath().c_str());
 
@@ -390,7 +442,20 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderS
 		options.SetOptimizationLevel(shaderc_optimization_level_performance);
 	}
 
-	shaderc_shader_kind kind = shaderStage == RHI::EShaderStage::Fragment ? shaderc_glsl_fragment_shader : shaderc_glsl_vertex_shader;
+	shaderc_shader_kind kind = shaderc_glsl_anyhit_shader;
+	switch (shaderStage)
+	{
+	case RHI::EShaderStage::Fragment:
+		kind = shaderc_glsl_fragment_shader;
+		break;
+	case RHI::EShaderStage::Vertex:
+		kind = shaderc_glsl_vertex_shader;
+		break;
+	case RHI::EShaderStage::Compute:
+		kind = shaderc_glsl_compute_shader;
+		break;
+	}
+
 	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, source.c_str(), "main", options);
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
@@ -449,16 +514,16 @@ TVector<std::string> ShaderCompiler::GetDefines(const TVector<std::string>& defi
 	return res;
 }
 
-bool ShaderCompiler::GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
+bool ShaderCompiler::GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug)
 {
 	if (auto pShader = LoadShaderAsset(assetUID).Lock())
 	{
-		return GetSpirvCode(assetUID, GetPermutation(pShader->GetSupportedDefines(), defines), outVertexByteCode, outFragmentByteCode, bIsDebug);
+		return GetSpirvCode(assetUID, GetPermutation(pShader->GetSupportedDefines(), defines), outVertexByteCode, outFragmentByteCode, outComputeByteCode, bIsDebug);
 	}
 	return false;
 }
 
-bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, bool bIsDebug)
+bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -470,7 +535,7 @@ bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI
 			bCompiledSuccesfully = ForceCompilePermutation(assetUID, permutation);
 		}
 
-		return m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, bIsDebug) && bCompiledSuccesfully;
+		return m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, outComputeByteCode, bIsDebug) && bCompiledSuccesfully;
 	}
 
 	return false;
@@ -538,7 +603,7 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& o
 		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
 		{
 			auto pShader = ShaderSetPtr::Make(m_allocator, uid);
-			
+
 			newPromise = Tasks::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
 				[pShader, assetInfo, defines, this, permutation]()
 			{
@@ -580,23 +645,45 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 
 	RHI::ShaderByteCode debugVertexSpirv;
 	RHI::ShaderByteCode debugFragmentSpirv;
-	if (!GetSpirvCode(pShader->GetUID(), permutation, debugVertexSpirv, debugFragmentSpirv, true))
+	RHI::ShaderByteCode debugComputeFragmentSpirv;
+	if (!GetSpirvCode(pShader->GetUID(), permutation, debugVertexSpirv, debugFragmentSpirv, debugComputeFragmentSpirv, true))
 	{
 		return false;
 	}
 
 	RHI::ShaderByteCode vertexByteCode;
 	RHI::ShaderByteCode fragmentByteCode;
-	if (!GetSpirvCode(pShader->GetUID(), permutation, vertexByteCode, fragmentByteCode, false))
+	RHI::ShaderByteCode computeByteCode;
+	if (!GetSpirvCode(pShader->GetUID(), permutation, vertexByteCode, fragmentByteCode, computeByteCode, false))
 	{
 		return false;
 	}
 
-	pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
-	pRaw->m_rhiFragmentShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
+	if (debugVertexSpirv.Num() > 0)
+	{
+		pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
+	}
+	if (debugFragmentSpirv.Num() > 0)
+	{
+		pRaw->m_rhiFragmentShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
+	}
+	if (debugComputeFragmentSpirv.Num() > 0)
+	{
+		pRaw->m_rhiComputeShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Compute, debugComputeFragmentSpirv);
+	}
 
-	pRaw->m_rhiVertexShader = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, vertexByteCode);
-	pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);
+	if (vertexByteCode.Num() > 0)
+	{
+		pRaw->m_rhiVertexShader = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, vertexByteCode);
+	}
+	if (fragmentByteCode.Num() > 0)
+	{
+		pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);
+	}
+	if (computeByteCode.Num() > 0)
+	{
+		pRaw->m_rhiComputeShader = pRhiDriver->CreateShader(RHI::EShaderStage::Compute, computeByteCode);
+	}
 
 	auto pShaderAsset = LoadShaderAsset(pShader->GetUID()).Lock();
 

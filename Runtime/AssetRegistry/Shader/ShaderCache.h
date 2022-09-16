@@ -15,6 +15,10 @@ namespace Sailor
 	{
 	public:
 
+		static constexpr const char* FragmentShaderTag = "FRAGMENT";
+		static constexpr const char* VertexShaderTag = "VERTEX";
+		static constexpr const char* ComputeShaderTag = "COMPUTE";
+
 		static constexpr const char* CacheRootFolder = "../Cache/";
 		static constexpr const char* ShaderCacheFilepath = "../Cache/ShaderCache.json";
 		static constexpr const char* PrecompiledShadersFolder = "../Cache/PrecompiledShaders/";
@@ -26,11 +30,11 @@ namespace Sailor
 		SAILOR_API void Initialize();
 		SAILOR_API void Shutdown();
 
-		SAILOR_API void CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl) const;
-		SAILOR_API void CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv) const;
-		SAILOR_API void CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv);
+		SAILOR_API void CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl, const std::string& computeGlsl) const;
+		SAILOR_API void CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv) const;
+		SAILOR_API void CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv);
 		
-		SAILOR_API bool GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, bool bIsDebug = false) const;
+		SAILOR_API bool GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, TVector<uint32_t>& computeSpirv, bool bIsDebug = false) const;
 
 		SAILOR_API void Remove(const UID& uid);
 
