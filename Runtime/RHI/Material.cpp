@@ -18,7 +18,7 @@ void RHIShaderBindingSet::RecalculateCompatibility()
 	}
 }
 
-RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrCreateShaderBinding(const std::string& binding)
+RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(const std::string& binding)
 {
 	auto& pBinding = m_shaderBindings.At_Lock(binding);
 	if (!pBinding)

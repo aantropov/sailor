@@ -180,9 +180,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
-		SAILOR_API RHI::RHITexturePtr GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
-		SAILOR_API bool IsCompatible(RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
-		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
+		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
+		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader);
+		SAILOR_API bool IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
+		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 
 	protected:
 
@@ -215,6 +216,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Cached MSAA render targets to support MSAA
 		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};
+
+		//Cached VulkanComputePipelines
+		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
 
 		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
 

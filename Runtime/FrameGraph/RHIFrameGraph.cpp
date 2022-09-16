@@ -52,7 +52,7 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 	frameData.m_deltaTime = deltaTime;
 	frameData.m_view = snapshot.m_camera->GetViewMatrix();
 
-	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrCreateShaderBinding("frameData"), &frameData, sizeof(frameData));
+	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
 }
 
 void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outTransferCommandLists, TVector<RHI::RHICommandListPtr>& outCommandLists)

@@ -158,7 +158,7 @@ void Material::UpdateRHIResource()
 			std::string outVariable;
 
 			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
+			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 		}
 	}
 	SAILOR_PROFILE_END_BLOCK();
@@ -177,7 +177,7 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 			std::string outVariable;
 
 			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrCreateShaderBinding(outBinding);
+			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 
 			const glm::vec4 value = uniform.m_second;
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));

@@ -183,7 +183,7 @@ void VulkanDevice::Shutdown()
 	m_memoryAllocators.Clear();
 }
 
-ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)
+ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 {
 	auto& res = m_threadContext.At_Lock(threadId);
 	if (!res)
@@ -200,7 +200,7 @@ ThreadContext& VulkanDevice::GetOrCreateThreadContext(DWORD threadId)
 
 ThreadContext& VulkanDevice::GetCurrentThreadContext()
 {
-	return GetOrCreateThreadContext(GetCurrentThreadId());
+	return GetOrAddThreadContext(GetCurrentThreadId());
 }
 
 VulkanSurfacePtr VulkanDevice::GetSurface() const

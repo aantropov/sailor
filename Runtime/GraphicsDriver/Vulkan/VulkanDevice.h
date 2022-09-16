@@ -110,7 +110,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool IsMipsSupported(VkFormat format) const;
 
 		SAILOR_API ThreadContext& GetCurrentThreadContext();
-		SAILOR_API ThreadContext& GetOrCreateThreadContext(DWORD threadId);
+		SAILOR_API ThreadContext& GetOrAddThreadContext(DWORD threadId);
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return GetCurrentThreadContext().m_stagingBufferAllocator; }
 		SAILOR_API VulkanStateViewportPtr GetCurrentFrameViewport() const { return m_pCurrentFrameViewport; }

@@ -24,7 +24,7 @@ namespace Sailor::Memory
 		TMemoryPtr<TPtr> Allocate(size_t size, size_t alignment)
 		{
 			m_usedDataSpace += size;
-			return GetOrCreateAllocator(size)->Allocate(size, alignment);
+			return GetOrAddAllocator(size)->Allocate(size, alignment);
 		}
 
 		void Free(TMemoryPtr<TPtr>& data)
@@ -32,7 +32,7 @@ namespace Sailor::Memory
 			if (data.m_ptr)
 			{
 				m_usedDataSpace -= data.m_size;
-				GetOrCreateAllocator(data.m_size)->Free(data);
+				GetOrAddAllocator(data.m_size)->Free(data);
 			}
 		}
 
@@ -47,7 +47,7 @@ namespace Sailor::Memory
 
 	private:
 
-		TPoolAllocator<TGlobalAllocator, TPtr>* GetOrCreateAllocator(size_t size)
+		TPoolAllocator<TGlobalAllocator, TPtr>* GetOrAddAllocator(size_t size)
 		{
 			auto poolAllocator = m_layout.find(size);
 			if (poolAllocator != m_layout.end())

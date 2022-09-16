@@ -20,6 +20,7 @@
 #include "VulkanPipileneStates.h"
 #include "VulkanShaderModule.h"
 #include "VulkanBufferMemory.h"
+#include "VulkanPipeline.h"
 #include "VulkanDescriptors.h"
 #include "RHI/Shader.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
@@ -41,6 +42,7 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
 	m_cachedMsaaRenderTargets.Clear();
+	m_cachedComputePipelines.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -98,7 +100,7 @@ bool VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 	return false;
 }
 
-bool VulkanGraphicsDriver::IsCompatible(RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const
+bool VulkanGraphicsDriver::IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const
 {
 	TVector<VulkanDescriptorSetPtr> sets;
 	for (auto& binding : bindings)
@@ -106,7 +108,7 @@ bool VulkanGraphicsDriver::IsCompatible(RHI::RHIMaterialPtr material, const TVec
 		sets.Add(binding->m_vulkan.m_descriptorSet);
 	}
 
-	return VulkanApi::IsCompatible(material->m_vulkan.m_pipeline->m_layout, sets);
+	return VulkanApi::IsCompatible(layout, sets);
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::GetBackBuffer() const
@@ -588,7 +590,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		}
 
 		auto& vkLayoutBinding = layoutBindings[it];
-		auto& binding = shaderBindings->GetOrCreateShaderBinding(layoutBinding.m_name);
+		auto& binding = shaderBindings->GetOrAddShaderBinding(layoutBinding.m_name);
 
 		if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
 		{
@@ -754,7 +756,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSe
 	RHI::RHICommandListPtr commandList = RHI::RHICommandListPtr::Make();
 	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 
-	auto& shaderBinding = bindings->GetOrCreateShaderBinding(parameter);
+	auto& shaderBinding = bindings->GetOrAddShaderBinding(parameter);
 	bool bShouldUpdateDescriptorSet = false;
 
 	// All uniform buffers should be bound
@@ -781,7 +783,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
 
 	TSharedPtr<VulkanBufferAllocator> allocator = GetMaterialSsboAllocator();
 	binding->m_vulkan.m_valueBinding = allocator->Allocate(elementSize * numElements, elementSize);
@@ -816,7 +818,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
 	TSharedPtr<VulkanBufferAllocator> allocator;
 
 	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
@@ -856,7 +858,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrCreateShaderBinding(name);
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_binding = shaderBinding;
@@ -906,7 +908,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		else
 		{
 			// Add new texture binding
-			auto textureBinding = bindings->GetOrCreateShaderBinding(parameter);
+			auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
 			textureBinding->SetTextureBinding(value);
 			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layoutBindings[index].m_binding, (VkDescriptorType)layoutBindings[index].m_type);
 			UpdateDescriptorSet(bindings);
@@ -918,7 +920,37 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 	SAILOR_LOG("Trying to update not bind uniform sampler");
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::GetOrCreateMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
+VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader)
+{
+	auto& computePipeline = m_cachedComputePipelines.At_Lock(computeShader);
+
+	if (!computePipeline)
+	{
+		auto device = m_vkInstance->GetMainDevice();
+
+		TVector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
+		TVector<RHI::ShaderLayoutBinding> bindings;
+
+		// We need debug shaders to get full names from reflection
+		VulkanApi::CreateDescriptorSetLayouts(device, { computeShader->m_vulkan.m_shader }, descriptorSetLayouts, bindings);
+
+#ifdef _DEBUG
+		const bool bIsDebug = true;
+#else
+		const bool bIsDebug = false;
+#endif
+
+		auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device, descriptorSetLayouts, 0, 0);
+		computePipeline = VulkanComputePipelinePtr::Make(device, pipelineLayout, computeShader->m_vulkan.m_shader);
+		computePipeline->Compile();
+	}
+
+	m_cachedComputePipelines.Unlock(computeShader);
+
+	return computePipeline;
+}
+
+RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
 {
 	size_t hash = (size_t)((size_t)textureFormat | (extent.x << 1) | (extent.y << 5));
 	if (m_cachedMsaaRenderTargets.ContainsKey(hash))
@@ -1050,7 +1082,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
 
 		const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
-		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
 
 		cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(targets, resolved,
 			msaaDepthStencilTarget,
@@ -1205,7 +1237,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
 
 		const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
-		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
 
 		cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(
 			target,
@@ -1348,7 +1380,7 @@ void VulkanGraphicsDriver::SetMaterialParameter(RHI::RHICommandListPtr cmd, RHI:
 	if (bindings->HasBinding(binding))
 	{
 		auto device = m_vkInstance->GetMainDevice();
-		auto& shaderBinding = bindings->GetOrCreateShaderBinding(binding);
+		auto& shaderBinding = bindings->GetOrAddShaderBinding(binding);
 		UpdateShaderBindingVariable(cmd, shaderBinding, variable, value, size);
 	}
 }
@@ -1433,7 +1465,14 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPt
 	{
 		return;
 	}
-	
+
+	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader);
+	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(computePipeline->m_layout, bindings);
+
+	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(computePipeline->m_layout, sets);
+	cmd->m_vulkan.m_commandBuffer->BindPipeline(computePipeline);
+	cmd->m_vulkan.m_commandBuffer->Dispatch(groupSizeX, groupSizeY, groupSizeZ);
+	cmd->m_vulkan.m_commandBuffer->AddDependency(computeShader);
 }
 
 void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material)
@@ -1478,12 +1517,12 @@ void VulkanGraphicsDriver::SetDefaultViewport(RHI::RHICommandListPtr cmd)
 	cmd->m_vulkan.m_commandBuffer->SetScissor(pStateViewport);
 }
 
-TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSets(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings)
+TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings)
 {
 	TVector<VulkanDescriptorSetPtr> descriptorSets;
 	descriptorSets.Reserve(shaderBindings.Num());
 
-	if (const bool bIsCompatible = IsCompatible(material, shaderBindings))
+	if (const bool bIsCompatible = IsCompatible(layout, shaderBindings))
 	{
 		for (auto& binding : shaderBindings)
 		{
@@ -1496,9 +1535,9 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 		for (uint32_t i = 0; i < shaderBindings.Num(); i++)
 		{
-			const auto& materialLayout = material->m_vulkan.m_pipeline->m_layout->m_descriptionSetLayouts[i];
+			const auto& materialLayout = layout->m_descriptionSetLayouts[i];
 
-			if (VulkanApi::IsCompatible(material->m_vulkan.m_pipeline->m_layout, shaderBindings[i]->m_vulkan.m_descriptorSet, i))
+			if (VulkanApi::IsCompatible(layout, shaderBindings[i]->m_vulkan.m_descriptorSet, i))
 			{
 				descriptorSets.Add(shaderBindings[i]->m_vulkan.m_descriptorSet);
 				continue;
@@ -1589,7 +1628,7 @@ VulkanGraphicsDriver::DescriptorSetCache::DescriptorSetCache(const RHI::RHIMater
 
 void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
 {
-	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material, bindings);
+	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material->m_vulkan.m_pipeline->m_layout, bindings);
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
 
 	// Need to handle ShaderBindingSet, since it auto destructs all bindings and buffers

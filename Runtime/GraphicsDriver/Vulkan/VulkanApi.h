@@ -52,6 +52,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	typedef TRefPtr<class VulkanImage> VulkanImagePtr;
 	typedef TRefPtr<class VulkanImageView> VulkanImageViewPtr;
 	typedef TRefPtr<class VulkanGraphicsPipeline> VulkanGraphicsPipelinePtr;
+	typedef TRefPtr<class VulkanComputePipeline> VulkanComputePipelinePtr;
 	typedef TRefPtr<class VulkanFramebuffer> VulkanFramebufferPtr;
 	typedef TRefPtr<class VulkanSwapchain> VulkanSwapchainPtr;
 	typedef TRefPtr<class VulkanDescriptorSet> VulkanDescriptorSetPtr;

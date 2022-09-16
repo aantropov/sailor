@@ -31,7 +31,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		if (data.m_bIsDirty || ownerTransform.GetLastFrameChanged() == GetWorld()->GetCurrentFrame())
 		{
 			size_t index = GetComponentIndex(&data);
-			auto& binding = m_lightsData->GetOrCreateShaderBinding("lightsData");
+			auto& binding = m_lightsData->GetOrAddShaderBinding("lightsData");
 
 			const auto& lightData = m_components[index];
 

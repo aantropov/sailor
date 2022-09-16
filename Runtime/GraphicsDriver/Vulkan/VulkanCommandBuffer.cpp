@@ -305,7 +305,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
 
 		const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
-		msaaDepthStencilTarget = vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView;
+		msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView;
 
 		if (colorAttachments.Num() > 0)
 		{
@@ -314,7 +314,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 			{
 				// TODO: Add support for multiple MSAA targets
 				const auto extents = glm::ivec2(colorAttachments[0]->GetImage()->m_extent.width, colorAttachments[0]->GetImage()->m_extent.height);
-				msaaColorTargets.Add(vulkanRenderer->GetOrCreateMsaaRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
+				msaaColorTargets.Add(vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)colorAttachments[0]->m_format, extents)->m_vulkan.m_imageView);
 			}
 		}
 
@@ -572,6 +572,17 @@ void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
 {
 	m_pipelineDependencies.Add(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+}
+
+void VulkanCommandBuffer::BindPipeline(VulkanComputePipelinePtr pipeline)
+{
+	m_rhiDependecies.Add(pipeline);
+	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, *pipeline);
+}
+
+void VulkanCommandBuffer::Dispatch(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
+{
+	vkCmdDispatch(m_commandBuffer, groupX, groupY, groupZ);
 }
 
 void VulkanCommandBuffer::DrawIndexedIndirect(VulkanBufferMemoryPtr buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride)
