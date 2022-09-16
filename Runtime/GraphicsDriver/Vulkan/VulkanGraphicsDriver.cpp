@@ -528,7 +528,7 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 			if (binding.m_second->GetTextureBinding())
 			{
 				auto& texture = binding.m_second->GetTextureBinding();
-				auto descr = VulkanDescriptorImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
+				auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
 					device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
 					texture->m_vulkan.m_imageView);
 
@@ -899,7 +899,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 			// Should we fully recreate descriptorSet to avoid race condition?
 			//UpdateDescriptorSet(material);
 
-			auto descriptor = (*descrIt).DynamicCast<VulkanDescriptorImage>();
+			auto descriptor = (*descrIt).DynamicCast<VulkanDescriptorCombinedImage>();
 			descriptor->SetImageView(value->m_vulkan.m_imageView);
 			bindings->m_vulkan.m_descriptorSet->Compile();
 
@@ -1564,7 +1564,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 					if (binding.m_second->GetTextureBinding())
 					{
 						auto& texture = binding.m_second->GetTextureBinding();
-						auto descr = VulkanDescriptorImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
+						auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
 							device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
 							texture->m_vulkan.m_imageView);
 

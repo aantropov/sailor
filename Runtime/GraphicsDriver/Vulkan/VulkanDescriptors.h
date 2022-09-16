@@ -86,10 +86,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkDescriptorBufferInfo m_bufferInfo;
 	};
 
-	class VulkanDescriptorImage : public VulkanDescriptor
+	class VulkanDescriptorCombinedImage : public VulkanDescriptor
 	{
 	public:
-		SAILOR_API VulkanDescriptorImage(uint32_t dstBinding,
+		SAILOR_API VulkanDescriptorCombinedImage(uint32_t dstBinding,
 			uint32_t dstArrayElement,
 			VulkanSamplerPtr sampler,
 			VulkanImageViewPtr imageView,

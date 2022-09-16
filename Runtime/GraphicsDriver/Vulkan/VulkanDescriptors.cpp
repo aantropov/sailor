@@ -209,7 +209,7 @@ void VulkanDescriptorBuffer::Apply(VkWriteDescriptorSet& writeDescriptorSet) con
 	writeDescriptorSet.pTexelBufferView = nullptr; // Optional
 }
 
-VulkanDescriptorImage::VulkanDescriptorImage(uint32_t dstBinding,
+VulkanDescriptorCombinedImage::VulkanDescriptorCombinedImage(uint32_t dstBinding,
 	uint32_t dstArrayElement,
 	VulkanSamplerPtr sampler,
 	VulkanImageViewPtr imageView,
@@ -224,12 +224,12 @@ VulkanDescriptorImage::VulkanDescriptorImage(uint32_t dstBinding,
 	m_imageInfo.sampler = *m_sampler;
 }
 
-void VulkanDescriptorImage::SetImageView(VulkanImageViewPtr imageView)
+void VulkanDescriptorCombinedImage::SetImageView(VulkanImageViewPtr imageView)
 {
 	m_imageView = imageView;
 }
 
-void VulkanDescriptorImage::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
+void VulkanDescriptorCombinedImage::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
 {
 	VulkanDescriptor::Apply(writeDescriptorSet);
 
