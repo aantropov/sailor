@@ -1469,8 +1469,8 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPt
 	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader);
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(computePipeline->m_layout, bindings);
 
-	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(computePipeline->m_layout, sets);
 	cmd->m_vulkan.m_commandBuffer->BindPipeline(computePipeline);
+	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(computePipeline->m_layout, sets, VK_PIPELINE_BIND_POINT_COMPUTE);
 	cmd->m_vulkan.m_commandBuffer->Dispatch(groupSizeX, groupSizeY, groupSizeZ);
 	cmd->m_vulkan.m_commandBuffer->AddDependency(computeShader);
 }
@@ -1629,7 +1629,7 @@ VulkanGraphicsDriver::DescriptorSetCache::DescriptorSetCache(const RHI::RHIMater
 void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
 {
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material->m_vulkan.m_pipeline->m_layout, bindings);
-	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
+	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
 	// Need to handle ShaderBindingSet, since it auto destructs all bindings and buffers
 	for (const auto& dep : bindings)
