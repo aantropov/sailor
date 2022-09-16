@@ -72,4 +72,31 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkPipeline m_pipeline{};
 		VulkanDevicePtr m_pDevice;
 	};
+
+	class VulkanComputePipeline : public RHI::RHIResource
+	{
+	public:
+
+		VulkanComputePipeline() = default;
+
+		VulkanComputePipeline(VulkanDevicePtr pDevice,
+			VulkanPipelineLayoutPtr pipelineLayout,
+			VulkanShaderStagePtr computeShaderStage);
+
+		/// VkComputePipelineCreateInfo settings
+		VulkanShaderStagePtr m_stage;
+		VulkanPipelineLayoutPtr m_layout;
+
+		void Compile();
+		void Release();
+
+		operator VkPipeline() const { return m_pipeline; }
+
+	protected:
+
+		virtual ~VulkanComputePipeline();
+
+		VkPipeline m_pipeline{};
+		VulkanDevicePtr m_pDevice;
+	};
 }

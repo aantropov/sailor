@@ -24,7 +24,7 @@ using namespace Sailor;
 
 bool ShaderSet::IsReady() const
 {
-	return m_rhiVertexShader && m_rhiFragmentShader;
+	return (m_rhiVertexShader && m_rhiFragmentShader) || m_rhiComputeShader;
 }
 
 void ShaderAsset::Serialize(nlohmann::json& outData) const
@@ -546,10 +546,10 @@ bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI
 		if (auto pShader = LoadShaderAsset(assetInfo).Lock())
 		{
 			bool bCompiledSuccesfully = true;
-				if (m_shaderCache.IsExpired(assetUID, permutation))
-				{
-					bCompiledSuccesfully = ForceCompilePermutation(assetInfo, permutation);
-				}
+			if (m_shaderCache.IsExpired(assetUID, permutation))
+			{
+				bCompiledSuccesfully = ForceCompilePermutation(assetInfo, permutation);
+			}
 
 			return m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, outComputeByteCode, bIsDebug) && bCompiledSuccesfully;
 		}

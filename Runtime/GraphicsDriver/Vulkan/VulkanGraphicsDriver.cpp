@@ -1425,6 +1425,17 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<RHI::V
 	}));
 }
 
+void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader, const TVector<RHI::RHIShaderBindingSetPtr>& bindings, uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ)
+{
+	assert(computeShader->GetStage() == RHI::EShaderStage::Compute);
+
+	if (computeShader->GetStage() != RHI::EShaderStage::Compute)
+	{
+		return;
+	}
+	
+}
+
 void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material)
 {
 	cmd->m_vulkan.m_commandBuffer->BindPipeline(material->m_vulkan.m_pipeline);
@@ -1581,7 +1592,7 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material, bindings);
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets);
 
-	// Need to handle ShaderBindingSet, since it is auto destructs all binding's buffers
+	// Need to handle ShaderBindingSet, since it auto destructs all bindings and buffers
 	for (const auto& dep : bindings)
 	{
 		cmd->m_vulkan.m_commandBuffer->AddDependency(dep);

@@ -53,12 +53,12 @@ void VulkanPipelineLayout::Compile()
 	auto ptr = reinterpret_cast<VkDescriptorSetLayout*>(_malloca(stackArraySize));
 	memset(ptr, 0, stackArraySize);
 
-	for(size_t i = 0; i < m_descriptionSetLayouts.Num(); i++)
+	for (size_t i = 0; i < m_descriptionSetLayouts.Num(); i++)
 	{
 		m_descriptionSetLayouts[i]->Compile();
 		ptr[i] = *m_descriptionSetLayouts[i];
 	}
-	
+
 	//TODO Compile all description sets
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -106,7 +106,7 @@ void VulkanPipeline::Compile()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if(m_pipeline)
+	if (m_pipeline)
 	{
 		return;
 	}
@@ -152,4 +152,58 @@ void VulkanPipeline::ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) con
 	{
 		pipelineState->Apply(pipelineInfo);
 	}
+}
+
+// VulkanComputePipeline
+VulkanComputePipeline::VulkanComputePipeline(VulkanDevicePtr pDevice,
+	VulkanPipelineLayoutPtr pipelineLayout,
+	VulkanShaderStagePtr shaderStage) :
+	m_stage(std::move(shaderStage)),
+	m_layout(std::move(pipelineLayout)),
+	m_pDevice(std::move(pDevice))
+{
+}
+
+VulkanComputePipeline::~VulkanComputePipeline()
+{
+	Release();
+}
+
+void VulkanComputePipeline::Release()
+{
+	if (m_pipeline)
+	{
+		vkDestroyPipeline(*m_pDevice, m_pipeline, nullptr);
+		m_pipeline = 0;
+	}
+}
+
+void VulkanComputePipeline::Compile()
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (m_pipeline)
+	{
+		return;
+	}
+
+	m_layout->Compile();
+	m_stage->Compile();
+
+	// TODO: Check flags
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfo{};
+	shaderStageCreateInfo.flags = VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT |	VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT ;
+	m_stage->Apply(shaderStageCreateInfo);
+
+	// TODO: Check flags
+	VkComputePipelineCreateInfo pipelineInfo = {};
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+	pipelineInfo.layout = *m_layout;
+	pipelineInfo.flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
+	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineInfo.pNext = nullptr;
+
+	pipelineInfo.stage = shaderStageCreateInfo;
+
+	VK_CHECK(vkCreateComputePipelines(*m_pDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline));
 }
