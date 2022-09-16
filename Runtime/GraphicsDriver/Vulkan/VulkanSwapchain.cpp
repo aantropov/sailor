@@ -127,70 +127,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_swapchainImageViews[i]->Compile();
 	}
 
-	// We need color buffer only for resolving MSAA samples
-	if (device->GetCurrentMsaaSamples() != 1)
-	{
-		m_msColorBuffer = VulkanImagePtr::Make(m_device);
-		m_msColorBuffer->m_extent = VkExtent3D{ m_swapchainExtent.width, m_swapchainExtent.height, 1 };
-		m_msColorBuffer->m_format = m_surfaceFormat.format;
-		m_msColorBuffer->m_imageType = VkImageType::VK_IMAGE_TYPE_2D;
-		m_msColorBuffer->m_tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
-		m_msColorBuffer->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		m_msColorBuffer->m_mipLevels = 1;
-		m_msColorBuffer->m_usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		m_msColorBuffer->m_arrayLayers = 1;
-		m_msColorBuffer->m_samples = device->GetCurrentMsaaSamples();
-		m_msColorBuffer->m_defaultLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		m_msColorBuffer->Compile();
-
-		if (bIsRecreating)
-		{
-			// We are using device memory allocator to fastly recreate the swapchain
-			const auto& requirements = m_msColorBuffer->GetMemoryRequirements();
-			auto memoryPtr = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements).Allocate(requirements.size, requirements.alignment);
-			m_msColorBuffer->Bind(memoryPtr);
-		}
-		else
-		{
-			m_msColorBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_msColorBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
-		}
-
-		m_msColorBufferView = VulkanImageViewPtr::Make(m_device, m_msColorBuffer, VulkanApi::ComputeAspectFlagsForFormat(m_surfaceFormat.format));
-		m_msColorBufferView->Compile();
-	}
-
 	VkFormat depthFormat = device->GetDepthFormat();
-
-	if (device->GetCurrentMsaaSamples() != 1)
-	{
-		m_msDepthBuffer = VulkanImagePtr::Make(m_device);
-		m_msDepthBuffer->m_extent = VkExtent3D{ m_swapchainExtent.width, m_swapchainExtent.height, 1 };
-		m_msDepthBuffer->m_format = depthFormat;
-		m_msDepthBuffer->m_imageType = VkImageType::VK_IMAGE_TYPE_2D;
-		m_msDepthBuffer->m_tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
-		m_msDepthBuffer->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		m_msDepthBuffer->m_mipLevels = 1;
-		m_msDepthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-		m_msDepthBuffer->m_arrayLayers = 1;
-		m_msDepthBuffer->m_samples = device->GetCurrentMsaaSamples();
-		m_msDepthBuffer->m_defaultLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-		m_msDepthBuffer->Compile();
-
-		if (bIsRecreating)
-		{
-			// We are using device memory allocator to fastly recreate the swapchain
-			const auto& requirements = m_msDepthBuffer->GetMemoryRequirements();
-			auto memoryPtr = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements).Allocate(requirements.size, requirements.alignment);
-			m_msDepthBuffer->Bind(memoryPtr);
-		}
-		else
-		{
-			m_msDepthBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_msDepthBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
-		}
-
-		m_msDepthBufferView = VulkanImageViewPtr::Make(m_device, m_msDepthBuffer, VulkanApi::ComputeAspectFlagsForFormat(depthFormat));
-		m_msDepthBufferView->Compile();
-	}
 
 	m_depthBuffer = VulkanImagePtr::Make(m_device);
 	m_depthBuffer->m_extent = VkExtent3D{ m_swapchainExtent.width, m_swapchainExtent.height, 1 };

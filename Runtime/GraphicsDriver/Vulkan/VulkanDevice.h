@@ -133,7 +133,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void CreateSwapchain(const Win32::Window* pViewport);
 		SAILOR_API bool RecreateSwapchain(const Win32::Window* pViewport);
 		SAILOR_API void CreateDefaultRenderPass();
-		SAILOR_API void CreateFramebuffers();
+		SAILOR_API void CreateFrameDependencies();
 		SAILOR_API void CreateCommandBuffers();
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
@@ -168,7 +168,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Swapchain
 		VulkanSwapchainPtr m_swapchain;
 		VulkanSwapchainPtr m_oldSwapchain;
-		TVector<VulkanFramebufferPtr> m_swapChainFramebuffers;
 
 		// TODO: Use VK_NV_inherited_viewport_scissor extension if possible
 		// TODO: Move current viewport settings to rendering pipeline

@@ -118,7 +118,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 
 	// Create graphics
 	CreateDefaultRenderPass();
-	CreateFramebuffers();
+	CreateFrameDependencies();
 	CreateFrameSyncSemaphores();
 
 	m_bIsSwapChainOutdated = false;
@@ -365,46 +365,20 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 
 	CreateSwapchain(pViewport);
 	CreateDefaultRenderPass();
-	CreateFramebuffers();
+	CreateFrameDependencies();
 
 	m_bIsSwapChainOutdated = false;
 	m_bNeedToTransitSwapchainToPresent = true;
 	return true;
 }
 
-void VulkanDevice::CreateFramebuffers()
+void VulkanDevice::CreateFrameDependencies()
 {
-	TVector<VulkanImageViewPtr>& swapChainImageViews = m_swapchain->GetImageViews();
+	const TVector<VulkanImageViewPtr>& swapChainImageViews = m_swapchain->GetImageViews();
 
-	m_swapChainFramebuffers.Resize(swapChainImageViews.Num());
-
-	TVector<VulkanImageViewPtr> attachments;
-
-	uint8_t swapchainIndex = 1;
-	if ((VkSampleCountFlagBits)m_currentMsaaSamples != VK_SAMPLE_COUNT_1_BIT)
+	if (m_frameDeps.Num() < swapChainImageViews.Num())
 	{
-		attachments = { m_swapchain->GetMSColorBufferView(), nullptr, m_swapchain->GetMSDepthBufferView() };
-	}
-	else
-	{
-		swapchainIndex = 0;
-		attachments = { nullptr, m_swapchain->GetDepthBufferView() };
-	}
-
-	for (size_t i = 0; i < swapChainImageViews.Num(); i++)
-	{
-		attachments[swapchainIndex] = swapChainImageViews[i];
-		m_swapChainFramebuffers[i] = VulkanFramebufferPtr::Make(
-			m_renderPass,
-			attachments,
-			m_swapchain->GetExtent().width,
-			m_swapchain->GetExtent().height,
-			1);
-	}
-
-	if (m_frameDeps.Num() < m_swapChainFramebuffers.Num())
-	{
-		m_frameDeps.AddDefault(m_swapChainFramebuffers.Num() - m_frameDeps.Num());
+		m_frameDeps.AddDefault(swapChainImageViews.Num() - m_frameDeps.Num());
 	}
 }
 
@@ -517,7 +491,6 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 
 void VulkanDevice::CleanupSwapChain()
 {
-	m_swapChainFramebuffers.Clear();
 	m_renderPass.Clear();
 }
 
@@ -617,17 +590,6 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		transitCmd->ImageMemoryBarrier(m_swapchain->GetDepthBufferView()->GetImage(),
 			m_swapchain->GetDepthBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
 			m_swapchain->GetDepthBufferView()->GetImage()->m_defaultLayout);
-
-		if (GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT)
-		{
-			transitCmd->ImageMemoryBarrier(m_swapchain->GetMSColorBufferView()->GetImage(),
-				m_swapchain->GetMSColorBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
-				m_swapchain->GetMSColorBufferView()->GetImage()->m_defaultLayout);
-
-			transitCmd->ImageMemoryBarrier(m_swapchain->GetMSDepthBufferView()->GetImage(),
-				m_swapchain->GetMSDepthBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
-				m_swapchain->GetMSDepthBufferView()->GetImage()->m_defaultLayout);
-		}
 
 		transitCmd->EndCommandList();
 
