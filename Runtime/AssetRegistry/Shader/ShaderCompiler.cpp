@@ -217,11 +217,11 @@ bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, st
 	return true;
 }
 
-bool ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permutation)
+bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint32_t permutation)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto pShader = LoadShaderAsset(assetUID).Lock();
+	auto pShader = LoadShaderAsset(assetInfo).Lock();
 	const auto defines = GetDefines(pShader->GetSupportedDefines(), permutation);
 
 	std::string vertexGlsl;
@@ -249,7 +249,7 @@ bool ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 		GeneratePrecompiledGlsl(pShader.GetRawPtr(), computeGlsl, computeDefines);
 	}
 
-	m_shaderCache.CachePrecompiledGlsl(assetUID, permutation, vertexGlsl, fragmentGlsl, computeGlsl);
+	m_shaderCache.CachePrecompiledGlsl(assetInfo->GetUID(), permutation, vertexGlsl, fragmentGlsl, computeGlsl);
 
 	RHI::ShaderByteCode spirvVertexByteCode;
 	RHI::ShaderByteCode spirvFragmentByteCode;
@@ -261,7 +261,7 @@ bool ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 
 	if ((bResultCompileVertexShader && bResultCompileFragmentShader) || bResultCompileComputeShader)
 	{
-		m_shaderCache.CacheSpirv_ThreadSafe(assetUID, permutation, spirvVertexByteCode, spirvFragmentByteCode, spirvComputeByteCode);
+		m_shaderCache.CacheSpirv_ThreadSafe(assetInfo->GetUID(), permutation, spirvVertexByteCode, spirvFragmentByteCode, spirvComputeByteCode);
 	}
 
 	RHI::ShaderByteCode spirvVertexByteCodeDebug;
@@ -274,19 +274,30 @@ bool ShaderCompiler::ForceCompilePermutation(const UID& assetUID, uint32_t permu
 
 	if ((bResultCompileVertexShaderDebug && bResultCompileFragmentShaderDebug) || bResultCompileComputeShaderDebug)
 	{
-		m_shaderCache.CacheSpirvWithDebugInfo(assetUID, permutation, spirvVertexByteCodeDebug, spirvFragmentByteCodeDebug, spirvComputeByteCodeDebug);
+		m_shaderCache.CacheSpirvWithDebugInfo(assetInfo->GetUID(), permutation, spirvVertexByteCodeDebug, spirvFragmentByteCodeDebug, spirvComputeByteCodeDebug);
 	}
 
 	return (bResultCompileVertexShader && bResultCompileFragmentShader) || bResultCompileComputeShader;
 }
 
-Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
+Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& uid)
+{
+	return CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)));
+}
+
+TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
+{
+	return LoadShaderAsset(dynamic_cast<ShaderAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)));
+}
+
+Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
-	if (TWeakPtr<ShaderAsset> pWeakShader = LoadShaderAsset(assetUID))
+	if (TWeakPtr<ShaderAsset> pWeakShader = LoadShaderAsset(assetInfo))
 	{
+		UID assetUID = assetInfo->GetUID();
+
 		TSharedPtr<ShaderAsset> pShader = pWeakShader.Lock();
-		AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(assetUID);
 
 		if ((!pShader->ContainsFragment() || !pShader->ContainsVertex()) && !pShader->ContainsCompute())
 		{
@@ -329,10 +340,10 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
 		{
-			Tasks::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetUID, permutationsToCompile]()
+			Tasks::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetInfo, permutationsToCompile]()
 			{
 				SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
-				App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetUID, permutationsToCompile[i]);
+				App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
 			});
 
 			saveCacheJob->Join(job);
@@ -344,18 +355,19 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const UID& assetUID)
 	}
 	else
 	{
-		SAILOR_LOG("Cannot find shader asset %s", assetUID.ToString().c_str());
+		SAILOR_LOG("Cannot find shader asset");
 	}
 
 	return Tasks::TaskPtr<bool>::Make(false);
 }
 
-TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
+TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderAssetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (ShaderAssetInfoPtr shaderAssetInfo = dynamic_cast<ShaderAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
+	if (shaderAssetInfo)
 	{
+		UID uid = shaderAssetInfo->GetUID();
 		if (const auto& loadedShader = m_shaderAssetsCache.Find(uid); loadedShader != m_shaderAssetsCache.end())
 		{
 			return loadedShader->m_second;
@@ -385,7 +397,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(const UID& uid)
 		return m_shaderAssetsCache[uid] = TSharedPtr<ShaderAsset>(shader);
 	}
 
-	SAILOR_LOG("Cannot find shader asset info with UID: %s", uid.ToString().c_str());
+	SAILOR_LOG("Cannot find shader asset info!");
 	return TWeakPtr<ShaderAsset>();
 }
 
@@ -395,7 +407,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 	{
 		m_shaderAssetsCache.Remove(assetInfo->GetUID());
 
-		auto compileTask = CompileAllPermutations(assetInfo->GetUID());
+		auto compileTask = CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
 		if (compileTask)
 		{
 			compileTask->Then<void, bool>([=](bool bRes)
@@ -529,15 +541,18 @@ bool ShaderCompiler::GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (auto pShader = LoadShaderAsset(assetUID).Lock())
+	if (ShaderAssetInfoPtr assetInfo = dynamic_cast<ShaderAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(assetUID)))
 	{
-		bool bCompiledSuccesfully = true;
-		if (m_shaderCache.IsExpired(assetUID, permutation))
+		if (auto pShader = LoadShaderAsset(assetInfo).Lock())
 		{
-			bCompiledSuccesfully = ForceCompilePermutation(assetUID, permutation);
-		}
+			bool bCompiledSuccesfully = true;
+				if (m_shaderCache.IsExpired(assetUID, permutation))
+				{
+					bCompiledSuccesfully = ForceCompilePermutation(assetInfo, permutation);
+				}
 
-		return m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, outComputeByteCode, bIsDebug) && bCompiledSuccesfully;
+			return m_shaderCache.GetSpirvCode(assetUID, permutation, outVertexByteCode, outFragmentByteCode, outComputeByteCode, bIsDebug) && bCompiledSuccesfully;
+		}
 	}
 
 	return false;
