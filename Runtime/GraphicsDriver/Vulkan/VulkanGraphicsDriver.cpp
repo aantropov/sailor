@@ -39,10 +39,10 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
-	m_backBuffer.Clear();
-	m_depthStencilBuffer.Clear();
 	m_cachedMsaaRenderTargets.Clear();
 	m_cachedComputePipelines.Clear();
+	m_backBuffer.Clear();
+	m_depthStencilBuffer.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -411,8 +411,22 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::General;
+
+	if (const bool bIsUsedAsStorage = usage & VK_IMAGE_USAGE_STORAGE_BIT)
+	{
+		layout = (VkImageLayout)RHI::EImageLayout::General;
+	}
+	else if (const bool bIsUsedAsColorAttachment = usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+	{
+		layout = (VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal;
+	}
+
+	// Not optimal code
+	//assert(layout != (VkImageLayout)RHI::EImageLayout::General);
+
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, false, RHI::EImageLayout::ColorAttachmentOptimal);
+	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
@@ -428,7 +442,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 		VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
-		(VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal);
+		layout);
 
 	outTexture->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(outTexture->GetDefaultLayout());
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
@@ -441,7 +455,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 		outTexture,
 		outTexture->GetFormat(),
 		RHI::EImageLayout::Undefined,
-		RHI::EImageLayout::ColorAttachmentOptimal);
+		(RHI::EImageLayout)layout);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
@@ -478,6 +492,9 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 		vkExtent.width = extent.x;
 		vkExtent.height = extent.y;
 		vkExtent.depth = extent.z;
+
+		// Disable storage for MSAA target
+		usage &= ~(1 << RHI::ETextureUsageBit::Storage_Bit);
 
 		target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
 			vkExtent,
@@ -528,11 +545,20 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 			if (binding.m_second->GetTextureBinding())
 			{
 				auto& texture = binding.m_second->GetTextureBinding();
-				auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-					device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
-					texture->m_vulkan.m_imageView);
 
-				descriptors.Add(descr);
+				if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
+				{
+					auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
+						device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
+						texture->m_vulkan.m_imageView);
+					descriptors.Add(descr);
+				}
+				else if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::StorageImage)
+				{
+					auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0, texture->m_vulkan.m_imageView);
+					descriptors.Add(descr);
+				}
+
 				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 			}
 			else if (binding.m_second->m_vulkan.m_valueBinding)
@@ -655,7 +681,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		VkPushConstantRange vkPushConstant;
 		vkPushConstant.offset = 0;
 		vkPushConstant.size = 256;
-		vkPushConstant.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+		vkPushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
 
 		pushConstants.Emplace(vkPushConstant);
 	}
@@ -874,6 +900,27 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 	return binding;
 }
 
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
+
+	RHI::ShaderLayoutBinding layout;
+	layout.m_binding = shaderBinding;
+	layout.m_name = name;
+	layout.m_type = RHI::EShaderBindingType::StorageImage;
+
+	binding->SetLayout(layout);
+	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
+	binding->SetTextureBinding(texture);
+
+	UpdateDescriptorSet(pShaderBindings);
+
+	return binding;
+}
+
 void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, RHI::RHITexturePtr value)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -992,6 +1039,41 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaRenderTarget(RHI::EFormat t
 void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr)
 {
 	cmd->m_vulkan.m_commandBuffer->PushConstants(material->m_vulkan.m_pipeline->m_layout, 0, size, ptr);
+}
+
+void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout layout, bool bAllowToWriteFromComputeShader)
+{
+	VkImageMemoryBarrier barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = (VkImageLayout)layout;
+	barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = *image->m_vulkan.m_image;
+	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat((VkFormat)format);
+	barrier.subresourceRange.baseMipLevel = 0;
+	barrier.subresourceRange.levelCount = image->m_vulkan.m_image->m_mipLevels;
+	barrier.subresourceRange.baseArrayLayer = 0;
+	barrier.subresourceRange.layerCount = image->m_vulkan.m_image->m_arrayLayers;
+	barrier.srcAccessMask = 0; // TODO
+	barrier.dstAccessMask = 0; // TODO
+
+	VkPipelineStageFlags sourceStage = bAllowToWriteFromComputeShader ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+	VkPipelineStageFlags destinationStage = bAllowToWriteFromComputeShader ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage((VkImageLayout)layout);
+
+	barrier.srcAccessMask = bAllowToWriteFromComputeShader ? VulkanCommandBuffer::GetAccessFlags((VkImageLayout)layout) : VK_ACCESS_SHADER_WRITE_BIT;
+	barrier.dstAccessMask = bAllowToWriteFromComputeShader ? VK_ACCESS_SHADER_WRITE_BIT : VulkanCommandBuffer::GetAccessFlags((VkImageLayout)layout);
+
+	vkCmdPipelineBarrier(
+		*cmd->m_vulkan.m_commandBuffer,
+		sourceStage, destinationStage,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &barrier
+	);
+
+	cmd->m_vulkan.m_commandBuffer->AddDependency(image);
 }
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
@@ -1469,8 +1551,8 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPt
 	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader);
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(computePipeline->m_layout, bindings);
 
-	cmd->m_vulkan.m_commandBuffer->BindPipeline(computePipeline);
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(computePipeline->m_layout, sets, VK_PIPELINE_BIND_POINT_COMPUTE);
+	cmd->m_vulkan.m_commandBuffer->BindPipeline(computePipeline);
 	cmd->m_vulkan.m_commandBuffer->Dispatch(groupSizeX, groupSizeY, groupSizeZ);
 	cmd->m_vulkan.m_commandBuffer->AddDependency(computeShader);
 }
@@ -1564,11 +1646,20 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 					if (binding.m_second->GetTextureBinding())
 					{
 						auto& texture = binding.m_second->GetTextureBinding();
-						auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-							device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
-							texture->m_vulkan.m_imageView);
 
-						descriptors.Add(descr);
+						if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
+						{
+							auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
+								device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
+								texture->m_vulkan.m_imageView);
+							descriptors.Add(descr);
+						}
+						else if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::StorageImage)
+						{
+							auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0, texture->m_vulkan.m_imageView);
+							descriptors.Add(descr);
+						}
+
 						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 					}
 					else if (binding.m_second->m_vulkan.m_valueBinding)

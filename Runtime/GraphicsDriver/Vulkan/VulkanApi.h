@@ -59,6 +59,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	typedef TRefPtr<class VulkanSwapchain> VulkanSwapchainPtr;
 	typedef TRefPtr<class VulkanDescriptorBuffer> VulkanDescriptorBufferPtr;
 	typedef TRefPtr<class VulkanDescriptorCombinedImage> VulkanDescriptorCombinedImagePtr;
+	typedef TRefPtr<class VulkanDescriptorStorageImage> VulkanDescriptorStorageImagePtr;
 	typedef TRefPtr<class VulkanStateColorBlending> VulkanStateColorBlendingPtr;
 	typedef TRefPtr<class VulkanStateViewport> VulkanStateViewportPtr;
 	typedef TRefPtr<class VulkanStateRasterization> VulkanStateRasterizationPtr;
@@ -150,7 +151,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			uint32_t              binding = 0,
 			VkDescriptorType      descriptorType = VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 			uint32_t              descriptorCount = 1,
-			VkShaderStageFlags    stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS,
+			VkShaderStageFlags    stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT,
 			const VkSampler* pImmutableSamplers = nullptr);
 
 		SAILOR_API static VkDescriptorPoolSize CreateDescriptorPoolSize(VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uint32_t count = 1);

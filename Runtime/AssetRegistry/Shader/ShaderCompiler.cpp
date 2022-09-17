@@ -475,7 +475,8 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderS
 	if (module.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
 	{
 		const std::string& error = module.GetErrorMessage();
-		SAILOR_LOG("Failed to compile shader: %s", error.c_str());
+
+		std::cout << "Failed to compile shader: " << error << std::endl;
 
 		return false;
 	}

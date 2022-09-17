@@ -107,6 +107,25 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkDescriptorImageInfo m_imageInfo{};
 	};
 
+	class VulkanDescriptorStorageImage : public VulkanDescriptor
+	{
+	public:
+		SAILOR_API VulkanDescriptorStorageImage(uint32_t dstBinding,
+			uint32_t dstArrayElement,
+			VulkanImageViewPtr imageView,
+			VkImageLayout imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL);
+
+		SAILOR_API void SetImageView(VulkanImageViewPtr imageView);
+
+		SAILOR_API virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+
+	protected:
+
+		VulkanImageViewPtr m_imageView;
+		VkImageLayout m_imageLayout;
+		VkDescriptorImageInfo m_imageInfo{};
+	};
+
 	class VulkanDescriptorSet : public RHI::RHIResource, public RHI::IExplicitInitialization
 	{
 	public:

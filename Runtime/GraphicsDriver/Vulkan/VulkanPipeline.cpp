@@ -190,16 +190,16 @@ void VulkanComputePipeline::Compile()
 	m_layout->Compile();
 	m_stage->Compile();
 
-	// TODO: Check flags
+	// TODO: Check flags: VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT | VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT
 	VkPipelineShaderStageCreateInfo shaderStageCreateInfo{};
-	shaderStageCreateInfo.flags = VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT |	VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT ;
+	shaderStageCreateInfo.flags = 0;
 	m_stage->Apply(shaderStageCreateInfo);
 
 	// TODO: Check flags
 	VkComputePipelineCreateInfo pipelineInfo = {};
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 	pipelineInfo.layout = *m_layout;
-	pipelineInfo.flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
+	pipelineInfo.flags = 0;
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 	pipelineInfo.pNext = nullptr;
 

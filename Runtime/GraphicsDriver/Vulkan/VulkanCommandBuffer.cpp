@@ -565,7 +565,7 @@ void VulkanCommandBuffer::ClearImage(VulkanImagePtr dst, const glm::vec4& clearC
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
 {
-	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_ALL_GRAPHICS, (uint32_t)offset, (uint32_t)size, ptr);
+	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT, (uint32_t)offset, (uint32_t)size, ptr);
 }
 
 void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
@@ -770,7 +770,7 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 		1, &barrier);
 }
 
-VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout) const
+VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout)
 {
 	switch (layout)
 	{
@@ -789,7 +789,7 @@ VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout) const
 	}
 }
 
-VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout) const
+VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 {
 	switch (layout)
 	{

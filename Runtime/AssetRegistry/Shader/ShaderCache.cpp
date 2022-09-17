@@ -429,7 +429,7 @@ bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uin
 
 	AssetRegistry::ReadBinaryFile(vertexFilepath, vertexSpirv);
 	AssetRegistry::ReadBinaryFile(fragmentFilepath, fragmentSpirv);
-	AssetRegistry::ReadBinaryFile(fragmentFilepath, computeSpirv);
+	AssetRegistry::ReadBinaryFile(computeFilepath, computeSpirv);
 
 	return true;
 }

@@ -40,6 +40,8 @@ void VulkanShaderStage::Compile()
 
 void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code)
 {
+	const bool bIsComputeShader = m_stage & VK_SHADER_STAGE_COMPUTE_BIT;
+
 	SAILOR_PROFILE_FUNCTION();
 
 	SpvReflectShaderModule module;
@@ -69,92 +71,87 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 
 			RHI::ShaderLayoutBinding& rhiBinding = binding[reflBinding.binding].m_first = {};
 			VkDescriptorSetLayoutBinding& layoutBinding = binding[reflBinding.binding].m_second = {};
-			
+
 			layoutBinding = VulkanApi::CreateDescriptorSetLayoutBinding(reflBinding.binding,
-				static_cast<VkDescriptorType>(reflBinding.descriptor_type),
-				1);
+				static_cast<VkDescriptorType>(reflBinding.descriptor_type), reflBinding.count);
 
 			for (uint32_t i_dim = 0; i_dim < reflBinding.array.dims_count; ++i_dim)
 			{
 				layoutBinding.descriptorCount *= reflBinding.array.dims[i_dim];
 			}
 
-			// We store different stages in one descriptor set
-			layoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
-			// static_cast<VkShaderStageFlagBits>(module.shader_stage);
+			// TODO: Should we split Compute/Graphics bit?
+			layoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+			
+			// Fill data
+			rhiBinding.m_name = reflBinding.name ? std::string(reflBinding.name) : "";
+			rhiBinding.m_type = (RHI::EShaderBindingType)reflBinding.descriptor_type;
+			rhiBinding.m_binding = reflBinding.binding;
+			rhiBinding.m_size = reflBinding.block.size;
+			rhiBinding.m_set = reflBinding.set;
+			rhiBinding.m_arrayCount = layoutBinding.descriptorCount;
 
-			// If we have type description then we have all info
-			if (reflBinding.name)
+			uint32_t membersSize = 0;
+
+			// We handle UBO as POD
+			SpvReflectBlockVariable* blockContent = reflBinding.block.members;
+			uint32_t blockCount = reflBinding.block.member_count;
+
+			// We handle SSBO as instance's POD
+			if (rhiBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
 			{
-				rhiBinding.m_name = std::string(reflBinding.name);
-				rhiBinding.m_type = (RHI::EShaderBindingType)reflBinding.descriptor_type;
-				rhiBinding.m_binding = reflBinding.binding;
-				rhiBinding.m_size = reflBinding.block.size;
-				rhiBinding.m_set = reflBinding.set;
-				rhiBinding.m_arrayCount = layoutBinding.descriptorCount;
-				
-				uint32_t membersSize = 0;
-				
-				// We handle UBO as POD
-				SpvReflectBlockVariable* blockContent = reflBinding.block.members;
-				uint32_t blockCount = reflBinding.block.member_count;
+				blockContent = reflBinding.block.members[0].members;
+				blockCount = reflBinding.block.members[0].member_count;
+			}
 
-				// We handle SSBO as instance's POD
-				if (rhiBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
+			for (uint32_t i = 0; i < blockCount; i++)
+			{
+				RHI::ShaderLayoutBindingMember member;
+
+				member.m_name = blockContent[i].name ? std::string(blockContent[i].name) : "";
+				member.m_absoluteOffset = blockContent[i].absolute_offset;
+				member.m_size = blockContent[i].size;
+				member.m_type = (RHI::EShaderBindingMemberType)(blockContent[i].type_description->op);
+				member.m_arrayDimensions = blockContent[i].array.dims_count;
+				// TODO: implement multiple arrays
+				member.m_arrayCount = blockContent[i].array.dims[0];
+				member.m_arrayStride = blockContent[i].array.stride;
+
+				membersSize += blockContent[i].padded_size;
+
+				if (member.m_type == RHI::EShaderBindingMemberType::Array && blockContent[i].type_description)
 				{
-					blockContent = reflBinding.block.members[0].members;
-					blockCount = reflBinding.block.members[0].member_count;
-				}
-
-				for (uint32_t i = 0; i < blockCount; i++)
-				{
-					RHI::ShaderLayoutBindingMember member;
-
-					member.m_name = std::string(blockContent[i].name);
-					member.m_absoluteOffset = blockContent[i].absolute_offset;
-					member.m_size = blockContent[i].size;
-					member.m_type = (RHI::EShaderBindingMemberType)(blockContent[i].type_description->op);
-					member.m_arrayDimensions = blockContent[i].array.dims_count;
-					// TODO: implement multiple arrays
-					member.m_arrayCount = blockContent[i].array.dims[0];
-					member.m_arrayStride = blockContent[i].array.stride;
-					
-					membersSize += blockContent[i].padded_size;
-
-					if (member.m_type == RHI::EShaderBindingMemberType::Array && blockContent[i].type_description)
+					const auto& typeFlags = blockContent[i].type_description->type_flags;
+					if (typeFlags & SPV_REFLECT_TYPE_FLAG_FLOAT)
 					{
-						const auto& typeFlags = blockContent[i].type_description->type_flags;
-						if (typeFlags & SPV_REFLECT_TYPE_FLAG_FLOAT)
-						{
-							member.m_type = RHI::EShaderBindingMemberType::Float;
-						}
-						else if (typeFlags & SPV_REFLECT_TYPE_FLAG_BOOL)
-						{
-							member.m_type = RHI::EShaderBindingMemberType::Bool;
-						}
-						else if (typeFlags & SPV_REFLECT_TYPE_FLAG_INT)
-						{
-							member.m_type = RHI::EShaderBindingMemberType::Int;
-						}
-
-						if (typeFlags & SPV_REFLECT_TYPE_FLAG_MATRIX)
-						{
-							member.m_type = RHI::EShaderBindingMemberType::Matrix;
-						}
-						else if (typeFlags & SPV_REFLECT_TYPE_FLAG_VECTOR)
-						{
-							member.m_type = RHI::EShaderBindingMemberType::Vector;
-						}
+						member.m_type = RHI::EShaderBindingMemberType::Float;
+					}
+					else if (typeFlags & SPV_REFLECT_TYPE_FLAG_BOOL)
+					{
+						member.m_type = RHI::EShaderBindingMemberType::Bool;
+					}
+					else if (typeFlags & SPV_REFLECT_TYPE_FLAG_INT)
+					{
+						member.m_type = RHI::EShaderBindingMemberType::Int;
 					}
 
-					rhiBinding.m_members.Emplace(std::move(member));
+					if (typeFlags & SPV_REFLECT_TYPE_FLAG_MATRIX)
+					{
+						member.m_type = RHI::EShaderBindingMemberType::Matrix;
+					}
+					else if (typeFlags & SPV_REFLECT_TYPE_FLAG_VECTOR)
+					{
+						member.m_type = RHI::EShaderBindingMemberType::Vector;
+					}
 				}
 
-				if (rhiBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
-				{
-					//We store 1 instance size in binding
-					rhiBinding.m_size = membersSize;
-				}
+				rhiBinding.m_members.Emplace(std::move(member));
+			}
+
+			if (rhiBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
+			{
+				//We store 1 instance size in binding
+				rhiBinding.m_size = membersSize;
 			}
 		}
 	}

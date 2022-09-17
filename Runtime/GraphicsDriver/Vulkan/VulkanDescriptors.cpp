@@ -219,7 +219,7 @@ VulkanDescriptorCombinedImage::VulkanDescriptorCombinedImage(uint32_t dstBinding
 	m_imageLayout(imageLayout),
 	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
 {
-	m_imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	m_imageInfo.imageLayout = m_imageLayout;
 	m_imageInfo.imageView = *m_imageView;
 	m_imageInfo.sampler = *m_sampler;
 }
@@ -230,6 +230,32 @@ void VulkanDescriptorCombinedImage::SetImageView(VulkanImageViewPtr imageView)
 }
 
 void VulkanDescriptorCombinedImage::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
+{
+	VulkanDescriptor::Apply(writeDescriptorSet);
+
+	writeDescriptorSet.descriptorCount = 1;
+	writeDescriptorSet.pImageInfo = &m_imageInfo;
+}
+
+VulkanDescriptorStorageImage::VulkanDescriptorStorageImage(uint32_t dstBinding,
+	uint32_t dstArrayElement,
+	VulkanImageViewPtr imageView,
+	VkImageLayout imageLayout) :
+	m_imageView(imageView),
+	m_imageLayout(imageLayout),
+	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+{	
+	m_imageInfo.imageLayout = m_imageLayout;
+	m_imageInfo.imageView = *m_imageView;
+	m_imageInfo.sampler = VK_NULL_HANDLE;
+}
+
+void VulkanDescriptorStorageImage::SetImageView(VulkanImageViewPtr imageView)
+{
+	m_imageView = imageView;
+}
+
+void VulkanDescriptorStorageImage::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
 {
 	VulkanDescriptor::Apply(writeDescriptorSet);
 

@@ -111,11 +111,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool FitsViewport(const VkViewport& viewport) const;
 		SAILOR_API bool IsRecorded() const { return m_bIsRecorded; }
 
+		SAILOR_API static VkAccessFlags GetAccessFlags(VkImageLayout layout);
+		SAILOR_API static VkPipelineStageFlags GetPipelineStage(VkImageLayout layout);
+
 	protected:
-
-		SAILOR_API VkAccessFlags GetAccessFlags(VkImageLayout layout) const;
-		SAILOR_API VkPipelineStageFlags GetPipelineStage(VkImageLayout layout) const;
-
+		
 		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
 		VulkanImagePtr m_depthStencilAttachmentDependency;
 
