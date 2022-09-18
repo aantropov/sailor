@@ -75,14 +75,14 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			layoutBinding = VulkanApi::CreateDescriptorSetLayoutBinding(reflBinding.binding,
 				static_cast<VkDescriptorType>(reflBinding.descriptor_type), reflBinding.count);
 
-			for (uint32_t i_dim = 0; i_dim < reflBinding.array.dims_count; ++i_dim)
+			/*for (uint32_t i_dim = 0; i_dim < reflBinding.array.dims_count; ++i_dim)
 			{
 				layoutBinding.descriptorCount *= reflBinding.array.dims[i_dim];
-			}
+			}*/
 
 			// TODO: Should we split Compute/Graphics bit?
 			layoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
-			
+
 			// Fill data
 			rhiBinding.m_name = reflBinding.name ? std::string(reflBinding.name) : "";
 			rhiBinding.m_type = (RHI::EShaderBindingType)reflBinding.descriptor_type;
