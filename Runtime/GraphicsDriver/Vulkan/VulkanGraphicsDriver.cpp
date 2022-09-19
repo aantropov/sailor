@@ -601,7 +601,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	for (uint32_t i = 0; i < bindings.Num(); i++)
 	{
 		auto& layoutBinding = bindings[i];
-		if (layoutBinding.m_set == 0 || layoutBinding.m_set == 1)
+		if (layoutBinding.m_set == 0 || layoutBinding.m_set == 1 || layoutBinding.m_set == 2)
 		{
 			// We skip 0 layout, it is frameData and would be binded in a different way
 			// Also we skip 1 layout, that is per instance data and would be binded in a different way
@@ -1622,8 +1622,9 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 	if (const bool bIsCompatible = IsCompatible(layout, shaderBindings))
 	{
-		for (auto& binding : shaderBindings)
+		for (uint32_t i = 0; i < layout->m_descriptionSetLayouts.Num(); i++)
 		{
+			const auto& binding = shaderBindings[i];
 			descriptorSets.Add(binding->m_vulkan.m_descriptorSet);
 		}
 	}

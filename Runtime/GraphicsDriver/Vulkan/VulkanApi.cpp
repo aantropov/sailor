@@ -1022,7 +1022,7 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 
 bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)
 {
-	for (uint32_t i = 0; i < descriptorSets.Num(); i++)
+	for (uint32_t i = 0; i < pipelineLayout->m_descriptionSetLayouts.Num(); i++)
 	{
 		if (!IsCompatible(pipelineLayout, descriptorSets[i], i))
 		{

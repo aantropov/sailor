@@ -10,7 +10,7 @@ void LightingECS::BeginPlay()
 {
 	m_lightsData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 
-	Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_lightsData, "lightsData", sizeof(LightingECS::ShaderData), LightsMaxNum, 0);
+	Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_lightsData, "light", sizeof(LightingECS::ShaderData), LightsMaxNum, 0);
 }
 
 Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
@@ -31,7 +31,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		if (data.m_bIsDirty || ownerTransform.GetLastFrameChanged() == GetWorld()->GetCurrentFrame())
 		{
 			size_t index = GetComponentIndex(&data);
-			auto& binding = m_lightsData->GetOrAddShaderBinding("lightsData");
+			auto& binding = m_lightsData->GetOrAddShaderBinding("light");
 
 			const auto& lightData = m_components[index];
 

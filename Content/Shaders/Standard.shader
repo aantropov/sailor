@@ -51,7 +51,6 @@ layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
     PerInstanceData instance[];
 } data;
 
-#ifdef CUSTOM_DATA
 layout(std140, set = 3, binding = 0) readonly buffer MaterialDataSSBO
 {
     MaterialData instance[];
@@ -61,7 +60,6 @@ MaterialData GetMaterialData()
 {
     return material.instance[data.instance[gl_InstanceIndex].materialInstance];
 }
-#endif
 
 layout(location=0) in vec3 inPosition;
 layout(location=1) in vec3 inNormal;
@@ -77,12 +75,7 @@ void main()
     gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
 
-    fragColor = 1 - inColor * gl_Position.z / 3000;
-
-#ifdef CUSTOM_DATA
-    fragColor *= GetMaterialData().color;
-#endif
-
+    fragColor = inColor;
 	fragNormal = worldNormal.xyz;
     fragTexcoord = inTexcoord;
 }
@@ -93,26 +86,16 @@ BEGIN_CODE
 layout(location=0) in vec4 fragColor;
 layout(location=1) in vec2 fragTexcoord;
 layout(location=2) in vec3 fragNormal;
-layout(set=0, binding=1) uniform sampler2D g_defaultSampler;
 
-#ifndef NO_DIFFUSE
 layout(set=3, binding=1) uniform sampler2D diffuseSampler;
-#endif
-
 layout(location = 0) out vec4 outColor;
 
 void main() 
 {
-#ifndef NO_DIFFUSE
     outColor = fragColor * texture(diffuseSampler, fragTexcoord);
-#else 
-    outColor = fragColor * texture(g_defaultSampler, fragTexcoord);
-#endif
-
-	outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));
-	outColor.xyz += 0.007;    
+	outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));	
 }
 END_CODE,
 
-"defines":["CUSTOM_DATA", "NO_DIFFUSE"]
+"defines":[]
 }

@@ -34,12 +34,12 @@ layout(push_constant) uniform Constants
 	ivec2 NumTiles;
 } PushConstants;
 
-layout(std140, set = 0, binding = 0) buffer readonly LightDataSSBO
+layout(std140, set = 0, binding = 0) readonly buffer LightDataSSBO
 {	
-	LightData lightsData[];
-};
+	LightData instance[];
+} light;
 
-layout(std140, set = 1, binding = 0) buffer writeonly CulledLightsSSBO
+layout(std140, set = 1, binding = 0) writeonly buffer CulledLightsSSBO
 {
     CulledLights culledLights[];
 };
@@ -54,7 +54,6 @@ layout(set = 2, binding = 0) uniform FrameData
     float currentTime;
     float deltaTime;
 } frame;
-
 
 // vulkan ndc, minDepth = 0.0, maxDepth = 1.0
 const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
@@ -191,7 +190,7 @@ void main()
 
 	for (uint i = gl_LocalInvocationIndex; i < PushConstants.lightsNum && lightCountForTile < LIGHTS_PER_TILE; i += gl_WorkGroupSize.x)
 	{
-		if (Intersects(lightsData[i], frustum))
+		if (Intersects(light.instance[i], frustum))
 		{
 			uint slot = atomicAdd(lightCountForTile, 1);
 			if (slot >= LIGHTS_PER_TILE)

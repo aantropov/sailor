@@ -88,7 +88,7 @@ void RecordDrawCall(uint32_t start,
 		auto& material = vecBatches[j].m_material;
 		auto& mesh = vecBatches[j].m_mesh;
 
-		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData, material->GetBindings() });
+		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, perInstanceData, material->GetBindings() });
 
 		commands->BindMaterial(cmdList, material);
 		commands->BindShaderBindings(cmdList, material, sets);

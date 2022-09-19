@@ -42,7 +42,7 @@ MaterialPtr Material::CreateInstance(WorldPtr world, const MaterialPtr& material
 	newMaterial->m_samplers = material->GetSamplers();
 	newMaterial->m_shader = material->GetShader();
 	newMaterial->m_bIsDirty = true;
-		
+
 	newMaterial->UpdateRHIResource();
 	newMaterial->UpdateUniforms(world->GetCommandList());
 
@@ -359,9 +359,12 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 
 				auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 				{
-					pMaterial.GetRawPtr()->UpdateRHIResource();
-					pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
-					pMaterial.GetRawPtr()->TraceHotReload(nullptr);
+					if (pMaterial.GetRawPtr()->GetShader()->IsReady())
+					{
+						pMaterial.GetRawPtr()->UpdateRHIResource();
+						pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
+						pMaterial.GetRawPtr()->TraceHotReload(nullptr);
+					}
 				}, Tasks::EThreadType::Render);
 
 				// Preload textures
@@ -541,8 +544,11 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 			// We're updating rhi on worker thread during load since we have no deps
 			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 			{
-				pMaterial.GetRawPtr()->UpdateRHIResource();
-				pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
+				if (pMaterial.GetRawPtr()->GetShader()->IsReady())
+				{
+					pMaterial.GetRawPtr()->UpdateRHIResource();
+					pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
+				}
 			}, Tasks::EThreadType::RHI);
 
 			// Preload textures
