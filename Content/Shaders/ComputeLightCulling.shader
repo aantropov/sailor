@@ -31,7 +31,7 @@ layout(push_constant) uniform Constants
 {
     int lightsNum;
 	ivec2 viewportSize;
-	ivec2 NumTiles;
+	ivec2 numTiles;
 } PushConstants;
 
 layout(std140, set = 0, binding = 0) readonly buffer LightDataSSBO
@@ -159,7 +159,7 @@ bool Intersects(LightData light, ViewFrustum frustum)
 void main()
 {
 	ivec2 tileId = ivec2(gl_WorkGroupID.xy);
-	uint tileIndex = tileId.y * PushConstants.NumTiles.x + tileId.x;
+	uint tileIndex = tileId.y * PushConstants.numTiles.x + tileId.x;
 
 	if (gl_LocalInvocationIndex == 0)
 	{
