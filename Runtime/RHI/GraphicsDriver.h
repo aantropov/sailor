@@ -237,7 +237,11 @@ namespace Sailor::RHI
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary) = 0;
 		SAILOR_API virtual void BindMaterial(RHICommandListPtr cmd, RHI::RHIMaterialPtr material) = 0;
 
-		SAILOR_API virtual void Dispatch(RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader, const TVector<RHI::RHIShaderBindingSetPtr>& bindings, uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ) = 0;
+		SAILOR_API virtual void Dispatch(RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader, 
+			uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ,
+			const TVector<RHI::RHIShaderBindingSetPtr>& bindings,
+			void* pPushConstantsData = nullptr,
+			uint32_t sizePushConstantsData = 0) = 0;
 
 		SAILOR_API virtual void BindVertexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset) = 0;
 		SAILOR_API virtual void BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t offset) = 0;

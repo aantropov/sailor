@@ -46,6 +46,9 @@ void RHISceneView::PrepareSnapshots()
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;
 
+		res.m_numLights = m_numLights;
+		res.m_rhiLightsData= m_rhiLightsData;
+
 		// Stationary
 		TVector<RHIMeshProxy> meshProxies;
 		m_stationaryOctree.Trace(frustum, meshProxies);

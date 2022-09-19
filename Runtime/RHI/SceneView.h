@@ -36,6 +36,8 @@ namespace Sailor::RHI
 		TVector<RHISceneViewProxy> m_proxies;
 		RHIShaderBindingSetPtr m_frameBindings;
 		RHICommandListPtr m_debugDrawSecondaryCmdList;
+		uint32_t m_numLights;
+		RHI::RHIShaderBindingSetPtr m_rhiLightsData;
 	};
 
 	struct RHISceneView
@@ -45,6 +47,9 @@ namespace Sailor::RHI
 
 		TOctree<RHIMeshProxy> m_stationaryOctree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
 		TOctree<RHISceneViewProxy> m_staticOctree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
+
+		uint32_t m_numLights;
+		RHI::RHIShaderBindingSetPtr m_rhiLightsData;
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;

@@ -136,7 +136,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	m_depthBuffer->m_tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
 	m_depthBuffer->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	m_depthBuffer->m_mipLevels = 1;
-	m_depthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	m_depthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	m_depthBuffer->m_arrayLayers = 1;
 	m_depthBuffer->m_samples = VK_SAMPLE_COUNT_1_BIT;
 	m_depthBuffer->m_defaultLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
@@ -155,8 +155,14 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_depthBuffer->Bind(VulkanDeviceMemoryPtr::Make(m_device, m_depthBuffer->GetMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 0);
 	}
 
-	m_depthBufferView = VulkanImageViewPtr::Make(m_device, m_depthBuffer, VulkanApi::ComputeAspectFlagsForFormat(depthFormat));
+	m_depthBufferView = VulkanImageViewPtr::Make(m_device, m_depthBuffer, VK_IMAGE_ASPECT_DEPTH_BIT);
 	m_depthBufferView->Compile();
+
+	if (const bool bHasStencil = VulkanApi::ComputeAspectFlagsForFormat(depthFormat) & VK_IMAGE_ASPECT_STENCIL_BIT)
+	{
+		m_stencilBufferView = VulkanImageViewPtr::Make(m_device, m_depthBuffer, VK_IMAGE_ASPECT_DEPTH_BIT);
+		m_stencilBufferView->Compile();
+	}
 }
 
 VulkanSwapchain::~VulkanSwapchain()

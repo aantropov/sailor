@@ -166,7 +166,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void SetMaterialParameter(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size);
 		SAILOR_API virtual void BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material);
 
-		SAILOR_API virtual void Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader, const TVector<RHI::RHIShaderBindingSetPtr>& bindings, uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ);
+		SAILOR_API virtual void Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader, 
+			uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ,
+			const TVector<RHI::RHIShaderBindingSetPtr>& bindings,
+			void* pPushConstantsData,
+			uint32_t sizePushConstantsData);
 
 		SAILOR_API virtual void BindVertexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset);
 		SAILOR_API virtual void BindIndexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr indexBuffer, uint32_t offset);

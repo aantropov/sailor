@@ -59,3 +59,10 @@ void LightingECS::EndPlay()
 {
 	m_lightsData.Clear();
 }
+
+void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
+{
+	// TODO: Pass only active lights
+	sceneView->m_numLights = (uint32_t)m_components.Num();
+	sceneView->m_rhiLightsData = m_lightsData;
+}

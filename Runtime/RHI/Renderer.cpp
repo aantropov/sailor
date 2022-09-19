@@ -17,6 +17,7 @@
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "ECS/CameraECS.h"
+#include "ECS/LightingECS.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -155,6 +156,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	rhiSceneView->m_world = world;
 	world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
+	world->GetECS<LightingECS>()->FillLightsData(rhiSceneView);
 
 	rhiSceneView->PrepareDebugDrawCommandLists(world);
 	rhiSceneView->PrepareSnapshots();

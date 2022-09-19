@@ -8,7 +8,7 @@
 
 namespace Sailor
 {
-	// TODO: We have an issue with enabled MSAA, since MSAA depth target is stored in Device->GetMSDepthBuffer
+	// TODO: We have an issue with enabled MSAA, since MSAA depth target is stored in temporary MSAA target that is handled by VulkanGraphicsDriver
 	class DepthPrepassNode : public TFrameGraphNode<DepthPrepassNode>
 	{
 	public:

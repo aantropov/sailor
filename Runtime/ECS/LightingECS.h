@@ -58,9 +58,10 @@ namespace Sailor
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
+		void FillLightsData(RHI::RHISceneViewPtr& sceneView);
+
 	protected:
 
-		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
 		RHI::RHIShaderBindingSetPtr m_lightsData;
 	};
 

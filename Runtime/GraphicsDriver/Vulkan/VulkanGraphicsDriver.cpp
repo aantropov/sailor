@@ -991,12 +991,12 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 			vkPushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
 
 			pushConstants.Emplace(vkPushConstant);
-	}
+		}
 
 		auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device, descriptorSetLayouts, pushConstants, 0);
 		computePipeline = VulkanComputePipelinePtr::Make(device, pipelineLayout, computeShader->m_vulkan.m_shader);
 		computePipeline->Compile();
-}
+	}
 
 	m_cachedComputePipelines.Unlock(computeShader);
 
@@ -1545,7 +1545,12 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<RHI::V
 	}));
 }
 
-void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader, const TVector<RHI::RHIShaderBindingSetPtr>& bindings, uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ)
+void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
+	RHI::RHIShaderPtr computeShader,
+	uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ,
+	const TVector<RHI::RHIShaderBindingSetPtr>& bindings,
+	void* pPushConstantsData,
+	uint32_t sizePushConstantsData)
 {
 	assert(computeShader->GetStage() == RHI::EShaderStage::Compute);
 
@@ -1556,6 +1561,11 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPt
 
 	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader);
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(computePipeline->m_layout, bindings);
+
+	if (pPushConstantsData && sizePushConstantsData > 0)
+	{
+		cmd->m_vulkan.m_commandBuffer->PushConstants(computePipeline->m_layout, 0, sizePushConstantsData, pPushConstantsData);
+	}
 
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(computePipeline->m_layout, sets, VK_PIPELINE_BIND_POINT_COMPUTE);
 	cmd->m_vulkan.m_commandBuffer->BindPipeline(computePipeline);
