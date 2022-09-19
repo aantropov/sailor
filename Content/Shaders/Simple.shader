@@ -15,6 +15,7 @@ layout(set = 0, binding = 0) uniform FrameData
 {
     mat4 view;
     mat4 projection;
+    vec4 cameraPosition;
     float currentTime;
     float deltaTime;
 } frame;
@@ -94,7 +95,7 @@ void main()
 #endif
 
 	outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));
-	outColor.xyz += 0.007;
+	outColor.xyz += 0.007;    
 }
 END_CODE,
 

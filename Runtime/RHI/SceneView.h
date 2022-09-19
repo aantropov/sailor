@@ -31,6 +31,7 @@ namespace Sailor::RHI
 
 	struct RHISceneViewSnapshot
 	{
+		glm::vec4 m_cameraPosition;
 		TUniquePtr<CameraData> m_camera;
 		TVector<RHISceneViewProxy> m_proxies;
 		RHIShaderBindingSetPtr m_frameBindings;

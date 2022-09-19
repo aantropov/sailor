@@ -981,16 +981,22 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 		// We need debug shaders to get full names from reflection
 		VulkanApi::CreateDescriptorSetLayouts(device, { computeShader->m_vulkan.m_shader }, descriptorSetLayouts, bindings);
 
-#ifdef _DEBUG
-		const bool bIsDebug = true;
-#else
-		const bool bIsDebug = false;
-#endif
+		TVector<VkPushConstantRange> pushConstants;
 
-		auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device, descriptorSetLayouts, 0, 0);
+		for (const auto& pushConstant : computeShader->m_vulkan.m_shader->GetPushConstants())
+		{
+			VkPushConstantRange vkPushConstant;
+			vkPushConstant.offset = 0;
+			vkPushConstant.size = 256;
+			vkPushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+
+			pushConstants.Emplace(vkPushConstant);
+	}
+
+		auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device, descriptorSetLayouts, pushConstants, 0);
 		computePipeline = VulkanComputePipelinePtr::Make(device, pipelineLayout, computeShader->m_vulkan.m_shader);
 		computePipeline->Compile();
-	}
+}
 
 	m_cachedComputePipelines.Unlock(computeShader);
 

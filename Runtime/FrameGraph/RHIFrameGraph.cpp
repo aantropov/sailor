@@ -47,6 +47,7 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 		Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(snapshot.m_frameBindings, sampler.m_first, sampler.m_second->GetRHI(), 1);
 	}
 
+	frameData.m_cameraPosition = snapshot.m_cameraPosition;
 	frameData.m_projection = snapshot.m_camera->GetProjectionMatrix();
 	frameData.m_currentTime = worldTime;
 	frameData.m_deltaTime = deltaTime;

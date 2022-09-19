@@ -42,6 +42,7 @@ void RHISceneView::PrepareSnapshots()
 
 		frustum.ExtractFrustumPlanes(m_cameraTransforms[i], camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
 
+		res.m_cameraPosition = m_cameraTransforms[i].m_position;
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;
 
