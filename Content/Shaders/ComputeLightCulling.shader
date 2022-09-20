@@ -29,9 +29,9 @@ struct CulledLights
 
 layout(push_constant) uniform Constants
 {
-    int lightsNum;
 	ivec2 viewportSize;
 	ivec2 numTiles;
+    int lightsNum;
 } PushConstants;
 
 layout(std140, set = 0, binding = 0) readonly buffer LightDataSSBO
@@ -188,12 +188,9 @@ void main()
 
 	barrier();
 
-    if (gl_LocalInvocationIndex == 0)
+    if (tileIndex == 0 && gl_LocalInvocationIndex == 0)
 	{
-        culledLights.instance[32].indices[0] = -1;
-        culledLights.instance[126].indices[1] = -1;
-        culledLights.instance[256].indices[2] = -1;
-        culledLights.instance[64*48 - 1].indices[3] = -1;
+        culledLights.instance[3071].indices[0] = -1;
 	}
 
 	/*for (uint i = gl_LocalInvocationIndex; i < PushConstants.lightsNum && lightCountForTile < LIGHTS_PER_TILE; i += gl_WorkGroupSize.x)

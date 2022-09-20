@@ -24,9 +24,9 @@ namespace Sailor::Framegraph
 
 		struct PushConstants
 		{
-			alignas(16) int32_t m_lightsNum;
-			alignas(16) glm::ivec2 m_viewportSize;
-			alignas(16) glm::ivec2 m_numTiles;
+			alignas(8) glm::ivec2 m_viewportSize;
+			alignas(8) glm::ivec2 m_numTiles;
+			alignas(8) int32_t m_lightsNum;
 		};
 
 		static const char* m_name;

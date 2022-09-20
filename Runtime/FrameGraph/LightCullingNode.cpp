@@ -55,7 +55,7 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		if (!m_culledLights)
 		{
 			m_culledLights = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-			RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "culledLights", sizeof(uint32_t) * LightsPerTile, pushConstants.m_numTiles.x * pushConstants.m_numTiles.y, 0, true);
+			RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "culledLights", sizeof(glm::uvec4) * LightsPerTile, pushConstants.m_numTiles.x * pushConstants.m_numTiles.y, 0, true);
 			RHI::RHIShaderBindingPtr depthSampler = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_culledLights, "sceneDepth", depthAttachment, 1);
 			
 			auto shaderBindingSet = sceneView.m_rhiLightsData;
