@@ -22,6 +22,7 @@ namespace Sailor::RHI
 			TManagedMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr, VulkanBufferAllocator> m_valueBinding;
 			VkDescriptorSetLayoutBinding m_descriptorSetLayout{};
 			uint32_t m_storageInstanceIndex = 0;
+			bool m_bBindSsboWithOffset = false;
 		} m_vulkan;
 #endif
 
@@ -35,6 +36,14 @@ namespace Sailor::RHI
 		{
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 			return m_vulkan.m_storageInstanceIndex;
+#endif
+			return 0;
+		}
+
+		SAILOR_API size_t GetBufferOffset() const
+		{
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+			return (*m_vulkan.m_valueBinding->Get()).m_offset;
 #endif
 			return 0;
 		}

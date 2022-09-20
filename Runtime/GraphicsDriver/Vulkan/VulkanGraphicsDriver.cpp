@@ -563,9 +563,15 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 			}
 			else if (binding.m_second->m_vulkan.m_valueBinding)
 			{
+				const auto type = binding.m_second->GetLayout().m_type;
+				const bool bBindWithoutOffset = (type == RHI::EShaderBindingType::StorageBuffer && !binding.m_second->m_vulkan.m_bBindSsboWithOffset);
+
 				auto& valueBinding = *(binding.m_second->m_vulkan.m_valueBinding->Get());
 				auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.m_second->GetLayout().m_type);
+					valueBinding.m_buffer,
+					bBindWithoutOffset ? 0 : valueBinding.m_offset,
+					valueBinding.m_size,
+					type);
 
 				descriptors.Add(descr);
 				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
@@ -823,7 +829,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddShaderBinding(RHI::RHIShaderBi
 	return pBinding;
 }
 
-RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding)
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -832,11 +838,13 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
 
 	TSharedPtr<VulkanBufferAllocator> allocator = GetMaterialSsboAllocator();
+
 	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(elementSize * numElements, elementSize), allocator);
 
 	assert((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % elementSize == 0);
 
-	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / elementSize);
+	binding->m_vulkan.m_storageInstanceIndex = bBindSsboWithOffset ? 0 : (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / elementSize);
+	binding->m_vulkan.m_bBindSsboWithOffset = bBindSsboWithOffset;
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_binding = shaderBinding;
@@ -1695,9 +1703,16 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 					}
 					else if (binding.m_second->m_vulkan.m_valueBinding)
 					{
+						const auto type = binding.m_second->GetLayout().m_type;
+						const bool bBindWithoutOffset = (type == RHI::EShaderBindingType::StorageBuffer && !binding.m_second->m_vulkan.m_bBindSsboWithOffset);
+
 						auto& valueBinding = *(binding.m_second->m_vulkan.m_valueBinding->Get());
-						auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-							valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.m_second->GetLayout().m_type);
+						auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding,
+							0,
+							valueBinding.m_buffer,
+							bBindWithoutOffset ? 0 : valueBinding.m_offset,
+							valueBinding.m_size,
+							binding.m_second->GetLayout().m_type);
 
 						descriptors.Add(descr);
 						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);

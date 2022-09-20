@@ -37,7 +37,12 @@ void LightComponent::EndPlay()
 void LightComponent::OnGizmo()
 {
 	const glm::vec4 worldPosition = GetOwner()->GetTransformComponent().GetWorldPosition();
-	GetOwner()->GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, 30.0f);
+	const Math::AABB aabb(worldPosition, GetData().m_bounds);
+	GetOwner()->GetWorld()->GetDebugContext()->DrawAABB(aabb, vec4(1.0f, 1.0f, 0.2f, 1.0f));
+
+	const vec3 extents = aabb.GetExtents();
+	const float originSize = std::max(extents.x, std::max(extents.y, extents.z));
+	GetOwner()->GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, originSize);
 }
 
 void LightComponent::SetIntensity(const glm::vec3& value)

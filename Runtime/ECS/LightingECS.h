@@ -25,7 +25,7 @@ namespace Sailor
 
 		glm::vec3 m_intensity{ 1.0f, 1.0f, 1.0f };
 		glm::vec3 m_attenuation{ 1.0f, 0.0f, 0.0f };
-		glm::vec3 m_bounds{ 10.0f, 10.0f,10.0f };
+		glm::vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
 		ELightType m_type = ELightType::Point;
 
 	protected:
