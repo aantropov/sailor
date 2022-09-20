@@ -1648,6 +1648,8 @@ void VulkanGraphicsDriver::SetDefaultViewport(RHI::RHICommandListPtr cmd)
 
 TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	TVector<VulkanDescriptorSetPtr> descriptorSets;
 	descriptorSets.Reserve(shaderBindings.Num());
 
