@@ -41,8 +41,8 @@ layout(std140, set = 0, binding = 0) readonly buffer LightDataSSBO
 
 layout(std140, set = 1, binding = 0) writeonly buffer CulledLightsSSBO
 {
-    CulledLights culledLights[];
-};
+    CulledLights instance[];
+} culledLights;
 
 layout(set = 1, binding = 1) uniform sampler2D sceneDepth;
 
@@ -198,7 +198,7 @@ void main()
                 break;
             }
             
-			culledLights[tileIndex].indices[slot] = i;
+			culledLights.instance[tileIndex].indices[slot] = i;
 		}
 	}
 
@@ -208,7 +208,7 @@ void main()
 	{
         if(lightCountForTile < LIGHTS_PER_TILE)
         {
-            culledLights[tileIndex].indices[lightCountForTile] = -1;
+            culledLights.instance[tileIndex].indices[lightCountForTile] = -1;
         }
 	}
 }

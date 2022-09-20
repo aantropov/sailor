@@ -193,56 +193,5 @@ namespace Sailor::Memory
 		return false;
 	}
 
-	// The core class to work with different pointers to data (for example pointer to DeviceMemory or pointer 'inside' VulkanBuffer)
-	template<typename TPtr>
-	class TMemoryPtr
-	{
-	public:
-
-		TMemoryPtr() = default;
-		TMemoryPtr(const TMemoryPtr& rhs) = default;
-		TMemoryPtr(TMemoryPtr&& rhs) = default;
-		TMemoryPtr& operator=(const TMemoryPtr& rhs) = default;
-		TMemoryPtr& operator=(TMemoryPtr&& rhs) = default;
-
-		TMemoryPtr(size_t offset, size_t alignmentOffset, size_t size, TPtr ptr, uint32_t blockIndex) :
-			m_offset(offset),
-			m_size(size),
-			m_alignmentOffset(alignmentOffset),
-			m_blockIndex(blockIndex),
-			m_ptr(ptr)
-		{}
-
-		operator bool() const { return (bool)m_ptr; }
-
-		const TPtr operator*() const { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
-		TPtr operator*() { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
-
-		void Clear()
-		{
-			m_offset = 0;
-			m_size = 0;
-			m_blockIndex = 0;
-			m_alignmentOffset = 0;
-			m_ptr = nullptr;
-		}
-
-		void ShiftPointer(size_t offset)
-		{
-			m_offset += offset;
-		}
-
-		size_t Offset(const TMemoryPtr& from, const TMemoryPtr& to)
-		{
-			return (size_t)(to.m_offset - from.m_offset - from.m_size - from.m_alignmentOffset);
-		}
-
-		size_t m_offset{};
-		size_t m_alignmentOffset{};
-		size_t m_size{};
-		uint32_t m_blockIndex{};
-		TPtr m_ptr{};
-	};
-
 	void SAILOR_API RunMemoryBenchmark();
 }

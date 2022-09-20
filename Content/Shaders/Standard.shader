@@ -17,6 +17,12 @@ struct LightData
     int type;
 };
 
+#define LIGHTS_PER_TILE 4
+struct CulledLights 
+{	
+	uint indices[LIGHTS_PER_TILE];
+};
+
 struct PerInstanceData
 {
     mat4 model;
@@ -41,6 +47,11 @@ layout(std140, set = 1, binding = 0) readonly buffer LightDataSSBO
 {	
 	LightData instance[];
 } light;
+
+layout(std140, set = 1, binding = 1) readonly buffer CulledLightsSSBO
+{
+    CulledLights instance[];
+} culledLights;
 
 layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
 {

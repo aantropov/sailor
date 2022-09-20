@@ -22,6 +22,7 @@ namespace Sailor::RHI
 		SAILOR_API void SetLayoutShaderBindings(TVector<RHI::ShaderLayoutBinding> layoutBindings);
 		SAILOR_API const TVector<RHI::ShaderLayoutBinding>& GetLayoutBindings() const { return m_layoutBindings; }
 		SAILOR_API RHI::RHIShaderBindingPtr& GetOrAddShaderBinding(const std::string& binding);
+
 		SAILOR_API void RemoveShaderBinding(const std::string& binding);
 		SAILOR_API const TConcurrentMap<std::string, RHI::RHIShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
 

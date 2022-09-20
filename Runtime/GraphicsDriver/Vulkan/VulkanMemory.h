@@ -5,6 +5,7 @@
 #include "Memory/Memory.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "Memory/MemoryPoolAllocator.hpp"
+#include "Memory/MemoryPtr.hpp"
 
 namespace Sailor::Memory
 {

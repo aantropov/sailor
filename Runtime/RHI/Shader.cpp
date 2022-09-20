@@ -28,13 +28,13 @@ size_t RHIShaderBinding::GetCompatibilityHash() const
 	}
 	else if (m_vulkan.m_valueBinding)
 	{
-		if (m_vulkan.m_valueBinding.m_ptr.m_buffer->m_usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+		if (m_vulkan.m_valueBinding->Get().m_ptr.m_buffer->m_usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
 		{
-			HashCombine(hash, p(m_vulkan.m_valueBinding.m_ptr.m_buffer));
+			HashCombine(hash, p(m_vulkan.m_valueBinding->Get().m_ptr.m_buffer));
 		}
 		else
 		{
-			HashCombine(hash, p(m_vulkan.m_valueBinding.m_ptr.m_buffer), m_vulkan.m_valueBinding.m_offset);
+			HashCombine(hash, p(m_vulkan.m_valueBinding->Get().m_ptr.m_buffer), m_vulkan.m_valueBinding->Get().m_offset);
 		}
 	}
 
@@ -55,18 +55,4 @@ bool RHIShaderBinding::FindVariableInUniformBuffer(const std::string& variable, 
 	}
 
 	return false;
-}
-
-RHIShaderBinding::~RHIShaderBinding()
-{
-#if defined(SAILOR_BUILD_WITH_VULKAN)
-	if (m_vulkan.m_valueBinding)
-	{
-		if (m_vulkan.m_bufferAllocator)
-		{
-			auto allocator = m_vulkan.m_bufferAllocator.Lock();
-			allocator->Free(m_vulkan.m_valueBinding);
-		}
-	}
-#endif
 }

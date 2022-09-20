@@ -19,20 +19,18 @@ namespace Sailor::RHI
 
 		struct
 		{
-			TWeakPtr<VulkanBufferAllocator> m_bufferAllocator;
-			TMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr> m_valueBinding;
+			TManagedMemoryPtr<Sailor::Memory::VulkanBufferMemoryPtr, VulkanBufferAllocator> m_valueBinding;
 			VkDescriptorSetLayoutBinding m_descriptorSetLayout{};
 			uint32_t m_storageInstanceIndex = 0;
 		} m_vulkan;
 #endif
 
-		SAILOR_API ~RHIShaderBinding() override;
 		SAILOR_API bool IsBind() const;
 
 		SAILOR_API size_t GetCompatibilityHash() const;
 		SAILOR_API const RHITexturePtr& GetTextureBinding() const { return m_textureBinding; }
 		SAILOR_API const ShaderLayoutBinding& GetLayout() const { return m_bindingLayout; }
-	
+
 		SAILOR_API uint32_t GetStorageInstanceIndex() const
 		{
 #if defined(SAILOR_BUILD_WITH_VULKAN)

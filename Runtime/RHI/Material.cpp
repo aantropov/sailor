@@ -26,7 +26,7 @@ RHI::RHIShaderBindingPtr& RHIShaderBindingSet::GetOrAddShaderBinding(const std::
 		pBinding = RHIShaderBindingPtr::Make();
 	}
 	m_shaderBindings.Unlock(binding);
-	
+
 	return pBinding;
 }
 
@@ -71,9 +71,9 @@ void RHIShaderBindingSet::ParseParameter(const std::string& parameter, std::stri
 bool RHIShaderBindingSet::HasBinding(const std::string& binding) const
 {
 	auto it = std::find_if(m_layoutBindings.begin(), m_layoutBindings.end(), [&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
-		{
-			return shaderLayoutBinding.m_name == binding;
-		});
+	{
+		return shaderLayoutBinding.m_name == binding;
+	});
 
 	return it != m_layoutBindings.end();
 }
@@ -85,16 +85,16 @@ bool RHIShaderBindingSet::HasParameter(const std::string& parameter) const
 	const std::string& variable = splittedString[1];
 
 	auto index = m_layoutBindings.FindIf([&binding](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
-		{
-			return shaderLayoutBinding.m_name == binding;
-		});
+	{
+		return shaderLayoutBinding.m_name == binding;
+	});
 
 	if (index != -1)
 	{
 		if (m_layoutBindings[index].m_members.FindIf([&variable](const RHI::ShaderLayoutBindingMember& shaderLayoutBinding)
-			{
-				return shaderLayoutBinding.m_name == variable;
-			}) != -1)
+		{
+			return shaderLayoutBinding.m_name == variable;
+		}) != -1)
 		{
 			return true;
 		}
