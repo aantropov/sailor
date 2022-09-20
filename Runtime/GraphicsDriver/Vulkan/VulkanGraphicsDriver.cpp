@@ -563,7 +563,7 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 			}
 			else if (binding.m_second->m_vulkan.m_valueBinding)
 			{
-				auto& valueBinding = (*binding.m_second->m_vulkan.m_valueBinding->Get());
+				auto& valueBinding = *(binding.m_second->m_vulkan.m_valueBinding->Get());
 				auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
 					valueBinding.m_buffer, valueBinding.m_offset, valueBinding.m_size, binding.m_second->GetLayout().m_type);
 
@@ -622,7 +622,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		{
 			auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
 			binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
-				uniformAllocator->Allocate(layoutBinding.m_size, device->GetUboOffsetAlignment(layoutBinding.m_size)), 
+				uniformAllocator->Allocate(layoutBinding.m_size, device->GetMinUboOffsetAlignment()),
 				uniformAllocator);
 
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
@@ -834,9 +834,9 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 	TSharedPtr<VulkanBufferAllocator> allocator = GetMaterialSsboAllocator();
 	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(elementSize * numElements, elementSize), allocator);
 
-	assert((*binding->m_vulkan.m_valueBinding->Get()).m_offset % elementSize == 0);
+	assert((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % elementSize == 0);
 
-	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((*binding->m_vulkan.m_valueBinding).Get().m_offset / elementSize);
+	binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / elementSize);
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_binding = shaderBinding;
@@ -872,7 +872,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	else
 	{
 		allocator = GetUniformBufferAllocator(name);
-		binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(size, device->GetUboOffsetAlignment(size)), allocator);
+		binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(size, device->GetMinUboOffsetAlignment()), allocator);
 	}
 
 	RHI::ShaderLayoutBinding layout;
@@ -1405,8 +1405,8 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	auto& binding = *(parameter->m_vulkan.m_valueBinding);
-	Update(cmd, *binding.Get(), pData, size, variableOffset);
+	auto& binding = parameter->m_vulkan.m_valueBinding->Get();
+	Update(cmd, *binding, pData, size, variableOffset);
 }
 
 void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* pData, size_t size, size_t offset)

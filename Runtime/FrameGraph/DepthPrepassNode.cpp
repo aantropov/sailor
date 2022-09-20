@@ -190,6 +190,11 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
+	if (numMeshes == 0)
+	{
+		return;
+	}
+
 	SAILOR_PROFILE_BLOCK("Create storage for matrices");
 	RHI::RHIShaderBindingSetPtr perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(PerInstanceData), numMeshes, 0);

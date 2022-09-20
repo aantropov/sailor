@@ -41,11 +41,12 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 	snapshot.m_frameBindings = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 	Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(snapshot.m_frameBindings, "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
 
+	/* TODO: Add that for post processes only
 	for (auto& sampler : m_samplers)
 	{
 		// TODO: Bind sampler by name
 		Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(snapshot.m_frameBindings, sampler.m_first, sampler.m_second->GetRHI(), 1);
-	}
+	}*/
 
 	frameData.m_cameraPosition = snapshot.m_cameraPosition;
 	frameData.m_projection = snapshot.m_camera->GetProjectionMatrix();

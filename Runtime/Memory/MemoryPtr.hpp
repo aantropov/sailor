@@ -70,22 +70,22 @@ namespace Sailor::Memory
 		TManagedMemory(const TManagedMemory&) = default;
 		TManagedMemory& operator=(const TManagedMemory&) = default;
 
-		const TMemoryPtr<T>& Get() const noexcept { return m_pRawPtr; }
-		TMemoryPtr<T>& Get() { return m_pRawPtr; }
+		const TMemoryPtr<T>& Get() const noexcept { return *m_pRawPtr; }
+		TMemoryPtr<T>& Get() { return *m_pRawPtr; }
 
 		~TManagedMemory()
 		{
-			if (m_pAllocator)
+			if (m_pRawPtr.has_value() && m_pAllocator)
 			{
 				auto allocator = m_pAllocator.Lock();
-				allocator->Free(m_pRawPtr);
+				allocator->Free(m_pRawPtr.value());
 			}
 		}
 
 	protected:
 
 		TWeakPtr<TAllocator> m_pAllocator{};
-		TMemoryPtr<T> m_pRawPtr{};
+		std::optional<TMemoryPtr<T>> m_pRawPtr{};
 	};
 
 	template<typename T, typename TAllocator>
