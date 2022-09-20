@@ -17,6 +17,8 @@ struct LightData
     int type;
 };
 
+const int CULLED_LIGHTS_TILE_SIZE = 16;
+
 #define LIGHTS_PER_TILE 4
 struct CulledLights 
 {	
@@ -39,6 +41,7 @@ layout(set = 0, binding = 0) uniform FrameData
     mat4 view;
     mat4 projection;
     vec4 cameraPosition;
+    ivec2 viewportSize;
     float currentTime;
     float deltaTime;
 } frame;
@@ -111,6 +114,23 @@ void main()
     outColor = fragColor * texture(diffuseSampler, fragTexcoord);
 	outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));	
     outColor *= 1 - vec4(length(light.instance[0].worldPosition.xyz - worldPosition) / 100);
+    
+    ivec2 numTiles = frame.viewportSize / CULLED_LIGHTS_TILE_SIZE;
+    ivec2 tileId = ivec2(gl_FragCoord.xy / CULLED_LIGHTS_TILE_SIZE);
+    uint tileIndex = tileId.y * numTiles.x + tileId.x;
+    
+    for(int i = 0; i < LIGHTS_PER_TILE; i++)
+    {
+        uint index = culledLights.instance[tileIndex].indices[i];
+        
+        if(index == -1)
+        {
+            break;
+        }
+            
+        outColor = vec4(1,1,1,1);
+        //light.instance[index]
+    }    
 }
 END_CODE,
 

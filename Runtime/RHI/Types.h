@@ -605,6 +605,7 @@ namespace Sailor::RHI
 		alignas(16) glm::mat4 m_view;
 		alignas(16) glm::mat4 m_projection;
 		alignas(16) glm::vec4 m_cameraPosition;
+		alignas(16) glm::ivec2 m_viewportSize;
 		alignas(16) float m_currentTime;
 		alignas(16) float m_deltaTime;
 	};

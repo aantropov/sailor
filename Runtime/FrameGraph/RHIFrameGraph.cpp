@@ -53,6 +53,7 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 	frameData.m_currentTime = worldTime;
 	frameData.m_deltaTime = deltaTime;
 	frameData.m_view = snapshot.m_camera->GetViewMatrix();
+	frameData.m_viewportSize = glm::ivec2(App::GetViewportWindow()->GetWidth(), App::GetViewportWindow()->GetHeight());
 
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
 }
@@ -73,7 +74,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		driverCommands->BeginCommandList(cmdList, true);
 		driverCommands->BeginCommandList(transferCmdList, true);
 		FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
-		
+
 		driverCommands->SetDefaultViewport(cmdList);
 
 		for (auto& node : m_graph)

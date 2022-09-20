@@ -37,6 +37,7 @@ layout(set = 0, binding = 0) uniform FrameData
     mat4 view;
     mat4 projection;
     vec4 cameraPosition;
+    ivec2 viewportSize;
     float currentTime;
     float deltaTime;
 } frame;
@@ -93,7 +94,6 @@ BEGIN_CODE
 layout(location=0) in vec4 fragColor;
 layout(location=1) in vec2 fragTexcoord;
 layout(location=2) in vec3 fragNormal;
-layout(set=0, binding=1) uniform sampler2D g_defaultSampler;
 
 #ifndef NO_DIFFUSE
 layout(set=3, binding=1) uniform sampler2D diffuseSampler;
@@ -105,8 +105,6 @@ void main()
 {
 #ifndef NO_DIFFUSE
     outColor = fragColor * texture(diffuseSampler, fragTexcoord);
-#else 
-    outColor = fragColor * texture(g_defaultSampler, fragTexcoord);
 #endif
 
 	outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));
