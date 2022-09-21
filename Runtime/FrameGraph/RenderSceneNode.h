@@ -20,6 +20,7 @@ namespace Sailor::Framegraph
 	protected:
 
 		static const char* m_name;
+		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 	};
 
 	template class TFrameGraphNode<RenderSceneNode>;

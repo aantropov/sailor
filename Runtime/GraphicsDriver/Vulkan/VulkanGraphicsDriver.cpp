@@ -240,7 +240,7 @@ RHI::RHICommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary
 	return cmdList;
 }
 
-RHI::RHIBufferPtr VulkanGraphicsDriver::CreateIndirectBuffer(const void* pData, size_t size)
+RHI::RHIBufferPtr VulkanGraphicsDriver::CreateIndirectBuffer(size_t size)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -248,8 +248,6 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateIndirectBuffer(const void* pData, 
 
 	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage);
 	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-	buffer->GetMemoryDevice()->Copy((*buffer->GetBufferMemoryPtr()).m_offset, size, pData);
 
 	// Hack to store ordinary buffer in TMemoryPtr
 	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
@@ -1431,7 +1429,18 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::
 
 void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* pData, size_t size, size_t offset)
 {
-	Update(cmd, (*buffer->m_vulkan.m_buffer), pData, size, offset);
+	SAILOR_PROFILE_FUNCTION();
+
+	if (buffer->GetUsage() & RHI::EBufferUsageBit::IndirectBuffer_Bit)
+	{
+		// We store IndirectBuffer in Device memory
+		auto& vulkanBuffer = buffer->m_vulkan.m_buffer.m_ptr.m_buffer;
+		vulkanBuffer->GetMemoryDevice()->Copy((*vulkanBuffer->GetBufferMemoryPtr()).m_offset, size, pData);
+	}
+	else
+	{
+		Update(cmd, (*buffer->m_vulkan.m_buffer), pData, size, offset);
+	}
 }
 
 void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr bufferPtr, const void* data, size_t size, size_t offset)

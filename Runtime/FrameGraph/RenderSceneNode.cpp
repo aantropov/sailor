@@ -78,7 +78,8 @@ void RecordDrawCall(uint32_t start,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHIShaderBindingSetPtr perInstanceData,
 	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>>& drawCalls,
-	const TVector<uint32_t>& storageIndex)
+	const TVector<uint32_t>& storageIndex,
+	RHIBufferPtr& indirectCommandBuffer)
 {
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -117,7 +118,15 @@ void RecordDrawCall(uint32_t start,
 			ssboOffset += (uint32_t)matrices.Num();
 		}
 
-		RHIBufferPtr indirectCommandBuffer = driver->CreateIndirectBuffer(drawIndirect.GetData(), sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num());
+		const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
+
+		if (!indirectCommandBuffer.IsValid() || indirectCommandBuffer->GetSize() < bufferSize)
+		{
+			indirectCommandBuffer.Clear();
+			indirectCommandBuffer = driver->CreateIndirectBuffer(bufferSize);
+		}
+
+		commands->UpdateBuffer(cmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize);
 		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, 0, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 	}
 }
@@ -209,6 +218,11 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
 	const size_t materialsPerThread = (batches.Num()) / numThreads;
 
+	if (m_indirectBuffers.Num() < numThreads)
+	{
+		m_indirectBuffers.Resize(numThreads);
+	}
+
 	TVector<RHICommandListPtr> secondaryCommandLists(batches.Num() > numThreads ? (numThreads - 1) : 0);
 	TVector<Tasks::ITaskPtr> tasks;
 
@@ -249,7 +263,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
 			commands->BeginSecondaryCommandList(cmdList, true, true);
 			commands->SetDefaultViewport(cmdList);
-			RecordDrawCall(start, end, vecBatches, cmdList, sceneView, perInstanceData, drawCalls, storageIndex);
+			RecordDrawCall(start, end, vecBatches, cmdList, sceneView, perInstanceData, drawCalls, storageIndex, m_indirectBuffers[i + 1]);
 			commands->EndCommandList(cmdList);
 			secondaryCommandLists[i] = std::move(cmdList);
 		}, Tasks::EThreadType::RHI);
@@ -281,7 +295,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		glm::vec4(0.0f),
 		true);
 
-	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex);
+	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
 	commands->EndRenderPass(commandList);
 	SAILOR_PROFILE_END_BLOCK();
 
@@ -313,4 +327,5 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 void RenderSceneNode::Clear()
 {
+	m_indirectBuffers.Clear();
 }

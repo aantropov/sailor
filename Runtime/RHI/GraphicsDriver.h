@@ -72,7 +72,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer(RHICommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
-		SAILOR_API virtual RHIBufferPtr CreateIndirectBuffer(const void* pData, size_t size) = 0;
+		SAILOR_API virtual RHIBufferPtr CreateIndirectBuffer(size_t size) = 0;
 
 		SAILOR_API virtual RHIMeshPtr CreateMesh();
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices);

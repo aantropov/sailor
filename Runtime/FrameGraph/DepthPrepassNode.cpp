@@ -133,7 +133,10 @@ void RecordDrawCall(uint32_t start,
 			ssboOffset += (uint32_t)matrices.Num();
 		}
 
-		RHIBufferPtr indirectCommandBuffer = driver->CreateIndirectBuffer(drawIndirect.GetData(), sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num());
+		const size_t size = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
+
+		RHIBufferPtr indirectCommandBuffer = driver->CreateIndirectBuffer(size);
+		commands->UpdateBuffer(cmdList, indirectCommandBuffer, drawIndirect.GetData(), size);
 		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, 0, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 	}
 }
@@ -242,7 +245,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
-	
+
 	SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{},
