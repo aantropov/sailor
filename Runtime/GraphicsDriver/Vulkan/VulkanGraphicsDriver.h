@@ -232,9 +232,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Cached MSAA render targets to support MSAA
 		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};
 
-		//Cached VulkanComputePipelines
+		// Cached VulkanComputePipelines
 		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
-		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, int32_t>> m_cachedDescriptorSets{ 8 };
+		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 8 };
 
 		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
 

@@ -230,7 +230,7 @@ namespace Sailor
 
 		void Insert(TElementType inElement)
 		{
-			if (false && ShouldRehash() && TryLockAll())
+			if (ShouldRehash() && TryLockAll())
 			{
 				Rehash(m_buckets.Capacity() * 4);
 				UnlockAll();

@@ -84,10 +84,26 @@ void RecordDrawCall(uint32_t start,
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
+	size_t indirectBufferSize = 0;
+	for (uint32_t j = start; j < end; j++)
+	{
+		indirectBufferSize += drawCalls[vecBatches[j]].Num() * sizeof(RHI::DrawIndexedIndirectData);
+	}
+
+	if (!indirectCommandBuffer.IsValid() || indirectCommandBuffer->GetSize() < indirectBufferSize)
+	{
+		const size_t slack = 256;
+		
+		indirectCommandBuffer.Clear();
+		indirectCommandBuffer = driver->CreateIndirectBuffer(indirectBufferSize + slack);
+	}
+
+	size_t indirectBufferOffset = 0;
 	for (uint32_t j = start; j < end; j++)
 	{
 		auto& material = vecBatches[j].m_material;
 		auto& mesh = vecBatches[j].m_mesh;
+		auto& drawCall = drawCalls[vecBatches[j]];
 
 		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, perInstanceData, material->GetBindings() });
 
@@ -98,10 +114,10 @@ void RecordDrawCall(uint32_t start,
 		commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer, 0);
 
 		TVector<RHI::DrawIndexedIndirectData> drawIndirect;
-		drawIndirect.Reserve(drawCalls[vecBatches[j]].Num());
+		drawIndirect.Reserve(drawCall.Num());
 
 		uint32_t ssboOffset = 0;
-		for (auto& instancedDrawCall : drawCalls[vecBatches[j]])
+		for (auto& instancedDrawCall : drawCall)
 		{
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
@@ -119,15 +135,10 @@ void RecordDrawCall(uint32_t start,
 		}
 
 		const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
+		commands->UpdateBuffer(cmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 
-		if (!indirectCommandBuffer.IsValid() || indirectCommandBuffer->GetSize() < bufferSize)
-		{
-			indirectCommandBuffer.Clear();
-			indirectCommandBuffer = driver->CreateIndirectBuffer(bufferSize);
-		}
-
-		commands->UpdateBuffer(cmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize);
-		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, 0, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
+		indirectBufferOffset += bufferSize;
 	}
 }
 /*

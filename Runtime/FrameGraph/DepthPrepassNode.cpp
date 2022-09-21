@@ -87,6 +87,7 @@ public:
 	}
 };
 
+
 void RecordDrawCall(uint32_t start,
 	uint32_t end,
 	const TVector<Batch>& vecBatches,
@@ -94,17 +95,34 @@ void RecordDrawCall(uint32_t start,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHIShaderBindingSetPtr perInstanceData,
 	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>>& drawCalls,
-	const TVector<uint32_t>& storageIndex)
+	const TVector<uint32_t>& storageIndex,
+	RHIBufferPtr& indirectCommandBuffer)
 {
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
+	size_t indirectBufferSize = 0;
+	for (uint32_t j = start; j < end; j++)
+	{
+		indirectBufferSize += drawCalls[vecBatches[j]].Num() * sizeof(RHI::DrawIndexedIndirectData);
+	}
+
+	if (!indirectCommandBuffer.IsValid() || indirectCommandBuffer->GetSize() < indirectBufferSize)
+	{
+		const size_t slack = 256;
+
+		indirectCommandBuffer.Clear();
+		indirectCommandBuffer = driver->CreateIndirectBuffer(indirectBufferSize + slack);
+	}
+
+	size_t indirectBufferOffset = 0;
 	for (uint32_t j = start; j < end; j++)
 	{
 		auto& material = vecBatches[j].m_material;
 		auto& mesh = vecBatches[j].m_mesh;
+		auto& drawCall = drawCalls[vecBatches[j]];
 
-		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData });
+		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, perInstanceData, material->GetBindings() });
 
 		commands->BindMaterial(cmdList, material);
 		commands->BindShaderBindings(cmdList, material, sets);
@@ -113,10 +131,10 @@ void RecordDrawCall(uint32_t start,
 		commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer, 0);
 
 		TVector<RHI::DrawIndexedIndirectData> drawIndirect;
-		drawIndirect.Reserve(drawCalls[vecBatches[j]].Num());
+		drawIndirect.Reserve(drawCall.Num());
 
 		uint32_t ssboOffset = 0;
-		for (auto& instancedDrawCall : drawCalls[vecBatches[j]])
+		for (auto& instancedDrawCall : drawCall)
 		{
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
@@ -133,11 +151,11 @@ void RecordDrawCall(uint32_t start,
 			ssboOffset += (uint32_t)matrices.Num();
 		}
 
-		const size_t size = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
+		const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
+		commands->UpdateBuffer(cmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 
-		RHIBufferPtr indirectCommandBuffer = driver->CreateIndirectBuffer(size);
-		commands->UpdateBuffer(cmdList, indirectCommandBuffer, drawIndirect.GetData(), size);
-		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, 0, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
+		indirectBufferOffset += bufferSize;
 	}
 }
 
@@ -246,6 +264,14 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
+	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
+	const size_t materialsPerThread = (batches.Num()) / numThreads;
+
+	if (m_indirectBuffers.Num() < numThreads)
+	{
+		m_indirectBuffers.Resize(numThreads);
+	}
+
 	SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{},
@@ -257,7 +283,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		true,
 		true);
 
-	RecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex);
+	RecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
 	commands->EndRenderPass(commandList);
 	SAILOR_PROFILE_END_BLOCK();
 }
