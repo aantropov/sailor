@@ -44,7 +44,7 @@ namespace Sailor
 			Super::Insert(TElementType(key, std::move(value)));
 		}
 
-		SAILOR_API bool RemoveForce(const TKeyType& key)
+		SAILOR_API bool ForcelyRemove(const TKeyType& key)
 		{
 			const size_t hash = Sailor::GetHash(key);
 			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
@@ -101,7 +101,7 @@ namespace Sailor
 			if (element)
 			{
 				Super::Lock(hash);
-				bool bRes = RemoveForce(key);
+				bool bRes = ForcelyRemove(key);
 				Super::Unlock(hash);
 
 				return bRes;
@@ -111,17 +111,19 @@ namespace Sailor
 
 		SAILOR_API TValueType& At_Lock(const TKeyType& key)
 		{
-			auto& res = GetOrAdd(key).m_second;
 			const auto& hash = Sailor::GetHash(key);
 			Super::Lock(hash);
+
+			auto& res = GetOrAdd(key).m_second;
 			return res;
 		}
 
 		SAILOR_API TValueType& At_Lock(const TKeyType& key, TValueType defaultValue)
 		{
-			auto& res = GetOrAdd(key, std::move(defaultValue)).m_second;
 			const auto& hash = Sailor::GetHash(key);
 			Super::Lock(hash);
+
+			auto& res = GetOrAdd(key, std::move(defaultValue)).m_second;
 			return res;
 		}
 
@@ -264,7 +266,7 @@ namespace Sailor
 			}
 
 			// TODO: rethink the approach when default constructor is missed
-			Insert(key, TValueType());
+			Super::ForcelyInsert(TElementType(key, TValueType()));
 
 			const size_t index = hash % Super::m_buckets.Num();
 			auto& element = Super::m_buckets[index];
@@ -291,7 +293,7 @@ namespace Sailor
 				}
 			}
 
-			Insert(key, std::move(defaultValue));
+			Super::ForcelyInsert(TElementType(key, std::move(defaultValue)));
 
 			const size_t index = hash % Super::m_buckets.Num();
 			auto& element = Super::m_buckets[index];

@@ -222,9 +222,15 @@ namespace Sailor
 			return false;
 		}
 
+		void ForcelyInsert(TElementType inElement)
+		{
+			const auto& hash = Sailor::GetHash(inElement);
+			Insert_Internal(std::move(inElement), hash);
+		}
+
 		void Insert(TElementType inElement)
 		{
-			if (ShouldRehash() && TryLockAll())
+			if (false && ShouldRehash() && TryLockAll())
 			{
 				Rehash(m_buckets.Capacity() * 4);
 				UnlockAll();

@@ -234,7 +234,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		//Cached VulkanComputePipelines
 		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
-		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 2048 };
+		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, int32_t>> m_cachedDescriptorSets{ 8 };
 
 		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
 

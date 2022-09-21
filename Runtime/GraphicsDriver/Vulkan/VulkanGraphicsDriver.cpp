@@ -1672,7 +1672,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 		{
 			CachedDescriptorSet cache = CachedDescriptorSet(layout, shaderBindings[i]);
 
-			uint32_t& cachedDescriptorSetFramesLeft = m_cachedDescriptorSets.At_Lock(cache).m_second;
+			int32_t& cachedDescriptorSetFramesLeft = m_cachedDescriptorSets.At_Lock(cache).m_second;
 			VulkanDescriptorSetPtr& cachedDescriptorSet = m_cachedDescriptorSets[cache].m_first;
 
 			if (i >= layout->m_descriptionSetLayouts.Num())
@@ -1871,7 +1871,7 @@ void VulkanGraphicsDriver::CollectGarbage_RenderThread()
 
 	for (auto& batch : m_cachedDescriptorSets)
 	{
-		if (batch.m_first.IsExpired() || (batch.m_second.m_second--) <= 0)
+		if (!batch.m_second.m_first || batch.m_first.IsExpired() || (batch.m_second.m_second--) <= 0)
 		{
 			toRemove.Insert(batch.m_first);
 		}
@@ -1879,8 +1879,7 @@ void VulkanGraphicsDriver::CollectGarbage_RenderThread()
 
 	for (const auto& remove : toRemove)
 	{
-		m_cachedDescriptorSets.RemoveForce(remove);
+		m_cachedDescriptorSets.ForcelyRemove(remove);
 	}
-
 	m_cachedDescriptorSets.UnlockAll();
 }
