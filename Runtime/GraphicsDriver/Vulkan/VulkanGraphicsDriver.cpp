@@ -881,7 +881,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	TSharedPtr<VulkanBufferAllocator> allocator;
 
 	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
-	{	
+	{
 		allocator = GetMaterialSsboAllocator();
 		binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(size, size), allocator);
 		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding->Get()).m_offset / size);
@@ -1667,6 +1667,11 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 		for (uint32_t i = 0; i < shaderBindings.Num(); i++)
 		{
+			if (i >= layout->m_descriptionSetLayouts.Num())
+			{
+				break;
+			}
+
 			const auto& materialLayout = layout->m_descriptionSetLayouts[i];
 
 			if (VulkanApi::IsCompatible(layout, shaderBindings[i]->m_vulkan.m_descriptorSet, i))

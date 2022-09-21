@@ -1043,14 +1043,16 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	TVector<TVector<RHI::ShaderLayoutBinding>> rhiLayouts;
 
 	TSet<uint32_t> uniqueDescriptorSets;
+	size_t countDescriptorSets = 0;
+
 	for (const auto& shader : shaders)
 	{
 		for (const auto& binding : shader->GetBindings())
 		{
 			uniqueDescriptorSets.Insert(binding[0].m_set);
+			countDescriptorSets = std::max(countDescriptorSets, (size_t)binding[0].m_set + 1);
 		}
 	}
-	size_t countDescriptorSets = uniqueDescriptorSets.Num();
 
 	vulkanLayouts.Resize(countDescriptorSets);
 	rhiLayouts.Resize(countDescriptorSets);
