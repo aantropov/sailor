@@ -158,6 +158,8 @@ namespace Sailor::RHI
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		//Immediate context
 
+
+		SAILOR_API virtual void CollectGarbage_RenderThread() = 0;
 		SAILOR_API void TrackResources_ThreadSafe();
 		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, RHIFencePtr handle);
 

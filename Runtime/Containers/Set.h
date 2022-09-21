@@ -254,6 +254,39 @@ namespace Sailor
 			m_num++;
 		}
 
+		bool RemoveFirst(const TPredicate<TElementType>& predicate)
+		{
+			for (auto& el : *this)
+			{
+				if (predicate(el))
+				{
+					return Remove(el);
+				}
+			}
+			return false;
+		}
+
+		size_t RemoveAll(const TPredicate<TElementType>& predicate)
+		{
+			size_t num;
+			TVector<TElementType> toRemove;
+			for (auto& el : *this)
+			{
+				if (predicate(el))
+				{
+					toRemove.Add(el);
+					num++;
+				}
+			}
+
+			for (auto& el : toRemove)
+			{
+				Remove(el);
+			}
+
+			return num;
+		}
+
 		bool Remove(const TElementType& inElement)
 		{
 			const auto& hash = Sailor::GetHash(inElement);

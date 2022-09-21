@@ -44,15 +44,13 @@ namespace Sailor
 			Super::Insert(TElementType(key, std::move(value)));
 		}
 
-		SAILOR_API bool Remove(const TKeyType& key)
+		SAILOR_API bool RemoveForce(const TKeyType& key)
 		{
-			const auto& hash = Sailor::GetHash(key);
+			const size_t hash = Sailor::GetHash(key);
 			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
 
 			if (element)
 			{
-				Super::Lock(hash);
-
 				auto& container = element->GetContainer();
 				if (container.RemoveAll([&](const TElementType& el) { return el.First() == key; }))
 				{
@@ -87,12 +85,26 @@ namespace Sailor
 					}
 
 					Super::m_num--;
-					Super::Unlock(hash);
 					return true;
 				}
 
-				Super::Unlock(hash);
 				return false;
+			}
+			return false;
+		}
+
+		SAILOR_API bool Remove(const TKeyType& key)
+		{
+			const size_t hash = Sailor::GetHash(key);
+			auto& element = Super::m_buckets[hash % Super::m_buckets.Num()];
+
+			if (element)
+			{
+				Super::Lock(hash);
+				bool bRes = RemoveForce(key);
+				Super::Unlock(hash);
+
+				return bRes;
 			}
 			return false;
 		}
@@ -206,11 +218,12 @@ namespace Sailor
 
 		SAILOR_API TVector<TKeyType> GetKeys() const
 		{
-			TVector<TKeyType> res(Super::Num());
+			TVector<TKeyType> res;
+			res.Reserve(Super::Num());
 
 			for (const auto& pair : *this)
 			{
-				res.Add(pair->m_first);
+				res.Add(pair.m_first);
 			}
 
 			return res;
@@ -218,11 +231,12 @@ namespace Sailor
 
 		SAILOR_API TVector<TValueType> GetValues() const
 		{
-			TVector<TValueType> res(Super::Num());
+			TVector<TValueType> res;
+			res.Reserve(Super::Num());
 
 			for (const auto& pair : *this)
 			{
-				res.Add(pair->m_second);
+				res.Add(pair.m_second);
 			}
 
 			return res;

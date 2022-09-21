@@ -87,7 +87,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding);
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding);
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding);
-		
+
 		// Used for full binding update
 		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHI::RHITexturePtr value);
 		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);
@@ -167,7 +167,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void SetMaterialParameter(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size);
 		SAILOR_API virtual void BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material);
 
-		SAILOR_API virtual void Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader, 
+		SAILOR_API virtual void Dispatch(RHI::RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader,
 			uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ,
 			const TVector<RHI::RHIShaderBindingSetPtr>& bindings,
 			void* pPushConstantsData,
@@ -185,6 +185,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr);
 		//End IGraphicsDriverCommands
 
+		SAILOR_API virtual void CollectGarbage_RenderThread() override;
+
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
@@ -194,18 +196,24 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	protected:
 
-		class DescriptorSetCache
+		const uint32_t CachedDescriptorSetLifeTimeInFrames = 3;
+		class CachedDescriptorSet
 		{
-			RHI::RHIMaterialPtr m_material{};
-			TVector<RHI::RHIShaderBindingSetPtr> m_bindings{};
-			size_t m_compatibilityHash{};
+			VulkanPipelineLayoutPtr m_layout{};
+			RHI::RHIShaderBindingSetPtr m_binding{};
 
 		public:
 
-			DescriptorSetCache() = default;
-			DescriptorSetCache& operator=(const DescriptorSetCache& rhs);
-			DescriptorSetCache(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) noexcept;
-			bool operator==(const DescriptorSetCache& rhs) const;
+			CachedDescriptorSet() = default;
+			CachedDescriptorSet& operator=(const CachedDescriptorSet& rhs);
+			CachedDescriptorSet(const VulkanPipelineLayoutPtr& material, const RHI::RHIShaderBindingSetPtr& bindings) noexcept;
+
+			bool operator==(const CachedDescriptorSet& rhs) const;
+
+			VulkanPipelineLayoutPtr& GetLayout() { return m_layout; }
+			RHI::RHIShaderBindingSetPtr& GetBinding() { return m_binding; }
+
+			bool IsExpired() const;
 			size_t GetHash() const;
 		};
 
@@ -226,6 +234,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		//Cached VulkanComputePipelines
 		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
+		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 2048 };
 
 		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
 

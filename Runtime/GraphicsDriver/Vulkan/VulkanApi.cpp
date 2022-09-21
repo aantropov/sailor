@@ -993,6 +993,8 @@ VkDescriptorPoolSize VulkanApi::CreateDescriptorPoolSize(VkDescriptorType type, 
 
 bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const VulkanDescriptorSetPtr& descriptorSet, uint32_t binding)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	size_t numDescriptors = 0;
 	TVector<VulkanDescriptorPtr> descriptors;
 	descriptors.AddRange(descriptorSet->m_descriptors);
@@ -1022,6 +1024,8 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 
 bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	for (uint32_t i = 0; i < pipelineLayout->m_descriptionSetLayouts.Num(); i++)
 	{
 		if (!IsCompatible(pipelineLayout, descriptorSets[i], i))

@@ -227,7 +227,6 @@ namespace Sailor
 			if (ShouldRehash() && TryLockAll())
 			{
 				Rehash(m_buckets.Capacity() * 4);
-
 				UnlockAll();
 			}
 
@@ -255,11 +254,6 @@ namespace Sailor
 				{
 					if (container.Num() == 0)
 					{
-						if (element.GetRawPtr() == m_last)
-						{
-							m_last = element->m_prev;
-						}
-
 						if (element->m_next)
 						{
 							element->m_next->m_prev = element->m_prev;
@@ -308,10 +302,10 @@ namespace Sailor
 
 		// Support ranged for
 		TIterator begin() { return TIterator(m_first, m_first ? ((TEntry*)m_first)->GetContainer().begin() : nullptr); }
-		TIterator end() { return TIterator(m_last, nullptr); }
+		TIterator end() { return TIterator(m_last, m_last ? ((TEntry*)m_last)->GetContainer().end() : nullptr); }
 
 		TConstIterator begin() const { return TConstIterator(m_first, m_first ? ((TEntry*)m_first)->GetContainer().begin() : nullptr); }
-		TConstIterator end() const { return TConstIterator(m_last, nullptr); }
+		TConstIterator end() const { return TConstIterator(m_last, m_last ? ((TEntry*)m_last)->GetContainer().end() : nullptr); }
 
 		bool operator==(const TConcurrentSet& rhs) const
 		{
@@ -337,6 +331,22 @@ namespace Sailor
 			}
 
 			return true;
+		}
+
+		__forceinline void LockAll()
+		{
+			for (size_t i = 0; i < concurrencyLevel; i++)
+			{
+				m_locks[i].Lock();
+			}
+		}
+
+		__forceinline void UnlockAll()
+		{
+			for (size_t i = 0; i < concurrencyLevel; i++)
+			{
+				m_locks[i].Unlock();
+			}
 		}
 
 	protected:
@@ -391,22 +401,6 @@ namespace Sailor
 				}
 			}
 			return true;
-		}
-
-		__forceinline void LockAll()
-		{
-			for (size_t i = 0; i < concurrencyLevel; i++)
-			{
-				m_locks[i].Lock();
-			}
-		}
-
-		__forceinline void UnlockAll()
-		{
-			for (size_t i = 0; i < concurrencyLevel; i++)
-			{
-				m_locks[i].Unlock();
-			}
 		}
 
 		__forceinline bool ShouldRehash() const { return (float)m_num > (float)m_buckets.Num() * 6; }

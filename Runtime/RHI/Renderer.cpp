@@ -254,6 +254,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		} while (m_pViewport->IsIconic());
 
+		GetDriver()->CollectGarbage_RenderThread();
+
 	}, Sailor::Tasks::EThreadType::Render);
 
 	renderingJob->Join(preRenderingJob);

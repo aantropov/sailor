@@ -41,6 +41,7 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
 	m_cachedMsaaRenderTargets.Clear();
 	m_cachedComputePipelines.Clear();
+	m_cachedDescriptorSets.Clear();
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
 
@@ -102,6 +103,8 @@ bool VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 
 bool VulkanGraphicsDriver::IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	TVector<VulkanDescriptorSetPtr> sets;
 	for (auto& binding : bindings)
 	{
@@ -1667,19 +1670,37 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 		for (uint32_t i = 0; i < shaderBindings.Num(); i++)
 		{
+			CachedDescriptorSet cache = CachedDescriptorSet(layout, shaderBindings[i]);
+
+			uint32_t& cachedDescriptorSetFramesLeft = m_cachedDescriptorSets.At_Lock(cache).m_second;
+			VulkanDescriptorSetPtr& cachedDescriptorSet = m_cachedDescriptorSets[cache].m_first;
+
 			if (i >= layout->m_descriptionSetLayouts.Num())
 			{
+				m_cachedDescriptorSets.Unlock(cache);
 				break;
 			}
 
 			const auto& materialLayout = layout->m_descriptionSetLayouts[i];
 
-			if (VulkanApi::IsCompatible(layout, shaderBindings[i]->m_vulkan.m_descriptorSet, i))
+			if (cachedDescriptorSet.IsValid())
 			{
-				descriptorSets.Add(shaderBindings[i]->m_vulkan.m_descriptorSet);
+				cachedDescriptorSetFramesLeft = CachedDescriptorSetLifeTimeInFrames;
+				descriptorSets.Add(cachedDescriptorSet);
+				m_cachedDescriptorSets.Unlock(cache);
 				continue;
 			}
 
+			if (VulkanApi::IsCompatible(layout, shaderBindings[i]->m_vulkan.m_descriptorSet, i))
+			{
+				descriptorSets.Add(shaderBindings[i]->m_vulkan.m_descriptorSet);
+				cachedDescriptorSetFramesLeft = CachedDescriptorSetLifeTimeInFrames;
+				cachedDescriptorSet = descriptorSets[i];
+				m_cachedDescriptorSets.Unlock(cache);
+				continue;
+			}
+
+			SAILOR_PROFILE_BLOCK("Track changes");
 			TVector<VulkanDescriptorPtr> descriptors;
 			TVector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
 
@@ -1736,47 +1757,58 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 				}
 			}
 
+			SAILOR_PROFILE_END_BLOCK();
+
+			SAILOR_PROFILE_BLOCK("Create new descriptor sets");
 			auto descriptorSet = VulkanDescriptorSetPtr::Make(device,
 				device->GetCurrentThreadContext().m_descriptorPool,
 				VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
 				descriptors);
+			SAILOR_PROFILE_END_BLOCK();
 
+			SAILOR_PROFILE_BLOCK("Compile new descriptor sets");
 			descriptorSet->Compile();
 			descriptorSets.Add(descriptorSet);
+
+			cachedDescriptorSetFramesLeft = CachedDescriptorSetLifeTimeInFrames;
+			cachedDescriptorSet = descriptorSets[i];
+			m_cachedDescriptorSets.Unlock(cache);
+			SAILOR_PROFILE_END_BLOCK();
 		}
 	}
 
 	return descriptorSets;
 }
 
-VulkanGraphicsDriver::DescriptorSetCache& VulkanGraphicsDriver::DescriptorSetCache::operator=(const DescriptorSetCache& rhs)
+bool VulkanGraphicsDriver::CachedDescriptorSet::IsExpired() const
 {
-	m_material = rhs.m_material;
-	m_bindings = rhs.m_bindings;
-	m_compatibilityHash = rhs.m_compatibilityHash;
+	return !m_layout.IsShared() || !m_binding.IsShared();
+}
+
+VulkanGraphicsDriver::CachedDescriptorSet& VulkanGraphicsDriver::CachedDescriptorSet::operator=(const CachedDescriptorSet& rhs)
+{
+	m_layout = rhs.m_layout;
+	m_binding = rhs.m_binding;
 
 	return *this;
 }
 
-bool VulkanGraphicsDriver::DescriptorSetCache::operator==(const DescriptorSetCache& rhs) const
+bool VulkanGraphicsDriver::CachedDescriptorSet::operator==(const CachedDescriptorSet& rhs) const
 {
-	return m_compatibilityHash == rhs.m_compatibilityHash && m_material == rhs.m_material && m_bindings.Num() == rhs.m_bindings.Num();
+	return m_layout == rhs.m_layout && m_binding == rhs.m_binding;
 }
 
-size_t VulkanGraphicsDriver::DescriptorSetCache::GetHash() const
+size_t VulkanGraphicsDriver::CachedDescriptorSet::GetHash() const
 {
-	return m_compatibilityHash;
+	size_t hash = m_layout.GetHash();
+	HashCombine(hash, m_binding.GetHash());
+	return hash;
 }
 
-VulkanGraphicsDriver::DescriptorSetCache::DescriptorSetCache(const RHI::RHIMaterialPtr& material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) noexcept :
-	m_material(material),
-	m_bindings(bindings)
+VulkanGraphicsDriver::CachedDescriptorSet::CachedDescriptorSet(const VulkanPipelineLayoutPtr& material, const RHI::RHIShaderBindingSetPtr& binding) noexcept :
+	m_layout(material),
+	m_binding(binding)
 {
-	m_compatibilityHash = m_material.GetHash();
-	for (const auto& binding : m_bindings)
-	{
-		HashCombine(m_compatibilityHash, binding->GetCompatibilityHashCode());
-	}
 }
 
 void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
@@ -1828,4 +1860,27 @@ bool VulkanGraphicsDriver::FitsDefaultViewport(RHI::RHICommandListPtr cmd)
 	auto pStateViewport = device->GetCurrentFrameViewport();
 
 	return cmd->m_vulkan.m_commandBuffer->FitsViewport(pStateViewport->GetViewport());
+}
+
+void VulkanGraphicsDriver::CollectGarbage_RenderThread()
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	m_cachedDescriptorSets.LockAll();
+	TSet<CachedDescriptorSet> toRemove;
+
+	for (auto& batch : m_cachedDescriptorSets)
+	{
+		if (batch.m_first.IsExpired() || (batch.m_second.m_second--) <= 0)
+		{
+			toRemove.Insert(batch.m_first);
+		}
+	}
+
+	for (const auto& remove : toRemove)
+	{
+		m_cachedDescriptorSets.RemoveForce(remove);
+	}
+
+	m_cachedDescriptorSets.UnlockAll();
 }

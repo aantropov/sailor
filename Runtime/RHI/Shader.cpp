@@ -28,7 +28,7 @@ size_t RHIShaderBinding::GetCompatibilityHash() const
 	}
 	else if (m_vulkan.m_valueBinding)
 	{
-		if (m_vulkan.m_valueBinding->Get().m_ptr.m_buffer->m_usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+		if ((m_vulkan.m_valueBinding->Get().m_ptr.m_buffer->m_usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) && !m_vulkan.m_bBindSsboWithOffset)
 		{
 			HashCombine(hash, p(m_vulkan.m_valueBinding->Get().m_ptr.m_buffer));
 		}

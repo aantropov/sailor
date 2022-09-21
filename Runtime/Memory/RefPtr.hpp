@@ -127,6 +127,7 @@ namespace Sailor
 		T& operator*()  noexcept { return *static_cast<T*>(m_pRawPtr); }
 		const T& operator*() const { return *static_cast<T*>(m_pRawPtr); }
 
+		uint32_t NumRefs() const noexcept { return GetRefCounter().load(); }
 		bool IsShared() const  noexcept { return GetRefCounter() > 1; }
 		bool IsValid() const noexcept { return m_pRawPtr != nullptr; }
 
