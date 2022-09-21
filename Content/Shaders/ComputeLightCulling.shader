@@ -22,6 +22,7 @@ struct LightData
     int type;
 };
 
+layout(std430)
 struct CulledLights 
 {	
 	uint indices[LIGHTS_PER_TILE];
@@ -39,7 +40,7 @@ layout(std140, set = 0, binding = 0) readonly buffer LightDataSSBO
 	LightData instance[];
 } light;
 
-layout(std140, set = 1, binding = 0) writeonly buffer CulledLightsSSBO
+layout(std430, set = 1, binding = 0) writeonly buffer CulledLightsSSBO
 {
     CulledLights instance[];
 } culledLights;
@@ -190,7 +191,8 @@ void main()
 
     if (tileIndex == 0 && gl_LocalInvocationIndex == 0)
 	{
-        culledLights.instance[3071].indices[0] = -1;
+        for(int i = 0; i < PushConstants.numTiles.x * PushConstants.numTiles.y; i++)
+            culledLights.instance[i].indices[0] = -1;
 	}
 
 	/*for (uint i = gl_LocalInvocationIndex; i < PushConstants.lightsNum && lightCountForTile < LIGHTS_PER_TILE; i += gl_WorkGroupSize.x)

@@ -20,6 +20,8 @@ struct LightData
 const int CULLED_LIGHTS_TILE_SIZE = 16;
 
 #define LIGHTS_PER_TILE 4
+
+layout(std430)
 struct CulledLights 
 {	
 	uint indices[LIGHTS_PER_TILE];
@@ -51,7 +53,7 @@ layout(std140, set = 1, binding = 0) readonly buffer LightDataSSBO
 	LightData instance[];
 } light;
 
-layout(std140, set = 1, binding = 1) readonly buffer CulledLightsSSBO
+layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
 {
     CulledLights instance[];
 } culledLights;
