@@ -996,8 +996,6 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 	SAILOR_PROFILE_FUNCTION();
 
 	size_t numDescriptors = 0;
-	TVector<VulkanDescriptorPtr> descriptors;
-	descriptors.AddRange(descriptorSet->m_descriptors);
 	numDescriptors += descriptorSet->m_descriptors.Num();
 
 	if (pipelineLayout->m_descriptionSetLayouts.Num() <= binding)
@@ -1007,14 +1005,14 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 
 	const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[binding];
 
-	if (descriptors.Num() != layout->m_descriptorSetLayoutBindings.Num())
+	if (descriptorSet->m_descriptors.Num() != layout->m_descriptorSetLayoutBindings.Num())
 	{
 		return false;
 	}
 
 	for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
 	{
-		if (!descriptors.ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
+		if (!descriptorSet->m_descriptors.ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
 		{
 			return false;
 		}
@@ -1022,18 +1020,17 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 	return true;
 }
 
-bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)
+TVector<bool> VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)
 {
 	SAILOR_PROFILE_FUNCTION();
+	TVector<bool> res(descriptorSets.Num());
 
 	for (uint32_t i = 0; i < pipelineLayout->m_descriptionSetLayouts.Num(); i++)
 	{
-		if (!IsCompatible(pipelineLayout, descriptorSets[i], i))
-		{
-			return false;
-		}
+		res[i] = IsCompatible(pipelineLayout, descriptorSets[i], i);
 	}
-	return true;
+
+	return res;
 }
 
 bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
