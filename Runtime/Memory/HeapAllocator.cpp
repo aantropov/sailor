@@ -119,11 +119,14 @@ bool Page::TryAddMoreSpace(void* ptr, size_t size)
 
 	assert(!block->m_bIsFree);
 
-	if (pNext && pNext->m_bIsFree && pNext->m_size > ((size - block->m_size) + headerSize + SAILOR_SMALLEST_DATA_SIZE))
+	const size_t extraSpace = size - block->m_size;
+	if (pNext && pNext->m_bIsFree && pNext->m_size > (extraSpace + headerSize + SAILOR_SMALLEST_DATA_SIZE))
 	{
 		assert(size > block->m_size);
 
-		MoveHeader(pNext, size - block->m_size);
+		MoveHeader(pNext, extraSpace);
+		m_occupiedSpace += extraSpace;
+
 		return true;
 	}
 
@@ -718,8 +721,9 @@ bool HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 			return true;
 		}
 
-		// TODO: Investigate why TryAddMoreSpace causes randomly crash (allocatedThread is corrupted, maybe that is related to Vector implementation)
-		return false;//m_allocator.TryAddMoreSpace(ptr, size);
+		// TODO: Investigate why TryAddMoreSpace caused randomly crash (allocatedThread is corrupted, maybe that is related to Vector implementation?) 
+		// TODO2: Add the proper check occupied space, is that is the real reason of the issue?
+		return m_allocator.TryAddMoreSpace(ptr, size);
 	}
 	else
 	{
