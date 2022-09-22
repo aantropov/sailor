@@ -677,8 +677,8 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	const bool bIsDebug = false;
 #endif
 
-	auto vertex = shader->GetVertexShaderRHI();
-	auto fragment = shader->GetFragmentShaderRHI();
+	auto vertex = bIsDebug ? shader->GetDebugVertexShaderRHI() : shader->GetVertexShaderRHI();
+	auto fragment = bIsDebug ? shader->GetDebugFragmentShaderRHI() : shader->GetFragmentShaderRHI();
 
 	RHI::RHIMaterialPtr res = RHI::RHIMaterialPtr::Make(renderState, vertex, fragment);
 

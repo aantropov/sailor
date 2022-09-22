@@ -189,13 +189,15 @@ void main()
 
 	barrier();
 
-    if (tileIndex == 0 && gl_LocalInvocationIndex == 0)
+    /*if (tileIndex == 0 && gl_LocalInvocationIndex == 0)
 	{
         for(int i = 0; i < PushConstants.numTiles.x * PushConstants.numTiles.y; i++)
-            culledLights.instance[i].indices[0] = -1;
-	}
+            culledLights.instance[63].indices[0] = -1;
+	}*/
 
-	/*for (uint i = gl_LocalInvocationIndex; i < PushConstants.lightsNum && lightCountForTile < LIGHTS_PER_TILE; i += gl_WorkGroupSize.x)
+	culledLights.instance[tileIndex].indices[0] = -1;
+	
+	for (uint i = gl_LocalInvocationIndex; i < PushConstants.lightsNum && lightCountForTile < LIGHTS_PER_TILE; i += gl_WorkGroupSize.x)
 	{
 		if (Intersects(light.instance[i], frustum))
 		{
@@ -217,7 +219,7 @@ void main()
         {
             culledLights.instance[tileIndex].indices[lightCountForTile] = -1;
         }
-	}*/    
+	}
 }
 END_CODE,
 

@@ -128,13 +128,12 @@ void main()
     for(int i = 0; i < LIGHTS_PER_TILE; i++)
     {
         uint index = culledLights.instance[tileIndex].indices[i];
-        if(index == -1)
+        if(index == uint(-1))
         {
-            outColor = vec4(1,0,0,1);   
             break;
         }           
         
-        //light.instance[index]
+		outColor += vec4(0.1,0.1,0.1,1);   
     }    
 }
 END_CODE,
