@@ -72,20 +72,20 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		m_postEffectPlane->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		m_postEffectPlane->m_bounds = Math::AABB(vec3(0), vec3(1, 1, 1));
 
-		TVector<VertexP3N3UV2C4> vertices(4);
-		vertices[0].m_texcoord = vec2(0.0f, 0.0f);
-		vertices[1].m_texcoord = vec2(1.0f, 0.0f);
-		vertices[2].m_texcoord = vec2(0.0f, 1.0f);
-		vertices[3].m_texcoord = vec2(1.0f, 1.0f);
+		TVector<VertexP3N3UV2C4> ndcQuad(4);
+		ndcQuad[0].m_texcoord = vec2(0.0f, 0.0f);
+		ndcQuad[1].m_texcoord = vec2(1.0f, 0.0f);
+		ndcQuad[2].m_texcoord = vec2(0.0f, 1.0f);
+		ndcQuad[3].m_texcoord = vec2(1.0f, 1.0f);
 
-		vertices[0].m_position = vec3(0.0f, 0.0f, 0.0f);
-		vertices[1].m_position = vec3(1.0f, 0.0f, 0.0f);
-		vertices[2].m_position = vec3(0.0f, 1.0f, 0.0f);
-		vertices[3].m_position = vec3(1.0f, 1.0f, 0.0f);
+		ndcQuad[0].m_position = vec3(-1.0f, -1.0f, 0.0f);
+		ndcQuad[1].m_position = vec3(1.0f, -1.0f, 0.0f);
+		ndcQuad[2].m_position = vec3(-1.0f, 1.0f, 0.0f);
+		ndcQuad[3].m_position = vec3(1.0f, 1.0f, 0.0f);
 
 		const TVector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
-		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, vertices, indices);
+		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, ndcQuad, indices);
 	}
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)

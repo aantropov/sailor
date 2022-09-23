@@ -1,11 +1,21 @@
 {
 "samplers": [{"name":"g_defaultSampler", "uid": {"uid": ""}, "path":"Textures/VulkanLogo.png"}],
 "values": [{"name":"PI", "value":3.1415926}],
-"renderTargets": [{"name":"Main", "format":"B8G8R8A8_SRGB", "width":"ViewportWidth", "height":"ViewportHeight", "bIsSurface":true }],
+"renderTargets":[
+    {"name":"Main", "format":"B8G8R8A8_SRGB", "width":"ViewportWidth", "height":"ViewportHeight", "bIsSurface":true },
+    {"name":"LinearDepth", "format":"R32_SFLOAT", "width":"ViewportWidth", "height":"ViewportHeight", "bIsSurface":false }
+],	
 "frame":[
 	{"name":"DepthPrepass", 
 		"values":[{"name":"Tag", "string":"Opaque"}], 
 		"renderTargets":[{"name":"depthStencil", "value":"DepthBuffer"}]
+	},
+	
+	{"name":"LinearizeDepth", 
+		"renderTargets":[
+		    {"name":"depthStencil", "value":"DepthBuffer"},
+			{"name":"target", "value":"LinearDepth"}
+		]
 	},
    
    	{"name":"LightCulling",	
