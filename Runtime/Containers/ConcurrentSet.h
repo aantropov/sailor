@@ -399,7 +399,7 @@ namespace Sailor
 			{
 				if (!m_locks[i].TryLock())
 				{
-					for (uint32_t j = i; j >= 0; j--)
+					for (uint32_t j = 0; j < i; j++)
 					{
 						m_locks[j].Unlock();
 					}

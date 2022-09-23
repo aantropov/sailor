@@ -35,10 +35,10 @@ namespace Sailor
 		class Value : public IJsonSerializable
 		{
 		public:
-			std::string m_name;
-			float m_float;
-			glm::vec4 m_vec4;
-			std::string m_string;
+			std::string m_name{};
+			float m_float{};
+			glm::vec4 m_vec4{};
+			std::string m_string{};
 
 			bool operator==(const Value& rhs) const { return m_name == rhs.m_name; }
 

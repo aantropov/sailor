@@ -36,8 +36,8 @@ namespace Sailor
 	protected:
 
 		bool m_bIsActive : 1 = true;
-		glm::mat4 m_projectionMatrix;
-		glm::mat4 m_viewMatrix;
+		glm::mat4 m_projectionMatrix{};
+		glm::mat4 m_viewMatrix{};
 
 		float m_aspect = 0.0f;
 		float m_fovDegrees = 0.0f;
