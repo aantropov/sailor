@@ -572,6 +572,21 @@ namespace Sailor::RHI
 		SAILOR_API static VertexAttributeBits GetVertexAttributeBits();
 	};
 
+	class VertexP3UV2
+	{
+	public:
+
+		glm::vec3 m_position;
+		glm::vec2 m_uv;
+
+		SAILOR_API bool operator==(const VertexP3UV2& other) const
+		{
+			return m_position == other.m_position && m_uv == other.m_uv;
+		}
+
+		SAILOR_API static VertexAttributeBits GetVertexAttributeBits();
+	};
+
 	class VertexP3N3UV2C4
 	{
 	public:

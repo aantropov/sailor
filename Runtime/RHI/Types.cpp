@@ -48,6 +48,14 @@ EFormat Sailor::RHI::GetAttributeFormat(const VertexAttributeBits& bits, uint32_
 	return (EFormat)UnpackVertexAttributeFormat((bits >> (shaderBinding * 3ull)) & 0x111);
 }
 
+VertexAttributeBits VertexP3UV2::GetVertexAttributeBits()
+{
+	VertexAttributeBits bits = 0;
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultPositionBinding, EFormat::R32G32B32_SFLOAT);
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultTexcoordBinding, EFormat::R32G32_SFLOAT);
+	return bits;
+}
+
 VertexAttributeBits VertexP3C4::GetVertexAttributeBits()
 {
 	VertexAttributeBits bits = 0;

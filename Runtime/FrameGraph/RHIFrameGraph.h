@@ -24,6 +24,8 @@ namespace Sailor::RHI
 		SAILOR_API RHI::RHITexturePtr GetRenderTarget(const std::string& name);
 		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
 
+		SAILOR_API RHI::RHIMeshPtr GetPostEffectPlane() { return m_postEffectPlane; }
+
 		template<typename T>
 		void SetValue(const std::string& name, T value)
 		{
@@ -49,6 +51,8 @@ namespace Sailor::RHI
 		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
 		TMap<std::string, glm::vec4> m_values;
 		TVector<Framegraph::FrameGraphNodePtr> m_graph;
+
+		RHI::RHIMeshPtr m_postEffectPlane;
 	};
 
 	using RHIFrameGraphPtr = TRefPtr<RHIFrameGraph>;

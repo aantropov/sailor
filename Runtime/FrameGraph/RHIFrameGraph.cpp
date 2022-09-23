@@ -2,6 +2,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
+#include "RHI/VertexDescription.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Tasks/Tasks.h"
 
@@ -64,6 +65,28 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto driverCommands = renderer->GetDriverCommands();
+
+	if (!m_postEffectPlane)
+	{
+		m_postEffectPlane = renderer->GetDriver()->CreateMesh();
+		m_postEffectPlane->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+		m_postEffectPlane->m_bounds = Math::AABB(vec3(0), vec3(1, 1, 1));
+
+		TVector<VertexP3N3UV2C4> vertices(4);
+		vertices[0].m_texcoord = vec2(0.0f, 0.0f);
+		vertices[1].m_texcoord = vec2(1.0f, 0.0f);
+		vertices[2].m_texcoord = vec2(0.0f, 1.0f);
+		vertices[3].m_texcoord = vec2(1.0f, 1.0f);
+
+		vertices[0].m_position = vec3(0.0f, 0.0f, 0.0f);
+		vertices[1].m_position = vec3(1.0f, 0.0f, 0.0f);
+		vertices[2].m_position = vec3(0.0f, 1.0f, 0.0f);
+		vertices[3].m_position = vec3(1.0f, 1.0f, 0.0f);
+
+		const TVector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
+
+		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, vertices, indices);
+	}
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
