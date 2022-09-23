@@ -35,6 +35,9 @@ void main()
     gl_Position = vec4(inPosition, 1);
     fragColor = inColor;
 	fragTexcoord = inTexcoord;
+	
+	// Flip Y
+	fragTexcoord.y = 1.0f - fragTexcoord.y;
 }
 END_CODE,
 
@@ -48,7 +51,8 @@ layout(location = 0) out vec4 outColor;
 
 void main() 
 {
-	float depth = texture(depthSampler, fragTexcoord).x * 1000;
+	
+	float depth = texture(depthSampler, fragTexcoord).x * 10000;
     outColor = vec4(depth);
 }
 END_CODE,

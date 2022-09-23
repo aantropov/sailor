@@ -71,7 +71,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		depthAttachment,
 		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 		glm::ivec2(0, 0),
-		true,
+		false,
 		glm::vec4(0.0f),
 		true);
 
