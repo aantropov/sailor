@@ -45,6 +45,11 @@ if(MEMORY_HEAP_DISABLE_FREE)
 	add_compile_definitions(SAILOR_MEMORY_HEAP_DISABLE_FREE)
 endif(MEMORY_HEAP_DISABLE_FREE)
 
+option(BUILD_WITH_RENDER_DOC "Build with RenderDoc" ON)
+if(BUILD_WITH_RENDER_DOC)
+	add_compile_definitions(BUILD_WITH_RENDER_DOC)
+endif(BUILD_WITH_RENDER_DOC)
+
 option(BUILD_WITH_VULKAN "Build with Vulkan" ON)
 if(BUILD_WITH_VULKAN)	
 	add_compile_definitions(SAILOR_BUILD_WITH_VULKAN)

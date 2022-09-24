@@ -22,6 +22,7 @@
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "ECS/TransformECS.h"
+#include "GraphicsDriver/RenderDocApi.h"
 #include "timeApi.h"
 
 using namespace Sailor;
@@ -49,6 +50,11 @@ void App::Initialize()
 #endif
 
 	s_pInstance = new App();
+
+#if defined(BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
+	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
+#endif
+
 	s_pInstance->m_pViewportWindow = TUniquePtr<Win32::Window>::Make();
 	s_pInstance->m_pViewportWindow->Create("Sailor Viewport", "SailorViewport", 1024, 768);
 
@@ -65,7 +71,7 @@ void App::Initialize()
 	EASY_MAIN_THREAD;
 #endif
 
-	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_16, bIsEnabledVulkanValidationLayers));
+	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bIsEnabledVulkanValidationLayers));
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
@@ -214,6 +220,10 @@ void App::Stop()
 void App::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
+
+#if defined(BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
+	RemoveSubmodule<RenderDocApi>();
+#endif
 
 	RemoveSubmodule<EngineLoop>();
 	RemoveSubmodule<ECS::ECSFactory>();

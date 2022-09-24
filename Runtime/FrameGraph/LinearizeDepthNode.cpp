@@ -56,6 +56,18 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pLinearizeDepthShader);
 	}
 
+	PushConstants constants{};
+	constants.m_invViewProjection = glm::inverse(sceneView.m_camera->GetInvViewProjection());
+	
+	// How to correctly handle linearization
+	// https://thxforthefish.com/posts/reverse_z/
+	
+	// Standard projection matrix or ReverseZ projection with infinity far plane
+	//constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZNear(), sceneView.m_camera->GetZFar(), 0, 0);
+	
+	// ReverseZ projection matrix
+	constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
+	
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
@@ -64,7 +76,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });
-
+	commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
 	// TODO: Pipeline without depthAttachment
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{target},

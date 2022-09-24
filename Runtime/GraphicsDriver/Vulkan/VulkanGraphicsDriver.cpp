@@ -23,6 +23,7 @@
 #include "VulkanPipeline.h"
 #include "VulkanDescriptors.h"
 #include "RHI/Shader.h"
+#include "GraphicsDriver/RenderDocApi.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 
 using namespace Sailor;
@@ -35,6 +36,11 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 
 	m_backBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
 	m_depthStencilBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::DepthStencilAttachmentOptimal);
+
+	if (RenderDocApi* renderDocApi = App::GetSubmodule<RenderDocApi>())
+	{
+		renderDocApi->SetActiveWindow((*((void**)(m_vkInstance->GetVkInstance()))), pViewport->GetHWND());
+	}
 }
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()

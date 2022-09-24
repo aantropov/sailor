@@ -17,6 +17,12 @@ layout(set = 0, binding = 0) uniform FrameData
     float deltaTime;
 } frame;
 
+
+layout(push_constant) uniform Constants
+{
+	mat4 invViewProjection;	
+	vec4 cameraParams; //cameraParams: (Znear, ZFar, 0, 0)
+} PushConstants;
 END_CODE,
 
 "glslVertex":
@@ -35,7 +41,7 @@ void main()
     gl_Position = vec4(inPosition, 1);
     fragColor = inColor;
 	fragTexcoord = inTexcoord;
-	
+
 	// Flip Y
 	fragTexcoord.y = 1.0f - fragTexcoord.y;
 }
@@ -51,11 +57,19 @@ layout(location = 0) out vec4 outColor;
 
 void main() 
 {
+	float depth = texture(depthSampler, fragTexcoord).x;
+	vec4 vss = vec4(0, 0, depth, 1);	
+	vec4 invVss = PushConstants.invViewProjection * vss;
+	float zvs = invVss.z / invVss.w;
 	
-	float depth = texture(depthSampler, fragTexcoord).x * 10000;
-    outColor = vec4(depth);
+#ifdef REVERSE_Z_INF_FAR_PLANE
+	float linearDepth = -PushConstants.cameraParams.x / depth;
+#else
+	float linearDepth = -(PushConstants.cameraParams.x * PushConstants.cameraParams.y)/(depth*(PushConstants.cameraParams.x - PushConstants.cameraParams.y) + PushConstants.cameraParams.y);
+#endif
+	outColor = vec4(linearDepth);
 }
 END_CODE,
 
-"defines":[]
+"defines":["REVERSE_Z_INF_FAR_PLANE"]
 }

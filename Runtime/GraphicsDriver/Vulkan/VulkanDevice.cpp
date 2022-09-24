@@ -686,7 +686,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		presentInfo.pResults = nullptr; // Optional
 
 		presentResult = m_presentQueue->Present(presentInfo);
-	}
+}
 
 	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR)
 	{

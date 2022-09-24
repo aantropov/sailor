@@ -18,6 +18,12 @@ namespace Sailor::Framegraph
 
 	protected:
 
+		struct PushConstants
+		{
+			mat4 m_invViewProjection;
+			vec4 m_cameraParams; //cameraParams: (Znear, ZFar, 0, 0)
+		};
+
 		static const char* m_name;
 
 		ShaderSetPtr m_pLinearizeDepthShader{};

@@ -21,6 +21,11 @@ Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 	return nullptr;
 }
 
+glm::mat4 CameraData::GetInvViewProjection() const
+{
+	return glm::inverse(m_projectionMatrix * m_viewMatrix);
+}
+
 void CameraECS::CopyCameraData(RHI::RHISceneViewPtr& outCameras)
 {
 	outCameras->m_cameras.Clear(false);
