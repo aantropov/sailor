@@ -63,11 +63,11 @@ void main()
 	float zvs = invVss.z / invVss.w;
 	
 #ifdef REVERSE_Z_INF_FAR_PLANE
-	float linearDepth = -PushConstants.cameraParams.x / depth;
+	float linearDepth = -PushConstants.cameraParams.y / depth;
 #else
 	float linearDepth = -(PushConstants.cameraParams.x * PushConstants.cameraParams.y)/(depth*(PushConstants.cameraParams.x - PushConstants.cameraParams.y) + PushConstants.cameraParams.y);
 #endif
-	outColor = vec4(linearDepth);
+	outColor = vec4(-linearDepth);
 }
 END_CODE,
 

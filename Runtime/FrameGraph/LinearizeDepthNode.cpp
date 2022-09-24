@@ -33,7 +33,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	if (!m_pLinearizeDepthShader)
 	{
 		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/LinearizeDepth.shader");
-		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetUID(), m_pLinearizeDepthShader);
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetUID(), m_pLinearizeDepthShader, { "REVERSE_Z_INF_FAR_PLANE" });
 	}
 
 	auto target = GetResourceParam("target").DynamicCast<RHI::RHITexture>();
@@ -58,16 +58,16 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 	PushConstants constants{};
 	constants.m_invViewProjection = glm::inverse(sceneView.m_camera->GetInvViewProjection());
-	
+
 	// How to correctly handle linearization
 	// https://thxforthefish.com/posts/reverse_z/
-	
+
 	// Standard projection matrix or ReverseZ projection with infinity far plane
-	//constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZNear(), sceneView.m_camera->GetZFar(), 0, 0);
-	
+	//constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
+
 	// ReverseZ projection matrix
 	constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
-	
+
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 

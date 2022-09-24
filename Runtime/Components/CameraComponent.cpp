@@ -23,7 +23,7 @@ void CameraComponent::BeginPlay()
 
 	ecsData.SetOwner(GetOwner());
 
-	ecsData.SetFov(CalculateAspect());
+	ecsData.SetAspect(CalculateAspect());
 	ecsData.SetFov(90.0f);
 	ecsData.SetZNear(0.01f);
 	ecsData.SetZFar(5000.0f);
