@@ -33,7 +33,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	if (!m_pLinearizeDepthShader)
 	{
 		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/LinearizeDepth.shader");
-		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetUID(), m_pLinearizeDepthShader, { "REVERSE_Z_INF_FAR_PLANE" });
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetUID(), m_pLinearizeDepthShader);
 	}
 
 	auto target = GetResourceParam("target").DynamicCast<RHI::RHITexture>();
@@ -57,7 +57,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	}
 
 	PushConstants constants{};
-	constants.m_invViewProjection = glm::inverse(sceneView.m_camera->GetInvViewProjection());
+	constants.m_invViewProjection = glm::inverse(sceneView.m_camera->GetInvProjection());
 
 	// How to correctly handle linearization
 	// https://thxforthefish.com/posts/reverse_z/

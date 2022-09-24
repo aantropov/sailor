@@ -20,7 +20,7 @@ layout(set = 0, binding = 0) uniform FrameData
 
 layout(push_constant) uniform Constants
 {
-	mat4 invViewProjection;	
+	mat4 invProjection;	
 	vec4 cameraParams; //cameraParams: (Znear, ZFar, 0, 0)
 } PushConstants;
 END_CODE,
@@ -59,7 +59,7 @@ void main()
 {
 	float depth = texture(depthSampler, fragTexcoord).x;
 	vec4 vss = vec4(0, 0, depth, 1);	
-	vec4 invVss = PushConstants.invViewProjection * vss;
+	vec4 invVss = PushConstants.invProjection * vss;
 	float zvs = invVss.z / invVss.w;
 	
 #ifdef REVERSE_Z_INF_FAR_PLANE

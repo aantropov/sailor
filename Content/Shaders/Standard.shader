@@ -90,11 +90,12 @@ layout(location=3) out vec3 worldPosition;
 
 void main() 
 {
-    worldPosition = vec3(data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0));
-    
-    gl_Position = frame.projection * frame.view * vec4(worldPosition, 1.0);
+	vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+	worldPosition = vertexPosition.xyz/vertexPosition.w;
+	
+    gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
-    
+    	
     fragColor = inColor;
 	fragNormal = worldNormal.xyz;
     fragTexcoord = inTexcoord;

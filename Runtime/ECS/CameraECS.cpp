@@ -21,6 +21,11 @@ Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 	return nullptr;
 }
 
+glm::mat4 CameraData::GetInvProjection() const
+{
+	return glm::inverse(m_projectionMatrix);
+}
+
 glm::mat4 CameraData::GetInvViewProjection() const
 {
 	return glm::inverse(m_projectionMatrix * m_viewMatrix);
