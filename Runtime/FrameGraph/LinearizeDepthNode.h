@@ -20,7 +20,7 @@ namespace Sailor::Framegraph
 
 		struct PushConstants
 		{
-			mat4 m_invViewProjection;
+			mat4 m_invProjection;
 			vec4 m_cameraParams; //cameraParams: (Znear, ZFar, 0, 0)
 		};
 

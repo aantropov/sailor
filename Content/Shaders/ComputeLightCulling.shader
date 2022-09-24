@@ -71,154 +71,127 @@ layout(local_size_x = 32) in;
 
 shared ViewFrustum frustum;
 shared uint lightCountForTile;
-shared float minDepth;
-shared float maxDepth;
+shared uint minDepthInt;
+shared uint maxDepthInt;
+shared mat4 viewProjection;
 
 // Construct view frustum
 ViewFrustum createFrustum(ivec2 tileId)
-{
-	mat4 invProjView = inverse(frame.projection * frame.view);
-
-	vec2 ndcSizePerTile = 2.0 * vec2(TILE_SIZE, TILE_SIZE) / PushConstants.viewportSize;
-
-	vec2 ndcCorners[4];
-	ndcCorners[0] = ndcUpperLeft + tileId * ndcSizePerTile; // upper left
-	ndcCorners[1] = vec2(ndcCorners[0].x + ndcSizePerTile.x, ndcCorners[0].y); // upper right
-	ndcCorners[2] = ndcCorners[0] + ndcSizePerTile;
-	ndcCorners[3] = vec2(ndcCorners[0].x, ndcCorners[0].y + ndcSizePerTile.y); // lower left
-
+{	
 	ViewFrustum frustum;
+	
+	float minDepth = uintBitsToFloat(minDepthInt);
+	float maxDepth = uintBitsToFloat(maxDepthInt);
 
-	vec4 temp;
-	for (int i = 0; i < 4; i++)
-	{
-		temp = invProjView * vec4(ndcCorners[i], minDepth, 1.0);
-		frustum.points[i] = temp.xyz / temp.w;
-		temp = invProjView * vec4(ndcCorners[i], maxDepth, 1.0);
-		frustum.points[i + 4] = temp.xyz / temp.w;
-	}
+	// Steps based on tile sale
+	vec2 negativeStep = (2.0 * vec2(tileId)) / vec2(gl_NumWorkGroups.xy);
+	vec2 positiveStep = (2.0 * vec2(tileId + ivec2(1, 1))) / vec2(gl_NumWorkGroups.xy);
 
-	vec3 tempNormal;
-	for (int i = 0; i < 4; i++)
+	// Set up starting values for planes using steps and min and max z values
+	frustum.planes[0] = vec4(1.0, 0.0, 0.0, 1.0 - negativeStep.x); // Left
+	frustum.planes[1] = vec4(-1.0, 0.0, 0.0, -1.0 + positiveStep.x); // Right
+	frustum.planes[2] = vec4(0.0, 1.0, 0.0, 1.0 - negativeStep.y); // Bottom
+	frustum.planes[3] = vec4(0.0, -1.0, 0.0, -1.0 + positiveStep.y); // Top
+	frustum.planes[4] = vec4(0.0, 0.0, -1.0, -minDepth); // Near
+	frustum.planes[5] = vec4(0.0, 0.0, 1.0, maxDepth); // Far
+
+	// Transform the first four planes
+	for (uint i = 0; i < 4; i++) 
 	{
-		//Cax+Cby+Ccz+Cd = 0, planes[i] = (Ca, Cb, Cc, Cd)
-		//tempNormal: normal without normalization
-		tempNormal = cross(frustum.points[i] - frame.cameraPosition.xyz, frustum.points[i + 1] - frame.cameraPosition.xyz);
-		tempNormal = normalize(tempNormal);
-		frustum.planes[i] = vec4(tempNormal, - dot(tempNormal, frustum.points[i]));
-	}
-	// near plane
-	{
-		tempNormal = cross(frustum.points[1] - frustum.points[0], frustum.points[3] - frustum.points[0]);
-		tempNormal = normalize(tempNormal);
-		frustum.planes[4] = vec4(tempNormal, - dot(tempNormal, frustum.points[0]));
-	}
-	// far plane
-	{
-		tempNormal = cross(frustum.points[7] - frustum.points[4], frustum.points[5] - frustum.points[4]);
-		tempNormal = normalize(tempNormal);
-		frustum.planes[5] = vec4(tempNormal, - dot(tempNormal, frustum.points[4]));
+		frustum.planes[i] *= viewProjection;
+		frustum.planes[i] /= length(frustum.planes[i].xyz);
 	}
 
+	// Transform the depth planes
+	frustum.planes[4] *= frame.view;
+	frustum.planes[4] /= length(frustum.planes[4].xyz);
+	frustum.planes[5] *= frame.view;
+	frustum.planes[5] /= length(frustum.planes[5].xyz);
+	
 	return frustum;
-}
-
-bool Intersects(LightData light, ViewFrustum frustum)
-{
-	bool result = true;
-
-    // Step1: sphere-plane test
-	for (int i = 0; i < 6; i++)
-	{
-		if (dot(light.worldPosition, frustum.planes[i].xyz) + frustum.planes[i].w  < - light.bounds.x )
-		{
-			result = false;
-			break;
-		}
-	}
-
-    if (!result)
-    {
-        return false;
-    }
-
-    // Step2: bbox corner test (to reduce false positive)
-    vec3 lightBboxMax = light.worldPosition + vec3(light.bounds.x);
-    vec3 lightBboxMin = light.worldPosition - vec3(light.bounds.x);
-    
-    int probe;
-    probe=0; for( int i=0; i<8; i++ ) probe += ((frustum.points[i].x > lightBboxMax.x)?1:0); if( probe==8 ) return false;
-    probe=0; for( int i=0; i<8; i++ ) probe += ((frustum.points[i].x < lightBboxMin.x)?1:0); if( probe==8 ) return false;
-    probe=0; for( int i=0; i<8; i++ ) probe += ((frustum.points[i].y > lightBboxMax.y)?1:0); if( probe==8 ) return false;
-    probe=0; for( int i=0; i<8; i++ ) probe += ((frustum.points[i].y < lightBboxMin.y)?1:0); if( probe==8 ) return false;
-    probe=0; for( int i=0; i<8; i++ ) probe += ((frustum.points[i].z > lightBboxMax.z)?1:0); if( probe==8 ) return false;
-    probe=0; for( int i=0; i<8; i++ ) probe += ((frustum.points[i].z < lightBboxMin.z)?1:0); if( probe==8 ) return false;
-
-	return true;
 }
 
 void main()
 {
+	ivec2 location = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 itemID = ivec2(gl_LocalInvocationID.xy);
 	ivec2 tileId = ivec2(gl_WorkGroupID.xy);
+	ivec2 tileNumber = ivec2(gl_NumWorkGroups.xy);
 	uint tileIndex = tileId.y * PushConstants.numTiles.x + tileId.x;
 
 	if (gl_LocalInvocationIndex == 0)
 	{
-		minDepth = 0.0;
-		maxDepth = 1.0;
+		maxDepthInt = 0;
+		minDepthInt = 0xFFFFFFFF;
+		lightCountForTile = 0;
+		viewProjection = frame.projection * frame.view;
+	}
+	
+	barrier();	
+	
+	vec2 uv = vec2(gl_GlobalInvocationID.xy) / PushConstants.viewportSize;
+	float linearDepth = texture(sceneDepth, uv).x;
+	
+	// Convert depth to uint so we can do atomic min and max comparisons between the threads
+	uint depthInt = floatBitsToUint(linearDepth);
+	atomicMax(maxDepthInt, depthInt);
+	atomicMin(minDepthInt, depthInt);
 
-		for (int y = 0; y < TILE_SIZE; y++)
+	barrier();
+	
+	if (gl_LocalInvocationIndex == 0)
+	{
+		frustum = createFrustum(tileId);
+	}
+	
+	barrier();
+
+	// Step 3: Cull lights.
+	// Parallelize the threads against the lights now.
+	// Can handle 256 simultaniously. Anymore lights than that and additional passes are performed
+	uint threadCount = TILE_SIZE * TILE_SIZE;
+	uint passCount = (PushConstants.lightsNum + threadCount - 1) / threadCount;
+	for (uint i = 0; i < passCount; i++) 
+	{
+		// Get the lightIndex to test for this thread / pass. If the index is >= light count, then this thread can stop testing lights
+		uint lightIndex = i * threadCount + gl_LocalInvocationIndex;
+		if (lightIndex >= PushConstants.lightsNum || lightCountForTile >= LIGHTS_PER_TILE) 
 		{
-			for (int x = 0; x < TILE_SIZE; x++)
+			break;
+		}
+
+		vec4 position = frame.view * vec4(light.instance[i].worldPosition, 1);
+		position = vec4(position.xyz/position.w, 1);
+		
+		float radius = light.instance[i].bounds.x;
+
+		// We check if the light exists in our frustum
+		float distance = 0.0;
+		for (uint j = 0; j < 6; j++) 
+		{
+			distance = dot(position, frustum.planes[j]) + radius;
+
+			// If one of the tests fails, then there is no intersection
+			if (distance <= 0.0) 
 			{
-				vec2 uv = (vec2(TILE_SIZE, TILE_SIZE) * tileId + vec2(x, y) ) / PushConstants.viewportSize;
-				float depth = texture(sceneDepth, uv).x;
-				minDepth = max(minDepth, depth);
-				maxDepth = min(maxDepth, depth);
+				break;
 			}
 		}
 
-		if (minDepth <= maxDepth)
+		// If greater than zero, then it is a visible light
+		if (distance > 0.0) 
 		{
-			minDepth = maxDepth;
-		}
-
-		frustum = createFrustum(tileId);
-		lightCountForTile = 0;
-	}
-
-	barrier();
-
-    /*if (tileIndex == 0 && gl_LocalInvocationIndex == 0)
-	{
-        for(int i = 0; i < PushConstants.numTiles.x * PushConstants.numTiles.y; i++)
-            culledLights.instance[63].indices[0] = -1;
-	}*/
-
-	culledLights.instance[tileIndex].indices[0] = -1;
-	
-	for (uint i = gl_LocalInvocationIndex; i < PushConstants.lightsNum && lightCountForTile < LIGHTS_PER_TILE; i += gl_WorkGroupSize.x)
-	{
-		if (Intersects(light.instance[i], frustum))
-		{
-			uint slot = atomicAdd(lightCountForTile, 1);
-			if (slot >= LIGHTS_PER_TILE)
-            {
-                break;
-            }
-            
-			culledLights.instance[tileIndex].indices[slot] = i;
+			// Add index to the shared array of visible indices
+			uint offset = atomicAdd(lightCountForTile, 1);
+			culledLights.instance[tileIndex].indices[offset] = int(lightIndex);
 		}
 	}
 
 	barrier();
 
-	if (gl_LocalInvocationIndex == 0)
+	if(lightCountForTile < LIGHTS_PER_TILE)
 	{
-        if(lightCountForTile < LIGHTS_PER_TILE)
-        {
-            culledLights.instance[tileIndex].indices[lightCountForTile] = -1;
-        }
+		culledLights.instance[tileIndex].indices[lightCountForTile] = -1;
 	}
 }
 END_CODE,
