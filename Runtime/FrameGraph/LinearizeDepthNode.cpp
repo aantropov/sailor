@@ -73,7 +73,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
-		true);
+		false);
 
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
