@@ -12,10 +12,19 @@ namespace Sailor
 
 		RenderDocApi();
 
+		SAILOR_API bool IsCapturing() const;
+		SAILOR_API bool IsConnected() const;
+
+		SAILOR_API void LaunchRenderDocApp();
+
 		SAILOR_API void SetActiveWindow(void* device, void* wndHandle);
+
 		SAILOR_API void TriggerCapture();
+
 		SAILOR_API void StartCapture();
 		SAILOR_API void StopCapture();
+
+		SAILOR_API uint32_t GetNumCaptures() const;
 
 	protected:
 

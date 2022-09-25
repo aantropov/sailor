@@ -121,6 +121,8 @@ void App::Start()
 	TWeakPtr<World> pWorld = App::GetSubmodule<EngineLoop>()->CreateWorld("WorldEditor");
 #endif
 
+	FrameInputState systemInputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
+
 	while (s_pInstance->m_pViewportWindow->IsRunning())
 	{
 		timer.Start();
@@ -145,16 +147,26 @@ void App::Start()
 
 		GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
 
-		if (GlobalInput::GetInputState().IsKeyPressed(VK_ESCAPE))
+		if (systemInputState.IsKeyPressed(VK_ESCAPE))
 		{
 			Stop();
 			break;
 		}
 
-		if (GlobalInput::GetInputState().IsKeyPressed(VK_F5))
+		if (systemInputState.IsKeyPressed(VK_F5))
 		{
 			GetSubmodule<AssetRegistry>()->ScanContentFolder();
 		}
+
+#ifdef BUILD_WITH_RENDER_DOC
+		if (auto renderDoc = App::GetSubmodule<RenderDocApi>())
+		{
+			if (systemInputState.IsKeyPressed(VK_F6) && !renderDoc->IsConnected())
+			{
+				renderDoc->LaunchRenderDocApp();
+			}
+		}
+#endif
 
 		if (bCanCreateNewFrame)
 		{
@@ -203,6 +215,11 @@ void App::Start()
 
 			SAILOR_PROFILE_END_BLOCK();
 		}
+
+		auto oldInputState = systemInputState;
+		systemInputState = GlobalInput::GetInputState();
+		systemInputState.TrackForChanges(oldInputState);
+
 	}
 
 	s_pInstance->m_pViewportWindow->SetActive(false);

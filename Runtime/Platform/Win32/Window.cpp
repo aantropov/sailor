@@ -204,7 +204,7 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 {
 	SAILOR_PROFILE_FUNCTION()
 
-	MSG msg;
+		MSG msg;
 	for (int i = 0; i < g_windows.Num(); i++)
 	{
 		while (PeekMessage(&msg, g_windows[i]->GetHWND(), 0, 0, PM_REMOVE))
@@ -340,7 +340,9 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	case WM_SYSKEYDOWN:
 	{
 		if (wParam < 256 && (lParam & 0x40000000) == 0)
+		{
 			GlobalInput::m_rawState.m_keyboard[wParam] = KeyState::Pressed;
+		}
 
 		return FALSE;
 	}
@@ -348,7 +350,9 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	case WM_SYSKEYUP:
 	{
 		if (wParam < 256)
+		{
 			GlobalInput::m_rawState.m_keyboard[wParam] = KeyState::Up;
+		}
 
 		return FALSE;
 	}

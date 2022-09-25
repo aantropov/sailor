@@ -14,14 +14,14 @@ namespace Sailor::Win32
 
 	struct InputState
 	{
-		bool SAILOR_API IsKeyDown(uint32_t key) const;
-		bool SAILOR_API IsKeyPressed(uint32_t key) const;
-		bool SAILOR_API IsButtonDown(uint32_t button) const;
-		bool SAILOR_API IsButtonClick(uint32_t button) const;
+		SAILOR_API bool IsKeyDown(uint32_t key) const;
+		SAILOR_API bool IsKeyPressed(uint32_t key) const;
+		SAILOR_API bool IsButtonDown(uint32_t button) const;
+		SAILOR_API bool IsButtonClick(uint32_t button) const;
 
-		glm::ivec2 SAILOR_API GetCursorPos() const;
+		SAILOR_API glm::ivec2 GetCursorPos() const;
 
-		void SAILOR_API TrackForChanges(const InputState& previousState);
+		SAILOR_API void TrackForChanges(const InputState& previousState);
 
 	protected:
 

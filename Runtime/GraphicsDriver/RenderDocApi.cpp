@@ -10,6 +10,50 @@ RenderDocApi::RenderDocApi()
 	GetRenderDocAPI();
 }
 
+bool RenderDocApi::IsCapturing() const
+{
+#ifdef BUILD_WITH_RENDER_DOC
+	if (g_pRenderDocAPI)
+	{
+		return g_pRenderDocAPI->IsFrameCapturing();
+	}
+#endif
+	return false;
+}
+
+uint32_t RenderDocApi::GetNumCaptures() const
+{
+#ifdef BUILD_WITH_RENDER_DOC
+	if (g_pRenderDocAPI)
+	{
+		return g_pRenderDocAPI->GetNumCaptures();
+	}
+#endif
+
+	return 0;
+}
+
+bool RenderDocApi::IsConnected() const
+{
+#ifdef BUILD_WITH_RENDER_DOC
+	if (g_pRenderDocAPI)
+	{
+		return g_pRenderDocAPI->IsTargetControlConnected();
+	}
+#endif
+	return false;
+}
+
+void RenderDocApi::LaunchRenderDocApp()
+{
+#ifdef BUILD_WITH_RENDER_DOC
+	if (g_pRenderDocAPI)
+	{
+		g_pRenderDocAPI->LaunchReplayUI(1, nullptr);
+	}
+#endif
+}
+
 void RenderDocApi::SetActiveWindow(void* device, void* wndHandle)
 {
 #ifdef BUILD_WITH_RENDER_DOC
@@ -46,7 +90,6 @@ void RenderDocApi::TriggerCapture()
 	if (g_pRenderDocAPI)
 	{
 		g_pRenderDocAPI->TriggerCapture();
-		g_pRenderDocAPI->LaunchReplayUI(1, nullptr);
 	}
 #endif
 }

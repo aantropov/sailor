@@ -36,7 +36,8 @@ void InputState::TrackForChanges(const InputState& previousState)
 {
 	for (uint32_t i = 0; i < 256; i++)
 	{
-		if (m_keyboard[i] == KeyState::Pressed && previousState.m_keyboard[i] == KeyState::Pressed)
+		auto prevState = previousState.m_keyboard[i];
+		if (m_keyboard[i] == KeyState::Pressed && (prevState == KeyState::Pressed || prevState == KeyState::Down))
 		{
 			m_keyboard[i] = KeyState::Down;
 		}
