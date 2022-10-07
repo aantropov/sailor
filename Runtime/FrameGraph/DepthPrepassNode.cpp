@@ -45,19 +45,6 @@ RHI::ESortingOrder DepthPrepassNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
-struct PerInstanceData
-{
-	glm::mat4 model;
-
-	bool operator==(const PerInstanceData& rhs) const { return this->model == model; }
-
-	size_t GetHash() const
-	{
-		hash<glm::mat4> p;
-		return p(model);
-	}
-};
-
 class Batch
 {
 public:
@@ -94,7 +81,7 @@ void RecordDrawCall(uint32_t start,
 	RHI::RHICommandListPtr cmdList,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHIShaderBindingSetPtr perInstanceData,
-	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>>& drawCalls,
+	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<DepthPrepassNode::PerInstanceData>>>& drawCalls,
 	const TVector<uint32_t>& storageIndex,
 	RHIBufferPtr& indirectCommandBuffer)
 {
@@ -165,7 +152,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
+	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<DepthPrepassNode::PerInstanceData>>> drawCalls;
 	TSet<Batch> batches;
 
 	uint32_t numMeshes = 0;
@@ -197,7 +184,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 			if (proxy.GetMaterials()[i]->GetRenderState().GetTag() == GetHash(GetStringParam("Tag")))
 			{
-				PerInstanceData data;
+				DepthPrepassNode::PerInstanceData data;
 				data.model = proxy.m_worldMatrix;
 
 				Batch batch(depthMaterial, mesh);
@@ -218,10 +205,10 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 	SAILOR_PROFILE_BLOCK("Create storage for matrices");
 	RHI::RHIShaderBindingSetPtr perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(PerInstanceData), numMeshes, 0);
+	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(DepthPrepassNode::PerInstanceData), numMeshes, 0);
 	SAILOR_PROFILE_END_BLOCK();
 
-	TVector<PerInstanceData> gpuMatricesData;
+	TVector<DepthPrepassNode::PerInstanceData> gpuMatricesData;
 	gpuMatricesData.AddDefault(numMeshes);
 	auto vecBatches = batches.ToVector();
 
@@ -236,7 +223,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
 
-			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(PerInstanceData) * matrices.Num());
+			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(DepthPrepassNode::PerInstanceData) * matrices.Num());
 
 			if (!bIsInited)
 			{
@@ -253,7 +240,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	{
 		commands->UpdateShaderBinding(transferCommandList, storageBinding,
 			gpuMatricesData.GetData(),
-			sizeof(PerInstanceData) * gpuMatricesData.Num(),
+			sizeof(DepthPrepassNode::PerInstanceData) * gpuMatricesData.Num(),
 			0);
 	}
 	SAILOR_PROFILE_END_BLOCK();

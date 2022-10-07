@@ -11,14 +11,16 @@ BEGIN_CODE
 
 #define LIGHTS_PER_TILE 4
 const int TILE_SIZE = 16;
+layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
 
+layout(std430)
 struct LightData
 {
 	vec3 worldPosition;
 	vec3 direction;
     vec3 intensity;
     vec3 attenuation;
-    vec4 bounds;
+    vec3 bounds;
     int type;
 };
 
@@ -35,7 +37,7 @@ layout(push_constant) uniform Constants
     int lightsNum;
 } PushConstants;
 
-layout(std140, set = 0, binding = 0) readonly buffer LightDataSSBO
+layout(std430, set = 0, binding = 0) readonly buffer LightDataSSBO
 {	
 	LightData instance[];
 } light;
@@ -67,47 +69,61 @@ struct ViewFrustum
 	vec3 points[8]; // 0-3 near 4-7 far
 };
 
-layout(local_size_x = 32) in;
-
 shared ViewFrustum frustum;
 shared uint lightCountForTile;
 shared uint minDepthInt;
 shared uint maxDepthInt;
-shared mat4 viewProjection;
+shared mat4 invViewProjection;
 
 // Construct view frustum
-ViewFrustum createFrustum(ivec2 tileId)
+ViewFrustum CreateFrustum(ivec2 tileId)
 {	
 	ViewFrustum frustum;
-	
-	float minDepth = uintBitsToFloat(minDepthInt);
-	float maxDepth = uintBitsToFloat(maxDepthInt);
 
-	// Steps based on tile sale
-	vec2 negativeStep = (2.0 * vec2(tileId)) / vec2(gl_NumWorkGroups.xy);
-	vec2 positiveStep = (2.0 * vec2(tileId + ivec2(1, 1))) / vec2(gl_NumWorkGroups.xy);
+	float minDepth = 0.003f;//uintBitsToFloat(maxDepthInt);
+	float maxDepth = 0.00001f;//uintBitsToFloat(minDepthInt);
 
-	// Set up starting values for planes using steps and min and max z values
-	frustum.planes[0] = vec4(1.0, 0.0, 0.0, 1.0 - negativeStep.x); // Left
-	frustum.planes[1] = vec4(-1.0, 0.0, 0.0, -1.0 + positiveStep.x); // Right
-	frustum.planes[2] = vec4(0.0, 1.0, 0.0, 1.0 - negativeStep.y); // Bottom
-	frustum.planes[3] = vec4(0.0, -1.0, 0.0, -1.0 + positiveStep.y); // Top
-	frustum.planes[4] = vec4(0.0, 0.0, -1.0, -minDepth); // Near
-	frustum.planes[5] = vec4(0.0, 0.0, 1.0, maxDepth); // Far
+	const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
+	vec2 ndcSizePerTile = 2.0 * vec2(TILE_SIZE, TILE_SIZE) / PushConstants.viewportSize;
 
-	// Transform the first four planes
-	for (uint i = 0; i < 4; i++) 
+	vec2 ndcCorners[4];
+	ndcCorners[0] = ndcUpperLeft + tileId * ndcSizePerTile; // upper left
+	ndcCorners[1] = vec2(ndcCorners[0].x + ndcSizePerTile.x, ndcCorners[0].y); // upper right
+	ndcCorners[2] = ndcCorners[0] + ndcSizePerTile; // lower right
+	ndcCorners[3] = vec2(ndcCorners[0].x, ndcCorners[0].y + ndcSizePerTile.y); // lower left
+
+	vec4 temp;
+	for (int i = 0; i < 4; i++)
 	{
-		frustum.planes[i] *= viewProjection;
-		frustum.planes[i] /= length(frustum.planes[i].xyz);
+		temp = invViewProjection * vec4(ndcCorners[i], minDepth, 1.0);
+		frustum.points[i] = temp.xyz / temp.w;
+		
+		temp = invViewProjection * vec4(ndcCorners[i], maxDepth, 1.0);
+		frustum.points[i+4] = temp.xyz / temp.w;
 	}
 
-	// Transform the depth planes
-	frustum.planes[4] *= frame.view;
-	frustum.planes[4] /= length(frustum.planes[4].xyz);
-	frustum.planes[5] *= frame.view;
-	frustum.planes[5] /= length(frustum.planes[5].xyz);
-	
+	vec3 tempNormal;
+	for (int i = 0; i < 4; i++)
+	{
+		//Cax+Cby+Ccz+Cd = 0, planes[i] = (Ca, Cb, Cc, Cd)
+		//tempNormal: normal without normalization
+		tempNormal = cross(frustum.points[i] - frame.cameraPosition.xyz, frustum.points[i + 1] - frame.cameraPosition.xyz);
+		tempNormal = normalize(tempNormal);
+		frustum.planes[i] = vec4(tempNormal, - dot(tempNormal, frustum.points[i]));
+	}
+	// near plane
+	{
+		tempNormal = cross(frustum.points[1] - frustum.points[0], frustum.points[3] - frustum.points[0]);
+		tempNormal = normalize(tempNormal);
+		frustum.planes[4] = vec4(tempNormal, dot(tempNormal, frustum.points[0]));
+	}
+	// far plane
+	{
+		tempNormal = cross(frustum.points[7] - frustum.points[4], frustum.points[5] - frustum.points[4]);
+		tempNormal = normalize(tempNormal);
+		frustum.planes[5] = vec4(tempNormal, dot(tempNormal, frustum.points[4]));
+	}
+
 	return frustum;
 }
 
@@ -124,16 +140,16 @@ void main()
 		maxDepthInt = 0;
 		minDepthInt = 0xFFFFFFFF;
 		lightCountForTile = 0;
-		viewProjection = frame.projection * frame.view;
+		invViewProjection = inverse(frame.projection * frame.view);
 	}
 	
 	barrier();	
 	
-	vec2 uv = vec2(gl_GlobalInvocationID.xy) / PushConstants.viewportSize;
-	float linearDepth = texture(sceneDepth, uv).x;
+	vec2 uv = vec2(gl_GlobalInvocationID.xy) / PushConstants.viewportSize;	
+	float depth = texture(sceneDepth, uv).x;
 	
 	// Convert depth to uint so we can do atomic min and max comparisons between the threads
-	uint depthInt = floatBitsToUint(linearDepth);
+	uint depthInt = floatBitsToUint(depth);
 	atomicMax(maxDepthInt, depthInt);
 	atomicMin(minDepthInt, depthInt);
 
@@ -141,7 +157,7 @@ void main()
 	
 	if (gl_LocalInvocationIndex == 0)
 	{
-		frustum = createFrustum(tileId);
+		frustum = CreateFrustum(tileId);
 	}
 	
 	barrier();
@@ -160,16 +176,13 @@ void main()
 			break;
 		}
 
-		vec4 position = frame.view * vec4(light.instance[i].worldPosition, 1);
-		position = vec4(position.xyz/position.w, 1);
-		
-		float radius = light.instance[i].bounds.x;
+		float radius = light.instance[lightIndex].bounds.x;
 
 		// We check if the light exists in our frustum
 		float distance = 0.0;
 		for (uint j = 0; j < 6; j++) 
 		{
-			distance = dot(position, frustum.planes[j]) + radius;
+			distance = dot(vec4(light.instance[lightIndex].worldPosition, 1), frustum.planes[j]) + radius;
 
 			// If one of the tests fails, then there is no intersection
 			if (distance <= 0.0) 

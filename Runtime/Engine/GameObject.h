@@ -24,7 +24,7 @@ namespace Sailor
 
 		SAILOR_API WorldPtr GetWorld() const { return m_pWorld; }
 
-		SAILOR_API explicit operator bool() const { return !bPendingDestroy; }
+		SAILOR_API explicit operator bool() const { return !m_bPendingDestroy; }
 
 		template<typename TComponent, typename... TArgs >
 		SAILOR_API TObjectPtr<TComponent> AddComponent(TArgs&& ... args)
@@ -34,6 +34,13 @@ namespace Sailor
 
 			newObject->m_owner = m_self;
 			m_components.Add(newObject);
+
+			if (m_bBeginPlayCalled)
+			{
+				newObject->BeginPlay();
+				newObject->m_bBeginPlayCalled = true;
+			}
+
 			return newObject;
 		}
 
@@ -70,8 +77,8 @@ namespace Sailor
 
 		std::string m_name;
 
-		bool bBeginPlayCalled = false;
-		bool bPendingDestroy = false;
+		bool m_bBeginPlayCalled = false;
+		bool m_bPendingDestroy = false;
 		WorldPtr m_pWorld;
 		GameObjectPtr m_self;
 

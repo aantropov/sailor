@@ -45,12 +45,12 @@ namespace Sailor
 
 		struct ShaderData
 		{
-			glm::vec3 m_worldPosition;
-			glm::vec3 m_direction;
-			glm::vec3 m_intensity;
-			glm::vec3 m_attenuation;
-			glm::vec3 m_bounds;
-			int32_t m_type;
+			alignas(8) glm::vec3 m_worldPosition;
+			alignas(8) glm::vec3 m_direction;
+			alignas(8) glm::vec3 m_intensity;
+			alignas(8) glm::vec3 m_attenuation;
+			alignas(8) glm::vec3 m_bounds;
+			alignas(8) int32_t m_type;
 		};
 
 		SAILOR_API virtual void BeginPlay() override;

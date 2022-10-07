@@ -12,6 +12,20 @@ namespace Sailor
 	class DepthPrepassNode : public TFrameGraphNode<DepthPrepassNode>
 	{
 	public:
+
+		struct PerInstanceData
+		{
+			glm::mat4 model;
+
+			bool operator==(const PerInstanceData& rhs) const { return this->model == model; }
+
+			size_t GetHash() const
+			{
+				hash<glm::mat4> p;
+				return p(model);
+			}
+		};
+
 		SAILOR_API static const char* GetName() { return m_name; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;

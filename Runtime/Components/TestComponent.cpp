@@ -34,14 +34,14 @@ void TestComponent::BeginPlay()
 		}
 	}
 
-	/*
+
 	for (int i = 0; i < 3; i++)
 		for (int j = 0; j < 3; j++)
 		{
 			auto gameObject2 = GetWorld()->Instantiate();
 			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, 0, i * 2500));
 			gameObject2->AddComponent<MeshRendererComponent>();
-		}*/
+		}
 
 	auto gameObject3 = GetWorld()->Instantiate();
 	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
@@ -51,11 +51,101 @@ void TestComponent::BeginPlay()
 	lightGameObject->GetTransformComponent().SetPosition(vec3(0, 20, 0));
 	lightGameObject->AddComponent<LightComponent>();
 
+	auto lightGameObject2 = GetWorld()->Instantiate();
+	lightGameObject2->GetTransformComponent().SetPosition(vec3(230, 30, 0));
+	auto lightComponent = lightGameObject2->AddComponent<LightComponent>();
+	lightComponent->SetBounds(vec3(150, 150, 150));
+
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
 
 void TestComponent::EndPlay()
 {
+}
+
+void DrawTile(WorldPtr world, const mat4& invViewProjection, const float zFar, const vec3& cameraPosition, const ivec2& tileId, const vec3& lightPos, float radius)
+{
+	float minDepth = 0.003f;//uintBitsToFloat(maxDepthInt);
+	float maxDepth = 0.00001f;//uintBitsToFloat(maxDepthInt);
+
+	const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
+	vec2 ndcSizePerTile = 2.0f * vec2(16, 16) / vec2(1024, 768);
+
+	vec2 ndcCorners[4];
+	ndcCorners[0] = ndcUpperLeft + vec2(tileId) * ndcSizePerTile; // upper left
+	ndcCorners[1] = vec2(ndcCorners[0].x + ndcSizePerTile.x, ndcCorners[0].y); // upper right
+	ndcCorners[2] = ndcCorners[0] + ndcSizePerTile;
+	ndcCorners[3] = vec2(ndcCorners[0].x, ndcCorners[0].y + ndcSizePerTile.y); // lower left
+
+	vec3 points[8];
+	vec4 planes[8];
+
+	vec4 temp;
+	for (int i = 0; i < 4; i++)
+	{
+		temp = invViewProjection * vec4(ndcCorners[i], minDepth, 1.0);
+		points[i] = vec3(temp) / temp.w;
+
+		temp = invViewProjection * vec4(ndcCorners[i], maxDepth, 1.0);
+		points[i + 4] = vec3(temp) / temp.w;
+	}
+
+	vec3 tempNormal;
+	for (int i = 0; i < 4; i++)
+	{
+		//Cax+Cby+Ccz+Cd = 0, planes[i] = (Ca, Cb, Cc, Cd)
+		//tempNormal: normal without normalization
+		tempNormal = glm::cross(points[i] - vec3(cameraPosition), points[i + 1] - vec3(cameraPosition));
+		tempNormal = normalize(tempNormal);
+		planes[i] = vec4(tempNormal, -glm::dot(tempNormal, points[i]));
+	}
+	// near plane
+	{
+		tempNormal = glm::cross(points[1] - points[0], points[3] - points[0]);
+		tempNormal = normalize(tempNormal);
+		planes[4] = vec4(tempNormal, glm::dot(tempNormal, points[0]));
+	}
+	// far plane
+	{
+		tempNormal = glm::cross(points[7] - points[4], points[5] - points[4]);
+		tempNormal = glm::normalize(tempNormal);
+		planes[5] = vec4(tempNormal, glm::dot(tempNormal, points[4]));
+	}
+
+	bool bIntersects = true;
+
+	// We check if the light exists in our frustum
+	float distance = 0.0;
+	for (uint j = 0; j < 6; j++)
+	{
+		distance = glm::dot(vec4(lightPos, 1), planes[j]) + radius;
+
+		// If one of the tests fails, then there is no intersection
+		if (distance <= 0.0)
+		{
+			bIntersects = false;
+			break;
+		}
+	}
+
+	// If greater than zero, then it is a visible light
+	if (distance > 0.0)
+	{
+		bIntersects = true;
+	}
+
+	for (int32_t i = 0; i < 4; i++)
+	{
+		if (bIntersects)
+		{
+			world->GetDebugContext()->DrawLine(points[0], points[1], vec4(1, 0, 0, 1), 1000.0f);
+			world->GetDebugContext()->DrawLine(points[1], points[2], vec4(1, 0, 0, 1), 1000.0f);
+			world->GetDebugContext()->DrawLine(points[2], points[3], vec4(1, 0, 0, 1), 1000.0f);
+			world->GetDebugContext()->DrawLine(points[3], points[0], vec4(1, 0, 0, 1), 1000.0f);
+
+			world->GetDebugContext()->DrawLine(cameraPosition, points[i + 4], bIntersects ? vec4(0, 1, 0, 1) : vec4(0.5f, 0.45f, 0.3f, 1), 1000.0f);
+		}
+	}
 }
 
 void TestComponent::Tick(float deltaTime)
@@ -130,6 +220,34 @@ void TestComponent::Tick(float deltaTime)
 	}
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
+
+	if (GetWorld()->GetInput().IsKeyPressed('T'))
+	{
+		auto camera = GetOwner()->GetComponent<CameraComponent>();
+
+		auto gameObjects = GetWorld()->GetGameObjects();
+
+		for (int32_t i = 0; i < App::GetViewportWindow()->GetWidth() / 16; i++)
+		{
+			for (int32_t j = 0; j < App::GetViewportWindow()->GetHeight() / 16; j++)
+			{
+				mat4 inv = glm::inverse(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
+
+				for (int32_t k = 0; k < gameObjects.Num(); k++)
+				{
+					if (auto light = gameObjects[k]->GetComponent<LightComponent>())
+					{
+						DrawTile(GetWorld(), inv, 
+							camera->GetZFar(), 
+							transform.GetWorldPosition(), 
+							glm::ivec2(i, j), 
+							gameObjects[k]->GetTransformComponent().GetWorldPosition(), 
+							light->GetBounds().x);
+					}
+				}
+			}
+		}
+	}
 
 	if (GetWorld()->GetInput().IsKeyPressed('R'))
 	{

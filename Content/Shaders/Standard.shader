@@ -91,7 +91,7 @@ layout(location=3) out vec3 worldPosition;
 void main() 
 {
 	vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
-	worldPosition = vertexPosition.xyz/vertexPosition.w;
+	worldPosition = vertexPosition.xyz / vertexPosition.w;
 	
     gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
@@ -121,7 +121,8 @@ void main()
     outColor = vec4(0,0,0,1);
      
     vec2 numTiles = floor(frame.viewportSize / CULLED_LIGHTS_TILE_SIZE);
-    ivec2 tileId = ivec2(gl_FragCoord.xy / CULLED_LIGHTS_TILE_SIZE);
+	vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
+    ivec2 tileId = ivec2(screenUv / CULLED_LIGHTS_TILE_SIZE);
     uint tileIndex = uint(tileId.y * numTiles.x + tileId.x);
     
     //outColor += vec4(float(tileIndex) / (64*48));
@@ -134,7 +135,7 @@ void main()
             break;
         }           
         
-		outColor += vec4(0.1,0.1,0.1,1);   
+		outColor += vec4(0.1,0.1,0.1,1);
     }    
 }
 END_CODE,

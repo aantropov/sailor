@@ -204,7 +204,7 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 {
 	SAILOR_PROFILE_FUNCTION()
 
-		MSG msg;
+	MSG msg;
 	for (int i = 0; i < g_windows.Num(); i++)
 	{
 		while (PeekMessage(&msg, g_windows[i]->GetHWND(), 0, 0, PM_REMOVE))

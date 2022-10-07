@@ -51,10 +51,10 @@ void World::Tick(FrameState& frameState)
 
 	for (auto& el : m_objects)
 	{
-		if (!el->bBeginPlayCalled)
+		if (!el->m_bBeginPlayCalled)
 		{
 			el->BeginPlay();
-			el->bBeginPlayCalled = true;
+			el->m_bBeginPlayCalled = true;
 		}
 		else
 		{
@@ -69,7 +69,7 @@ void World::Tick(FrameState& frameState)
 
 	for (auto& el : m_pendingDestroyObjects)
 	{
-		assert(el->bPendingDestroy);
+		assert(el->m_bPendingDestroy);
 
 		el->EndPlay();
 		el->RemoveAllComponents();
@@ -91,8 +91,11 @@ GameObjectPtr World::Instantiate(const std::string& name)
 	assert(newObject);
 	newObject->m_self = newObject;
 
-	newObject->BeginPlay();
-	newObject->bBeginPlayCalled = true;
+	if (m_bIsBeginPlayCalled)
+	{
+		newObject->BeginPlay();
+		newObject->m_bBeginPlayCalled = true;
+	}
 
 	m_objects.Add(newObject);
 
@@ -101,9 +104,9 @@ GameObjectPtr World::Instantiate(const std::string& name)
 
 void World::Destroy(GameObjectPtr object)
 {
-	if (object && !object->bPendingDestroy)
+	if (object && !object->m_bPendingDestroy)
 	{
-		object->bPendingDestroy = true;
+		object->m_bPendingDestroy = true;
 		m_pendingDestroyObjects.PushBack(std::move(object));
 	}
 }
