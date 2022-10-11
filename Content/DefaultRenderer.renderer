@@ -19,7 +19,7 @@
 	},
    
    	{"name":"LightCulling",	
-		"renderTargets":[{"name":"depthStencil", "value":"LinearDepth"}]
+		"renderTargets":[{"name":"depthStencil", "value":"DepthBuffer"}]
 	},
    
     {"name":"Clear", 

@@ -43,14 +43,15 @@ namespace Sailor
 
 		const uint32_t LightsMaxNum = 65535;
 
+		// TODO: Tightly pack
 		struct ShaderData
 		{
-			alignas(8) glm::vec3 m_worldPosition;
-			alignas(8) glm::vec3 m_direction;
-			alignas(8) glm::vec3 m_intensity;
-			alignas(8) glm::vec3 m_attenuation;
-			alignas(8) glm::vec3 m_bounds;
-			alignas(8) int32_t m_type;
+			 alignas(16) glm::vec3 m_worldPosition;
+			 alignas(16) glm::vec3 m_direction;
+			 alignas(16) glm::vec3 m_intensity;
+			 alignas(16) glm::vec3 m_attenuation;
+			 int32_t m_type;
+			 alignas(16) glm::vec3 m_bounds;
 		};
 
 		SAILOR_API virtual void BeginPlay() override;

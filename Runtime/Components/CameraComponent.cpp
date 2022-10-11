@@ -25,7 +25,7 @@ void CameraComponent::BeginPlay()
 
 	ecsData.SetAspect(CalculateAspect());
 	ecsData.SetFov(90.0f);
-	ecsData.SetZNear(0.01f);
+	ecsData.SetZNear(0.1f);
 	ecsData.SetZFar(5000.0f);
 
 	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), GetAspect(), GetZNear(), GetZFar()));

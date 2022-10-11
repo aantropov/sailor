@@ -51,9 +51,9 @@ void TestComponent::BeginPlay()
 	lightGameObject->GetTransformComponent().SetPosition(vec3(0, 20, 0));
 	lightGameObject->AddComponent<LightComponent>();
 
-	auto lightGameObject2 = GetWorld()->Instantiate();
-	lightGameObject2->GetTransformComponent().SetPosition(vec3(230, 30, 0));
-	auto lightComponent = lightGameObject2->AddComponent<LightComponent>();
+	lightGameObject = GetWorld()->Instantiate();
+	lightGameObject->GetTransformComponent().SetPosition(vec3(230, 30, 0));
+	auto lightComponent = lightGameObject->AddComponent<LightComponent>();
 	lightComponent->SetBounds(vec3(150, 150, 150));
 
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
@@ -65,7 +65,7 @@ void TestComponent::EndPlay()
 
 void DrawTile(WorldPtr world, const mat4& invViewProjection, const float zFar, const vec3& cameraPosition, const ivec2& tileId, const vec3& lightPos, float radius)
 {
-	float minDepth = 0.003f;//uintBitsToFloat(maxDepthInt);
+	float minDepth = 0.99f;//uintBitsToFloat(maxDepthInt);
 	float maxDepth = 0.00001f;//uintBitsToFloat(maxDepthInt);
 
 	const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
@@ -231,7 +231,7 @@ void TestComponent::Tick(float deltaTime)
 		{
 			for (int32_t j = 0; j < App::GetViewportWindow()->GetHeight() / 16; j++)
 			{
-				mat4 inv = glm::inverse(camera->GetData().GetProjectionMatrix() * camera->GetData().GetViewMatrix());
+				mat4 inv = camera->GetData().GetInvViewProjection();
 
 				for (int32_t k = 0; k < gameObjects.Num(); k++)
 				{
