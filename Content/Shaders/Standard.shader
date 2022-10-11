@@ -122,14 +122,13 @@ vec3 CalculateLighting(LightData light, vec3 normal, vec3 worldPos, vec3 viewDir
     
 	// attenuation
     float distance    = length(light.worldPosition - worldPos);
-    float attenuation = 1.0 / (light.attenuation.z + light.attenuation.y * distance + 
-  			     light.attenuation.x * (distance * distance));
+    float attenuation = 1.0 / (light.attenuation.z + light.attenuation.y * distance + light.attenuation.x * (distance * distance));
 	
 	// combine results
     vec3 diffuse  = light.intensity * diff * texture(diffuseSampler, fragTexcoord).xyz;
     diffuse  *= attenuation;
     
-	float fallof = 1 - clamp(0,1,distance / light.bounds.x);
+	float fallof = 1 - clamp(distance / light.bounds.x, 0,1);
 	
     return diffuse * fallof;
 }
@@ -153,7 +152,7 @@ void main()
             break;
         }         
 
-        vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;
+        vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;		
 		outColor.xyz += CalculateLighting(light.instance[index], fragNormal, worldPosition, viewDirection);
     }    
 }
