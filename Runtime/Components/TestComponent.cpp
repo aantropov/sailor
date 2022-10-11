@@ -49,13 +49,15 @@ void TestComponent::BeginPlay()
 
 	auto lightGameObject = GetWorld()->Instantiate();
 	lightGameObject->GetTransformComponent().SetPosition(vec3(0, 20, 0));
-	lightGameObject->AddComponent<LightComponent>();
+	auto lightComponent = lightGameObject->AddComponent<LightComponent>();
+	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
 
 	lightGameObject = GetWorld()->Instantiate();
-	lightGameObject->GetTransformComponent().SetPosition(vec3(230, 30, 0));
-	auto lightComponent = lightGameObject->AddComponent<LightComponent>();
+	lightGameObject->GetTransformComponent().SetPosition(vec3(230, 40, 0));
+	lightComponent = lightGameObject->AddComponent<LightComponent>();
 	lightComponent->SetBounds(vec3(150, 150, 150));
-
+	lightComponent->SetAttenuation(vec3(0.0f, 2.0f, 0.2f));
+	lightComponent->SetIntensity(vec3(0.0f, 100.0f, 0.0f));
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
 
