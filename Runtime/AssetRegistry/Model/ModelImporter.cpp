@@ -121,7 +121,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	{
 		MaterialAsset::Data data;
 
-		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Simple.shader");
+		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Standard.shader");
 
 		glm::vec4 diffuse{};
 		glm::vec4 ambient{};

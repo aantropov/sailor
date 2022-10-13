@@ -1,7 +1,7 @@
 {
     "bEnableDepthTest": true,
     "bEnableZWrite": true,
-    "bIsTransparent": false,
+    "bSupportMultisampling": true,
     "blendMode": "None",
     "cullMode": "Back",
     "defines": null,
@@ -23,7 +23,7 @@
         }
     ],
     "shader": {
-        "uid": "{F9096043-03E2-4BB1-A3D0-4EA692C986C7}"
+        "uid": "{1136DE60-9902-4ADC-97A7-90C293E2B6B9}"
     },
     "uniforms": [
         [

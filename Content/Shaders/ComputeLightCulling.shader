@@ -9,7 +9,7 @@ END_CODE,
 "glslCompute":
 BEGIN_CODE
 
-#define LIGHTS_PER_TILE 4
+#define LIGHTS_PER_TILE 8
 const int TILE_SIZE = 16;
 layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
 
@@ -189,7 +189,7 @@ void main()
 		float distance = 0.0;
 		for (uint j = 0; j < 6; j++) 
 		{
-			distance = dot(lightPos, frustum.planes[j]) + radius;
+			distance = dot(lightPos, frustum.planes[j]) + radius * 2;
 
 			// If one of the tests fails, then there is no intersection
 			if (distance <= 0.0) 
@@ -209,7 +209,7 @@ void main()
 
 	barrier();
 
-	if(lightCountForTile < LIGHTS_PER_TILE)
+	if(gl_LocalInvocationIndex == 0 && lightCountForTile < LIGHTS_PER_TILE)
 	{
 		culledLights.instance[tileIndex].indices[lightCountForTile] = -1;
 	}

@@ -20,7 +20,7 @@ struct LightData
 
 const int CULLED_LIGHTS_TILE_SIZE = 16;
 
-#define LIGHTS_PER_TILE 4
+#define LIGHTS_PER_TILE 8
 
 layout(std430)
 struct CulledLights 

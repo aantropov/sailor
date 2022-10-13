@@ -35,29 +35,38 @@ void TestComponent::BeginPlay()
 	}
 
 
-	for (int i = 0; i < 3; i++)
+	/*for (int i = 0; i < 3; i++)
 		for (int j = 0; j < 3; j++)
 		{
 			auto gameObject2 = GetWorld()->Instantiate();
 			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, 0, i * 2500));
 			gameObject2->AddComponent<MeshRendererComponent>();
 		}
+		*/
 
 	auto gameObject3 = GetWorld()->Instantiate();
 	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	gameObject3->AddComponent<MeshRendererComponent>();
 
-	auto lightGameObject = GetWorld()->Instantiate();
-	lightGameObject->GetTransformComponent().SetPosition(vec3(0, 20, 0));
-	auto lightComponent = lightGameObject->AddComponent<LightComponent>();
-	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
+	for (int32_t i = -1000; i < 1000; i += 100)
+	{
+		for (int32_t j = 0; j < 800; j += 100)
+		{
+			for (int32_t k = -1000; k < 1000; k += 100)
+			{
+				auto lightGameObject = GetWorld()->Instantiate();
+				auto lightComponent = lightGameObject->AddComponent<LightComponent>();
 
-	lightGameObject = GetWorld()->Instantiate();
-	lightGameObject->GetTransformComponent().SetPosition(vec3(230, 40, 0));
-	lightComponent = lightGameObject->AddComponent<LightComponent>();
-	lightComponent->SetBounds(vec3(150, 150, 150));
-	lightComponent->SetAttenuation(vec3(0.0f, 2.0f, 0.2f));
-	lightComponent->SetIntensity(vec3(0.0f, 100.0f, 0.0f));
+				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
+				lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
+				lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
+
+				m_lights.Emplace(std::move(lightGameObject));
+				m_lightVelocities.Add(vec4(0));
+			}
+		}
+	}
+
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
 
@@ -67,8 +76,8 @@ void TestComponent::EndPlay()
 
 void DrawTile(WorldPtr world, const mat4& invViewProjection, const float zFar, const vec3& cameraPosition, const ivec2& tileId, const vec3& lightPos, float radius)
 {
-	float minDepth = 0.99f;//uintBitsToFloat(maxDepthInt);
-	float maxDepth = 0.00001f;//uintBitsToFloat(maxDepthInt);
+	float minDepth = 0.001f;//uintBitsToFloat(maxDepthInt);
+	float maxDepth = 0.0001f;//uintBitsToFloat(maxDepthInt);
 
 	const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
 	vec2 ndcSizePerTile = 2.0f * vec2(16, 16) / vec2(1024, 768);
@@ -239,16 +248,30 @@ void TestComponent::Tick(float deltaTime)
 				{
 					if (auto light = gameObjects[k]->GetComponent<LightComponent>())
 					{
-						DrawTile(GetWorld(), inv, 
-							camera->GetZFar(), 
-							transform.GetWorldPosition(), 
-							glm::ivec2(i, j), 
-							gameObjects[k]->GetTransformComponent().GetWorldPosition(), 
+						DrawTile(GetWorld(), inv,
+							camera->GetZFar(),
+							transform.GetWorldPosition(),
+							glm::ivec2(i, j),
+							gameObjects[k]->GetTransformComponent().GetWorldPosition(),
 							light->GetBounds().x);
 					}
 				}
 			}
 		}
+	}
+
+	for (uint32_t i = 0; i < m_lights.Num(); i++)
+	{
+		if (glm::length(m_lightVelocities[i]) < 1.0f)
+		{
+			const glm::vec4 velocity = glm::vec4(glm::sphericalRand(75.0f + rand() % 50), 0.0f);
+			m_lightVelocities[i] = velocity;
+		}
+
+		const auto& position = m_lights[i]->GetTransformComponent().GetWorldPosition();
+
+		m_lightVelocities[i] = Math::Lerp(m_lightVelocities[i], vec4(0, 0, 0, 0), deltaTime * 0.5f);
+		m_lights[i]->GetTransformComponent().SetPosition(position + deltaTime * m_lightVelocities[i]);
 	}
 
 	if (GetWorld()->GetInput().IsKeyPressed('R'))
