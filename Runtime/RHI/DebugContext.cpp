@@ -11,6 +11,17 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
+void DebugContext::DrawPlane(const Math::Plane& plane, float size, const glm::vec4 color, float duration)
+{
+	Math::Plane normalizedPlane = plane;
+	normalizedPlane.Normalize();
+
+	const glm::vec3 center = normalizedPlane.GetNormal() * normalizedPlane.m_abcd.z;
+
+	DrawLine(center, center + normalizedPlane.GetNormal() * size, color, duration);
+	DrawLine(center, center + normalizedPlane.GetNormal() * size, color, duration);
+}
+
 void DebugContext::DrawLine(const glm::vec3& start, const glm::vec3& end, const glm::vec4 color, float duration)
 {
 	VertexP3C4 startVertex;

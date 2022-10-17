@@ -122,7 +122,7 @@ namespace Sailor
 			CopyFrom_Internal(*m_root, *octree.m_root);
 		}
 
-		TOctree& operator= (const TOctree& octree) 
+		TOctree& operator= (const TOctree& octree)
 		{
 			Clear();
 
@@ -130,7 +130,7 @@ namespace Sailor
 			m_minSize = octree.m_minSize;
 
 			CopyFrom_Internal(*m_root, *octree.m_root);
-			
+
 			return *this;
 		}
 
@@ -245,30 +245,6 @@ namespace Sailor
 		{
 			if (node.m_elements.Num())
 			{
-				/*
-				TVector<Math::AABB> aabb;
-				TVector<const TElementType*> elements;
-				TVector<int32_t> bElements(node.m_elements.Num());
-
-				aabb.Reserve(node.m_elements.Num());
-				elements.Reserve(node.m_elements.Num());
-
-				for (const auto& el : node.m_elements)
-				{
-					aabb.Add(Math::AABB(el.m_second.m_position, el.m_second.m_extents));
-					elements.Add(&el.m_first);
-				}
-
-				frustum.OverlapsAABB(&aabb[0], (uint32_t)aabb.Num(), &bElements[0]);
-
-				for (uint32_t i = 0; i < node.m_elements.Num(); i++)
-				{
-					if (bElements[i])
-					{
-						outElements.Add(*elements[i]);
-					}
-				}*/
-				/**/
 				for (auto& el : node.m_elements)
 				{
 					if (frustum.OverlapsAABB(Math::AABB(el.m_second.m_position, el.m_second.m_extents)))
@@ -280,31 +256,9 @@ namespace Sailor
 
 			if (!node.IsLeaf())
 			{
-				Math::Sphere octants[8];
-				int32_t bContains[8];
-				int32_t bOverlaps[8];
-
 				for (uint32_t i = 0; i < 8; i++)
 				{
-					octants[i].m_center = node.m_internal[i].m_center;
-					octants[i].m_radius = (float)node.m_internal[i].m_size * 0.5f;
-
-					if (!(bContains[i] = frustum.ContainsSphere(octants[i])))
-					{
-						bOverlaps[i] = frustum.OverlapsSphere(octants[i]);
-					}
-				}
-
-				//frustum.ContainsSphere(octants, 8u, bContains);
-				//frustum.OverlapsSphere(octants, 8u, bOverlaps);
-
-				for (uint32_t i = 0; i < 8; i++)
-				{
-					if (bContains[i])
-					{
-						GetElementsInChildren(node.m_internal[i], outElements);
-					}
-					else if (bOverlaps[i])
+					if (frustum.OverlapsAABB(Math::AABB(node.m_internal[i].m_center, (float)node.m_internal[i].m_size * glm::vec3(0.5f, 0.5f, 0.5f))))
 					{
 						Trace_Internal(node.m_internal[i], frustum, outElements);
 					}

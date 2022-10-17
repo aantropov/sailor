@@ -26,6 +26,8 @@ namespace Sailor::Math
 		float& operator[] (uint32_t i) { return m_abcd[i]; }
 		float operator[] (uint32_t i) const { return m_abcd[i]; }
 
+		glm::vec3 GetNormal() const { return glm::vec3(m_abcd.x, m_abcd.y, m_abcd.z); }
+
 		void Normalize();
 	};
 

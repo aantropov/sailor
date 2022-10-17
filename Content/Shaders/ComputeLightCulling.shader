@@ -9,7 +9,7 @@ END_CODE,
 "glslCompute":
 BEGIN_CODE
 
-#define LIGHTS_PER_TILE 8
+#define LIGHTS_PER_TILE 4
 const int TILE_SIZE = 16;
 layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
 
@@ -74,15 +74,18 @@ shared ViewFrustum frustum;
 shared int lightCountForTile;
 shared uint minDepthInt;
 shared uint maxDepthInt;
+shared uint groupIndices[LIGHTS_PER_TILE];
 
 // Construct view frustum
 ViewFrustum CreateFrustum(ivec2 tileId)
 {	
 	ViewFrustum frustum;
 
-	float minDepth = uintBitsToFloat(maxDepthInt);
-	float maxDepth = uintBitsToFloat(minDepthInt);
-
+	const float bias = 0.00001f;
+		
+	float minDepth = uintBitsToFloat(maxDepthInt) + bias;
+	float maxDepth = uintBitsToFloat(minDepthInt) - bias;
+	
 	const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
 	vec2 ndcSizePerTile = 2.0 * vec2(TILE_SIZE, TILE_SIZE) / PushConstants.viewportSize;
 
@@ -173,7 +176,8 @@ void main()
 	// Can handle 256 simultaniously. Anymore lights than that and additional passes are performed
 	uint threadCount = TILE_SIZE * TILE_SIZE;
 	uint passCount = (PushConstants.lightsNum + threadCount - 1) / threadCount;
-	for (uint i = 0; i < passCount; i++) 
+	
+	for (uint i = 0; i < passCount; i++)
 	{
 		// Get the lightIndex to test for this thread / pass. If the index is >= light count, then this thread can stop testing lights
 		uint lightIndex = i * threadCount + gl_LocalInvocationIndex;
@@ -182,36 +186,45 @@ void main()
 			break;
 		}
 
-		float radius = light.instance[lightIndex].bounds.x;
-		vec4 lightPos = vec4(light.instance[lightIndex].worldPosition, 1);
+		float radius = light.instance[lightIndex].bounds.x; 
+		vec4 lightDirection = vec4(light.instance[lightIndex].worldPosition, 1);
 		
 		// We check if the light exists in our frustum
 		float distance = 0.0;
 		for (uint j = 0; j < 6; j++) 
 		{
-			distance = dot(lightPos, frustum.planes[j]) + radius * 2;
+			distance = dot(lightDirection, frustum.planes[j]) + radius;
 
 			// If one of the tests fails, then there is no intersection
-			if (distance <= 0.0) 
+			if (distance < 0.0)
 			{
 				break;
 			}
 		}
 
 		// If greater than zero, then it is a visible light
-		if (distance > 0.0) 
+		if (distance >= 0.0) 
 		{
 			// Add index to the shared array of visible indices
 			uint offset = atomicAdd(lightCountForTile, 1);
-			culledLights.instance[tileIndex].indices[offset] = int(lightIndex);
+			groupIndices[offset] = int(lightIndex);
 		}
 	}
-
 	barrier();
 
-	if(gl_LocalInvocationIndex == 0 && lightCountForTile < LIGHTS_PER_TILE)
+	if(gl_LocalInvocationIndex == 0)
 	{
-		culledLights.instance[tileIndex].indices[lightCountForTile] = -1;
+		// Copy calculated data
+		for(uint i = 0; i < LIGHTS_PER_TILE; i++)
+		{
+			culledLights.instance[tileIndex].indices[i] = groupIndices[i];
+		}
+		
+		// Ending symbol
+		if(lightCountForTile < LIGHTS_PER_TILE)
+		{
+			culledLights.instance[tileIndex].indices[lightCountForTile] = -1;
+		}
 	}
 }
 END_CODE,
