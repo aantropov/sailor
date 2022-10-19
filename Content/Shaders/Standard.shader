@@ -43,6 +43,7 @@ layout(set = 0, binding = 0) uniform FrameData
 {
     mat4 view;
     mat4 projection;
+	mat4 invProjection;
     vec4 cameraPosition;
     ivec2 viewportSize;
     float currentTime;
@@ -74,11 +75,6 @@ END_CODE,
 "glslVertex":
 BEGIN_CODE
 
-MaterialData GetMaterialData()
-{
-    return material.instance[data.instance[gl_InstanceIndex].materialInstance];
-}
-
 layout(location=0) in vec3 inPosition;
 layout(location=1) in vec3 inNormal;
 layout(location=2) in vec2 inTexcoord;
@@ -89,6 +85,11 @@ layout(location=1) out vec2 fragTexcoord;
 layout(location=2) out vec3 fragNormal;
 layout(location=3) out vec3 worldPosition;
 
+MaterialData GetMaterialData()
+{
+    return material.instance[data.instance[gl_InstanceIndex].materialInstance];
+}
+
 void main() 
 {
 	vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
@@ -98,7 +99,7 @@ void main()
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
     	
     fragColor = inColor;
-	fragNormal = normalize(worldNormal.xyz);
+	fragNormal = worldNormal.xyz;
     fragTexcoord = inTexcoord;
 }
 END_CODE,
@@ -115,7 +116,7 @@ layout(location = 0) out vec4 outColor;
 
 vec3 CalculateLighting(LightData light, vec3 normal, vec3 worldPos, vec3 viewDir)
 {
-    vec3 lightDir = normalize(light.worldPosition - worldPos);
+	vec3 lightDir = normalize(light.worldPosition - worldPos);
 	
     // diffuse shading
     float diff = max(dot(normal, lightDir), 0.0);
@@ -125,7 +126,7 @@ vec3 CalculateLighting(LightData light, vec3 normal, vec3 worldPos, vec3 viewDir
     float attenuation = 1.0 / (light.attenuation.z + light.attenuation.y * distance + light.attenuation.x * (distance * distance));
 	
 	// combine results
-    vec3 diffuse  = light.intensity * diff * texture(diffuseSampler, fragTexcoord).xyz;
+    vec3 diffuse = light.intensity * diff * texture(diffuseSampler, fragTexcoord).xyz;
     diffuse  *= attenuation;
     
 	float fallof = 1 - clamp(distance / light.bounds.x, 0,1);

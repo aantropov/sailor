@@ -49,36 +49,10 @@ void TestComponent::BeginPlay()
 
 	auto lightGameObject = GetWorld()->Instantiate();
 	auto lightComponent = lightGameObject->AddComponent<LightComponent>();
-	lightGameObject->GetTransformComponent().SetPosition(vec3(300.0f, 0.0f, 0.0f));
-	lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
-	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
-
-	/*
-	lightGameObject = GetWorld()->Instantiate();
-	lightComponent = lightGameObject->AddComponent<LightComponent>();
-	lightGameObject->GetTransformComponent().SetPosition(vec3(30.0f, 10.0f, 0.0f));
-	lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
-	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
-
-	lightGameObject = GetWorld()->Instantiate();
-	lightComponent = lightGameObject->AddComponent<LightComponent>();
-	lightGameObject->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 30.0f));
-	lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
-	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
-
-	lightGameObject = GetWorld()->Instantiate();
-	lightComponent = lightGameObject->AddComponent<LightComponent>();
-	lightGameObject->GetTransformComponent().SetPosition(vec3(30.0f, 10.0f, 30.0f));
-	lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
-	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
-
-	lightGameObject = GetWorld()->Instantiate();
-	lightComponent = lightGameObject->AddComponent<LightComponent>();
 	lightGameObject->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
-	lightComponent->SetBounds(vec3(10.0f, 10.0f, 10.0f));
-	lightComponent->SetIntensity(vec3(1.0f, 1.0f, 1.0f));*/
+	lightComponent->SetBounds(vec3(40.0f, 40.0f, 40.0f));
+	lightComponent->SetIntensity(vec3(10.0f, 100.0f, 100.0f));
 
-	/*
 	for (int32_t i = -1000; i < 1000; i += 100)
 	{
 		for (int32_t j = 0; j < 800; j += 100)
@@ -89,14 +63,14 @@ void TestComponent::BeginPlay()
 				auto lightComponent = lightGameObject->AddComponent<LightComponent>();
 
 				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
-				lightComponent->SetBounds(vec3(130.0f, 130.0f, 130.0f));
+				lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
 				lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
 
 				m_lights.Emplace(std::move(lightGameObject));
 				m_lightVelocities.Add(vec4(0));
 			}
 		}
-	}*/
+	}
 
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
@@ -105,11 +79,10 @@ void TestComponent::EndPlay()
 {
 }
 
-
 void DrawTile(WorldPtr world, const mat4& invViewProjection, const float zFar, const vec3& cameraPosition, const ivec2& tileId, const vec3& lightPos, float radius)
 {
-	float minDepth = 0.2f;//uintBitsToFloat(maxDepthInt);
-	float maxDepth = 0.00001f;//uintBitsToFloat(maxDepthInt);
+	float minDepth = -0.2f;//uintBitsToFloat(maxDepthInt);
+	float maxDepth = -0.00001f;//uintBitsToFloat(maxDepthInt);
 
 	const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
 	vec2 ndcSizePerTile = 2.0f * vec2(16, 16) / vec2(App::GetViewportWindow()->GetWidth(), App::GetViewportWindow()->GetHeight());
@@ -186,7 +159,7 @@ void DrawTile(WorldPtr world, const mat4& invViewProjection, const float zFar, c
 			world->GetDebugContext()->DrawLine(points[2], points[3], vec4(1, 0, 0, 1), 1000.0f);
 			world->GetDebugContext()->DrawLine(points[3], points[0], vec4(1, 0, 0, 1), 1000.0f);
 
-			world->GetDebugContext()->DrawLine(cameraPosition, points[i + 4], bIntersects ? vec4(0, 1, 0, 1) : vec4(0.5f, 0.45f, 0.3f, 1), 1000.0f);
+			//world->GetDebugContext()->DrawLine(cameraPosition, points[i + 4], bIntersects ? vec4(0, 1, 0, 1) : vec4(0.5f, 0.45f, 0.3f, 1), 1000.0f);
 		}
 	}
 }

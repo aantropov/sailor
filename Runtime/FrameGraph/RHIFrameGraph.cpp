@@ -51,6 +51,7 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 
 	frameData.m_cameraPosition = snapshot.m_cameraPosition;
 	frameData.m_projection = snapshot.m_camera->GetProjectionMatrix();
+	frameData.m_invProjection = snapshot.m_camera->GetInvProjection();
 	frameData.m_currentTime = worldTime;
 	frameData.m_deltaTime = deltaTime;
 	frameData.m_view = snapshot.m_camera->GetViewMatrix();
