@@ -29,7 +29,7 @@ namespace Sailor::RHI
 		SAILOR_API __forceinline void DrawLine(const glm::vec3& start, const glm::vec3& end, const glm::vec4 color = { 0.0f, 1.0f, 0.0f, 0.0f }, float duration = 0.0f);
 		SAILOR_API void DrawOrigin(const glm::vec3& position, float size = 1.0f, float duration = 0.0f);
 		SAILOR_API void DrawAABB(const Math::AABB& aabb, const glm::vec4 color = { 0.0f, 0.0f, 1.0f, 0.0f }, float duration = 0.0f);
-		SAILOR_API void DrawSphere(const glm::vec3& position, float size = 1.0f, const glm::vec4 color = { 0.0f, 0.0f, 0.0f, 1.0f }, float duration = 0.0f);
+		SAILOR_API void DrawSphere(const glm::vec3& position, float radius = 1.0f, const glm::vec4 color = { 0.0f, 0.0f, 0.0f, 1.0f }, float duration = 0.0f);
 		SAILOR_API void DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 		SAILOR_API void DrawPlane(const Math::Plane& plane, float size, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 		SAILOR_API void Tick(RHI::RHICommandListPtr transferCmd, float deltaTime);

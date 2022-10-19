@@ -15,7 +15,7 @@ using namespace Sailor::Tasks;
 
 void TestComponent::BeginPlay()
 {
-	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(0, 2, 0, 0), 20.0f, 1000.0f);
+	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(600, 2, 0, 0), 20.0f, 1000.0f);
 
 	for (int32_t i = -1000; i < 1000; i += 32)
 	{
@@ -34,7 +34,6 @@ void TestComponent::BeginPlay()
 		}
 	}
 
-
 	/*for (int i = 0; i < 3; i++)
 		for (int j = 0; j < 3; j++)
 		{
@@ -48,6 +47,38 @@ void TestComponent::BeginPlay()
 	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	gameObject3->AddComponent<MeshRendererComponent>();
 
+	auto lightGameObject = GetWorld()->Instantiate();
+	auto lightComponent = lightGameObject->AddComponent<LightComponent>();
+	lightGameObject->GetTransformComponent().SetPosition(vec3(300.0f, 0.0f, 0.0f));
+	lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
+	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
+
+	/*
+	lightGameObject = GetWorld()->Instantiate();
+	lightComponent = lightGameObject->AddComponent<LightComponent>();
+	lightGameObject->GetTransformComponent().SetPosition(vec3(30.0f, 10.0f, 0.0f));
+	lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
+	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
+
+	lightGameObject = GetWorld()->Instantiate();
+	lightComponent = lightGameObject->AddComponent<LightComponent>();
+	lightGameObject->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 30.0f));
+	lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
+	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
+
+	lightGameObject = GetWorld()->Instantiate();
+	lightComponent = lightGameObject->AddComponent<LightComponent>();
+	lightGameObject->GetTransformComponent().SetPosition(vec3(30.0f, 10.0f, 30.0f));
+	lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
+	lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
+
+	lightGameObject = GetWorld()->Instantiate();
+	lightComponent = lightGameObject->AddComponent<LightComponent>();
+	lightGameObject->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
+	lightComponent->SetBounds(vec3(10.0f, 10.0f, 10.0f));
+	lightComponent->SetIntensity(vec3(1.0f, 1.0f, 1.0f));*/
+
+	/*
 	for (int32_t i = -1000; i < 1000; i += 100)
 	{
 		for (int32_t j = 0; j < 800; j += 100)
@@ -58,14 +89,14 @@ void TestComponent::BeginPlay()
 				auto lightComponent = lightGameObject->AddComponent<LightComponent>();
 
 				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
-				lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
+				lightComponent->SetBounds(vec3(130.0f, 130.0f, 130.0f));
 				lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
 
 				m_lights.Emplace(std::move(lightGameObject));
 				m_lightVelocities.Add(vec4(0));
 			}
 		}
-	}
+	}*/
 
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
@@ -74,13 +105,14 @@ void TestComponent::EndPlay()
 {
 }
 
+
 void DrawTile(WorldPtr world, const mat4& invViewProjection, const float zFar, const vec3& cameraPosition, const ivec2& tileId, const vec3& lightPos, float radius)
 {
-	float minDepth = 0.001f;//uintBitsToFloat(maxDepthInt);
-	float maxDepth = 0.0001f;//uintBitsToFloat(maxDepthInt);
+	float minDepth = 0.2f;//uintBitsToFloat(maxDepthInt);
+	float maxDepth = 0.00001f;//uintBitsToFloat(maxDepthInt);
 
 	const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
-	vec2 ndcSizePerTile = 2.0f * vec2(16, 16) / vec2(1024, 768);
+	vec2 ndcSizePerTile = 2.0f * vec2(16, 16) / vec2(App::GetViewportWindow()->GetWidth(), App::GetViewportWindow()->GetHeight());
 
 	vec2 ndcCorners[4];
 	ndcCorners[0] = ndcUpperLeft + vec2(tileId) * ndcSizePerTile; // upper left
@@ -127,7 +159,7 @@ void DrawTile(WorldPtr world, const mat4& invViewProjection, const float zFar, c
 
 	// We check if the light exists in our frustum
 	float distance = 0.0;
-	for (uint j = 0; j < 6; j++)
+	for (uint j = 0; j < 4; j++)
 	{
 		distance = glm::dot(vec4(lightPos, 1), planes[j]) + radius;
 
@@ -227,7 +259,10 @@ void TestComponent::Tick(float deltaTime)
 
 	if (auto camera = GetOwner()->GetComponent<CameraComponent>())
 	{
-		GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
+		if (m_cachedFrustum != glm::mat4(1))
+		{
+			GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
+		}
 	}
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
@@ -242,13 +277,17 @@ void TestComponent::Tick(float deltaTime)
 		{
 			for (int32_t j = 0; j < App::GetViewportWindow()->GetHeight() / 16; j++)
 			{
-				mat4 inv = camera->GetData().GetInvViewProjection();
+				const glm::mat4 invViewProjection = camera->GetData().GetInvViewProjection();
+				const glm::mat4 invProjection = camera->GetData().GetInvProjection();
+				const glm::mat4 view = camera->GetData().GetViewMatrix();
+				const glm::mat4 projection = camera->GetData().GetProjectionMatrix();
 
 				for (int32_t k = 0; k < gameObjects.Num(); k++)
 				{
 					if (auto light = gameObjects[k]->GetComponent<LightComponent>())
 					{
-						DrawTile(GetWorld(), inv,
+						DrawTile(GetWorld(),
+							invViewProjection,
 							camera->GetZFar(),
 							transform.GetWorldPosition(),
 							glm::ivec2(i, j),

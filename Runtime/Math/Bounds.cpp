@@ -109,7 +109,6 @@ bool Frustum::ContainsSphere(const Sphere& sphere) const
 bool Frustum::OverlapsAABB(const AABB& aabb) const
 {
 	bool bIsInside = true;
-	glm::vec3 extents = aabb.GetExtents();
 
 	for (uint32_t i = 0; i < 6; i++)
 	{

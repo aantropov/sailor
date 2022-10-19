@@ -11,6 +11,55 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
+void DebugContext::DrawSphere(const glm::vec3& position, float radius, const glm::vec4 color, float duration)
+{
+	const float PI = 3.1415926f;
+	const int32_t SegmentsX = 7;
+	const int32_t SegmentsY = 7;
+
+	for (int32_t i = 0; i <= SegmentsX; i++)
+	{
+		float lat0 = PI * (-0.5f + (float)(i - 1) / SegmentsX);
+		float z0 = sin(lat0);
+		float zr0 = cos(lat0);
+
+		float lat1 = PI * (-0.5f + (float)i / SegmentsX);
+		float z1 = sin(lat1);
+		float zr1 = cos(lat1);
+
+		glm::vec3 v1;
+		glm::vec3 v2;
+		glm::vec3 v3;
+		glm::vec3 v4;
+
+		bool bContinuation = false;
+		for (int32_t j = 0; j <= SegmentsY; j++)
+		{
+			float lng = 2 * PI * (float)(j - 1) / SegmentsY;
+			float x = cos(lng);
+			float y = sin(lng);
+
+			v1 = position + glm::vec3(radius * x * zr0, radius * z0, radius * y * zr0);
+			v2 = position + glm::vec3(radius * x * zr1, radius * z1, radius * y * zr1);
+
+			if (!bContinuation)
+			{
+				bContinuation = true;
+			}
+			else
+			{
+				DrawLine(v1, v3, color, duration);
+				DrawLine(v2, v4, color, duration);
+			}
+
+			DrawLine(v1, v2, color, duration);
+
+			v3 = v1;
+			v4 = v2;
+		}
+	}
+}
+
 void DebugContext::DrawPlane(const Math::Plane& plane, float size, const glm::vec4 color, float duration)
 {
 	Math::Plane normalizedPlane = plane;
