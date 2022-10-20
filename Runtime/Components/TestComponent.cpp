@@ -53,18 +53,42 @@ void TestComponent::BeginPlay()
 	lightComponent->SetBounds(vec3(40.0f, 40.0f, 40.0f));
 	lightComponent->SetIntensity(vec3(10.0f, 100.0f, 100.0f));
 
-	for (int32_t i = -1000; i < 1000; i += 100)
+	lightComponent = GetWorld()->Instantiate(vec3(0.0f, 10.0f, 0.0f))->AddComponent<LightComponent>();
+	lightComponent->SetBounds(vec3(500.0f, 500.0f, 500.0f));
+	lightComponent->SetIntensity(vec3(150.0f, 0.0f, 0.0f));
+
+	lightComponent = GetWorld()->Instantiate(vec3(300.0f, 10.0f, 300.0f))->AddComponent<LightComponent>();
+	lightComponent->SetBounds(vec3(500.0f, 500.0f, 500.0f));
+	lightComponent->SetIntensity(vec3(50.0f, 150.0f, 0.0f));
+
+	lightComponent = GetWorld()->Instantiate(vec3(300.0f, 10.0f, 0.0f))->AddComponent<LightComponent>();
+	lightComponent->SetBounds(vec3(500.0f, 500.0f, 500.0f));
+	lightComponent->SetIntensity(vec3(150.0f, 0.0f, 150.0f));
+
+	lightComponent = GetWorld()->Instantiate(vec3(0.0f, 10.0f, 300.0f))->AddComponent<LightComponent>();
+	lightComponent->SetBounds(vec3(500.0f, 500.0f, 500.0f));
+	lightComponent->SetIntensity(vec3(150.0f, 150.0f, 0.0f));
+
+	lightComponent = GetWorld()->Instantiate(vec3(40.0f, 10.0f, 40.0f))->AddComponent<LightComponent>();
+	lightComponent->SetBounds(vec3(50.0f, 50.0f, 50.0f));
+	lightComponent->SetIntensity(vec3(0.0f, 150.0f, 0.0f));
+
+	lightComponent = GetWorld()->Instantiate(vec3(40.0f, 10.0f, 40.0f))->AddComponent<LightComponent>();
+	lightComponent->SetBounds(vec3(1000.0f, 1000.0f, 1000.0f));
+	lightComponent->SetIntensity(vec3(0.0f, 150.0f, 1000.0f));
+
+	for (int32_t i = -1000; i < 1000; i += 50)
 	{
-		for (int32_t j = 0; j < 800; j += 100)
+		for (int32_t j = 0; j < 800; j += 50)
 		{
-			for (int32_t k = -1000; k < 1000; k += 100)
+			for (int32_t k = -1000; k < 1000; k += 50)
 			{
 				auto lightGameObject = GetWorld()->Instantiate();
 				auto lightComponent = lightGameObject->AddComponent<LightComponent>();
 
 				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
-				lightComponent->SetBounds(vec3(30.0f, 30.0f, 30.0f));
-				lightComponent->SetIntensity(vec3(100.0f, 100.0f, 100.0f));
+				lightComponent->SetBounds(vec3(60.0f, 60.0f, 60.0f));
+				lightComponent->SetIntensity(vec3(rand() % 256, rand() % 256, rand() % 256));
 
 				m_lights.Emplace(std::move(lightGameObject));
 				m_lightVelocities.Add(vec4(0));
@@ -272,6 +296,7 @@ void TestComponent::Tick(float deltaTime)
 		}
 	}
 
+	/*
 	for (uint32_t i = 0; i < m_lights.Num(); i++)
 	{
 		if (glm::length(m_lightVelocities[i]) < 1.0f)
@@ -284,7 +309,7 @@ void TestComponent::Tick(float deltaTime)
 
 		m_lightVelocities[i] = Math::Lerp(m_lightVelocities[i], vec4(0, 0, 0, 0), deltaTime * 0.5f);
 		m_lights[i]->GetTransformComponent().SetPosition(position + deltaTime * m_lightVelocities[i]);
-	}
+	}*/
 
 	if (GetWorld()->GetInput().IsKeyPressed('R'))
 	{

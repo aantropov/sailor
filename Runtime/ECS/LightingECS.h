@@ -23,7 +23,7 @@ namespace Sailor
 
 		void SetDirty() { m_bIsDirty = true; }
 
-		glm::vec3 m_intensity{ 1.0f, 1.0f, 1.0f };
+		glm::vec3 m_intensity{ 100.0f, 100.0f, 100.0f };
 		glm::vec3 m_attenuation{ 0.0f, 1.0f, 0.0f };
 		glm::vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
 		ELightType m_type = ELightType::Point;

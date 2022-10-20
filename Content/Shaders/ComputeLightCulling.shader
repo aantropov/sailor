@@ -9,8 +9,8 @@ END_CODE,
 "glslCompute":
 BEGIN_CODE
 
-#define CANDIDATES_PER_TILE 16
-#define LIGHTS_PER_TILE 4
+#define CANDIDATES_PER_TILE 256
+#define LIGHTS_PER_TILE 128
 const int TILE_SIZE = 16;
 layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
 
@@ -78,7 +78,7 @@ shared int lightCountForTile;
 shared uint minDepthInt;
 shared uint maxDepthInt;
 shared uint candidateIndices[CANDIDATES_PER_TILE];
-shared float candidateDistances[CANDIDATES_PER_TILE];
+shared float candidateImpact[CANDIDATES_PER_TILE];
 
 // Convert clip space coordinates to view space
 vec4 ClipToView(vec4 clip)
@@ -176,7 +176,7 @@ bool Overlaps(vec3 lightPos, float radius, ViewFrustum frustum, float zNear, flo
 			return false;
 		}
 	}
-
+	
 	return true;    
 }
 
@@ -250,46 +250,62 @@ void main()
 		if (Overlaps(lightPosViewSpace.xyz, radius, frustum, zNear, zFar)) 
 		{
 			// Add index to the shared array of visible indices
-			uint offset = atomicAdd(lightCountForTile, 1);			
-			candidateIndices[offset] = int(lightIndex);
-			candidateDistances[offset] = length(lightPosViewSpace.xyz - vec3(frustum.center.xy, (zFar + zNear) * 0.5));
+			uint offset = atomicAdd(lightCountForTile, 1);
+			if(offset < CANDIDATES_PER_TILE)
+			{
+				candidateIndices[offset] = int(lightIndex);
+				candidateImpact[offset] = length(lightPosViewSpace.xyz - vec3(frustum.center.xy, (zFar + zNear) * 0.5));
+			}
 		}
 	}
 	barrier();
 
 	if(gl_LocalInvocationIndex == 0)
 	{
+		uint numCandidates = min(lightCountForTile, CANDIDATES_PER_TILE);
+		
 		// Sort by distance
-		if(lightCountForTile > LIGHTS_PER_TILE)
+		if(numCandidates > LIGHTS_PER_TILE)
 		{
-			for(uint i = 0; i < lightCountForTile; i++)
+			uint numSorted = LIGHTS_PER_TILE;
+			
+			for(uint i = 0; i < numCandidates-1; i++)
 			{
-				for(uint j = i + 1; j < lightCountForTile; j++)
+				for(uint j = 0; j < numCandidates - i - 1; j++)
 				{
-					if(candidateDistances[i] > candidateDistances[j])
+					if(candidateImpact[j] < candidateImpact[j+1])
 					{
-						float value = candidateDistances[j];
-						candidateDistances[j] = candidateDistances[i];
-						candidateDistances[i] = value;
+						float value = candidateImpact[j];
+						candidateImpact[j] = candidateImpact[j+1];
+						candidateImpact[j+1] = value;
 						
 						uint index = candidateIndices[j];
-						candidateIndices[j] = candidateIndices[i];
-						candidateIndices[i] = index;
+						candidateIndices[j] = candidateIndices[j+1];
+						candidateIndices[j+1] = index;
 					}
+				}
+				
+				--numSorted;
+				
+				if(numSorted == 0)
+				{
+					break;
 				}
 			}
 		}
 		
 		// Copy calculated data
-		for(uint i = 0; i < min(lightCountForTile, LIGHTS_PER_TILE); i++)
+		for(uint i = 0; i < min(numCandidates, LIGHTS_PER_TILE); i++)
 		{
-			culledLights.instance[tileIndex].indices[i] = candidateIndices[i];
+			uint offset = max(0, numCandidates - LIGHTS_PER_TILE);
+			
+			culledLights.instance[tileIndex].indices[i] = candidateIndices[numCandidates - i - 1];
 		}
 		
 		// Ending symbol
-		if(lightCountForTile < LIGHTS_PER_TILE)
+		if(numCandidates < LIGHTS_PER_TILE)
 		{
-			culledLights.instance[tileIndex].indices[lightCountForTile] = -1;
+			culledLights.instance[tileIndex].indices[numCandidates] = -1;
 		}
 	}
 }

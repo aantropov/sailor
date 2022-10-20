@@ -20,6 +20,12 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto driverCommands = renderer->GetDriverCommands();
 	auto cmdList = GetWorld()->GetCommandList();
+	auto& binding = m_lightsData->GetOrAddShaderBinding("light");
+
+	TVector<ShaderData> shaderDataBatch;
+	shaderDataBatch.Reserve(64);
+	bool bShouldWrite = true;
+	size_t startIndex = 0;
 
 	for (auto& data : m_components)
 	{
@@ -27,11 +33,15 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			continue;
 
 		const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
+		size_t index = GetComponentIndex(&data);
 
 		if (data.m_bIsDirty || ownerTransform.GetLastFrameChanged() == GetWorld()->GetCurrentFrame())
 		{
-			size_t index = GetComponentIndex(&data);
-			auto& binding = m_lightsData->GetOrAddShaderBinding("light");
+			if (bShouldWrite)
+			{
+				bShouldWrite = false;
+				startIndex = index;
+			}
 
 			const auto& lightData = m_components[index];
 
@@ -43,13 +53,24 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			shaderData.m_direction = ownerTransform.GetForwardVector();
 			shaderData.m_worldPosition = ownerTransform.GetWorldPosition();
 
-			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, binding,
-				&shaderData,
-				sizeof(LightingECS::ShaderData),
-				binding->GetBufferOffset() + 
-				sizeof(LightingECS::ShaderData) * index);
+			shaderDataBatch.Emplace(std::move(shaderData));
 
 			data.m_bIsDirty = false;
+		}
+		else
+		{
+			bShouldWrite = true;
+		}
+
+		if ((bShouldWrite || index == m_components.Num() - 1) && shaderDataBatch.Num() > 0)
+		{
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, binding,
+				shaderDataBatch.GetData(),
+				sizeof(LightingECS::ShaderData) * shaderDataBatch.Num(),
+				binding->GetBufferOffset() +
+				sizeof(LightingECS::ShaderData) * startIndex);
+
+			shaderDataBatch.Clear();
 		}
 	}
 

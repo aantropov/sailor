@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include <Components/TestComponent.h>
+#include <ECS/TransformECS.h>
 
 using namespace Sailor;
 
@@ -85,7 +86,7 @@ void World::Tick(FrameState& frameState)
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 }
 
-GameObjectPtr World::Instantiate(const std::string& name)
+GameObjectPtr World::Instantiate(const glm::vec3& worldPosition, const std::string& name)
 {
 	auto newObject = GameObjectPtr::Make(m_allocator, this, name);
 	assert(newObject);
@@ -96,6 +97,9 @@ GameObjectPtr World::Instantiate(const std::string& name)
 		newObject->BeginPlay();
 		newObject->m_bBeginPlayCalled = true;
 	}
+
+	newObject->GetTransformComponent().SetOwner(newObject);
+	newObject->GetTransformComponent().SetPosition(worldPosition);
 
 	m_objects.Add(newObject);
 

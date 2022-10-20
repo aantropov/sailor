@@ -66,7 +66,7 @@ void GameObject::Tick(float deltaTime)
 		}
 
 #ifdef SAILOR_EDITOR
-		el->OnGizmo();
+		//el->OnGizmo();
 #endif
 	}
 }

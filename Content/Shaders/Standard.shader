@@ -20,7 +20,7 @@ struct LightData
 
 const int CULLED_LIGHTS_TILE_SIZE = 16;
 
-#define LIGHTS_PER_TILE 4
+#define LIGHTS_PER_TILE 128
 
 layout(std430)
 struct CulledLights 
@@ -117,6 +117,11 @@ layout(location = 0) out vec4 outColor;
 vec3 CalculateLighting(LightData light, vec3 normal, vec3 worldPos, vec3 viewDir)
 {
 	vec3 lightDir = normalize(light.worldPosition - worldPos);
+	
+	//if(length(light.worldPosition - worldPos) > light.bounds.x)
+	//{
+		//return vec3(0.1,0.1,0.1);
+	//}
 	
     // diffuse shading
     float diff = max(dot(normal, lightDir), 0.0);
