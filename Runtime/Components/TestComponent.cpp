@@ -77,17 +77,18 @@ void TestComponent::BeginPlay()
 	lightComponent->SetBounds(vec3(1000.0f, 1000.0f, 1000.0f));
 	lightComponent->SetIntensity(vec3(0.0f, 150.0f, 1000.0f));
 
-	for (int32_t i = -1000; i < 1000; i += 50)
+	for (int32_t i = -1000; i < 1000; i += 300)
 	{
-		for (int32_t j = 0; j < 800; j += 50)
+		for (int32_t j = 0; j < 800; j += 300)
 		{
-			for (int32_t k = -1000; k < 1000; k += 50)
+			for (int32_t k = -1000; k < 1000; k += 300)
 			{
 				auto lightGameObject = GetWorld()->Instantiate();
 				auto lightComponent = lightGameObject->AddComponent<LightComponent>();
+				const float size = (float)(rand() % 256);
 
 				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
-				lightComponent->SetBounds(vec3(60.0f, 60.0f, 60.0f));
+				lightComponent->SetBounds(vec3(size, size, size));
 				lightComponent->SetIntensity(vec3(rand() % 256, rand() % 256, rand() % 256));
 
 				m_lights.Emplace(std::move(lightGameObject));
@@ -101,91 +102,6 @@ void TestComponent::BeginPlay()
 
 void TestComponent::EndPlay()
 {
-}
-
-void DrawTile(WorldPtr world, const mat4& invViewProjection, const float zFar, const vec3& cameraPosition, const ivec2& tileId, const vec3& lightPos, float radius)
-{
-	float minDepth = -0.2f;//uintBitsToFloat(maxDepthInt);
-	float maxDepth = -0.00001f;//uintBitsToFloat(maxDepthInt);
-
-	const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
-	vec2 ndcSizePerTile = 2.0f * vec2(16, 16) / vec2(App::GetViewportWindow()->GetWidth(), App::GetViewportWindow()->GetHeight());
-
-	vec2 ndcCorners[4];
-	ndcCorners[0] = ndcUpperLeft + vec2(tileId) * ndcSizePerTile; // upper left
-	ndcCorners[1] = vec2(ndcCorners[0].x + ndcSizePerTile.x, ndcCorners[0].y); // upper right
-	ndcCorners[2] = ndcCorners[0] + ndcSizePerTile;
-	ndcCorners[3] = vec2(ndcCorners[0].x, ndcCorners[0].y + ndcSizePerTile.y); // lower left
-
-	vec3 points[8];
-	vec4 planes[8];
-
-	vec4 temp;
-	for (int i = 0; i < 4; i++)
-	{
-		temp = invViewProjection * vec4(ndcCorners[i], minDepth, 1.0);
-		points[i] = vec3(temp) / temp.w;
-
-		temp = invViewProjection * vec4(ndcCorners[i], maxDepth, 1.0);
-		points[i + 4] = vec3(temp) / temp.w;
-	}
-
-	vec3 tempNormal;
-	for (int i = 0; i < 4; i++)
-	{
-		//Cax+Cby+Ccz+Cd = 0, planes[i] = (Ca, Cb, Cc, Cd)
-		//tempNormal: normal without normalization
-		tempNormal = glm::cross(points[i] - vec3(cameraPosition), points[i + 1] - vec3(cameraPosition));
-		tempNormal = normalize(tempNormal);
-		planes[i] = vec4(tempNormal, -glm::dot(tempNormal, points[i]));
-	}
-	// near plane
-	{
-		tempNormal = glm::cross(points[1] - points[0], points[3] - points[0]);
-		tempNormal = normalize(tempNormal);
-		planes[4] = vec4(tempNormal, glm::dot(tempNormal, points[0]));
-	}
-	// far plane
-	{
-		tempNormal = glm::cross(points[7] - points[4], points[5] - points[4]);
-		tempNormal = glm::normalize(tempNormal);
-		planes[5] = vec4(tempNormal, glm::dot(tempNormal, points[4]));
-	}
-
-	bool bIntersects = true;
-
-	// We check if the light exists in our frustum
-	float distance = 0.0;
-	for (uint j = 0; j < 4; j++)
-	{
-		distance = glm::dot(vec4(lightPos, 1), planes[j]) + radius;
-
-		// If one of the tests fails, then there is no intersection
-		if (distance <= 0.0)
-		{
-			bIntersects = false;
-			break;
-		}
-	}
-
-	// If greater than zero, then it is a visible light
-	if (distance > 0.0)
-	{
-		bIntersects = true;
-	}
-
-	for (int32_t i = 0; i < 4; i++)
-	{
-		if (bIntersects)
-		{
-			world->GetDebugContext()->DrawLine(points[0], points[1], vec4(1, 0, 0, 1), 1000.0f);
-			world->GetDebugContext()->DrawLine(points[1], points[2], vec4(1, 0, 0, 1), 1000.0f);
-			world->GetDebugContext()->DrawLine(points[2], points[3], vec4(1, 0, 0, 1), 1000.0f);
-			world->GetDebugContext()->DrawLine(points[3], points[0], vec4(1, 0, 0, 1), 1000.0f);
-
-			//world->GetDebugContext()->DrawLine(cameraPosition, points[i + 4], bIntersects ? vec4(0, 1, 0, 1) : vec4(0.5f, 0.45f, 0.3f, 1), 1000.0f);
-		}
-	}
 }
 
 void TestComponent::Tick(float deltaTime)
@@ -264,39 +180,6 @@ void TestComponent::Tick(float deltaTime)
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 
-	if (GetWorld()->GetInput().IsKeyPressed('T'))
-	{
-		auto camera = GetOwner()->GetComponent<CameraComponent>();
-
-		auto gameObjects = GetWorld()->GetGameObjects();
-
-		for (int32_t i = 0; i < App::GetViewportWindow()->GetWidth() / 16; i++)
-		{
-			for (int32_t j = 0; j < App::GetViewportWindow()->GetHeight() / 16; j++)
-			{
-				const glm::mat4 invViewProjection = camera->GetData().GetInvViewProjection();
-				const glm::mat4 invProjection = camera->GetData().GetInvProjection();
-				const glm::mat4 view = camera->GetData().GetViewMatrix();
-				const glm::mat4 projection = camera->GetData().GetProjectionMatrix();
-
-				for (int32_t k = 0; k < gameObjects.Num(); k++)
-				{
-					if (auto light = gameObjects[k]->GetComponent<LightComponent>())
-					{
-						DrawTile(GetWorld(),
-							invViewProjection,
-							camera->GetZFar(),
-							transform.GetWorldPosition(),
-							glm::ivec2(i, j),
-							gameObjects[k]->GetTransformComponent().GetWorldPosition(),
-							light->GetBounds().x);
-					}
-				}
-			}
-		}
-	}
-
-	/*
 	for (uint32_t i = 0; i < m_lights.Num(); i++)
 	{
 		if (glm::length(m_lightVelocities[i]) < 1.0f)
@@ -309,7 +192,7 @@ void TestComponent::Tick(float deltaTime)
 
 		m_lightVelocities[i] = Math::Lerp(m_lightVelocities[i], vec4(0, 0, 0, 0), deltaTime * 0.5f);
 		m_lights[i]->GetTransformComponent().SetPosition(position + deltaTime * m_lightVelocities[i]);
-	}*/
+	}
 
 	if (GetWorld()->GetInput().IsKeyPressed('R'))
 	{

@@ -176,8 +176,8 @@ bool Overlaps(vec3 lightPos, float radius, ViewFrustum frustum, float zNear, flo
 			return false;
 		}
 	}
-	
-	return true;    
+
+	return true;
 }
 
 
@@ -268,7 +268,7 @@ void main()
 		if(numCandidates > LIGHTS_PER_TILE)
 		{
 			uint numSorted = LIGHTS_PER_TILE;
-			
+
 			for(uint i = 0; i < numCandidates-1; i++)
 			{
 				for(uint j = 0; j < numCandidates - i - 1; j++)
@@ -297,8 +297,6 @@ void main()
 		// Copy calculated data
 		for(uint i = 0; i < min(numCandidates, LIGHTS_PER_TILE); i++)
 		{
-			uint offset = max(0, numCandidates - LIGHTS_PER_TILE);
-			
 			culledLights.instance[tileIndex].indices[i] = candidateIndices[numCandidates - i - 1];
 		}
 		
