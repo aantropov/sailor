@@ -55,12 +55,16 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 		if (!m_culledLights)
 		{
+			const size_t numTiles = pushConstants.m_numTiles.x * pushConstants.m_numTiles.y;
+
 			m_culledLights = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-			RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "culledLights", sizeof(uint32_t) * LightsPerTile, pushConstants.m_numTiles.x * pushConstants.m_numTiles.y, 0, true);
-			RHI::RHIShaderBindingPtr depthSampler = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_culledLights, "sceneDepth", depthAttachment, 1);
-			
+			RHI::RHIShaderBindingPtr culledLightsSSBO = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "culledLights", sizeof(uint32_t) * LightsPerTile, numTiles, 0, true);
+			RHI::RHIShaderBindingPtr lightsGridSSBO = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "lightsGrid", sizeof(uint32_t) * (numTiles * 2 + 1), 1, 1, true);
+			RHI::RHIShaderBindingPtr depthSampler = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_culledLights, "sceneDepth", depthAttachment, 2);
+
 			auto shaderBindingSet = sceneView.m_rhiLightsData;
-			Sailor::RHI::Renderer::GetDriver()->AddShaderBinding(shaderBindingSet, storageBinding, "culledLights", 1);
+			Sailor::RHI::Renderer::GetDriver()->AddShaderBinding(shaderBindingSet, culledLightsSSBO, "culledLights", 1);
+			Sailor::RHI::Renderer::GetDriver()->AddShaderBinding(shaderBindingSet, lightsGridSSBO, "lightsGrid", 2);
 		}
 
 		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), RHI::EImageLayout::ShaderReadOnlyOptimal);
@@ -68,7 +72,7 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 			pushConstants.m_numTiles.x, pushConstants.m_numTiles.y, 1,
 			{ sceneView.m_rhiLightsData, m_culledLights, sceneView.m_frameBindings },
 			&pushConstants, sizeof(PushConstants));
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), RHI::EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());		
+		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), RHI::EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
 }
 

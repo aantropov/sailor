@@ -23,11 +23,12 @@ const int CULLED_LIGHTS_TILE_SIZE = 16;
 #define LIGHTS_PER_TILE 128
 
 layout(std430)
-struct CulledLights 
-{	
-	uint indices[LIGHTS_PER_TILE];
+struct LightsGrid
+{
+	uint offset;
+	uint num;
 };
-
+	
 struct PerInstanceData
 {
     mat4 model;
@@ -57,8 +58,13 @@ layout(std430, set = 1, binding = 0) readonly buffer LightDataSSBO
 
 layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
 {
-    CulledLights instance[];
+    uint indices[];
 } culledLights;
+
+layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
+{
+    LightsGrid instance[];
+} lightsGrid;
 
 layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
 {
@@ -150,9 +156,12 @@ void main()
     ivec2 tileId = ivec2(screenUv / CULLED_LIGHTS_TILE_SIZE);
     uint tileIndex = uint(tileId.y * numTiles.x + tileId.x);
 
-    for(int i = 0; i < LIGHTS_PER_TILE; i++)
+	const uint offset = lightsGrid.instance[tileIndex].offset;
+	const uint numLights = lightsGrid.instance[tileIndex].num;
+	
+	for(int i = 0; i < numLights; i++)
     {
-        uint index = culledLights.instance[tileIndex].indices[i];
+        uint index = culledLights.indices[offset + i];
         if(index == uint(-1))
         {
             break;

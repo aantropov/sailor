@@ -26,9 +26,10 @@ struct LightData
 };
 
 layout(std430)
-struct CulledLights 
-{	
-	uint indices[LIGHTS_PER_TILE];
+struct LightsGrid
+{
+	uint offset;
+	uint num;
 };
 
 layout(push_constant) uniform Constants
@@ -44,12 +45,17 @@ layout(std430, set = 0, binding = 0) readonly buffer LightDataSSBO
 	LightData instance[];
 } light;
 
-layout(std430, set = 1, binding = 0) writeonly buffer CulledLightsSSBO
+layout(std430, set = 1, binding = 0) buffer CulledLightsSSBO
 {
-    CulledLights instance[];
+    uint indices[];
 } culledLights;
 
-layout(set = 1, binding = 1) uniform sampler2D sceneDepth;
+layout(std430, set = 1, binding = 1) writeonly buffer LightsGridSSBO
+{
+    LightsGrid instance[];
+} lightsGrid;
+
+layout(set = 1, binding = 2) uniform sampler2D sceneDepth;
 
 layout(set = 2, binding = 0) uniform FrameData
 {
@@ -188,12 +194,17 @@ void main()
 	ivec2 tileId = ivec2(gl_WorkGroupID.xy);
 	ivec2 tileNumber = ivec2(gl_NumWorkGroups.xy);
 	uint tileIndex = tileId.y * PushConstants.numTiles.x + tileId.x;
+	
+	if(gl_GlobalInvocationID.xy == vec2(0,0))
+	{
+		culledLights.indices[0] = 0;
+	}
 
 	if (gl_LocalInvocationIndex == 0)
 	{
 		maxDepthInt = 0;
 		minDepthInt = 0xFFFFFFFF;
-		lightCountForTile = 0;		
+		lightCountForTile = 0;
 	}
 	
 	barrier();	
@@ -294,16 +305,17 @@ void main()
 			}
 		}
 		
-		// Copy calculated data
-		for(uint i = 0; i < min(numCandidates, LIGHTS_PER_TILE); i++)
-		{
-			culledLights.instance[tileIndex].indices[i] = candidateIndices[numCandidates - i - 1];
-		}
+		// Fill lightsGrid
+		const uint numLights = min(numCandidates, LIGHTS_PER_TILE);		
+		const uint offset = atomicAdd(culledLights.indices[0], numLights) + 1;
 		
-		// Ending symbol
-		if(numCandidates < LIGHTS_PER_TILE)
+		lightsGrid.instance[tileIndex].num = numLights;
+		lightsGrid.instance[tileIndex].offset = offset;
+		
+		// Copy calculated data
+		for(uint i = 0; i < numLights; i++)
 		{
-			culledLights.instance[tileIndex].indices[numCandidates] = -1;
+			culledLights.indices[offset + i] = candidateIndices[numCandidates - i - 1];
 		}
 	}
 }
