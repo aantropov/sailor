@@ -48,6 +48,12 @@ void TransformECS::MarkDirty(TransformComponent* ptr)
 	m_dirtyComponents.Add(TransformECS::GetComponentIndex(ptr));
 }
 
+Tasks::ITaskPtr TransformECS::PostTick()
+{
+	m_dirtyComponents.Clear(false);
+	return nullptr;
+}
+
 Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -118,8 +124,6 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 			}
 		}
 	}
-
-	m_dirtyComponents.Clear(false);
 
 	return nullptr;
 }

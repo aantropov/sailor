@@ -18,8 +18,8 @@ namespace Sailor
 
 	public:
 
-		SAILOR_API __forceinline ObjectPtr& GetOwner() { return m_owner; }
-		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
+		SAILOR_API __forceinline GameObjectPtr& GetOwner() { return m_owner; }
+		SAILOR_API __forceinline void SetOwner(const GameObjectPtr& owner) { m_owner = owner; }
 
 		void SetDirty() { m_bIsDirty = true; }
 
@@ -33,7 +33,7 @@ namespace Sailor
 		bool m_bIsActive : 1 = true;
 		bool m_bIsDirty : 1 = true;
 
-		ObjectPtr m_owner;
+		GameObjectPtr m_owner;
 		friend class LightingECS;
 	};
 
@@ -63,6 +63,7 @@ namespace Sailor
 
 	protected:
 
+		TVector<TPair<uint32_t, uint32_t>> m_skipList;
 		RHI::RHIShaderBindingSetPtr m_lightsData;
 	};
 

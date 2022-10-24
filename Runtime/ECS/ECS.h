@@ -46,6 +46,7 @@ namespace Sailor::ECS
 
 		virtual void BeginPlay() {}
 		virtual Tasks::ITaskPtr Tick(float deltaTime) = 0;
+		virtual Tasks::ITaskPtr PostTick() { return nullptr; }
 		virtual void EndPlay() {}
 
 		virtual size_t GetComponentType() const { return (size_t)-1; }

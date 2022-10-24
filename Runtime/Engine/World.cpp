@@ -68,6 +68,11 @@ void World::Tick(FrameState& frameState)
 		m_ecs[ecs]->Tick(frameState.GetDeltaTime());
 	}
 
+	for (auto& ecs : m_sortedEcs)
+	{
+		m_ecs[ecs]->PostTick();
+	}
+
 	for (auto& el : m_pendingDestroyObjects)
 	{
 		assert(el->m_bPendingDestroy);

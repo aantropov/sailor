@@ -27,13 +27,63 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 	bool bShouldWrite = true;
 	size_t startIndex = 0;
 
-	for (auto& data : m_components)
+	uint32_t skipIndex = 0;
+	for (size_t index = 0; index < m_components.Num(); index++)
 	{
+		if (m_skipList.Num() > 0 && skipIndex < m_skipList.Num() && index == m_skipList[skipIndex].m_first)
+		{
+			index += m_skipList[skipIndex].m_second;
+			if (index >= m_components.Num())
+			{
+				break;
+			}
+			skipIndex++;
+		}
+
+		auto& data = m_components[index];
+
+		if (data.GetOwner()->GetMobilityType() == EMobilityType::Static)
+		{
+			bool bPlaced = false;
+
+			// Place in the end of the current batch
+			if (skipIndex > 0 && m_skipList.Num() > 0 && index == m_skipList[skipIndex - 1].m_first + m_skipList[skipIndex - 1].m_second)
+			{
+				m_skipList[skipIndex - 1].m_second++;
+				bPlaced = true;
+			}
+
+			if (!bPlaced && skipIndex > 0 && m_skipList.Num() > 0)
+			{
+				// Place in between batches
+				for (int32_t i = skipIndex - 1; i < (int32_t)m_skipList.Num() - 1; i++)
+				{
+					const uint32_t start = m_skipList[i].m_first + m_skipList[skipIndex - 1].m_second;
+					const uint32_t end = m_skipList[i + 1].m_first;
+
+					if (index > start && index < end)
+					{
+						m_skipList.Insert(TPair((uint32_t)index, 1u), i + 1);
+						bPlaced = true;
+						skipIndex++;
+						break;
+					}
+				}
+			}
+
+			// Place in the end
+			if (!bPlaced)
+			{
+				m_skipList.Add(TPair((uint32_t)index, 1u));
+				skipIndex++;
+				bPlaced = true;
+			}
+		}
+
 		if (!data.m_bIsActive)
 			continue;
 
 		const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
-		size_t index = GetComponentIndex(&data);
 
 		if (data.m_bIsDirty || ownerTransform.GetLastFrameChanged() == GetWorld()->GetCurrentFrame())
 		{

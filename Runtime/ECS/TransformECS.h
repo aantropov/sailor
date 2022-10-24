@@ -61,6 +61,7 @@ namespace Sailor
 	{
 	public:
 
+		virtual Tasks::ITaskPtr PostTick() override;
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 
 		void MarkDirty(TransformComponent* ptr);
