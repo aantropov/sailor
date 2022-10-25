@@ -77,16 +77,17 @@ void TestComponent::BeginPlay()
 	lightComponent->SetBounds(vec3(1000.0f, 1000.0f, 1000.0f));
 	lightComponent->SetIntensity(vec3(0.0f, 150.0f, 1000.0f));
 
-	for (int32_t i = -1000; i < 1000; i += 300)
+	for (int32_t i = -1000; i < 1000; i += 50)
 	{
-		for (int32_t j = 0; j < 800; j += 300)
+		for (int32_t j = 0; j < 800; j += 50)
 		{
-			for (int32_t k = -1000; k < 1000; k += 300)
+			for (int32_t k = -1000; k < 1000; k += 50)
 			{
 				auto lightGameObject = GetWorld()->Instantiate();
 				auto lightComponent = lightGameObject->AddComponent<LightComponent>();
-				const float size = (float)(rand() % 256);
+				const float size = (float)(rand() % 60);
 
+				lightGameObject->SetMobilityType(EMobilityType::Static);
 				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
 				lightComponent->SetBounds(vec3(size, size, size));
 				lightComponent->SetIntensity(vec3(rand() % 256, rand() % 256, rand() % 256));
@@ -179,6 +180,7 @@ void TestComponent::Tick(float deltaTime)
 	}
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
+
 
 	for (uint32_t i = 0; i < m_lights.Num(); i++)
 	{

@@ -170,8 +170,8 @@ void main()
         }         
 
         vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;		
-		//outColor.xyz += CalculateLighting(light.instance[index], fragNormal, worldPosition, viewDirection);		
-		outColor.xyz += 0.01;
+		outColor.xyz += CalculateLighting(light.instance[index], fragNormal, worldPosition, viewDirection);		
+		//outColor.xyz += 0.01;
     }
 }
 END_CODE,

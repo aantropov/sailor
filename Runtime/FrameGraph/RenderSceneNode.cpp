@@ -15,33 +15,6 @@ using namespace Sailor::Framegraph;
 const char* RenderSceneNode::m_name = "RenderScene";
 #endif
 
-RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
-{
-	const std::string& sortOrder = GetStringParam("Sorting");
-
-	if (!sortOrder.empty())
-	{
-		return magic_enum::enum_cast<RHI::ESortingOrder>(sortOrder).value_or(RHI::ESortingOrder::FrontToBack);
-	}
-
-	return RHI::ESortingOrder::FrontToBack;
-}
-
-class PerInstanceData
-{
-public:
-	alignas(16) glm::mat4 model;
-	alignas(16) uint32_t materialInstance = 0;
-
-	bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
-
-	size_t GetHash() const
-	{
-		hash<glm::mat4> p;
-		return p(model);
-	}
-};
-
 class Batch
 {
 public:
@@ -71,13 +44,25 @@ public:
 	}
 };
 
+RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
+{
+	const std::string& sortOrder = GetStringParam("Sorting");
+
+	if (!sortOrder.empty())
+	{
+		return magic_enum::enum_cast<RHI::ESortingOrder>(sortOrder).value_or(RHI::ESortingOrder::FrontToBack);
+	}
+
+	return RHI::ESortingOrder::FrontToBack;
+}
+
 void RecordDrawCall(uint32_t start,
 	uint32_t end,
 	const TVector<Batch>& vecBatches,
 	RHI::RHICommandListPtr cmdList,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHIShaderBindingSetPtr perInstanceData,
-	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>>& drawCalls,
+	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<RenderSceneNode::PerInstanceData>>>& drawCalls,
 	const TVector<uint32_t>& storageIndex,
 	RHIBufferPtr& indirectCommandBuffer)
 {
@@ -211,8 +196,14 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	}
 
 	SAILOR_PROFILE_BLOCK("Create storage for matrices");
-	RHI::RHIShaderBindingSetPtr perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(PerInstanceData), numMeshes, 0);
+	if (!m_perInstanceData || m_sizePerInstanceData < sizeof(RenderSceneNode::PerInstanceData) * numMeshes)
+	{
+		m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+		Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(RenderSceneNode::PerInstanceData), numMeshes, 0);
+		m_sizePerInstanceData = sizeof(RenderSceneNode::PerInstanceData) * numMeshes;
+	}
+
+	RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Prepare command list");
@@ -274,7 +265,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
 			commands->BeginSecondaryCommandList(cmdList, true, true);
 			commands->SetDefaultViewport(cmdList);
-			RecordDrawCall(start, end, vecBatches, cmdList, sceneView, perInstanceData, drawCalls, storageIndex, m_indirectBuffers[i + 1]);
+			RecordDrawCall(start, end, vecBatches, cmdList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[i + 1]);
 			commands->EndCommandList(cmdList);
 			secondaryCommandLists[i] = std::move(cmdList);
 		}, Tasks::EThreadType::RHI);
@@ -306,7 +297,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		glm::vec4(0.0f),
 		true);
 
-	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
+	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
 	commands->EndRenderPass(commandList);
 	SAILOR_PROFILE_END_BLOCK();
 
@@ -339,4 +330,5 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 void RenderSceneNode::Clear()
 {
 	m_indirectBuffers.Clear();
+	m_perInstanceData.Clear();
 }

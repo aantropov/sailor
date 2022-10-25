@@ -284,4 +284,5 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 void DepthPrepassNode::Clear()
 {
+	m_perInstanceData.Clear();
 }
