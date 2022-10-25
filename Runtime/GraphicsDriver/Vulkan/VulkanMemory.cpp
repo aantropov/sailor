@@ -26,7 +26,7 @@ VulkanMemoryPtr GlobalVulkanMemoryAllocator::Allocate(size_t size)
 	auto device = Sailor::GraphicsDriver::Vulkan::VulkanApi::GetInstance()->GetMainDevice();
 	auto memoryRequirements = m_memoryRequirements;
 	memoryRequirements.size = size;
-
+	
 	VulkanMemoryPtr memPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory>::Make(device,
 		memoryRequirements,
 		m_memoryProperties),

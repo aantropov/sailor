@@ -808,6 +808,17 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 	}
 }
 
+void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess)
+{
+	VkMemoryBarrier memoryBarrier{};
+	memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	memoryBarrier.pNext = VK_NULL_HANDLE;
+	memoryBarrier.srcAccessMask = srcAccess;
+	memoryBarrier.dstAccessMask = dstAccess;
+
+	//vkCmdPipelineBarrier
+}
+
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
 	if (oldLayout == newLayout)

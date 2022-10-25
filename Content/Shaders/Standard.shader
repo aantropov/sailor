@@ -151,8 +151,12 @@ void main()
      
     vec2 numTiles = floor(frame.viewportSize / CULLED_LIGHTS_TILE_SIZE);
 	vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
-    ivec2 tileId = ivec2(screenUv / CULLED_LIGHTS_TILE_SIZE);
-    uint tileIndex = uint(tileId.y * numTiles.x + tileId.x);
+    ivec2 tileId = ivec2(screenUv) / CULLED_LIGHTS_TILE_SIZE;
+	
+	ivec2 mod = ivec2(frame.viewportSize.x % CULLED_LIGHTS_TILE_SIZE, frame.viewportSize.y % CULLED_LIGHTS_TILE_SIZE);
+	ivec2 padding = ivec2(min(1, mod.x), min(1, mod.y));
+	
+    uint tileIndex = uint(tileId.y * (numTiles.x + padding.x) + tileId.x);
 
 	const uint offset = lightsGrid.instance[tileIndex].offset;
 	const uint numLights = lightsGrid.instance[tileIndex].num;
@@ -166,8 +170,9 @@ void main()
         }         
 
         vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;		
-		outColor.xyz += CalculateLighting(light.instance[index], fragNormal, worldPosition, viewDirection);
-    }    
+		//outColor.xyz += CalculateLighting(light.instance[index], fragNormal, worldPosition, viewDirection);		
+		outColor.xyz += 0.01;
+    }
 }
 END_CODE,
 

@@ -225,7 +225,8 @@ VkFormat VulkanDevice::GetDepthFormat() const
 
 TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
 {
-	uint64_t hash = properties | ((uint64_t)requirements.memoryTypeBits) << 32;
+	uint64_t hash = properties;
+	HashCombine(hash, requirements.memoryTypeBits, requirements.alignment);
 
 	auto& pAllocator = m_memoryAllocators.At_Lock(hash);
 
@@ -233,6 +234,7 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 	{
 		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(1024 * 1024, 1024 * 512, 2 * 1024 * 1024);
 	}
+
 	auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
 	vulkanAllocator.SetMemoryProperties(properties);
 	vulkanAllocator.SetMemoryRequirements(requirements);
@@ -686,7 +688,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		presentInfo.pResults = nullptr; // Optional
 
 		presentResult = m_presentQueue->Present(presentInfo);
-}
+	}
 
 	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR)
 	{

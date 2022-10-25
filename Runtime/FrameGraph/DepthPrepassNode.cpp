@@ -109,7 +109,7 @@ void RecordDrawCall(uint32_t start,
 		auto& mesh = vecBatches[j].m_mesh;
 		auto& drawCall = drawCalls[vecBatches[j]];
 
-		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, perInstanceData, material->GetBindings() });
+		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData });
 
 		commands->BindMaterial(cmdList, material);
 		commands->BindShaderBindings(cmdList, material, sets);
@@ -204,8 +204,15 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	}
 
 	SAILOR_PROFILE_BLOCK("Create storage for matrices");
-	RHI::RHIShaderBindingSetPtr perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-	RHI::RHIShaderBindingPtr storageBinding = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(perInstanceData, "data", sizeof(DepthPrepassNode::PerInstanceData), numMeshes, 0);
+
+	if (!m_perInstanceData || m_sizePerInstanceData < sizeof(DepthPrepassNode::PerInstanceData) * numMeshes)
+	{
+		m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+		Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(DepthPrepassNode::PerInstanceData), numMeshes, 0);
+		m_sizePerInstanceData = sizeof(DepthPrepassNode::PerInstanceData) * numMeshes;
+	}
+
+	RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
 	SAILOR_PROFILE_END_BLOCK();
 
 	TVector<DepthPrepassNode::PerInstanceData> gpuMatricesData;
@@ -270,7 +277,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		true,
 		true);
 
-	RecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
+	RecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
 	commands->EndRenderPass(commandList);
 	SAILOR_PROFILE_END_BLOCK();
 }

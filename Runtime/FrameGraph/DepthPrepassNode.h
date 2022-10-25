@@ -35,8 +35,10 @@ namespace Sailor
 	protected:
 
 		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_depthOnlyMaterials;
+		RHI::RHIShaderBindingSetPtr m_perInstanceData;
+		size_t m_sizePerInstanceData = 0;
 
-		RHI::RHIMaterialPtr GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertex);
+		RHI::RHIMaterialPtr GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertex);		
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 
 		static const char* m_name;

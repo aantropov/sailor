@@ -774,8 +774,9 @@ VulkanBufferPtr VulkanApi::CreateBuffer(VulkanDevicePtr device, VkDeviceSize siz
 	VulkanBufferPtr outBuffer = VulkanBufferPtr::Make(device, size, usage, sharingMode);
 	outBuffer->Compile();
 
+	// TODO: Pass into Allocate the correct allignment for memory device allocation
 	auto requirements = outBuffer->GetMemoryRequirements();
-	auto data = device->GetMemoryAllocator(properties, requirements).Allocate(requirements.size, outBuffer->GetMemoryRequirements().alignment);
+	auto data = device->GetMemoryAllocator(properties, requirements).Allocate(requirements.size, requirements.alignment);
 	outBuffer->Bind(data);
 
 	return outBuffer;

@@ -150,6 +150,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			bool bStoreDepth = true);
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd);
+		SAILOR_API virtual void MemoryBarrier(RHI::RHICommandListPtr cmd, RHI::EAccessFlags srcBit, RHI::EAccessFlags dstBit);
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout layout, bool bAllowToWriteFromComputeShader);
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout);
 		SAILOR_API virtual bool FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth);
@@ -220,6 +221,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
 
 		// Uniform buffers to store uniforms
@@ -227,6 +229,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Storage buffers to store everything
 		TSharedPtr<VulkanBufferAllocator> m_materialSsboAllocator;
+		TSharedPtr<VulkanBufferAllocator> m_generalSsboAllocator;
 		TSharedPtr<VulkanBufferAllocator> m_meshSsboAllocator;
 
 		// Cached MSAA render targets to support MSAA

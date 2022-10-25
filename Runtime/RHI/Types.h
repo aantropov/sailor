@@ -430,6 +430,30 @@ namespace Sailor::RHI
 		PatchList = 10
 	};
 
+	enum class EAccessBit : uint32_t
+	{
+		IndirectCommandRead_Bit = 0x00000001,
+		IndexRead_Bit = 0x00000002,
+		VertexAttributeRead_Bit = 0x00000004,
+		UniformRead_Bit = 0x00000008,
+		InputAttachmentRead_Bit = 0x00000010,
+		ShaderRead_Bit = 0x00000020,
+		ShaderWrite_Bit = 0x00000040,
+		ColorAttachmentRead_Bit = 0x00000080,
+		ColorAttachmentWrite_Bit = 0x00000100,
+		DepthStencilAttachmentRead_Bit = 0x00000200,
+		DepthStencilAttachmentWrite_Bit = 0x00000400,
+		TransferRead_Bit = 0x00000800,
+		TransferWrite_Bit = 0x00001000,
+		HostRead_Bit = 0x00002000,
+		HostWrite_Bit = 0x00004000,
+		MemoryRead_Bit = 0x00008000,
+		MemoryWrite_Bit = 0x00010000,
+		None = 0,
+	};
+
+	typedef uint32_t EAccessFlags;
+
 	enum class EImageLayout : uint32_t
 	{
 		Undefined = 0,
