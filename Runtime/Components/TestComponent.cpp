@@ -53,9 +53,9 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(45, 12.5f, 0)));
 
 	lightComponent->SetBounds(vec3(40.0f, 40.0f, 40.0f));
-	lightComponent->SetIntensity(vec3(1.0f, 1.0f, 1.0f));
+	lightComponent->SetIntensity(vec3(2.0f, 2.0f, 2.0f));
 	lightComponent->SetLightType(ELightType::Directional);
-
+	/*
 	for (int32_t i = -1000; i < 1000; i += 50)
 	{
 		for (int32_t j = 0; j < 800; j += 50)
@@ -75,7 +75,7 @@ void TestComponent::BeginPlay()
 				m_lightVelocities.Add(vec4(0));
 			}
 		}
-	}
+	}*/
 
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
