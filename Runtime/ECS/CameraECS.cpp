@@ -13,7 +13,7 @@ Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 		if (data.m_bIsActive)
 		{
 			// The origin
-			const mat4 origin = glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up);
+			const mat4 origin = glm::mat4(1);// glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up);
 			data.m_viewMatrix = origin * glm::inverse(data.m_owner.StaticCast<GameObject>()->GetTransformComponent().GetCachedWorldMatrix());
 		}
 	}

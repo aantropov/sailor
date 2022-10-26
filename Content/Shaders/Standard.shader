@@ -14,8 +14,8 @@ struct LightData
 	vec3 direction;
     vec3 intensity;
     vec3 attenuation; // vec3(quadratic, linear, constant)
+	int type;
     vec3 bounds;
-    int type;
 };
 
 const int CULLED_LIGHTS_TILE_SIZE = 16;
@@ -120,35 +120,42 @@ layout(location = 0) out vec4 outColor;
 
 vec3 CalculateLighting(LightData light, vec3 normal, vec3 worldPos, vec3 viewDir)
 {
-	vec3 lightDir = normalize(light.worldPosition - worldPos);
-	
 	//if(length(light.worldPosition - worldPos) > light.bounds.x)
 	//{
 		//return vec3(0.1,0.1,0.1);
 	//}
 	
-    // diffuse shading
-    float diff = max(dot(normal, lightDir), 0.0);
-    
-	// attenuation
-    float distance    = length(light.worldPosition - worldPos);
-    float attenuation = 1.0 / (light.attenuation.z + light.attenuation.y * distance + light.attenuation.x * (distance * distance));
+    vec3 diffuse = texture(diffuseSampler, fragTexcoord).xyz;
+	float falloff = 1.0f;
 	
-	// combine results
-    vec3 diffuse = light.intensity * diff * texture(diffuseSampler, fragTexcoord).xyz;
-    diffuse  *= attenuation;
-    
-	float fallof = 1 - clamp(distance / light.bounds.x, 0,1);
+	// Point light
+	if(light.type == 1)
+	{
+		// Attenuation
+		const float distance    = length(light.worldPosition - worldPos);
+		const float attenuation = 1.0 / (light.attenuation.z + light.attenuation.y * distance + light.attenuation.x * (distance * distance));
+		falloff 				= attenuation * (1 - clamp(distance / light.bounds.x, 0,1));		
+		
+		vec3 lightDir = normalize(light.worldPosition - worldPos);
+		float diff = max(dot(normal, lightDir), 0.0);
+		diffuse *= light.intensity * diff;
+	}
+	else if(light.type == 0)
+	{
+		float diff = max(dot(normal, light.direction), 0.0);
+		diffuse *= light.intensity * diff;
+	}
 	
-    return diffuse * fallof;
+    return diffuse * falloff;
 }
 
 void main() 
 {
 	// Sky
-    outColor = fragColor * texture(diffuseSampler, fragTexcoord);
-	outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz)) * 0.5;
-     
+    //outColor = fragColor * texture(diffuseSampler, fragTexcoord);
+	//outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz)) * 0.5;
+    outColor = vec4(0);
+	
     vec2 numTiles = floor(frame.viewportSize / CULLED_LIGHTS_TILE_SIZE);
 	vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
     ivec2 tileId = ivec2(screenUv) / CULLED_LIGHTS_TILE_SIZE;
@@ -167,7 +174,7 @@ void main()
         if(index == uint(-1))
         {
             break;
-        }         
+        }
 
         vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;		
 		outColor.xyz += CalculateLighting(light.instance[index], fragNormal, worldPosition, viewDirection);		

@@ -25,7 +25,7 @@ namespace Sailor
 
 		float m_yaw = 0.0f;
 		float m_pitch = 0.0f;
-
+				
 		TexturePtr defaultTexture;
 		glm::ivec2 m_lastCursorPos;
 
@@ -35,6 +35,8 @@ namespace Sailor
 
 		TVector<Math::AABB> m_culledBoxes{};
 		TVector<Math::AABB> m_boxes{};
+
+		GameObjectPtr m_dirLight;
 
 		glm::mat4 m_cachedFrustum{ 1 };
 	};

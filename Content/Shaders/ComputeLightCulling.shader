@@ -193,7 +193,7 @@ void main()
 	ivec2 itemID = ivec2(gl_LocalInvocationID.xy);
 	ivec2 tileId = ivec2(gl_WorkGroupID.xy);
 	ivec2 tileNumber = ivec2(gl_NumWorkGroups.xy);
-	uint tileIndex = tileId.y * PushConstants.numTiles.x + tileId.x;
+	uint tileIndex = tileId.y * tileNumber.x + tileId.x;
 	
 	if(gl_GlobalInvocationID.xy == vec2(0,0))
 	{
@@ -242,6 +242,18 @@ void main()
 			break;
 		}
 
+		// Directional light
+		if(light.instance[lightIndex].type == 0)
+		{
+			uint offset = atomicAdd(lightCountForTile, 1);
+			if(offset < CANDIDATES_PER_TILE)
+			{
+				candidateIndices[offset] = int(lightIndex);
+				candidateImpact[offset] = 0.0f;
+				continue;
+			}
+		}
+		
 		float radius = light.instance[lightIndex].bounds.x; 
 		vec4 lightPosViewSpace = frame.view * vec4(light.instance[lightIndex].worldPosition, 1);
 		lightPosViewSpace /= lightPosViewSpace.w;

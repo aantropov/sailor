@@ -47,35 +47,14 @@ void TestComponent::BeginPlay()
 	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	gameObject3->AddComponent<MeshRendererComponent>();
 
-	auto lightGameObject = GetWorld()->Instantiate();
-	auto lightComponent = lightGameObject->AddComponent<LightComponent>();
-	lightGameObject->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
+	m_dirLight = GetWorld()->Instantiate();
+	auto lightComponent = m_dirLight->AddComponent<LightComponent>();
+	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
+	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(45, 12.5f, 0)));
+
 	lightComponent->SetBounds(vec3(40.0f, 40.0f, 40.0f));
-	lightComponent->SetIntensity(vec3(10.0f, 100.0f, 100.0f));
-
-	lightComponent = GetWorld()->Instantiate(vec3(0.0f, 10.0f, 0.0f))->AddComponent<LightComponent>();
-	lightComponent->SetBounds(vec3(500.0f, 500.0f, 500.0f));
-	lightComponent->SetIntensity(vec3(150.0f, 0.0f, 0.0f));
-
-	lightComponent = GetWorld()->Instantiate(vec3(300.0f, 10.0f, 300.0f))->AddComponent<LightComponent>();
-	lightComponent->SetBounds(vec3(500.0f, 500.0f, 500.0f));
-	lightComponent->SetIntensity(vec3(50.0f, 150.0f, 0.0f));
-
-	lightComponent = GetWorld()->Instantiate(vec3(300.0f, 10.0f, 0.0f))->AddComponent<LightComponent>();
-	lightComponent->SetBounds(vec3(500.0f, 500.0f, 500.0f));
-	lightComponent->SetIntensity(vec3(150.0f, 0.0f, 150.0f));
-
-	lightComponent = GetWorld()->Instantiate(vec3(0.0f, 10.0f, 300.0f))->AddComponent<LightComponent>();
-	lightComponent->SetBounds(vec3(500.0f, 500.0f, 500.0f));
-	lightComponent->SetIntensity(vec3(150.0f, 150.0f, 0.0f));
-
-	lightComponent = GetWorld()->Instantiate(vec3(40.0f, 10.0f, 40.0f))->AddComponent<LightComponent>();
-	lightComponent->SetBounds(vec3(50.0f, 50.0f, 50.0f));
-	lightComponent->SetIntensity(vec3(0.0f, 150.0f, 0.0f));
-
-	lightComponent = GetWorld()->Instantiate(vec3(40.0f, 10.0f, 40.0f))->AddComponent<LightComponent>();
-	lightComponent->SetBounds(vec3(1000.0f, 1000.0f, 1000.0f));
-	lightComponent->SetIntensity(vec3(0.0f, 150.0f, 1000.0f));
+	lightComponent->SetIntensity(vec3(1.0f, 1.0f, 1.0f));
+	lightComponent->SetLightType(ELightType::Directional);
 
 	for (int32_t i = -1000; i < 1000; i += 50)
 	{
@@ -181,7 +160,7 @@ void TestComponent::Tick(float deltaTime)
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 
-
+	/*
 	for (uint32_t i = 0; i < m_lights.Num(); i++)
 	{
 		if (glm::length(m_lightVelocities[i]) < 1.0f)
@@ -195,6 +174,7 @@ void TestComponent::Tick(float deltaTime)
 		m_lightVelocities[i] = Math::Lerp(m_lightVelocities[i], vec4(0, 0, 0, 0), deltaTime * 0.5f);
 		m_lights[i]->GetTransformComponent().SetPosition(position + deltaTime * m_lightVelocities[i]);
 	}
+	*/
 
 	if (GetWorld()->GetInput().IsKeyPressed('R'))
 	{
