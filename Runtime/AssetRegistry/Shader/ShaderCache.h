@@ -53,6 +53,8 @@ namespace Sailor
 
 	protected:
 
+		bool GetTimeStamp(const UID& uid, time_t& outTimestamp) const;
+
 		class ShaderCacheEntry final : IJsonSerializable
 		{
 		public:

@@ -1,5 +1,5 @@
 {
-"includes": [] ,
+"includes": ["Shaders/Lighting.glsl"],
 "glslCommon" :
 BEGIN_CODE
 #version 460
@@ -9,28 +9,7 @@ END_CODE,
 "glslCompute":
 BEGIN_CODE
 
-#define CANDIDATES_PER_TILE 256
-#define LIGHTS_PER_TILE 128
-const int TILE_SIZE = 16;
 layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
-
-layout(std430)
-struct LightData
-{
-	vec3 worldPosition;
-	vec3 direction;
-    vec3 intensity;
-    vec3 attenuation;
-    int type;
-	vec3 bounds;
-};
-
-layout(std430)
-struct LightsGrid
-{
-	uint offset;
-	uint num;
-};
 
 layout(push_constant) uniform Constants
 {
@@ -110,21 +89,6 @@ vec4 ScreenToView(vec4 screen)
     vec4 clip = vec4(vec2(texCoord.x, texCoord.y) * 2.0f - 1.0f, screen.z, screen.w);
 
     return ClipToView( clip );
-}
-
-vec4 ComputePlane(vec3 p0, vec3 p1, vec3 p2)
-{
-    vec4 plane;
-
-    vec3 v0 = p1 - p0;
-    vec3 v2 = p2 - p0;
-
-    plane.xyz = normalize( cross( v0, v2 ) );
-
-    // Compute the distance to the origin using p0.
-    plane.w = dot(plane.xyz, p0);
-
-    return plane;
 }
 
 // Construct view frustum

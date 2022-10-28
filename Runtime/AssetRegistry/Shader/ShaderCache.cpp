@@ -368,10 +368,13 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 
 	const bool bAlreadyContains = it != std::end(m_cache.m_data[uid]);
 
+	time_t timeStamp = 0;
+	const bool hasAsset = GetTimeStamp(uid, timeStamp);
+
 	ShaderCacheEntry* newEntry = bAlreadyContains ? *it : new ShaderCacheEntry();
 	newEntry->m_permutation = permutation;
 	newEntry->m_UID = uid;
-	newEntry->m_timestamp = assetInfo->GetAssetLastModificationTime();
+	newEntry->m_timestamp = timeStamp;
 
 	if (vertexSpirv.Num() > 0)
 	{
@@ -460,9 +463,25 @@ bool ShaderCache::IsExpired(const UID& uid, uint32_t permutation) const
 		return true;
 	}
 
-	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
+	time_t timeStamp = 0;
+	const bool hasAsset = GetTimeStamp(uid, timeStamp);
 
-	return assetInfo ? entries[index]->m_timestamp < assetInfo->GetAssetLastModificationTime() : true;
+	return hasAsset ? entries[index]->m_timestamp < timeStamp : true;
 }
 
-
+bool ShaderCache::GetTimeStamp(const UID& uid, time_t& outTimestamp) const
+{
+	if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
+	{
+		if (TSharedPtr<ShaderAsset> shaderAsset = App::GetSubmodule<ShaderCompiler>()->LoadShaderAsset(assetInfo->GetUID()).Lock())
+		{
+			outTimestamp = assetInfo->GetAssetLastModificationTime();
+			for (const auto& include : shaderAsset->GetIncludes())
+			{
+				outTimestamp = std::max(outTimestamp, Sailor::Utils::GetFileModificationTime(AssetRegistry::ContentRootFolder + include));
+			}
+			return true;
+		}
+	}
+	return false;
+}
