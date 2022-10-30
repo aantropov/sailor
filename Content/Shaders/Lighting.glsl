@@ -19,7 +19,7 @@ struct LightsGrid
 {
 	uint offset;
 	uint num;
-};
+}; 
 
 vec4 ComputePlane(vec3 p0, vec3 p1, vec3 p2)
 {

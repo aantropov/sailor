@@ -10,6 +10,7 @@ using namespace Sailor;
 ShaderAssetInfoHandler::ShaderAssetInfoHandler(AssetRegistry* assetRegistry)
 {
 	m_supportedExtensions.Emplace("shader");
+	m_supportedExtensions.Emplace("glsl");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 

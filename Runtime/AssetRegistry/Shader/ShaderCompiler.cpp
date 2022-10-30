@@ -453,27 +453,48 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	if (bWasExpired)
 	{
-		m_shaderAssetsCache.Remove(assetInfo->GetUID());
+		const std::string extension = Utils::GetFileExtension(assetInfo->GetAssetFilepath());
 
-		auto compileTask = CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
-		if (compileTask)
+		if (extension == "shader")
 		{
-			compileTask->Then<void, bool>([=](bool bRes)
-			{
-				if (bRes)
-				{
-					for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
-					{
-						SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+			m_shaderAssetsCache.Remove(assetInfo->GetUID());
 
-						if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+			auto compileTask = CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
+			if (compileTask)
+			{
+				compileTask->Then<void, bool>([=](bool bRes)
+				{
+					if (bRes)
+					{
+						for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
 						{
-							loadedShader.m_second->TraceHotReload(nullptr);
+							SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+
+							if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+							{
+								loadedShader.m_second->TraceHotReload(nullptr);
+							}
 						}
 					}
 				}
+				);
 			}
-			);
+		}
+		else if (extension == "glsl")
+		{
+			TVector<AssetInfoPtr> shaderDeps;
+			for (auto& shader : m_shaderAssetsCache)
+			{
+				if (shader.m_second->GetIncludes().Contains(assetInfo->GetRelativeAssetFilepath()))
+				{
+					shaderDeps.Add(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shader.m_first));
+				}
+			}
+
+			for (auto& shader : shaderDeps)
+			{
+				OnUpdateAssetInfo(shader, true);
+			}
 		}
 
 		assetInfo->SaveMetaFile();
