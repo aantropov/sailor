@@ -9,7 +9,7 @@ END_CODE,
 "glslCompute":
 BEGIN_CODE
 
-layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
+layout(local_size_x = LIGHTS_CULLING_TILE_SIZE, local_size_y = LIGHTS_CULLING_TILE_SIZE, local_size_z = 1) in;
 
 layout(push_constant) uniform Constants
 {
@@ -47,49 +47,12 @@ layout(set = 2, binding = 0) uniform FrameData
     float deltaTime;
 } frame;
 
-// Vulkan NDC, Reverse Z: minDepth = 1.0, maxDepth = 0.0
-const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
-const float ndcNearPlane = 0.0;
-const float ndcFarPlane = 1.0;
-
-struct ViewFrustum
-{
-	vec4 planes[4];	
-	vec2 center;
-};
-
 shared ViewFrustum frustum;
 shared int lightCountForTile;
 shared uint minDepthInt;
 shared uint maxDepthInt;
-shared uint candidateIndices[CANDIDATES_PER_TILE];
-shared float candidateImpact[CANDIDATES_PER_TILE];
-
-// Convert clip space coordinates to view space
-vec4 ClipToView(vec4 clip)
-{
-    // View space position
-    vec4 view = frame.invProjection * clip;
-    // Perspective projection
-    view = view/view.w;
-
-	// Reverse Z
-	view.z *= -1;
-	
-    return view;
-}
-
-// Convert screen space coordinates to view space.
-vec4 ScreenToView(vec4 screen)
-{
-    // Convert to normalized texture coordinates
-    vec2 texCoord = screen.xy / frame.viewportSize;
-
-    // Convert to clip space
-    vec4 clip = vec4(vec2(texCoord.x, texCoord.y) * 2.0f - 1.0f, screen.z, screen.w);
-
-    return ClipToView( clip );
-}
+shared uint candidateIndices[LIGHTS_CULLING_TILE_SIZE];
+shared float candidateImpact[LIGHTS_CULLING_TILE_SIZE];
 
 // Construct view frustum
 ViewFrustum CreateFrustum(ivec2 tileId)
@@ -98,13 +61,13 @@ ViewFrustum CreateFrustum(ivec2 tileId)
 	vec4 screenSpace[5];
 
     // Top left point
-    screenSpace[0] = vec4(tileId.xy * TILE_SIZE, -1.0f, 1.0f );
+    screenSpace[0] = vec4(tileId.xy * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
     // Top right point
-    screenSpace[1] = vec4(vec2(tileId.x + 1, tileId.y) * TILE_SIZE, -1.0f, 1.0f );
+    screenSpace[1] = vec4(vec2(tileId.x + 1, tileId.y) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
     // Bottom left point
-    screenSpace[2] = vec4(vec2(tileId.x, tileId.y + 1) * TILE_SIZE, -1.0f, 1.0f );
+    screenSpace[2] = vec4(vec2(tileId.x, tileId.y + 1) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
     // Bottom right point
-    screenSpace[3] = vec4(vec2(tileId.x + 1, tileId.y + 1) * TILE_SIZE, -1.0f, 1.0f );
+    screenSpace[3] = vec4(vec2(tileId.x + 1, tileId.y + 1) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
 	
 	// Center point
     screenSpace[4] = (screenSpace[0] + screenSpace[3]) * 0.5f;
@@ -113,7 +76,7 @@ ViewFrustum CreateFrustum(ivec2 tileId)
     // Now convert the screen space points to view space
     for ( int i = 0; i < 5; i++ ) 
 	{
-        viewSpace[i] = ScreenToView(screenSpace[i]).xyz;		
+        viewSpace[i] = ScreenToView(screenSpace[i], frame.viewportSize, frame.invProjection).xyz;		
     }
 
 	ViewFrustum frustum;
@@ -194,14 +157,14 @@ void main()
 	// Step 3: Cull lights.
 	// Parallelize the threads against the lights now.
 	// Can handle 256 simultaniously. Anymore lights than that and additional passes are performed
-	uint threadCount = TILE_SIZE * TILE_SIZE;
+	uint threadCount = LIGHTS_CULLING_TILE_SIZE * LIGHTS_CULLING_TILE_SIZE;
 	uint passCount = (PushConstants.lightsNum + threadCount - 1) / threadCount;
 	
 	for (uint i = 0; i < passCount; i++)
 	{
 		// Get the lightIndex to test for this thread / pass. If the index is >= light count, then this thread can stop testing lights
 		uint lightIndex = i * threadCount + gl_LocalInvocationIndex;
-		if (lightIndex >= PushConstants.lightsNum || lightCountForTile >= CANDIDATES_PER_TILE) 
+		if (lightIndex >= PushConstants.lightsNum || lightCountForTile >= LIGHTS_CULLING_TILE_SIZE) 
 		{
 			break;
 		}
@@ -210,7 +173,7 @@ void main()
 		if(light.instance[lightIndex].type == 0)
 		{
 			uint offset = atomicAdd(lightCountForTile, 1);
-			if(offset < CANDIDATES_PER_TILE)
+			if(offset < LIGHTS_CULLING_TILE_SIZE)
 			{
 				candidateIndices[offset] = int(lightIndex);
 				candidateImpact[offset] = 0.0f;
@@ -238,7 +201,7 @@ void main()
 		{
 			// Add index to the shared array of visible indices
 			uint offset = atomicAdd(lightCountForTile, 1);
-			if(offset < CANDIDATES_PER_TILE)
+			if(offset < LIGHTS_CULLING_TILE_SIZE)
 			{
 				candidateIndices[offset] = int(lightIndex);
 				candidateImpact[offset] = length(lightPosViewSpace.xyz - vec3(frustum.center.xy, (zFar + zNear) * 0.5));
@@ -249,7 +212,7 @@ void main()
 
 	if(gl_LocalInvocationIndex == 0)
 	{
-		uint numCandidates = min(lightCountForTile, CANDIDATES_PER_TILE);
+		uint numCandidates = min(lightCountForTile, LIGHTS_CULLING_TILE_SIZE);
 		
 		// Sort by distance
 		if(numCandidates > LIGHTS_PER_TILE)
