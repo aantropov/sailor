@@ -485,6 +485,7 @@ namespace Sailor::RHI
 		RenderState(bool bEnableDepthTest = true,
 			bool bEnableZWrite = true,
 			float depthBias = 0.0f,
+			bool bCustomDepthShader = false,
 			ECullMode cullMode = ECullMode::Back,
 			EBlendMode blendMode = EBlendMode::None,
 			EFillMode fillMode = EFillMode::Fill,
@@ -493,6 +494,7 @@ namespace Sailor::RHI
 			m_bEnableDepthTest(bEnableDepthTest),
 			m_bEnableZWrite(bEnableZWrite),
 			m_depthBias(depthBias),
+			m_bCustomDepthShader(bCustomDepthShader),
 			m_cullMode(cullMode),
 			m_blendMode(blendMode),
 			m_fillMode(fillMode),
@@ -502,6 +504,8 @@ namespace Sailor::RHI
 
 		bool IsDepthTestEnabled() const { return m_bEnableDepthTest; }
 		bool IsEnabledZWrite() const { return m_bEnableZWrite; }
+		bool IsRequiredCustomDepthShader() const { return m_bCustomDepthShader; }
+
 		ECullMode GetCullMode() const { return m_cullMode; }
 		EBlendMode GetBlendMode() const { return m_blendMode; }
 		EFillMode GetFillMode() const { return m_fillMode; }
@@ -518,6 +522,7 @@ namespace Sailor::RHI
 
 		bool m_bEnableDepthTest = true;
 		bool m_bEnableZWrite = true;
+		bool m_bCustomDepthShader = false;
 		float m_depthBias = 0.0f;
 		ECullMode m_cullMode = ECullMode::Back;
 		EBlendMode m_blendMode = EBlendMode::None;

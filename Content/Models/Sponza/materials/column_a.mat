@@ -1,10 +1,10 @@
 {
     "bEnableDepthTest": true,
     "bEnableZWrite": true,
-    "bIsTransparent": false,
+    "bSupportMultisampling": true,
     "blendMode": "None",
     "cullMode": "Back",
-    "defines": ["CUSTOM_DATA"],
+    "defines": null,
     "depthBias": 0.0,
     "fillMode": "Fill",
     "renderQueue": "Opaque",
@@ -26,15 +26,6 @@
         "uid": "{1136DE60-9902-4ADC-97A7-90C293E2B6B9}"
     },
     "uniforms": [
-        [
-            "material.color",
-            {
-                "w": 1.0,
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
-            }
-        ],
         [
             "material.diffuse",
             {

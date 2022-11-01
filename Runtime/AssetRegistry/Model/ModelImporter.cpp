@@ -147,9 +147,24 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			data.m_samplers.Add(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.ambient_texname)));
 		}
 
+		if (!material.bump_texname.empty())
+		{
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.bump_texname)));
+		}
+
 		if (!material.normal_texname.empty())
 		{
 			data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
+		}
+		
+		if (!material.specular_texname.empty())
+		{
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.specular_texname)));
+		}
+
+		if (!material.emissive_texname.empty())
+		{
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.emissive_texname)));
 		}
 
 		std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";

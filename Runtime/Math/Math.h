@@ -18,7 +18,7 @@ namespace Sailor::Math
 	const glm::vec3 vec3_Forward = glm::vec3(0, 0, -1);
 	const glm::vec3 vec3_Right = glm::vec3(1, 0, 0);
 
-	const glm::vec3 vec3_Back = -vec3_Forward;
+	const glm::vec3 vec3_Backward = -vec3_Forward;
 	const glm::vec3 vec3_Down = -vec3_Up;
 	const glm::vec3 vec3_Left = -vec3_Right;
 

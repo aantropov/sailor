@@ -51,8 +51,8 @@ shared ViewFrustum frustum;
 shared int lightCountForTile;
 shared uint minDepthInt;
 shared uint maxDepthInt;
-shared uint candidateIndices[LIGHTS_CULLING_TILE_SIZE];
-shared float candidateImpact[LIGHTS_CULLING_TILE_SIZE];
+shared uint candidateIndices[LIGHTS_CANDIDATES_PER_TILE];
+shared float candidateImpact[LIGHTS_CANDIDATES_PER_TILE];
 
 // Construct view frustum
 ViewFrustum CreateFrustum(ivec2 tileId)
@@ -164,7 +164,7 @@ void main()
 	{
 		// Get the lightIndex to test for this thread / pass. If the index is >= light count, then this thread can stop testing lights
 		uint lightIndex = i * threadCount + gl_LocalInvocationIndex;
-		if (lightIndex >= PushConstants.lightsNum || lightCountForTile >= LIGHTS_CULLING_TILE_SIZE) 
+		if (lightIndex >= PushConstants.lightsNum || lightCountForTile >= LIGHTS_CANDIDATES_PER_TILE) 
 		{
 			break;
 		}
@@ -173,7 +173,7 @@ void main()
 		if(light.instance[lightIndex].type == 0)
 		{
 			uint offset = atomicAdd(lightCountForTile, 1);
-			if(offset < LIGHTS_CULLING_TILE_SIZE)
+			if(offset < LIGHTS_CANDIDATES_PER_TILE)
 			{
 				candidateIndices[offset] = int(lightIndex);
 				candidateImpact[offset] = 0.0f;
@@ -201,7 +201,7 @@ void main()
 		{
 			// Add index to the shared array of visible indices
 			uint offset = atomicAdd(lightCountForTile, 1);
-			if(offset < LIGHTS_CULLING_TILE_SIZE)
+			if(offset < LIGHTS_CANDIDATES_PER_TILE)
 			{
 				candidateIndices[offset] = int(lightIndex);
 				candidateImpact[offset] = length(lightPosViewSpace.xyz - vec3(frustum.center.xy, (zFar + zNear) * 0.5));
@@ -212,7 +212,7 @@ void main()
 
 	if(gl_LocalInvocationIndex == 0)
 	{
-		uint numCandidates = min(lightCountForTile, LIGHTS_CULLING_TILE_SIZE);
+		uint numCandidates = min(lightCountForTile, LIGHTS_CANDIDATES_PER_TILE);
 		
 		// Sort by distance
 		if(numCandidates > LIGHTS_PER_TILE)

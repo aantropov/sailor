@@ -24,7 +24,7 @@ RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescri
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), true);
+			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), true);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -111,6 +111,11 @@ void RecordDrawCall(uint32_t start,
 
 		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, perInstanceData });
 
+		if (material->GetRenderState().IsRequiredCustomDepthShader())
+		{
+			sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, perInstanceData, material->GetBindings() });
+		}
+
 		commands->BindMaterial(cmdList, material);
 		commands->BindShaderBindings(cmdList, material, sets);
 
@@ -168,9 +173,13 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 				break;
 			}
 
-			//TODO: Depth only material from proxy
 			const auto& mesh = proxy.m_meshes[i];
-			const auto& depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription);
+			auto depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription);
+
+			if (proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader())
+			{
+				depthMaterial = proxy.GetMaterials()[i];
+			}
 
 			const bool bIsDepthMaterialReady = depthMaterial &&
 				depthMaterial->GetVertexShader() &&

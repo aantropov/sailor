@@ -15,7 +15,7 @@ using namespace Sailor::Tasks;
 
 void TestComponent::BeginPlay()
 {
-	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(600, 2, 0, 0), 20.0f, 1000.0f);
+	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(600, 2, 0, 0), glm::mat4(1), 20.0f, 1000.0f);
 
 	for (int32_t i = -1000; i < 1000; i += 32)
 	{
@@ -34,15 +34,14 @@ void TestComponent::BeginPlay()
 		}
 	}
 
-	/*for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 3; i++)
 		for (int j = 0; j < 3; j++)
 		{
 			auto gameObject2 = GetWorld()->Instantiate();
 			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, 0, i * 2500));
 			gameObject2->AddComponent<MeshRendererComponent>();
 		}
-		*/
-
+	
 	auto gameObject3 = GetWorld()->Instantiate();
 	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	gameObject3->AddComponent<MeshRendererComponent>();
@@ -50,23 +49,32 @@ void TestComponent::BeginPlay()
 	m_dirLight = GetWorld()->Instantiate();
 	auto lightComponent = m_dirLight->AddComponent<LightComponent>();
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
-	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(45, 12.5f, 0)));
+	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 
 	lightComponent->SetBounds(vec3(40.0f, 40.0f, 40.0f));
-	lightComponent->SetIntensity(vec3(2.0f, 2.0f, 2.0f));
+	lightComponent->SetIntensity(vec3(1.0f, 1.0f, 1.0f));
 	lightComponent->SetLightType(ELightType::Directional);
-	/*
-	for (int32_t i = -1000; i < 1000; i += 50)
+
+	auto spotLight = GetWorld()->Instantiate();
+	lightComponent = spotLight->AddComponent<LightComponent>();
+	spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
+	spotLight->GetTransformComponent().SetRotation(quat(vec3(-45, 0.0f, 0.0f)));
+
+	lightComponent->SetBounds(vec3(200.0f, 200.0f, 200.0f));
+	lightComponent->SetIntensity(vec3(30.0f, 30.0f, 30.0f));
+	lightComponent->SetLightType(ELightType::Point);
+	
+	for (int32_t i = -1000; i < 1000; i += 450)
 	{
-		for (int32_t j = 0; j < 800; j += 50)
+		for (int32_t j = 0; j < 800; j += 450)
 		{
-			for (int32_t k = -1000; k < 1000; k += 50)
+			for (int32_t k = -1000; k < 1000; k += 450)
 			{
 				auto lightGameObject = GetWorld()->Instantiate();
 				auto lightComponent = lightGameObject->AddComponent<LightComponent>();
 				const float size = (float)(rand() % 60);
 
-				lightGameObject->SetMobilityType(EMobilityType::Static);
+				//lightGameObject->SetMobilityType(EMobilityType::Static);
 				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
 				lightComponent->SetBounds(vec3(size, size, size));
 				lightComponent->SetIntensity(vec3(rand() % 256, rand() % 256, rand() % 256));
@@ -75,7 +83,7 @@ void TestComponent::BeginPlay()
 				m_lightVelocities.Add(vec4(0));
 			}
 		}
-	}*/
+	}
 
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 }
@@ -160,7 +168,6 @@ void TestComponent::Tick(float deltaTime)
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 
-	/*
 	for (uint32_t i = 0; i < m_lights.Num(); i++)
 	{
 		if (glm::length(m_lightVelocities[i]) < 1.0f)
@@ -174,7 +181,6 @@ void TestComponent::Tick(float deltaTime)
 		m_lightVelocities[i] = Math::Lerp(m_lightVelocities[i], vec4(0, 0, 0, 0), deltaTime * 0.5f);
 		m_lights[i]->GetTransformComponent().SetPosition(position + deltaTime * m_lightVelocities[i]);
 	}
-	*/
 
 	if (GetWorld()->GetInput().IsKeyPressed('R'))
 	{
@@ -184,14 +190,14 @@ void TestComponent::Tick(float deltaTime)
 			{
 				for (auto& mat : mr->GetMaterials())
 				{
-					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.color"))
+					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.ambient"))
 					{
 						mat = Material::CreateInstance(GetWorld(), mat);
 
 						const glm::vec4 color = glm::vec4(glm::ballRand(1.0f), 1);
 
 						App::GetSubmodule<Sailor::RHI::Renderer>()->GetDriverCommands()->SetMaterialParameter(GetWorld()->GetCommandList(),
-							mat->GetShaderBindings(), "material.color", color);
+							mat->GetShaderBindings(), "material.ambient", color);
 					}
 				}
 			}

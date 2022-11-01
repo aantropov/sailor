@@ -1,7 +1,7 @@
 {
     "bEnableDepthTest": true,
     "bEnableZWrite": true,
-    "bIsTransparent": false,
+    "bSupportMultisampling": true,
     "blendMode": "None",
     "cullMode": "Back",
     "defines": null,

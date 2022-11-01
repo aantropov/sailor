@@ -211,6 +211,8 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	outData["bEnableDepthTest"] = m_pData->m_renderState.IsDepthTestEnabled();
 	outData["bEnableZWrite"] = m_pData->m_renderState.IsEnabledZWrite();
 	outData["bSupportMultisampling"] = m_pData->m_renderState.SupportMultisampling();
+	outData["bCustomDepthShader"] = m_pData->m_renderState.IsRequiredCustomDepthShader();
+
 	outData["depthBias"] = m_pData->m_renderState.GetDepthBias();
 	outData["renderQueue"] = GetRenderQueue();
 	outData["defines"] = m_pData->m_shaderDefines;
@@ -232,6 +234,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	bool bEnableDepthTest = true;
 	bool bEnableZWrite = true;
 	bool bSupportMultisampling = true;
+	bool bCustomDepthShader = false;
 	float depthBias = 0.0f;
 	RHI::ECullMode cullMode = RHI::ECullMode::Back;
 	RHI::EBlendMode blendMode = RHI::EBlendMode::None;
@@ -249,6 +252,11 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	if (outData.contains("bEnableZWrite"))
 	{
 		bEnableZWrite = outData["bEnableZWrite"].get<bool>();
+	}
+
+	if (outData.contains("bCustomDepthShader"))
+	{
+		bCustomDepthShader = outData["bCustomDepthShader"].get<bool>();
 	}
 
 	if (outData.contains("bSupportMultisampling"))
@@ -311,7 +319,7 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	}
 
 	const size_t tag = GetHash(renderQueue);
-	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, cullMode, blendMode, fillMode, tag, bSupportMultisampling);
+	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, bCustomDepthShader, cullMode, blendMode, fillMode, tag, bSupportMultisampling);
 }
 
 MaterialImporter::MaterialImporter(MaterialAssetInfoHandler* infoHandler)

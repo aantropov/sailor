@@ -1,13 +1,14 @@
 {
     "bEnableDepthTest": true,
     "bEnableZWrite": true,
-    "bIsTransparent": false,
+	"bCustomDepthShader": true,
+    "bSupportMultisampling": true,
     "blendMode": "None",
     "cullMode": "Back",
-    "defines": null,
+    "defines": ["ALPHA_CUTOUT"],
     "depthBias": 0.0,
     "fillMode": "Fill",
-    "renderQueue": "Opaque",
+    "renderQueue": "Opaque",	
     "samplers": [
         {
             "name": "diffuseSampler",
@@ -29,7 +30,7 @@
         [
             "material.diffuse",
             {
-                "w": 0.0,
+                "w": 1.0,
                 "x": 0.47040000557899475,
                 "y": 0.47040000557899475,
                 "z": 0.47040000557899475

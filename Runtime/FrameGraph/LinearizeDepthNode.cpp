@@ -52,7 +52,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	if (!m_postEffectMaterial)
 	{
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 0, false };
+		RenderState renderState{ false, false, 0, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pLinearizeDepthShader);
 	}
 

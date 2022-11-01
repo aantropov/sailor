@@ -37,12 +37,15 @@ void LightComponent::EndPlay()
 void LightComponent::OnGizmo()
 {
 	const glm::vec4 worldPosition = GetOwner()->GetTransformComponent().GetWorldPosition();
+	const glm::vec3 forward = GetOwner()->GetTransformComponent().GetForwardVector();
+
 	const Math::AABB aabb(worldPosition, GetData().m_bounds);
 	const vec3 extents = aabb.GetExtents();
 	const float originSize = std::max(extents.x, std::max(extents.y, extents.z));
 
 	GetOwner()->GetWorld()->GetDebugContext()->DrawSphere(worldPosition, originSize, vec4(1.0f, 1.0f, 0.2f, 1.0f));
-	GetOwner()->GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, originSize);
+	GetOwner()->GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, GetOwner()->GetTransformComponent().GetCachedWorldMatrix(), originSize);
+	GetOwner()->GetWorld()->GetDebugContext()->DrawArrow(worldPosition, glm::vec3(worldPosition) + forward * originSize, vec4(1, 1, 1, 1));
 }
 
 void LightComponent::SetIntensity(const glm::vec3& value)

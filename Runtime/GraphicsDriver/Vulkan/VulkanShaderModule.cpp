@@ -109,7 +109,8 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				RHI::ShaderLayoutBindingMember member;
 
 				member.m_name = blockContent[i].name ? std::string(blockContent[i].name) : "";
-				member.m_absoluteOffset = blockContent[i].absolute_offset;
+				// Should we handle absolute offset in this way?
+				member.m_absoluteOffset = membersSize;// +blockContent[i].absolute_offset;
 				member.m_size = blockContent[i].size;
 				member.m_type = (RHI::EShaderBindingMemberType)(blockContent[i].type_description->op);
 				member.m_arrayDimensions = blockContent[i].array.dims_count;
@@ -117,7 +118,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				member.m_arrayCount = blockContent[i].array.dims[0];
 				member.m_arrayStride = blockContent[i].array.stride;
 
-				membersSize += blockContent[i].padded_size;
+				membersSize += blockContent[i].padded_size;				
 
 				if (member.m_type == RHI::EShaderBindingMemberType::Array && blockContent[i].type_description)
 				{

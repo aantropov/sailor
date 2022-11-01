@@ -113,11 +113,26 @@ void DebugContext::DrawAABB(const Math::AABB& aabb, const glm::vec4 color, float
 	DrawLine(vec3(aabb.m_max.x, aabb.m_max.y, aabb.m_min.z), vec3(aabb.m_min.x, aabb.m_max.y, aabb.m_min.z), color, duration);
 }
 
-void DebugContext::DrawOrigin(const glm::vec3& position, float size, float duration)
+void DebugContext::DrawArrow(const glm::vec3& start, const glm::vec3& end, const glm::vec4 color, float duration)
 {
-	DrawLine(position, position + glm::vec3(size, 0, 0), glm::vec4(1, 0, 0, 1), duration);
-	DrawLine(position, position + glm::vec3(0, size, 0), glm::vec4(0, 1, 0, 1), duration);
-	DrawLine(position, position + glm::vec3(0, 0, size), glm::vec4(0, 0, 1, 1), duration);
+	const float length = glm::length(end - start) * 0.1f;
+
+	DrawLine(start, end, color, duration);
+
+	DrawLine(end + Math::vec3_Up * length, end + Math::vec3_Down * length, color, duration);
+	DrawLine(end + Math::vec3_Left * length, end + Math::vec3_Right * length, color, duration);
+	DrawLine(end + Math::vec3_Forward * length, end + Math::vec3_Backward * length, color, duration);
+}
+
+void DebugContext::DrawOrigin(const glm::vec3& position, const glm::mat4& origin, float size, float duration)
+{
+	glm::vec3 x = origin * glm::vec4(size, 0, 0, 0);
+	glm::vec3 y = origin * glm::vec4(0, size, 0, 0);
+	glm::vec3 z = origin * glm::vec4(0, 0, size, 0);
+
+	DrawLine(position, position + x, glm::vec4(1, 0, 0, 1), duration);
+	DrawLine(position, position + y, glm::vec4(0, 1, 0, 1), duration);
+	DrawLine(position, position + z, glm::vec4(0, 0, 1, 1), duration);
 }
 
 void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color, float duration)
@@ -179,7 +194,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 
 	if (!m_material)
 	{
-		RenderState renderState = RHI::RenderState(true, true, 0.1f, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line, GetHash(std::string("Debug")), false);
+		RenderState renderState = RHI::RenderState(true, true, 0.1f, false, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line, GetHash(std::string("Debug")), false);
 
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;

@@ -10,13 +10,7 @@ using namespace Sailor::Memory;
 // handle that in class
 std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>& GetAllocator()
 {
-	static std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>> g_lockFreeAllocators;
-	static std::once_flag s_bIsInitedAllocator;
-	std::call_once(s_bIsInitedAllocator, [&]()
-	{
-		g_lockFreeAllocators = std::make_unique<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>();
-	});
-
+	static std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>> g_lockFreeAllocators = std::make_unique<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>();
 	return g_lockFreeAllocators;
 }
 
