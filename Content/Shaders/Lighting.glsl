@@ -11,6 +11,7 @@ struct LightData
     vec3 intensity;
     vec3 attenuation;
     int type;
+	vec2 cutOff;
 	vec3 bounds;
 };
 

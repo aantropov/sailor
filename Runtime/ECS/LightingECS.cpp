@@ -102,7 +102,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			shaderData.m_type = (int32_t)lightData.m_type;
 			shaderData.m_direction = ownerTransform.GetForwardVector();
 			shaderData.m_worldPosition = ownerTransform.GetWorldPosition();
-
+			shaderData.m_cutOff = vec2(glm::cos(glm::radians(lightData.m_cutOff.x)), glm::cos(glm::radians(lightData.m_cutOff.y)));
 			shaderDataBatch.Emplace(std::move(shaderData));
 
 			data.m_bIsDirty = false;

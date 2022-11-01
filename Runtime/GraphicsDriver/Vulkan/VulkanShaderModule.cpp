@@ -118,7 +118,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				member.m_arrayCount = blockContent[i].array.dims[0];
 				member.m_arrayStride = blockContent[i].array.stride;
 
-				membersSize += blockContent[i].padded_size;				
+				membersSize += blockContent[i].padded_size;
 
 				if (member.m_type == RHI::EShaderBindingMemberType::Array && blockContent[i].type_description)
 				{

@@ -67,6 +67,8 @@ layout(location=3) in vec3 worldPosition;
 layout(location=4) flat in uint instanceIndex;
 
 layout(set=3, binding=1) uniform sampler2D diffuseSampler;
+layout(set=3, binding=2) uniform sampler2D ambientSampler;
+
 layout(location = 0) out vec4 outColor;
 
 struct PerInstanceData
@@ -77,7 +79,10 @@ struct PerInstanceData
 
 struct MaterialData
 {
-    vec4 color;
+	vec4 diffuse;
+	vec4 ambient;
+	vec4 emission;
+	vec4 specular;
 };
 
 layout(set = 0, binding = 0) uniform FrameData
@@ -121,32 +126,51 @@ MaterialData GetMaterialData()
     return material.instance[data.instance[instanceIndex].materialInstance];
 }
 
-vec3 CalculateLighting(LightData light, vec3 normal, vec3 worldPos, vec3 viewDir)
+vec3 CalculateLighting(LightData light, MaterialData material, vec3 normal, vec3 worldPos, vec3 viewDir)
 {
 	//if(length(light.worldPosition - worldPos) > light.bounds.x)
 	//{
 		//return vec3(0.1,0.1,0.1);
 	//}
-	
-    vec3 diffuse = texture(diffuseSampler, fragTexcoord).xyz;
 	float falloff = 1.0f;
 	
+	vec3 diffuse = material.diffuse.xyz;
+	
+	// Directional light
+	if(light.type == 0)
+	{
+		float diff = max(dot(normal, -light.direction), 0.0);
+		diffuse *= light.intensity * diff;
+	}
 	// Point light
-	if(light.type == 1)
+	else if(light.type == 1)
 	{
 		// Attenuation
 		const float distance    = length(light.worldPosition - worldPos);
-		const float attenuation = 1.0 / (light.attenuation.z + light.attenuation.y * distance + light.attenuation.x * (distance * distance));
-		falloff 				= attenuation * (1 - clamp(distance / light.bounds.x, 0,1));		
+		const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
+		falloff 				= attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
 		
 		vec3 lightDir = normalize(light.worldPosition - worldPos);
 		float diff = max(dot(normal, lightDir), 0.0);
 		diffuse *= light.intensity * diff;
 	}
-	else if(light.type == 0)
+	// Spot light
+	else if(light.type == 2)
 	{
-		float diff = max(dot(normal, light.direction), 0.0);
-		diffuse *= light.intensity * diff;
+		vec3 lightDir = normalize(light.worldPosition - worldPos);
+		float theta = dot(lightDir, normalize(-light.direction));
+		float epsilon   = light.cutOff.x - light.cutOff.y;
+		
+		// Attenuation
+		const float distance    = length(light.worldPosition - worldPos);
+		const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
+		falloff 				= attenuation * clamp((theta - light.cutOff.y) / epsilon, 0.0, 1.0);			
+		
+		if(theta > light.cutOff.y)
+		{       
+			float diff = max(dot(normal, lightDir), 0.0);
+			diffuse *= light.intensity * diff;
+		}
 	}
 	
     return diffuse * falloff;
@@ -154,11 +178,22 @@ vec3 CalculateLighting(LightData light, vec3 normal, vec3 worldPos, vec3 viewDir
 
 void main() 
 {
+	MaterialData material = GetMaterialData();
+	material.diffuse *= texture(diffuseSampler, fragTexcoord);
+	material.ambient *= texture(ambientSampler, fragTexcoord);
+	outColor = material.ambient;
+	
+#ifdef ALPHA_CUTOUT
+	if(material.diffuse.a < 0.05)
+	{
+		discard;
+	}
+#endif
+
 	// Sky
     //outColor = fragColor * texture(diffuseSampler, fragTexcoord);
 	//outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz)) * 0.5;
-    outColor = vec4(0);
-	
+    	
     vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
 	vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
     ivec2 tileId = ivec2(screenUv) / LIGHTS_CULLING_TILE_SIZE;
@@ -171,6 +206,8 @@ void main()
 	const uint offset = lightsGrid.instance[tileIndex].offset;
 	const uint numLights = lightsGrid.instance[tileIndex].num;
 	
+
+	
 	for(int i = 0; i < numLights; i++)
     {
         uint index = culledLights.indices[offset + i];
@@ -180,11 +217,11 @@ void main()
         }
 
         vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;		
-		outColor.xyz += CalculateLighting(light.instance[index], fragNormal, worldPosition, viewDirection);		
+		outColor.xyz += CalculateLighting(light.instance[index], material, fragNormal, worldPosition, viewDirection);		
 		//outColor.xyz += 0.01;
     }
 }
 END_CODE,
 
-"defines":[]
+"defines":["ALPHA_CUTOUT"]
 }

@@ -26,6 +26,7 @@ namespace Sailor
 		glm::vec3 m_intensity{ 100.0f, 100.0f, 100.0f };
 		glm::vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
 		glm::vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
+		glm::vec2 m_cutOff{ 30.0f, 45.0f };
 		ELightType m_type = ELightType::Point;
 
 	protected:
@@ -51,6 +52,7 @@ namespace Sailor
 			 alignas(16) glm::vec3 m_intensity;
 			 alignas(16) glm::vec3 m_attenuation;
 			 int32_t m_type;
+			 glm::vec2 m_cutOff;
 			 alignas(16) glm::vec3 m_bounds;
 		};
 
