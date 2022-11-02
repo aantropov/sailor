@@ -21,26 +21,33 @@ void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tr
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	auto colorAttachment = GetResourceParam("color").DynamicCast<RHI::RHISurface>()->GetResolved();
+	auto colorAttachment = GetResourceParam("color").DynamicCast<RHI::RHISurface>();
 	auto depthAttachment = GetResourceParam("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), colorAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+	if (!colorAttachment)
+	{
+		return;
+	}
+
+	auto target = colorAttachment->GetResolved();
+
+	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 	commands->RenderSecondaryCommandBuffers(commandList,
 		TVector<RHI::RHICommandListPtr> {sceneView.m_debugDrawSecondaryCmdList},
-		TVector<RHI::RHITexturePtr>{ colorAttachment },
+		TVector<RHI::RHITexturePtr>{ target },
 		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
+		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
 		false);
 
-	commands->ImageMemoryBarrier(commandList, colorAttachment, colorAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, colorAttachment->GetDefaultLayout());
+	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
 }
 
 void DebugDrawNode::Clear()

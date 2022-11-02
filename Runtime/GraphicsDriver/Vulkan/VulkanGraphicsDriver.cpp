@@ -710,7 +710,8 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	auto colorAttachments = shader->GetColorAttachments().ToVector<VkFormat>();
 	if (colorAttachments.Num() == 0)
 	{
-		colorAttachments.Add(device->GetColorFormat());
+		const auto defaultFormat = VK_FORMAT_R16G16B16A16_SFLOAT; //VK_FORMAT_R16G16B16A16_SFLOAT; 
+		colorAttachments.Add(defaultFormat);
 	}
 	else if (colorAttachments.Num() == 1 && colorAttachments[0] == VkFormat::VK_FORMAT_UNDEFINED)
 	{
@@ -1429,7 +1430,7 @@ void VulkanGraphicsDriver::BeginSecondaryCommandList(RHI::RHICommandListPtr cmd,
 		flags |= VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 	}
 
-	cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(TVector<VkFormat>{device->GetColorFormat()}, device->GetDepthFormat(), flags, VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, bSupportMultisampling);
+	cmd->m_vulkan.m_commandBuffer->BeginSecondaryCommandList(TVector<VkFormat>{VK_FORMAT_R16G16B16A16_SFLOAT/*device->GetColorFormat()*/}, device->GetDepthFormat(), flags, VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT, bSupportMultisampling);
 }
 
 void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit)
@@ -1732,13 +1733,14 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 		{
 			if (binding.m_second->IsBind())
 			{
-				if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
+				if (materialLayout->m_descriptorSetLayoutBindings.FindIf(
 					[&](const auto& lhs)
 				{
 					auto& layout = binding.m_second->GetLayout();
 					return lhs.binding == layout.m_binding && lhs.descriptorType == (VkDescriptorType)layout.m_type;
 				}))
 				{
+					// TODO: Add 'missing texture' combined sampler
 					// We don't add extra bindings 
 					continue;
 				}

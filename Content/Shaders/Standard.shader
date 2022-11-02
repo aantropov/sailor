@@ -27,6 +27,14 @@ struct PerInstanceData
     uint materialInstance;
 };
 
+struct MaterialData
+{
+	vec4 diffuse;
+	vec4 ambient;
+	vec4 emission;
+	vec4 specular;
+};
+
 layout(set = 0, binding = 0) uniform FrameData
 {
     mat4 view;
@@ -38,10 +46,33 @@ layout(set = 0, binding = 0) uniform FrameData
     float deltaTime;
 } frame;
 
+layout(std430, set = 1, binding = 0) readonly buffer LightDataSSBO
+{	
+	LightData instance[];
+} light;
+
+layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
+{
+    uint indices[];
+} culledLights;
+
+layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
+{
+    LightsGrid instance[];
+} lightsGrid;
+
 layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
 {
     PerInstanceData instance[];
 } data;
+
+layout(std140, set = 3, binding = 0) readonly buffer MaterialDataSSBO
+{
+    MaterialData instance[];
+} material;
+
+layout(set=3, binding=1) uniform sampler2D diffuseSampler;
+layout(set=3, binding=2) uniform sampler2D ambientSampler;
 
 void main() 
 {
@@ -65,9 +96,6 @@ layout(location=1) in vec2 fragTexcoord;
 layout(location=2) in vec3 fragNormal;
 layout(location=3) in vec3 worldPosition;
 layout(location=4) flat in uint instanceIndex;
-
-layout(set=3, binding=1) uniform sampler2D diffuseSampler;
-layout(set=3, binding=2) uniform sampler2D ambientSampler;
 
 layout(location = 0) out vec4 outColor;
 
@@ -120,6 +148,9 @@ layout(std140, set = 3, binding = 0) readonly buffer MaterialDataSSBO
 {
     MaterialData instance[];
 } material;
+
+layout(set=3, binding=1) uniform sampler2D diffuseSampler;
+layout(set=3, binding=2) uniform sampler2D ambientSampler;
 
 MaterialData GetMaterialData()
 {

@@ -8,7 +8,20 @@
     "depthBias": 0.0,
     "fillMode": "Fill",
     "renderQueue": "Opaque",
-    "samplers": [],
+    "samplers": [
+        {
+            "name": "diffuseSampler",
+            "uid": {
+                "uid": "{9BBFADA9-23DC-471E-9DBC-A8C2403F462A}"
+            }
+        },
+        {
+            "name": "ambientSampler",
+            "uid": {
+                "uid": "{9BBFADA9-23DC-471E-9DBC-A8C2403F462A}"
+            }
+        }
+    ],
     "shader": {
         "uid": "{1136DE60-9902-4ADC-97A7-90C293E2B6B9}"
     },

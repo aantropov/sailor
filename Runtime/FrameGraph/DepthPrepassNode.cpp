@@ -178,7 +178,10 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 			if (proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader())
 			{
-				depthMaterial = proxy.GetMaterials()[i];
+				// TODO: Fix custom depth shader
+				// We don't support that yet
+				//depthMaterial = proxy.GetMaterials()[i];
+				continue;
 			}
 
 			const bool bIsDepthMaterialReady = depthMaterial &&
