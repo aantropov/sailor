@@ -193,7 +193,7 @@ void main()
 	// Sky
     //outColor = fragColor * texture(diffuseSampler, fragTexcoord);
 	//outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz)) * 0.5;
-    	
+
     vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
 	vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
     ivec2 tileId = ivec2(screenUv) / LIGHTS_CULLING_TILE_SIZE;
@@ -205,8 +205,6 @@ void main()
 
 	const uint offset = lightsGrid.instance[tileIndex].offset;
 	const uint numLights = lightsGrid.instance[tileIndex].num;
-	
-
 	
 	for(int i = 0; i < numLights; i++)
     {
