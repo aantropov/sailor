@@ -195,9 +195,9 @@ namespace Sailor
 			{
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
 				res->SetChainedTaskPrev(m_self);
-				m_chainedTasksNext.Add(res);
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
 				res->Join(m_self);
+				m_chainedTasksNext.Add(res);
 
 				if (m_bIsStarted || m_bIsInQueue)
 				{
@@ -260,11 +260,10 @@ namespace Sailor
 			template<typename TResult1>
 			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
 			{
-				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
-				m_chainedTasksNext.Add(res);
+				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);				
 				res->SetChainedTaskPrev(m_self);
 				res->Join(m_self);
-
+				m_chainedTasksNext.Add(res);
 				if (m_bIsStarted || m_bIsInQueue)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
@@ -308,10 +307,10 @@ namespace Sailor
 			template<typename TResult1>
 			SAILOR_API TaskPtr<TResult1, void> Then(std::function<TResult1()> function)
 			{
-				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
-				m_chainedTasksNext.Add(res);
+				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);				
 				res->SetChainedTaskPrev(m_self);
 				res->Join(m_self);
+				m_chainedTasksNext.Add(res);
 
 				if (m_bIsStarted || m_bIsInQueue)
 				{
@@ -346,7 +345,11 @@ namespace Sailor
 
 				for (auto& m_chainedTaskNext : m_chainedTasksNext)
 				{
-					dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr())->SetArgs(ITaskWithResult<TResult>::m_result);
+					// We could have a chained task without Args
+					if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr()))
+					{
+						taskWithArgs->SetArgs(ITaskWithResult<TResult>::m_result);
+					}
 				}
 
 				Complete();
@@ -368,12 +371,11 @@ namespace Sailor
 			SAILOR_API TaskPtr<TResult1, TArgs1 > Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
-				m_chainedTasksNext.Add(res);
-
 				res->SetChainedTaskPrev(m_self);
-
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
 				res->Join(m_self);
+
+				m_chainedTasksNext.Add(res);
 
 				if (m_bIsStarted || m_bIsInQueue)
 				{

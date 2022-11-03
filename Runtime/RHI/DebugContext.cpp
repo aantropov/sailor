@@ -181,6 +181,10 @@ void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, f
 	DrawLine(s4, e4, color, duration);
 }
 
+void DebugContext::DrawCone(const glm::vec3& start, const glm::vec3& end, float degrees, const glm::vec4 color, float duration)
+{
+}
+
 void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();

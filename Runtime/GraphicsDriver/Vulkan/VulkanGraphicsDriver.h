@@ -224,6 +224,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
 
+		// The texture that is used as default
+		VulkanImageViewPtr m_defaultTexture;
+
 		// Uniform buffers to store uniforms
 		TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
 

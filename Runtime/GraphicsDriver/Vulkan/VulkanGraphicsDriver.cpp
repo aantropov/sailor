@@ -41,6 +41,10 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 	{
 		renderDocApi->SetActiveWindow((*((void**)(m_vkInstance->GetVkInstance()))), pViewport->GetHWND());
 	}
+
+	DWORD invalidColor = 0xe567f8;
+	auto defaultImage = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1, VK_IMAGE_TYPE_2D, VkFormat::VK_FORMAT_R8G8B8A8_SRGB);
+	m_defaultTexture = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultImage, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
@@ -50,6 +54,7 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	m_cachedDescriptorSets.Clear();
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
+	m_defaultTexture.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -710,7 +715,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	auto colorAttachments = shader->GetColorAttachments().ToVector<VkFormat>();
 	if (colorAttachments.Num() == 0)
 	{
-		const auto defaultFormat = VK_FORMAT_R16G16B16A16_SFLOAT; //VK_FORMAT_R16G16B16A16_SFLOAT; 
+		const auto defaultFormat = VK_FORMAT_R16G16B16A16_SFLOAT; //device->GetColorFormat(); 
 		colorAttachments.Add(defaultFormat);
 	}
 	else if (colorAttachments.Num() == 1 && colorAttachments[0] == VkFormat::VK_FORMAT_UNDEFINED)
@@ -1725,7 +1730,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 			continue;
 		}
 
-		SAILOR_PROFILE_BLOCK("Track changes");
+		SAILOR_PROFILE_BLOCK("Track changes: remove extra bindings");
 		TVector<VulkanDescriptorPtr> descriptors;
 		TVector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
 
@@ -1733,14 +1738,13 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 		{
 			if (binding.m_second->IsBind())
 			{
-				if (materialLayout->m_descriptorSetLayoutBindings.FindIf(
+				if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
 					[&](const auto& lhs)
 				{
 					auto& layout = binding.m_second->GetLayout();
 					return lhs.binding == layout.m_binding && lhs.descriptorType == (VkDescriptorType)layout.m_type;
 				}))
 				{
-					// TODO: Add 'missing texture' combined sampler
 					// We don't add extra bindings 
 					continue;
 				}
@@ -1779,6 +1783,51 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 					descriptors.Add(descr);
 					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+				}
+			}
+		}
+
+		SAILOR_PROFILE_END_BLOCK();
+
+		SAILOR_PROFILE_BLOCK("Track changes: add missing combined sampler and storage images");
+
+		TVector<RHI::RHIShaderBindingPtr> bindings = shaderBindings[i]->GetShaderBindings().GetValues();
+
+		if (materialLayout->m_descriptorSetLayoutBindings.Num() > descriptors.Num())
+		{
+			for (const auto& descrSetLayoutBinding : materialLayout->m_descriptorSetLayoutBindings)
+			{
+				if (!(descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler ||
+					descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage))
+				{
+					continue;
+				}
+
+				if (!bindings.ContainsIf([&](const auto& lhs)
+				{
+					auto& layout = lhs->GetLayout();
+					return descrSetLayoutBinding.binding == layout.m_binding;
+				}))
+				{
+					if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler)
+					{
+						auto descr = VulkanDescriptorCombinedImagePtr::Make(descrSetLayoutBinding.binding, 0,
+							device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false),
+							m_defaultTexture);
+						descriptors.Add(descr);
+					}
+					else if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage)
+					{
+						auto descr = VulkanDescriptorStorageImagePtr::Make(descrSetLayoutBinding.binding, 0, m_defaultTexture);
+						descriptors.Add(descr);
+					}
+
+					descriptionSetLayouts.Add(descrSetLayoutBinding);
+
+					if (materialLayout->m_descriptorSetLayoutBindings.Num() == descriptors.Num())
+					{
+						break;
+					}
 				}
 			}
 		}

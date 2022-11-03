@@ -210,7 +210,7 @@ vec3 CalculateLighting(LightData light, MaterialData material, vec3 normal, vec3
 void main() 
 {
 	MaterialData material = GetMaterialData();
-	material.diffuse *= texture(diffuseSampler, fragTexcoord);
+	material.diffuse *= texture(diffuseSampler, fragTexcoord) * fragColor;
 	material.ambient *= texture(ambientSampler, fragTexcoord);
 	outColor = material.ambient;
 	
