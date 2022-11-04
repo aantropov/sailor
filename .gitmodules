@@ -19,3 +19,6 @@
 [submodule "External/renderdoc"]
 	path = External/renderdoc
 	url = https://github.com/baldurk/renderdoc.git
+[submodule "External/yaml-cpp"]
+	path = External/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git

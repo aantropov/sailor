@@ -23,6 +23,7 @@ endforeach()
 include_directories (.)
 
 add_library(SailorLib SHARED ${SAILOR_RUNTIME_SOURCES} ${SAILOR_LIB_SOURCES})
+set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
 
 # Easy profiler
 if(BUILD_WITH_EASY_PROFILER)
@@ -44,7 +45,18 @@ get_filename_component(VulkanLibPath "${Vulkan_LIBRARIES}" DIRECTORY )
 target_link_libraries(SailorLib debug "${VulkanLibPath}/shaderc_combinedd.lib" optimized "${VulkanLibPath}/shaderc_combined.lib")
 target_link_libraries(SailorLib winmm.lib)
 
-set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
+# YAML
+add_subdirectory("${PROJECT_SOURCE_DIR}/External/yaml-cpp/" "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/")
+add_dependencies(SailorLib yaml-cpp)
+set_property(TARGET yaml-cpp PROPERTY FOLDER "ThirdParty/Yaml")
+set_property(TARGET yaml-cpp-read PROPERTY FOLDER "ThirdParty/Yaml")
+set_property(TARGET yaml-cpp-parse PROPERTY FOLDER "ThirdParty/Yaml")
+set_property(TARGET yaml-cpp-sandbox PROPERTY FOLDER "ThirdParty/Yaml")
+set_property(TARGET uninstall PROPERTY FOLDER "ThirdParty/Yaml")
+target_link_libraries(SailorLib debug "${VulkanLibPath}/shaderc_combinedd.lib" optimized "${VulkanLibPath}/shaderc_combined.lib")
+target_link_libraries(SailorLib debug "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Debug/yaml-cppd.lib" optimized "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Release/yaml-cpp.lib")
+include_directories ("${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
+add_compile_definitions (yaml-cpp YAML_CPP_STATIC_DEFINE)
 
 # Properties->General->Output Directory
 set_target_properties(SailorLib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/Binaries)
