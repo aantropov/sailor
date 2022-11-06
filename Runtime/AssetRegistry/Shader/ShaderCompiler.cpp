@@ -12,6 +12,7 @@
 #include <iostream>
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
+#include "Core/YamlSerializable.h"
 #include <shaderc/shaderc.hpp>
 #include <thread>
 #include <mutex>
@@ -60,12 +61,64 @@ public:
 		AssetRegistry::ReadAllTextFile(filepath, contents);
 		return contents;
 	}
-
 };
 
 bool ShaderSet::IsReady() const
 {
 	return (m_rhiVertexShader && m_rhiFragmentShader) || m_rhiComputeShader;
+}
+
+void ShaderAsset::Serialize(YAML::Node& outData) const
+{
+	assert(false);
+}
+
+void ShaderAsset::Deserialize(const YAML::Node& inData)
+{
+	if (inData["glslVertex"])
+	{
+		m_glslVertex = inData["glslVertex"].as<std::string>();
+	}
+
+	if (inData["glslFragment"])
+	{
+		m_glslFragment = inData["glslFragment"].as<std::string>();
+	}
+
+	if (inData["glslCompute"])
+	{
+		m_glslCompute = inData["glslCompute"].as<std::string>();
+	}
+
+	if (inData["glslCommon"])
+	{
+		m_glslCommon = inData["glslCommon"].as<std::string>();
+	}
+
+	if (inData["defines"])
+	{
+		m_defines = inData["defines"].as<TVector<std::string>>();
+	}
+
+	if (inData["includes"])
+	{
+		m_includes = inData["includes"].as<TVector<std::string>>();
+	}
+
+	if (inData["colorAttachments"])
+	{
+		for (const auto& str : inData["colorAttachments"])
+		{
+			RHI::EFormat format;
+			DeserializeEnum<RHI::EFormat>(str, format);
+			m_colorAttachments.Add(format);
+		}
+	}
+
+	if (inData["depthStencilAttachment"])
+	{
+		DeserializeEnum<RHI::EFormat>(inData["depthStencilAttachment"], m_depthStencilAttachment);
+	}
 }
 
 void ShaderAsset::Serialize(nlohmann::json& outData) const
@@ -161,12 +214,12 @@ void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& o
 	std::string computeGlsl;
 	std::string commonGlsl;
 
-	if (shader->ContainsVertex())
+	if (shader->ContainsVertex() && defines.Contains("VERTEX"))
 	{
 		ConvertFromJsonToGlslCode(shader->GetGlslVertexCode(), vertexGlsl);
 	}
-
-	if (shader->ContainsFragment())
+	
+	if (shader->ContainsFragment() && defines.Contains("FRAGMENT"))
 	{
 		ConvertFromJsonToGlslCode(shader->GetGlslFragmentCode(), fragmentGlsl);
 	}
@@ -424,23 +477,12 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 		const std::string& filepath = shaderAssetInfo->GetAssetFilepath();
 
 		std::string shaderText;
-		std::string codeInJSON;
-
 		AssetRegistry::ReadAllTextFile(filepath, shaderText);
 
-		ConvertRawShaderToJson(shaderText, codeInJSON);
-
-		json j_shader;
-		if (j_shader.parse(codeInJSON.c_str()) == nlohmann::detail::value_t::discarded)
-		{
-			SAILOR_LOG("Cannot parse shader asset file: %s", filepath.c_str());
-			return TWeakPtr<ShaderAsset>();
-		}
-
-		j_shader = json::parse(codeInJSON);
+		YAML::Node yamlNode = YAML::Load(shaderText);
 
 		ShaderAsset* shader = new ShaderAsset();
-		shader->Deserialize(j_shader);
+		shader->Deserialize(yamlNode);
 
 		return m_shaderAssetsCache[uid] = TSharedPtr<ShaderAsset>(shader);
 	}

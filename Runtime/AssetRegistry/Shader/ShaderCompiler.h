@@ -4,8 +4,8 @@
 #include "Containers/Pair.h"
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
-#include <nlohmann_json/include/nlohmann/json.hpp>
 #include "Core/Submodule.h"
+#include "Core/YamlSerializable.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
@@ -16,6 +16,8 @@
 #include "Engine/Object.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
+
+#include <nlohmann_json/include/nlohmann/json.hpp>
 
 namespace Sailor
 {
@@ -63,7 +65,7 @@ namespace Sailor
 
 	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 
-	class ShaderAsset : IJsonSerializable
+	class ShaderAsset : IJsonSerializable, IYamlSerializable
 	{
 	public:
 
@@ -85,6 +87,9 @@ namespace Sailor
 
 		SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
 		SAILOR_API virtual void Deserialize(const nlohmann::json& inData);
+
+		SAILOR_API virtual void Serialize(YAML::Node& outData) const;
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData);
 
 	protected:
 
@@ -110,7 +115,7 @@ namespace Sailor
 
 		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(const UID& uid);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
-				
+
 		SAILOR_API virtual ~ShaderCompiler() override;
 
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;

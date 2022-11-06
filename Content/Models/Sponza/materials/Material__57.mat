@@ -1,11 +1,11 @@
 {
+    "bCustomDepthShader": false,
     "bEnableDepthTest": true,
     "bEnableZWrite": true,
-	"bCustomDepthShader": true,
     "bSupportMultisampling": true,
     "blendMode": "None",
     "cullMode": "Back",
-    "defines": ["ALPHA_CUTOUT"],
+    "defines": null,
     "depthBias": 0.0,
     "fillMode": "Fill",
     "renderQueue": "Opaque",
@@ -24,13 +24,13 @@
         }
     ],
     "shader": {
-        "uid": "{1136DE60-9902-4ADC-97A7-90C293E2B6B9}"
+        "uid": "{CF739B1A-7457-4649-B244-859285B229CD}"
     },
     "uniforms": [
         [
             "material.diffuse",
             {
-                "w": 1.0,
+                "w": 0.0,
                 "x": 0.47040000557899475,
                 "y": 0.47040000557899475,
                 "z": 0.47040000557899475

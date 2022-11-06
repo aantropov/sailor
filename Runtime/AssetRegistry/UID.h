@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include "Core/JsonSerializable.h"
+#include "Core/YamlSerializable.h"
 #include "Sailor.h"
 
 using namespace nlohmann;
@@ -8,7 +9,7 @@ namespace Sailor { class UID; }
 
 namespace Sailor
 {
-	class UID final : public IJsonSerializable
+	class UID final : public IJsonSerializable, public IYamlSerializable
 	{
 	public:
 
@@ -33,6 +34,9 @@ namespace Sailor
 
 		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
 		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
+
+		SAILOR_API virtual void Serialize(YAML::Node& outData) const override;
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 	protected:
 

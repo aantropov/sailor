@@ -1,4 +1,5 @@
 {
+    "bCustomDepthShader": false,
     "bEnableDepthTest": true,
     "bEnableZWrite": true,
     "bSupportMultisampling": true,
@@ -23,7 +24,7 @@
         }
     ],
     "shader": {
-        "uid": "{1136DE60-9902-4ADC-97A7-90C293E2B6B9}"
+        "uid": "{CF739B1A-7457-4649-B244-859285B229CD}"
     },
     "uniforms": [
         [

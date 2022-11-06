@@ -7,6 +7,16 @@ using namespace nlohmann;
 
 const UID UID::Invalid = UID();
 
+void UID::Serialize(YAML::Node& outData) const
+{
+	outData = m_UID;
+}
+
+void UID::Deserialize(const YAML::Node& inData)
+{
+	m_UID = inData.as<std::string>();
+}
+
 void UID::Serialize(nlohmann::json& outData) const
 {
 	outData = json{ {"uid", m_UID} };
