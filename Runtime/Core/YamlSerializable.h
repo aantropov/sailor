@@ -1,6 +1,7 @@
 #pragma once
-#include "yaml-cpp/yaml.h"
+#include "yaml-cpp/include/yaml-cpp/yaml.h"
 #include "Core/Defines.h"
+#include "Containers/Concepts.h"
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 
@@ -32,6 +33,23 @@ namespace Sailor
 
 namespace YAML
 {
+	template<>
+	struct convert<Sailor::IYamlSerializable>
+	{
+		static Node encode(const Sailor::IYamlSerializable& rhs)
+		{
+			Node node;
+			rhs.Serialize(node);
+			return node;
+		}
+
+		static bool decode(const Node& node, Sailor::IYamlSerializable& rhs)
+		{
+			rhs.Deserialize(node);
+			return true;
+		}
+	};
+
 	template<typename T>
 	struct convert<Sailor::TVector<T>>
 	{
@@ -56,7 +74,17 @@ namespace YAML
 
 			for (std::size_t i = 0; i < node.size(); i++)
 			{
-				rhs.Add(node[i].as<T>());
+				if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
+				{
+					T value;
+					value.Deserialize(node[i]);
+					rhs.Emplace(std::move(value));
+				}
+				else
+				{
+					auto value = node[i].as<T>();
+					rhs.Emplace(std::move(value));
+				}
 			}
 
 			return true;
@@ -111,24 +139,6 @@ namespace YAML
 			return true;
 		}
 	};
-
-	template<>
-	struct convert<Sailor::IYamlSerializable>
-	{
-		static Node encode(const Sailor::IYamlSerializable& rhs)
-		{
-			Node node;
-			rhs.Serialize(node);
-			return node;
-		}
-
-		static bool decode(const Node& node, Sailor::IYamlSerializable& rhs)
-		{
-			rhs.Deserialize(node);
-			return true;
-		}
-	};
-
 
 	template<>
 	struct convert<glm::vec2>

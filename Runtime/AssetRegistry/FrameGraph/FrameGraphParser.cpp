@@ -9,43 +9,54 @@
 #include <iostream>
 #include "FrameGraph/FrameGraphNode.h"
 
-#include "nlohmann_json/include/nlohmann/json.hpp"
 #include "Tasks/Scheduler.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
 #include "RHI/Surface.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Core/YamlSerializable.h"
 
 using namespace Sailor;
 
-void FrameGraphAsset::Deserialize(const nlohmann::json& inData)
+void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 {
-	if (inData.contains("samplers"))
+	if (inData["samplers"])
 	{
-		TVector<FrameGraphAsset::Resource> samplers;
-		DeserializeArray<FrameGraphAsset::Resource>(samplers, inData["samplers"]);
-
+		auto samplers = inData["samplers"].as<TVector<FrameGraphAsset::Resource>>();
+		
 		for (auto& sampler : samplers)
 		{
 			m_samplers[sampler.m_name] = std::move(sampler);
 		}
 	}
 
-	if (inData.contains("values"))
+	if (inData["float"])
 	{
-		TVector<Value> values;
-		DeserializeArray<Value>(values, inData["values"]);
-
-		for (auto& value : values)
+		for (const auto& p : inData["float"])
 		{
-			m_values[value.m_name] = std::move(value);
+			for (const auto& keyValue : p)
+			{
+				const std::string key = keyValue.first.as<std::string>();
+				m_values[key] = Value(keyValue.second.as<float>());
+			}
 		}
 	}
 
-	if (inData.contains("renderTargets"))
+	if (inData["vec4"])
 	{
-		TVector<RenderTarget> targets;
-		DeserializeArray<RenderTarget>(targets, inData["renderTargets"]);
+		for (const auto& p : inData["vec4"])
+		{
+			for (const auto& keyValue : p)
+			{
+				const std::string key = keyValue.first.as<std::string>();
+				m_values[key] = Value(keyValue.second.as<glm::vec4>());
+			}
+		}
+	}
+
+	if (inData["renderTargets"])
+	{
+		auto targets = inData["renderTargets"].as<TVector<RenderTarget>>();
 
 		for (auto& target : targets)
 		{
@@ -53,7 +64,7 @@ void FrameGraphAsset::Deserialize(const nlohmann::json& inData)
 		}
 	}
 
-	if (inData.contains("frame"))
+	if (inData["frame"])
 	{
 		for (const auto& el : inData["frame"])
 		{
@@ -92,7 +103,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 
 	for (auto& value : frameGraphAsset->m_values)
 	{
-		pRhiFrameGraph->SetValue(value.m_first, value.m_second.m_float);
+		pRhiFrameGraph->SetValue(value.m_first, value.m_second.GetFloat());
 	}
 
 	for (auto& sampler : frameGraphAsset->m_samplers)
@@ -126,15 +137,15 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		{
 			if (param.m_second.IsVec4())
 			{
-				pNewNode->SetVectorParam(param.m_first, param.m_second.m_vec4);
+				pNewNode->SetVectorParam(param.m_first, param.m_second.GetVec4());
 			}
 			else if (param.m_second.IsFloat())
 			{
-				pNewNode->SetVectorParam(param.m_first, glm::vec4(param.m_second.m_float));
+				pNewNode->SetVectorParam(param.m_first, glm::vec4(param.m_second.GetFloat()));
 			}
 			else if (param.m_second.IsString())
 			{
-				pNewNode->SetStringParam(param.m_first, param.m_second.m_string);
+				pNewNode->SetStringParam(param.m_first, param.m_second.GetString());
 			}
 		}
 

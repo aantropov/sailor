@@ -1,43 +1,80 @@
-{
-"samplers": [{"name":"g_defaultSampler", "uid": {"uid": ""}, "path":"Textures/VulkanLogo.png"}],
-"values": [{"name":"PI", "value":3.1415926}],
-"renderTargets":[
-    {"name":"Main", "format":"R16G16B16A16_SFLOAT", "width":"ViewportWidth", "height":"ViewportHeight", "bIsSurface":true },
-    {"name":"LinearDepth", "format":"R32_SFLOAT", "width":"ViewportWidth", "height":"ViewportHeight", "bIsSurface":false }
-],	
-"frame":[
-	{"name":"DepthPrepass", 
-		"values":[{"name":"Tag", "string":"Opaque"}], 
-		"renderTargets":[{"name":"depthStencil", "value":"DepthBuffer"}]
-	},
-	
-	{"name":"LinearizeDepth", 
-		"renderTargets":[
-		    {"name":"depthStencil", "value":"DepthBuffer"},
-			{"name":"target", "value":"LinearDepth"}
-		]
-	},
-   
-   	{"name":"LightCulling",	
-		"renderTargets":[{"name":"depthStencil", "value":"LinearDepth"}]
-	},
-   
-    {"name":"Clear", 
-		"values":[{"name":"clearColor", "vec4":{ "x": 0.4902, "y": 0.808, "z": 0.921, "w": 1 }}],
-        "renderTargets":[{"name":"color", "value":"Main"}]
-	},
-    
-	{"name":"RenderScene", 
-		"values":[{"name":"Tag", "string":"Opaque"}], 
-		"renderTargets":[{"name":"color", "value":"Main"}, {"name":"depthStencil", "value":"DepthBuffer"}]
-	},
-	
-    {"name":"DebugDraw",
-        "renderTargets":[{"name":"color", "value":"Main"}, {"name":"depthStencil", "value":"DepthBuffer"}]
-    },
-    
-	{"name":"Blit", 
-		"renderTargets":[{"name":"src", "value":"Main"}, {"name":"dst", "value":"BackBuffer"}]
-	}
-]
-}
+---
+samplers:
+- name: g_defaultSampler
+  uid: ''
+  path: Textures/VulkanLogo.png
+  
+float:
+- PI: 3.1415926
+  
+renderTargets:
+- name: Main
+  format: R16G16B16A16_SFLOAT
+  width: ViewportWidth
+  height: ViewportHeight
+  bIsSurface: true
+  
+- name: QuarterMain
+  format: R16G16B16A16_SFLOAT
+  width: 256
+  height: 256
+  bIsSurface: false
+  
+- name: LinearDepth
+  format: R32_SFLOAT
+  width: ViewportWidth
+  height: ViewportHeight
+  bIsSurface: false
+  
+
+frame:
+############################
+- name: DepthPrepass
+  string:
+  - Tag: Opaque
+  renderTargets:
+  - depthStencil: DepthBuffer
+ 
+############################
+- name: LinearizeDepth
+  renderTargets:
+  - depthStencil: DepthBuffer
+  - target: LinearDepth
+  
+############################
+- name: LightCulling
+  renderTargets:
+  - depthStencil: LinearDepth
+  
+############################
+- name: Clear
+  vec4:
+  - clearColor: [0.4902, 0.808, 0.921, 1]      
+  renderTargets:
+  - color: Main
+  
+############################
+- name: RenderScene
+  string:
+  - Tag: Opaque
+  renderTargets:
+  - color: Main
+  - depthStencil: DepthBuffer
+  
+############################
+- name: DebugDraw
+  renderTargets:
+  - color: Main
+  - depthStencil: DepthBuffer
+
+############################
+#- name: Blit
+#  renderTargets:
+#  - src: Main
+#  - dst: QuarterMain   
+
+#############################
+- name: Blit
+  renderTargets:
+  - src: Main
+  - dst: BackBuffer

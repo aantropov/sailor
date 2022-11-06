@@ -11,7 +11,6 @@
 #include <iostream>
 #include "FrameGraph/FrameGraphNode.h"
 
-#include "nlohmann_json/include/nlohmann/json.hpp"
 #include "Tasks/Scheduler.h"
 
 using namespace Sailor;
@@ -47,21 +46,14 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(UID uid)
 	{
 		const std::string& filepath = assetInfo->GetAssetFilepath();
 
-		std::string json;
+		std::string text;
 
-		AssetRegistry::ReadAllTextFile(filepath, json);
+		AssetRegistry::ReadAllTextFile(filepath, text);
 
-		nlohmann::json j_frameGraph;
-		if (j_frameGraph.parse(json.c_str()) == nlohmann::detail::value_t::discarded)
-		{
-			SAILOR_LOG("Cannot parse frameGraph asset file: %s", filepath.c_str());
-			return FrameGraphAssetPtr();
-		}
-
-		j_frameGraph = json::parse(json);
+		YAML::Node yamlNode = YAML::Load(text);
 
 		FrameGraphAsset* frameGraphAsset = new FrameGraphAsset();
-		frameGraphAsset->Deserialize(j_frameGraph);
+		frameGraphAsset->Deserialize(yamlNode);
 
 		return FrameGraphAssetPtr(frameGraphAsset);
 	}

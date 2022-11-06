@@ -7,6 +7,8 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include_directories ("${PROJECT_SOURCE_DIR}/Runtime/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/easy_profiler/include/")
+include_directories ("${PROJECT_SOURCE_DIR}/External/easy_profiler/include/")
+include_directories ("${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -23,6 +25,9 @@ add_compile_options($<$<NOT:$<CONFIG:DEBUG>>:/GT>)
 add_compile_options(/GF)
 add_compile_options(/WX)
 add_compile_options(/arch:AVX2)
+
+#Fix Yaml cpp compilation
+add_compile_definitions (yaml-cpp YAML_CPP_STATIC_DEFINE)
 
 option(CONSOLE "Enable console" ON)
 if(CONSOLE)

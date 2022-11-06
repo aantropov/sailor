@@ -3,18 +3,17 @@
 #include <string>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
-#include <nlohmann_json/include/nlohmann/json.hpp>
 #include "RHI/Types.h"
 #include "AssetRegistry/UID.h"
-#include "Core/JsonSerializable.h"
+#include "Core/YamlSerializable.h"
 
 namespace Sailor
 {
-	class FrameGraphAsset : public IJsonSerializable
+	class FrameGraphAsset : public IYamlSerializable
 	{
 	public:
 
-		class Resource : public IJsonSerializable
+		class Resource : public IYamlSerializable
 		{
 		public:
 			std::string m_name;
@@ -23,22 +22,23 @@ namespace Sailor
 
 			bool operator==(const Resource& rhs) const { return m_name == rhs.m_name; }
 
-			virtual void Serialize(nlohmann::json& outData) const { }
-			virtual void Deserialize(const nlohmann::json& inData)
+			virtual void Serialize(YAML::Node& outData) const { }
+			virtual void Deserialize(const YAML::Node& inData)
 			{
-				m_name = inData["name"].get<std::string>();
-				m_path = inData["path"].get<std::string>();
+				m_name = inData["name"].as<std::string>();
+				m_path = inData["path"].as<std::string>();
 				m_uid.Deserialize(inData["uid"]);
 			}
 		};
 
-		class Value : public IJsonSerializable
+		class Value
 		{
 		public:
-			std::string m_name{};
-			float m_float{};
-			glm::vec4 m_vec4{};
-			std::string m_string{};
+
+			Value() = default;
+			Value(float value) : m_bIsFloat(true), m_float(value) {}
+			Value(const glm::vec4& value) : m_bIsVec4(true), m_vec4(value) {}
+			Value(const std::string& value) : m_bIsString(true), m_string(value) {}
 
 			bool operator==(const Value& rhs) const { return m_name == rhs.m_name; }
 
@@ -46,38 +46,23 @@ namespace Sailor
 			bool IsVec4() const { return   m_bIsVec4; }
 			bool IsString() const { return m_bIsString; }
 
-			virtual void Serialize(nlohmann::json& outData) const { }
-			virtual void Deserialize(const nlohmann::json& inData)
-			{
-				m_name = inData["name"].get<std::string>();
-
-				if (inData.contains("float"))
-				{
-					m_float = inData["float"].get<float>();
-					m_bIsFloat = true;
-				}
-
-				if (inData.contains("vec4"))
-				{
-					m_vec4 = inData["vec4"].get<glm::vec4>();
-					m_bIsVec4 = true;
-				}
-
-				if (inData.contains("string"))
-				{
-					m_string = inData["string"].get<std::string>();
-					m_bIsString = true;
-				}
-			}
+			float GetFloat() const { return m_float; }
+			const glm::vec4& GetVec4() const { return m_vec4; }
+			const std::string& GetString() const { return m_string; }
 
 		protected:
+
+			std::string m_name{};
+			float m_float{ 0.0f };
+			glm::vec4 m_vec4{ 0.0f,0.0f,0.0f,1.0f };
+			std::string m_string{};
 
 			bool m_bIsFloat = false;
 			bool m_bIsVec4 = false;
 			bool m_bIsString = false;
 		};
 
-		class RenderTarget : public IJsonSerializable
+		class RenderTarget : public IYamlSerializable
 		{
 		public:
 
@@ -89,48 +74,54 @@ namespace Sailor
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
-			virtual void Serialize(nlohmann::json& outData) const { }
-			virtual void Deserialize(const nlohmann::json& inData)
+			virtual void Serialize(YAML::Node& outData) const { }
+			virtual void Deserialize(const YAML::Node& inData)
 			{
-				m_name = inData["name"].get<std::string>();
+				m_name = inData["name"].as<std::string>();
 
-				if (inData.contains("width"))
+				if (inData["width"])
 				{
-					if (inData["width"].is_number())
+					std::string str = inData["width"].as<std::string>();
+					std::stringstream strStream(str);
+
+					uint32_t value = 0;
+					if (!(strStream >> value))
 					{
-						m_width = inData["width"].get<uint32_t>();
-					}
-					else if (inData["width"].get<std::string>() == "ViewportWidth")
-					{
-						m_width = std::max(1, App::GetViewportWindow()->GetWidth());
+						if (str == "ViewportWidth")
+						{
+							m_width = std::max(1, App::GetViewportWindow()->GetWidth());
+						}
 					}
 				}
 
-				if (inData.contains("height"))
+				if (inData["height"])
 				{
-					if (inData["height"].is_number())
+					std::string str = inData["height"].as<std::string>();
+					std::stringstream strStream(str);
+
+					uint32_t value = 0;
+					if (!(strStream >> value))
 					{
-						m_height = inData["height"].get<uint32_t>();
-					}
-					else if (inData["height"].get<std::string>() == "ViewportHeight")
-					{
-						m_height = std::max(1, App::GetViewportWindow()->GetHeight());
+						if (str == "ViewportHeight")
+						{
+							m_height = std::max(1, App::GetViewportWindow()->GetHeight());
+						}
 					}
 				}
 
-				if (inData.contains("format"))
+				if (inData["format"])
 				{
 					DeserializeEnum<RHI::ETextureFormat>(inData["format"], m_format);
 				}
 
-				if (inData.contains("bIsSurface"))
+				if (inData["bIsSurface"])
 				{
-					m_bIsSurface = inData["bIsSurface"].get<bool>();
+					m_bIsSurface = inData["bIsSurface"].as<bool>();
 				}
 			}
 		};
 
-		class Node : public IJsonSerializable
+		class Node : public IYamlSerializable
 		{
 		public:
 
@@ -138,34 +129,44 @@ namespace Sailor
 			TMap<std::string, Value> m_values;
 			TMap<std::string, std::string> m_renderTargets;
 
-			virtual void Serialize(nlohmann::json& outData) const { }
-			virtual void Deserialize(const nlohmann::json& inData)
+			template<typename T>
+			void ReadDictionary(const YAML::Node& node)
 			{
-				m_name = inData["name"].get<std::string>();
-
-				if (inData.contains("values"))
+				for (const auto& p : node)
 				{
-					TVector<Value> values;
-					DeserializeArray<Value>(values, inData["values"]);
-
-					for (auto& value : values)
+					for (const auto& keyValue : p)
 					{
-						m_values[value.m_name] = std::move(value);
+						const std::string key = keyValue.first.as<std::string>();
+						T value = keyValue.second.as<T>();
+						m_values[key] = Value(value);
 					}
 				}
+			}
 
-				if (inData.contains("renderTargets"))
+			virtual void Serialize(YAML::Node& outData) const { }
+			virtual void Deserialize(const YAML::Node& inData)
+			{
+				m_name = inData["name"].as<std::string>();
+
+				ReadDictionary<std::string>(inData["string"]);
+				ReadDictionary<glm::vec4>(inData["vec4"]);
+				ReadDictionary<float>(inData["float"]);
+
+				for (const auto& p : inData["renderTargets"])
 				{
-					for (auto& target : inData["renderTargets"])
+					for (const auto& keyValue : p)
 					{
-						m_renderTargets[target["name"].get<std::string>()] = target["value"].get<std::string>();
+						const std::string key = keyValue.first.as<std::string>();
+						const std::string value = keyValue.second.as<std::string>();
+
+						m_renderTargets[key] = value;
 					}
 				}
 			}
 		};
 
-		virtual void Serialize(nlohmann::json& outData) const { }
-		virtual void Deserialize(const nlohmann::json& inData);
+		virtual void Serialize(YAML::Node& outData) const { }
+		virtual void Deserialize(const YAML::Node& inData);
 
 		TMap<std::string, Resource> m_samplers;
 		TMap<std::string, Value> m_values;

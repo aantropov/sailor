@@ -55,8 +55,6 @@ set_property(TARGET yaml-cpp-sandbox PROPERTY FOLDER "ThirdParty/Yaml")
 set_property(TARGET uninstall PROPERTY FOLDER "ThirdParty/Yaml")
 target_link_libraries(SailorLib debug "${VulkanLibPath}/shaderc_combinedd.lib" optimized "${VulkanLibPath}/shaderc_combined.lib")
 target_link_libraries(SailorLib debug "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Debug/yaml-cppd.lib" optimized "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Release/yaml-cpp.lib")
-include_directories ("${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
-add_compile_definitions (yaml-cpp YAML_CPP_STATIC_DEFINE)
 
 # Properties->General->Output Directory
 set_target_properties(SailorLib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/Binaries)
