@@ -17,8 +17,6 @@
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
 
-#include <nlohmann_json/include/nlohmann/json.hpp>
-
 namespace Sailor
 {
 	class ShaderSet : public Object
@@ -65,7 +63,7 @@ namespace Sailor
 
 	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 
-	class ShaderAsset : IJsonSerializable, IYamlSerializable
+	class ShaderAsset : IYamlSerializable
 	{
 	public:
 
@@ -84,9 +82,6 @@ namespace Sailor
 		SAILOR_API bool ContainsVertex() const { return !m_glslVertex.empty(); }
 		SAILOR_API bool ContainsCommon() const { return !m_glslCommon.empty(); }
 		SAILOR_API bool ContainsCompute() const { return !m_glslCompute.empty(); }
-
-		SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
-		SAILOR_API virtual void Deserialize(const nlohmann::json& inData);
 
 		SAILOR_API virtual void Serialize(YAML::Node& outData) const;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData);
@@ -137,8 +132,6 @@ namespace Sailor
 
 		// ShaderAsset related functions
 		SAILOR_API static void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& includes = {}, const TVector<std::string>& defines = {});
-		SAILOR_API static void ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON);
-		SAILOR_API static bool ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL);
 
 		// Compile related functions
 		SAILOR_API bool ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint32_t permutation);
@@ -153,11 +146,5 @@ namespace Sailor
 
 		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(ShaderAssetInfoPtr shaderAssetInfo);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(ShaderAssetInfoPtr shaderAssetInfo);
-
-	private:
-
-		static constexpr char const* JsonBeginCodeTag = "BEGIN_CODE";
-		static constexpr char const* JsonEndCodeTag = "END_CODE";
-		static constexpr char const* JsonEndLineTag = " END_LINE ";
 	};
 }

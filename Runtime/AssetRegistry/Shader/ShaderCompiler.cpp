@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <iostream>
 
-#include "nlohmann_json/include/nlohmann/json.hpp"
 #include "Core/YamlSerializable.h"
 #include <shaderc/shaderc.hpp>
 #include <thread>
@@ -121,59 +120,6 @@ void ShaderAsset::Deserialize(const YAML::Node& inData)
 	}
 }
 
-void ShaderAsset::Serialize(nlohmann::json& outData) const
-{
-	assert(false);
-}
-
-void ShaderAsset::Deserialize(const nlohmann::json& inData)
-{
-	if (inData.contains("glslVertex"))
-	{
-		m_glslVertex = inData["glslVertex"].get<std::string>();
-	}
-
-	if (inData.contains("glslFragment"))
-	{
-		m_glslFragment = inData["glslFragment"].get<std::string>();
-	}
-
-	if (inData.contains("glslCompute"))
-	{
-		m_glslCompute = inData["glslCompute"].get<std::string>();
-	}
-
-	if (inData.contains("glslCommon"))
-	{
-		m_glslCommon = inData["glslCommon"].get<std::string>();
-	}
-
-	if (inData.contains("defines"))
-	{
-		m_defines = inData["defines"].get<TVector<std::string>>();
-	}
-
-	if (inData.contains("includes"))
-	{
-		m_includes = inData["includes"].get<TVector<std::string>>();
-	}
-
-	if (inData.contains("colorAttachments"))
-	{
-		for (const auto& str : inData["colorAttachments"])
-		{
-			RHI::EFormat format;
-			DeserializeEnum<RHI::EFormat>(str, format);
-			m_colorAttachments.Add(format);
-		}
-	}
-
-	if (inData.contains("depthStencilAttachment"))
-	{
-		DeserializeEnum<RHI::EFormat>(inData["depthStencilAttachment"], m_depthStencilAttachment);
-	}
-}
-
 ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -209,32 +155,10 @@ void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& o
 
 	outGLSLCode.clear();
 
-	std::string vertexGlsl;
-	std::string fragmentGlsl;
-	std::string computeGlsl;
-	std::string commonGlsl;
-
-	if (shader->ContainsVertex() && defines.Contains("VERTEX"))
-	{
-		ConvertFromJsonToGlslCode(shader->GetGlslVertexCode(), vertexGlsl);
-	}
-	
-	if (shader->ContainsFragment() && defines.Contains("FRAGMENT"))
-	{
-		ConvertFromJsonToGlslCode(shader->GetGlslFragmentCode(), fragmentGlsl);
-	}
-
-	if (shader->ContainsCompute())
-	{
-		ConvertFromJsonToGlslCode(shader->GetGlslComputeCode(), computeGlsl);
-	}
-
 	if (shader->ContainsCommon())
 	{
-		ConvertFromJsonToGlslCode(shader->GetGlslCommonCode(), commonGlsl);
+		outGLSLCode += shader->GetGlslCommonCode() + "\n";
 	}
-
-	outGLSLCode += commonGlsl + "\n";
 
 	for (const auto& define : defines)
 	{
@@ -246,74 +170,20 @@ void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& o
 		outGLSLCode += ShaderIncluder::ReadIncludeFile(include) + "\n";
 	}
 
-	if (!vertexGlsl.empty())
+	if (shader->ContainsVertex() && defines.Contains("VERTEX"))
 	{
-		outGLSLCode += "\n#ifdef VERTEX\n" + vertexGlsl + "\n#endif\n";
+		outGLSLCode += "\n#ifdef VERTEX\n" + shader->GetGlslVertexCode() + "\n#endif\n";
 	}
 
-	if (!fragmentGlsl.empty())
+	if (shader->ContainsFragment() && defines.Contains("FRAGMENT"))
 	{
-		outGLSLCode += "\n#ifdef FRAGMENT\n" + fragmentGlsl + "\n#endif\n";
+		outGLSLCode += "\n#ifdef FRAGMENT\n" + shader->GetGlslFragmentCode() + "\n#endif\n";
 	}
 
-	if (!computeGlsl.empty())
+	if (shader->ContainsCompute())
 	{
-		outGLSLCode += "\n#ifdef COMPUTE\n" + computeGlsl + "\n#endif\n";
+		outGLSLCode += "\n#ifdef COMPUTE\n" + shader->GetGlslComputeCode() + "\n#endif\n";
 	}
-}
-
-void ShaderCompiler::ConvertRawShaderToJson(const std::string& shaderText, std::string& outCodeInJSON)
-{
-	SAILOR_PROFILE_FUNCTION();
-
-	outCodeInJSON = shaderText;
-
-	Utils::ReplaceAll(outCodeInJSON, std::string{ '\r' }, std::string{ ' ' });
-
-	TVector<size_t> beginCodeTagLocations;
-	TVector<size_t> endCodeTagLocations;
-
-	Utils::FindAllOccurances(outCodeInJSON, std::string(JsonBeginCodeTag), beginCodeTagLocations);
-	Utils::FindAllOccurances(outCodeInJSON, std::string(JsonEndCodeTag), endCodeTagLocations);
-
-	if (beginCodeTagLocations.Num() != endCodeTagLocations.Num())
-	{
-		//assert(beginCodeTagLocations.Num() == endCodeTagLocations.Num());
-		SAILOR_LOG("Cannot convert from JSON to GLSL shader's code (doesn't match num of begin/end tags): %s", shaderText.c_str());
-		return;
-	}
-
-	size_t shift = 0;
-	for (size_t i = 0; i < beginCodeTagLocations.Num(); i++)
-	{
-		const size_t beginLocation = beginCodeTagLocations[i] + shift;
-		const size_t endLocation = endCodeTagLocations[i] + shift;
-
-		TVector<size_t> endls;
-		Utils::FindAllOccurances(outCodeInJSON, std::string{ '\n' }, endls, beginLocation, endLocation);
-		shift += endls.Num() * size_t(strlen(JsonEndLineTag) - 1);
-
-		Utils::ReplaceAll(outCodeInJSON, std::string{ '\n' }, JsonEndLineTag, beginLocation, endLocation);
-	}
-
-	Utils::ReplaceAll(outCodeInJSON, JsonBeginCodeTag, std::string{ '\"' } + JsonBeginCodeTag);
-	Utils::ReplaceAll(outCodeInJSON, JsonEndCodeTag, JsonEndCodeTag + std::string{ '\"' });
-	Utils::ReplaceAll(outCodeInJSON, std::string{ '\t' }, std::string{ ' ' });
-}
-
-bool ShaderCompiler::ConvertFromJsonToGlslCode(const std::string& shaderText, std::string& outPureGLSL)
-{
-	SAILOR_PROFILE_FUNCTION();
-
-	outPureGLSL = shaderText;
-
-	Utils::ReplaceAll(outPureGLSL, JsonEndLineTag, std::string{ '\n' });
-	Utils::Erase(outPureGLSL, JsonBeginCodeTag);
-	Utils::Erase(outPureGLSL, JsonEndCodeTag);
-
-	Utils::Trim(outPureGLSL);
-
-	return true;
 }
 
 bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint32_t permutation)

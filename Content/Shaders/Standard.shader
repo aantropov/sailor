@@ -113,7 +113,7 @@ glslFragment: |
   {
       mat4 view;
       mat4 projection;
-  	mat4 invProjection;
+  	  mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
       float currentTime;
