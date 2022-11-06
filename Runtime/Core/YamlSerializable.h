@@ -33,23 +33,6 @@ namespace Sailor
 
 namespace YAML
 {
-	template<>
-	struct convert<Sailor::IYamlSerializable>
-	{
-		static Node encode(const Sailor::IYamlSerializable& rhs)
-		{
-			Node node;
-			rhs.Serialize(node);
-			return node;
-		}
-
-		static bool decode(const Node& node, Sailor::IYamlSerializable& rhs)
-		{
-			rhs.Deserialize(node);
-			return true;
-		}
-	};
-
 	template<typename T>
 	struct convert<Sailor::TVector<T>>
 	{
@@ -74,6 +57,7 @@ namespace YAML
 
 			for (std::size_t i = 0; i < node.size(); i++)
 			{
+				// Ugly hack to support covariants
 				if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
 				{
 					T value;
@@ -136,6 +120,23 @@ namespace YAML
 				rhs.Insert(el.as<T>());
 			}
 
+			return true;
+		}
+	};
+
+	template<>
+	struct convert<Sailor::IYamlSerializable>
+	{
+		static Node encode(const Sailor::IYamlSerializable& rhs)
+		{
+			Node node;
+			rhs.Serialize(node);
+			return node;
+		}
+
+		static bool decode(const Node& node, Sailor::IYamlSerializable& rhs)
+		{
+			rhs.Deserialize(node);
 			return true;
 		}
 	};

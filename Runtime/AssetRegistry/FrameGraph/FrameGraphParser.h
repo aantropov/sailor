@@ -84,8 +84,7 @@ namespace Sailor
 					std::string str = inData["width"].as<std::string>();
 					std::stringstream strStream(str);
 
-					uint32_t value = 0;
-					if (!(strStream >> value))
+					if (!(strStream >> m_width))
 					{
 						if (str == "ViewportWidth")
 						{
@@ -99,8 +98,7 @@ namespace Sailor
 					std::string str = inData["height"].as<std::string>();
 					std::stringstream strStream(str);
 
-					uint32_t value = 0;
-					if (!(strStream >> value))
+					if (!(strStream >> m_height))
 					{
 						if (str == "ViewportHeight")
 						{
