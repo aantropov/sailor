@@ -206,7 +206,7 @@ void Material::ForcelyUpdateUniforms()
 	}));
 }
 
-void MaterialAsset::Serialize(nlohmann::json& outData) const
+void MaterialAsset::Serialize(YAML::Node& outData) const
 {
 	outData["bEnableDepthTest"] = m_pData->m_renderState.IsDepthTestEnabled();
 	outData["bEnableZWrite"] = m_pData->m_renderState.IsEnabledZWrite();
@@ -217,17 +217,16 @@ void MaterialAsset::Serialize(nlohmann::json& outData) const
 	outData["renderQueue"] = GetRenderQueue();
 	outData["defines"] = m_pData->m_shaderDefines;
 
-	SerializeEnum<RHI::ECullMode>(outData["cullMode"], m_pData->m_renderState.GetCullMode());
-	SerializeEnum<RHI::EBlendMode>(outData["blendMode"], m_pData->m_renderState.GetBlendMode());
-	SerializeEnum<RHI::EFillMode>(outData["fillMode"], m_pData->m_renderState.GetFillMode());
+	outData["cullMode"] = SerializeEnum<RHI::ECullMode>(m_pData->m_renderState.GetCullMode());
+	outData["blendMode"] = SerializeEnum<RHI::EBlendMode>(m_pData->m_renderState.GetBlendMode());
+	outData["fillMode"] = SerializeEnum<RHI::EFillMode>(m_pData->m_renderState.GetFillMode());
 
-	SerializeArray(m_pData->m_samplers, outData["samplers"]);
+	outData["shaderUid"] = m_pData->m_shader;
+	outData["samplers"] = m_pData->m_samplers;
 	outData["uniforms"] = m_pData->m_uniformsVec4;
-
-	m_pData->m_shader.Serialize(outData["shader"]);
 }
 
-void MaterialAsset::Deserialize(const nlohmann::json& outData)
+void MaterialAsset::Deserialize(const YAML::Node& outData)
 {
 	m_pData = TUniquePtr<Data>::Make();
 
@@ -244,78 +243,69 @@ void MaterialAsset::Deserialize(const nlohmann::json& outData)
 	m_pData->m_shaderDefines.Clear();
 	m_pData->m_uniformsVec4.Clear();
 
-	if (outData.contains("bEnableDepthTest"))
+	if (outData["bEnableDepthTest"])
 	{
-		bEnableDepthTest = outData["bEnableDepthTest"].get<bool>();
+		bEnableDepthTest = outData["bEnableDepthTest"].as<bool>();
 	}
 
-	if (outData.contains("bEnableZWrite"))
+	if (outData["bEnableZWrite"])
 	{
-		bEnableZWrite = outData["bEnableZWrite"].get<bool>();
+		bEnableZWrite = outData["bEnableZWrite"].as<bool>();
 	}
 
-	if (outData.contains("bCustomDepthShader"))
+	if (outData["bCustomDepthShader"])
 	{
-		bCustomDepthShader = outData["bCustomDepthShader"].get<bool>();
+		bCustomDepthShader = outData["bCustomDepthShader"].as<bool>();
 	}
 
-	if (outData.contains("bSupportMultisampling"))
+	if (outData["bSupportMultisampling"])
 	{
-		bSupportMultisampling = outData["bSupportMultisampling"].get<bool>();
+		bSupportMultisampling = outData["bSupportMultisampling"].as<bool>();
 	}
 
-	if (outData.contains("depthBias"))
+	if (outData["depthBias"])
 	{
-		depthBias = outData["depthBias"].get<float>();
+		depthBias = outData["depthBias"].as<float>();
 	}
 
-	if (outData.contains("cullMode"))
+	if (outData["cullMode"])
 	{
 		DeserializeEnum<RHI::ECullMode>(outData["cullMode"], cullMode);
 	}
 
-	if (outData.contains("fillMode"))
+	if (outData["fillMode"])
 	{
 		DeserializeEnum<RHI::EFillMode>(outData["fillMode"], fillMode);
 	}
 
-	if (outData.contains("renderQueue"))
+	if (outData["renderQueue"])
 	{
-		renderQueue = outData["renderQueue"].get<std::string>();
+		renderQueue = outData["renderQueue"].as<std::string>();
 	}
 
-	if (outData.contains("blendMode"))
+	if (outData["blendMode"])
 	{
 		DeserializeEnum<RHI::EBlendMode>(outData["blendMode"], blendMode);
 	}
 
-	if (outData.contains("defines"))
+	if (outData["defines"])
 	{
-		for (auto& elem : outData["defines"])
-		{
-			m_pData->m_shaderDefines.Add(elem.get<std::string>());
-		}
+		m_pData->m_shaderDefines = outData["defines"].as<TVector<std::string>>();
 	}
 
-	if (outData.contains("samplers"))
+	if (outData["samplers"])
 	{
-		Sailor::DeserializeArray(m_pData->m_samplers, outData["samplers"]);
+		m_pData->m_samplers = outData["samplers"].as<TVector<SamplerEntry>>();
 	}
 
-	if (outData.contains("uniforms"))
+	if (outData["uniforms"])
 	{
-		for (auto& elem : outData["uniforms"])
-		{
-			auto first = elem[0].get<std::string>();
-			auto second = elem[1].get<glm::vec4>();
-
-			m_pData->m_uniformsVec4.Add({ first, second });
-		}
+		m_pData->m_uniformsVec4 = outData["uniforms"].as<TVector<TPair<std::string, glm::vec4>>>();
 	}
 
-	if (outData.contains("shader"))
+	if (outData["shaderUid"])
 	{
-		m_pData->m_shader.Deserialize(outData["shader"]);
+		m_pData->m_shader = outData["shaderUid"].as<UID>();
 	}
 
 	const size_t tag = GetHash(renderQueue);
@@ -422,21 +412,14 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 	{
 		const std::string& filepath = materialAssetInfo->GetAssetFilepath();
 
-		std::string materialJson;
+		std::string materialYaml;
 
-		AssetRegistry::ReadAllTextFile(filepath, materialJson);
+		AssetRegistry::ReadAllTextFile(filepath, materialYaml);
 
-		json j_material;
-		if (j_material.parse(materialJson.c_str()) == nlohmann::detail::value_t::discarded)
-		{
-			SAILOR_LOG("Cannot parse material asset file: %s", filepath.c_str());
-			return TSharedPtr<MaterialAsset>();
-		}
-
-		j_material = json::parse(materialJson);
+		YAML::Node yamlNode = YAML::Load(materialYaml);
 
 		MaterialAsset* material = new MaterialAsset();
-		material->Deserialize(j_material);
+		material->Deserialize(yamlNode);
 
 		return TSharedPtr<MaterialAsset>(material);
 	}
@@ -447,7 +430,7 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 
 const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
 {
-	json newMaterial;
+	YAML::Node newMaterial;
 
 	MaterialAsset asset;
 	asset.m_pData = TUniquePtr<MaterialAsset::Data>::Make(std::move(data));
@@ -455,7 +438,7 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 
 	std::ofstream assetFile(assetFilepath);
 
-	assetFile << newMaterial.dump(Sailor::JsonDumpIndent);
+	assetFile << newMaterial;
 	assetFile.close();
 
 	return App::GetSubmodule<AssetRegistry>()->LoadAsset(assetFilepath);
@@ -606,7 +589,7 @@ void MaterialImporter::CollectGarbage()
 	TVector<UID> uidsToRemove;
 	for (auto& promise : m_promises)
 	{
-		if (promise.m_second->IsFinished())
+		if (promise.m_second && promise.m_second->IsFinished())
 		{
 			UID uid = promise.m_first;
 			uidsToRemove.Emplace(uid);

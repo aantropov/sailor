@@ -25,7 +25,6 @@ renderTargets:
   width: ViewportWidth
   height: ViewportHeight
   bIsSurface: false
-  
 
 frame:
 ############################

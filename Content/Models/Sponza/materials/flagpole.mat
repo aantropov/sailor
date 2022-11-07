@@ -1,67 +1,35 @@
-{
-    "bCustomDepthShader": false,
-    "bEnableDepthTest": true,
-    "bEnableZWrite": true,
-    "bSupportMultisampling": true,
-    "blendMode": "None",
-    "cullMode": "Back",
-    "defines": null,
-    "depthBias": 0.0,
-    "fillMode": "Fill",
-    "renderQueue": "Opaque",
-    "samplers": [
-        {
-            "name": "diffuseSampler",
-            "uid": {
-                "uid": "{F7103C4C-5A70-4F86-80F5-FE0187EFB380}"
-            }
-        },
-        {
-            "name": "ambientSampler",
-            "uid": {
-                "uid": "{F7103C4C-5A70-4F86-80F5-FE0187EFB380}"
-            }
-        }
-    ],
-    "shader": {
-        "uid": "{CF739B1A-7457-4649-B244-859285B229CD}"
-    },
-    "uniforms": [
-        [
-            "material.diffuse",
-            {
-                "w": 0.0,
-                "x": 0.47040000557899475,
-                "y": 0.47040000557899475,
-                "z": 0.47040000557899475
-            }
-        ],
-        [
-            "material.ambient",
-            {
-                "w": 0.0,
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-            }
-        ],
-        [
-            "material.emission",
-            {
-                "w": 0.0,
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-            }
-        ],
-        [
-            "material.specular",
-            {
-                "w": 0.0,
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-            }
-        ]
-    ]
-}
+bEnableDepthTest: true
+bEnableZWrite: true
+bSupportMultisampling: true
+bCustomDepthShader: false
+depthBias: 0
+renderQueue: Opaque
+defines: ~
+cullMode: Back
+blendMode: None
+fillMode: Fill
+shaderUid: "{CF739B1A-7457-4649-B244-859285B229CD}"
+samplers:
+  - diffuseSampler: "{F7103C4C-5A70-4F86-80F5-FE0187EFB380}"
+  - ambientSampler: "{F7103C4C-5A70-4F86-80F5-FE0187EFB380}"
+uniforms:
+  - material.diffuse:
+      - 0.470400006
+      - 0.470400006
+      - 0.470400006
+      - 0
+  - material.ambient:
+      - 0
+      - 0
+      - 0
+      - 0
+  - material.emission:
+      - 0
+      - 0
+      - 0
+      - 0
+  - material.specular:
+      - 0
+      - 0
+      - 0
+      - 0

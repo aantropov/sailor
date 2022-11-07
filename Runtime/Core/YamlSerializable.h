@@ -17,9 +17,11 @@ namespace Sailor
 
 	// Cannot move enum to internal YAML convertions, since there is no way to use extra template arg
 	template<typename T>
-	void SerializeEnum(YAML::Node& j, typename std::enable_if< std::is_enum<T>::value, T >::type enumeration)
+	YAML::Node SerializeEnum(typename std::enable_if< std::is_enum<T>::value, T >::type enumeration)
 	{
-		j = magic_enum::enum_name(enumeration);
+		YAML::Node j;
+		j = std::string(magic_enum::enum_name(enumeration));
+		return j;
 	}
 
 	template<typename T>
@@ -45,9 +47,16 @@ namespace YAML
 			}
 			return node;
 		}
+
 		static bool decode(const Node& node, Sailor::TVector<T>& rhs)
 		{
 			rhs.Clear();
+
+			if (node.size() == 0)
+			{
+				return true;
+			}
+
 			rhs.Reserve(node.size());
 
 			if (!node.IsSequence())
@@ -57,18 +66,8 @@ namespace YAML
 
 			for (std::size_t i = 0; i < node.size(); i++)
 			{
-				// Ugly hack to support covariants
-				if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
-				{
-					T value;
-					value.Deserialize(node[i]);
-					rhs.Emplace(std::move(value));
-				}
-				else
-				{
-					auto value = node[i].as<T>();
-					rhs.Emplace(std::move(value));
-				}
+				auto value = node[i].as<T>();
+				rhs.Emplace(std::move(value));
 			}
 
 			return true;
@@ -82,17 +81,16 @@ namespace YAML
 		{
 			Node node;
 
-			node.push_back(rhs.First());
-			node.push_back(rhs.Second());
+			node[rhs.First()] = rhs.Second();
 
 			return node;
 		}
 
 		static bool decode(const Node& node, Sailor::TPair<TKeyType, TValueType>& rhs)
 		{
-			rhs.Clear();
-			rhs.m_first = std::move(node[0].as<TKeyType>());
-			rhs.m_second = std::move(node[1].as<TValueType>());
+			rhs.m_first = node.begin()->first.as<TKeyType>();
+			rhs.m_second = node.begin()->second.as<TValueType>();
+
 			return true;
 		}
 	};
@@ -120,23 +118,6 @@ namespace YAML
 				rhs.Insert(el.as<T>());
 			}
 
-			return true;
-		}
-	};
-
-	template<>
-	struct convert<Sailor::IYamlSerializable>
-	{
-		static Node encode(const Sailor::IYamlSerializable& rhs)
-		{
-			Node node;
-			rhs.Serialize(node);
-			return node;
-		}
-
-		static bool decode(const Node& node, Sailor::IYamlSerializable& rhs)
-		{
-			rhs.Deserialize(node);
 			return true;
 		}
 	};
@@ -224,6 +205,36 @@ namespace YAML
 			rhs.z = node[2].as<float>();
 			rhs.w = node[2].as<float>();
 			return true;
+		}
+	};
+
+	template<typename T>
+	struct convert
+	{
+		static Node encode(const T& rhs)
+		{
+			Node node;
+
+			if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
+			{
+				rhs.Serialize(node);
+			}
+			else
+			{
+				assert(0);
+			}
+
+			return node;
+		}
+
+		static bool decode(const Node& node, T& rhs)
+		{
+			if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
+			{
+				rhs.Deserialize(node);
+				return true;
+			}
+			return false;
 		}
 	};
 }

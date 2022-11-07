@@ -5,7 +5,7 @@
 #include "Containers/Vector.h"
 #include "Containers/Map.h"
 #include "Containers/ConcurrentMap.h"
-#include <nlohmann_json/include/nlohmann/json.hpp>
+#include "Core/YamlSerializable.h"
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
@@ -75,11 +75,11 @@ namespace Sailor
 		friend class MaterialImporter;
 	};
 
-	class MaterialAsset : public IJsonSerializable
+	class MaterialAsset : public IYamlSerializable
 	{
 	public:
 
-		class SamplerEntry final : IJsonSerializable
+		class SamplerEntry final : IYamlSerializable
 		{
 		public:
 
@@ -89,16 +89,15 @@ namespace Sailor
 			std::string m_name;
 			UID m_uid;
 
-			SAILOR_API virtual void Serialize(nlohmann::json& outData) const
+			SAILOR_API virtual void Serialize(YAML::Node& outData) const
 			{
-				outData["name"] = m_name;
-				m_uid.Serialize(outData["uid"]);
+				outData[m_name] = m_uid;
 			}
 
-			SAILOR_API virtual void Deserialize(const nlohmann::json& inData)
+			SAILOR_API virtual void Deserialize(const YAML::Node& inData)
 			{
-				m_name = inData["name"].get<std::string>();
-				m_uid.Deserialize(inData["uid"]);
+				m_name = inData.begin()->first.as<std::string>();
+				m_uid = inData.begin()->second.as<UID>();
 			}
 		};
 
@@ -116,8 +115,8 @@ namespace Sailor
 
 		SAILOR_API virtual ~MaterialAsset() = default;
 
-		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
-		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
+		SAILOR_API virtual void Serialize(YAML::Node& outData) const override;
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_pData->m_renderState; }
 		SAILOR_API const std::string& GetRenderQueue() const { return m_pData->m_renderQueue; }

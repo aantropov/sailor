@@ -47,7 +47,7 @@ void RHISceneView::PrepareSnapshots()
 		*res.m_camera = camera;
 
 		res.m_numLights = m_numLights;
-		res.m_rhiLightsData= m_rhiLightsData;
+		res.m_rhiLightsData = m_rhiLightsData;
 
 		// Stationary
 		TVector<RHIMeshProxy> meshProxies;
@@ -58,6 +58,11 @@ void RHISceneView::PrepareSnapshots()
 		{
 			auto& ecsData = m_world->GetECS<StaticMeshRendererECS>()->GetComponentData(meshProxy.m_staticMeshEcs);
 
+			if (ecsData.GetMaterials().Num() == 0)
+			{
+				continue;
+			}
+
 			RHISceneViewProxy viewProxy;
 			viewProxy.m_staticMeshEcs = meshProxy.m_staticMeshEcs;
 			viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
@@ -66,6 +71,7 @@ void RHISceneView::PrepareSnapshots()
 			for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
 			{
 				size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);
+
 				auto& material = ecsData.GetMaterials()[materialIndex];
 
 				if (material && material->IsReady())

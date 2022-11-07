@@ -3,6 +3,7 @@ includes:
 - Shaders/Lighting.glsl
 defines:
 - ALPHA_CUTOUT
+
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
@@ -208,7 +209,7 @@ glslFragment: |
   	MaterialData material = GetMaterialData();
   	material.diffuse *= texture(diffuseSampler, fragTexcoord) * fragColor;
   	material.ambient *= texture(ambientSampler, fragTexcoord);
-  	outColor = material.ambient;
+  	outColor = material.ambient + vec4(0,0,0,0);
   	
   #ifdef ALPHA_CUTOUT
   	if(material.diffuse.a < 0.05)

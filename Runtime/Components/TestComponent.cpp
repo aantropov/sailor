@@ -72,7 +72,7 @@ void TestComponent::BeginPlay()
 			{
 				auto lightGameObject = GetWorld()->Instantiate();
 				auto lightComponent = lightGameObject->AddComponent<LightComponent>();
-				const float size = (float)(rand() % 60);
+				const float size = 100 + (float)(rand() % 60);
 
 				//lightGameObject->SetMobilityType(EMobilityType::Static);
 				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
