@@ -35,7 +35,7 @@ namespace Sailor
 		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
 		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 
-		SAILOR_API virtual void Serialize(YAML::Node& outData) const override;
+		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 	protected:

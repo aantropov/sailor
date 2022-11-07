@@ -12,8 +12,8 @@ namespace Sailor
 	public:
 		SAILOR_API virtual ~TextureAssetInfo() = default;
 
-		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
-		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
+		SAILOR_API virtual YAML::Node Serialize() const override;
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 		SAILOR_API RHI::ETextureFiltration GetFiltration() const { return m_filtration; }
 		SAILOR_API RHI::ETextureClamping GetClamping() const { return m_clamping; }
@@ -35,7 +35,7 @@ namespace Sailor
 
 		SAILOR_API TextureAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		SAILOR_API virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
+		SAILOR_API virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const;
 		SAILOR_API virtual AssetInfoPtr CreateAssetInfo() const;
 
 		SAILOR_API virtual ~TextureAssetInfoHandler() = default;

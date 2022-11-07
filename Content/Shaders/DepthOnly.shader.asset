@@ -1,7 +1,3 @@
-{
-    "assetImportTime": 1667727804,
-    "filename": "DepthOnly.shader",
-    "uid": {
-        "uid": "{754E9641-FD55-411D-A0B8-3A76E94FE5C2}"
-    }
-}
+uid: "{6A89DB42-1F5D-4995-A092-0050B43F5CA0}"
+filename: DepthOnly.shader
+assetImportTime: 1667727804

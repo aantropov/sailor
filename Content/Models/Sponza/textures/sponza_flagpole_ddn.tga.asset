@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906232,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "sponza_flagpole_ddn.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{E7AB6244-FE73-4DAD-BCE5-BF904623AA01}"
-    }
-}
+uid: "{852E17C9-B47F-40B7-908B-C93E3806C449}"
+filename: sponza_flagpole_ddn.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

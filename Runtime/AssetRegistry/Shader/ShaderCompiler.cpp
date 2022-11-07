@@ -67,11 +67,6 @@ bool ShaderSet::IsReady() const
 	return (m_rhiVertexShader && m_rhiFragmentShader) || m_rhiComputeShader;
 }
 
-void ShaderAsset::Serialize(YAML::Node& outData) const
-{
-	assert(false);
-}
-
 void ShaderAsset::Deserialize(const YAML::Node& inData)
 {
 	if (inData["glslVertex"])

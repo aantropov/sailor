@@ -1,24 +1,23 @@
 bEnableDepthTest: true
 bEnableZWrite: true
 bSupportMultisampling: true
-bCustomDepthShader: true
+bCustomDepthShader: false
 depthBias: 0
 renderQueue: Opaque
-defines: 
-- ALPHA_CUTOUT
+defines: ~
 cullMode: Back
 blendMode: None
 fillMode: Fill
-shaderUid: "{CF739B1A-7457-4649-B244-859285B229CD}"
+shaderUid: "{E42B1499-8C0C-47E3-9584-E7BB6CD821FC}"
 samplers:
-  - diffuseSampler: "{9BBFADA9-23DC-471E-9DBC-A8C2403F462A}"
-  - ambientSampler: "{9BBFADA9-23DC-471E-9DBC-A8C2403F462A}"
+  - diffuseSampler: "{655D7168-052F-486C-8AF0-7D66C7B0D8E8}"
+  - ambientSampler: "{655D7168-052F-486C-8AF0-7D66C7B0D8E8}"
 uniforms:
   - material.diffuse:
       - 0.470400006
       - 0.470400006
       - 0.470400006
-      - 1.0
+      - 0
   - material.ambient:
       - 0
       - 0

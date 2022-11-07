@@ -11,8 +11,8 @@ namespace Sailor
 	{
 	public:
 
-		virtual void Serialize(YAML::Node& outData) const = 0;
-		virtual void Deserialize(const YAML::Node& inData) = 0;
+		virtual YAML::Node Serialize() const { assert(0); return YAML::Node(); };
+		virtual void Deserialize(const YAML::Node& inData) { assert(0); }
 	};
 
 	// Cannot move enum to internal YAML convertions, since there is no way to use extra template arg
@@ -217,7 +217,11 @@ namespace YAML
 
 			if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
 			{
-				rhs.Serialize(node);
+				node = rhs.Serialize();
+			}
+			else if constexpr (IsEnum<T>)
+			{
+				node = SerializeEnum(rhs);
 			}
 			else
 			{
@@ -232,6 +236,11 @@ namespace YAML
 			if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
 			{
 				rhs.Deserialize(node);
+				return true;
+			}
+			else if constexpr (IsEnum<T>)
+			{
+				DeserializeEnum(node, rhs);
 				return true;
 			}
 			return false;

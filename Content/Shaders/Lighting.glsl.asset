@@ -1,7 +1,3 @@
-{
-    "assetImportTime": 1667560665,
-    "filename": "Lighting.glsl",
-    "uid": {
-        "uid": "{1DC1A829-F7FD-48B4-8155-C42A42C28366}"
-    }
-}
+uid: "{79AA6CFB-10D1-4B52-963C-C59C67DCBF92}"
+filename: Lighting.glsl
+assetImportTime: 1667560665

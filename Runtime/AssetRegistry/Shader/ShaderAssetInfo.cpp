@@ -14,10 +14,10 @@ ShaderAssetInfoHandler::ShaderAssetInfoHandler(AssetRegistry* assetRegistry)
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
-void ShaderAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const
+void ShaderAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 {
 	ShaderAssetInfo defaultObject;
-	defaultObject.Serialize(outDefaultJson);
+	outDefaultYaml = defaultObject.Serialize();
 }
 
 AssetInfoPtr ShaderAssetInfoHandler::CreateAssetInfo() const

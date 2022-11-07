@@ -7,31 +7,33 @@
 
 using namespace Sailor;
 
-void ModelAssetInfo::Serialize(nlohmann::json& outData) const
+YAML::Node ModelAssetInfo::Serialize() const
 {
-	AssetInfo::Serialize(outData);
+	YAML::Node outData;
+	outData = AssetInfo::Serialize();
 	outData["bShouldGenerateMaterials"] = m_bShouldGenerateMaterials;
 	outData["bShouldBatchByMaterial"] = m_bShouldBatchByMaterials;
-	Sailor::SerializeArray(m_materials, outData["defaultMaterials"]);
+	outData["defaultMaterials"] = m_materials;
+	return outData;
 }
 
-void ModelAssetInfo::Deserialize(const nlohmann::json& outData)
+void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 {
 	AssetInfo::Deserialize(outData);
 
-	if (outData.contains("bShouldGenerateMaterials"))
+	if (outData["bShouldGenerateMaterials"])
 	{
-		m_bShouldGenerateMaterials = outData["bShouldGenerateMaterials"].get<bool>();;
+		m_bShouldGenerateMaterials = outData["bShouldGenerateMaterials"].as<bool>();;
 	}
 
-	if (outData.contains("bShouldBatchByMaterial"))
+	if (outData["bShouldBatchByMaterial"])
 	{
-		m_bShouldBatchByMaterials = outData["bShouldBatchByMaterial"].get<bool>();;
+		m_bShouldBatchByMaterials = outData["bShouldBatchByMaterial"].as<bool>();;
 	}
 
-	if (outData.contains("defaultMaterials"))
+	if (outData["defaultMaterials"])
 	{
-		Sailor::DeserializeArray(m_materials, outData["defaultMaterials"]);
+		m_materials = outData["defaultMaterials"].as<TVector<UID>>();
 	}
 }
 
@@ -41,10 +43,10 @@ ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
-void ModelAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const
+void ModelAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 {
 	ModelAssetInfo defaultObject;
-	defaultObject.Serialize(outDefaultJson);
+	outDefaultYaml = defaultObject.Serialize();
 }
 
 AssetInfoPtr ModelAssetInfoHandler::CreateAssetInfo() const

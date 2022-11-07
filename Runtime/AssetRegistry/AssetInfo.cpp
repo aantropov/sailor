@@ -8,27 +8,30 @@
 
 using namespace Sailor;
 
-void AssetInfo::Serialize(nlohmann::json& outData) const
+YAML::Node AssetInfo::Serialize() const
 {
-	m_UID.Serialize(outData["uid"]);
-	outData["filename"] = std::filesystem::path(GetAssetFilepath()).filename().string();
+	YAML::Node outData;
+	const std::string filename = std::filesystem::path(GetAssetFilepath()).filename().string();
+
+	outData["uid"] = m_UID;
+	outData["filename"] = filename;
 	outData["assetImportTime"] = m_assetImportTime;
+	return outData;
 }
 
-void AssetInfo::Deserialize(const nlohmann::json& inData)
+void AssetInfo::Deserialize(const YAML::Node& inData)
 {
-	m_UID.Deserialize(inData["uid"]);
-	m_assetFilename = inData["filename"].get<std::string>();
-	m_assetImportTime = inData["assetImportTime"].get<std::time_t>();
+	m_UID = inData["uid"].as<UID>();
+	m_assetFilename = inData["filename"].as<std::string>();
+	m_assetImportTime = inData["assetImportTime"].as<std::time_t>();
 }
 
 void AssetInfo::SaveMetaFile()
 {
 	std::ofstream assetFile{ GetMetaFilepath() };
 
-	json newMeta;
-	Serialize(newMeta);
-	assetFile << newMeta.dump(Sailor::JsonDumpIndent);
+	YAML::Node node = Serialize();
+	assetFile << node;
 	assetFile.close();
 
 	m_metaLoadTime = GetMetaLastModificationTime();
@@ -105,14 +108,14 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) co
 	std::filesystem::remove(assetInfoFilename);
 	std::ofstream assetFile{ assetInfoFilename };
 
-	json newMeta;
-	GetDefaultMetaJson(newMeta);
-	UID::CreateNewUID().Serialize(newMeta["uid"]);
+	YAML::Node newMeta;
+	GetDefaultMeta(newMeta);
 
+	newMeta["uid"] = UID::CreateNewUID().Serialize();
 	newMeta["filename"] = std::filesystem::path(assetFilepath).filename().string();
 	newMeta["assetImportTime"] = std::time(nullptr);
 
-	assetFile << newMeta.dump(Sailor::JsonDumpIndent);
+	assetFile << newMeta;
 	assetFile.close();
 
 	auto assetInfoPtr = LoadAssetInfo(assetInfoFilename);
@@ -144,36 +147,35 @@ void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 {
 	const bool bWasMetaExpired = assetInfo->IsMetaExpired();
 
-	std::ifstream assetFile(assetInfo->GetMetaFilepath());
+	std::string content;
+	AssetRegistry::ReadAllTextFile(assetInfo->GetMetaFilepath(), content);
 
-	json meta;
-	assetFile >> meta;
+	YAML::Node meta = YAML::Load(content);
 
 	assetInfo->Deserialize(meta);
 	assetInfo->m_metaLoadTime = std::time(nullptr);
-	
+
 	const bool bWasAssetExpired = assetInfo->IsAssetExpired();
 
 	assetInfo->m_assetImportTime = assetInfo->GetAssetLastModificationTime();
 
-	assetFile.close();
 
 	for (IAssetInfoHandlerListener* listener : m_listeners)
 	{
 		listener->OnUpdateAssetInfo(assetInfo, bWasMetaExpired || bWasAssetExpired);
 	}
 
-/*	if (bWasAssetExpired)
-	{
-		assetInfo->SaveMetaFile();
-	}
-	*/
+	/*	if (bWasAssetExpired)
+		{
+			assetInfo->SaveMetaFile();
+		}
+		*/
 }
 
-void DefaultAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const
+void DefaultAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 {
 	AssetInfo defaultObject;
-	defaultObject.Serialize(outDefaultJson);
+	outDefaultYaml = defaultObject.Serialize();
 }
 
 AssetInfoPtr DefaultAssetInfoHandler::CreateAssetInfo() const

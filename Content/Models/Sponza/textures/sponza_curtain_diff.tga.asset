@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906232,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "sponza_curtain_diff.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{4C06A252-FC70-41B2-BEA4-989D28CC12FA}"
-    }
-}
+uid: "{286C2AE4-7CA2-42C9-98FD-C8C71309A986}"
+filename: sponza_curtain_diff.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

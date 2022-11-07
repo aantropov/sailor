@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906232,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "sponza_arch_ddn.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{6078D4D1-947C-4106-A292-AB0609150CDF}"
-    }
-}
+uid: "{C0C01AC6-1ECD-4C23-AF5F-90EA06574214}"
+filename: sponza_arch_ddn.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

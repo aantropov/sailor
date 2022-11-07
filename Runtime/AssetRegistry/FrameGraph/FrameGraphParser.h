@@ -22,7 +22,6 @@ namespace Sailor
 
 			bool operator==(const Resource& rhs) const { return m_name == rhs.m_name; }
 
-			virtual void Serialize(YAML::Node& outData) const { }
 			virtual void Deserialize(const YAML::Node& inData)
 			{
 				m_name = inData["name"].as<std::string>();
@@ -74,7 +73,6 @@ namespace Sailor
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
-			virtual void Serialize(YAML::Node& outData) const { }
 			virtual void Deserialize(const YAML::Node& inData)
 			{
 				m_name = inData["name"].as<std::string>();
@@ -141,7 +139,6 @@ namespace Sailor
 				}
 			}
 
-			virtual void Serialize(YAML::Node& outData) const { }
 			virtual void Deserialize(const YAML::Node& inData)
 			{
 				m_name = inData["name"].as<std::string>();
@@ -163,7 +160,6 @@ namespace Sailor
 			}
 		};
 
-		virtual void Serialize(YAML::Node& outData) const { }
 		virtual void Deserialize(const YAML::Node& inData);
 
 		TMap<std::string, Resource> m_samplers;

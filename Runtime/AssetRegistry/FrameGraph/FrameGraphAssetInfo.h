@@ -11,9 +11,6 @@ namespace Sailor
 	{
 	public:
 		SAILOR_API virtual ~FrameGraphAssetInfo() = default;
-
-		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
-		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
 	};
 
 	using FrameGraphAssetInfoPtr = FrameGraphAssetInfo*;
@@ -24,7 +21,7 @@ namespace Sailor
 
 		FrameGraphAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
+		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const;
 		virtual AssetInfoPtr CreateAssetInfo() const;
 
 		virtual ~FrameGraphAssetInfoHandler() = default;

@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906232,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "sponza_floor_a_diff.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{B3A259F6-1790-4277-A91C-4A4DE99F2B84}"
-    }
-}
+uid: "{EFE8B4C8-CD61-423E-81B1-A4FB8B56A236}"
+filename: sponza_floor_a_diff.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

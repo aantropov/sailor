@@ -7,9 +7,11 @@ using namespace nlohmann;
 
 const UID UID::Invalid = UID();
 
-void UID::Serialize(YAML::Node& outData) const
+YAML::Node UID::Serialize() const
 {
+	YAML::Node outData;
 	outData = m_UID;
+	return outData;
 }
 
 void UID::Deserialize(const YAML::Node& inData)

@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906232,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "background_ddn.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{AC4C662F-A239-4D2D-91FE-CFC6669C6728}"
-    }
-}
+uid: "{311BD863-2D55-4D7D-8A95-8D9E83DF6D2E}"
+filename: background_ddn.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

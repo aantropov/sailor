@@ -8,10 +8,10 @@ defines: ~
 cullMode: Back
 blendMode: None
 fillMode: Fill
-shaderUid: "{CF739B1A-7457-4649-B244-859285B229CD}"
+shaderUid: "{E42B1499-8C0C-47E3-9584-E7BB6CD821FC}"
 samplers:
-  - diffuseSampler: "{850DD22F-25A8-451A-BD42-1A8ECE7889E1}"
-  - ambientSampler: "{850DD22F-25A8-451A-BD42-1A8ECE7889E1}"
+  - diffuseSampler: "{3E72670E-B7E6-4DE7-8180-C905E5171924}"
+  - ambientSampler: "{3E72670E-B7E6-4DE7-8180-C905E5171924}"
 uniforms:
   - material.diffuse:
       - 0.470400006

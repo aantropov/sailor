@@ -89,9 +89,11 @@ namespace Sailor
 			std::string m_name;
 			UID m_uid;
 
-			SAILOR_API virtual void Serialize(YAML::Node& outData) const
+			SAILOR_API virtual YAML::Node Serialize() const
 			{
+				YAML::Node outData;
 				outData[m_name] = m_uid;
+				return outData;
 			}
 
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData)
@@ -115,7 +117,7 @@ namespace Sailor
 
 		SAILOR_API virtual ~MaterialAsset() = default;
 
-		SAILOR_API virtual void Serialize(YAML::Node& outData) const override;
+		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_pData->m_renderState; }

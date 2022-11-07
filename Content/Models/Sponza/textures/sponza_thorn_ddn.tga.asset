@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906233,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "sponza_thorn_ddn.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{9E81C624-798E-4558-B2E9-5088A6F93395}"
-    }
-}
+uid: "{14D6778E-A8A1-4A16-A7BD-E7192BD4E0F1}"
+filename: sponza_thorn_ddn.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

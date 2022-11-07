@@ -32,10 +32,13 @@ namespace Sailor
 
 	template<typename TBase, typename TDerived>
 	concept IsBaseOf = std::is_base_of<TBase, TDerived>::value;
-	
+
+	template<typename T>
+	concept IsEnum = std::is_enum<T>::value;
+
 	template<typename T, typename R>
 	concept IsSame = std::is_same<T, R>::value;
-	
+
 	template<typename T>
 	concept TIsFunction = std::is_function<T>::value;
 
@@ -56,7 +59,7 @@ namespace Sailor
 
 	template<typename T, typename... U>
 	__forceinline size_t GetAddress(const std::function<T(U...)>& f)
-	{		
+	{
 		typedef T(fnType)(U...);
 		fnType** fnPointer = (const_cast<std::function<T(U...)>&>(f)).template target<fnType*>();
 		return (size_t)*fnPointer;

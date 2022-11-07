@@ -206,8 +206,9 @@ void Material::ForcelyUpdateUniforms()
 	}));
 }
 
-void MaterialAsset::Serialize(YAML::Node& outData) const
+YAML::Node MaterialAsset::Serialize() const
 {
+	YAML::Node outData;
 	outData["bEnableDepthTest"] = m_pData->m_renderState.IsDepthTestEnabled();
 	outData["bEnableZWrite"] = m_pData->m_renderState.IsEnabledZWrite();
 	outData["bSupportMultisampling"] = m_pData->m_renderState.SupportMultisampling();
@@ -224,6 +225,8 @@ void MaterialAsset::Serialize(YAML::Node& outData) const
 	outData["shaderUid"] = m_pData->m_shader;
 	outData["samplers"] = m_pData->m_samplers;
 	outData["uniforms"] = m_pData->m_uniformsVec4;
+
+	return outData;
 }
 
 void MaterialAsset::Deserialize(const YAML::Node& outData)
@@ -434,7 +437,7 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 
 	MaterialAsset asset;
 	asset.m_pData = TUniquePtr<MaterialAsset::Data>::Make(std::move(data));
-	asset.Serialize(newMaterial);
+	newMaterial = asset.Serialize();
 
 	std::ofstream assetFile(assetFilepath);
 

@@ -83,7 +83,6 @@ namespace Sailor
 		SAILOR_API bool ContainsCommon() const { return !m_glslCommon.empty(); }
 		SAILOR_API bool ContainsCompute() const { return !m_glslCompute.empty(); }
 
-		SAILOR_API virtual void Serialize(YAML::Node& outData) const;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData);
 
 	protected:

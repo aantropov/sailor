@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1649838792,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "lion.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{309425A1-E493-4DD4-B0A2-36FC4F4A23D1}"
-    }
-}
+uid: "{958AC0B2-CAC0-4461-9BC0-BB913CE2805B}"
+filename: lion.tga
+assetImportTime: 1649750560
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

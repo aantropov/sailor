@@ -5,12 +5,11 @@
 #include "AssetRegistry/UID.h"
 #include "Core/Singleton.hpp"
 #include "Containers/Vector.h"
-#include "Core/JsonSerializable.h"
-#include "nlohmann_json/include/nlohmann/json.hpp"
+#include "Core/YamlSerializable.h"
 
 namespace Sailor
 {
-	class AssetInfo : IJsonSerializable
+	class AssetInfo : IYamlSerializable
 	{
 
 	public:
@@ -36,8 +35,8 @@ namespace Sailor
 		SAILOR_API bool IsMetaExpired() const;
 		SAILOR_API bool IsAssetExpired() const;
 
-		SAILOR_API virtual void Serialize(nlohmann::json& outData) const override;
-		SAILOR_API virtual void Deserialize(const nlohmann::json& inData) override;
+		SAILOR_API virtual YAML::Node Serialize() const override;
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 		SAILOR_API virtual void SaveMetaFile();
 
@@ -73,7 +72,7 @@ namespace Sailor
 			m_listeners.Remove(listener);
 		}
 
-		virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const = 0;
+		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const = 0;
 
 		virtual AssetInfoPtr LoadAssetInfo(const std::string& metaFilepath) const;
 		virtual AssetInfoPtr ImportAsset(const std::string& assetFilepath) const;
@@ -96,7 +95,7 @@ namespace Sailor
 
 		DefaultAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const override;
+		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
 		virtual AssetInfoPtr CreateAssetInfo() const override;
 
 		virtual ~DefaultAssetInfoHandler() override = default;

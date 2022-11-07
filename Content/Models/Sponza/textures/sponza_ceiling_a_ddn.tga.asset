@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906232,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "sponza_ceiling_a_ddn.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{D8A4A214-9D3B-4E72-8B95-2C873B017878}"
-    }
-}
+uid: "{8C2CFEC2-0C26-467C-9456-73A70507CFFE}"
+filename: sponza_ceiling_a_ddn.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

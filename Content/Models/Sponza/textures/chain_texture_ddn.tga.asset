@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906232,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "chain_texture_ddn.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{3120D701-2160-4009-A8B9-B3807D74651D}"
-    }
-}
+uid: "{C24574AC-557E-4362-AA44-DC64E16B5CEA}"
+filename: chain_texture_ddn.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

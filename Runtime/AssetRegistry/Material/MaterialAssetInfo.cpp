@@ -7,26 +7,16 @@
 
 using namespace Sailor;
 
-void MaterialAssetInfo::Serialize(nlohmann::json& outData) const
-{
-	AssetInfo::Serialize(outData);
-}
-
-void MaterialAssetInfo::Deserialize(const nlohmann::json& outData)
-{
-	AssetInfo::Deserialize(outData);
-}
-
 MaterialAssetInfoHandler::MaterialAssetInfoHandler(AssetRegistry* assetRegistry)
 {
 	m_supportedExtensions.Emplace("mat");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
-void MaterialAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const
+void MaterialAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 {
 	MaterialAssetInfo defaultObject;
-	defaultObject.Serialize(outDefaultJson);
+	outDefaultYaml = defaultObject.Serialize();
 }
 
 AssetInfoPtr MaterialAssetInfoHandler::CreateAssetInfo() const

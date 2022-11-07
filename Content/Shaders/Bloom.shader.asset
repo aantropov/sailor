@@ -1,7 +1,3 @@
-{
-    "assetImportTime": 1667674066,
-    "filename": "Bloom.shader",
-    "uid": {
-        "uid": "{2055C9FB-A1E8-4A2B-87E5-466EC43EFCA4}"
-    }
-}
+uid: "{FEEEEDEB-9280-4231-A696-6195155FDF4E}"
+filename: Bloom.shader
+assetImportTime: 1667674066

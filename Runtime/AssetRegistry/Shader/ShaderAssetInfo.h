@@ -21,7 +21,7 @@ namespace Sailor
 
 		SAILOR_API ShaderAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		SAILOR_API virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
+		SAILOR_API virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const;
 		SAILOR_API virtual AssetInfoPtr CreateAssetInfo() const;
 
 		SAILOR_API virtual ~ShaderAssetInfoHandler() = default;

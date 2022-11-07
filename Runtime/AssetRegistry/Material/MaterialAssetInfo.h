@@ -12,9 +12,6 @@ namespace Sailor
 	public:
 		virtual SAILOR_API ~MaterialAssetInfo() = default;
 
-		virtual SAILOR_API void Serialize(nlohmann::json& outData) const override;
-		virtual SAILOR_API void Deserialize(const nlohmann::json& inData) override;
-
 	private:
 
 	};
@@ -28,7 +25,7 @@ namespace Sailor
 
 		SAILOR_API MaterialAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		SAILOR_API virtual void GetDefaultMetaJson(nlohmann::json& outDefaultJson) const;
+		SAILOR_API virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const;
 		SAILOR_API virtual AssetInfoPtr CreateAssetInfo() const;
 
 		SAILOR_API virtual ~MaterialAssetInfoHandler() = default;

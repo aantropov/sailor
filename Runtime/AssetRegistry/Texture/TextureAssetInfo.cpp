@@ -7,31 +7,35 @@
 
 using namespace Sailor;
 
-void TextureAssetInfo::Serialize(nlohmann::json& outData) const
+YAML::Node TextureAssetInfo::Serialize() const
 {
-	AssetInfo::Serialize(outData);
+	YAML::Node outData;
+
+	outData = AssetInfo::Serialize();
 	outData["bShouldGenerateMips"] = m_bShouldGenerateMips;
 
-	SerializeEnum<RHI::ETextureClamping>(outData["clamping"], m_clamping);
-	SerializeEnum<RHI::ETextureFiltration>(outData["filtration"], m_filtration);
+	outData["clamping"] = SerializeEnum<RHI::ETextureClamping>(m_clamping);
+	outData["filtration"] = SerializeEnum<RHI::ETextureFiltration>(m_filtration);
+
+	return outData;
 }
 
-void TextureAssetInfo::Deserialize(const nlohmann::json& outData)
+void TextureAssetInfo::Deserialize(const YAML::Node& outData)
 {
 	AssetInfo::Deserialize(outData);
-	if (outData.contains("clamping"))
+	if (outData["clamping"])
 	{
 		DeserializeEnum<RHI::ETextureClamping>(outData["clamping"], m_clamping);
 	}
 
-	if (outData.contains("filtration"))
+	if (outData["filtration"])
 	{
 		DeserializeEnum<RHI::ETextureFiltration>(outData["filtration"], m_filtration);
 	}
 
-	if (outData.contains("bShouldGenerateMips"))
+	if (outData["bShouldGenerateMips"])
 	{
-		m_bShouldGenerateMips = outData["bShouldGenerateMips"].get<bool>();
+		m_bShouldGenerateMips = outData["bShouldGenerateMips"].as<bool>();
 	}
 }
 
@@ -47,10 +51,10 @@ TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
-void TextureAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const
+void TextureAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 {
 	TextureAssetInfo defaultObject;
-	defaultObject.Serialize(outDefaultJson);
+	outDefaultYaml = defaultObject.Serialize();
 }
 
 AssetInfoPtr TextureAssetInfoHandler::CreateAssetInfo() const

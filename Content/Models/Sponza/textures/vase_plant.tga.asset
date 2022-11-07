@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906233,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "vase_plant.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{9BBFADA9-23DC-471E-9DBC-A8C2403F462A}"
-    }
-}
+uid: "{655D7168-052F-486C-8AF0-7D66C7B0D8E8}"
+filename: vase_plant.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

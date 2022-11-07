@@ -7,26 +7,16 @@
 
 using namespace Sailor;
 
-void FrameGraphAssetInfo::Serialize(nlohmann::json& outData) const
-{
-	AssetInfo::Serialize(outData);
-}
-
-void FrameGraphAssetInfo::Deserialize(const nlohmann::json& outData)
-{
-	AssetInfo::Deserialize(outData);
-}
-
 FrameGraphAssetInfoHandler::FrameGraphAssetInfoHandler(AssetRegistry* assetRegistry)
 {
 	m_supportedExtensions.Emplace("renderer");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
-void FrameGraphAssetInfoHandler::GetDefaultMetaJson(nlohmann::json& outDefaultJson) const
+void FrameGraphAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 {
 	FrameGraphAssetInfo defaultObject;
-	defaultObject.Serialize(outDefaultJson);
+	outDefaultYaml= defaultObject.Serialize();
 }
 
 AssetInfoPtr FrameGraphAssetInfoHandler::CreateAssetInfo() const

@@ -1,10 +1,6 @@
-{
-    "assetImportTime": 1632906232,
-    "bShouldGenerateMips": true,
-    "clamping": "Repeat",
-    "filename": "sponza_column_a_diff.tga",
-    "filtration": "Linear",
-    "uid": {
-        "uid": "{33F6C3CB-C847-49D3-8627-923BAACC5A39}"
-    }
-}
+uid: "{FA39AC8E-17DB-400C-B615-0E08E4C2EBAE}"
+filename: sponza_column_a_diff.tga
+assetImportTime: 1645985411
+bShouldGenerateMips: true
+clamping: Repeat
+filtration: Linear

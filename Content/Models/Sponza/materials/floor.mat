@@ -4,21 +4,20 @@ bSupportMultisampling: true
 bCustomDepthShader: false
 depthBias: 0
 renderQueue: Opaque
-defines: 
-- ALPHA_CUTOUT
+defines: ~
 cullMode: Back
 blendMode: None
 fillMode: Fill
-shaderUid: "{CF739B1A-7457-4649-B244-859285B229CD}"
+shaderUid: "{E42B1499-8C0C-47E3-9584-E7BB6CD821FC}"
 samplers:
-  - diffuseSampler: "{B3A259F6-1790-4277-A91C-4A4DE99F2B84}"
-  - ambientSampler: "{B3A259F6-1790-4277-A91C-4A4DE99F2B84}"
+  - diffuseSampler: "{EFE8B4C8-CD61-423E-81B1-A4FB8B56A236}"
+  - ambientSampler: "{EFE8B4C8-CD61-423E-81B1-A4FB8B56A236}"
 uniforms:
   - material.diffuse:
       - 0.470400006
       - 0.470400006
       - 0.470400006
-      - 1.0
+      - 0
   - material.ambient:
       - 0
       - 0
