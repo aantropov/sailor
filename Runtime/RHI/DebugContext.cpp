@@ -193,7 +193,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 	{
 		return;
 	}
-
+	
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 
 	if (!m_material)

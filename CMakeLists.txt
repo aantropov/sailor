@@ -7,7 +7,6 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include_directories ("${PROJECT_SOURCE_DIR}/Runtime/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/easy_profiler/include/")
-include_directories ("${PROJECT_SOURCE_DIR}/External/easy_profiler/include/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
 
 set(CMAKE_CXX_STANDARD 20)

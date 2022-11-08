@@ -16,7 +16,7 @@ FrameGraphAssetInfoHandler::FrameGraphAssetInfoHandler(AssetRegistry* assetRegis
 void FrameGraphAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 {
 	FrameGraphAssetInfo defaultObject;
-	outDefaultYaml= defaultObject.Serialize();
+	outDefaultYaml = defaultObject.Serialize();
 }
 
 AssetInfoPtr FrameGraphAssetInfoHandler::CreateAssetInfo() const
