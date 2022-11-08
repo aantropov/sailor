@@ -55,6 +55,12 @@ set_property(TARGET yaml-cpp-sandbox PROPERTY FOLDER "ThirdParty/Yaml")
 set_property(TARGET uninstall PROPERTY FOLDER "ThirdParty/Yaml")
 target_link_libraries(SailorLib debug "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Debug/yaml-cppd.lib" optimized "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Release/yaml-cpp.lib")
 
+# Required exceptions
+set_target_properties(yaml-cpp PROPERTIES COMPILE_FLAGS "/EHsc")
+set_target_properties(yaml-cpp-read PROPERTIES COMPILE_FLAGS "/EHsc")
+set_target_properties(yaml-cpp-parse PROPERTIES COMPILE_FLAGS "/EHsc")
+set_target_properties(yaml-cpp-sandbox PROPERTIES COMPILE_FLAGS "/EHsc")
+
 # Properties->General->Output Directory
 set_target_properties(SailorLib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/Binaries)
 
@@ -65,7 +71,6 @@ set_target_properties(SailorLib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BI
 set_target_properties(SailorLib PROPERTIES PREFIX "")
 set_target_properties(SailorLib PROPERTIES OUTPUT_NAME "Sailor")
 set_target_properties(SailorLib PROPERTIES COMPILE_FLAGS "/Zc:wchar_t")
+set_target_properties(SailorLib PROPERTIES COMPILE_FLAGS "/EHsc")
 
-if(MSVC)
- target_compile_options(SailorLib PRIVATE "/MP")
-endif()
+target_compile_options(SailorLib PRIVATE "/MP")

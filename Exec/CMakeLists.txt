@@ -16,3 +16,4 @@ set_property(TARGET SailorExec PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_C
 
 set_target_properties(SailorExec PROPERTIES OUTPUT_NAME "Sailor_exec")
 set_target_properties(SailorExec PROPERTIES COMPILE_FLAGS "/Zc:wchar_t")
+set_target_properties(SailorExec PROPERTIES COMPILE_FLAGS "/EHsc")
