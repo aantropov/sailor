@@ -33,19 +33,19 @@ void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tr
 		return;
 	}
 
-	auto target = colorAttachment->GetResolved();
+	auto target = colorAttachment->GetTarget();
 
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 	commands->RenderSecondaryCommandBuffers(commandList,
 		TVector<RHI::RHICommandListPtr> {sceneView.m_debugDrawSecondaryCmdList},
-		TVector<RHI::RHITexturePtr>{ target },
+		TVector<RHI::RHISurfacePtr>{ colorAttachment },
 		depthAttachment,
 		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
-		false);
+		true);
 
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
 }

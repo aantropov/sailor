@@ -21,7 +21,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 		const auto& matrix = camera.GetProjectionMatrix() * camera.GetViewMatrix();
 		RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, false);
 		auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
-		commands->BeginSecondaryCommandList(secondaryCmdList, false, false);
+		commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
 		world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix);
 		commands->EndCommandList(secondaryCmdList);
 
