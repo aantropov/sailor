@@ -42,12 +42,12 @@ target_link_libraries(SailorLib "${Vulkan_LIBRARIES}")
 
 get_filename_component(VulkanLibPath "${Vulkan_LIBRARIES}" DIRECTORY )
 
-target_link_libraries(SailorLib winmm.lib)
 target_link_libraries(SailorLib debug "${VulkanLibPath}/shaderc_combinedd.lib" 
                                 optimized "${VulkanLibPath}/shaderc_combined.lib")
+target_link_libraries(SailorLib winmm.lib)
 
 # YAML
-add_dependencies(SailorLib yaml-cpp)
+include_directories(SailorLib "${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
 target_link_libraries(SailorLib debug "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Debug/yaml-cppd.lib" 
                                 optimized "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Release/yaml-cpp.lib")
 
@@ -61,6 +61,7 @@ set_target_properties(SailorLib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BI
 set_target_properties(SailorLib PROPERTIES PREFIX "")
 set_target_properties(SailorLib PROPERTIES OUTPUT_NAME "Sailor")
 set_target_properties(SailorLib PROPERTIES COMPILE_FLAGS "/Zc:wchar_t")
-#set_target_properties(SailorLib PROPERTIES COMPILE_FLAGS "/EHsc")
 
-target_compile_options(SailorLib PRIVATE "/MP")
+if(MSVC)
+ target_compile_options(SailorLib PRIVATE "/MP")
+endif()

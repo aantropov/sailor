@@ -11,6 +11,11 @@ add_compile_definitions(_SAILOR_IMPORT_)
 set_target_properties(SailorExec PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/Binaries) 
 set_property(TARGET SailorExec PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# YAML
+include_directories(SailorExec "${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
+target_link_libraries(SailorExec debug "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Debug/yaml-cppd.lib" 
+                                optimized "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Release/yaml-cpp.lib")
+
 # Adds logic to INSTALL.vcproj to copy app.exe to destination directory
 #install (TARGETS SailorExec RUNTIME DESTINATION ${CMAKE_SOURCE_DIR}/Binaries/${CMAKE_CONFIGURATION_TYPE})
 

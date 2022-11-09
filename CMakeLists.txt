@@ -7,7 +7,6 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include_directories ("${PROJECT_SOURCE_DIR}/Runtime/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/easy_profiler/include/")
-include_directories("${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -24,9 +23,6 @@ add_compile_options($<$<NOT:$<CONFIG:DEBUG>>:/GT>)
 add_compile_options(/GF)
 add_compile_options(/WX)
 add_compile_options(/arch:AVX2)
-
-#Fix Yaml cpp compilation
-add_compile_definitions (yaml-cpp YAML_CPP_STATIC_DEFINE)
 
 option(CONSOLE "Enable console" ON)
 if(CONSOLE)
@@ -88,14 +84,15 @@ add_compile_definitions($<$<NOT:$<CONFIG:RELEASE>>:SAILOR_VULKAN_ENABLE_VALIDATI
 add_compile_definitions(NOMINMAX)
 add_compile_definitions(WIN32_LEAN_AND_MEAN)
 
+# YAML
+add_compile_definitions (YAML_CPP_STATIC_DEFINE)
+
 message ("cxx Flags:" ${CMAKE_CXX_FLAGS})
 
 add_subdirectory(Exec)
 add_subdirectory(Lib)
-add_subdirectory("${PROJECT_SOURCE_DIR}/External/yaml-cpp/" EXCLUDE_FROM_ALL)
-
+# YAML
+add_subdirectory("${PROJECT_SOURCE_DIR}/External/yaml-cpp/" "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/" EXCLUDE_FROM_ALL)
 set_property(TARGET yaml-cpp PROPERTY FOLDER "ThirdParty/Yaml")
-#set_property(TARGET yaml-cpp-read PROPERTY FOLDER "ThirdParty/Yaml")
-#set_property(TARGET yaml-cpp-parse PROPERTY FOLDER "ThirdParty/Yaml")
-#set_property(TARGET yaml-cpp-sandbox PROPERTY FOLDER "ThirdParty/Yaml")
-#set_property(TARGET uninstall PROPERTY FOLDER "ThirdParty/Yaml")
+include_directories(yaml-cpp "${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
+add_dependencies(SailorLib yaml-cpp)
