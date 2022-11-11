@@ -32,9 +32,9 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 		{
 			auto it = std::find_if(m_dependencies.begin(), m_dependencies.end(),
 				[&fence](const auto& lhs)
-			{
-				return fence.GetRawPtr() == lhs.GetRawPtr();
-			});
+				{
+					return fence.GetRawPtr() == lhs.GetRawPtr();
+				});
 
 			if (it != std::end(m_dependencies))
 			{
@@ -80,6 +80,16 @@ Renderer::~Renderer()
 	m_cachedSceneViews.Clear();
 	Renderer::GetDriver()->WaitIdle();
 	m_driverInstance.Clear();
+}
+
+RHI::EFormat Renderer::GetColorFormat() const
+{
+	return Renderer::GetDriver()->GetBackBuffer()->GetFormat();
+}
+
+RHI::EFormat Renderer::GetDepthFormat() const
+{
+	return Renderer::GetDriver()->GetDepthBuffer()->GetFormat();
 }
 
 void Renderer::Clear()
@@ -137,7 +147,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	}
 
 	SAILOR_PROFILE_END_BLOCK();
-
 	if (!m_frameGraph || m_bFrameGraphOutdated)
 	{
 		m_frameGraph.Clear();
@@ -158,6 +167,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 	world->GetECS<LightingECS>()->FillLightsData(rhiSceneView);
 
+	rhiSceneView->m_drawImGui = frame.GetDrawImGuiCmdList();
 	rhiSceneView->PrepareDebugDrawCommandLists(world);
 	rhiSceneView->PrepareSnapshots();
 
@@ -169,94 +179,94 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	auto preRenderingJob = Tasks::Scheduler::CreateTask("Trace command lists & Track RHI resources",
 		[this]()
-	{
-		this->GetDriver()->TrackResources_ThreadSafe();
-	}, Sailor::Tasks::EThreadType::Render);
+		{
+			this->GetDriver()->TrackResources_ThreadSafe();
+		}, Sailor::Tasks::EThreadType::Render);
 
 	auto renderingJob = Tasks::Scheduler::CreateTask("Render Frame",
 		[this, frame, rhiSceneView]()
-	{
-		auto frameInstance = frame;
-		static Utils::Timer timer;
-		timer.Start();
-
-		bool bRunCommandLists = false;
-		TVector<RHI::RHICommandListPtr> primaryCommandLists;
-		TVector<RHI::RHICommandListPtr> transferCommandLists;
-		TVector<RHISemaphorePtr> waitFrameUpdate;
-
-		do
 		{
-			static uint32_t totalFramesCount = 0U;
+			auto frameInstance = frame;
+	static Utils::Timer timer;
+	timer.Start();
 
-			SAILOR_PROFILE_BLOCK("Present Frame");
+	bool bRunCommandLists = false;
+	TVector<RHI::RHICommandListPtr> primaryCommandLists;
+	TVector<RHI::RHICommandListPtr> transferCommandLists;
+	TVector<RHISemaphorePtr> waitFrameUpdate;
 
-			if (m_driverInstance->AcquireNextImage())
+	do
+	{
+		static uint32_t totalFramesCount = 0U;
+
+		SAILOR_PROFILE_BLOCK("Present Frame");
+
+		if (m_driverInstance->AcquireNextImage())
+		{
+			if (!bRunCommandLists && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 			{
-				if (!bRunCommandLists && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+				auto rhiFrameGraph = m_frameGraph->GetRHI();
+
+				rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
+				rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
+				rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists);
+
+				SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
+				for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
 				{
-					auto rhiFrameGraph = m_frameGraph->GetRHI();
-
-					rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
-					rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-					rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists);
-
-					SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
-					for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
-					{
-						if (auto pCommandList = frameInstance.GetCommandBuffer(i))
-						{
-							waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-							GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
-						}
-					}
-
-					for (auto& cmdList : transferCommandLists)
+					if (auto pCommandList = frameInstance.GetCommandBuffer(i))
 					{
 						waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-						GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
-					}
-
-					SAILOR_PROFILE_END_BLOCK();
-
-					bRunCommandLists = true;
-				}
-
-				if (m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
-				{
-					totalFramesCount++;
-					timer.Stop();
-
-					if (timer.ResultAccumulatedMs() > 1000)
-					{
-						m_stats.m_gpuFps = totalFramesCount;
-						totalFramesCount = 0;
-						timer.Clear();
-#if defined(SAILOR_BUILD_WITH_VULKAN)
-						size_t heapUsage = 0;
-						size_t heapBudget = 0;
-
-						VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
-
-						m_stats.m_gpuHeapUsage = heapUsage;
-						m_stats.m_gpuHeapBudget = heapBudget;
-						m_stats.m_numSubmittedCommandBuffers = m_driverInstance->GetNumSubmittedCommandBuffers();
-#endif // SAILOR_BUILD_WITH_VULKAN
+						GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
 					}
 				}
-				else
+
+				for (auto& cmdList : transferCommandLists)
 				{
-					m_stats.m_gpuFps = 0;
+					waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+					GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
 				}
+
+				SAILOR_PROFILE_END_BLOCK();
+
+				bRunCommandLists = true;
 			}
 
-			SAILOR_PROFILE_END_BLOCK();
+			if (m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
+			{
+				totalFramesCount++;
+				timer.Stop();
 
-		} while (m_pViewport->IsIconic());
+				if (timer.ResultAccumulatedMs() > 1000)
+				{
+					m_stats.m_gpuFps = totalFramesCount;
+					totalFramesCount = 0;
+					timer.Clear();
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+					size_t heapUsage = 0;
+					size_t heapBudget = 0;
 
-		GetDriver()->CollectGarbage_RenderThread();
+					VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
 
-	}, Sailor::Tasks::EThreadType::Render);
+					m_stats.m_gpuHeapUsage = heapUsage;
+					m_stats.m_gpuHeapBudget = heapBudget;
+					m_stats.m_numSubmittedCommandBuffers = m_driverInstance->GetNumSubmittedCommandBuffers();
+#endif // SAILOR_BUILD_WITH_VULKAN
+				}
+			}
+			else
+			{
+				m_stats.m_gpuFps = 0;
+			}
+		}
+
+		SAILOR_PROFILE_END_BLOCK();
+
+	} while (m_pViewport->IsIconic());
+
+	GetDriver()->CollectGarbage_RenderThread();
+
+		}, Sailor::Tasks::EThreadType::Render);
 
 	renderingJob->Join(preRenderingJob);
 

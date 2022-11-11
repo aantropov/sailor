@@ -9,6 +9,7 @@
 #include "Engine/EngineLoop.h"
 #include "ECS/TransformECS.h"
 #include "glm/glm/gtc/random.hpp"
+#include "imgui.h"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -64,6 +65,7 @@ void TestComponent::BeginPlay()
 	lightComponent->SetIntensity(vec3(60.0f, 60.0f, 60.0f));
 	lightComponent->SetLightType(ELightType::Spot);
 
+	/**/
 	for (int32_t i = -1000; i < 1000; i += 250)
 	{
 		for (int32_t j = 0; j < 800; j += 250)
@@ -94,7 +96,9 @@ void TestComponent::EndPlay()
 
 void TestComponent::Tick(float deltaTime)
 {
-	auto& transform = GetOwner()->GetTransformComponent();
+	ImGui::ShowDemoWindow();
+
+	auto& transform = GetOwner()->GetTransformComponent();	
 	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec4_Forward;
 
 	const float sensitivity = 500;

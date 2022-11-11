@@ -11,12 +11,14 @@
 #include "Components/CameraComponent.h"
 #include "Components/TestComponent.h"
 #include "ECS/TransformECS.h"
+#include "Submodules/ImGuiApi.h"
+#include "RHI/Types.h"
 
 using namespace Sailor;
 
 TSharedPtr<World> EngineLoop::CreateWorld(std::string name)
 {
-	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name)));	
+	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name)));
 
 	auto gameObject = m_worlds[0]->Instantiate();
 	auto cameraComponent = gameObject->AddComponent<CameraComponent>();
@@ -33,14 +35,25 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	static Utils::Timer timer;
 
 	timer.Start();
-
 	SAILOR_PROFILE_BLOCK("CPU Frame");
+	App::GetSubmodule<ImGuiApi>()->NewFrame();
 
 	for (auto& world : m_worlds)
 	{
 		world->Tick(currentInputState);
 	}
 
+	auto cmdList = currentInputState.GetDrawImGuiCmdList();
+
+	auto transferCmdList = currentInputState.CreateCommandBuffer(1);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(transferCmdList, true);
+
+		// Default swapchain format
+		RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, RHI::EFormat::B8G8R8A8_SRGB);
+		App::GetSubmodule<ImGuiApi>()->RenderFrame(transferCmdList, cmdList);
+		RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
+
+	RHI::Renderer::GetDriverCommands()->EndCommandList(transferCmdList);
 	SAILOR_PROFILE_END_BLOCK();
 
 	timer.Stop();

@@ -92,9 +92,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	}
 
 	VK_CHECK(vkCreateSwapchainKHR(*m_device, &createSwapChainInfo, nullptr, &m_swapchain));
-
-	oldSwapchain.Clear();
-
+	
 	TVector<VkImage> vkSwapchainImages;
 
 	// Create Swapchain images & image views

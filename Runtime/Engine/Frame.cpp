@@ -36,6 +36,8 @@ FrameState::FrameState(WorldPtr world, int64_t timeMs, const FrameInputState& cu
 		m_pData->m_deltaTimeSeconds = (m_pData->m_currentTime - previousFrame->GetTime()) / 1000.0f;
 		m_pData->m_inputState.TrackForChanges(previousFrame->GetInputState());
 	}
+
+	m_pData->m_drawImGui = RHI::Renderer::GetDriver()->CreateCommandList(true, false);
 }
 
 FrameState::FrameState(const FrameState& frameState) noexcept :

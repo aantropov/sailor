@@ -48,6 +48,7 @@ void RHISceneView::PrepareSnapshots()
 
 		res.m_numLights = m_numLights;
 		res.m_rhiLightsData = m_rhiLightsData;
+		res.m_drawImGui = m_drawImGui;
 
 		// Stationary
 		TVector<RHIMeshProxy> meshProxies;

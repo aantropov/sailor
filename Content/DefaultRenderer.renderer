@@ -44,7 +44,7 @@ frame:
 - name: LightCulling
   renderTargets:
   - depthStencil: LinearDepth
-  
+
 ############################
 - name: Clear
   vec4:
@@ -70,10 +70,22 @@ frame:
 #- name: Blit
 #  renderTargets:
 #  - src: Main
-#  - dst: QuarterMain   
+#  - dst: QuarterMain
 
+#############################
+- name: RenderImGui
+  renderTargets:
+  - color: Main
+  - depthStencil: DepthBuffer
 #############################
 - name: Blit
   renderTargets:
   - src: Main
   - dst: BackBuffer
+
+#############################
+- name: RenderImGui
+  renderTargets:
+  - color: BackBuffer
+  - depthStencil: DepthBuffer
+ 

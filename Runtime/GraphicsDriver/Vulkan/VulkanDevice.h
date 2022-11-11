@@ -125,6 +125,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API uint32_t GetNumSubmittedCommandBufers() const { return m_numSubmittedCommandBuffers; }
 
+		SAILOR_API VulkanQueuePtr GetGraphicsQueue() { return m_graphicsQueue; }
+
 	protected:
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();

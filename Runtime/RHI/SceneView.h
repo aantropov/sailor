@@ -37,6 +37,7 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_frameBindings;
 		RHICommandListPtr m_debugDrawSecondaryCmdList;
 		uint32_t m_numLights;
+		RHI::RHICommandListPtr m_drawImGui;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData;
 	};
 
@@ -54,6 +55,7 @@ namespace Sailor::RHI
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;
 
+		RHI::RHICommandListPtr m_drawImGui;
 		TVector<RHI::RHICommandListPtr> m_debugDraw;
 		TVector<RHISceneViewSnapshot> m_snapshots;
 

@@ -7,6 +7,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include_directories ("${PROJECT_SOURCE_DIR}/Runtime/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/")
 include_directories ("${PROJECT_SOURCE_DIR}/External/easy_profiler/include/")
+include_directories ("${PROJECT_SOURCE_DIR}/External/imgui/")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -91,6 +92,7 @@ message ("cxx Flags:" ${CMAKE_CXX_FLAGS})
 
 add_subdirectory(Exec)
 add_subdirectory(Lib)
+
 # YAML
 add_subdirectory("${PROJECT_SOURCE_DIR}/External/yaml-cpp/" "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/" EXCLUDE_FROM_ALL)
 set_property(TARGET yaml-cpp PROPERTY FOLDER "ThirdParty/Yaml")

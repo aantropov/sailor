@@ -47,12 +47,12 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 			duplicatedCommandPool = m_commandPool,
 			duplicatedDevice = m_device
 		]()
-	{
-		if (duplicatedCommandBuffer)
 		{
-			vkFreeCommandBuffers(*duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
-		}
-	});
+			if (duplicatedCommandBuffer)
+			{
+				vkFreeCommandBuffers(*duplicatedDevice, *duplicatedCommandPool, 1, &duplicatedCommandBuffer);
+			}
+		});
 
 	if (m_currentThreadId == currentThreadId)
 	{
@@ -412,10 +412,10 @@ void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferPtr>& buff
 	_freea(vertexBuffers);
 }
 
-void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer, uint32_t offset)
+void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer, uint32_t offset, bool bUint16InsteadOfUint32)
 {
 	m_bufferDependencies.Add(indexBuffer);
-	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, offset, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, offset, bUint16InsteadOfUint32 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 }
 
 void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet, VkPipelineBindPoint bindPoint)

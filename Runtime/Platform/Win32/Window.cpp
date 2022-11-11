@@ -8,6 +8,7 @@
 #include "Sailor.h"
 #include "Tasks/Tasks.h"
 #include "Tasks/Scheduler.h"
+#include "Submodules/ImGuiApi.h"
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -295,6 +296,8 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 		pWindow = Window::g_windows[windowIndex];
 	}
+
+	App::GetSubmodule<ImGuiApi>()->HandleWin32(hWnd, msg, wParam, lParam);
 
 	switch (msg)
 	{

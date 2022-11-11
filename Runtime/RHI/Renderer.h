@@ -33,6 +33,8 @@ namespace Sailor::RHI
 		SAILOR_API ~Renderer() override;
 
 		SAILOR_API RHI::EMsaaSamples GetMsaaSamples() const { return m_msaaSamples; }
+		SAILOR_API RHI::EFormat GetColorFormat() const;
+		SAILOR_API RHI::EFormat GetDepthFormat() const;
 
 		SAILOR_API void FixLostDevice();
 		SAILOR_API bool PushFrame(const Sailor::FrameState& frame);

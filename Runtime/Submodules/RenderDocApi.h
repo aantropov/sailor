@@ -1,4 +1,5 @@
 #pragma once
+#include "Core/Submodule.h"
 
 #ifdef BUILD_WITH_RENDER_DOC
 #include <renderdoc/renderdoc/api/app/renderdoc_app.h>

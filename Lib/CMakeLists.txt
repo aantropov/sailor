@@ -58,6 +58,22 @@ set_target_properties(SailorLib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BI
 #         RUNTIME DESTINATION ${CMAKE_SOURCE_DIR}/Binaries/${CMAKE_CONFIGURATION_TYPE}
 #         LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/Binaries/${CMAKE_CONFIGURATION_TYPE})
 
+
+# ImGui
+include_directories(SailorLib "${PROJECT_SOURCE_DIR}/External/imgui/")
+target_sources(SailorLib PRIVATE
+"${PROJECT_SOURCE_DIR}/External/imgui/imgui.h"
+"${PROJECT_SOURCE_DIR}/External/imgui/imgui.cpp"
+
+"${PROJECT_SOURCE_DIR}/External/imgui/imgui_demo.cpp"
+"${PROJECT_SOURCE_DIR}/External/imgui/imgui_draw.cpp"
+"${PROJECT_SOURCE_DIR}/External/imgui/imgui_widgets.cpp"
+
+#"${PROJECT_SOURCE_DIR}/External/imgui/backends/imgui_impl_vulkan.cpp"
+"${PROJECT_SOURCE_DIR}/External/imgui/backends/imgui_impl_win32.cpp"
+"${PROJECT_SOURCE_DIR}/External/imgui/imgui_tables.cpp"
+)
+
 set_target_properties(SailorLib PROPERTIES PREFIX "")
 set_target_properties(SailorLib PROPERTIES OUTPUT_NAME "Sailor")
 set_target_properties(SailorLib PROPERTIES COMPILE_FLAGS "/Zc:wchar_t")

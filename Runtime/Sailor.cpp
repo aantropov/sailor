@@ -22,8 +22,9 @@
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "ECS/TransformECS.h"
-#include "GraphicsDriver/RenderDocApi.h"
+#include "Submodules/RenderDocApi.h"
 #include "timeApi.h"
+#include "Submodules/ImGuiApi.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -89,6 +90,7 @@ void App::Initialize()
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
+	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pViewportWindow->GetHWND()));
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
@@ -171,6 +173,7 @@ void App::Start()
 		if (bCanCreateNewFrame)
 		{
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
+
 			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
 			App::GetSubmodule<EngineLoop>()->ProcessCpuFrame(currentFrame);
 		}
@@ -252,6 +255,7 @@ void App::Shutdown()
 	RemoveSubmodule<TextureAssetInfoHandler>();
 	RemoveSubmodule<ModelAssetInfoHandler>();
 	RemoveSubmodule<FrameGraphAssetInfoHandler>();
+	RemoveSubmodule<ImGuiApi>();
 
 	// We need to finish all jobs before release
 	GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
