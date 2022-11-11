@@ -49,7 +49,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(transferCmdList, true);
 
 		// Default swapchain format
-		RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, RHI::EFormat::B8G8R8A8_SRGB);
+		RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false);
 		App::GetSubmodule<ImGuiApi>()->RenderFrame(transferCmdList, cmdList);
 		RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 

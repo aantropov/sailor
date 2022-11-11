@@ -77,15 +77,10 @@ frame:
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
+  
 #############################
 - name: Blit
   renderTargets:
   - src: Main
   - dst: BackBuffer
-
-#############################
-- name: RenderImGui
-  renderTargets:
-  - color: BackBuffer
-  - depthStencil: DepthBuffer
- 
+  

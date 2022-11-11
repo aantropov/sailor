@@ -136,7 +136,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			TVector<VulkanDescriptorPtr> descriptors);
 
 		/// VkDescriptorSetAllocateInfo settings
-		VulkanDescriptorSetLayoutPtr setLayout;
+		VulkanDescriptorSetLayoutPtr m_setLayout;
 		TVector<VulkanDescriptorPtr> m_descriptors;
 
 		SAILOR_API virtual void Compile() override;
@@ -144,6 +144,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API VkDescriptorSet* GetHandle() { return &m_descriptorSet; }
 		SAILOR_API operator VkDescriptorSet() const { return m_descriptorSet; }
+
+		SAILOR_API VulkanDescriptorSetLayoutPtr GetDescriptorSetLayout() { return m_descriptorSetLayout; }
 
 	protected:
 		SAILOR_API ~VulkanDescriptorSet() override;

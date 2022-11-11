@@ -372,6 +372,7 @@ namespace Sailor::RHI
 
 	enum class ECullMode : uint8_t
 	{
+		None = 0,
 		Front = 0x00000001,
 		Back = 0x00000002,
 		FrontAndBack = 0x00000003
@@ -585,6 +586,20 @@ namespace Sailor::RHI
 
 	void SetAttributeFormat(VertexAttributeBits& bits, uint32_t shaderBinding, EFormat format);
 	EFormat GetAttributeFormat(const VertexAttributeBits& bits, uint32_t shaderBinding);
+
+	struct VertexP2UV2C1
+	{
+		glm::vec2 m_position;
+		glm::vec2 m_uv;
+		uint32_t m_color;
+
+		SAILOR_API bool operator==(const VertexP2UV2C1& other) const
+		{
+			return m_position == other.m_position && m_color == other.m_color && m_uv == other.m_uv;
+		}
+
+		SAILOR_API static VertexAttributeBits GetVertexAttributeBits();
+	};
 
 	class VertexP3C4
 	{

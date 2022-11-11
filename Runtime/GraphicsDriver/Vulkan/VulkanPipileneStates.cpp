@@ -42,10 +42,8 @@ VulkanStateViewport::VulkanStateViewport(float x, float y, float width, float he
 	m_viewport.x = x;
 	m_viewport.width = width;
 
-	// Flip Y-axis to point up in viewport
-	// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
-	m_viewport.y = height;
-	m_viewport.height = -height;
+	m_viewport.y = y;
+	m_viewport.height = height;
 
 	m_viewport.minDepth = minDepth;
 	m_viewport.maxDepth = maxDepth;

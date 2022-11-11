@@ -17,7 +17,5 @@ namespace Sailor
 		void HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 	protected:
-
-		std::function<void()> m_releaseRhiResources;
 	};
 }

@@ -492,7 +492,20 @@ void VulkanDevice::CreateSwapchain(const Window* viewport)
 		viewport->IsVsyncRequested(),
 		m_oldSwapchain);
 
-	m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
+	const float height = (float)m_swapchain->GetExtent().height;
+	const float width = (float)m_swapchain->GetExtent().width;
+
+	// Flip Y-axis to point up in viewport
+	// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
+	//m_viewport.y = height;
+	//m_viewport.height = -height;
+
+	m_pCurrentFrameViewport = new VulkanStateViewport(0.0f, height,
+		width, -height,
+		{ 0,0 },
+		{ (uint32_t)width, (uint32_t)height },
+		0.0f, 1.0f);
+
 	m_bNeedToTransitSwapchainToPresent = true;
 }
 

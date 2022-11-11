@@ -7,6 +7,7 @@
 #include "GraphicsDriver/Vulkan/VulkanQueue.h"
 #include "GraphicsDriver/Vulkan/VulkanRenderPass.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
+#include "GraphicsDriver/Vulkan/VulkanImGui.h"
 
 #include "RHI/CommandList.h"
 #include "backends/imgui_impl_win32.h"
@@ -18,58 +19,31 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 void ImGuiApi::HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
 }
 
 ImGuiApi::ImGuiApi(void* hWnd)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 #ifdef  SAILOR_BUILD_WITH_VULKAN
-
-	// the size of the pool is very oversize, but it's copied from imgui demo itself.
-	VkDescriptorPoolSize poolSizes[] =
-	{
-		{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
-	};
-
-	VkDescriptorPoolCreateInfo poolInfo = {};
-	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-	poolInfo.maxSets = 1000;
-	poolInfo.poolSizeCount = (uint32_t)std::size(poolSizes);
-	poolInfo.pPoolSizes = poolSizes;
 
 	auto instance = GraphicsDriver::Vulkan::VulkanApi::GetInstance();
 	auto device = instance->GetMainDevice();
 
-	VkDescriptorPool imguiPool;
-	VK_CHECK(vkCreateDescriptorPool(*device, &poolInfo, nullptr, &imguiPool));
-
 	ImGui::CreateContext();
-
 	ImGui_ImplWin32_Init(hWnd);
 
 	Sailor::GraphicsDriver::Vulkan::ImGui_InitInfo initVulkanInfo = {};
 	initVulkanInfo.Instance = instance->GetVkInstance();
 	initVulkanInfo.Device = device;
-	initVulkanInfo.DescriptorPool = imguiPool;
 	initVulkanInfo.MinImageCount = 3;
 	initVulkanInfo.ImageCount = 3;
 
-	// We are only renders into frame buffer
-	initVulkanInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-
-	Sailor::GraphicsDriver::Vulkan::ImGui_Init(&initVulkanInfo, *device->GetRenderPass());
-
+	Sailor::GraphicsDriver::Vulkan::ImGui_Init(&initVulkanInfo);
+	/*
 	auto& renderer = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	RHI::RHICommandListPtr cmdList = renderer->CreateCommandList();
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
@@ -78,37 +52,26 @@ ImGuiApi::ImGuiApi(void* hWnd)
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 	renderer->SubmitCommandList_Immediate(cmdList);
-
-	m_releaseRhiResources = [=]()
-	{
-		auto instance = GraphicsDriver::Vulkan::VulkanApi::GetInstance();
-		auto device = instance->GetMainDevice();
-
-		vkDestroyDescriptorPool(*device, imguiPool, nullptr);
-	};
-
+	*/
 #endif //  SAILOR_BUILD_WITH_VULKAN
 }
 
 ImGuiApi::~ImGuiApi()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 #ifdef  SAILOR_BUILD_WITH_VULKAN
 
 	ImGui_ImplWin32_Shutdown();
-
-	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Release ImGui",
-		([releaseRhiResources = std::move(m_releaseRhiResources)]()
-			{
-				releaseRhiResources();
-				Sailor::GraphicsDriver::Vulkan::ImGui_Shutdown();
-			}
-	));
+	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Release ImGui", ([]() { Sailor::GraphicsDriver::Vulkan::ImGui_Shutdown(); }));
 
 #endif //  SAILOR_BUILD_WITH_VULKAN
 }
 
 void ImGuiApi::NewFrame()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	Sailor::GraphicsDriver::Vulkan::ImGui_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
