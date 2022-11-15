@@ -7,6 +7,7 @@ samplers:
 float:
 - PI: 3.1415926
   
+############################
 renderTargets:
 - name: Main
   format: R16G16B16A16_SFLOAT
@@ -26,6 +27,7 @@ renderTargets:
   height: ViewportHeight
   bIsSurface: false
 
+############################
 frame:
 ############################
 - name: DepthPrepass
@@ -42,11 +44,13 @@ frame:
   
 ############################
 - name: LightCulling
+############################
   renderTargets:
   - depthStencil: LinearDepth
 
 ############################
 - name: Clear
+############################
   vec4:
   - clearColor: [0.4902, 0.808, 0.921, 1]      
   renderTargets:
@@ -54,6 +58,7 @@ frame:
   
 ############################
 - name: RenderScene
+############################
   string:
   - Tag: Opaque
   renderTargets:
@@ -62,24 +67,34 @@ frame:
   
 ############################
 - name: DebugDraw
+############################
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
 
-############################
-#- name: Blit
+#############################
+#- name: PostProcess
+##############################
+#  string:
+#  - shader: Shaders/Bloom.shader
+#  - defines: FILTER
+#  vec4:
+#  - data.border: [1.0, 0, 0, 0]
 #  renderTargets:
-#  - src: Main
-#  - dst: QuarterMain
+#  - color: Main
+#  - depthStencil: DepthBuffer
+#  - colorSampler: Main
 
 #############################
 - name: RenderImGui
+#############################
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
   
 #############################
 - name: Blit
+#############################
   renderTargets:
   - src: Main
   - dst: BackBuffer

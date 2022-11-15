@@ -428,51 +428,32 @@ namespace Sailor
 
 		size_t RemoveAll(const TPredicate<TElementType>& predicate)
 		{
-			size_t shift = 0;
-			for (size_t i = 0; i < m_arrayNum - shift; i++)
+			TVector<TElementType> tmp;
+			tmp.Reserve(m_arrayNum);
+
+			size_t num = 0;
+			for (size_t i = 0; i < m_arrayNum; i++)
 			{
-				const bool bShouldDelete = predicate(m_pRawPtr[i]);
-				if (bShouldDelete)
+				if (predicate(m_pRawPtr[i]))
 				{
-					shift++;
-					DestructElements(i, 1);
+					continue;
 				}
 
-				if (shift)
+				if constexpr (IsMoveConstructible<TElementType>)
 				{
-					if (bShouldDelete)
-					{
-						if constexpr (IsMoveConstructible<TElementType>)
-						{
-							ConstructMoveElements(i, m_pRawPtr[i + shift], 1);
-						}
-						else
-						{
-							ConstructElements(i, m_pRawPtr[i + shift], 1);
-						}
-					}
-					else
-					{
-						if constexpr (IsMoveAssignable<TElementType>)
-						{
-							m_pRawPtr[i] = std::move(m_pRawPtr[i + shift]);
-						}
-						else
-						{
-							m_pRawPtr[i] = m_pRawPtr[i + shift];
-						}
-					}
+					tmp.Emplace(std::move(m_pRawPtr[i]));
+				}
+				else
+				{
+					tmp.Add(m_pRawPtr[i]);
 				}
 
-				if (bShouldDelete)
-				{
-					i--;
-				}
+				num++;
 			}
 
-			DestructElements(m_arrayNum - shift, shift);
-			m_arrayNum -= shift;
-			return shift;
+			(*this) = std::move(tmp);
+
+			return num;
 		}
 
 		void RemoveAt(size_t index, size_t count = 1)

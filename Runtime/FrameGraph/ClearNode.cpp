@@ -21,14 +21,14 @@ void ClearNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	glm::vec4 clearColor = GetVectorParam("clearColor");
+	glm::vec4 clearColor = GetVec4("clearColor");
 
-	if (RHI::RHISurfacePtr surfaceAttachment = GetResourceParam("color").DynamicCast<RHISurface>())
+	if (RHI::RHISurfacePtr surfaceAttachment = GetRHIResource("color").DynamicCast<RHISurface>())
 	{
 		commands->ClearImage(commandList, surfaceAttachment->GetTarget(), clearColor);
 		commands->ClearImage(commandList, surfaceAttachment->GetResolved(), clearColor);
 	}
-	else if (RHI::RHITexturePtr colorAttachment = GetResourceParam("color").DynamicCast<RHITexture>())
+	else if (RHI::RHITexturePtr colorAttachment = GetRHIResource("color").DynamicCast<RHITexture>())
 	{
 		commands->ClearImage(commandList, colorAttachment, clearColor);
 	}

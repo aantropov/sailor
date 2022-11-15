@@ -46,7 +46,7 @@ public:
 
 RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 {
-	const std::string& sortOrder = GetStringParam("Sorting");
+	const std::string& sortOrder = GetString("Sorting");
 
 	if (!sortOrder.empty())
 	{
@@ -167,7 +167,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				continue;
 			}
 
-			if (material->GetRenderState().GetTag() == GetHash(GetStringParam("Tag")))
+			if (material->GetRenderState().GetTag() == GetHash(GetString("Tag")))
 			{
 				RHIShaderBindingPtr shaderBinding;
 				if (material->GetBindings()->GetShaderBindings().ContainsKey("material"))
@@ -210,8 +210,8 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	TVector<PerInstanceData> gpuMatricesData;
 	gpuMatricesData.AddDefault(numMeshes);
 
-	RHI::RHISurfacePtr colorAttachment = GetResourceParam("color").DynamicCast<RHI::RHISurface>();
-	RHI::RHITexturePtr depthAttachment = GetResourceParam("depthStencil").DynamicCast<RHI::RHITexture>();
+	RHI::RHISurfacePtr colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
+	RHI::RHITexturePtr depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");

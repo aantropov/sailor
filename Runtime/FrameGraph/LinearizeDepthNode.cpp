@@ -24,7 +24,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	auto depthAttachment = GetResourceParam("depthStencil").DynamicCast<RHI::RHITexture>();
+	auto depthAttachment = GetResolvedAttachment("depthStencil");
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
@@ -36,7 +36,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetUID(), m_pLinearizeDepthShader);
 	}
 
-	auto target = GetResourceParam("target").DynamicCast<RHI::RHITexture>();
+	auto target = GetResolvedAttachment("target");
 
 	if (!m_pLinearizeDepthShader || !target || !m_pLinearizeDepthShader->IsReady())
 	{

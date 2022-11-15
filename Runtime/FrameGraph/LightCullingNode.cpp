@@ -33,7 +33,7 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	auto depthAttachment = GetResourceParam("depthStencil").DynamicCast<RHI::RHITexture>();
+	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");

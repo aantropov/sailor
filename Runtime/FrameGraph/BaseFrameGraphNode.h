@@ -19,13 +19,14 @@ namespace Sailor::Framegraph
 
 		SAILOR_API virtual ~BaseFrameGraphNode() = default;
 
-		SAILOR_API void SetStringParam(const std::string& name, const std::string& value);
-		SAILOR_API void SetVectorParam(const std::string& name, const glm::vec4& value);
-		SAILOR_API void SetResourceParam(const std::string& name, RHI::RHIResourcePtr value);
+		SAILOR_API void SetString(const std::string& name, const std::string& value);
+		SAILOR_API void SetVec4(const std::string& name, const glm::vec4& value);
+		SAILOR_API void SetRHIResource(const std::string& name, RHI::RHIResourcePtr value);
 
-		SAILOR_API RHI::RHIResourcePtr GetResourceParam(const std::string& name) const;
-		SAILOR_API const glm::vec4& GetVectorParam(const std::string& name) const;
-		SAILOR_API const std::string& GetStringParam(const std::string& name) const;
+		SAILOR_API RHI::RHITexturePtr GetResolvedAttachment(const std::string& name) const;
+		SAILOR_API RHI::RHIResourcePtr GetRHIResource(const std::string& name) const;
+		SAILOR_API const glm::vec4& GetVec4(const std::string& name) const;
+		SAILOR_API const std::string& GetString(const std::string& name) const;
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
 		SAILOR_API virtual void Clear() = 0;

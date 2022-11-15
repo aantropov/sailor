@@ -22,23 +22,23 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	RHI::RHITexturePtr src;
-	if (RHISurfacePtr surface = GetResourceParam("src").DynamicCast<RHISurface>())
+	if (RHISurfacePtr surface = GetRHIResource("src").DynamicCast<RHISurface>())
 	{
 		src = surface->GetResolved();
 	}
 	else
 	{
-		src = GetResourceParam("src").DynamicCast<RHITexture>();
+		src = GetRHIResource("src").DynamicCast<RHITexture>();
 	}
 
-	RHI::RHITexturePtr dst = GetResourceParam("dst").DynamicCast<RHITexture>();
+	RHI::RHITexturePtr dst = GetRHIResource("dst").DynamicCast<RHITexture>();
 	if (!dst)
 	{
 		dst = frameGraph->GetRenderTarget("BackBuffer");
 	}
 
-	//glm::vec4 srcRegion = GetVectorParam("srcRegion");
-	//glm::vec4 dstRegion = GetVectorParam("dstRegion");
+	//glm::vec4 srcRegion = GetVec4("srcRegion");
+	//glm::vec4 dstRegion = GetVec4("dstRegion");
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
 	glm::ivec4 dstRegion(0, 0, dst->GetExtent().x, dst->GetExtent().y);
 

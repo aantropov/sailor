@@ -1082,27 +1082,24 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 		}
 	}
 
-	TVector<VulkanDescriptorSetLayoutPtr> res;
+	outVulkanLayouts.Clear();
+	outRhiLayout.Clear();
 
-	res.Resize(vulkanLayouts.Num());
+	outVulkanLayouts.Resize(vulkanLayouts.Num());
+	outRhiLayout.Reserve(rhiLayouts.Num());
 
 	for (uint32_t i = 0; i < vulkanLayouts.Num(); i++)
 	{
-		res[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(vulkanLayouts[i]));
+		outVulkanLayouts[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(vulkanLayouts[i]));
 	}
 
-	TVector<RHI::ShaderLayoutBinding> rhiRes;
-
-	for (uint32_t i = 0; i < vulkanLayouts.Num(); i++)
+	for (uint32_t i = 0; i < rhiLayouts.Num(); i++)
 	{
 		for (auto& rhi : rhiLayouts[i])
 		{
-			rhiRes.Add(std::move(rhi));
+			outRhiLayout.Emplace(std::move(rhi));
 		}
 	}
-
-	outVulkanLayouts = std::move(res);
-	outRhiLayout = std::move(rhiRes);
 
 	return countDescriptorSets > 0;
 }

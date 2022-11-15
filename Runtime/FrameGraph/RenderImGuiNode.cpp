@@ -24,21 +24,8 @@ void RenderImGuiNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	RHI::RHITexturePtr colorAttachment;
-	if (RHISurfacePtr surface = GetResourceParam("color").DynamicCast<RHISurface>())
-	{
-		colorAttachment = surface->GetResolved();
-	}
-	else if(RHITexturePtr texture = GetResourceParam("color").DynamicCast<RHITexture>())
-	{
-		colorAttachment = texture;
-	}
-
-	RHI::RHITexturePtr depthAttachment = GetResourceParam("depthStencil").DynamicCast<RHI::RHITexture>();
-	if (!depthAttachment)
-	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
-	}
+	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color");
+	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
 	commands->RenderSecondaryCommandBuffers(commandList,
 		{ sceneView.m_drawImGui },

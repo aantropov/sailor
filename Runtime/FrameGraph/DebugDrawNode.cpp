@@ -21,8 +21,8 @@ void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tr
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	auto colorAttachment = GetResourceParam("color").DynamicCast<RHI::RHISurface>();
-	auto depthAttachment = GetResourceParam("depthStencil").DynamicCast<RHI::RHITexture>();
+	auto colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
+	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");

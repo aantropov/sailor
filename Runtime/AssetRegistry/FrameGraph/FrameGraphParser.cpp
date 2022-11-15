@@ -137,15 +137,15 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		{
 			if (param.m_second.IsVec4())
 			{
-				pNewNode->SetVectorParam(param.m_first, param.m_second.GetVec4());
+				pNewNode->SetVec4(param.m_first, param.m_second.GetVec4());
 			}
 			else if (param.m_second.IsFloat())
 			{
-				pNewNode->SetVectorParam(param.m_first, glm::vec4(param.m_second.GetFloat()));
+				pNewNode->SetVec4(param.m_first, glm::vec4(param.m_second.GetFloat()));
 			}
 			else if (param.m_second.IsString())
 			{
-				pNewNode->SetStringParam(param.m_first, param.m_second.GetString());
+				pNewNode->SetString(param.m_first, param.m_second.GetString());
 			}
 		}
 
@@ -153,15 +153,15 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		{
 			if (auto pSurface = pRhiFrameGraph->GetSurface(param.m_second))
 			{
-				pNewNode->SetResourceParam(param.m_first, pSurface);
+				pNewNode->SetRHIResource(param.m_first, pSurface);
 			}
 			else if (auto pRenderTarget = pRhiFrameGraph->GetRenderTarget(param.m_second))
 			{
-				pNewNode->SetResourceParam(param.m_first, pRenderTarget);
+				pNewNode->SetRHIResource(param.m_first, pRenderTarget);
 			}
 			else if (auto pTextureTarget = pRhiFrameGraph->GetSampler(param.m_second))
 			{
-				pNewNode->SetResourceParam(param.m_first, pTextureTarget->GetRHI());
+				pNewNode->SetRHIResource(param.m_first, pTextureTarget->GetRHI());
 			}
 		}
 		// TODO: Build params

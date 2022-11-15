@@ -35,7 +35,7 @@ RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescri
 
 RHI::ESortingOrder DepthPrepassNode::GetSortingOrder() const
 {
-	const std::string& sortOrder = GetStringParam("Sorting");
+	const std::string& sortOrder = GetString("Sorting");
 
 	if (!sortOrder.empty())
 	{
@@ -194,7 +194,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 				continue;
 			}
 
-			if (proxy.GetMaterials()[i]->GetRenderState().GetTag() == GetHash(GetStringParam("Tag")))
+			if (proxy.GetMaterials()[i]->GetRenderState().GetTag() == GetHash(GetString("Tag")))
 			{
 				DepthPrepassNode::PerInstanceData data;
 				data.model = proxy.m_worldMatrix;
@@ -264,7 +264,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
-	auto depthAttachment = GetResourceParam("depthStencil").StaticCast<RHI::RHITexture>();
+	auto depthAttachment = GetRHIResource("depthStencil").StaticCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
