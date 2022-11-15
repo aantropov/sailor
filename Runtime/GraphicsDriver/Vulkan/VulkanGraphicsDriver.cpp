@@ -87,25 +87,18 @@ bool VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 
 	if (m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport))
 	{
-		SAILOR_PROFILE_BLOCK("Fix lost device");
-
-		m_vkInstance->WaitIdle();
-		m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
-
-		SAILOR_PROFILE_END_BLOCK();
-
-		if (App::GetViewportWindow()->IsIconic())
+		auto fixLostDevice_RenderThread = [this, pViewport = pViewport]() 
 		{
+			SAILOR_PROFILE_BLOCK("Fix lost device");
+			m_vkInstance->WaitIdle();
+			m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
 			m_cachedMsaaRenderTargets.Clear();
-		}
-		else
-		{
-			SAILOR_ENQUEUE_TASK_RENDER_THREAD("Clear MSAA cache",
-				([this]()
-					{
-						m_cachedMsaaRenderTargets.Clear();
-					}));
-		}
+			SAILOR_PROFILE_END_BLOCK();
+		};
+
+		auto task = Tasks::Scheduler::CreateTask("Fix lost device", fixLostDevice_RenderThread, Tasks::EThreadType::Render);
+		task->Run();
+		task->Wait();
 
 		return true;
 	}

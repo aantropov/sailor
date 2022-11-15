@@ -35,6 +35,7 @@ void TestComponent::BeginPlay()
 		}
 	}
 
+	/*
 	for (int i = 0; i < 3; i++)
 		for (int j = 0; j < 3; j++)
 		{
@@ -42,6 +43,7 @@ void TestComponent::BeginPlay()
 			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, 0, i * 2500));
 			gameObject2->AddComponent<MeshRendererComponent>();
 		}
+	/**/
 
 	auto gameObject3 = GetWorld()->Instantiate();
 	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
@@ -65,7 +67,7 @@ void TestComponent::BeginPlay()
 	lightComponent->SetIntensity(vec3(60.0f, 60.0f, 60.0f));
 	lightComponent->SetLightType(ELightType::Spot);
 
-	/**/
+	/*
 	for (int32_t i = -1000; i < 1000; i += 250)
 	{
 		for (int32_t j = 0; j < 800; j += 250)

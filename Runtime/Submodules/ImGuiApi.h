@@ -59,7 +59,7 @@ namespace Sailor
 		SAILOR_API static bool ImGui_Init(InitInfo* info);
 		SAILOR_API static void ImGui_Shutdown();
 		SAILOR_API static void ImGui_RenderDrawData(ImDrawData* draw_data, RHI::RHICommandListPtr transferCmdList, RHI::RHICommandListPtr drawCmdList);
-		SAILOR_API static void ImGui_SetMinImageCount(uint32_t min_image_count); 
+		SAILOR_API static void ImGui_SetMinImageCount(uint32_t min_image_count);
 		SAILOR_API static void ImGui_SetupRenderState(ImDrawData* drawData, RHI::RHICommandListPtr cmdList, FrameRenderBuffers* rb, int width, int height);
 		SAILOR_API static void CreateOrResizeBuffer(RHI::RHIBufferPtr& buffer, size_t newSize);
 		SAILOR_API static void DestroyWindowRenderBuffers(WindowRenderBuffers* buffers);
