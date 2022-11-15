@@ -3,8 +3,8 @@ includes :
 - "Shaders/Lighting.glsl"
 
 defines :
-- FILTER
-- ADDITIVE
+- HORIZONTAL
+- VERTICAL
 
 glslCommon: |
   #version 460
@@ -38,28 +38,25 @@ glslFragment: |
   
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
-    vec4 border;
+    vec4 blurRadius;
   } data;
   
   layout(set=1, binding=1) uniform sampler2D colorSampler;
-  #ifdef ADDITIVE
-    layout(set=1, binding=2) uniform sampler2D destSampler;
-  #endif
   
   layout(location = 0) in vec2 fragTexcoord;
   layout(location = 0) out vec4 outColor;
   
   void main() 
   {
-    #ifdef FILTER
-      outColor = texture(colorSampler, fragTexcoord);
-      if(LuminanceCzm(outColor.xyz) < data.border.x)
-      {
-          outColor.xyz = vec3(0);
-      }
-    #endif
+    vec2 texelSize = vec2(1/256.0f, 1/256.0f);
+    
+  #ifdef VERTICAL
+    texelSize.x = 0;
+  #endif
 
-    #ifdef ADDITIVE
-      outColor = texture(colorSampler, fragTexcoord) + texture(destSampler, fragTexcoord);
-    #endif
+  #ifdef HORIZONTAL
+    texelSize.y = 0;
+  #endif
+
+  outColor.xyz = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.x));
   }

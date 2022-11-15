@@ -104,3 +104,10 @@ vec3 GaussianBlur(sampler2D textureSampler, vec2 uv, vec2 texelSize, uint radius
 
     return pixelSum;
 }
+
+float LuminanceCzm(vec3 rgb)
+{
+    // Algorithm from Chapter 10 of Graphics Shaders.
+    const vec3 w = vec3(0.2125, 0.7154, 0.0721);
+    return dot(rgb, w);
+}

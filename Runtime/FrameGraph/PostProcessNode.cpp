@@ -48,7 +48,7 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	if (!m_postEffectMaterial)
 	{
-		m_shaderBindings = driver->CreateShaderBindings();		
+		m_shaderBindings = driver->CreateShaderBindings();
 
 		// Firstly we must assign the correct layout
 		driver->FillShadersLayout(m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
@@ -58,7 +58,7 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		driver->AddBufferToShaderBindings(m_shaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, 0, false };
+		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, m_shaderBindings);
 
 		for (auto& v : m_vectorParams)
@@ -73,16 +73,40 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		}
 	}
 
+	SAILOR_PROFILE_BLOCK("Image barriers");
+
 	// TODO: Memory Barriers for RenderTargets
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+
+	const auto& layout = m_shaderBindings->GetLayoutBindings();
+	for (const auto& binding : layout)
+	{
+		if (binding.m_type == RHI::EShaderBindingType::CombinedImageSampler)
+		{
+			auto& shaderBinding = m_shaderBindings->GetOrAddShaderBinding(binding.m_name);
+			if (shaderBinding->IsBind())
+			{
+				commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+			}
+		}
+	}
+
+	SAILOR_PROFILE_END_BLOCK();
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
 	commands->BindMaterial(commandList, m_postEffectMaterial);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_postEffectMaterial->GetBindings() });
+	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_shaderBindings });
+
+	commands->SetViewport(commandList,
+		0, 0,
+		(float)target->GetExtent().x, (float)target->GetExtent().y,
+		glm::vec2(0, 0),
+		glm::vec2(target->GetExtent().x, target->GetExtent().y),
+		0, 1.0f);
 
 	// TODO: Pipeline without depthAttachment
 	commands->BeginRenderPass(commandList,
@@ -100,8 +124,24 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 	commands->EndRenderPass(commandList);
 
+	SAILOR_PROFILE_BLOCK("Image barriers");
+
+	for (const auto& binding : layout)
+	{
+		if (binding.m_type == RHI::EShaderBindingType::CombinedImageSampler)
+		{
+			auto& shaderBinding = m_shaderBindings->GetOrAddShaderBinding(binding.m_name);
+			if (shaderBinding->IsBind())
+			{
+				commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, target->GetDefaultLayout());
+			}
+		}
+	}
+
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());
+
+	SAILOR_PROFILE_END_BLOCK();
 }
 
 void PostProcessNode::Clear()
