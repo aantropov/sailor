@@ -48,6 +48,7 @@ namespace Sailor::RHI
 		SAILOR_API void RemoveSceneView(WorldPtr worldPtr);
 
 		SAILOR_API void Clear();
+		SAILOR_API void RefreshFrameGraph() { m_bFrameGraphOutdated = true; }
 
 	protected:
 

@@ -52,7 +52,7 @@ void App::Initialize()
 
 	s_pInstance = new App();
 
-#if defined(BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
+#if defined(BUILD_WITH_RENDER_DOC)
 	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
 #endif
 
@@ -90,7 +90,7 @@ void App::Initialize()
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
-	
+
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pViewportWindow->GetHWND()));
@@ -158,6 +158,7 @@ void App::Start()
 		if (systemInputState.IsKeyPressed(VK_F5))
 		{
 			GetSubmodule<AssetRegistry>()->ScanContentFolder();
+			GetSubmodule<Renderer>()->RefreshFrameGraph();
 		}
 
 #ifdef BUILD_WITH_RENDER_DOC
@@ -241,7 +242,7 @@ void App::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
-#if defined(BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
+#if defined(BUILD_WITH_RENDER_DOC)
 	RemoveSubmodule<RenderDocApi>();
 #endif
 

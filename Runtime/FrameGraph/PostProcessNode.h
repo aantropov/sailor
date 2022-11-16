@@ -8,7 +8,7 @@
 
 namespace Sailor::Framegraph
 {
-	class PostProcessNode : public TFrameGraphNode<PostProcessNode>
+	class PostProcessNode final : public TFrameGraphNode<PostProcessNode>
 	{
 	public:
 		SAILOR_API static const char* GetName() { return m_name; }
