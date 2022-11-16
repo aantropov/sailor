@@ -116,13 +116,6 @@ frame:
   - depthStencil: DepthBuffer
   - colorSampler: QuarterMain2
 
-#############################
-- name: Blit
-#############################
-  renderTargets:
-  - src: Main
-  - dst: Secondary
-  
 ############################
 - name: DebugDraw
 ############################
@@ -130,6 +123,13 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
 
+#############################
+- name: Blit
+#############################
+  renderTargets:
+  - src: Main
+  - dst: Secondary
+  
 #############################
 - name: PostProcess
 #############################
@@ -143,7 +143,7 @@ frame:
   - depthStencil: DepthBuffer
   - colorSampler: Secondary  
   - destSampler: QuarterMain1
-
+ 
 #############################
 - name: RenderImGui
 #############################
@@ -157,4 +157,3 @@ frame:
   renderTargets:
   - src: Main
   - dst: BackBuffer
-  
