@@ -84,7 +84,7 @@ frame:
   - shader: Shaders/Bloom.shader
   - defines: FILTER
   vec4:
-  - data.border: [1.1, 0, 0, 0]
+  - data.border: [1.0, 0, 0, 0]
   renderTargets:
   - color: QuarterMain1
   - depthStencil: DepthBuffer
@@ -123,18 +123,6 @@ frame:
   - src: Main
   - dst: Secondary
   
-#############################
-- name: PostProcess
-#############################
-  string:
-  - shader: Shaders/Bloom.shader
-  - defines: ADDITIVE
-  renderTargets:
-  - color: Main
-  - depthStencil: DepthBuffer
-  - colorSampler: Secondary  
-  - destSampler: QuarterMain1
-
 ############################
 - name: DebugDraw
 ############################
@@ -143,13 +131,27 @@ frame:
   - depthStencil: DepthBuffer
 
 #############################
+- name: PostProcess
+#############################
+  string:
+  - shader: Shaders/Bloom.shader
+  - defines: APPLY
+  vec4:
+  - data.border: [1.0, 0, 0, 0]
+  renderTargets:
+  - color: Main
+  - depthStencil: DepthBuffer
+  - colorSampler: Secondary  
+  - destSampler: QuarterMain1
+
+#############################
 - name: RenderImGui
 #############################
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
 
-############################
+###########################
 - name: Blit
 #############################
   renderTargets:

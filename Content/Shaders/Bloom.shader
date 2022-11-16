@@ -4,7 +4,7 @@ includes :
 
 defines :
 - FILTER
-- ADDITIVE
+- APPLY
 
 glslCommon: |
   #version 460
@@ -42,7 +42,7 @@ glslFragment: |
   } data;
   
   layout(set=1, binding=1) uniform sampler2D colorSampler;
-  #ifdef ADDITIVE
+  #ifdef APPLY
     layout(set=1, binding=2) uniform sampler2D destSampler;
   #endif
   
@@ -51,15 +51,32 @@ glslFragment: |
   
   void main() 
   {
-    #ifdef FILTER
-      outColor = texture(colorSampler, fragTexcoord);
-      if(LuminanceCzm(outColor.xyz) < data.border.x)
+    #if defined(FILTER)
+      outColor = texture(colorSampler, fragTexcoord);      
+      float bloomIntensity =  LuminanceCzm(outColor.xyz) - data.border.x;
+      
+      if(bloomIntensity > 0)
       {
-          outColor.xyz = vec3(0);
+        outColor.xyz -= max(0, bloomIntensity) * normalize(outColor.xyz);
       }
-    #endif
+      else
+      {
+        outColor.xyz = vec3(0);
+      }
+    #elif defined(APPLY)
 
-    #ifdef ADDITIVE
-      outColor = texture(colorSampler, fragTexcoord) + texture(destSampler, fragTexcoord);
+      vec4 sceneColor = texture(colorSampler, fragTexcoord);
+      vec4 bloomColor = texture(destSampler, fragTexcoord);
+      
+      outColor = sceneColor;
+      
+      float bloomIntensity = LuminanceCzm(sceneColor.xyz) - data.border.x;
+      
+      if(bloomIntensity > 0)
+      {
+        outColor.xyz -= max(0, bloomIntensity) * normalize(sceneColor.xyz);
+      }
+      
+      outColor.xyz += bloomColor.xyz;      
     #endif
   }
