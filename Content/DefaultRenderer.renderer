@@ -143,17 +143,34 @@ frame:
   - depthStencil: DepthBuffer
   - colorSampler: Secondary  
   - destSampler: QuarterMain1
- 
+
+##############################
+- name: PostProcess
+##############################
+  string:
+  - shader: Shaders/Tonemapping.shader
+  - defines: UNCHARTED2
+  vec4:
+  - data.exposure: [1.0, 0, 0, 0]
+  renderTargets:
+  - color: Secondary
+  - depthStencil: DepthBuffer
+  - colorSampler: Main 
+
+- name: EyeAdaptation
+  renderTargets:
+  - color: Main
+
 #############################
 - name: RenderImGui
 #############################
   renderTargets:
-  - color: Main
+  - color: Secondary
   - depthStencil: DepthBuffer
 
 ###########################
 - name: Blit
 #############################
   renderTargets:
-  - src: Main
+  - src: Secondary
   - dst: BackBuffer

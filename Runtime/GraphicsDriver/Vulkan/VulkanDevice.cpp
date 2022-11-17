@@ -424,6 +424,14 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
+	// Create device that supports VK_EXT_shader_atomic_float (GL_EXT_shader_atomic_float)
+	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT floatFeatures{};
+	floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
+	// this allows to perform atomic operations on storage buffers
+	floatFeatures.shaderBufferFloat32AtomicAdd = true; 
+
+	dynamicRenderingFeature.pNext = &floatFeatures;
+
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
