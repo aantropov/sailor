@@ -191,6 +191,9 @@ void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	if (drawData == nullptr)
+		return;
+
 	// Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
 	const int width = (int)(drawData->DisplaySize.x * drawData->FramebufferScale.x);
 	const int height = (int)(drawData->DisplaySize.y * drawData->FramebufferScale.y);

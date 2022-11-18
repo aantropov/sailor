@@ -815,7 +815,6 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 	memoryBarrier.pNext = VK_NULL_HANDLE;
 	memoryBarrier.srcAccessMask = srcAccess;
 	memoryBarrier.dstAccessMask = dstAccess;
-
 	//vkCmdPipelineBarrier
 }
 

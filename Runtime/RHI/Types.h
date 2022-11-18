@@ -567,6 +567,16 @@ namespace Sailor::RHI
 		uint32_t m_set = 0u;
 		uint32_t m_arrayCount = 0u;
 
+		bool IsImage() const
+		{
+			return (m_type == RHI::EShaderBindingType::CombinedImageSampler) || (m_type == RHI::EShaderBindingType::StorageImage);
+		}
+
+		bool IsBuffer() const
+		{
+			return (m_type == RHI::EShaderBindingType::UniformBuffer) || (m_type == RHI::EShaderBindingType::StorageBuffer);
+		}
+
 		SAILOR_API bool operator==(const ShaderLayoutBinding& rhs) const
 		{
 			return m_type == rhs.m_type &&

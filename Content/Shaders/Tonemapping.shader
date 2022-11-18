@@ -1,6 +1,6 @@
 --- 
 includes :
-- "Shaders/Lighting.glsl"
+- "Shaders/Formats.glsl"
 
 defines:
 - ACES
@@ -38,10 +38,12 @@ glslFragment: |
   
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
+    vec4 whitePoint;
     vec4 exposure;
   } data;
   
   layout(set=1, binding=1) uniform sampler2D colorSampler;
+  layout(set=1, binding=2) uniform sampler2D averageLuminanceSampler;
   
   layout(location = 0) in vec2 fragTexcoord;
   layout(location = 0) out vec4 outColor;
@@ -116,13 +118,25 @@ glslFragment: |
   }
 
   #endif //UNCHARTED2
-  
+
   void main() 
   {
       outColor = texture(colorSampler, fragTexcoord);
   #if defined(ACES)
       outColor.xyz = ACES_tonemap(outColor.xyz);
   #elif defined(UNCHARTED2)
-      outColor.xyz = uncharted2_filmic(outColor.xyz, vec3(2.0f), 2.0f);
+  
+      float avgLum = texture(averageLuminanceSampler, vec2(0,0)).x;
+      
+      // Yxy.x is Y, the luminance
+      vec3 Yxy = convertRGB2Yxy(outColor.xyz);
+      
+      float lp = Yxy.x / (9.6 * avgLum + 0.0001);
+      
+      // Replace this line with other tone mapping functions
+      // Here we applying the curve to the luminance exclusively
+      Yxy.x = uncharted2_filmic(vec3(lp), data.whitePoint.xyz, data.exposure.x).x;
+      
+      outColor.xyz = convertYxy2RGB(Yxy);
   #endif 
   }

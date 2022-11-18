@@ -108,7 +108,6 @@ glslCompute: |
   	return true;
   }
   
-  
   void main()
   {
   	ivec2 location = ivec2(gl_GlobalInvocationID.xy);

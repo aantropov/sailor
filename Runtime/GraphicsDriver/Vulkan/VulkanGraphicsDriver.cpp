@@ -415,6 +415,39 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::ETextureClamping clamping,
 	RHI::ETextureUsageFlags usage)
 {
+	// Update layout
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+
+	RHI::RHITexturePtr outTexture = CreateRenderTarget(
+		cmdList,
+		extent,
+		mipLevels,
+		type,
+		format,
+		filtration,
+		clamping,
+		usage);
+
+	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
+
+	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
+	SubmitCommandList(cmdList, fenceUpdateRes);
+
+	return outTexture;
+}
+
+RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
+	RHI::RHICommandListPtr cmdList,
+	glm::ivec3 extent,
+	uint32_t mipLevels,
+	RHI::ETextureType type,
+	RHI::ETextureFormat format,
+	RHI::ETextureFiltration filtration,
+	RHI::ETextureClamping clamping,
+	RHI::ETextureUsageFlags usage)
+{
 	SAILOR_PROFILE_FUNCTION();
 
 	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::General;
@@ -454,19 +487,11 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
 
-	// Update layout
-	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 	RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
 		outTexture,
 		outTexture->GetFormat(),
 		RHI::EImageLayout::Undefined,
 		(RHI::EImageLayout)layout);
-	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
-
-	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
-	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
-	SubmitCommandList(cmdList, fenceUpdateRes);
 
 	return outTexture;
 }
@@ -1786,7 +1811,10 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 					[&](const auto& lhs)
 					{
 						auto& layout = binding.m_second->GetLayout();
-				return lhs.binding == layout.m_binding && lhs.descriptorType == (VkDescriptorType)layout.m_type;
+				const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) ||
+					(VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
+
+				return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage);
 					}))
 				{
 					// We don't add extra bindings 

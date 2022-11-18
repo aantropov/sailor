@@ -8,23 +8,12 @@ glslCommon: |
 glslCompute: |
   
   // The code below taken from the next source: https://bruop.github.io/exposure/
-  layout(set = 0, binding = 0) uniform FrameData
-  {
-      mat4 view;
-      mat4 projection;	
-      mat4 invProjection;
-      vec4 cameraPosition;
-      ivec2 viewportSize;
-      float currentTime;
-      float deltaTime;
-  } frame;
-
-  layout(std430, set = 1, binding = 0) writeonly buffer DataSSBO
+  layout(std430, set = 0, binding = 0) writeonly buffer DataSSBO
   {	
-  	 float histogram[];
-  } data;  
+  	 uint data[];
+  } histogram;  
   
-  layout(set = 1, binding = 1, rgba16f) uniform image2D s_texColor;
+  layout(set = 0, binding = 1, rgba16f) uniform image2D s_texColor;
   
   layout(push_constant) uniform Constants
   {
@@ -87,5 +76,5 @@ glslCompute: |
     
     // Technically there's no chance that two threads write to the same bin here,
     // but different work groups might! So we still need the atomic add.
-    atomicAdd(data.histogram[gl_LocalInvocationIndex], histogramShared[gl_LocalInvocationIndex]);
+    atomicAdd(histogram.data[gl_LocalInvocationIndex], histogramShared[gl_LocalInvocationIndex]);
   } 

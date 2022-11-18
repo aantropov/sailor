@@ -12,6 +12,9 @@ namespace Sailor::Framegraph
 	class EyeAdaptationNode : public TFrameGraphNode<PostProcessNode>
 	{
 	public:
+
+		const uint32_t HistogramShades = 256;
+
 		SAILOR_API static const char* GetName() { return m_name; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
@@ -21,10 +24,19 @@ namespace Sailor::Framegraph
 
 		static const char* m_name;
 
-		ShaderSetPtr m_pShader{};
+		float m_whitePointLum{};
+
+		ShaderSetPtr m_pToneMappingShader{};
 		ShaderSetPtr m_pComputeHistogramShader{};
+		ShaderSetPtr m_pComputeAverageShader{};
+
 		RHI::RHIMaterialPtr m_postEffectMaterial{};
 		RHI::RHIShaderBindingSetPtr m_shaderBindings{};
+
+		RHI::RHIShaderBindingSetPtr m_computeHistogramShaderBindings{};
+		RHI::RHIShaderBindingSetPtr m_computeAverageShaderBindings{};
+
+		RHI::RHITexturePtr m_averageLuminance;
 	};
 
 	template class TFrameGraphNode<EyeAdaptationNode>;

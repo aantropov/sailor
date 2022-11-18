@@ -13,7 +13,7 @@ renderTargets:
   format: R16G16B16A16_SFLOAT
   width: ViewportWidth
   height: ViewportHeight
-  bIsSurface: true
+  bIsSurface: true  
 
 - name: Secondary
   format: R16G16B16A16_SFLOAT
@@ -26,6 +26,7 @@ renderTargets:
   width: 256
   height: 256
   bIsSurface: false
+  bIsCompatibleWithComputeShaders: true
   
 - name: QuarterMain2
   format: R16G16B16A16_SFLOAT
@@ -144,22 +145,25 @@ frame:
   - colorSampler: Secondary  
   - destSampler: QuarterMain1
 
-##############################
-- name: PostProcess
-##############################
-  string:
-  - shader: Shaders/Tonemapping.shader
-  - defines: UNCHARTED2
-  vec4:
-  - data.exposure: [1.0, 0, 0, 0]
+#############################
+- name: Blit
+#############################
   renderTargets:
-  - color: Secondary
-  - depthStencil: DepthBuffer
-  - colorSampler: Main 
+  - src: Main
+  - dst: QuarterMain1
 
 - name: EyeAdaptation
+  string:
+  - toneMappingShader: Shaders/Tonemapping.shader
+  - toneMappingDefines: UNCHARTED2
+  vec4:
+  - data.exposure: [2.0, 0, 0, 0]
+  - data.whitePoint: [30.0, 30.0, 30.0, 0]
   renderTargets:
-  - color: Main
+  - color: Secondary
+  - hdrColor: QuarterMain1
+  - colorSampler: Main
+  - depthStencil: DepthBuffer
 
 #############################
 - name: RenderImGui

@@ -70,6 +70,7 @@ namespace Sailor
 			uint32_t m_height = 1;
 			RHI::ETextureFormat m_format;
 			bool m_bIsSurface = false;
+			bool m_bIsCompatibleWithComputeShaders = false;
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
@@ -113,6 +114,11 @@ namespace Sailor
 				if (inData["bIsSurface"])
 				{
 					m_bIsSurface = inData["bIsSurface"].as<bool>();
+				}
+
+				if (inData["bIsCompatibleWithComputeShaders"])
+				{
+					m_bIsCompatibleWithComputeShaders = inData["bIsCompatibleWithComputeShaders"].as<bool>();
 				}
 			}
 		};

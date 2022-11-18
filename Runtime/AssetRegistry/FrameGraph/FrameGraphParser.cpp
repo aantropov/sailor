@@ -23,7 +23,7 @@ void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 	if (inData["samplers"])
 	{
 		auto samplers = inData["samplers"].as<TVector<FrameGraphAsset::Resource>>();
-		
+
 		for (auto& sampler : samplers)
 		{
 			m_samplers[sampler.m_name] = std::move(sampler);
@@ -84,10 +84,18 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 
 	for (auto& renderTarget : frameGraphAsset->m_renderTargets)
 	{
+		const bool bUsedWithComputeShaders = renderTarget.m_second.m_bIsCompatibleWithComputeShaders;
+
+		const RHI::ETextureUsageFlags defaultUsage = RHI::ETextureUsageBit::ColorAttachment_Bit |
+			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+			RHI::ETextureUsageBit::TextureTransferDst_Bit |
+			RHI::ETextureUsageBit::Sampled_Bit |
+			(bUsedWithComputeShaders ? RHI::ETextureUsageBit::Storage_Bit : 0);
+
 		if (renderTarget.m_second.m_bIsSurface)
 		{
 			RHI::RHISurfacePtr rhiSurface = RHI::Renderer::GetDriver()->CreateSurface(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
-				1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
+				1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, defaultUsage);
 
 			pRhiFrameGraph->SetSurface(renderTarget.m_first, rhiSurface);
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiSurface->GetResolved());
@@ -95,7 +103,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		else
 		{
 			RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec3(renderTarget.m_second.m_width, renderTarget.m_second.m_height, 1.0f),
-				1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp);
+				1, RHI::ETextureType::Texture2D, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, defaultUsage);
 
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
 		}

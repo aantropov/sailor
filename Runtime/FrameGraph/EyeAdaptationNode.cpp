@@ -35,8 +35,70 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		}
 	}
 
-	if (!m_pShader || !m_pShader->IsReady() ||
+	if (!m_pComputeAverageShader)
+	{
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeAverageLuminance.shader"))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComputeAverageShader);
+		}
+	}
+
+	if (!m_pToneMappingShader)
+	{
+		auto shaderPath = GetString("toneMappingShader");
+		assert(!shaderPath.empty());
+
+		auto definesStr = GetString("toneMappingDefines");
+		TVector<std::string> defines = Sailor::Utils::SplitString(definesStr, " ");
+
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pToneMappingShader, defines);
+		}
+	}
+
+	RHI::RHITexturePtr quarterResolution = GetResolvedAttachment("hdrColor");
+	RHI::RHITexturePtr fullResolution = GetResolvedAttachment("colorSampler");
+
+	if (!m_computeHistogramShaderBindings)
+	{
+		m_computeHistogramShaderBindings = driver->CreateShaderBindings();
+		driver->AddSsboToShaderBindings(m_computeHistogramShaderBindings, "histogram", sizeof(uint32_t), HistogramShades, 0, true);
+
+		assert(quarterResolution);
+		driver->AddStorageImageToShaderBindings(m_computeHistogramShaderBindings, "s_texColor", quarterResolution, 1);
+	}
+
+	if (!m_averageLuminance)
+	{
+		const ETextureUsageFlags usage = ETextureUsageBit::Storage_Bit | ETextureUsageBit::TextureTransferDst_Bit |
+			ETextureUsageBit::Sampled_Bit;
+
+		m_averageLuminance = driver->CreateRenderTarget(
+			transferCommandList,
+			glm::ivec3(1, 1, 1),
+			1,
+			ETextureType::Texture2D,
+			ETextureFormat::R16_SFLOAT,
+			ETextureFiltration::Nearest,
+			ETextureClamping::Repeat,
+			usage);
+	}
+
+	if (!m_computeAverageShaderBindings)
+	{
+		auto& histogram = m_computeHistogramShaderBindings->GetOrAddShaderBinding("histogram");
+
+		assert(histogram->IsBind());
+
+		m_computeAverageShaderBindings = driver->CreateShaderBindings();
+		driver->AddShaderBinding(m_computeAverageShaderBindings, histogram, "histogram", 0);
+		driver->AddStorageImageToShaderBindings(m_computeAverageShaderBindings, "s_texColor", m_averageLuminance, 1);
+	}
+
+	if (!m_pToneMappingShader || !m_pToneMappingShader->IsReady() ||
 		!m_pComputeHistogramShader || !m_pComputeHistogramShader->IsReady() ||
+		!m_pComputeAverageShader || !m_pComputeAverageShader->IsReady() ||
 		!target)
 	{
 		return;
@@ -47,46 +109,65 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		m_shaderBindings = driver->CreateShaderBindings();
 
 		// Firstly we must assign the correct layout
-		driver->FillShadersLayout(m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
+		driver->FillShadersLayout(m_shaderBindings, { m_pToneMappingShader->GetDebugVertexShaderRHI(), m_pToneMappingShader->GetDebugFragmentShaderRHI() }, 1);
 
 		// That should be enough to handle all the uniforms
 		const size_t uniformsSize = m_vectorParams.Num() * sizeof(glm::vec4);
-		driver->AddBufferToShaderBindings(m_shaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
+		if (uniformsSize > 0)
+		{
+			driver->AddBufferToShaderBindings(m_shaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
+		}
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
-		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, m_shaderBindings);
+		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pToneMappingShader, m_shaderBindings);
 
 		for (auto& v : m_vectorParams)
 		{
 			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, v.First(), v.Second());
 		}
 
-		for (auto& r : m_resourceParams)
+		if (m_vectorParams.ContainsKey("data.whitePoint"))
 		{
-			auto rhiTexture = GetResolvedAttachment(r.First());
-			driver->UpdateShaderBinding(m_shaderBindings, r.First(), rhiTexture);
+			m_whitePointLum = glm::dot(glm::vec4(0.2125f, 0.7154f, 0.0721f, 0.0f), m_vectorParams["data.whitePoint"]);
 		}
+
+		driver->UpdateShaderBinding(m_shaderBindings, "colorSampler", fullResolution);
+		driver->UpdateShaderBinding(m_shaderBindings, "averageLuminanceSampler", m_averageLuminance);
 	}
 
 	SAILOR_PROFILE_BLOCK("Image barriers");
 
-	// TODO: Memory Barriers for RenderTargets
+	const float minLogLuminance = log2f(0.01f);
+	const float logLuminanceRange = log2f(m_whitePointLum);
+
+	float pushConstantsHistogramm[] = { minLogLuminance, 1.0f / logLuminanceRange };
+
+	float pushConstantsAverage[] =
+	{
+		minLogLuminance,
+		logLuminanceRange,
+		(float)quarterResolution->GetExtent().x * quarterResolution->GetExtent().y,
+		0.02f
+	};
+
+	commands->Dispatch(commandList, m_pComputeHistogramShader->GetDebugComputeShaderRHI(),
+		quarterResolution->GetExtent().x / 16, quarterResolution->GetExtent().y / 16, 1,
+		{ m_computeHistogramShaderBindings },
+		&pushConstantsHistogramm, sizeof(float) * 2);
+
+	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::General);
+	commands->Dispatch(commandList, m_pComputeAverageShader->GetDebugComputeShaderRHI(),
+		HistogramShades, 1, 1,
+		{ m_computeAverageShaderBindings },
+		&pushConstantsAverage, sizeof(float) * 4);
+	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::General, EImageLayout::ShaderReadOnlyOptimal);
+
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
-	const auto& layout = m_shaderBindings->GetLayoutBindings();
-	for (const auto& binding : layout)
-	{
-		if (binding.m_type == RHI::EShaderBindingType::CombinedImageSampler)
-		{
-			auto& shaderBinding = m_shaderBindings->GetOrAddShaderBinding(binding.m_name);
-			if (shaderBinding->IsBind())
-			{
-				commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
-			}
-		}
-	}
+	auto& fullResolutionBinding = m_shaderBindings->GetOrAddShaderBinding("colorSampler")->GetTextureBinding();
+	commands->ImageMemoryBarrier(commandList, fullResolutionBinding, fullResolutionBinding->GetFormat(), fullResolutionBinding->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 
 	SAILOR_PROFILE_END_BLOCK();
 
@@ -122,27 +203,19 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	SAILOR_PROFILE_BLOCK("Image barriers");
 
-	for (const auto& binding : layout)
-	{
-		if (binding.m_type == RHI::EShaderBindingType::CombinedImageSampler)
-		{
-			auto& shaderBinding = m_shaderBindings->GetOrAddShaderBinding(binding.m_name);
-			if (shaderBinding->IsBind())
-			{
-				commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, target->GetDefaultLayout());
-			}
-		}
-	}
-
+	commands->ImageMemoryBarrier(commandList, fullResolutionBinding, fullResolutionBinding->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, fullResolutionBinding->GetDefaultLayout());
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());
+	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_averageLuminance->GetDefaultLayout());
 
 	SAILOR_PROFILE_END_BLOCK();
 }
 
 void EyeAdaptationNode::Clear()
 {
-	m_pShader.Clear();
+	m_pToneMappingShader.Clear();
 	m_postEffectMaterial.Clear();
 	m_shaderBindings.Clear();
+	m_pComputeHistogramShader.Clear();
+	m_pComputeAverageShader.Clear();
 }
