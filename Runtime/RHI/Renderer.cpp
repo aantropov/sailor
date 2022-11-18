@@ -173,7 +173,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 	world->GetECS<LightingECS>()->FillLightsData(rhiSceneView);
 
-	rhiSceneView->m_drawImGui = frame.GetDrawImGuiCmdList();
+	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
 	rhiSceneView->PrepareDebugDrawCommandLists(world);
 	rhiSceneView->PrepareSnapshots();
 

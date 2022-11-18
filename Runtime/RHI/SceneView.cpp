@@ -16,16 +16,25 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 {
 	m_debugDraw.Reserve(m_cameras.Num());
 
+	// TODO: Check the sync between CPUFrame and Recording
 	for (const auto& camera : m_cameras)
 	{
-		const auto& matrix = camera.GetProjectionMatrix() * camera.GetViewMatrix();
-		RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, false);
-		auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
-		commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
-		world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix);
-		commands->EndCommandList(secondaryCmdList);
+		auto task = Tasks::Scheduler::CreateTaskWithResult<RHI::RHICommandListPtr>("Record DebugContext Draw Command List",
+			[=]()
+			{
+				const auto& matrix = camera.GetProjectionMatrix() * camera.GetViewMatrix();
+				RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, false);
+				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
+				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
+				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix);
+				commands->EndCommandList(secondaryCmdList);
 
-		m_debugDraw.Emplace(std::move(secondaryCmdList));
+				return secondaryCmdList;
+			}, Tasks::EThreadType::RHI);
+
+		task->Run();
+
+		m_debugDraw.Emplace(std::move(task));
 	}
 }
 

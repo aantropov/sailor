@@ -37,8 +37,12 @@ void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tr
 
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
+	SAILOR_PROFILE_BLOCK("Wait for DebugContext");
+	while (!sceneView.m_debugDrawSecondaryCmdList->IsFinished());
+	SAILOR_PROFILE_END_BLOCK();
+
 	commands->RenderSecondaryCommandBuffers(commandList,
-		TVector<RHI::RHICommandListPtr> {sceneView.m_debugDrawSecondaryCmdList},
+		TVector<RHI::RHICommandListPtr> {sceneView.m_debugDrawSecondaryCmdList->GetResult()},
 		TVector<RHI::RHISurfacePtr>{ colorAttachment },
 		depthAttachment,
 		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),

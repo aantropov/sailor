@@ -46,7 +46,8 @@ namespace Sailor
 		SAILOR_API size_t GetNumCommandLists() const { return NumCommandLists; }
 		SAILOR_API WorldPtr GetWorld() const;
 
-		SAILOR_API RHI::RHICommandListPtr GetDrawImGuiCmdList() const { return m_pData->m_drawImGui; }
+		SAILOR_API Tasks::TaskPtr<RHI::RHICommandListPtr, void>& GetDrawImGuiTask() { return m_pData->m_drawImGui; }
+		SAILOR_API Tasks::TaskPtr<RHI::RHICommandListPtr, void> GetDrawImGuiTask() const { return m_pData->m_drawImGui; }
 
 	protected:
 
@@ -58,7 +59,7 @@ namespace Sailor
 			glm::ivec2 m_mouseDeltaToCenter{ 0.0f,0.0f };
 			FrameInputState m_inputState;
 			std::array<RHI::RHICommandListPtr, NumCommandLists> m_updateResourcesCommandBuffers;
-			RHI::RHICommandListPtr m_drawImGui;
+			Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
 			WorldPtr m_world;
 		};
 

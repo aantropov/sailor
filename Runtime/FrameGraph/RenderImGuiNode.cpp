@@ -20,15 +20,19 @@ const char* RenderImGuiNode::m_name = "RenderImGui";
 void RenderImGuiNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
-	
+
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color");
 	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
+	SAILOR_PROFILE_BLOCK("Wait for ImGui");
+	while (!sceneView.m_drawImGui->IsFinished());
+	SAILOR_PROFILE_END_BLOCK();
+
 	commands->RenderSecondaryCommandBuffers(commandList,
-		{ sceneView.m_drawImGui },
+		{ sceneView.m_drawImGui->GetResult() },
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
 		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),

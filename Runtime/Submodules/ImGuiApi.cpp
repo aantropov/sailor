@@ -57,12 +57,18 @@ void ImGuiApi::NewFrame()
 	ImGui::NewFrame();
 }
 
-void ImGuiApi::RenderFrame(RHI::RHICommandListPtr transferCmdList, RHI::RHICommandListPtr drawCmdList)
+void ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transferCmdList)
+{
+	SAILOR_PROFILE_FUNCTION();
+	ImGui::Render();
+	ImGui_UpdateDrawData(ImGui::GetDrawData(), transferCmdList);
+}
+
+void ImGuiApi::RenderFrame(RHI::RHICommandListPtr drawCmdList)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	ImGui::Render();
-	ImGui_RenderDrawData(ImGui::GetDrawData(), transferCmdList, drawCmdList);
+	ImGui_RenderDrawData(ImGui::GetDrawData(), drawCmdList);
 }
 
 ImGuiApi::Data* ImGuiApi::ImGui_GetBackendData()
@@ -83,7 +89,7 @@ void ImGuiApi::CreateOrResizeBuffer(RHI::RHIBufferPtr& buffer, size_t newSize)
 		RHI::EBufferUsageBit::BufferTransferDst_Bit | RHI::EBufferUsageBit::VertexBuffer_Bit | RHI::EBufferUsageBit::IndexBuffer_Bit);
 }
 
-void ImGuiApi::ImGui_SetupRenderState(ImDrawData* drawData, RHI::RHICommandListPtr cmdList, FrameRenderBuffers* rb, int width, int height)
+void ImGuiApi::ImGui_SetupRenderState(ImDrawData* drawData, RHI::RHICommandListPtr cmdList, const FrameRenderBuffers* rb, int width, int height)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -120,7 +126,7 @@ void ImGuiApi::ImGui_SetupRenderState(ImDrawData* drawData, RHI::RHICommandListP
 	}
 }
 
-void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr transferCmdList, RHI::RHICommandListPtr drawCmdList)
+void ImGuiApi::ImGui_UpdateDrawData(ImDrawData* drawData, RHI::RHICommandListPtr transferCmdList)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -178,6 +184,24 @@ void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 			iOffset += iSize;
 		}
 	}
+
+}
+
+void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr drawCmdList)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	// Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
+	const int width = (int)(drawData->DisplaySize.x * drawData->FramebufferScale.x);
+	const int height = (int)(drawData->DisplaySize.y * drawData->FramebufferScale.y);
+
+	if (width <= 0 || height <= 0)
+		return;
+
+	Data* bd = ImGui_GetBackendData();
+	InitInfo* v = &bd->InitInfo;
+	WindowRenderBuffers* wrb = &bd->MainWindowRenderBuffers;
+	const FrameRenderBuffers* rb = &wrb->FrameRenderBuffers[wrb->Index];
 
 	ImGui_SetupRenderState(drawData, drawCmdList, rb, width, height);
 

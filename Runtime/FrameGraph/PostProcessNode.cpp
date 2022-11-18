@@ -75,10 +75,6 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	SAILOR_PROFILE_BLOCK("Image barriers");
 
-	// TODO: Memory Barriers for RenderTargets
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
-	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-
 	const auto& layout = m_shaderBindings->GetLayoutBindings();
 	for (const auto& binding : layout)
 	{
@@ -87,10 +83,14 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			auto& shaderBinding = m_shaderBindings->GetOrAddShaderBinding(binding.m_name);
 			if (shaderBinding->IsBind())
 			{
-				commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+				auto pTexture = shaderBinding->GetTextureBinding();
+				commands->ImageMemoryBarrier(commandList, pTexture, pTexture->GetFormat(), pTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 			}
 		}
 	}
+
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentOptimal);
+	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 	SAILOR_PROFILE_END_BLOCK();
 
@@ -133,13 +133,14 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			auto& shaderBinding = m_shaderBindings->GetOrAddShaderBinding(binding.m_name);
 			if (shaderBinding->IsBind())
 			{
-				commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, target->GetDefaultLayout());
+				auto pTexture = shaderBinding->GetTextureBinding();
+				commands->ImageMemoryBarrier(commandList, pTexture, pTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, pTexture->GetDefaultLayout());
 			}
 		}
 	}
 
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentOptimal, depthAttachment->GetDefaultLayout());
 
 	SAILOR_PROFILE_END_BLOCK();
 }
