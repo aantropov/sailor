@@ -138,17 +138,22 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	SAILOR_PROFILE_BLOCK("Image barriers");
 
-	const float minLogLuminance = log2f(0.01f);
-	const float logLuminanceRange = log2f(m_whitePointLum);
+	const float minLogLuminance = -8.0f;
+	const float maxLogLuminance = 3.0f;
+	const float eyeReaction = 1.8f;
+
+	const float logLuminanceRange = maxLogLuminance - minLogLuminance;
 
 	float pushConstantsHistogramm[] = { minLogLuminance, 1.0f / logLuminanceRange };
+
+	float timeCoeff = std::clamp(1.0f - exp2(-sceneView.m_deltaTime * eyeReaction), 0.0f, 1.0f);
 
 	float pushConstantsAverage[] =
 	{
 		minLogLuminance,
 		logLuminanceRange,
 		(float)quarterResolution->GetExtent().x * quarterResolution->GetExtent().y,
-		0.02f
+		timeCoeff
 	};
 
 	commands->Dispatch(commandList, m_pComputeHistogramShader->GetDebugComputeShaderRHI(),
@@ -158,7 +163,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::General);
 	commands->Dispatch(commandList, m_pComputeAverageShader->GetDebugComputeShaderRHI(),
-		HistogramShades, 1, 1,
+		1, 1, 1,
 		{ m_computeAverageShaderBindings },
 		&pushConstantsAverage, sizeof(float) * 4);
 	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::General, EImageLayout::ShaderReadOnlyOptimal);

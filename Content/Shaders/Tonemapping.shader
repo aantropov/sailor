@@ -122,21 +122,19 @@ glslFragment: |
   void main() 
   {
       outColor = texture(colorSampler, fragTexcoord);
-  #if defined(ACES)
-      outColor.xyz = ACES_tonemap(outColor.xyz);
-  #elif defined(UNCHARTED2)
-  
       float avgLum = texture(averageLuminanceSampler, vec2(0,0)).x;
       
       // Yxy.x is Y, the luminance
       vec3 Yxy = convertRGB2Yxy(outColor.xyz);
-      
       float lp = Yxy.x / (9.6 * avgLum + 0.0001);
       
+  #if defined(ACES)
+      Yxy.x = ACES_tonemap(vec3(lp)).x;
+  #elif defined(UNCHARTED2)
       // Replace this line with other tone mapping functions
       // Here we applying the curve to the luminance exclusively
-      Yxy.x = uncharted2_filmic(vec3(lp), data.whitePoint.xyz, data.exposure.x).x;
-      
-      outColor.xyz = convertYxy2RGB(Yxy);
+      Yxy.x = uncharted2_filmic(vec3(lp), data.whitePoint.xyz, data.exposure.x).x;   
   #endif 
+  
+      outColor.xyz = convertYxy2RGB(Yxy);
   }

@@ -173,12 +173,12 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 	world->GetECS<LightingECS>()->FillLightsData(rhiSceneView);
 
+	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
+	rhiSceneView->m_currentTime = (float)frame.GetWorld()->GetTime();
+
 	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
 	rhiSceneView->PrepareDebugDrawCommandLists(world);
 	rhiSceneView->PrepareSnapshots();
-
-	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
-	rhiSceneView->m_currentTime = (float)frame.GetWorld()->GetTime();
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Push frame");

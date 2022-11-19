@@ -77,7 +77,9 @@ frame:
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
-  
+
+##############################
+# Start Bloom
 ##############################
 - name: PostProcess
 ##############################
@@ -116,6 +118,9 @@ frame:
   - color: QuarterMain1
   - depthStencil: DepthBuffer
   - colorSampler: QuarterMain2
+##############################
+# Finish Bloom
+##############################
 
 ############################
 - name: DebugDraw
@@ -130,7 +135,7 @@ frame:
   renderTargets:
   - src: Main
   - dst: Secondary
-  
+
 #############################
 - name: PostProcess
 #############################
@@ -158,7 +163,7 @@ frame:
   - toneMappingDefines: UNCHARTED2
   vec4:
   - data.exposure: [2.0, 0, 0, 0]
-  - data.whitePoint: [30.0, 30.0, 30.0, 0]
+  - data.whitePoint: [5.0, 5.0, 5.0, 0]  
   renderTargets:
   - color: Secondary
   - hdrColor: QuarterMain1

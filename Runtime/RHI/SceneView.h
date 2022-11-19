@@ -39,6 +39,7 @@ namespace Sailor::RHI
 		uint32_t m_numLights;
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData;
+		float m_deltaTime;
 	};
 
 	struct RHISceneView
