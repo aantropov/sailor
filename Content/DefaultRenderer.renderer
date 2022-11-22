@@ -65,7 +65,7 @@ frame:
 - name: Clear
 ############################
   vec4:
-  - clearColor: [0.4902, 0.808, 0.921, 1]
+  - clearColor: [1.502, 2.08, 2.61, 2.5]
   renderTargets:
   - color: Main
   
@@ -87,7 +87,7 @@ frame:
   - shader: Shaders/Bloom.shader
   - defines: FILTER
   vec4:
-  - data.border: [1.0, 0, 0, 0]
+  - data.border: [2.0, 2.0, 2.0, 0]
   renderTargets:
   - color: QuarterMain1
   - depthStencil: DepthBuffer

@@ -76,9 +76,8 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 		m_averageLuminance = driver->CreateRenderTarget(
 			transferCommandList,
-			glm::ivec3(1, 1, 1),
+			glm::ivec2(1, 1),
 			1,
-			ETextureType::Texture2D,
 			ETextureFormat::R16_SFLOAT,
 			ETextureFiltration::Nearest,
 			ETextureClamping::Repeat,
@@ -140,7 +139,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	const float minLogLuminance = -8.0f;
 	const float maxLogLuminance = 3.0f;
-	const float eyeReaction = 1.8f;
+	const float eyeReaction = 1.3f;
 
 	const float logLuminanceRange = maxLogLuminance - minLogLuminance;
 

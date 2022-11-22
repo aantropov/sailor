@@ -407,9 +407,8 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
-	glm::ivec3 extent,
+	glm::ivec2 extent,
 	uint32_t mipLevels,
-	RHI::ETextureType type,
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
 	RHI::ETextureClamping clamping,
@@ -423,7 +422,6 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 		cmdList,
 		extent,
 		mipLevels,
-		type,
 		format,
 		filtration,
 		clamping,
@@ -440,9 +438,8 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 
 RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::RHICommandListPtr cmdList,
-	glm::ivec3 extent,
+	glm::ivec2 extent,
 	uint32_t mipLevels,
-	RHI::ETextureType type,
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
 	RHI::ETextureClamping clamping,
@@ -470,12 +467,12 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
 	vkExtent.height = extent.y;
-	vkExtent.depth = extent.z;
+	vkExtent.depth = 1;
 
 	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
 		vkExtent,
 		mipLevels,
-		(VkImageType)type,
+		VkImageType::VK_IMAGE_TYPE_2D,
 		(VkFormat)format,
 		VK_IMAGE_TILING_OPTIMAL,
 		(uint32_t)usage,
@@ -497,9 +494,8 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 }
 
 RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
-	glm::ivec3 extent,
+	glm::ivec2 extent,
 	uint32_t mipLevels,
-	RHI::ETextureType type,
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
 	RHI::ETextureClamping clamping,
@@ -511,7 +507,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	const RHI::RHITexturePtr resolved = CreateRenderTarget(extent, mipLevels, type, format, filtration, clamping, usage);
+	const RHI::RHITexturePtr resolved = CreateRenderTarget(extent, mipLevels, format, filtration, clamping, usage);
 	RHI::RHITexturePtr target = resolved;
 
 	bool bNeedsResolved = m_vkInstance->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
@@ -522,7 +518,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 		VkExtent3D vkExtent;
 		vkExtent.width = extent.x;
 		vkExtent.height = extent.y;
-		vkExtent.depth = extent.z;
+		vkExtent.depth = 1;
 
 		// Disable storage for MSAA target
 		usage &= ~(1 << RHI::ETextureUsageBit::Storage_Bit);
@@ -530,7 +526,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 		target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
 			vkExtent,
 			mipLevels,
-			(VkImageType)type,
+			VkImageType::VK_IMAGE_TYPE_2D,
 			(VkFormat)format,
 			VK_IMAGE_TILING_OPTIMAL,
 			(uint32_t)usage,

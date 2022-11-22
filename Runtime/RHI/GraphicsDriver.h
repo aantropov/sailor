@@ -93,9 +93,8 @@ namespace Sailor::RHI
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 
 		SAILOR_API virtual RHI::RHITexturePtr CreateRenderTarget(
-			glm::ivec3 extent,
+			glm::ivec2 extent,
 			uint32_t mipMapLevel = 1,
-			RHI::ETextureType type = RHI::ETextureType::Texture2D,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
@@ -103,18 +102,16 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual RHI::RHITexturePtr CreateRenderTarget(
 			RHI::RHICommandListPtr cmdList,
-			glm::ivec3 extent,
+			glm::ivec2 extent,
 			uint32_t mipMapLevel = 1,
-			RHI::ETextureType type = RHI::ETextureType::Texture2D,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) = 0;
 
 		SAILOR_API virtual RHI::RHISurfacePtr CreateSurface(
-			glm::ivec3 extent,
+			glm::ivec2 extent,
 			uint32_t mipMapLevel = 1,
-			RHI::ETextureType type = RHI::ETextureType::Texture2D,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,

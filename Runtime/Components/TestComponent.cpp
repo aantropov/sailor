@@ -54,7 +54,6 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 
-	lightComponent->SetBounds(vec3(40.0f, 40.0f, 40.0f));
 	lightComponent->SetIntensity(vec3(1.0f, 1.0f, 1.0f));
 	lightComponent->SetLightType(ELightType::Directional);
 
