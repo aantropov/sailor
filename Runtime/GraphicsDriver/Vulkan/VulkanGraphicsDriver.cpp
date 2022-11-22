@@ -485,6 +485,21 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
 
+	if (mipLevels > 1)
+	{
+		for (uint32_t i = 0; i < mipLevels; i++)
+		{
+			RHI::RHITexturePtr mipLevel = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+
+			mipLevel->m_vulkan.m_image = outTexture->m_vulkan.m_image;
+			mipLevel->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, mipLevel->m_vulkan.m_image);
+			mipLevel->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
+			mipLevel->m_vulkan.m_imageView->Compile();
+
+			outTexture->m_mipLayers.Emplace(mipLevel);
+		}
+	}
+
 	RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
 		outTexture,
 		outTexture->GetFormat(),

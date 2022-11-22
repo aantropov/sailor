@@ -39,7 +39,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
 	void* pUserData)
 {
-
 	if (messageSeverity > VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
 	{
 		std::cerr << "!!! Validation layer: " << pCallbackData->pMessage << std::endl;
@@ -50,7 +49,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 	}
 
 	return VK_FALSE;
-
 }
 
 void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
@@ -150,7 +148,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	s_pInstance->m_device = VulkanDevicePtr::Make(viewport, msaaSamples);
 
 	SAILOR_LOG("Vulkan initialized");
-}
+	}
 
 void VulkanApi::WaitIdle()
 {

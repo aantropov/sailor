@@ -1,6 +1,10 @@
 #pragma once
 #include "Memory/RefPtr.hpp"
-#include "GraphicsDriver/Vulkan/VulkanBuffer.h"
+
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
+#endif
+
 #include "Texture.h"
 #include "Types.h"
 
@@ -16,5 +20,14 @@ namespace Sailor::RHI
 			RHITexture(filtration, clamping, bShouldGenerateMips, defaultLayout)
 		{}
 
+		RHITexturePtr GetMipLayer(uint32_t layer) const;
+
+	protected:
+
+		TVector<RHITexturePtr> m_mipLayers;
+
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+		friend class Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver;
+#endif
 	};
 };
