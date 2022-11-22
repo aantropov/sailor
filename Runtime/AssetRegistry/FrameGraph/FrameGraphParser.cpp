@@ -95,7 +95,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 			(bUsedWithComputeShaders ? RHI::ETextureUsageBit::Storage_Bit : 0);
 
 		const uint32_t maxExtent = std::max(renderTarget.m_second.m_width, renderTarget.m_second.m_height);
-		const uint32_t numMips = bShouldGenerateMips ? (uint32_t)std::floor(std::log2f((float)maxExtent)) + 1: 1u;
+		const uint32_t numMips = std::min(renderTarget.m_second.m_maxMipLevel, bShouldGenerateMips ? (uint32_t)std::floor(std::log2f((float)maxExtent)) + 1: 1u);
 
 		if (renderTarget.m_second.m_bIsSurface)
 		{

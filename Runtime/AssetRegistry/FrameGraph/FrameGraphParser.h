@@ -72,6 +72,7 @@ namespace Sailor
 			bool m_bIsSurface : 1 = false;
 			bool m_bIsCompatibleWithComputeShaders : 1 = false;
 			bool m_bGenerateMips : 1 = false;
+			uint32_t m_maxMipLevel = 10000;
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
@@ -120,6 +121,11 @@ namespace Sailor
 				if (inData["bGenerateMips"])
 				{
 					m_bGenerateMips = inData["bGenerateMips"].as<bool>();
+				}
+
+				if (inData["maxMipLevel"])
+				{
+					m_maxMipLevel = (uint32_t)inData["maxMipLevel"].as<int32_t>();
 				}
 
 				if (inData["bIsCompatibleWithComputeShaders"])
