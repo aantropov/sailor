@@ -3,6 +3,7 @@
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/Texture.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"

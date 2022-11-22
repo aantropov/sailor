@@ -1,5 +1,6 @@
 #include "BaseFrameGraphNode.h"
 #include "RHI/Surface.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/Texture.h"
 
 using namespace Sailor;

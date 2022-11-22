@@ -32,7 +32,7 @@ namespace Sailor::RHI
 		SAILOR_API glm::ivec2 GetExtent() const;
 		SAILOR_API EImageLayout GetDefaultLayout() const { return m_defaultLayout; }
 
-	private:
+	protected:
 
 		ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;
 		ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;

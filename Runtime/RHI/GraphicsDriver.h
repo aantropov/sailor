@@ -92,7 +92,7 @@ namespace Sailor::RHI
 			ETextureClamping clamping = ETextureClamping::Clamp,
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 
-		SAILOR_API virtual RHI::RHITexturePtr CreateRenderTarget(
+		SAILOR_API virtual RHI::RHIRenderTargetPtr CreateRenderTarget(
 			glm::ivec2 extent,
 			uint32_t mipMapLevel = 1,
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
@@ -100,7 +100,7 @@ namespace Sailor::RHI
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) = 0;
 
-		SAILOR_API virtual RHI::RHITexturePtr CreateRenderTarget(
+		SAILOR_API virtual RHI::RHIRenderTargetPtr CreateRenderTarget(
 			RHI::RHICommandListPtr cmdList,
 			glm::ivec2 extent,
 			uint32_t mipMapLevel = 1,

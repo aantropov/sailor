@@ -88,19 +88,19 @@ namespace Sailor
 		}
 
 		// Other types copy/assignment
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R>>>
 		TRefPtr(const TRefPtr<R>& pRefPtr) noexcept
 		{
 			AssignRawPtr(pRefPtr.GetRawPtr());
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R>>>
 		TRefPtr(TRefPtr<R>&& pRefPtr) noexcept
 		{
 			Swap(std::move(pRefPtr));
 		}
 
-		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R> && !std::is_same_v<T, R>>>
+		template<typename R, typename = std::enable_if_t<std::is_base_of_v<T, R>>>
 		TRefPtr& operator=(TRefPtr<R> pRefPtr) noexcept
 		{
 			Swap(std::move(pRefPtr));

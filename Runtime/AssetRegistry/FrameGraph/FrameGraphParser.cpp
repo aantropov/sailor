@@ -12,6 +12,7 @@
 #include "Tasks/Scheduler.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/Surface.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Core/YamlSerializable.h"

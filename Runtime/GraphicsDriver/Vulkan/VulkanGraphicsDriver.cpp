@@ -1,5 +1,6 @@
 #include "VulkanGraphicsDriver.h"
 #include "RHI/Texture.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/Surface.h"
 #include "RHI/Fence.h"
 #include "RHI/Mesh.h"
@@ -406,7 +407,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	return outTexture;
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
+RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	glm::ivec2 extent,
 	uint32_t mipLevels,
 	RHI::ETextureFormat format,
@@ -418,7 +419,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
-	RHI::RHITexturePtr outTexture = CreateRenderTarget(
+	RHI::RHIRenderTargetPtr outTexture = CreateRenderTarget(
 		cmdList,
 		extent,
 		mipLevels,
@@ -436,7 +437,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	return outTexture;
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
+RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::RHICommandListPtr cmdList,
 	glm::ivec2 extent,
 	uint32_t mipLevels,
@@ -462,7 +463,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateRenderTarget(
 	//assert(layout != (VkImageLayout)RHI::EImageLayout::General);
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+	RHI::RHIRenderTargetPtr outTexture = RHI::RHIRenderTargetPtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
@@ -507,13 +508,13 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	const RHI::RHITexturePtr resolved = CreateRenderTarget(extent, mipLevels, format, filtration, clamping, usage);
-	RHI::RHITexturePtr target = resolved;
+	const RHI::RHIRenderTargetPtr resolved = CreateRenderTarget(extent, mipLevels, format, filtration, clamping, usage);
+	RHI::RHIRenderTargetPtr target = resolved;
 
 	bool bNeedsResolved = m_vkInstance->GetMainDevice()->GetCurrentMsaaSamples() != VK_SAMPLE_COUNT_1_BIT;
 	if (bNeedsResolved)
 	{
-		target = RHI::RHITexturePtr::Make(filtration, clamping, false, RHI::EImageLayout::ColorAttachmentOptimal);
+		target = RHI::RHIRenderTargetPtr::Make(filtration, clamping, false, RHI::EImageLayout::ColorAttachmentOptimal);
 
 		VkExtent3D vkExtent;
 		vkExtent.width = extent.x;

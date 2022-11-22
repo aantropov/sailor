@@ -4,6 +4,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/Texture.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "Engine/World.h"
