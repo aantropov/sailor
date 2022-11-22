@@ -494,6 +494,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 			mipLevel->m_vulkan.m_image = outTexture->m_vulkan.m_image;
 			mipLevel->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, mipLevel->m_vulkan.m_image);
 			mipLevel->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
+			mipLevel->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
 			mipLevel->m_vulkan.m_imageView->Compile();
 
 			outTexture->m_mipLayers.Emplace(mipLevel);

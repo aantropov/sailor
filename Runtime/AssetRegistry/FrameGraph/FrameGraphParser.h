@@ -69,8 +69,9 @@ namespace Sailor
 			uint32_t m_width = 1;
 			uint32_t m_height = 1;
 			RHI::ETextureFormat m_format;
-			bool m_bIsSurface = false;
-			bool m_bIsCompatibleWithComputeShaders = false;
+			bool m_bIsSurface : 1 = false;
+			bool m_bIsCompatibleWithComputeShaders : 1 = false;
+			bool m_bGenerateMips : 1 = false;
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
@@ -114,6 +115,11 @@ namespace Sailor
 				if (inData["bIsSurface"])
 				{
 					m_bIsSurface = inData["bIsSurface"].as<bool>();
+				}
+
+				if (inData["bGenerateMips"])
+				{
+					m_bGenerateMips = inData["bGenerateMips"].as<bool>();
 				}
 
 				if (inData["bIsCompatibleWithComputeShaders"])

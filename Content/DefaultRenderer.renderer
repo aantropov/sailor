@@ -27,6 +27,7 @@ renderTargets:
   height: 256
   bIsSurface: false
   bIsCompatibleWithComputeShaders: true
+  bGenerateMips: true
   
 - name: QuarterMain2
   format: R16G16B16A16_SFLOAT

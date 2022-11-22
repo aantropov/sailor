@@ -86,6 +86,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 	for (auto& renderTarget : frameGraphAsset->m_renderTargets)
 	{
 		const bool bUsedWithComputeShaders = renderTarget.m_second.m_bIsCompatibleWithComputeShaders;
+		const bool bShouldGenerateMips = renderTarget.m_second.m_bGenerateMips;
 
 		const RHI::ETextureUsageFlags defaultUsage = RHI::ETextureUsageBit::ColorAttachment_Bit |
 			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
@@ -93,10 +94,13 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 			RHI::ETextureUsageBit::Sampled_Bit |
 			(bUsedWithComputeShaders ? RHI::ETextureUsageBit::Storage_Bit : 0);
 
+		const uint32_t maxExtent = std::max(renderTarget.m_second.m_width, renderTarget.m_second.m_height);
+		const uint32_t numMips = bShouldGenerateMips ? (uint32_t)std::floor(std::log2f((float)maxExtent)) + 1: 1u;
+
 		if (renderTarget.m_second.m_bIsSurface)
 		{
 			RHI::RHISurfacePtr rhiSurface = RHI::Renderer::GetDriver()->CreateSurface(glm::vec2(renderTarget.m_second.m_width, renderTarget.m_second.m_height),
-				1, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, defaultUsage);
+				numMips, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, defaultUsage);
 
 			pRhiFrameGraph->SetSurface(renderTarget.m_first, rhiSurface);
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiSurface->GetResolved());
@@ -104,7 +108,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		else
 		{
 			RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec2(renderTarget.m_second.m_width, renderTarget.m_second.m_height),
-				1, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, defaultUsage);
+				numMips, renderTarget.m_second.m_format, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, defaultUsage);
 
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
 		}
