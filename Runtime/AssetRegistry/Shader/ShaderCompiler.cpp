@@ -221,9 +221,11 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	RHI::ShaderByteCode spirvFragmentByteCode;
 	RHI::ShaderByteCode spirvComputeByteCode;
 
-	const bool bResultCompileVertexShader = pShader->ContainsVertex() && CompileGlslToSpirv(vertexGlsl, RHI::EShaderStage::Vertex, spirvVertexByteCode, false);
-	const bool bResultCompileFragmentShader = pShader->ContainsFragment() && CompileGlslToSpirv(fragmentGlsl, RHI::EShaderStage::Fragment, spirvFragmentByteCode, false);
-	const bool bResultCompileComputeShader = pShader->ContainsCompute() && CompileGlslToSpirv(computeGlsl, RHI::EShaderStage::Compute, spirvComputeByteCode, false);
+	const std::string filename = assetInfo->GetAssetFilepath();
+
+	const bool bResultCompileVertexShader = pShader->ContainsVertex() && CompileGlslToSpirv(filename, vertexGlsl, RHI::EShaderStage::Vertex, spirvVertexByteCode, false);
+	const bool bResultCompileFragmentShader = pShader->ContainsFragment() && CompileGlslToSpirv(filename, fragmentGlsl, RHI::EShaderStage::Fragment, spirvFragmentByteCode, false);
+	const bool bResultCompileComputeShader = pShader->ContainsCompute() && CompileGlslToSpirv(filename, computeGlsl, RHI::EShaderStage::Compute, spirvComputeByteCode, false);
 
 	if ((bResultCompileVertexShader && bResultCompileFragmentShader) || bResultCompileComputeShader)
 	{
@@ -234,9 +236,9 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	RHI::ShaderByteCode spirvFragmentByteCodeDebug;
 	RHI::ShaderByteCode spirvComputeByteCodeDebug;
 
-	const bool bResultCompileVertexShaderDebug = pShader->ContainsVertex() && CompileGlslToSpirv(vertexGlsl, RHI::EShaderStage::Vertex, spirvVertexByteCodeDebug, true);
-	const bool bResultCompileFragmentShaderDebug = pShader->ContainsFragment() && CompileGlslToSpirv(fragmentGlsl, RHI::EShaderStage::Fragment, spirvFragmentByteCodeDebug, true);
-	const bool bResultCompileComputeShaderDebug = pShader->ContainsCompute() && CompileGlslToSpirv(computeGlsl, RHI::EShaderStage::Compute, spirvComputeByteCodeDebug, true);
+	const bool bResultCompileVertexShaderDebug = pShader->ContainsVertex() && CompileGlslToSpirv(filename, vertexGlsl, RHI::EShaderStage::Vertex, spirvVertexByteCodeDebug, true);
+	const bool bResultCompileFragmentShaderDebug = pShader->ContainsFragment() && CompileGlslToSpirv(filename, fragmentGlsl, RHI::EShaderStage::Fragment, spirvFragmentByteCodeDebug, true);
+	const bool bResultCompileComputeShaderDebug = pShader->ContainsCompute() && CompileGlslToSpirv(filename, computeGlsl, RHI::EShaderStage::Compute, spirvComputeByteCodeDebug, true);
 
 	if ((bResultCompileVertexShaderDebug && bResultCompileFragmentShaderDebug) || bResultCompileComputeShaderDebug)
 	{
@@ -294,23 +296,23 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
 		Tasks::TaskPtr<bool> saveCacheJob = scheduler->CreateTaskWithResult<bool>("Save Shader Cache", [=]()
-		{
-			SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
-			m_shaderCache.SaveCache();
+			{
+				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
+		m_shaderCache.SaveCache();
 
-			//Unload shader asset text
-			m_shaderAssetsCache.Remove(assetInfo->GetUID());
+		//Unload shader asset text
+		m_shaderAssetsCache.Remove(assetInfo->GetUID());
 
-			return true;
-		});
+		return true;
+			});
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
 		{
 			Tasks::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetInfo, permutationsToCompile]()
-			{
-				SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
-				App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
-			});
+				{
+					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
+			App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
+				});
 
 			saveCacheJob->Join(job);
 			scheduler->Run(job);
@@ -370,20 +372,20 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			if (compileTask)
 			{
 				compileTask->Then<void, bool>([=](bool bRes)
-				{
-					if (bRes)
 					{
-						for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
+						if (bRes)
 						{
-							SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
-
-							if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+							for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
 							{
-								loadedShader.m_second->TraceHotReload(nullptr);
+								SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+
+								if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+								{
+									loadedShader.m_second->TraceHotReload(nullptr);
+								}
 							}
 						}
 					}
-				}
 				);
 			}
 		}
@@ -413,7 +415,7 @@ void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
 	CompileAllPermutations(assetInfo->GetUID());
 }
 
-bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderStage shaderStage, RHI::ShaderByteCode& outByteCode, bool bIsDebug)
+bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::string& source, RHI::EShaderStage shaderStage, RHI::ShaderByteCode& outByteCode, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -462,18 +464,21 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& source, RHI::EShaderS
 		return false;
 	}*/
 
-	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source.c_str(), kind, source.c_str(), "main", options);
+	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source.c_str(), kind, filename.c_str(), "main", options);
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
 	{
-		const std::string& error = module.GetErrorMessage();
-
-		std::cout << "Failed to compile shader: " << error << std::endl;
-
+		const size_t numErrors = module.GetNumErrors();
+		const size_t numWarnings = module.GetNumWarnings();
+		const std::string error = module.GetErrorMessage().c_str();
+		
+		SAILOR_LOG("Failed to compile shader:\n%s", error.c_str());
+		
 		return false;
 	}
 
 	outByteCode = TVector(module.cbegin(), module.cend() - module.cbegin());
+
 	return true;
 }
 
@@ -616,10 +621,10 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& o
 
 			newPromise = Tasks::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
 				[pShader, assetInfo, defines, this, permutation]()
-			{
-				UpdateRHIResource(pShader, permutation);
-				return pShader;
-			});
+				{
+					UpdateRHIResource(pShader, permutation);
+			return pShader;
+				});
 
 			m_loadedShaders[uid].Add({ permutation, pShader });
 			entry.Add({ permutation, newPromise });

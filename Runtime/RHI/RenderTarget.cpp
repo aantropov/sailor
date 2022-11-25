@@ -10,6 +10,6 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 RHITexturePtr RHIRenderTarget::GetMipLayer(uint32_t layer) const
 {
-	assert(num < m_mipLayers.Num());
+	assert(layer < m_mipLayers.Num());
 	return m_mipLayers[layer];
 }

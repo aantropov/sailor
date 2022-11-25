@@ -21,7 +21,7 @@ namespace Sailor::RHI
 		{}
 
 		RHITexturePtr GetMipLayer(uint32_t layer) const;
-
+		size_t GetMipLevels() const { return m_mipLayers.Num(); }
 	protected:
 
 		TVector<RHITexturePtr> m_mipLayers;
