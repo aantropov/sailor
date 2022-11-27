@@ -209,7 +209,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		class CachedDescriptorSet
 		{
 			VulkanPipelineLayoutPtr m_layout{};
+
 			RHI::RHIShaderBindingSetPtr m_binding{};
+			size_t m_initialCompatibility = 0;
 
 		public:
 

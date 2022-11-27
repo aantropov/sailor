@@ -118,7 +118,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 
 TexturePtr RHIFrameGraph::GetSampler(const std::string& name)
 {
-	if (!m_renderTargets.ContainsKey(name))
+	if (!m_samplers.ContainsKey(name))
 	{
 		return TexturePtr();
 	}

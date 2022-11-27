@@ -24,20 +24,31 @@ void ClearNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 	glm::vec4 clearColor = GetVec4("clearColor");
 
+	RHITexturePtr dst{};
+
 	if (RHI::RHISurfacePtr surfaceAttachment = GetRHIResource("color").DynamicCast<RHISurface>())
 	{
-		commands->ClearImage(commandList, surfaceAttachment->GetTarget(), clearColor);
-		commands->ClearImage(commandList, surfaceAttachment->GetResolved(), clearColor);
+		RHITexturePtr dst2 = surfaceAttachment->GetTarget();
+
+		commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), dst2->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+		commands->ClearImage(commandList, dst2, clearColor);
+		commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), EImageLayout::TransferDstOptimal, dst2->GetDefaultLayout());
+
+		dst = surfaceAttachment->GetResolved();
 	}
 	else if (RHI::RHITexturePtr colorAttachment = GetRHIResource("color").DynamicCast<RHITexture>())
 	{
-		commands->ClearImage(commandList, colorAttachment, clearColor);
+		dst = colorAttachment;
 	}
 	else
 	{
 		auto backBuffer = frameGraph->GetRenderTarget("BackBuffer");
-		commands->ClearImage(commandList, backBuffer, clearColor);
+		dst = backBuffer;
 	}
+
+	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+	commands->ClearImage(commandList, dst, clearColor);
+	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
 }
 
 void ClearNode::Clear()

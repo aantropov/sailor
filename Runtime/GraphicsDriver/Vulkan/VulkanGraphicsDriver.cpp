@@ -489,6 +489,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	{
 		for (uint32_t i = 0; i < mipLevels; i++)
 		{
+			// TODO: Should we support ranges for mips?
 			RHI::RHITexturePtr mipLevel = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
 
 			mipLevel->m_vulkan.m_image = outTexture->m_vulkan.m_image;
@@ -1939,7 +1940,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 bool VulkanGraphicsDriver::CachedDescriptorSet::IsExpired() const
 {
-	return !m_layout.IsShared() || !m_binding.IsShared();
+	return !m_layout.IsShared() || !m_binding.IsShared() || m_initialCompatibility != m_binding->GetCompatibilityHashCode();
 }
 
 VulkanGraphicsDriver::CachedDescriptorSet& VulkanGraphicsDriver::CachedDescriptorSet::operator=(const CachedDescriptorSet& rhs)
@@ -1947,12 +1948,14 @@ VulkanGraphicsDriver::CachedDescriptorSet& VulkanGraphicsDriver::CachedDescripto
 	m_layout = rhs.m_layout;
 	m_binding = rhs.m_binding;
 
+	m_initialCompatibility = m_binding->GetCompatibilityHashCode();
+
 	return *this;
 }
 
 bool VulkanGraphicsDriver::CachedDescriptorSet::operator==(const CachedDescriptorSet& rhs) const
 {
-	return m_layout == rhs.m_layout && m_binding == rhs.m_binding;
+	return m_layout == rhs.m_layout && m_binding == rhs.m_binding && m_initialCompatibility == m_binding->GetCompatibilityHashCode();
 }
 
 size_t VulkanGraphicsDriver::CachedDescriptorSet::GetHash() const
@@ -1966,6 +1969,7 @@ VulkanGraphicsDriver::CachedDescriptorSet::CachedDescriptorSet(const VulkanPipel
 	m_layout(material),
 	m_binding(binding)
 {
+	m_initialCompatibility = m_binding->GetCompatibilityHashCode();
 }
 
 void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)

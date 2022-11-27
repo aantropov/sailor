@@ -436,9 +436,6 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 {
 	m_rhiDependecies.AddRange({ dst, src });
 
-	ImageMemoryBarrier(src, src->m_format, src->GetImage()->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	ImageMemoryBarrier(dst, dst->m_format, dst->GetImage()->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
 	if (src->m_format == dst->m_format && std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0)
 	{
 		// Resolve Multisampling 
@@ -544,9 +541,6 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 			&blit,
 			filtration);
 	}
-
-	ImageMemoryBarrier(src, src->m_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src->GetImage()->m_defaultLayout);
-	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->GetImage()->m_defaultLayout);
 }
 
 void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor)
@@ -556,10 +550,7 @@ void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& cl
 	const VkClearColorValue clearColorValue{ clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 
 	VkImageSubresourceRange range = dst->m_subresourceRange;
-
-	ImageMemoryBarrier(dst, dst->m_format, dst->GetImage()->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 	vkCmdClearColorImage(m_commandBuffer, *dst->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColorValue, 1, &range);
-	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->GetImage()->m_defaultLayout);
 }
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
