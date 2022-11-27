@@ -463,7 +463,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	//assert(layout != (VkImageLayout)RHI::EImageLayout::General);
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHIRenderTargetPtr outTexture = RHI::RHIRenderTargetPtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+	RHI::RHIRenderTargetPtr outTexture = RHI::RHIRenderTargetPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
@@ -556,7 +556,6 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 		target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 		target->m_vulkan.m_imageView->Compile();
 
-
 		RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
 		RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 		RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
@@ -593,7 +592,7 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 				if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
 				{
 					auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-						device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
+						device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps()),
 						texture->m_vulkan.m_imageView);
 					descriptors.Add(descr);
 				}
@@ -1229,7 +1228,7 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
 {
-	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_image, (VkFormat)format, (VkImageLayout)oldLayout, (VkImageLayout)newLayout);
+	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView, (VkFormat)format, (VkImageLayout)oldLayout, (VkImageLayout)newLayout);
 }
 
 void VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHITexturePtr dst, glm::ivec4 srcRegionRect, glm::ivec4 dstRegionRect, RHI::ETextureFiltration filtration)
@@ -1246,12 +1245,12 @@ void VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexture
 	dstRect.extent.width = dstRegionRect.z;
 	dstRect.extent.height = dstRegionRect.w;
 
-	cmd->m_vulkan.m_commandBuffer->BlitImage(src->m_vulkan.m_image, dst->m_vulkan.m_image, srcRect, dstRect, (VkFilter)filtration);
+	cmd->m_vulkan.m_commandBuffer->BlitImage(src->m_vulkan.m_imageView, dst->m_vulkan.m_imageView, srcRect, dstRect, (VkFilter)filtration);
 }
 
 void VulkanGraphicsDriver::ClearImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr dst, const glm::vec4& clearColor)
 {
-	cmd->m_vulkan.m_commandBuffer->ClearImage(dst->m_vulkan.m_image, clearColor);
+	cmd->m_vulkan.m_commandBuffer->ClearImage(dst->m_vulkan.m_imageView, clearColor);
 }
 
 void VulkanGraphicsDriver::ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary)
@@ -1841,7 +1840,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 						if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
 						{
 							auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-								device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->ShouldGenerateMips()),
+								device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps()),
 								texture->m_vulkan.m_imageView);
 							descriptors.Add(descr);
 						}

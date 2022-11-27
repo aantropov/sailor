@@ -87,12 +87,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void SetScissor(VulkanStateViewportPtr viewport);
 
 		SAILOR_API void MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess);
+		SAILOR_API void ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 		SAILOR_API void ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 
 		SAILOR_API void Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLayout, VulkanImagePtr dstImage, VkImageLayout dstImageLayout,
 			uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter);
 
-		SAILOR_API void ClearImage(VulkanImagePtr dst, const glm::vec4& clearColor);
+		SAILOR_API void ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor);
 
 		SAILOR_API void GenerateMipMaps(VulkanImagePtr image);
 		SAILOR_API void ClearDependencies();
@@ -103,7 +104,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void AddDependency(VulkanCommandBufferPtr commandBuffer);
 		SAILOR_API void AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator);
 
-		SAILOR_API void BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration = VkFilter::VK_FILTER_LINEAR);
+		SAILOR_API void BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration = VkFilter::VK_FILTER_LINEAR);
 
 		SAILOR_API VkCommandBufferLevel GetLevel() const { return m_level; }
 

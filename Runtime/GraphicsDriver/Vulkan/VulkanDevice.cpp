@@ -612,10 +612,10 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		transitCmd->BeginCommandList();
 		for (const auto& swapchain : m_swapchain->GetImageViews())
 		{
-			transitCmd->ImageMemoryBarrier(swapchain->GetImage(), swapchain->m_format, VK_IMAGE_LAYOUT_UNDEFINED, swapchain->GetImage()->m_defaultLayout);
+			transitCmd->ImageMemoryBarrier(swapchain, swapchain->m_format, VK_IMAGE_LAYOUT_UNDEFINED, swapchain->GetImage()->m_defaultLayout);
 		}
 
-		transitCmd->ImageMemoryBarrier(m_swapchain->GetDepthBufferView()->GetImage(),
+		transitCmd->ImageMemoryBarrier(m_swapchain->GetDepthBufferView(),
 			m_swapchain->GetDepthBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
 			m_swapchain->GetDepthBufferView()->GetImage()->m_defaultLayout);
 

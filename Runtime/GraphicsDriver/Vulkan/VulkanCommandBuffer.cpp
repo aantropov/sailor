@@ -432,70 +432,74 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 	_freea(sets);
 }
 
-void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration)
+void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration)
 {
-	m_imageDependencies.AddRange({ dst, src });
+	m_rhiDependecies.AddRange({ dst, src });
 
-	ImageMemoryBarrier(src, src->m_format, src->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	ImageMemoryBarrier(dst, dst->m_format, dst->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	ImageMemoryBarrier(src, src->m_format, src->GetImage()->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	ImageMemoryBarrier(dst, dst->m_format, dst->GetImage()->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-	if (src->m_format == dst->m_format && std::memcmp(&src->m_extent, &dst->m_extent, sizeof(VkExtent3D)) == 0)
+	if (src->m_format == dst->m_format && std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0)
 	{
 		// Resolve Multisampling 
-		if (src->m_samples != VK_SAMPLE_COUNT_1_BIT && dst->m_samples == VK_SAMPLE_COUNT_1_BIT)
+		if (src->GetImage()->m_samples != VK_SAMPLE_COUNT_1_BIT && dst->GetImage()->m_samples == VK_SAMPLE_COUNT_1_BIT)
 		{
 			VkImageResolve resolve{};
 			resolve.dstOffset.x = dstRegion.offset.x;
 			resolve.dstOffset.y = dstRegion.offset.y;
-			resolve.dstSubresource.mipLevel = 0;
-			resolve.dstSubresource.layerCount = 1;
-			resolve.dstSubresource.baseArrayLayer = 0;
+
+			resolve.dstSubresource.mipLevel = dst->m_subresourceRange.baseMipLevel;
+			resolve.dstSubresource.layerCount = dst->m_subresourceRange.layerCount;
+			resolve.dstSubresource.baseArrayLayer = dst->m_subresourceRange.baseArrayLayer;
 			resolve.dstSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
 
 			resolve.srcOffset.x = srcRegion.offset.x;
 			resolve.srcOffset.y = srcRegion.offset.y;
-			resolve.srcSubresource.mipLevel = 0;
-			resolve.srcSubresource.layerCount = 1;
-			resolve.srcSubresource.baseArrayLayer = 0;
+
+			resolve.srcSubresource.mipLevel = src->m_subresourceRange.baseMipLevel;
+			resolve.srcSubresource.layerCount = src->m_subresourceRange.layerCount;
+			resolve.srcSubresource.baseArrayLayer = src->m_subresourceRange.baseArrayLayer;
 			resolve.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
 
-			resolve.extent = src->m_extent;
+			resolve.extent = src->GetImage()->m_extent;
 
 			vkCmdResolveImage(
 				m_commandBuffer,
-				*src,
+				*src->GetImage(),
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				*dst,
+				*dst->GetImage(),
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				1,
 				&resolve);
 		}
 
 		// Copy texture (no format conversion)
-		if ((src->m_samples & VK_SAMPLE_COUNT_1_BIT) && (dst->m_samples & VK_SAMPLE_COUNT_1_BIT))
+		if ((src->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT) && (dst->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT))
 		{
 			VkImageCopy copy{};
 			copy.dstOffset.x = dstRegion.offset.x;
 			copy.dstOffset.y = dstRegion.offset.y;
-			copy.dstSubresource.mipLevel = 0;
-			copy.dstSubresource.layerCount = 1;
-			copy.dstSubresource.baseArrayLayer = 0;
+
+			copy.dstSubresource.mipLevel = dst->m_subresourceRange.baseMipLevel;
+			copy.dstSubresource.layerCount = dst->m_subresourceRange.layerCount;
+			copy.dstSubresource.baseArrayLayer = dst->m_subresourceRange.baseArrayLayer;
 			copy.dstSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
 
 			copy.srcOffset.x = srcRegion.offset.x;
 			copy.srcOffset.y = srcRegion.offset.y;
-			copy.srcSubresource.mipLevel = 0;
-			copy.srcSubresource.layerCount = 1;
-			copy.srcSubresource.baseArrayLayer = 0;
+
+			copy.srcSubresource.mipLevel = src->m_subresourceRange.baseMipLevel;
+			copy.srcSubresource.layerCount = src->m_subresourceRange.layerCount;
+			copy.srcSubresource.baseArrayLayer = src->m_subresourceRange.baseArrayLayer;
 			copy.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
 
-			copy.extent = src->m_extent;
+			copy.extent = src->GetImage()->m_extent;
 
 			vkCmdCopyImage(
 				m_commandBuffer,
-				*src,
+				*src->GetImage(),
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				*dst,
+				*dst->GetImage(),
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				1,
 				&copy);
@@ -532,35 +536,30 @@ void VulkanCommandBuffer::BlitImage(VulkanImagePtr src, VulkanImagePtr dst, VkRe
 
 		vkCmdBlitImage(
 			m_commandBuffer,
-			*src,
+			*src->GetImage(),
 			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			*dst,
+			*dst->GetImage(),
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			1,
 			&blit,
 			filtration);
 	}
 
-	ImageMemoryBarrier(src, src->m_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src->m_defaultLayout);
-	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->m_defaultLayout);
+	ImageMemoryBarrier(src, src->m_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src->GetImage()->m_defaultLayout);
+	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->GetImage()->m_defaultLayout);
 }
 
-void VulkanCommandBuffer::ClearImage(VulkanImagePtr dst, const glm::vec4& clearColor)
+void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor)
 {
-	m_imageDependencies.Add(dst);
+	m_rhiDependecies.Add(dst);
 
 	const VkClearColorValue clearColorValue{ clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 
-	VkImageSubresourceRange range{};
-	range.baseMipLevel = 0;
-	range.baseArrayLayer = 0;
-	range.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
-	range.layerCount = 1;
-	range.levelCount = 1;
+	VkImageSubresourceRange range = dst->m_subresourceRange;
 
-	ImageMemoryBarrier(dst, dst->m_format, dst->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	vkCmdClearColorImage(m_commandBuffer, *dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColorValue, 1, &range);
-	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->m_defaultLayout);
+	ImageMemoryBarrier(dst, dst->m_format, dst->GetImage()->m_defaultLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	vkCmdClearColorImage(m_commandBuffer, *dst->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColorValue, 1, &range);
+	ImageMemoryBarrier(dst, dst->m_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst->GetImage()->m_defaultLayout);
 }
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
@@ -818,6 +817,45 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 	//vkCmdPipelineBarrier
 }
 
+void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+{
+	if (oldLayout == newLayout)
+	{
+		return;
+	}
+
+	VkImageMemoryBarrier barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = oldLayout;
+	barrier.newLayout = newLayout;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = *image->GetImage();
+
+	barrier.subresourceRange = image->m_subresourceRange;
+	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
+
+	barrier.srcAccessMask = 0; // TODO
+	barrier.dstAccessMask = 0; // TODO
+
+	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout);
+	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout);
+
+	barrier.srcAccessMask = GetAccessFlags(oldLayout);
+	barrier.dstAccessMask = GetAccessFlags(newLayout);
+
+	vkCmdPipelineBarrier(
+		m_commandBuffer,
+		sourceStage, destinationStage,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &barrier
+	);
+
+	m_rhiDependecies.Add(image);
+}
+
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
 	if (oldLayout == newLayout)
@@ -832,11 +870,13 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.image = *image;
+
 	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(format);
 	barrier.subresourceRange.baseMipLevel = 0;
 	barrier.subresourceRange.levelCount = image->m_mipLevels;
 	barrier.subresourceRange.baseArrayLayer = 0;
 	barrier.subresourceRange.layerCount = image->m_arrayLayers;
+
 	barrier.srcAccessMask = 0; // TODO
 	barrier.dstAccessMask = 0; // TODO
 
@@ -857,3 +897,4 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 
 	m_imageDependencies.Add(image);
 }
+

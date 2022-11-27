@@ -22,17 +22,9 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	RHI::RHITexturePtr src;
-	if (RHISurfacePtr surface = GetRHIResource("src").DynamicCast<RHISurface>())
-	{
-		src = surface->GetResolved();
-	}
-	else
-	{
-		src = GetRHIResource("src").DynamicCast<RHITexture>();
-	}
-
+	RHI::RHITexturePtr src = GetResolvedAttachment("src");
 	RHI::RHITexturePtr dst = GetRHIResource("dst").DynamicCast<RHITexture>();
+
 	if (!dst)
 	{
 		dst = frameGraph->GetRenderTarget("BackBuffer");
