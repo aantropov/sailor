@@ -1076,33 +1076,35 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 
 	if (index != -1)
 	{
-		auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
-		auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [=](const VulkanDescriptorPtr& descriptor)
+		if (bindings->m_vulkan.m_descriptorSet != nullptr)
+		{
+			auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
+			auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [=](const VulkanDescriptorPtr& descriptor)
+				{
+					return descriptor->GetBinding() == layoutBindings[index].m_binding;
+				});
+
+			if (descrIt != descriptors.end())
 			{
-				return descriptor->GetBinding() == layoutBindings[index].m_binding;
-			});
+				// Should we fully recreate descriptorSet to avoid race condition?
+				//UpdateDescriptorSet(material);
 
-		if (descrIt != descriptors.end())
-		{
-			// Should we fully recreate descriptorSet to avoid race condition?
-			//UpdateDescriptorSet(material);
+				auto descriptor = (*descrIt).DynamicCast<VulkanDescriptorCombinedImage>();
+				descriptor->SetImageView(value->m_vulkan.m_imageView);
+				bindings->m_vulkan.m_descriptorSet->Compile();
 
-			auto descriptor = (*descrIt).DynamicCast<VulkanDescriptorCombinedImage>();
-			descriptor->SetImageView(value->m_vulkan.m_imageView);
-			bindings->m_vulkan.m_descriptorSet->Compile();
-
-			return;
+				return;
+			}
 		}
-		else
-		{
-			// Add new texture binding
-			auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
-			textureBinding->SetTextureBinding(value);
-			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layoutBindings[index].m_binding, (VkDescriptorType)layoutBindings[index].m_type);
-			UpdateDescriptorSet(bindings);
 
-			return;
-		}
+		// Add new texture binding
+		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
+		textureBinding->SetTextureBinding(value);
+		textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layoutBindings[index].m_binding, (VkDescriptorType)layoutBindings[index].m_type);
+		textureBinding->SetLayout(layoutBindings[index]);
+		UpdateDescriptorSet(bindings);
+
+		return;
 	}
 
 	SAILOR_LOG("Trying to update not bind uniform sampler");

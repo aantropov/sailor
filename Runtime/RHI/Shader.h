@@ -55,7 +55,7 @@ namespace Sailor::RHI
 
 	protected:
 
-		RHITexturePtr m_textureBinding;
+		RHITexturePtr m_textureBinding{};
 		ShaderLayoutBinding m_bindingLayout{};
 	};
 

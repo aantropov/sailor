@@ -25,6 +25,11 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color");
+	if (!target)
+	{
+		target = frameGraph->GetRenderTarget("BackBuffer");
+	}
+
 	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
 	if (!m_pShader)
@@ -54,7 +59,7 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		driver->FillShadersLayout(m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
 
 		// That should be enough to handle all the uniforms
-		const size_t uniformsSize = m_vectorParams.Num() * sizeof(glm::vec4);
+		const size_t uniformsSize = std::max(256ull, m_vectorParams.Num() * sizeof(glm::vec4));
 		driver->AddBufferToShaderBindings(m_shaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();

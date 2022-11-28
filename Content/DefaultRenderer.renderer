@@ -20,7 +20,7 @@ renderTargets:
   bIsSurface: true
   bIsCompatibleWithComputeShaders: true
   bGenerateMips: true
-  maxMipLevel: 5
+  maxMipLevel: 7
 
 - name: Secondary
   format: R16G16B16A16_SFLOAT
@@ -123,12 +123,18 @@ frame:
   - colorSampler: Main
   - depthStencil: DepthBuffer
 
-###########################
-- name: Blit
-#############################
+############################
+- name: PostProcess
+############################
+  string:
+  - shader: Shaders/ChromaticAberation.shader
+  - defines: ~
+  vec4:
+  - data.offset: [0.00225, 0.00345, 0.00455, 0.0]
   renderTargets:
-  - src: Secondary
-  - dst: BackBuffer 
+  - color: BackBuffer
+  - depthStencil: DepthBuffer
+  - colorSampler: Secondary
 
 #############################
 - name: RenderImGui
