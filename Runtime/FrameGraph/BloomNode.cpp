@@ -25,7 +25,6 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	RHI::RHIRenderTargetPtr bloomRenderTarget = GetResolvedAttachment("bloom").DynamicCast<RHIRenderTarget>();
-	RHI::RHITexturePtr colorTexture = GetResolvedAttachment("color");
 
 	if (!m_pComputeDownscaleShader)
 	{
@@ -133,22 +132,6 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 	commands->ImageMemoryBarrier(commandList, bloomRenderTarget, bloomRenderTarget->GetFormat(), EImageLayout::General, bloomRenderTarget->GetDefaultLayout());
 
-	// Blit results
-	{
-		auto src = bloomRenderTarget->GetMipLayer(0);
-		auto dst = colorTexture;
-
-		glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
-		glm::ivec4 dstRegion(0, 0, dst->GetExtent().x, dst->GetExtent().y);
-
-		commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), src->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
-		commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), RHI::EImageLayout::TransferDstOptimal);
-
-		commands->BlitImage(commandList, src, dst, srcRegion, dstRegion);
-
-		commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
-	}
 }
 
 void BloomNode::Clear()

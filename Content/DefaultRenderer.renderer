@@ -18,6 +18,9 @@ renderTargets:
   width: ViewportWidth
   height: ViewportHeight
   bIsSurface: true
+  bIsCompatibleWithComputeShaders: true
+  bGenerateMips: true
+  maxMipLevel: 5
 
 - name: Secondary
   format: R16G16B16A16_SFLOAT
@@ -43,15 +46,6 @@ renderTargets:
   width: ViewportWidth
   height: ViewportHeight
   bIsSurface: false
-
-- name: Bloom
-  format: R16G16B16A16_SFLOAT
-  width: ViewportWidth
-  height: ViewportHeight
-  bIsSurface: false
-  bIsCompatibleWithComputeShaders: true
-  bGenerateMips: true
-  maxMipLevel: 5
 
 ############################
 frame:
@@ -81,15 +75,7 @@ frame:
   - clearColor: [1.502, 2.08, 2.61, 2.5]
   renderTargets:
   - color: Main
-  
-############################
-- name: Clear
-############################
-  vec4:
-  - clearColor: [0, 0, 0, 0]
-  renderTargets:
-  - color: Bloom
-  
+   
 ############################
 - name: RenderScene
 ############################
@@ -99,47 +85,23 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
 
-##############################
-# Start Bloom
-##############################
-- name: PostProcess
-##############################
-  string:
-  - shader: Shaders/Bloom.shader
-  - defines: FILTER
-  vec4:
-  - data.border: [2.0, 0, 0, 0]
-  renderTargets:
-  - color: QuarterMain1
-  - depthStencil: DepthBuffer
-  - colorSampler: Main
-
-
-#############################
-- name: Blit
-#############################
-  renderTargets:
-  - src: Main
-  - dst: Bloom
-  
-##############################
-- name: Bloom
-##############################
-  vec4:
-  - bloomIntensity: [1.0, 0, 0, 0]
-  - dirtIntensity: [1.0, 0, 0, 0]
-  - threshold: [0.75, 0, 0, 0]
-  - knee: [0.6, 0, 0, 0]
-  renderTargets:
-  - bloom: Bloom  
-  - color: Main
-
 ############################
 - name: DebugDraw
 ############################
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
+  
+##############################
+- name: Bloom
+##############################
+  vec4:
+  - bloomIntensity: [1.0, 0, 0, 0]
+  - dirtIntensity: [20.0, 0, 0, 0]
+  - threshold: [2.0, 0, 0, 0]
+  - knee: [0.2, 0, 0, 0]
+  renderTargets:
+  - bloom: Main
 
 #############################
 - name: Blit
@@ -154,7 +116,7 @@ frame:
   - toneMappingDefines: UNCHARTED2
   vec4:
   - data.exposure: [2.0, 0, 0, 0]
-  - data.whitePoint: [5.0, 5.0, 5.0, 0]  
+  - data.whitePoint: [7.0, 5.0, 5.0, 0]  
   renderTargets:
   - color: Secondary
   - hdrColor: QuarterMain1

@@ -83,8 +83,8 @@ glslCompute: |
   
       vec4 bloom = s * (1.0 / 16.0);
   
-      vec4 out_pixel = imageLoad(u_output_image, pixel_coords); //vec4(0);//
-          out_pixel += bloom * PushConstants.u_bloom_intensity;
+      vec4 out_pixel = imageLoad(u_output_image, pixel_coords);
+           out_pixel += bloom * PushConstants.u_bloom_intensity;
   
       if (PushConstants.u_mip_level == 1)
       {

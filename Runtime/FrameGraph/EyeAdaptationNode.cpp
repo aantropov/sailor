@@ -140,7 +140,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	const float minLogLuminance = -8.0f;
 	const float maxLogLuminance = 3.0f;
-	const float eyeReaction = 1.3f;
+	const float eyeReaction = 1.8f;
 
 	const float logLuminanceRange = maxLogLuminance - minLogLuminance;
 

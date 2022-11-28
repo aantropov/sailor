@@ -21,7 +21,7 @@ glslCompute: |
   // Curve = (threshold - knee, knee * 2.0, knee * 0.25)
   vec4 quadratic_threshold(vec4 color, float threshold, vec3 curve)
   {
-  	// Pixel brightness
+      // Pixel brightness
       float br = max(color.r, max(color.g, color.b));
   
       // Under-threshold part: quadratic curve
@@ -119,9 +119,9 @@ glslCompute: |
            c += karis_avg((G + H + M + L) * div.y);
   
   	if (PushConstants.u_use_threshold)
-      {
+    {
           c = quadratic_threshold(c, PushConstants.u_threshold.x, PushConstants.u_threshold.yzw);
-      }
+    }
   
   	imageStore(u_output_image, pixel_coords, c);
   }

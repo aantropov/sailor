@@ -539,11 +539,12 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 		vkExtent.depth = 1;
 
 		// Disable storage for MSAA target
-		usage &= ~(1 << RHI::ETextureUsageBit::Storage_Bit);
+		usage = usage & ~RHI::ETextureUsageBit::Storage_Bit;
+		//usage = usage & ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 
 		target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
 			vkExtent,
-			mipLevels,
+			1, // MSAA Don't support mips
 			VkImageType::VK_IMAGE_TYPE_2D,
 			(VkFormat)format,
 			VK_IMAGE_TILING_OPTIMAL,
