@@ -1229,7 +1229,42 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
 {
-	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView, (VkFormat)format, (VkImageLayout)oldLayout, (VkImageLayout)newLayout);
+	const VkImageLayout defaultComputeLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
+	const VkAccessFlags oldComputeAccess = oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
+	const VkAccessFlags newComputeAccess = newLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
+	const VkPipelineStageFlagBits computeStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
+	const bool bComputeOld = oldLayout == RHI::EImageLayout::ComputeWrite || oldLayout == RHI::EImageLayout::ComputeRead;
+	const bool bComputeNew = newLayout == RHI::EImageLayout::ComputeWrite || newLayout == RHI::EImageLayout::ComputeRead;
+
+	if (bComputeOld && bComputeNew)
+	{
+		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
+			(VkFormat)format,
+			defaultComputeLayout, defaultComputeLayout,
+			oldComputeAccess, newComputeAccess,
+			computeStage, computeStage);
+	}
+	else if (bComputeOld && !bComputeNew)
+	{
+		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
+			(VkFormat)format,
+			defaultComputeLayout, (VkImageLayout)newLayout),
+			oldComputeAccess, VulkanCommandBuffer::GetAccessFlags((VkImageLayout)newLayout),
+			computeStage, VulkanCommandBuffer::GetPipelineStage((VkImageLayout)newLayout);
+	}
+	else if (!bComputeOld && bComputeNew)
+	{
+		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
+			(VkFormat)format,
+			(VkImageLayout)oldLayout, defaultComputeLayout,
+			VulkanCommandBuffer::GetAccessFlags((VkImageLayout)oldLayout), newComputeAccess,
+			VulkanCommandBuffer::GetPipelineStage((VkImageLayout)oldLayout), computeStage);
+	}
+	else
+	{
+		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView, (VkFormat)format, (VkImageLayout)oldLayout, (VkImageLayout)newLayout);
+	}
 }
 
 void VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHITexturePtr dst, glm::ivec4 srcRegionRect, glm::ivec4 dstRegionRect, RHI::ETextureFiltration filtration)

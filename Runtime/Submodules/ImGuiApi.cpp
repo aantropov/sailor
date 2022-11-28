@@ -327,8 +327,12 @@ bool ImGuiApi::ImGui_Init(InitInfo* info)
 
 	RHI::RHIVertexDescriptionPtr vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP2UV2C1>();
 
-	bd->Material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription,
-		RHI::EPrimitiveTopology::TriangleList, renderState, bd->Shader, bd->ShaderBindings);
+	bd->Material = RHI::Renderer::GetDriver()->CreateMaterial(
+		vertexDescription,
+		RHI::EPrimitiveTopology::TriangleList,
+		renderState,
+		bd->Shader,
+		bd->ShaderBindings);
 
 	return true;
 }

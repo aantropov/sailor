@@ -87,6 +87,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void SetScissor(VulkanStateViewportPtr viewport);
 
 		SAILOR_API void MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess);
+
+		SAILOR_API void ImageMemoryBarrier(VulkanImageViewPtr image,
+			VkFormat format,
+			VkImageLayout oldLayout,
+			VkImageLayout newLayout,
+			VkAccessFlags srcAccess,
+			VkAccessFlags dstAccess,
+			VkPipelineStageFlags srcStage,
+			VkPipelineStageFlags dstStage);
+
 		SAILOR_API void ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 		SAILOR_API void ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 
@@ -116,7 +126,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VkPipelineStageFlags GetPipelineStage(VkImageLayout layout);
 
 	protected:
-		
+
 		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
 		VulkanImagePtr m_depthStencilAttachmentDependency;
 

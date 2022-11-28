@@ -479,6 +479,11 @@ namespace Sailor::RHI
 		SharedPresent = 1000111000,
 		FragmentDensityMapOptimalEXT = 1000218000,
 		FragmentShadingRateAttachmentOptimalKHR = 1000164003,
+
+		// Added to handle compute pipeline
+		ComputeRead = 2022,
+		ComputeWrite = 2023,
+
 		MaxEnum = 0x7FFFFFFF
 	};
 

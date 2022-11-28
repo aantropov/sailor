@@ -3,6 +3,10 @@ samplers:
 - name: g_defaultSampler
   uid: ''
   path: Textures/VulkanLogo.png
+
+- name: g_lensDirtSampler
+  uid: ''
+  path: Textures/Bokeh__Lens_Dirt_9.jpg 
   
 float:
 - PI: 3.1415926
@@ -13,26 +17,25 @@ renderTargets:
   format: R16G16B16A16_SFLOAT
   width: ViewportWidth
   height: ViewportHeight
-  bIsSurface: true  
+  bIsSurface: true
 
 - name: Secondary
   format: R16G16B16A16_SFLOAT
   width: ViewportWidth
   height: ViewportHeight
   bIsSurface: false
-  
+
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT
-  width: 256
-  height: 256
-  bIsSurface: false
+  width: 512
+  height: 512
   bIsCompatibleWithComputeShaders: true
-  bGenerateMips: true
+  bIsSurface: false
   
 - name: QuarterMain2
   format: R16G16B16A16_SFLOAT
-  width: 256
-  height: 256
+  width: 512
+  height: 512
   bIsSurface: false
   
 - name: LinearDepth
@@ -40,6 +43,15 @@ renderTargets:
   width: ViewportWidth
   height: ViewportHeight
   bIsSurface: false
+
+- name: Bloom
+  format: R16G16B16A16_SFLOAT
+  width: ViewportWidth
+  height: ViewportHeight
+  bIsSurface: false
+  bIsCompatibleWithComputeShaders: true
+  bGenerateMips: true
+  maxMipLevel: 5
 
 ############################
 frame:
@@ -71,6 +83,14 @@ frame:
   - color: Main
   
 ############################
+- name: Clear
+############################
+  vec4:
+  - clearColor: [0, 0, 0, 0]
+  renderTargets:
+  - color: Bloom
+  
+############################
 - name: RenderScene
 ############################
   string:
@@ -88,40 +108,31 @@ frame:
   - shader: Shaders/Bloom.shader
   - defines: FILTER
   vec4:
-  - data.border: [2.0, 2.0, 2.0, 0]
+  - data.border: [2.0, 0, 0, 0]
   renderTargets:
   - color: QuarterMain1
   - depthStencil: DepthBuffer
   - colorSampler: Main
 
-##############################
-- name: PostProcess
-##############################
-  string:
-  - shader: Shaders/Blur.shader
-  - defines: HORIZONTAL
-  vec4:
-  - data.blurRadius: [8.0, 0, 0, 0]
-  renderTargets:
-  - color: QuarterMain2
-  - depthStencil: DepthBuffer
-  - colorSampler: QuarterMain1
 
-##############################
-- name: PostProcess
-##############################
-  string:
-  - shader: Shaders/Blur.shader
-  - defines: VERTICAL
-  vec4:
-  - data.blurRadius: [8.0, 0, 0, 0]
+#############################
+- name: Blit
+#############################
   renderTargets:
-  - color: QuarterMain1
-  - depthStencil: DepthBuffer
-  - colorSampler: QuarterMain2
+  - src: Main
+  - dst: Bloom
+  
 ##############################
-# Finish Bloom
+- name: Bloom
 ##############################
+  vec4:
+  - bloomIntensity: [1.0, 0, 0, 0]
+  - dirtIntensity: [1.0, 0, 0, 0]
+  - threshold: [0.75, 0, 0, 0]
+  - knee: [0.6, 0, 0, 0]
+  renderTargets:
+  - bloom: Bloom  
+  - color: Main
 
 ############################
 - name: DebugDraw
@@ -129,27 +140,6 @@ frame:
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
-
-#############################
-- name: Blit
-#############################
-  renderTargets:
-  - src: Main
-  - dst: Secondary
-
-#############################
-- name: PostProcess
-#############################
-  string:
-  - shader: Shaders/Bloom.shader
-  - defines: APPLY
-  vec4:
-  - data.border: [1.0, 0, 0, 0]
-  renderTargets:
-  - color: Main
-  - depthStencil: DepthBuffer
-  - colorSampler: Secondary  
-  - destSampler: QuarterMain1
 
 #############################
 - name: Blit
@@ -171,16 +161,16 @@ frame:
   - colorSampler: Main
   - depthStencil: DepthBuffer
 
-#############################
-- name: RenderImGui
-#############################
-  renderTargets:
-  - color: Secondary
-  - depthStencil: DepthBuffer
-
 ###########################
 - name: Blit
 #############################
   renderTargets:
   - src: Secondary
-  - dst: BackBuffer
+  - dst: BackBuffer 
+
+#############################
+- name: RenderImGui
+#############################
+  renderTargets:
+  - color: BackBuffer
+  - depthStencil: DepthBuffer

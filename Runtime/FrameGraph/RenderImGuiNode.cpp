@@ -25,7 +25,15 @@ void RenderImGuiNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color");
+	if (!colorAttachment)
+	{
+		colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
+	}
+
 	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+
+	if (!colorAttachment || !depthAttachment)
+		return;
 
 	SAILOR_PROFILE_BLOCK("Wait for ImGui");
 	while (!sceneView.m_drawImGui->IsFinished());

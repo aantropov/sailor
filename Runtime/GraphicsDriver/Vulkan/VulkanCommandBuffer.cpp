@@ -808,6 +808,42 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 	//vkCmdPipelineBarrier
 }
 
+void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, 
+	VkFormat format, 
+	VkImageLayout oldLayout,
+	VkImageLayout newLayout,
+	VkAccessFlags srcAccess,
+	VkAccessFlags dstAccess,
+	VkPipelineStageFlags srcStage,
+	VkPipelineStageFlags dstStage)
+{
+	
+	VkImageMemoryBarrier barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = oldLayout;
+	barrier.newLayout = newLayout;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = *image->GetImage();
+
+	barrier.subresourceRange = image->m_subresourceRange;
+	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
+
+	barrier.srcAccessMask = srcAccess;
+	barrier.dstAccessMask = dstAccess;
+
+	vkCmdPipelineBarrier(
+		m_commandBuffer,
+		srcStage, dstStage,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &barrier
+	);
+
+	m_rhiDependecies.Add(image);
+}
+
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
 	if (oldLayout == newLayout)
