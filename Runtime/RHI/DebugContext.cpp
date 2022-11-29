@@ -198,7 +198,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 
 	if (!m_material)
 	{
-		RenderState renderState = RHI::RenderState(true, true, 0.1f, false, ECullMode::FrontAndBack, EBlendMode::None, EFillMode::Line, GetHash(std::string("Debug")), true);
+		RenderState renderState = RHI::RenderState(true, true, 0.0f, true, ECullMode::Back, EBlendMode::None, EFillMode::Line, GetHash(std::string("Debug")), true);
 
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Gizmo.shader");
 		ShaderSetPtr pShader;
@@ -317,11 +317,11 @@ void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, co
 
 	auto commands = RHI::Renderer::GetDriverCommands();
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
-
+	
+	commands->SetDefaultViewport(secondaryDrawCmdList);
 	commands->BindMaterial(secondaryDrawCmdList, m_material);
 	commands->BindVertexBuffer(secondaryDrawCmdList, m_cachedMesh->m_vertexBuffer, m_cachedMesh->m_vertexBuffer->GetOffset());
 	commands->BindIndexBuffer(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, m_cachedMesh->m_indexBuffer->GetOffset());
-	commands->SetDefaultViewport(secondaryDrawCmdList);
 	commands->PushConstants(secondaryDrawCmdList, m_material, sizeof(viewProjection), &viewProjection);
 	//commands->BindShaderBindings(secondaryDrawCmdList, m_material, { frameBindings /*m_material->GetBindings()*/ });
 	commands->DrawIndexed(secondaryDrawCmdList, (uint32_t)m_numRenderedVertices, 1, 0, 0, 0);

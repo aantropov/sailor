@@ -598,7 +598,14 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
 		abs(m_pCurrentFrameViewport->GetViewport().height) != m_swapchain->GetExtent().height)
 	{
-		m_pCurrentFrameViewport = new VulkanStateViewport((float)m_swapchain->GetExtent().width, (float)m_swapchain->GetExtent().height);
+		const float width = (float)m_swapchain->GetExtent().width;
+		const float height = (float)m_swapchain->GetExtent().height;
+
+		m_pCurrentFrameViewport = new VulkanStateViewport(0.0f, height,
+			width, -height,
+			{ 0,0 },
+			{ (uint32_t)width, (uint32_t)height },
+			0.0f, 1.0f);
 	}
 
 	// Clear previous frame deps

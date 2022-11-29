@@ -716,7 +716,7 @@ void ShaderCompiler::CollectGarbage()
 		bool bFullyCompiled = true;
 		for (auto& promise : promiseSet.m_second)
 		{
-			if (!promise.m_second->IsFinished())
+			if (!promise.m_second || !promise.m_second->IsFinished())
 			{
 				bFullyCompiled = false;
 				break;

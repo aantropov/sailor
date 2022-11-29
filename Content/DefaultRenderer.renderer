@@ -98,7 +98,7 @@ frame:
   vec4:
   - bloomIntensity: [1.0, 0, 0, 0]
   - dirtIntensity: [20.0, 0, 0, 0]
-  - threshold: [2.0, 0, 0, 0]
+  - threshold: [1.7, 0, 0, 0]
   - knee: [0.2, 0, 0, 0]
   renderTargets:
   - bloom: Main
@@ -124,17 +124,24 @@ frame:
   - depthStencil: DepthBuffer
 
 ############################
-- name: PostProcess
+- name: Blit
 ############################
-  string:
-  - shader: Shaders/ChromaticAberation.shader
-  - defines: ~
-  vec4:
-  - data.offset: [0.00225, 0.00345, 0.00455, 0.0]
   renderTargets:
-  - color: BackBuffer
-  - depthStencil: DepthBuffer
-  - colorSampler: Secondary
+  - src: Secondary
+  - dst: BackBuffer
+  
+#############################
+#- name: PostProcess
+#############################
+#  string:
+#  - shader: Shaders/ChromaticAberation.shader
+#  - defines: ~
+#  vec4:
+#  - data.offset: [0.00225, 0.00345, 0.00455, 0.0]
+#  renderTargets:
+#  - color: BackBuffer
+#  - depthStencil: DepthBuffer
+#  - colorSampler: Secondary
 
 #############################
 - name: RenderImGui
