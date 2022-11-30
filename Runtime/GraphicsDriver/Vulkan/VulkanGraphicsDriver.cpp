@@ -910,7 +910,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddShaderBinding(RHI::RHIShaderBi
 
 	pBinding->SetLayout(layout);
 
-	pShaderBindings->AddLayoutShaderBinding(layout);
+	pShaderBindings->UpdateLayoutShaderBinding(layout);
 	UpdateDescriptorSet(pShaderBindings);
 
 	return pBinding;
@@ -955,7 +955,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 		layout.m_size = (uint32_t)(numElements * elementSize);
 		layout.m_type = RHI::EShaderBindingType::StorageBuffer;
 
-		pShaderBindings->AddLayoutShaderBinding(layout);
+		pShaderBindings->UpdateLayoutShaderBinding(layout);
 
 		binding->SetLayout(layout);
 	}
@@ -1003,7 +1003,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 		layout.m_size = (uint32_t)size;
 		layout.m_type = bufferType;
 
-		pShaderBindings->AddLayoutShaderBinding(layout);
+		pShaderBindings->UpdateLayoutShaderBinding(layout);
 
 		binding->SetLayout(layout);
 	}
@@ -1034,7 +1034,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
 	binding->SetTextureBinding(texture);
 
-	pShaderBindings->AddLayoutShaderBinding(layout);
+	pShaderBindings->UpdateLayoutShaderBinding(layout);
 	UpdateDescriptorSet(pShaderBindings);
 
 	return binding;
@@ -1056,7 +1056,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(R
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
 	binding->SetTextureBinding(texture);
 
-	pShaderBindings->AddLayoutShaderBinding(layout);
+	pShaderBindings->UpdateLayoutShaderBinding(layout);
 	UpdateDescriptorSet(pShaderBindings);
 
 	return binding;
