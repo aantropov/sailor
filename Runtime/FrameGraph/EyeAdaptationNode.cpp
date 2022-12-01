@@ -92,6 +92,10 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			ETextureFiltration::Nearest,
 			ETextureClamping::Repeat,
 			usage);
+
+		commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+		commands->ClearImage(commandList, m_averageLuminance, glm::vec4(0.5f, 0.5f, 0.5f, 0.5f));
+		commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::TransferDstOptimal, m_averageLuminance->GetDefaultLayout());
 	}
 
 	if (!m_computeAverageShaderBindings)
@@ -166,14 +170,14 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	};
 
 	commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), quarterResolution->GetDefaultLayout(), EImageLayout::ComputeRead);
-	commands->Dispatch(commandList, m_pComputeHistogramShader->GetComputeShaderRHI(),
+	commands->Dispatch(commandList, m_pComputeHistogramShader->GetDebugComputeShaderRHI(),
 		quarterResolution->GetExtent().x / 16, quarterResolution->GetExtent().y / 16, 1,
 		{ m_computeHistogramShaderBindings },
 		&pushConstantsHistogramm, sizeof(float) * 2);
 	commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), EImageLayout::ComputeRead, quarterResolution->GetDefaultLayout());
 
 	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::ComputeWrite);
-	commands->Dispatch(commandList, m_pComputeAverageShader->GetComputeShaderRHI(),
+	commands->Dispatch(commandList, m_pComputeAverageShader->GetDebugComputeShaderRHI(),
 		1, 1, 1,
 		{ m_computeAverageShaderBindings },
 		&pushConstantsAverage, sizeof(float) * 4);
