@@ -170,14 +170,14 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	};
 
 	commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), quarterResolution->GetDefaultLayout(), EImageLayout::ComputeRead);
-	commands->Dispatch(commandList, m_pComputeHistogramShader->GetDebugComputeShaderRHI(),
+	commands->Dispatch(commandList, m_pComputeHistogramShader->GetComputeShaderRHI(),
 		quarterResolution->GetExtent().x / 16, quarterResolution->GetExtent().y / 16, 1,
 		{ m_computeHistogramShaderBindings },
 		&pushConstantsHistogramm, sizeof(float) * 2);
 	commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), EImageLayout::ComputeRead, quarterResolution->GetDefaultLayout());
 
 	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::ComputeWrite);
-	commands->Dispatch(commandList, m_pComputeAverageShader->GetDebugComputeShaderRHI(),
+	commands->Dispatch(commandList, m_pComputeAverageShader->GetComputeShaderRHI(),
 		1, 1, 1,
 		{ m_computeAverageShaderBindings },
 		&pushConstantsAverage, sizeof(float) * 4);

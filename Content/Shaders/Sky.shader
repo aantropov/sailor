@@ -42,5 +42,5 @@ glslFragment: |
   
   void main() 
   {
-    outColor = vec4(1.502, 2.08, 2.61, 2.5);
+    outColor = vec4(fragTexcoord.x, fragTexcoord.y, 0.0f, 0.0f);
   }
