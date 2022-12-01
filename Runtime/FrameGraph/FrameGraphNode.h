@@ -25,6 +25,7 @@ namespace Sailor::Framegraph
 
 		SAILOR_API TFrameGraphNode() { TFrameGraphNode::s_registrationFactoryMethod; }
 		SAILOR_API static const char* GetName() { return TRenderNode::GetName(); }
+		SAILOR_API virtual std::string GetDebugName() const { return TRenderNode::GetName(); }
 
 	protected:
 

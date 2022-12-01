@@ -127,6 +127,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API VulkanQueuePtr GetGraphicsQueue() { return m_graphicsQueue; }
 
+		// Debug specific extensions
+		SAILOR_API void vkCmdDebugMarkerBegin(VulkanCommandBufferPtr cmdBuffer, const VkDebugMarkerMarkerInfoEXT* markerInfo);
+		SAILOR_API void vkCmdDebugMarkerEnd(VulkanCommandBufferPtr cmdBuffer);
+		SAILOR_API void SetDebugName(VkObjectType type, uint64_t objectHandle, const std::string& name);
+
 	protected:
 
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
@@ -198,6 +203,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Dynamic rendering extension
 		PFN_vkCmdBeginRenderingKHR pVkCmdBeginRenderingKHR;
 		PFN_vkCmdEndRenderingKHR pVkCmdEndRenderingKHR;
+
+		PFN_vkSetDebugUtilsObjectNameEXT m_pSetDebugUtilsObjectNameEXT{};
+		PFN_vkCmdDebugMarkerBeginEXT m_pCmdDebugMarkerBegin{};
+		PFN_vkCmdDebugMarkerEndEXT m_pCmdDebugMarkerEnd{};
+		PFN_vkCmdDebugMarkerInsertEXT m_pCmdDebugMarkerInsert{};
 
 		// Stats
 		uint32_t m_numSubmittedCommandBuffersAcc = 0;

@@ -28,6 +28,12 @@ renderTargets:
   height: ViewportHeight
   bIsSurface: false
 
+- name: Sky
+  format: R16G16B16A16_SFLOAT
+  width: 64
+  height: 64
+  bIsSurface: false
+
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT
   width: 512
@@ -43,6 +49,7 @@ renderTargets:
   
 - name: LinearDepth
   format: R32_SFLOAT
+  filtration: Nearest
   width: ViewportWidth
   height: ViewportHeight
   bIsSurface: false
@@ -75,7 +82,18 @@ frame:
   - clearColor: [1.502, 2.08, 2.61, 2.5]
   renderTargets:
   - color: Main
-   
+
+############################
+- name: PostProcess
+############################
+  string:
+  - shader: Shaders/Sky.shader
+  - defines: ~
+  vec4:
+  - data.param: [0.0225, 0.00345, 0.00455, 0.0]
+  renderTargets:
+  - color: Sky
+
 ############################
 - name: RenderScene
 ############################
@@ -91,7 +109,14 @@ frame:
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
-  
+
+#############################
+#- name: Blit
+#############################
+#  renderTargets:
+#  - src: Sky
+#  - dst: Main
+
 ##############################
 - name: Bloom
 ##############################
@@ -110,7 +135,9 @@ frame:
   - src: Main
   - dst: QuarterMain1
 
+#############################
 - name: EyeAdaptation
+#############################
   string:
   - toneMappingShader: Shaders/Tonemapping.shader
   - toneMappingDefines: UNCHARTED2

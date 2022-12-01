@@ -657,6 +657,7 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 
 	auto pRaw = pShader.GetRawPtr();
 	auto& pRhiDriver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+	const std::string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(pShader->GetUID())->GetAssetFilepath();
 
 	RHI::ShaderByteCode debugVertexSpirv;
 	RHI::ShaderByteCode debugFragmentSpirv;
@@ -673,31 +674,37 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 	{
 		return false;
 	}
-
+	
 	if (debugVertexSpirv.Num() > 0)
 	{
 		pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
+		pRhiDriver->SetDebugName(pRaw->m_rhiVertexShaderDebug, "Debug Vertex " + assetFilename);
 	}
 	if (debugFragmentSpirv.Num() > 0)
 	{
 		pRaw->m_rhiFragmentShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
+		pRhiDriver->SetDebugName(pRaw->m_rhiFragmentShaderDebug, "Debug Fragment " + assetFilename);
 	}
 	if (debugComputeFragmentSpirv.Num() > 0)
 	{
 		pRaw->m_rhiComputeShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Compute, debugComputeFragmentSpirv);
+		pRhiDriver->SetDebugName(pRaw->m_rhiComputeShaderDebug, "Debug Compute " + assetFilename);
 	}
 
 	if (vertexByteCode.Num() > 0)
 	{
 		pRaw->m_rhiVertexShader = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, vertexByteCode);
+		pRhiDriver->SetDebugName(pRaw->m_rhiVertexShader, "Vertex " + assetFilename);
 	}
 	if (fragmentByteCode.Num() > 0)
 	{
 		pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);
+		pRhiDriver->SetDebugName(pRaw->m_rhiFragmentShader, "Fragment " + assetFilename);
 	}
 	if (computeByteCode.Num() > 0)
 	{
 		pRaw->m_rhiComputeShader = pRhiDriver->CreateShader(RHI::EShaderStage::Compute, computeByteCode);
+		pRhiDriver->SetDebugName(pRaw->m_rhiComputeShader, "Compute " + assetFilename);
 	}
 
 	auto pShaderAsset = LoadShaderAsset(pShader->GetUID()).Lock();
@@ -711,6 +718,8 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 void ShaderCompiler::CollectGarbage()
 {
 	TVector<UID> uidsToRemove;
+	m_promises.LockAll();
+
 	for (auto& promiseSet : m_promises)
 	{
 		bool bFullyCompiled = true;
@@ -728,6 +737,8 @@ void ShaderCompiler::CollectGarbage()
 			uidsToRemove.Emplace(promiseSet.m_first);
 		}
 	}
+
+	m_promises.UnlockAll();
 
 	for (auto& uid : uidsToRemove)
 	{

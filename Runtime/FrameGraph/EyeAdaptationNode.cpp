@@ -24,6 +24,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f, 0.65f, 0.0f, 0.25f));
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color");
 	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
@@ -64,10 +65,18 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	if (!m_computeHistogramShaderBindings)
 	{
 		m_computeHistogramShaderBindings = driver->CreateShaderBindings();
-		driver->AddSsboToShaderBindings(m_computeHistogramShaderBindings, "histogram", sizeof(uint32_t), HistogramShades, 0, true);
+		auto hitogramRes = driver->AddSsboToShaderBindings(m_computeHistogramShaderBindings, "histogram", sizeof(uint32_t), HistogramShades, 0, true);
 
 		assert(quarterResolution);
 		driver->AddStorageImageToShaderBindings(m_computeHistogramShaderBindings, "s_texColor", quarterResolution, 1);
+
+		// We should init the buffer
+		static TVector<uint32_t> initialData(HistogramShades);
+
+		commands->UpdateShaderBinding(transferCommandList, hitogramRes,
+			initialData.GetData(),
+			sizeof(uint32_t) * HistogramShades,
+			0);
 	}
 
 	if (!m_averageLuminance)
@@ -156,17 +165,19 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		timeCoeff
 	};
 
+	commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), quarterResolution->GetDefaultLayout(), EImageLayout::ComputeRead);
 	commands->Dispatch(commandList, m_pComputeHistogramShader->GetComputeShaderRHI(),
 		quarterResolution->GetExtent().x / 16, quarterResolution->GetExtent().y / 16, 1,
 		{ m_computeHistogramShaderBindings },
 		&pushConstantsHistogramm, sizeof(float) * 2);
+	commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), EImageLayout::ComputeRead, quarterResolution->GetDefaultLayout());
 
-	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::General);
+	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::ComputeWrite);
 	commands->Dispatch(commandList, m_pComputeAverageShader->GetComputeShaderRHI(),
 		1, 1, 1,
 		{ m_computeAverageShaderBindings },
 		&pushConstantsAverage, sizeof(float) * 4);
-	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::General, EImageLayout::ShaderReadOnlyOptimal);
+	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
 
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
@@ -214,6 +225,8 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_averageLuminance->GetDefaultLayout());
 
 	SAILOR_PROFILE_END_BLOCK();
+
+	commands->EndDebugRegion(commandList);
 }
 
 void EyeAdaptationNode::Clear()

@@ -7,6 +7,7 @@
 #include "RHI/Texture.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
+#include "RHI/CommandList.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -84,6 +85,8 @@ void RecordDrawCall(uint32_t start,
 		indirectCommandBuffer = driver->CreateIndirectBuffer(indirectBufferSize + slack);
 	}
 
+	commands->SetDefaultViewport(cmdList);
+
 	size_t indirectBufferOffset = 0;
 	for (uint32_t j = start; j < end; j++)
 	{
@@ -137,6 +140,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(0.0f, 1.0f, 0.0f, 0.25f));
 
 	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
 	TSet<Batch> batches;
@@ -264,8 +268,8 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			[&, i = i, start = start, end = end]()
 		{
 			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
+			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
 			commands->BeginSecondaryCommandList(cmdList, true, true);
-			commands->SetDefaultViewport(cmdList);
 			RecordDrawCall(start, end, vecBatches, cmdList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[i + 1]);
 			commands->EndCommandList(cmdList);
 			secondaryCommandLists[i] = std::move(cmdList);
@@ -326,6 +330,8 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		colorAttachment->GetTarget()->GetDefaultLayout());
 
 	SAILOR_PROFILE_END_BLOCK();
+
+	commands->EndDebugRegion(commandList);
 }
 
 void RenderSceneNode::Clear()

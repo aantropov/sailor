@@ -113,6 +113,15 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 		stagingBuffer.Clear();
 	}
 
+	// Get debug extension
+#ifdef _DEBUG
+	m_pSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetInstanceProcAddr(VulkanApi::GetInstance()->GetVkInstance(), "vkSetDebugUtilsObjectNameEXT");
+
+	m_pCmdDebugMarkerBegin = (PFN_vkCmdDebugMarkerBeginEXT)vkGetDeviceProcAddr(m_device, "vkCmdDebugMarkerBeginEXT");
+	m_pCmdDebugMarkerEnd = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(m_device, "vkCmdDebugMarkerEndEXT");
+	m_pCmdDebugMarkerInsert = (PFN_vkCmdDebugMarkerInsertEXT)vkGetDeviceProcAddr(m_device, "vkCmdDebugMarkerInsertEXT");
+#endif
+
 	// Create swapchain	CreateCommandPool();
 	CreateSwapchain(pViewport);
 
@@ -232,7 +241,11 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 
 	if (!pAllocator)
 	{
-		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(1024 * 1024, 1024 * 512, 2 * 1024 * 1024);
+		const size_t AverageElementSize = 256 * 256 * 32;
+		const size_t BlockSize = 32 * AverageElementSize;
+		const size_t ReservedSize = 64 * AverageElementSize;
+
+		pAllocator = TUniquePtr<VulkanDeviceMemoryAllocator>::Make(BlockSize, AverageElementSize, ReservedSize);
 	}
 
 	auto& vulkanAllocator = pAllocator->GetGlobalAllocator();
@@ -242,6 +255,32 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 	m_memoryAllocators.Unlock(hash);
 
 	return *pAllocator;
+}
+
+void VulkanDevice::vkCmdDebugMarkerBegin(VulkanCommandBufferPtr cmdBuffer, const VkDebugMarkerMarkerInfoEXT* markerInfo)
+{
+#ifdef _DEBUG
+	m_pCmdDebugMarkerBegin(*cmdBuffer, markerInfo);
+#endif
+}
+
+void VulkanDevice::vkCmdDebugMarkerEnd(VulkanCommandBufferPtr cmdBuffer)
+{
+#ifdef _DEBUG
+	m_pCmdDebugMarkerEnd(*cmdBuffer);
+#endif
+}
+
+void VulkanDevice::SetDebugName(VkObjectType type, uint64_t objectHandle, const std::string& name)
+{
+#ifdef _DEBUG
+	VkDebugUtilsObjectNameInfoEXT nameInfo = {};
+	nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+	nameInfo.objectType = type;
+	nameInfo.objectHandle = (uint64_t)objectHandle;
+	nameInfo.pObjectName = name.c_str();
+	m_pSetDebugUtilsObjectNameEXT(m_device, &nameInfo);
+#endif
 }
 
 bool VulkanDevice::IsMipsSupported(VkFormat format) const
@@ -425,11 +464,15 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
+#ifdef _DEBUG
+	deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
+#endif
+
 	// Create device that supports VK_EXT_shader_atomic_float (GL_EXT_shader_atomic_float)
 	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT floatFeatures{};
 	floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
 	// this allows to perform atomic operations on storage buffers
-	floatFeatures.shaderBufferFloat32AtomicAdd = true; 
+	floatFeatures.shaderBufferFloat32AtomicAdd = true;
 
 	dynamicRenderingFeature.pNext = &floatFeatures;
 

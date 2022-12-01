@@ -13,6 +13,7 @@ auto lambda = Lambda; \
 auto submit = [lambda]() \
 { \
 	Sailor::RHI::RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, false); \
+	Sailor::RHI::Renderer::GetDriver()->SetDebugName(cmdList, Name); \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
@@ -27,6 +28,7 @@ auto lambda = Lambda; \
 auto submit = [lambda]() \
 { \
 	Sailor::RHI::RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, true); \
+	Sailor::RHI::Renderer::GetDriver()->SetDebugName(cmdList, Name); \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
@@ -67,6 +69,7 @@ namespace Sailor::RHI
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
 			const TVector<RHISemaphorePtr>& waitSemaphores = {}) const = 0;
 
+		SAILOR_API virtual void SetDebugName(RHIResourcePtr resource, const std::string& name) = 0;
 		SAILOR_API virtual void WaitIdle() = 0;
 
 		SAILOR_API virtual RHITexturePtr GetBackBuffer() const = 0;
@@ -191,6 +194,9 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual bool FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
 		SAILOR_API virtual bool FitsDefaultViewport(RHI::RHICommandListPtr cmd) = 0;
+
+		SAILOR_API virtual void BeginDebugRegion(RHI::RHICommandListPtr cmdList, const std::string& title, const glm::vec4& color) = 0;
+		SAILOR_API virtual void EndDebugRegion(RHI::RHICommandListPtr cmdList) = 0;
 
 		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 			TVector<RHI::RHICommandListPtr> secondaryCmds,

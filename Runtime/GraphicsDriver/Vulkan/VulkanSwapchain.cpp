@@ -123,6 +123,8 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_swapchainImageViews[i]->m_subresourceRange.layerCount = 1;
 
 		m_swapchainImageViews[i]->Compile();
+
+		m_device->SetDebugName(VK_OBJECT_TYPE_IMAGE, (uint64_t)((VkImage)*m_swapchainImages[i]), "Swapchain Image");
 	}
 
 	VkFormat depthFormat = device->GetDepthFormat();
@@ -161,6 +163,8 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		m_stencilBufferView = VulkanImageViewPtr::Make(m_device, m_depthBuffer, VK_IMAGE_ASPECT_DEPTH_BIT);
 		m_stencilBufferView->Compile();
 	}
+
+	m_device->SetDebugName(VK_OBJECT_TYPE_IMAGE, (uint64_t)((VkImage)*m_depthBuffer), "Depth Buffer");
 }
 
 VulkanSwapchain::~VulkanSwapchain()

@@ -28,6 +28,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	public:
 		SAILOR_API VulkanSwapchainImage(VkImage image, VulkanDevicePtr device);
 
+		SAILOR_API operator VkImage() const { return m_image; }
+
 	protected:
 		SAILOR_API virtual ~VulkanSwapchainImage();
 	};

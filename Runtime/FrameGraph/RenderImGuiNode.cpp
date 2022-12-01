@@ -23,6 +23,7 @@ void RenderImGuiNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f, 1.0f, 0.0f, 0.25f));
 
 	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color");
 	if (!colorAttachment)
@@ -48,4 +49,6 @@ void RenderImGuiNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		false,
 		glm::vec4(0.0f),
 		false);
+
+	commands->EndDebugRegion(commandList);
 }

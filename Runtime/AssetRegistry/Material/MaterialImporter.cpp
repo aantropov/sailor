@@ -189,6 +189,7 @@ void Material::ForcelyUpdateUniforms()
 {
 	SAILOR_PROFILE_BLOCK("Create command list");
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Forcely Update Uniforms");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 	UpdateUniforms(cmdList);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
@@ -358,6 +359,9 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 				pMaterial->SetShader(pShader);
 				pShader->AddHotReloadDependentObject(material);
 
+				const UID uid = pMaterial->GetUID();
+				const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
+
 				auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 				{
 					if (pMaterial.GetRawPtr()->GetShader()->IsReady())
@@ -365,6 +369,13 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 						pMaterial.GetRawPtr()->UpdateRHIResource();
 						pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
 						pMaterial.GetRawPtr()->TraceHotReload(nullptr);
+
+						// TODO: Optimize
+						auto rhiMaterials = pMaterial.GetRawPtr()->GetRHIMaterials().GetValues();
+						for (const auto& rhi : rhiMaterials)
+						{
+							RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
+						}
 					}
 				}, Tasks::EThreadType::Render);
 
@@ -532,16 +543,27 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 		pMaterial->SetShader(pShader);
 		pShader->AddHotReloadDependentObject(pMaterial);
 
+		const UID uid = pMaterial->GetUID();
+		const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
+
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<MaterialPtr>("Load material",
-			[pMaterial, pMaterialAsset]()
-		{
+			[pMaterial, pMaterialAsset, assetFilename = assetFilename]()
+			{
 			// We're updating rhi on worker thread during load since we have no deps
 			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
 			{
+				
 				if (pMaterial.GetRawPtr()->GetShader()->IsReady())
 				{
 					pMaterial.GetRawPtr()->UpdateRHIResource();
 					pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
+
+					// TODO: Optimize
+					auto rhiMaterials = pMaterial.GetRawPtr()->GetRHIMaterials().GetValues();
+					for (const auto& rhi : rhiMaterials)
+					{
+						RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
+					}
 				}
 			}, Tasks::EThreadType::RHI);
 

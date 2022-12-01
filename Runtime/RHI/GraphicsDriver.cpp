@@ -16,6 +16,7 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3U
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
 
 	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "UpdateMesh");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	// Handle both buffers in memory closier each other

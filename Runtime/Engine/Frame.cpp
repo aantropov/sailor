@@ -7,6 +7,7 @@
 #include "RHI/Renderer.h"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
+#include "RHI/CommandList.h"
 #include "RHI/GraphicsDriver.h"
 
 #include "Engine/World.h"
@@ -59,7 +60,10 @@ FrameState& FrameState::operator=(FrameState frameState)
 
 RHI::RHICommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 {
-	return m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
+	auto cmdList = m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "World");
+
+	return cmdList;
 }
 
 WorldPtr FrameState::GetWorld() const

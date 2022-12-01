@@ -3,11 +3,7 @@
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
-
-namespace Sailor::RHI
-{
-	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
-}
+#include "RHI/Renderer.h"
 
 namespace Sailor::Framegraph
 {

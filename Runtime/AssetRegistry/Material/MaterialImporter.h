@@ -49,6 +49,8 @@ namespace Sailor
 		// TODO: Incapsulate & isolate
 		SAILOR_API RHI::RHIMaterialPtr& GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription);
 
+		const TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr>& GetRHIMaterials() const { return m_rhiMaterials; }
+
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
 		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
 		SAILOR_API void SetShader(ShaderSetPtr shader) { m_shader = shader; }

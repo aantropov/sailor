@@ -52,7 +52,7 @@ void App::Initialize()
 
 	s_pInstance = new App();
 
-#if defined(BUILD_WITH_RENDER_DOC)
+#if defined(BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
 	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
 #endif
 
@@ -243,7 +243,10 @@ void App::Shutdown()
 	SAILOR_LOG("Sailor Engine Releasing");
 
 #if defined(BUILD_WITH_RENDER_DOC)
-	RemoveSubmodule<RenderDocApi>();
+	if (App::GetSubmodule<RenderDocApi>())
+	{
+		RemoveSubmodule<RenderDocApi>();
+	}
 #endif
 
 	RemoveSubmodule<EngineLoop>();

@@ -318,6 +318,57 @@ void VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIB
 	m_vkInstance->CopyBuffer_Immediate(m_vkInstance->GetMainDevice(), *src->m_vulkan.m_buffer, *dst->m_vulkan.m_buffer, size);
 }
 
+void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std::string& name)
+{
+#ifdef _DEBUG
+	auto device = m_vkInstance->GetMainDevice();
+
+	if (auto texture = resource.DynamicCast<RHI::RHITexture>())
+	{
+		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_IMAGE,
+			(uint64_t)(VkImage)*texture->m_vulkan.m_image, "Image " + name);
+	}
+	else if (auto material = resource.DynamicCast<RHI::RHIMaterial>())
+	{
+		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_PIPELINE,
+			(uint64_t)(VkPipeline)*material->m_vulkan.m_pipeline, "Pipeline " + name);
+	}
+	else if (auto shader = resource.DynamicCast<RHI::RHIShader>())
+	{
+		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_SHADER_MODULE,
+			(uint64_t)(VkShaderModule)*shader->m_vulkan.m_shader->m_module, "Shader Module " + name);
+	}
+	else if (auto cmdList = resource.DynamicCast<RHI::RHICommandList>())
+	{
+		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER,
+			(uint64_t)(VkCommandBuffer)*cmdList->m_vulkan.m_commandBuffer,
+			"Command List " + name);
+	}
+#endif
+}
+
+void VulkanGraphicsDriver::BeginDebugRegion(RHI::RHICommandListPtr cmdList, const std::string& title, const glm::vec4& color)
+{
+#ifdef _DEBUG
+	auto device = m_vkInstance->GetMainDevice();
+
+	VkDebugMarkerMarkerInfoEXT markerInfo = {};
+	markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT;
+	memcpy(markerInfo.color, &color, sizeof(glm::vec4));
+	markerInfo.pMarkerName = title.c_str();
+
+	device->vkCmdDebugMarkerBegin(cmdList->m_vulkan.m_commandBuffer, &markerInfo);
+#endif
+}
+
+void VulkanGraphicsDriver::EndDebugRegion(RHI::RHICommandListPtr cmdList)
+{
+#ifdef _DEBUG
+	auto device = m_vkInstance->GetMainDevice();
+	device->vkCmdDebugMarkerEnd(cmdList->m_vulkan.m_commandBuffer);
+#endif
+}
+
 RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	const void* pData,
 	size_t size,
@@ -379,6 +430,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	vkExtent.depth = extent.z;
 
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Texture");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer,
@@ -417,6 +469,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 {
 	// Update layout
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Render Target");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	RHI::RHIRenderTargetPtr outTexture = CreateRenderTarget(
@@ -559,6 +612,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 		target->m_vulkan.m_imageView->Compile();
 
 		RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Surface");
 		RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 		RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
 			target,
@@ -1696,6 +1750,7 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<RHI::V
 	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
 
 	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Update Mesh");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	const RHI::EBufferUsageFlags flags = RHI::EBufferUsageBit::VertexBuffer_Bit | RHI::EBufferUsageBit::IndexBuffer_Bit;

@@ -21,8 +21,9 @@ void ClearNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	SAILOR_PROFILE_FUNCTION();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-
 	glm::vec4 clearColor = GetVec4("clearColor");
+
+	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(clearColor.x, clearColor.y, clearColor.z, 0.5f));
 
 	RHITexturePtr dst{};
 
@@ -49,6 +50,8 @@ void ClearNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
 	commands->ClearImage(commandList, dst, clearColor);
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
+
+	commands->EndDebugRegion(commandList);
 }
 
 void ClearNode::Clear()

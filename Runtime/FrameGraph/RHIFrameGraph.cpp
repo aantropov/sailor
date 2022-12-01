@@ -3,6 +3,7 @@
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
 #include "RHI/VertexDescription.h"
+#include "RHI/CommandList.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Tasks/Tasks.h"
 
@@ -95,8 +96,15 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, false);
 		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, true);
 
+		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "FrameGraph Graphics");
+		RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "FrameGraph Transfer");
+
 		driverCommands->BeginCommandList(cmdList, true);
+		driverCommands->BeginDebugRegion(cmdList, "FrameGraph Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
+
 		driverCommands->BeginCommandList(transferCmdList, true);
+		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
+
 		FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
 
 		driverCommands->SetDefaultViewport(cmdList);
@@ -107,7 +115,10 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 			//TODO: Submit Transfer command lists
 		}
 
+		driverCommands->EndDebugRegion(cmdList);
 		driverCommands->EndCommandList(cmdList);
+
+		driverCommands->EndDebugRegion(transferCmdList);
 		driverCommands->EndCommandList(transferCmdList);
 		SAILOR_PROFILE_END_BLOCK();
 

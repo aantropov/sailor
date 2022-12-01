@@ -21,9 +21,10 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 	SAILOR_PROFILE_FUNCTION();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(0.85f, 0.85f, 1.0f, 0.85f));
 
 	RHI::RHITexturePtr src = GetResolvedAttachment("src");
-	RHI::RHITexturePtr dst = GetRHIResource("dst").DynamicCast<RHITexture>();
+	RHI::RHITexturePtr dst = GetResolvedAttachment("dst");
 
 	if (!dst)
 	{
@@ -42,6 +43,8 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 
 	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src->GetDefaultLayout());
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
+
+	commands->EndDebugRegion(commandList);
 }
 
 void BlitNode::Clear()

@@ -69,6 +69,7 @@ namespace Sailor
 			uint32_t m_width = 1;
 			uint32_t m_height = 1;
 			RHI::ETextureFormat m_format;
+			RHI::ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;
 			bool m_bIsSurface : 1 = false;
 			bool m_bIsCompatibleWithComputeShaders : 1 = false;
 			bool m_bGenerateMips : 1 = false;
@@ -111,6 +112,11 @@ namespace Sailor
 				if (inData["format"])
 				{
 					DeserializeEnum<RHI::ETextureFormat>(inData["format"], m_format);
+				}
+
+				if (inData["filtration"])
+				{
+					DeserializeEnum<RHI::ETextureFiltration>(inData["filtration"], m_filtration);
 				}
 
 				if (inData["bIsSurface"])

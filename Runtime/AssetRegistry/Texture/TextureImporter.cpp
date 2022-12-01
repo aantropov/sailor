@@ -79,6 +79,9 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 					pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
 						mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 						assetInfo->GetClamping());
+
+					RHI::Renderer::GetDriver()->SetDebugName(pTexture.GetRawPtr()->m_rhiTexture, assetInfo->GetAssetFilepath());
+
 					return true;
 				}
 				return false;
@@ -192,6 +195,8 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 				pTexture.GetRawPtr()->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data->decodedData[0], data->decodedData.Num(), glm::vec3(data->width, data->height, 1.0f),
 					data->mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
 					assetInfo->GetClamping());
+
+				RHI::Renderer::GetDriver()->SetDebugName(pTexture.GetRawPtr()->m_rhiTexture, assetInfo->GetAssetFilepath());
 			}
 			return pTexture;
 		}, "Create RHI Texture", Tasks::EThreadType::RHI)->ToTaskWithResult();

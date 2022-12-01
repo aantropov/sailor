@@ -23,6 +23,7 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f, 0.65f, 0.0f, 0.25f));
 
 	RHI::RHIRenderTargetPtr bloomRenderTarget = GetResolvedAttachment("bloom").DynamicCast<RHIRenderTarget>();
 
@@ -132,6 +133,7 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 	commands->ImageMemoryBarrier(commandList, bloomRenderTarget, bloomRenderTarget->GetFormat(), EImageLayout::General, bloomRenderTarget->GetDefaultLayout());
 
+	commands->EndDebugRegion(commandList);
 }
 
 void BloomNode::Clear()

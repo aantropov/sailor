@@ -32,6 +32,7 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	}
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f, 0.65f, 0.0f, 0.25f));
 
 	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
@@ -74,6 +75,8 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 			&pushConstants, sizeof(PushConstants));
 		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), RHI::EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
+
+	commands->EndDebugRegion(commandList);
 }
 
 void LightCullingNode::Clear()

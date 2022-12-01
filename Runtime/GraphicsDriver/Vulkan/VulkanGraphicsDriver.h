@@ -34,6 +34,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool AcquireNextImage();
 		SAILOR_API virtual bool PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const;
 
+		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, const std::string& name);
+
 		SAILOR_API virtual void WaitIdle();
 		SAILOR_API virtual RHI::RHITexturePtr GetBackBuffer() const;
 		SAILOR_API virtual RHI::RHITexturePtr GetDepthBuffer() const;
@@ -117,6 +119,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		//End Immediate context
 
 		//Begin IGraphicsDriverCommands
+
+		SAILOR_API virtual void BeginDebugRegion(RHI::RHICommandListPtr cmdList, const std::string& title, const glm::vec4& color);
+		SAILOR_API virtual void EndDebugRegion(RHI::RHICommandListPtr cmdList);
+
 		SAILOR_API virtual void RenderSecondaryCommandBuffers(RHI::RHICommandListPtr cmd,
 			TVector<RHI::RHICommandListPtr> secondaryCmds,
 			const TVector<RHI::RHITexturePtr>& colorAttachments,

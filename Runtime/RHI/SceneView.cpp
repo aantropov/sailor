@@ -8,6 +8,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "RHI/DebugContext.h"
+#include "RHI/CommandList.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -24,6 +25,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 			{
 				const auto& matrix = camera.GetProjectionMatrix() * camera.GetViewMatrix();
 				RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, false);
+				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
 				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix);
