@@ -1,6 +1,7 @@
 #include "ECS/LightingECS.h"
 #include "ECS/TransformECS.h"
 #include "RHI/Shader.h"
+#include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
 
 using namespace Sailor;
@@ -21,6 +22,8 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 	auto driverCommands = renderer->GetDriverCommands();
 	auto cmdList = GetWorld()->GetCommandList();
 	auto& binding = m_lightsData->GetOrAddShaderBinding("light");
+
+	driverCommands->BeginDebugRegion(cmdList, "LightingECS:Update Lights", RHI::DebugContext::Color_CmdTransfer);
 
 	TVector<ShaderData> shaderDataBatch;
 	shaderDataBatch.Reserve(64);
@@ -123,6 +126,8 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			shaderDataBatch.Clear();
 		}
 	}
+
+	driverCommands->EndDebugRegion(cmdList);
 
 	return nullptr;
 }

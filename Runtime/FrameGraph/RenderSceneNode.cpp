@@ -140,7 +140,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(0.0f, 1.0f, 0.0f, 0.25f));
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
 
 	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
 	TSet<Batch> batches;

@@ -26,6 +26,13 @@ namespace Sailor::RHI
 	{
 	public:
 
+		static constexpr glm::vec4 Color_Inactive = glm::vec4(0.66f, 0.66f, 0.66f, 0.66f);
+		static constexpr glm::vec4 Color_CmdTransfer = glm::vec4(0.85f, 0.85f, 1.0f, 0.85f);
+		static constexpr glm::vec4 Color_CmdCompute = glm::vec4(1.0f, 0.65f, 0.0f, 0.25f);
+		static constexpr glm::vec4 Color_CmdGraphics = glm::vec4(0.0f, 1.0f, 0.0f, 0.25f);
+		static constexpr glm::vec4 Color_CmdPostProcess = glm::vec4(1.0f, 0.65f, 0.5f, 0.35f);
+		static constexpr glm::vec4 Color_CmdDebug = glm::vec4(1.0f, 1.0f, 0.0f, 0.25f);
+
 		SAILOR_API __forceinline void DrawLine(const glm::vec3& start, const glm::vec3& end, const glm::vec4 color = { 0.0f, 1.0f, 0.0f, 0.0f }, float duration = 0.0f);
 		SAILOR_API void DrawOrigin(const glm::vec3& position, const glm::mat4& origin, float size = 1.0f, float duration = 0.0f);
 		SAILOR_API void DrawArrow(const glm::vec3& start, const glm::vec3& end, const glm::vec4 color = { 0.0f, 1.0f, 0.0f, 0.0f }, float duration = 0.0f);

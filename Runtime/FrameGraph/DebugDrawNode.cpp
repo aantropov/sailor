@@ -21,7 +21,7 @@ void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tr
 	SAILOR_PROFILE_FUNCTION();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f, 1.0f, 0.0f, 0.25f));
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
 
 	auto colorAttachmentSurface = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
 	auto colorAttachmentRT = GetRHIResource("color").DynamicCast<RHI::RHIRenderTarget>();

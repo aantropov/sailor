@@ -23,7 +23,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(0.0f, 1.0f, 0.0f, 0.25f));
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
 
 	auto depthAttachment = GetResolvedAttachment("depthStencil");
 	if (!depthAttachment)

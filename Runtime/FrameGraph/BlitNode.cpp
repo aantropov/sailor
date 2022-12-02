@@ -21,7 +21,7 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 	SAILOR_PROFILE_FUNCTION();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(0.85f, 0.85f, 1.0f, 0.85f));
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);
 
 	RHI::RHITexturePtr src = GetResolvedAttachment("src");
 	RHI::RHITexturePtr dst = GetResolvedAttachment("dst");

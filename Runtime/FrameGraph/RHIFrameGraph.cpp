@@ -96,14 +96,14 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, false);
 		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, true);
 
-		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "FrameGraph Graphics");
-		RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "FrameGraph Transfer");
+		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "FrameGraph:Graphics");
+		RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "FrameGraph:Transfer");
 
 		driverCommands->BeginCommandList(cmdList, true);
-		driverCommands->BeginDebugRegion(cmdList, "FrameGraph Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
+		driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 
 		driverCommands->BeginCommandList(transferCmdList, true);
-		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
+		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 
 		FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
 

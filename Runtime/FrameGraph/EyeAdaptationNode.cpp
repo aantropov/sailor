@@ -24,7 +24,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f, 0.65f, 0.0f, 0.25f));
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color");
 	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");

@@ -23,7 +23,6 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f, 0.65f, 0.5f, 0.35f));
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color");
 	if (!target)
@@ -51,6 +50,9 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	{
 		return;
 	}
+
+	const std::string shaderName = std::string(GetName()) + ":" + GetString("shader");
+	commands->BeginDebugRegion(commandList, shaderName, DebugContext::Color_CmdPostProcess);
 
 	if (!m_postEffectMaterial)
 	{
