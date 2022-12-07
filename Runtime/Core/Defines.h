@@ -8,6 +8,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 # define SAILOR_API __declspec(dllimport)
 #endif
 
+#include <cassert>
+
 #if defined(BUILD_WITH_EASY_PROFILER)
 #include "easy_profiler/include/easy/profiler.h"
 #endif
@@ -49,6 +51,10 @@ typedef unsigned long DWORD;
 #ifndef max
 #define max(a,b) ((a) > (b) ? (a) : (b))
 #endif
+
+#define checkAtCompileTime(expr, msg) static_assert(expr, #msg);
+#define check(expr) assert(expr);
+#define ensure(expr, msg) { static bool bOnce = false; if(!(expr) && !bOnce) { SAILOR_LOG(#msg); bOnce = true; }}
 
 //Memory
 namespace Sailor::Memory

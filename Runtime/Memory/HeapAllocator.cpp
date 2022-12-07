@@ -117,12 +117,12 @@ bool Page::TryAddMoreSpace(void* ptr, size_t size)
 	Header* block = static_cast<Header*>(ShiftPtr(ptr, -headerSize));
 	Header* pNext = static_cast<Header*>(block->m_next != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_next) : nullptr);
 
-	assert(!block->m_bIsFree);
+	check(!block->m_bIsFree);
 
 	const size_t extraSpace = size - block->m_size;
 	if (pNext && pNext->m_bIsFree && pNext->m_size > (extraSpace + headerSize + SAILOR_SMALLEST_DATA_SIZE))
 	{
-		assert(size > block->m_size);
+		check(size > block->m_size);
 
 		MoveHeader(pNext, extraSpace);
 		m_occupiedSpace += extraSpace;
@@ -145,7 +145,7 @@ void* Page::Allocate(size_t size, size_t alignment)
 	Header* freeBlock = static_cast<Header*>(ShiftPtr(m_pData, m_firstFree));
 	do
 	{
-		assert(freeBlock->m_bIsFree);
+		check(freeBlock->m_bIsFree);
 
 		void* pOldStartData = ShiftPtr(freeBlock, headerSize);
 		void* pNewStartData = pOldStartData;
@@ -167,7 +167,7 @@ void* Page::Allocate(size_t size, size_t alignment)
 				freeBlock = MoveHeader(freeBlock, freeSpaceLeft);
 
 				//we never shift the first block
-				assert(pPrev);
+				check(pPrev);
 				m_occupiedSpace += pPrev->m_bIsFree ? -freeSpaceLeft : freeSpaceLeft;
 			}
 
@@ -255,7 +255,7 @@ void Page::Free(void* pData)
 	Header* pPrev = static_cast<Header*>(block->m_prev != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_prev) : nullptr);
 	Header* pNext = static_cast<Header*>(block->m_next != InvalidIndexUINT64 ? ShiftPtr(m_pData, block->m_next) : nullptr);
 
-	assert(!block->m_bIsFree);
+	check(!block->m_bIsFree);
 
 	const bool bShouldMergeRight = pNext && pNext->m_bIsFree;
 	const bool bShouldMergeLeft = pPrev && pPrev->m_bIsFree;
@@ -623,7 +623,7 @@ void SmallPoolAllocator::Free(void* ptr)
 
 	page.Free(ptr);
 
-	assert(page.m_pData != nullptr);
+	check(page.m_pData != nullptr);
 
 	if (!page.m_bIsInFreeList)
 	{
@@ -704,7 +704,7 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 
 bool HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 {
-	assert(ptr);
+	check(ptr);
 
 	size_t oldSize = 0;
 

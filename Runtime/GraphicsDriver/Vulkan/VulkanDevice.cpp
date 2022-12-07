@@ -2,7 +2,6 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 
 #include <chrono>
 #include <set>
-#include <assert.h>
 #include <map>
 #include "Containers/Vector.h"
 #include <optional>
@@ -168,7 +167,7 @@ void VulkanDevice::Shutdown()
 	m_commandPool.Clear();
 
 	// 1 Main, 1 Render, 2 RHI
-	assert(m_threadContext.Num() == 4);
+	check(m_threadContext.Num() == 4);
 
 	for (auto& pair : m_threadContext)
 	{
@@ -200,7 +199,7 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 		res = CreateThreadContext();
 
 		// We don't want to create ThreadContext for each thread, only for Main, RHI and Render
-		assert(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
+		check(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
 	}
 	m_threadContext.Unlock(threadId);
 

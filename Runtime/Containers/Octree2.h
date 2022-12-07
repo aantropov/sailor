@@ -405,7 +405,7 @@ namespace Sailor
 						return true;
 					}
 
-					assert(false);
+					check(false);
 				}
 
 				node.Insert(element, pos, extents);

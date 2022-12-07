@@ -401,7 +401,7 @@ namespace Sailor
 					for (auto& el : elements)
 					{
 						const bool bWasPlaced = Insert_Internal(node, el.m_second.m_position, el.m_second.m_extents, el.m_first);
-						assert(bWasPlaced);
+						check(bWasPlaced);
 					}
 
 					return true;
@@ -429,7 +429,7 @@ namespace Sailor
 
 		__forceinline void Subdivide(TNode& node)
 		{
-			assert(node.IsLeaf());
+			check(node.IsLeaf());
 
 			// Bottom   Top
 			// |0|1|    |4|5|

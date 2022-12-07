@@ -66,7 +66,7 @@ namespace Sailor::Memory
 
 			TMemoryPtr<TPtr> Allocate(uint32_t layoutIndex, size_t size, uint32_t alignmentOffset)
 			{
-				assert(layoutIndex != InvalidIndex);
+				check(layoutIndex != InvalidIndex);
 
 				auto& emptySpace = m_layout[layoutIndex];
 
@@ -217,7 +217,7 @@ namespace Sailor::Memory
 		template<typename TDataType>
 		TMemoryPtr<TPtr> Allocate(uint32_t count)
 		{
-			//assert(sizeof(TDataType) == m_elementSize);
+			//check(sizeof(TDataType) == m_elementSize);
 
 			size_t size = count * sizeof(TDataType);
 			return Allocate(size, alignof(TDataType));
@@ -226,7 +226,7 @@ namespace Sailor::Memory
 		TMemoryPtr<TPtr> Allocate(size_t size, size_t alignment)
 		{
 			m_lock.Lock();
-			//assert(size % m_elementSize == 0);
+			//check(size % m_elementSize == 0);
 
 			uint32_t layoutIndex;
 			uint32_t blockLayoutIndex;

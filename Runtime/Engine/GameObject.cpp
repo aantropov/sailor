@@ -23,7 +23,7 @@ TransformComponent& GameObject::GetTransformComponent()
 
 bool GameObject::RemoveComponent(ComponentPtr component)
 {
-	assert(component);
+	check(component);
 
 	if (m_components.RemoveFirst(component))
 	{

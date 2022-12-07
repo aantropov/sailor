@@ -320,7 +320,7 @@ bool ImGuiApi::ImGui_Init(InitInfo* info)
 		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(uiShaderInfo->GetUID(), bd->Shader);
 	}
 
-	assert(bd->Shader.IsValid());
+	check(bd->Shader.IsValid());
 
 	RHI::RenderState renderState = RHI::RenderState(false, false, 0.0f, false, RHI::ECullMode::None,
 		RHI::EBlendMode::AlphaBlending, RHI::EFillMode::Fill, 0, false);

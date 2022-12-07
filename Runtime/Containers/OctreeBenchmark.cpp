@@ -57,7 +57,7 @@ public:
 		for (size_t i = 0; i < count; i++)
 		{
 			const bool bInserted = container.Insert(data[i].m_pos, data[i].m_extents, data[i].m_data);
-			assert(bInserted);
+			check(bInserted);
 		}
 		tOctree.Stop();
 		SAILOR_LOG("Performance test insert:\n\t TOctree %llums, nodes:%llu, elements:%llu", tOctree.ResultMs(), container.NumNodes(), container.Num());
@@ -69,7 +69,7 @@ public:
 		{
 			const auto shift = glm::ivec3(rand() % shiftMax - shiftMax /2, rand() % shiftMax - shiftMax / 2, rand() % shiftMax - shiftMax / 2);
 			const bool bUpdated = container.Update(data[i].m_pos + shift, data[i].m_extents, data[i].m_data);
-			//assert(bUpdated);
+			//check(bUpdated);
 		}
 		tOctree.Stop();
 		SAILOR_LOG("Performance test update:\n\t TOctree %llums, nodes:%llu, elements:%llu", tOctree.ResultMs(), container.NumNodes(), container.Num());
@@ -79,7 +79,7 @@ public:
 		for (size_t i = 0; i < count; i++)
 		{
 			const bool bRemoved = container.Remove(data[i].m_data);
-			//assert(bRemoved);
+			//check(bRemoved);
 		}
 		tOctree.Stop();
 		SAILOR_LOG("Performance test remove:\n\t TOctree %llums, nodes:%llu, elements:%llu", tOctree.ResultMs(), container.NumNodes(), container.Num());

@@ -28,7 +28,7 @@ namespace Sailor
 	void DeserializeEnum(const YAML::Node& j, typename std::enable_if< std::is_enum<T>::value, T >::type& outEnumeration)
 	{
 		auto value = magic_enum::enum_cast<T>(j.as<std::string>());
-		assert(value.has_value());
+		check(value.has_value());
 		outEnumeration = value.value();
 	}
 }
@@ -225,7 +225,7 @@ namespace YAML
 			}
 			else
 			{
-				assert(0);
+				check(0);
 			}
 
 			return node;

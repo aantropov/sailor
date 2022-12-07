@@ -121,11 +121,11 @@ void IGraphicsDriverCommands::UpdateShaderBindingVariable(RHI::RHICommandListPtr
 	SAILOR_PROFILE_FUNCTION();
 
 	// All uniform buffers should be bound
-	assert(shaderBinding->IsBind());
+	check(shaderBinding->IsBind());
 
 	RHI::ShaderLayoutBindingMember bindingLayout;
-	assert(shaderBinding->FindVariableInUniformBuffer(variable, bindingLayout));
-	assert(bindingLayout.IsArray() || indexInArray == 0);
+	check(shaderBinding->FindVariableInUniformBuffer(variable, bindingLayout));
+	check(bindingLayout.IsArray() || indexInArray == 0);
 
 	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset + bindingLayout.m_arrayStride * indexInArray);
 }

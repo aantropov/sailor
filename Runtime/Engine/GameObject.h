@@ -29,7 +29,7 @@ namespace Sailor
 		template<typename TComponent, typename... TArgs >
 		SAILOR_API TObjectPtr<TComponent> AddComponent(TArgs&& ... args)
 		{
-			assert(m_pWorld);
+			check(m_pWorld);
 			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward<TArgs>(args) ...);
 
 			newObject->m_owner = m_self;

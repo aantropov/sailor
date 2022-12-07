@@ -75,7 +75,7 @@ void World::Tick(FrameState& frameState)
 
 	for (auto& el : m_pendingDestroyObjects)
 	{
-		assert(el->m_bPendingDestroy);
+		check(el->m_bPendingDestroy);
 
 		el->EndPlay();
 		el->RemoveAllComponents();
@@ -94,7 +94,7 @@ void World::Tick(FrameState& frameState)
 GameObjectPtr World::Instantiate(const glm::vec3& worldPosition, const std::string& name)
 {
 	auto newObject = GameObjectPtr::Make(m_allocator, this, name);
-	assert(newObject);
+	check(newObject);
 	newObject->m_self = newObject;
 
 	if (m_bIsBeginPlayCalled)

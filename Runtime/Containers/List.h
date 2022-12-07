@@ -409,7 +409,7 @@ namespace Sailor
 
 		__forceinline void Remove(TNode* item)
 		{
-			assert(item);
+			check(item);
 
 			TNode* next = item->m_pNext;
 			TNode* prev = item->m_pPrev;

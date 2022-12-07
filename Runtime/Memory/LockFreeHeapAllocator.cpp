@@ -20,7 +20,7 @@ void* LockFreeHeapAllocator::allocate(size_t size, size_t alignment)
 	const DWORD currentThreadId = GetCurrentThreadId();
 	void* res = nullptr;
 
-	assert(currentThreadId < 100000000);
+	check(currentThreadId < 100000000);
 
 	auto& pAllocator = allocator->At_Lock(currentThreadId);
 
@@ -50,7 +50,7 @@ bool LockFreeHeapAllocator::reallocate(void* ptr, size_t size, size_t alignment)
 	bool res = allocator->At_Lock(allocatedThreadId)->Reallocate(pRaw, size + sizeof(DWORD), alignment);
 	allocator->Unlock(allocatedThreadId);
 
-	assert(((DWORD*)pRaw)[0] == allocatedThreadId);
+	check(((DWORD*)pRaw)[0] == allocatedThreadId);
 
 	return res;
 }
@@ -63,7 +63,7 @@ void LockFreeHeapAllocator::free(void* ptr, size_t size)
 		void* pRaw = (((DWORD*)ptr) - 1);
 		const DWORD allocatedThreadId = *((DWORD*)pRaw);
 
-		assert(allocator->ContainsKey(allocatedThreadId));
+		check(allocator->ContainsKey(allocatedThreadId));
 		allocator->At_Lock(allocatedThreadId)->Free(pRaw);
 		allocator->Unlock(allocatedThreadId);
 	}

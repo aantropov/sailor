@@ -35,7 +35,7 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	if (!m_pShader)
 	{
 		auto shaderPath = GetString("shader");
-		assert(!shaderPath.empty());
+		check(!shaderPath.empty());
 
 		auto definesStr = GetString("defines");
 		TVector<std::string> defines = Sailor::Utils::SplitString(definesStr, " ");

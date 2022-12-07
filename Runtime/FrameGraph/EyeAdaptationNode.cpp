@@ -48,7 +48,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	if (!m_pToneMappingShader)
 	{
 		auto shaderPath = GetString("toneMappingShader");
-		assert(!shaderPath.empty());
+		check(!shaderPath.empty());
 
 		auto definesStr = GetString("toneMappingDefines");
 		TVector<std::string> defines = Sailor::Utils::SplitString(definesStr, " ");
@@ -67,7 +67,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		m_computeHistogramShaderBindings = driver->CreateShaderBindings();
 		auto hitogramRes = driver->AddSsboToShaderBindings(m_computeHistogramShaderBindings, "histogram", sizeof(uint32_t), HistogramShades, 0, true);
 
-		assert(quarterResolution);
+		check(quarterResolution);
 		driver->AddStorageImageToShaderBindings(m_computeHistogramShaderBindings, "s_texColor", quarterResolution, 1);
 
 		// We should init the buffer
@@ -102,7 +102,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	{
 		auto& histogram = m_computeHistogramShaderBindings->GetOrAddShaderBinding("histogram");
 
-		assert(histogram->IsBind());
+		check(histogram->IsBind());
 
 		m_computeAverageShaderBindings = driver->CreateShaderBindings();
 		driver->AddShaderBinding(m_computeAverageShaderBindings, histogram, "histogram", 0);

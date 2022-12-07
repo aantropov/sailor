@@ -71,7 +71,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	typedef TRefPtr<class VulkanStateDynamicState> VulkanStateDynamicPtr;
 	typedef TRefPtr<class VulkanStateDynamicRendering> VulkanStateDynamicRenderingPtr;
 
-#define VK_CHECK(call) 	do { VkResult result_ = call; assert(result_ == VK_SUCCESS); } while (0)
+#define VK_CHECK(call) 	do { VkResult result_ = call; check(result_ == VK_SUCCESS); } while (0)
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 

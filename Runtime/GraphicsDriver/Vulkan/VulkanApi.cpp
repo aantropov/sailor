@@ -2,7 +2,6 @@
 #include <vulkan/vulkan.h>
 #include "Containers/Map.h"
 #include "Core/LogMacros.h"
-#include <assert.h>
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
 #include "Sailor.h"
@@ -762,7 +761,7 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 	}
 
 	SAILOR_LOG("Cannot find GPU memory!");
-	assert(false);
+	check(false);
 
 	return 0;
 }

@@ -72,7 +72,7 @@ namespace Sailor::Memory
 			uint8_t* res = &m_stack[m_index];
 			m_index += (uint32_t)(requiredSize);
 
-			assert(size < 65536);
+			check(size < 65536);
 
 			*(uint16_t*)res = (uint16_t)size;
 

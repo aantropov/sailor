@@ -61,7 +61,7 @@ namespace Sailor::Memory
 
 			TMemoryPtr<TPtr> Allocate(uint32_t layoutIndex, size_t size, uint32_t alignmentOffset)
 			{
-				assert(layoutIndex != InvalidIndexUINT32);
+				check(layoutIndex != InvalidIndexUINT32);
 
 				auto& emptySpace = m_layout[layoutIndex];
 

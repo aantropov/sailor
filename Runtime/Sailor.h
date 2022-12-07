@@ -49,9 +49,9 @@ namespace Sailor
 		template<typename T>
 		static T* AddSubmodule(TUniquePtr<TSubmodule<T>>&& submodule)
 		{
-			assert(submodule);
-			assert(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
-			assert(!s_pInstance->m_submodules[(uint32_t)TSubmodule<T>::GetTypeId()]);
+			check(submodule);
+			check(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
+			check(!s_pInstance->m_submodules[(uint32_t)TSubmodule<T>::GetTypeId()]);
 
 			T* rawPtr = static_cast<T*>(submodule.GetRawPtr());
 			s_pInstance->m_submodules[TSubmodule<T>::GetTypeId()] = std::move(submodule);
@@ -62,7 +62,7 @@ namespace Sailor
 		template<typename T>
 		static void RemoveSubmodule()
 		{
-			assert(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
+			check(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
 			s_pInstance->m_submodules[TSubmodule<T>::GetTypeId()].Clear();
 		}
 

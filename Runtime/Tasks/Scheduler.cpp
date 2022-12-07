@@ -253,7 +253,7 @@ void Scheduler::Run(const ITaskPtr& pJob, bool bAutoRunChainedTasks)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	assert(!pJob->IsStarted() && !pJob->IsExecuting() && !pJob->IsFinished() && !pJob->IsInQueue());
+	check(!pJob->IsStarted() && !pJob->IsExecuting() && !pJob->IsFinished() && !pJob->IsInQueue());
 
 	if (bAutoRunChainedTasks)
 	{
@@ -280,7 +280,7 @@ void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTa
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	assert(!pJob->IsStarted() && !pJob->IsExecuting() && !pJob->IsFinished() && !pJob->IsInQueue());
+	check(!pJob->IsStarted() && !pJob->IsExecuting() && !pJob->IsFinished() && !pJob->IsInQueue());
 
 	if (bAutoRunChainedTasks)
 	{
@@ -300,7 +300,7 @@ void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTa
 		m_workerThreads[result]->ForcelyPushJob(pJob);
 		return;
 	}
-	assert(m_mainThreadId == threadId);
+	check(m_mainThreadId == threadId);
 	// Add to Main thread if cannot find the thread in workers
 	{
 		std::mutex* pOutMutex;

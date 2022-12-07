@@ -26,7 +26,7 @@ VulkanStateDynamicRendering::VulkanStateDynamicRendering(const TVector<VkFormat>
 
 void VulkanStateDynamicRendering::Apply(VkGraphicsPipelineCreateInfo& state) const
 {
-	assert(state.pNext == nullptr);
+	check(state.pNext == nullptr);
 	state.pNext = &m_dynamicRenderingExtension;
 	state.renderPass = nullptr;
 }

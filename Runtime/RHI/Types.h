@@ -763,7 +763,7 @@ namespace Sailor::RHI
 				auto& element = m_elements[i];
 
 				auto visit = dynamic_cast<IObservable*>(element.GetRawPtr());
-				assert(visit);
+				check(visit);
 
 				bool bShouldRemove = false;
 				visit->TraceVisit((TRefPtr<RHIResource>(dynamic_cast<RHIResource*>(this))), bShouldRemove);

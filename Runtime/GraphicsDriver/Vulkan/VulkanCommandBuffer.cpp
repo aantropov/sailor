@@ -643,7 +643,7 @@ void VulkanCommandBuffer::ClearDependencies()
 
 void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)
 {
-	assert(secondaryCommandBuffer->IsRecorded());
+	check(secondaryCommandBuffer->IsRecorded());
 
 	vkCmdExecuteCommands(m_commandBuffer, 1, secondaryCommandBuffer->GetHandle());
 	m_commandBufferDependencies.Add(secondaryCommandBuffer);

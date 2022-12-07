@@ -46,7 +46,7 @@ namespace Sailor
 			}
 
 			m_pAllocator = std::move(pAllocator);
-			assert(m_pAllocator);
+			check(m_pAllocator);
 			AssignRawPtr(pRawPtr, nullptr);
 
 			// We're storing object
@@ -82,7 +82,7 @@ namespace Sailor
 		// We support this operator to properly write next code TObjectPtr<T> p = nullptr;
 		SAILOR_API TObjectPtr& operator=(T* pRaw) noexcept
 		{
-			assert(!pRaw);
+			check(!pRaw);
 			Clear();
 			return *this;
 		}
@@ -109,7 +109,7 @@ namespace Sailor
 
 		SAILOR_API T* GetRawPtr() const noexcept
 		{
-			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
+			check(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return static_cast<T*>(m_pRawPtr);
 		}
 
@@ -143,25 +143,25 @@ namespace Sailor
 
 		SAILOR_API T* operator->()  noexcept
 		{
-			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
+			check(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return static_cast<T*>(m_pRawPtr);
 		}
 
 		SAILOR_API const T* operator->() const
 		{
-			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
+			check(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return static_cast<T*>(m_pRawPtr);
 		}
 
 		SAILOR_API T& operator*() noexcept
 		{
-			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
+			check(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return *static_cast<T*>(m_pRawPtr);
 		}
 
 		SAILOR_API const T& operator*() const
 		{
-			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
+			check(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 			return *static_cast<T*>(m_pRawPtr);
 		}
 
@@ -206,15 +206,15 @@ namespace Sailor
 		// Only allocator handler could destroy the object by design
 		SAILOR_API void DestroyObject(Memory::ObjectAllocatorPtr pAllocator)
 		{
-			assert(pAllocator == m_pAllocator);
+			check(pAllocator == m_pAllocator);
 			ForcelyDestroyObject();
 		}
 
 		// Only if you know what you're doing
 		SAILOR_API void ForcelyDestroyObject()
 		{
-			assert(m_pRawPtr && m_pControlBlock);
-			assert(m_pControlBlock->m_sharedPtrCounter > 0);
+			check(m_pRawPtr && m_pControlBlock);
+			check(m_pControlBlock->m_sharedPtrCounter > 0);
 
 			if (--m_pControlBlock->m_sharedPtrCounter == 0)
 			{
@@ -270,7 +270,7 @@ namespace Sailor
 					ForcelyDestroyObject();
 				}
 
-				assert(m_pAllocator);
+				check(m_pAllocator);
 
 				m_pAllocator->Free(m_pControlBlock);
 				m_pControlBlock = nullptr;

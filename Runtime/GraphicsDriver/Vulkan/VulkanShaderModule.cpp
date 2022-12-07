@@ -47,18 +47,18 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	SpvReflectShaderModule module;
 
 	SpvReflectResult result = spvReflectCreateShaderModule(code.Num() * sizeof(code[0]), &code[0], &module);
-	assert(result == SPV_REFLECT_RESULT_SUCCESS);
+	check(result == SPV_REFLECT_RESULT_SUCCESS);
 
 	uint32_t count = 0;
 	result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);
-	assert(result == SPV_REFLECT_RESULT_SUCCESS);
+	check(result == SPV_REFLECT_RESULT_SUCCESS);
 
 	TVector<TMap<uint32_t, TPair<RHI::ShaderLayoutBinding, VkDescriptorSetLayoutBinding>>> bindings;
 	bindings.Resize(count);
 
 	TVector<SpvReflectDescriptorSet*> sets(count);
 	result = spvReflectEnumerateDescriptorSets(&module, &count, sets.GetData());
-	assert(result == SPV_REFLECT_RESULT_SUCCESS);
+	check(result == SPV_REFLECT_RESULT_SUCCESS);
 
 	for (size_t i_set = 0; i_set < sets.Num(); ++i_set)
 	{
@@ -160,7 +160,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	size_t pushConstantsCount = 0;
 	uint32_t* pRawPushConstants = nullptr;
 	result = EnumerateAllPushConstants(&module, &pushConstantsCount, &pRawPushConstants);
-	assert(result == SPV_REFLECT_RESULT_SUCCESS);
+	check(result == SPV_REFLECT_RESULT_SUCCESS);
 
 	m_pushConstants.Resize(pushConstantsCount);
 	for (uint32_t i = 0; i < pushConstantsCount; i++)

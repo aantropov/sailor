@@ -141,13 +141,13 @@ namespace Sailor
 		// Operators
 		__forceinline const TElementType& operator[](size_t index) const
 		{
-			assert(index < m_arrayNum);
+			check(index < m_arrayNum);
 			return m_pRawPtr[index];
 		}
 
 		__forceinline TElementType& operator[](size_t index)
 		{
-			assert(index < m_arrayNum);
+			check(index < m_arrayNum);
 			return m_pRawPtr[index];
 		}
 

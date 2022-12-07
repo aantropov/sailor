@@ -45,7 +45,7 @@ bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
 
 void ITask::SetChainedTaskPrev(TWeakPtr<ITask>& job)
 {
-	assert(!m_chainedTaskPrev);
+	check(!m_chainedTaskPrev);
 	if (job)
 	{
 		//Job could be equal null
@@ -70,7 +70,7 @@ TSharedPtr<ITask> ITask::Run()
 
 void ITask::Complete()
 {
-	assert(!m_bIsFinished);
+	check(!m_bIsFinished);
 
 	std::unique_lock<std::mutex> lk(m_mutex);
 

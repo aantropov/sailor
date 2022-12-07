@@ -82,7 +82,7 @@ namespace Sailor
 
 		TSharedPtr<T> Lock() const
 		{
-			assert(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
+			check(m_pControlBlock != nullptr && m_pControlBlock->m_sharedPtrCounter > 0);
 
 			TSharedPtr<T> pRes;
 			pRes.AssignRawPtr(m_pRawPtr, m_pControlBlock);

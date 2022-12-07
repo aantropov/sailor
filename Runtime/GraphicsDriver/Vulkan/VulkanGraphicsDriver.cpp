@@ -513,7 +513,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	}
 
 	// Not optimal code
-	//assert(layout != (VkImageLayout)RHI::EImageLayout::General);
+	//check(layout != (VkImageLayout)RHI::EImageLayout::General);
 
 	auto device = m_vkInstance->GetMainDevice();
 	RHI::RHIRenderTargetPtr outTexture = RHI::RHIRenderTargetPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout);
@@ -741,7 +741,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 			binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(storageAllocator->Allocate(layoutBinding.m_size, layoutBinding.m_size), storageAllocator);
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
 
-			assert(((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % layoutBinding.m_size) == 0);
+			check(((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % layoutBinding.m_size) == 0);
 			uint32_t instanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / layoutBinding.m_size);
 
 			binding->m_vulkan.m_storageInstanceIndex = instanceIndex;
@@ -934,7 +934,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSe
 	bool bShouldUpdateDescriptorSet = false;
 
 	// All uniform buffers should be bound
-	assert(shaderBinding->IsBind());
+	check(shaderBinding->IsBind());
 
 	UpdateShaderBinding(commandList, shaderBinding, value, size);
 
@@ -992,7 +992,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 	auto vulkanBufferMemoryPtr = allocator->Allocate(elementSize * numElements, alignment);
 	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(vulkanBufferMemoryPtr, allocator);
 
-	assert((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % elementSize == 0);
+	check((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % elementSize == 0);
 
 	binding->m_vulkan.m_storageInstanceIndex = bBindSsboWithOffset ? 0 : (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / elementSize);
 	binding->m_vulkan.m_bBindSsboWithOffset = bBindSsboWithOffset;
@@ -1590,7 +1590,7 @@ void VulkanGraphicsDriver::BeginSecondaryCommandList(RHI::RHICommandListPtr cmd,
 {
 	uint32_t flags = bOneTimeSubmit ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
 
-	assert(cmd->m_vulkan.m_commandBuffer->GetLevel() == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+	check(cmd->m_vulkan.m_commandBuffer->GetLevel() == VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 
 	auto device = m_vkInstance->GetMainDevice();
 
@@ -1614,7 +1614,7 @@ void VulkanGraphicsDriver::BeginSecondaryCommandList(RHI::RHICommandListPtr cmd,
 
 void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOneTimeSubmit)
 {
-	assert(cmd->m_vulkan.m_commandBuffer->GetLevel() != VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+	check(cmd->m_vulkan.m_commandBuffer->GetLevel() != VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 
 	uint32_t flags = bOneTimeSubmit ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
 	cmd->m_vulkan.m_commandBuffer->BeginCommandList(flags);
@@ -1731,12 +1731,12 @@ void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::RHICommandListPtr cm
 	auto device = m_vkInstance->GetMainDevice();
 
 	// All uniform buffers should be bound
-	assert(shaderBinding->IsBind());
+	check(shaderBinding->IsBind());
 
 	RHI::ShaderLayoutBindingMember bindingLayout;
 	if (!shaderBinding->FindVariableInUniformBuffer(variable, bindingLayout))
 	{
-		assert(false);
+		check(false);
 	}
 
 	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset);
@@ -1804,7 +1804,7 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
 	void* pPushConstantsData,
 	uint32_t sizePushConstantsData)
 {
-	assert(computeShader->GetStage() == RHI::EShaderStage::Compute);
+	check(computeShader->GetStage() == RHI::EShaderStage::Compute);
 
 	if (computeShader->GetStage() != RHI::EShaderStage::Compute)
 	{
