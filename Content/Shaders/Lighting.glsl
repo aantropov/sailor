@@ -1,5 +1,6 @@
 #define LIGHTS_CANDIDATES_PER_TILE 196
 #define LIGHTS_PER_TILE 128
+#define PI 3.1415926
 
 const int LIGHTS_CULLING_TILE_SIZE = 16;
 
@@ -69,6 +70,15 @@ vec4 ScreenToView(vec4 screen, vec2 viewportSize, mat4 invProjection)
 
     // Convert to clip space
     vec4 clip = vec4(vec2(texCoord.x, texCoord.y) * 2.0f - 1.0f, screen.z, screen.w);
+
+    return ClipToView(clip, invProjection);
+}
+
+// Convert screen space coordinates to view space.
+vec4 ScreenToView(vec2 texCoord, float z, mat4 invProjection)
+{
+    // Convert to clip space
+    vec4 clip = vec4(vec2(texCoord.x, texCoord.y) * 2.0f - 1.0f, z, 1.0f);
 
     return ClipToView(clip, invProjection);
 }

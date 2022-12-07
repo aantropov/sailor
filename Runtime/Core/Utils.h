@@ -18,6 +18,7 @@ namespace Sailor
 		SAILOR_API std::time_t GetFileModificationTime(const std::string& filepath);
 		SAILOR_API std::string GetFileFolder(const std::string& filepath);
 
+		SAILOR_API TVector<std::string> SplitStringByLines(const std::string& str);
 		SAILOR_API TVector<std::string> SplitString(const std::string& str, const std::string& delimiter);
 		SAILOR_API void ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPos = 0, size_t endPos = std::string::npos);
 		SAILOR_API void Erase(std::string& str, const std::string& substr, size_t startPos = 0, size_t endPos = std::string::npos);

@@ -110,12 +110,12 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
 
-#############################
-#- name: Blit
-#############################
-#  renderTargets:
-#  - src: Sky
-#  - dst: Main
+############################
+- name: Blit
+############################
+  renderTargets:
+  - src: Sky
+  - dst: Main
 
 ##############################
 - name: Bloom

@@ -13,6 +13,9 @@
 #include <functional> 
 #include <cctype>
 
+#include <sstream>
+#include <string>
+
 #include <windows.h>
 #include "Containers/Vector.h"
 #include "Tasks/Tasks.h"
@@ -163,6 +166,19 @@ std::string Sailor::Utils::GetFileExtension(const std::string& filename)
 	if (lastdot == std::string::npos)
 		return std::string();
 	return filename.substr(lastdot, filename.size() - lastdot);
+}
+
+TVector<std::string> Sailor::Utils::SplitStringByLines(const std::string& str)
+{
+	TVector<std::string> result;
+	auto ss = std::stringstream{ str };
+
+	for (std::string line; std::getline(ss, line, '\n');)
+	{
+		result.Emplace(std::move(line));
+	}
+
+	return result;
 }
 
 TVector<std::string> Sailor::Utils::SplitString(const std::string& str, const std::string& delimiter)

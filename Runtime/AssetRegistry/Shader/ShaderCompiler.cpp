@@ -471,9 +471,11 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 		const size_t numErrors = module.GetNumErrors();
 		const size_t numWarnings = module.GetNumWarnings();
 		const std::string error = module.GetErrorMessage().c_str();
-		
+
 		SAILOR_LOG("Failed to compile shader:\n%s", error.c_str());
-		
+		// TODO: More info about errors
+		//auto lines = Utils::SplitStringByLines(source);
+
 		return false;
 	}
 
