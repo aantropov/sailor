@@ -448,6 +448,8 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 	deviceFeatures.multiDrawIndirect = m_bSupportsMultiDrawIndirect;
 	deviceFeatures.shaderStorageImageMultisample = VK_TRUE;
+	deviceFeatures.shaderFloat64 = VK_TRUE;
+
 #ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
 	deviceFeatures.sampleRateShading = VK_TRUE;
 #endif
