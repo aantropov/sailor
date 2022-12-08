@@ -139,35 +139,56 @@ glslFragment: |
      const vec3 step = (destination - origin) / INTEGRAL_STEPS_2;     
      
      // Constants for PhaseR
-     const dvec3 B0R = dvec3(5.8, 13.5, 33.1) * dvec3(0.000001, 0.000001, 0.000001);
+     const vec3 B0R = vec3(5.8, 13.5, 33.1) * vec3(0.000001, 0.000001, 0.000001);
      const float H0R = 8000.0f;
 
      // Constants for PhaseMu
-     const dvec3 B0Mu = dvec3(3.0, 3.0, 3.0) * dvec3(0.000001);
+     const vec3 B0Mu = vec3(2.0, 2.0, 2.0) * vec3(0.000001);
      const float H0Mu = 1200.0f;
 
-     const float dh = (length(destination) - length(origin)) / INTEGRAL_STEPS_2;     
+     const float heightOrigin = length(origin);
+     const float dh = (length(destination) - heightOrigin) / INTEGRAL_STEPS_2;     
      const float dStep = length(step);
      
      vec3 resR = vec3(0.0f);
      vec3 resMu = vec3(0.0f);
 
+     float densityR = 0.0f;
+     float densityMu = 0.0f;
+     
      for(uint i = 0; i < INTEGRAL_STEPS_2 - 1; i++)
      {
          const vec3 point = origin + step * (i + 1);
-         const float height = length(point);
-         const float h = height - R;
+         const float h = length(point) - R;
          
-         const vec3 toLight = point - lightDirection * AtmosphereR;
+         const float hr = exp(-h/H0R)  * dStep;
+         const float hm = exp(-h/H0Mu) * dStep;
          
-         const float densityR = Density(point, origin, H0R) + Density(toLight, point, H0R);
-         const float densityMu = Density(point, origin, H0Mu) + Density(toLight, point, H0Mu);
+         densityR  += hr;
+         densityMu += hm;
 
-         //resR += exp(-vec3(B0R * densityR)) * vec3(B0R * dStep * exp(-h/H0R));
-         resMu += exp(-vec3(B0Mu * densityMu)) * vec3(B0Mu * dStep * exp(-h/H0Mu));
-     }
+         const vec3  toLight = point - lightDirection * AtmosphereR;
+         const float hLight  = length(toLight) - R;
+         const float stepToLight = (h - hLight) / INTEGRAL_STEPS;
+         
+         float dStepLight = length(point - toLight) / INTEGRAL_STEPS;
+         float densityLightR = 0.0f;
+         float densityLightMu = 0.0f;
+          
+         bool bReached = true;
+         for(int j = 0; j < INTEGRAL_STEPS; j++)
+         {
+            const float h1 = hLight + stepToLight * j;
+            
+            densityLightMu += exp(-h1/H0Mu) * dStepLight;
+            densityLightR  += exp(-h1/H0R)  * dStepLight;
+         }
+         
+        resR  += exp(-B0R * (densityR + densityLightR)) * hr;
+        resMu += exp(-1.1f * B0Mu * (densityLightMu + densityMu)) * hm;
+    }
      
-    const vec3 final = LightIntensity * (resR * PhaseR(Angle) + resMu * PhaseMu(Angle));
+    const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
     return final;
   }
   
@@ -181,9 +202,8 @@ glslFragment: |
 
     // View position
     vec3 origin = vec3(0, R + 100, 0) + frame.cameraPosition.xyz;
-    vec3 rayDst = origin + dirViewSpace.xyz * AtmosphereR;    
+    vec3 rayDst = origin + dirViewSpace.xyz * AtmosphereR;
     
     vec3 sunDirection = normalize(vec3(0,-0.1,1));
-    
     outColor.xyz = SkyLighting(origin, rayDst, sunDirection);
   }

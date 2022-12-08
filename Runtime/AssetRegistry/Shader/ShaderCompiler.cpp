@@ -470,11 +470,44 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 	{
 		const size_t numErrors = module.GetNumErrors();
 		const size_t numWarnings = module.GetNumWarnings();
-		const std::string error = module.GetErrorMessage().c_str();
+		const std::string fullError = module.GetErrorMessage().c_str();
 
-		SAILOR_LOG("Failed to compile shader:\n%s", error.c_str());
-		// TODO: More info about errors
-		//auto lines = Utils::SplitStringByLines(source);
+		uint32_t start = 0;
+		bool bFound = false;
+		uint32_t lineNum = 0;
+
+		SAILOR_LOG("Failed to compile shader");
+
+		uint32_t errorNum = 1;
+		auto errors = Utils::SplitStringByLines(fullError.c_str());
+		for (const auto& error : errors)
+		{
+			SAILOR_LOG("Error %d: %s", errorNum++, error.c_str());
+
+			for (uint32_t i = 0; i < error.size(); i++)
+			{
+				if (error[i] == ':')
+				{
+					if (!bFound)
+					{
+						start = i;
+						bFound = true;
+					}
+					else
+					{
+						std::string str = error.substr(start + 1, i - start - 2);
+						lineNum = std::stoul(str) - 1;
+					}
+				}
+			}
+
+			auto lines = Utils::SplitStringByLines(source);
+
+			if (lineNum < lines.Num())
+			{
+				SAILOR_LOG("%s\n", lines[lineNum].c_str());
+			}
+		}
 
 		return false;
 	}
@@ -676,7 +709,7 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 	{
 		return false;
 	}
-	
+
 	if (debugVertexSpirv.Num() > 0)
 	{
 		pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);

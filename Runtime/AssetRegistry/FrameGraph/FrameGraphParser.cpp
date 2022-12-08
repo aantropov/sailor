@@ -97,11 +97,12 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		const uint32_t maxExtent = std::max(renderTarget.m_second.m_width, renderTarget.m_second.m_height);
 		const uint32_t numMips = std::min(renderTarget.m_second.m_maxMipLevel, bShouldGenerateMips ? (uint32_t)std::floor(std::log2f((float)maxExtent)) + 1 : 1u);
 		const RHI::ETextureFiltration filtration = renderTarget.m_second.m_filtration;
+		const RHI::ETextureClamping clamping = renderTarget.m_second.m_clamping;
 
 		if (renderTarget.m_second.m_bIsSurface)
 		{
 			RHI::RHISurfacePtr rhiSurface = RHI::Renderer::GetDriver()->CreateSurface(glm::vec2(renderTarget.m_second.m_width, renderTarget.m_second.m_height),
-				numMips, renderTarget.m_second.m_format, filtration, RHI::ETextureClamping::Clamp, defaultUsage);
+				numMips, renderTarget.m_second.m_format, filtration, clamping, defaultUsage);
 
 			pRhiFrameGraph->SetSurface(renderTarget.m_first, rhiSurface);
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiSurface->GetResolved());
@@ -112,7 +113,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		else
 		{
 			RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec2(renderTarget.m_second.m_width, renderTarget.m_second.m_height),
-				numMips, renderTarget.m_second.m_format, filtration, RHI::ETextureClamping::Clamp, defaultUsage);
+				numMips, renderTarget.m_second.m_format, filtration, clamping, defaultUsage);
 
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
 

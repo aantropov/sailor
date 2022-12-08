@@ -70,6 +70,7 @@ namespace Sailor
 			uint32_t m_height = 1;
 			RHI::ETextureFormat m_format;
 			RHI::ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;
+			RHI::ETextureClamping m_clamping = RHI::ETextureClamping::Clamp;
 			bool m_bIsSurface : 1 = false;
 			bool m_bIsCompatibleWithComputeShaders : 1 = false;
 			bool m_bGenerateMips : 1 = false;
@@ -117,6 +118,11 @@ namespace Sailor
 				if (inData["filtration"])
 				{
 					DeserializeEnum<RHI::ETextureFiltration>(inData["filtration"], m_filtration);
+				}
+
+				if (inData["clamping"])
+				{
+					DeserializeEnum<RHI::ETextureClamping>(inData["clamping"], m_clamping);
 				}
 
 				if (inData["bIsSurface"])

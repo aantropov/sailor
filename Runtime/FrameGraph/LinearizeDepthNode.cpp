@@ -58,7 +58,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	}
 
 	PushConstants constants{};
-	constants.m_invProjection = glm::inverse(sceneView.m_camera->GetInvProjection());
+	constants.m_invProjection = sceneView.m_camera->GetInvProjection();
 
 	// How to correctly handle linearization
 	// https://thxforthefish.com/posts/reverse_z/
