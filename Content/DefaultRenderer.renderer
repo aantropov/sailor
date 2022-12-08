@@ -30,8 +30,8 @@ renderTargets:
 
 - name: Sky
   format: R16G16B16A16_SFLOAT
-  width: 64
-  height: 64
+  width: 128
+  height: 128
   bIsSurface: false
 
 - name: QuarterMain1
