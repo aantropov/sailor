@@ -30,8 +30,8 @@ renderTargets:
 
 - name: Sky
   format: R16G16B16A16_SFLOAT
-  width: 64
-  height: 64
+  width: 128
+  height: 128
   clamping: Repeat
   bIsSurface: false
 
@@ -89,7 +89,7 @@ frame:
 ############################
   string:
   - shader: Shaders/Sky.shader
-  - defines: ~
+  - defines: FILL
   vec4:
   - data.param: [0.0225, 0.00345, 0.00455, 0.0]
   renderTargets:

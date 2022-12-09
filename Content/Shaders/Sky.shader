@@ -45,7 +45,7 @@ glslFragment: |
   layout(location = 0) in vec2 fragTexcoord;
   layout(location = 0) out vec4 outColor;
   
-  #define INTEGRAL_STEPS 32
+  #define INTEGRAL_STEPS 2
   #define INTEGRAL_STEPS_2 32
   
   const float R = 6371000.0f; // Earth radius in m
@@ -76,7 +76,7 @@ glslFragment: |
   
   float PhaseMu(float cosAngle)
   {
-    const float g = 0.76;
+    const float g = 0.9;
     const float phaseM = 3.0f / (8.0f * PI) * ((1.0f - g * g) * (1.0f + cosAngle * cosAngle)) / 
     ((2.0f + g * g) * pow(1.0f + g * g - 2.0f * g * cosAngle, 1.5f));
 
@@ -124,13 +124,13 @@ glslFragment: |
       
   #if defined(FILL)
       vec2 tmp = raySphereIntersect(origin, direction, vec3(0), innerR);
-      float inner = tmp.y;
+      float inner = tmp.x > 0.0f ? tmp.x : tmp.y;
       
       if(inner > 0.0f)
       {
           // If we intersects the Earth we should tune
-          shift = AtmosphereR;
-          //shift = inner * 15;
+          //shift = AtmosphereR;
+          shift = inner * 5;
       }
   #endif
       return origin + direction * shift;
@@ -174,7 +174,7 @@ glslFragment: |
          densityR  += hr;
          densityMu += hm;
 
-         const vec3  toLight = IntersectSphere(origin, -lightDirection, R, R + AtmosphereR);
+         const vec3  toLight = IntersectSphere(point, -lightDirection, R, R + AtmosphereR);
          const float hLight  = length(toLight) - R;
          const float stepToLight = (hLight - h) / INTEGRAL_STEPS;
          
@@ -189,15 +189,20 @@ glslFragment: |
             
             if(h1 < 0)
             {
-                //break;
+                bReached = false;
+                break;
             }
             
             densityLightMu += exp(-h1/H0Mu) * dStepLight;
             densityLightR  += exp(-h1/H0R)  * dStepLight;
          }
-         
-        resR  += exp(-B0R * (densityR + densityLightR)) * hr;
-        resMu += exp(-1.1f * B0Mu * (densityLightMu + densityMu)) * hm;
+        
+        if(bReached)
+        {
+            vec3 aggr = exp(-B0R * (densityR + densityLightR) + -1.1f * B0Mu * (densityLightMu + densityMu));
+            resR  += aggr * hr;
+            resMu += aggr * hm;
+        }
     }
      
     const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
@@ -213,10 +218,10 @@ glslFragment: |
     dirViewSpace = normalize(inverse(frame.view) * dirViewSpace);
 
     // View position
-    vec3 origin = vec3(0, R + 0, 0) + frame.cameraPosition.xyz;    
+    vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;    
     
     vec3 sunDirection1 = normalize(vec3(0, -1, 0));
-    vec3 sunDirection2 = normalize(vec3(0, 0.09, 1));
+    vec3 sunDirection2 = normalize(vec3(0, 0.12, 1));
     
     outColor.xyz = fragTexcoord.x > 0.5 ? 
     SkyLighting(origin, dirViewSpace.xyz, sunDirection1) :
