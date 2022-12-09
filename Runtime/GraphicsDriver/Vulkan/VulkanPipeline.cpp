@@ -147,8 +147,7 @@ void VulkanGraphicsPipeline::Compile()
 }
 
 void VulkanGraphicsPipeline::ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const
-{
-	for (auto pipelineState : m_pipelineStates)
+{	for (auto pipelineState : m_pipelineStates)
 	{
 		pipelineState->Apply(pipelineInfo);
 	}

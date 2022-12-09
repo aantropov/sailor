@@ -151,6 +151,7 @@ frame:
   - colorSampler: Main
   - depthStencil: DepthBuffer
 
+ 
 ############################
 - name: Blit
 ############################

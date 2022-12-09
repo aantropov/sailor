@@ -64,7 +64,8 @@ public:
 
 bool ShaderSet::IsReady() const
 {
-	return (m_rhiVertexShader && m_rhiFragmentShader) || m_rhiComputeShader;
+	return ((m_rhiVertexShader && m_rhiFragmentShader) || m_rhiComputeShader) &&
+		((m_rhiVertexShaderDebug && m_rhiFragmentShaderDebug) || m_rhiComputeShaderDebug);
 }
 
 void ShaderAsset::Deserialize(const YAML::Node& inData)
@@ -298,12 +299,12 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 		Tasks::TaskPtr<bool> saveCacheJob = scheduler->CreateTaskWithResult<bool>("Save Shader Cache", [=]()
 			{
 				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
-		m_shaderCache.SaveCache();
+				m_shaderCache.SaveCache();
 
-		//Unload shader asset text
-		m_shaderAssetsCache.Remove(assetInfo->GetUID());
+				//Unload shader asset text
+				m_shaderAssetsCache.Remove(assetInfo->GetUID());
 
-		return true;
+				return true;
 			});
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
@@ -311,7 +312,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 			Tasks::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetInfo, permutationsToCompile]()
 				{
 					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
-			App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
+					App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
 				});
 
 			saveCacheJob->Join(job);
@@ -385,8 +386,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 								}
 							}
 						}
-					}
-				);
+					}, "Update Shader RHI", Tasks::EThreadType::Render);
 			}
 		}
 		else if (extension == "glsl")

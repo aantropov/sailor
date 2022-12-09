@@ -1,7 +1,8 @@
 --- 
 includes :
   - Shaders/Lighting.glsl
-defines : ~
+defines : 
+- FILL
 
 depthAttachment :
 - UNDEFINED
@@ -50,55 +51,6 @@ glslFragment: |
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 100000.0f; // Atmosphere radius
   
-  float Density(float height)
-  {
-    // https://www.aboutdc.ru/page/1759.php
-    // p = p0 · exp(–M·g·h/R·T)
-    float p0 = 1013; // Presure at height = 0;
-    float M = 28.98f; // Molar mass of gas
-    float g = 9.81f; // Gravity
-    float R = 8.314f; // Universal Gas const
-    float T = 288.15f; // Temperature in K
-    
-    return p0 * exp((-M * g * height)/(R*T));
-  }
-  
-  float S(float C, vec3 point) 
-  {      
-      float height = length(point) - R;
-      return C * Density(height);
-  }
-  
-  vec3 Extinction(vec3 point) 
-  {
-      // TODO: Find constants
-      const vec3 Absorption = vec3(0.1f, 0.1f, 0.1f);
-      const vec3 Diffusion = vec3(0.2f, 0.2f, 0.2f);
-      
-      return vec3(S(Absorption.x, point) + S(Diffusion.x, point),
-                  S(Absorption.y, point) + S(Diffusion.y, point),
-                  S(Absorption.z, point) + S(Diffusion.z, point));
-  }
-  
-  vec3 Transfer(vec3 a, vec3 b)
-  {
-     vec3 step = (b-a) / INTEGRAL_STEPS;
-     vec3 res = vec3(0.0f);
-     vec3 fa = Extinction(a);
-     
-     for(uint i = 0; i < INTEGRAL_STEPS - 1; i++)
-     {
-         vec3 end = a + step * (i + 1);
-         vec3 fb = Extinction(end);
-         
-         res += 0.5 * step * (fa + fb);
-         
-         fa = fb;
-     }
-     
-     return exp(-res);
-  }
-  
   float Density(vec3 a, vec3 b, float H0)
   {
     float res = 0.0f;
@@ -131,8 +83,63 @@ glslFragment: |
     return phaseM;
   }
   
-  vec3 SkyLighting(vec3 origin, vec3 destination, vec3 lightDirection)
+  // https://gist.github.com/wwwtyro/beecc31d65d1004f5a9d
+  vec2 raySphereIntersect(vec3 r0, vec3 rd, vec3 s0, float sr) 
   {
+    // - r0: ray origin
+    // - rd: normalized ray direction
+    // - s0: sphere center
+    // - sr: sphere radius
+    // - Returns distance from r0 to first intersecion with sphere,
+    //   or -1.0 if no intersection.
+    float a = 1.0f;
+    vec3 s0_r0 = r0 - s0;
+    float b = 2.0 * dot(rd, s0_r0);
+    float c = dot(s0_r0, s0_r0) - (sr * sr);
+    if (b*b - 4.0*a*c < 0.0) 
+    {
+        return vec2(-1.0);
+    }
+    
+    float tmp = sqrt((b*b) - 4.0*a*c);
+    float x1 = (-b + tmp)/(2.0*a);
+    float x2 = (-b - tmp)/(2.0*a);
+    
+    return x1 < x2 ? vec2(x1, x2) : vec2(x2, x1);
+  }
+
+  vec3 IntersectSphere(vec3 origin, vec3 direction, float innerR, float outerR)
+  {
+      float outer = raySphereIntersect(origin, direction, vec3(0), outerR).y;
+      
+      if(outer <= 0.0f)
+      {
+        // Return just constant trace
+        return origin;
+      }
+      
+      // Max view distance
+      const float maxCast = AtmosphereR * 10;
+      float shift = min(maxCast, outer);
+      
+  #if defined(FILL)
+      vec2 tmp = raySphereIntersect(origin, direction, vec3(0), innerR);
+      float inner = tmp.y;
+      
+      if(inner > 0.0f)
+      {
+          // If we intersects the Earth we should tune
+          shift = AtmosphereR;
+          //shift = inner * 15;
+      }
+  #endif
+      return origin + direction * shift;
+  }
+  
+  vec3 SkyLighting(vec3 origin, vec3 direction, vec3 lightDirection)
+  {
+     const vec3 destination = IntersectSphere(origin, direction, R, R + AtmosphereR);
+     
      const float LightIntensity = 1.0f;
      const float Angle = dot(normalize(destination - origin), -lightDirection);
            
@@ -167,18 +174,23 @@ glslFragment: |
          densityR  += hr;
          densityMu += hm;
 
-         const vec3  toLight = point - lightDirection * AtmosphereR;
+         const vec3  toLight = IntersectSphere(origin, -lightDirection, R, R + AtmosphereR);
          const float hLight  = length(toLight) - R;
-         const float stepToLight = (h - hLight) / INTEGRAL_STEPS;
+         const float stepToLight = (hLight - h) / INTEGRAL_STEPS;
          
          float dStepLight = length(point - toLight) / INTEGRAL_STEPS;
          float densityLightR = 0.0f;
          float densityLightMu = 0.0f;
-          
+
          bool bReached = true;
          for(int j = 0; j < INTEGRAL_STEPS; j++)
          {
-            const float h1 = hLight + stepToLight * j;
+            const float h1 = h + stepToLight * j;
+            
+            if(h1 < 0)
+            {
+                //break;
+            }
             
             densityLightMu += exp(-h1/H0Mu) * dStepLight;
             densityLightR  += exp(-h1/H0R)  * dStepLight;
@@ -201,9 +213,14 @@ glslFragment: |
     dirViewSpace = normalize(inverse(frame.view) * dirViewSpace);
 
     // View position
-    vec3 origin = vec3(0, R + 100, 0) + frame.cameraPosition.xyz;
-    vec3 rayDst = origin + dirViewSpace.xyz * AtmosphereR;
+    vec3 origin = vec3(0, R + 0, 0) + frame.cameraPosition.xyz;    
     
-    vec3 sunDirection = normalize(vec3(0,-0.1,1));
-    outColor.xyz = SkyLighting(origin, rayDst, sunDirection);
+    vec3 sunDirection1 = normalize(vec3(0, -1, 0));
+    vec3 sunDirection2 = normalize(vec3(0, 0.09, 1));
+    
+    outColor.xyz = fragTexcoord.x > 0.5 ? 
+    SkyLighting(origin, dirViewSpace.xyz, sunDirection1) :
+    SkyLighting(origin, dirViewSpace.xyz, sunDirection2);
+    
+    //outColor.xyz = SkyLighting(origin, dirViewSpace.xyz, sunDirection2);
   }
