@@ -50,6 +50,7 @@ glslFragment: |
   
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 100000.0f; // Atmosphere radius
+  const float SunAngularR = 0.5f * 5.45f;
   
   float Density(vec3 a, vec3 b, float H0)
   {
@@ -136,6 +137,18 @@ glslFragment: |
       return origin + direction * shift;
   }
   
+  vec3 CalculateSunIlluminance(vec3 sunDirection)
+  {
+      const float w = 2*PI*(1-cos(SunAngularR));
+      const float Ls = 120000.0f / w;
+      
+      const vec3 GroundIlluminance = Ls * vec3(0.0499, 0.004, 4.10 * 0.00001);
+      const vec3 ZenithIlluminance =  Ls * vec3(0.925, 0.861, 0.755);
+      const float artisticTune = pow(dot(-sunDirection, vec3(0, 1, 0)), 3);
+      
+      return mix(GroundIlluminance, ZenithIlluminance, artisticTune);
+  }
+  
   vec3 SkyLighting(vec3 origin, vec3 direction, vec3 lightDirection)
   {
      const vec3 destination = IntersectSphere(origin, direction, R, R + AtmosphereR);
@@ -143,7 +156,7 @@ glslFragment: |
      const float LightIntensity = 1.0f;
      const float Angle = dot(normalize(destination - origin), -lightDirection);
            
-     const vec3 step = (destination - origin) / INTEGRAL_STEPS_2;     
+     const vec3 step = (destination - origin) / INTEGRAL_STEPS_2;
      
      // Constants for PhaseR
      const vec3 B0R = vec3(5.8, 13.5, 33.1) * vec3(0.000001, 0.000001, 0.000001);
@@ -154,7 +167,7 @@ glslFragment: |
      const float H0Mu = 1200.0f;
 
      const float heightOrigin = length(origin);
-     const float dh = (length(destination) - heightOrigin) / INTEGRAL_STEPS_2;     
+     const float dh = (length(destination) - heightOrigin) / INTEGRAL_STEPS_2;
      const float dStep = length(step);
      
      vec3 resR = vec3(0.0f);
@@ -204,12 +217,30 @@ glslFragment: |
             resMu += aggr * hm;
         }
     }
+    
+    // Sun disk
+    const float angularSunSize = SunAngularR / 90.0f;
+    const float theta = dot(direction, -lightDirection);
+    const float zeta = cos(angularSunSize);
+    if(theta > zeta)
+    {   
+        vec2 intersection = raySphereIntersect(origin, direction, vec3(0), R);
+
+        if(max(intersection.x, intersection.y) < 0.0f)
+        {
+            const float t = (1 - pow((1 - theta)/(1-zeta), 2));
+            const float attenuation = mix(0.765, 1.0f, t);
+            const vec3 SunIlluminance = attenuation * CalculateSunIlluminance(lightDirection);
+            const vec3 final = SunIlluminance * (resR * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
+            return final;
+        }
+    }
      
     const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
     return final;
   }
   
-  void main() 
+  void main()
   {
     // Calculate view direction
     vec4 dirViewSpace = vec4(0);
@@ -218,14 +249,14 @@ glslFragment: |
     dirViewSpace = normalize(inverse(frame.view) * dirViewSpace);
 
     // View position
-    vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;    
+    vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;
     
     vec3 sunDirection1 = normalize(vec3(0, -1, 0));
-    vec3 sunDirection2 = normalize(vec3(0, 0.12, 1));
+    vec3 sunDirection2 = normalize(vec3(0, 0.02, 1));
     
     outColor.xyz = fragTexcoord.x > 0.5 ? 
     SkyLighting(origin, dirViewSpace.xyz, sunDirection1) :
     SkyLighting(origin, dirViewSpace.xyz, sunDirection2);
     
-    //outColor.xyz = SkyLighting(origin, dirViewSpace.xyz, sunDirection2);
+    //outColor.xyz = SkyLighting(origin, dirViewSpace.xyz, sunDirection1);
   }

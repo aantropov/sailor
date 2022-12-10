@@ -20,7 +20,7 @@ renderTargets:
   bIsSurface: true
   bIsCompatibleWithComputeShaders: true
   bGenerateMips: true
-  maxMipLevel: 4
+  maxMipLevel: 8
 
 - name: Secondary
   format: R16G16B16A16_SFLOAT
@@ -30,8 +30,8 @@ renderTargets:
 
 - name: Sky
   format: R16G16B16A16_SFLOAT
-  width: 128
-  height: 128
+  width: ViewportWidth
+  height: ViewportHeight
   clamping: Repeat
   bIsSurface: false
 
@@ -89,12 +89,12 @@ frame:
 ############################
   string:
   - shader: Shaders/Sky.shader
-  - defines: FILL
+  - defines: ~
   vec4:
   - data.param: [0.0225, 0.00345, 0.00455, 0.0]
   renderTargets:
   - color: Sky
-
+ 
 ############################
 - name: RenderScene
 ############################
@@ -117,7 +117,7 @@ frame:
   renderTargets:
   - src: Sky
   - dst: Main
-
+  
 ##############################
 - name: Bloom
 ##############################
@@ -130,13 +130,6 @@ frame:
   - bloom: Main
 
 #############################
-- name: Blit
-#############################
-  renderTargets:
-  - src: Main
-  - dst: QuarterMain1
-
-#############################
 - name: EyeAdaptation
 #############################
   string:
@@ -147,7 +140,7 @@ frame:
   - data.whitePoint: [7.0, 5.0, 5.0, 0]  
   renderTargets:
   - color: Secondary
-  - hdrColor: QuarterMain1
+  - hdrColor: Main
   - colorSampler: Main
   - depthStencil: DepthBuffer
 
