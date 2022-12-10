@@ -126,9 +126,12 @@ ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 	TVector<UID> shaderAssetInfos;
 	App::GetSubmodule<AssetRegistry>()->GetAllAssetInfos<ShaderAssetInfo>(shaderAssetInfos);
 
-	for (const auto& uid : shaderAssetInfos)
+	if (bShouldAutoCompileAllPermutations)
 	{
-		CompileAllPermutations(uid);
+		for (const auto& uid : shaderAssetInfos)
+		{
+			CompileAllPermutations(uid);
+		}
 	}
 }
 
@@ -299,12 +302,12 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 		Tasks::TaskPtr<bool> saveCacheJob = scheduler->CreateTaskWithResult<bool>("Save Shader Cache", [=]()
 			{
 				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
-				m_shaderCache.SaveCache();
+		m_shaderCache.SaveCache();
 
-				//Unload shader asset text
-				m_shaderAssetsCache.Remove(assetInfo->GetUID());
+		//Unload shader asset text
+		m_shaderAssetsCache.Remove(assetInfo->GetUID());
 
-				return true;
+		return true;
 			});
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
@@ -312,7 +315,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 			Tasks::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetInfo, permutationsToCompile]()
 				{
 					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
-					App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
+			App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
 				});
 
 			saveCacheJob->Join(job);
@@ -367,26 +370,31 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 		if (extension == "shader")
 		{
+			SAILOR_LOG("Updated shader info: %s", assetInfo->GetAssetFilepath().c_str());
+
 			m_shaderAssetsCache.Remove(assetInfo->GetUID());
 
-			auto compileTask = CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
-			if (compileTask)
+			if (bShouldAutoCompileAllPermutations)
 			{
-				compileTask->Then<void, bool>([=](bool bRes)
-					{
-						if (bRes)
+				auto compileTask = CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
+				if (compileTask)
+				{
+					compileTask->Then<void, bool>([=](bool bRes)
 						{
-							for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
+							if (bRes)
 							{
-								SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
-
-								if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+								for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
 								{
-									loadedShader.m_second->TraceHotReload(nullptr);
+									SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+
+									if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+									{
+										loadedShader.m_second->TraceHotReload(nullptr);
+									}
 								}
 							}
-						}
-					}, "Update Shader RHI", Tasks::EThreadType::Render);
+						}, "Update Shader RHI");
+				}
 			}
 		}
 		else if (extension == "glsl")
@@ -412,7 +420,10 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
 {
-	CompileAllPermutations(assetInfo->GetUID());
+	if (bShouldAutoCompileAllPermutations)
+	{
+		CompileAllPermutations(assetInfo->GetUID());
+	}
 }
 
 bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::string& source, RHI::EShaderStage shaderStage, RHI::ShaderByteCode& outByteCode, bool bIsDebug)

@@ -174,6 +174,8 @@ void ShaderCache::LoadCache()
 
 void ShaderCache::ClearAll()
 {
+	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
+
 	std::filesystem::remove_all(PrecompiledShadersFolder);
 	std::filesystem::remove_all(CompiledShaderFileExtension);
 	std::filesystem::remove_all(CompiledShadersWithDebugFolder);
@@ -267,6 +269,8 @@ void ShaderCache::Remove(ShaderCacheEntry* pEntry)
 void ShaderCache::Remove(const UID& uid)
 {
 	SAILOR_PROFILE_FUNCTION();
+	
+	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
 	auto it = m_cache.m_data.Find(uid);
 	if (it != m_cache.m_data.end())
@@ -300,9 +304,11 @@ bool ShaderCache::Contains(const UID& uid) const
 	return m_cache.m_data.ContainsKey(uid);
 }
 
-void ShaderCache::CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl, const std::string& computeGlsl) const
+void ShaderCache::CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl, const std::string& computeGlsl)
 {
 	SAILOR_PROFILE_FUNCTION();
+
+	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
 	if (m_bSavePrecompiledGlsl)
 	{
@@ -329,8 +335,12 @@ void ShaderCache::CachePrecompiledGlsl(const UID& uid, uint32_t permutation, con
 	}
 }
 
-void ShaderCache::CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv) const
+void ShaderCache::CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv)
 {
+	SAILOR_PROFILE_FUNCTION();
+
+	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
+
 	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
 
 	if (vertexSpirv.Num() > 0)
@@ -405,9 +415,11 @@ void ShaderCache::CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, co
 	m_bIsDirty = true;
 }
 
-bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, TVector<uint32_t>& computeSpirv, bool bIsDebug) const
+bool ShaderCache::GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, TVector<uint32_t>& computeSpirv, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
+	
+	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
 	if (IsExpired(uid, permutation))
 	{

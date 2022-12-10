@@ -104,6 +104,8 @@ namespace Sailor
 
 	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener
 	{
+		const bool bShouldAutoCompileAllPermutations = false;
+
 	public:
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
