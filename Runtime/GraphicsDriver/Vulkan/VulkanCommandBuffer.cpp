@@ -439,7 +439,7 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 	if (src->m_format == dst->m_format && std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0)
 	{
 		// Resolve Multisampling 
-		if (src->GetImage()->m_samples != VK_SAMPLE_COUNT_1_BIT && dst->GetImage()->m_samples == VK_SAMPLE_COUNT_1_BIT)
+		if (src->GetImage()->m_samples != VK_SAMPLE_COUNT_1_BIT && (dst->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT))
 		{
 			VkImageResolve resolve{};
 			resolve.dstOffset.x = dstRegion.offset.x;
@@ -471,7 +471,7 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 		}
 
 		// Copy texture (no format conversion)
-		if ((src->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT) && (dst->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT))
+		if (src->GetImage()->m_samples == dst->GetImage()->m_samples)
 		{
 			VkImageCopy copy{};
 			copy.dstOffset.x = dstRegion.offset.x;
@@ -502,7 +502,7 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 				&copy);
 		}
 	}
-	else
+	else if ((dst->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT) && (src->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT))
 	{
 		// Blit (format conversion)
 		VkImageBlit blit{};
@@ -541,6 +541,7 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 			&blit,
 			filtration);
 	}
+	//TODO: Create render pass to convert non msaa RenderTargets to Msaa
 }
 
 void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor)
@@ -808,8 +809,8 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 	//vkCmdPipelineBarrier
 }
 
-void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, 
-	VkFormat format, 
+void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
+	VkFormat format,
 	VkImageLayout oldLayout,
 	VkImageLayout newLayout,
 	VkAccessFlags srcAccess,
@@ -817,7 +818,7 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 	VkPipelineStageFlags srcStage,
 	VkPipelineStageFlags dstStage)
 {
-	
+
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.oldLayout = oldLayout;

@@ -41,6 +41,26 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 
 	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion);
 
+	if (RHISurfacePtr srcSurface = GetRHIResource("src").DynamicCast<RHISurface>())
+	{
+		if (RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>())
+		{
+			auto src2 = srcSurface->GetTarget();
+			auto dst2 = dstSurface->GetTarget();
+
+			if (srcSurface->NeedsResolve() && dstSurface->NeedsResolve())
+			{
+				commands->ImageMemoryBarrier(commandList, src2, src2->GetFormat(), src2->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), dst2->GetDefaultLayout(), RHI::EImageLayout::TransferDstOptimal);
+
+				commands->BlitImage(commandList, src2, dst2, srcRegion, dstRegion);
+
+				commands->ImageMemoryBarrier(commandList, src2, src2->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src2->GetDefaultLayout());
+				commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst2->GetDefaultLayout());
+			}
+		}
+	}
+
 	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src->GetDefaultLayout());
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
 

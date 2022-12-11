@@ -25,6 +25,10 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color");
+	RHI::RHISurfacePtr targetMsaa = GetRHIResource("color").DynamicCast<RHISurface>();
+
+	const bool bShouldUseMsaaTarget = targetMsaa.IsValid() && targetMsaa->NeedsResolve();
+
 	if (!target)
 	{
 		target = frameGraph->GetRenderTarget("BackBuffer");
@@ -66,7 +70,7 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		driver->AddBufferToShaderBindings(m_shaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
+		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, bShouldUseMsaaTarget };
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, m_shaderBindings);
 
 		for (auto& v : m_vectorParams)
@@ -117,14 +121,28 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		0, 1.0f);
 
 	// TODO: Pipeline without depthAttachment
-	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHITexturePtr>{target},
-		depthAttachment,
-		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
-		glm::ivec2(0, 0),
-		false,
-		glm::vec4(0.0f),
-		false);
+	if (bShouldUseMsaaTarget)
+	{
+		commands->BeginRenderPass(commandList,
+			TVector<RHI::RHISurfacePtr>{targetMsaa},
+			depthAttachment,
+			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+			glm::ivec2(0, 0),
+			false,
+			glm::vec4(0.0f),
+			false);
+	}
+	else
+	{
+		commands->BeginRenderPass(commandList,
+			TVector<RHI::RHITexturePtr>{target},
+			depthAttachment,
+			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+			glm::ivec2(0, 0),
+			false,
+			glm::vec4(0.0f),
+			false);
+	}
 
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();

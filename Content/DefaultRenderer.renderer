@@ -33,7 +33,7 @@ renderTargets:
   width: ViewportWidth
   height: ViewportHeight
   clamping: Repeat
-  bIsSurface: false
+  bIsSurface: true
 
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT
@@ -96,6 +96,13 @@ frame:
   - color: Sky
  
 ############################
+- name: Blit
+############################
+  renderTargets:
+  - src: Sky
+  - dst: Main
+  
+############################
 - name: RenderScene
 ############################
   string:
@@ -110,13 +117,6 @@ frame:
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
-
-############################
-- name: Blit
-############################
-  renderTargets:
-  - src: Sky
-  - dst: Main
   
 ##############################
 - name: Bloom

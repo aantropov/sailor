@@ -142,7 +142,7 @@ glslFragment: |
       const float w = 2*PI*(1-cos(SunAngularR));
       const float Ls = 120000.0f / w;
       
-      const vec3 GroundIlluminance = Ls * vec3(0.0499, 0.004, 4.10 * 0.00001);
+      const vec3 GroundIlluminance = 15.0f * vec3(1);
       const vec3 ZenithIlluminance =  Ls * vec3(0.925, 0.861, 0.755);
       const float artisticTune = pow(dot(-sunDirection, vec3(0, 1, 0)), 3);
       
@@ -231,7 +231,7 @@ glslFragment: |
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
             const float attenuation = mix(0.765, 1.0f, t);
             const vec3 SunIlluminance = attenuation * CalculateSunIlluminance(lightDirection);
-            const vec3 final = SunIlluminance * (resR * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
+            const vec3 final = SunIlluminance * (resR * B0R * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
             return final;
         }
     }
