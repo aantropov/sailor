@@ -5,6 +5,7 @@
 #include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
 #include "RHI/Texture.h"
+#include "RHI/VertexDescription.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 
@@ -20,8 +21,32 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);
+
+	if (!m_pShader)
+	{
+		const std::string shaderPath = "Shaders/Blit.shader";
+
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pShader, {});
+		}
+	}
+
+	if (!m_pShader || !m_pShader->IsReady())
+	{
+		return;
+	}
+
+	if (!m_blitToMsaaTargetMaterial)
+	{
+		m_shaderBindings = driver->CreateShaderBindings();
+		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, true };
+		m_blitToMsaaTargetMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, m_shaderBindings);
+	}
 
 	RHI::RHITexturePtr src = GetResolvedAttachment("src");
 	RHI::RHITexturePtr dst = GetResolvedAttachment("dst");
@@ -41,30 +66,103 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 
 	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion);
 
-	if (RHISurfacePtr srcSurface = GetRHIResource("src").DynamicCast<RHISurface>())
+	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src->GetDefaultLayout());
+	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
+
+	// Blit to MSAA targets
+	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
+	if (dstSurface && dstSurface->NeedsResolve())
 	{
-		if (RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>())
+		bool bBlitIsSuccesful = false;
+
+		// First try to blit MSAA src to MSAA dst
+		if (RHISurfacePtr srcSurface = GetRHIResource("src").DynamicCast<RHISurface>())
 		{
 			auto src2 = srcSurface->GetTarget();
 			auto dst2 = dstSurface->GetTarget();
 
-			if (srcSurface->NeedsResolve() && dstSurface->NeedsResolve())
+			if (srcSurface->NeedsResolve())
 			{
 				commands->ImageMemoryBarrier(commandList, src2, src2->GetFormat(), src2->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
 				commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), dst2->GetDefaultLayout(), RHI::EImageLayout::TransferDstOptimal);
 
-				commands->BlitImage(commandList, src2, dst2, srcRegion, dstRegion);
+				bBlitIsSuccesful = commands->BlitImage(commandList, src2, dst2, srcRegion, dstRegion);
 
 				commands->ImageMemoryBarrier(commandList, src2, src2->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src2->GetDefaultLayout());
 				commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst2->GetDefaultLayout());
 			}
 		}
+
+		// If no success blit texture src to MSAA dst
+		if (!bBlitIsSuccesful)
+		{
+			auto target = dstSurface->GetTarget();
+
+			// Should resolve MSAA
+			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), src->GetDefaultLayout(), RHI::EImageLayout::ShaderReadOnlyOptimal);
+
+			BlitToSurface(commandList, frameGraph, sceneView, src, dstSurface);
+
+			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::ShaderReadOnlyOptimal, src->GetDefaultLayout());
+		}
 	}
 
-	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
-
 	commands->EndDebugRegion(commandList);
+}
+
+void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
+	RHI::RHIFrameGraph* frameGraph,
+	const RHI::RHISceneViewSnapshot& sceneView,
+	RHI::RHITexturePtr src,
+	RHI::RHISurfacePtr dst)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+
+	driver->AddSamplerToShaderBindings(m_shaderBindings, "colorSampler", src, 0);
+	m_shaderBindings->RecalculateCompatibility();
+
+	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+
+	auto target = dst->GetTarget();
+
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal);
+
+	auto mesh = frameGraph->GetFullscreenNdcQuad();
+
+	commands->BindMaterial(commandList, m_blitToMsaaTargetMaterial);
+	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
+	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
+	commands->BindShaderBindings(commandList, m_blitToMsaaTargetMaterial, { sceneView.m_frameBindings, m_shaderBindings });
+
+	// TODO: Support regions
+	commands->SetViewport(commandList,
+		0, 0,
+		(float)target->GetExtent().x, (float)target->GetExtent().y,
+		glm::vec2(0, 0),
+		glm::vec2(target->GetExtent().x, target->GetExtent().y),
+		0, 1.0f);
+
+	commands->BeginRenderPass(commandList,
+		TVector<RHI::RHISurfacePtr>{dst},
+		depthAttachment,
+		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+		glm::ivec2(0, 0),
+		false,
+		glm::vec4(0.0f),
+		false);
+
+	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+
+	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+	commands->EndRenderPass(commandList);
+
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 }
 
 void BlitNode::Clear()

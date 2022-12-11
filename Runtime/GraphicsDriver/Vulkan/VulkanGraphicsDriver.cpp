@@ -1324,7 +1324,7 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 	}
 }
 
-void VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHITexturePtr dst, glm::ivec4 srcRegionRect, glm::ivec4 dstRegionRect, RHI::ETextureFiltration filtration)
+bool VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHITexturePtr dst, glm::ivec4 srcRegionRect, glm::ivec4 dstRegionRect, RHI::ETextureFiltration filtration)
 {
 	VkRect2D srcRect{};
 	srcRect.offset.x = srcRegionRect.x;
@@ -1338,7 +1338,7 @@ void VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexture
 	dstRect.extent.width = dstRegionRect.z;
 	dstRect.extent.height = dstRegionRect.w;
 
-	cmd->m_vulkan.m_commandBuffer->BlitImage(src->m_vulkan.m_imageView, dst->m_vulkan.m_imageView, srcRect, dstRect, (VkFilter)filtration);
+	return cmd->m_vulkan.m_commandBuffer->BlitImage(src->m_vulkan.m_imageView, dst->m_vulkan.m_imageView, srcRect, dstRect, (VkFilter)filtration);
 }
 
 void VulkanGraphicsDriver::ClearImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr dst, const glm::vec4& clearColor)

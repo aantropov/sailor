@@ -30,10 +30,10 @@ renderTargets:
 
 - name: Sky
   format: R16G16B16A16_SFLOAT
-  width: ViewportWidth
-  height: ViewportHeight
+  width: 512
+  height: 512
   clamping: Repeat
-  bIsSurface: true
+  bIsSurface: false
 
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT

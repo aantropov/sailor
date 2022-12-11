@@ -114,7 +114,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void AddDependency(VulkanCommandBufferPtr commandBuffer);
 		SAILOR_API void AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator);
 
-		SAILOR_API void BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration = VkFilter::VK_FILTER_LINEAR);
+		SAILOR_API bool BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration = VkFilter::VK_FILTER_LINEAR);
 
 		SAILOR_API VkCommandBufferLevel GetLevel() const { return m_level; }
 

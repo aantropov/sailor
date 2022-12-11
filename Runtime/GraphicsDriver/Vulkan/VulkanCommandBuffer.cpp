@@ -432,7 +432,7 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 	_freea(sets);
 }
 
-void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration)
+bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration)
 {
 	m_rhiDependecies.AddRange({ dst, src });
 
@@ -468,6 +468,8 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				1,
 				&resolve);
+
+			return true;
 		}
 
 		// Copy texture (no format conversion)
@@ -500,7 +502,11 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				1,
 				&copy);
+
+			return true;
 		}
+
+		return false;
 	}
 	else if ((dst->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT) && (src->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT))
 	{
@@ -540,8 +546,11 @@ void VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 			1,
 			&blit,
 			filtration);
+
+		return true;
 	}
-	//TODO: Create render pass to convert non msaa RenderTargets to Msaa
+
+	return false;
 }
 
 void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor)
