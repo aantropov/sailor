@@ -54,7 +54,7 @@ typedef unsigned long DWORD;
 
 #define checkAtCompileTime(expr, msg) static_assert(expr, #msg);
 #define check(expr) assert(expr);
-#define ensure(expr, msg) { static bool bOnce = false; if(!(expr) && !bOnce) { SAILOR_LOG(#msg); bOnce = true; }}
+#define ensure(expr, msg, ...) { static bool bOnce = false; if(!(expr) && !bOnce) { SAILOR_LOG(#msg, __VA_ARGS__); bOnce = true; }}
 
 //Memory
 namespace Sailor::Memory

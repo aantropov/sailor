@@ -30,8 +30,8 @@ renderTargets:
 
 - name: Sky
   format: R16G16B16A16_SFLOAT
-  width: 512
-  height: 512
+  width: ViewportWidth
+  height: ViewportHeight
   clamping: Repeat
   bIsSurface: false
 
@@ -85,15 +85,21 @@ frame:
   - color: Main
 
 ############################
-- name: PostProcess
+- name: Sky
 ############################
-  string:
-  - shader: Shaders/Sky.shader
-  - defines: ~
-  vec4:
-  - data.param: [0.0225, 0.00345, 0.00455, 0.0]
   renderTargets:
   - color: Sky
+
+#############################
+#- name: PostProcess
+#############################
+#  string:
+#  - shader: Shaders/Sky.shader
+#  - defines: FILL
+#  vec4:
+#  - data.param: [0.0225, 0.00345, 0.00455, 0.0]
+#  renderTargets:
+#  - color: Sky
  
 ############################
 - name: Blit

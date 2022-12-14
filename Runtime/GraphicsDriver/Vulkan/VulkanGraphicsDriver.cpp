@@ -1736,7 +1736,8 @@ void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::RHICommandListPtr cm
 	RHI::ShaderLayoutBindingMember bindingLayout;
 	if (!shaderBinding->FindVariableInUniformBuffer(variable, bindingLayout))
 	{
-		check(false);
+		ensure(false, "Missing variable %s in shader", variable.c_str());
+		return;
 	}
 
 	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset);

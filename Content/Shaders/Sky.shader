@@ -36,16 +36,18 @@ glslFragment: |
       float currentTime;
       float deltaTime;
   } frame;
-  
+
+  /*
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
     vec4 param;
   } data;
-  
+  */ 
+
   layout(location = 0) in vec2 fragTexcoord;
   layout(location = 0) out vec4 outColor;
   
-  #define INTEGRAL_STEPS 2
+  #define INTEGRAL_STEPS 8
   #define INTEGRAL_STEPS_2 32
   
   const float R = 6371000.0f; // Earth radius in m
@@ -131,7 +133,7 @@ glslFragment: |
       {
           // If we intersects the Earth we should tune
           //shift = AtmosphereR;
-          shift = inner * 5;
+          shift = inner*3;
       }
   #endif
       return origin + direction * shift;
@@ -251,8 +253,8 @@ glslFragment: |
     // View position
     vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;
     
-    vec3 sunDirection1 = normalize(vec3(0, -1, 0));
-    vec3 sunDirection2 = normalize(vec3(0, 0.02, 1));
+    vec3 sunDirection1 = normalize(vec3(0, -1, 1));
+    vec3 sunDirection2 = normalize(vec3(0, -0.01, 1));
     
     outColor.xyz = fragTexcoord.x > 0.5 ? 
     SkyLighting(origin, dirViewSpace.xyz, sunDirection1) :
