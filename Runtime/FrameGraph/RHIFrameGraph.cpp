@@ -19,6 +19,17 @@ void RHIFrameGraph::Clear()
 	m_surfaces.Clear();
 }
 
+FrameGraphNodePtr RHIFrameGraph::GetGraphNode(const std::string& tag)
+{
+	const size_t index = m_graph.FindIf([&](const auto& lhs) { return lhs->GetTag() == tag; });
+	if (index != -1)
+	{
+		return m_graph[index];
+	}
+
+	return nullptr;
+}
+
 void RHIFrameGraph::SetSampler(const std::string& name, TexturePtr sampler)
 {
 	m_samplers[name] = sampler;

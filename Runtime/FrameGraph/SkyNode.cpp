@@ -76,9 +76,20 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	if (!m_pSkyMaterial)
 	{
 		m_pShaderBindings = driver->CreateShaderBindings();
+
+		// Firstly we must assign the correct layout
+		driver->FillShadersLayout(m_pShaderBindings, { m_pSkyShader->GetDebugVertexShaderRHI(), m_pSkyShader->GetDebugFragmentShaderRHI() }, 1);
+
+		// That should be enough to handle all the uniforms 
+		const size_t uniformsSize = std::max(256ull, m_vectorParams.Num() * sizeof(glm::vec4));
+		RHIShaderBindingPtr data = driver->AddBufferToShaderBindings(m_pShaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
+
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_pSkyMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSkyShader, m_pShaderBindings);
+
+		const glm::vec4 initLightDirection = normalize(glm::vec4(0, -1, 1, 0));
+		commands->UpdateShaderBindingVariable(transferCommandList, data, "lightDirection", &initLightDirection, sizeof(glm::vec4));
 	}
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color");
@@ -92,7 +103,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	commands->BindMaterial(commandList, m_pSkyMaterial);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_pSkyMaterial, { sceneView.m_frameBindings });
+	commands->BindShaderBindings(commandList, m_pSkyMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
 
 	commands->SetViewport(commandList,
 		0, 0,

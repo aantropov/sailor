@@ -152,6 +152,7 @@ namespace Sailor
 		public:
 
 			std::string m_name;
+			std::string m_tag;
 			TMap<std::string, Value> m_values;
 			TMap<std::string, std::string> m_renderTargets;
 
@@ -172,6 +173,11 @@ namespace Sailor
 			virtual void Deserialize(const YAML::Node& inData)
 			{
 				m_name = inData["name"].as<std::string>();
+
+				if (inData["tag"])
+				{
+					m_tag = inData["tag"].as<std::string>();
+				}
 
 				ReadDictionary<std::string>(inData["string"]);
 				ReadDictionary<glm::vec4>(inData["vec4"]);

@@ -39,5 +39,7 @@ namespace Sailor
 		GameObjectPtr m_dirLight;
 
 		glm::mat4 m_cachedFrustum{ 1 };
+
+		float m_sunAngleRad = 0.0f;
 	};
 }

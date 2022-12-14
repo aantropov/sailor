@@ -14,6 +14,7 @@ namespace Sailor::RHI
 
 		SAILOR_API RHIFrameGraph() = default;
 
+		SAILOR_API FrameGraphNodePtr GetGraphNode(const std::string& tag);
 		SAILOR_API TVector<FrameGraphNodePtr>& GetGraph() { return m_graph; }
 
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr sampler);

@@ -50,6 +50,8 @@ namespace Sailor::RHI
 		SAILOR_API void Clear();
 		SAILOR_API void RefreshFrameGraph() { m_bFrameGraphOutdated = true; }
 
+		SAILOR_API FrameGraphPtr GetFrameGraph() { return m_frameGraph; }
+
 	protected:
 
 		RHI::EMsaaSamples m_msaaSamples;

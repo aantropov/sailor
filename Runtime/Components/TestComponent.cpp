@@ -8,6 +8,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "ECS/TransformECS.h"
+#include "Framegraph/SkyNode.h"
 #include "glm/glm/gtc/random.hpp"
 #include "imgui.h"
 
@@ -54,7 +55,7 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 
-	lightComponent->SetIntensity(vec3(1.0f, 1.0f, 1.0f));
+	lightComponent->SetIntensity(vec3(2.0f, 2.0f, 2.0f));
 	lightComponent->SetLightType(ELightType::Directional);
 
 	auto spotLight = GetWorld()->Instantiate();
@@ -89,6 +90,9 @@ void TestComponent::BeginPlay()
 	}
 	/**/
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
+
+	auto& transform = GetOwner()->GetTransformComponent();
+	transform.SetPosition(glm::vec4(0.0f, 2000.0f, 0.0f, 0.0f));
 }
 
 void TestComponent::EndPlay()
@@ -97,9 +101,11 @@ void TestComponent::EndPlay()
 
 void TestComponent::Tick(float deltaTime)
 {
-	ImGui::ShowDemoWindow();
+	auto commands = App::GetSubmodule<Sailor::RHI::Renderer>()->GetDriverCommands();
 
-	auto& transform = GetOwner()->GetTransformComponent();	
+	//ImGui::ShowDemoWindow();
+
+	auto& transform = GetOwner()->GetTransformComponent();
 	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec4_Forward;
 
 	const float sensitivity = 500;
@@ -201,11 +207,27 @@ void TestComponent::Tick(float deltaTime)
 
 						const glm::vec4 color = glm::vec4(glm::ballRand(1.0f), 1);
 
-						App::GetSubmodule<Sailor::RHI::Renderer>()->GetDriverCommands()->SetMaterialParameter(GetWorld()->GetCommandList(),
+						commands->SetMaterialParameter(GetWorld()->GetCommandList(),
 							mat->GetShaderBindings(), "material.ambient", color);
 					}
 				}
 			}
+		}
+	}
+
+	if (auto node = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("Sky"))
+	{
+		auto sky = node.DynamicCast< Framegraph::SkyNode>();
+
+		ImGui::Begin("Sky Settings");
+		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 90.0f);
+		ImGui::End();
+
+		const glm::vec4 direction = vec4(0, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0);
+
+		if (auto bindings = sky->GetShaderBindings())
+		{
+			commands->SetMaterialParameter(GetWorld()->GetCommandList(), bindings, "data.lightDirection", direction);
 		}
 	}
 }

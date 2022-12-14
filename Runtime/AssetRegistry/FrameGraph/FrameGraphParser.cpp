@@ -153,6 +153,8 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 			continue;
 		}
 
+		pNewNode->SetTag(node.m_tag.empty() ? node.m_name : node.m_tag);
+
 		for (const auto& param : node.m_values)
 		{
 			if (param.m_second.IsVec4())

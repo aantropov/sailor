@@ -37,12 +37,10 @@ glslFragment: |
       float deltaTime;
   } frame;
 
-  /*
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
-    vec4 param;
+    vec4 lightDirection;
   } data;
-  */ 
 
   layout(location = 0) in vec2 fragTexcoord;
   layout(location = 0) out vec4 outColor;
@@ -253,12 +251,5 @@ glslFragment: |
     // View position
     vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;
     
-    vec3 sunDirection1 = normalize(vec3(0, -1, 1));
-    vec3 sunDirection2 = normalize(vec3(0, -0.01, 1));
-    
-    outColor.xyz = fragTexcoord.x > 0.5 ? 
-    SkyLighting(origin, dirViewSpace.xyz, sunDirection1) :
-    SkyLighting(origin, dirViewSpace.xyz, sunDirection2);
-    
-    //outColor.xyz = SkyLighting(origin, dirViewSpace.xyz, sunDirection1);
+    outColor.xyz = SkyLighting(origin, dirViewSpace.xyz, normalize(data.lightDirection.xyz));    
   }

@@ -23,6 +23,8 @@ namespace Sailor::Framegraph
 
 		SAILOR_API virtual void Clear() override;
 
+		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_pShaderBindings; }
+
 	protected:
 
 		ShaderSetPtr m_pSkyShader{};
