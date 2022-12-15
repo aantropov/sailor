@@ -27,8 +27,14 @@ namespace Sailor::Framegraph
 
 	protected:
 
+		ShaderSetPtr m_pSunShader{};
 		ShaderSetPtr m_pSkyShader{};
+		ShaderSetPtr m_pComposeShader{};
+
 		RHI::RHIMaterialPtr m_pSkyMaterial{};
+		RHI::RHIMaterialPtr m_pSunMaterial{};
+		RHI::RHIMaterialPtr m_pComposeMaterial{};
+
 		RHI::RHIShaderBindingSetPtr m_pShaderBindings{};
 
 		RHI::RHITexturePtr m_pSkyTexture;

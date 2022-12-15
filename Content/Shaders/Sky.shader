@@ -2,9 +2,10 @@
 includes :
 - Shaders/Math.glsl
 
-defines : 
+defines :
 - FILL
 - SUN
+- COMPOSE
 
 depthAttachment :
 - UNDEFINED
@@ -24,7 +25,10 @@ glslVertex: |
   {
       gl_Position = vec4(inPosition, 1);
       fragTexcoord = inTexcoord;
-      fragTexcoord.y = 1.0f - fragTexcoord.y;
+
+      #if !defined(COMPOSE)
+        fragTexcoord.y = 1.0f - fragTexcoord.y;
+      #endif
   }
   
 glslFragment: |
@@ -44,6 +48,11 @@ glslFragment: |
     vec4 lightDirection;
   } data;
 
+  #if defined(COMPOSE)
+  layout(set=1, binding=1) uniform sampler2D skySampler;
+  layout(set=1, binding=2) uniform sampler2D sunSampler;
+  #endif
+  
   layout(location = 0) in vec2 fragTexcoord;
   layout(location = 0) out vec4 outColor;
   
@@ -52,7 +61,7 @@ glslFragment: |
   
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 100000.0f; // Atmosphere radius
-  const float SunAngularR = radians(0.5f * 5.45f);
+  const float SunAngularR = radians(2.545f);
   
   float Density(vec3 a, vec3 b, float H0)
   {
@@ -154,6 +163,15 @@ glslFragment: |
      float densityR = 0.0f;
      float densityMu = 0.0f;
      
+     #if defined(SUN)
+       const float theta = dot(direction, -lightDirection);
+       const float zeta = cos(SunAngularR);
+       if(theta < zeta)
+       {
+         return vec3(0);
+       }
+     #endif
+     
      for(uint i = 0; i < INTEGRAL_STEPS_2 - 1; i++)
      {
          const vec3 point = origin + step * (i + 1);
@@ -196,53 +214,84 @@ glslFragment: |
         }
     }
     
-    // Sun disk    
-    const float theta = dot(direction, -lightDirection);
-    const float zeta = cos(SunAngularR);
-    if(theta > zeta)
-    {   
+    #if defined(SUN)
+    // Sun disk
         vec2 intersection = RaySphereIntersect(origin, direction, vec3(0), R);
-
         if(max(intersection.x, intersection.y) < 0.0f)
         {
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
-            const float attenuation = mix(0.43, 1.0f, t);
+            const float attenuation = mix(0.83, 1.0f, t);
             const vec3 SunIlluminance = attenuation * CalculateSunIlluminance(lightDirection);
             const vec3 final = SunIlluminance * (resR * B0R * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
             return final;
         }
-    }
-     
-    const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
-    return final;
+        else
+        {
+            return vec3(0);
+        }
+    #else
+        const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
+        return final;
+    #endif
   }
   
   void main()
   {
     vec4 dirWorldSpace = vec4(0);
+    const vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;
+    const vec3 dirToSun = normalize(-data.lightDirection.xyz);
     
-    // View position
-    vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;
+    #if defined(COMPOSE)
+       vec2 uv = fragTexcoord.xy;
+       uv.y = 1 - uv.y;
+       
+       dirWorldSpace.xyz = ScreenToView(uv, 1.0f, frame.invProjection).xyz;
+       dirWorldSpace.z *= -1;
+       dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
+        
+       outColor.xyz = texture(skySampler, fragTexcoord).xyz; 
+
+       const vec3 right = normalize(cross(dirToSun, vec3(0,1,0)));
+       const vec3 up = cross(right, dirToSun);
+        
+       float dx = dot(dirWorldSpace.xyz - dirToSun, right);
+       float dy = dot(dirWorldSpace.xyz - dirToSun, up);
+         
+       const float theta = dot(dirWorldSpace.xyz, dirToSun);
+       const float zeta = cos(SunAngularR);
+       
+       if(dx > -SunAngularR && 
+          dy > -SunAngularR && 
+          dx < SunAngularR && 
+          dy < SunAngularR)//theta > zeta)
+       {
+         vec2 sunUv = ((vec2(dx, dy) / SunAngularR) + 1.0f) / 2.0f;
+         sunUv.y = 1 - sunUv.y;
+         
+         const vec3 sunColor = texture(sunSampler, sunUv).xyz;
+         float luminance = dot(sunColor,sunColor);
+         
+         outColor.xyz = mix(outColor.xyz, sunColor, clamp(0,1,luminance));
+       }
+       
+    #elif defined(SUN)
     
-    #if 0 && defined(SUN)
-    // World space
-    const vec3 sunDir = normalize(-data.lightDirection.xyz);
-    const vec2 sunAngular = vec2(mix(-SunAngularR, SunAngularR, fragTexcoord.x),
-                                 mix(-SunAngularR, SunAngularR, fragTexcoord.y));
-    
-    const vec3 right = normalize(cross(sunDir, vec3(0,1,0)));
-    const vec3 up = cross(right, sunDir);
-    
-    vec3 viewDir = Rotate(sunDir, up, sunAngular.x);
-    dirWorldSpace.xyz = normalize(Rotate(viewDir, cross(sunDir, up), sunAngular.y));
-    
-    outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, normalize(data.lightDirection.xyz));
+        // World space
+        const vec2 sunAngular = vec2(mix(-SunAngularR, SunAngularR, fragTexcoord.x),
+                                    mix(-SunAngularR, SunAngularR, fragTexcoord.y));
+
+        const vec3 right = normalize(cross(dirToSun, vec3(0,1,0)));
+        const vec3 up = cross(right, dirToSun);
+        
+        vec3 viewDir = Rotate(dirToSun, up, sunAngular.x);
+        dirWorldSpace.xyz = normalize(Rotate(viewDir, cross(dirToSun, up), sunAngular.y));
+        
+        outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);
     #else
-    
-    dirWorldSpace.xyz = ScreenToView(fragTexcoord.xy, 1.0f, frame.invProjection).xyz;
-    dirWorldSpace.z *= -1;
-    dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
-    
-    outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, normalize(data.lightDirection.xyz));
+        dirWorldSpace.xyz = ScreenToView(fragTexcoord.xy, 1.0f, frame.invProjection).xyz;
+        dirWorldSpace.z *= -1;
+        dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
+        
+        outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);
     #endif
   }
