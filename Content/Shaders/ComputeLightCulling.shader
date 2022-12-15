@@ -1,5 +1,7 @@
 includes:
-  - Shaders/Lighting.glsl
+- Shaders/Math.glsl
+- Shaders/Lighting.glsl
+
 defines: []
 glslCommon: |
   #version 460

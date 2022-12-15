@@ -1,8 +1,10 @@
 --- 
 includes :
-  - Shaders/Lighting.glsl
+- Shaders/Math.glsl
+
 defines : 
 - FILL
+- SUN
 
 depthAttachment :
 - UNDEFINED
@@ -50,7 +52,7 @@ glslFragment: |
   
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 100000.0f; // Atmosphere radius
-  const float SunAngularR = 0.5f * 5.45f;
+  const float SunAngularR = radians(0.5f * 5.45f);
   
   float Density(vec3 a, vec3 b, float H0)
   {
@@ -84,34 +86,9 @@ glslFragment: |
     return phaseM;
   }
   
-  // https://gist.github.com/wwwtyro/beecc31d65d1004f5a9d
-  vec2 raySphereIntersect(vec3 r0, vec3 rd, vec3 s0, float sr) 
-  {
-    // - r0: ray origin
-    // - rd: normalized ray direction
-    // - s0: sphere center
-    // - sr: sphere radius
-    // - Returns distance from r0 to first intersecion with sphere,
-    //   or -1.0 if no intersection.
-    float a = 1.0f;
-    vec3 s0_r0 = r0 - s0;
-    float b = 2.0 * dot(rd, s0_r0);
-    float c = dot(s0_r0, s0_r0) - (sr * sr);
-    if (b*b - 4.0*a*c < 0.0) 
-    {
-        return vec2(-1.0);
-    }
-    
-    float tmp = sqrt((b*b) - 4.0*a*c);
-    float x1 = (-b + tmp)/(2.0*a);
-    float x2 = (-b - tmp)/(2.0*a);
-    
-    return x1 < x2 ? vec2(x1, x2) : vec2(x2, x1);
-  }
-
   vec3 IntersectSphere(vec3 origin, vec3 direction, float innerR, float outerR)
   {
-      float outer = raySphereIntersect(origin, direction, vec3(0), outerR).y;
+      float outer = RaySphereIntersect(origin, direction, vec3(0), outerR).y;
       
       if(outer <= 0.0f)
       {
@@ -124,7 +101,7 @@ glslFragment: |
       float shift = min(maxCast, outer);
       
   #if defined(FILL)
-      vec2 tmp = raySphereIntersect(origin, direction, vec3(0), innerR);
+      vec2 tmp = RaySphereIntersect(origin, direction, vec3(0), innerR);
       float inner = tmp.x > 0.0f ? tmp.x : tmp.y;
       
       if(inner > 0.0f)
@@ -140,10 +117,11 @@ glslFragment: |
   vec3 CalculateSunIlluminance(vec3 sunDirection)
   {
       const float w = 2*PI*(1-cos(SunAngularR));
-      const float Ls = 120000.0f / w;
+      const float LsZenith = 120000.0f / w;
+      const float LsGround = 100.0f / w;
       
-      const vec3 GroundIlluminance = 15.0f * vec3(1);
-      const vec3 ZenithIlluminance =  Ls * vec3(0.925, 0.861, 0.755);
+      const vec3 GroundIlluminance = LsZenith * vec3(0.0499, 0.004, 4.10 * 0.00001);
+      const vec3 ZenithIlluminance =  LsZenith * vec3(0.925, 0.861, 0.755);
       const float artisticTune = pow(dot(-sunDirection, vec3(0, 1, 0)), 3);
       
       return mix(GroundIlluminance, ZenithIlluminance, artisticTune);
@@ -218,18 +196,17 @@ glslFragment: |
         }
     }
     
-    // Sun disk
-    const float angularSunSize = SunAngularR / 90.0f;
+    // Sun disk    
     const float theta = dot(direction, -lightDirection);
-    const float zeta = cos(angularSunSize);
+    const float zeta = cos(SunAngularR);
     if(theta > zeta)
     {   
-        vec2 intersection = raySphereIntersect(origin, direction, vec3(0), R);
+        vec2 intersection = RaySphereIntersect(origin, direction, vec3(0), R);
 
         if(max(intersection.x, intersection.y) < 0.0f)
         {
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
-            const float attenuation = mix(0.765, 1.0f, t);
+            const float attenuation = mix(0.43, 1.0f, t);
             const vec3 SunIlluminance = attenuation * CalculateSunIlluminance(lightDirection);
             const vec3 final = SunIlluminance * (resR * B0R * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
             return final;
@@ -242,14 +219,30 @@ glslFragment: |
   
   void main()
   {
-    // Calculate view direction
-    vec4 dirViewSpace = vec4(0);
-    dirViewSpace.xyz = ScreenToView(fragTexcoord.xy, 1.0f, frame.invProjection).xyz;
-    dirViewSpace.z *= -1;
-    dirViewSpace = normalize(inverse(frame.view) * dirViewSpace);
-
+    vec4 dirWorldSpace = vec4(0);
+    
     // View position
     vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;
     
-    outColor.xyz = SkyLighting(origin, dirViewSpace.xyz, normalize(data.lightDirection.xyz));    
+    #if 0 && defined(SUN)
+    // World space
+    const vec3 sunDir = normalize(-data.lightDirection.xyz);
+    const vec2 sunAngular = vec2(mix(-SunAngularR, SunAngularR, fragTexcoord.x),
+                                 mix(-SunAngularR, SunAngularR, fragTexcoord.y));
+    
+    const vec3 right = normalize(cross(sunDir, vec3(0,1,0)));
+    const vec3 up = cross(right, sunDir);
+    
+    vec3 viewDir = Rotate(sunDir, up, sunAngular.x);
+    dirWorldSpace.xyz = normalize(Rotate(viewDir, cross(sunDir, up), sunAngular.y));
+    
+    outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, normalize(data.lightDirection.xyz));
+    #else
+    
+    dirWorldSpace.xyz = ScreenToView(fragTexcoord.xy, 1.0f, frame.invProjection).xyz;
+    dirWorldSpace.z *= -1;
+    dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
+    
+    outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, normalize(data.lightDirection.xyz));
+    #endif
   }

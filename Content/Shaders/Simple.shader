@@ -1,6 +1,8 @@
 ---
 includes:
+- Shaders/Math.glsl
 - Shaders/Lighting.glsl
+
 defines:
 - ALPHA_CUTOUT
 glslCommon: |

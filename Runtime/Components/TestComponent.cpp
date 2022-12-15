@@ -220,7 +220,7 @@ void TestComponent::Tick(float deltaTime)
 		auto sky = node.DynamicCast< Framegraph::SkyNode>();
 
 		ImGui::Begin("Sky Settings");
-		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 90.0f);
+		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f);
 		ImGui::End();
 
 		const glm::vec4 direction = vec4(0, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0);
