@@ -11,7 +11,7 @@ namespace Sailor::Framegraph
 	class SkyNode : public TFrameGraphNode<SkyNode>
 	{
 		const uint32_t SkyResolution = 128u;
-		const uint32_t SunResolution = 128u;
+		const uint32_t SunResolution = 16u;
 
 	public:
 		SAILOR_API static const char* GetName() { return m_name; }
