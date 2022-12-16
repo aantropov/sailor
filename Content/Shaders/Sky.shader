@@ -127,9 +127,9 @@ glslFragment: |
   {
       const float w = 2*PI*(1-cos(SunAngularR));
       const float LsZenith = 120000.0f / w;
-      const float LsGround = 100.0f / w;
+      const float LsGround = 100000.0f / w;
       
-      const vec3 GroundIlluminance = LsZenith * vec3(0.0499, 0.004, 4.10 * 0.00001);
+      const vec3 GroundIlluminance = LsGround * vec3(0.0499, 0.004, 4.10 * 0.00001);
       const vec3 ZenithIlluminance =  LsZenith * vec3(0.925, 0.861, 0.755);
       const float artisticTune = pow(dot(-sunDirection, vec3(0, 1, 0)), 3);
       
