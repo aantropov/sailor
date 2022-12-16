@@ -61,7 +61,7 @@ glslFragment: |
   
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 100000.0f; // Atmosphere radius
-  const float SunAngularR = radians(2.545f);
+  const float SunAngularR = radians(1.545f);
   
   float Density(vec3 a, vec3 b, float H0)
   {
@@ -208,7 +208,7 @@ glslFragment: |
         
         if(bReached)
         {
-            vec3 aggr = exp(-B0R * (densityR + densityLightR) + -1.1f * B0Mu * (densityLightMu + densityMu));
+            vec3 aggr = exp(-B0R * (densityR + densityLightR) - B0Mu * (densityLightMu + densityMu));
             resR  += aggr * hr;
             resMu += aggr * hm;
         }
@@ -230,7 +230,7 @@ glslFragment: |
             return vec3(0);
         }
     #else
-        const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
+        const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + 1.1f * B0Mu * resMu * PhaseMu(Angle));
         return final;
     #endif
   }
@@ -263,7 +263,7 @@ glslFragment: |
        if(dx > -SunAngularR && 
           dy > -SunAngularR && 
           dx < SunAngularR && 
-          dy < SunAngularR)//theta > zeta)
+          dy < SunAngularR)
        {
          vec2 sunUv = ((vec2(dx, dy) / SunAngularR) + 1.0f) / 2.0f;
          sunUv.y = 1 - sunUv.y;
