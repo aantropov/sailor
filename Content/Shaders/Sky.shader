@@ -61,7 +61,7 @@ glslFragment: |
   
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 100000.0f; // Atmosphere radius
-  const float SunAngularR = radians(1.545f);
+  const float SunAngularR = radians(0.545f);
   
   float Density(vec3 a, vec3 b, float H0)
   {
@@ -86,14 +86,26 @@ glslFragment: |
     return ((3.0f * PI) / 16.0f) * (1.0f + cosAngle * cosAngle);
   }
   
-  float PhaseMu(float cosAngle)
+  // The best variant with the precomputed values
+  // taken from Github
+  float PhaseMie(float x)
   {
-    const float g = 0.9;
-    const float phaseM = 3.0f / (8.0f * PI) * ((1.0f - g * g) * (1.0f + cosAngle * cosAngle)) / 
+    const vec3 c = vec3(.256098,.132268,.010016);
+    const vec3 d = vec3(-1.5,-1.74,-1.98);
+    const vec3 e = vec3(1.5625,1.7569,1.9801);
+    return dot((x * x + 1.) * c / pow( d * x + e, vec3(1.5)),vec3(.33333333333));
+  }
+  
+  /*
+  // Scratch pixel variant
+  float PhaseMie(float cosAngle)
+  {
+    const float g = 0.76;
+    const float phaseM = (3.0f / (8.0f * PI)) * ((1.0f - g * g) * (1.0f + cosAngle * cosAngle)) / 
     ((2.0f + g * g) * pow(1.0f + g * g - 2.0f * g * cosAngle, 1.5f));
 
     return phaseM;
-  }
+  }*/
   
   vec3 IntersectSphere(vec3 origin, vec3 direction, float innerR, float outerR)
   {
@@ -149,19 +161,19 @@ glslFragment: |
      const vec3 B0R = vec3(5.8, 13.5, 33.1) * vec3(0.000001, 0.000001, 0.000001);
      const float H0R = 8000.0f;
 
-     // Constants for PhaseMu
-     const vec3 B0Mu = vec3(2.0, 2.0, 2.0) * vec3(0.000001);
-     const float H0Mu = 1200.0f;
+     // Constants for PhaseMie
+     const vec3 B0Mie = vec3(2.0, 2.0, 2.0) * vec3(0.000001);
+     const float H0Mie = 1200.0f;
 
      const float heightOrigin = length(origin);
      const float dh = (length(destination) - heightOrigin) / INTEGRAL_STEPS_2;
      const float dStep = length(step);
      
      vec3 resR = vec3(0.0f);
-     vec3 resMu = vec3(0.0f);
+     vec3 resMie = vec3(0.0f);
 
      float densityR = 0.0f;
-     float densityMu = 0.0f;
+     float densityMie = 0.0f;
      
      #if defined(SUN)
        const float theta = dot(direction, -lightDirection);
@@ -178,10 +190,10 @@ glslFragment: |
          const float h = length(point) - R;
          
          const float hr = exp(-h/H0R)  * dStep;
-         const float hm = exp(-h/H0Mu) * dStep;
+         const float hm = exp(-h/H0Mie) * dStep;
          
          densityR  += hr;
-         densityMu += hm;
+         densityMie += hm;
 
          const vec3  toLight = IntersectSphere(point, -lightDirection, R, R + AtmosphereR);
          const float hLight  = length(toLight) - R;
@@ -189,7 +201,7 @@ glslFragment: |
          
          float dStepLight = length(point - toLight) / INTEGRAL_STEPS;
          float densityLightR = 0.0f;
-         float densityLightMu = 0.0f;
+         float densityLightMie = 0.0f;
 
          bool bReached = true;
          for(int j = 0; j < INTEGRAL_STEPS; j++)
@@ -202,15 +214,15 @@ glslFragment: |
                 break;
             }
             
-            densityLightMu += exp(-h1/H0Mu) * dStepLight;
+            densityLightMie += exp(-h1/H0Mie) * dStepLight;
             densityLightR  += exp(-h1/H0R)  * dStepLight;
          }
         
         if(bReached)
         {
-            vec3 aggr = exp(-B0R * (densityR + densityLightR) - B0Mu * (densityLightMu + densityMu));
+            vec3 aggr = exp(-B0R * (densityR + densityLightR) - B0Mie * (densityLightMie + densityMie));
             resR  += aggr * hr;
-            resMu += aggr * hm;
+            resMie += aggr * hm;
         }
     }
     
@@ -222,7 +234,7 @@ glslFragment: |
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
             const float attenuation = mix(0.83, 1.0f, t);
             const vec3 SunIlluminance = attenuation * CalculateSunIlluminance(lightDirection);
-            const vec3 final = SunIlluminance * (resR * B0R * PhaseR(Angle) + B0Mu * resMu * PhaseMu(Angle));
+            const vec3 final = SunIlluminance * (resR * B0R * PhaseR(Angle) + B0Mie * resMie * PhaseMie(Angle));
             return final;
         }
         else
@@ -230,7 +242,7 @@ glslFragment: |
             return vec3(0);
         }
     #else
-        const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + 1.1f * B0Mu * resMu * PhaseMu(Angle));
+        const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + 1.1f * B0Mie * resMie * PhaseMie(Angle));
         return final;
     #endif
   }
@@ -271,7 +283,7 @@ glslFragment: |
          const vec3 sunColor = texture(sunSampler, sunUv).xyz;
          float luminance = dot(sunColor,sunColor);
          
-         outColor.xyz = mix(outColor.xyz, sunColor, clamp(0,1,luminance));
+         outColor.xyz = max(outColor.xyz, mix(outColor.xyz, sunColor, clamp(0,1, luminance)));
        }
        
     #elif defined(SUN)
