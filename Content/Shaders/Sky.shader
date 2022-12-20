@@ -265,17 +265,17 @@ glslFragment: |
 
        const vec3 right = normalize(cross(dirToSun, vec3(0,1,0)));
        const vec3 up = cross(right, dirToSun);
-        
+
        float dx = dot(dirWorldSpace.xyz - dirToSun, right);
        float dy = dot(dirWorldSpace.xyz - dirToSun, up);
-         
-       const float theta = dot(dirWorldSpace.xyz, dirToSun);
-       const float zeta = cos(SunAngularR);
        
+       const float angle = atan(dot(cross(dirWorldSpace.xyz, dirToSun), up), dot(dirWorldSpace.xyz, dirToSun));
+            
        if(dx > -SunAngularR && 
           dy > -SunAngularR && 
           dx < SunAngularR && 
-          dy < SunAngularR)
+          dy < SunAngularR && 
+          abs(angle) < PI * 0.5)
        {
          vec2 sunUv = ((vec2(dx, dy) / SunAngularR) + 1.0f) / 2.0f;
          sunUv.y = 1 - sunUv.y;

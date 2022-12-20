@@ -165,3 +165,20 @@ vec2 RaySphereIntersect(vec3 r0, vec3 rd, vec3 s0, float sr)
   
   return x1 < x2 ? vec2(x1, x2) : vec2(x2, x1);
 }
+
+float NormAngle180(float angle)
+{
+  // Reduce the angle  
+  angle =  mod(angle, 360); 
+  
+  // Force it to be the positive remainder, so that 0 <= angle < 360  
+  angle = mod((angle + 360), 360);
+  
+  // force into the minimum absolute value residue class, so that -180 < angle <= 180  
+  if (angle > 180)
+  {
+      angle -= 360;
+  }
+  
+  return angle;
+}
