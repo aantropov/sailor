@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <fstream>
 #include "Containers/Containers.h"
 #include "AssetRegistry/UID.h"
 #include "Core/Submodule.h"

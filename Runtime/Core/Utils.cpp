@@ -24,7 +24,7 @@
 using namespace Sailor;
 using namespace Sailor::Utils;
 
-std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
+std::string Utils::wchar_to_UTF8(const wchar_t* in)
 {
 	std::string out;
 	uint32_t codepoint = 0;
@@ -65,7 +65,7 @@ std::string Sailor::Utils::wchar_to_UTF8(const wchar_t* in)
 	return out;
 }
 
-std::wstring Sailor::Utils::UTF8_to_wchar(const char* in)
+std::wstring Utils::UTF8_to_wchar(const char* in)
 {
 	std::wstring out;
 	uint32_t codepoint;
@@ -99,7 +99,7 @@ std::wstring Sailor::Utils::UTF8_to_wchar(const char* in)
 	return out;
 }
 
-DWORD Sailor::Utils::GetRandomColorHex()
+DWORD Utils::GetRandomColorHex()
 {
 	COLORREF res = RGB(
 		(BYTE)(rand() % 255), // red component of color
@@ -110,7 +110,7 @@ DWORD Sailor::Utils::GetRandomColorHex()
 	return (DWORD)res;
 }
 
-void Sailor::Utils::SetThreadName(size_t dwThreadID, const std::string& threadName)
+void Utils::SetThreadName(size_t dwThreadID, const std::string& threadName)
 {
 	HRESULT r;
 	r = SetThreadDescription(
@@ -119,7 +119,7 @@ void Sailor::Utils::SetThreadName(size_t dwThreadID, const std::string& threadNa
 	);
 }
 
-void Sailor::Utils::SetThreadName(const std::string& threadName)
+void Utils::SetThreadName(const std::string& threadName)
 {
 	HRESULT r;
 	r = SetThreadDescription(
@@ -128,7 +128,7 @@ void Sailor::Utils::SetThreadName(const std::string& threadName)
 	);
 }
 
-void Sailor::Utils::SetThreadName(std::thread* thread, const std::string& threadName)
+void Utils::SetThreadName(std::thread* thread, const std::string& threadName)
 {
 	HRESULT r;
 	r = SetThreadDescription(
@@ -137,7 +137,7 @@ void Sailor::Utils::SetThreadName(std::thread* thread, const std::string& thread
 	);
 }
 
-std::string Sailor::Utils::RemoveFileExtension(const std::string& filename)
+std::string Utils::RemoveFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
 	size_t lastdot = filename.find_last_of(".");
@@ -147,7 +147,7 @@ std::string Sailor::Utils::RemoveFileExtension(const std::string& filename)
 	return filename.substr(0, lastdot);
 }
 
-std::string Sailor::Utils::GetFileFolder(const std::string& filepath)
+std::string Utils::GetFileFolder(const std::string& filepath)
 {
 	const size_t lastSlash = filepath.rfind('/');
 	if (std::string::npos != lastSlash)
@@ -158,7 +158,7 @@ std::string Sailor::Utils::GetFileFolder(const std::string& filepath)
 	return std::string();
 }
 
-std::string Sailor::Utils::GetFileExtension(const std::string& filename)
+std::string Utils::GetFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
 	size_t lastdot = filename.find_last_of(".");
@@ -168,7 +168,7 @@ std::string Sailor::Utils::GetFileExtension(const std::string& filename)
 	return filename.substr(lastdot, filename.size() - lastdot);
 }
 
-TVector<std::string> Sailor::Utils::SplitStringByLines(const std::string& str)
+TVector<std::string> Utils::SplitStringByLines(const std::string& str)
 {
 	TVector<std::string> result;
 	auto ss = std::stringstream{ str };
@@ -181,7 +181,7 @@ TVector<std::string> Sailor::Utils::SplitStringByLines(const std::string& str)
 	return result;
 }
 
-TVector<std::string> Sailor::Utils::SplitString(const std::string& str, const std::string& delimiter)
+TVector<std::string> Utils::SplitString(const std::string& str, const std::string& delimiter)
 {
 	SAILOR_PROFILE_FUNCTION();
 	TVector<std::string> strings;
@@ -200,7 +200,7 @@ TVector<std::string> Sailor::Utils::SplitString(const std::string& str, const st
 	return strings;
 }
 
-void Sailor::Utils::ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPosition, size_t endLocation)
+void Utils::ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
 	while ((startPosition = str.find(from, startPosition)) < endLocation)
@@ -215,7 +215,7 @@ void Sailor::Utils::ReplaceAll(std::string& str, const std::string& from, const 
 	}
 }
 
-void Sailor::Utils::Erase(std::string& str, const std::string& substr, size_t startPosition, size_t endLocation)
+void Utils::Erase(std::string& str, const std::string& substr, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
 	while ((startPosition = str.find(substr, startPosition)) < endLocation)
@@ -230,7 +230,7 @@ void Sailor::Utils::Erase(std::string& str, const std::string& substr, size_t st
 	}
 }
 
-std::string Sailor::Utils::SanitizeFilepath(const std::string& filename)
+std::string Utils::SanitizeFilepath(const std::string& filename)
 {
 	std::string res = filename;
 	ReplaceAll(res, "\\", "/");
@@ -238,7 +238,7 @@ std::string Sailor::Utils::SanitizeFilepath(const std::string& filename)
 	return res;
 }
 
-std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
+std::time_t Utils::GetFileModificationTime(const std::string& filepath)
 {
 	SAILOR_PROFILE_FUNCTION();
 	struct stat result;
@@ -249,7 +249,7 @@ std::time_t Sailor::Utils::GetFileModificationTime(const std::string& filepath)
 	return 0;
 }
 
-void Sailor::Utils::FindAllOccurances(std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPosition, size_t endLocation)
+void Utils::FindAllOccurances(std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
 	size_t pos = str.find(substr, startPosition);
@@ -260,7 +260,7 @@ void Sailor::Utils::FindAllOccurances(std::string& str, const std::string& subst
 	}
 }
 
-void Sailor::Utils::Trim(std::string& s)
+void Utils::Trim(std::string& s)
 {
 	SAILOR_PROFILE_FUNCTION();
 	s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
@@ -268,22 +268,22 @@ void Sailor::Utils::Trim(std::string& s)
 		}));
 }
 
-int64_t Sailor::Utils::GetCurrentTimeMs()
+int64_t Utils::GetCurrentTimeMs()
 {
 	return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-int64_t Sailor::Utils::GetCurrentTimeMicro()
+int64_t Utils::GetCurrentTimeMicro()
 {
 	return (int64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-int64_t Sailor::Utils::GetCurrentTimeNano()
+int64_t Utils::GetCurrentTimeNano()
 {
 	return (int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-void Sailor::Utils::Timer::Start()
+void Utils::Timer::Start()
 {
 	LARGE_INTEGER li;
 	if (!QueryPerformanceFrequency(&li))
@@ -297,7 +297,7 @@ void Sailor::Utils::Timer::Start()
 	m_counterStart = li.QuadPart;
 }
 
-void Sailor::Utils::Timer::Stop()
+void Utils::Timer::Stop()
 {
 	LARGE_INTEGER li;
 	QueryPerformanceCounter(&li);
@@ -306,12 +306,12 @@ void Sailor::Utils::Timer::Stop()
 	m_counterAcc += m_counterEnd - m_counterStart;
 }
 
-int64_t Sailor::Utils::Timer::ResultMs() const
+int64_t Utils::Timer::ResultMs() const
 {
 	return int64_t(double(m_counterEnd - m_counterStart) / m_pcFrequence);
 }
 
-int64_t Sailor::Utils::Timer::ResultAccumulatedMs() const
+int64_t Utils::Timer::ResultAccumulatedMs() const
 {
 	if (m_pcFrequence == 0.0)
 	{
@@ -320,10 +320,75 @@ int64_t Sailor::Utils::Timer::ResultAccumulatedMs() const
 	return int64_t((double)m_counterAcc / m_pcFrequence);
 }
 
-void Sailor::Utils::Timer::Clear()
+void Utils::Timer::Clear()
 {
 	m_counterStart = 0;
 	m_counterEnd = 0;
 	m_counterAcc = 0;
 	m_pcFrequence = 0.0;
+}
+
+// Julian Date
+// Julian dates are in DAYS (and fractions)
+// JulianCalendar calendar = new JulianCalendar();
+// Saturday, A.D. 2017 Jan 28	00:00:00.0	2457781.5
+//    DateTime today = DateTime.Today;
+//    DateTime dateInJulian = calendar.ToDateTime(today.Year, today.Month, today.Day, 0, 0, 0, 0);
+// String ddd = calendar.ToString();
+// float JD = 2457781.5f;
+// T is in Julian centuries
+// float T = ( JD - 2451545.0f ) / 36525.0f;
+
+// From https://en.wikipedia.org/wiki/Julian_day
+// Gregorian Calendar Date to Julian Day Number conversion
+
+// Julian Day Number calculations.
+// https://en.wikipedia.org/wiki/Julian_day
+// https://aa.quae.nl/en/reken/juliaansedag.html
+// https://core2.gsfc.nasa.gov/time/julian.txt
+// http://www.cs.utsa.edu/~cs1063/projects/Spring2011/Project1/jdn-explanation.html
+int32_t Utils::CalculateJulianDayNumber(int32_t year, int32_t month, int32_t day)
+{
+	// Formula coming from Wikipedia.
+	int32_t a = (month - 14) / 12;
+	int32_t jdn = (1461 * (year + 4800 + a)) / 4 +
+		(367 * (month - 2 - 12 * a)) / 12 -
+		(3 * ((year + 4900 + a) / 100)) / 4 +
+		day - 32075;
+
+	// Other formula found online:
+	/*int m, y, leap_days;
+	a = ( ( 14 - month ) / 12 );
+	m = ( month - 3 ) + ( 12 * a );
+	y = year + 4800 - a;
+	leap_days = ( y / 4 ) - ( y / 100 ) + ( y / 400 );
+	int32_t jdn2 = day + ( ( ( 153 * m ) + 2 ) / 5 ) + ( 365 * y ) + leap_days - 32045;*/
+
+	return jdn;
+}
+
+double Utils::CalculateJulianDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second)
+{
+	int32_t jdn = CalculateJulianDayNumber(year, month, day);
+
+	double jd = jdn + ((hour - 12.0) / 24.0) + (minute / 1440.0) + (second / 86400.0);
+	return jd;
+}
+
+double Utils::CalculateJulianCenturyDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second)
+{
+	double jd = CalculateJulianDate(year, month, day, hour, minute, second);
+	return (jd - s_j2000) / 36525.0;
+}
+
+glm::vec3 Utils::ConvertToEuclidean(float rightAscension, float declination, float radialDistance)
+{
+	const float cosd = cosf(declination);
+	glm::vec3 out{};
+
+	out.x = radialDistance * sinf(rightAscension) * cosd;
+	out.y = radialDistance * cosf(rightAscension) * cosd;
+	out.z = radialDistance * sinf(declination);
+
+	return out;
 }

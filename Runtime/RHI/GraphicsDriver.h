@@ -83,6 +83,7 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual RHIMeshPtr CreateMesh();
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices);
+
 		SAILOR_API virtual RHIShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
 		SAILOR_API virtual RHITexturePtr CreateTexture(
 			const void* pData,

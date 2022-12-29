@@ -52,6 +52,15 @@ namespace Sailor
 
 			void Clear();
 		};
+
+		static constexpr int32_t s_j2000 = 2451545;
+
+		SAILOR_API int32_t CalculateJulianDayNumber(int32_t year, int32_t month, int32_t day);
+		SAILOR_API double CalculateJulianDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second);
+
+		// Julian centuries since January 1, 2000
+		SAILOR_API double CalculateJulianCenturyDate(int32_t year, int32_t month, int32_t day, int32_t hour, int32_t minute, int32_t second);
+		SAILOR_API glm::vec3 ConvertToEuclidean(float rightAscension, float declination, float radialDistance);
 	}
 
 	template<typename Class, typename Member>
