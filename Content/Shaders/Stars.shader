@@ -32,57 +32,19 @@ glslVertex: |
   layout(location=1) out vec4 fragWPosition;
   layout(location=2) out vec4 fragUV;
   
-  const vec3 positions[6]       = vec3[6]( vec3(-0.5,-0.5,0), vec3(0.5,-0.5,0), vec3(0.5, 0.5, 0), vec3(0.5, 0.5, 0), vec3(-0.5,0.5,0), vec3(-0.5,-0.5,0) );
-  const vec2 uvs[6]             = vec2[6]( vec2(0.0, 1.0),    vec2(1.0, 1.0),   vec2(1.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 0.0), vec2(0.0, 1.0) );
-
-  const float _35OVER13PI = 0.85698815511020565414014334123662;
-  
   void main() 
   {
     gl_PointSize = 3;
   	gl_Position = frame.projection * frame.view * PushConstants.model * vec4(inPosition, 1.0);
+
+    vec3 pos = gl_Position.xyz/gl_Position.w;
     
-    fragWPosition = gl_Position;
-    fragWPosition /= fragWPosition.w;
-    
-    // Calculate color based on magnitude
-    // Following paper "Single Pass Rendering of Day and Night Sky Phenomena"
-    float m = gl_Position.w;
-    float m_a = 7.0f;       // Average apparent magnitude
-
-    float delta_m = pow(2.512, m_a - m);
-    float size = 0.001f;
-    
-    // Magic from the papers. Investigate the WHY of this.
-    float i_t = delta_m * _35OVER13PI;
-    i_t *= 4e-7 / (size * size);  // resolution correlated 
-    i_t = min(1.167, i_t);  // volume of smoothstep (V_T)
-
-    float i_g = pow(2.512, m_a - (m + 0.167)) - 1;
-    vec3 v_t = vec3(i_t);
-
-    // v_k
-    const float glare_scale = 2.0f;
-    const float v_k = max(size, sqrt(i_g) * 2e-2 * glare_scale);
-
-    // TODO: Scattering and Scintillation
-    //v_t -= E_ext;
-    fragUV.w = v_k / size;
-
-    //
-    fragColor.xyz = mix( inColor.xyz, vec3( 0.66, 0.78, 1.00 ), 0.66 );
-    fragColor.xyz *= v_t;
-    fragColor.xyz = max(vec3(0.0), fragColor.xyz);
-    fragColor.w = 1.0f;
-    
+    //pos.y = 1.0f - pos.y;
+    fragUV.xy = (pos.xy + 1) * 0.5f;
     fragColor = inColor;
-    
-    const uint vertex_index = gl_VertexIndex % 6;
-
-    fragUV.xy = positions[vertex_index].xy * vec2(-1, 1);
   }
 
-glslFragment: |  
+glslFragment: |
   layout(location = 0) in vec4 fragColor;
   layout(location = 1) in vec4 worldPos;
   layout(location = 2) in vec4 fragUV;
@@ -92,7 +54,7 @@ glslFragment: |
   layout(set = 0, binding = 0) uniform FrameData
   {
   	mat4 view;
-  	mat4 projection;	
+  	mat4 projection;
   	mat4 invProjection;
   	vec4 cameraPosition;
   	ivec2 viewportSize;
@@ -118,15 +80,16 @@ glslFragment: |
     dirWorldSpace.xyz = ScreenToView(viewportPos, 1.0f, frame.invProjection).xyz;
     dirWorldSpace.z *= -1;
     dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
-     
+
     outColor = vec4(0);
-    
+
     vec2 intersection = RaySphereIntersect(origin, dirWorldSpace.xyz, vec3(0), R);
     if(max(intersection.x, intersection.y) < 0.0f)
     {
-        const float artisticTune = pow(max(0, 0.1 + dot(data.lightDirection.xyz, vec3(0, 1, 0))), 0.9);
+        const float mask = clamp(1 - 1000 * clamp(length(viewportPos.xy - fragUV.xy), 0.0, 1), 0, 1);
+        const float artisticTune = pow(max(0, 0.05 + dot(data.lightDirection.xyz, vec3(0, 1, 0))), 0.9);
         
-        outColor = fragColor;
+        outColor = mask * fragColor;
         outColor.a = artisticTune * 0.25;
     }
   }

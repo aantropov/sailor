@@ -67,8 +67,8 @@ void SkyNode::CreateStarsMesh(RHI::RHICommandListPtr transferCommandList)
 	// Rome lat 41.8919300 degrees
 	// Rome lon 12.5113300 degrees
 
-	const float latitudeRad = glm::radians(41.8919300f);
-	const float longitudeRad = glm::radians(12.5113300f);
+	constexpr float latitudeRad = glm::radians(41.8919300f);
+	constexpr float longitudeRad = glm::radians(12.5113300f);
 
 	const double jdn2022 = Utils::CalculateJulianDate(2022, 12, 29, 12, 0, 0);
 
