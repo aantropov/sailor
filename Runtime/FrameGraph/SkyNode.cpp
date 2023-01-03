@@ -232,6 +232,12 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
+	
+	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+		
+	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
+	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
 	commands->BeginDebugRegion(commandList, "Sky", DebugContext::Color_CmdPostProcess);
 	{
@@ -256,10 +262,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			false,
 			glm::vec4(0.0f),
 			false);
-
-		const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-		const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
-
+		
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 		commands->EndRenderPass(commandList);
 
@@ -291,9 +294,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			false,
 			glm::vec4(0.0f),
 			false);
-
-		const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-		const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
 
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 		commands->EndRenderPass(commandList);
@@ -332,9 +332,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::vec4(0.0f),
 			false);
 
-		const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-		const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
-
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 		commands->EndRenderPass(commandList);
 
@@ -371,10 +368,10 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::vec4(0.0f),
 			false);
 
-		const uint32_t firstIndex = (uint32_t)m_starsMesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-		const uint32_t vertexOffset = (uint32_t)m_starsMesh->m_vertexBuffer->GetOffset() / (uint32_t)m_starsMesh->m_vertexDescription->GetVertexStride();
+		const uint32_t starsFirstIndex = (uint32_t)m_starsMesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+		const uint32_t starsVertexOffset = (uint32_t)m_starsMesh->m_vertexBuffer->GetOffset() / (uint32_t)m_starsMesh->m_vertexDescription->GetVertexStride();
 
-		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, firstIndex, vertexOffset, 0u);
+		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, starsFirstIndex, starsVertexOffset, 0u);
 		commands->EndRenderPass(commandList);
 
 		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
