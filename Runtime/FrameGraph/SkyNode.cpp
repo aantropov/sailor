@@ -23,8 +23,6 @@ glm::vec3 SkyNode::s_rgbTemperatures[s_maxRgbTemperatures];
 
 void SkyNode::CreateStarsMesh(RHI::RHICommandListPtr transferCommandList)
 {
-	SAILOR_PROFILE_FUNCTION();
-
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(transferCommandList, GetName(), DebugContext::Color_CmdTransfer);
@@ -131,8 +129,6 @@ void SkyNode::CreateStarsMesh(RHI::RHICommandListPtr transferCommandList)
 
 void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
-	SAILOR_PROFILE_FUNCTION();
-
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdPostProcess);
@@ -171,8 +167,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
 
 		driver->SetDebugName(m_pSunTexture, "Sky");
-
-		return;
 	}
 
 	if (!m_pSunTexture)
@@ -187,8 +181,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
 
 		driver->SetDebugName(m_pSunTexture, "Sun");
-
-		return;
 	}
 
 	if (!m_starsMesh)
@@ -202,6 +194,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		!m_pComposeShader || !m_pComposeShader->IsReady() ||
 		!m_starsMesh || !m_starsMesh->IsReady())
 	{
+		commands->EndDebugRegion(commandList);
 		return;
 	}
 

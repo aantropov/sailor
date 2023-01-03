@@ -34,8 +34,8 @@ namespace Sailor::Framegraph
 			double m_SDEC0{}; // B1950 Declination(radians)
 			char m_IS[2]{}; // Spectral type(2 characters)
 			int16_t m_mag{}; // V Magnitude * 100
-			float m_XRPM; // R.A.proper motion(radians per year)
-			float m_XDPM; // Dec.proper motion(radians per year)
+			float m_XRPM{}; // R.A.proper motion(radians per year)
+			float m_XDPM{}; // Dec.proper motion(radians per year)
 		};
 #pragma pack()
 
@@ -55,7 +55,7 @@ namespace Sailor::Framegraph
 
 		struct PushConstants
 		{
-			mat4 m_starsModelView;
+			mat4 m_starsModelView{};
 		};
 
 		mat4 m_starsModelView{};
