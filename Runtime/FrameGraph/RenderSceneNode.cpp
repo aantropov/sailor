@@ -137,10 +137,13 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	const std::string QueueTag = GetString("Tag");
+	const size_t QueueTagHash = GetHash(QueueTag);
+
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
+	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 
 	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
 	TSet<Batch> batches;
@@ -172,7 +175,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				continue;
 			}
 
-			if (material->GetRenderState().GetTag() == GetHash(GetString("Tag")))
+			if (material->GetRenderState().GetTag() == QueueTagHash)
 			{
 				RHIShaderBindingPtr shaderBinding;
 				if (material->GetBindings()->GetShaderBindings().ContainsKey("material"))

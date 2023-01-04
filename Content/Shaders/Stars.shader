@@ -87,9 +87,11 @@ glslFragment: |
     if(max(intersection.x, intersection.y) < 0.0f)
     {
         const float mask = clamp(1 - 1000 * clamp(length(viewportPos.xy - fragUV.xy), 0.0, 1), 0, 1);
-        const float artisticTune = pow(max(0, 0.05 + dot(data.lightDirection.xyz, vec3(0, 1, 0))), 0.9);
+        const float artisticTune = pow(max(0, 0.3 + dot(data.lightDirection.xyz, vec3(0, 1, 0))), 0.9);
         
         outColor = mask * fragColor;
-        outColor.a = artisticTune * 0.25;
+        outColor.a = clamp(artisticTune * 0.25, 0, 1);
+        
+        outColor.xyz *= outColor.a;
     }
   }

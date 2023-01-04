@@ -223,7 +223,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	if (!m_pStarsMaterial)
 	{
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3C4>();
-		RenderState renderState{ true, false, 0, false, ECullMode::Back, EBlendMode::AlphaBlending, EFillMode::Point, 0, false };
+		RenderState renderState{ false, false, 0, false, ECullMode::Back, EBlendMode::Additive, EFillMode::Point, 0, false };
 		m_pStarsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::PointList, renderState, m_pStarsShader);
 	}
 

@@ -238,10 +238,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		VkInstance m_vkInstance = 0;
 		VulkanDevicePtr m_device;
-
-		VulkanStateColorBlendingPtr m_additiveBlendMode;
-		VulkanStateColorBlendingPtr m_alphaBlendingBlendMode;
-		VulkanStateColorBlendingPtr m_multiplyBlendMode;
 	};
 }
 

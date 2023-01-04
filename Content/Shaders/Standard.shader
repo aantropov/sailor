@@ -245,12 +245,9 @@ glslFragment: |
           }
   
           vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;		
-  		outColor.xyz += CalculateLighting(light.instance[index], material, fragNormal, worldPosition, viewDirection);		
+  		  outColor.xyz += CalculateLighting(light.instance[index], material, fragNormal, worldPosition, viewDirection);		
   		//outColor.xyz += 0.01;
       }
   	
-  	if(length(outColor) < 1)
-  	{
-  		//outColor = vec4(0);
-  	}
+    outColor.a = 1.0f;
   }
