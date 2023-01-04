@@ -343,7 +343,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 		// We need to start load the material
 		if (auto pMaterialAsset = LoadMaterialAsset(assetInfo->GetUID()))
 		{
-			auto updateMaterial = Tasks::Scheduler::CreateTask("Update Material", [=]() {
+			auto updateMaterial = Tasks::Scheduler::CreateTask("Update Material", [=]() mutable {
 
 				auto pMaterial = material;
 
@@ -362,16 +362,16 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 				const UID uid = pMaterial->GetUID();
 				const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
 
-				auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
+				auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]() mutable
 				{
-					if (pMaterial.GetRawPtr()->GetShader()->IsReady())
+					if (pMaterial->GetShader()->IsReady())
 					{
-						pMaterial.GetRawPtr()->UpdateRHIResource();
-						pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
-						pMaterial.GetRawPtr()->TraceHotReload(nullptr);
+						pMaterial->UpdateRHIResource();
+						pMaterial->ForcelyUpdateUniforms();
+						pMaterial->TraceHotReload(nullptr);
 
 						// TODO: Optimize
-						auto rhiMaterials = pMaterial.GetRawPtr()->GetRHIMaterials().GetValues();
+						auto rhiMaterials = pMaterial->GetRHIMaterials().GetValues();
 						for (const auto& rhi : rhiMaterials)
 						{
 							RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
@@ -385,19 +385,19 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					TexturePtr texture;
 					updateRHI->Join(
 						App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, TexturePtr>(
-							[=](TexturePtr pTexture)
-					{
-						if (pTexture)
-						{
-							pTexture.GetRawPtr()->AddHotReloadDependentObject(material);
-							pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
+							[=](TexturePtr pTexture) mutable
+							{
+								if (pTexture)
+								{
+									pTexture->AddHotReloadDependentObject(material);
+									pMaterial->SetSampler(sampler.m_name, texture);
+								}
+							}, "Set material texture binding", Tasks::EThreadType::Render));
 						}
-					}, "Set material texture binding", Tasks::EThreadType::Render));
-				}
 
-				for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())
+				for (auto& uniform : pMaterialAsset->GetUniformValues())
 				{
-					pMaterial.GetRawPtr()->SetUniform(uniform.m_first, uniform.m_second);
+					pMaterial->SetUniform(uniform.m_first, uniform.m_second);
 				}
 
 				updateRHI->Run();
@@ -547,19 +547,18 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 		const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
 
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<MaterialPtr>("Load material",
-			[pMaterial, pMaterialAsset, assetFilename = assetFilename]()
+			[pMaterial, pMaterialAsset, assetFilename = assetFilename]() mutable
 			{
 			// We're updating rhi on worker thread during load since we have no deps
-			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
+			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]() mutable
 			{
-				
-				if (pMaterial.GetRawPtr()->GetShader()->IsReady())
+				if (pMaterial->GetShader()->IsReady())
 				{
-					pMaterial.GetRawPtr()->UpdateRHIResource();
-					pMaterial.GetRawPtr()->ForcelyUpdateUniforms();
+					pMaterial->UpdateRHIResource();
+					pMaterial->ForcelyUpdateUniforms();
 
 					// TODO: Optimize
-					auto rhiMaterials = pMaterial.GetRawPtr()->GetRHIMaterials().GetValues();
+					auto rhiMaterials = pMaterial->GetRHIMaterials().GetValues();
 					for (const auto& rhi : rhiMaterials)
 					{
 						RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
@@ -573,19 +572,19 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 				TexturePtr pTexture;
 				updateRHI->Join(
 					App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, pTexture)->Then<void, TexturePtr>(
-						[=](TexturePtr texture)
-				{
-					if (texture)
-					{
-						texture.GetRawPtr()->AddHotReloadDependentObject(pMaterial);
-						pMaterial.GetRawPtr()->SetSampler(sampler.m_name, texture);
+						[=](TexturePtr texture) mutable
+						{
+							if (texture)
+							{
+								texture->AddHotReloadDependentObject(pMaterial);
+								pMaterial->SetSampler(sampler.m_name, texture);
+							}
+						}, "Set material texture binding", Tasks::EThreadType::Render));
 					}
-				}, "Set material texture binding", Tasks::EThreadType::Render));
-			}
 
-			for (auto& uniform : pMaterialAsset.GetRawPtr()->GetUniformValues())
+			for (auto& uniform : pMaterialAsset->GetUniformValues())
 			{
-				pMaterial.GetRawPtr()->SetUniform(uniform.m_first, uniform.m_second);
+				pMaterial->SetUniform(uniform.m_first, uniform.m_second);
 			}
 
 			updateRHI->Run();

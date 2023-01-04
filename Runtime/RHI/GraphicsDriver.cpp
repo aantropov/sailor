@@ -10,10 +10,10 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices)
+void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer)
 {
-	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.Num();
-	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
+	const VkDeviceSize bufferSize = vertexBuffer;
+	const VkDeviceSize indexBufferSize = indexBuffer;
 
 	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "UpdateMesh");
@@ -23,12 +23,12 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3U
 	const EBufferUsageFlags flags = EBufferUsageBit::VertexBuffer_Bit | EBufferUsageBit::IndexBuffer_Bit;
 
 	mesh->m_vertexBuffer = CreateBuffer(cmdList,
-		&vertices[0],
+		pVertices,
 		bufferSize,
 		flags);
 
 	mesh->m_indexBuffer = CreateBuffer(cmdList,
-		&indices[0],
+		pIndices,
 		indexBufferSize,
 		flags);
 
@@ -41,9 +41,9 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3U
 	// Submit cmd lists
 	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Create mesh",
 		([this, cmdList, fence]()
-	{
-		SubmitCommandList(cmdList, fence);
-	}));
+			{
+				SubmitCommandList(cmdList, fence);
+			}));
 }
 
 TRefPtr<RHI::RHIMesh> IGraphicsDriver::CreateMesh()

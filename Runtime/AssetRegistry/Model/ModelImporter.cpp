@@ -246,7 +246,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 			TSharedPtr<Data> res = TSharedPtr<Data>::Make();
 			res->m_bIsImported = ImportObjModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
 			return res;
-		})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data)
+		})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data) mutable
 		{
 			if (data->m_bIsImported)
 			{
@@ -255,11 +255,14 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 					RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
 					ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 					ptr->m_bounds = mesh.bounds;
-					RHI::Renderer::GetDriver()->UpdateMesh(ptr, mesh.outVertices, mesh.outIndices);
-					model.GetRawPtr()->m_meshes.Emplace(ptr);
+					RHI::Renderer::GetDriver()->UpdateMesh(ptr, 
+						&mesh.outVertices[0], sizeof(RHI::VertexP3N3UV2C4) * mesh.outVertices.Num(), 
+						&mesh.outIndices[0], sizeof(uint32_t) * mesh.outIndices.Num());
+
+					model->m_meshes.Emplace(ptr);
 				}
 
-				model.GetRawPtr()->Flush();
+				model->Flush();
 			}
 			return model;
 		}, "Update RHI Meshes", Tasks::EThreadType::RHI)->ToTaskWithResult();

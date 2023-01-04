@@ -98,7 +98,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 
 		const TVector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
-		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, ndcQuad, indices);
+		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, &ndcQuad[0], ndcQuad.Num() * sizeof(VertexP3N3UV2C4), &indices[0], sizeof(uint32_t) * indices.Num());
 	}
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)

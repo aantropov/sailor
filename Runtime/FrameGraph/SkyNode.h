@@ -50,8 +50,11 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Clear() override;
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_pShaderBindings; }
+		SAILOR_API void SetLocation(float latitudeDegrees, float longitudeDegrees);
 
 	protected:
+
+		static const char* m_name;
 
 		struct PushConstants
 		{
@@ -77,31 +80,9 @@ namespace Sailor::Framegraph
 
 		RHI::RHIMeshPtr m_starsMesh{};
 
-		static const char* m_name;
+		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> m_loadMeshTask{};
+		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> CreateStarsMesh();
 
-		void CreateStarsMesh(RHI::RHICommandListPtr transferCommandList);
-
-		// Morgan-Keenan classification
-		// https://starparty.com/topics/astronomy/stars/the-morgan-keenan-system/
-
-		// Letters are for star categories.
-		// Numbers (0..9) are for further subdivision: 0 hottest, 9 colder.
-
-		static constexpr uint32_t s_maxStarTypes = 'z' - 'a';
-
-		// Temperature ranges (in Kelvin) of the different MK spectral types.
-		static constexpr glm::vec2 s_starTemperatureRanges[s_maxStarTypes] =
-		{
-			// A0-A9            B                   C                 D                 E           F               G
-			{ 7300, 10000 }, { 10000, 30000 }, { 2400, 3200 }, { 100000, 1000000 }, { 0, 0 }, { 6000, 7300 }, { 5300, 6000 }, { 0, 0 }, { 0, 0 },
-			//  J          K                    L           M                           O           P           Q        R          S               T
-			{ 0, 0 }, { 3800, 5300 }, { 1300, 2100 }, { 2500, 3800 }, { 0, 0 }, { 30000, 40000 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 2400, 3500 }, { 600, 1300 },
-			// U         V          W              X            Y
-			{ 0, 0 }, { 0, 0 }, { 25000, 40000 }, { 0, 0 }, { 0, 600 }
-		};
-
-		//
-		// Returns temperature based on MK classification in 2 chars.
 		static uint32_t MorganKeenanToTemperature(char spectral_type, char sub_type);
 
 		// Goes from 1000 to 40000 in increases of 100 Kelvin.

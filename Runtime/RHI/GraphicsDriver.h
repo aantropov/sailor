@@ -82,7 +82,8 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHIBufferPtr CreateIndirectBuffer(size_t size) = 0;
 
 		SAILOR_API virtual RHIMeshPtr CreateMesh();
-		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices);
+
+		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer);
 
 		SAILOR_API virtual RHIShaderPtr CreateShader(EShaderStage shaderStage, const ShaderByteCode& shaderSpirv) = 0;
 		SAILOR_API virtual RHITexturePtr CreateTexture(
@@ -260,7 +261,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary) = 0;
 		SAILOR_API virtual void BindMaterial(RHICommandListPtr cmd, RHI::RHIMaterialPtr material) = 0;
 
-		SAILOR_API virtual void Dispatch(RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader, 
+		SAILOR_API virtual void Dispatch(RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader,
 			uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ,
 			const TVector<RHI::RHIShaderBindingSetPtr>& bindings,
 			void* pPushConstantsData = nullptr,

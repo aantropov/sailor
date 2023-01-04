@@ -1743,12 +1743,12 @@ void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::RHICommandListPtr cm
 	UpdateShaderBinding(cmd, shaderBinding, value, size, bindingLayout.m_absoluteOffset);
 }
 
-void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<RHI::VertexP3N3UV2C4>& vertices, const TVector<uint32_t>& indices)
+void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer)
 {
 	auto device = m_vkInstance->GetMainDevice();
 
-	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.Num();
-	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
+	const VkDeviceSize bufferSize = vertexBuffer;
+	const VkDeviceSize indexBufferSize = indexBuffer;
 
 	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Update Mesh");
@@ -1762,24 +1762,22 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const TVector<RHI::V
 	mesh->m_vertexBuffer = RHI::RHIBufferPtr::Make(flags);
 	mesh->m_indexBuffer = RHI::RHIBufferPtr::Make(flags);
 
-	const auto& vertexDescription = GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-
-	mesh->m_vertexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(bufferSize, vertexDescription->GetVertexStride());
+	mesh->m_vertexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(bufferSize, mesh->m_vertexDescription->GetVertexStride());
 	mesh->m_vertexBuffer->m_vulkan.m_bufferAllocator = ssboAllocator;
 
 	mesh->m_indexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(indexBufferSize, device->GetMinSsboOffsetAlignment());
 	mesh->m_indexBuffer->m_vulkan.m_bufferAllocator = ssboAllocator;
 
-	UpdateBuffer(cmdList, mesh->m_vertexBuffer, &vertices[0], bufferSize);
-	UpdateBuffer(cmdList, mesh->m_indexBuffer, &indices[0], indexBufferSize);
+	UpdateBuffer(cmdList, mesh->m_vertexBuffer, pVertices, bufferSize);
+	UpdateBuffer(cmdList, mesh->m_indexBuffer, pIndices, indexBufferSize);
 #else
 	mesh->m_vertexBuffer = CreateBuffer(cmdList,
-		&vertices[0],
+		pVertices,
 		bufferSize,
 		flags);
 
 	mesh->m_indexBuffer = CreateBuffer(cmdList,
-		&indices[0],
+		pIndices,
 		indexBufferSize,
 		flags);
 #endif

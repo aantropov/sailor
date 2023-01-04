@@ -21,52 +21,91 @@ const char* SkyNode::m_name = "Sky";
 
 glm::vec3 SkyNode::s_rgbTemperatures[s_maxRgbTemperatures];
 
-void SkyNode::CreateStarsMesh(RHI::RHICommandListPtr transferCommandList)
+using TParseRes = TPair<TVector<VertexP3C4>, TVector<uint32_t>>;
+
+Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 {
-	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(transferCommandList, GetName(), DebugContext::Color_CmdTransfer);
-
-	m_starsMesh = driver->CreateMesh();
-	m_starsMesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-	m_starsMesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
-
-	std::string temperatures;
-	if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
-	{
-		return;
-	}
-
-	YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
-	if (temperaturesNode["colors"])
-	{
-		TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
-
-		for (const auto& line : temperaturesData)
+	auto task = Tasks::Scheduler::CreateTaskWithResult<TParseRes>("Parse Stars Mesh",
+		[=]() -> TParseRes
 		{
-			const auto temperatureK = line[0];
+			std::string temperatures;
+			if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
+			{
+				return TParseRes();
+			}
 
-			uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
-			index = glm::clamp(index, 0u, s_maxRgbTemperatures);
+			YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
+			if (temperaturesNode["colors"])
+			{
+				TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
 
-			// Should we inverse gamma correction?
-			const vec3 color = vec3(line[5], line[6], line[7]);
+				for (const auto& line : temperaturesData)
+				{
+					const auto temperatureK = line[0];
 
-			s_rgbTemperatures[index] = color;
-		}
-	}
+					uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
+					index = glm::clamp(index, 0u, s_maxRgbTemperatures);
 
-	// http://www.geomidpoint.com/example.html
-	// Longitude in radians (east positive)
-	// Latitude in radians (north positive)
-	//
-	// New York lat	40° 42' 51.6708" N	40.7143528	0.710599509
-	// New York lon    74° 0' 21.5022" W	-74.0059731	-1.291647896
-	// Rome lat 41.8919300 degrees
-	// Rome lon 12.5113300 degrees
+					// Should we inverse gamma correction?
+					const vec3 color = vec3(line[5], line[6], line[7]);
 
-	constexpr float latitudeRad = glm::radians(41.8919300f);
-	constexpr float longitudeRad = glm::radians(12.5113300f);
+					s_rgbTemperatures[index] = color;
+				}
+			}
+
+			TVector<uint8_t> starCatalogueData;
+			AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
+
+			BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
+
+			const size_t starCount = abs(header->m_starCount);
+			BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
+
+			TVector<VertexP3C4> vertices(starCount);
+			TVector<uint32_t> indices(starCount);
+
+			for (uint32_t i = 0; i < starCount; i++)
+			{
+				const BrighStarCatalogue_Entry& entry = starCatalogue[i];
+
+				vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
+				vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
+
+				vertices[i].m_position.x *= 5000.0f;
+				vertices[i].m_position.y *= 5000.0f;
+				vertices[i].m_position.z *= 5000.0f;
+
+				vertices[i].m_color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
+
+				indices[i] = i;
+			}
+
+			return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
+		})->Then<RHI::RHIMeshPtr, TParseRes>([](const TParseRes& res) mutable 
+			{
+					const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
+					const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
+
+					auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+					
+					RHI::RHIMeshPtr mesh = driver->CreateMesh();
+
+					mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
+					mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
+					driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
+
+					return mesh;
+			}, "Create Stars Mesh", Tasks::EThreadType::RHI);
+
+	task->Run();
+
+	return task;
+}
+
+void SkyNode::SetLocation(float latitudeDegrees, float longitudeDegrees)
+{
+	float latitudeRad = glm::radians(latitudeDegrees);
+	float longitudeRad = glm::radians(longitudeDegrees);
 
 	const double jdn2022 = Utils::CalculateJulianDate(2022, 12, 29, 12, 0, 0);
 
@@ -80,51 +119,6 @@ void SkyNode::CreateStarsMesh(RHI::RHICommandListPtr transferCommandList)
 	glm::quat precession = (precessionRotationZ * angleAxis(-0.00972f, Math::vec3_Right)) * precessionRotationZ;
 
 	m_starsModelView = glm::toMat4(precession);
-
-	TVector<uint8_t> starCatalogueData;
-	AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
-
-	BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
-
-	const size_t starCount = abs(header->m_starCount);
-	BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
-
-	TVector<VertexP3C4> vertices(starCount);
-	TVector<uint32_t> indices(starCount);
-
-	for (uint32_t i = 0; i < starCount; i++)
-	{
-		const BrighStarCatalogue_Entry& entry = starCatalogue[i];
-
-		vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
-		vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
-
-		vertices[i].m_position.x *= 5000.0f;
-		vertices[i].m_position.y *= 5000.0f;
-		vertices[i].m_position.z *= 5000.0f;
-
-		vertices[i].m_color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
-
-		indices[i] = i;
-	}
-
-	const VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.Num();
-	const VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.Num();
-
-	// Handle both buffers in memory closier each other
-	const EBufferUsageFlags flags = EBufferUsageBit::VertexBuffer_Bit | EBufferUsageBit::IndexBuffer_Bit;
-
-	m_starsMesh->m_vertexBuffer = driver->CreateBuffer(transferCommandList,
-		&vertices[0],
-		bufferSize,
-		flags);
-
-	m_starsMesh->m_indexBuffer = driver->CreateBuffer(transferCommandList,
-		&indices[0],
-		indexBufferSize,
-		flags);
-
-	commands->EndDebugRegion(transferCommandList);
 }
 
 void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
@@ -183,9 +177,14 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		driver->SetDebugName(m_pSunTexture, "Sun");
 	}
 
-	if (!m_starsMesh)
+	if (!m_starsMesh && !m_loadMeshTask)
 	{
-		CreateStarsMesh(transferCommandList);
+		m_loadMeshTask = CreateStarsMesh();
+	}
+	else if (!m_starsMesh && m_loadMeshTask->IsFinished())
+	{
+		m_starsMesh = m_loadMeshTask->GetResult();
+		m_loadMeshTask.Clear();
 	}
 
 	if (!m_pStarsShader || !m_pStarsShader->IsReady() ||
@@ -232,10 +231,10 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
-	
+
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
-		
+
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
@@ -262,7 +261,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			false,
 			glm::vec4(0.0f),
 			false);
-		
+
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 		commands->EndRenderPass(commandList);
 
@@ -342,6 +341,16 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	}
 	commands->EndDebugRegion(commandList);
 
+	// http://www.geomidpoint.com/example.html
+	// Longitude in radians (east positive)
+	// Latitude in radians (north positive)
+	//
+	// New York lat	40° 42' 51.6708" N	40.7143528	0.710599509
+	// New York lon    74° 0' 21.5022" W	-74.0059731	-1.291647896
+	// Rome lat 41.8919300 degrees
+	// Rome lon 12.5113300 degrees
+	SetLocation(41.8919300f, 12.5113300f);
+
 	commands->BeginDebugRegion(commandList, "Stars", DebugContext::Color_CmdGraphics);
 	{
 		commands->BindVertexBuffer(commandList, m_starsMesh->m_vertexBuffer, m_starsMesh->m_vertexBuffer->GetOffset());
@@ -368,10 +377,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::vec4(0.0f),
 			false);
 
-		const uint32_t starsFirstIndex = (uint32_t)m_starsMesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-		const uint32_t starsVertexOffset = (uint32_t)m_starsMesh->m_vertexBuffer->GetOffset() / (uint32_t)m_starsMesh->m_vertexDescription->GetVertexStride();
-
-		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, starsFirstIndex, starsVertexOffset, 0u);
+		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
 		commands->EndRenderPass(commandList);
 
 		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
@@ -393,6 +399,24 @@ void SkyNode::Clear()
 
 uint32_t SkyNode::MorganKeenanToTemperature(char spectralType, char subType)
 {
+	// Morgan-Keenan classification
+	// https://starparty.com/topics/astronomy/stars/the-morgan-keenan-system/
+
+	// Letters are for star categories.
+	// Numbers (0..9) are for further subdivision: 0 hottest, 9 colder.
+	static constexpr uint32_t s_maxStarTypes = 'z' - 'a';
+
+	// Temperature ranges (in Kelvin) of the different MK spectral types.
+	static constexpr glm::vec2 s_starTemperatureRanges[s_maxStarTypes] =
+	{
+		// A0-A9            B                   C                 D                 E           F               G
+		{ 7300, 10000 }, { 10000, 30000 }, { 2400, 3200 }, { 100000, 1000000 }, { 0, 0 }, { 6000, 7300 }, { 5300, 6000 }, { 0, 0 }, { 0, 0 },
+		//  J          K                    L           M                           O           P           Q        R          S               T
+		{ 0, 0 }, { 3800, 5300 }, { 1300, 2100 }, { 2500, 3800 }, { 0, 0 }, { 30000, 40000 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 2400, 3500 }, { 600, 1300 },
+		// U         V          W              X            Y
+		{ 0, 0 }, { 0, 0 }, { 25000, 40000 }, { 0, 0 }, { 0, 600 }
+	};
+
 	const glm::vec2& temperatureRange = s_starTemperatureRanges[spectralType - 'A'];
 	const uint32_t rangeStep = (uint32_t)((temperatureRange.y - temperatureRange.x) / 9);
 
