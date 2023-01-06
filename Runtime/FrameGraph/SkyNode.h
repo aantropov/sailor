@@ -12,6 +12,8 @@ namespace Sailor::Framegraph
 	{
 		const uint32_t SkyResolution = 128u;
 		const uint32_t SunResolution = 8u;
+		const uint32_t CloudsNoiseHighResolution = 32u;
+		const uint32_t CloudsNoiseLowResolution = 128u;
 
 		struct BrighStarCatalogue_Header
 		{
@@ -66,6 +68,8 @@ namespace Sailor::Framegraph
 		ShaderSetPtr m_pSunShader{};
 		ShaderSetPtr m_pSkyShader{};
 		ShaderSetPtr m_pStarsShader{};
+		ShaderSetPtr m_pCloudsNoiseHigh{};
+		ShaderSetPtr m_pCloudsNoiseLow{};
 		ShaderSetPtr m_pComposeShader{};
 
 		RHI::RHIMaterialPtr m_pStarsMaterial{};
@@ -78,6 +82,10 @@ namespace Sailor::Framegraph
 		RHI::RHITexturePtr m_pSkyTexture{};
 		RHI::RHITexturePtr m_pSunTexture{};
 
+		RHI::RHITexturePtr m_pCloudsMapTexture{};
+		RHI::RHITexturePtr m_pCloudsNoiseHighTexture{};
+		RHI::RHITexturePtr m_pCloudsNoiseLowTexture{};		
+		
 		RHI::RHIMeshPtr m_starsMesh{};
 
 		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> m_loadMeshTask{};

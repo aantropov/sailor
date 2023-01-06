@@ -249,5 +249,5 @@ glslFragment: |
   		//outColor.xyz += 0.01;
       }
   	
-    outColor.a = 1.0f;
+    outColor.a = 1.0f;  	
   }

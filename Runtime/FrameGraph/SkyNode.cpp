@@ -10,6 +10,7 @@
 #include "Engine/GameObject.h"
 #include "Math/Math.h"
 #include "glm/glm/gtx/quaternion.hpp"
+#include "AssetRegistry/Texture/TextureImporter.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -29,77 +30,77 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		[=]() -> TParseRes
 		{
 			std::string temperatures;
-			if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
+	if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
+	{
+		return TParseRes();
+	}
+
+	YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
+	if (temperaturesNode["colors"])
+	{
+		TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
+
+		for (const auto& line : temperaturesData)
+		{
+			const auto temperatureK = line[0];
+
+			uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
+			index = glm::clamp(index, 0u, s_maxRgbTemperatures);
+
+			// Should we inverse gamma correction?
+			const vec3 color = vec3(line[5], line[6], line[7]);
+
+			s_rgbTemperatures[index] = color;
+		}
+	}
+
+	TVector<uint8_t> starCatalogueData;
+	AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
+
+	BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
+
+	const size_t starCount = abs(header->m_starCount);
+	BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
+
+	TVector<VertexP3C4> vertices(starCount);
+	TVector<uint32_t> indices(starCount);
+
+	for (uint32_t i = 0; i < starCount; i++)
+	{
+		const BrighStarCatalogue_Entry& entry = starCatalogue[i];
+
+		vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
+		vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
+
+		vertices[i].m_position.x *= 5000.0f;
+		vertices[i].m_position.y *= 5000.0f;
+		vertices[i].m_position.z *= 5000.0f;
+
+		vertices[i].m_color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
+
+		indices[i] = i;
+	}
+
+	return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
+		})->Then<RHI::RHIMeshPtr, TParseRes>([](const TParseRes& res) mutable
 			{
-				return TParseRes();
-			}
+				const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
+		const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
 
-			YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
-			if (temperaturesNode["colors"])
-			{
-				TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
+		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 
-				for (const auto& line : temperaturesData)
-				{
-					const auto temperatureK = line[0];
+		RHI::RHIMeshPtr mesh = driver->CreateMesh();
 
-					uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
-					index = glm::clamp(index, 0u, s_maxRgbTemperatures);
+		mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
+		mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
+		driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
 
-					// Should we inverse gamma correction?
-					const vec3 color = vec3(line[5], line[6], line[7]);
-
-					s_rgbTemperatures[index] = color;
-				}
-			}
-
-			TVector<uint8_t> starCatalogueData;
-			AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
-
-			BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
-
-			const size_t starCount = abs(header->m_starCount);
-			BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
-
-			TVector<VertexP3C4> vertices(starCount);
-			TVector<uint32_t> indices(starCount);
-
-			for (uint32_t i = 0; i < starCount; i++)
-			{
-				const BrighStarCatalogue_Entry& entry = starCatalogue[i];
-
-				vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
-				vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
-
-				vertices[i].m_position.x *= 5000.0f;
-				vertices[i].m_position.y *= 5000.0f;
-				vertices[i].m_position.z *= 5000.0f;
-
-				vertices[i].m_color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
-
-				indices[i] = i;
-			}
-
-			return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
-		})->Then<RHI::RHIMeshPtr, TParseRes>([](const TParseRes& res) mutable 
-			{
-					const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
-					const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
-
-					auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-					
-					RHI::RHIMeshPtr mesh = driver->CreateMesh();
-
-					mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
-					mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
-					driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
-
-					return mesh;
+		return mesh;
 			}, "Create Stars Mesh", Tasks::EThreadType::RHI);
 
-	task->Run();
+		task->Run();
 
-	return task;
+		return task;
 }
 
 void SkyNode::SetLocation(float latitudeDegrees, float longitudeDegrees)
@@ -136,7 +137,37 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSkyShader, { "FILL" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSunShader, { "SUN" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComposeShader, { "COMPOSE" });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsNoiseHigh, { "CLOUDS_NOISE_HIGH" });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsNoiseLow, { "CLOUDS_NOISE_LOW" });			
 		}
+	}
+
+	if (!m_pCloudsMapTexture)
+	{
+		const std::string path = "Textures/CloudsMap.png";
+
+		if (auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(path))
+		{
+			TexturePtr clouds;
+			if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(info->GetUID(), clouds))
+			{
+				m_pCloudsMapTexture = clouds->GetRHI();
+			}
+		}
+	}
+
+	if (!m_pCloudsNoiseHighTexture)
+	{
+		m_pCloudsNoiseHighTexture = driver->CreateTexture(
+			commandList,
+			glm::ivec3(CloudsNoiseHighResolution, CloudsNoiseHighResolution, CloudsNoiseHighResolution),
+			1,
+			ETextureFormat::R16G16B16A16_SFLOAT,
+			ETextureFiltration::Bicubic,
+			ETextureClamping::Repeat,
+			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
+
+		driver->SetDebugName(m_pSunTexture, "Sky");
 	}
 
 	if (!m_pStarsShader)
@@ -209,6 +240,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		RHIShaderBindingPtr data = driver->AddBufferToShaderBindings(m_pShaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "skySampler", m_pSkyTexture, 1);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "sunSampler", m_pSunTexture, 2);
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsMapSampler", m_pCloudsMapTexture, 3);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
