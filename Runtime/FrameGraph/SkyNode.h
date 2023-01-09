@@ -12,6 +12,7 @@ namespace Sailor::Framegraph
 	{
 		const uint32_t SkyResolution = 128u;
 		const uint32_t SunResolution = 8u;
+		const uint32_t CloudsResolution = 512u;
 		const uint32_t CloudsNoiseHighResolution = 32u;
 		const uint32_t CloudsNoiseLowResolution = 128u;
 
@@ -86,20 +87,26 @@ namespace Sailor::Framegraph
 		ShaderSetPtr m_pSkyShader{};
 		ShaderSetPtr m_pStarsShader{};
 		ShaderSetPtr m_pComposeShader{};
+		ShaderSetPtr m_pCloudsShader{};
+		ShaderSetPtr m_pBlitShader{};
 
 		RHI::RHIMaterialPtr m_pStarsMaterial{};
 		RHI::RHIMaterialPtr m_pSkyMaterial{};
 		RHI::RHIMaterialPtr m_pSunMaterial{};
 		RHI::RHIMaterialPtr m_pComposeMaterial{};
+		RHI::RHIMaterialPtr m_pCloudsMaterial{};
+		RHI::RHIMaterialPtr m_pBlitMaterial{};
 
 		RHI::RHIShaderBindingSetPtr m_pShaderBindings{};
+		RHI::RHIShaderBindingSetPtr m_pBlitBindings{};
 
 		RHI::RHITexturePtr m_pSkyTexture{};
 		RHI::RHITexturePtr m_pSunTexture{};
+		RHI::RHITexturePtr m_pCloudsTexture{};
 
 		RHI::RHITexturePtr m_pCloudsMapTexture{};
 		RHI::RHITexturePtr m_pCloudsNoiseHighTexture{};
-		RHI::RHITexturePtr m_pCloudsNoiseLowTexture{};		
+		RHI::RHITexturePtr m_pCloudsNoiseLowTexture{};
 		
 		RHI::RHIMeshPtr m_starsMesh{};
 

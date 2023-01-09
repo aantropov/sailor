@@ -67,6 +67,8 @@ glslFragment: |
     vec4 lightDirection;
   } data;
   
+  layout(set = 1, binding = 6) uniform sampler2D cloudsSampler;
+
   const float R = 6371000.0f; // Earth radius in m
   
   void main()
@@ -83,6 +85,8 @@ glslFragment: |
 
     outColor = vec4(0);
 
+    float clouds = texture(cloudsSampler, viewportPos).a;
+
     vec2 intersection = RaySphereIntersect(origin, dirWorldSpace.xyz, vec3(0), R);
     if(max(intersection.x, intersection.y) < 0.0f)
     {
@@ -92,6 +96,6 @@ glslFragment: |
         outColor = mask * fragColor;
         outColor.a = clamp(artisticTune * 0.25, 0, 1);
         
-        outColor.xyz *= outColor.a;
+        outColor.xyz *= outColor.a * (1.0f - clouds);
     }
   }

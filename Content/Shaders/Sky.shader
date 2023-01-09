@@ -7,6 +7,7 @@ defines:
 - FILL
 - SUN
 - COMPOSE
+- CLOUDS
 
 depthAttachment :
 - UNDEFINED
@@ -63,8 +64,11 @@ glslFragment: |
   #if defined(COMPOSE)
   layout(set=1, binding=1) uniform sampler2D skySampler;
   layout(set=1, binding=2) uniform sampler2D sunSampler;
-  layout(set=1, binding=3) uniform sampler2D cloudsMapSampler;
+  #endif
   
+  #if defined(CLOUDS)  
+  layout(set=1, binding=1) uniform sampler2D skySampler;
+  layout(set=1, binding=3) uniform sampler2D cloudsMapSampler;
   layout(set=1, binding=4) uniform sampler3D cloudsNoiseLowSampler;
   layout(set=1, binding=5) uniform sampler3D cloudsNoiseHighSampler;  
   #endif
@@ -284,7 +288,7 @@ glslFragment: |
     return newMinValue + (value-minValue) / (maxValue-minValue) * (newMaxValue-newMinValue);
   }
 
-  #if defined(COMPOSE)
+  #if defined(CLOUDS)
   float CloudsGetHeight(vec3 position)
   {
     return clamp(((length(position.y) -  CloudsStartR) / (CloudsEndR - CloudsStartR)), 0, 1);
@@ -482,6 +486,15 @@ glslFragment: |
          float luminance = dot(sunColor,sunColor);
          outColor.xyz = max(outColor.xyz, mix(outColor.xyz, sunColor, clamp(0,1, luminance)));         
        }
+    #elif defined(CLOUDS)
+       vec2 uv = fragTexcoord.xy;
+       uv.y = 1 - uv.y;
+       
+       dirWorldSpace.xyz = ScreenToView(uv, 1.0f, frame.invProjection).xyz;
+       dirWorldSpace.z *= -1;
+       dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
+        
+       outColor.xyz = texture(skySampler, fragTexcoord).xyz; 
 
        vec3 viewDir = normalize(dirWorldSpace.xyz);
        float horizon = 1.0f -exp(-max(0.0, dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
@@ -490,9 +503,8 @@ glslFragment: |
        vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun) + vec4(outColor.xyz, 0.0f) * data.ambient;
        vec3 tunedClouds = mix(outColor.xyz, rawClouds.xyz, horizon);
        
-       outColor.xyz = mix(outColor.xyz, tunedClouds, rawClouds.a);
-       outColor.a = rawClouds.a;       
-       
+       outColor.xyz = tunedClouds;
+       outColor.a = rawClouds.a; 
     #elif defined(SUN)
     
         // World space
