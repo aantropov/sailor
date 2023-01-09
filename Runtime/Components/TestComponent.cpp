@@ -221,7 +221,7 @@ void TestComponent::Tick(float deltaTime)
 		ImGui::Begin("Sky Settings");
 		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds density", &m_skyParams.m_cloudsDensity, 0.0f, 100.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds coverage", &m_skyParams.m_cloudsCoverage, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds coverage", &m_skyParams.m_cloudsCoverage, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds attenuation 1", &m_skyParams.m_cloudsAttenuation1, 0.001f, 0.03f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds attenuation 2", &m_skyParams.m_cloudsAttenuation2, 0.001f, 0.03f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds phase influence 1", &m_skyParams.m_phaseInfluence1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);

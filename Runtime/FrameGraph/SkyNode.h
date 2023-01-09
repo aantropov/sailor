@@ -10,9 +10,9 @@ namespace Sailor::Framegraph
 {
 	class SkyNode : public TFrameGraphNode<SkyNode>
 	{
-		const uint32_t SkyResolution = 128u;
-		const uint32_t SunResolution = 8u;
-		const uint32_t CloudsResolution = 512u;
+		const uint32_t SkyResolution = 512u;
+		const uint32_t SunResolution = 16u;
+		const uint32_t CloudsResolution = 768u;
 		const uint32_t CloudsNoiseHighResolution = 32u;
 		const uint32_t CloudsNoiseLowResolution = 128u;
 
