@@ -677,13 +677,13 @@ namespace Sailor::RHI
 
 	struct UboFrameData
 	{
-		alignas(16) glm::mat4 m_view;
-		alignas(16) glm::mat4 m_projection;
-		alignas(16) glm::mat4 m_invProjection;
-		alignas(16) glm::vec4 m_cameraPosition;
-		alignas(16) glm::ivec2 m_viewportSize;
-		alignas(16) float m_currentTime;
-		alignas(16) float m_deltaTime;
+		glm::mat4 m_view;
+		glm::mat4 m_projection;
+		glm::mat4 m_invProjection;
+		glm::vec4 m_cameraPosition;
+		glm::ivec2 m_viewportSize;
+		float m_currentTime;
+		float m_deltaTime;
 	};
 
 	struct UboTransform

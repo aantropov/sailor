@@ -24,7 +24,7 @@ namespace Sailor
 		SAILOR_API World(World&&) = default;
 		SAILOR_API World& operator=(World&&) = default;
 
-		SAILOR_API GameObjectPtr Instantiate(const glm::vec3& worldPosition = glm::vec3(0,0,0), const std::string& name = "Untitled");
+		SAILOR_API GameObjectPtr Instantiate(const glm::vec3& worldPosition = glm::vec3(0, 0, 0), const std::string& name = "Untitled");
 		SAILOR_API void Destroy(GameObjectPtr object);
 
 		SAILOR_API void Tick(class FrameState& frameState);
@@ -33,7 +33,7 @@ namespace Sailor
 		SAILOR_API const Memory::ObjectAllocatorPtr& GetAllocator() const { return m_allocator; }
 
 		SAILOR_API const FrameInputState& GetInput() const { return m_frameInput; }
-		SAILOR_API int64_t GetTime() const { return m_time; }
+		SAILOR_API float GetTime() const { return m_time; }
 
 		SAILOR_API RHI::RHICommandListPtr GetCommandList() const { return m_commandList; }
 		SAILOR_API TUniquePtr<class RHI::DebugContext>& GetDebugContext() { return m_pDebugContext; }
@@ -49,7 +49,7 @@ namespace Sailor
 
 		SAILOR_API void Clear();
 		SAILOR_API size_t GetCurrentFrame() const { return m_currentFrame; }
-	
+
 	protected:
 
 		size_t m_currentFrame;
@@ -60,7 +60,7 @@ namespace Sailor
 		TVector<size_t> m_sortedEcs;
 
 		FrameInputState m_frameInput;
-		int64_t m_time;
+		float m_time{};
 		RHI::RHICommandListPtr m_commandList;
 		TUniquePtr<RHI::DebugContext> m_pDebugContext;
 

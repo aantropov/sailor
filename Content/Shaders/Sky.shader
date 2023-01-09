@@ -292,8 +292,13 @@ glslFragment: |
   
   float CloudsSampleDensity(vec3 position)
   {
-    const float cloudsLow = pow(texture(cloudsNoiseLowSampler, position.xyz / 9000.0f).r, 1);
-    const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, vec3(0.21, 0.17, 0.0f) + position.xyz / 900.0f).r, 1);
+    position.xz += vec2(0.2, 0.1) * frame.currentTime * 1000;
+    
+    vec3 shift1 = vec3(-0.0021, 0.0017, -0.02f) * frame.currentTime;
+    vec3 shift2 = vec3(0.021, 0.017, 0.0f) * frame.currentTime;
+    
+    const float cloudsLow = pow(texture(cloudsNoiseLowSampler, shift1 + position.xyz / 9000.0f).r, 1);
+    const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, shift2 + position.xyz / 900.0f).r, 1);
     
     vec2 uv = position.xz / 409600.0f + vec2(0.2, 0.1);
     

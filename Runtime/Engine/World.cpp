@@ -45,8 +45,9 @@ void World::Tick(FrameState& frameState)
 	}
 
 	m_frameInput = frameState.GetInputState();
-	m_time = frameState.GetTime();
 	m_commandList = frameState.CreateCommandBuffer(0);
+
+	m_time += frameState.GetDeltaTime();
 
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList, true);
 

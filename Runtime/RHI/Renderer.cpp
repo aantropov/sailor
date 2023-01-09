@@ -174,7 +174,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	world->GetECS<LightingECS>()->FillLightsData(rhiSceneView);
 
 	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
-	rhiSceneView->m_currentTime = (float)frame.GetWorld()->GetTime();
+	rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
 
 	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
 	rhiSceneView->PrepareDebugDrawCommandLists(world);

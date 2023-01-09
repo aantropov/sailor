@@ -109,6 +109,7 @@ void App::Start()
 	FrameState currentFrame;
 	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
+	bool bFirstFrame = true;
 
 	TMap<std::string, std::function<void()>> consoleVars;
 	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, GetSubmodule<AssetRegistry>());
@@ -174,9 +175,9 @@ void App::Start()
 		if (bCanCreateNewFrame)
 		{
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-
-			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), &lastFrame);
+			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), bFirstFrame ? nullptr : &lastFrame);
 			App::GetSubmodule<EngineLoop>()->ProcessCpuFrame(currentFrame);
+			bFirstFrame = false;
 		}
 
 		if (bCanCreateNewFrame = GetSubmodule<Renderer>()->PushFrame(currentFrame))
