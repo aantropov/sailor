@@ -1,6 +1,6 @@
 uid: "{1BA5DFDB-E264-443B-AFB0-C030DD4CCF5A}"
 filename: CloudsMap.png
 assetImportTime: 1672944603
-bShouldGenerateMips: true
+bShouldGenerateMips: false
 clamping: Repeat
 filtration: Linear

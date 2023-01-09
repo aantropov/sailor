@@ -146,7 +146,7 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferMemoryPtr src, VulkanBufferMemo
 	m_bufferDependencies.Add(dst.m_buffer);
 }
 
-void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, VkDeviceSize srcOffset)
+void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, VkDeviceSize srcOffset)
 {
 	VkBufferImageCopy region{};
 	region.bufferOffset = srcOffset;
@@ -162,7 +162,7 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr 
 	region.imageExtent = {
 		width,
 		height,
-		1
+		depth
 	};
 
 	vkCmdCopyBufferToImage(

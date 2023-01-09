@@ -6,8 +6,6 @@ includes:
 defines:
 - FILL
 - SUN
-- CLOUDS_NOISE_HIGH
-- CLOUDS_NOISE_LOW
 - COMPOSE
 
 depthAttachment :
@@ -49,14 +47,26 @@ glslFragment: |
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
     vec4 lightDirection;
+    float cloudsAttenuation1;
+    float cloudsAttenuation2;
+    float cloudsDensity;
+    float cloudsCoverage;
+    float phaseInfluence1;
+    float phaseInfluence2;
+    float eccentrisy1;
+    float eccentrisy2;
+    float fog;
+    float sunIntensity;
+    float ambient;
   } data;
 
   #if defined(COMPOSE)
   layout(set=1, binding=1) uniform sampler2D skySampler;
   layout(set=1, binding=2) uniform sampler2D sunSampler;
   layout(set=1, binding=3) uniform sampler2D cloudsMapSampler;
-  layout(set=1, binding=4) uniform sampler2D cloudsNoiseLowSampler;
-  layout(set=1, binding=5) uniform sampler2D cloudsNoiseHighSampler;  
+  
+  layout(set=1, binding=4) uniform sampler3D cloudsNoiseLowSampler;
+  layout(set=1, binding=5) uniform sampler3D cloudsNoiseHighSampler;  
   #endif
   
   layout(location = 0) in vec2 fragTexcoord;
@@ -67,6 +77,9 @@ glslFragment: |
   
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 100000.0f; // Atmosphere radius
+  const float CloudsStartR = R + 5000.0f;
+  const float CloudsEndR = CloudsStartR + 10000.0f;
+  
   const float SunAngularR = radians(0.545f);
   
   float Density(vec3 a, vec3 b, float H0)
@@ -113,6 +126,12 @@ glslFragment: |
     return phaseM;
   }*/
   
+  float PhaseHenyeyGreenstein(float a, float g) 
+  {
+      float g2 = g * g;
+      return (1.0f - g2) / (4.0f * 3.1415f * pow(1.0f + g2 - 2.0f * g * (a), 1.5f));
+  }
+
   vec3 IntersectSphere(vec3 origin, vec3 direction, float innerR, float outerR)
   {
       float outer = RaySphereIntersect(origin, direction, vec3(0), outerR).y;
@@ -141,17 +160,24 @@ glslFragment: |
       return origin + direction * shift;
   }
   
+  vec3 CalculateSunColor(vec3 sunDirection)
+  {
+      const vec3 GroundIlluminance = vec3(0.0499, 0.004, 4.10 * 0.00001);
+      const vec3 ZenithIlluminance =  vec3(0.925, 0.861, 0.755);
+      const float artisticTune = pow(dot(-sunDirection, vec3(0, 1, 0)), 3);
+      
+      return mix(GroundIlluminance, ZenithIlluminance, artisticTune);
+  }
+  
   vec3 CalculateSunIlluminance(vec3 sunDirection)
   {
       const float w = 2*PI*(1-cos(SunAngularR));
       const float LsZenith = 120000.0f / w;
       const float LsGround = 100000.0f / w;
       
-      const vec3 GroundIlluminance = LsGround * vec3(0.0499, 0.004, 4.10 * 0.00001);
-      const vec3 ZenithIlluminance =  LsZenith * vec3(0.925, 0.861, 0.755);
       const float artisticTune = pow(dot(-sunDirection, vec3(0, 1, 0)), 3);
       
-      return mix(GroundIlluminance, ZenithIlluminance, artisticTune);
+      return mix(LsGround, LsZenith, artisticTune) * CalculateSunColor(sunDirection);
   }
   
   vec3 SkyLighting(vec3 origin, vec3 direction, vec3 lightDirection)
@@ -261,48 +287,42 @@ glslFragment: |
   #if defined(COMPOSE)
   float CloudsGetHeight(vec3 position)
   {
-    const float StartClouds = 6415;
-    const float EndClouds = 6435;
-    
-    return clamp(((length(position) -  StartClouds) / (EndClouds - StartClouds)), 0, 1);
+    return clamp(((length(position.y) -  CloudsStartR) / (CloudsEndR - CloudsStartR)), 0, 1);
   }
   
   float CloudsSampleDensity(vec3 position)
   {
-    //position.xz + = vec2(0.2f) * frame.time;
+    const float cloudsLow = pow(texture(cloudsNoiseLowSampler, position.xyz / 9000.0f).r, 1);
+    const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, vec3(0.21, 0.17, 0.0f) + position.xyz / 900.0f).r, 1);
     
-    const float cloudsLow = texture(cloudsNoiseLowSampler, position.xy / 48.0f).r;
-    const float cloudsHigh = texture(cloudsNoiseHighSampler, position.xy / 4.8f).r;
+    vec2 uv = position.xz / 409600.0f + vec2(0.2, 0.1);
     
-    vec4 weather = textureLod(cloudsMapSampler, position.xz / 4096.0f, 0);
+    vec4 weather = texture(cloudsMapSampler, uv, 0);
+
     float height = CloudsGetHeight(position);
     
     float SRb = clamp(Remap(height, 0, 0.07, 0, 1), 0, 1);
-    float SRt = clamp(Remap(height, weather.b * 0.2, weather.b, 1, 0), 0, 1);
+    float SRt = clamp(Remap(height, weather.b * 0.8, weather.b, 1, 0), 0, 1);
     
     float SA = SRb * SRt;
     
     float DRb = height * clamp(Remap(height, 0, 0.15, 0, 1), 0, 1);
     float DRt = height * clamp(Remap(height, 0.9, 1, 1, 0), 0, 1);
     
-    // TODO: density parameter
-    float cloudsDensity = 1.0f;
-    float DA = DRb * DRt * weather.a * 2 * cloudsDensity;
+    float DA = DRb * DRt * weather.a * 2 * data.cloudsDensity;
     
     float SNsample = cloudsLow * 0.85f + cloudsHigh * 0.15f;
     
-    // TODO: coverage parameter
-    float coverage = 0.5f;
-    float WMc = max(weather.r, clamp(coverage - 0.5, 0, 1) * weather.g * 2);
+    float WMc = max(weather.r, clamp(data.cloudsCoverage - 0.5, 0, 1) * weather.g * 2);
     
-    float d = clamp(Remap(SNsample * SA, 1 - coverage * WMc, 1, 0, 1), 0, 1) * DA;
+    float d = clamp(Remap(SNsample * SA, 1 - data.cloudsCoverage * WMc, 1, 0, 1), 0, 1) * DA;
     
     return d;
   }
   
-  float CloudsSampleDirectDensity(vec3 position, vec3 sunDir)
+  float CloudsSampleDirectDensity(vec3 position, vec3 dirToSun)
   {
-    float avrStep = (6435.0 - 6415.0) * 0.01;
+    float avrStep = (CloudsEndR - CloudsStartR) * 0.01f;
     float sumDensity = 0.0;
     
     for(int i = 0; i < 4; i++)
@@ -314,7 +334,7 @@ glslFragment: |
             step = step * 6.0;
         }
         
-        position += sunDir * step;
+        position += dirToSun * step;
         
         float density = CloudsSampleDensity(position) * step;
         
@@ -324,44 +344,98 @@ glslFragment: |
     return sumDensity;
   }
   
-  vec4 CloudsMarching(vec3 viewDir, vec3 sunDir)
+  vec4 CloudsMarching(vec3 origin, vec3 viewDir, vec3 dirToSun)
   {
-    vec3 origin = vec3(0.0, 6400.0, 0.0);
+    vec3 traceStart;
+    vec3 traceEnd;
+    const float originHeight = length(origin);
     
-  	const float shift = RaySphereIntersect(origin, viewDir, vec3(0), 6415.0).y;
-    vec3 position = origin + viewDir * shift;
-  	
-  	const float avrStep = (6435.0 - 6415.0) / 64.0;
-  	
+    // Trace inner and outer spheres
+    vec2 cloudsStartIntersections = RaySphereIntersect(origin, viewDir, vec3(0), CloudsStartR);
+    vec2 cloudsEndIntersections = RaySphereIntersect(origin, viewDir, vec3(0), CloudsEndR);
+    
+    const float shiftCloudsStart = cloudsStartIntersections.x < 0 ? max(0, cloudsStartIntersections.y) : cloudsStartIntersections.x;
+    const float shiftCloudsEnd = cloudsEndIntersections.x < 0 ? max(0, cloudsEndIntersections.y) : cloudsEndIntersections.x;
+    
+    if(originHeight < CloudsStartR)
+    {
+        traceStart = origin + viewDir * shiftCloudsStart;
+        traceEnd = origin + viewDir * shiftCloudsEnd;
+    }
+    else if(originHeight > CloudsEndR)
+    {
+        traceStart = origin + viewDir * shiftCloudsEnd;
+        traceEnd = origin + viewDir * shiftCloudsStart;
+    }
+    else
+    {
+        traceStart = origin;
+        
+        if(shiftCloudsStart == 0)
+        {
+            traceEnd = origin + viewDir * shiftCloudsEnd;
+        }
+        else if(shiftCloudsEnd == 0)
+        {
+            traceEnd = origin + viewDir * shiftCloudsStart;
+        }
+        else
+        {
+            traceEnd = origin + viewDir * min(shiftCloudsStart, shiftCloudsEnd);       
+        }
+    }
+    
+    const float BigDistance = 300000.0f;
+    
+    // We traced the opposite Earth side,
+    // that means there is clouds on our way
+    if(shiftCloudsStart > BigDistance)
+    {
+        return vec4(0);
+    }
+    
+    vec3 position = traceStart;
+  	float avrStep = length(traceEnd - traceStart) / 128.0f;
+        
     vec3 color = vec3(0.0);
     float transmittance = 1.0;
 
-    vec3 sun = CalculateSunIlluminance(sunDir);
+    vec3 sunColor = CalculateSunColor(-dirToSun);
     
-  	for(int i = 0; i < 128; i++)
+  	for(int i = 0; i < 256; i++)
   	{
-  		position += viewDir * avrStep;
-        
-  		if(length(position) > 6435.0)
+        float density = CloudsSampleDensity(position) * avrStep;
+        if(density > 0)
         {
-  			break;
+            float sunDensity = CloudsSampleDirectDensity(position, dirToSun);
+            
+            float mu = max(0, dot(viewDir, dirToSun));
+            float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, data.eccentrisy1);
+            float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, data.eccentrisy2);
+            float m2 = exp(-data.cloudsAttenuation1 * sunDensity);
+            float m3 = data.cloudsAttenuation2 * density;
+            
+            vec2 intersections = RaySphereIntersect(position, dirToSun, vec3(0), R);
+    
+            // No sun rays throw the Earth
+            if(max(intersections.x, intersections.y) < 0)
+            {
+                color += data.sunIntensity * sunColor * (m11 + m12) * m2 * m3 * transmittance;
+            }
+            
+            transmittance *= exp(-data.cloudsAttenuation1 * density);
         }
         
-        float density = CloudsSampleDensity(position) * avrStep;
-        float sunDensity = CloudsSampleDirectDensity(position, sunDir);
+        position += viewDir * avrStep;
         
-        // TODO: Params cloudsAttenuation1, cloudsAttenuation2
-        float cloudsAttenuation1 = 0.1;
-        float cloudsAttenuation2 = 0.2;
-        
-        float m2 = exp(-cloudsAttenuation1 * sunDensity);
-        float m3 = cloudsAttenuation2 * density;
-        
-        color += sun * m2 * m3 * transmittance;
-        transmittance *= exp(-cloudsAttenuation1 * density);
+        if(transmittance < 0.05 || length(position) > CloudsEndR)
+        {
+           break;
+        }
   	}
   	
-  	return vec4(color, 1.0 - transmittance);
+    //color.xyz = clamp(color.xyz,0,1);
+    return vec4(color, 1.0 - transmittance);
   }
   
   #endif
@@ -401,40 +475,19 @@ glslFragment: |
          
          const vec3 sunColor = texture(sunSampler, sunUv).xyz;
          float luminance = dot(sunColor,sunColor);
-         
-         outColor.xyz = max(outColor.xyz, mix(outColor.xyz, sunColor, clamp(0,1, luminance)));
+         outColor.xyz = max(outColor.xyz, mix(outColor.xyz, sunColor, clamp(0,1, luminance)));         
        }
 
-       //vec4 clouds = CloudsMarching(dirWorldSpace.xyz, dirToSun);
-       //outColor.xyz = mix(clouds.xyz, outColor.xyz, clouds.a);
-    #elif defined(CLOUDS_NOISE_HIGH)
-    
-      vec2 uv = fragTexcoord.xy;
-      uv.y = 1 - uv.y;
-      
-      const float tiling = 5;
-      
-      const float cloudsHigh = 0.5f * (fBm(uv * tiling, 4) + 1) * 0.625f + 
-                                  (1 - fBmCellular(uv * tiling * 2, 4)) * 0.25f + 
-                                  (1 - fBmCellular(uv * tiling * 3, 4)) * 0.125f;
-      outColor.x = cloudsHigh;
-      
-    #elif defined(CLOUDS_NOISE_LOW)
-      
-      vec2 uv = fragTexcoord.xy;
-      uv.y = 1 - uv.y;
-      
-      const float tiling = 5;
-      
-      float perlinNoiseLow = pow((fBm(uv * tiling, 4) + 1) * 0.5, 1);
-      float cellularNoiseLow = pow(1 - fBmCellular(uv * tiling, 4), 1);
-      float cellularNoiseMid = pow(1 - fBmCellular(uv * tiling * 2, 4), 1);
-      float cellularNoiseHigh = pow(1 - fBmCellular(uv * tiling * 3, 4), 1);
-      
-      const float cloudsLow = Remap(perlinNoiseLow, (cellularNoiseLow * 0.625f + cellularNoiseMid * 0.25f + cellularNoiseHigh * 0.125f) - 1.0f, 1.0f, 0.0f, 1.0f);
-      
-      outColor.x = cloudsLow;
-      
+       vec3 viewDir = normalize(dirWorldSpace.xyz);
+       float horizon = 1.0f -exp(-max(0.0, dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
+       horizon = horizon * horizon * horizon;
+       
+       vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun) + vec4(outColor.xyz, 0.0f) * data.ambient;
+       vec3 tunedClouds = mix(outColor.xyz, rawClouds.xyz, horizon);
+       
+       outColor.xyz = mix(outColor.xyz, tunedClouds, rawClouds.a);
+       outColor.a = rawClouds.a;       
+       
     #elif defined(SUN)
     
         // World space

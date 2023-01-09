@@ -7,6 +7,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "ECS/StaticMeshRendererECS.h"
 #include "Containers/Octree.h"
+#include "Framegraph/SkyNode.h"
 #include "Math/Math.h"
 
 namespace Sailor
@@ -41,5 +42,7 @@ namespace Sailor
 		glm::mat4 m_cachedFrustum{ 1 };
 
 		float m_sunAngleRad = 0.0f;
+
+		SkyNode::SkyParams m_skyParams{};
 	};
 }

@@ -24,7 +24,7 @@ VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image) :
 	m_image(image),
 	m_device(device)
 {
-	m_viewType = VK_IMAGE_VIEW_TYPE_2D;
+	m_viewType = image->m_imageType == VK_IMAGE_TYPE_3D ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D;
 
 	m_format = image->m_format;
 	m_subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
@@ -39,7 +39,8 @@ VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image, V
 	m_device(device)
 
 {
-	m_viewType = VK_IMAGE_VIEW_TYPE_2D;
+	m_viewType = image->m_imageType == VK_IMAGE_TYPE_3D ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D;
+
 	m_format = image->m_format;
 	m_subresourceRange.aspectMask = aspectFlags;
 	m_subresourceRange.baseMipLevel = 0;

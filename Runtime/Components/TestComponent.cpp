@@ -8,7 +8,6 @@
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "ECS/TransformECS.h"
-#include "Framegraph/SkyNode.h"
 #include "glm/glm/gtc/random.hpp"
 #include "imgui.h"
 
@@ -220,14 +219,29 @@ void TestComponent::Tick(float deltaTime)
 		auto sky = node.DynamicCast< Framegraph::SkyNode>();
 
 		ImGui::Begin("Sky Settings");
-		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic);
+		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds density", &m_skyParams.m_cloudsDensity, 0.0f, 100.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds coverage", &m_skyParams.m_cloudsCoverage, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds attenuation 1", &m_skyParams.m_cloudsAttenuation1, 0.001f, 0.03f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds attenuation 2", &m_skyParams.m_cloudsAttenuation2, 0.001f, 0.03f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds phase influence 1", &m_skyParams.m_phaseInfluence1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds phase eccentrisy 1", &m_skyParams.m_eccentrisy1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds phase influence 2", &m_skyParams.m_phaseInfluence2, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds phase eccentrisy 2", &m_skyParams.m_eccentrisy2, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds horizon blend", &m_skyParams.m_fog, 0.0f, 20.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds sun scale", &m_skyParams.m_sunIntensity, 0.0f, 15.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds ambient", &m_skyParams.m_ambient, 0.0f, 4.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::End();
 
-		const glm::vec4 direction = vec4(0, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0);
+		m_skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
 
 		if (auto bindings = sky->GetShaderBindings())
 		{
-			commands->SetMaterialParameter(GetWorld()->GetCommandList(), bindings, "data.lightDirection", direction);
+			if (bindings->HasBinding("data"))
+			{
+				auto binding = bindings->GetOrAddShaderBinding("data");
+				commands->UpdateShaderBinding(GetWorld()->GetCommandList(), binding, &m_skyParams, sizeof(SkyNode::SkyParams));
+			}
 		}
 	}
 }

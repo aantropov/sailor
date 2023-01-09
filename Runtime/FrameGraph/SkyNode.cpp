@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "Math/Math.h"
+#include "Math/Noise.h"
 #include "glm/glm/gtx/quaternion.hpp"
 #include "AssetRegistry/Texture/TextureImporter.h"
 
@@ -103,6 +104,98 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		return task;
 }
 
+float Remap(float value, float minValue, float maxValue, float newMinValue, float newMaxValue)
+{
+	return newMinValue + (value - minValue) / (maxValue - minValue) * (newMaxValue - newMinValue);
+}
+
+
+void SmoothBorders(TVector<uint8_t>& noise3d, uint32_t dimensions, float percentage)
+{
+	uint32_t border = uint32_t(percentage * dimensions);
+
+	for (uint32_t z = 0; z < border - 1; z++)
+	{
+		for (uint32_t y = 0; y < border - 1; y++)
+		{
+			for (uint32_t x = 0; x < border - 1; x++)
+			{
+				uint8_t& value = noise3d[x + y * dimensions + z * dimensions * dimensions];
+
+				vec3 weight = 1.0f - vec3(((float)x + 1.0f) / border, ((float)y + 1.0f) / border, ((float)z + 1.0f) / border);
+
+				vec3 values = vec3(noise3d[(dimensions - 1) + y * dimensions + z * dimensions * dimensions],
+					noise3d[x + (dimensions - 1) * dimensions + z * dimensions * dimensions],
+					noise3d[x + y * dimensions + (dimensions - 1) * dimensions * dimensions]);
+
+				float mix = glm::dot(weight, values);
+
+				value = uint8_t(mix);
+			}
+		}
+	}
+}
+
+TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow() const
+{
+	TVector<uint8_t> res;
+	res.Resize(CloudsNoiseLowResolution * CloudsNoiseLowResolution * CloudsNoiseLowResolution);
+
+	for (uint32_t z = 0; z < CloudsNoiseLowResolution; z++)
+	{
+		for (uint32_t y = 0; y < CloudsNoiseLowResolution; y++)
+		{
+			for (uint32_t x = 0; x < CloudsNoiseLowResolution; x++)
+			{
+				uint8_t& value = res[x + y * CloudsNoiseLowResolution + z * CloudsNoiseLowResolution * CloudsNoiseLowResolution];
+
+				vec3 uv = vec3((float)x / CloudsNoiseLowResolution, (float)y / CloudsNoiseLowResolution, (float)z / CloudsNoiseLowResolution) + (0.5f / CloudsNoiseLowResolution);
+
+				const float tiling = 5;
+
+				float perlinNoiseLow = (Math::fBm(uv * tiling, 4) + 1) * 0.5f;
+				float cellularNoiseLow = 1.0f - Math::fBmCellular(uv * tiling, 4);
+				float cellularNoiseMid = 1.0f - Math::fBmCellular(uv * tiling * 2.0f, 4);
+				float cellularNoiseHigh = 1.0f - Math::fBmCellular(uv * tiling * 3.0f, 4);
+
+				float noise = Remap(perlinNoiseLow, (cellularNoiseLow * 0.625f + cellularNoiseMid * 0.25f + cellularNoiseHigh * 0.125f) - 1.0f, 1.0f, 0.0f, 1.0f);
+				value = uint8_t(noise * 255.0f);
+			}
+		}
+	}
+
+	return res;
+}
+
+TVector<uint8_t> SkyNode::GenerateCloudsNoiseHigh() const
+{
+	TVector<uint8_t> res;
+	res.Resize(CloudsNoiseHighResolution * CloudsNoiseHighResolution * CloudsNoiseHighResolution);
+
+	for (uint32_t z = 0; z < CloudsNoiseHighResolution; z++)
+	{
+		for (uint32_t y = 0; y < CloudsNoiseHighResolution; y++)
+		{
+			for (uint32_t x = 0; x < CloudsNoiseHighResolution; x++)
+			{
+				uint8_t& value = res[x + y * CloudsNoiseHighResolution + z * CloudsNoiseHighResolution * CloudsNoiseHighResolution];
+
+				vec3 uv = vec3((float)x / CloudsNoiseHighResolution, (float)y / CloudsNoiseHighResolution, (float)z / CloudsNoiseHighResolution);
+
+				const float tiling = 5;
+
+				float noise = 0.5f * (Math::fBm(uv * tiling, 4) + 1) * 0.625f +
+					(1.0f - Math::fBmCellular(uv * tiling * 2.0f, 4)) * 0.25f +
+					(1.0f - Math::fBmCellular(uv * tiling * 3.0f, 4)) * 0.125f;
+
+				value = uint8_t(noise * 255.0f);
+			}
+		}
+	}
+
+	return res;
+}
+
 void SkyNode::SetLocation(float latitudeDegrees, float longitudeDegrees)
 {
 	float latitudeRad = glm::radians(latitudeDegrees);
@@ -137,8 +230,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSkyShader, { "FILL" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSunShader, { "SUN" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComposeShader, { "COMPOSE" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsNoiseHigh, { "CLOUDS_NOISE_HIGH" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsNoiseLow, { "CLOUDS_NOISE_LOW" });			
 		}
 	}
 
@@ -158,16 +249,46 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 	if (!m_pCloudsNoiseHighTexture)
 	{
-		m_pCloudsNoiseHighTexture = driver->CreateTexture(
-			commandList,
+		// TODO: Move noise generation to worker threads
+		TVector<uint8_t> noiseHigh;
+		auto pathNoiseHigh = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseHigh.bin"));
+
+		if (!AssetRegistry::ReadBinaryFile(pathNoiseHigh, noiseHigh))
+		{
+			noiseHigh = GenerateCloudsNoiseHigh();
+			AssetRegistry::WriteBinaryFile(pathNoiseHigh, noiseHigh);
+		}
+
+		m_pCloudsNoiseHighTexture = driver->CreateTexture(noiseHigh.GetData(), noiseHigh.Num() * sizeof(uint8_t),
 			glm::ivec3(CloudsNoiseHighResolution, CloudsNoiseHighResolution, CloudsNoiseHighResolution),
 			1,
-			ETextureFormat::R16G16B16A16_SFLOAT,
-			ETextureFiltration::Bicubic,
+			ETextureType::Texture3D,
+			ETextureFormat::R8_UNORM,
+			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
-			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
+			ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
 
-		driver->SetDebugName(m_pSunTexture, "Sky");
+		driver->SetDebugName(m_pCloudsNoiseHighTexture, "CloudsNoiseHigh");
+
+		TVector<uint8_t> noiseLow;
+		auto pathNoiseLow = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseLow.bin"));
+
+		if (!AssetRegistry::ReadBinaryFile(pathNoiseLow, noiseLow))
+		{
+			noiseLow = GenerateCloudsNoiseLow();
+			AssetRegistry::WriteBinaryFile(pathNoiseLow, noiseLow);
+		}
+
+		m_pCloudsNoiseLowTexture = driver->CreateTexture(noiseLow.GetData(), noiseLow.Num() * sizeof(uint8_t),
+			glm::ivec3(CloudsNoiseLowResolution, CloudsNoiseLowResolution, CloudsNoiseLowResolution),
+			1,
+			ETextureType::Texture3D,
+			ETextureFormat::R8_UNORM,
+			ETextureFiltration::Linear,
+			ETextureClamping::Repeat,
+			ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+
+		driver->SetDebugName(m_pCloudsNoiseLowTexture, "CloudsNoiseLow");
 	}
 
 	if (!m_pStarsShader)
@@ -236,11 +357,13 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		driver->FillShadersLayout(m_pShaderBindings, { m_pSkyShader->GetDebugVertexShaderRHI(), m_pSkyShader->GetDebugFragmentShaderRHI() }, 1);
 
 		// That should be enough to handle all the uniforms 
-		const size_t uniformsSize = std::max(256ull, m_vectorParams.Num() * sizeof(glm::vec4));
+		const size_t uniformsSize = std::max(sizeof(SkyParams), m_vectorParams.Num() * sizeof(glm::vec4));
 		RHIShaderBindingPtr data = driver->AddBufferToShaderBindings(m_pShaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "skySampler", m_pSkyTexture, 1);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "sunSampler", m_pSunTexture, 2);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsMapSampler", m_pCloudsMapTexture, 3);
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsNoiseLowSampler", m_pCloudsNoiseLowTexture, 4);
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsNoiseHighSampler", m_pCloudsNoiseHighTexture, 5);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
@@ -248,8 +371,8 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		m_pSunMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSunShader, m_pShaderBindings);
 		m_pComposeMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pComposeShader, m_pShaderBindings);
 
-		const glm::vec4 initLightDirection = normalize(glm::vec4(0, -1, 1, 0));
-		commands->UpdateShaderBindingVariable(transferCommandList, data, "lightDirection", &initLightDirection, sizeof(glm::vec4));
+		const SkyParams params{};
+		commands->UpdateShaderBinding(transferCommandList, data, &params, sizeof(SkyParams));
 	}
 
 	if (!m_pStarsMaterial)

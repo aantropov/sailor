@@ -20,6 +20,7 @@ namespace Sailor
 	public:
 
 		static constexpr const char* ContentRootFolder = "../Content/";
+		static constexpr const char* CacheRootFolder = "../Cache/";
 		static constexpr const char* MetaFileExtension = "asset";
 
 		SAILOR_API virtual ~AssetRegistry() override;
@@ -49,6 +50,14 @@ namespace Sailor
 
 			file.close();
 			return true;
+		}
+
+		template<typename TBinaryType, typename TFilepath>
+		static void WriteBinaryFile(const TFilepath& filename, const TVector<TBinaryType>& buffer)
+		{
+			std::ofstream file(filename, std::ofstream::binary);
+			file.write(reinterpret_cast<const char*>(buffer.GetData()), buffer.Num() * sizeof(buffer[0]));
+			file.close();
 		}
 
 		SAILOR_API static bool ReadAllTextFile(const std::string& filename, std::string& text);

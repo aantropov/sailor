@@ -888,6 +888,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 		outImage,
 		static_cast<uint32_t>(extent.width),
 		static_cast<uint32_t>(extent.height),
+		static_cast<uint32_t>(extent.depth),
 		(*stagingBufferManagedPtr).m_offset);
 
 	cmdBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());

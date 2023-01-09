@@ -81,7 +81,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr);
 		SAILOR_API void Execute(VulkanCommandBufferPtr secondaryCommandBuffer);
 		SAILOR_API void CopyBuffer(VulkanBufferMemoryPtr  src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
-		SAILOR_API void CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, VkDeviceSize srcOffset = 0);
+		SAILOR_API void CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, VkDeviceSize srcOffset = 0);
 
 		SAILOR_API void SetViewport(VulkanStateViewportPtr viewport);
 		SAILOR_API void SetScissor(VulkanStateViewportPtr viewport);

@@ -27,7 +27,7 @@ VulkanSampler::VulkanSampler(VulkanDevicePtr pDevice,
 	samplerInfo.anisotropyEnable = bIsAnisotropyEnabled;
 	samplerInfo.maxAnisotropy = std::min(maxAnisotropy, m_device->GetMaxAllowedAnisotropy());
 
-	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
 	samplerInfo.compareEnable = VK_FALSE;

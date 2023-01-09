@@ -42,6 +42,23 @@ namespace Sailor::Framegraph
 #pragma pack()
 
 	public:
+
+		struct SkyParams
+		{
+			glm::vec4 m_lightDirection = normalize(glm::vec4(0, -1, 1, 0));
+			float m_cloudsAttenuation1 = 0.017f;
+			float m_cloudsAttenuation2 = 0.012f;
+			float m_cloudsDensity = 2.13f;
+			float m_cloudsCoverage = 0.56f;
+			float m_phaseInfluence1 = 0.862f;
+			float m_phaseInfluence2 = 0.260f;
+			float m_eccentrisy1 = 0.243f;
+			float m_eccentrisy2 = 0.863f;
+			float m_fog = 10.0f;
+			float m_sunIntensity = 10.0f;
+			float m_ambient = 2.4f;
+		};
+
 		SAILOR_API static const char* GetName() { return m_name; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph,
@@ -68,8 +85,6 @@ namespace Sailor::Framegraph
 		ShaderSetPtr m_pSunShader{};
 		ShaderSetPtr m_pSkyShader{};
 		ShaderSetPtr m_pStarsShader{};
-		ShaderSetPtr m_pCloudsNoiseHigh{};
-		ShaderSetPtr m_pCloudsNoiseLow{};
 		ShaderSetPtr m_pComposeShader{};
 
 		RHI::RHIMaterialPtr m_pStarsMaterial{};
@@ -99,6 +114,9 @@ namespace Sailor::Framegraph
 
 		static const glm::vec3& TemperatureToColor(uint32_t temperature);
 		static const glm::vec3& MorganKeenanToColor(char spectralType, char subType);
+
+		TVector<uint8_t> GenerateCloudsNoiseLow() const;
+		TVector<uint8_t> GenerateCloudsNoiseHigh() const;
 	};
 
 	template class TFrameGraphNode<SkyNode>;
