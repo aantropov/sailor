@@ -497,8 +497,13 @@ glslFragment: |
        outColor.xyz = texture(skySampler, fragTexcoord).xyz; 
 
        vec3 viewDir = normalize(dirWorldSpace.xyz);
-       float horizon = 1.0f -exp(-max(0.0, dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
-       horizon = horizon * horizon * horizon;
+       float horizon = 1.0f;
+       
+       if(length(origin) < CloudsStartR)
+       {
+           horizon -= exp(-max(0.0, dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
+           horizon = horizon * horizon * horizon;
+       }
        
        vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun) + vec4(outColor.xyz, 0.0f) * data.ambient;
        vec3 tunedClouds = mix(outColor.xyz, rawClouds.xyz, horizon);
