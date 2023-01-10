@@ -7,7 +7,11 @@ samplers:
 - name: g_lensDirtSampler
   uid: ''
   path: Textures/Bokeh__Lens_Dirt_9.jpg 
-  
+
+- name: g_ditherPatternSampler
+  uid: ''
+  path: Textures/DitherPattern.png
+
 float:
 - PI: 3.1415926
   
@@ -143,7 +147,7 @@ frame:
   - toneMappingDefines: UNCHARTED2
   vec4:
   - data.exposure: [2.0, 0, 0, 0]
-  - data.whitePoint: [7.0, 5.0, 5.0, 0]  
+  - data.whitePoint: [7.0, 5.0, 5.0, 0]
   renderTargets:
   - color: Secondary
   - hdrColor: Main

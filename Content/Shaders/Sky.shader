@@ -8,6 +8,7 @@ defines:
 - SUN
 - COMPOSE
 - CLOUDS
+- DITHER
 
 depthAttachment :
 - UNDEFINED
@@ -22,6 +23,13 @@ glslVertex: |
   layout(location=3) in vec4 inColor;
   
   layout(location=0) out vec2 fragTexcoord;
+
+  #if defined(CLOUDS)
+  layout(push_constant) uniform Constants
+  {
+  	uint ditherPattern;
+  } PushConstants;
+  #endif
   
   void main() 
   {
@@ -34,6 +42,14 @@ glslVertex: |
   }
   
 glslFragment: |
+
+  #if defined(CLOUDS)
+  layout(push_constant) uniform Constants
+  {
+  	uint ditherPattern;
+  } PushConstants;
+  #endif
+  
   layout(set = 0, binding = 0) uniform FrameData
   {
       mat4 view;
@@ -66,11 +82,12 @@ glslFragment: |
   layout(set=1, binding=2) uniform sampler2D sunSampler;
   #endif
   
-  #if defined(CLOUDS)  
+  #if defined(CLOUDS)
   layout(set=1, binding=1) uniform sampler2D skySampler;
   layout(set=1, binding=3) uniform sampler2D cloudsMapSampler;
   layout(set=1, binding=4) uniform sampler3D cloudsNoiseLowSampler;
-  layout(set=1, binding=5) uniform sampler3D cloudsNoiseHighSampler;  
+  layout(set=1, binding=5) uniform sampler3D cloudsNoiseHighSampler;
+  layout(set=1, binding=7) uniform sampler2D g_ditherPatternSampler;
   #endif
   
   layout(location = 0) in vec2 fragTexcoord;
@@ -411,7 +428,7 @@ glslFragment: |
 
     vec3 sunColor = CalculateSunColor(-dirToSun);
     
-  	for(int i = 0; i < 256; i++)
+  	for(int i = 0; i < 128.0f; i++)
   	{
         float density = CloudsSampleDensity(position) * avrStep;
         if(density > 0)
@@ -487,6 +504,16 @@ glslFragment: |
          outColor.xyz = max(outColor.xyz, mix(outColor.xyz, sunColor, clamp(0,1, luminance)));         
        }
     #elif defined(CLOUDS)
+    
+      #if defined(DITHER)
+       vec2 ditherUv = vec2(mod(gl_FragCoord.x, 4), mod(gl_FragCoord.y, 4)) / 4.0f;
+       
+       float dither = mod(round(texture(g_ditherPatternSampler, ditherUv).r * 255), 4);
+       if(dither != mod(PushConstants.ditherPattern, 4))
+       {
+           discard;
+       }
+      #endif
        vec2 uv = fragTexcoord.xy;
        uv.y = 1 - uv.y;
        

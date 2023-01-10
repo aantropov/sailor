@@ -230,7 +230,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSkyShader, { "FILL" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSunShader, { "SUN" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComposeShader, { "COMPOSE" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsShader, { "CLOUDS" });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsShader, { "CLOUDS", "DITHER"});
 		}
 	}
 
@@ -393,6 +393,9 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsNoiseHighSampler", m_pCloudsNoiseHighTexture, 5);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsSampler", m_pCloudsTexture, 6);
 
+		auto ditherPattern = frameGraph->GetSampler("g_ditherPatternSampler")->GetRHI();
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "g_ditherPatternSampler", ditherPattern, 7);
+
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_pSkyMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSkyShader, m_pShaderBindings);
@@ -407,7 +410,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	if (!m_pBlitMaterial)
 	{
 		m_pBlitBindings = driver->CreateShaderBindings();
-		 
+
 		// Firstly we must assign the correct layout
 		driver->FillShadersLayout(m_pBlitBindings, { m_pBlitShader->GetDebugVertexShaderRHI(), m_pBlitShader->GetDebugFragmentShaderRHI() }, 1);
 
@@ -555,6 +558,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		commands->BindMaterial(commandList, m_pCloudsMaterial);
 		commands->BindShaderBindings(commandList, m_pCloudsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
+		commands->PushConstants(commandList, m_pCloudsMaterial, sizeof(uint32_t), &m_ditherPatternIndex);
 
 		commands->SetViewport(commandList,
 			0, 0,
@@ -625,9 +629,8 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 		commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
-		commands->BindMaterial(commandList, m_pBlitMaterial);
+		commands->BindMaterial(commandList, m_pBlitMaterial);		
 		commands->BindShaderBindings(commandList, m_pBlitMaterial, { sceneView.m_frameBindings, m_pBlitBindings });
-
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 
 		commands->EndRenderPass(commandList);
@@ -639,6 +642,8 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	commands->EndDebugRegion(commandList);
 
 	commands->EndDebugRegion(commandList);
+
+	m_ditherPatternIndex++;
 }
 
 void SkyNode::Clear()
