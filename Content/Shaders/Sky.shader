@@ -75,6 +75,10 @@ glslFragment: |
     float fog;
     float sunIntensity;
     float ambient;
+    int   scatteringSteps;
+    float scatteringDensity;
+    float scatteringIntensity;
+    float scatteringPhase;
   } data;
 
   #if defined(COMPOSE)
@@ -433,23 +437,30 @@ glslFragment: |
         float density = CloudsSampleDensity(position) * avrStep;
         if(density > 0)
         {
-            float sunDensity = CloudsSampleDirectDensity(position, dirToSun);
-            
-            float mu = max(0, dot(viewDir, dirToSun));
-            float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, data.eccentrisy1);
-            float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, data.eccentrisy2);
-            float m2 = exp(-data.cloudsAttenuation1 * sunDensity);
-            float m3 = data.cloudsAttenuation2 * density;
-            
-            vec2 intersections = RaySphereIntersect(position, dirToSun, vec3(0), R);
-    
-            // No sun rays throw the Earth
-            if(max(intersections.x, intersections.y) < 0)
+            for(int j = 0; j < data.scatteringSteps; j++)
             {
-                color += data.sunIntensity * sunColor * (m11 + m12) * m2 * m3 * transmittance;
+                float dA = pow(data.scatteringDensity, j);
+                float dB = pow(data.scatteringIntensity, j);
+                float dC = pow(data.scatteringPhase, j);
+                
+                float sunDensity = CloudsSampleDirectDensity(position, dirToSun);
+                
+                float mu = max(0, dot(viewDir, dirToSun));
+                float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, dC * data.eccentrisy1);
+                float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, dC * data.eccentrisy2);
+                float m2 = exp(-dA * data.cloudsAttenuation1 * sunDensity);
+                float m3 = data.cloudsAttenuation2 * density;
+                
+                vec2 intersections = RaySphereIntersect(position, dirToSun, vec3(0), R);
+        
+                // No sun rays throw the Earth
+                if(max(intersections.x, intersections.y) < 0)
+                {
+                    color += dB * data.sunIntensity * sunColor * (m11 + m12) * m2 * m3 * transmittance;
+                }
+                
+                transmittance *= exp(-dA * data.cloudsAttenuation1 * density);
             }
-            
-            transmittance *= exp(-data.cloudsAttenuation1 * density);
         }
         
         position += viewDir * avrStep;

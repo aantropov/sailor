@@ -58,6 +58,10 @@ namespace Sailor::Framegraph
 			float m_fog = 10.0f;
 			float m_sunIntensity = 10.0f;
 			float m_ambient = 2.4f;
+			int32_t m_scatteringSteps = 5;
+			float m_scatteringDensity = 0.5f;
+			float m_scatteringIntensity = 0.5f;
+			float m_scatteringPhase = 0.5f;
 		};
 
 		SAILOR_API static const char* GetName() { return m_name; }

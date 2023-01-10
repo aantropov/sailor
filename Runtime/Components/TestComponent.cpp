@@ -229,8 +229,12 @@ void TestComponent::Tick(float deltaTime)
 		ImGui::SliderFloat("Clouds phase influence 2", &m_skyParams.m_phaseInfluence2, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds phase eccentrisy 2", &m_skyParams.m_eccentrisy2, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds horizon blend", &m_skyParams.m_fog, 0.0f, 20.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds sun scale", &m_skyParams.m_sunIntensity, 0.0f, 15.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds sun intensity", &m_skyParams.m_sunIntensity, 0.0f, 15.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds ambient", &m_skyParams.m_ambient, 0.0f, 4.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderInt("Clouds scattering steps", &m_skyParams.m_scatteringSteps, 1, 10,"%d");
+		ImGui::SliderFloat("Clouds scattering density", &m_skyParams.m_scatteringDensity, 0.001f, 3.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds scattering intensity", &m_skyParams.m_scatteringIntensity, 0.001f, 3.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds scattering phase", &m_skyParams.m_scatteringPhase, 0.001f, 3.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::End();
 
 		m_skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
