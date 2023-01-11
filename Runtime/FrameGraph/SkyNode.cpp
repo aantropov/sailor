@@ -396,6 +396,9 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		auto ditherPattern = frameGraph->GetSampler("g_ditherPatternSampler")->GetRHI();
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "g_ditherPatternSampler", ditherPattern, 7);
 
+		auto noise = frameGraph->GetSampler("g_noiseSampler")->GetRHI();
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "g_noiseSampler", noise, 8);
+
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_pSkyMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSkyShader, m_pShaderBindings);

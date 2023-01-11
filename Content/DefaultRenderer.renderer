@@ -12,6 +12,10 @@ samplers:
   uid: ''
   path: Textures/DitherPattern.png
 
+- name: g_noiseSampler
+  uid: ''
+  path: Textures/Noise.png
+
 float:
 - PI: 3.1415926
   
