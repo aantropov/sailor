@@ -86,6 +86,10 @@ glslFragment: |
   layout(set=1, binding=2) uniform sampler2D sunSampler;
   #endif
   
+  #if defined(SUN)
+  layout(set=1, binding=6) uniform sampler2D cloudsSampler;
+  #endif
+  
   #if defined(CLOUDS)
   layout(set=1, binding=1) uniform sampler2D skySampler;
   layout(set=1, binding=3) uniform sampler2D cloudsMapSampler;
@@ -562,7 +566,7 @@ glslFragment: |
        vec3 tunedClouds = mix(outColor.xyz, rawClouds.xyz, horizon);
        
        outColor.xyz = tunedClouds;
-       outColor.a = rawClouds.a; 
+       outColor.a = rawClouds.a;
     #elif defined(SUN)
     
         // World space
@@ -571,11 +575,22 @@ glslFragment: |
 
         const vec3 right = normalize(cross(dirToSun, vec3(0,1,0)));
         const vec3 up = cross(right, dirToSun);
-        
+
         vec3 viewDir = Rotate(dirToSun, up, sunAngular.x);
         dirWorldSpace.xyz = normalize(Rotate(viewDir, cross(dirToSun, up), sunAngular.y));
         
-        outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);
+        outColor = vec4(0,0,0,0);
+
+        vec4 screenUv = ((frame.projection * frame.view * dirWorldSpace) + 1.0f) * 0.5f;
+        screenUv /= screenUv.w;
+        
+        float clouds = texture(cloudsSampler, screenUv.xy).a;
+        
+        if(clouds < 0.5)
+        {
+            outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);
+        }
+        
     #else
         dirWorldSpace.xyz = ScreenToView(fragTexcoord.xy, 1.0f, frame.invProjection).xyz;
         dirWorldSpace.z *= -1;
