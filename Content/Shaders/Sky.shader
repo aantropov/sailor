@@ -193,10 +193,20 @@ glslFragment: |
   vec3 CalculateSunColor(vec3 sunDirection)
   {
       const vec3 GroundIlluminance = vec3(0.0499, 0.004, 4.10 * 0.00001);
+      const vec3 HalfIlluminance = vec3(0.6f, 0.4490196f, 0.1588f);
       const vec3 ZenithIlluminance =  vec3(0.925, 0.861, 0.755);
-      const float artisticTune = pow(dot(-sunDirection, vec3(0, 1, 0)), 3);
       
-      return mix(GroundIlluminance, ZenithIlluminance, artisticTune);
+      const float angle = dot(-sunDirection, vec3(0, 1, 0));
+      
+      const float border = 0.1f;
+      
+      const float artisticTune1 = clamp(pow((angle - border) / (1.0f - border), 0.5), 0, 1);
+      const float artisticTune2 = clamp(pow(angle / border, 3), 0, 1);
+      
+      vec3 color = angle > border ? mix(HalfIlluminance, ZenithIlluminance, artisticTune1) : 
+      mix(GroundIlluminance, HalfIlluminance, artisticTune2);
+      
+      return color;
   }
   
   vec3 CalculateSunIlluminance(vec3 sunDirection)
