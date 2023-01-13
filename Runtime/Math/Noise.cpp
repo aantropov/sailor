@@ -324,7 +324,7 @@ float Math::Perlin3D(vec3 P)
 	return (final * 1.1547005383792515290182975610039f);  // scale things to a strict -1.0->1.0 range  *= 1.0/sqrt(0.75)
 }
 
-float Math::fBm(vec3 st, uint32_t octaves)
+float Math::fBmPerlin(vec3 st, uint32_t octaves)
 {
 	float value = 0.0;
 	float amplitude = .5;
@@ -340,7 +340,7 @@ float Math::fBm(vec3 st, uint32_t octaves)
 	return value;
 }
 
-float Math::fBmCellular(vec3 st, uint32_t octaves)
+float Math::fBmVoronoi(vec3 st, uint32_t octaves)
 {
 	float value = 0.0;
 	float amplitude = .5;

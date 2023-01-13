@@ -18,12 +18,12 @@ namespace Sailor::Math
 	float TiledPerlin3D(vec3 P, uint32_t period);
 	vec3 TiledVoronoiNoise3D(vec3 P, uint32_t period);
 
-	vec3 fBmTiledVoronoi(vec3 value, int octaves, int frequency, float gain = 0.5f, float lacunarity = 2.0f, float amplitude = 1.0f);
+	vec3  fBmTiledVoronoi(vec3 value, int octaves, int frequency, float gain = 0.5f, float lacunarity = 2.0f, float amplitude = 1.0f);
 	float fBmTiledPerlin(vec3 value, int octaves, int frequency, float gain = 0.5f, float lacunarity = 2.0f, float amplitude = 1.0f);
 	float fBmTiledWorley(vec3 value, int octaves, int frequency, float gain = 0.5f, float lacunarity = 2.0f, float amplitude = 1.0f);
 
-	float fBm(vec3 st, uint32_t octaves);
-	float fBmCellular(vec3 st, uint32_t octaves);
+	float fBmPerlin(vec3 st, uint32_t octaves);
+	float fBmVoronoi(vec3 st, uint32_t octaves);
 
 	vec3 Frac(vec3 v);
 	float Frac(float num);

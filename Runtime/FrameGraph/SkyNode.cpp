@@ -109,7 +109,6 @@ float Remap(float value, float minValue, float maxValue, float newMinValue, floa
 	return newMinValue + (value - minValue) / (maxValue - minValue) * (newMaxValue - newMinValue);
 }
 
-
 void SmoothBorders(TVector<uint8_t>& noise3d, uint32_t dimensions, float percentage)
 {
 	uint32_t border = uint32_t(percentage * dimensions);
@@ -141,27 +140,42 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow() const
 	TVector<uint8_t> res;
 	res.Resize(CloudsNoiseLowResolution * CloudsNoiseLowResolution * CloudsNoiseLowResolution);
 
+	TVector<Tasks::ITaskPtr> tasks;
+	tasks.Reserve(CloudsNoiseLowResolution);
+
 	for (uint32_t z = 0; z < CloudsNoiseLowResolution; z++)
 	{
-		for (uint32_t y = 0; y < CloudsNoiseLowResolution; y++)
-		{
-			for (uint32_t x = 0; x < CloudsNoiseLowResolution; x++)
+		auto pTask = Tasks::Scheduler::CreateTask("Generate Clouds Noise Low", [=, &res]()
 			{
-				uint8_t& value = res[x + y * CloudsNoiseLowResolution + z * CloudsNoiseLowResolution * CloudsNoiseLowResolution];
+				for (uint32_t y = 0; y < CloudsNoiseLowResolution; y++)
+				{
+					for (uint32_t x = 0; x < CloudsNoiseLowResolution; x++)
+					{
+						uint8_t& value = res[x + y * CloudsNoiseLowResolution + z * CloudsNoiseLowResolution * CloudsNoiseLowResolution];
 
-				vec3 uv = vec3((float)x / CloudsNoiseLowResolution, (float)y / CloudsNoiseLowResolution, (float)z / CloudsNoiseLowResolution) + (0.5f / CloudsNoiseLowResolution);
+						vec3 uv = vec3((float)x / CloudsNoiseLowResolution, (float)y / CloudsNoiseLowResolution, (float)z / CloudsNoiseLowResolution) + (0.5f / CloudsNoiseLowResolution);
 
-				const float tiling = 5;
+						const float tiling = 5.0f;
 
-				float perlinNoiseLow = (Math::fBm(uv * tiling, 4) + 1) * 0.5f;
-				float cellularNoiseLow = 1.0f - Math::fBmCellular(uv * tiling, 4);
-				float cellularNoiseMid = 1.0f - Math::fBmCellular(uv * tiling * 2.0f, 4);
-				float cellularNoiseHigh = 1.0f - Math::fBmCellular(uv * tiling * 3.0f, 4);
+						const float perlinNoiseLow = (Math::fBmTiledPerlin(uv * tiling, 4, (int32_t)tiling) + 1) * 0.5f;
+						const float cellularNoiseLow = Math::fBmTiledWorley(uv * tiling, 4, (int32_t)tiling);
+						const float cellularNoiseMid = Math::fBmTiledWorley(uv * tiling * 2.0f, 4, (int32_t)tiling * 2);
+						const float cellularNoiseHigh = Math::fBmTiledWorley(uv * tiling * 3.0f, 4, (int32_t)tiling * 3);
 
-				float noise = Remap(perlinNoiseLow, (cellularNoiseLow * 0.625f + cellularNoiseMid * 0.25f + cellularNoiseHigh * 0.125f) - 1.0f, 1.0f, 0.0f, 1.0f);
-				value = uint8_t(noise * 255.0f);
-			}
-		}
+						const float noise = Remap(perlinNoiseLow, (cellularNoiseLow * 0.625f + cellularNoiseMid * 0.25f + cellularNoiseHigh * 0.125f) - 1.0f, 1.0f, 0.0f, 1.0f);
+
+						value = uint8_t(noise * 255.0f);
+					}
+				}
+
+			})->Run();
+
+			tasks.Add(pTask);
+	}
+
+	for (uint32_t i = 0; i < tasks.Num(); i++)
+	{
+		tasks[i]->Wait();
 	}
 
 	return res;
@@ -182,11 +196,11 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseHigh() const
 
 				vec3 uv = vec3((float)x / CloudsNoiseHighResolution, (float)y / CloudsNoiseHighResolution, (float)z / CloudsNoiseHighResolution);
 
-				const float tiling = 5;
+				const float tiling = 5.0f;
 
-				float noise = 0.5f * (Math::fBm(uv * tiling, 4) + 1) * 0.625f +
-					(1.0f - Math::fBmCellular(uv * tiling * 2.0f, 4)) * 0.25f +
-					(1.0f - Math::fBmCellular(uv * tiling * 3.0f, 4)) * 0.125f;
+				float noise = 0.5f * (Math::fBmTiledPerlin(uv * tiling, 4, (int32_t)tiling) + 1) * 0.625f +
+					(Math::fBmTiledWorley(uv * tiling * 2.0f, 4, (int32_t)tiling * 2)) * 0.25f +
+					(Math::fBmTiledWorley(uv * tiling * 3.0f, 4, (int32_t)tiling * 3)) * 0.125f;
 
 				value = uint8_t(noise * 255.0f);
 			}
@@ -230,7 +244,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSkyShader, { "FILL" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSunShader, { "SUN" });
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComposeShader, { "COMPOSE" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsShader, { "CLOUDS", "DITHER"});
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsShader, { "CLOUDS", "DITHER" });
 		}
 	}
 
@@ -258,16 +272,48 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		}
 	}
 
+	if (m_createNoiseLow && !m_createNoiseLow->IsFinished() ||
+		m_createNoiseHigh && !m_createNoiseHigh->IsFinished())
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
+
 	if (!m_pCloudsNoiseHighTexture)
 	{
-		// TODO: Move noise generation to worker threads
+		bool bShouldReturn = false;
+
 		TVector<uint8_t> noiseHigh;
 		auto pathNoiseHigh = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseHigh.bin"));
-
 		if (!AssetRegistry::ReadBinaryFile(pathNoiseHigh, noiseHigh))
 		{
-			noiseHigh = GenerateCloudsNoiseHigh();
-			AssetRegistry::WriteBinaryFile(pathNoiseHigh, noiseHigh);
+			m_createNoiseHigh = Tasks::Scheduler::CreateTask("Generate Clouds Noise High",
+				[=]()
+				{
+					auto cache = GenerateCloudsNoiseHigh();
+					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
+				})->Run();
+
+			bShouldReturn = true;
+		}
+		
+		TVector<uint8_t> noiseLow;
+		auto pathNoiseLow = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseLow.bin"));
+		if (!AssetRegistry::ReadBinaryFile(pathNoiseLow, noiseLow))
+		{
+			m_createNoiseLow = Tasks::Scheduler::CreateTask("Generate Clouds Noise Low",
+				[=]()
+				{
+					auto cache = GenerateCloudsNoiseLow();
+					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
+				})->Run();
+
+			bShouldReturn = true;
+		}
+
+		if (bShouldReturn)
+		{
+			return;
 		}
 
 		m_pCloudsNoiseHighTexture = driver->CreateTexture(noiseHigh.GetData(), noiseHigh.Num() * sizeof(uint8_t),
@@ -280,15 +326,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
 
 		driver->SetDebugName(m_pCloudsNoiseHighTexture, "CloudsNoiseHigh");
-
-		TVector<uint8_t> noiseLow;
-		auto pathNoiseLow = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseLow.bin"));
-
-		if (!AssetRegistry::ReadBinaryFile(pathNoiseLow, noiseLow))
-		{
-			noiseLow = GenerateCloudsNoiseLow();
-			AssetRegistry::WriteBinaryFile(pathNoiseLow, noiseLow);
-		}
 
 		m_pCloudsNoiseLowTexture = driver->CreateTexture(noiseLow.GetData(), noiseLow.Num() * sizeof(uint8_t),
 			glm::ivec3(CloudsNoiseLowResolution, CloudsNoiseLowResolution, CloudsNoiseLowResolution),
@@ -347,7 +384,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::ivec2(CloudsResolution, CloudsResolution),
 			1,
 			ETextureFormat::R16G16B16A16_SFLOAT,
-			ETextureFiltration::Linear,
+			ETextureFiltration::Bicubic,
 			ETextureClamping::Clamp,
 			ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
 
@@ -631,7 +668,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 		commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
-		commands->BindMaterial(commandList, m_pBlitMaterial);		
+		commands->BindMaterial(commandList, m_pBlitMaterial);
 		commands->BindShaderBindings(commandList, m_pBlitMaterial, { sceneView.m_frameBindings, m_pBlitBindings });
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 

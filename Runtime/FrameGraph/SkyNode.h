@@ -111,8 +111,11 @@ namespace Sailor::Framegraph
 		RHI::RHITexturePtr m_pCloudsMapTexture{};
 		RHI::RHITexturePtr m_pCloudsNoiseHighTexture{};
 		RHI::RHITexturePtr m_pCloudsNoiseLowTexture{};
-		
+
 		RHI::RHIMeshPtr m_starsMesh{};
+
+		Tasks::ITaskPtr m_createNoiseLow{};
+		Tasks::ITaskPtr m_createNoiseHigh{};
 
 		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> m_loadMeshTask{};
 		Tasks::TaskPtr<RHI::RHIMeshPtr, TPair<TVector<RHI::VertexP3C4>, TVector<uint32_t>>> CreateStarsMesh();
