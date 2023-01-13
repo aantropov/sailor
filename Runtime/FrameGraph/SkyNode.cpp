@@ -356,7 +356,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::ivec2(SkyResolution, SkyResolution),
 			1,
 			ETextureFormat::R16G16B16A16_SFLOAT,
-			ETextureFiltration::Bicubic,
+			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
 			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
 
@@ -370,7 +370,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::ivec2(SunResolution, SunResolution),
 			1,
 			ETextureFormat::R16G16B16A16_SFLOAT,
-			ETextureFiltration::Bicubic,
+			ETextureFiltration::Linear,
 			ETextureClamping::Clamp,
 			ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
 
@@ -384,7 +384,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::ivec2(CloudsResolution, CloudsResolution),
 			1,
 			ETextureFormat::R16G16B16A16_SFLOAT,
-			ETextureFiltration::Bicubic,
+			ETextureFiltration::Linear,
 			ETextureClamping::Clamp,
 			ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
 
