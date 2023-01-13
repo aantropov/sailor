@@ -338,7 +338,7 @@ glslFragment: |
     vec3 shift2 = vec3(0.021, 0.017, 0.0f) * frame.currentTime * 0.5;
     
     const float cloudsLow = pow(texture(cloudsNoiseLowSampler, shift1 + position.xyz / 9000.0f).r, 1);
-    const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, shift2 + position.xyz / 1000.0f).r, 1);
+    const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, shift2 + position.xyz / 1200.0f).r, 1); 
     
     vec2 uv = position.xz / 409600.0f + vec2(0.2, 0.1);
     
@@ -438,8 +438,8 @@ glslFragment: |
         return vec4(0);
     }
     
-    const uint StepsHighDetail = 128;
-    const uint StepsLowDetail = 16;
+    const uint StepsHighDetail = 96;
+    const uint StepsLowDetail = 64;
     
     vec3 position = traceStart;
   	float avrStep = min(length(traceEnd - traceStart), CloudsEndR - CloudsStartR) / StepsHighDetail;
@@ -460,16 +460,16 @@ glslFragment: |
                 vec3 randomVec = vec3(0);
                 if(j > 0)
                 {
-                    randomVec = normalize(texture(g_noiseSampler, position.xz + j / 16.0f).xyz - 0.5f) * 1.0f;
+                    randomVec = normalize(texture(g_noiseSampler, position.xz + j / 16.0f).xyz - 0.5f) * 0.1f;
                 }
                 
-                vec3 localPosition = position + randomVec;
+                vec3 localPosition = position;// + randomVec;
                 
                 float dA = pow(data.scatteringDensity, j);
                 float dB = pow(data.scatteringIntensity, j);
                 float dC = pow(data.scatteringPhase, j);
                 
-                float sunDensity = CloudsSampleDirectDensity(localPosition, dirToSun);
+                float sunDensity = CloudsSampleDirectDensity(localPosition, normalize(dirToSun + randomVec));
                 
                 float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, dC * data.eccentrisy1);
                 float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, dC * data.eccentrisy2);
@@ -497,7 +497,7 @@ glslFragment: |
         
         if(i == StepsHighDetail)
         {
-            avrStep = length(traceEnd - position) / (StepsHighDetail - StepsLowDetail);
+            avrStep = length(traceEnd - position) / (StepsLowDetail);
         }
   	}
 
@@ -509,7 +509,7 @@ glslFragment: |
   void main()
   {
     vec4 dirWorldSpace = vec4(0);
-    const vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;
+    const vec3 origin = vec3(0, R, 0) + frame.cameraPosition.xyz;
     const vec3 dirToSun = normalize(-data.lightDirection.xyz);
     
     #if defined(COMPOSE)
@@ -566,9 +566,9 @@ glslFragment: |
        vec3 viewDir = normalize(dirWorldSpace.xyz);
        float horizon = 1.0f;
        
-       if(length(origin) < CloudsStartR)
+       //if(length(origin) < CloudsStartR)
        {
-           horizon -= exp(-max(0.0, dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
+           horizon -= exp(-abs(dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
            horizon = horizon * horizon * horizon;
        }
        
