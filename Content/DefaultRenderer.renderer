@@ -176,8 +176,8 @@ frame:
   - toneMappingShader: Shaders/Tonemapping.shader
   - toneMappingDefines: UNCHARTED2
   vec4:
-  - data.exposure: [5.0, 0, 0, 0]
-  - data.whitePoint: [7.0, 7.0, 7.0, 0]
+  - data.exposure: [2.0, 0, 0, 0]
+  - data.whitePoint: [11.0, 11.0, 11.0, 0]
   renderTargets:
   - color: Secondary
   - hdrColor: Main
