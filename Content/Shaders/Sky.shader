@@ -591,10 +591,10 @@ glslFragment: |
         
         outColor = vec4(0,0,0,0);
 
-        vec4 screenUv = ((frame.projection * frame.view * dirWorldSpace) + 1.0f) * 0.5f;
-        screenUv /= screenUv.w;
+        vec4 uvView = ((frame.projection * frame.view * dirWorldSpace) + 1.0f) * 0.5f;
+        uvView /= uvView.w;
         
-        float clouds = texture(cloudsSampler, screenUv.xy).a;
+        float clouds = texture(cloudsSampler, uvView.xy).a;
         
         if(clouds < 0.5)
         {

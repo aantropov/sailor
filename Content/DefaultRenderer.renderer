@@ -40,7 +40,7 @@ renderTargets:
   format: R16G16B16A16_SFLOAT
   width: ViewportWidth
   height: ViewportHeight
-  clamping: Repeat
+  clamping: Clamp
   bIsSurface: false
 
 - name: QuarterMain1
@@ -98,6 +98,32 @@ frame:
   renderTargets:
   - color: Sky
 
+#############################
+#- name: PostProcess
+############################
+#  string:
+#  - shader: Shaders/Blur.shader
+#  - defines: RADIAL
+#  vec4:
+#  - data.blurRadius: [20, 0, 0, 0]
+#  - data.blurSampleCount: [10, 0, 0, 0]
+#  - data.blurCenter: [0.5, 0.5, 0, 0]
+#  renderTargets:
+#  - colorSampler: Sky
+#  - color: Main
+
+#############################
+#- name: PostProcess
+############################
+#  string:
+#  - shader: Shaders/Blur.shader
+#  - defines: HORIZONTAL
+#  vec4:
+#  - data.blurRadius: [4, 2, 0, 0]
+#  renderTargets:
+#  - colorSampler: Secondary
+#  - color: Main
+  
 #############################
 #- name: PostProcess
 #############################

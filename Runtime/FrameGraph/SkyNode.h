@@ -62,6 +62,8 @@ namespace Sailor::Framegraph
 			float m_scatteringDensity = 0.5f;
 			float m_scatteringIntensity = 0.5f;
 			float m_scatteringPhase = 0.5f;
+			float m_sunShaftsIntensity = 0.5f;
+			int32_t m_sunShaftsDistance = 25;
 		};
 
 		SAILOR_API static const char* GetName() { return m_name; }
@@ -92,6 +94,7 @@ namespace Sailor::Framegraph
 		ShaderSetPtr m_pStarsShader{};
 		ShaderSetPtr m_pComposeShader{};
 		ShaderSetPtr m_pCloudsShader{};
+		ShaderSetPtr m_pSunShaftsShader{};
 		ShaderSetPtr m_pBlitShader{};
 
 		RHI::RHIMaterialPtr m_pStarsMaterial{};
@@ -99,6 +102,7 @@ namespace Sailor::Framegraph
 		RHI::RHIMaterialPtr m_pSunMaterial{};
 		RHI::RHIMaterialPtr m_pComposeMaterial{};
 		RHI::RHIMaterialPtr m_pCloudsMaterial{};
+		RHI::RHIMaterialPtr m_pSunShaftsMaterial{};
 		RHI::RHIMaterialPtr m_pBlitMaterial{};
 
 		RHI::RHIShaderBindingSetPtr m_pShaderBindings{};

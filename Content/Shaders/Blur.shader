@@ -6,6 +6,7 @@ includes :
 defines :
 - HORIZONTAL
 - VERTICAL
+- RADIAL
 
 glslCommon: |
   #version 460
@@ -40,6 +41,8 @@ glslFragment: |
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
     vec4 blurRadius;
+    vec4 blurCenter;
+    vec4 blurSampleCount;
   } data;
   
   layout(set=1, binding=1) uniform sampler2D colorSampler;
@@ -49,7 +52,7 @@ glslFragment: |
   
   void main() 
   {
-    vec2 texelSize = vec2(1/256.0f, 1/256.0f);
+    vec2 texelSize = 1.0f / textureSize(colorSampler, 0);
     
   #ifdef VERTICAL
     texelSize.x = 0;
@@ -58,6 +61,22 @@ glslFragment: |
   #ifdef HORIZONTAL
     texelSize.y = 0;
   #endif
-
-  outColor.xyz = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.x));
+  
+  #ifdef RADIAL
+    
+    vec2 direction = (data.blurCenter.xy - fragTexcoord.xy) * texelSize.xy * data.blurRadius.x;
+    outColor = vec4(0, 0, 0, 0);
+    vec2 uv = fragTexcoord.xy;
+    
+    for (int index = 0; index < data.blurSampleCount.x; ++index)
+    {
+      outColor += texture(colorSampler, uv);
+      uv += direction;
+    }
+    
+    outColor /= data.blurSampleCount.x;
+  #else
+    outColor.xyz = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.x));
+  #endif
+  
   }

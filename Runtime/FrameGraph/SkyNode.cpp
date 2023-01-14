@@ -248,6 +248,16 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		}
 	}
 
+	if (!m_pSunShaftsShader)
+	{
+		const std::string shaderPath = "Shaders/SunShafts.shader";
+
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSunShaftsShader, {});
+		}
+	}
+
 	if (!m_pBlitShader)
 	{
 		const std::string shaderPath = "Shaders/Blit.shader";
@@ -296,7 +306,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 			bShouldReturn = true;
 		}
-		
+
 		TVector<uint8_t> noiseLow;
 		auto pathNoiseLow = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseLow.bin"));
 		if (!AssetRegistry::ReadBinaryFile(pathNoiseLow, noiseLow))
@@ -406,6 +416,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		!m_pCloudsShader || !m_pCloudsShader->IsReady() ||
 		!m_pSkyShader || !m_pSkyShader->IsReady() ||
 		!m_pSunShader || !m_pSunShader->IsReady() ||
+		!m_pSunShaftsShader || !m_pSunShaftsShader->IsReady() ||
 		!m_pComposeShader || !m_pComposeShader->IsReady() ||
 		!m_starsMesh || !m_starsMesh->IsReady())
 	{
@@ -437,11 +448,14 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "g_noiseSampler", noise, 8);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
+		RenderState renderState{ false, false, 0, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_pSkyMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSkyShader, m_pShaderBindings);
 		m_pSunMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSunShader, m_pShaderBindings);
 		m_pComposeMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pComposeShader, m_pShaderBindings);
 		m_pCloudsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pCloudsShader, m_pShaderBindings);
+		
+		RenderState renderStateAdd{ false, false, 0, false, ECullMode::Back, EBlendMode::Additive, EFillMode::Fill, 0, false };
+		m_pSunShaftsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderStateAdd, m_pSunShaftsShader, m_pShaderBindings);
 
 		const SkyParams params{};
 		commands->UpdateShaderBinding(transferCommandList, data, &params, sizeof(SkyParams));
@@ -459,7 +473,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		driver->AddSamplerToShaderBindings(m_pBlitBindings, "colorSampler", m_pCloudsTexture, 0);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::AlphaBlending, EFillMode::Fill, 0, false };
+		RenderState renderState{ false, false, 0, false, ECullMode::Back, EBlendMode::AlphaBlending, EFillMode::Fill, 0, false };
 		m_pBlitMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlitShader, m_pBlitBindings);
 	}
 
@@ -664,13 +678,24 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
 
-		// Bind Post Effect
-		commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
-		commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
+		commands->BeginDebugRegion(commandList, "Blit Clouds", DebugContext::Color_CmdPostProcess);
+		{
+			commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
+			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
-		commands->BindMaterial(commandList, m_pBlitMaterial);
-		commands->BindShaderBindings(commandList, m_pBlitMaterial, { sceneView.m_frameBindings, m_pBlitBindings });
-		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			commands->BindMaterial(commandList, m_pBlitMaterial);
+			commands->BindShaderBindings(commandList, m_pBlitMaterial, { sceneView.m_frameBindings, m_pBlitBindings });
+			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		}
+		commands->EndDebugRegion(commandList);
+
+		commands->BeginDebugRegion(commandList, "Sun Shafts", DebugContext::Color_CmdPostProcess);
+		{
+			commands->BindMaterial(commandList, m_pSunShaftsMaterial);
+			commands->BindShaderBindings(commandList, m_pSunShaftsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
+			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		}
+		commands->EndDebugRegion(commandList);
 
 		commands->EndRenderPass(commandList);
 
@@ -678,8 +703,8 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
 		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
-	commands->EndDebugRegion(commandList);
 
+	commands->EndDebugRegion(commandList);
 	commands->EndDebugRegion(commandList);
 
 	m_ditherPatternIndex++;

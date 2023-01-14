@@ -235,6 +235,8 @@ void TestComponent::Tick(float deltaTime)
 		ImGui::SliderFloat("Clouds scattering density", &m_skyParams.m_scatteringDensity, 0.01f, 3.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds scattering intensity", &m_skyParams.m_scatteringIntensity, 0.01f, 3.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds scattering phase", &m_skyParams.m_scatteringPhase, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderInt("Sun Shafts Distance", &m_skyParams.m_sunShaftsDistance, 1, 70, "%d");
+		ImGui::SliderFloat("Sun Shafts Intensity", &m_skyParams.m_sunShaftsIntensity, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::End();
 
 		m_skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
