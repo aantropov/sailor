@@ -344,7 +344,7 @@ glslFragment: |
     
     vec2 uv = position.xz / 409600.0f + vec2(0.2, 0.1);
     
-    vec4 weather = texture(cloudsMapSampler, uv, 0);
+    vec4 weather = texture(cloudsMapSampler, uv);
 
     float height = CloudsGetHeight(position);
     
@@ -452,30 +452,39 @@ glslFragment: |
     vec3 sunColor = CalculateSunColor(-dirToSun);
     float mu = max(0, dot(viewDir, dirToSun));
     
+    float dA[10];
+    float dB[10];
+    float dC[10];
+    
+    for(int j = 0; j < data.scatteringSteps; j++)
+    {
+       dA[j] = pow(data.scatteringDensity, j);
+       dB[j] = pow(data.scatteringIntensity, j);
+       dC[j] = pow(data.scatteringPhase, j);
+    }
+    
   	for(int i = 0; i < StepsHighDetail + StepsLowDetail; i++)
   	{
         float density = CloudsSampleDensity(position) * avrStep;
         if(density > 0)
         {
+            vec3 localColor = vec3(0.0);
+            
             for(int j = 0; j < data.scatteringSteps; j++)
             {
                 vec3 randomVec = vec3(0);
                 if(j > 0)
                 {
-                    randomVec = normalize(texture(g_noiseSampler, position.xz + j / 16.0f).xyz - 0.5f) * 0.1f;
+                    randomVec = normalize(texture(g_noiseSampler, position.xz + j / 16.0f).xyz - 0.5f) * 10.0f;
                 }
                 
-                vec3 localPosition = position;// + randomVec;
+                vec3 localPosition = position + randomVec;
                 
-                float dA = pow(data.scatteringDensity, j);
-                float dB = pow(data.scatteringIntensity, j);
-                float dC = pow(data.scatteringPhase, j);
+                float sunDensity = CloudsSampleDirectDensity(localPosition, dirToSun);
                 
-                float sunDensity = CloudsSampleDirectDensity(localPosition, normalize(dirToSun + randomVec));
-                
-                float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, dC * data.eccentrisy1);
-                float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, dC * data.eccentrisy2);
-                float m2 = exp(-dA * data.cloudsAttenuation1 * sunDensity);
+                float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, dC[j] * data.eccentrisy1);
+                float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, dC[j] * data.eccentrisy2);
+                float m2 = exp(-dA[j] * data.cloudsAttenuation1 * sunDensity);
                 float m3 = data.cloudsAttenuation2 * density;
                 
                 vec2 intersections = RaySphereIntersect(localPosition, dirToSun, vec3(0), R);
@@ -483,11 +492,13 @@ glslFragment: |
                 // No sun rays throw the Earth
                 if(max(intersections.x, intersections.y) < 0)
                 {
-                    color += dB * data.sunIntensity * sunColor * (m11 + m12) * m2 * m3 * transmittance;
+                    localColor += dB[j] * (m11 + m12) * m2 * m3;
                 }
                 
-                transmittance *= exp(-dA * data.cloudsAttenuation1 * density);
+                transmittance *= exp(-dA[j] * data.cloudsAttenuation1 * density);
             }
+            
+            color += localColor * transmittance;
         }
         
         position += viewDir * avrStep;
@@ -503,7 +514,7 @@ glslFragment: |
         }
   	}
 
-    return vec4(color, 1.0 - transmittance);
+    return vec4(data.sunIntensity * sunColor * color, 1.0 - transmittance);
   }
   
   #endif
