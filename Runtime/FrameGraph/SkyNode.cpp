@@ -549,7 +549,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{m_pCloudsTexture},
-			depthAttachment,
+			nullptr,
 			glm::vec4(0, 0, m_pCloudsTexture->GetExtent().x, m_pCloudsTexture->GetExtent().y),
 			glm::ivec2(0, 0),
 			false,

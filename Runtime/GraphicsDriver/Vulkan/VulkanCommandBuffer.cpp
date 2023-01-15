@@ -203,7 +203,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkRenderingAttachmentInfoKHR depthAttachmentInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.imageView = *depthStencilAttachment,
+		.imageView = depthStencilAttachment ? *depthStencilAttachment : VK_NULL_HANDLE,
 		.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = bStoreDepth ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -213,7 +213,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkRenderingAttachmentInfoKHR stencilAttachmentInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.imageView = *depthStencilAttachment,
+		.imageView = depthStencilAttachment ? *depthStencilAttachment : VK_NULL_HANDLE,
 		.imageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -281,7 +281,10 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		m_colorAttachmentDependencies.Add(attachment->GetImage());
 	}
 
-	m_depthStencilAttachmentDependency = depthStencilAttachment->GetImage();
+	if (depthStencilAttachment)
+	{
+		m_depthStencilAttachmentDependency = depthStencilAttachment->GetImage();
+	}
 
 	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
 }
@@ -300,12 +303,15 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	if (bSupportMultisampling && (m_device->GetCurrentMsaaSamples() != VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT))
 	{
 		TVector<VulkanImageViewPtr> msaaColorTargets;
-		VulkanImageViewPtr msaaDepthStencilTarget;
+		VulkanImageViewPtr msaaDepthStencilTarget{};
 
 		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
 
-		const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
-		msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView;
+		if (depthStencilAttachment)
+		{
+			const auto depthExtents = glm::ivec2(depthStencilAttachment->GetImage()->m_extent.width, depthStencilAttachment->GetImage()->m_extent.height);
+			msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)depthStencilAttachment->m_format, depthExtents)->m_vulkan.m_imageView;
+		}
 
 		if (colorAttachments.Num() > 0)
 		{

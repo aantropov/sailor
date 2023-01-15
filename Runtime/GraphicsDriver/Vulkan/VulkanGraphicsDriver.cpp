@@ -1502,7 +1502,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
-		depthStencilAttachment->m_vulkan.m_imageView,
+		depthStencilAttachment ? depthStencilAttachment->m_vulkan.m_imageView : nullptr,
 		rect,
 		0,
 		VkOffset2D{ .x = offset.x, .y = offset.y },
