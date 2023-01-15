@@ -77,7 +77,12 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		vertices[i].m_position.y *= 5000.0f;
 		vertices[i].m_position.z *= 5000.0f;
 
-		vertices[i].m_color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
+		vec4 color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
+
+		vertices[i].m_color.x = pow(color.x, 1 / 2.2f);
+		vertices[i].m_color.y = pow(color.y, 1 / 2.2f);
+		vertices[i].m_color.z = pow(color.z, 1 / 2.2f);
+		vertices[i].m_color.w = pow(color.w, 1 / 2.2f);
 
 		indices[i] = i;
 	}
@@ -107,32 +112,6 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 float Remap(float value, float minValue, float maxValue, float newMinValue, float newMaxValue)
 {
 	return newMinValue + (value - minValue) / (maxValue - minValue) * (newMaxValue - newMinValue);
-}
-
-void SmoothBorders(TVector<uint8_t>& noise3d, uint32_t dimensions, float percentage)
-{
-	uint32_t border = uint32_t(percentage * dimensions);
-
-	for (uint32_t z = 0; z < border - 1; z++)
-	{
-		for (uint32_t y = 0; y < border - 1; y++)
-		{
-			for (uint32_t x = 0; x < border - 1; x++)
-			{
-				uint8_t& value = noise3d[x + y * dimensions + z * dimensions * dimensions];
-
-				vec3 weight = 1.0f - vec3(((float)x + 1.0f) / border, ((float)y + 1.0f) / border, ((float)z + 1.0f) / border);
-
-				vec3 values = vec3(noise3d[(dimensions - 1) + y * dimensions + z * dimensions * dimensions],
-					noise3d[x + (dimensions - 1) * dimensions + z * dimensions * dimensions],
-					noise3d[x + y * dimensions + (dimensions - 1) * dimensions * dimensions]);
-
-				float mix = glm::dot(weight, values);
-
-				value = uint8_t(mix);
-			}
-		}
-	}
 }
 
 TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow() const
@@ -301,10 +280,10 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseHigh();
-					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
+			AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
 				})->Run();
 
-			bShouldReturn = true;
+				bShouldReturn = true;
 		}
 
 		TVector<uint8_t> noiseLow;
@@ -315,10 +294,10 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseLow();
-					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
+			AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
 				})->Run();
 
-			bShouldReturn = true;
+				bShouldReturn = true;
 		}
 
 		if (bShouldReturn)
@@ -453,7 +432,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		m_pSunMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSunShader, m_pShaderBindings);
 		m_pComposeMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pComposeShader, m_pShaderBindings);
 		m_pCloudsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pCloudsShader, m_pShaderBindings);
-		
+
 		RenderState renderStateAdd{ false, false, 0, false, ECullMode::Back, EBlendMode::Additive, EFillMode::Fill, 0, false };
 		m_pSunShaftsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderStateAdd, m_pSunShaftsShader, m_pShaderBindings);
 
