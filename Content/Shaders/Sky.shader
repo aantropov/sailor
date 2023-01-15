@@ -226,7 +226,7 @@ glslFragment: |
   {
      const vec3 destination = IntersectSphere(origin, direction, R, R + AtmosphereR);
      
-     const float LightIntensity = 5.0f;
+     const float LightIntensity = 7.0f;
      const float Angle = dot(normalize(destination - origin), -lightDirection);
            
      const vec3 step = (destination - origin) / INTEGRAL_STEPS_2;

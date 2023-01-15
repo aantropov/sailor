@@ -162,7 +162,7 @@ frame:
 - name: Bloom
 ##############################
   vec4:
-  - bloomIntensity: [1.5, 0, 0, 0]
+  - bloomIntensity: [1.2, 0, 0, 0]
   - dirtIntensity: [30.0, 0, 0, 0]
   - threshold: [3.3, 0, 0, 0]
   - knee: [0.2, 0, 0, 0]
