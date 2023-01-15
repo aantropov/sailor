@@ -337,7 +337,7 @@ glslFragment: |
     position.xz += vec2(0.1, 0.05) * frame.currentTime * 1000;
     
     vec3 shift1 = vec3(-0.0021, 0.0017, -0.02f) * frame.currentTime * 0.5;
-    vec3 shift2 = vec3(0.021, 0.017, 0.0f) * frame.currentTime * 0.5;
+    vec3 shift2 = vec3(0.021, 0.017, 0.0f) * frame.currentTime * -0.2;
     
     const float cloudsLow = pow(texture(cloudsNoiseLowSampler, shift1 + position.xyz / 9000.0f).r, 1);
     const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, shift2 + position.xyz / 1300.0f).r, 1); 
@@ -440,8 +440,8 @@ glslFragment: |
         return vec4(0);
     }
     
-    const uint StepsHighDetail = 128;
-    const uint StepsLowDetail = 128;
+    const uint StepsHighDetail = 64;
+    const uint StepsLowDetail = 96;
     
     vec3 position = traceStart;
   	float avrStep = min(length(traceEnd - traceStart), CloudsEndR - CloudsStartR) / StepsHighDetail;
