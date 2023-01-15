@@ -79,6 +79,8 @@ glslFragment: |
     float scatteringDensity;
     float scatteringIntensity;
     float scatteringPhase;
+    float sunShaftsIntensity;
+    int   sunShaftsDistance;
   } data;
 
   #if defined(COMPOSE)
@@ -106,7 +108,7 @@ glslFragment: |
   #define INTEGRAL_STEPS_2 32
   
   const float R = 6371000.0f; // Earth radius in m
-  const float AtmosphereR = 100000.0f; // Atmosphere radius
+  const float AtmosphereR = 60000.0f; // Atmosphere radius
   const float CloudsStartR = R + 5000.0f;
   const float CloudsEndR = CloudsStartR + 10000.0f;
   
@@ -224,17 +226,17 @@ glslFragment: |
   {
      const vec3 destination = IntersectSphere(origin, direction, R, R + AtmosphereR);
      
-     const float LightIntensity = 1.0f;
+     const float LightIntensity = 5.0f;
      const float Angle = dot(normalize(destination - origin), -lightDirection);
            
      const vec3 step = (destination - origin) / INTEGRAL_STEPS_2;
      
      // Constants for PhaseR
-     const vec3 B0R = vec3(5.8, 13.5, 33.1) * vec3(0.000001, 0.000001, 0.000001);
-     const float H0R = 8000.0f;
+     const vec3 B0R = vec3(3.8, 13.5, 33.1) * vec3(0.000001, 0.000001, 0.000001);
+     const float H0R = 7994.0f;
 
      // Constants for PhaseMie
-     const vec3 B0Mie = vec3(2.0, 2.0, 2.0) * vec3(0.000001);
+     const vec3 B0Mie = vec3(21, 21, 21) * vec3(0.000001);
      const float H0Mie = 1200.0f;
 
      const float heightOrigin = length(origin);
@@ -271,7 +273,7 @@ glslFragment: |
          const float hLight  = length(toLight) - R;
          const float stepToLight = (hLight - h) / INTEGRAL_STEPS;
          
-         float dStepLight = length(point - toLight) / INTEGRAL_STEPS;
+         float dStepLight = length(toLight - point) / INTEGRAL_STEPS;
          float densityLightR = 0.0f;
          float densityLightMie = 0.0f;
 
@@ -292,7 +294,7 @@ glslFragment: |
         
         if(bReached)
         {
-            vec3 aggr = exp(-B0R * (densityR + densityLightR) - B0Mie * (densityLightMie + densityMie));
+            vec3 aggr = exp(-B0R * (densityR + densityLightR) - B0Mie * 1.1f * (densityLightMie + densityMie));
             resR  += aggr * hr;
             resMie += aggr * hm;
         }
@@ -314,7 +316,7 @@ glslFragment: |
             return vec3(0);
         }
     #else
-        const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + 1.1f * B0Mie * resMie * PhaseMie(Angle));
+        const vec3 final = LightIntensity * (B0R * resR * PhaseR(Angle) + B0Mie * resMie * PhaseMie(Angle));
         return final;
     #endif
   }
@@ -438,8 +440,8 @@ glslFragment: |
         return vec4(0);
     }
     
-    const uint StepsHighDetail = 96;
-    const uint StepsLowDetail = 64;
+    const uint StepsHighDetail = 128;
+    const uint StepsLowDetail = 128;
     
     vec3 position = traceStart;
   	float avrStep = min(length(traceEnd - traceStart), CloudsEndR - CloudsStartR) / StepsHighDetail;

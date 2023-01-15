@@ -10,9 +10,9 @@ namespace Sailor::Framegraph
 {
 	class SkyNode : public TFrameGraphNode<SkyNode>
 	{
-		const uint32_t SkyResolution = 196u;
-		const uint32_t SunResolution = 16u;
-		const uint32_t CloudsResolution = 512u;
+		const uint32_t SkyResolution = 512u;
+		const uint32_t SunResolution = 32u;
+		const uint32_t CloudsResolution = 1080u;
 		const uint32_t CloudsNoiseHighResolution = 32u;
 		const uint32_t CloudsNoiseLowResolution = 128u;
 
@@ -47,7 +47,7 @@ namespace Sailor::Framegraph
 		struct SkyParams
 		{
 			glm::vec4 m_lightDirection = normalize(glm::vec4(0, -1, 1, 0));
-			float m_cloudsAttenuation1 = 0.017f;
+			float m_cloudsAttenuation1 = 0.2f;
 			float m_cloudsAttenuation2 = 0.012f;
 			float m_cloudsDensity = 30.0f;
 			float m_cloudsCoverage = 0.56f;
@@ -56,14 +56,14 @@ namespace Sailor::Framegraph
 			float m_eccentrisy1 = 0.243f;
 			float m_eccentrisy2 = 0.863f;
 			float m_fog = 10.0f;
-			float m_sunIntensity = 10.0f;
+			float m_sunIntensity = 150.0f;
 			float m_ambient = 2.4f;
 			int32_t m_scatteringSteps = 5;
 			float m_scatteringDensity = 0.5f;
 			float m_scatteringIntensity = 0.5f;
 			float m_scatteringPhase = 0.5f;
-			float m_sunShaftsIntensity = 0.5f;
-			int32_t m_sunShaftsDistance = 25;
+			float m_sunShaftsIntensity = 0.7f;
+			int32_t m_sunShaftsDistance = 80;
 		};
 
 		SAILOR_API static const char* GetName() { return m_name; }

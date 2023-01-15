@@ -163,8 +163,8 @@ frame:
 ##############################
   vec4:
   - bloomIntensity: [1.5, 0, 0, 0]
-  - dirtIntensity: [20.0, 0, 0, 0]
-  - threshold: [1.7, 0, 0, 0]
+  - dirtIntensity: [30.0, 0, 0, 0]
+  - threshold: [2.7, 0, 0, 0]
   - knee: [0.2, 0, 0, 0]
   renderTargets:
   - bloom: Main
@@ -177,7 +177,7 @@ frame:
   - toneMappingDefines: UNCHARTED2
   vec4:
   - data.exposure: [2.0, 0, 0, 0]
-  - data.whitePoint: [11.0, 11.0, 11.0, 0]
+  - data.whitePoint: [3.0, 3.0, 3.0, 0]
   renderTargets:
   - color: Secondary
   - hdrColor: Main
