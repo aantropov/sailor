@@ -112,7 +112,7 @@ glslFragment: |
   const float CloudsStartR = R + 5000.0f;
   const float CloudsEndR = CloudsStartR + 10000.0f;
   
-  const float SunAngularR = radians(0.545f);
+  const float SunAngularR = radians(0.545f) * 2;
   
   float Density(vec3 a, vec3 b, float H0)
   {
@@ -340,7 +340,7 @@ glslFragment: |
     vec3 shift2 = vec3(0.021, 0.017, 0.0f) * frame.currentTime * 0.5;
     
     const float cloudsLow = pow(texture(cloudsNoiseLowSampler, shift1 + position.xyz / 9000.0f).r, 1);
-    const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, shift2 + position.xyz / 1200.0f).r, 1); 
+    const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, shift2 + position.xyz / 1300.0f).r, 1); 
     
     vec2 uv = position.xz / 409600.0f + vec2(0.2, 0.1);
     
@@ -349,7 +349,7 @@ glslFragment: |
     float height = CloudsGetHeight(position);
     
     float SRb = clamp(Remap(height, 0, 0.07, 0, 1), 0, 1);
-    float SRt = clamp(Remap(height, weather.b * 0.8, weather.b, 1, 0), 0, 1);
+    float SRt = clamp(Remap(height, weather.b * 0.5, weather.b, 1, 0), 0, 1);
     
     float SA = SRb * SRt;
     
@@ -575,7 +575,7 @@ glslFragment: |
        vec3 viewDir = normalize(dirWorldSpace.xyz);
        float horizon = 1.0f;
        
-       //if(length(origin) < CloudsStartR)
+       if(length(origin) < CloudsStartR)
        {
            horizon -= exp(-abs(dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
            horizon = horizon * horizon * horizon;
