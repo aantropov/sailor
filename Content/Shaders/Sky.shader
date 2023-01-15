@@ -468,8 +468,6 @@ glslFragment: |
         float density = CloudsSampleDensity(position) * avrStep;
         if(density > 0)
         {
-            vec3 localColor = vec3(0.0);
-            
             for(int j = 0; j < data.scatteringSteps; j++)
             {
                 vec3 randomVec = vec3(0);
@@ -492,13 +490,11 @@ glslFragment: |
                 // No sun rays throw the Earth
                 if(max(intersections.x, intersections.y) < 0)
                 {
-                    localColor += dB[j] * (m11 + m12) * m2 * m3;
+                    color += dB[j] * (m11 + m12) * m2 * m3 * transmittance;
                 }
                 
                 transmittance *= exp(-dA[j] * data.cloudsAttenuation1 * density);
             }
-            
-            color += localColor * transmittance;
         }
         
         position += viewDir * avrStep;
