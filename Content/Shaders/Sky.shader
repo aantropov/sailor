@@ -226,7 +226,7 @@ glslFragment: |
   {
      const vec3 destination = IntersectSphere(origin, direction, R, R + AtmosphereR);
      
-     const float LightIntensity = 12.0f;
+     const float LightIntensity = 7.0f;
      const float Angle = dot(normalize(destination - origin), -lightDirection);
            
      const vec3 step = (destination - origin) / INTEGRAL_STEPS_2;
@@ -403,6 +403,8 @@ glslFragment: |
     const float shiftCloudsStart = cloudsStartIntersections.x < 0 ? max(0, cloudsStartIntersections.y) : cloudsStartIntersections.x;
     const float shiftCloudsEnd = cloudsEndIntersections.x < 0 ? max(0, cloudsEndIntersections.y) : cloudsEndIntersections.x;
     
+    bool bUnstableRaytracer = false;
+
     if(originHeight < CloudsStartR)
     {
         traceStart = origin + viewDir * shiftCloudsStart;
@@ -412,10 +414,13 @@ glslFragment: |
     {
         traceStart = origin + viewDir * shiftCloudsEnd;
         traceEnd = origin + viewDir * shiftCloudsStart;
+        bUnstableRaytracer = true;
     }
     else
     {
         traceStart = origin;
+        
+        bUnstableRaytracer = true;
         
         if(shiftCloudsStart == 0)
         {
@@ -431,7 +436,7 @@ glslFragment: |
         }
     }
     
-    const float BigDistance = 300000.0f;
+    const float BigDistance = 600000.0f;
     
     // We traced the opposite Earth side,
     // that means there is clouds on our way
@@ -459,7 +464,7 @@ glslFragment: |
     const vec3 finalTrace = traceEnd;
     const uint StepsHighDetail = 48;
     const uint StepsLowDetail = 96;
-    const uint StepsSearchDetail = 96;
+    const uint StepsSearchDetail = 64;
     
     vec3 position = traceStart;
     vec3 color = vec3(0.0);
@@ -485,19 +490,27 @@ glslFragment: |
             }
             else if(bStartFound && !bHasClouds)
             {
-                traceEnd = preTrace;
+                const float minimalTraceLength = 5000;
+                if(length(preTrace - traceStart) > minimalTraceLength)
+                {
+                   traceEnd = preTrace;
+                }
+                else
+                {
+                   traceEnd = traceStart + viewDir * minimalTraceLength;
+                }
                 break;
             }
             
             preTrace += viewDir * traceDistance;
         }
         
-        if(!bStartFound)
+        if(!bStartFound && !bUnstableRaytracer)
         {
             return vec4(0);
         }
         
-        float avrStep = length(traceEnd - traceStart) / StepsHighDetail;
+        float avrStep = bUnstableRaytracer ? 300 : length(traceEnd - traceStart) / StepsHighDetail;
         
         for(int i = 0; i < StepsHighDetail + StepsLowDetail; i++)
         {
@@ -544,7 +557,7 @@ glslFragment: |
             
             if(i == StepsHighDetail)
             {
-                avrStep = length(finalTrace - position) / (StepsLowDetail);
+                avrStep = bUnstableRaytracer ? 1500 : length(finalTrace - position) / (StepsLowDetail);                
             }
         }
     }
@@ -617,11 +630,11 @@ glslFragment: |
        vec3 viewDir = normalize(dirWorldSpace.xyz);
        float horizon = 1.0f;
        
-       if(length(origin) < CloudsStartR)
-       {
-           horizon -= exp(-abs(dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
-           horizon = horizon * horizon * horizon;
-       }
+
+       horizon -= exp(-abs(dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
+       horizon = horizon * horizon * horizon;
+       horizon += 1 - clamp((CloudsStartR - length(origin)) / 500, 0, 1);
+       horizon = clamp(horizon, 0, 1);
        
        vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun) + vec4(sky.xyz, 0.0f) * data.ambient;
        vec3 tunedClouds = mix(outColor.xyz, rawClouds.xyz, horizon);
