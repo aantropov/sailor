@@ -107,7 +107,7 @@ void TestComponent::Tick(float deltaTime)
 	auto& transform = GetOwner()->GetTransformComponent();
 	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec4_Forward;
 
-	const float sensitivity = 500;
+	const float sensitivity = 1500;
 
 	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
 	if (GetWorld()->GetInput().IsKeyDown('A'))
@@ -230,7 +230,7 @@ void TestComponent::Tick(float deltaTime)
 		ImGui::SliderFloat("Clouds phase eccentrisy 2", &m_skyParams.m_eccentrisy2, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds horizon blend", &m_skyParams.m_fog, 0.0f, 20.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds sun intensity", &m_skyParams.m_sunIntensity, 0.0f, 800.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds ambient", &m_skyParams.m_ambient, 0.0f, 3.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds ambient", &m_skyParams.m_ambient, 0.0f, 5.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderInt("Clouds scattering steps", &m_skyParams.m_scatteringSteps, 1, 10,"%d");
 		ImGui::SliderFloat("Clouds scattering density", &m_skyParams.m_scatteringDensity, 0.1f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds scattering intensity", &m_skyParams.m_scatteringIntensity, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);

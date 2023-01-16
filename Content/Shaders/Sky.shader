@@ -236,7 +236,7 @@ glslFragment: |
      const float H0R = 7994.0f;
 
      // Constants for PhaseMie
-     const vec3 B0Mie = vec3(21e-6);
+     const vec3 B0Mie = vec3(22e-6);
      const float H0Mie = 1200.0f;
 
      const float heightOrigin = length(origin);
@@ -440,15 +440,6 @@ glslFragment: |
         return vec4(0);
     }
     
-    const uint StepsHighDetail = 64;
-    const uint StepsLowDetail = 96;
-    
-    vec3 position = traceStart;
-  	float avrStep = min(length(traceEnd - traceStart), CloudsEndR - CloudsStartR) / StepsHighDetail;
-        
-    vec3 color = vec3(0.0);
-    float transmittance = 1.0;
-
     vec3 sunColor = CalculateSunColor(-dirToSun);
     float mu = max(0, dot(viewDir, dirToSun));
     
@@ -463,52 +454,100 @@ glslFragment: |
        dC[j] = pow(data.scatteringPhase, j);
     }
     
-  	for(int i = 0; i < StepsHighDetail + StepsLowDetail; i++)
-  	{
-        float density = CloudsSampleDensity(position) * avrStep;
-        if(density > 0)
-        {
-            for(int j = 0; j < data.scatteringSteps; j++)
-            {
-                vec3 randomVec = vec3(0);
-                if(j > 0)
-                {
-                    randomVec = normalize(texture(g_noiseSampler, position.xz + j / 16.0f).xyz - 0.5f) * 10.0f;
-                }
-                
-                vec3 localPosition = position + randomVec;
-                
-                float sunDensity = CloudsSampleDirectDensity(localPosition, dirToSun);
-                
-                float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, dC[j] * data.eccentrisy1);
-                float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, dC[j] * data.eccentrisy2);
-                float m2 = exp(-dA[j] * data.cloudsAttenuation1 * sunDensity);
-                float m3 = data.cloudsAttenuation2 * density;
-                
-                vec2 intersections = RaySphereIntersect(localPosition, dirToSun, vec3(0), R);
+    int traceBudget = 128;
+    
+    const vec3 finalTrace = traceEnd;
+    const uint StepsHighDetail = 48;
+    const uint StepsLowDetail = 96;
+    const uint StepsSearchDetail = 96;
+    
+    vec3 position = traceStart;
+    vec3 color = vec3(0.0);
+    float transmittance = 1.0;
+    
+    //while(traceBudget > 0)
+    {
+        // Pre cast to find trace start
+        float traceDistance = length(finalTrace - position) / StepsSearchDetail;
+        bool bStartFound = false;
+        vec3 preTrace = position;
+        traceEnd = finalTrace;
         
-                // No sun rays throw the Earth
-                if(max(intersections.x, intersections.y) < 0)
+        for(int i = 0; i < StepsSearchDetail; i++) 
+        {
+            traceBudget--;
+            
+            const bool bHasClouds = CloudsSampleDensity(preTrace) > 0;
+            if(!bStartFound && bHasClouds)
+            {
+                traceStart = preTrace - viewDir * traceDistance;
+                bStartFound = true;
+            }
+            else if(bStartFound && !bHasClouds)
+            {
+                traceEnd = preTrace;
+                break;
+            }
+            
+            preTrace += viewDir * traceDistance;
+        }
+        
+        if(!bStartFound)
+        {
+            return vec4(0);
+        }
+        
+        float avrStep = length(traceEnd - traceStart) / StepsHighDetail;
+        
+        for(int i = 0; i < StepsHighDetail + StepsLowDetail; i++)
+        {
+            traceBudget--;
+            
+            float density = CloudsSampleDensity(position) * avrStep;
+            if(density > 0)
+            {
+                for(int j = 0; j < data.scatteringSteps; j++)
                 {
-                    color += dB[j] * (m11 + m12) * m2 * m3 * transmittance;
+                    vec3 randomVec = vec3(0);
+                    if(j > 0)
+                    {
+                        randomVec = normalize(texture(g_noiseSampler, position.xz + j / 16.0f).xyz - 0.5f) * 10.0f;
+                    }
+                    
+                    vec3 localPosition = position + randomVec;
+                    
+                    float sunDensity = CloudsSampleDirectDensity(localPosition, dirToSun);
+                    
+                    float m11 = data.phaseInfluence1 * PhaseHenyeyGreenstein(mu, dC[j] * data.eccentrisy1);
+                    float m12 = data.phaseInfluence2 * PhaseHenyeyGreenstein(mu, dC[j] * data.eccentrisy2);
+                    float m2 = exp(-dA[j] * data.cloudsAttenuation1 * sunDensity);
+                    float m3 = data.cloudsAttenuation2 * density;
+                    
+                    vec2 intersections = RaySphereIntersect(localPosition, dirToSun, vec3(0), R);
+            
+                    // No sun rays throw the Earth
+                    if(max(intersections.x, intersections.y) < 0)
+                    {
+                        color += dB[j] * (m11 + m12) * m2 * m3 * transmittance;
+                    }
+                    
+                    transmittance *= exp(-dA[j] * data.cloudsAttenuation1 * density);
                 }
-                
-                transmittance *= exp(-dA[j] * data.cloudsAttenuation1 * density);
+            }
+            
+            position += viewDir * avrStep;
+            
+            if(transmittance < 0.05 || length(position) > CloudsEndR)
+            {
+                break;
+            }
+            
+            if(i == StepsHighDetail)
+            {
+                avrStep = length(finalTrace - position) / (StepsLowDetail);
             }
         }
-        
-        position += viewDir * avrStep;
-        
-        if(transmittance < 0.05 || length(position) > CloudsEndR)
-        {
-           break;
-        }
-        
-        if(i == StepsHighDetail)
-        {
-            avrStep = length(traceEnd - position) / (StepsLowDetail);
-        }
-  	}
+    }
 
     return vec4(data.sunIntensity * sunColor * color, 1.0 - transmittance);
   }
