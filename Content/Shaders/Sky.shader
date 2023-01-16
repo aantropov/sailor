@@ -112,7 +112,7 @@ glslFragment: |
   const float CloudsStartR = R + 5000.0f;
   const float CloudsEndR = CloudsStartR + 10000.0f;
   
-  const float SunAngularR = radians(0.545f) * 2;
+  const float SunAngularR = radians(0.545f);
   
   float Density(vec3 a, vec3 b, float H0)
   {
@@ -226,17 +226,17 @@ glslFragment: |
   {
      const vec3 destination = IntersectSphere(origin, direction, R, R + AtmosphereR);
      
-     const float LightIntensity = 7.0f;
+     const float LightIntensity = 12.0f;
      const float Angle = dot(normalize(destination - origin), -lightDirection);
            
      const vec3 step = (destination - origin) / INTEGRAL_STEPS_2;
      
      // Constants for PhaseR
-     const vec3 B0R = vec3(3.8, 13.5, 33.1) * vec3(0.000001, 0.000001, 0.000001);
+     const vec3 B0R = vec3(3.8e-6, 13.5e-6, 33.1e-6);
      const float H0R = 7994.0f;
 
      // Constants for PhaseMie
-     const vec3 B0Mie = vec3(21, 21, 21) * vec3(0.000001);
+     const vec3 B0Mie = vec3(21e-6);
      const float H0Mie = 1200.0f;
 
      const float heightOrigin = length(origin);
@@ -552,6 +552,7 @@ glslFragment: |
          float luminance = dot(sunColor,sunColor);
          outColor.xyz = max(outColor.xyz, mix(outColor.xyz, sunColor, clamp(0,1, luminance)));         
        }
+
     #elif defined(CLOUDS)
     
       #if defined(DITHER)
@@ -570,7 +571,9 @@ glslFragment: |
        dirWorldSpace.z *= -1;
        dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
         
-       outColor.xyz = texture(skySampler, fragTexcoord).xyz; 
+       outColor.xyz = texture(skySampler, fragTexcoord).xyz;
+       vec3 sky = outColor.xyz;
+       sky = sky / (1 + sky);
 
        vec3 viewDir = normalize(dirWorldSpace.xyz);
        float horizon = 1.0f;
@@ -581,7 +584,7 @@ glslFragment: |
            horizon = horizon * horizon * horizon;
        }
        
-       vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun) + vec4(outColor.xyz, 0.0f) * data.ambient;
+       vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun) + vec4(sky.xyz, 0.0f) * data.ambient;
        vec3 tunedClouds = mix(outColor.xyz, rawClouds.xyz, horizon);
        
        outColor.xyz = tunedClouds;

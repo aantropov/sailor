@@ -5,6 +5,7 @@ includes :
 defines:
 - ACES
 - UNCHARTED2
+- LUMINANCE
 
 glslCommon: |
   #version 460
@@ -124,17 +125,25 @@ glslFragment: |
       outColor = texture(colorSampler, fragTexcoord);
       float avgLum = texture(averageLuminanceSampler, vec2(0,0)).x;
       
+      vec3 color = outColor.xyz / (9.6 * avgLum + 0.0001);
+      
+  #if defined(LUMINANCE)
       // Yxy.x is Y, the luminance
       vec3 Yxy = convertRGB2Yxy(outColor.xyz);
       float lp = Yxy.x / (9.6 * avgLum + 0.0001);
       
+      color = vec3(lp);
+  #endif
+
   #if defined(ACES)
-      Yxy.x = ACES_tonemap(vec3(lp)).x;
+      color = ACES_tonemap(color);
   #elif defined(UNCHARTED2)
-      // Replace this line with other tone mapping functions
-      // Here we applying the curve to the luminance exclusively
-      Yxy.x = uncharted2_filmic(vec3(lp), data.whitePoint.xyz, data.exposure.x).x;   
+      color = uncharted2_filmic(color, data.whitePoint.xyz, data.exposure.x);
   #endif 
   
-      outColor.xyz = convertYxy2RGB(Yxy);
+  #if defined(LUMINANCE)
+      outColor.xyz = convertYxy2RGB(vec3(color.x, Yxy.y, Yxy.z));
+  #else
+      outColor.xyz = color;
+  #endif
   }

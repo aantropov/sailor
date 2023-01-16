@@ -162,8 +162,8 @@ frame:
 - name: Bloom
 ##############################
   vec4:
-  - bloomIntensity: [1.2, 0, 0, 0]
-  - dirtIntensity: [30.0, 0, 0, 0]
+  - bloomIntensity: [1.3, 0, 0, 0]
+  - dirtIntensity: [5.0, 0, 0, 0]
   - threshold: [3.0, 0, 0, 0]
   - knee: [0.2, 0, 0, 0]
   renderTargets:
@@ -174,10 +174,10 @@ frame:
 #############################
   string:
   - toneMappingShader: Shaders/Tonemapping.shader
-  - toneMappingDefines: UNCHARTED2
+  - toneMappingDefines: UNCHARTED2 LUMINANCE
   vec4:
-  - data.exposure: [2.0, 0, 0, 0]
-  - data.whitePoint: [3.0, 3.0, 3.0, 0]
+  - data.exposure: [2.2, 0, 0, 0]
+  - data.whitePoint: [1.4, 1.5, 1.4, 0]
   renderTargets:
   - color: Secondary
   - hdrColor: Main

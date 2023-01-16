@@ -91,17 +91,17 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		})->Then<RHI::RHIMeshPtr, TParseRes>([](const TParseRes& res) mutable
 			{
 				const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
-		const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
+				const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
 
-		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+				auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 
-		RHI::RHIMeshPtr mesh = driver->CreateMesh();
+				RHI::RHIMeshPtr mesh = driver->CreateMesh();
 
-		mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
-		mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
-		driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
+				mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
+				mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
+				driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
 
-		return mesh;
+				return mesh;
 			}, "Create Stars Mesh", Tasks::EThreadType::RHI);
 
 		task->Run();

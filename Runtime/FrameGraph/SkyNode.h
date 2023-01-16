@@ -49,7 +49,7 @@ namespace Sailor::Framegraph
 			glm::vec4 m_lightDirection = normalize(glm::vec4(0, -1, 1, 0));
 			float m_cloudsAttenuation1 = 0.3f;
 			float m_cloudsAttenuation2 = 0.06f;
-			float m_cloudsDensity = 5.0f;
+			float m_cloudsDensity = 0.3f;
 			float m_cloudsCoverage = 0.56f;
 			float m_phaseInfluence1 = 0.025f;
 			float m_phaseInfluence2 = 0.9f;
@@ -57,7 +57,7 @@ namespace Sailor::Framegraph
 			float m_eccentrisy2 = 0.51f;
 			float m_fog = 10.0f;
 			float m_sunIntensity = 500.0f;
-			float m_ambient = 1.5f;
+			float m_ambient = 0.5f;
 			int32_t m_scatteringSteps = 5;
 			float m_scatteringDensity = 0.5f;
 			float m_scatteringIntensity = 0.5f;

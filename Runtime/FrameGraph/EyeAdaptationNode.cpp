@@ -152,8 +152,8 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	SAILOR_PROFILE_BLOCK("Image barriers");
 
 	const float minLogLuminance = -8.0f;
-	const float maxLogLuminance = 3.0f;
-	const float eyeReaction = 1.8f;
+	const float maxLogLuminance = 4.0f;
+	const float eyeReaction = 3.6f;
 
 	const float logLuminanceRange = maxLogLuminance - minLogLuminance;
 
