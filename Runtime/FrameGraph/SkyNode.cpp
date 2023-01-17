@@ -280,7 +280,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseHigh();
-			AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
+					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -294,7 +294,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseLow();
-			AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
+					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -307,23 +307,23 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		m_pCloudsNoiseHighTexture = driver->CreateTexture(noiseHigh.GetData(), noiseHigh.Num() * sizeof(uint8_t),
 			glm::ivec3(CloudsNoiseHighResolution, CloudsNoiseHighResolution, CloudsNoiseHighResolution),
-			1,
+			(uint32_t)glm::max(1.0f, glm::log2((float)CloudsNoiseHighResolution)),
 			ETextureType::Texture3D,
 			ETextureFormat::R8_UNORM,
 			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
-			ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
 
 		driver->SetDebugName(m_pCloudsNoiseHighTexture, "CloudsNoiseHigh");
 
 		m_pCloudsNoiseLowTexture = driver->CreateTexture(noiseLow.GetData(), noiseLow.Num() * sizeof(uint8_t),
 			glm::ivec3(CloudsNoiseLowResolution, CloudsNoiseLowResolution, CloudsNoiseLowResolution),
-			1,
+			(uint32_t)glm::max(1.0f, glm::log2((float)CloudsNoiseLowResolution)),
 			ETextureType::Texture3D,
 			ETextureFormat::R8_UNORM,
 			ETextureFiltration::Linear,
 			ETextureClamping::Repeat,
-			ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
 
 		driver->SetDebugName(m_pCloudsNoiseLowTexture, "CloudsNoiseLow");
 	}

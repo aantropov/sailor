@@ -708,6 +708,7 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 
 	int32_t mipWidth = image->m_extent.width;
 	int32_t mipHeight = image->m_extent.height;
+	int32_t mipDepth = image->m_extent.depth;
 
 	for (uint32_t i = 1; i < image->m_mipLevels; i++)
 	{
@@ -725,13 +726,15 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 
 		VkImageBlit blit{};
 		blit.srcOffsets[0] = { 0, 0, 0 };
-		blit.srcOffsets[1] = { mipWidth, mipHeight, 1 };
+		blit.srcOffsets[1] = { mipWidth, mipHeight, mipDepth };
 		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		blit.srcSubresource.mipLevel = i - 1;
 		blit.srcSubresource.baseArrayLayer = 0;
 		blit.srcSubresource.layerCount = 1;
 		blit.dstOffsets[0] = { 0, 0, 0 };
-		blit.dstOffsets[1] = { mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 };
+		blit.dstOffsets[1] = { mipWidth > 1 ? mipWidth / 2 : 1,
+							   mipHeight > 1 ? mipHeight / 2 : 1,
+							   mipDepth > 1 ? mipDepth / 2 : 1 };
 		blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		blit.dstSubresource.mipLevel = i;
 		blit.dstSubresource.baseArrayLayer = 0;
@@ -762,7 +765,13 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 		{
 			mipHeight /= 2;
 		}
+
+		if (mipDepth > 1)
+		{
+			mipDepth /= 2;
+		}
 	}
+
 	barrier.subresourceRange.baseMipLevel = image->m_mipLevels - 1;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	barrier.newLayout = image->m_defaultLayout;
