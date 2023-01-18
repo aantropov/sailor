@@ -559,7 +559,7 @@ glslFragment: |
                 break;
             }
             
-            avrStep += 7;
+            avrStep += 30;
         }
     }
     
