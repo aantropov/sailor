@@ -7,7 +7,9 @@ using namespace Sailor;
 
 RenderDocApi::RenderDocApi()
 {
+#ifdef BUILD_WITH_RENDER_DOC
 	GetRenderDocAPI();
+#endif
 }
 
 bool RenderDocApi::IsCapturing() const
@@ -94,9 +96,9 @@ void RenderDocApi::TriggerCapture()
 #endif
 }
 
+#ifdef BUILD_WITH_RENDER_DOC
 RENDERDOC_API_1_4_2* RenderDocApi::GetRenderDocAPI()
 {
-#ifdef BUILD_WITH_RENDER_DOC
 	SAILOR_LOG("Try to initialize RenderDocApi");
 
 	if (!g_pRenderDocAPI)
@@ -123,7 +125,5 @@ RENDERDOC_API_1_4_2* RenderDocApi::GetRenderDocAPI()
 	}
 
 	return g_pRenderDocAPI;
-#else
-	return nullptr
-#endif
 }
+#endif
