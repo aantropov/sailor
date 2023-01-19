@@ -410,7 +410,7 @@ glslFragment: |
         traceStart = origin + viewDir * shiftCloudsStart;
         traceEnd = origin + viewDir * shiftCloudsEnd;
         
-        bAdaptiveRayMarching = false;
+        //bAdaptiveRayMarching = false;
     }
     else if(originHeight > CloudsEndR)
     {
@@ -468,7 +468,7 @@ glslFragment: |
     float transmittance = 1.0;
     float transmittanceLow = 1.0f;
 
-    float avrStep = bAdaptiveRayMarching ? 100 : max(100, length(traceEnd - traceStart) / StepsHighDetail);
+    float avrStep = bAdaptiveRayMarching ? 100 : max(200, length(traceEnd - traceStart) / StepsHighDetail);
     position = traceStart;
     
     for(int i = 0; i < StepsHighDetail + StepsLowDetail; i++)
