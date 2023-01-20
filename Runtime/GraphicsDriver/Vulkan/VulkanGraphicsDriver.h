@@ -82,6 +82,14 @@ namespace Sailor::GraphicsDriver::Vulkan
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
 
+		SAILOR_API virtual RHI::RHICubemapPtr CreateCubemap(
+			glm::ivec2 extent,
+			uint32_t mipMapLevel = 1,
+			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
+			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
+			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
+			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit);
+
 		SAILOR_API virtual RHI::RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader);
 		SAILOR_API virtual RHI::RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs);
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer) override;
@@ -105,7 +113,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
 		SAILOR_API virtual void CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size);
 
-		SAILOR_API virtual TRefPtr<RHI::RHITexture> CreateImage_Immediate(
+		SAILOR_API virtual RHI::RHITexturePtr CreateImage_Immediate(
 			const void* pData,
 			size_t size,
 			glm::ivec3 extent,

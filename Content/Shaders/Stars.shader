@@ -34,7 +34,7 @@ glslVertex: |
   
   void main() 
   {
-    gl_PointSize = 3;
+    gl_PointSize = 1;
   	gl_Position = frame.projection * frame.view * PushConstants.model * vec4(inPosition, 1.0);
 
     vec3 pos = gl_Position.xyz/gl_Position.w;

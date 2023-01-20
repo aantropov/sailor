@@ -177,7 +177,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VkImageCreateFlags flags = 0);
 
 		SAILOR_API static VulkanImagePtr CreateImage(
 			VulkanDevicePtr device,
@@ -189,7 +190,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 			VkSampleCountFlagBits sampleCount = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
-			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VkImageCreateFlags flags = 0);
 
 		SAILOR_API static VulkanCommandBufferPtr UpdateBuffer(VulkanDevicePtr device, const VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size);
 

@@ -574,7 +574,7 @@ VulkanRenderPassPtr VulkanApi::CreateDefaultRenderPass(VulkanDevicePtr device, V
 
 VulkanRenderPassPtr VulkanApi::CreateMSSRenderPass(VulkanDevicePtr device, VkFormat imageFormat, VkFormat depthFormat, VkSampleCountFlagBits samples)
 {
-	if (samples == VK_SAMPLE_COUNT_1_BIT)
+	if (samples & VK_SAMPLE_COUNT_1_BIT)
 	{
 		return CreateDefaultRenderPass(device, imageFormat, depthFormat);
 	}
@@ -854,7 +854,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	VkImageTiling tiling,
 	VkImageUsageFlags usage,
 	VkSharingMode sharingMode,
-	VkImageLayout defaultLayout)
+	VkImageLayout defaultLayout,
+	VkImageCreateFlags flags)
 {
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
@@ -872,7 +873,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->m_sharingMode = sharingMode;
 	outImage->m_defaultLayout = defaultLayout;
 	outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	outImage->m_flags = 0;
+	outImage->m_flags = flags;
 
 	outImage->Compile();
 
@@ -915,7 +916,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	VkImageUsageFlags usage,
 	VkSharingMode sharingMode,
 	VkSampleCountFlagBits sampleCount,
-	VkImageLayout defaultLayout)
+	VkImageLayout defaultLayout,
+	VkImageCreateFlags flags)
 {
 	VulkanImagePtr outImage = new VulkanImage(device);
 
@@ -930,7 +932,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->m_sharingMode = sharingMode;
 	outImage->m_defaultLayout = defaultLayout;
 	outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	outImage->m_flags = 0;
+	outImage->m_flags = flags;
 
 	outImage->Compile();
 

@@ -25,6 +25,7 @@ namespace Sailor::RHI
 	using RHISceneViewPtr = TSharedPtr<struct RHISceneView>;
 	using RHISurfacePtr = TRefPtr<class RHISurface>;
 	using RHIRenderTargetPtr = TRefPtr<class RHIRenderTarget>;
+	using RHICubemapPtr = TRefPtr<class RHICubemap>;
 
 	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
 	struct RHISceneViewSnapshot;

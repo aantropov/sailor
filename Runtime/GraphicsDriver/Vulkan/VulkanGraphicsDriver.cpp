@@ -1,6 +1,7 @@
 #include "VulkanGraphicsDriver.h"
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/Cubemap.h"
 #include "RHI/Surface.h"
 #include "RHI/Fence.h"
 #include "RHI/Mesh.h"
@@ -459,6 +460,67 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	return outTexture;
 }
 
+SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
+	glm::ivec2 extent,
+	uint32_t mipLevels,
+	RHI::ETextureFormat format,
+	RHI::ETextureFiltration filtration,
+	RHI::ETextureClamping clamping,
+	RHI::ETextureUsageFlags usage)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal;
+
+	if (const bool bIsUsedAsStorage = usage & VK_IMAGE_USAGE_STORAGE_BIT)
+	{
+		layout = (VkImageLayout)RHI::EImageLayout::General;
+	}
+	else if (const bool bIsUsedAsColorAttachment = usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+	{
+		layout = (VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal;
+	}
+
+	auto device = m_vkInstance->GetMainDevice();
+	RHI::RHICubemapPtr outCubemap = RHI::RHICubemapPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout);
+
+	VkExtent3D vkExtent;
+	vkExtent.width = extent.x;
+	vkExtent.height = extent.y;
+	vkExtent.depth = 1;
+
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Cubemap");
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+
+	outCubemap->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
+		vkExtent,
+		mipLevels,
+		VkImageType::VK_IMAGE_TYPE_2D,
+		(VkFormat)format,
+		VK_IMAGE_TILING_OPTIMAL,
+		(uint32_t)usage,
+		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+		VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
+		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal,
+		(VkImageCreateFlags)VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
+
+	// TODO: Assign faces
+
+	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
+
+	outCubemap->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outCubemap->m_vulkan.m_image);
+	outCubemap->m_vulkan.m_imageView->Compile();
+	outCubemap->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(outCubemap->GetDefaultLayout());
+
+	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+	TrackDelayedInitialization(outCubemap.GetRawPtr(), fenceUpdateRes);
+	SubmitCommandList(cmdList, fenceUpdateRes);
+
+	return outCubemap;
+}
+
+
 RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	glm::ivec2 extent,
 	uint32_t mipLevels,
@@ -501,7 +563,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::General;
+	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal;
 
 	if (const bool bIsUsedAsStorage = usage & VK_IMAGE_USAGE_STORAGE_BIT)
 	{
