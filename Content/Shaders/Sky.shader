@@ -194,9 +194,9 @@ glslFragment: |
   
   vec3 CalculateSunColor(vec3 sunDirection)
   {
-      const vec3 GroundIlluminance = vec3(0.0499, 0.004, 4.10 * 0.00001);
-      const vec3 HalfIlluminance = vec3(0.6f, 0.4490196f, 0.1588f);
       const vec3 ZenithIlluminance =  vec3(0.925, 0.861, 0.755);
+      const vec3 HalfIlluminance = vec3(0.6f, 0.4490196f, 0.1588f);
+      const vec3 GroundIlluminance = vec3(0.0499, 0.004, 4.10 * 0.00001) * 2;
       
       const float angle = dot(-sunDirection, vec3(0, 1, 0));
       
@@ -336,7 +336,7 @@ glslFragment: |
   {
     position.xz += vec2(0.1, 0.05) * frame.currentTime * 1000;
     
-    vec3 shift1 = vec3(-0.0021, 0.0017, -0.02f) * frame.currentTime * 0.5;
+    vec3 shift1 = vec3(-0.0021, 0.0017, -0.02f) * frame.currentTime * -1;
     vec3 shift2 = vec3(0.021, 0.017, 0.0f) * frame.currentTime * -0.2;
     
     const float cloudsLow = pow(texture(cloudsNoiseLowSampler, shift1 + position.xyz / 9000.0f).r, 1);
@@ -529,6 +529,12 @@ glslFragment: |
   
   #endif
   
+  float CalculateSunHeight(vec3 originWorldPos, vec3 worldViewDir, vec3 dirToSun)
+  {
+      const float l = (dot(worldViewDir, dirToSun) * length(originWorldPos));
+      return length(l * worldViewDir + originWorldPos) - R;
+  }
+  
   void main()
   {
     vec4 dirWorldSpace = vec4(0);
@@ -632,6 +638,6 @@ glslFragment: |
         dirWorldSpace.z *= -1;
         dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
         
-        outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);
+        outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);        
     #endif
   }
