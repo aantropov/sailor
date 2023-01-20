@@ -105,7 +105,7 @@ glslFragment: |
   layout(location = 0) out vec4 outColor;
   
   #define INTEGRAL_STEPS 8
-  #define INTEGRAL_STEPS_2 32
+  #define INTEGRAL_STEPS_2 128
   
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 60000.0f; // Atmosphere radius
