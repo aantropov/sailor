@@ -567,7 +567,7 @@ glslFragment: |
        {
          vec2 sunUv = ((vec2(dx, dy) / SunAngularR) + 1.0f) / 2.0f;
          sunUv.y = 1 - sunUv.y;
-         
+         sunUv.x = 1 - sunUv.x;
          const vec3 sunColor = texture(sunSampler, sunUv).xyz;
          float luminance = dot(sunColor,sunColor);
          outColor.xyz = max(outColor.xyz, mix(outColor.xyz, sunColor, clamp(0,1, luminance)));         
@@ -638,6 +638,6 @@ glslFragment: |
         dirWorldSpace.z *= -1;
         dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
         
-        outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);        
+        outColor.xyz = SkyLighting(origin, dirWorldSpace.xyz, -dirToSun);
     #endif
   }
