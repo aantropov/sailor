@@ -503,9 +503,26 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 		VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
 		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal,
-		(VkImageCreateFlags)VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
+		(VkImageCreateFlags)VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+		6);
 
-	// TODO: Assign faces
+	for (uint32_t i = 0; i < mipLevels; i++)
+	{
+		for (uint32_t face = 0; face < 6; face++)
+		{
+			RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+
+			target->m_vulkan.m_image = outCubemap->m_vulkan.m_image;
+			target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
+			target->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
+			target->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
+			target->m_vulkan.m_imageView->m_subresourceRange.baseArrayLayer = face;
+			target->m_vulkan.m_imageView->m_subresourceRange.layerCount = 1;
+			target->m_vulkan.m_imageView->Compile();
+
+			outCubemap->m_faces.Emplace(target);
+		}
+	}
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 

@@ -24,7 +24,23 @@ VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image) :
 	m_image(image),
 	m_device(device)
 {
-	m_viewType = image->m_imageType == VK_IMAGE_TYPE_3D ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D;
+	const bool bIsArray = image->m_arrayLayers > 1;
+
+	switch (image->m_imageType)
+	{
+	case VK_IMAGE_TYPE_3D:
+		m_viewType = VK_IMAGE_VIEW_TYPE_3D;
+		break;
+
+	default:
+		m_viewType = bIsArray ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+		break;
+	}
+
+	if (bIsArray && (image->m_flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT))
+	{
+		m_viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+	}
 
 	m_format = image->m_format;
 	m_subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
@@ -35,18 +51,9 @@ VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image) :
 }
 
 VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image, VkImageAspectFlags aspectFlags) :
-	m_image(image),
-	m_device(device)
-
+	VulkanImageView(device, image)
 {
-	m_viewType = image->m_imageType == VK_IMAGE_TYPE_3D ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D;
-
-	m_format = image->m_format;
 	m_subresourceRange.aspectMask = aspectFlags;
-	m_subresourceRange.baseMipLevel = 0;
-	m_subresourceRange.levelCount = image->m_mipLevels;
-	m_subresourceRange.baseArrayLayer = 0;
-	m_subresourceRange.layerCount = image->m_arrayLayers;
 }
 
 void VulkanImageView::Compile()

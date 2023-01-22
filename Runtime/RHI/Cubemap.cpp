@@ -9,8 +9,15 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-RHIRenderTargetPtr RHICubemap::GetFace(uint32_t face) const
+RHITexturePtr RHICubemap::GetFace(uint32_t face, uint32_t mipLevel) const
 {
-	check(face < m_faces.Num());
-	return m_faces[face];
+	if (!HasMipMaps() && mipLevel > 0)
+	{
+		return nullptr;
+	}
+
+	uint32_t index = mipLevel * 6 + face;
+
+	check(index < m_faces.Num());
+	return m_faces[index];
 }

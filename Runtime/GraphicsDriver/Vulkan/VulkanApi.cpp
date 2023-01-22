@@ -855,7 +855,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	VkImageUsageFlags usage,
 	VkSharingMode sharingMode,
 	VkImageLayout defaultLayout,
-	VkImageCreateFlags flags)
+	VkImageCreateFlags flags,
+	uint32_t arrayLayers)
 {
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, device->GetMemoryRequirements_StagingBuffer().alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
@@ -869,7 +870,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->m_usage = usage;
 	outImage->m_mipLevels = mipLevels;
 	outImage->m_samples = VK_SAMPLE_COUNT_1_BIT;
-	outImage->m_arrayLayers = 1;
+	outImage->m_arrayLayers = arrayLayers;
 	outImage->m_sharingMode = sharingMode;
 	outImage->m_defaultLayout = defaultLayout;
 	outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -917,7 +918,8 @@ VulkanImagePtr VulkanApi::CreateImage(
 	VkSharingMode sharingMode,
 	VkSampleCountFlagBits sampleCount,
 	VkImageLayout defaultLayout,
-	VkImageCreateFlags flags)
+	VkImageCreateFlags flags,
+	uint32_t arrayLayers)
 {
 	VulkanImagePtr outImage = new VulkanImage(device);
 
@@ -928,7 +930,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->m_usage = usage;
 	outImage->m_mipLevels = mipLevels;
 	outImage->m_samples = sampleCount;
-	outImage->m_arrayLayers = 1;
+	outImage->m_arrayLayers = arrayLayers;
 	outImage->m_sharingMode = sharingMode;
 	outImage->m_defaultLayout = defaultLayout;
 	outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;

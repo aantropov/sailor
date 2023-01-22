@@ -12,7 +12,7 @@ using namespace GraphicsDriver::Vulkan;
 
 namespace Sailor::RHI
 {
-	class RHICubemap: public RHITexture
+	class RHICubemap : public RHITexture
 	{
 	public:
 
@@ -20,10 +20,10 @@ namespace Sailor::RHI
 			RHITexture(filtration, clamping, bShouldGenerateMips, defaultLayout)
 		{}
 
-		RHIRenderTargetPtr GetFace(uint32_t face) const;		
+		RHITexturePtr GetFace(uint32_t face, uint32_t mipLevel = 0) const;
 	protected:
 
-		TVector<RHIRenderTargetPtr> m_faces;
+		TVector<RHITexturePtr> m_faces;
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		friend class Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver;
