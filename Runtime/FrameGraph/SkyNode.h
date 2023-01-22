@@ -138,6 +138,7 @@ namespace Sailor::Framegraph
 		TVector<uint8_t> GenerateCloudsNoiseHigh() const;
 
 		uint32_t m_ditherPatternIndex = 0;
+		uint32_t m_updateEnvCubemapPattern = 0;
 	};
 
 	template class TFrameGraphNode<SkyNode>;

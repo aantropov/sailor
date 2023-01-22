@@ -489,10 +489,6 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 	vkExtent.height = extent.y;
 	vkExtent.depth = 1;
 
-	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
-	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Cubemap");
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
-
 	outCubemap->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
 		vkExtent,
 		mipLevels,
@@ -525,11 +521,21 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 		}
 	}
 
-	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
-
 	outCubemap->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outCubemap->m_vulkan.m_image);
 	outCubemap->m_vulkan.m_imageView->Compile();
 	outCubemap->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(outCubemap->GetDefaultLayout());
+
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Cubemap");
+	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+
+	RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
+		outCubemap,
+		outCubemap->GetFormat(),
+		RHI::EImageLayout::Undefined,
+		(RHI::EImageLayout)layout);
+
+	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
 	TrackDelayedInitialization(outCubemap.GetRawPtr(), fenceUpdateRes);
@@ -1317,11 +1323,17 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaRenderTarget(RHI::EFormat t
 	return m_cachedMsaaRenderTargets[hash] = target;
 }
 
-// IGraphicsDriverCommands
 void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr)
 {
 	cmd->m_vulkan.m_commandBuffer->PushConstants(material->m_vulkan.m_pipeline->m_layout, 0, size, ptr);
 }
+
+void VulkanGraphicsDriver::GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target)
+{
+	cmd->m_vulkan.m_commandBuffer->GenerateMipMaps(target->m_vulkan.m_image);
+}
+
+// IGraphicsDriverCommands
 
 void VulkanGraphicsDriver::MemoryBarrier(RHI::RHICommandListPtr cmd, RHI::EAccessFlags srcAccess, RHI::EAccessFlags dstAccess)
 {

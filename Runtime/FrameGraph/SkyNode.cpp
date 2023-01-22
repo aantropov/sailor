@@ -713,26 +713,27 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	{
 		commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
 
-		for (uint32_t face = 0; face < 6; face++)
+		//for (uint32_t face = 0; face < 6; face++)
+		uint32_t face = m_updateEnvCubemapPattern % 6;
 		{
-			RHITexturePtr target = cubemap->GetFace(face, 0);
+			RHITexturePtr targetFace = cubemap->GetFace(face, 0);
 
-			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), targetFace->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 			commands->BindMaterial(commandList, m_pSkyMaterial);
-			commands->BindShaderBindings(commandList, m_pSkyMaterial, { m_pEnvCubemapBindings[face], m_pShaderBindings});
+			commands->BindShaderBindings(commandList, m_pSkyMaterial, { m_pEnvCubemapBindings[face], m_pShaderBindings });
 
 			commands->SetViewport(commandList,
 				0, 0,
-				(float)target->GetExtent().x, (float)target->GetExtent().y,
+				(float)targetFace->GetExtent().x, (float)targetFace->GetExtent().y,
 				glm::vec2(0, 0),
-				glm::vec2(target->GetExtent().x, target->GetExtent().y),
+				glm::vec2(targetFace->GetExtent().x, targetFace->GetExtent().y),
 				0, 1.0f);
 
 			commands->BeginRenderPass(commandList,
-				TVector<RHI::RHITexturePtr>{target},
+				TVector<RHI::RHITexturePtr>{targetFace},
 				nullptr,
-				glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+				glm::vec4(0, 0, targetFace->GetExtent().x, targetFace->GetExtent().y),
 				glm::ivec2(0, 0),
 				false,
 				glm::vec4(0.0f),
@@ -741,14 +742,19 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 			commands->EndRenderPass(commandList);
 
-			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());			
+			commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), EImageLayout::ColorAttachmentOptimal, targetFace->GetDefaultLayout());
 		}
+
+		//commands->ImageMemoryBarrier(commandList, cubemap, cubemap->GetFormat(), cubemap->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+		//commands->GenerateMipMaps(commandList, cubemap);
+
 		commands->EndDebugRegion(commandList);
 	}
 
 	commands->EndDebugRegion(commandList);
 
 	m_ditherPatternIndex++;
+	m_updateEnvCubemapPattern++;
 }
 
 void SkyNode::Clear()
