@@ -78,10 +78,9 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });
 	commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
-	// TODO: Pipeline without depthAttachment
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{target},
-		depthAttachment,
+		nullptr,
 		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,

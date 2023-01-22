@@ -126,11 +126,7 @@ void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
 	driver->AddSamplerToShaderBindings(m_shaderBindings, "colorSampler", src, 0);
 	m_shaderBindings->RecalculateCompatibility();
 
-	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
-
 	auto target = dst->GetTarget();
-
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal);
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
@@ -149,7 +145,7 @@ void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
 
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHISurfacePtr>{dst},
-		depthAttachment,
+		nullptr,
 		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
@@ -161,8 +157,6 @@ void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 	commands->EndRenderPass(commandList);
-
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 }
 
 void BlitNode::Clear()

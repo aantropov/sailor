@@ -34,8 +34,6 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		target = frameGraph->GetRenderTarget("BackBuffer");
 	}
 
-	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
-
 	if (!m_pShader)
 	{
 		auto shaderPath = GetString("shader");
@@ -101,7 +99,6 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		}
 	}
 
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 	SAILOR_PROFILE_END_BLOCK();
@@ -120,12 +117,11 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		glm::vec2(target->GetExtent().x, target->GetExtent().y),
 		0, 1.0f);
 
-	// TODO: Pipeline without depthAttachment
 	if (bShouldUseMsaaTarget)
 	{
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHISurfacePtr>{targetMsaa},
-			depthAttachment,
+			nullptr,
 			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 			glm::ivec2(0, 0),
 			false,
@@ -136,7 +132,7 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	{
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{target},
-			depthAttachment,
+			nullptr,
 			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 			glm::ivec2(0, 0),
 			false,
@@ -166,7 +162,6 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	}
 
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 
 	commands->EndDebugRegion(commandList);
 	SAILOR_PROFILE_END_BLOCK();

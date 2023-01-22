@@ -30,7 +30,7 @@ FrameGraphNodePtr RHIFrameGraph::GetGraphNode(const std::string& tag)
 	return nullptr;
 }
 
-void RHIFrameGraph::SetSampler(const std::string& name, TexturePtr sampler)
+void RHIFrameGraph::SetSampler(const std::string& name, RHI::RHITexturePtr sampler)
 {
 	m_samplers[name] = sampler;
 }
@@ -138,11 +138,11 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 	}
 }
 
-TexturePtr RHIFrameGraph::GetSampler(const std::string& name)
+RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name)
 {
 	if (!m_samplers.ContainsKey(name))
 	{
-		return TexturePtr();
+		return RHITexturePtr();
 	}
 
 	return m_samplers[name];

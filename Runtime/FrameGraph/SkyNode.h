@@ -107,6 +107,7 @@ namespace Sailor::Framegraph
 
 		RHI::RHIShaderBindingSetPtr m_pShaderBindings{};
 		RHI::RHIShaderBindingSetPtr m_pBlitBindings{};
+		RHI::RHIShaderBindingSetPtr m_pEnvCubemapBindings[6]{};
 
 		RHI::RHITexturePtr m_pSkyTexture{};
 		RHI::RHITexturePtr m_pSunTexture{};

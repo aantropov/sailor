@@ -514,6 +514,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 
 			target->m_vulkan.m_image = outCubemap->m_vulkan.m_image;
 			target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
+			target->m_vulkan.m_imageView->m_viewType = VK_IMAGE_VIEW_TYPE_2D;
 			target->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
 			target->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
 			target->m_vulkan.m_imageView->m_subresourceRange.baseArrayLayer = face;
@@ -536,7 +537,6 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 
 	return outCubemap;
 }
-
 
 RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	glm::ivec2 extent,
@@ -1637,11 +1637,17 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 		clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
 
-		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
-		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
+		VulkanImageViewPtr msaaDepthStencilTarget{};
+		VulkanImageViewPtr vulkanDepthStencil{};
 
-		const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
-		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+		if (depthStencilAttachment)
+		{
+			auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
+			vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
+
+			const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
+			msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+		}
 
 		cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(
 			target,

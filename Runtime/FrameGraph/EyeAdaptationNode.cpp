@@ -27,7 +27,6 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color");
-	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 
 	if (!m_pComputeHistogramShader)
 	{
@@ -183,7 +182,6 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		&pushConstantsAverage, sizeof(float) * 4);
 	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
 
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 	auto& fullResolutionBinding = m_shaderBindings->GetOrAddShaderBinding("colorSampler")->GetTextureBinding();
@@ -205,10 +203,9 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		glm::vec2(target->GetExtent().x, target->GetExtent().y),
 		0, 1.0f);
 
-	// TODO: Pipeline without depthAttachment
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{target},
-		depthAttachment,
+		nullptr,
 		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
@@ -225,7 +222,6 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	commands->ImageMemoryBarrier(commandList, fullResolutionBinding, fullResolutionBinding->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, fullResolutionBinding->GetDefaultLayout());
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_averageLuminance->GetDefaultLayout());
 
 	SAILOR_PROFILE_END_BLOCK();

@@ -4,6 +4,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/Cubemap.h"
 #include "RHI/Texture.h"
 #include "RHI/VertexDescription.h"
 #include "Engine/World.h"
@@ -91,17 +92,17 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		})->Then<RHI::RHIMeshPtr, TParseRes>([](const TParseRes& res) mutable
 			{
 				const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
-				const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
+		const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
 
-				auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 
-				RHI::RHIMeshPtr mesh = driver->CreateMesh();
+		RHI::RHIMeshPtr mesh = driver->CreateMesh();
 
-				mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
-				mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
-				driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
+		mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
+		mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
+		driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
 
-				return mesh;
+		return mesh;
 			}, "Create Stars Mesh", Tasks::EThreadType::RHI);
 
 		task->Run();
@@ -280,7 +281,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseHigh();
-					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
+			AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -294,7 +295,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseLow();
-					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
+			AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -420,10 +421,10 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsNoiseHighSampler", m_pCloudsNoiseHighTexture, 5);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "cloudsSampler", m_pCloudsTexture, 6);
 
-		auto ditherPattern = frameGraph->GetSampler("g_ditherPatternSampler")->GetRHI();
+		auto ditherPattern = frameGraph->GetSampler("g_ditherPatternSampler");
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "g_ditherPatternSampler", ditherPattern, 7);
 
-		auto noise = frameGraph->GetSampler("g_noiseSampler")->GetRHI();
+		auto noise = frameGraph->GetSampler("g_noiseSampler");
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "g_noiseSampler", noise, 8);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
@@ -456,6 +457,38 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		m_pBlitMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlitShader, m_pBlitBindings);
 	}
 
+	if (!m_pEnvCubemapBindings[0])
+	{
+		const glm::mat prjMatrix = Math::PerspectiveRH(glm::radians(120.0f), 1.0f, 0.1f, 1000.0f);
+		const TVector<glm::mat4x4> viewMatrices{
+			glm::rotate(glm::mat4(1), glm::radians(0.0f), Math::vec3_Up),
+			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up),
+			glm::rotate(glm::mat4(1), glm::radians(180.0f), Math::vec3_Up),
+			glm::rotate(glm::mat4(1), glm::radians(270.0f), Math::vec3_Up),
+			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Right),
+			glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Right),
+		};
+
+		for (uint32_t face = 0; face < 6; face++)
+		{
+			m_pEnvCubemapBindings[face] = driver->CreateShaderBindings();
+			Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_pEnvCubemapBindings[face], "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
+
+			RHI::UboFrameData frameData{};
+			frameData.m_cameraPosition = sceneView.m_cameraPosition;
+			frameData.m_projection = prjMatrix;
+			frameData.m_invProjection = glm::inverse(prjMatrix);
+
+			frameData.m_view = viewMatrices[face];
+			frameData.m_viewportSize = glm::ivec2(128, 128);
+
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCommandList,
+				m_pEnvCubemapBindings[face]->GetOrAddShaderBinding("frameData"),
+				&frameData,
+				sizeof(frameData));
+		}
+	}
+
 	if (!m_pStarsMaterial)
 	{
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3C4>();
@@ -476,7 +509,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 	commands->BeginDebugRegion(commandList, "Sky", DebugContext::Color_CmdPostProcess);
 	{
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal);
 		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), m_pSkyTexture->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 		commands->BindMaterial(commandList, m_pSkyMaterial);
@@ -491,7 +523,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{m_pSkyTexture},
-			depthAttachment,
+			nullptr,
 			glm::vec4(0, 0, m_pSkyTexture->GetExtent().x, m_pSkyTexture->GetExtent().y),
 			glm::ivec2(0, 0),
 			false,
@@ -502,7 +534,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->EndRenderPass(commandList);
 
 		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), EImageLayout::ColorAttachmentOptimal, m_pSkyTexture->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
 
@@ -511,7 +542,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 		commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal);
 		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), m_pSkyTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
@@ -538,7 +568,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 		commands->EndRenderPass(commandList);
 
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pSkyTexture->GetDefaultLayout());
 		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::ColorAttachmentOptimal, m_pCloudsTexture->GetDefaultLayout());
 
@@ -547,7 +576,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 	commands->BeginDebugRegion(commandList, "Sun", DebugContext::Color_CmdPostProcess);
 	{
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal);
 		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetFormat(), m_pSunTexture->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 
@@ -563,7 +591,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{m_pSunTexture},
-			depthAttachment,
+			nullptr,
 			glm::vec4(0, 0, m_pSunTexture->GetExtent().x, m_pSunTexture->GetExtent().y),
 			glm::ivec2(0, 0),
 			false,
@@ -575,7 +603,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pCloudsTexture->GetDefaultLayout());
 		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetFormat(), EImageLayout::ColorAttachmentOptimal, m_pSunTexture->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
 
@@ -584,7 +611,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 		commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal);
 		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), m_pSkyTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetFormat(), m_pSunTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
@@ -601,7 +627,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{target},
-			depthAttachment,
+			nullptr,
 			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
 			glm::ivec2(0, 0),
 			false,
@@ -614,7 +640,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pSkyTexture->GetDefaultLayout());
 		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pSunTexture->GetDefaultLayout());
 		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
 
@@ -682,8 +707,45 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
 		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
-
 	commands->EndDebugRegion(commandList);
+
+	if (auto cubemap = frameGraph->GetSampler("g_EnvCubemap").DynamicCast<RHICubemap>())
+	{
+		commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
+
+		for (uint32_t face = 0; face < 6; face++)
+		{
+			RHITexturePtr target = cubemap->GetFace(face, 0);
+
+			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+
+			commands->BindMaterial(commandList, m_pSkyMaterial);
+			commands->BindShaderBindings(commandList, m_pSkyMaterial, { m_pEnvCubemapBindings[face], m_pShaderBindings});
+
+			commands->SetViewport(commandList,
+				0, 0,
+				(float)target->GetExtent().x, (float)target->GetExtent().y,
+				glm::vec2(0, 0),
+				glm::vec2(target->GetExtent().x, target->GetExtent().y),
+				0, 1.0f);
+
+			commands->BeginRenderPass(commandList,
+				TVector<RHI::RHITexturePtr>{target},
+				nullptr,
+				glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+				glm::ivec2(0, 0),
+				false,
+				glm::vec4(0.0f),
+				false);
+
+			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			commands->EndRenderPass(commandList);
+
+			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());			
+		}
+		commands->EndDebugRegion(commandList);
+	}
+
 	commands->EndDebugRegion(commandList);
 
 	m_ditherPatternIndex++;

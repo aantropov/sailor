@@ -13,6 +13,7 @@
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/Cubemap.h"
 #include "RHI/Surface.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Core/YamlSerializable.h"
@@ -140,7 +141,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 				App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetUID(), texture);
 			}
 		}
-		pRhiFrameGraph->SetSampler(sampler.m_first, texture);
+		pRhiFrameGraph->SetSampler(sampler.m_first, texture->GetRHI());
 	}
 
 	for (auto& node : frameGraphAsset->m_nodes)
@@ -183,13 +184,19 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 			}
 			else if (auto pTextureTarget = pRhiFrameGraph->GetSampler(param.m_second))
 			{
-				pNewNode->SetRHIResource(param.m_first, pTextureTarget->GetRHI());
+				pNewNode->SetRHIResource(param.m_first, pTextureTarget);
 			}
 		}
 		// TODO: Build params
 		graph.Add(pNewNode);
 	}
 
+	const glm::ivec2 envCubemapExtent = glm::ivec2(128, 128);
+
+	RHI::RHITexturePtr g_EnvCubemap = RHI::Renderer::GetDriver()->CreateCubemap(envCubemapExtent, 7, RHI::EFormat::R16G16B16A16_SFLOAT);
+	RHI::Renderer::GetDriver()->SetDebugName(g_EnvCubemap, "g_EnvCubemap");
+
+	pRhiFrameGraph->SetSampler("g_EnvCubemap", g_EnvCubemap);
 	pFrameGraph->m_frameGraph = pRhiFrameGraph;
 
 	return pFrameGraph;

@@ -41,7 +41,7 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	{
 		m_computeUpscaleBindings = driver->CreateShaderBindings();
 
-		RHI::RHITexturePtr lensDirtTexture = frameGraph->GetSampler("g_lensDirtSampler")->GetRHI();
+		RHI::RHITexturePtr lensDirtTexture = frameGraph->GetSampler("g_lensDirtSampler");
 		driver->AddSamplerToShaderBindings(m_computeUpscaleBindings, "u_dirt_texture", lensDirtTexture, 2);
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeBloomUpscale.shader"))
