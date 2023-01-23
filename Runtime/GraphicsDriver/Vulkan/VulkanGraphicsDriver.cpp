@@ -498,7 +498,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 		VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
-		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal,
+		layout,
 		(VkImageCreateFlags)VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
 		6);
 

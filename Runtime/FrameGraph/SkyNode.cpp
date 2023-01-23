@@ -461,12 +461,12 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	{
 		const glm::mat prjMatrix = Math::PerspectiveRH(glm::radians(120.0f), 1.0f, 0.1f, 1000.0f);
 		const TVector<glm::mat4x4> viewMatrices{
-			glm::rotate(glm::mat4(1), glm::radians(0.0f), Math::vec3_Up),
 			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up),
-			glm::rotate(glm::mat4(1), glm::radians(180.0f), Math::vec3_Up),
-			glm::rotate(glm::mat4(1), glm::radians(270.0f), Math::vec3_Up),
-			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Right),
+			glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Up),
 			glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Right),
+			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Right),
+			glm::rotate(glm::mat4(1), glm::radians(180.0f), Math::vec3_Up),
+			glm::rotate(glm::mat4(1), glm::radians(0.0f), Math::vec3_Up),
 		};
 
 		for (uint32_t face = 0; face < 6; face++)
@@ -714,7 +714,8 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
 
 		//for (uint32_t face = 0; face < 6; face++)
-		uint32_t face = m_updateEnvCubemapPattern % 6;
+		uint32_t face = m_updateEnvCubemapPattern % 7;
+		if (face < 6)
 		{
 			RHITexturePtr targetFace = cubemap->GetFace(face, 0);
 
@@ -744,9 +745,11 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 			commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), EImageLayout::ColorAttachmentOptimal, targetFace->GetDefaultLayout());
 		}
-
-		//commands->ImageMemoryBarrier(commandList, cubemap, cubemap->GetFormat(), cubemap->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
-		//commands->GenerateMipMaps(commandList, cubemap);
+		else
+		{
+			commands->ImageMemoryBarrier(commandList, cubemap, cubemap->GetFormat(), cubemap->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+			commands->GenerateMipMaps(commandList, cubemap);
+		}
 
 		commands->EndDebugRegion(commandList);
 	}
