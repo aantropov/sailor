@@ -12,8 +12,8 @@ shaderUid: "{E42B1499-8C0C-47E3-9584-E7BB6CD821FC}"
 samplers:
   - diffuseSampler: "{286C2AE4-7CA2-42C9-98FD-C8C71309A986}"
   - ambientSampler: "{286C2AE4-7CA2-42C9-98FD-C8C71309A986}"
-uniforms:
-  - material.diffuse:
+uniformsVec4:
+  - material.albedo:
       - 0.470400006
       - 0.470400006
       - 0.470400006
@@ -33,3 +33,4 @@ uniforms:
       - 0
       - 0
       - 0
+uniformsFloat: ~

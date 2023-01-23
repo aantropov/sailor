@@ -37,7 +37,8 @@ namespace Sailor
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_commonShaderBindings; }
 
 		SAILOR_API const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
-		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniforms() const { return m_uniforms; }
+		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniformsVec4() const { return m_uniformsVec4; }
+		SAILOR_API const TConcurrentMap<std::string, float>& GetUniformsFloat() const { return m_uniformsFloat; }
 
 		SAILOR_API void ClearSamplers();
 		SAILOR_API void ClearUniforms();
@@ -53,6 +54,7 @@ namespace Sailor
 
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
 		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
+		SAILOR_API void SetUniform(const std::string& name, float value);
 		SAILOR_API void SetShader(ShaderSetPtr shader) { m_shader = shader; }
 		SAILOR_API void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
 
@@ -72,7 +74,8 @@ namespace Sailor
 
 		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_rhiMaterials;
 		TConcurrentMap<std::string, TexturePtr> m_samplers;
-		TConcurrentMap<std::string, glm::vec4> m_uniforms;
+		TConcurrentMap<std::string, glm::vec4> m_uniformsVec4;
+		TConcurrentMap<std::string, float> m_uniformsFloat;
 
 		friend class MaterialImporter;
 	};
@@ -113,6 +116,7 @@ namespace Sailor
 			TVector<std::string> m_shaderDefines;
 			TVector<SamplerEntry> m_samplers;
 			TVector<TPair<std::string, glm::vec4>> m_uniformsVec4;
+			TVector<TPair<std::string, float>> m_uniformsFloat;
 
 			UID m_shader;
 		};
@@ -127,7 +131,8 @@ namespace Sailor
 		SAILOR_API const UID& GetShader() const { return m_pData->m_shader; }
 		SAILOR_API const TVector<std::string>& GetShaderDefines() const { return  m_pData->m_shaderDefines; }
 		SAILOR_API const TVector<SamplerEntry>& GetSamplers() const { return m_pData->m_samplers; }
-		SAILOR_API const TVector<TPair<std::string, glm::vec4>>& GetUniformValues() const { return m_pData->m_uniformsVec4; }
+		SAILOR_API const TVector<TPair<std::string, glm::vec4>>& GetUniformsVec4() const { return m_pData->m_uniformsVec4; }
+		SAILOR_API const TVector<TPair<std::string, float>>& GetUniformsFloat() const { return m_pData->m_uniformsFloat; }
 
 	protected:
 

@@ -200,14 +200,14 @@ void TestComponent::Tick(float deltaTime)
 			{
 				for (auto& mat : mr->GetMaterials())
 				{
-					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.ambient"))
+					if (mat && mat->IsReady() && mat->GetShaderBindings()->HasParameter("material.albedo"))
 					{
 						mat = Material::CreateInstance(GetWorld(), mat);
 
 						const glm::vec4 color = glm::vec4(glm::ballRand(1.0f), 1);
 
 						commands->SetMaterialParameter(GetWorld()->GetCommandList(),
-							mat->GetShaderBindings(), "material.ambient", color);
+							mat->GetShaderBindings(), "material.albedo", color);
 					}
 				}
 			}

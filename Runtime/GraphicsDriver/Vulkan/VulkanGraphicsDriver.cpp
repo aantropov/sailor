@@ -819,11 +819,12 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 			auto& storageAllocator = GetMaterialSsboAllocator();
 
 			// We're storing different material's data with its different size in one SSBO, we need to allign properly
-			binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(storageAllocator->Allocate(layoutBinding.m_size, layoutBinding.m_size), storageAllocator);
+			const uint32_t paddedSize = layoutBinding.m_size + layoutBinding.m_size % 8;
+			binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(storageAllocator->Allocate(paddedSize, paddedSize), storageAllocator);
 			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
 
-			check(((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % layoutBinding.m_size) == 0);
-			uint32_t instanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / layoutBinding.m_size);
+			check(((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % paddedSize) == 0);
+			uint32_t instanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / paddedSize);
 
 			binding->m_vulkan.m_storageInstanceIndex = instanceIndex;
 			binding->SetLayout(layoutBinding);
@@ -1061,21 +1062,23 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	TSharedPtr<VulkanBufferAllocator> allocator = GetGeneralSsboAllocator();
 
-	size_t alignment = elementSize;
+	const size_t paddedSize = elementSize + elementSize % sizeof(8);
+
+	size_t alignment = paddedSize;
 
 	if (bBindSsboWithOffset)
 	{
 		// We should use the correct alignment
 		const size_t reqAlignment = device->GetMinSsboOffsetAlignment();
-		alignment = reqAlignment > elementSize ? (reqAlignment % elementSize == 0 ? reqAlignment : elementSize * reqAlignment) : elementSize;
+		alignment = reqAlignment > paddedSize ? (reqAlignment % paddedSize == 0 ? reqAlignment : paddedSize * reqAlignment) : paddedSize;
 	}
 
-	auto vulkanBufferMemoryPtr = allocator->Allocate(elementSize * numElements, alignment);
+	auto vulkanBufferMemoryPtr = allocator->Allocate(paddedSize * numElements, alignment);
 	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(vulkanBufferMemoryPtr, allocator);
 
-	check((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % elementSize == 0);
+	check((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % paddedSize == 0);
 
-	binding->m_vulkan.m_storageInstanceIndex = bBindSsboWithOffset ? 0 : (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / elementSize);
+	binding->m_vulkan.m_storageInstanceIndex = bBindSsboWithOffset ? 0 : (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / paddedSize);
 	binding->m_vulkan.m_bBindSsboWithOffset = bBindSsboWithOffset;
 
 	// // First try to find in existed layouts
@@ -1117,8 +1120,12 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
 		allocator = GetGeneralSsboAllocator();
-		binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(size, size), allocator);
-		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding->Get()).m_offset / size);
+		
+		// TODO: rewrite strictly according to std430
+		const size_t paddedSize = size + size % sizeof(8);
+
+		binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(allocator->Allocate(paddedSize, paddedSize), allocator);
+		binding->m_vulkan.m_storageInstanceIndex = (uint32_t)((**binding->m_vulkan.m_valueBinding->Get()).m_offset / paddedSize);
 	}
 	else
 	{

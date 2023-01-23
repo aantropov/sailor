@@ -132,7 +132,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		memcpy(&ambient, material.ambient, 3 * sizeof(tinyobj::real_t));
 		memcpy(&emission, material.emission, 3 * sizeof(tinyobj::real_t));
 		memcpy(&specular, material.specular, 3 * sizeof(tinyobj::real_t));
-		data.m_uniformsVec4.Add({ "material.diffuse", diffuse });
+		data.m_uniformsVec4.Add({ "material.albedo", diffuse });
 		data.m_uniformsVec4.Add({ "material.ambient", ambient });
 		data.m_uniformsVec4.Add({ "material.emission", emission });
 		data.m_uniformsVec4.Add({ "material.specular", specular });

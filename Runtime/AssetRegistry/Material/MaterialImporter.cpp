@@ -37,7 +37,8 @@ MaterialPtr Material::CreateInstance(WorldPtr world, const MaterialPtr& material
 
 	MaterialPtr newMaterial = MaterialPtr::Make(allocator, material->GetUID());
 
-	newMaterial->m_uniforms = material->m_uniforms;
+	newMaterial->m_uniformsVec4 = material->m_uniformsVec4;
+	newMaterial->m_uniformsFloat = material->m_uniformsFloat;
 	newMaterial->m_renderState = material->GetRenderState();
 	newMaterial->m_samplers = material->GetSamplers();
 	newMaterial->m_shader = material->GetShader();
@@ -54,10 +55,10 @@ Tasks::ITaskPtr Material::OnHotReload()
 	m_bIsDirty = true;
 
 	auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
-	{
-		UpdateRHIResource();
-		ForcelyUpdateUniforms();
-	}, Tasks::EThreadType::Render);
+		{
+			UpdateRHIResource();
+	ForcelyUpdateUniforms();
+		}, Tasks::EThreadType::Render);
 
 	return updateRHI;
 }
@@ -75,7 +76,8 @@ void Material::ClearSamplers()
 
 void Material::ClearUniforms()
 {
-	m_uniforms.Clear();
+	m_uniformsVec4.Clear();
+	m_uniformsFloat.Clear();
 }
 
 void Material::SetSampler(const std::string& name, TexturePtr value)
@@ -89,11 +91,19 @@ void Material::SetSampler(const std::string& name, TexturePtr value)
 	}
 }
 
+void Material::SetUniform(const std::string& name, float value)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	m_uniformsFloat[name] = value;
+	m_bIsDirty = true;
+}
+
 void Material::SetUniform(const std::string& name, glm::vec4 value)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_uniforms[name] = value;
+	m_uniformsVec4[name] = value;
 	m_bIsDirty = true;
 }
 
@@ -150,7 +160,21 @@ void Material::UpdateRHIResource()
 
 	SAILOR_PROFILE_BLOCK("Update shader bindings");
 	// Create all bindings first
-	for (auto& uniform : m_uniforms)
+
+	// TODO: Remove boilerplate
+	for (auto& uniform : m_uniformsVec4)
+	{
+		if (m_commonShaderBindings->HasParameter(uniform.m_first))
+		{
+			std::string outBinding;
+			std::string outVariable;
+
+			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
+			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+		}
+	}
+
+	for (auto& uniform : m_uniformsFloat)
 	{
 		if (m_commonShaderBindings->HasParameter(uniform.m_first))
 		{
@@ -169,7 +193,8 @@ void Material::UpdateRHIResource()
 
 void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 {
-	for (auto& uniform : m_uniforms)
+	// TODO: Remove boilerplate
+	for (auto& uniform : m_uniformsVec4)
 	{
 		if (m_commonShaderBindings->HasParameter(uniform.m_first))
 		{
@@ -180,6 +205,21 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 
 			const glm::vec4 value = uniform.m_second;
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
+		}
+	}
+
+	for (auto& uniform : m_uniformsFloat)
+	{
+		if (m_commonShaderBindings->HasParameter(uniform.m_first))
+		{
+			std::string outBinding;
+			std::string outVariable;
+
+			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
+			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+
+			const float value = uniform.m_second;
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
 		}
 	}
@@ -202,9 +242,9 @@ void Material::ForcelyUpdateUniforms()
 	// Submit cmd lists
 	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Update shader bindings set rhi",
 		([this, cmdList, fence]()
-	{
-		RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
-	}));
+			{
+				RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
+			}));
 }
 
 YAML::Node MaterialAsset::Serialize() const
@@ -225,7 +265,8 @@ YAML::Node MaterialAsset::Serialize() const
 
 	outData["shaderUid"] = m_pData->m_shader;
 	outData["samplers"] = m_pData->m_samplers;
-	outData["uniforms"] = m_pData->m_uniformsVec4;
+	outData["uniformsVec4"] = m_pData->m_uniformsVec4;
+	outData["uniformsFloat"] = m_pData->m_uniformsFloat;
 
 	return outData;
 }
@@ -302,9 +343,14 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 		m_pData->m_samplers = outData["samplers"].as<TVector<SamplerEntry>>();
 	}
 
-	if (outData["uniforms"])
+	if (outData["uniformsVec4"])
 	{
-		m_pData->m_uniformsVec4 = outData["uniforms"].as<TVector<TPair<std::string, glm::vec4>>>();
+		m_pData->m_uniformsVec4 = outData["uniformsVec4"].as<TVector<TPair<std::string, glm::vec4>>>();
+	}
+
+	if (outData["uniformsFloat"])
+	{
+		m_pData->m_uniformsFloat = outData["uniformsFloat"].as<TVector<TPair<std::string, float>>>();
 	}
 
 	if (outData["shaderUid"])
@@ -347,22 +393,22 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 
 				auto pMaterial = material;
 
-				pMaterial->GetShader()->RemoveHotReloadDependentObject(material);
-				pMaterial->ClearSamplers();
-				pMaterial->ClearUniforms();
+			pMaterial->GetShader()->RemoveHotReloadDependentObject(material);
+			pMaterial->ClearSamplers();
+			pMaterial->ClearUniforms();
 
-				ShaderSetPtr pShader;
-				auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
+			ShaderSetPtr pShader;
+			auto pLoadShader = App::GetSubmodule<ShaderCompiler>()->LoadShader(pMaterialAsset->GetShader(), pShader, pMaterialAsset->GetShaderDefines());
 
-				pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
+			pMaterial->SetRenderState(pMaterialAsset->GetRenderState());
 
-				pMaterial->SetShader(pShader);
-				pShader->AddHotReloadDependentObject(material);
+			pMaterial->SetShader(pShader);
+			pShader->AddHotReloadDependentObject(material);
 
-				const UID uid = pMaterial->GetUID();
-				const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
+			const UID uid = pMaterial->GetUID();
+			const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
 
-				auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]() mutable
+			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]() mutable
 				{
 					if (pMaterial->GetShader()->IsReady())
 					{
@@ -379,29 +425,34 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					}
 				}, Tasks::EThreadType::Render);
 
-				// Preload textures
-				for (auto& sampler : pMaterialAsset->GetSamplers())
-				{
-					TexturePtr texture;
-					updateRHI->Join(
-						App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, TexturePtr>(
-							[=](TexturePtr pTexture) mutable
+			// Preload textures
+			for (auto& sampler : pMaterialAsset->GetSamplers())
+			{
+				TexturePtr texture;
+				updateRHI->Join(
+					App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture)->Then<void, TexturePtr>(
+						[=](TexturePtr pTexture) mutable
+						{
+							if (pTexture)
 							{
-								if (pTexture)
-								{
-									pTexture->AddHotReloadDependentObject(material);
-									pMaterial->SetSampler(sampler.m_name, texture);
-								}
-							}, "Set material texture binding", Tasks::EThreadType::Render));
-						}
+								pTexture->AddHotReloadDependentObject(material);
+								pMaterial->SetSampler(sampler.m_name, texture);
+							}
+						}, "Set material texture binding", Tasks::EThreadType::Render));
+			}
 
-				for (auto& uniform : pMaterialAsset->GetUniformValues())
-				{
-					pMaterial->SetUniform(uniform.m_first, uniform.m_second);
-				}
+			for (auto& uniform : pMaterialAsset->GetUniformsVec4())
+			{
+				pMaterial->SetUniform(uniform.m_first, uniform.m_second);
+			}
 
-				updateRHI->Run();
-			});
+			for (auto& uniform : pMaterialAsset->GetUniformsFloat())
+			{
+				pMaterial->SetUniform(uniform.m_first, uniform.m_second);
+			}
+
+			updateRHI->Run();
+				});
 
 			if (auto promise = GetLoadPromise(assetInfo->GetUID()))
 			{
@@ -549,48 +600,53 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<MaterialPtr>("Load material",
 			[pMaterial, pMaterialAsset, assetFilename = assetFilename]() mutable
 			{
-			// We're updating rhi on worker thread during load since we have no deps
-			auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]() mutable
-			{
-				if (pMaterial->GetShader()->IsReady())
-				{
-					pMaterial->UpdateRHIResource();
-					pMaterial->ForcelyUpdateUniforms();
-
-					// TODO: Optimize
-					auto rhiMaterials = pMaterial->GetRHIMaterials().GetValues();
-					for (const auto& rhi : rhiMaterials)
+				// We're updating rhi on worker thread during load since we have no deps
+				auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]() mutable
 					{
-						RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
-					}
-				}
-			}, Tasks::EThreadType::RHI);
-
-			// Preload textures
-			for (auto& sampler : pMaterialAsset->GetSamplers())
-			{
-				TexturePtr pTexture;
-				updateRHI->Join(
-					App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, pTexture)->Then<void, TexturePtr>(
-						[=](TexturePtr texture) mutable
+						if (pMaterial->GetShader()->IsReady())
 						{
-							if (texture)
+							pMaterial->UpdateRHIResource();
+							pMaterial->ForcelyUpdateUniforms();
+
+							// TODO: Optimize
+							auto rhiMaterials = pMaterial->GetRHIMaterials().GetValues();
+							for (const auto& rhi : rhiMaterials)
 							{
-								texture->AddHotReloadDependentObject(pMaterial);
-								pMaterial->SetSampler(sampler.m_name, texture);
+								RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
 							}
-						}, "Set material texture binding", Tasks::EThreadType::Render));
-					}
+						}
+					}, Tasks::EThreadType::RHI);
 
-			for (auto& uniform : pMaterialAsset->GetUniformValues())
-			{
-				pMaterial->SetUniform(uniform.m_first, uniform.m_second);
-			}
+		// Preload textures
+		for (auto& sampler : pMaterialAsset->GetSamplers())
+		{
+			TexturePtr pTexture;
+			updateRHI->Join(
+				App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, pTexture)->Then<void, TexturePtr>(
+					[=](TexturePtr texture) mutable
+					{
+						if (texture)
+						{
+							texture->AddHotReloadDependentObject(pMaterial);
+							pMaterial->SetSampler(sampler.m_name, texture);
+						}
+					}, "Set material texture binding", Tasks::EThreadType::Render));
+		}
 
-			updateRHI->Run();
+		for (auto& uniform : pMaterialAsset->GetUniformsVec4())
+		{
+			pMaterial->SetUniform(uniform.m_first, uniform.m_second);
+		}
 
-			return pMaterial;
-		});
+		for (auto& uniform : pMaterialAsset->GetUniformsFloat())
+		{
+			pMaterial->SetUniform(uniform.m_first, uniform.m_second);
+		}
+
+		updateRHI->Run();
+
+		return pMaterial;
+			});
 
 		outMaterial = m_loadedMaterials[uid] = pMaterial;
 

@@ -30,10 +30,14 @@ glslVertex: |
   
   struct MaterialData
   {
-  	vec4 diffuse;
+  	vec4 albedo;
   	vec4 ambient;
   	vec4 emission;
   	vec4 specular;
+    
+    float metallic;
+    float roughness;
+    float ao;
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -64,12 +68,12 @@ glslVertex: |
   
   layout(set = 1, binding = 3) uniform samplerCube g_envCubemap;
   
-  layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
+  layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
   } data;
   
-  layout(std140, set = 3, binding = 0) readonly buffer MaterialDataSSBO
+  layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
       MaterialData instance[];
   } material;
@@ -108,10 +112,14 @@ glslFragment: |
   
   struct MaterialData
   {
-  	vec4 diffuse;
+  	vec4 albedo;
   	vec4 ambient;
   	vec4 emission;
   	vec4 specular;
+    
+    float metallic;
+    float roughness;
+    float ao;
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -142,12 +150,12 @@ glslFragment: |
   
   layout(set = 1, binding = 3) uniform samplerCube g_envCubemap;
 
-  layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
+  layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
   } data;
   
-  layout(std140, set = 3, binding = 0) readonly buffer MaterialDataSSBO
+  layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
       MaterialData instance[];
   } material;
@@ -168,13 +176,20 @@ glslFragment: |
   	//}
   	float falloff = 1.0f;
   	
-  	vec3 diffuse = material.diffuse.xyz;
+  	vec3 diffuse = material.albedo.xyz;
   	
   	// Directional light
   	if(light.type == 0)
   	{
-  		float diff = max(dot(normal, -light.direction), 0.0);
-  		diffuse *= light.intensity * diff;
+        vec3  wi          = normalize(-light.direction);
+        float cosTheta    = max(dot(normal, wi), 0.0);
+        float attenuation = 1.0f;//calculateAttenuation(worldPos, lightPos);
+        vec3  radiance    = light.intensity * attenuation * cosTheta;
+        
+        diffuse *= radiance;
+        
+  		//float diff = max(dot(normal, -light.direction), 0.0);
+  		//diffuse *= light.intensity * diff;
   	}
   	// Point light
   	else if(light.type == 1)
@@ -213,10 +228,10 @@ glslFragment: |
   void main() 
   {
   	MaterialData material = GetMaterialData();
-  	material.diffuse *= texture(diffuseSampler, fragTexcoord) * fragColor;
+  	material.albedo *= texture(diffuseSampler, fragTexcoord) * fragColor;
   	material.ambient *= texture(ambientSampler, fragTexcoord);
   	outColor = material.ambient + vec4(0,0,0,0);
-  	
+    
   #ifdef ALPHA_CUTOUT
   	if(material.diffuse.a < 0.05)
   	{
@@ -224,11 +239,11 @@ glslFragment: |
   	}
   #endif
   
-  	// Sky
+  	// Sky 
     vec3 I = normalize(worldPosition - frame.cameraPosition.xyz);
     vec3 R = reflect(I, normalize(fragNormal));
     
-    outColor.xyz += vec3(textureLod(g_envCubemap, R, 0).xyz);
+    outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
   	//outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz)) * 0.5;
   
     vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
