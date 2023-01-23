@@ -459,12 +459,12 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 	if (!m_pEnvCubemapBindings[0])
 	{
-		const glm::mat prjMatrix = Math::PerspectiveRH(glm::radians(120.0f), 1.0f, 0.1f, 1000.0f);
+		const glm::mat prjMatrix = Math::PerspectiveRH(glm::radians(90.0f), 1.0f, 0.1f, 1000.0f);
 		const TVector<glm::mat4x4> viewMatrices{
-			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up),
 			glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Up),
-			glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Right),
-			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Right),
+			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up),
+			glm::rotate(glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Right), glm::radians(180.0f), Math::vec3_Up),
+			glm::rotate(glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Right), glm::radians(180.0f), Math::vec3_Up),
 			glm::rotate(glm::mat4(1), glm::radians(180.0f), Math::vec3_Up),
 			glm::rotate(glm::mat4(1), glm::radians(0.0f), Math::vec3_Up),
 		};
@@ -709,7 +709,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	}
 	commands->EndDebugRegion(commandList);
 
-	if (auto cubemap = frameGraph->GetSampler("g_EnvCubemap").DynamicCast<RHICubemap>())
+	if (auto cubemap = frameGraph->GetSampler("g_envCubemap").DynamicCast<RHICubemap>())
 	{
 		commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
 

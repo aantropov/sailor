@@ -193,10 +193,10 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 
 	const glm::ivec2 envCubemapExtent = glm::ivec2(128, 128);
 
-	RHI::RHITexturePtr g_EnvCubemap = RHI::Renderer::GetDriver()->CreateCubemap(envCubemapExtent, 7, RHI::EFormat::R16G16B16A16_SFLOAT);
-	RHI::Renderer::GetDriver()->SetDebugName(g_EnvCubemap, "g_EnvCubemap");
+	RHI::RHITexturePtr g_envCubemap = RHI::Renderer::GetDriver()->CreateCubemap(envCubemapExtent, 7, RHI::EFormat::R16G16B16A16_SFLOAT);
+	RHI::Renderer::GetDriver()->SetDebugName(g_envCubemap, "g_envCubemap");
 
-	pRhiFrameGraph->SetSampler("g_EnvCubemap", g_EnvCubemap);
+	pRhiFrameGraph->SetSampler("g_envCubemap", g_envCubemap);
 	pFrameGraph->m_frameGraph = pRhiFrameGraph;
 
 	return pFrameGraph;

@@ -476,10 +476,6 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 	{
 		layout = (VkImageLayout)RHI::EImageLayout::General;
 	}
-	else if (const bool bIsUsedAsColorAttachment = usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-	{
-		layout = (VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal;
-	}
 
 	auto device = m_vkInstance->GetMainDevice();
 	RHI::RHICubemapPtr outCubemap = RHI::RHICubemapPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout);

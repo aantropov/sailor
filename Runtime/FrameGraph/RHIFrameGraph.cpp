@@ -101,6 +101,8 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, &ndcQuad[0], ndcQuad.Num() * sizeof(VertexP3N3UV2C4), &indices[0], sizeof(uint32_t) * indices.Num());
 	}
 
+	renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_envCubemap", GetSampler("g_envCubemap"), 3);
+
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
 		SAILOR_PROFILE_BLOCK("FrameGraph");

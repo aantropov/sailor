@@ -62,6 +62,8 @@ glslVertex: |
       LightsGrid instance[];
   } lightsGrid;
   
+  layout(set = 1, binding = 3) uniform samplerCube g_envCubemap;
+  
   layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
@@ -138,6 +140,8 @@ glslFragment: |
       LightsGrid instance[];
   } lightsGrid;
   
+  layout(set = 1, binding = 3) uniform samplerCube g_envCubemap;
+
   layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
@@ -221,17 +225,20 @@ glslFragment: |
   #endif
   
   	// Sky
-      //outColor = fragColor * texture(diffuseSampler, fragTexcoord);
+    vec3 I = normalize(worldPosition - frame.cameraPosition.xyz);
+    vec3 R = reflect(I, normalize(fragNormal));
+    
+    outColor.xyz += vec3(textureLod(g_envCubemap, R, 0).xyz);
   	//outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz)) * 0.5;
   
-      vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
+    vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
   	vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
-      ivec2 tileId = ivec2(screenUv) / LIGHTS_CULLING_TILE_SIZE;
+    ivec2 tileId = ivec2(screenUv) / LIGHTS_CULLING_TILE_SIZE;
   	
   	ivec2 mod = ivec2(frame.viewportSize.x % LIGHTS_CULLING_TILE_SIZE, frame.viewportSize.y % LIGHTS_CULLING_TILE_SIZE);
   	ivec2 padding = ivec2(min(1, mod.x), min(1, mod.y));
   	
-      uint tileIndex = uint(tileId.y * (numTiles.x + padding.x) + tileId.x);
+    uint tileIndex = uint(tileId.y * (numTiles.x + padding.x) + tileId.x);
   
   	const uint offset = lightsGrid.instance[tileIndex].offset;
   	const uint numLights = lightsGrid.instance[tileIndex].num;
@@ -244,7 +251,7 @@ glslFragment: |
               break;
           }
   
-          vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;		
+          vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;
   		  outColor.xyz += CalculateLighting(light.instance[index], material, fragNormal, worldPosition, viewDirection);		
   		//outColor.xyz += 0.01;
       }
