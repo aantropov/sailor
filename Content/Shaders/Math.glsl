@@ -1,4 +1,4 @@
-#define PI 3.1415926
+const float PI = 3.14159265359;
 
 vec4 QuatAxisAngle(vec3 axis, float angleRad)
 {

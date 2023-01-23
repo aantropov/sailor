@@ -19,18 +19,20 @@ uniformsVec4:
       - 0.470400006
       - 0
   - material.ambient:
-      - 0
-      - 0
-      - 0
-      - 0
+      - 1
+      - 1
+      - 1
+      - 1
   - material.emission:
-      - 0
-      - 0
-      - 0
-      - 0
+      - 1
+      - 1
+      - 1
+      - 1
   - material.specular:
-      - 0
-      - 0
-      - 0
-      - 0
-uniformsFloat: ~
+      - 1
+      - 1
+      - 1
+      - 1
+uniformsFloat: 
+  - material.metallic: 0
+  - material.roughness: 1.0

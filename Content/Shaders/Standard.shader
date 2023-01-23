@@ -67,7 +67,8 @@ glslVertex: |
   } lightsGrid;
   
   layout(set = 1, binding = 3) uniform samplerCube g_envCubemap;
-  
+  layout(set = 1, binding = 4) uniform sampler2D g_brdfSampler;
+
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
@@ -149,6 +150,7 @@ glslFragment: |
   } lightsGrid;
   
   layout(set = 1, binding = 3) uniform samplerCube g_envCubemap;
+  layout(set = 1, binding = 4) uniform sampler2D g_brdfSampler;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -170,67 +172,100 @@ glslFragment: |
   
   vec3 CalculateLighting(LightData light, MaterialData material, vec3 normal, vec3 worldPos, vec3 viewDir)
   {
-  	//if(length(light.worldPosition - worldPos) > light.bounds.x)
-  	//{
-  		//return vec3(0.1,0.1,0.1);
-  	//}
-  	float falloff = 1.0f;
-  	
   	vec3 diffuse = material.albedo.xyz;
-  	
+  	vec3 worldNormal = normalize(normal);
+    vec3 toLight = normalize(-light.direction);
+    vec3 halfView = normalize(viewDir + toLight);
+  
+    float falloff = 1.0f;
+    float attenuation = 1.0;
+    
   	// Directional light
   	if(light.type == 0)
   	{
-        vec3  wi          = normalize(-light.direction);
-        float cosTheta    = max(dot(normal, wi), 0.0);
-        float attenuation = 1.0f;//calculateAttenuation(worldPos, lightPos);
-        vec3  radiance    = light.intensity * attenuation * cosTheta;
-        
-        diffuse *= radiance;
-        
-  		//float diff = max(dot(normal, -light.direction), 0.0);
-  		//diffuse *= light.intensity * diff;
+        attenuation = 1.0;
   	}
   	// Point light
   	else if(light.type == 1)
   	{
   		// Attenuation
-  		const float distance    = length(light.worldPosition - worldPos);
+        const float distance    = length(light.worldPosition - worldPos);
   		const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
   		falloff 				= attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
-  		
-  		vec3 lightDir = normalize(light.worldPosition - worldPos);
-  		float diff = max(dot(normal, lightDir), 0.0);
-  		diffuse *= light.intensity * diff;
   	}
   	// Spot light
   	else if(light.type == 2)
   	{
-  		vec3 lightDir = normalize(light.worldPosition - worldPos);
-  		float theta = dot(lightDir, normalize(-light.direction));
-  		float epsilon   = light.cutOff.x - light.cutOff.y;
-  		
   		// Attenuation
-  		const float distance    = length(light.worldPosition - worldPos);
+        vec3 lightDir = normalize(light.worldPosition - worldPos);
+        float epsilon   = light.cutOff.x - light.cutOff.y;
+  		float theta = dot(lightDir, normalize(-light.direction));
+        const float distance    = length(light.worldPosition - worldPos);
   		const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
   		falloff 				= attenuation * clamp((theta - light.cutOff.y) / epsilon, 0.0, 1.0);			
   		
-  		if(theta > light.cutOff.y)
+  		if(theta < light.cutOff.y)
   		{       
-  			float diff = max(dot(normal, lightDir), 0.0);
-  			diffuse *= light.intensity * diff;
+  			falloff = 0.0f;
   		}
   	}
   	
-      return diffuse * falloff;
+    vec3 radiance     = light.intensity * attenuation; 
+    
+    vec3 F0      = mix(vec3(0.04), material.albedo.xyz, material.metallic);
+    vec3 F       = FresnelSchlick(max(dot(halfView, viewDir), 0.0), F0);
+    
+    float NDF = DistributionGGX(worldNormal, halfView, material.roughness);       
+    float G   = GeometrySmith(worldNormal, viewDir, toLight, material.roughness);    
+
+    vec3 numerator    = NDF * G * F;
+    float denominator = 4.0 * max(dot(worldNormal, viewDir), 0.0) * max(dot(worldNormal, toLight), 0.0)  + 0.0001;
+    vec3 specular     = numerator / denominator;
+    
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+  
+    kD *= 1.0 - material.metallic;
+    
+    float NdotL = max(dot(worldNormal, toLight), 0.0);
+    return (kD * material.albedo.xyz / PI + specular) * radiance * NdotL * falloff;    
+  }
+  
+  vec3 AmbientLighting(MaterialData material, vec3 normal, vec3 worldPos, vec3 viewDir)
+  {
+    vec3 worldNormal = normalize(normal);
+    vec3 reflected = reflect(-viewDir, worldNormal);
+   
+    vec3 F0 = mix(vec3(0.04), material.albedo.xyz, material.metallic);
+    vec3 F  = FresnelSchlickRoughness(max(dot(worldNormal, viewDir), 0.0), F0, material.roughness);
+      
+    // Ambient lighting
+    vec3 kS = FresnelSchlick(max(dot(worldNormal, viewDir), 0.0), F0);
+    vec3 kD = 1.0 - kS;
+    kD *= 1.0 - material.metallic;	  
+    vec3 irradiance = texture(g_envCubemap, worldNormal).rgb;
+    vec3 diffuse      = irradiance * material.albedo.xyz;
+    
+    // Sample both the pre-filter map and the BRDF lut and combine them together as per the Split-Sum approximation to get the IBL specular part.
+    const float MAX_REFLECTION_LOD = 4.0;
+    vec3 prefilteredColor = textureLod(g_envCubemap, reflected, material.roughness * MAX_REFLECTION_LOD).rgb;    
+    vec2 brdf  = texture(g_brdfSampler, vec2(max(dot(worldNormal, viewDir), 0.0), material.roughness)).rg;
+    vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
+
+    vec3 ambient = (kD * diffuse + specular);// * material.ao;
+    
+    return ambient;
   }
   
   void main() 
   {
-  	MaterialData material = GetMaterialData();
-  	material.albedo *= texture(diffuseSampler, fragTexcoord) * fragColor;
-  	material.ambient *= texture(ambientSampler, fragTexcoord);
-  	outColor = material.ambient + vec4(0,0,0,0);
+  	const vec3 viewDirection = normalize(worldPosition - frame.cameraPosition.xyz);
+    
+    MaterialData material = GetMaterialData();
+  	material.albedo = material.albedo * texture(diffuseSampler, fragTexcoord) * fragColor;
+  	//material.ambient *= texture(ambientSampler, fragTexcoord);
+  	
+    outColor.xyz = AmbientLighting(material, fragNormal, worldPosition, viewDirection);
     
   #ifdef ALPHA_CUTOUT
   	if(material.diffuse.a < 0.05)
@@ -243,7 +278,7 @@ glslFragment: |
     vec3 I = normalize(worldPosition - frame.cameraPosition.xyz);
     vec3 R = reflect(I, normalize(fragNormal));
     
-    outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
+    //outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
   	//outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz)) * 0.5;
   
     vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
@@ -266,8 +301,7 @@ glslFragment: |
               break;
           }
   
-          vec3 viewDirection = worldPosition - frame.cameraPosition.xyz;
-  		  outColor.xyz += CalculateLighting(light.instance[index], material, fragNormal, worldPosition, viewDirection);		
+          outColor.xyz += CalculateLighting(light.instance[index], material, fragNormal, worldPosition, viewDirection);
   		//outColor.xyz += 0.01;
       }
   	

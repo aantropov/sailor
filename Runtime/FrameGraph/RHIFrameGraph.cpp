@@ -102,6 +102,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 	}
 
 	renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_envCubemap", GetSampler("g_envCubemap"), 3);
+	renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_brdfSampler", GetSampler("g_brdfSampler"), 4);
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{

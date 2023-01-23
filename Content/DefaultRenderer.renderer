@@ -16,6 +16,10 @@ samplers:
   uid: ''
   path: Textures/Noise.png
 
+- name: g_brdfSampler
+  uid: ''
+  path: Textures/BRDF_Epic.png
+
 float:
 - PI: 3.1415926
   
