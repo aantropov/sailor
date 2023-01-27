@@ -20,7 +20,7 @@ glslVertex: |
   layout(location=1) out vec2 fragTexcoord;
   layout(location=2) out vec3 fragNormal;
   layout(location=3) out vec3 worldPosition;
-  layout(location=4) flat out uint instanceIndex;
+  layout(location=4) flat out uint materialInstance;
   
   struct PerInstanceData
   {
@@ -85,15 +85,15 @@ glslVertex: |
   void main() 
   {
   	vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
-  	worldPosition = vertexPosition.xyz / vertexPosition.w;
-  	
-      gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
-      vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
-      	
-      fragColor = inColor;
-  	fragNormal = worldNormal.xyz;
-      fragTexcoord = inTexcoord;
-  	instanceIndex = gl_InstanceIndex;
+    worldPosition = vertexPosition.xyz / vertexPosition.w;
+
+    gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
+
+    fragColor = inColor;
+    fragNormal = worldNormal.xyz;
+    fragTexcoord = inTexcoord;
+    materialInstance = data.instance[gl_InstanceIndex].materialInstance;
   }
 
 glslFragment: |
@@ -101,7 +101,7 @@ glslFragment: |
   layout(location=1) in vec2 fragTexcoord;
   layout(location=2) in vec3 fragNormal;
   layout(location=3) in vec3 worldPosition;
-  layout(location=4) flat in uint instanceIndex;
+  layout(location=4) flat in uint materialInstance;
   
   layout(location = 0) out vec4 outColor;
   
@@ -167,7 +167,7 @@ glslFragment: |
   
   MaterialData GetMaterialData()
   {
-      return material.instance[data.instance[instanceIndex].materialInstance];
+      return material.instance[materialInstance];
   }
   
   vec3 CalculateLighting(LightData light, MaterialData material, vec3 normal, vec3 worldPos, vec3 viewDir)
@@ -234,7 +234,7 @@ glslFragment: |
   vec3 AmbientLighting(MaterialData material, vec3 normal, vec3 worldPos, vec3 viewDir)
   {
     vec3 worldNormal = normalize(normal);
-    vec3 reflected = reflect(-viewDir, worldNormal);
+    vec3 reflected = reflect(viewDir, worldNormal);
    
     vec3 F0 = mix(vec3(0.04), material.albedo.xyz, material.metallic);
     vec3 F  = FresnelSchlickRoughness(max(dot(worldNormal, viewDir), 0.0), F0, material.roughness);
@@ -274,10 +274,6 @@ glslFragment: |
   	}
   #endif
   
-  	// Sky 
-    vec3 I = normalize(worldPosition - frame.cameraPosition.xyz);
-    vec3 R = reflect(I, normalize(fragNormal));
-    
     //outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
   	//outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz)) * 0.5;
   
