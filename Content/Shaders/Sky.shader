@@ -307,7 +307,7 @@ glslFragment: |
         {
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
             const float attenuation = mix(0.83, 1.0f, t);
-            const vec3 SunIlluminance = attenuation * CalculateSunIlluminance(lightDirection);
+            const vec3 SunIlluminance = attenuation * vec3(1.0f) * 120000.0f;
             const vec3 final = SunIlluminance * (resR * B0R * PhaseR(Angle) + B0Mie * resMie * PhaseMie(Angle));
             return final;
         }
