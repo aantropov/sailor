@@ -20,8 +20,7 @@ glslCompute: |
   
   #define GROUP_SIZE         8
   #define GROUP_THREAD_COUNT (GROUP_SIZE * GROUP_SIZE)
-  #define FILTER_SIZE        3
-  #define FILTER_RADIUS      (FILTER_SIZE / 2)
+  #define FILTER_RADIUS      1
   #define TILE_SIZE          (GROUP_SIZE + 2 * FILTER_RADIUS)
   #define TILE_PIXEL_COUNT   (TILE_SIZE * TILE_SIZE)
   
@@ -51,10 +50,10 @@ glslCompute: |
       uvec2 writeDim       = imageSize(u_output_image).xy;
       vec2  texel_size     = 1.0f / writeDim;
       
+      vec2 uv              = (vec2(base_index) + 0.5) * texel_size;
       // The first (TILE_PIXEL_COUNT - GROUP_THREAD_COUNT) threads load at most 2 texel values
       for (int i = int(gl_LocalInvocationIndex); i < TILE_PIXEL_COUNT; i += GROUP_THREAD_COUNT)
-      {
-          vec2 uv        = (vec2(base_index) + 0.5) * texel_size;
+      {         
           vec2 uv_offset = vec2(i % TILE_SIZE, i / TILE_SIZE) * texel_size;
       
           vec4 color = imageLoad(u_input_texture, ivec2(readDim * (uv + uv_offset)));

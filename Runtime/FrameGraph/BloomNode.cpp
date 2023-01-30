@@ -66,14 +66,14 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	commands->ImageMemoryBarrier(commandList, bloomRenderTarget, bloomRenderTarget->GetFormat(), bloomRenderTarget->GetDefaultLayout(), EImageLayout::General);
 
 	// Bloom Downscale
-	glm::uvec2 mipSize = glm::uvec2(bloomTextureSize.x, bloomTextureSize.y) / 2u;
-
 	for (uint32_t i = 0; i < bloomRenderTarget->GetMipLevels() - 1; ++i)
 	{
 		downscaleParams.m_useThreshold = i == 0;
 
 		auto readMipLevel = bloomRenderTarget->GetMipLayer(i);
 		auto writeMipLevel = bloomRenderTarget->GetMipLayer(i + 1);
+
+		const glm::uvec2 mipSize = glm::uvec2(writeMipLevel->GetExtent().x, writeMipLevel->GetExtent().y);
 
 		driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings, "u_input_texture", readMipLevel, 0);
 		driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings, "u_output_image", writeMipLevel, 1);
@@ -92,8 +92,6 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), EImageLayout::ComputeRead, readMipLevel->GetDefaultLayout());
 		commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), EImageLayout::ComputeWrite, writeMipLevel->GetDefaultLayout());
-
-		mipSize /= 2u;
 	}
 
 	PushConstantsUpscale upscaleParams{};
@@ -101,14 +99,12 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	upscaleParams.m_dirtIntensity = GetVec4("dirtIntensity").x;
 
 	// Bloom Upscale
-	mipSize = glm::uvec2(bloomRenderTarget->GetMipLayer((uint32_t)bloomRenderTarget->GetMipLevels() - 1u)->GetExtent());
-
 	for (uint32_t i = (uint32_t)bloomRenderTarget->GetMipLevels() - 1; i >= 1; --i)
 	{
-		mipSize *= 2u;
-
 		auto readMipLevel = bloomRenderTarget->GetMipLayer(i);
 		auto writeMipLevel = bloomRenderTarget->GetMipLayer(i - 1);
+
+		const glm::uvec2 mipSize = glm::uvec2(writeMipLevel->GetExtent().x, writeMipLevel->GetExtent().y);
 
 		upscaleParams.m_mipLevel = i;
 
@@ -121,8 +117,8 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 		m_computeUpscaleBindings->RecalculateCompatibility();
 
 		commands->Dispatch(commandList, m_pComputeUpscaleShader->GetComputeShaderRHI(),
-			(uint32_t)glm::ceil(float(mipSize.x) / 8),
-			(uint32_t)glm::ceil(float(mipSize.y) / 8),
+			(uint32_t)(glm::ceil(float(mipSize.x) / 8)),
+			(uint32_t)(glm::ceil(float(mipSize.y) / 8)),
 			1u,
 			{ m_computeUpscaleBindings },
 			&upscaleParams, sizeof(PushConstantsUpscale));

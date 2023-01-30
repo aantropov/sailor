@@ -47,8 +47,7 @@ glslCompute: |
   
   #define GROUP_SIZE         8
   #define GROUP_THREAD_COUNT (GROUP_SIZE * GROUP_SIZE)
-  #define FILTER_SIZE        3
-  #define FILTER_RADIUS      (FILTER_SIZE / 2)
+  #define FILTER_RADIUS      1
   #define TILE_SIZE          (GROUP_SIZE + 2 * FILTER_RADIUS)
   #define TILE_PIXEL_COUNT   (TILE_SIZE * TILE_SIZE)
   

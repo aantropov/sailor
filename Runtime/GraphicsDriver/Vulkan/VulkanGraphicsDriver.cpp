@@ -1120,7 +1120,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
 		allocator = GetGeneralSsboAllocator();
-		
+
 		// TODO: rewrite strictly according to std430
 		const size_t paddedSize = size + size % sizeof(8);
 
@@ -1731,8 +1731,11 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	auto& binding = parameter->m_vulkan.m_valueBinding->Get();
-	Update(cmd, *binding, pData, size, variableOffset);
+	if (parameter->IsBind())
+	{
+		auto& binding = parameter->m_vulkan.m_valueBinding->Get();
+		Update(cmd, *binding, pData, size, variableOffset);
+	}
 }
 
 void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* pData, size_t size, size_t offset)

@@ -110,7 +110,7 @@ glslFragment: |
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 160000.0f; // Atmosphere radius
   const float CloudsStartR = R + 5000.0f;
-  const float CloudsEndR = CloudsStartR + 10000.0f;
+  const float CloudsEndR = CloudsStartR + 15000.0f;
   
   const float SunAngularR = radians(0.545f);
   
@@ -355,7 +355,7 @@ glslFragment: |
     float height = CloudsGetHeight(position);
     
     float SRb = clamp(Remap(height, 0, 0.07, 0, 1), 0, 1);
-    float SRt = clamp(Remap(height, weather.b * 0.5, weather.b, 1, 0), 0, 1);
+    float SRt = clamp(Remap(height, weather.b * 0.3, weather.b, 1, 0), 0, 1);
     
     float SA = SRb * SRt;
     
@@ -525,7 +525,7 @@ glslFragment: |
             {
                 break;
             }
-            avrStep += 1;
+            avrStep += 2;
         }
     }
    
