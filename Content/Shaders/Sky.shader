@@ -108,7 +108,7 @@ glslFragment: |
   #define INTEGRAL_STEPS_2 128
   
   const float R = 6371000.0f; // Earth radius in m
-  const float AtmosphereR = 60000.0f; // Atmosphere radius
+  const float AtmosphereR = 160000.0f; // Atmosphere radius
   const float CloudsStartR = R + 5000.0f;
   const float CloudsEndR = CloudsStartR + 10000.0f;
   
@@ -166,8 +166,9 @@ glslFragment: |
 
   vec3 IntersectSphere(vec3 origin, vec3 direction, float innerR, float outerR)
   {
-      float outer = RaySphereIntersect(origin, direction, vec3(0), outerR).y;
-      
+      vec2 intersections = RaySphereIntersect(origin, direction, vec3(0), outerR);
+      float outer = intersections.x < 0 ? intersections.y : intersections.x;
+
       if(outer <= 0.0f)
       {
         // Return just constant trace
@@ -226,6 +227,11 @@ glslFragment: |
   {
      const vec3 destination = IntersectSphere(origin, direction, R, R + AtmosphereR);
      
+     if(length(destination - origin) < 0.01)
+     {
+         return vec3(0);
+     }
+
      const float LightIntensity = 7.0f;
      const float Angle = dot(normalize(destination - origin), -lightDirection);
            
@@ -307,8 +313,8 @@ glslFragment: |
         {
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
             const float attenuation = mix(0.83, 1.0f, t);
-            const vec3 SunIlluminance = attenuation * vec3(1.0f) * 120000.0f;
-            const vec3 final = SunIlluminance * (resR * B0R * PhaseR(Angle) + B0Mie * resMie * PhaseMie(Angle));
+            const vec3 SunIlluminance = attenuation * vec3(1.0f) * 12000000.0f;
+            const vec3 final = SunIlluminance;// * (resR * B0R * PhaseR(Angle) + B0Mie * resMie * PhaseMie(Angle));
             return final;
         }
         else
@@ -336,7 +342,7 @@ glslFragment: |
   {
     position.xz += vec2(0.1, 0.05) * frame.currentTime * 1000;
     
-    vec3 shift1 = vec3(-0.0021, 0.0017, -0.02f) * frame.currentTime * -1;
+    vec3 shift1 = vec3(-0.0021, 0.0017, -0.02f) * frame.currentTime * -0.5;
     vec3 shift2 = vec3(0.021, 0.017, 0.0f) * frame.currentTime * -0.2;
     
     const float cloudsLow = pow(texture(cloudsNoiseLowSampler, shift1 + position.xyz / 9000.0f).r, 1);
@@ -519,7 +525,7 @@ glslFragment: |
             {
                 break;
             }
-            avrStep += 5;
+            avrStep += 1;
         }
     }
    
@@ -598,7 +604,6 @@ glslFragment: |
        vec3 viewDir = normalize(dirWorldSpace.xyz);
        float horizon = 1.0f;
        
-
        horizon -= exp(-abs(dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
        horizon = horizon * horizon * horizon;
        horizon += 1 - clamp((CloudsStartR - length(origin)) / 500, 0, 1);
