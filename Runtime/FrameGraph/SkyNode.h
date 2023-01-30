@@ -12,7 +12,7 @@ namespace Sailor::Framegraph
 	{
 		const uint32_t SkyResolution = 196u;
 		const uint32_t SunResolution = 32u;
-		const uint32_t CloudsResolution = 512u;
+		const float CloudsResolutionFactor = 0.5f;
 		const uint32_t CloudsNoiseHighResolution = 32u;
 		const uint32_t CloudsNoiseLowResolution = 128u;
 

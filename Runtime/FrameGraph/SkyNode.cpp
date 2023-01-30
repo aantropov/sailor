@@ -350,7 +350,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			ETextureClamping::Repeat,
 			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
 
-		driver->SetDebugName(m_pSunTexture, "Sky");
+		driver->SetDebugName(m_pSkyTexture, "Sky");
 	}
 
 	if (!m_pSunTexture)
@@ -369,16 +369,18 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 	if (!m_pCloudsTexture)
 	{
+		const float size = std::min(App::GetViewportWindow()->GetWidth() * CloudsResolutionFactor, App::GetViewportWindow()->GetHeight() * CloudsResolutionFactor);
+
 		m_pCloudsTexture = driver->CreateRenderTarget(
 			commandList,
-			glm::ivec2(CloudsResolution, CloudsResolution),
+			glm::ivec2(size, size),
 			1,
 			ETextureFormat::R16G16B16A16_SFLOAT,
 			ETextureFiltration::Linear,
 			ETextureClamping::Clamp,
 			ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
 
-		driver->SetDebugName(m_pSunTexture, "Clouds");
+		driver->SetDebugName(m_pCloudsTexture, "Clouds");
 	}
 
 	if (!m_starsMesh && !m_loadMeshTask)
