@@ -109,7 +109,7 @@ glslFragment: |
   
   const float R = 6371000.0f; // Earth radius in m
   const float AtmosphereR = 160000.0f; // Atmosphere radius
-  const float CloudsStartR = R + 5000.0f;
+  const float CloudsStartR = R + 7000.0f;
   const float CloudsEndR = CloudsStartR + 15000.0f;
   
   const float SunAngularR = radians(0.545f);
@@ -471,13 +471,13 @@ glslFragment: |
     float transmittanceLow = 1.0f;
 
     // Perspective compensation
-    vec4 cameraDir = vec4(0,0,0,0);
+    /*vec4 cameraDir = vec4(0,0,0,0);
     cameraDir.xyz = ScreenToView(vec2(0.5, 0.5), 1.0f, frame.invProjection).xyz;    
     cameraDir.z *= -1;
     cameraDir = normalize(inverse(frame.view) * cameraDir);
     const float cosA = dot(cameraDir.xyz, viewDir);
-
-    float avrStep = 100 / cosA;
+    */
+    float avrStep = 100;// / cosA;
     
     position = traceStart;
     
