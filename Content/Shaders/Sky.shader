@@ -355,7 +355,7 @@ glslFragment: |
     float height = CloudsGetHeight(position);
     
     float SRb = clamp(Remap(height, 0, 0.07, 0, 1), 0, 1);
-    float SRt = clamp(Remap(height, weather.b * 0.3, weather.b, 1, 0), 0, 1);
+    float SRt = clamp(Remap(height, weather.b * 0.35, weather.b, 1, 0), 0, 1);
     
     float SA = SRb * SRt;
     
@@ -409,14 +409,10 @@ glslFragment: |
     const float shiftCloudsStart = cloudsStartIntersections.x < 0 ? max(0, cloudsStartIntersections.y) : cloudsStartIntersections.x;
     const float shiftCloudsEnd = cloudsEndIntersections.x < 0 ? max(0, cloudsEndIntersections.y) : cloudsEndIntersections.x;
     
-    bool bAdaptiveRayMarching = true;
-
     if(originHeight < CloudsStartR)
     {
         traceStart = origin + viewDir * shiftCloudsStart;
         traceEnd = origin + viewDir * shiftCloudsEnd;
-        
-        //bAdaptiveRayMarching = false;
     }
     else if(originHeight > CloudsEndR)
     {
@@ -444,7 +440,7 @@ glslFragment: |
     const float BigDistance = 600000.0f;
     
     // We traced the opposite Earth side,
-    // that means there is clouds on our way
+    // that means there is no clouds on our way
     if(shiftCloudsStart > BigDistance)
     {
         return vec4(0);
@@ -474,12 +470,21 @@ glslFragment: |
     float transmittance = 1.0;
     float transmittanceLow = 1.0f;
 
-    float avrStep = bAdaptiveRayMarching ? 100 : max(200, length(traceEnd - traceStart) / StepsHighDetail);
+    // Perspective compensation
+    vec4 cameraDir = vec4(0,0,0,0);
+    cameraDir.xyz = ScreenToView(vec2(0.5, 0.5), 1.0f, frame.invProjection).xyz;    
+    cameraDir.z *= -1;
+    cameraDir = normalize(inverse(frame.view) * cameraDir);
+    const float cosA = dot(cameraDir.xyz, viewDir);
+
+    float avrStep = 100 / cosA;
+    
     position = traceStart;
     
     for(int i = 0; i < StepsHighDetail + StepsLowDetail; i++)
     {
         float density = CloudsSampleDensity(position) * avrStep;
+
         if(density > 0)
         {
             for(int j = 0; j < data.scatteringSteps; j++)
@@ -521,11 +526,7 @@ glslFragment: |
         
         if(i >= StepsHighDetail)
         {
-            if(!bAdaptiveRayMarching)
-            {
-                break;
-            }
-            avrStep += 2;
+            avrStep += 4;
         }
     }
    
@@ -598,7 +599,9 @@ glslFragment: |
        dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
         
        outColor.xyz = texture(skySampler, fragTexcoord).xyz;
-       vec3 sky = outColor.xyz;
+       
+       // Remove horizon red line
+       vec3 sky = vec3(outColor.b);
        sky = sky / (1 + sky);
 
        vec3 viewDir = normalize(dirWorldSpace.xyz);

@@ -133,7 +133,13 @@ void TestComponent::Tick(float deltaTime)
 
 	if (glm::length(delta) > 0)
 	{
-		const vec4 newPosition = transform.GetPosition() + vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);
+		const float boost = 10.0f;
+		vec4 shift = vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);
+
+		//shift *= boost;
+
+		const vec4 newPosition = transform.GetPosition() + shift;
+
 		transform.SetPosition(newPosition);
 	}
 
@@ -220,7 +226,7 @@ void TestComponent::Tick(float deltaTime)
 
 		ImGui::Begin("Sky Settings");
 		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds density", &m_skyParams.m_cloudsDensity, 0.0f, 100.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds density", &m_skyParams.m_cloudsDensity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds coverage", &m_skyParams.m_cloudsCoverage, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds attenuation 1", &m_skyParams.m_cloudsAttenuation1, 0.1f, 0.3f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds attenuation 2", &m_skyParams.m_cloudsAttenuation2, 0.001f, 0.1f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
@@ -230,8 +236,8 @@ void TestComponent::Tick(float deltaTime)
 		ImGui::SliderFloat("Clouds phase eccentrisy 2", &m_skyParams.m_eccentrisy2, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds horizon blend", &m_skyParams.m_fog, 0.0f, 20.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds sun intensity", &m_skyParams.m_sunIntensity, 0.0f, 800.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds ambient", &m_skyParams.m_ambient, 0.0f, 5.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderInt("Clouds scattering steps", &m_skyParams.m_scatteringSteps, 1, 10,"%d");
+		ImGui::SliderFloat("Clouds ambient", &m_skyParams.m_ambient, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderInt("Clouds scattering steps", &m_skyParams.m_scatteringSteps, 1, 10, "%d");
 		ImGui::SliderFloat("Clouds scattering density", &m_skyParams.m_scatteringDensity, 0.1f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds scattering intensity", &m_skyParams.m_scatteringIntensity, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds scattering phase", &m_skyParams.m_scatteringPhase, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
