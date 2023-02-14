@@ -62,8 +62,8 @@ namespace Sailor::Framegraph
 			float m_scatteringDensity = 0.5f;
 			float m_scatteringIntensity = 0.5f;
 			float m_scatteringPhase = 0.5f;
-			float m_sunShaftsIntensity = 0.7f;
-			int32_t m_sunShaftsDistance = 80;
+			float m_sunShaftsIntensity = 0.45f;
+			int32_t m_sunShaftsDistance = 60;
 		};
 
 		SAILOR_API static const char* GetName() { return m_name; }

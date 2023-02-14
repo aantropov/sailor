@@ -108,7 +108,7 @@ glslFragment: |
     if(uvView.x > 1 + border || uvView.y > 1 + border ||
        uvView.x < -border || uvView.y < -border)
     {   
-        return;
+        return; 
     }
     
     for (int index = 0; index < blurSampleCount; ++index)
@@ -119,6 +119,10 @@ glslFragment: |
     
     outColor /= blurSampleCount;
     
-    outColor.xyz *= CalculateSunColor(-dirToSun) * data.sunShaftsIntensity;
-    outColor = outColor.a * clamp(outColor, 0, 1) * mix(0, 1.0f, 1 - fade / border);
+    outColor.a = 1 - clamp(1 - outColor.a * data.sunShaftsIntensity,0,1);
+    
+
+    outColor.xyz = vec3(0.005);
+    outColor = outColor.a * outColor * mix(0, 1.0f, 1 - fade / border) * clamp(1 - outColor.r, 0, 1);
+    outColor.a *= clamp(pow(texture(cloudsSampler, fragTexcoord.xy).g, 3), 0,1);    
   }

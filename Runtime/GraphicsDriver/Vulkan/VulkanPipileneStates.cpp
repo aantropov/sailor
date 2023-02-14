@@ -234,6 +234,14 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 
 	m_blendModes[(size_t)RHI::EBlendMode::AlphaBlending] = VulkanStateColorBlendingPtr::Make(true, VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_ADD,
 		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
+
+	m_blendModes[(size_t)RHI::EBlendMode::Multiply] = VulkanStateColorBlendingPtr::Make(true, 
+		VK_BLEND_FACTOR_ONE,
+		VK_BLEND_FACTOR_ONE,
+		VkBlendOp::VK_BLEND_OP_MULTIPLY_EXT,
+		VK_BLEND_FACTOR_SRC_ALPHA,
+		VK_BLEND_FACTOR_DST_ALPHA,
+		VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
 }
 
 const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::RHIVertexDescriptionPtr& vertexDescription,

@@ -436,8 +436,8 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		m_pComposeMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pComposeShader, m_pShaderBindings);
 		m_pCloudsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pCloudsShader, m_pShaderBindings);
 
-		RenderState renderStateAdd{ false, false, 0, false, ECullMode::Back, EBlendMode::Additive, EFillMode::Fill, 0, false };
-		m_pSunShaftsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderStateAdd, m_pSunShaftsShader, m_pShaderBindings);
+		RenderState renderStateMultiply{ false, false, 0, false, ECullMode::Back, EBlendMode::Multiply, EFillMode::Fill, 0, false };
+		m_pSunShaftsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderStateMultiply, m_pSunShaftsShader, m_pShaderBindings);
 
 		const SkyParams params{};
 		commands->UpdateShaderBinding(transferCommandList, data, &params, sizeof(SkyParams));
