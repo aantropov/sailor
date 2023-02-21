@@ -156,7 +156,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		{
 			data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
 		}
-		
+
 		if (!material.specular_texname.empty())
 		{
 			data.m_samplers.Add(MaterialAsset::SamplerEntry("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.specular_texname)));
@@ -242,37 +242,42 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
-		{
-			TSharedPtr<Data> res = TSharedPtr<Data>::Make();
-			res->m_bIsImported = ImportObjModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
-			return res;
-		})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data) mutable
-		{
-			if (data->m_bIsImported)
 			{
-				for (const auto& mesh : data->m_parsedMeshes)
+				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
+				res->m_bIsImported = ImportObjModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
+				return res;
+			})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data) mutable
 				{
-					RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
-					ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-					ptr->m_bounds = mesh.bounds;
-					RHI::Renderer::GetDriver()->UpdateMesh(ptr, 
-						&mesh.outVertices[0], sizeof(RHI::VertexP3N3UV2C4) * mesh.outVertices.Num(), 
-						&mesh.outIndices[0], sizeof(uint32_t) * mesh.outIndices.Num());
+					if (data->m_bIsImported)
+					{
+						for (const auto& mesh : data->m_parsedMeshes)
+						{
+							if (!mesh.bIsInited)
+							{
+								continue;
+							}
 
-					model->m_meshes.Emplace(ptr);
-				}
+							RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
+							ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+							ptr->m_bounds = mesh.bounds;
+							RHI::Renderer::GetDriver()->UpdateMesh(ptr,
+								&mesh.outVertices[0], sizeof(RHI::VertexP3N3UV2C4) * mesh.outVertices.Num(),
+								&mesh.outIndices[0], sizeof(uint32_t) * mesh.outIndices.Num());
 
-				model->Flush();
-			}
-			return model;
-		}, "Update RHI Meshes", Tasks::EThreadType::RHI)->ToTaskWithResult();
+							model->m_meshes.Emplace(ptr);
+						}
 
-		outModel = m_loadedModels[uid] = model;
-		newPromise->Run();
-		promise = newPromise;
-		m_promises.Unlock(uid);
+						model->Flush();
+					}
+					return model;
+				}, "Update RHI Meshes", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
-		return promise;
+				outModel = m_loadedModels[uid] = model;
+				newPromise->Run();
+				promise = newPromise;
+				m_promises.Unlock(uid);
+
+				return promise;
 	}
 
 	m_promises.Unlock(uid);
@@ -303,7 +308,9 @@ bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<MeshCont
 	uint32_t idx = 0;
 	for (const auto& shape : shapes)
 	{
-		auto& mesh = outParsedMeshes[assetInfo->ShouldBatchByMaterial() ? shape.mesh.material_ids[0] : idx];
+		const bool bCanBatchByMaterial = shape.mesh.material_ids[0] != -1;
+
+		auto& mesh = outParsedMeshes[assetInfo->ShouldBatchByMaterial() && bCanBatchByMaterial ? shape.mesh.material_ids[0] : idx];
 		for (const auto& index : shape.mesh.indices)
 		{
 			RHI::VertexP3N3UV2C4 vertex{};

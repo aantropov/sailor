@@ -372,7 +372,7 @@ namespace Sailor
 			{
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
 				res->SetChainedTaskPrev(m_self);
-				res->SetArgs(ITaskWithResult<TResult>::m_result);
+				res->SetArgs(ITaskWithResult<TResult>::GetResult());
 				res->Join(m_self);
 
 				m_chainedTasksNext.Add(res);

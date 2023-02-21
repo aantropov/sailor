@@ -223,7 +223,7 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 	auto mask = VkColorComponentFlagBits::VK_COLOR_COMPONENT_A_BIT | VkColorComponentFlagBits::VK_COLOR_COMPONENT_R_BIT |
 		VkColorComponentFlagBits::VK_COLOR_COMPONENT_G_BIT | VkColorComponentFlagBits::VK_COLOR_COMPONENT_B_BIT;
 
-	m_blendModes.Resize(3);
+	m_blendModes.Resize(4);
 
 	m_blendModes[(size_t)RHI::EBlendMode::None] = VulkanStateColorBlendingPtr::Make(false, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD,
 		VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD, mask);

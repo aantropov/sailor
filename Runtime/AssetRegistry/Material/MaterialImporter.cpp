@@ -621,8 +621,10 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 		for (auto& sampler : pMaterialAsset->GetSamplers())
 		{
 			TexturePtr pTexture;
-			updateRHI->Join(
-				App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, pTexture)->Then<void, TexturePtr>(
+
+			if(auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, pTexture))
+			{
+				loadTextureTask->Then<void, TexturePtr>(
 					[=](TexturePtr texture) mutable
 					{
 						if (texture)
@@ -630,7 +632,10 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 							texture->AddHotReloadDependentObject(pMaterial);
 							pMaterial->SetSampler(sampler.m_name, texture);
 						}
-					}, "Set material texture binding", Tasks::EThreadType::Render));
+					}, "Set material texture binding", Tasks::EThreadType::Render);
+
+				updateRHI->Join(loadTextureTask);
+			}
 		}
 
 		for (auto& uniform : pMaterialAsset->GetUniformsVec4())

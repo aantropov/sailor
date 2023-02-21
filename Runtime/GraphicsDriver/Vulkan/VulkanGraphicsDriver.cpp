@@ -238,7 +238,7 @@ RHI::RHICommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHICommandListPtr cmdList = RHI::RHICommandListPtr::Make();
+	RHI::RHICommandListPtr cmdList = RHI::RHICommandListPtr::Make(bOnlyTransferQueue);
 
 	cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device,
 		bOnlyTransferQueue ? device->GetCurrentThreadContext().m_transferCommandPool : device->GetCurrentThreadContext().m_commandPool,
@@ -351,22 +351,30 @@ void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std:
 void VulkanGraphicsDriver::BeginDebugRegion(RHI::RHICommandListPtr cmdList, const std::string& title, const glm::vec4& color)
 {
 #ifdef _DEBUG
-	auto device = m_vkInstance->GetMainDevice();
+	// We don't support debug regions for transfer only lists due to the limitations of the queue
+	if (!cmdList->IsTransferOnly())
+	{
+		auto device = m_vkInstance->GetMainDevice();
 
-	VkDebugMarkerMarkerInfoEXT markerInfo = {};
-	markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT;
-	memcpy(markerInfo.color, &color, sizeof(glm::vec4));
-	markerInfo.pMarkerName = title.c_str();
+		VkDebugMarkerMarkerInfoEXT markerInfo = {};
+		markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT;
+		memcpy(markerInfo.color, &color, sizeof(glm::vec4));
+		markerInfo.pMarkerName = title.c_str();
 
-	device->vkCmdDebugMarkerBegin(cmdList->m_vulkan.m_commandBuffer, &markerInfo);
+		device->vkCmdDebugMarkerBegin(cmdList->m_vulkan.m_commandBuffer, &markerInfo);
+	}
 #endif
 }
 
 void VulkanGraphicsDriver::EndDebugRegion(RHI::RHICommandListPtr cmdList)
 {
 #ifdef _DEBUG
-	auto device = m_vkInstance->GetMainDevice();
-	device->vkCmdDebugMarkerEnd(cmdList->m_vulkan.m_commandBuffer);
+	// We don't support debug regions for transfer only lists due to the limitations of the queue
+	if (!cmdList->IsTransferOnly())
+	{
+		auto device = m_vkInstance->GetMainDevice();
+		device->vkCmdDebugMarkerEnd(cmdList->m_vulkan.m_commandBuffer);
+	}
 #endif
 }
 
@@ -1009,8 +1017,8 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSe
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHICommandListPtr commandList = RHI::RHICommandListPtr::Make();
-	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_commandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+	RHI::RHICommandListPtr commandList = RHI::RHICommandListPtr::Make(true);
+	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_transferCommandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 
 	auto& shaderBinding = bindings->GetOrAddShaderBinding(parameter);
 	bool bShouldUpdateDescriptorSet = false;

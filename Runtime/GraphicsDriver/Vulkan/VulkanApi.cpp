@@ -111,6 +111,10 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
 		extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+#ifdef _DEBUG
+		extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+#endif
 	}
 
 	VkInstanceCreateInfo createInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };

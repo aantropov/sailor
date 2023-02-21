@@ -10,11 +10,19 @@ namespace Sailor::RHI
 	{
 	public:
 
+		RHICommandList(bool bIsTransferOnly) : m_bIsTransferOnly(bIsTransferOnly) {}
+
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
 		{
 			Sailor::GraphicsDriver::Vulkan::VulkanCommandBufferPtr m_commandBuffer;
 		} m_vulkan;
 #endif
+
+		bool IsTransferOnly() const { return m_bIsTransferOnly; }
+
+	protected:
+
+		bool m_bIsTransferOnly = false;
 	};
 };
