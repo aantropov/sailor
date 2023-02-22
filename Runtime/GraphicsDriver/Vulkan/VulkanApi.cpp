@@ -269,7 +269,7 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 		}
 	}
 
-	if (candidates.rbegin()->first > 0)
+	if (!candidates.empty() && candidates.rbegin()->first > 0)
 	{
 		physicalDevice = candidates.rbegin()->second;
 	}
@@ -444,7 +444,7 @@ bool VulkanApi::IsDeviceSuitable(VkPhysicalDevice device, VulkanSurfacePtr surfa
 {
 	VulkanQueueFamilyIndices indices = FindQueueFamilies(device, surface);
 
-	bool extensionsSupported = CheckDeviceExtensionSupport(device);
+	const bool extensionsSupported = CheckDeviceExtensionSupport(device);
 
 	bool swapChainFits = false;
 	if (extensionsSupported)

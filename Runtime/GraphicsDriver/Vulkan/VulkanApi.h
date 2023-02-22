@@ -133,8 +133,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 				VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
 				VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 				"VK_KHR_dynamic_rendering",
-				VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME,
-				VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME
+				VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME
+
+				// For some reasons on some video cards that is not supported for debug configuration (debug layer collisions?)
+				//, VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME 
 			};
 		}
 

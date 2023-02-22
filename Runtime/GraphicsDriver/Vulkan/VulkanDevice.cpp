@@ -479,6 +479,13 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	dynamicRenderingFeature.pNext = &floatFeatures;
 
+	// We are using multiply blending
+	VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT blendFeatures{};
+	blendFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
+	blendFeatures.advancedBlendCoherentOperations = VK_TRUE;
+	
+	floatFeatures.pNext = &blendFeatures;
+
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
