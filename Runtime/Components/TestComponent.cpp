@@ -252,8 +252,10 @@ void TestComponent::Tick(float deltaTime)
 		{
 			if (bindings->HasBinding("data"))
 			{
-				auto binding = bindings->GetOrAddShaderBinding("data");
-				commands->UpdateShaderBinding(GetWorld()->GetCommandList(), binding, &m_skyParams, sizeof(SkyNode::SkyParams));
+				if (auto binding = bindings->GetOrAddShaderBinding("data"))
+				{
+					commands->UpdateShaderBinding(GetWorld()->GetCommandList(), binding, &m_skyParams, sizeof(SkyNode::SkyParams));
+				}
 			}
 		}
 	}

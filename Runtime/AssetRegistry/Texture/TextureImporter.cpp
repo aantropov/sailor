@@ -179,18 +179,24 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 			int32_t width;
 			int32_t height;
 			uint32_t mipLevels;
-			bool bImported;
+			bool bIsImported;
 		};
 
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
-			[pTexture, assetInfo, this]()
+			[pTexture, assetInfo, this]() mutable
 		{
 			TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-			pData->bImported = ImportTexture(assetInfo->GetUID(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
+			pData->bIsImported = ImportTexture(assetInfo->GetUID(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
+
+			if (!pData->bIsImported)
+			{
+				SAILOR_LOG("Cannot import texture with uid: %s", assetInfo->GetUID().ToString().c_str());
+			}
+
 			return pData;
 		})->Then<TexturePtr, TSharedPtr<Data>>([pTexture, assetInfo, this](TSharedPtr<Data> data) mutable
 		{
-			if (data->bImported)
+			if (data->bIsImported && data->decodedData.Num() > 0)
 			{
 				pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data->decodedData[0], data->decodedData.Num(), glm::vec3(data->width, data->height, 1.0f),
 					data->mipLevels, RHI::ETextureType::Texture2D, RHI::ETextureFormat::R8G8B8A8_SRGB, assetInfo->GetFiltration(),
@@ -198,6 +204,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 
 				RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 			}
+
 			return pTexture;
 		}, "Create RHI Texture", Tasks::EThreadType::RHI)->ToTaskWithResult();
 

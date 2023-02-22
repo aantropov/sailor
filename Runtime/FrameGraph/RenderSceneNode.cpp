@@ -295,19 +295,22 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), colorAttachment->GetTarget()->GetFormat(), colorAttachment->GetTarget()->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
-	SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
-	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHISurfacePtr>{ colorAttachment },
-		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
-		glm::ivec2(0, 0),
-		false,
-		glm::vec4(0.0f),
-		true);
+	if(secondaryCommandLists.Num() > 0)
+	{
+		SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
+		commands->BeginRenderPass(commandList,
+			TVector<RHI::RHISurfacePtr>{ colorAttachment },
+			depthAttachment,
+			glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
+			glm::ivec2(0, 0),
+			false,
+			glm::vec4(0.0f),
+			true);
 
-	RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
-	commands->EndRenderPass(commandList);
-	SAILOR_PROFILE_END_BLOCK();
+		RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
+		commands->EndRenderPass(commandList);
+		SAILOR_PROFILE_END_BLOCK();
+	}
 
 	SAILOR_PROFILE_BLOCK("Wait for secondary command lists");
 	for (auto& task : tasks)
