@@ -49,3 +49,13 @@ vec3 convertYxy2RGB(vec3 _Yxy)
 {
     return convertXYZ2RGB(convertYxy2XYZ(_Yxy));
 }
+
+const vec2 invAtan = vec2(0.1591f, 0.3183f);
+
+vec2 EquirectangularCoords(vec3 cubemapDirection)
+{
+    vec2 uv = vec2(atan(cubemapDirection.z, cubemapDirection.x), asin(cubemapDirection.y));
+    uv *= invAtan;
+    uv += 0.5f;
+    return uv;
+}
