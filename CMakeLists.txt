@@ -98,3 +98,9 @@ add_subdirectory("${PROJECT_SOURCE_DIR}/External/yaml-cpp/" "${PROJECT_SOURCE_DI
 set_property(TARGET yaml-cpp PROPERTY FOLDER "ThirdParty/Yaml")
 include_directories(yaml-cpp "${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/")
 add_dependencies(SailorLib yaml-cpp)
+
+# Assimp
+add_subdirectory("${PROJECT_SOURCE_DIR}/External/assimp/" "${PROJECT_SOURCE_DIR}/External/assimp/Built/" EXCLUDE_FROM_ALL)
+set_property(TARGET assimp PROPERTY FOLDER "ThirdParty/Assimp")
+include_directories(assimp "${PROJECT_SOURCE_DIR}/External/assimp/include/assimp/")
+add_dependencies(SailorLib assimp)

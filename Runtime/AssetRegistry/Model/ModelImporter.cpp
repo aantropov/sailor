@@ -13,6 +13,13 @@
 #include "RHI/Renderer.h"
 #include "Memory/ObjectAllocator.hpp"
 
+//Assimp
+#include "assimp/scene.h"
+#include "assimp/postprocess.h"
+#include "assimp/Importer.hpp"
+#include "assimp/DefaultLogger.hpp"
+#include "assimp/LogStream.hpp"
+
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "Tasks/Scheduler.h"
 
@@ -20,6 +27,19 @@
 #include "tiny_obj_loader/tiny_obj_loader.h"
 
 using namespace Sailor;
+
+namespace {
+	const unsigned int ImportFlags =
+		aiProcess_CalcTangentSpace |
+		aiProcess_Triangulate |
+		aiProcess_SortByPType |
+		aiProcess_PreTransformVertices |
+		aiProcess_GenNormals |
+		aiProcess_GenUVCoords |
+		aiProcess_OptimizeMeshes |
+		aiProcess_Debone |
+		aiProcess_ValidateDataStructure;
+}
 
 void Model::Flush()
 {
@@ -286,6 +306,8 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 
 bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
+	Assimp::Importer importer;
+
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;

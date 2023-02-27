@@ -51,6 +51,37 @@ include_directories(SailorLib "${PROJECT_SOURCE_DIR}/External/yaml-cpp/include/"
 target_link_libraries(SailorLib debug "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Debug/yaml-cppd.lib" 
                                 optimized "${PROJECT_SOURCE_DIR}/External/yaml-cpp/Built/Release/yaml-cpp.lib")
 
+# ASSIMP
+IF(MSVC_TOOLSET_VERSION)
+  SET(MSVC_PREFIX "vc${MSVC_TOOLSET_VERSION}")
+  SET(ASSIMP_MSVC_VERSION ${MSVC_PREFIX})
+ELSE()
+  IF(MSVC12)
+    SET(ASSIMP_MSVC_VERSION "vc120")
+  ELSEIF(MSVC14)
+    SET(ASSIMP_MSVC_VERSION "vc140")
+  ELSEIF(MSVC15)
+    SET(ASSIMP_MSVC_VERSION "vc141")
+  ELSEIF(MSV142)
+    SET(ASSIMP_MSVC_VERSION "vc142")
+  ELSEIF(MSVC143)
+    SET(ASSIMP_MSVC_VERSION "vc143")
+  ENDIF()
+ENDIF()
+  
+include_directories(SailorLib "${PROJECT_SOURCE_DIR}/External/assimp/include/")
+include_directories(SailorLib "${PROJECT_SOURCE_DIR}/External/assimp/Built/include/")
+target_link_libraries(SailorLib debug "${PROJECT_SOURCE_DIR}/External/assimp/Built/lib/Debug/assimp-${ASSIMP_MSVC_VERSION}-mtd.lib" 
+                                optimized "${PROJECT_SOURCE_DIR}/External/assimp/Built/lib/Release/assimp-${ASSIMP_MSVC_VERSION}-mt.lib")
+
+add_custom_command(
+    TARGET SailorLib POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E $<IF:$<CONFIG:Release>,copy,true> ARGS ${PROJECT_SOURCE_DIR}/External/assimp/Built/bin/Release/assimp-${ASSIMP_MSVC_VERSION}-mt.dll ${CMAKE_BINARY_DIR}/Binaries/Release/assimp-${ASSIMP_MSVC_VERSION}-mt.dll
+	COMMAND ${CMAKE_COMMAND} -E $<IF:$<CONFIG:Debug>,copy,true> ARGS ${PROJECT_SOURCE_DIR}/External/assimp/Built/bin/Debug/assimp-${ASSIMP_MSVC_VERSION}-mtd.dll ${CMAKE_BINARY_DIR}/Binaries/Debug/assimp-${ASSIMP_MSVC_VERSION}-mtd.dll
+	COMMAND ${CMAKE_COMMAND} -E $<IF:$<CONFIG:RelWithDebInfo>,copy,true> ARGS ${PROJECT_SOURCE_DIR}/External/assimp/Built/bin/Release/assimp-${ASSIMP_MSVC_VERSION}-mt.dll ${CMAKE_BINARY_DIR}/Binaries/RelWithDebInfo/assimp-${ASSIMP_MSVC_VERSION}-mt.dll
+	VERBATIM
+	COMMAND_EXPAND_LISTS)
+
 # Properties->General->Output Directory
 set_target_properties(SailorLib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/Binaries)
 
