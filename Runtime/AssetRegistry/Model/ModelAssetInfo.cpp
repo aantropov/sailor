@@ -39,7 +39,9 @@ void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 
 ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
 {
+	// TODO: Add more formats
 	m_supportedExtensions.Emplace("obj");
+	m_supportedExtensions.Emplace("fbx");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 

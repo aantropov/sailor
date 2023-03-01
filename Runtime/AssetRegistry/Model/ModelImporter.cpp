@@ -32,6 +32,7 @@ namespace {
 	const unsigned int ImportFlags =
 		aiProcess_CalcTangentSpace |
 		aiProcess_Triangulate |
+		aiProcess_FlipUVs |
 		aiProcess_SortByPType |
 		aiProcess_PreTransformVertices |
 		aiProcess_GenNormals |
@@ -257,14 +258,14 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 		struct Data
 		{
 			TVector<MeshContext> m_parsedMeshes;
-			bool m_bIsImported;
+			bool m_bIsImported = false;
 		};
 
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
-				res->m_bIsImported = ImportObjModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
+				res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
 				return res;
 			})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data) mutable
 				{
@@ -304,81 +305,97 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	return Tasks::TaskPtr<ModelPtr>();
 }
 
-bool ModelImporter::ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
+ModelImporter::MeshContext ProcessAssimpMesh(aiMesh* mesh, const aiScene* scene)
+{
+	Sailor::ModelImporter::MeshContext meshContext;
+
+	for (uint32_t i = 0; i < mesh->mNumVertices; i++)
+	{
+		RHI::VertexP3N3UV2C4 vertex{};
+
+		vertex.m_position =
+		{
+			mesh->mVertices[i].x,
+			mesh->mVertices[i].y,
+			mesh->mVertices[i].z
+		};
+
+		if(mesh->HasTextureCoords(0))
+		{
+			vertex.m_texcoord =
+			{
+				mesh->mTextureCoords[0][i].x,
+				mesh->mTextureCoords[0][i].y
+			};
+		}
+
+		vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+		vertex.m_normal =
+		{
+			mesh->mNormals[i].x,
+			mesh->mNormals[i].y,
+			mesh->mNormals[i].z
+		};
+
+		meshContext.outVertices.Add(std::move(vertex));
+
+		if (!meshContext.bIsInited)
+		{
+			meshContext.bounds.m_max = meshContext.bounds.m_min = vertex.m_position;
+			meshContext.bIsInited = true;
+		}
+
+		meshContext.bounds.Extend(vertex.m_position);
+	}
+	
+	for (uint32_t i = 0; i < mesh->mNumFaces; i++)
+	{
+		aiFace face = mesh->mFaces[i];
+		for (uint32_t j = 0; j < face.mNumIndices; j++)
+		{
+			meshContext.outIndices.Add(face.mIndices[j]);
+		}
+	}
+
+	if (mesh->mMaterialIndex >= 0)
+	{
+	}
+
+	return meshContext;
+}
+
+void ProcessAssimpNode(TVector<ModelImporter::MeshContext>& outParsedMeshes, aiNode* node, const aiScene* scene)
+{
+	for (uint32_t i = 0; i < node->mNumMeshes; i++)
+	{
+		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+		outParsedMeshes.Add(std::move(ProcessAssimpMesh(mesh, scene)));
+	}
+
+	for (uint32_t i = 0; i < node->mNumChildren; i++)
+	{
+		ProcessAssimpNode(outParsedMeshes, node->mChildren[i], scene);
+	}
+}
+
+bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
 	Assimp::Importer importer;
 
-	tinyobj::attrib_t attrib;
-	std::vector<tinyobj::shape_t> shapes;
-	std::vector<tinyobj::material_t> materials;
-	std::string warn;
-	std::string err;
+	const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
 
-	auto assetFilepath = assetInfo->GetAssetFilepath();
-	auto materialFolder = Utils::GetFileFolder(assetFilepath);
-	const std::string materialsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath()) + "materials/";
-	const bool bHasMaterialUIDsInMeta = assetInfo->GetDefaultMaterials().Num() > 0;
-
-	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str(), materialFolder.c_str()))
+	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
-		SAILOR_LOG("%s %s", warn.c_str(), err.c_str());
+		SAILOR_LOG("%s", importer.GetErrorString());
 		return false;
 	}
 
-	outParsedMeshes.Resize(assetInfo->ShouldBatchByMaterial() ? materials.size() : shapes.size());
+	ProcessAssimpNode(outParsedMeshes, scene->mRootNode, scene);
 
-	uint32_t idx = 0;
-	for (const auto& shape : shapes)
+	for (const auto& mesh : outParsedMeshes)
 	{
-		const bool bCanBatchByMaterial = shape.mesh.material_ids[0] != -1;
-
-		auto& mesh = outParsedMeshes[assetInfo->ShouldBatchByMaterial() && bCanBatchByMaterial ? shape.mesh.material_ids[0] : idx];
-		for (const auto& index : shape.mesh.indices)
-		{
-			RHI::VertexP3N3UV2C4 vertex{};
-
-			vertex.m_position =
-			{
-			attrib.vertices[3 * index.vertex_index + 0],
-			attrib.vertices[3 * index.vertex_index + 1],
-			attrib.vertices[3 * index.vertex_index + 2]
-			};
-
-			vertex.m_texcoord =
-			{
-				attrib.texcoords[2 * index.texcoord_index + 0],
-				1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-			};
-
-			vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			vertex.m_normal =
-			{
-				attrib.normals[3 * index.normal_index + 0],
-				attrib.normals[3 * index.normal_index + 1],
-				attrib.normals[3 * index.normal_index + 2]
-			};
-
-			// Calculate bounds 
-			if (!mesh.bIsInited)
-			{
-				mesh.bounds.m_max = mesh.bounds.m_min = vertex.m_position;
-				mesh.bIsInited = true;
-			}
-
-			mesh.bounds.Extend(vertex.m_position);
-			outBoundsAabb.Extend(mesh.bounds);
-
-			if (mesh.uniqueVertices.count(vertex) == 0)
-			{
-				mesh.uniqueVertices[vertex] = static_cast<uint32_t>(mesh.outVertices.Num());
-				mesh.outVertices.Add(vertex);
-			}
-
-			mesh.outIndices.Add(mesh.uniqueVertices[vertex]);
-		}
-
-		idx++;
+		outBoundsAabb.Extend(mesh.bounds);
 	}
 
 	outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);

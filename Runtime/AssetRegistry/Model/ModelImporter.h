@@ -61,6 +61,8 @@ namespace Sailor
 
 	class ModelImporter final : public TSubmodule<ModelImporter>, public IAssetInfoHandlerListener
 	{
+	public:
+
 		struct MeshContext
 		{
 			std::unordered_map<RHI::VertexP3N3UV2C4, uint32_t> uniqueVertices;
@@ -69,8 +71,6 @@ namespace Sailor
 			Math::AABB bounds{};
 			bool bIsInited = false;
 		};
-
-	public:
 
 		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);
 		SAILOR_API virtual ~ModelImporter() override;
@@ -87,7 +87,7 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API static bool ImportObjModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
+		SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 
