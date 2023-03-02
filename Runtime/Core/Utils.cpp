@@ -249,7 +249,7 @@ std::time_t Utils::GetFileModificationTime(const std::string& filepath)
 	return 0;
 }
 
-void Utils::FindAllOccurances(std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPosition, size_t endLocation)
+void Utils::FindAllOccurances(const std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPosition, size_t endLocation)
 {
 	SAILOR_PROFILE_FUNCTION();
 	size_t pos = str.find(substr, startPosition);

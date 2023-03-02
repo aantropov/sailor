@@ -23,7 +23,7 @@ namespace Sailor
 		SAILOR_API void ReplaceAll(std::string& str, const std::string& from, const std::string& to, size_t startPos = 0, size_t endPos = std::string::npos);
 		SAILOR_API void Erase(std::string& str, const std::string& substr, size_t startPos = 0, size_t endPos = std::string::npos);
 
-		SAILOR_API void FindAllOccurances(std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPos = 0, size_t endPos = std::string::npos);
+		SAILOR_API void FindAllOccurances(const std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPos = 0, size_t endPos = std::string::npos);
 
 		SAILOR_API void Trim(std::string& s);
 

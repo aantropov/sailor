@@ -23,13 +23,10 @@
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "Tasks/Scheduler.h"
 
-#define TINYOBJLOADER_IMPLEMENTATION 
-#include "tiny_obj_loader/tiny_obj_loader.h"
-
 using namespace Sailor;
 
 namespace {
-	const unsigned int ImportFlags =
+	const unsigned int DefaultImportFlags_Assimp =
 		aiProcess_CalcTangentSpace |
 		aiProcess_Triangulate |
 		aiProcess_FlipUVs |
@@ -37,10 +34,193 @@ namespace {
 		aiProcess_PreTransformVertices |
 		aiProcess_GenNormals |
 		aiProcess_GenUVCoords |
-		aiProcess_OptimizeMeshes |
 		aiProcess_Debone |
 		aiProcess_ValidateDataStructure;
 }
+
+//////////////////////////
+// Assimp Helper Functions
+TVector<std::string> TraceUsedTextures_Assimp(aiMaterial* mat, aiTextureType type)
+{
+	TVector<std::string> textures;
+	for (uint32_t i = 0; i < mat->GetTextureCount(type); i++)
+	{
+		aiString str;
+		mat->GetTexture(type, i, &str);
+		textures.Add(str.C_Str());
+	}
+	return textures;
+}
+
+MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, const std::string& texturesFolder)
+{
+	MaterialAsset::Data data;
+
+	if (mesh->mMaterialIndex >= 0)
+	{
+		aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+
+		data.m_name = material->GetName().C_Str();
+
+		const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(material, aiTextureType_DIFFUSE);
+		const TVector<std::string> specularMaps = TraceUsedTextures_Assimp(material, aiTextureType_SPECULAR);
+		const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(material, aiTextureType_AMBIENT);
+		const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(material, aiTextureType_NORMAL_CAMERA);
+		const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(material, aiTextureType_EMISSIVE);
+
+		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Standard.shader");
+
+		glm::vec4 diffuse{};
+		glm::vec4 ambient{};
+		glm::vec4 emission{};
+		glm::vec4 specular{};
+
+		auto FillData = [](const aiMaterialProperty* property, const std::string& name, glm::vec4* ptr)
+		{
+			const string key = property->mKey.C_Str();
+			TVector<size_t> locations;
+			Utils::FindAllOccurances(key, name, locations, 0);
+			if (locations.Num() > 0)
+			{
+				memcpy(ptr, property->mData, property->mDataLength);
+				return true;
+			}
+
+			return false; 
+		};
+		
+		for(uint32_t i = 0; i < material->mNumProperties; i++)
+		{
+			const auto property = material->mProperties[i];
+			if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
+			{
+				if (FillData(property, std::string("diffuse"), &diffuse) || 
+					FillData(property, std::string("ambient"), &ambient) ||
+					FillData(property, std::string("emission"), &emission) ||
+					FillData(property, std::string("specular"), &specular))
+				{
+					continue;
+				}
+			}
+		}
+
+		data.m_uniformsVec4.Add({ "material.albedo", diffuse });
+		data.m_uniformsVec4.Add({ "material.ambient", ambient });
+		data.m_uniformsVec4.Add({ "material.emission", emission });
+		data.m_uniformsVec4.Add({ "material.specular", specular });
+
+		if (!diffuseMaps.IsEmpty())
+		{
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("diffuseSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));
+		}
+
+		if (!ambientMaps.IsEmpty())
+		{
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + ambientMaps[0])));
+		}
+
+		if (!normalMaps.IsEmpty())
+		{
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + normalMaps[0])));
+		}
+
+		if (!specularMaps.IsEmpty())
+		{
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + specularMaps[0])));
+		}
+
+		if (!emissionMaps.IsEmpty())
+		{
+			data.m_samplers.Add(MaterialAsset::SamplerEntry("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + emissionMaps[0])));
+		}
+	}
+	return data;
+}
+
+void ProcessNodeMaterials_Assimp(TVector<MaterialAsset::Data>& outMaterials, aiNode* node, const aiScene* scene, const std::string& texturesFolder)
+{
+	for (uint32_t i = 0; i < node->mNumMeshes; i++)
+	{
+		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+		outMaterials.Add(std::move(ProcessMaterial_Assimp(mesh, scene, texturesFolder)));
+	}
+
+	for (uint32_t i = 0; i < node->mNumChildren; i++)
+	{
+		ProcessNodeMaterials_Assimp(outMaterials, node->mChildren[i], scene, texturesFolder);
+	}
+}
+
+ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene)
+{
+	Sailor::ModelImporter::MeshContext meshContext;
+
+	for (uint32_t i = 0; i < mesh->mNumVertices; i++)
+	{
+		RHI::VertexP3N3UV2C4 vertex{};
+
+		vertex.m_position =
+		{
+			mesh->mVertices[i].x,
+			mesh->mVertices[i].y,
+			mesh->mVertices[i].z
+		};
+
+		if (mesh->HasTextureCoords(0))
+		{
+			vertex.m_texcoord =
+			{
+				mesh->mTextureCoords[0][i].x,
+				mesh->mTextureCoords[0][i].y
+			};
+		}
+
+		vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+		vertex.m_normal =
+		{
+			mesh->mNormals[i].x,
+			mesh->mNormals[i].y,
+			mesh->mNormals[i].z
+		};
+
+		meshContext.outVertices.Add(std::move(vertex));
+
+		if (!meshContext.bIsInited)
+		{
+			meshContext.bounds.m_max = meshContext.bounds.m_min = vertex.m_position;
+			meshContext.bIsInited = true;
+		}
+
+		meshContext.bounds.Extend(vertex.m_position);
+	}
+
+	for (uint32_t i = 0; i < mesh->mNumFaces; i++)
+	{
+		aiFace face = mesh->mFaces[i];
+		for (uint32_t j = 0; j < face.mNumIndices; j++)
+		{
+			meshContext.outIndices.Add(face.mIndices[j]);
+		}
+	}
+
+	return meshContext;
+}
+
+void ProcessNode_Assimp(TVector<ModelImporter::MeshContext>& outParsedMeshes, aiNode* node, const aiScene* scene)
+{
+	for (uint32_t i = 0; i < node->mNumMeshes; i++)
+	{
+		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+		outParsedMeshes.Add(std::move(ProcessMesh_Assimp(mesh, scene)));
+	}
+
+	for (uint32_t i = 0; i < node->mNumChildren; i++)
+	{
+		ProcessNode_Assimp(outParsedMeshes, node->mChildren[i], scene);
+	}
+}
+//////////////////////////
 
 void Model::Flush()
 {
@@ -109,89 +289,27 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	tinyobj::attrib_t attrib;
-	std::vector<tinyobj::shape_t> shapes;
-	std::vector<tinyobj::material_t> materials;
-	std::string warn;
-	std::string err;
+	Assimp::Importer importer;
+	const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? aiProcess_OptimizeMeshes : 0);
+	const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
 
-	auto assetFilepath = assetInfo->GetAssetFilepath();
-	auto materialFolder = Utils::GetFileFolder(assetFilepath);
-	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, assetInfo->GetAssetFilepath().c_str(), materialFolder.c_str()))
+	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
-		SAILOR_LOG("%s %s", warn.c_str(), err.c_str());
+		SAILOR_LOG("%s", importer.GetErrorString());
 		return;
 	}
 
-	auto texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
-	std::vector<tinyobj::material_t> materialsOrder;
+	const std::string texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 
-	if (!assetInfo->ShouldBatchByMaterial())
+	TVector<MaterialAsset::Data> materials;
+	ProcessNodeMaterials_Assimp(materials, scene->mRootNode, scene, texturesFolder);
+
+	for (const auto& material : materials)
 	{
-		for (const auto& shape : shapes)
-		{
-			materialsOrder.push_back(materials[shape.mesh.material_ids[0]]);
-		}
-	}
-	else
-	{
-		materialsOrder = materials;
-	}
-
-	for (const auto& material : materialsOrder)
-	{
-		MaterialAsset::Data data;
-
-		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Standard.shader");
-
-		glm::vec4 diffuse{};
-		glm::vec4 ambient{};
-		glm::vec4 emission{};
-		glm::vec4 specular{};
-
-		memcpy(&diffuse, material.diffuse, 3 * sizeof(tinyobj::real_t));
-		memcpy(&ambient, material.ambient, 3 * sizeof(tinyobj::real_t));
-		memcpy(&emission, material.emission, 3 * sizeof(tinyobj::real_t));
-		memcpy(&specular, material.specular, 3 * sizeof(tinyobj::real_t));
-		data.m_uniformsVec4.Add({ "material.albedo", diffuse });
-		data.m_uniformsVec4.Add({ "material.ambient", ambient });
-		data.m_uniformsVec4.Add({ "material.emission", emission });
-		data.m_uniformsVec4.Add({ "material.specular", specular });
-
-		if (!material.diffuse_texname.empty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("diffuseSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.diffuse_texname)));
-		}
-
-		if (!material.ambient_texname.empty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.ambient_texname)));
-		}
-
-		if (!material.bump_texname.empty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.bump_texname)));
-		}
-
-		if (!material.normal_texname.empty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.normal_texname)));
-		}
-
-		if (!material.specular_texname.empty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.specular_texname)));
-		}
-
-		if (!material.emissive_texname.empty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + material.emissive_texname)));
-		}
-
 		std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";
 		std::filesystem::create_directory(materialsFolder);
 
-		UID materialUID = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.name + ".mat", std::move(data));
+		UID materialUID = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));
 		assetInfo->GetDefaultMaterials().Add(materialUID);
 	}
 }
@@ -305,84 +423,11 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	return Tasks::TaskPtr<ModelPtr>();
 }
 
-ModelImporter::MeshContext ProcessAssimpMesh(aiMesh* mesh, const aiScene* scene)
-{
-	Sailor::ModelImporter::MeshContext meshContext;
-
-	for (uint32_t i = 0; i < mesh->mNumVertices; i++)
-	{
-		RHI::VertexP3N3UV2C4 vertex{};
-
-		vertex.m_position =
-		{
-			mesh->mVertices[i].x,
-			mesh->mVertices[i].y,
-			mesh->mVertices[i].z
-		};
-
-		if(mesh->HasTextureCoords(0))
-		{
-			vertex.m_texcoord =
-			{
-				mesh->mTextureCoords[0][i].x,
-				mesh->mTextureCoords[0][i].y
-			};
-		}
-
-		vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-		vertex.m_normal =
-		{
-			mesh->mNormals[i].x,
-			mesh->mNormals[i].y,
-			mesh->mNormals[i].z
-		};
-
-		meshContext.outVertices.Add(std::move(vertex));
-
-		if (!meshContext.bIsInited)
-		{
-			meshContext.bounds.m_max = meshContext.bounds.m_min = vertex.m_position;
-			meshContext.bIsInited = true;
-		}
-
-		meshContext.bounds.Extend(vertex.m_position);
-	}
-	
-	for (uint32_t i = 0; i < mesh->mNumFaces; i++)
-	{
-		aiFace face = mesh->mFaces[i];
-		for (uint32_t j = 0; j < face.mNumIndices; j++)
-		{
-			meshContext.outIndices.Add(face.mIndices[j]);
-		}
-	}
-
-	if (mesh->mMaterialIndex >= 0)
-	{
-	}
-
-	return meshContext;
-}
-
-void ProcessAssimpNode(TVector<ModelImporter::MeshContext>& outParsedMeshes, aiNode* node, const aiScene* scene)
-{
-	for (uint32_t i = 0; i < node->mNumMeshes; i++)
-	{
-		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		outParsedMeshes.Add(std::move(ProcessAssimpMesh(mesh, scene)));
-	}
-
-	for (uint32_t i = 0; i < node->mNumChildren; i++)
-	{
-		ProcessAssimpNode(outParsedMeshes, node->mChildren[i], scene);
-	}
-}
-
 bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
 	Assimp::Importer importer;
 
+	const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? aiProcess_OptimizeMeshes : 0);
 	const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
@@ -391,7 +436,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		return false;
 	}
 
-	ProcessAssimpNode(outParsedMeshes, scene->mRootNode, scene);
+	ProcessNode_Assimp(outParsedMeshes, scene->mRootNode, scene);
 
 	for (const auto& mesh : outParsedMeshes)
 	{

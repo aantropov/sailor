@@ -110,6 +110,7 @@ namespace Sailor
 
 		struct Data
 		{
+			std::string m_name = "Untitled";
 			RHI::RenderState m_renderState;
 
 			std::string m_renderQueue = "Opaque";
