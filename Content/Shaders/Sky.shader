@@ -477,7 +477,7 @@ glslFragment: |
     cameraDir = normalize(inverse(frame.view) * cameraDir);
     const float cosA = dot(cameraDir.xyz, viewDir);
     */
-    float avrStep = 100;// / cosA;
+    float avrStep = 80;// / cosA;
     
     position = traceStart;
     

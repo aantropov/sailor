@@ -42,6 +42,7 @@ ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
 	// TODO: Add more formats
 	m_supportedExtensions.Emplace("obj");
 	m_supportedExtensions.Emplace("fbx");
+	m_supportedExtensions.Emplace("glb");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
