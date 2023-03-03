@@ -295,7 +295,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), colorAttachment->GetTarget()->GetFormat(), colorAttachment->GetTarget()->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
-	if(secondaryCommandLists.Num() > 0)
+	if(batches.Num() > 0)
 	{
 		SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
 		commands->BeginRenderPass(commandList,
@@ -319,15 +319,18 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
-	commands->RenderSecondaryCommandBuffers(commandList,
-		secondaryCommandLists,
-		TVector<RHI::RHISurfacePtr>{ colorAttachment },
-		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
-		glm::ivec2(0, 0),
-		false,
-		glm::vec4(0.0f),
-		true);
+	if (secondaryCommandLists.Num() > 0)
+	{
+		commands->RenderSecondaryCommandBuffers(commandList,
+			secondaryCommandLists,
+			TVector<RHI::RHISurfacePtr>{ colorAttachment },
+			depthAttachment,
+			glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
+			glm::ivec2(0, 0),
+			false,
+			glm::vec4(0.0f),
+			true);
+	}
 
 	commands->ImageMemoryBarrier(commandList,
 		colorAttachment->GetTarget(),

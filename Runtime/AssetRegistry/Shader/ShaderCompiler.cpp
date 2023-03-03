@@ -396,6 +396,18 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 						}, "Update Shader RHI");
 				}
 			}
+			else
+			{
+				for (auto& loadedShader : m_loadedShaders[assetInfo->GetUID()])
+				{
+					SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+
+					if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+					{
+						loadedShader.m_second->TraceHotReload(nullptr);
+					}
+				}
+			}
 		}
 		else if (extension == "glsl")
 		{
@@ -663,13 +675,13 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& o
 
 		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
 		{
-			auto pShader = ShaderSetPtr::Make(m_allocator, uid);
-
+			auto pShader = ShaderSetPtr::Make(m_allocator, uid, defines);
+			
 			newPromise = Tasks::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
-				[pShader, assetInfo, defines, this, permutation]()
+				[pShader, assetInfo, this, permutation]()
 				{
 					UpdateRHIResource(pShader, permutation);
-			return pShader;
+					return pShader;
 				});
 
 			m_loadedShaders[uid].Add({ permutation, pShader });

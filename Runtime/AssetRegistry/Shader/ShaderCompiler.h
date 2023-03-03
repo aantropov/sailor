@@ -24,7 +24,7 @@ namespace Sailor
 	public:
 
 		// We aren't able to create shader without asset
-		SAILOR_API ShaderSet(UID uid) : Object(std::move(uid)) {}
+		SAILOR_API ShaderSet(UID uid, const TVector<std::string>& defines) : Object(std::move(uid)), m_defines(defines) {}
 
 		SAILOR_API virtual bool IsReady() const override;
 
@@ -44,6 +44,8 @@ namespace Sailor
 		SAILOR_API const TVector<RHI::EFormat>& GetColorAttachments() const { return m_colorAttachments; }
 		SAILOR_API RHI::EFormat GetDepthStencilAttachment() const { return m_depthStencilAttachment; }
 
+		SAILOR_API const TVector<std::string>& GetDefines() const { return m_defines; }
+
 	protected:
 
 		RHI::RHIShaderPtr m_rhiVertexShader{};
@@ -57,6 +59,8 @@ namespace Sailor
 
 		TVector<RHI::EFormat> m_colorAttachments{};
 		RHI::EFormat m_depthStencilAttachment = RHI::EFormat::UNDEFINED;
+
+		TVector<std::string> m_defines{};
 
 		friend class ShaderCompiler;
 	};

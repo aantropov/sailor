@@ -65,7 +65,7 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 		const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(material, aiTextureType_DIFFUSE);
 		const TVector<std::string> specularMaps = TraceUsedTextures_Assimp(material, aiTextureType_SPECULAR);
 		const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(material, aiTextureType_AMBIENT);
-		const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(material, aiTextureType_NORMAL_CAMERA);
+		const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(material, aiTextureType_NORMALS);
 		const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(material, aiTextureType_EMISSIVE);
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Standard.shader");
