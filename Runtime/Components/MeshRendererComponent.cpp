@@ -12,7 +12,7 @@ void MeshRendererComponent::BeginPlay()
 
 	GetData().SetOwner(GetOwner());
 
-	if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
+	if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.glb"))
 	{
 		App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), GetModel());
 		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelUID->GetUID(), GetMaterials());

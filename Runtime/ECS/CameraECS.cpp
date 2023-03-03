@@ -26,9 +26,15 @@ glm::mat4 CameraData::GetInvProjection() const
 	return glm::inverse(m_projectionMatrix);
 }
 
+glm::mat4 CameraData::GetInvViewMatrix() const
+{
+	return glm::inverse(m_viewMatrix);
+}
+
 glm::mat4 CameraData::GetInvViewProjection() const
 {
-	return glm::inverse(m_projectionMatrix * m_viewMatrix);
+	// We do that separately to maximize the accuracy of Math
+	return GetInvProjection() * GetInvViewMatrix();
 }
 
 void CameraECS::CopyCameraData(RHI::RHISceneViewPtr& outCameras)

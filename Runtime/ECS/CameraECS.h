@@ -22,6 +22,7 @@ namespace Sailor
 
 		SAILOR_API __forceinline const glm::mat4& GetProjectionMatrix() const { return m_projectionMatrix; }
 		SAILOR_API __forceinline const glm::mat4& GetViewMatrix() const { return m_viewMatrix; }
+		SAILOR_API __forceinline glm::mat4 GetInvViewMatrix() const;
 		SAILOR_API __forceinline glm::mat4 GetInvViewProjection() const;
 		SAILOR_API __forceinline glm::mat4 GetInvProjection() const;
 		
