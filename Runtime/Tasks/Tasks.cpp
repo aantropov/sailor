@@ -23,11 +23,7 @@ void ITask::Join(const TWeakPtr<ITask>& job)
 	}
 
 	TSharedPtr<ITask> pOtherJob = job.Lock();
-
-	if (pOtherJob->AddDependency(m_self.Lock()))
-	{
-		this->m_numBlockers++;
-	}
+	pOtherJob->AddDependency(m_self.Lock());
 }
 
 bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
@@ -39,6 +35,7 @@ bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
 		return false;
 	}
 
+	dependentJob->m_numBlockers++;
 	m_dependencies.Emplace(dependentJob);
 	return true;
 }
