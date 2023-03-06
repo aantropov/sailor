@@ -21,7 +21,7 @@
 
 namespace Sailor::RHI
 {
-	class VertexP3N3UV2C4;
+	class VertexP3N3T3B3UV2C4;
 }
 
 namespace Sailor
@@ -65,8 +65,8 @@ namespace Sailor
 
 		struct MeshContext
 		{
-			std::unordered_map<RHI::VertexP3N3UV2C4, uint32_t> uniqueVertices;
-			TVector<RHI::VertexP3N3UV2C4> outVertices;
+			std::unordered_map<RHI::VertexP3N3T3B3UV2C4, uint32_t> uniqueVertices;
+			TVector<RHI::VertexP3N3T3B3UV2C4> outVertices;
 			TVector<uint32_t> outIndices;
 			Math::AABB bounds{};
 			bool bIsInited = false;

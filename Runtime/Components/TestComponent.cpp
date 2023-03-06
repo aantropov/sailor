@@ -47,6 +47,7 @@ void TestComponent::BeginPlay()
 
 	auto gameObject3 = GetWorld()->Instantiate();
 	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
+	gameObject3->GetTransformComponent().SetScale(vec4(10, 10, 10, 1));
 	gameObject3->AddComponent<MeshRendererComponent>();
 
 	m_dirLight = GetWorld()->Instantiate();

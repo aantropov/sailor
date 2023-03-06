@@ -79,6 +79,16 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	vertexP2UV2C1->AddAttribute(RHIVertexDescription::DefaultPositionBinding, 0, EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP2UV2C1::m_position));
 	vertexP2UV2C1->AddAttribute(RHIVertexDescription::DefaultTexcoordBinding, 0, EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP2UV2C1::m_uv));
 	vertexP2UV2C1->AddAttribute(RHIVertexDescription::DefaultColorBinding, 0, EFormat::R8G8B8A8_UNORM, (uint32_t)Sailor::OffsetOf(&RHI::VertexP2UV2C1::m_color));
+
+	auto& vertexP3N3T3B3UV2C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
+	vertexP3N3T3B3UV2C4->SetVertexStride(sizeof(RHI::VertexP3N3T3B3UV2C4));
+	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultPositionBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_position));
+	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultNormalBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_normal));
+	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultTexcoordBinding, 0, RHI::EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_texcoord));
+	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultColorBinding, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_color));
+	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultTangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_tangent));
+	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultBitangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_bitangent));
+
 }
 
 Renderer::~Renderer()

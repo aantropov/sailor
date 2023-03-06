@@ -86,15 +86,15 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 				return true;
 			}
 
-			return false; 
+			return false;
 		};
-		
-		for(uint32_t i = 0; i < material->mNumProperties; i++)
+
+		for (uint32_t i = 0; i < material->mNumProperties; i++)
 		{
 			const auto property = material->mProperties[i];
 			if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
 			{
-				if (FillData(property, std::string("diffuse"), &diffuse) || 
+				if (FillData(property, std::string("diffuse"), &diffuse) ||
 					FillData(property, std::string("ambient"), &ambient) ||
 					FillData(property, std::string("emission"), &emission) ||
 					FillData(property, std::string("specular"), &specular))
@@ -157,7 +157,7 @@ ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene
 
 	for (uint32_t i = 0; i < mesh->mNumVertices; i++)
 	{
-		RHI::VertexP3N3UV2C4 vertex{};
+		RHI::VertexP3N3T3B3UV2C4 vertex{};
 
 		vertex.m_position =
 		{
@@ -182,6 +182,20 @@ ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene
 			mesh->mNormals[i].x,
 			mesh->mNormals[i].y,
 			mesh->mNormals[i].z
+		};
+
+		vertex.m_tangent =
+		{
+			mesh->mTangents[i].x,
+			mesh->mTangents[i].y,
+			mesh->mTangents[i].z
+		};
+
+		vertex.m_bitangent =
+		{
+			mesh->mBitangents[i].x,
+			mesh->mBitangents[i].y,
+			mesh->mBitangents[i].z
 		};
 
 		meshContext.outVertices.Add(std::move(vertex));
@@ -383,8 +397,8 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
-				res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
-				return res;
+		res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
+		return res;
 			})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data) mutable
 				{
 					if (data->m_bIsImported)
@@ -397,10 +411,10 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 							}
 
 							RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
-							ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+							ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 							ptr->m_bounds = mesh.bounds;
 							RHI::Renderer::GetDriver()->UpdateMesh(ptr,
-								&mesh.outVertices[0], sizeof(RHI::VertexP3N3UV2C4) * mesh.outVertices.Num(),
+								&mesh.outVertices[0], sizeof(RHI::VertexP3N3T3B3UV2C4) * mesh.outVertices.Num(),
 								&mesh.outIndices[0], sizeof(uint32_t) * mesh.outIndices.Num());
 
 							model->m_meshes.Emplace(ptr);
@@ -408,7 +422,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 
 						model->Flush();
 					}
-					return model;
+			return model;
 				}, "Update RHI Meshes", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
 				outModel = m_loadedModels[uid] = model;

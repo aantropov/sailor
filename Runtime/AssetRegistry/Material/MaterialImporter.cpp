@@ -146,7 +146,7 @@ void Material::UpdateRHIResource()
 	m_commonShaderBindings.Clear();
 
 	// Create base material
-	GetOrAddRHI(RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>());
+	GetOrAddRHI(RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>());
 
 	SAILOR_PROFILE_BLOCK("Update samplers");
 	for (auto& sampler : m_samplers)

@@ -109,14 +109,18 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 	{
 		int32_t texChannels = 0;
 
-		stbi_uc* pixels = stbi_load(assetInfo->GetAssetFilepath().c_str(), &width, &height, &texChannels, STBI_rgb_alpha);
-		uint32_t imageSize = (uint32_t)width * height * 4;
-		decodedData.Resize(imageSize);
-		memcpy(decodedData.GetData(), pixels, imageSize);
+		if (stbi_uc* pixels = stbi_load(assetInfo->GetAssetFilepath().c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+		{
+			uint32_t imageSize = (uint32_t)width * height * 4;
+			decodedData.Resize(imageSize);
+			memcpy(decodedData.GetData(), pixels, imageSize);
 
-		mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-		stbi_image_free(pixels);
-		return true;
+			mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+			stbi_image_free(pixels);
+			return true;
+		}
+
+		return false;
 	}
 
 	return false;
@@ -190,7 +194,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 
 			if (!pData->bIsImported)
 			{
-				SAILOR_LOG("Cannot import texture with uid: %s", assetInfo->GetUID().ToString().c_str());
+				SAILOR_LOG("Cannot Load texture: %s, with uid: %s", assetInfo->GetAssetFilepath().c_str(), assetInfo->GetUID().ToString().c_str());
 			}
 
 			return pData;

@@ -667,6 +667,29 @@ namespace Sailor::RHI
 		SAILOR_API static VertexAttributeBits GetVertexAttributeBits();
 	};
 
+	class VertexP3N3T3B3UV2C4
+	{
+	public:
+		glm::vec3 m_position;
+		glm::vec3 m_normal;
+		glm::vec3 m_tangent;
+		glm::vec3 m_bitangent;
+		glm::vec2 m_texcoord;
+		glm::vec4 m_color;
+
+		SAILOR_API bool operator==(const VertexP3N3T3B3UV2C4& other) const
+		{
+			return m_position == other.m_position &&
+				m_normal == other.m_normal &&
+				m_tangent == other.m_tangent &&
+				m_bitangent == other.m_bitangent &&
+				m_color == other.m_color &&
+				m_texcoord == other.m_texcoord;
+		}
+
+		SAILOR_API static VertexAttributeBits GetVertexAttributeBits();
+	};
+
 	struct DrawIndexedIndirectData
 	{
 		uint32_t m_indexCount;
@@ -817,6 +840,16 @@ namespace Sailor::RHI
 
 namespace std
 {
+	template<> struct std::hash<Sailor::RHI::VertexP3N3T3B3UV2C4 >
+	{
+		SAILOR_API size_t operator()(Sailor::RHI::VertexP3N3T3B3UV2C4 const& vertex) const
+		{
+			return ((std::hash<glm::vec3>()(vertex.m_position) ^
+				(std::hash<glm::vec3>()(vertex.m_color) << 1)) >> 1) ^
+				(std::hash<glm::vec2>()(vertex.m_texcoord) << 1);
+		}
+	};
+
 	template<> struct std::hash<Sailor::RHI::VertexP3N3UV2C4>
 	{
 		SAILOR_API size_t operator()(Sailor::RHI::VertexP3N3UV2C4 const& vertex) const
