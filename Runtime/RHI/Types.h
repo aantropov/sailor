@@ -606,9 +606,9 @@ namespace Sailor::RHI
 
 	struct VertexP2UV2C1
 	{
-		uint32_t m_color;
 		glm::vec2 m_position;
 		glm::vec2 m_uv;
+		uint32_t m_color;
 
 		SAILOR_API bool operator==(const VertexP2UV2C1& other) const
 		{
