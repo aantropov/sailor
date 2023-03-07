@@ -1344,6 +1344,34 @@ void VulkanGraphicsDriver::GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHIT
 	cmd->m_vulkan.m_commandBuffer->GenerateMipMaps(target->m_vulkan.m_image);
 }
 
+void VulkanGraphicsDriver::ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap)
+{
+	if (!m_pEquirect2Cubemap)
+	{
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeEquirect2Cube.shader"))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetUID(), m_pEquirect2Cubemap);
+		}
+
+		check(m_pEquirect2Cubemap);
+	}
+
+	// TODO: Should we cache the shader bindings?
+	RHI::RHIShaderBindingSetPtr computeEquirect2Cubemap = CreateShaderBindings();
+
+	AddStorageImageToShaderBindings(computeEquirect2Cubemap, "inputTexture", equirect, 0);
+	AddStorageImageToShaderBindings(computeEquirect2Cubemap, "outputTexture", cubemap, 1);
+
+	computeEquirect2Cubemap->RecalculateCompatibility();
+
+	Dispatch(cmd, m_pEquirect2Cubemap->GetComputeShaderRHI(),
+		(uint32_t)(equirect->GetExtent().x / 32.0f),
+		(uint32_t)(equirect->GetExtent().y / 32.0f),
+		6u,
+		{ computeEquirect2Cubemap },
+		nullptr, 0);
+}
+
 // IGraphicsDriverCommands
 
 void VulkanGraphicsDriver::MemoryBarrier(RHI::RHICommandListPtr cmd, RHI::EAccessFlags srcAccess, RHI::EAccessFlags dstAccess)

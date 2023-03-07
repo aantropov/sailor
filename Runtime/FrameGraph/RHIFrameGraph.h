@@ -12,6 +12,7 @@ namespace Sailor::RHI
 	{
 	public:
 
+
 		SAILOR_API RHIFrameGraph() = default;
 
 		SAILOR_API FrameGraphNodePtr GetGraphNode(const std::string& tag);

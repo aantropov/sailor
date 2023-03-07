@@ -711,7 +711,8 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	}
 	commands->EndDebugRegion(commandList);
 
-	if (auto cubemap = frameGraph->GetSampler("g_envCubemap").DynamicCast<RHICubemap>())
+	// TODO: Create Irradiance map from Sky
+	if (auto cubemap = frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>())
 	{
 		commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
 

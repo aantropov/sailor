@@ -20,6 +20,10 @@ samplers:
   uid: ''
   path: Textures/BRDF_Epic.png
 
+- name: g_environmentSampler
+  uid: ''
+  path: Textures/Environment.hdr
+
 float:
 - PI: 3.1415926
   
@@ -101,6 +105,10 @@ frame:
 ############################
   renderTargets:
   - color: Sky
+
+############################
+- name: Environment
+############################
 
 #############################
 #- name: PostProcess

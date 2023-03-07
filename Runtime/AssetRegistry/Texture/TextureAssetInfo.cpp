@@ -54,6 +54,7 @@ TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)
 	m_supportedExtensions.Emplace("gif");
 	m_supportedExtensions.Emplace("psd");
 	m_supportedExtensions.Emplace("dds");
+	m_supportedExtensions.Emplace("hdr");
 
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }

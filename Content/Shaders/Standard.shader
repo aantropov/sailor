@@ -74,8 +74,9 @@ glslVertex: |
       LightsGrid instance[];
   } lightsGrid;
   
-  layout(set = 1, binding = 3) uniform samplerCube g_envCubemap;
-  layout(set = 1, binding = 4) uniform sampler2D g_brdfSampler;
+  layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
+  layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
+  layout(set=1, binding=5) uniform samplerCube g_specularCubemap;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -87,9 +88,10 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
-  layout(set=3, binding=1) uniform sampler2D diffuseSampler;
-  layout(set=3, binding=2) uniform sampler2D ambientSampler;
+  layout(set=3, binding=1) uniform sampler2D albedoSampler;
+  layout(set=3, binding=2) uniform sampler2D metalnessSampler;
   layout(set=3, binding=3) uniform sampler2D normalSampler;
+  layout(set=3, binding=4) uniform sampler2D roughnessSampler;
   
   void main() 
   {
@@ -166,9 +168,10 @@ glslFragment: |
       LightsGrid instance[];
   } lightsGrid;
   
-  layout(set = 1, binding = 3) uniform samplerCube g_envCubemap;
-  layout(set = 1, binding = 4) uniform sampler2D g_brdfSampler;
-
+  layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
+  layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
+  layout(set=1, binding=5) uniform samplerCube g_specularCubemap;
+  
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
@@ -179,9 +182,10 @@ glslFragment: |
       MaterialData instance[];
   } material;
   
-  layout(set=3, binding=1) uniform sampler2D diffuseSampler;
-  layout(set=3, binding=2) uniform sampler2D ambientSampler;
+  layout(set=3, binding=1) uniform sampler2D albedoSampler;
+  layout(set=3, binding=2) uniform sampler2D metalnessSampler;
   layout(set=3, binding=3) uniform sampler2D normalSampler;
+  layout(set=3, binding=4) uniform sampler2D roughnessSampler;
   
   MaterialData GetMaterialData()
   {
@@ -231,7 +235,7 @@ glslFragment: |
     vec3 radiance = light.intensity * attenuation; 
     
     vec3 F0       = mix(vec3(0.04), material.albedo.xyz, material.metallic);
-    vec3 F        = FresnelSchlick(max(dot(halfView, viewDir), 0.0), F0);
+    vec3 F        = FresnelSchlick(F0, max(dot(halfView, viewDir), 0.0));
     
     float NDF = DistributionGGX(worldNormal, halfView, material.roughness);       
     float G   = GeometrySmith(worldNormal, viewDir, toLight, material.roughness);    
@@ -251,14 +255,14 @@ glslFragment: |
   
   vec3 AmbientLighting(MaterialData material, vec3 normal, vec3 worldPos, vec3 viewDir)
   {
-    vec3 worldNormal = normalize(normal);
+    /*vec3 worldNormal = normalize(normal);
     vec3 reflected = reflect(viewDir, worldNormal);
    
     vec3 F0 = mix(vec3(0.04), material.albedo.xyz, material.metallic);
     vec3 F  = FresnelSchlickRoughness(max(dot(worldNormal, viewDir), 0.0), F0, material.roughness);
       
     // Ambient lighting
-    vec3 kS = FresnelSchlick(max(dot(worldNormal, viewDir), 0.0), F0);
+    vec3 kS = FresnelSchlick(F0, max(dot(worldNormal, viewDir), 0.0));
     vec3 kD = 1.0 - kS;
     kD *= 1.0 - material.metallic;
     vec3 irradiance = texture(g_envCubemap, worldNormal).rgb;
@@ -272,7 +276,8 @@ glslFragment: |
 
     vec3 ambient = (kD * diffuse + specular);// * material.ao;
     
-    return ambient;
+    return ambient;*/
+    return vec3(0);
   }
   
   void main() 
@@ -280,8 +285,8 @@ glslFragment: |
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
     
     MaterialData material = GetMaterialData();
-    material.albedo = material.albedo * texture(diffuseSampler, vin.texcoord) * vin.color;
-    material.ambient *= texture(ambientSampler, vin.texcoord);
+    material.albedo = material.albedo * texture(albedoSampler, vin.texcoord) * vin.color;
+    //material.ambient *= texture(metalnessSampler, vin.texcoord);
     
     vec3 normal = normalize(2.0 * texture(normalSampler, vin.texcoord).rgb - 1.0);    
     normal = normalize(vin.tangentBasis * normal);

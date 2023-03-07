@@ -108,8 +108,22 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
 		int32_t texChannels = 0;
+		const std::string filepath = assetInfo->GetAssetFilepath();
 
-		if (stbi_uc* pixels = stbi_load(assetInfo->GetAssetFilepath().c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+		if (stbi_is_hdr(filepath.c_str()))
+		{
+			if(float* pixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			{
+				uint32_t imageSize = (uint32_t)width * height * sizeof(float);
+				decodedData.Resize(imageSize);
+				memcpy(decodedData.GetData(), pixels, imageSize);
+
+				mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+				stbi_image_free(pixels);
+				return true;
+			}
+		}
+		else if (stbi_uc* pixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
 		{
 			uint32_t imageSize = (uint32_t)width * height * 4;
 			decodedData.Resize(imageSize);
@@ -119,8 +133,6 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 			stbi_image_free(pixels);
 			return true;
 		}
-
-		return false;
 	}
 
 	return false;

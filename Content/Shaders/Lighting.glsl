@@ -22,6 +22,38 @@ struct LightsGrid
 	uint num;
 }; 
 
+// GGX/Towbridge-Reitz normal distribution function.
+// Uses Disney's reparametrization of alpha = roughness^2.
+float NdfGGX(float cosLh, float roughness)
+{
+	float alpha   = roughness * roughness;
+	float alphaSq = alpha * alpha;
+
+	float denom = (cosLh * cosLh) * (alphaSq - 1.0) + 1.0;
+	return alphaSq / (PI * denom * denom);
+}
+
+// Single term for separable Schlick-GGX below.
+float GeometrySchlickG1(float cosTheta, float k)
+{
+	return cosTheta / (cosTheta * (1.0 - k) + k);
+}
+
+// Schlick-GGX approximation of geometric attenuation function using Smith's method.
+float GeometrySchlickGGX(float cosLi, float cosLo, float roughness)
+{
+	float r = roughness + 1.0;
+	float k = (r * r) / 8.0; // Epic suggests using this roughness remapping for analytic lights.
+	return GeometrySchlickG1(cosLi, k) * GeometrySchlickG1(cosLo, k);
+}
+
+// Shlick's approximation of the Fresnel factor.
+vec3 FresnelSchlick(vec3 F0, float cosTheta)
+{
+	return F0 + (vec3(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+// Old
 float DistributionGGX(vec3 N, vec3 H, float roughness)
 {
     float a      = roughness*roughness;
@@ -56,11 +88,8 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 	
     return ggx1 * ggx2;
 }
+//
 
-vec3 FresnelSchlick(float cosTheta, vec3 F0)
-{
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
 
 vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 {

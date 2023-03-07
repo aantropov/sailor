@@ -286,6 +286,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr) = 0;
 
 		SAILOR_API virtual void GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target) = 0;
+		SAILOR_API virtual void ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap) = 0;
 
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable

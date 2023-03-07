@@ -206,6 +206,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary);
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr);
 		SAILOR_API virtual void GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target);
+		SAILOR_API virtual void ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap);
 		//End IGraphicsDriverCommands
 
 		SAILOR_API virtual void CollectGarbage_RenderThread() override;
@@ -270,6 +271,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		RHI::RHITexturePtr m_backBuffer;
 		RHI::RHITexturePtr m_depthStencilBuffer;
+		ShaderSetPtr m_pEquirect2Cubemap;
 	};
 };
 

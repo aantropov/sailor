@@ -101,7 +101,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, &ndcQuad[0], ndcQuad.Num() * sizeof(VertexP3N3UV2C4), &indices[0], sizeof(uint32_t) * indices.Num());
 	}
 
-	renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_envCubemap", GetSampler("g_envCubemap"), 3);
+	renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_irradianceCubemap", GetSampler("g_irradianceCubemap"), 3);
 	renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_brdfSampler", GetSampler("g_brdfSampler"), 4);
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)
