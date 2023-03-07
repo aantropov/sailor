@@ -606,9 +606,9 @@ namespace Sailor::RHI
 
 	struct VertexP2UV2C1
 	{
+		uint32_t m_color;
 		glm::vec2 m_position;
 		glm::vec2 m_uv;
-		uint32_t m_color;
 
 		SAILOR_API bool operator==(const VertexP2UV2C1& other) const
 		{
@@ -636,9 +636,8 @@ namespace Sailor::RHI
 	class VertexP3UV2
 	{
 	public:
-
-		glm::vec3 m_position;
 		glm::vec2 m_uv;
+		glm::vec3 m_position;
 
 		SAILOR_API bool operator==(const VertexP3UV2& other) const
 		{
@@ -651,9 +650,9 @@ namespace Sailor::RHI
 	class VertexP3N3UV2C4
 	{
 	public:
-		glm::vec3 m_position;
-		glm::vec3 m_normal;
 		glm::vec2 m_texcoord;
+		glm::vec3 m_position;
+		glm::vec3 m_normal;		
 		glm::vec4 m_color;
 
 		SAILOR_API bool operator==(const VertexP3N3UV2C4& other) const
@@ -670,11 +669,12 @@ namespace Sailor::RHI
 	class VertexP3N3T3B3UV2C4
 	{
 	public:
+
+		glm::vec2 m_texcoord;
 		glm::vec3 m_position;
 		glm::vec3 m_normal;
 		glm::vec3 m_tangent;
 		glm::vec3 m_bitangent;
-		glm::vec2 m_texcoord;
 		glm::vec4 m_color;
 
 		SAILOR_API bool operator==(const VertexP3N3T3B3UV2C4& other) const

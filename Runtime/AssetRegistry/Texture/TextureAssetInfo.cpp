@@ -16,6 +16,7 @@ YAML::Node TextureAssetInfo::Serialize() const
 
 	outData["clamping"] = SerializeEnum<RHI::ETextureClamping>(m_clamping);
 	outData["filtration"] = SerializeEnum<RHI::ETextureFiltration>(m_filtration);
+	outData["format"] = SerializeEnum<RHI::ETextureFormat>(m_format);
 
 	return outData;
 }
@@ -36,6 +37,11 @@ void TextureAssetInfo::Deserialize(const YAML::Node& outData)
 	if (outData["bShouldGenerateMips"])
 	{
 		m_bShouldGenerateMips = outData["bShouldGenerateMips"].as<bool>();
+	}
+
+	if (outData["format"])
+	{
+		DeserializeEnum<RHI::ETextureFormat>(outData["format"], m_format);
 	}
 }
 

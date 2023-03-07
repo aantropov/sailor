@@ -4,3 +4,4 @@ assetImportTime: 1600581648
 bShouldGenerateMips: true
 clamping: Repeat
 filtration: Linear
+format: R8G8B8A8_UNORM

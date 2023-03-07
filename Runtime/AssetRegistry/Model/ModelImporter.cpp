@@ -153,6 +153,9 @@ void ProcessNodeMaterials_Assimp(TVector<MaterialAsset::Data>& outMaterials, aiN
 
 ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene)
 {
+	assert(mesh->HasPositions());
+	assert(mesh->HasNormals());
+
 	Sailor::ModelImporter::MeshContext meshContext;
 
 	for (uint32_t i = 0; i < mesh->mNumVertices; i++)
@@ -184,19 +187,22 @@ ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene
 			mesh->mNormals[i].z
 		};
 
-		vertex.m_tangent =
+		if (mesh->HasTangentsAndBitangents())
 		{
-			mesh->mTangents[i].x,
-			mesh->mTangents[i].y,
-			mesh->mTangents[i].z
-		};
+			vertex.m_tangent =
+			{
+				mesh->mTangents[i].x,
+				mesh->mTangents[i].y,
+				mesh->mTangents[i].z
+			};
 
-		vertex.m_bitangent =
-		{
-			mesh->mBitangents[i].x,
-			mesh->mBitangents[i].y,
-			mesh->mBitangents[i].z
-		};
+			vertex.m_bitangent =
+			{
+				mesh->mBitangents[i].x,
+				mesh->mBitangents[i].y,
+				mesh->mBitangents[i].z
+			};
+		}
 
 		meshContext.outVertices.Add(std::move(vertex));
 

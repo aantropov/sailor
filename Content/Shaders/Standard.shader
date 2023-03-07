@@ -283,8 +283,7 @@ glslFragment: |
     material.albedo = material.albedo * texture(diffuseSampler, vin.texcoord) * vin.color;
     material.ambient *= texture(ambientSampler, vin.texcoord);
     
-    vec3 normal = normalize(2.0 * texture(normalSampler, vin.texcoord).rgb - 1.0);
-    //normal = vec3(0,0,1);
+    vec3 normal = normalize(2.0 * texture(normalSampler, vin.texcoord).rgb - 1.0);    
     normal = normalize(vin.tangentBasis * normal);
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
@@ -321,9 +320,8 @@ glslFragment: |
           }
   
           outColor.xyz += CalculateLighting(light.instance[index], material, normal, vin.worldPosition, viewDirection);
-      //outColor.xyz += 0.01;
+        //outColor.xyz += 0.01;
       }
 
     outColor.a = 1.0f;
-    outColor.xyz = normal;
   }

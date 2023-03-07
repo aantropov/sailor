@@ -17,12 +17,15 @@ namespace Sailor
 
 		SAILOR_API RHI::ETextureFiltration GetFiltration() const { return m_filtration; }
 		SAILOR_API RHI::ETextureClamping GetClamping() const { return m_clamping; }
+		SAILOR_API RHI::ETextureFormat GetFormat() const { return m_format; }
 		SAILOR_API bool ShouldGenerateMips() const { return m_bShouldGenerateMips; }
 
 	private:
 
 		RHI::ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;
 		RHI::ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;
+		RHI::ETextureFormat m_format = RHI::ETextureFormat::R8G8B8A8_SRGB;
+
 		bool m_bShouldGenerateMips = true;
 	};
 
