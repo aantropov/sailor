@@ -324,7 +324,12 @@ void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std:
 #ifdef _DEBUG
 	auto device = m_vkInstance->GetMainDevice();
 
-	if (auto texture = resource.DynamicCast<RHI::RHITexture>())
+	if (auto texture = resource.DynamicCast<RHI::RHICubemap>())
+	{
+		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_IMAGE,
+			(uint64_t)(VkImage)*texture->m_vulkan.m_image, "Cubemap " + name);
+	}
+	else if (auto texture = resource.DynamicCast<RHI::RHITexture>())
 	{
 		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_IMAGE,
 			(uint64_t)(VkImage)*texture->m_vulkan.m_image, "Image " + name);
