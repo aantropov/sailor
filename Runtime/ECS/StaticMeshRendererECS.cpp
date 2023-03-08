@@ -36,11 +36,9 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 					proxy.m_staticMeshEcs = GetComponentIndex(&data);
 					proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
 
-					const auto& bounds = data.GetModel()->GetBoundsAABB();
-					const auto& center = proxy.m_worldMatrix * glm::vec4(bounds.GetCenter(), 1);
-
-					// TODO: world matrix should impact on bounds
-					m_sceneViewProxiesCache->m_stationaryOctree.Update(center, bounds.GetExtents(), proxy);
+					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+					adjustedBounds.Apply(proxy.m_worldMatrix);
+					m_sceneViewProxiesCache->m_stationaryOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
 
 					data.m_lastChanges = ownerTransform.GetLastFrameChanged();
 				}
@@ -72,11 +70,10 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 						proxy.m_overrideMaterials.Add(data.GetMaterials()[materialIndex]->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
 					}
 
-					const auto& bounds = data.GetModel()->GetBoundsAABB();
-					const auto& center = proxy.m_worldMatrix * glm::vec4(bounds.GetCenter(), 1);
-
-					// TODO: world matrix should impact on bounds
-					m_sceneViewProxiesCache->m_staticOctree.Update(center, bounds.GetExtents(), proxy);
+					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+					adjustedBounds.Apply(proxy.m_worldMatrix);
+					m_sceneViewProxiesCache->m_staticOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
+					
 					data.m_lastChanges = ownerTransform.GetLastFrameChanged();
 				}
 			}

@@ -321,3 +321,17 @@ AABB::AABB(glm::vec3 center, glm::vec3 extents)
 	m_min = center - extents;
 	m_max = center + extents;
 }
+
+void AABB::Apply(const glm::mat4& transformMatrix)
+{
+	TVector<glm::vec3> points;
+	GetPoints(points);
+
+	m_min = m_max = vec3(0);
+
+	for (auto& point : points)
+	{
+		const auto& tranformed = transformMatrix * glm::vec4(point, 1.0f);
+		Extend(tranformed);
+	}
+}

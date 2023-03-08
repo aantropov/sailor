@@ -41,6 +41,8 @@ namespace Sailor
 
 		glm::mat4 m_cachedFrustum{ 1 };
 
+		ModelPtr m_model{};
+		GameObjectPtr m_mainModel;
 		float m_sunAngleRad = glm::radians(60.0f);
 
 		SkyNode::SkyParams m_skyParams{};

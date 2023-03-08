@@ -19,7 +19,7 @@ const char* EnvironmentNode::m_name = "Environment";
 void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
-	auto driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+	//auto driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);

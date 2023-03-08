@@ -18,6 +18,11 @@ void TestComponent::BeginPlay()
 {
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(600, 2, 0, 0), glm::mat4(1), 20.0f, 1000.0f);
 
+	m_mainModel = GetWorld()->Instantiate();
+	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
+	m_mainModel->GetTransformComponent().SetScale(vec4(10, 10, 10, 1));
+	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
+
 	for (int32_t i = -1000; i < 1000; i += 32)
 	{
 		for (int32_t j = -1000; j < 1000; j += 32)
@@ -28,7 +33,7 @@ void TestComponent::BeginPlay()
 				m_boxes.Add(Math::AABB(glm::vec3(i, k, j), glm::vec3(1.0f, 1.0f, 1.0f)));
 				const auto& aabb = m_boxes[m_boxes.Num() - 1];
 
-				GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
+				//GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
 
 				m_octree.Insert(aabb.GetCenter(), aabb.GetExtents(), aabb);
 			}
@@ -44,11 +49,6 @@ void TestComponent::BeginPlay()
 			gameObject2->AddComponent<MeshRendererComponent>();
 		}
 	/**/
-
-	auto gameObject3 = GetWorld()->Instantiate();
-	gameObject3->GetTransformComponent().SetPosition(vec3(0, 0, 0));
-	gameObject3->GetTransformComponent().SetScale(vec4(10, 10, 10, 1));
-	gameObject3->AddComponent<MeshRendererComponent>();
 
 	m_dirLight = GetWorld()->Instantiate();
 	auto lightComponent = m_dirLight->AddComponent<LightComponent>();
