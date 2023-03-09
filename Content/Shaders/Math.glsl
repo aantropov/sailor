@@ -1,4 +1,6 @@
 const float PI = 3.14159265359;
+const float TwoPI = 2 * PI;
+const float HalfPI = 0.5 * PI;
 
 vec4 QuatAxisAngle(vec3 axis, float angleRad)
 {
@@ -181,4 +183,16 @@ float NormAngle180(float angle)
   }
   
   return angle;
+}
+
+// Compute Van der Corput radical inverse
+// See: http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
+float RadicalInverse_VdC(uint bits)
+{
+	bits = (bits << 16u) | (bits >> 16u);
+	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }

@@ -8,8 +8,8 @@ glslCompute: |
   const float PI = 3.141592;
   const float TwoPI = 2 * PI;
   
-  layout(set=0, binding=0) uniform sampler2D inputTexture;
-  layout(set=0, binding=1, rgba16f) restrict writeonly uniform imageCube outputTexture;
+  layout(set=0, binding=0) uniform sampler2D src;
+  layout(set=0, binding=1, rgba16f) restrict writeonly uniform imageCube dst;
   
   // Calculate normalized sampling direction vector based on current fragment coordinates (gl_GlobalInvocationID.xyz).
   // This is essentially "inverse-sampling": we reconstruct what the sampling vector would be if we wanted it to "hit"
@@ -17,11 +17,11 @@ glslCompute: |
   // See: OpenGL core profile specs, section 8.13.
   vec3 getSamplingVector()
   {
-      vec2 st = gl_GlobalInvocationID.xy/vec2(imageSize(outputTexture));
+      vec2 st = gl_GlobalInvocationID.xy/vec2(imageSize(dst));
       vec2 uv = 2.0 * vec2(st.x, 1.0-st.y) - vec2(1.0);
   
       vec3 ret;
-    // Select vector based on cubemap face index.
+      // Select vector based on cubemap face index.
       // Sadly 'switch' doesn't seem to work, at least on NVIDIA.
       if(gl_GlobalInvocationID.z == 0)      ret = vec3(1.0,  uv.y, -uv.x);
       else if(gl_GlobalInvocationID.z == 1) ret = vec3(-1.0, uv.y,  uv.x);
@@ -42,8 +42,8 @@ glslCompute: |
     float theta = acos(v.y);
   
     // Sample equirectangular texture.
-    vec4 color = texture(inputTexture, vec2(phi/TwoPI, theta/PI));
+    vec4 color = texture(src, vec2(phi/TwoPI, theta/PI));
   
     // Write out color to output cubemap.
-    imageStore(outputTexture, ivec3(gl_GlobalInvocationID), color);
+    imageStore(dst, ivec3(gl_GlobalInvocationID), color);
   }
