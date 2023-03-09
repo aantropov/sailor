@@ -19,6 +19,7 @@ namespace Sailor
 		SAILOR_API RHI::ETextureClamping GetClamping() const { return m_clamping; }
 		SAILOR_API RHI::ETextureFormat GetFormat() const { return m_format; }
 		SAILOR_API bool ShouldGenerateMips() const { return m_bShouldGenerateMips; }
+		SAILOR_API bool ShouldSupportStorageBinding() const { return m_bShouldSupportStorageBinding; }
 
 	private:
 
@@ -27,6 +28,7 @@ namespace Sailor
 		RHI::ETextureFormat m_format = RHI::ETextureFormat::R8G8B8A8_SRGB;
 
 		bool m_bShouldGenerateMips = true;
+		bool m_bShouldSupportStorageBinding = false;
 	};
 
 	using TextureAssetInfoPtr = TextureAssetInfo*;

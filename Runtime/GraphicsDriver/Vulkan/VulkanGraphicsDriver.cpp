@@ -350,6 +350,12 @@ void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std:
 			(uint64_t)(VkCommandBuffer)*cmdList->m_vulkan.m_commandBuffer,
 			"Command List " + name);
 	}
+	else if (auto sampler = resource.DynamicCast<VulkanSampler>())
+	{
+		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER,
+			(uint64_t)(VkSampler)sampler,
+			"Sampler " + name);
+	}
 #endif
 }
 
@@ -435,8 +441,11 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	// For textures we always use shader read only as default
+	const RHI::EImageLayout layout = RHI::EImageLayout::ShaderReadOnlyOptimal;
+
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, RHI::EImageLayout::ShaderReadOnlyOptimal);
+	RHI::RHITexturePtr outTexture = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, layout);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
@@ -458,7 +467,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 		VK_IMAGE_TILING_OPTIMAL,
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal);
+		(VkImageLayout)layout);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
@@ -1364,10 +1373,8 @@ void VulkanGraphicsDriver::ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, R
 	// TODO: Should we cache the shader bindings?
 	RHI::RHIShaderBindingSetPtr computeEquirect2Cubemap = CreateShaderBindings();
 
-	AddStorageImageToShaderBindings(computeEquirect2Cubemap, "inputTexture", equirect, 0);
+	AddSamplerToShaderBindings(computeEquirect2Cubemap, "inputTexture", equirect, 0);
 	AddStorageImageToShaderBindings(computeEquirect2Cubemap, "outputTexture", cubemap, 1);
-
-	computeEquirect2Cubemap->RecalculateCompatibility();
 
 	Dispatch(cmd, m_pEquirect2Cubemap->GetComputeShaderRHI(),
 		(uint32_t)(equirect->GetExtent().x / 32.0f),

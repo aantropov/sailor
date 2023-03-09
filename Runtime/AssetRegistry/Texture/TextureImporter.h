@@ -42,6 +42,11 @@ namespace Sailor
 	public:
 		using ByteCode = TVector<uint8_t>;
 
+		static constexpr RHI::ETextureUsageFlags DefaultTextureUsage =
+			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+			RHI::ETextureUsageBit::TextureTransferDst_Bit |
+			RHI::ETextureUsageBit::Sampled_Bit;
+
 		SAILOR_API TextureImporter(TextureAssetInfoHandler* infoHandler);
 		SAILOR_API virtual ~TextureImporter() override;
 

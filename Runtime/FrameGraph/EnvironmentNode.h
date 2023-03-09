@@ -11,6 +11,13 @@ namespace Sailor::Framegraph
 	class EnvironmentNode : public TFrameGraphNode<EnvironmentNode>
 	{
 	public:
+
+		static constexpr uint32_t EnvMapSize = 1024;
+		static constexpr uint32_t EnvMapLevels = 10;
+
+		static constexpr uint32_t IrradianceMapSize = 32;
+		static constexpr uint32_t BrdfLutSize = 256;
+
 		SAILOR_API static const char* GetName() { return m_name; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
@@ -26,9 +33,9 @@ namespace Sailor::Framegraph
 		RHI::RHIShaderBindingSetPtr m_computeSpecularBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeBrdfBindings{};
 
-		RHI::RHITexturePtr m_brdfSampler;
+		RHI::RHICubemapPtr m_envCubemap;
 		RHI::RHICubemapPtr m_irradianceCubemap;
-		RHI::RHICubemapPtr m_specularCubemap;
+		RHI::RHITexturePtr m_brdfSampler;
 
 		static const char* m_name;
 	};

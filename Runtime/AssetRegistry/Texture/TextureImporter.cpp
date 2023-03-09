@@ -78,7 +78,8 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 				{
 					pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
 						mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
-						assetInfo->GetClamping());
+						assetInfo->GetClamping(), 
+						assetInfo->ShouldSupportStorageBinding() ? TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit : TextureImporter::DefaultTextureUsage);
 
 					RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 
@@ -114,7 +115,7 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 		{
 			if(float* pixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
 			{
-				uint32_t imageSize = (uint32_t)width * height * sizeof(float);
+				const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
 				decodedData.Resize(imageSize);
 				memcpy(decodedData.GetData(), pixels, imageSize);
 
@@ -125,7 +126,7 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 		}
 		else if (stbi_uc* pixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
 		{
-			uint32_t imageSize = (uint32_t)width * height * 4;
+			const uint32_t imageSize = (uint32_t)width * height * 4;
 			decodedData.Resize(imageSize);
 			memcpy(decodedData.GetData(), pixels, imageSize);
 
@@ -213,10 +214,11 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 		})->Then<TexturePtr, TSharedPtr<Data>>([pTexture, assetInfo, this](TSharedPtr<Data> data) mutable
 		{
 			if (data->bIsImported && data->decodedData.Num() > 0)
-			{				
+			{
 				pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data->decodedData[0], data->decodedData.Num(), glm::vec3(data->width, data->height, 1.0f),
 					data->mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
-					assetInfo->GetClamping());
+					assetInfo->GetClamping(), 
+					assetInfo->ShouldSupportStorageBinding() ? (TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) : TextureImporter::DefaultTextureUsage);
 
 				RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 			}

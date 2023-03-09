@@ -25,22 +25,59 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdTransfer);
 
-	//if (!m_irradianceCubemap)
+	if (!m_irradianceCubemap)
 	{
 		if (auto envMap = frameGraph->GetSampler("g_environmentSampler"))
 		{
-			m_irradianceCubemap = RHI::Renderer::GetDriver()->CreateCubemap(envMap->GetExtent(), 1, RHI::EFormat::R16G16B16A16_SFLOAT);
+			// Create all textures/cubemaps
+			const RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit |
+				RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+				RHI::ETextureUsageBit::TextureTransferDst_Bit |
+				RHI::ETextureUsageBit::Storage_Bit |
+				RHI::ETextureUsageBit::Sampled_Bit;
+
+			m_envCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(EnvMapSize, EnvMapSize),
+				EnvMapLevels,
+				RHI::EFormat::R16G16B16A16_SFLOAT,
+				RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Clamp,
+				usage);
+
+			m_irradianceCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(IrradianceMapSize, IrradianceMapSize),
+				1,
+				RHI::EFormat::R16G16B16A16_SFLOAT,
+				RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Clamp,
+				usage);
+
+			m_brdfSampler = RHI::Renderer::GetDriver()->CreateRenderTarget(ivec2(BrdfLutSize, BrdfLutSize), 1,
+				RHI::EFormat::R16G16_SFLOAT, RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Clamp, usage);
+
+			RHI::Renderer::GetDriver()->SetDebugName(m_envCubemap, "g_envCubemap");
+			RHI::Renderer::GetDriver()->SetDebugName(m_brdfSampler, "g_brdfSampler");
 			RHI::Renderer::GetDriver()->SetDebugName(m_irradianceCubemap, "g_irradianceCubemap");
 
+			frameGraph->SetSampler("g_envCubemap", m_envCubemap);
 			frameGraph->SetSampler("g_irradianceCubemap", m_irradianceCubemap);
+			frameGraph->SetSampler("g_brdfSampler", m_brdfSampler);
 
-			commands->ImageMemoryBarrier(commandList, envMap, envMap->GetFormat(), envMap->GetDefaultLayout(), EImageLayout::ComputeRead);
-			commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), m_irradianceCubemap->GetDefaultLayout(), EImageLayout::ComputeWrite);
+			// Temp cubemap to generate data
+			RHI::RHICubemapPtr rawEnvCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(EnvMapSize, EnvMapSize),
+				EnvMapLevels,
+				RHI::EFormat::R16G16B16A16_SFLOAT,
+				RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Clamp,
+				usage);
+			RHI::Renderer::GetDriver()->SetDebugName(rawEnvCubemap, "rawEnvCubemap");
 
-			commands->ConvertEquirect2Cubemap(commandList, envMap, m_irradianceCubemap);
+			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), rawEnvCubemap->GetDefaultLayout(), EImageLayout::ComputeWrite);
+			commands->ConvertEquirect2Cubemap(commandList, envMap, rawEnvCubemap);
+			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::TransferDstOptimal);
 
-			commands->ImageMemoryBarrier(commandList, envMap, envMap->GetFormat(), EImageLayout::ComputeRead, envMap->GetDefaultLayout());
-			commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), EImageLayout::ComputeWrite, m_irradianceCubemap->GetDefaultLayout());
+			commands->GenerateMipMaps(commandList, rawEnvCubemap);
+			//
+
 		}
 	}
 
