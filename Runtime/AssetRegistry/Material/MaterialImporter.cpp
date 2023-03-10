@@ -54,7 +54,7 @@ Tasks::ITaskPtr Material::OnHotReload()
 {
 	m_bIsDirty = true;
 
-	auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]()
+	auto updateRHI = Tasks::Scheduler::CreateTask("Update material RHI resource", [=]
 		{
 			UpdateRHIResource();
 	ForcelyUpdateUniforms();

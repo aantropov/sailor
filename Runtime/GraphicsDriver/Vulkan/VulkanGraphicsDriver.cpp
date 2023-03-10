@@ -550,6 +550,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 			res->m_vulkan.m_image = outCubemap->m_vulkan.m_image;
 			res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(outCubemap->m_vulkan.m_image->GetDevice(), outCubemap->m_vulkan.m_image);
 			res->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
+			res->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
 			res->m_vulkan.m_imageView->Compile();
 
 			outCubemap->m_mipLevels.Add(res);
@@ -795,10 +796,10 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 						auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index, texture->m_vulkan.m_imageView);
 						descriptors.Add(descr);
 					}
-
-					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 					index++;
 				}
+
+				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 			}
 			else if (binding.m_second->m_vulkan.m_valueBinding)
 			{
@@ -2150,10 +2151,9 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 							auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index, texture->m_vulkan.m_imageView);
 							descriptors.Add(descr);
 						}
-
-						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 						index++;
 					}
+					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 				}
 				else if (binding.m_second->m_vulkan.m_valueBinding)
 				{

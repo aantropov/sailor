@@ -128,8 +128,8 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 					glm::ivec4(0, 0, rawEnvCubemap->GetExtent().x, rawEnvCubemap->GetExtent().y),
 					glm::ivec4(0, 0, m_envCubemap->GetExtent().x, m_envCubemap->GetExtent().y));
 
-				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), EImageLayout::TransferSrcOptimal, rawEnvCubemap->GetDefaultLayout());
-				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::TransferDstOptimal, m_envCubemap->GetDefaultLayout());
+				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), EImageLayout::TransferSrcOptimal, EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::TransferDstOptimal, EImageLayout::ComputeWrite);
 				
 				// Pre-filter rest of the mip-chain.
 				TVector<RHI::RHITexturePtr> envMapMips;
@@ -140,6 +140,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 				driver->AddSamplerToShaderBindings(m_computeSpecularBindings, "rawEnvMap", rawEnvCubemap, 0);
 				driver->AddStorageImageToShaderBindings(m_computeSpecularBindings, "envMap", envMapMips, 1);
+
 
 				const float deltaRoughness = 1.0f / std::max(float(NumMipTailLevels), 1.0f);
 				for (uint32_t level = 1, size = EnvMapSize / 2; level < EnvMapLevels; ++level, size /= 2)
@@ -155,6 +156,8 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 						{ m_computeSpecularBindings },
 						&pushConstants, sizeof(PushConstants));
 				}
+
+				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ComputeWrite, m_envCubemap->GetDefaultLayout());
 			}
 			commands->EndDebugRegion(commandList);
 		}
