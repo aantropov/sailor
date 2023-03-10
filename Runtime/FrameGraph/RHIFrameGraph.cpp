@@ -111,6 +111,11 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_brdfSampler", g_brdfSampler, 4);
 	}
 
+	if (auto g_envCubemap = GetSampler("g_envCubemap"))
+	{
+		renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_envCubemap", g_envCubemap, 5);
+	}
+
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
 		SAILOR_PROFILE_BLOCK("FrameGraph");

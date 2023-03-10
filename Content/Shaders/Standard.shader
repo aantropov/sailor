@@ -76,7 +76,7 @@ glslVertex: |
   
   layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
   layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
-  layout(set=1, binding=5) uniform samplerCube g_specularCubemap;
+  layout(set=1, binding=5) uniform samplerCube g_envCubemap;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -170,7 +170,7 @@ glslFragment: |
   
   layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
   layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
-  layout(set=1, binding=5) uniform samplerCube g_specularCubemap;
+  layout(set=1, binding=5) uniform samplerCube g_envCubemap;
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -192,13 +192,11 @@ glslFragment: |
       return material.instance[materialInstance];
   }
   
-  vec3 CalculateLighting(LightData light, MaterialData material, vec3 normal, vec3 worldPos, vec3 viewDir)
-  {
-    vec3 diffuse = material.albedo.xyz;
-    vec3 worldNormal = normalize(normal);
-    vec3 toLight = normalize(-light.direction);
-    vec3 halfView = normalize(viewDir + toLight);
+  const float Epsilon = 0.00001;
   
+  vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo, 
+  float cosLo, vec3 normal, vec3 worldPos)
+  {
     float falloff = 1.0f;
     float attenuation = 1.0;
     
@@ -211,7 +209,7 @@ glslFragment: |
     else if(light.type == 1)
     {
       // Attenuation
-        const float distance    = length(light.worldPosition - worldPos);
+      const float distance    = length(light.worldPosition - worldPos);
       const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
       falloff         = attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
     }
@@ -232,53 +230,73 @@ glslFragment: |
       }
     }
     
-    vec3 radiance = light.intensity * attenuation; 
-    
-    vec3 F0       = mix(vec3(0.04), material.albedo.xyz, material.metallic);
-    vec3 F        = FresnelSchlick(F0, max(dot(halfView, viewDir), 0.0));
-    
-    float NDF = DistributionGGX(worldNormal, halfView, material.roughness);       
-    float G   = GeometrySmith(worldNormal, viewDir, toLight, material.roughness);    
+    vec3 Li = -light.direction;
+    vec3 Lradiance = light.intensity;
 
-    vec3 numerator    = NDF * G * F;
-    float denominator = 4.0 * max(dot(worldNormal, viewDir), 0.0) * max(dot(worldNormal, toLight), 0.0)  + 0.0001;
-    vec3 specular     = numerator / denominator;
-    
-    vec3 kS = F;
-    vec3 kD = vec3(1.0) - kS;
-  
-    kD *= 1.0 - material.metallic;
-    
-    float NdotL = max(dot(worldNormal, toLight), 0.0);
-    return (kD * material.albedo.xyz / PI + specular) * radiance * NdotL * falloff;    
+    // Half-vector between Li and Lo.
+    vec3 Lh = normalize(Li + Lo);
+
+    // Calculate angles between surface normal and various light vectors.
+    float cosLi = max(0.0, dot(normal, Li));
+    float cosLh = max(0.0, dot(normal, Lh));
+
+    // Calculate Fresnel term for direct lighting. 
+    vec3 F  = FresnelSchlick(F0, max(0.0, dot(Lh, Lo)));
+    // Calculate normal distribution for specular BRDF.
+    float D = NdfGGX(cosLh, material.roughness);
+    // Calculate geometric attenuation for specular BRDF.
+    float G = GeometrySchlickGGX(cosLi, cosLo, material.roughness);
+
+    // Diffuse scattering happens due to light being refracted multiple times by a dielectric medium.
+    // Metals on the other hand either reflect or absorb energy, so diffuse contribution is always zero.
+    // To be energy conserving we must scale diffuse BRDF contribution based on Fresnel factor & metalness.
+    vec3 kd = mix(vec3(1.0) - F, vec3(0.0), material.metallic);
+
+    // Lambert diffuse BRDF.
+    // We don't scale by 1/PI for lighting & material units to be more convenient.
+    // See: https://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/
+    vec3 diffuseBRDF = kd * material.albedo.xyz;
+
+    // Cook-Torrance specular microfacet BRDF.
+    vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
+
+    // Total contribution for this light.
+    return ((diffuseBRDF + specularBRDF) * Lradiance * cosLi) * falloff;    
   }
   
-  vec3 AmbientLighting(MaterialData material, vec3 normal, vec3 worldPos, vec3 viewDir)
+  vec3 AmbientLighting(MaterialData material, vec3 F0, vec3 Lr, vec3 normal, float cosLo)
   {
-    /*vec3 worldNormal = normalize(normal);
-    vec3 reflected = reflect(viewDir, worldNormal);
-   
-    vec3 F0 = mix(vec3(0.04), material.albedo.xyz, material.metallic);
-    vec3 F  = FresnelSchlickRoughness(max(dot(worldNormal, viewDir), 0.0), F0, material.roughness);
-      
-    // Ambient lighting
-    vec3 kS = FresnelSchlick(F0, max(dot(worldNormal, viewDir), 0.0));
-    vec3 kD = 1.0 - kS;
-    kD *= 1.0 - material.metallic;
-    vec3 irradiance = texture(g_envCubemap, worldNormal).rgb;
-    vec3 diffuse      = irradiance * material.albedo.xyz;
+    // Sample diffuse irradiance at normal direction.
+    vec3 irradiance = texture(g_irradianceCubemap, normal).rgb;
     
-    // Sample both the pre-filter map and the BRDF lut and combine them together as per the Split-Sum approximation to get the IBL specular part.
-    const float MAX_REFLECTION_LOD = 4.0;
-    vec3 prefilteredColor = textureLod(g_envCubemap, reflected, material.roughness * MAX_REFLECTION_LOD).rgb;    
-    vec2 brdf  = texture(g_brdfSampler, vec2(max(dot(worldNormal, viewDir), 0.0), material.roughness)).rg;
-    vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
-
-    vec3 ambient = (kD * diffuse + specular);// * material.ao;
+    // Calculate Fresnel term for ambient lighting.
+    // Since we use pre-filtered cubemap(s) and irradiance is coming from many directions
+    // use cosLo instead of angle with light's half-vector (cosLh above).
+    // See: https://seblagarde.wordpress.com/2011/08/17/hello-world/
+    vec3 F = FresnelSchlick(F0, cosLo);
     
-    return ambient;*/
-    return vec3(0);
+    // Get diffuse contribution factor (as with direct lighting).
+    vec3 kd = mix(vec3(1.0) - F, vec3(0.0), material.metallic);
+    
+    // Irradiance map contains exitant radiance assuming Lambertian BRDF, no need to scale by 1/PI here either.
+    vec3 diffuseIBL = kd * material.albedo.xyz * irradiance;
+    
+    // Sample pre-filtered specular reflection environment at correct mipmap level.
+    int specularTextureLevels = textureQueryLevels(g_envCubemap);
+    vec3 specularIrradiance = textureLod(g_envCubemap, Lr, material.roughness * specularTextureLevels).rgb;
+    
+    // Split-sum approximation factors for Cook-Torrance specular BRDF.
+    vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, material.roughness)).rg;
+    
+    // Total specular IBL contribution.
+    vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
+    
+    // Total ambient lighting contribution.  
+    return diffuseIBL + specularIBL;
   }
+  
+  // Constant normal incidence Fresnel factor for all dielectrics.
+  const vec3 Fdielectric = vec3(0.04);
   
   void main() 
   {
@@ -286,13 +304,23 @@ glslFragment: |
     
     MaterialData material = GetMaterialData();
     material.albedo = material.albedo * texture(albedoSampler, vin.texcoord) * vin.color;
-    //material.ambient *= texture(metalnessSampler, vin.texcoord);
+    material.metallic = material.metallic * texture(metalnessSampler, vin.texcoord).r;
+    material.roughness = material.roughness * texture(roughnessSampler, vin.texcoord).r;
     
     vec3 normal = normalize(2.0 * texture(normalSampler, vin.texcoord).rgb - 1.0);    
     normal = normalize(vin.tangentBasis * normal);
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
     outColor.xyz = vec3(0);
+    
+    // Angle between surface normal and outgoing light direction.
+    float cosLo = max(0.0, dot(normal, -viewDirection));
+    
+    // Specular reflection vector.
+    vec3 Lr = 2.0 * cosLo * normal + viewDirection;
+    
+    // Fresnel reflectance at normal incidence (for metals use albedo color).
+    vec3 F0 = mix(Fdielectric, material.albedo.xyz, material.metallic);
     
   #ifdef ALPHA_CUTOUT
     if(material.diffuse.a < 0.05)
@@ -317,16 +345,16 @@ glslFragment: |
     const uint numLights = lightsGrid.instance[tileIndex].num;
     
     for(int i = 0; i < numLights; i++)
-      {
-          uint index = culledLights.indices[offset + i];
-          if(index == uint(-1))
-          {
-              break;
-          }
-  
-          outColor.xyz += CalculateLighting(light.instance[index], material, normal, vin.worldPosition, viewDirection);
-        //outColor.xyz += 0.01;
-      }
+    {
+        uint index = culledLights.indices[offset + i];
+        if(index == uint(-1))
+        {
+            break;
+        }
+    
+        outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
+    }
 
+    outColor.xyz = AmbientLighting(material, F0, Lr, normal, cosLo);
     outColor.a = 1.0f;
   }

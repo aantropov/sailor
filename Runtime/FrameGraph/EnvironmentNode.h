@@ -23,6 +23,8 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
+		SAILOR_API void SetDirty() { m_bIsDirty = true; };
+
 	protected:
 
 		ShaderSetPtr m_pComputeIrradianceShader{};
@@ -33,10 +35,11 @@ namespace Sailor::Framegraph
 		RHI::RHIShaderBindingSetPtr m_computeSpecularBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeBrdfBindings{};
 
-		RHI::RHICubemapPtr m_envCubemap;
-		RHI::RHICubemapPtr m_irradianceCubemap;
-		RHI::RHITexturePtr m_brdfSampler;
+		RHI::RHICubemapPtr m_envCubemap{};
+		RHI::RHICubemapPtr m_irradianceCubemap{};
+		RHI::RHITexturePtr m_brdfSampler{};
 
+		bool m_bIsDirty = true;
 		static const char* m_name;
 	};
 

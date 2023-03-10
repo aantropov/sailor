@@ -16,14 +16,14 @@ samplers:
   - roughnessSampler: "{AF977465-88EB-4FE8-AF4E-30E0F370FE4D}"
 uniformsVec4:
   - material.albedo:
-      - 0.588235319
-      - 0.588235319
-      - 0.588235319
+      - 1
+      - 1
+      - 1
       - 0
   - material.ambient:
-      - 0.588235319
-      - 0.588235319
-      - 0.588235319
+      - 1
+      - 1
+      - 1
       - 0
   - material.emission:
       - 0
@@ -35,4 +35,6 @@ uniformsVec4:
       - 0.899999976
       - 0.899999976
       - 0
-uniformsFloat: ~
+uniformsFloat: 
+  - material.roughness: 1
+  - material.metallic: 1

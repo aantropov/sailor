@@ -55,7 +55,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		m_computeIrradianceBindings = driver->CreateShaderBindings();
 	}
 
-	if (!m_irradianceCubemap)
+	if (m_bIsDirty)
 	{
 		if (auto envMap = frameGraph->GetSampler("g_environmentSampler"))
 		{
@@ -84,9 +84,9 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				RHI::EFormat::R16G16_SFLOAT, RHI::ETextureFiltration::Linear,
 				RHI::ETextureClamping::Clamp, usage);
 
-			RHI::Renderer::GetDriver()->SetDebugName(m_envCubemap, "g_envCubemap");
-			RHI::Renderer::GetDriver()->SetDebugName(m_brdfSampler, "g_brdfSampler");
+			RHI::Renderer::GetDriver()->SetDebugName(m_envCubemap, "g_envCubemap");			
 			RHI::Renderer::GetDriver()->SetDebugName(m_irradianceCubemap, "g_irradianceCubemap");
+			RHI::Renderer::GetDriver()->SetDebugName(m_brdfSampler, "g_brdfSampler");
 
 			frameGraph->SetSampler("g_envCubemap", m_envCubemap);
 			frameGraph->SetSampler("g_irradianceCubemap", m_irradianceCubemap);
@@ -122,28 +122,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 					{ m_computeBrdfBindings },
 					nullptr, 0);
 
-				commands->ImageMemoryBarrier(commandList, m_brdfSampler, m_brdfSampler->GetFormat(), EImageLayout::ComputeWrite, m_brdfSampler->GetDefaultLayout());
-			}
-			commands->EndDebugRegion(commandList);
-
-			// Compute diffuse irradiance cubemap
-			commands->BeginDebugRegion(commandList, "Compute diffuse irradiance cubemap", DebugContext::Color_CmdCompute);
-			{
-				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), m_envCubemap->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
-				commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), m_irradianceCubemap->GetDefaultLayout(), EImageLayout::ComputeWrite);
-
-				driver->AddSamplerToShaderBindings(m_computeIrradianceBindings, "envMap", m_envCubemap, 0);
-				driver->AddStorageImageToShaderBindings(m_computeIrradianceBindings, "irradianceMap", m_irradianceCubemap, 1);
-
-				commands->Dispatch(commandList,
-					m_pComputeIrradianceShader->GetComputeShaderRHI(),
-					IrradianceMapSize / 32u,
-					IrradianceMapSize / 32u,
-					6u,
-					{ m_computeIrradianceBindings });
-
-				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_envCubemap->GetDefaultLayout());
-				commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), EImageLayout::ComputeWrite, m_irradianceCubemap->GetDefaultLayout());
+				commands->ImageMemoryBarrier(commandList, m_brdfSampler, m_brdfSampler->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
 			}
 			commands->EndDebugRegion(commandList);
 
@@ -191,9 +170,30 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ComputeWrite, m_envCubemap->GetDefaultLayout());
 			}
 			commands->EndDebugRegion(commandList);
-		}
-	}
 
+			commands->BeginDebugRegion(commandList, "Compute diffuse irradiance cubemap", DebugContext::Color_CmdCompute);
+			{
+				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), m_envCubemap->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), m_irradianceCubemap->GetDefaultLayout(), EImageLayout::ComputeWrite);
+
+				driver->AddSamplerToShaderBindings(m_computeIrradianceBindings, "envMap", m_envCubemap, 0);
+				driver->AddStorageImageToShaderBindings(m_computeIrradianceBindings, "irradianceMap", m_irradianceCubemap, 1);
+
+				commands->Dispatch(commandList,
+					m_pComputeIrradianceShader->GetComputeShaderRHI(),
+					IrradianceMapSize / 32u,
+					IrradianceMapSize / 32u,
+					6u,
+					{ m_computeIrradianceBindings });
+
+				//commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_envCubemap->GetDefaultLayout());
+				commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
+			}
+			commands->EndDebugRegion(commandList);
+		}
+
+		m_bIsDirty = false;
+	}
 	commands->EndDebugRegion(commandList);
 }
 
