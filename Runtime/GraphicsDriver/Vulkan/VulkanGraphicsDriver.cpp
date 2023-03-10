@@ -1244,27 +1244,10 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding)
 {
-	SAILOR_PROFILE_FUNCTION();
-
-	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
-
-	RHI::ShaderLayoutBinding layout;
-	layout.m_binding = shaderBinding;
-	layout.m_name = name;
-	layout.m_type = RHI::EShaderBindingType::StorageImage;
-
-	binding->SetLayout(layout);
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
-	binding->SetTextureBinding({ texture });
-
-	pShaderBindings->UpdateLayoutShaderBinding(layout);
-	UpdateDescriptorSet(pShaderBindings);
-
-	return binding;
+	return AddStorageImageToShaderBindings(pShaderBindings, name, TVector<RHI::RHITexturePtr>{ texture }, shaderBinding);
 }
 
-RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, TVector<RHI::RHITexturePtr> array, uint32_t shaderBinding)
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding)
 {
 	SAILOR_PROFILE_FUNCTION();
 

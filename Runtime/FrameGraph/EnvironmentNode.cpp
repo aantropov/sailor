@@ -45,6 +45,16 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		m_computeSpecularBindings = driver->CreateShaderBindings();
 	}
 
+	if (!m_pComputeIrradianceShader)
+	{
+		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeIrradianceMap.shader"))
+		{
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetUID(), m_pComputeIrradianceShader);
+		}
+
+		m_computeIrradianceBindings = driver->CreateShaderBindings();
+	}
+
 	if (!m_irradianceCubemap)
 	{
 		if (auto envMap = frameGraph->GetSampler("g_environmentSampler"))
@@ -116,6 +126,27 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			}
 			commands->EndDebugRegion(commandList);
 
+			// Compute diffuse irradiance cubemap
+			commands->BeginDebugRegion(commandList, "Compute diffuse irradiance cubemap", DebugContext::Color_CmdCompute);
+			{
+				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), m_envCubemap->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), m_irradianceCubemap->GetDefaultLayout(), EImageLayout::ComputeWrite);
+
+				driver->AddSamplerToShaderBindings(m_computeIrradianceBindings, "envMap", m_envCubemap, 0);
+				driver->AddStorageImageToShaderBindings(m_computeIrradianceBindings, "irradianceMap", m_irradianceCubemap, 1);
+
+				commands->Dispatch(commandList,
+					m_pComputeIrradianceShader->GetComputeShaderRHI(),
+					IrradianceMapSize / 32u,
+					IrradianceMapSize / 32u,
+					6u,
+					{ m_computeIrradianceBindings });
+
+				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_envCubemap->GetDefaultLayout());
+				commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), EImageLayout::ComputeWrite, m_irradianceCubemap->GetDefaultLayout());
+			}
+			commands->EndDebugRegion(commandList);
+
 			commands->BeginDebugRegion(commandList, "Compute pre-filtered specular environment map", DebugContext::Color_CmdCompute);
 			{
 				struct PushConstants { int32_t level{}; float roughness; };
@@ -130,7 +161,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), EImageLayout::TransferSrcOptimal, EImageLayout::ShaderReadOnlyOptimal);
 				commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::TransferDstOptimal, EImageLayout::ComputeWrite);
-				
+
 				// Pre-filter rest of the mip-chain.
 				TVector<RHI::RHITexturePtr> envMapMips;
 				for (uint32_t level = 1; level < EnvMapLevels; ++level)
