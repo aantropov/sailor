@@ -194,8 +194,7 @@ glslFragment: |
   
   const float Epsilon = 0.00001;
   
-  vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo, 
-  float cosLo, vec3 normal, vec3 worldPos)
+  vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
     float attenuation = 1.0;
@@ -344,6 +343,8 @@ glslFragment: |
     const uint offset = lightsGrid.instance[tileIndex].offset;
     const uint numLights = lightsGrid.instance[tileIndex].num;
     
+    outColor.xyz = AmbientLighting(material, F0, Lr, normal, cosLo);
+    
     for(int i = 0; i < numLights; i++)
     {
         uint index = culledLights.indices[offset + i];
@@ -355,6 +356,5 @@ glslFragment: |
         outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
     }
 
-    outColor.xyz = AmbientLighting(material, F0, Lr, normal, cosLo);
     outColor.a = 1.0f;
   }

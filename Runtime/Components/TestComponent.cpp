@@ -63,9 +63,9 @@ void TestComponent::BeginPlay()
 	spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
 	spotLight->GetTransformComponent().SetRotation(quat(vec3(-45, 0.0f, 0.0f)));
 
-	lightComponent->SetBounds(vec3(200.0f, 200.0f, 200.0f));
+	lightComponent->SetBounds(vec3(300.0f, 300.0f, 300.0f));
 	lightComponent->SetIntensity(vec3(260.0f, 260.0f, 200.0f));
-	lightComponent->SetLightType(ELightType::Spot);
+	lightComponent->SetLightType(ELightType::Point);
 
 	/*
 	for (int32_t i = -1000; i < 1000; i += 250)
