@@ -184,7 +184,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
-	auto& fullResolutionBinding = m_shaderBindings->GetOrAddShaderBinding("colorSampler")->GetTextureBinding();
+	auto fullResolutionBinding = m_shaderBindings->GetOrAddShaderBinding("colorSampler")->GetTextureBinding();
 	commands->ImageMemoryBarrier(commandList, fullResolutionBinding, fullResolutionBinding->GetFormat(), fullResolutionBinding->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 
 	SAILOR_PROFILE_END_BLOCK();

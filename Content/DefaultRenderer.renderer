@@ -16,10 +16,6 @@ samplers:
   uid: ''
   path: Textures/Noise.png
 
-- name: g_brdfSampler
-  uid: ''
-  path: Textures/BRDF_Epic.png
-
 - name: g_environmentSampler
   uid: ''
   path: Textures/Environment.hdr

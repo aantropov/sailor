@@ -11,7 +11,7 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 bool RHIShaderBinding::IsBind() const
 {
 #if defined(SAILOR_BUILD_WITH_VULKAN)
-	return (bool)(m_textureBinding) || (bool)(m_vulkan.m_valueBinding);
+	return m_textureBinding.Num() > 0 || (bool)(m_vulkan.m_valueBinding);
 #endif
 
 	return false;
@@ -22,9 +22,12 @@ size_t RHIShaderBinding::GetCompatibilityHash() const
 	static std::hash<RHIResourcePtr> p;
 
 	size_t hash = 0;
-	if (m_textureBinding)
+	if (m_textureBinding.Num() > 0)
 	{
-		HashCombine(hash, p(m_textureBinding));
+		for (const auto& binding : m_textureBinding)
+		{
+			HashCombine(hash, p(binding));
+		}
 	}
 	else if (m_vulkan.m_valueBinding)
 	{

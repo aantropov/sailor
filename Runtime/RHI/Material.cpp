@@ -40,7 +40,7 @@ void RHIShaderBindingSet::UpdateLayoutShaderBinding(const ShaderLayoutBinding& l
 	// We are able to rewrite m_binding and m_set
 	const size_t index = m_layoutBindings.FindIf([&](const auto& lhs)
 		{
-			return lhs.m_name == layout.m_name && lhs.m_type == layout.m_type;
+			return lhs.m_name == layout.m_name && lhs.m_type == layout.m_type && lhs.m_arrayCount == layout.m_arrayCount;
 		});
 
 	if (index != -1)

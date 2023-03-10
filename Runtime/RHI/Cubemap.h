@@ -21,9 +21,11 @@ namespace Sailor::RHI
 		{}
 
 		RHITexturePtr GetFace(uint32_t face, uint32_t mipLevel = 0) const;
+		RHICubemapPtr GetMipLevel(uint32_t mipLevel) const;
 	protected:
 
 		TVector<RHITexturePtr> m_faces;
+		TVector<RHICubemapPtr> m_mipLevels;
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		friend class Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver;

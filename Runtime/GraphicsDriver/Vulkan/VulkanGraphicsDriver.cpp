@@ -520,6 +520,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 		(VkImageCreateFlags)VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
 		6);
 
+	/*
 	for (uint32_t i = 0; i < mipLevels; i++)
 	{
 		for (uint32_t face = 0; face < 6; face++)
@@ -538,6 +539,39 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 			outCubemap->m_faces.Emplace(target);
 		}
 	}
+*/
+	for (uint32_t i = 0; i < mipLevels; i++)
+	{
+		RHI::RHICubemapPtr res = outCubemap;
+
+		if (i > 0)
+		{
+			res = RHI::RHICubemapPtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+			res->m_vulkan.m_image = outCubemap->m_vulkan.m_image;
+			res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(outCubemap->m_vulkan.m_image->GetDevice(), outCubemap->m_vulkan.m_image);
+			res->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
+			res->m_vulkan.m_imageView->Compile();
+
+			outCubemap->m_mipLevels.Add(res);
+		}
+
+		for (uint32_t face = 0; face < 6; face++)
+		{
+			RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+
+			target->m_vulkan.m_image = outCubemap->m_vulkan.m_image;
+			target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
+			target->m_vulkan.m_imageView->m_viewType = VK_IMAGE_VIEW_TYPE_2D;
+			target->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
+			target->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
+			target->m_vulkan.m_imageView->m_subresourceRange.baseArrayLayer = face;
+			target->m_vulkan.m_imageView->m_subresourceRange.layerCount = 1;
+			target->m_vulkan.m_imageView->Compile();
+
+			res->m_faces.Emplace(target);
+		}
+	}
+
 
 	outCubemap->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outCubemap->m_vulkan.m_image);
 	outCubemap->m_vulkan.m_imageView->Compile();
@@ -744,24 +778,27 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 	{
 		if (binding.m_second->IsBind())
 		{
-			if (binding.m_second->GetTextureBinding())
+			if (binding.m_second->GetTextureBindings().Num() > 0)
 			{
-				auto& texture = binding.m_second->GetTextureBinding();
-
-				if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
+				uint32_t index = 0;
+				for (auto& texture : binding.m_second->GetTextureBindings())
 				{
-					auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
-						device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps()),
-						texture->m_vulkan.m_imageView);
-					descriptors.Add(descr);
-				}
-				else if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::StorageImage)
-				{
-					auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0, texture->m_vulkan.m_imageView);
-					descriptors.Add(descr);
-				}
+					if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
+					{
+						auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index,
+							device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps()),
+							texture->m_vulkan.m_imageView);
+						descriptors.Add(descr);
+					}
+					else if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::StorageImage)
+					{
+						auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index, texture->m_vulkan.m_imageView);
+						descriptors.Add(descr);
+					}
 
-				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+					index++;
+				}
 			}
 			else if (binding.m_second->m_vulkan.m_valueBinding)
 			{
@@ -1196,7 +1233,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 
 	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
-	binding->SetTextureBinding(texture);
+	binding->SetTextureBinding({ texture });
 
 	pShaderBindings->UpdateLayoutShaderBinding(layout);
 	UpdateDescriptorSet(pShaderBindings);
@@ -1218,7 +1255,30 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(R
 
 	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
-	binding->SetTextureBinding(texture);
+	binding->SetTextureBinding({ texture });
+
+	pShaderBindings->UpdateLayoutShaderBinding(layout);
+	UpdateDescriptorSet(pShaderBindings);
+
+	return binding;
+}
+
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, TVector<RHI::RHITexturePtr> array, uint32_t shaderBinding)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
+
+	RHI::ShaderLayoutBinding layout;
+	layout.m_binding = shaderBinding;
+	layout.m_name = name;
+	layout.m_type = RHI::EShaderBindingType::StorageImage;
+	layout.m_arrayCount = (uint32_t)array.Num();
+
+	binding->SetLayout(layout);
+	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type, layout.m_arrayCount);
+	binding->SetTextureBinding(array);
 
 	pShaderBindings->UpdateLayoutShaderBinding(layout);
 	UpdateDescriptorSet(pShaderBindings);
@@ -1263,7 +1323,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 
 		// Add new texture binding
 		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
-		textureBinding->SetTextureBinding(value);
+		textureBinding->SetTextureBinding({ value });
 		textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layoutBindings[index].m_binding, (VkDescriptorType)layoutBindings[index].m_type);
 		textureBinding->SetLayout(layoutBindings[index]);
 		UpdateDescriptorSet(bindings);
@@ -1951,7 +2011,7 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
 	RHI::RHIShaderPtr computeShader,
 	uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ,
 	const TVector<RHI::RHIShaderBindingSetPtr>& bindings,
-	void* pPushConstantsData,
+	const void* pPushConstantsData,
 	uint32_t sizePushConstantsData)
 {
 	check(computeShader->GetStage() == RHI::EShaderStage::Compute);
@@ -2064,54 +2124,53 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 			if (binding.m_second->IsBind())
 			{
 				if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
-					[&](const auto& lhs)
-					{
-						auto& layout = binding.m_second->GetLayout();
-				const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) ||
-					(VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
-
-				return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage);
-					}))
+					[&](const auto& lhs) { auto& layout = binding.m_second->GetLayout();
+				const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
+				return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
+					)
 				{
 					// We don't add extra bindings 
 					continue;
 				}
 
-					if (binding.m_second->GetTextureBinding())
+				if (binding.m_second->GetTextureBindings().Num() > 0)
+				{
+					uint32_t index = 0;
+					for (auto& texture : binding.m_second->GetTextureBindings())
 					{
-						auto& texture = binding.m_second->GetTextureBinding();
-
 						if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
 						{
-							auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0,
+							auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index,
 								device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps()),
 								texture->m_vulkan.m_imageView);
 							descriptors.Add(descr);
 						}
 						else if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::StorageImage)
 						{
-							auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, 0, texture->m_vulkan.m_imageView);
+							auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index, texture->m_vulkan.m_imageView);
 							descriptors.Add(descr);
 						}
 
 						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+						index++;
 					}
-					else if (binding.m_second->m_vulkan.m_valueBinding)
-					{
-						const auto type = binding.m_second->GetLayout().m_type;
-						const bool bBindWithoutOffset = (type == RHI::EShaderBindingType::StorageBuffer && !binding.m_second->m_vulkan.m_bBindSsboWithOffset);
+				}
+				else if (binding.m_second->m_vulkan.m_valueBinding)
+				{
+					const auto type = binding.m_second->GetLayout().m_type;
+					const bool bBindWithoutOffset = (type == RHI::EShaderBindingType::StorageBuffer && !binding.m_second->m_vulkan.m_bBindSsboWithOffset);
 
-						auto& valueBinding = *(binding.m_second->m_vulkan.m_valueBinding->Get());
-						auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding,
-							0,
-							valueBinding.m_buffer,
-							bBindWithoutOffset ? 0 : valueBinding.m_offset,
-							valueBinding.m_size,
-							binding.m_second->GetLayout().m_type);
+					auto& valueBinding = *(binding.m_second->m_vulkan.m_valueBinding->Get());
+					auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding,
+						0,
+						valueBinding.m_buffer,
+						bBindWithoutOffset ? 0 : valueBinding.m_offset,
+						valueBinding.m_size,
+						binding.m_second->GetLayout().m_type);
 
-						descriptors.Add(descr);
-						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
-					}
+					descriptors.Add(descr);
+					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+				}
 			}
 		}
 

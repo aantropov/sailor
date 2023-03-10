@@ -141,6 +141,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding) = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, TVector<RHI::RHITexturePtr> array, uint32_t shaderBinding) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding) = 0;
 		SAILOR_API virtual bool FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShaderBindings, const TVector<RHIShaderPtr>& shaders, uint32_t setNum) = 0;
 
@@ -272,7 +273,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void Dispatch(RHICommandListPtr cmd, RHI::RHIShaderPtr computeShader,
 			uint32_t groupSizeX, uint32_t groupSizeY, uint32_t groupSizeZ,
 			const TVector<RHI::RHIShaderBindingSetPtr>& bindings,
-			void* pPushConstantsData = nullptr,
+			const void* pPushConstantsData = nullptr,
 			uint32_t sizePushConstantsData = 0) = 0;
 
 		SAILOR_API virtual void BindVertexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset) = 0;
