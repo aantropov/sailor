@@ -39,6 +39,8 @@ namespace Sailor::Framegraph
 		RHI::RHICubemapPtr m_irradianceCubemap{};
 		RHI::RHITexturePtr m_brdfSampler{};
 
+		TexturePtr m_envMapTexture;
+
 		bool m_bIsDirty = true;
 		static const char* m_name;
 	};

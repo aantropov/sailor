@@ -22,7 +22,8 @@ namespace Sailor::Framegraph
 		SAILOR_API RHI::RHITexturePtr GetResolvedAttachment(const std::string& name) const;
 		SAILOR_API RHI::RHIResourcePtr GetRHIResource(const std::string& name) const;
 		SAILOR_API const glm::vec4& GetVec4(const std::string& name) const;
-		SAILOR_API const std::string& GetString(const std::string& name) const;
+		SAILOR_API const std::string& GetString(const std::string& name) const;		
+		SAILOR_API bool TryGetString(const std::string& name, string& string) const;
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
 		SAILOR_API virtual void Clear() = 0;

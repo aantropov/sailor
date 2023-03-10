@@ -55,3 +55,14 @@ const std::string& BaseFrameGraphNode::GetString(const std::string& name) const
 {
 	return m_stringParams[name];
 }
+
+bool BaseFrameGraphNode::TryGetString(const std::string& name, string& string) const
+{
+	if (m_stringParams.ContainsKey(name))
+	{
+		string = m_stringParams[name];
+		return true;
+	}
+
+	return false;
+}

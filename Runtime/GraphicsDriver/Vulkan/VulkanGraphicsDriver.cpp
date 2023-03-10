@@ -520,26 +520,6 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 		(VkImageCreateFlags)VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
 		6);
 
-	/*
-	for (uint32_t i = 0; i < mipLevels; i++)
-	{
-		for (uint32_t face = 0; face < 6; face++)
-		{
-			RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
-
-			target->m_vulkan.m_image = outCubemap->m_vulkan.m_image;
-			target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
-			target->m_vulkan.m_imageView->m_viewType = VK_IMAGE_VIEW_TYPE_2D;
-			target->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
-			target->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
-			target->m_vulkan.m_imageView->m_subresourceRange.baseArrayLayer = face;
-			target->m_vulkan.m_imageView->m_subresourceRange.layerCount = 1;
-			target->m_vulkan.m_imageView->Compile();
-
-			outCubemap->m_faces.Emplace(target);
-		}
-	}
-*/
 	for (uint32_t i = 0; i < mipLevels; i++)
 	{
 		RHI::RHICubemapPtr res = outCubemap;

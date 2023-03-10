@@ -16,10 +16,6 @@ samplers:
   uid: ''
   path: Textures/Noise.png
 
-- name: g_environmentSampler
-  uid: ''
-  path: Textures/Environment.hdr
-
 float:
 - PI: 3.1415926
   
@@ -104,6 +100,8 @@ frame:
 
 ############################
 - name: Environment
+  string:
+  - EnvironmentMap: Textures/Environment.hdr
 ############################
 
 #############################

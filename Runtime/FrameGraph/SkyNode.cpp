@@ -710,13 +710,11 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
-
-	// TODO: Create Irradiance map from Sky
-	/*if (auto cubemap = frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>())
+	
+	if (auto cubemap = frameGraph->GetSampler("g_skyCubemap").DynamicCast<RHICubemap>())
 	{
 		commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
 
-		//for (uint32_t face = 0; face < 6; face++)
 		uint32_t face = m_updateEnvCubemapPattern % 7;
 		if (face < 6)
 		{
@@ -755,7 +753,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		}
 
 		commands->EndDebugRegion(commandList);
-	}*/
+	}
 
 	commands->EndDebugRegion(commandList);
 
