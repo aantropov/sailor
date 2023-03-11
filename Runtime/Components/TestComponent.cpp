@@ -55,9 +55,9 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 
-	lightComponent->SetIntensity(vec3(2.0f, 2.0f, 2.0f));
 	lightComponent->SetLightType(ELightType::Directional);
 
+	/*
 	auto spotLight = GetWorld()->Instantiate();
 	lightComponent = spotLight->AddComponent<LightComponent>();
 	spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
@@ -66,7 +66,7 @@ void TestComponent::BeginPlay()
 	lightComponent->SetBounds(vec3(300.0f, 300.0f, 300.0f));
 	lightComponent->SetIntensity(vec3(260.0f, 260.0f, 200.0f));
 	lightComponent->SetLightType(ELightType::Point);
-
+	*/
 	/*
 	for (int32_t i = -1000; i < 1000; i += 250)
 	{
@@ -246,8 +246,15 @@ void TestComponent::Tick(float deltaTime)
 		ImGui::SliderFloat("Sun Shafts Intensity", &m_skyParams.m_sunShaftsIntensity, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::End();
 
+		if (abs(m_lastSunAngleRad - m_sunAngleRad) > glm::radians(5.0f))
+		{
+			m_lastSunAngleRad = m_sunAngleRad;
+			sky->SetDirty();
+		}
+
 		m_skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
 		m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(m_skyParams.m_lightDirection.xyz(), Math::vec3_Up));
+		m_dirLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(2.0f, 2.0f, 2.0f) : vec3(0));
 
 		if (auto bindings = sky->GetShaderBindings())
 		{

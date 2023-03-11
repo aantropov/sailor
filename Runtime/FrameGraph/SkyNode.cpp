@@ -13,6 +13,7 @@
 #include "Math/Noise.h"
 #include "glm/glm/gtx/quaternion.hpp"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "EnvironmentNode.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -710,55 +711,78 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
-	
-	if (auto cubemap = frameGraph->GetSampler("g_skyCubemap").DynamicCast<RHICubemap>())
+
+	if (m_bIsDirty)
 	{
-		commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
+		RHI::RHICubemapPtr cubemap = frameGraph->GetSampler("g_skyCubemap").DynamicCast<RHICubemap>();
 
-		uint32_t face = m_updateEnvCubemapPattern % 7;
-		if (face < 6)
+		if (!cubemap)
 		{
-			RHITexturePtr targetFace = cubemap->GetFace(face, 0);
+			cubemap = RHI::Renderer::GetDriver()->CreateCubemap(glm::ivec2(EnvCubemapSize, EnvCubemapSize), 8, RHI::EFormat::R16G16B16A16_SFLOAT);
+			RHI::Renderer::GetDriver()->SetDebugName(cubemap, "g_skyCubemap");
 
-			commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), targetFace->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-
-			commands->BindMaterial(commandList, m_pSkyMaterial);
-			commands->BindShaderBindings(commandList, m_pSkyMaterial, { m_pEnvCubemapBindings[face], m_pShaderBindings });
-
-			commands->SetViewport(commandList,
-				0, 0,
-				(float)targetFace->GetExtent().x, (float)targetFace->GetExtent().y,
-				glm::vec2(0, 0),
-				glm::vec2(targetFace->GetExtent().x, targetFace->GetExtent().y),
-				0, 1.0f);
-
-			commands->BeginRenderPass(commandList,
-				TVector<RHI::RHITexturePtr>{targetFace},
-				nullptr,
-				glm::vec4(0, 0, targetFace->GetExtent().x, targetFace->GetExtent().y),
-				glm::ivec2(0, 0),
-				false,
-				glm::vec4(0.0f),
-				false);
-
-			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-			commands->EndRenderPass(commandList);
-
-			commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), EImageLayout::ColorAttachmentOptimal, targetFace->GetDefaultLayout());
-		}
-		else
-		{
-			commands->ImageMemoryBarrier(commandList, cubemap, cubemap->GetFormat(), cubemap->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
-			commands->GenerateMipMaps(commandList, cubemap);
+			frameGraph->SetSampler("g_skyCubemap", cubemap);
 		}
 
-		commands->EndDebugRegion(commandList);
+		if (cubemap)
+		{
+			commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
+
+			uint32_t face = m_updateEnvCubemapPattern % 7;
+			if (face < 6)
+			{
+				RHITexturePtr targetFace = cubemap->GetFace(face, 0);
+
+				commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), targetFace->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+
+				commands->BindMaterial(commandList, m_pSkyMaterial);
+				commands->BindShaderBindings(commandList, m_pSkyMaterial, { m_pEnvCubemapBindings[face], m_pShaderBindings });
+
+				commands->SetViewport(commandList,
+					0, 0,
+					(float)targetFace->GetExtent().x, (float)targetFace->GetExtent().y,
+					glm::vec2(0, 0),
+					glm::vec2(targetFace->GetExtent().x, targetFace->GetExtent().y),
+					0, 1.0f);
+
+				commands->BeginRenderPass(commandList,
+					TVector<RHI::RHITexturePtr>{targetFace},
+					nullptr,
+					glm::vec4(0, 0, targetFace->GetExtent().x, targetFace->GetExtent().y),
+					glm::ivec2(0, 0),
+					false,
+					glm::vec4(0.0f),
+					false);
+
+				commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+				commands->EndRenderPass(commandList);
+
+				commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), EImageLayout::ColorAttachmentOptimal, targetFace->GetDefaultLayout());
+			}
+			else
+			{
+				commands->ImageMemoryBarrier(commandList, cubemap, cubemap->GetFormat(), cubemap->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+				commands->GenerateMipMaps(commandList, cubemap);
+			}
+
+			commands->EndDebugRegion(commandList);
+		}
+
+		if (m_updateEnvCubemapPattern == 7)
+		{
+			m_bIsDirty = false;
+
+			if (auto node = frameGraph->GetGraphNode("Environment").DynamicCast<EnvironmentNode>())
+			{
+				node->SetDirty();
+			}
+		}
+		m_updateEnvCubemapPattern++;
 	}
 
 	commands->EndDebugRegion(commandList);
 
 	m_ditherPatternIndex++;
-	m_updateEnvCubemapPattern++;
 }
 
 void SkyNode::Clear()

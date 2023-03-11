@@ -10,6 +10,7 @@ namespace Sailor::Framegraph
 {
 	class SkyNode : public TFrameGraphNode<SkyNode>
 	{
+		const uint32_t EnvCubemapSize = 256u;
 		const uint32_t SkyResolution = 196u;
 		const uint32_t SunResolution = 32u;
 		const float CloudsResolutionFactor = 0.5f;
@@ -77,6 +78,7 @@ namespace Sailor::Framegraph
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_pShaderBindings; }
 		SAILOR_API void SetLocation(float latitudeDegrees, float longitudeDegrees);
+		SAILOR_API void SetDirty() { m_bIsDirty = true;  m_updateEnvCubemapPattern = 0; }
 
 	protected:
 
@@ -139,6 +141,7 @@ namespace Sailor::Framegraph
 
 		uint32_t m_ditherPatternIndex = 0;
 		uint32_t m_updateEnvCubemapPattern = 0;
+		bool m_bIsDirty = true;
 	};
 
 	template class TFrameGraphNode<SkyNode>;

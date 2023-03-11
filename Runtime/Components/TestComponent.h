@@ -46,5 +46,6 @@ namespace Sailor
 		float m_sunAngleRad = glm::radians(60.0f);
 
 		SkyNode::SkyParams m_skyParams{};
+		float m_lastSunAngleRad = 0;
 	};
 }

@@ -26,6 +26,8 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
+	SetTag("Environment");
+
 	if (!m_pComputeBrdfShader)
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeBrdfLut.shader"))
@@ -73,8 +75,8 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				{
 					App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetUID(), m_envMapTexture);
 				}
+				return;
 			}
-			return;
 		}
 
 		RHI::RHICubemapPtr rawEnvCubemap{};
@@ -101,6 +103,10 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		else if (auto g_skyCubemap = frameGraph->GetSampler("g_skyCubemap").DynamicCast<RHICubemap>())
 		{
 			rawEnvCubemap = g_skyCubemap;
+		}
+		else
+		{
+			return;
 		}
 
 		// Create all textures/cubemaps
