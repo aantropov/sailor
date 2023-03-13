@@ -100,8 +100,8 @@ frame:
 
 ############################
 - name: Environment
-  string:
-  - EnvironmentMap: Textures/Environment.hdr
+#  string:
+#  - EnvironmentMap: Textures/Environment.hdr
 ############################
 
 #############################
