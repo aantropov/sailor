@@ -121,6 +121,12 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 			RHI::Renderer::GetDriver()->SetDebugName(m_envCubemap, "g_envCubemap");
 			frameGraph->SetSampler("g_envCubemap", m_envCubemap);
+
+			commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), m_envCubemap->GetDefaultLayout(), EImageLayout::General);
+		}
+		else
+		{
+			commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::General);
 		}
 
 		if (!m_irradianceCubemap)
@@ -134,6 +140,12 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 			RHI::Renderer::GetDriver()->SetDebugName(m_irradianceCubemap, "g_irradianceCubemap");
 			frameGraph->SetSampler("g_irradianceCubemap", m_irradianceCubemap);
+			
+			commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), m_irradianceCubemap->GetDefaultLayout(), EImageLayout::General);
+		}
+		else
+		{
+			commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::General);
 		}
 
 		if (!m_brdfSampler)
