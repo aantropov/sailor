@@ -41,7 +41,6 @@ glslVertex: |
     vec4 albedo;
     vec4 ambient;
     vec4 emission;
-    vec4 specular;
     
     float metallic;
     float roughness;

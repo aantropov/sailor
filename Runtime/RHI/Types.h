@@ -573,6 +573,7 @@ namespace Sailor::RHI
 		uint32_t m_size = 0u;
 		uint32_t m_set = 0u;
 		uint32_t m_arrayCount = 0u;
+		uint32_t m_paddedSize = 0u;
 
 		bool IsImage() const
 		{
@@ -592,7 +593,8 @@ namespace Sailor::RHI
 				m_set == rhs.m_set &&
 				m_arrayCount == rhs.m_arrayCount &&
 				m_members == rhs.m_members &&
-				m_name == rhs.m_name;
+				m_name == rhs.m_name &&
+				m_paddedSize == rhs.m_paddedSize;
 		}
 
 		SAILOR_API bool IsArray() const { return m_arrayCount; }

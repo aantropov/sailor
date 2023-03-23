@@ -20,7 +20,7 @@ void TestComponent::BeginPlay()
 
 	m_mainModel = GetWorld()->Instantiate();
 	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
-	m_mainModel->GetTransformComponent().SetScale(vec4(10, 10, 10, 1));
+	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
 	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
 
 	for (int32_t i = -1000; i < 1000; i += 32)

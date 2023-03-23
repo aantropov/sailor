@@ -403,8 +403,8 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
-		res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
-		return res;
+				res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
+				return res;
 			})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data) mutable
 				{
 					if (data->m_bIsImported)
@@ -428,7 +428,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 
 						model->Flush();
 					}
-			return model;
+					return model;
 				}, "Update RHI Meshes", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
 				outModel = m_loadedModels[uid] = model;

@@ -1,0 +1,40 @@
+bEnableDepthTest: true
+bEnableZWrite: true
+bSupportMultisampling: true
+bCustomDepthShader: false
+depthBias: 0
+renderQueue: Opaque
+defines: ~
+cullMode: Back
+blendMode: None
+fillMode: Fill
+shaderUid: "{E42B1499-8C0C-47E3-9584-E7BB6CD821FC}"
+samplers: 
+  - albedoSampler: "{9B61FF4F-46E1-49CA-814A-67B10631C324}"
+  - metalnessSampler: "{26319140-3744-4298-8BAA-DCA277CA540D}"
+  - normalSampler: "{1C81CB04-4FF9-4C25-AE25-665D020E0C02}"
+  - roughnessSampler: "{6B187562-210C-4EB5-8550-5454D7AC44A8}"
+uniformsVec4:
+  - material.albedo:
+      - 0.800000012
+      - 0.800000012
+      - 0.800000012
+      - 0
+  - material.ambient:
+      - 0.200000003
+      - 0.200000003
+      - 0.200000003
+      - 0
+  - material.emission:
+      - 0
+      - 0
+      - 0
+      - 0
+  - material.specular:
+      - 0.200000003
+      - 0.200000003
+      - 0.200000003
+      - 0
+uniformsFloat: 
+  - material.roughness: 1
+  - material.metallic: 1
