@@ -65,6 +65,20 @@ namespace Sailor::Framegraph
 			float m_scatteringPhase = 0.5f;
 			float m_sunShaftsIntensity = 0.45f;
 			int32_t m_sunShaftsDistance = 60;
+
+			__forceinline size_t GetHash() const
+			{
+				size_t hash = (size_t)m_sunIntensity;
+				if (glm::dot(Math::vec4_Down, m_lightDirection) > -0.85f)
+				{
+					const glm::ivec3 quantizedLight = m_lightDirection * 10.0f;
+					HashCombine(hash, quantizedLight.x);
+					HashCombine(hash, quantizedLight.y);
+					HashCombine(hash, quantizedLight.z);
+				}
+
+				return hash;
+			}
 		};
 
 		SAILOR_API static const char* GetName() { return m_name; }
@@ -80,6 +94,9 @@ namespace Sailor::Framegraph
 		SAILOR_API void SetLocation(float latitudeDegrees, float longitudeDegrees);
 		SAILOR_API void SetDirty() { m_bIsDirty = true;  m_updateEnvCubemapPattern = 0; }
 
+		const SkyParams& GetSkyParams() const { return m_skyParams; }
+		SkyParams& GetSkyParams() { return m_skyParams; }
+
 	protected:
 
 		static const char* m_name;
@@ -88,6 +105,8 @@ namespace Sailor::Framegraph
 		{
 			mat4 m_starsModelView{};
 		};
+
+		SkyParams m_skyParams{};
 
 		mat4 m_starsModelView{};
 

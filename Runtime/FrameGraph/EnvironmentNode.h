@@ -12,7 +12,7 @@ namespace Sailor::Framegraph
 	{
 	public:
 
-		static constexpr uint32_t EnvMapSize = 1024;
+		static constexpr uint32_t EnvMapSize = 512;
 		static constexpr uint32_t EnvMapLevels = 10;
 
 		static constexpr uint32_t IrradianceMapSize = 32;
@@ -35,13 +35,13 @@ namespace Sailor::Framegraph
 		RHI::RHIShaderBindingSetPtr m_computeSpecularBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeBrdfBindings{};
 
-		RHI::RHICubemapPtr m_envCubemap{};
-		RHI::RHICubemapPtr m_irradianceCubemap{};
+		TConcurrentMap<size_t, RHI::RHICubemapPtr> m_envCubemaps{};
+		TConcurrentMap<size_t, RHI::RHICubemapPtr> m_irradianceCubemaps{};
 		RHI::RHITexturePtr m_brdfSampler{};
 
 		TexturePtr m_envMapTexture;
 
-		bool m_bIsDirty = true;
+		bool m_bIsDirty = false;
 		static const char* m_name;
 	};
 

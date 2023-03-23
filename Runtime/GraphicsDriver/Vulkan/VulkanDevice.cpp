@@ -498,7 +498,13 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkPhysicalDeviceVulkan11Features core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	core11.shaderDrawParameters = true;
 	core11.pNext = &dynamicRenderingFeature;
-	createInfo.pNext = &core11;
+
+	// We need relaxed vertex->fragment output
+	VkPhysicalDeviceMaintenance4Features maintence4{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES};
+	maintence4.pNext = &core11;
+	maintence4.maintenance4 = VK_TRUE;
+
+	createInfo.pNext = &maintence4;
 
 	// Compatibility with older Vulkan drivers
 	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };

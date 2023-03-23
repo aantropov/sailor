@@ -45,7 +45,6 @@ namespace Sailor
 		GameObjectPtr m_mainModel;
 		float m_sunAngleRad = glm::radians(60.0f);
 
-		SkyNode::SkyParams m_skyParams{};
-		float m_lastSunAngleRad = 0;
+		size_t m_skyHash = 0;
 	};
 }

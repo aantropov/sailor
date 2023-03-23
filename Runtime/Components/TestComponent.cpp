@@ -41,11 +41,12 @@ void TestComponent::BeginPlay()
 	}
 
 	/*
-	for (int i = 0; i < 3; i++)
-		for (int j = 0; j < 3; j++)
+	for (int i = 0; i < 10; i++)
+		for (int j = 0; j < 10; j++)
 		{
 			auto gameObject2 = GetWorld()->Instantiate();
-			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, 0, i * 2500));
+			gameObject2->GetTransformComponent().SetPosition(vec3(j * 300, 0, i * 250));
+			gameObject2->GetTransformComponent().SetScale(vec4(10, 10, 10, 1));
 			gameObject2->AddComponent<MeshRendererComponent>();
 		}
 	/**/
@@ -54,10 +55,9 @@ void TestComponent::BeginPlay()
 	auto lightComponent = m_dirLight->AddComponent<LightComponent>();
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
-
 	lightComponent->SetLightType(ELightType::Directional);
 
-	/*
+
 	auto spotLight = GetWorld()->Instantiate();
 	lightComponent = spotLight->AddComponent<LightComponent>();
 	spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
@@ -65,8 +65,8 @@ void TestComponent::BeginPlay()
 
 	lightComponent->SetBounds(vec3(300.0f, 300.0f, 300.0f));
 	lightComponent->SetIntensity(vec3(260.0f, 260.0f, 200.0f));
-	lightComponent->SetLightType(ELightType::Point);
-	*/
+	lightComponent->SetLightType(ELightType::Spot);
+	/**/
 	/*
 	for (int32_t i = -1000; i < 1000; i += 250)
 	{
@@ -223,48 +223,39 @@ void TestComponent::Tick(float deltaTime)
 
 	if (auto node = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("Sky"))
 	{
-		auto sky = node.DynamicCast< Framegraph::SkyNode>();
+		auto sky = node.DynamicCast<Framegraph::SkyNode>();
+
+		SkyNode::SkyParams& skyParams = sky->GetSkyParams();
 
 		ImGui::Begin("Sky Settings");
 		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds density", &m_skyParams.m_cloudsDensity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds coverage", &m_skyParams.m_cloudsCoverage, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds attenuation 1", &m_skyParams.m_cloudsAttenuation1, 0.1f, 0.3f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds attenuation 2", &m_skyParams.m_cloudsAttenuation2, 0.001f, 0.1f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds phase influence 1", &m_skyParams.m_phaseInfluence1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds phase eccentrisy 1", &m_skyParams.m_eccentrisy1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds phase influence 2", &m_skyParams.m_phaseInfluence2, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds phase eccentrisy 2", &m_skyParams.m_eccentrisy2, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds horizon blend", &m_skyParams.m_fog, 0.0f, 20.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds sun intensity", &m_skyParams.m_sunIntensity, 0.0f, 800.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds ambient", &m_skyParams.m_ambient, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderInt("Clouds scattering steps", &m_skyParams.m_scatteringSteps, 1, 10, "%d");
-		ImGui::SliderFloat("Clouds scattering density", &m_skyParams.m_scatteringDensity, 0.1f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds scattering intensity", &m_skyParams.m_scatteringIntensity, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds scattering phase", &m_skyParams.m_scatteringPhase, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderInt("Sun Shafts Distance", &m_skyParams.m_sunShaftsDistance, 1, 100, "%d");
-		ImGui::SliderFloat("Sun Shafts Intensity", &m_skyParams.m_sunShaftsIntensity, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds density", &skyParams.m_cloudsDensity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds coverage", &skyParams.m_cloudsCoverage, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds attenuation 1", &skyParams.m_cloudsAttenuation1, 0.1f, 0.3f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds attenuation 2", &skyParams.m_cloudsAttenuation2, 0.001f, 0.1f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds phase influence 1", &skyParams.m_phaseInfluence1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds phase eccentrisy 1", &skyParams.m_eccentrisy1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds phase influence 2", &skyParams.m_phaseInfluence2, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds phase eccentrisy 2", &skyParams.m_eccentrisy2, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds horizon blend", &skyParams.m_fog, 0.0f, 20.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds sun intensity", &skyParams.m_sunIntensity, 0.0f, 800.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds ambient", &skyParams.m_ambient, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderInt("Clouds scattering steps", &skyParams.m_scatteringSteps, 1, 10, "%d");
+		ImGui::SliderFloat("Clouds scattering density", &skyParams.m_scatteringDensity, 0.1f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds scattering intensity", &skyParams.m_scatteringIntensity, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Clouds scattering phase", &skyParams.m_scatteringPhase, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderInt("Sun Shafts Distance", &skyParams.m_sunShaftsDistance, 1, 100, "%d");
+		ImGui::SliderFloat("Sun Shafts Intensity", &skyParams.m_sunShaftsIntensity, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::End();
 
-		if (abs(m_lastSunAngleRad - m_sunAngleRad) > glm::radians(5.0f))
+		if (m_skyHash != skyParams.GetHash())
 		{
-			m_lastSunAngleRad = m_sunAngleRad;
 			sky->SetDirty();
+			m_skyHash = skyParams.GetHash();
 		}
 
-		m_skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
-		m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(m_skyParams.m_lightDirection.xyz(), Math::vec3_Up));
+		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
+		m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
 		m_dirLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(2.0f, 2.0f, 2.0f) : vec3(0));
-
-		if (auto bindings = sky->GetShaderBindings())
-		{
-			if (bindings->HasBinding("data"))
-			{
-				if (auto binding = bindings->GetOrAddShaderBinding("data"))
-				{
-					commands->UpdateShaderBinding(GetWorld()->GetCommandList(), binding, &m_skyParams, sizeof(SkyNode::SkyParams));
-				}
-			}
-		}
 	}
 }

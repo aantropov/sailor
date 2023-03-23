@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "FrameGraph/SkyNode.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -109,43 +110,62 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			return;
 		}
 
-		// Create all textures/cubemaps
-		if (!m_envCubemap)
+		size_t skyHash = 0;
+		TRefPtr<SkyNode> pSkyNode{};
+		if (auto node = frameGraph->GetGraphNode("Sky"))
 		{
-			m_envCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(EnvMapSize, EnvMapSize),
+			pSkyNode = node.DynamicCast<SkyNode>();
+			skyHash = pSkyNode->GetSkyParams().GetHash();
+		}
+
+		auto& envCubemap = m_envCubemaps[skyHash];
+		auto& irradianceCubemap = m_irradianceCubemaps[skyHash];
+
+		const bool bShouldUpdateEnvCubemap = !envCubemap;
+		const bool bShouldUpdateIrradianceCubemap = !irradianceCubemap;
+
+		if (!bShouldUpdateEnvCubemap && !bShouldUpdateIrradianceCubemap)
+		{
+			frameGraph->SetSampler("g_envCubemap", envCubemap);
+			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+			
+			return;
+		}
+
+		// Create all textures/cubemaps
+		if (bShouldUpdateEnvCubemap)
+		{
+			envCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(EnvMapSize, EnvMapSize),
 				EnvMapLevels,
 				RHI::EFormat::R16G16B16A16_SFLOAT,
 				RHI::ETextureFiltration::Linear,
 				RHI::ETextureClamping::Clamp,
 				usage);
 
-			RHI::Renderer::GetDriver()->SetDebugName(m_envCubemap, "g_envCubemap");
-			frameGraph->SetSampler("g_envCubemap", m_envCubemap);
-
-			commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), m_envCubemap->GetDefaultLayout(), EImageLayout::General);
+			RHI::Renderer::GetDriver()->SetDebugName(envCubemap, "g_envCubemap");
+			commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), envCubemap->GetDefaultLayout(), EImageLayout::General);
 		}
 		else
 		{
-			commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::General);
+			commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::General);
 		}
 
-		if (!m_irradianceCubemap)
+		if (bShouldUpdateIrradianceCubemap)
 		{
-			m_irradianceCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(IrradianceMapSize, IrradianceMapSize),
+			irradianceCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(IrradianceMapSize, IrradianceMapSize),
 				1,
 				RHI::EFormat::R16G16B16A16_SFLOAT,
 				RHI::ETextureFiltration::Linear,
 				RHI::ETextureClamping::Clamp,
 				usage);
 
-			RHI::Renderer::GetDriver()->SetDebugName(m_irradianceCubemap, "g_irradianceCubemap");
-			frameGraph->SetSampler("g_irradianceCubemap", m_irradianceCubemap);
-			
-			commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), m_irradianceCubemap->GetDefaultLayout(), EImageLayout::General);
+			RHI::Renderer::GetDriver()->SetDebugName(irradianceCubemap, "g_irradianceCubemap");
+
+			commands->ImageMemoryBarrier(commandList, irradianceCubemap, irradianceCubemap->GetFormat(), irradianceCubemap->GetDefaultLayout(), EImageLayout::General);
 		}
 		else
 		{
-			commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::General);
+			commands->ImageMemoryBarrier(commandList, irradianceCubemap, irradianceCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::General);
 		}
 
 		if (!m_brdfSampler)
@@ -174,69 +194,79 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			commands->EndDebugRegion(commandList);
 		}
 
-		commands->BeginDebugRegion(commandList, "Compute pre-filtered specular environment map", DebugContext::Color_CmdCompute);
+		frameGraph->SetSampler("g_envCubemap", envCubemap);
+		frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+
+		if (bShouldUpdateEnvCubemap)
 		{
-			struct PushConstants { int32_t level{}; float roughness; };
-			const uint32_t NumMipTailLevels = EnvMapLevels - 1;
-
-			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), rawEnvCubemap->GetDefaultLayout(), EImageLayout::TransferSrcOptimal);
-			commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), m_envCubemap->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
-
-			commands->BlitImage(commandList, rawEnvCubemap, m_envCubemap,
-				glm::ivec4(0, 0, rawEnvCubemap->GetExtent().x, rawEnvCubemap->GetExtent().y),
-				glm::ivec4(0, 0, m_envCubemap->GetExtent().x, m_envCubemap->GetExtent().y));
-
-			commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), EImageLayout::TransferSrcOptimal, EImageLayout::ShaderReadOnlyOptimal);
-			commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::TransferDstOptimal, EImageLayout::ComputeWrite);
-
-			// Pre-filter rest of the mip-chain.
-			TVector<RHI::RHITexturePtr> envMapMips;
-			for (uint32_t level = 1; level < EnvMapLevels; ++level)
+			commands->BeginDebugRegion(commandList, "Compute pre-filtered specular environment map", DebugContext::Color_CmdCompute);
 			{
-				envMapMips.Add(m_envCubemap->GetMipLevel(level));
+				struct PushConstants { int32_t level{}; float roughness; };
+				const uint32_t NumMipTailLevels = EnvMapLevels - 1;
+
+				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), rawEnvCubemap->GetDefaultLayout(), EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), envCubemap->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+
+				commands->BlitImage(commandList, rawEnvCubemap, envCubemap,
+					glm::ivec4(0, 0, rawEnvCubemap->GetExtent().x, rawEnvCubemap->GetExtent().y),
+					glm::ivec4(0, 0, envCubemap->GetExtent().x, envCubemap->GetExtent().y));
+
+				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), EImageLayout::TransferSrcOptimal, EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), EImageLayout::TransferDstOptimal, EImageLayout::ComputeWrite);
+
+				// Pre-filter rest of the mip-chain.
+				TVector<RHI::RHITexturePtr> envMapMips;
+				for (uint32_t level = 1; level < EnvMapLevels; ++level)
+				{
+					envMapMips.Add(envCubemap->GetMipLevel(level));
+				}
+
+				driver->AddSamplerToShaderBindings(m_computeSpecularBindings, "rawEnvMap", rawEnvCubemap, 0);
+				driver->AddStorageImageToShaderBindings(m_computeSpecularBindings, "envMap", envMapMips, 1);
+
+				const float deltaRoughness = 1.0f / std::max(float(NumMipTailLevels), 1.0f);
+				for (uint32_t level = 1, size = EnvMapSize / 2; level < EnvMapLevels; ++level, size /= 2)
+				{
+					const uint32_t numGroups = std::max<uint32_t>(1u, size / 32u);
+					const PushConstants pushConstants = { (int32_t)(level - 1u), level * deltaRoughness };
+
+					commands->Dispatch(commandList,
+						m_pComputeSpecularShader->GetComputeShaderRHI(),
+						numGroups,
+						numGroups,
+						6u,
+						{ m_computeSpecularBindings },
+						&pushConstants, sizeof(PushConstants));
+				}
+
+				commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), EImageLayout::ComputeWrite, envCubemap->GetDefaultLayout());
 			}
+			commands->EndDebugRegion(commandList);
+		}
 
-			driver->AddSamplerToShaderBindings(m_computeSpecularBindings, "rawEnvMap", rawEnvCubemap, 0);
-			driver->AddStorageImageToShaderBindings(m_computeSpecularBindings, "envMap", envMapMips, 1);
-
-			const float deltaRoughness = 1.0f / std::max(float(NumMipTailLevels), 1.0f);
-			for (uint32_t level = 1, size = EnvMapSize / 2; level < EnvMapLevels; ++level, size /= 2)
+		if (bShouldUpdateIrradianceCubemap)
+		{
+			commands->BeginDebugRegion(commandList, "Compute diffuse irradiance cubemap", DebugContext::Color_CmdCompute);
 			{
-				const uint32_t numGroups = std::max<uint32_t>(1u, size / 32u);
-				const PushConstants pushConstants = { (int32_t)(level - 1u), level * deltaRoughness };
+				commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), envCubemap->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+				commands->ImageMemoryBarrier(commandList, irradianceCubemap, irradianceCubemap->GetFormat(), irradianceCubemap->GetDefaultLayout(), EImageLayout::ComputeWrite);
+
+				driver->AddSamplerToShaderBindings(m_computeIrradianceBindings, "envMap", envCubemap, 0);
+				driver->AddStorageImageToShaderBindings(m_computeIrradianceBindings, "irradianceMap", irradianceCubemap, 1);
 
 				commands->Dispatch(commandList,
-					m_pComputeSpecularShader->GetComputeShaderRHI(),
-					numGroups,
-					numGroups,
+					m_pComputeIrradianceShader->GetComputeShaderRHI(),
+					IrradianceMapSize / 32u,
+					IrradianceMapSize / 32u,
 					6u,
-					{ m_computeSpecularBindings },
-					&pushConstants, sizeof(PushConstants));
+					{ m_computeIrradianceBindings });
+
+				//commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, envCubemap->GetDefaultLayout());
+				commands->ImageMemoryBarrier(commandList, irradianceCubemap, irradianceCubemap->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
 			}
-
-			commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ComputeWrite, m_envCubemap->GetDefaultLayout());
+			commands->EndDebugRegion(commandList);
 		}
-		commands->EndDebugRegion(commandList);
 
-		commands->BeginDebugRegion(commandList, "Compute diffuse irradiance cubemap", DebugContext::Color_CmdCompute);
-		{
-			commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), m_envCubemap->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
-			commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), m_irradianceCubemap->GetDefaultLayout(), EImageLayout::ComputeWrite);
-
-			driver->AddSamplerToShaderBindings(m_computeIrradianceBindings, "envMap", m_envCubemap, 0);
-			driver->AddStorageImageToShaderBindings(m_computeIrradianceBindings, "irradianceMap", m_irradianceCubemap, 1);
-
-			commands->Dispatch(commandList,
-				m_pComputeIrradianceShader->GetComputeShaderRHI(),
-				IrradianceMapSize / 32u,
-				IrradianceMapSize / 32u,
-				6u,
-				{ m_computeIrradianceBindings });
-
-			//commands->ImageMemoryBarrier(commandList, m_envCubemap, m_envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_envCubemap->GetDefaultLayout());
-			commands->ImageMemoryBarrier(commandList, m_irradianceCubemap, m_irradianceCubemap->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
-		}
-		commands->EndDebugRegion(commandList);
 		m_bIsDirty = false;
 	}
 	commands->EndDebugRegion(commandList);

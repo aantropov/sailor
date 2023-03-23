@@ -439,9 +439,18 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		RenderState renderStateMultiply{ false, false, 0, false, ECullMode::Back, EBlendMode::Multiply, EFillMode::Fill, 0, false };
 		m_pSunShaftsMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderStateMultiply, m_pSunShaftsShader, m_pShaderBindings);
+	}
 
-		const SkyParams params{};
-		commands->UpdateShaderBinding(transferCommandList, data, &params, sizeof(SkyParams));
+	// TODO: Should we update each frame?
+	if (auto bindings = GetShaderBindings())
+	{
+		if (bindings->HasBinding("data"))
+		{
+			if (auto binding = bindings->GetOrAddShaderBinding("data"))
+			{
+				commands->UpdateShaderBinding(transferCommandList, binding, &m_skyParams, sizeof(SkyNode::SkyParams));
+			}
+		}
 	}
 
 	if (!m_pBlitMaterial)
