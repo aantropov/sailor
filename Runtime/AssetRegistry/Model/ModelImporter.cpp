@@ -109,6 +109,9 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 		data.m_uniformsVec4.Add({ "material.emission", emission });
 		data.m_uniformsVec4.Add({ "material.specular", specular });
 
+		data.m_uniformsFloat.Add({ "material.roughness" , 1.0f });
+		data.m_uniformsFloat.Add({ "material.metallic" , 1.0f });
+
 		if (!diffuseMaps.IsEmpty())
 		{
 			data.m_samplers.Add(MaterialAsset::SamplerEntry("albedoTexture", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));

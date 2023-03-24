@@ -287,6 +287,7 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 
 	m_pData->m_shaderDefines.Clear();
 	m_pData->m_uniformsVec4.Clear();
+	m_pData->m_uniformsFloat.Clear();
 
 	if (outData["bEnableDepthTest"])
 	{
