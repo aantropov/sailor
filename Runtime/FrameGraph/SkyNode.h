@@ -79,6 +79,14 @@ namespace Sailor::Framegraph
 
 				return hash;
 			}
+
+			SAILOR_API bool operator==(const SkyParams& rhs) const 
+			{
+				const glm::ivec3 quantizedLight1 = m_lightDirection * 10.0f;
+				const glm::ivec3 quantizedLight2 = rhs.m_lightDirection * 10.0f;
+
+				return quantizedLight1 == quantizedLight2;
+			}
 		};
 
 		SAILOR_API static const char* GetName() { return m_name; }

@@ -5,6 +5,7 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/SkyNode.h"
 
 namespace Sailor::Framegraph
 {
@@ -35,8 +36,8 @@ namespace Sailor::Framegraph
 		RHI::RHIShaderBindingSetPtr m_computeSpecularBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeBrdfBindings{};
 
-		TConcurrentMap<size_t, RHI::RHICubemapPtr> m_envCubemaps{};
-		TConcurrentMap<size_t, RHI::RHICubemapPtr> m_irradianceCubemaps{};
+		TConcurrentMap<SkyNode::SkyParams, RHI::RHICubemapPtr> m_envCubemaps{};
+		TConcurrentMap<SkyNode::SkyParams, RHI::RHICubemapPtr> m_irradianceCubemaps{};
 		RHI::RHITexturePtr m_brdfSampler{};
 
 		TexturePtr m_envMapTexture;

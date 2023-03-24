@@ -81,11 +81,11 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		}
 
 		RHI::RHICubemapPtr rawEnvCubemap{};
-		bool bEnvironmentMap = false;
+		bool bLoadedEnvironmentMap = false;
 
 		if (m_envMapTexture)
 		{
-			bEnvironmentMap = true;
+			bLoadedEnvironmentMap = true;
 			rawEnvCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(EnvMapSize, EnvMapSize),
 				EnvMapLevels,
 				RHI::EFormat::R16G16B16A16_SFLOAT,
@@ -113,12 +113,15 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			return;
 		}
 
-		size_t skyHash = 0;
+		SkyNode::SkyParams skyHash{};
 		TRefPtr<SkyNode> pSkyNode{};
 		if (auto node = frameGraph->GetGraphNode("Sky"))
 		{
 			pSkyNode = node.DynamicCast<SkyNode>();
-			skyHash = !bEnvironmentMap ? pSkyNode->GetSkyParams().GetHash() : 0;
+			if (!bLoadedEnvironmentMap)
+			{
+				skyHash = pSkyNode->GetSkyParams();
+			}
 		}
 
 		auto& envCubemap = m_envCubemaps[skyHash];
@@ -131,7 +134,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		{
 			frameGraph->SetSampler("g_envCubemap", envCubemap);
 			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
-			
+
 			return;
 		}
 
