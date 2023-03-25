@@ -28,6 +28,7 @@ namespace Sailor
 		glm::vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
 		glm::vec2 m_cutOff{ 30.0f, 45.0f };
 		ELightType m_type = ELightType::Point;
+		bool m_bCastShadows = true;
 
 	protected:
 

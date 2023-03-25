@@ -90,13 +90,21 @@ namespace Sailor::Math
 		SAILOR_API __forceinline bool ContainsPoint(const glm::vec3& point) const;
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 
+		//SAILOR_API __forceinline void GetCorners(class Sailor::TVector<glm::vec3>& outCorners) const;
+		SAILOR_API __forceinline glm::vec3 GetCenter() const;
+		SAILOR_API __forceinline AABB Ortho(const glm::mat4& lightView) const;
+		SAILOR_API __forceinline glm::mat4 Slice(const glm::mat4& lightView, float zMult) const;
+
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes = true);
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const Math::Transform& world, float aspect, float fovY, float zNear, float zFar);
 
 	protected:
 
+		void CalculateCorners(const glm::mat4& matrix);
+
 		// The order is: Left, Right, Top, Bottom, Near, Far
 		Plane m_planes[6];
+		glm::vec3 m_corners[8];
 	};
 }
 
