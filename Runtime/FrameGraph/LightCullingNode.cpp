@@ -49,7 +49,7 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		PushConstants pushConstants{};
 
 		pushConstants.m_invViewProjection = sceneView.m_camera->GetInvViewProjection();
-		pushConstants.m_lightsNum = sceneView.m_numLights;
+		pushConstants.m_lightsNum = sceneView.m_totalNumLights;
 		pushConstants.m_viewportSize = depthAttachment->GetExtent();
 		pushConstants.m_numTiles.x = (depthAttachment->GetExtent().x - 1) / (int32_t)TileSize + 1;
 		pushConstants.m_numTiles.y = (depthAttachment->GetExtent().y - 1) / (int32_t)TileSize + 1;

@@ -1,6 +1,7 @@
 #include "ECS/LightingECS.h"
 #include "ECS/TransformECS.h"
 #include "RHI/Shader.h"
+#include "RHI/Texture.h"
 #include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
 
@@ -139,7 +140,75 @@ void LightingECS::EndPlay()
 
 void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 {
+	TVector<Math::Frustum> frustums;
+	frustums.Reserve(sceneView->m_cameraTransforms.Num());
+
+	for (uint32_t j = 0; j < sceneView->m_cameraTransforms.Num(); j++)
+	{
+		const auto& camera = sceneView->m_cameras[j];
+
+		Math::Frustum frustum;
+		frustum.ExtractFrustumPlanes(sceneView->m_cameraTransforms[j], camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
+		frustums.Emplace(std::move(frustum));
+	}
+
+	// TODO: Cache lights that cast shadows separately to decrease algo complexity
+	for (size_t index = 0; index < m_components.Num(); index++)
+	{
+		auto& light = m_components[index];
+		if (light.m_bCastShadows && light.m_bIsActive)
+		{	
+			const auto& ownerTransform = light.m_owner.StaticCast<GameObject>()->GetTransformComponent();
+
+			RHI::RHILightProxy lightProxy{};
+
+			lightProxy.m_lightMatrix = ownerTransform.GetCachedWorldMatrix();
+			lightProxy.m_shadowMap = nullptr;
+			lightProxy.m_lastShadowMapUpdate = 0;
+			lightProxy.m_minDistanceToCamera = 0.0f;
+			lightProxy.m_index = index;
+
+			if (light.m_type != ELightType::Directional)
+			{
+				bool bInFrustum = false;
+				lightProxy.m_minDistanceToCamera = std::numeric_limits<float>::max();
+
+				for (uint32_t j = 0; j < sceneView->m_cameraTransforms.Num(); j++)
+				{
+					const float sphereRadius = std::max(std::max(light.m_bounds.x, light.m_bounds.y), light.m_bounds.z);
+
+					if (frustums[j].ContainsSphere(Math::Sphere(ownerTransform.GetPosition(), sphereRadius)))
+					{
+						// TODO: Sort by screen size, not by distance to camera
+						lightProxy.m_minDistanceToCamera = std::min(lightProxy.m_minDistanceToCamera,
+							glm::length(ownerTransform.GetPosition() - sceneView->m_cameraTransforms[j].m_position));
+
+						bInFrustum = true;
+					}
+				}
+
+				if (bInFrustum)
+				{
+					if (ELightType::Spot == light.m_type)
+					{
+						auto it = std::lower_bound(sceneView->m_sortedSpotLights.begin(), sceneView->m_sortedSpotLights.end(), lightProxy);
+						sceneView->m_sortedSpotLights.Insert(lightProxy, it - sceneView->m_sortedSpotLights.begin());
+					}
+					else
+					{
+						auto it = std::lower_bound(sceneView->m_sortedPointLights.begin(), sceneView->m_sortedPointLights.end(), lightProxy);
+						sceneView->m_sortedPointLights.Insert(lightProxy, it - sceneView->m_sortedPointLights.begin());
+					}
+				}
+			}
+			else
+			{
+				sceneView->m_directionalLights.Add(lightProxy);
+			}
+		}
+	}
+
 	// TODO: Pass only active lights
-	sceneView->m_numLights = (uint32_t)m_components.Num();
+	sceneView->m_totalNumLights = (uint32_t)m_components.Num();
 	sceneView->m_rhiLightsData = m_lightsData;
 }

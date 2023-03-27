@@ -11,9 +11,20 @@ namespace Sailor::RHI
 {
 	struct RHIMeshProxy
 	{
-		size_t m_staticMeshEcs;
-		glm::mat4 m_worldMatrix;
+		size_t m_staticMeshEcs = 0;
+		glm::mat4 m_worldMatrix{};
 		SAILOR_API bool operator==(const RHIMeshProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
+	};
+
+	struct RHILightProxy
+	{
+		glm::mat4 m_lightMatrix{};
+		RHITexturePtr m_shadowMap = nullptr;
+		uint32_t m_index = 0;
+		size_t m_lastShadowMapUpdate = 0;
+		float m_minDistanceToCamera{};
+
+		SAILOR_API bool operator<(const RHILightProxy& rhs) const { return m_minDistanceToCamera < rhs.m_minDistanceToCamera; }
 	};
 
 	struct RHISceneViewProxy
@@ -26,20 +37,26 @@ namespace Sailor::RHI
 
 		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;
-		
+
 	};
 
 	struct RHISceneViewSnapshot
 	{
-		glm::vec4 m_cameraPosition;
-		TUniquePtr<CameraData> m_camera;
-		TVector<RHISceneViewProxy> m_proxies;
-		RHIShaderBindingSetPtr m_frameBindings;
-		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList;
-		uint32_t m_numLights;
-		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
-		RHI::RHIShaderBindingSetPtr m_rhiLightsData;
-		float m_deltaTime;
+		float m_deltaTime = 0.0f;
+		glm::vec4 m_cameraPosition{};
+		TUniquePtr<CameraData> m_camera{};
+		TVector<RHISceneViewProxy> m_proxies{};
+
+		uint32_t m_totalNumLights = 0;
+		TVector<RHILightProxy> m_sortedPointLights{};
+		TVector<RHILightProxy> m_sortedSpotLights{};
+		TVector<RHILightProxy> m_directionalLights{};
+
+		RHIShaderBindingSetPtr m_frameBindings{};
+		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
+
+		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
+		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui{};
 	};
 
 	struct RHISceneView
@@ -50,8 +67,11 @@ namespace Sailor::RHI
 		TOctree<RHIMeshProxy> m_stationaryOctree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
 		TOctree<RHISceneViewProxy> m_staticOctree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
 
-		uint32_t m_numLights;
-		RHI::RHIShaderBindingSetPtr m_rhiLightsData;
+		uint32_t m_totalNumLights = 0;
+		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
+		TVector<RHILightProxy> m_sortedPointLights{};
+		TVector<RHILightProxy> m_sortedSpotLights{};
+		TVector<RHILightProxy> m_directionalLights{};
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;

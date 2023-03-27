@@ -58,7 +58,7 @@ void RHISceneView::PrepareSnapshots()
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;
 
-		res.m_numLights = m_numLights;
+		res.m_totalNumLights = m_totalNumLights;
 		res.m_rhiLightsData = m_rhiLightsData;
 		res.m_drawImGui = m_drawImGui;
 
