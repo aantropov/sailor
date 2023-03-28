@@ -21,7 +21,7 @@ void TestComponent::BeginPlay()
 	m_mainModel = GetWorld()->Instantiate();
 	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 500, 0));
 	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
-	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 3.14f, 0)));
+	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * 3.14f, 0)));
 	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
 
 	for (int32_t i = -1000; i < 1000; i += 32)
@@ -57,7 +57,6 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 	lightComponent->SetLightType(ELightType::Directional);
-
 
 	auto spotLight = GetWorld()->Instantiate();
 	lightComponent = spotLight->AddComponent<LightComponent>();
@@ -257,6 +256,6 @@ void TestComponent::Tick(float deltaTime)
 
 		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
 		m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
-		m_dirLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(5.0f, 5.0f, 5.0f) : vec3(0));
+		m_dirLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(3.0f, 3.0f, 3.0f) : vec3(0));
 	}
 }
