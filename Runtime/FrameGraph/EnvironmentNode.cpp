@@ -11,6 +11,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "FrameGraph/SkyNode.h"
 
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
@@ -59,14 +60,40 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		m_computeIrradianceBindings = driver->CreateShaderBindings();
 	}
 
-	if (m_bIsDirty)
-	{
-		const RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit |
-			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
-			RHI::ETextureUsageBit::TextureTransferDst_Bit |
-			RHI::ETextureUsageBit::Storage_Bit |
-			RHI::ETextureUsageBit::Sampled_Bit;
+	const RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit |
+		RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+		RHI::ETextureUsageBit::TextureTransferDst_Bit |
+		RHI::ETextureUsageBit::Storage_Bit |
+		RHI::ETextureUsageBit::Sampled_Bit;
 
+	if (!m_brdfSampler)
+	{
+		m_brdfSampler = RHI::Renderer::GetDriver()->CreateRenderTarget(ivec2(BrdfLutSize, BrdfLutSize), 1,
+			RHI::EFormat::R16G16_SFLOAT, RHI::ETextureFiltration::Linear,
+			RHI::ETextureClamping::Clamp, usage);
+
+		RHI::Renderer::GetDriver()->SetDebugName(m_brdfSampler, "g_brdfSampler");
+		frameGraph->SetSampler("g_brdfSampler", m_brdfSampler);
+
+		commands->BeginDebugRegion(commandList, "Generate Cook-Torrance BRDF 2D LUT for split-sum approximation", DebugContext::Color_CmdCompute);
+		{
+			driver->AddStorageImageToShaderBindings(m_computeBrdfBindings, "dst", m_brdfSampler, 0);
+			commands->ImageMemoryBarrier(commandList, m_brdfSampler, m_brdfSampler->GetFormat(), m_brdfSampler->GetDefaultLayout(), EImageLayout::ComputeWrite);
+
+			commands->Dispatch(commandList, m_pComputeBrdfShader->GetComputeShaderRHI(),
+				(uint32_t)(m_brdfSampler->GetExtent().x / 32.0f),
+				(uint32_t)(m_brdfSampler->GetExtent().y / 32.0f),
+				6u,
+				{ m_computeBrdfBindings },
+				nullptr, 0);
+
+			commands->ImageMemoryBarrier(commandList, m_brdfSampler, m_brdfSampler->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
+		}
+		commands->EndDebugRegion(commandList);
+	}
+
+	if (m_bIsDirty)
+	{	
 		if (!m_envMapTexture)
 		{
 			string envMapFilepath;
@@ -135,6 +162,8 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			frameGraph->SetSampler("g_envCubemap", envCubemap);
 			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
 
+			m_bIsDirty = false;
+
 			return;
 		}
 
@@ -148,63 +177,11 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				RHI::ETextureClamping::Clamp,
 				usage);
 
+			frameGraph->SetSampler("g_envCubemap", envCubemap);
 			RHI::Renderer::GetDriver()->SetDebugName(envCubemap, "g_envCubemap");
+
 			commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), envCubemap->GetDefaultLayout(), EImageLayout::General);
-		}
-		else
-		{
-			commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::General);
-		}
 
-		if (bShouldUpdateIrradianceCubemap)
-		{
-			irradianceCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(IrradianceMapSize, IrradianceMapSize),
-				1,
-				RHI::EFormat::R16G16B16A16_SFLOAT,
-				RHI::ETextureFiltration::Linear,
-				RHI::ETextureClamping::Clamp,
-				usage);
-
-			RHI::Renderer::GetDriver()->SetDebugName(irradianceCubemap, "g_irradianceCubemap");
-
-			commands->ImageMemoryBarrier(commandList, irradianceCubemap, irradianceCubemap->GetFormat(), irradianceCubemap->GetDefaultLayout(), EImageLayout::General);
-		}
-		else
-		{
-			commands->ImageMemoryBarrier(commandList, irradianceCubemap, irradianceCubemap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::General);
-		}
-
-		if (!m_brdfSampler)
-		{
-			m_brdfSampler = RHI::Renderer::GetDriver()->CreateRenderTarget(ivec2(BrdfLutSize, BrdfLutSize), 1,
-				RHI::EFormat::R16G16_SFLOAT, RHI::ETextureFiltration::Linear,
-				RHI::ETextureClamping::Clamp, usage);
-
-			RHI::Renderer::GetDriver()->SetDebugName(m_brdfSampler, "g_brdfSampler");
-			frameGraph->SetSampler("g_brdfSampler", m_brdfSampler);
-
-			commands->BeginDebugRegion(commandList, "Generate Cook-Torrance BRDF 2D LUT for split-sum approximation", DebugContext::Color_CmdCompute);
-			{
-				driver->AddStorageImageToShaderBindings(m_computeBrdfBindings, "dst", m_brdfSampler, 0);
-				commands->ImageMemoryBarrier(commandList, m_brdfSampler, m_brdfSampler->GetFormat(), m_brdfSampler->GetDefaultLayout(), EImageLayout::ComputeWrite);
-
-				commands->Dispatch(commandList, m_pComputeBrdfShader->GetComputeShaderRHI(),
-					(uint32_t)(m_brdfSampler->GetExtent().x / 32.0f),
-					(uint32_t)(m_brdfSampler->GetExtent().y / 32.0f),
-					6u,
-					{ m_computeBrdfBindings },
-					nullptr, 0);
-
-				commands->ImageMemoryBarrier(commandList, m_brdfSampler, m_brdfSampler->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
-			}
-			commands->EndDebugRegion(commandList);
-		}
-
-		frameGraph->SetSampler("g_envCubemap", envCubemap);
-		frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
-
-		if (bShouldUpdateEnvCubemap)
-		{
 			commands->BeginDebugRegion(commandList, "Compute pre-filtered specular environment map", DebugContext::Color_CmdCompute);
 			{
 				struct PushConstants { int32_t level{}; float roughness; };
@@ -230,6 +207,8 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				driver->AddSamplerToShaderBindings(m_computeSpecularBindings, "rawEnvMap", rawEnvCubemap, 0);
 				driver->AddStorageImageToShaderBindings(m_computeSpecularBindings, "envMap", envMapMips, 1);
 
+				m_computeSpecularBindings->RecalculateCompatibility();
+
 				const float deltaRoughness = 1.0f / std::max(float(NumMipTailLevels), 1.0f);
 				for (uint32_t level = 1, size = EnvMapSize / 2; level < EnvMapLevels; ++level, size /= 2)
 				{
@@ -252,6 +231,18 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 		if (bShouldUpdateIrradianceCubemap)
 		{
+			irradianceCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(IrradianceMapSize, IrradianceMapSize),
+				1,
+				RHI::EFormat::R16G16B16A16_SFLOAT,
+				RHI::ETextureFiltration::Linear,
+				RHI::ETextureClamping::Clamp,
+				usage);
+
+			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
+			RHI::Renderer::GetDriver()->SetDebugName(irradianceCubemap, "g_irradianceCubemap");
+
+			commands->ImageMemoryBarrier(commandList, irradianceCubemap, irradianceCubemap->GetFormat(), irradianceCubemap->GetDefaultLayout(), EImageLayout::General);
+
 			commands->BeginDebugRegion(commandList, "Compute diffuse irradiance cubemap", DebugContext::Color_CmdCompute);
 			{
 				commands->ImageMemoryBarrier(commandList, envCubemap, envCubemap->GetFormat(), envCubemap->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
@@ -259,6 +250,8 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 				driver->AddSamplerToShaderBindings(m_computeIrradianceBindings, "envMap", envCubemap, 0);
 				driver->AddStorageImageToShaderBindings(m_computeIrradianceBindings, "irradianceMap", irradianceCubemap, 1);
+
+				m_computeIrradianceBindings->RecalculateCompatibility();
 
 				commands->Dispatch(commandList,
 					m_pComputeIrradianceShader->GetComputeShaderRHI(),
@@ -275,6 +268,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 		m_bIsDirty = false;
 	}
+
 	commands->EndDebugRegion(commandList);
 }
 

@@ -526,9 +526,9 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 		blit.dstOffsets[1].y = dstRegion.offset.y + dstRegion.extent.height;
 		blit.dstOffsets[1].z = 1;
 
-		blit.dstSubresource.mipLevel = 0;
-		blit.dstSubresource.layerCount = 1;
-		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.mipLevel = dst->m_subresourceRange.baseMipLevel;
+		blit.dstSubresource.layerCount = dst->m_subresourceRange.layerCount;
+		blit.dstSubresource.baseArrayLayer = dst->m_subresourceRange.baseArrayLayer;
 		blit.dstSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(dst->m_format);
 
 		blit.srcOffsets[0].x = srcRegion.offset.x;
@@ -538,9 +538,9 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 		blit.srcOffsets[1].y = srcRegion.offset.y + srcRegion.extent.height;
 		blit.srcOffsets[1].z = 1;
 
-		blit.srcSubresource.mipLevel = 0;
-		blit.srcSubresource.layerCount = 1;
-		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.mipLevel = src->m_subresourceRange.baseMipLevel;
+		blit.srcSubresource.layerCount = src->m_subresourceRange.layerCount;
+		blit.srcSubresource.baseArrayLayer = src->m_subresourceRange.baseArrayLayer;
 		blit.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
 
 		vkCmdBlitImage(

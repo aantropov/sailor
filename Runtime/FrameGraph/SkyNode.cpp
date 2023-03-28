@@ -737,7 +737,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		{
 			commands->BeginDebugRegion(commandList, "Generate Environment Map", DebugContext::Color_CmdGraphics);
 
-			uint32_t face = m_updateEnvCubemapPattern % 7;
+			uint32_t face = m_updateEnvCubemapPattern;
 			if (face < 6)
 			{
 				RHITexturePtr targetFace = cubemap->GetFace(face, 0);
@@ -785,6 +785,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			{
 				node->SetDirty();
 			}
+
 		}
 		m_updateEnvCubemapPattern++;
 	}

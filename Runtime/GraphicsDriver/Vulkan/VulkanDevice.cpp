@@ -113,7 +113,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	}
 
 	// Get debug extension
-#ifdef _DEBUG
+#ifndef _SHIPPING
 	m_pSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetInstanceProcAddr(VulkanApi::GetInstance()->GetVkInstance(), "vkSetDebugUtilsObjectNameEXT");
 
 	m_pCmdDebugMarkerBegin = (PFN_vkCmdDebugMarkerBeginEXT)vkGetDeviceProcAddr(m_device, "vkCmdDebugMarkerBeginEXT");

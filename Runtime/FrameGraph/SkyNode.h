@@ -73,8 +73,8 @@ namespace Sailor::Framegraph
 				{
 					const glm::ivec3 quantizedLight = m_lightDirection * 10.0f;
 					HashCombine(hash, quantizedLight.x);
-					HashCombine(hash, quantizedLight.y);
-					HashCombine(hash, quantizedLight.z);
+					HashCombine(hash, quantizedLight.y * 100);
+					HashCombine(hash, quantizedLight.z * 10000);
 				}
 
 				return hash;
