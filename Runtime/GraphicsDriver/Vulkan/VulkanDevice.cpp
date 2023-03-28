@@ -258,21 +258,21 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 
 void VulkanDevice::vkCmdDebugMarkerBegin(VulkanCommandBufferPtr cmdBuffer, const VkDebugMarkerMarkerInfoEXT* markerInfo)
 {
-#ifdef _DEBUG
+#ifndef _SHIPPING
 	m_pCmdDebugMarkerBegin(*cmdBuffer, markerInfo);
 #endif
 }
 
 void VulkanDevice::vkCmdDebugMarkerEnd(VulkanCommandBufferPtr cmdBuffer)
 {
-#ifdef _DEBUG
+#ifndef _SHIPPING
 	m_pCmdDebugMarkerEnd(*cmdBuffer);
 #endif
 }
 
 void VulkanDevice::SetDebugName(VkObjectType type, uint64_t objectHandle, const std::string& name)
 {
-#ifdef _DEBUG
+#ifndef _SHIPPING
 	VkDebugUtilsObjectNameInfoEXT nameInfo = {};
 	nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
 	nameInfo.objectType = type;
@@ -467,7 +467,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
 
-#ifdef _DEBUG
+#ifndef _SHIPPING
 	deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
 #endif
 

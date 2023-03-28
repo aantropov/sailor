@@ -6,6 +6,7 @@ set_property(TARGET SailorExec PROPERTY FOLDER "Executables")
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT SailorExec)
 
 add_compile_definitions(_SAILOR_IMPORT_)
+add_compile_definitions($<$<CONFIG:Release>:_SHIPPING>)
 
 # Properties->General->Output Directory
 set_target_properties(SailorExec PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/Binaries) 

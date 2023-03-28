@@ -25,6 +25,8 @@ include_directories (.)
 add_library(SailorLib SHARED ${SAILOR_RUNTIME_SOURCES} ${SAILOR_LIB_SOURCES})
 set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
 
+add_compile_definitions($<$<CONFIG:Release>:_SHIPPING>)
+
 # Easy profiler
 if(BUILD_WITH_EASY_PROFILER)
     target_link_libraries(SailorLib "${PROJECT_SOURCE_DIR}/External/easy_profiler/bin/easy_profiler.lib")
