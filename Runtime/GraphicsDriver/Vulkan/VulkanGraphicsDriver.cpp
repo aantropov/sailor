@@ -1024,8 +1024,8 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetMeshSsboAllocator()
 {
 	if (!m_meshSsboAllocator)
 	{
-		// 128 mb is a good point to start
-		const size_t StorageBufferBlockSize = 128 * 1024 * 1024u;
+		// 32 mb is a good point to start
+		const size_t StorageBufferBlockSize = 32 * 1024 * 1024u;
 
 		m_meshSsboAllocator = TSharedPtr<VulkanBufferAllocator>::Make(StorageBufferBlockSize, 1024 * 1024u, StorageBufferBlockSize);
 		m_meshSsboAllocator->GetGlobalAllocator().SetUsage(RHI::EBufferUsageBit::StorageBuffer_Bit |
@@ -1043,7 +1043,7 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetGeneralSsboAllocator
 {
 	if (!m_generalSsboAllocator)
 	{
-		// 8 mb should be starting point
+		// 1 mb should be starting point
 		const size_t StorageBufferBlockSize = 1024 * 1024u;
 
 		m_generalSsboAllocator = TSharedPtr<VulkanBufferAllocator>::Make(StorageBufferBlockSize, 1024 * 1024u, StorageBufferBlockSize);
@@ -1080,7 +1080,7 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetUniformBufferAllocat
 		return (*it).m_second;
 	}
 
-	auto& uniformAllocator = m_uniformBuffers[uniformTypeId] = TSharedPtr<VulkanBufferAllocator>::Make();
+	auto& uniformAllocator = m_uniformBuffers[uniformTypeId] = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 256, 1024 * 1024);
 	uniformAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 	uniformAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 

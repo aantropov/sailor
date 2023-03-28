@@ -114,6 +114,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return GetCurrentThreadContext().m_stagingBufferAllocator; }
 		SAILOR_API VulkanStateViewportPtr GetCurrentFrameViewport() const { return m_pCurrentFrameViewport; }
+		SAILOR_API const TConcurrentMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>>& GetMemoryAllocators() const { return m_memoryAllocators; }
 
 		SAILOR_API void GetOccupiedVideoMemory(VkMemoryHeapFlags memFlags, size_t& outHeapBudget, size_t& outHeapUsage);
 

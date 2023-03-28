@@ -1,5 +1,6 @@
 #pragma once
 #include <map>
+#include <atomic>
 #include "Memory/RefPtr.hpp"
 #include "VulkanDeviceMemory.h"
 #include "Memory/Memory.h"
@@ -32,6 +33,9 @@ namespace Sailor::Memory
 
 		VkMemoryPropertyFlags m_memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 		VkMemoryRequirements m_memoryRequirements{};
+
+		static std::atomic<size_t> m_totalDeviceMemoryAllocated;
+		static std::atomic<size_t> m_totalHostMemoryAllocated;
 
 	public:
 

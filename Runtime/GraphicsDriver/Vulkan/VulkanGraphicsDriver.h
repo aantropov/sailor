@@ -221,6 +221,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 			//const TVector<TVector<RHI::ShaderLayoutBinding>>& shaderLayoutBindings,
 			const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
+		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
+		SAILOR_API const TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
+
 	protected:
 
 		const uint32_t CachedDescriptorSetLifeTimeInFrames = 3;
@@ -247,10 +253,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		};
 
 		SAILOR_API void UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
-		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
-		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
-		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
-		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
 
 		// The resources that are used as default
 		VulkanImageViewPtr m_defaultTexture;

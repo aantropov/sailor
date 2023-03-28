@@ -112,7 +112,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	{
 		extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
-#ifdef _DEBUG
+#ifndef _SHIPPING
 		extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 #endif
 	}

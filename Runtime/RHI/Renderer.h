@@ -52,6 +52,8 @@ namespace Sailor::RHI
 
 		SAILOR_API FrameGraphPtr GetFrameGraph() { return m_frameGraph; }
 
+		SAILOR_API static void MemoryStats();
+
 	protected:
 
 		RHI::EMsaaSamples m_msaaSamples;

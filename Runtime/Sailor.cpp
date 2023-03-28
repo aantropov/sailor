@@ -72,7 +72,7 @@ void App::Initialize()
 	EASY_MAIN_THREAD;
 #endif
 
-	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_8, bIsEnabledVulkanValidationLayers));
+	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bIsEnabledVulkanValidationLayers));
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
@@ -119,6 +119,7 @@ void App::Start()
 	consoleVars["map.benchmark"] = &Sailor::RunMapBenchmark;
 	consoleVars["list.benchmark"] = &Sailor::RunListBenchmark;
 	consoleVars["octree.benchmark"] = &Sailor::RunOctreeBenchmark;
+	consoleVars["stats.memory"] = &Sailor::RHI::Renderer::MemoryStats;
 
 #ifdef SAILOR_EDITOR
 	TWeakPtr<World> pWorld = App::GetSubmodule<EngineLoop>()->CreateWorld("WorldEditor");
