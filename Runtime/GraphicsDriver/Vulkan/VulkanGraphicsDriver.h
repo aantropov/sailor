@@ -217,7 +217,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
 		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader);
 		SAILOR_API TVector<bool> IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
-		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
+		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout, 
+			//const TVector<TVector<RHI::ShaderLayoutBinding>>& shaderLayoutBindings,
+			const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 
 	protected:
 
@@ -250,8 +252,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
 
-		// The texture that is used as default
+		// The resources that are used as default
 		VulkanImageViewPtr m_defaultTexture;
+		VulkanImageViewPtr m_defaultCubemap;
 
 		// Uniform buffers to store uniforms
 		TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;

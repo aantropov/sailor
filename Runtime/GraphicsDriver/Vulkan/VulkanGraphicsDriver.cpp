@@ -45,8 +45,26 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 	}
 
 	DWORD invalidColor = 0xe567f8;
-	auto defaultImage = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1, VK_IMAGE_TYPE_2D, VkFormat::VK_FORMAT_R8G8B8A8_SRGB);
+	auto defaultImage = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1,
+		VK_IMAGE_TYPE_2D,
+		VkFormat::VK_FORMAT_R8G8B8A8_SRGB,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_SHARING_MODE_EXCLUSIVE,
+		VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+
+	auto defaultCubemap = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1,
+		VK_IMAGE_TYPE_2D,
+		VkFormat::VK_FORMAT_R8G8B8A8_SRGB,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_SHARING_MODE_EXCLUSIVE,
+		VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+		VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+		6);
+
 	m_defaultTexture = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultImage, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+	m_defaultCubemap = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultCubemap, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
@@ -57,6 +75,7 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
 	m_defaultTexture.Clear();
+	m_defaultCubemap.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -349,7 +368,7 @@ void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std:
 		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER,
 			(uint64_t)(VkCommandBuffer)*cmdList->m_vulkan.m_commandBuffer,
 			"Command List " + name);
-	}
+}
 	else if (auto sampler = resource.DynamicCast<VulkanSampler>())
 	{
 		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER,
@@ -409,6 +428,16 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
+	uint32_t flags = 0;
+	uint32_t arrayLayers = 1;
+
+	if (type == RHI::ETextureType::Cubemap)
+	{
+		type = RHI::ETextureType::Texture2D;
+		flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+		arrayLayers = 6;
+	}
+
 	RHI::RHITexturePtr res = RHI::RHITexturePtr::Make(filtration, clamping, mipLevels > 1, RHI::EImageLayout::ShaderReadOnlyOptimal);
 	res->m_vulkan.m_image = m_vkInstance->CreateImage_Immediate(m_vkInstance->GetMainDevice(),
 		pData,
@@ -420,7 +449,9 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 		VK_IMAGE_TILING_OPTIMAL,
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal);
+		(VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal,
+		flags,
+		arrayLayers);
 
 	res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, res->m_vulkan.m_image);
 	res->m_vulkan.m_imageView->Compile();
@@ -456,6 +487,16 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Texture");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
+	uint32_t flags = 0;
+	uint32_t arrayLayers = 1;
+
+	if (type == RHI::ETextureType::Cubemap)
+	{
+		type = RHI::ETextureType::Texture2D;
+		flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+		arrayLayers = 6;
+	}
+
 	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer,
 		m_vkInstance->GetMainDevice(),
 		pData,
@@ -467,7 +508,9 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 		VK_IMAGE_TILING_OPTIMAL,
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-		(VkImageLayout)layout);
+		(VkImageLayout)layout,
+		flags,
+		arrayLayers);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
@@ -552,7 +595,6 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 			res->m_faces.Emplace(target);
 		}
 	}
-
 
 	outCubemap->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outCubemap->m_vulkan.m_image);
 	outCubemap->m_vulkan.m_imageView->Compile();
@@ -944,6 +986,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	// TODO: Rearrange descriptorSetLayouts to support vector of descriptor sets
 	auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device,
 		descriptorSetLayouts,
+		bindings,
 		pushConstants,
 		0);
 
@@ -1329,7 +1372,7 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 			pushConstants.Emplace(vkPushConstant);
 		}
 
-		auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device, descriptorSetLayouts, pushConstants, 0);
+		auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device, descriptorSetLayouts, bindings, pushConstants, 0);
 		computePipeline = VulkanComputePipelinePtr::Make(device, pipelineLayout, computeShader->m_vulkan.m_shader);
 		computePipeline->Compile();
 	}
@@ -2062,8 +2105,8 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 		{
 			break;
 		}
-
-		const auto& materialLayout = layout->m_descriptionSetLayouts[i];
+		
+		const auto& materialLayout = layout->m_descriptionSetLayouts[i];		
 
 		if (bIsCompatible[i])
 		{
@@ -2150,8 +2193,10 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 		if (materialLayout->m_descriptorSetLayoutBindings.Num() > descriptors.Num())
 		{
-			for (const auto& descrSetLayoutBinding : materialLayout->m_descriptorSetLayoutBindings)
+			for (uint32_t j = 0; j < materialLayout->m_descriptorSetLayoutBindings.Num(); j++)
 			{
+				const auto& descrSetLayoutBinding = materialLayout->m_descriptorSetLayoutBindings[j];
+
 				if (!(descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler ||
 					descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage))
 				{
@@ -2161,19 +2206,23 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 				if (!bindings.ContainsIf([&](const auto& lhs)
 					{
 						auto& layout = lhs->GetLayout();
-				return descrSetLayoutBinding.binding == layout.m_binding;
+						return descrSetLayoutBinding.binding == layout.m_binding;
 					}))
 				{
+					// Check that bound map is Cubemap
+					size_t index = layout->GetShaderLayout().FindIf([&](const auto& lhs) {return i == lhs.m_set && descrSetLayoutBinding.binding == lhs.m_binding; });
+					const bool bIsCubemap = index != -1 ? layout->GetShaderLayout()[index].IsCubemap() : false;
+
 					if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler)
-					{
+					{						
 						auto descr = VulkanDescriptorCombinedImagePtr::Make(descrSetLayoutBinding.binding, 0,
 							device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false),
-							m_defaultTexture);
+							bIsCubemap ? m_defaultCubemap : m_defaultTexture);
 						descriptors.Add(descr);
 					}
 					else if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage)
 					{
-						auto descr = VulkanDescriptorStorageImagePtr::Make(descrSetLayoutBinding.binding, 0, m_defaultTexture);
+						auto descr = VulkanDescriptorStorageImagePtr::Make(descrSetLayoutBinding.binding, 0, bIsCubemap ? m_defaultCubemap : m_defaultTexture);
 						descriptors.Add(descr);
 					}
 

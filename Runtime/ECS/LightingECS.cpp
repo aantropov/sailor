@@ -152,12 +152,15 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 		frustums.Emplace(std::move(frustum));
 	}
 
+	sceneView->m_sortedSpotLights.Resize(sceneView->m_cameraTransforms.Num());
+	sceneView->m_sortedPointLights.Resize(sceneView->m_cameraTransforms.Num());
+
 	// TODO: Cache lights that cast shadows separately to decrease algo complexity
 	for (size_t index = 0; index < m_components.Num(); index++)
 	{
 		auto& light = m_components[index];
 		if (light.m_bCastShadows && light.m_bIsActive)
-		{	
+		{
 			const auto& ownerTransform = light.m_owner.StaticCast<GameObject>()->GetTransformComponent();
 
 			RHI::RHILightProxy lightProxy{};
@@ -165,13 +168,11 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 			lightProxy.m_lightMatrix = ownerTransform.GetCachedWorldMatrix();
 			lightProxy.m_shadowMap = nullptr;
 			lightProxy.m_lastShadowMapUpdate = 0;
-			lightProxy.m_minDistanceToCamera = 0.0f;
-			lightProxy.m_index = index;
+			lightProxy.m_distanceToCamera = 0.0f;
+			lightProxy.m_index = (uint32_t)index;
 
 			if (light.m_type != ELightType::Directional)
 			{
-				bool bInFrustum = false;
-				lightProxy.m_minDistanceToCamera = std::numeric_limits<float>::max();
 
 				for (uint32_t j = 0; j < sceneView->m_cameraTransforms.Num(); j++)
 				{
@@ -180,24 +181,18 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 					if (frustums[j].ContainsSphere(Math::Sphere(ownerTransform.GetPosition(), sphereRadius)))
 					{
 						// TODO: Sort by screen size, not by distance to camera
-						lightProxy.m_minDistanceToCamera = std::min(lightProxy.m_minDistanceToCamera,
-							glm::length(ownerTransform.GetPosition() - sceneView->m_cameraTransforms[j].m_position));
+						lightProxy.m_distanceToCamera = glm::length(ownerTransform.GetPosition() - sceneView->m_cameraTransforms[j].m_position);
 
-						bInFrustum = true;
-					}
-				}
-
-				if (bInFrustum)
-				{
-					if (ELightType::Spot == light.m_type)
-					{
-						auto it = std::lower_bound(sceneView->m_sortedSpotLights.begin(), sceneView->m_sortedSpotLights.end(), lightProxy);
-						sceneView->m_sortedSpotLights.Insert(lightProxy, it - sceneView->m_sortedSpotLights.begin());
-					}
-					else
-					{
-						auto it = std::lower_bound(sceneView->m_sortedPointLights.begin(), sceneView->m_sortedPointLights.end(), lightProxy);
-						sceneView->m_sortedPointLights.Insert(lightProxy, it - sceneView->m_sortedPointLights.begin());
+						if (ELightType::Spot == light.m_type)
+						{
+							auto it = std::lower_bound(sceneView->m_sortedSpotLights[j].begin(), sceneView->m_sortedSpotLights[j].end(), lightProxy);
+							sceneView->m_sortedSpotLights[j].Insert(lightProxy, it - sceneView->m_sortedSpotLights[j].begin());
+						}
+						else
+						{
+							auto it = std::lower_bound(sceneView->m_sortedPointLights[j].begin(), sceneView->m_sortedPointLights[j].end(), lightProxy);
+							sceneView->m_sortedPointLights[j].Insert(lightProxy, it - sceneView->m_sortedPointLights[j].begin());
+						}
 					}
 				}
 			}

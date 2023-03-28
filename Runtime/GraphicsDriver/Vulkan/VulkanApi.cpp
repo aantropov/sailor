@@ -963,12 +963,14 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 	VkImageTiling tiling,
 	VkImageUsageFlags usage,
 	VkSharingMode sharingMode,
-	VkImageLayout defaultLayout)
+	VkImageLayout defaultLayout,
+	VkImageCreateFlags flags,
+	uint32_t arrayLayers)
 {
 
 	auto cmdBuffer = device->CreateCommandBuffer();
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanImagePtr res = CreateImage(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout);
+	VulkanImagePtr res = CreateImage(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout, flags, arrayLayers);
 	cmdBuffer->EndCommandList();
 
 	auto fence = VulkanFencePtr::Make(device);

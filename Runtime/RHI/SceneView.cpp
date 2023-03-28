@@ -61,6 +61,9 @@ void RHISceneView::PrepareSnapshots()
 		res.m_totalNumLights = m_totalNumLights;
 		res.m_rhiLightsData = m_rhiLightsData;
 		res.m_drawImGui = m_drawImGui;
+		res.m_sortedSpotLights = std::move(m_sortedSpotLights[i]);
+		res.m_sortedPointLights = std::move(m_sortedPointLights[i]);
+		res.m_directionalLights = m_directionalLights;
 
 		// Stationary
 		TVector<RHIMeshProxy> meshProxies;

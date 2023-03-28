@@ -219,7 +219,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VkImageCreateFlags flags = 0,
+			uint32_t arrayLayer = 1);
 
 		//Immediate context
 

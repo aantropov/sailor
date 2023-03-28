@@ -16,6 +16,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanPipelineLayout();
 		SAILOR_API VulkanPipelineLayout(VulkanDevicePtr pDevice,
 			TVector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
+			TVector<RHI::ShaderLayoutBinding> shaderBindings,
 			TVector<VkPushConstantRange> pushConstantRanges,
 			VkPipelineLayoutCreateFlags flags = 0);
 
@@ -28,6 +29,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VkPipelineLayout* GetHandle() { return &m_pipelineLayout; }
 		SAILOR_API operator VkPipelineLayout() const { return m_pipelineLayout; }
 
+		SAILOR_API const TVector<RHI::ShaderLayoutBinding>& GetShaderLayout() const { return m_shaderBindings; }
+
 		SAILOR_API virtual void Compile() override;
 		SAILOR_API virtual void Release() override;
 
@@ -36,6 +39,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual ~VulkanPipelineLayout() override;
 		VulkanDevicePtr m_pDevice;
 		VkPipelineLayout m_pipelineLayout;
+		TVector<RHI::ShaderLayoutBinding> m_shaderBindings;
 	};
 
 	class VulkanGraphicsPipeline : public RHI::RHIResource

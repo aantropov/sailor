@@ -19,10 +19,12 @@ VulkanPipelineLayout::VulkanPipelineLayout() :
 VulkanPipelineLayout::VulkanPipelineLayout(
 	VulkanDevicePtr pDevice,
 	TVector<VulkanDescriptorSetLayoutPtr> descriptorsSet,
+	TVector<RHI::ShaderLayoutBinding> shaderBindings,
 	TVector<VkPushConstantRange> pushConstantRanges,
 	VkPipelineLayoutCreateFlags flags) :
 	m_flags(flags),
 	m_descriptionSetLayouts(std::move(descriptorsSet)),
+	m_shaderBindings(std::move(shaderBindings)),
 	m_pushConstantRanges(std::move(pushConstantRanges)),
 	m_pDevice(std::move(pDevice)),
 	m_pipelineLayout(nullptr)

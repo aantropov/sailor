@@ -22,9 +22,9 @@ namespace Sailor::RHI
 		RHITexturePtr m_shadowMap = nullptr;
 		uint32_t m_index = 0;
 		size_t m_lastShadowMapUpdate = 0;
-		float m_minDistanceToCamera{};
+		float m_distanceToCamera{};
 
-		SAILOR_API bool operator<(const RHILightProxy& rhs) const { return m_minDistanceToCamera < rhs.m_minDistanceToCamera; }
+		SAILOR_API bool operator<(const RHILightProxy& rhs) const { return m_distanceToCamera < rhs.m_distanceToCamera; }
 	};
 
 	struct RHISceneViewProxy
@@ -69,9 +69,10 @@ namespace Sailor::RHI
 
 		uint32_t m_totalNumLights = 0;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
-		TVector<RHILightProxy> m_sortedPointLights{};
-		TVector<RHILightProxy> m_sortedSpotLights{};
 		TVector<RHILightProxy> m_directionalLights{};
+		// For each camera
+		TVector<TVector<RHILightProxy>> m_sortedPointLights{};
+		TVector<TVector<RHILightProxy>> m_sortedSpotLights{};
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;

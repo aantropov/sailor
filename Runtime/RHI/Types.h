@@ -62,6 +62,7 @@ namespace Sailor::RHI
 		Texture1D = 0,
 		Texture2D = 1,
 		Texture3D = 2,
+		Cubemap = 3
 	};
 
 	enum class EMsaaSamples : uint8_t
@@ -575,9 +576,16 @@ namespace Sailor::RHI
 		uint32_t m_arrayCount = 0u;
 		uint32_t m_paddedSize = 0u;
 
+		ETextureType m_textureType{};
+
 		bool IsImage() const
 		{
 			return (m_type == RHI::EShaderBindingType::CombinedImageSampler) || (m_type == RHI::EShaderBindingType::StorageImage);
+		}
+
+		bool IsCubemap() const
+		{
+			return m_textureType == ETextureType::Cubemap;
 		}
 
 		bool IsBuffer() const
@@ -654,7 +662,7 @@ namespace Sailor::RHI
 	public:
 		glm::vec2 m_texcoord;
 		glm::vec3 m_position;
-		glm::vec3 m_normal;		
+		glm::vec3 m_normal;
 		glm::vec4 m_color;
 
 		SAILOR_API bool operator==(const VertexP3N3UV2C4& other) const
