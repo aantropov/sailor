@@ -351,7 +351,7 @@ namespace Sailor::RHI
 		Sampled_Bit = 0x00000004,
 		Storage_Bit = 0x00000008,
 		ColorAttachment_Bit = 0x00000010,
-		DepthStencilAttachment__Bit = 0x00000020,
+		DepthStencilAttachment_Bit = 0x00000020,
 		TransientAttachment_Bit = 0x00000040,
 		InputAttachment_Bit = 0x00000080
 	};

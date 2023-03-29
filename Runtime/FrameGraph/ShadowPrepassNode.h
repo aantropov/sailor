@@ -32,12 +32,14 @@ namespace Sailor
 
 	protected:
 
-		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_depthOnlyMaterials;
+		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials;
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 		size_t m_sizePerInstanceData = 0;
 
-		RHI::RHIMaterialPtr GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertex);		
+		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);		
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
+
+		RHI::RHIRenderTargetPtr m_shadowMap;
 
 		static const char* m_name;
 	};
