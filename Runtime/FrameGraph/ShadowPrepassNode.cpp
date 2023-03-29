@@ -288,7 +288,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 
-	const mat4 proj = glm::ortho(-1024, 1024, -1024, 1024, -1024, 1024);
+	const mat4 proj = glm::ortho(-1024.0f, 1024.0f, -1024.0f, 1024.0f, 50000.0f, 0.0f);
 	const mat4 lightMatrix = proj * sceneView.m_directionalLights[0].m_lightMatrix;
 	commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrix);
 	RecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
