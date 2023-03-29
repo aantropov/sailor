@@ -225,6 +225,11 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
+	if (!colorAttachment)
+	{
+		return;
+	}
+
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
 	const size_t materialsPerThread = (batches.Num()) / numThreads;
 

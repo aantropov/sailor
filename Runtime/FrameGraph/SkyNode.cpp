@@ -33,77 +33,77 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		[=]() -> TParseRes
 		{
 			std::string temperatures;
-	if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
-	{
-		return TParseRes();
-	}
+			if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
+			{
+				return TParseRes();
+			}
 
-	YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
-	if (temperaturesNode["colors"])
-	{
-		TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
+			YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
+			if (temperaturesNode["colors"])
+			{
+				TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
 
-		for (const auto& line : temperaturesData)
-		{
-			const auto temperatureK = line[0];
+				for (const auto& line : temperaturesData)
+				{
+					const auto temperatureK = line[0];
 
-			uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
-			index = glm::clamp(index, 0u, s_maxRgbTemperatures);
+					uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
+					index = glm::clamp(index, 0u, s_maxRgbTemperatures);
 
-			// Should we inverse gamma correction?
-			const vec3 color = vec3(line[5], line[6], line[7]);
+					// Should we inverse gamma correction?
+					const vec3 color = vec3(line[5], line[6], line[7]);
 
-			s_rgbTemperatures[index] = color;
-		}
-	}
+					s_rgbTemperatures[index] = color;
+				}
+			}
 
-	TVector<uint8_t> starCatalogueData;
-	AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
+			TVector<uint8_t> starCatalogueData;
+			AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
 
-	BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
+			BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
 
-	const size_t starCount = abs(header->m_starCount);
-	BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
+			const size_t starCount = abs(header->m_starCount);
+			BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
 
-	TVector<VertexP3C4> vertices(starCount);
-	TVector<uint32_t> indices(starCount);
+			TVector<VertexP3C4> vertices(starCount);
+			TVector<uint32_t> indices(starCount);
 
-	for (uint32_t i = 0; i < starCount; i++)
-	{
-		const BrighStarCatalogue_Entry& entry = starCatalogue[i];
+			for (uint32_t i = 0; i < starCount; i++)
+			{
+				const BrighStarCatalogue_Entry& entry = starCatalogue[i];
 
-		vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
-		vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
+				vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
+				vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
 
-		vertices[i].m_position.x *= 5000.0f;
-		vertices[i].m_position.y *= 5000.0f;
-		vertices[i].m_position.z *= 5000.0f;
+				vertices[i].m_position.x *= 5000.0f;
+				vertices[i].m_position.y *= 5000.0f;
+				vertices[i].m_position.z *= 5000.0f;
 
-		vec4 color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
+				vec4 color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
 
-		vertices[i].m_color.x = pow(color.x, 1 / 2.2f);
-		vertices[i].m_color.y = pow(color.y, 1 / 2.2f);
-		vertices[i].m_color.z = pow(color.z, 1 / 2.2f);
-		vertices[i].m_color.w = pow(color.w, 1 / 2.2f);
+				vertices[i].m_color.x = pow(color.x, 1 / 2.2f);
+				vertices[i].m_color.y = pow(color.y, 1 / 2.2f);
+				vertices[i].m_color.z = pow(color.z, 1 / 2.2f);
+				vertices[i].m_color.w = pow(color.w, 1 / 2.2f);
 
-		indices[i] = i;
-	}
+				indices[i] = i;
+			}
 
-	return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
+			return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
 		})->Then<RHI::RHIMeshPtr, TParseRes>([](const TParseRes& res) mutable
 			{
 				const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
-		const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
+				const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
 
-		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+				auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 
-		RHI::RHIMeshPtr mesh = driver->CreateMesh();
+				RHI::RHIMeshPtr mesh = driver->CreateMesh();
 
-		mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
-		mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
-		driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
+				mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
+				mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
+				driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
 
-		return mesh;
+				return mesh;
 			}, "Create Stars Mesh", Tasks::EThreadType::RHI);
 
 		task->Run();
@@ -282,7 +282,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseHigh();
-			AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
+					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -296,7 +296,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseLow();
-			AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
+					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -379,7 +379,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			ETextureFormat::R16G16B16A16_SFLOAT,
 			ETextureFiltration::Linear,
 			ETextureClamping::Clamp,
-			ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit);
+			ETextureUsageBit::Sampled_Bit | ETextureUsageBit::ColorAttachment_Bit | ETextureUsageBit::TextureTransferDst_Bit);
 
 		driver->SetDebugName(m_pCloudsTexture, "Clouds");
 	}
@@ -549,42 +549,51 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 	}
 	commands->EndDebugRegion(commandList);
 
-	commands->BeginDebugRegion(commandList, "Clouds", DebugContext::Color_CmdPostProcess);
+	if (m_skyParams.m_cloudsDensity > 0.0f)
 	{
-		commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
-		commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
+		commands->BeginDebugRegion(commandList, "Clouds", DebugContext::Color_CmdPostProcess);
+		{
+			commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
+			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
-		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), m_pSkyTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
-		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), m_pSkyTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+			commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
-		commands->BindMaterial(commandList, m_pCloudsMaterial);
-		commands->BindShaderBindings(commandList, m_pCloudsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
-		commands->PushConstants(commandList, m_pCloudsMaterial, sizeof(uint32_t), &m_ditherPatternIndex);
+			commands->BindMaterial(commandList, m_pCloudsMaterial);
+			commands->BindShaderBindings(commandList, m_pCloudsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
+			commands->PushConstants(commandList, m_pCloudsMaterial, sizeof(uint32_t), &m_ditherPatternIndex);
 
-		commands->SetViewport(commandList,
-			0, 0,
-			(float)m_pCloudsTexture->GetExtent().x, (float)m_pCloudsTexture->GetExtent().y,
-			glm::vec2(0, 0),
-			glm::vec2(m_pCloudsTexture->GetExtent().x, m_pCloudsTexture->GetExtent().y),
-			0, 1.0f);
+			commands->SetViewport(commandList,
+				0, 0,
+				(float)m_pCloudsTexture->GetExtent().x, (float)m_pCloudsTexture->GetExtent().y,
+				glm::vec2(0, 0),
+				glm::vec2(m_pCloudsTexture->GetExtent().x, m_pCloudsTexture->GetExtent().y),
+				0, 1.0f);
 
-		commands->BeginRenderPass(commandList,
-			TVector<RHI::RHITexturePtr>{m_pCloudsTexture},
-			nullptr,
-			glm::vec4(0, 0, m_pCloudsTexture->GetExtent().x, m_pCloudsTexture->GetExtent().y),
-			glm::ivec2(0, 0),
-			false,
-			glm::vec4(0.0f),
-			false);
+			commands->BeginRenderPass(commandList,
+				TVector<RHI::RHITexturePtr>{m_pCloudsTexture},
+				nullptr,
+				glm::vec4(0, 0, m_pCloudsTexture->GetExtent().x, m_pCloudsTexture->GetExtent().y),
+				glm::ivec2(0, 0),
+				false,
+				glm::vec4(0.0f),
+				false);
 
-		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
-		commands->EndRenderPass(commandList);
+			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			commands->EndRenderPass(commandList);
 
-		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pSkyTexture->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::ColorAttachmentOptimal, m_pCloudsTexture->GetDefaultLayout());
+			commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pSkyTexture->GetDefaultLayout());
+			commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::ColorAttachmentOptimal, m_pCloudsTexture->GetDefaultLayout());
 
+		}
+		commands->EndDebugRegion(commandList);
 	}
-	commands->EndDebugRegion(commandList);
+	else
+	{
+		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+		commands->ClearImage(commandList, m_pCloudsTexture, glm::vec4(0, 0, 0, 0));
+		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::TransferDstOptimal, m_pCloudsTexture->GetDefaultLayout());
+	}
 
 	commands->BeginDebugRegion(commandList, "Sun", DebugContext::Color_CmdPostProcess);
 	{
