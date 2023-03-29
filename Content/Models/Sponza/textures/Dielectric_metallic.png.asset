@@ -1,0 +1,8 @@
+uid: "{FB07F8D8-F01D-41F6-8055-9D30D66FBE00}"
+filename: Dielectric_metallic.png
+assetImportTime: 1664665086
+bShouldGenerateMips: true
+bShouldSupportStorageBinding: false
+clamping: Repeat
+filtration: Linear
+format: R8G8B8A8_UNORM

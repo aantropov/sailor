@@ -44,7 +44,7 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 		renderDocApi->SetActiveWindow((*((void**)(m_vkInstance->GetVkInstance()))), pViewport->GetHWND());
 	}
 
-	DWORD invalidColor = 0xe567f8;
+	DWORD invalidColor = 0xe567ff;
 	auto defaultImage = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1,
 		VK_IMAGE_TYPE_2D,
 		VkFormat::VK_FORMAT_R8G8B8A8_SRGB,

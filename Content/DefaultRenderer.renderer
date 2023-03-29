@@ -93,6 +93,10 @@ frame:
   - color: Main
 
 ############################
+- name: ShadowPrepass
+############################
+
+############################
 - name: Sky
 ############################
   renderTargets:
@@ -156,7 +160,16 @@ frame:
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
-
+  
+############################
+- name: RenderScene
+############################
+  string:
+  - Tag: Masked
+  renderTargets:
+  - color: Main
+  - depthStencil: DepthBuffer
+  
 ############################
 - name: DebugDraw
 ############################

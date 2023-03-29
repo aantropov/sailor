@@ -320,7 +320,7 @@ glslFragment: |
     vec3 F0 = mix(Fdielectric, material.albedo.xyz, material.metallic);
     
   #ifdef ALPHA_CUTOUT
-    if(material.diffuse.a < 0.05)
+    if(material.albedo.a < 0.5)
     {
       discard;
     }
@@ -354,5 +354,5 @@ glslFragment: |
         outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
     }
 
-    outColor.a = 1.0f;
+    outColor.a = material.albedo.a;
   }
