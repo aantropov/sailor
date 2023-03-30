@@ -54,7 +54,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
 
-	TMap<RHIBatch, TMap<RHI::RHIMeshPtr, TVector<DepthPrepassNode::PerInstanceData>>> drawCalls;
+	TDrawCalls<DepthPrepassNode::PerInstanceData> drawCalls;
 	TSet<RHIBatch> batches;
 
 	uint32_t numMeshes = 0;
@@ -186,7 +186,6 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		return sets;
 	};
 
-	SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{},
 		depthAttachment,
@@ -199,7 +198,6 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 	RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0]);
 	commands->EndRenderPass(commandList);
-	SAILOR_PROFILE_END_BLOCK();
 
 	commands->EndDebugRegion(commandList);
 }

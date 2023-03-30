@@ -57,7 +57,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		driver->SetDebugName(m_shadowMap, "Shadow Map");
 	}
 
-	TMap<RHIBatch, TMap<RHI::RHIMeshPtr, TVector<ShadowPrepassNode::PerInstanceData>>> drawCalls;
+	TDrawCalls<ShadowPrepassNode::PerInstanceData> drawCalls;
 	TSet<RHIBatch> batches;
 
 	uint32_t numMeshes = 0;

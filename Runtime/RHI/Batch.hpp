@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Map.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/SceneView.h"
@@ -16,6 +17,8 @@ namespace Sailor::RHI
 	public:
 
 		RHIMaterialPtr m_material;
+
+		// Here we store the vertex and index bindings that could be shared during rendering (not meshes)
 		RHIMeshPtr m_mesh;
 
 		RHIBatch() = default;
@@ -41,15 +44,20 @@ namespace Sailor::RHI
 	};
 
 	template<typename TPerInstanceData>
+	using TDrawCalls = TMap<RHIBatch, TMap<RHI::RHIMeshPtr, TVector<TPerInstanceData>>>;
+
+	template<typename TPerInstanceData>
 	void RHIRecordDrawCall(uint32_t start,
 		uint32_t end,
 		const TVector<RHIBatch>& vecBatches,
 		RHI::RHICommandListPtr cmdList,
 		std::function<TVector<RHIShaderBindingSetPtr>(RHIMaterialPtr)> shaderBindings,
-		const TMap<RHIBatch, TMap<RHI::RHIMeshPtr, TVector<TPerInstanceData>>>& drawCalls,
+		const TDrawCalls<TPerInstanceData>& drawCalls,
 		const TVector<uint32_t>& storageIndex,
 		RHIBufferPtr& indirectCommandBuffer)
 	{
+		SAILOR_PROFILE_BLOCK("Record draw calls");
+
 		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
@@ -71,6 +79,9 @@ namespace Sailor::RHI
 		RHIBufferPtr prevVertexBuffer = nullptr;
 		RHIBufferPtr prevIndexBuffer = nullptr;
 
+		// Should we call that after each bind material?
+		commands->SetDefaultViewport(cmdList);
+
 		size_t indirectBufferOffset = 0;
 		for (uint32_t j = start; j < end; j++)
 		{
@@ -78,19 +89,12 @@ namespace Sailor::RHI
 			auto& mesh = vecBatches[j].m_mesh;
 			auto& drawCall = drawCalls[vecBatches[j]];
 
-			TVector<RHIShaderBindingSetPtr> sets = shaderBindings(material);
-			if (sets.Num() == 0)
-			{
-				continue;
-			}
-
 			if (prevMaterial != material)
 			{
+				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(material);
+
 				commands->BindMaterial(cmdList, material);
-
-				commands->SetDefaultViewport(cmdList);
 				commands->BindShaderBindings(cmdList, material, sets);
-
 				prevMaterial = material;
 			}
 

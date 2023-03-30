@@ -45,7 +45,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 
-	TMap<RHIBatch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
+	TDrawCalls<PerInstanceData> drawCalls;
 	TSet<RHIBatch> batches;
 
 	uint32_t numMeshes = 0;
