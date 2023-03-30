@@ -130,6 +130,18 @@ void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
+	commands->BeginRenderPass(commandList,
+		TVector<RHI::RHISurfacePtr>{dst},
+		nullptr,
+		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+		glm::ivec2(0, 0),
+		false,
+		glm::vec4(0.0f),
+		false);
+
+	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+
 	commands->BindMaterial(commandList, m_blitToMsaaTargetMaterial);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
@@ -142,18 +154,6 @@ void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
 		glm::vec2(0, 0),
 		glm::vec2(target->GetExtent().x, target->GetExtent().y),
 		0, 1.0f);
-
-	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHISurfacePtr>{dst},
-		nullptr,
-		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
-		glm::ivec2(0, 0),
-		false,
-		glm::vec4(0.0f),
-		false);
-
-	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 	commands->EndRenderPass(commandList);

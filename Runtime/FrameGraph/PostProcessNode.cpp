@@ -105,18 +105,6 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
-	commands->BindMaterial(commandList, m_postEffectMaterial);
-	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
-	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_shaderBindings });
-
-	commands->SetViewport(commandList,
-		0, 0,
-		(float)target->GetExtent().x, (float)target->GetExtent().y,
-		glm::vec2(0, 0),
-		glm::vec2(target->GetExtent().x, target->GetExtent().y),
-		0, 1.0f);
-
 	if (bShouldUseMsaaTarget)
 	{
 		commands->BeginRenderPass(commandList,
@@ -142,6 +130,18 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+
+	commands->BindMaterial(commandList, m_postEffectMaterial);
+	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
+	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
+	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_shaderBindings });
+
+	commands->SetViewport(commandList,
+		0, 0,
+		(float)target->GetExtent().x, (float)target->GetExtent().y,
+		glm::vec2(0, 0),
+		glm::vec2(target->GetExtent().x, target->GetExtent().y),
+		0, 1.0f);
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 	commands->EndRenderPass(commandList);

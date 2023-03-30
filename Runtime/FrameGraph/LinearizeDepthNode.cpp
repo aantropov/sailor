@@ -74,6 +74,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 	commands->BindMaterial(commandList, m_postEffectMaterial);
+	commands->SetDefaultViewport(commandList);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });

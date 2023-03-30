@@ -88,12 +88,13 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& col
 	ClearDependencies();
 
 	//TODO: Pass inheritanceFlags
+	const bool bHasStencil = depthStencilAttachment && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment) & VK_IMAGE_ASPECT_STENCIL_BIT);
 
 	VkCommandBufferInheritanceRenderingInfoKHR attachments{};
 	attachments.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO;
 	attachments.colorAttachmentCount = (uint32_t)colorAttachments.Num();
 	attachments.depthAttachmentFormat = depthStencilAttachment;
-	attachments.stencilAttachmentFormat = depthStencilAttachment;
+	attachments.stencilAttachmentFormat = bHasStencil ? depthStencilAttachment : VK_FORMAT_UNDEFINED;
 	attachments.pColorAttachmentFormats = colorAttachments.GetData();
 
 	// TODO: Should we always use MSAA?
@@ -200,6 +201,8 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkClearValue depthClear{};
 	depthClear.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
 
+	const bool bHasStencil = depthStencilAttachment && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment->m_format) & VK_IMAGE_ASPECT_STENCIL_BIT);
+
 	VkRenderingAttachmentInfoKHR depthAttachmentInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -213,8 +216,8 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	VkRenderingAttachmentInfoKHR stencilAttachmentInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.imageView = depthStencilAttachment ? *depthStencilAttachment : VK_NULL_HANDLE,
-		.imageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR,
+		.imageView = bHasStencil ? *depthStencilAttachment : VK_NULL_HANDLE,
+		.imageLayout =  bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 		.clearValue = depthClear,
@@ -252,8 +255,8 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		depthAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
 		stencilAttachmentInfo.resolveMode = VK_RESOLVE_MODE_NONE_KHR;
-		stencilAttachmentInfo.resolveImageView = *depthStencilAttachmentResolve;
-		stencilAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
+		stencilAttachmentInfo.resolveImageView = bHasStencil ? *depthStencilAttachmentResolve : VK_NULL_HANDLE;
+		stencilAttachmentInfo.resolveImageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
 
 		m_colorAttachmentDependencies.Add(depthStencilAttachmentResolve->GetImage());
 	}

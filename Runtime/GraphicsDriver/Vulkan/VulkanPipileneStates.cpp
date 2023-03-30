@@ -228,14 +228,14 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 	m_blendModes[(size_t)RHI::EBlendMode::None] = VulkanStateColorBlendingPtr::Make(false, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD,
 		VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD, mask);
 
-	m_blendModes[(size_t)RHI::EBlendMode::Additive] = VulkanStateColorBlendingPtr::Make(true, 
+	m_blendModes[(size_t)RHI::EBlendMode::Additive] = VulkanStateColorBlendingPtr::Make(true,
 		VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD,
 		VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE, VkBlendOp::VK_BLEND_OP_ADD, mask);
 
 	m_blendModes[(size_t)RHI::EBlendMode::AlphaBlending] = VulkanStateColorBlendingPtr::Make(true, VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_ADD,
 		VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VkBlendOp::VK_BLEND_OP_SUBTRACT, mask);
 
-	m_blendModes[(size_t)RHI::EBlendMode::Multiply] = VulkanStateColorBlendingPtr::Make(true, 
+	m_blendModes[(size_t)RHI::EBlendMode::Multiply] = VulkanStateColorBlendingPtr::Make(true,
 		VK_BLEND_FACTOR_ONE,
 		VK_BLEND_FACTOR_ONE,
 		VkBlendOp::VK_BLEND_OP_MULTIPLY_EXT,
@@ -274,7 +274,9 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 			VulkanApi::GetBindingDescription(vertexDescription),
 			VulkanApi::GetAttributeDescriptions(vertexDescription));
 
-		const VulkanStateDynamicRenderingPtr pStateDynamicRendering = VulkanStateDynamicRenderingPtr::Make(colorAttachmentFormats, depthStencilFormat, depthStencilFormat);
+		const VkFormat stencilAttachmentFormat = (VulkanApi::ComputeAspectFlagsForFormat(depthStencilFormat) & VK_IMAGE_ASPECT_STENCIL_BIT) ? depthStencilFormat : VK_FORMAT_UNDEFINED;
+
+		const VulkanStateDynamicRenderingPtr pStateDynamicRendering = VulkanStateDynamicRenderingPtr::Make(colorAttachmentFormats, depthStencilFormat, stencilAttachmentFormat);
 
 		const VulkanStateInputAssemblyPtr pInputAssembly = VulkanStateInputAssemblyPtr::Make((VkPrimitiveTopology)topology);
 		const VulkanStateDynamicViewportPtr pStateViewport = VulkanStateDynamicViewportPtr::Make();

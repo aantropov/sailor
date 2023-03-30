@@ -318,8 +318,8 @@ void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, co
 	auto commands = RHI::Renderer::GetDriverCommands();
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 	
-	commands->SetDefaultViewport(secondaryDrawCmdList);
 	commands->BindMaterial(secondaryDrawCmdList, m_material);
+	commands->SetDefaultViewport(secondaryDrawCmdList); 
 	commands->BindVertexBuffer(secondaryDrawCmdList, m_cachedMesh->m_vertexBuffer, m_cachedMesh->m_vertexBuffer->GetOffset());
 	commands->BindIndexBuffer(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, m_cachedMesh->m_indexBuffer->GetOffset());
 	commands->PushConstants(secondaryDrawCmdList, m_material, sizeof(viewProjection), &viewProjection);

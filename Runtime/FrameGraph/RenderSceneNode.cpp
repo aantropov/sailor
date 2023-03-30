@@ -6,6 +6,7 @@
 #include "RHI/RenderTarget.h"
 #include "RHI/Texture.h"
 #include "RHI/Types.h"
+#include "RHI/Batch.hpp"
 #include "RHI/VertexDescription.h"
 #include "RHI/CommandList.h"
 
@@ -16,35 +17,6 @@ using namespace Sailor::Framegraph;
 #ifndef _SAILOR_IMPORT_
 const char* RenderSceneNode::m_name = "RenderScene";
 #endif
-
-class Batch
-{
-public:
-
-	RHIMaterialPtr m_material;
-	RHIMeshPtr m_mesh;
-
-	Batch() = default;
-	Batch(const RHIMaterialPtr& material, const RHIMeshPtr& mesh) : m_material(material), m_mesh(mesh) {}
-
-	bool operator==(const Batch& rhs) const
-	{
-		return
-			m_material->GetBindings()->GetCompatibilityHashCode() == rhs.m_material->GetBindings()->GetCompatibilityHashCode() &&
-			m_material->GetVertexShader() == rhs.m_material->GetVertexShader() &&
-			m_material->GetFragmentShader() == rhs.m_material->GetFragmentShader() &&
-			m_material->GetRenderState() == rhs.m_material->GetRenderState() &&
-			m_mesh->m_vertexBuffer->GetCompatibilityHashCode() == rhs.m_mesh->m_vertexBuffer->GetCompatibilityHashCode() &&
-			m_mesh->m_indexBuffer->GetCompatibilityHashCode() == rhs.m_mesh->m_indexBuffer->GetCompatibilityHashCode();
-	}
-
-	size_t GetHash() const
-	{
-		size_t hash = m_material->GetBindings()->GetCompatibilityHashCode();
-		HashCombine(hash, m_mesh->m_vertexBuffer->GetCompatibilityHashCode(), m_mesh->m_indexBuffer->GetCompatibilityHashCode());
-		return hash;
-	}
-};
 
 RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 {
@@ -58,78 +30,6 @@ RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
-void RecordDrawCall(uint32_t start,
-	uint32_t end,
-	const TVector<Batch>& vecBatches,
-	RHI::RHICommandListPtr cmdList,
-	const RHI::RHISceneViewSnapshot& sceneView,
-	RHI::RHIShaderBindingSetPtr perInstanceData,
-	const TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<RenderSceneNode::PerInstanceData>>>& drawCalls,
-	const TVector<uint32_t>& storageIndex,
-	RHIBufferPtr& indirectCommandBuffer)
-{
-	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-
-	size_t indirectBufferSize = 0;
-	for (uint32_t j = start; j < end; j++)
-	{
-		indirectBufferSize += drawCalls[vecBatches[j]].Num() * sizeof(RHI::DrawIndexedIndirectData);
-	}
-
-	if (!indirectCommandBuffer.IsValid() || indirectCommandBuffer->GetSize() < indirectBufferSize)
-	{
-		const size_t slack = 256;
-		
-		indirectCommandBuffer.Clear();
-		indirectCommandBuffer = driver->CreateIndirectBuffer(indirectBufferSize + slack);
-	}
-
-	commands->SetDefaultViewport(cmdList);
-
-	size_t indirectBufferOffset = 0;
-	for (uint32_t j = start; j < end; j++)
-	{
-		auto& material = vecBatches[j].m_material;
-		auto& mesh = vecBatches[j].m_mesh;
-		auto& drawCall = drawCalls[vecBatches[j]];
-
-		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, perInstanceData, material->GetBindings() });
-
-		commands->BindMaterial(cmdList, material);
-		commands->BindShaderBindings(cmdList, material, sets);
-
-		commands->BindVertexBuffer(cmdList, mesh->m_vertexBuffer, 0);
-		commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer, 0);
-
-		TVector<RHI::DrawIndexedIndirectData> drawIndirect;
-		drawIndirect.Reserve(drawCall.Num());
-
-		uint32_t ssboOffset = 0;
-		for (auto& instancedDrawCall : drawCall)
-		{
-			auto& mesh = instancedDrawCall.First();
-			auto& matrices = instancedDrawCall.Second();
-
-			RHI::DrawIndexedIndirectData data{};
-			data.m_indexCount = (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t);
-			data.m_instanceCount = (uint32_t)matrices.Num();
-			data.m_firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-			data.m_vertexOffset = mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
-			data.m_firstInstance = storageIndex[j] + ssboOffset;
-
-			drawIndirect.Emplace(std::move(data));
-
-			ssboOffset += (uint32_t)matrices.Num();
-		}
-
-		const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
-		commands->UpdateBuffer(cmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
-		commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
-
-		indirectBufferOffset += bufferSize;
-	}
-}
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
@@ -145,8 +45,8 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 
-	TMap<Batch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
-	TSet<Batch> batches;
+	TMap<RHIBatch, TMap<RHI::RHIMeshPtr, TVector<PerInstanceData>>> drawCalls;
+	TSet<RHIBatch> batches;
 
 	uint32_t numMeshes = 0;
 
@@ -187,7 +87,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				data.model = proxy.m_worldMatrix;
 				data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 
-				Batch batch(material, mesh);
+				RHIBatch batch(material, mesh);
 
 				drawCalls[batch][mesh].Add(data);
 				batches.Insert(batch);
@@ -229,6 +129,12 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	{
 		return;
 	}
+
+	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
+	{
+		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings() });
+		return sets;
+	};
 
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
 	const size_t materialsPerThread = (batches.Num()) / numThreads;
@@ -278,7 +184,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
 			commands->BeginSecondaryCommandList(cmdList, true, true);
-			RecordDrawCall(start, end, vecBatches, cmdList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[i + 1]);
+			RHIRecordDrawCall(start, end, vecBatches, cmdList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[i + 1]);
 			commands->EndCommandList(cmdList);
 			secondaryCommandLists[i] = std::move(cmdList);
 		}, Tasks::EThreadType::RHI);
@@ -312,7 +218,15 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			glm::vec4(0.0f),
 			true);
 
-		RecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, (uint32_t)vecBatches.Num(), vecBatches, commandList, sceneView, m_perInstanceData, drawCalls, storageIndex, m_indirectBuffers[0]);
+		RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, 
+			(uint32_t)vecBatches.Num(), 
+			vecBatches, 
+			commandList, 
+			shaderBindingsByMaterial,
+			drawCalls, 
+			storageIndex, 
+			m_indirectBuffers[0]);
+
 		commands->EndRenderPass(commandList);
 		SAILOR_PROFILE_END_BLOCK();
 	}

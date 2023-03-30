@@ -133,8 +133,6 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 
 		FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
 
-		driverCommands->SetDefaultViewport(cmdList);
-
 		for (auto& node : m_graph)
 		{
 			node->Process(this, transferCmdList, cmdList, snapshot);
