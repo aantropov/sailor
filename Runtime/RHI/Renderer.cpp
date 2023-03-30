@@ -88,7 +88,6 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultColorBinding, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_color));
 	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultTangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_tangent));
 	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultBitangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_bitangent));
-
 }
 
 Renderer::~Renderer()
@@ -194,7 +193,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	}
 
 	SAILOR_PROFILE_END_BLOCK();
-	if (!m_frameGraph || m_bFrameGraphOutdated)
+	if ((!m_frameGraph || m_bFrameGraphOutdated) && !m_pViewport->IsIconic())
 	{
 		m_frameGraph.Clear();
 

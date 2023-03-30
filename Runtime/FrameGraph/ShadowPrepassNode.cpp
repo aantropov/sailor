@@ -191,7 +191,10 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	const mat4 proj = glm::ortho(-1024.0f, 1024.0f, -1024.0f, 1024.0f, 50000.0f, 0.0f);
 	const mat4 lightMatrix = proj * sceneView.m_directionalLights[0].m_lightMatrix;
 	commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrix);
-	RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0]);
+	RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
+		glm::ivec4(0, m_shadowMap->GetExtent().y, m_shadowMap->GetExtent().x, -m_shadowMap->GetExtent().y),
+		glm::uvec4(0,0, m_shadowMap->GetExtent().x, m_shadowMap->GetExtent().y));
+
 	commands->EndRenderPass(commandList);
 	SAILOR_PROFILE_END_BLOCK();
 }

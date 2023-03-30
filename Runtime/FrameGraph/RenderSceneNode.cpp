@@ -130,6 +130,9 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		return;
 	}
 
+	const auto viewport = glm::ivec4(0, colorAttachment->GetTarget()->GetExtent().y, colorAttachment->GetTarget()->GetExtent().x, -colorAttachment->GetTarget()->GetExtent().y);
+	const auto scissor = glm::uvec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y);
+
 	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
 	{
 		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings() });
@@ -184,7 +187,9 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
 			commands->BeginSecondaryCommandList(cmdList, true, true);
-			RHIRecordDrawCall(start, end, vecBatches, cmdList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[i + 1]);
+			RHIRecordDrawCall(start, end, vecBatches, cmdList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[i + 1],
+				viewport, scissor);
+
 			commands->EndCommandList(cmdList);
 			secondaryCommandLists[i] = std::move(cmdList);
 		}, Tasks::EThreadType::RHI);
@@ -218,14 +223,16 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			glm::vec4(0.0f),
 			true);
 
-		RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread, 
-			(uint32_t)vecBatches.Num(), 
-			vecBatches, 
-			commandList, 
+		RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+			(uint32_t)vecBatches.Num(),
+			vecBatches,
+			commandList,
 			shaderBindingsByMaterial,
-			drawCalls, 
-			storageIndex, 
-			m_indirectBuffers[0]);
+			drawCalls,
+			storageIndex,
+			m_indirectBuffers[0],
+			viewport,
+			scissor);
 
 		commands->EndRenderPass(commandList);
 		SAILOR_PROFILE_END_BLOCK();

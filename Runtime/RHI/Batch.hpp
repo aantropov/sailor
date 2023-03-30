@@ -54,7 +54,9 @@ namespace Sailor::RHI
 		std::function<TVector<RHIShaderBindingSetPtr>(RHIMaterialPtr)> shaderBindings,
 		const TDrawCalls<TPerInstanceData>& drawCalls,
 		const TVector<uint32_t>& storageIndex,
-		RHIBufferPtr& indirectCommandBuffer)
+		RHIBufferPtr& indirectCommandBuffer,
+		glm::ivec4 viewport,
+		glm::uvec4 scissors)
 	{
 		SAILOR_PROFILE_BLOCK("Record draw calls");
 
@@ -91,8 +93,15 @@ namespace Sailor::RHI
 				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(material);
 
 				commands->BindMaterial(cmdList, material);
+				commands->SetViewport(cmdList, (float)viewport.x, (float)viewport.y,
+					(float)viewport.z,
+					(float)viewport.w,
+					glm::vec2(scissors.x, scissors.y), 
+					glm::vec2(scissors.z, scissors.w),
+					0.0f, 
+					1.0f);
+
 				commands->BindShaderBindings(cmdList, material, sets);
-				commands->SetDefaultViewport(cmdList);
 				prevMaterial = material;
 			}
 
