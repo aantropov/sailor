@@ -79,9 +79,6 @@ namespace Sailor::RHI
 		RHIBufferPtr prevVertexBuffer = nullptr;
 		RHIBufferPtr prevIndexBuffer = nullptr;
 
-		// Should we call that after each bind material?
-		commands->SetDefaultViewport(cmdList);
-
 		size_t indirectBufferOffset = 0;
 		for (uint32_t j = start; j < end; j++)
 		{
@@ -95,6 +92,7 @@ namespace Sailor::RHI
 
 				commands->BindMaterial(cmdList, material);
 				commands->BindShaderBindings(cmdList, material, sets);
+				commands->SetDefaultViewport(cmdList);
 				prevMaterial = material;
 			}
 
