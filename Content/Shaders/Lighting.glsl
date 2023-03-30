@@ -1,6 +1,7 @@
 #define LIGHTS_CANDIDATES_PER_TILE 196
 #define LIGHTS_PER_TILE 128
 
+const int MAX_SHADOWS_IN_VIEW = 128;
 const int LIGHTS_CULLING_TILE_SIZE = 16;
 
 layout(std430)

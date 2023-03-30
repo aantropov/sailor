@@ -1250,6 +1250,11 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding)
 {
+	return AddSamplerToShaderBindings(pShaderBindings, name, TVector<RHI::RHITexturePtr>{ texture }, shaderBinding);
+}
+
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding)
+{
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
@@ -1259,10 +1264,11 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 	layout.m_binding = shaderBinding;
 	layout.m_name = name;
 	layout.m_type = RHI::EShaderBindingType::CombinedImageSampler;
+	layout.m_arrayCount = (uint32_t)array.Num();
 
 	binding->SetLayout(layout);
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type);
-	binding->SetTextureBinding({ texture });
+	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type, layout.m_arrayCount);
+	binding->SetTextureBinding(array);
 
 	pShaderBindings->UpdateLayoutShaderBinding(layout);
 	UpdateDescriptorSet(pShaderBindings);

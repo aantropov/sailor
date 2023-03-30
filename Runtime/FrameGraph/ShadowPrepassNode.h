@@ -12,6 +12,8 @@ namespace Sailor
 	{
 	public:
 
+		static constexpr uint32_t MaxShadowsInView = 128;
+
 		struct PerInstanceData
 		{
 			glm::mat4 model;
@@ -32,13 +34,19 @@ namespace Sailor
 
 	protected:
 
+		// Shadow caster material
 		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials;
-		RHI::RHIShaderBindingSetPtr m_perInstanceData;
-		size_t m_sizePerInstanceData = 0;
+		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);
 
-		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);		
+		// Record drawcalls
+		size_t m_sizePerInstanceData = 0;
+		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 
+		// Light matrices and shadowMaps
+		RHI::RHIShaderBindingPtr m_lightMatrices;
+		RHI::RHIShaderBindingPtr m_shadowMaps;
+		
 		RHI::RHIRenderTargetPtr m_shadowMap;
 
 		static const char* m_name;

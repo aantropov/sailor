@@ -77,6 +77,13 @@ glslVertex: |
   layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
   layout(set=1, binding=5) uniform samplerCube g_envCubemap;
 
+  layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
+  {
+      mat4 instance[];
+  } lightsMatrices;
+  
+  layout(set=1, binding=7) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
@@ -97,7 +104,7 @@ glslVertex: |
     vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
-    gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    gl_Position = frame.projection * frame.view * vertexPosition;
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
 
     vout.color = inColor;
@@ -170,6 +177,13 @@ glslFragment: |
   layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
   layout(set=1, binding=5) uniform samplerCube g_envCubemap;
   
+  layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
+  {
+      mat4 instance[];
+  } lightsMatrices;
+  
+  layout(set=1, binding=7) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
@@ -192,15 +206,30 @@ glslFragment: |
   
   const float Epsilon = 0.00001;
   
+  float ShadowCalculation(vec4 fragPosLightSpace)
+  {
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    projCoords.y = 1.0f - projCoords.y;
+    
+    float closestDepth = texture(shadowMaps[0], projCoords.xy).r;
+    float currentDepth = projCoords.z;
+    float shadow = currentDepth > closestDepth + 0.05 ? 1.0 : 0.0;
+    return shadow;
+  }
+
   vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
     float attenuation = 1.0;
+    float shadow = 1.0f;
     
     // Directional light
     if(light.type == 0)
     {
         attenuation = 1.0;
+        
+        shadow = ShadowCalculation(lightsMatrices.instance[0] * vec4(worldPos, 1.0f));
     }
     // Point light
     else if(light.type == 1)
@@ -214,10 +243,10 @@ glslFragment: |
     else if(light.type == 2)
     {
       // Attenuation
-        vec3 lightDir = normalize(light.worldPosition - worldPos);
-        float epsilon   = light.cutOff.x - light.cutOff.y;
+      vec3 lightDir = normalize(light.worldPosition - worldPos);
+      float epsilon   = light.cutOff.x - light.cutOff.y;
       float theta = dot(lightDir, normalize(-light.direction));
-        const float distance    = length(light.worldPosition - worldPos);
+      const float distance    = length(light.worldPosition - worldPos);
       const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
       falloff         = attenuation * clamp((theta - light.cutOff.y) / epsilon, 0.0, 1.0);      
       
@@ -258,7 +287,7 @@ glslFragment: |
     vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
 
     // Total contribution for this light.
-    return ((diffuseBRDF + specularBRDF) * Lradiance * cosLi) * falloff;    
+    return shadow * ((diffuseBRDF + specularBRDF) * Lradiance * cosLi) * falloff;    
   }
   
   vec3 AmbientLighting(MaterialData material, vec3 F0, vec3 Lr, vec3 normal, float cosLo)

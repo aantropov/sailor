@@ -123,7 +123,6 @@ void VulkanDescriptorSet::Compile()
 	}
 
 	vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(m_descriptors.Num()), descriptorsWrite, 0, nullptr);
-
 	_freea(descriptorsWrite);
 }
 
@@ -172,7 +171,7 @@ void VulkanDescriptor::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
 
 	writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	writeDescriptorSet.dstBinding = m_dstBinding;
-	writeDescriptorSet.dstArrayElement = m_dstArrayElement;
+	writeDescriptorSet.dstArrayElement = m_dstArrayElement;	
 	writeDescriptorSet.descriptorType = m_descriptorType;
 }
 

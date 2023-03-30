@@ -16,12 +16,12 @@ using namespace Sailor::Tasks;
 
 void TestComponent::BeginPlay()
 {
-	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(600, 2, 0, 0), glm::mat4(1), 20.0f, 1000.0f);
+	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(600, 2, 0, 0), glm::mat4(1), 20.0f, 3000.0f);
 
 	m_mainModel = GetWorld()->Instantiate();
-	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 500, 0));
+	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
-	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * 3.14f, 0)));
+	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.25f * 3.14f, 0)));
 	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
 
 	for (int32_t i = -1000; i < 1000; i += 32)
@@ -54,7 +54,7 @@ void TestComponent::BeginPlay()
 
 	m_dirLight = GetWorld()->Instantiate();
 	auto lightComponent = m_dirLight->AddComponent<LightComponent>();
-	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 10.0f, 0.0f));
+	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 3000.0f, 1000.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 	lightComponent->SetLightType(ELightType::Directional);
 
@@ -92,7 +92,8 @@ void TestComponent::BeginPlay()
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 
 	auto& transform = GetOwner()->GetTransformComponent();
-	transform.SetPosition(glm::vec4(0.0f, 2000.0f, 0.0f, 0.0f));
+	transform.SetPosition(glm::vec4(0.0f, 3000.0f, 1000.0f, 0.0f));
+	transform.SetRotation(quat(vec3(-45, 12.5f, 0)));
 }
 
 void TestComponent::EndPlay()
@@ -254,8 +255,11 @@ void TestComponent::Tick(float deltaTime)
 			m_skyHash = skyParams.GetHash();
 		}
 
+		glm::vec4 lightPosition = (-skyParams.m_lightDirection) * 5000.0f;
+
 		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
 		m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
+		m_dirLight->GetTransformComponent().SetPosition(lightPosition);
 		m_dirLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(3.0f, 3.0f, 3.0f) : vec3(0));
 	}
 }

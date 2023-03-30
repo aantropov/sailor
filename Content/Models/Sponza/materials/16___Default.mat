@@ -1,5 +1,5 @@
 bEnableDepthTest: true
-bEnableZWrite: true
+bEnableZWrite: false
 bSupportMultisampling: true
 bCustomDepthShader: false
 depthBias: 0

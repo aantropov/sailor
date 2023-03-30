@@ -48,11 +48,16 @@ RHI::ESortingOrder DepthPrepassNode::GetSortingOrder() const
 
 void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
+	SAILOR_PROFILE_FUNCTION();
+
+	const std::string QueueTag = GetString("Tag");
+	const size_t QueueTagHash = GetHash(QueueTag);
+
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
+	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 
 	TDrawCalls<DepthPrepassNode::PerInstanceData> drawCalls;
 	TSet<RHIBatch> batches;
@@ -91,7 +96,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 				continue;
 			}
 
-			if (proxy.GetMaterials()[i]->GetRenderState().GetTag() == GetHash(GetString("Tag")))
+			if (proxy.GetMaterials()[i]->GetRenderState().GetTag() == QueueTagHash)
 			{
 				DepthPrepassNode::PerInstanceData data;
 				data.model = proxy.m_worldMatrix;

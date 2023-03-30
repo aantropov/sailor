@@ -89,7 +89,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			rhiBinding.m_binding = reflBinding.binding;
 			rhiBinding.m_size = reflBinding.block.size;
 			rhiBinding.m_set = reflBinding.set;
-			rhiBinding.m_arrayCount = layoutBinding.descriptorCount;
+			rhiBinding.m_arrayCount = reflBinding.count;
 			rhiBinding.m_paddedSize = reflBinding.block.padded_size;
 			rhiBinding.m_textureType = (RHI::ETextureType)reflBinding.image.dim;
 

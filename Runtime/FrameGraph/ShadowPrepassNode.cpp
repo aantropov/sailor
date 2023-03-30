@@ -21,12 +21,12 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 
 	if (!material)
 	{
-		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Shadow.shader");
+		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ShadowCaster.shader");
 		ShaderSetPtr pShader;
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false);
+			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -37,6 +37,8 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 
 void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	if (sceneView.m_directionalLights.Num() == 0)
 	{
 		return;
@@ -46,15 +48,27 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
+	commands->BeginDebugRegion(commandList, std::string(GetName()), DebugContext::Color_CmdGraphics);
+
 	if (!m_shadowMap)
 	{
-		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(1024, 1024), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp,
+		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(2048, 2048), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp,
 			RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
 			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
 			RHI::ETextureUsageBit::TextureTransferDst_Bit |
 			RHI::ETextureUsageBit::Sampled_Bit);
 
 		driver->SetDebugName(m_shadowMap, "Shadow Map");
+
+		TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
+		for (uint32_t i = 0; i < MaxShadowsInView; i++)
+		{
+			shadowMaps[i] = m_shadowMap;
+		}
+
+		auto shaderBindingSet = sceneView.m_rhiLightsData;
+		m_lightMatrices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "lightsMatrices", sizeof(glm::mat4), ShadowPrepassNode::MaxShadowsInView, 6);
+		m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(shaderBindingSet, "shadowMaps", shadowMaps, 7);
 	}
 
 	TDrawCalls<ShadowPrepassNode::PerInstanceData> drawCalls;
@@ -87,7 +101,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			const bool bIsDepthMaterialReady = depthMaterial &&
 				depthMaterial->GetVertexShader() &&
 				depthMaterial->GetFragmentShader() &&
-				depthMaterial->GetRenderState().IsEnabledZWrite();
+				proxy.GetMaterials()[i]->GetRenderState().IsEnabledZWrite();
 
 			if (!bIsDepthMaterialReady)
 			{
@@ -161,6 +175,17 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
+	// TODO: Store all the matrices in one place
+	const float size = 2048.0f;
+	const mat4 proj = glm::ortho(-size, size, -size, size, 10000.0f, 0.0f);
+	const mat4 lightMatrix = proj * sceneView.m_directionalLights[0].m_lightMatrix;
+
+	// Update lights matrices
+	commands->UpdateShaderBinding(transferCommandList, m_lightMatrices,
+		&lightMatrix,
+		sizeof(glm::mat4) * 1,
+		0);
+
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
 	const size_t materialsPerThread = (batches.Num()) / numThreads;
 
@@ -188,15 +213,15 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 
-	const mat4 proj = glm::ortho(-1024.0f, 1024.0f, -1024.0f, 1024.0f, 50000.0f, 0.0f);
-	const mat4 lightMatrix = proj * sceneView.m_directionalLights[0].m_lightMatrix;
 	commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrix);
 	RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
 		glm::ivec4(0, m_shadowMap->GetExtent().y, m_shadowMap->GetExtent().x, -m_shadowMap->GetExtent().y),
-		glm::uvec4(0,0, m_shadowMap->GetExtent().x, m_shadowMap->GetExtent().y));
+		glm::uvec4(0, 0, m_shadowMap->GetExtent().x, m_shadowMap->GetExtent().y));
 
 	commands->EndRenderPass(commandList);
 	SAILOR_PROFILE_END_BLOCK();
+
+	commands->EndDebugRegion(commandList);
 }
 
 void ShadowPrepassNode::Clear()

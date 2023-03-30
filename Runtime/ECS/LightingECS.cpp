@@ -165,7 +165,7 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 
 			RHI::RHILightProxy lightProxy{};
 
-			lightProxy.m_lightMatrix = ownerTransform.GetCachedWorldMatrix();
+			lightProxy.m_lightMatrix = glm::inverse(ownerTransform.GetCachedWorldMatrix());
 			lightProxy.m_shadowMap = nullptr;
 			lightProxy.m_lastShadowMapUpdate = 0;
 			lightProxy.m_distanceToCamera = 0.0f;
