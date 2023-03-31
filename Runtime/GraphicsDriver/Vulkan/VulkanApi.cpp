@@ -122,7 +122,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	createInfo.ppEnabledExtensionNames = extensions.GetData();
 	createInfo.enabledExtensionCount = (uint32_t)extensions.Num();
 
-	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
+	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_KHRONOS_synchronization2" };
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
 	if (s_pInstance->bIsEnabledValidationLayers)

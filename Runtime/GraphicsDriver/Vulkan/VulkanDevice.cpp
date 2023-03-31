@@ -81,6 +81,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 
 	// Calculate max anisotropy
 	VkPhysicalDeviceProperties properties{};
+
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
 	m_maxAllowedAnisotropy = properties.limits.maxSamplerAnisotropy;
 	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts);
@@ -443,19 +444,6 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		queueCreateInfos.Add(queueCreateInfo);
 	}
 
-	VkPhysicalDeviceFeatures deviceFeatures{};
-	deviceFeatures.samplerAnisotropy = VK_TRUE;
-	deviceFeatures.fillModeNonSolid = VK_TRUE;
-	deviceFeatures.multiDrawIndirect = m_bSupportsMultiDrawIndirect;
-
-	// TODO: Enable that, when really needed
-	deviceFeatures.shaderStorageImageMultisample = VK_FALSE;
-	deviceFeatures.shaderFloat64 = VK_FALSE;
-
-#ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
-	deviceFeatures.sampleRateShading = VK_TRUE;
-#endif
-
 	// Create device that supports VK_KHR_dynamic_rendering
 	VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature
 	{
@@ -493,18 +481,42 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.Num());
 	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
-	createInfo.pEnabledFeatures = &deviceFeatures;
+	createInfo.pEnabledFeatures = VK_NULL_HANDLE;
 
 	VkPhysicalDeviceVulkan11Features core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	core11.shaderDrawParameters = true;
 	core11.pNext = &dynamicRenderingFeature;
 
+	VkPhysicalDeviceSynchronization2Features deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES };
+	deviceFeatures2.synchronization2 = VK_TRUE;
+	deviceFeatures2.pNext = &core11;
+
+	/* TODO: Should we fully move to Vulkan 1.3?
+	VkPhysicalDeviceVulkan13Features core13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
+	core13.maintenance4 = true;
+	core13.dynamicRendering = true;
+	core13.synchronization2 = true;
+	core13.pNext = &core11;
+	//core13.pNext = &dynamicRenderingFeature;
+	*/
+
 	// We need relaxed vertex->fragment output
 	VkPhysicalDeviceMaintenance4Features maintence4{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES};
-	maintence4.pNext = &core11;
+	maintence4.pNext = &deviceFeatures2;
 	maintence4.maintenance4 = VK_TRUE;
 
-	createInfo.pNext = &maintence4;
+	// Request and enable all availiable physical features
+	VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
+	physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &physicalDeviceFeatures2);
+	physicalDeviceFeatures2.pNext = &maintence4;
+	physicalDeviceFeatures2.features.sampleRateShading = VK_FALSE;
+
+#ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
+	physicalDeviceFeatures2.features.sampleRateShading = VK_TRUE;
+#endif
+
+	createInfo.pNext = &physicalDeviceFeatures2;
 
 	// Compatibility with older Vulkan drivers
 	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
