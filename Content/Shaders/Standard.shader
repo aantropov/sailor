@@ -212,9 +212,9 @@ glslFragment: |
     projCoords = projCoords * 0.5 + 0.5;
     projCoords.y = 1.0f - projCoords.y;
     
-    float closestDepth = texture(shadowMaps[0], projCoords.xy).r;
+    float closestDepth = texture(shadowMaps[0], projCoords.xy).r * 0.5 + 0.5;
     float currentDepth = projCoords.z;
-    float shadow = currentDepth > closestDepth + 0.05 ? 1.0 : 0.0;
+    float shadow = currentDepth > closestDepth ? 1.0 : 0.0;
     return shadow;
   }
 

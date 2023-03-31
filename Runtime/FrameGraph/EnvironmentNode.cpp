@@ -269,6 +269,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		m_bIsDirty = false;
 	}
 
+
 	commands->EndDebugRegion(commandList);
 }
 

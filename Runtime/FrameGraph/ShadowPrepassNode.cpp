@@ -52,7 +52,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	if (!m_shadowMap)
 	{
-		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(2048, 2048), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp,
+		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(4096, 4096), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp,
 			RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
 			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
 			RHI::ETextureUsageBit::TextureTransferDst_Bit |
@@ -176,7 +176,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	SAILOR_PROFILE_END_BLOCK();
 
 	// TODO: Store all the matrices in one place
-	const float size = 2048.0f;
+	const float size = 2048;
 	const mat4 proj = glm::ortho(-size, size, -size, size, 10000.0f, 0.0f);
 	const mat4 lightMatrix = proj * sceneView.m_directionalLights[0].m_lightMatrix;
 

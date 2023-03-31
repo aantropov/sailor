@@ -101,19 +101,37 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		RHI::Renderer::GetDriver()->UpdateMesh(m_postEffectPlane, &ndcQuad[0], ndcQuad.Num() * sizeof(VertexP3N3UV2C4), &indices[0], sizeof(uint32_t) * indices.Num());
 	}
 
+	bool bShouldRecalculateCompatibility = false;
 	if (auto g_irradianceCubemap = GetSampler("g_irradianceCubemap"))
 	{
-		renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_irradianceCubemap", g_irradianceCubemap, 3);
+		if (g_irradianceCubemap != rhiSceneView->m_rhiLightsData->GetOrAddShaderBinding("g_irradianceCubemap")->GetTextureBinding())
+		{
+			renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_irradianceCubemap", g_irradianceCubemap, 3);
+			bShouldRecalculateCompatibility = true;
+		}
 	}
 
 	if (auto g_brdfSampler = GetSampler("g_brdfSampler"))
 	{
-		renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_brdfSampler", g_brdfSampler, 4);
+		if (g_brdfSampler != rhiSceneView->m_rhiLightsData->GetOrAddShaderBinding("g_brdfSampler")->GetTextureBinding())
+		{
+			renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_brdfSampler", g_brdfSampler, 4);
+			bShouldRecalculateCompatibility = true;
+		}
 	}
 
 	if (auto g_envCubemap = GetSampler("g_envCubemap"))
 	{
-		renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_envCubemap", g_envCubemap, 5);
+		if (g_envCubemap != rhiSceneView->m_rhiLightsData->GetOrAddShaderBinding("g_envCubemap")->GetTextureBinding())
+		{
+			renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_envCubemap", g_envCubemap, 5);
+			bShouldRecalculateCompatibility = true;
+		}
+	}
+
+	if(bShouldRecalculateCompatibility)
+	{
+		rhiSceneView->m_rhiLightsData->RecalculateCompatibility();
 	}
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)
