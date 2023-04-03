@@ -2137,6 +2137,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 		TVector<VulkanDescriptorPtr> descriptors;
 		TVector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
 
+		size_t numDescriptors = 0;
 		for (const auto& binding : shaderBindings[i]->GetShaderBindings())
 		{
 			if (binding.m_second->IsBind())
@@ -2171,6 +2172,8 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 						index++;
 					}
 					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+
+					numDescriptors++;
 				}
 				else if (binding.m_second->m_vulkan.m_valueBinding)
 				{
@@ -2187,6 +2190,8 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 					descriptors.Add(descr);
 					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+
+					numDescriptors++;
 				}
 			}
 		}
@@ -2197,7 +2202,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 		TVector<RHI::RHIShaderBindingPtr> bindings = shaderBindings[i]->GetShaderBindings().GetValues();
 
-		if (materialLayout->m_descriptorSetLayoutBindings.Num() > descriptors.Num())
+		if (materialLayout->m_descriptorSetLayoutBindings.Num() > numDescriptors)
 		{
 			for (uint32_t j = 0; j < materialLayout->m_descriptorSetLayoutBindings.Num(); j++)
 			{
