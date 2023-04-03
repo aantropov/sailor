@@ -55,7 +55,7 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	{
 		RHI::RHITexturePtr lensDirtTexture = frameGraph->GetSampler("g_lensDirtSampler");
 
-		m_computeUpscaleBindings.Resize(numMipBindings);
+		m_computeUpscaleBindings.Resize(bloomRenderTarget->GetMipLevels());
 
 		for (uint32_t i = (uint32_t)bloomRenderTarget->GetMipLevels() - 1; i >= 1; --i)
 		{

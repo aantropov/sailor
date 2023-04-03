@@ -193,25 +193,33 @@ namespace Sailor
 			template<typename TResult1, typename TArgs1>
 			SAILOR_API TaskPtr<TResult1, TArgs1> Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
+				check(m_self.IsValid());
+
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
+
 				res->SetChainedTaskPrev(m_self);
 				res->SetArgs(ITaskWithResult<TResult>::m_result);
 				res->Join(m_self);
-				m_chainedTasksNext.Add(res);
+
+				{
+					std::unique_lock<std::mutex> lk(m_mutex);
+					m_chainedTasksNext.Add(res);
+				}
 
 				if (m_bIsStarted || m_bIsInQueue)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
+
 				return res;
 			}
 
 			SAILOR_API TaskPtr<TResult, void> ToTaskWithResult()
 			{
 				auto res = Scheduler::CreateTaskWithResult<TResult>("Get result task", std::move([=]()
-				{
-					return m_self.Lock().DynamicCast<ITaskWithResult<TResult>>()->GetResult();
-				}), m_threadType);
+					{
+						return m_self.Lock().DynamicCast<ITaskWithResult<TResult>>()->GetResult();
+					}), m_threadType);
 
 				res->SetChainedTaskPrev(m_self);
 				m_chainedTasksNext.Add(res);
@@ -260,14 +268,23 @@ namespace Sailor
 			template<typename TResult1>
 			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
 			{
-				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);				
+				check(m_self.IsValid());
+
+				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
+
 				res->SetChainedTaskPrev(m_self);
 				res->Join(m_self);
-				m_chainedTasksNext.Add(res);
+
+				{
+					std::unique_lock<std::mutex> lk(m_mutex);
+					m_chainedTasksNext.Add(res);
+				}
+
 				if (m_bIsStarted || m_bIsInQueue)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
+
 				return res;
 			}
 
@@ -307,15 +324,22 @@ namespace Sailor
 			template<typename TResult1>
 			SAILOR_API TaskPtr<TResult1, void> Then(std::function<TResult1()> function)
 			{
-				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);				
+				check(m_self.IsValid());
+
+				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
 				res->SetChainedTaskPrev(m_self);
 				res->Join(m_self);
-				m_chainedTasksNext.Add(res);
+
+				{
+					std::unique_lock<std::mutex> lk(m_mutex);
+					m_chainedTasksNext.Add(res);
+				}
 
 				if (m_bIsStarted || m_bIsInQueue)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
+
 				return res;
 			}
 
@@ -370,17 +394,24 @@ namespace Sailor
 			template<typename TResult1, typename TArgs1>
 			SAILOR_API TaskPtr<TResult1, TArgs1 > Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
+				check(m_self.IsValid());
+
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
+
 				res->SetChainedTaskPrev(m_self);
 				res->SetArgs(ITaskWithResult<TResult>::GetResult());
 				res->Join(m_self);
 
-				m_chainedTasksNext.Add(res);
+				{
+					std::unique_lock<std::mutex> lk(m_mutex);
+					m_chainedTasksNext.Add(res);
+				}
 
 				if (m_bIsStarted || m_bIsInQueue)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
+
 				return res;
 			}
 

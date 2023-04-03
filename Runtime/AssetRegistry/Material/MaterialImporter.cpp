@@ -638,7 +638,6 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 									pMaterial->SetSampler(sampler.m_name, texture);
 									texture->AddHotReloadDependentObject(pMaterial);
 								}
-						
 							}, "Set material texture binding", Tasks::EThreadType::Render);
 
 						updateRHI->Join(updateSampler);
