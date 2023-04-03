@@ -92,6 +92,25 @@ VulkanDescriptorSet::VulkanDescriptorSet(VulkanDevicePtr pDevice,
 	m_descriptorSetLayout(descriptorSetLayout),
 	m_descriptors(std::move(descriptors))
 {
+	RecalculateCompatibility();
+}
+
+bool VulkanDescriptorSet::LikelyContains(VkDescriptorSetLayoutBinding layout) const
+{
+	const auto& hashCode = GetHash(layout.binding >> 4 | layout.descriptorType);
+	return (m_compatibilityHashCode & hashCode) == hashCode;
+}
+
+void VulkanDescriptorSet::RecalculateCompatibility()
+{
+	m_compatibilityHashCode = 0;
+
+	for (uint32_t i = 0; i < m_descriptors.Num(); i++)
+	{
+		const auto& descriptor = m_descriptors[i];
+		const auto& hash = GetHash(i >> 4 | descriptor->GetType());
+		m_compatibilityHashCode |= hash;
+	}
 }
 
 void VulkanDescriptorSet::Compile()
@@ -122,6 +141,7 @@ void VulkanDescriptorSet::Compile()
 		descriptorsWrite[i].dstSet = m_descriptorSet;
 	}
 
+	RecalculateCompatibility();
 	vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(m_descriptors.Num()), descriptorsWrite, 0, nullptr);
 	_freea(descriptorsWrite);
 }
@@ -136,12 +156,12 @@ void VulkanDescriptorSet::Release()
 			duplicatedSet = m_descriptorSet,
 			duplicatedDevice = m_device
 		]()
-	{
-		if (duplicatedSet)
 		{
-			vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
-		}
-	});
+			if (duplicatedSet)
+			{
+				vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
+			}
+		});
 
 	if (m_currentThreadId == currentThreadId)
 	{
@@ -171,7 +191,7 @@ void VulkanDescriptor::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
 
 	writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	writeDescriptorSet.dstBinding = m_dstBinding;
-	writeDescriptorSet.dstArrayElement = m_dstArrayElement;	
+	writeDescriptorSet.dstArrayElement = m_dstArrayElement;
 	writeDescriptorSet.descriptorType = m_descriptorType;
 }
 
@@ -242,7 +262,7 @@ VulkanDescriptorStorageImage::VulkanDescriptorStorageImage(uint32_t dstBinding,
 	m_imageView(imageView),
 	m_imageLayout(imageLayout),
 	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
-{	
+{
 	m_imageInfo.imageLayout = m_imageLayout;
 	m_imageInfo.imageView = *m_imageView;
 	m_imageInfo.sampler = VK_NULL_HANDLE;

@@ -52,23 +52,25 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	if (!m_shadowMap)
 	{
-		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(4096, 4096), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp,
-			RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
+		const auto usage = RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
 			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
 			RHI::ETextureUsageBit::TextureTransferDst_Bit |
-			RHI::ETextureUsageBit::Sampled_Bit);
+			RHI::ETextureUsageBit::Sampled_Bit;
+
+		m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
+		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(4096, 4096), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
 
 		driver->SetDebugName(m_shadowMap, "Shadow Map");
 
 		TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
 		for (uint32_t i = 0; i < MaxShadowsInView; i++)
 		{
-			shadowMaps[i] = m_shadowMap;
+			shadowMaps[i] = i == 0 ? m_shadowMap : m_defaultShadowMap;
 		}
 
 		auto shaderBindingSet = sceneView.m_rhiLightsData;
 		m_lightMatrices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "lightsMatrices", sizeof(glm::mat4), ShadowPrepassNode::MaxShadowsInView, 6);
-		m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(shaderBindingSet, "shadowMaps", shadowMaps, 7);
+		m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(shaderBindingSet, "shadowMaps", shadowMaps, 7);		
 	}
 
 	TDrawCalls<ShadowPrepassNode::PerInstanceData> drawCalls;

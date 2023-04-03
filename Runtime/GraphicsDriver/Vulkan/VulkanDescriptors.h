@@ -146,14 +146,19 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API operator VkDescriptorSet() const { return m_descriptorSet; }
 
 		SAILOR_API VulkanDescriptorSetLayoutPtr GetDescriptorSetLayout() { return m_descriptorSetLayout; }
+		SAILOR_API bool LikelyContains(VkDescriptorSetLayoutBinding layout) const;
 
 	protected:
 		SAILOR_API ~VulkanDescriptorSet() override;
+
+		SAILOR_API void RecalculateCompatibility();
 
 		VulkanDevicePtr m_device{};
 		VkDescriptorSet m_descriptorSet{};
 		VulkanDescriptorPoolPtr m_descriptorPool{};
 		VulkanDescriptorSetLayoutPtr m_descriptorSetLayout{};
+
+		size_t m_compatibilityHashCode = 0;
 
 		DWORD m_currentThreadId = 0;
 	};

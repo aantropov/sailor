@@ -12,7 +12,7 @@ namespace Sailor
 	{
 	public:
 
-		static constexpr uint32_t MaxShadowsInView = 128;
+		static constexpr uint32_t MaxShadowsInView = 1024;
 
 		struct PerInstanceData
 		{
@@ -48,6 +48,7 @@ namespace Sailor
 		RHI::RHIShaderBindingPtr m_shadowMaps;
 		
 		RHI::RHIRenderTargetPtr m_shadowMap;
+		RHI::RHIRenderTargetPtr m_defaultShadowMap;
 
 		static const char* m_name;
 	};

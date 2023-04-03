@@ -91,7 +91,7 @@ namespace Sailor::Math
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 
 		//SAILOR_API __forceinline void GetCorners(class Sailor::TVector<glm::vec3>& outCorners) const;
-		SAILOR_API __forceinline glm::vec3 GetCenter() const;
+		SAILOR_API __forceinline glm::vec3 CalculateCenter() const;
 		SAILOR_API __forceinline AABB Ortho(const glm::mat4& lightView) const;
 		SAILOR_API __forceinline glm::mat4 Slice(const glm::mat4& lightView, float zMult) const;
 

@@ -32,7 +32,7 @@ void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlane
 	CalculateCorners(matrix);
 }
 
-glm::vec3 Frustum::GetCenter() const
+glm::vec3 Frustum::CalculateCenter() const
 {
 	glm::vec3 center = glm::vec3(0, 0, 0);
 	for (const auto& v : m_corners)

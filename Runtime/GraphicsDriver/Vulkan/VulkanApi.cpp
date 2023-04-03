@@ -1004,9 +1004,6 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	size_t numDescriptors = 0;
-	numDescriptors += descriptorSet->m_descriptors.Num();
-
 	if (pipelineLayout->m_descriptionSetLayouts.Num() <= binding)
 	{
 		return false;
@@ -1014,19 +1011,24 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 
 	const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[binding];
 
-	if (descriptorSet->m_descriptors.Num() != layout->m_descriptorSetLayoutBindings.Num())
-	{
-		return false;
-	}
-
+	
+	size_t numDescriptorsInLayout = 0;
 	for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
 	{
-		if (!descriptorSet->m_descriptors.ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
+		if (!descriptorSet->LikelyContains(layoutBinding) || numDescriptorsInLayout > descriptorSet->m_descriptors.Num())
 		{
 			return false;
 		}
+
+		numDescriptorsInLayout += layoutBinding.descriptorCount;
+		
+		// Heavy and slow, TODO: should we more carefully check the compatibility of descriptor sets and layouts?
+		/*if (!descriptorSet->m_descriptors.ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
+		{
+			return false;
+		}*/
 	}
-	return true;
+	return descriptorSet->m_descriptors.Num() == numDescriptorsInLayout;
 }
 
 TVector<bool> VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)

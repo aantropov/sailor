@@ -2143,9 +2143,11 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 			if (binding.m_second->IsBind())
 			{
 				if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
-					[&](const auto& lhs) { auto& layout = binding.m_second->GetLayout();
-				const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
-				return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
+					[&](const auto& lhs) 
+					{
+						auto& layout = binding.m_second->GetLayout();
+						const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
+						return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
 					)
 				{
 					// We don't add extra bindings 
@@ -2290,9 +2292,7 @@ bool VulkanGraphicsDriver::CachedDescriptorSet::operator==(const CachedDescripto
 
 size_t VulkanGraphicsDriver::CachedDescriptorSet::GetHash() const
 {
-	size_t hash = m_layout.GetHash();
-	HashCombine(hash, m_binding.GetHash());
-	return hash;
+	return m_initialCompatibility;
 }
 
 VulkanGraphicsDriver::CachedDescriptorSet::CachedDescriptorSet(const VulkanPipelineLayoutPtr& material, const RHI::RHIShaderBindingSetPtr& binding) noexcept :
