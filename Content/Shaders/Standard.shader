@@ -104,7 +104,7 @@ glslVertex: |
     vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
-    gl_Position = frame.projection * frame.view * vertexPosition;
+    gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
 
     vout.color = inColor;
