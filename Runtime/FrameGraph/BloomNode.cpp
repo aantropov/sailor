@@ -27,6 +27,7 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 	RHI::RHIRenderTargetPtr bloomRenderTarget = GetResolvedAttachment("bloom").DynamicCast<RHIRenderTarget>();
 
+	const size_t numMipBindings = bloomRenderTarget->GetMipLevels() - 1;
 
 	if (!m_pComputeDownscaleShader)
 	{
