@@ -241,7 +241,7 @@ TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& Vulka
 
 	if (!pAllocator)
 	{
-		const size_t AverageElementSize = 256 * 256 * 32;
+		const size_t AverageElementSize = 512 * 512 * 16;
 		const size_t BlockSize = 32 * AverageElementSize;
 		const size_t ReservedSize = 64 * AverageElementSize;
 

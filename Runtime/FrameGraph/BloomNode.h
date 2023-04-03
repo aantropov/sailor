@@ -23,8 +23,8 @@ namespace Sailor::Framegraph
 		ShaderSetPtr m_pComputeDownscaleShader{};
 		ShaderSetPtr m_pComputeUpscaleShader{};
 
-		RHI::RHIShaderBindingSetPtr m_computeDownscaleBindings{};
-		RHI::RHIShaderBindingSetPtr m_computeUpscaleBindings{};
+		TVector<RHI::RHIShaderBindingSetPtr> m_computeDownscaleBindings{};
+		TVector<RHI::RHIShaderBindingSetPtr> m_computeUpscaleBindings{};
 
 		struct PushConstantsDownscale
 		{

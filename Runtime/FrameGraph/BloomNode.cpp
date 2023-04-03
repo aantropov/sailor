@@ -27,10 +27,9 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 	RHI::RHIRenderTargetPtr bloomRenderTarget = GetResolvedAttachment("bloom").DynamicCast<RHIRenderTarget>();
 
+
 	if (!m_pComputeDownscaleShader)
 	{
-		m_computeDownscaleBindings = driver->CreateShaderBindings();
-
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeBloomDownscale.shader"))
 		{
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComputeDownscaleShader);
@@ -39,11 +38,6 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 	if (!m_pComputeUpscaleShader)
 	{
-		m_computeUpscaleBindings = driver->CreateShaderBindings();
-
-		RHI::RHITexturePtr lensDirtTexture = frameGraph->GetSampler("g_lensDirtSampler");
-		driver->AddSamplerToShaderBindings(m_computeUpscaleBindings, "u_dirt_texture", lensDirtTexture, 2);
-
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeBloomUpscale.shader"))
 		{
 			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComputeUpscaleShader);
@@ -54,6 +48,40 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 		!m_pComputeUpscaleShader->IsReady() || !m_pComputeDownscaleShader->IsReady())
 	{
 		return;
+	}
+
+	if (m_computeUpscaleBindings.Num() == 0)
+	{
+		RHI::RHITexturePtr lensDirtTexture = frameGraph->GetSampler("g_lensDirtSampler");
+
+		m_computeUpscaleBindings.Resize(numMipBindings);
+
+		for (uint32_t i = (uint32_t)bloomRenderTarget->GetMipLevels() - 1; i >= 1; --i)
+		{
+			auto readMipLevel = bloomRenderTarget->GetMipLayer(i);
+			auto writeMipLevel = bloomRenderTarget->GetMipLayer(i - 1);
+
+			m_computeUpscaleBindings[i] = driver->CreateShaderBindings();
+			driver->AddSamplerToShaderBindings(m_computeUpscaleBindings[i], "u_dirt_texture", lensDirtTexture, 2);
+
+			driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings[i], "u_input_texture", readMipLevel, 0);
+			driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings[i], "u_output_image", writeMipLevel, 1);
+		}
+	}
+
+	if (m_computeDownscaleBindings.Num() == 0)
+	{
+		m_computeDownscaleBindings.Resize(numMipBindings);
+	
+		for (uint32_t i = 0; i < bloomRenderTarget->GetMipLevels() - 1; ++i)
+		{
+			auto readMipLevel = bloomRenderTarget->GetMipLayer(i);
+			auto writeMipLevel = bloomRenderTarget->GetMipLayer(i + 1);
+
+			m_computeDownscaleBindings[i] = driver->CreateShaderBindings();
+			driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings[i], "u_input_texture", readMipLevel, 0);
+			driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings[i], "u_output_image", writeMipLevel, 1);
+		}
 	}
 
 	const glm::vec4 threshold = GetVec4("threshold");
@@ -75,11 +103,6 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 
 		const glm::uvec2 mipSize = glm::uvec2(writeMipLevel->GetExtent().x, writeMipLevel->GetExtent().y);
 
-		driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings, "u_input_texture", readMipLevel, 0);
-		driver->AddStorageImageToShaderBindings(m_computeDownscaleBindings, "u_output_image", writeMipLevel, 1);
-
-		m_computeDownscaleBindings->RecalculateCompatibility();
-
 		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), readMipLevel->GetDefaultLayout(), EImageLayout::ComputeRead);
 		commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), writeMipLevel->GetDefaultLayout(), EImageLayout::ComputeWrite);
 
@@ -87,7 +110,7 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 			(uint32_t)glm::ceil(float(mipSize.x) / 8),
 			(uint32_t)glm::ceil(float(mipSize.y) / 8),
 			1u,
-			{ m_computeDownscaleBindings },
+			{ m_computeDownscaleBindings[i] },
 			&downscaleParams, sizeof(PushConstantsDownscale));
 
 		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), EImageLayout::ComputeRead, readMipLevel->GetDefaultLayout());
@@ -111,16 +134,11 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), readMipLevel->GetDefaultLayout(), EImageLayout::ComputeRead);
 		commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), writeMipLevel->GetDefaultLayout(), EImageLayout::ComputeWrite);
 
-		driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings, "u_input_texture", readMipLevel, 0);
-		driver->AddStorageImageToShaderBindings(m_computeUpscaleBindings, "u_output_image", writeMipLevel, 1);
-
-		m_computeUpscaleBindings->RecalculateCompatibility();
-
 		commands->Dispatch(commandList, m_pComputeUpscaleShader->GetComputeShaderRHI(),
 			(uint32_t)(glm::ceil(float(mipSize.x) / 8)),
 			(uint32_t)(glm::ceil(float(mipSize.y) / 8)),
 			1u,
-			{ m_computeUpscaleBindings },
+			{ m_computeUpscaleBindings[i] },
 			&upscaleParams, sizeof(PushConstantsUpscale));
 
 		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), EImageLayout::ComputeRead, readMipLevel->GetDefaultLayout());
