@@ -57,8 +57,8 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			RHI::ETextureUsageBit::TextureTransferDst_Bit |
 			RHI::ETextureUsageBit::Sampled_Bit;
 
-		m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
-		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(4096, 4096), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
+		m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
+		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(2048, 2048), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
 
 		driver->SetDebugName(m_shadowMap, "Shadow Map");
 
