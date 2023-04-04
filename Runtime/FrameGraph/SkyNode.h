@@ -71,7 +71,7 @@ namespace Sailor::Framegraph
 				size_t hash = (size_t)m_sunIntensity;
 				if (glm::dot(Math::vec4_Down, m_lightDirection) > -0.85f)
 				{
-					const glm::ivec3 quantizedLight = m_lightDirection * 10.0f;
+					const glm::ivec3 quantizedLight = m_lightDirection * 100.0f;
 					HashCombine(hash, quantizedLight.x);
 					HashCombine(hash, quantizedLight.y * 100);
 					HashCombine(hash, quantizedLight.z * 10000);
