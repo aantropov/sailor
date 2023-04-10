@@ -13,6 +13,11 @@ namespace Sailor
 	public:
 
 		static constexpr uint32_t MaxShadowsInView = 1024;
+		
+		// CSM
+		static constexpr uint32_t MaxCSM = 2;
+		static constexpr uint32_t NumCascades = 3;
+		static constexpr float ShadowCascadeLevels[NumCascades] = {1.0f / 15.0f, 1.0f / 5.0f, 1.0f / 2.0f};
 
 		struct PerInstanceData
 		{
@@ -34,6 +39,10 @@ namespace Sailor
 
 	protected:
 
+		// CSM
+		glm::mat4 CalculateLightSpaceMatrix(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar) const;
+		TVector<glm::mat4> CalculateLightSpaceMatrices(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane) const;
+
 		// Shadow caster material
 		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials;
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);
@@ -47,7 +56,7 @@ namespace Sailor
 		RHI::RHIShaderBindingPtr m_lightMatrices;
 		RHI::RHIShaderBindingPtr m_shadowMaps;
 		
-		RHI::RHIRenderTargetPtr m_shadowMap;
+		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps;
 		RHI::RHIRenderTargetPtr m_defaultShadowMap;
 
 		static const char* m_name;

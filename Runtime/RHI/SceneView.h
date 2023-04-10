@@ -6,6 +6,7 @@
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
 #include "ECS/CameraECS.h"
+#include "Math/Math.h"
 
 namespace Sailor::RHI
 {
@@ -43,7 +44,7 @@ namespace Sailor::RHI
 	struct RHISceneViewSnapshot
 	{
 		float m_deltaTime = 0.0f;
-		glm::vec4 m_cameraPosition{};
+		Math::Transform m_cameraTransform{};
 		TUniquePtr<CameraData> m_camera{};
 		TVector<RHISceneViewProxy> m_proxies{};
 

@@ -487,7 +487,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(m_pEnvCubemapBindings[face], "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
 
 			RHI::UboFrameData frameData{};
-			frameData.m_cameraPosition = sceneView.m_cameraPosition;
+			frameData.m_cameraPosition = sceneView.m_cameraTransform.m_position;
 			frameData.m_projection = prjMatrix;
 			frameData.m_invProjection = glm::inverse(prjMatrix);
 
@@ -680,7 +680,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->BindIndexBuffer(commandList, m_starsMesh->m_indexBuffer, m_starsMesh->m_indexBuffer->GetOffset());
 
 		PushConstants pushConstants{};
-		pushConstants.m_starsModelView = glm::translate(glm::mat4(1), glm::vec3(sceneView.m_cameraPosition)) * m_starsModelView;
+		pushConstants.m_starsModelView = glm::translate(glm::mat4(1), glm::vec3(sceneView.m_cameraTransform.m_position)) * m_starsModelView;
 
 		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentStencilReadOnlyOptimal);
 		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);

@@ -1,8 +1,10 @@
 #define LIGHTS_CANDIDATES_PER_TILE 196
 #define LIGHTS_PER_TILE 128
+#define NUM_CSM_CASCADES 3
 
 const int MAX_SHADOWS_IN_VIEW = 1024;
 const int LIGHTS_CULLING_TILE_SIZE = 16;
+const float ShadowCascadeLevels[3] = { 1.0f / 15.0f, 1.0f / 5.0f, 1.0f / 2.0f};
 
 layout(std430)
 struct LightData
@@ -157,4 +159,43 @@ float LuminanceCzm(vec3 rgb)
     // Algorithm from Chapter 10 of Graphics Shaders.
     const vec3 w = vec3(0.2125, 0.7154, 0.0721);
     return dot(rgb, w);
+}
+
+float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float bias)
+{
+   float shadow = 0.0;
+   vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+   for(int x = -1; x <= 1; ++x)
+   {
+       for(int y = -1; y <= 1; ++y)
+       {
+           float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r * 0.5 + 0.5; 
+           shadow += currentDepth + bias > pcfDepth ? 1.0 : 0.0;        
+       }    
+   }
+   shadow /= 9.0;
+   
+   return shadow;
+}
+
+int SelectCascade(mat4 view, vec3 worldPosition)
+{
+  vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0);
+  float depthValue = abs(fragPosViewSpace.z);
+  
+  int layer = -1;
+  for (int i = 0; i < NUM_CSM_CASCADES; ++i)
+  {
+      if (depthValue < ShadowCascadeLevels[i])
+      {
+          layer = i;
+          break;
+      }
+  }
+  if (layer == -1)
+  {
+      layer = NUM_CSM_CASCADES;
+  }
+      
+  return layer;
 }

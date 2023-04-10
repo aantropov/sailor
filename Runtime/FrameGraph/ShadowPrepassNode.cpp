@@ -50,7 +50,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	commands->BeginDebugRegion(commandList, std::string(GetName()), DebugContext::Color_CmdGraphics);
 
-	if (!m_shadowMap)
+	if (m_csmShadowMaps.Num() == 0)
 	{
 		const auto usage = RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
 			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
@@ -58,19 +58,22 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			RHI::ETextureUsageBit::Sampled_Bit;
 
 		m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
-		m_shadowMap = driver->CreateRenderTarget(glm::ivec2(2048, 2048), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
-
-		driver->SetDebugName(m_shadowMap, "Shadow Map");
+		
+		for (uint32_t i = 0; i < MaxCSM * NumCascades; i++)
+		{
+			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(2048, 2048), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
+			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], "CSM");
+		}
 
 		TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
 		for (uint32_t i = 0; i < MaxShadowsInView; i++)
 		{
-			shadowMaps[i] = i == 0 ? m_shadowMap : m_defaultShadowMap;
+			shadowMaps[i] = (i < MaxCSM* NumCascades) ? m_csmShadowMaps[i] : m_defaultShadowMap;
 		}
 
 		auto shaderBindingSet = sceneView.m_rhiLightsData;
 		m_lightMatrices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "lightsMatrices", sizeof(glm::mat4), ShadowPrepassNode::MaxShadowsInView, 6);
-		m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(shaderBindingSet, "shadowMaps", shadowMaps, 7);		
+		m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(shaderBindingSet, "shadowMaps", shadowMaps, 7);
 	}
 
 	TDrawCalls<ShadowPrepassNode::PerInstanceData> drawCalls;
@@ -177,15 +180,22 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
+	auto lightMatrices = CalculateLightSpaceMatrices(sceneView.m_directionalLights[0].m_lightMatrix,
+		sceneView.m_cameraTransform,
+		sceneView.m_camera->GetAspect(),
+		sceneView.m_camera->GetFov(),
+		sceneView.m_camera->GetZNear(),
+		sceneView.m_camera->GetZFar());
+
 	// TODO: Store all the matrices in one place
-	const float size = 2048;
-	const mat4 proj = glm::ortho(-size, size, -size, size, 10000.0f, 0.0f);
-	const mat4 lightMatrix = proj * sceneView.m_directionalLights[0].m_lightMatrix;
+	//const float size = 2048;
+	//const mat4 proj = glm::ortho(-size, size, -size, size, 10000.0f, 0.0f);
+	//const mat4 lightMatrix = proj * sceneView.m_directionalLights[0].m_lightMatrix;
 
 	// Update lights matrices
 	commands->UpdateShaderBinding(transferCommandList, m_lightMatrices,
-		&lightMatrix,
-		sizeof(glm::mat4) * 1,
+		lightMatrices.GetData(),
+		sizeof(glm::mat4) * lightMatrices.Num(),
 		0);
 
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
@@ -202,26 +212,33 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		return sets;
 	};
 
-	SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
-	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHITexturePtr>{},
-		m_shadowMap,
-		glm::vec4(0, 0, m_shadowMap->GetExtent().x, m_shadowMap->GetExtent().y),
-		glm::ivec2(0, 0),
-		true,
-		glm::vec4(0.0f),
-		false,
-		true);
+	for (uint32_t i = 0; i < NumCascades; i++)
+	{
+		SAILOR_PROFILE_BLOCK("Record CSM, Cascade: %d", i);
+		commands->BeginDebugRegion(commandList, std::string("Record CSM"), DebugContext::Color_CmdGraphics);
 
-	auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
+		commands->BeginRenderPass(commandList,
+			TVector<RHI::RHITexturePtr>{},
+			m_csmShadowMaps[i],
+			glm::vec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y),
+			glm::ivec2(0, 0),
+			true,
+			glm::vec4(0.0f),
+			false,
+			true);
 
-	commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrix);
-	RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
-		glm::ivec4(0, m_shadowMap->GetExtent().y, m_shadowMap->GetExtent().x, -m_shadowMap->GetExtent().y),
-		glm::uvec4(0, 0, m_shadowMap->GetExtent().x, m_shadowMap->GetExtent().y));
+		auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 
-	commands->EndRenderPass(commandList);
-	SAILOR_PROFILE_END_BLOCK();
+		commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrices[i]);
+		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
+			glm::ivec4(0, m_csmShadowMaps[i]->GetExtent().y, m_csmShadowMaps[i]->GetExtent().x, -m_csmShadowMaps[i]->GetExtent().y),
+			glm::uvec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y));
+
+		commands->EndRenderPass(commandList);
+
+		commands->EndDebugRegion(commandList);
+		SAILOR_PROFILE_END_BLOCK();
+	}
 
 	commands->EndDebugRegion(commandList);
 }
@@ -229,4 +246,34 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 void ShadowPrepassNode::Clear()
 {
 	m_perInstanceData.Clear();
+}
+
+glm::mat4 ShadowPrepassNode::CalculateLightSpaceMatrix(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar) const
+{
+	Math::Frustum cameraFrustum{};
+	cameraFrustum.ExtractFrustumPlanes(cameraWorldTransform, aspect, fovY, zNear, zFar);
+
+	constexpr float zMult = 10.0f;
+	return cameraFrustum.Slice(lightView, zMult);
+}
+
+TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane) const
+{
+	TVector<glm::mat4> ret;
+	for (size_t i = 0; i < ShadowPrepassNode::NumCascades + 1; ++i)
+	{
+		if (i == 0)
+		{
+			ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, cameraNearPlane, cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[i]));
+		}
+		else if (i < ShadowPrepassNode::NumCascades)
+		{
+			ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[i - 1], cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[i]));
+		}
+		else
+		{
+			ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[i - 1], cameraFarPlane));
+		}
+	}
+	return ret;
 }

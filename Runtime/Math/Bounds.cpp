@@ -80,42 +80,10 @@ glm::mat4 Frustum::Slice(const glm::mat4& lightView, float zMult) const
 		maxZ *= zMult;
 	}
 
-	const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+	// Reversed Z
+	const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, maxZ, minZ);
 
 	return lightProjection * lightView;
-}
-
-/*
-void Frustum::GetCorners(TVector<glm::vec3>& outCorners) const
-{
-	outCorners.Clear();
-	for (uint32_t i = 0; i < 8; i++)
-	{
-		outCorners.Add(m_corners[i]);
-	}
-}*/
-
-AABB Frustum::Ortho(const glm::mat4& lightView) const
-{
-	AABB aabb{};
-
-	float minX = std::numeric_limits<float>::max();
-	float maxX = std::numeric_limits<float>::lowest();
-	float minY = std::numeric_limits<float>::max();
-	float maxY = std::numeric_limits<float>::lowest();
-	float minZ = std::numeric_limits<float>::max();
-	float maxZ = std::numeric_limits<float>::lowest();
-	for (const auto& v : m_corners)
-	{
-		const auto trf = lightView * glm::vec4(v, 1);
-		minX = std::min(minX, trf.x);
-		maxX = std::max(maxX, trf.x);
-		minY = std::min(minY, trf.y);
-		maxY = std::max(maxY, trf.y);
-		minZ = std::min(minZ, trf.z);
-		maxZ = std::max(maxZ, trf.z);
-	}
-	return aabb;
 }
 
 void Frustum::CalculateCorners(const glm::mat4& matrix)
@@ -128,12 +96,15 @@ void Frustum::CalculateCorners(const glm::mat4& matrix)
 		{
 			for (unsigned int z = 0; z < 2; ++z)
 			{
-				const glm::vec4 pt =
-					matrix * glm::vec4(
+				glm::vec4 pt =
+					inv * glm::vec4(
 						2.0f * x - 1.0f,
 						2.0f * y - 1.0f,
 						2.0f * z - 1.0f,
 						1.0f);
+
+				// Reverse Z
+				pt.z *= -1;
 
 				m_corners[x + y * 2 + z * 4] = vec3(pt / pt.w);
 			}
@@ -166,8 +137,25 @@ void Frustum::ExtractFrustumPlanes(const Math::Transform& world, float aspect, f
 		m_planes[i].Normalize();
 	}
 
-	const auto proj = Math::PerspectiveRH(fovY, aspect, zNear, zFar);
-	CalculateCorners(proj * world.Matrix());
+	glm::vec3 farEnd(0, 0, -zFar);
+	glm::vec3 endSizeHorizontal(halfHSide, 0, 0);
+	glm::vec3 endSizeVertical(0, halfVSide, 0);
+
+	const glm::mat4 worldMatrix = world.Matrix();
+
+	m_corners[0] = worldMatrix * glm::vec4(farEnd + endSizeHorizontal + endSizeVertical, 1);
+	m_corners[1] = worldMatrix * glm::vec4(farEnd - endSizeHorizontal + endSizeVertical, 1);
+	m_corners[2] = worldMatrix * glm::vec4(farEnd - endSizeHorizontal - endSizeVertical, 1);
+	m_corners[3] = worldMatrix * glm::vec4(farEnd + endSizeHorizontal - endSizeVertical, 1);
+
+	glm::vec3 startSizeX(zNear * tanf(glm::radians(fovY) * .5f), 0, 0);
+	glm::vec3 startSizeY(0, zNear * tanf(glm::radians(fovY) * .5f), 0);
+	glm::vec3 startPoint = glm::vec3(zNear, 0, 0);
+
+	m_corners[4] = worldMatrix * glm::vec4(startPoint + startSizeX + startSizeY, 1);
+	m_corners[5] = worldMatrix * glm::vec4(startPoint - startSizeX + startSizeY, 1);
+	m_corners[6] = worldMatrix * glm::vec4(startPoint - startSizeX - startSizeY, 1);
+	m_corners[7] = worldMatrix * glm::vec4(startPoint + startSizeX - startSizeY, 1);
 }
 
 bool Frustum::ContainsPoint(const glm::vec3& point) const
