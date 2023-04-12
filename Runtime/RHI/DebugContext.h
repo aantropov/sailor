@@ -40,6 +40,7 @@ namespace Sailor::RHI
 		SAILOR_API void DrawSphere(const glm::vec3& position, float radius = 1.0f, const glm::vec4 color = { 0.0f, 0.0f, 0.0f, 1.0f }, float duration = 0.0f);
 		SAILOR_API void DrawCone(const glm::vec3& start, const glm::vec3& end, float degrees, const glm::vec4 color = { 0.0f, 0.0f, 0.0f, 1.0f }, float duration = 0.0f);
 		SAILOR_API void DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
+		SAILOR_API void DrawLightCascades(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar, float duration = 0.0f);
 		SAILOR_API void DrawPlane(const Math::Plane& plane, float size, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 		SAILOR_API void Tick(RHI::RHICommandListPtr transferCmd, float deltaTime);
 		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const;

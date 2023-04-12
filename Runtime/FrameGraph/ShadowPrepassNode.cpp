@@ -253,16 +253,16 @@ void ShadowPrepassNode::Clear()
 	m_perInstanceData.Clear();
 }
 
-glm::mat4 ShadowPrepassNode::CalculateLightSpaceMatrix(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar) const
+glm::mat4 ShadowPrepassNode::CalculateLightSpaceMatrix(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar)
 {
 	Math::Frustum cameraFrustum{};
 	cameraFrustum.ExtractFrustumPlanes(cameraWorldTransform, aspect, fovY, zNear, zFar);
 
-	constexpr float zMult = 5.0f;
+	constexpr float zMult = 10.0f;
 	return cameraFrustum.Slice(lightView, zMult);
 }
 
-TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane) const
+TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane)
 {
 	TVector<glm::mat4> ret;
 	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY,

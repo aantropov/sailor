@@ -3,6 +3,7 @@
 #include "DebugContext.h"
 #include "CommandList.h"
 #include "VertexDescription.h"
+#include "FrameGraph/ShadowPrepassNode.h"
 
 #ifdef SAILOR_BUILD_WITH_VULKAN
 #include "GraphicsDriver/Vulkan/VulkanPipeline.h"
@@ -180,6 +181,9 @@ void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, f
 	DrawLine(s3, e3, color, duration);
 	DrawLine(s4, e4, color, duration);
 }
+
+void DebugContext::DrawLightCascades(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar, float duration)
+{}
 
 void DebugContext::DrawCone(const glm::vec3& start, const glm::vec3& end, float degrees, const glm::vec4 color, float duration)
 {
