@@ -61,7 +61,9 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 		for (uint32_t i = 0; i < MaxCSM * NumCascades; i++)
 		{
-			const std::string csmDebugName = std::format("Shadow Map, CSM: {}, Cascade: {}", i / NumCascades, i % NumCascades);
+			char csmDebugName[64];
+			sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
+
 			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(2048, 2048), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
 			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 		}
@@ -215,7 +217,8 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	for (uint32_t i = 0; i < NumCascades; i++)
 	{
-		const std::string debugMarker = std::format("Record CSM, Cascade: {}", i);
+		char debugMarker[64];
+		sprintf_s(debugMarker, "Record CSM, Cascade: %d", i);
 
 		commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 
@@ -262,15 +265,15 @@ glm::mat4 ShadowPrepassNode::CalculateLightSpaceMatrix(const glm::mat4& lightVie
 TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane) const
 {
 	TVector<glm::mat4> ret;
-	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, 
-		cameraNearPlane, 
+	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY,
+		cameraNearPlane,
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0]));
 
 	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY,
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0],
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1]));
 
-	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, 
+	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY,
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1],
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[2]));
 
