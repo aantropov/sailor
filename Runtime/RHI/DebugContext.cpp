@@ -136,54 +136,113 @@ void DebugContext::DrawOrigin(const glm::vec3& position, const glm::mat4& origin
 	DrawLine(position, position + z, glm::vec4(0, 0, 1, 1), duration);
 }
 
-void DebugContext::DrawFrustum(const glm::mat4& worldMatrix, float fovDegrees, float maxRange, float minRange, float aspect, const glm::vec4 color, float duration)
+void DebugContext::DrawFrustum(const Math::Frustum& frustum, const glm::vec4 color, float duration)
 {
-	float tanfov = tanf(glm::radians(fovDegrees / 2));
+	TVector<glm::vec3> corners = frustum.GetCorners();
 
-	glm::vec3 farEnd(0, 0, -maxRange);
-	glm::vec3 endSizeHorizontal(maxRange * tanfov * aspect, 0, 0);
-	glm::vec3 endSizeVertical(0, maxRange * tanfov, 0);
+	DrawLine(corners[4], corners[5], color, duration);
+	DrawLine(corners[5], corners[6], color, duration);
+	DrawLine(corners[6], corners[7], color, duration);
+	DrawLine(corners[7], corners[4], color, duration);
 
-	glm::vec3 s1, s2, s3, s4;
-	glm::vec3 e1 = worldMatrix * glm::vec4(farEnd + endSizeHorizontal + endSizeVertical, 1);
-	glm::vec3 e2 = worldMatrix * glm::vec4(farEnd - endSizeHorizontal + endSizeVertical, 1);
-	glm::vec3 e3 = worldMatrix * glm::vec4(farEnd - endSizeHorizontal - endSizeVertical, 1);
-	glm::vec3 e4 = worldMatrix * glm::vec4(farEnd + endSizeHorizontal - endSizeVertical, 1);
+	DrawLine(corners[0], corners[1], color, duration);
+	DrawLine(corners[1], corners[2], color, duration);
+	DrawLine(corners[2], corners[3], color, duration);
+	DrawLine(corners[3], corners[0], color, duration);
 
-	if (minRange <= 0.0f)
-	{
-		s1 = s2 = s3 = s4 = glm::vec3(0, 0, 0);
-	}
-	else
-	{
-		glm::vec3 startSizeX(minRange * tanfov * aspect, 0, 0);
-		glm::vec3 startSizeY(0, minRange * tanfov, 0);
-		glm::vec3 startPoint = glm::vec3(minRange, 0, 0);
-
-		s1 = worldMatrix * glm::vec4(startPoint + startSizeX + startSizeY, 1);
-		s2 = worldMatrix * glm::vec4(startPoint - startSizeX + startSizeY, 1);
-		s3 = worldMatrix * glm::vec4(startPoint - startSizeX - startSizeY, 1);
-		s4 = worldMatrix * glm::vec4(startPoint + startSizeX - startSizeY, 1);
-
-		DrawLine(s1, s2, color, duration);
-		DrawLine(s2, s3, color, duration);
-		DrawLine(s3, s4, color, duration);
-		DrawLine(s4, s1, color, duration);
-	}
-
-	DrawLine(e1, e2, color, duration);
-	DrawLine(e2, e3, color, duration);
-	DrawLine(e3, e4, color, duration);
-	DrawLine(e4, e1, color, duration);
-
-	DrawLine(s1, e1, color, duration);
-	DrawLine(s2, e2, color, duration);
-	DrawLine(s3, e3, color, duration);
-	DrawLine(s4, e4, color, duration);
+	DrawLine(corners[4], corners[0], color, duration);
+	DrawLine(corners[5], corners[1], color, duration);
+	DrawLine(corners[6], corners[2], color, duration);
+	DrawLine(corners[7], corners[3], color, duration);
 }
 
-void DebugContext::DrawLightCascades(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar, float duration)
-{}
+void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float duration)
+{	
+	TVector<Math::Frustum> cascades;
+	Math::Frustum cameraFrustum{};
+
+	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar * ShadowPrepassNode::ShadowCascadeLevels[0]);
+	cascades.Add(cameraFrustum);
+
+	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY,
+		zFar * ShadowPrepassNode::ShadowCascadeLevels[0],
+		zFar * ShadowPrepassNode::ShadowCascadeLevels[1]);
+	cascades.Add(cameraFrustum);
+
+	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY,
+		zFar * ShadowPrepassNode::ShadowCascadeLevels[1],
+		zFar * ShadowPrepassNode::ShadowCascadeLevels[2]);
+	cascades.Add(cameraFrustum);
+
+	constexpr float zMult = 1.0f;
+
+	TVector<glm::vec4> colors{ glm::vec4(1.0f, 0.0f, 0.5f, 1.0f),
+		glm::vec4(0.7f, 0.6f, 0.5f, 1.0f),
+		glm::vec4(1.0f, 0.10f, 0.25f, 1.0f) };
+
+	for (uint32_t i = 0; i < cascades.Num(); i++)
+	{
+		const auto& cascadeFrustum = cascades[i];
+
+		DrawFrustum(cascadeFrustum, glm::vec4(0, 1, 0, 1), duration);
+
+		const TVector<glm::vec3> corners = cascadeFrustum.GetCorners();
+
+		float minX = std::numeric_limits<float>::max();
+		float maxX = std::numeric_limits<float>::lowest();
+		float minY = std::numeric_limits<float>::max();
+		float maxY = std::numeric_limits<float>::lowest();
+		float minZ = std::numeric_limits<float>::max();
+		float maxZ = std::numeric_limits<float>::lowest();
+
+		for (const auto& v : corners)
+		{
+			const auto trf = lightView * glm::vec4(v, 1);
+			minX = std::min(minX, trf.x);
+			maxX = std::max(maxX, trf.x);
+			minY = std::min(minY, trf.y);
+			maxY = std::max(maxY, trf.y);
+			minZ = std::min(minZ, trf.z);
+			maxZ = std::max(maxZ, trf.z);
+		}
+
+		// Reversed Z
+		const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, -maxZ, -minZ);
+
+		// Create matrix and get all extents
+		const glm::mat4 lightViewProjection = lightProjection * lightView;
+		const glm::mat4 invLightViewProjection = glm::inverse(lightViewProjection);
+
+		TVector<glm::vec3> orthoCorners;
+
+		orthoCorners.Add(invLightViewProjection * glm::vec4(-1,  1, -1, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4( 1,  1, -1, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4(1, -1, -1, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4(-1, -1, -1, 1));
+
+		orthoCorners.Add(invLightViewProjection * glm::vec4(-1,  1, 1, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4( 1,  1, 1, 1));		
+		orthoCorners.Add(invLightViewProjection * glm::vec4(1, -1, 1, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4(-1, -1, 1, 1));
+
+		const glm::vec4& color = colors[i];
+
+		DrawLine(orthoCorners[4], orthoCorners[5], color, duration);
+		DrawLine(orthoCorners[5], orthoCorners[6], color, duration);
+		DrawLine(orthoCorners[6], orthoCorners[7], color, duration);
+		DrawLine(orthoCorners[7], orthoCorners[4], color, duration);
+
+		DrawLine(orthoCorners[0], orthoCorners[1], color, duration);
+		DrawLine(orthoCorners[1], orthoCorners[2], color, duration);
+		DrawLine(orthoCorners[2], orthoCorners[3], color, duration);
+		DrawLine(orthoCorners[3], orthoCorners[0], color, duration);
+
+		DrawLine(orthoCorners[4], orthoCorners[0], color, duration);
+		DrawLine(orthoCorners[5], orthoCorners[1], color, duration);
+		DrawLine(orthoCorners[6], orthoCorners[2], color, duration);
+		DrawLine(orthoCorners[7], orthoCorners[3], color, duration);
+	}
+}
 
 void DebugContext::DrawCone(const glm::vec3& start, const glm::vec3& end, float degrees, const glm::vec4 color, float duration)
 {
@@ -197,7 +256,7 @@ void DebugContext::Tick(RHI::RHICommandListPtr transferCmd, float deltaTime)
 	{
 		return;
 	}
-	
+
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 
 	if (!m_material)
@@ -321,9 +380,9 @@ void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, co
 
 	auto commands = RHI::Renderer::GetDriverCommands();
 	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
-	
+
 	commands->BindMaterial(secondaryDrawCmdList, m_material);
-	commands->SetDefaultViewport(secondaryDrawCmdList); 
+	commands->SetDefaultViewport(secondaryDrawCmdList);
 	commands->BindVertexBuffer(secondaryDrawCmdList, m_cachedMesh->m_vertexBuffer, m_cachedMesh->m_vertexBuffer->GetOffset());
 	commands->BindIndexBuffer(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, m_cachedMesh->m_indexBuffer->GetOffset());
 	commands->PushConstants(secondaryDrawCmdList, m_material, sizeof(viewProjection), &viewProjection);

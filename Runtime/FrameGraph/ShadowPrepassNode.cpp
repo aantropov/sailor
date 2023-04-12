@@ -184,7 +184,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	SAILOR_PROFILE_END_BLOCK();
 
 	auto lightMatrices = CalculateLightSpaceMatrices(sceneView.m_directionalLights[0].m_lightMatrix,
-		sceneView.m_cameraTransform,
+		sceneView.m_cameraTransform.Matrix(),
 		sceneView.m_camera->GetAspect(),
 		sceneView.m_camera->GetFov(),
 		sceneView.m_camera->GetZNear(),
@@ -253,29 +253,29 @@ void ShadowPrepassNode::Clear()
 	m_perInstanceData.Clear();
 }
 
-glm::mat4 ShadowPrepassNode::CalculateLightSpaceMatrix(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar)
+glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar)
 {
 	Math::Frustum cameraFrustum{};
-	cameraFrustum.ExtractFrustumPlanes(cameraWorldTransform, aspect, fovY, zNear, zFar);
+	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar);
 
-	constexpr float zMult = 10.0f;
-	return cameraFrustum.Slice(lightView, zMult);
+	constexpr float zMult = 1.0f;
+	return cameraFrustum.CalculateOrthoMatrixByView(lightView, zMult);
 }
 
-TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane)
+TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane)
 {
 	TVector<glm::mat4> ret;
-	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY,
+	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraNearPlane,
-		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0]));
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0]) * lightView);
 
-	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY,
+	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0],
-		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1]));
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1]) * lightView);
 
-	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY,
+	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1],
-		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[2]));
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[2]) * lightView);
 
 	return ret;
 }

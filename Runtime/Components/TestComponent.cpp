@@ -166,7 +166,7 @@ void TestComponent::Tick(float deltaTime)
 			m_cachedFrustum = transform.GetTransform().Matrix();
 
 			Math::Frustum frustum;
-			frustum.ExtractFrustumPlanes(transform.GetTransform(), camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
+			frustum.ExtractFrustumPlanes(transform.GetTransform().Matrix(), camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
 			m_octree.Trace(frustum, m_culledBoxes);
 		}
 	}
@@ -180,7 +180,9 @@ void TestComponent::Tick(float deltaTime)
 	{
 		if (m_cachedFrustum != glm::mat4(1))
 		{
-			GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
+			//GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
+			const auto& lightView = glm::inverse(m_dirLight->GetTransformComponent().GetCachedWorldMatrix());
+			GetWorld()->GetDebugContext()->DrawLightCascades(lightView, m_cachedFrustum, camera->GetAspect(), 30, camera->GetZNear(), camera->GetZFar());
 		}
 	}
 
@@ -255,7 +257,7 @@ void TestComponent::Tick(float deltaTime)
 			m_skyHash = skyParams.GetHash();
 		}
 
-		glm::vec4 lightPosition = (-skyParams.m_lightDirection) * 5000.0f;
+		glm::vec4 lightPosition = (-skyParams.m_lightDirection) * 9000.0f;
 
 		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
 		m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));

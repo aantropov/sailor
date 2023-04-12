@@ -46,7 +46,7 @@ glm::vec3 Frustum::CalculateCenter() const
 	return center;
 }
 
-glm::mat4 Frustum::Slice(const glm::mat4& lightView, float zMult) const
+glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult) const
 {
 	float minX = std::numeric_limits<float>::max();
 	float maxX = std::numeric_limits<float>::lowest();
@@ -57,7 +57,7 @@ glm::mat4 Frustum::Slice(const glm::mat4& lightView, float zMult) const
 
 	for (const auto& v : m_corners)
 	{
-		const auto trf = lightView * glm::vec4(v, 1);
+		const auto trf = view * glm::vec4(v, 1);
 		minX = std::min(minX, trf.x);
 		maxX = std::max(maxX, trf.x);
 		minY = std::min(minY, trf.y);
@@ -85,9 +85,9 @@ glm::mat4 Frustum::Slice(const glm::mat4& lightView, float zMult) const
 	}
 
 	// Reversed Z
-	const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, maxZ, minZ);
+	const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, -maxZ, -minZ);
 
-	return lightProjection * lightView;
+	return lightProjection;
 }
 
 void Frustum::CalculateCorners(const glm::mat4& matrix)
@@ -116,25 +116,30 @@ void Frustum::CalculateCorners(const glm::mat4& matrix)
 	}
 }
 
-void Frustum::ExtractFrustumPlanes(const Math::Transform& world, float aspect, float fovY, float zNear, float zFar)
+void Frustum::ExtractFrustumPlanes(const glm::mat4& worldMatrix, float aspect, float fovY, float zNear, float zFar)
 {
 	const float halfVSide = zFar * tanf(glm::radians(fovY) * .5f);
 	const float halfHSide = halfVSide * aspect;
-	const glm::vec3 frontMultFar = zFar * world.GetForward();
 
-	const auto& forward = world.GetForward();
-	m_planes[4] = Plane(forward, glm::vec3(world.m_position) + forward * zNear);
-	m_planes[5] = Plane(-forward, glm::vec3(world.m_position) + forward * zFar);
+	const glm::vec3 right = worldMatrix[0];
+	const glm::vec3 up = worldMatrix[1];
+	const glm::vec3 forward = -worldMatrix[2];
+	const glm::vec3 pos = worldMatrix[3];
 
-	const glm::vec3 leftNormal = glm::normalize(glm::cross(frontMultFar - world.GetRight() * halfHSide, world.GetUp()));
-	const glm::vec3 rightNormal = glm::normalize(glm::cross(world.GetUp(), frontMultFar + world.GetRight() * halfHSide));
-	m_planes[0] = Plane(leftNormal, world.m_position);
-	m_planes[1] = Plane(rightNormal, world.m_position);
+	const glm::vec3 frontMultFar = zFar * forward;
 
-	const glm::vec3 topNormal = glm::normalize(glm::cross(world.GetRight(), frontMultFar - world.GetUp() * halfVSide));
-	const glm::vec3 bottomNormal = glm::normalize(glm::cross(frontMultFar + world.GetUp() * halfVSide, world.GetRight()));
-	m_planes[2] = Plane(topNormal, world.m_position);
-	m_planes[3] = Plane(bottomNormal, world.m_position);
+	m_planes[4] = Plane(forward, pos + forward * zNear);
+	m_planes[5] = Plane(-forward, pos + forward * zFar);
+
+	const glm::vec3 leftNormal = glm::normalize(glm::cross(frontMultFar - right * halfHSide, up));
+	const glm::vec3 rightNormal = glm::normalize(glm::cross(up, frontMultFar + right * halfHSide));
+	m_planes[0] = Plane(leftNormal, pos);
+	m_planes[1] = Plane(rightNormal, pos);
+
+	const glm::vec3 topNormal = glm::normalize(glm::cross(right, frontMultFar - up * halfVSide));
+	const glm::vec3 bottomNormal = glm::normalize(glm::cross(frontMultFar + up * halfVSide, right));
+	m_planes[2] = Plane(topNormal, pos);
+	m_planes[3] = Plane(bottomNormal, pos);
 
 	for (uint32_t i = 0; i < 6; i++)
 	{
@@ -146,18 +151,17 @@ void Frustum::ExtractFrustumPlanes(const Math::Transform& world, float aspect, f
 	const glm::vec3 endSizeHorizontal(halfHSide, 0, 0);
 	const glm::vec3 endSizeVertical(0, halfVSide, 0);
 
-	const glm::mat4 worldMatrix = world.Matrix();
-
 	m_corners[0] = worldMatrix * glm::vec4(farEnd + endSizeHorizontal + endSizeVertical, 1);
 	m_corners[1] = worldMatrix * glm::vec4(farEnd - endSizeHorizontal + endSizeVertical, 1);
 	m_corners[2] = worldMatrix * glm::vec4(farEnd - endSizeHorizontal - endSizeVertical, 1);
 	m_corners[3] = worldMatrix * glm::vec4(farEnd + endSizeHorizontal - endSizeVertical, 1);
 
 	const float halfVSideNear = zNear * tanf(glm::radians(fovY) * .5f);
+	const float halfHSideNear = halfVSideNear * aspect;
 
-	const glm::vec3 startSizeX(halfVSideNear, 0, 0);
+	const glm::vec3 startPoint = glm::vec3(0, 0, -zNear);
+	const glm::vec3 startSizeX(halfHSideNear, 0, 0);
 	const glm::vec3 startSizeY(0, halfVSideNear, 0);
-	const glm::vec3 startPoint = glm::vec3(zNear, 0, 0);
 
 	m_corners[4] = worldMatrix * glm::vec4(startPoint + startSizeX + startSizeY, 1);
 	m_corners[5] = worldMatrix * glm::vec4(startPoint - startSizeX + startSizeY, 1);

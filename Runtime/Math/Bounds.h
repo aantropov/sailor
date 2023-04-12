@@ -93,12 +93,12 @@ namespace Sailor::Math
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 
 		SAILOR_API __forceinline glm::vec3 CalculateCenter() const;
-		SAILOR_API __forceinline glm::mat4 Slice(const glm::mat4& lightView, float zMult) const;
+		SAILOR_API __forceinline glm::mat4 CalculateOrthoMatrixByView(const glm::mat4& view, float zMult) const;
 
 		SAILOR_API __forceinline const TVector<glm::vec3>& GetCorners() const;
 
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes = true);
-		SAILOR_API __forceinline void ExtractFrustumPlanes(const Math::Transform& world, float aspect, float fovY, float zNear, float zFar);
+		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& worldMatrix, float aspect, float fovY, float zNear, float zFar);
 
 	protected:
 

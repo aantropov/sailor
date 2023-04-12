@@ -37,12 +37,11 @@ namespace Sailor
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
-		SAILOR_API static TVector<glm::mat4> CalculateLightSpaceMatrices(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane);
+		SAILOR_API static TVector<glm::mat4> CalculateLightSpaceMatrices(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane);
+		SAILOR_API static glm::mat4 CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar);
 
 	protected:
-
-		SAILOR_API static glm::mat4 CalculateLightSpaceMatrix(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar);
-
+		
 		// Shadow caster material
 		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials;
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);

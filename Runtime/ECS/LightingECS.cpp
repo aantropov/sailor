@@ -148,7 +148,7 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 		const auto& camera = sceneView->m_cameras[j];
 
 		Math::Frustum frustum;
-		frustum.ExtractFrustumPlanes(sceneView->m_cameraTransforms[j], camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
+		frustum.ExtractFrustumPlanes(sceneView->m_cameraTransforms[j].Matrix(), camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
 		frustums.Emplace(std::move(frustum));
 	}
 

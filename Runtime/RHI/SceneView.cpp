@@ -51,7 +51,7 @@ void RHISceneView::PrepareSnapshots()
 
 		Math::Frustum frustum;
 
-		frustum.ExtractFrustumPlanes(m_cameraTransforms[i], camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
+		frustum.ExtractFrustumPlanes(m_cameraTransforms[i].Matrix(), camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
 
 		res.m_deltaTime = m_deltaTime;
 		res.m_cameraTransform = m_cameraTransforms[i];
