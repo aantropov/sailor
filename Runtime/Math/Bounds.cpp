@@ -1,6 +1,5 @@
-#include "Bounds.h"
-#include "Containers/Vector.h"
-#include "Memory/LockFreeHeapAllocator.h"
+#include "Core/Defines.h"
+#include "Math/Bounds.h"
 
 using namespace Sailor;
 using namespace Sailor::Math;
@@ -10,6 +9,11 @@ void Plane::Normalize()
 {
 	const float mag = glm::length(glm::vec3(m_abcd));
 	m_abcd /= mag;
+}
+
+const TVector<glm::vec3>& Frustum::GetCorners() const
+{
+	return m_corners;
 }
 
 void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes)
@@ -137,9 +141,10 @@ void Frustum::ExtractFrustumPlanes(const Math::Transform& world, float aspect, f
 		m_planes[i].Normalize();
 	}
 
-	glm::vec3 farEnd(0, 0, -zFar);
-	glm::vec3 endSizeHorizontal(halfHSide, 0, 0);
-	glm::vec3 endSizeVertical(0, halfVSide, 0);
+	// Analytically calculate the corners
+	const glm::vec3 farEnd(0, 0, -zFar);
+	const glm::vec3 endSizeHorizontal(halfHSide, 0, 0);
+	const glm::vec3 endSizeVertical(0, halfVSide, 0);
 
 	const glm::mat4 worldMatrix = world.Matrix();
 
@@ -148,9 +153,11 @@ void Frustum::ExtractFrustumPlanes(const Math::Transform& world, float aspect, f
 	m_corners[2] = worldMatrix * glm::vec4(farEnd - endSizeHorizontal - endSizeVertical, 1);
 	m_corners[3] = worldMatrix * glm::vec4(farEnd + endSizeHorizontal - endSizeVertical, 1);
 
-	glm::vec3 startSizeX(zNear * tanf(glm::radians(fovY) * .5f), 0, 0);
-	glm::vec3 startSizeY(0, zNear * tanf(glm::radians(fovY) * .5f), 0);
-	glm::vec3 startPoint = glm::vec3(zNear, 0, 0);
+	const float halfVSideNear = zNear * tanf(glm::radians(fovY) * .5f);
+
+	const glm::vec3 startSizeX(halfVSideNear, 0, 0);
+	const glm::vec3 startSizeY(0, halfVSideNear, 0);
+	const glm::vec3 startPoint = glm::vec3(zNear, 0, 0);
 
 	m_corners[4] = worldMatrix * glm::vec4(startPoint + startSizeX + startSizeY, 1);
 	m_corners[5] = worldMatrix * glm::vec4(startPoint - startSizeX + startSizeY, 1);

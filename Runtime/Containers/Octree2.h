@@ -11,7 +11,6 @@
 #include "Memory/Memory.h"
 #include "Containers/Concepts.h"
 #include "Containers/Map.h"
-#include "Containers/Vector.h"
 #include "RHI/DebugContext.h"
 
 // Not used, more memory friendly solution

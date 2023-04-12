@@ -1,9 +1,11 @@
 #pragma once
-#include "Core/Defines.h"
-#include "Math/Transform.h"
 #include <glm/glm/glm.hpp>
-#include "Containers/Hash.h"
 #include <glm/glm/gtx/hash.hpp>
+#include "Memory/Memory.h"
+#include "Memory/LockFreeHeapAllocator.h"
+#include "Containers/Vector.h"
+#include "Containers/Hash.h"
+#include "Math/Transform.h"
 
 namespace Sailor::Math
 {
@@ -74,8 +76,8 @@ namespace Sailor::Math
 
 	struct Frustum
 	{
-		SAILOR_API Frustum() = default;
-		SAILOR_API Frustum(const glm::mat4& matrix) { ExtractFrustumPlanes(matrix); }
+		SAILOR_API Frustum() : m_corners(8) {}
+		SAILOR_API Frustum(const glm::mat4& matrix) : m_corners(8) { ExtractFrustumPlanes(matrix); }
 
 		SAILOR_API __forceinline bool OverlapsAABB(const AABB& aabb) const;
 		SAILOR_API __forceinline bool OverlapsSphere(const Sphere& sphere) const;
@@ -90,9 +92,10 @@ namespace Sailor::Math
 		SAILOR_API __forceinline bool ContainsPoint(const glm::vec3& point) const;
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 
-		//SAILOR_API __forceinline void GetCorners(class Sailor::TVector<glm::vec3>& outCorners) const;
 		SAILOR_API __forceinline glm::vec3 CalculateCenter() const;
 		SAILOR_API __forceinline glm::mat4 Slice(const glm::mat4& lightView, float zMult) const;
+
+		SAILOR_API __forceinline const TVector<glm::vec3>& GetCorners() const;
 
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes = true);
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const Math::Transform& world, float aspect, float fovY, float zNear, float zFar);
@@ -103,7 +106,7 @@ namespace Sailor::Math
 
 		// The order is: Left, Right, Top, Bottom, Near, Far
 		Plane m_planes[6];
-		glm::vec3 m_corners[8];
+		TVector<glm::vec3> m_corners;
 	};
 }
 

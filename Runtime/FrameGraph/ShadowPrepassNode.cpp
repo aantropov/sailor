@@ -58,11 +58,12 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			RHI::ETextureUsageBit::Sampled_Bit;
 
 		m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage);
-		
+
 		for (uint32_t i = 0; i < MaxCSM * NumCascades; i++)
 		{
+			const std::string csmDebugName = std::format("Shadow Map, CSM: {}, Cascade: {}", i / NumCascades, i % NumCascades);
 			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(2048, 2048), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
-			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], "CSM");
+			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 		}
 
 		TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
@@ -214,8 +215,9 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	for (uint32_t i = 0; i < NumCascades; i++)
 	{
-		SAILOR_PROFILE_BLOCK("Record CSM, Cascade: %d", i);
-		commands->BeginDebugRegion(commandList, std::string("Record CSM"), DebugContext::Color_CmdGraphics);
+		const std::string debugMarker = std::format("Record CSM, Cascade: {}", i);
+
+		commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{},
@@ -253,27 +255,24 @@ glm::mat4 ShadowPrepassNode::CalculateLightSpaceMatrix(const glm::mat4& lightVie
 	Math::Frustum cameraFrustum{};
 	cameraFrustum.ExtractFrustumPlanes(cameraWorldTransform, aspect, fovY, zNear, zFar);
 
-	constexpr float zMult = 10.0f;
+	constexpr float zMult = 5.0f;
 	return cameraFrustum.Slice(lightView, zMult);
 }
 
 TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const Math::Transform& cameraWorldTransform, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane) const
 {
 	TVector<glm::mat4> ret;
-	for (size_t i = 0; i < ShadowPrepassNode::NumCascades + 1; ++i)
-	{
-		if (i == 0)
-		{
-			ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, cameraNearPlane, cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[i]));
-		}
-		else if (i < ShadowPrepassNode::NumCascades)
-		{
-			ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[i - 1], cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[i]));
-		}
-		else
-		{
-			ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[i - 1], cameraFarPlane));
-		}
-	}
+	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, 
+		cameraNearPlane, 
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0]));
+
+	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY,
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0],
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1]));
+
+	ret.Add(CalculateLightSpaceMatrix(lightView, cameraWorldTransform, aspect, fovY, 
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1],
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[2]));
+
 	return ret;
 }

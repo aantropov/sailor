@@ -8,12 +8,12 @@
 #include <algorithm>
 #include "Core/Defines.h"
 #include "Math/Math.h"
-#include "Math/Bounds.h"
 #include "Memory/Memory.h"
 #include "Containers/Concepts.h"
 #include "Containers/Map.h"
 #include "Containers/Vector.h"
 #include "RHI/DebugContext.h"
+#include "Math/Bounds.h"
 
 namespace Sailor
 {

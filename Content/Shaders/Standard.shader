@@ -242,9 +242,8 @@ glslFragment: |
         
         if (cascadeLayer < NUM_CSM_CASCADES)
         {
-            bias *= 1 / (ShadowCascadeLevels[cascadeLayer] * 0.5f);
+            //bias *= 1 / (ShadowCascadeLevels[cascadeLayer] * 0.5f);
         }
-
         shadow = ShadowCalculation(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias);
     }
     // Point light
@@ -400,4 +399,24 @@ glslFragment: |
     }
 
     outColor.a = material.albedo.a;
+    
+    /*const int cascadeLayer = SelectCascade(frame.view, vin.worldPosition);
+    vec3 dColor = vec3(1,0,0);
+    if(cascadeLayer == 0)
+    {
+        dColor = vec3(0,1,0);
+    }
+    else if(cascadeLayer == 1)
+    {
+        dColor = vec3(1,1,0);
+    }
+    else if(cascadeLayer == 1)
+    {
+        dColor = vec3(0,0,1);
+    }
+    else
+        dColor = vec3(0,1,1);
+    
+    outColor.rgb = mix(outColor.rgb, dColor, 0.5);
+    */
   }

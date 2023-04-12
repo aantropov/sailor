@@ -382,7 +382,7 @@ void VulkanGraphicsDriver::BeginDebugRegion(RHI::RHICommandListPtr cmdList, cons
 {
 #ifdef _DEBUG
 	// We don't support debug regions for transfer only lists due to the limitations of the queue
-	if (!cmdList->IsTransferOnly())
+	//if (!cmdList->IsTransferOnly())
 	{
 		auto device = m_vkInstance->GetMainDevice();
 
@@ -400,7 +400,7 @@ void VulkanGraphicsDriver::EndDebugRegion(RHI::RHICommandListPtr cmdList)
 {
 #ifdef _DEBUG
 	// We don't support debug regions for transfer only lists due to the limitations of the queue
-	if (!cmdList->IsTransferOnly())
+	//if (!cmdList->IsTransferOnly())
 	{
 		auto device = m_vkInstance->GetMainDevice();
 		device->vkCmdDebugMarkerEnd(cmdList->m_vulkan.m_commandBuffer);

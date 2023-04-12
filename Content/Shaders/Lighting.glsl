@@ -180,13 +180,14 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
 
 int SelectCascade(mat4 view, vec3 worldPosition)
 {
+  const float MaxRange = 50000.0f;
   vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0);
   float depthValue = abs(fragPosViewSpace.z);
   
   int layer = -1;
   for (int i = 0; i < NUM_CSM_CASCADES; ++i)
   {
-      if (depthValue < ShadowCascadeLevels[i])
+      if (depthValue < MaxRange * ShadowCascadeLevels[i])
       {
           layer = i;
           break;
