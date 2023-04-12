@@ -1580,6 +1580,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
 	glm::vec4 clearColor,
+	float clearDepth,
 	bool bStoreDepth)
 {
 	const bool bNeedsResolve = (colorAttachments.Num() > 0 && colorAttachments[0]->NeedsResolve());
@@ -1600,6 +1601,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 			offset,
 			bClearRenderTargets,
 			clearColor,
+			clearDepth,
 			bStoreDepth);
 	}
 	else
@@ -1621,7 +1623,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 
 		VkClearValue clearValue;
 		clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
-		clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+		clearValue.depthStencil = {clearDepth, 0};// VulkanApi::DefaultClearDepthStencilValue;
 
 		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
@@ -1656,6 +1658,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
 	glm::vec4 clearColor,
+	float clearDepth,
 	bool bSupportMultisampling,
 	bool bStoreDepth)
 {
@@ -1674,7 +1677,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 
 	VkClearValue clearValue;
 	clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
-	clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+	clearValue.depthStencil = {clearDepth, 0};// VulkanApi::DefaultClearDepthStencilValue;
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment->m_vulkan.m_imageView,
@@ -1701,6 +1704,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
 	glm::vec4 clearColor,
+	float clearDepth,
 	bool bSupportMultisampling,
 	bool bStoreDepth)
 {
@@ -1719,7 +1723,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 
 	VkClearValue clearValue;
 	clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
-	clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+	clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment ? depthStencilAttachment->m_vulkan.m_imageView : nullptr,
@@ -1739,6 +1743,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	glm::ivec2 offset,
 	bool bClearRenderTargets,
 	glm::vec4 clearColor,
+	float clearDepth,
 	bool bStoreDepth)
 {
 	const bool bNeedsResolve = (colorAttachments.Num() > 0 && colorAttachments[0]->NeedsResolve());
@@ -1752,7 +1757,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		}
 
 		BeginRenderPass(cmd, resolved, depthStencilAttachment,
-			renderArea, offset, bClearRenderTargets, clearColor, false);
+			renderArea, offset, bClearRenderTargets, clearColor, clearDepth, false);
 	}
 	else
 	{
@@ -1776,7 +1781,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 
 		VkClearValue clearValue;
 		clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
-		clearValue.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
+		clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
 
 		VulkanImageViewPtr msaaDepthStencilTarget{};
 		VulkanImageViewPtr vulkanDepthStencil{};

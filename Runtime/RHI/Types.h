@@ -389,6 +389,18 @@ namespace Sailor::RHI
 		Multiply = 0x00000003
 	};
 
+	enum class EDepthCompare : uint8_t
+	{
+		Never = 0,
+		Less = 1,
+		Equal = 2,
+		LessOrEqual = 3,
+		Greater = 4,
+		NotEqual = 5,
+		GreaterOrEqual = 6,
+		Always = 7
+	};
+
 	enum class EShaderBindingType : uint8_t
 	{
 		Sampler = 0,
@@ -499,7 +511,11 @@ namespace Sailor::RHI
 			EBlendMode blendMode = EBlendMode::None,
 			EFillMode fillMode = EFillMode::Fill,
 			size_t tag = 0u,
-			bool bSupportMultisampling = true) :
+			bool bSupportMultisampling = true,
+
+			//GreaterOrEqual should be default since we support depth prepass
+			EDepthCompare depthCompare = EDepthCompare::GreaterOrEqual) :
+
 			m_bEnableDepthTest(bEnableDepthTest),
 			m_bEnableZWrite(bEnableZWrite),
 			m_depthBias(depthBias),
@@ -508,7 +524,8 @@ namespace Sailor::RHI
 			m_blendMode(blendMode),
 			m_fillMode(fillMode),
 			m_tag(tag),
-			m_bSupportMultisampling(bSupportMultisampling)
+			m_bSupportMultisampling(bSupportMultisampling),
+			m_depthCompare(depthCompare)
 		{}
 
 		bool IsDepthTestEnabled() const { return m_bEnableDepthTest; }
@@ -519,6 +536,7 @@ namespace Sailor::RHI
 		EBlendMode GetBlendMode() const { return m_blendMode; }
 		EFillMode GetFillMode() const { return m_fillMode; }
 		float GetDepthBias() const { return m_depthBias; }
+		EDepthCompare GetDepthCompare() const { return m_depthCompare; }
 		size_t GetTag() const { return m_tag; }
 		bool SupportMultisampling() const { return m_bSupportMultisampling; }
 
@@ -536,6 +554,7 @@ namespace Sailor::RHI
 		ECullMode m_cullMode = ECullMode::Back;
 		EBlendMode m_blendMode = EBlendMode::None;
 		EFillMode m_fillMode = EFillMode::Fill;
+		EDepthCompare m_depthCompare = EDepthCompare::GreaterOrEqual;
 		size_t m_tag = 0;
 		bool m_bSupportMultisampling = true;
 	};

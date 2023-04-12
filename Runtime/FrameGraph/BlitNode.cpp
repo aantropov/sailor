@@ -137,6 +137,7 @@ void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
+		0.0f,
 		false);
 
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);

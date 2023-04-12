@@ -48,6 +48,7 @@ void RenderImGuiNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
+		0.0f,
 		false);
 
 	commands->EndDebugRegion(commandList);

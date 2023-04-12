@@ -221,6 +221,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			glm::ivec2(0, 0),
 			false,
 			glm::vec4(0.0f),
+			0.0f,
 			true);
 
 		RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
@@ -255,6 +256,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			glm::ivec2(0, 0),
 			false,
 			glm::vec4(0.0f),
+			0.0f,
 			true);
 	}
 

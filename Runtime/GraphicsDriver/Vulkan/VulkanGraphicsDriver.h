@@ -141,6 +141,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			float clearDepth,
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true);
 
@@ -152,6 +153,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			float clearDepth,
 			bool bStoreDepth = true);
 
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
@@ -161,6 +163,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			float clearDepth,
 			bool bStoreDepth);
 
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
@@ -170,6 +173,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			float clearDepth,
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true);
 

@@ -198,6 +198,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		glm::ivec2(0, 0),
 		true,
 		glm::vec4(0.0f),
+		0.0f,
 		true,
 		true);
 

@@ -218,6 +218,7 @@ namespace Sailor::RHI
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			float clearDepth,
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true) = 0;
 
@@ -229,6 +230,7 @@ namespace Sailor::RHI
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			float clearDepth,
 			bool bStoreDepth = true) = 0;
 
 		SAILOR_API virtual void BeginRenderPass(RHI::RHICommandListPtr cmd,
@@ -238,6 +240,7 @@ namespace Sailor::RHI
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			float clearDepth,
 			bool bSupportMultisampling = true,
 			bool bStoreDepth = true) = 0;
 
@@ -248,6 +251,7 @@ namespace Sailor::RHI
 			glm::ivec2 offset,
 			bool bClearRenderTargets,
 			glm::vec4 clearColor,
+			float clearDepth,
 			bool bStoreDepth) = 0;
 
 		SAILOR_API virtual void EndRenderPass(RHI::RHICommandListPtr cmd) = 0;

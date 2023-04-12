@@ -55,6 +55,7 @@ void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tr
 			glm::ivec2(0, 0),
 			false,
 			glm::vec4(0.0f),
+			0.0f,
 			true);
 	}
 	else
@@ -67,6 +68,7 @@ void DebugDrawNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr tr
 			glm::ivec2(0, 0),
 			false,
 			glm::vec4(0.0f),
+			0.0f,
 			false);
 	}
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());

@@ -206,7 +206,7 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 			maxZ = std::max(maxZ, trf.z);
 		}
 
-		// Reversed Z
+		// Viewport settings
 		const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, -maxZ, -minZ);
 
 		// Create matrix and get all extents
@@ -232,10 +232,10 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 		DrawLine(orthoCorners[6], orthoCorners[7], color, duration);
 		DrawLine(orthoCorners[7], orthoCorners[4], color, duration);
 
-		DrawLine(orthoCorners[0], orthoCorners[1], color, duration);
-		DrawLine(orthoCorners[1], orthoCorners[2], color, duration);
-		DrawLine(orthoCorners[2], orthoCorners[3], color, duration);
-		DrawLine(orthoCorners[3], orthoCorners[0], color, duration);
+		DrawLine(orthoCorners[0], orthoCorners[1], glm::vec4(1, 1, 1, 1), duration);
+		DrawLine(orthoCorners[1], orthoCorners[2], glm::vec4(1, 1, 1, 1), duration);
+		DrawLine(orthoCorners[2], orthoCorners[3], glm::vec4(1, 1, 1, 1), duration);
+		DrawLine(orthoCorners[3], orthoCorners[0], glm::vec4(1, 1, 1, 1), duration);
 
 		DrawLine(orthoCorners[4], orthoCorners[0], color, duration);
 		DrawLine(orthoCorners[5], orthoCorners[1], color, duration);

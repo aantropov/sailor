@@ -530,6 +530,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::ivec2(0, 0),
 			false,
 			glm::vec4(0.0f),
+			0.0f,
 			false);
 
 		commands->BindMaterial(commandList, m_pSkyMaterial);
@@ -566,6 +567,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				glm::ivec2(0, 0),
 				false,
 				glm::vec4(0.0f),
+				0.0f,
 				false);
 
 			commands->BindMaterial(commandList, m_pCloudsMaterial);
@@ -607,6 +609,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::ivec2(0, 0),
 			false,
 			glm::vec4(0.0f),
+			0.0f,
 			false);
 
 		commands->BindMaterial(commandList, m_pSunMaterial);
@@ -643,6 +646,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::ivec2(0, 0),
 			false,
 			glm::vec4(0.0f),
+			0.0f,
 			false);
 
 		commands->BindMaterial(commandList, m_pComposeMaterial);
@@ -699,6 +703,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			glm::ivec2(0, 0),
 			false,
 			glm::vec4(0.0f),
+			0.0f,
 			false);
 
 		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
@@ -760,6 +765,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 					glm::ivec2(0, 0),
 					false,
 					glm::vec4(0.0f),
+					0.0f,
 					false);
 
 				commands->BindMaterial(commandList, m_pSkyMaterial);

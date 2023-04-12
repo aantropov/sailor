@@ -182,7 +182,7 @@ void TestComponent::Tick(float deltaTime)
 		{
 			//GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
 			const auto& lightView = glm::inverse(m_dirLight->GetTransformComponent().GetCachedWorldMatrix());
-			GetWorld()->GetDebugContext()->DrawLightCascades(lightView, m_cachedFrustum, camera->GetAspect(), 30, camera->GetZNear(), camera->GetZFar());
+			GetWorld()->GetDebugContext()->DrawLightCascades(lightView, m_cachedFrustum, camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
 		}
 	}
 

@@ -56,7 +56,8 @@ namespace Sailor::RHI
 		const TVector<uint32_t>& storageIndex,
 		RHIBufferPtr& indirectCommandBuffer,
 		glm::ivec4 viewport,
-		glm::uvec4 scissors)
+		glm::uvec4 scissors,
+		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f))
 	{
 		SAILOR_PROFILE_BLOCK("Record draw calls");
 
@@ -98,8 +99,8 @@ namespace Sailor::RHI
 					(float)viewport.w,
 					glm::vec2(scissors.x, scissors.y), 
 					glm::vec2(scissors.z, scissors.w),
-					0.0f, 
-					1.0f);
+					depthRange.x,
+					depthRange.y);
 
 				commands->BindShaderBindings(cmdList, material, sets);
 				prevMaterial = material;

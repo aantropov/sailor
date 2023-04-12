@@ -26,7 +26,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false);
+			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false, EDepthCompare::GreaterOrEqual);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -229,6 +229,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			glm::ivec2(0, 0),
 			true,
 			glm::vec4(0.0f),
+			0.0f,
 			false,
 			true);
 
@@ -237,7 +238,8 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrices[i]);
 		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
 			glm::ivec4(0, m_csmShadowMaps[i]->GetExtent().y, m_csmShadowMaps[i]->GetExtent().x, -m_csmShadowMaps[i]->GetExtent().y),
-			glm::uvec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y));
+			glm::uvec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y),
+			glm::vec2(1.0f, 0.0f));
 
 		commands->EndRenderPass(commandList);
 

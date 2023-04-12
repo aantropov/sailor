@@ -197,10 +197,6 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	bool bStoreDepth)
 {
 	// TODO: Support more than color 1 attachment
-
-	VkClearValue depthClear{};
-	depthClear.depthStencil = VulkanApi::DefaultClearDepthStencilValue;
-
 	const bool bHasStencil = depthStencilAttachment && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment->m_format) & VK_IMAGE_ASPECT_STENCIL_BIT);
 
 	VkRenderingAttachmentInfoKHR depthAttachmentInfo
@@ -210,7 +206,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = bStoreDepth ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.clearValue = depthClear,
+		.clearValue = clearColor,
 	};
 
 	VkRenderingAttachmentInfoKHR stencilAttachmentInfo
@@ -220,7 +216,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		.imageLayout =  bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue = depthClear,
+		.clearValue = clearColor,
 	};
 
 	VkRenderingAttachmentInfoKHR colorAttachmentInfo
