@@ -4,7 +4,7 @@
 
 const int MAX_SHADOWS_IN_VIEW = 1024;
 const int LIGHTS_CULLING_TILE_SIZE = 16;
-const float ShadowCascadeLevels[3] = { 1.0f / 15.0f, 1.0f / 5.0f, 1.0f / 2.0f};
+const float ShadowCascadeLevels[3] = { 1.0f / 25.0f, 1.0f / 5.0f, 1.0f / 2.0f};
 
 layout(std430)
 struct LightData

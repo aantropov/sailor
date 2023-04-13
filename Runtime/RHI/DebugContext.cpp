@@ -174,7 +174,7 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 		zFar * ShadowPrepassNode::ShadowCascadeLevels[2]);
 	cascades.Add(cameraFrustum);
 
-	constexpr float zMult = 1.0f;
+	constexpr float zMult = 2.0f;
 
 	TVector<glm::vec4> colors{ glm::vec4(1.0f, 0.0f, 0.5f, 1.0f),
 		glm::vec4(0.7f, 0.6f, 0.5f, 1.0f),
@@ -206,8 +206,26 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 			maxZ = std::max(maxZ, trf.z);
 		}
 
+		if (minZ < 0)
+		{
+			minZ *= zMult;
+		}
+		else
+		{
+			minZ /= zMult;
+		}
+
+		if (maxZ < 0)
+		{
+			maxZ /= zMult;
+		}
+		else
+		{
+			maxZ *= zMult;
+		}
+
 		// Viewport settings
-		const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, -maxZ, -minZ);
+		const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, -minZ, -maxZ);
 
 		// Create matrix and get all extents
 		const glm::mat4 lightViewProjection = lightProjection * lightView;

@@ -222,7 +222,8 @@ glslFragment: |
     const float closestDepth = texture(shadowMap, projCoords.xy).r * 0.5 + 0.5;
     const float currentDepth = projCoords.z;
     
-    float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0; //ManualPCF(shadowMap, projCoords, currentDepth, bias);
+    //float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
+    float shadow = ManualPCF(shadowMap, projCoords, currentDepth, bias);
     return shadow;
   }
   
@@ -242,7 +243,7 @@ glslFragment: |
         
         if (cascadeLayer < NUM_CSM_CASCADES)
         {
-            //bias *= 1 / (ShadowCascadeLevels[cascadeLayer] * 0.5f);
+            bias *= ShadowCascadeLevels[cascadeLayer];
         }
         shadow = ShadowCalculation(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias);
     }
@@ -400,7 +401,8 @@ glslFragment: |
 
     outColor.a = material.albedo.a;
     
-    /*const int cascadeLayer = SelectCascade(frame.view, vin.worldPosition);
+    /*
+    const int cascadeLayer = SelectCascade(frame.view, vin.worldPosition);
     vec3 dColor = vec3(1,0,0);
     if(cascadeLayer == 0)
     {
@@ -418,5 +420,5 @@ glslFragment: |
         dColor = vec3(0,1,1);
     
     outColor.rgb = mix(outColor.rgb, dColor, 0.5);
-    */
+    /**/
   }

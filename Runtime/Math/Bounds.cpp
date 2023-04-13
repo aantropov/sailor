@@ -85,7 +85,7 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 	}
 
 	// Reversed Z
-	const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, -maxZ, -minZ);
+	const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, -minZ, -maxZ);
 
 	return lightProjection;
 }

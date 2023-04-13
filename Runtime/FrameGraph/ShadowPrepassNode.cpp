@@ -64,7 +64,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			char csmDebugName[64];
 			sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
-			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(2048, 2048), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
+			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(8192, 8192), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
 			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 		}
 
@@ -239,7 +239,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
 			glm::ivec4(0, m_csmShadowMaps[i]->GetExtent().y, m_csmShadowMaps[i]->GetExtent().x, -m_csmShadowMaps[i]->GetExtent().y),
 			glm::uvec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y),
-			glm::vec2(1.0f, 0.0f));
+			glm::vec2(0.0f, 1.0f));
 
 		commands->EndRenderPass(commandList);
 
@@ -260,7 +260,7 @@ glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lig
 	Math::Frustum cameraFrustum{};
 	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar);
 
-	constexpr float zMult = 1.0f;
+	constexpr float zMult = 10.0f;
 	return cameraFrustum.CalculateOrthoMatrixByView(lightView, zMult);
 }
 
