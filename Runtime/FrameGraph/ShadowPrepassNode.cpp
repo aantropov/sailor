@@ -39,11 +39,12 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 {
 	SAILOR_PROFILE_FUNCTION();
 
+
 	if (sceneView.m_directionalLights.Num() == 0)
 	{
 		return;
 	}
-	
+
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -64,20 +65,14 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			char csmDebugName[64];
 			sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
-			int32_t resFactor = 1;
-			if (i % NumCascades)
-			{
-				resFactor *= 2;
-			}
-
-			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(4096, 4096) * resFactor, 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
+			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(4096, 4096), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
 			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 		}
 
 		TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
 		for (uint32_t i = 0; i < MaxShadowsInView; i++)
 		{
-			shadowMaps[i] = (i < MaxCSM* NumCascades) ? m_csmShadowMaps[i] : m_defaultShadowMap;
+			shadowMaps[i] = (i < m_csmShadowMaps.Num()) ? m_csmShadowMaps[i] : m_defaultShadowMap;
 		}
 
 		auto shaderBindingSet = sceneView.m_rhiLightsData;
@@ -189,12 +184,24 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
-	auto lightMatrices = CalculateLightSpaceMatrices(sceneView.m_directionalLights[0].m_lightMatrix,
+	auto lightMatrices = CalculateLightProjectionForCascades(sceneView.m_directionalLights[0].m_lightMatrix,
 		sceneView.m_cameraTransform.Matrix(),
 		sceneView.m_camera->GetAspect(),
 		sceneView.m_camera->GetFov(),
 		sceneView.m_camera->GetZNear(),
 		sceneView.m_camera->GetZFar());
+
+	TVector<Math::Frustum> lightFrustums;
+
+	for (uint32_t i = 0; i < lightMatrices.Num(); i++)
+	{
+		Math::Frustum frustum{};
+		frustum.ExtractFrustumPlanes(lightMatrices[i] * glm::inverse(sceneView.m_directionalLights[0].m_lightMatrix));
+
+		lightMatrices[i] = lightMatrices[i] * sceneView.m_directionalLights[0].m_lightMatrix;
+
+		lightFrustums.Add(std::move(frustum));
+	}
 
 	// TODO: Store all the matrices in one place
 	//const float size = 2048;
@@ -229,28 +236,28 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		SAILOR_PROFILE_BLOCK(debugMarker);
 
 		commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
+		{
+			commands->BeginRenderPass(commandList,
+				TVector<RHI::RHITexturePtr>{},
+				m_csmShadowMaps[i],
+				glm::vec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y),
+				glm::ivec2(0, 0),
+				true,
+				glm::vec4(0.0f),
+				0.0f,
+				false,
+				true);
 
-		commands->BeginRenderPass(commandList,
-			TVector<RHI::RHITexturePtr>{},
-			m_csmShadowMaps[i],
-			glm::vec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y),
-			glm::ivec2(0, 0),
-			true,
-			glm::vec4(0.0f),
-			0.0f,
-			false,
-			true);
+			auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 
-		auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
+			commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrices[i]);
+			RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
+				glm::ivec4(0, m_csmShadowMaps[i]->GetExtent().y, m_csmShadowMaps[i]->GetExtent().x, -m_csmShadowMaps[i]->GetExtent().y),
+				glm::uvec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y),
+				glm::vec2(0.0f, 1.0f));
 
-		commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrices[i]);
-		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
-			glm::ivec4(0, m_csmShadowMaps[i]->GetExtent().y, m_csmShadowMaps[i]->GetExtent().x, -m_csmShadowMaps[i]->GetExtent().y),
-			glm::uvec4(0, 0, m_csmShadowMaps[i]->GetExtent().x, m_csmShadowMaps[i]->GetExtent().y),
-			glm::vec2(0.0f, 1.0f));
-
-		commands->EndRenderPass(commandList);
-
+			commands->EndRenderPass(commandList);
+		}
 		commands->EndDebugRegion(commandList);
 		SAILOR_PROFILE_END_BLOCK();
 	}
@@ -274,22 +281,22 @@ glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lig
 	return cameraFrustum.CalculateOrthoMatrixByView(lightView, zMult);
 }
 
-TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane)
+TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	TVector<glm::mat4> ret;
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraNearPlane,
-		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0]) * lightView);
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0]));
 
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[0],
-		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1]) * lightView);
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1]));
 
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[1],
-		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[2]) * lightView);
+		cameraFarPlane * ShadowPrepassNode::ShadowCascadeLevels[2]));
 
 	return ret;
 }

@@ -4,6 +4,7 @@
 #include "RHI/Texture.h"
 #include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
+#include "FrameGraph/ShadowPrepassNode.h"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -140,6 +141,8 @@ void LightingECS::EndPlay()
 
 void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	TVector<Math::Frustum> frustums;
 	frustums.Reserve(sceneView->m_cameraTransforms.Num());
 
@@ -203,7 +206,33 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 		}
 	}
 
+	sceneView->m_csmMeshLists.Resize(sceneView->m_cameraTransforms.Num());
+
+	for (uint32_t i = 0; i < sceneView->m_cameraTransforms.Num(); i++)
+	{
+		sceneView->m_csmMeshLists[i].Resize(sceneView->m_directionalLights.Num());
+
+		for (uint32_t j = 0; j < sceneView->m_directionalLights.Num(); j++)
+		{
+			sceneView->m_csmMeshLists[i][j].Resize(ShadowPrepassNode::NumCascades);
+
+			auto lightCascadesMatrices = ShadowPrepassNode::CalculateLightProjectionForCascades(sceneView->m_directionalLights[j].m_lightMatrix,
+				sceneView->m_cameraTransforms[i].Matrix(),
+				sceneView->m_cameras[i].GetAspect(),
+				sceneView->m_cameras[i].GetFov(),
+				sceneView->m_cameras[i].GetZNear(),
+				sceneView->m_cameras[i].GetZFar());
+
+			for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
+			{
+				Math::Frustum frustum{};
+				frustum.ExtractFrustumPlanes(lightCascadesMatrices[k] * sceneView->m_directionalLights[j].m_lightMatrix);
+				sceneView->m_stationaryOctree.Trace(frustum, sceneView->m_csmMeshLists[i][j][k]);
+			}
+		}
+	}
 	// TODO: Pass only active lights
 	sceneView->m_totalNumLights = (uint32_t)m_components.Num();
 	sceneView->m_rhiLightsData = m_lightsData;
 }
+

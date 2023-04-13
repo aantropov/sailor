@@ -67,13 +67,14 @@ namespace Sailor::RHI
 		SAILOR_API void PrepareSnapshots();
 		SAILOR_API void PrepareDebugDrawCommandLists(WorldPtr world);
 
-		TOctree<RHIMeshProxy> m_stationaryOctree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
-		TOctree<RHISceneViewProxy> m_staticOctree{ glm::ivec3(0,0,0), 16536 * 2, 4 };
+		TOctree<RHIMeshProxy> m_stationaryOctree{ glm::ivec3(0,0,0), 16536 * 16, 4 };
+		TOctree<RHISceneViewProxy> m_staticOctree{ glm::ivec3(0,0,0), 16536 * 16, 4 };
 
 		uint32_t m_totalNumLights = 0;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
 		TVector<RHILightProxy> m_directionalLights{};
 		// For each camera
+		TVector<TVector<TVector<TVector<RHIMeshProxy>>>> m_csmMeshLists{};
 		TVector<TVector<RHILightProxy>> m_sortedPointLights{};
 		TVector<TVector<RHILightProxy>> m_sortedSpotLights{};
 

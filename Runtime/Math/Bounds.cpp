@@ -18,12 +18,44 @@ const TVector<glm::vec3>& Frustum::GetCorners() const
 
 void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes)
 {
-	m_planes[0] = Plane(matrix[3] + matrix[0]);       // left
+	/*m_planes[0] = Plane(matrix[3] + matrix[0]);       // left
 	m_planes[1] = Plane(matrix[3] - matrix[0]);       // right
 	m_planes[2] = Plane(matrix[3] - matrix[1]);       // top
 	m_planes[3] = Plane(matrix[3] + matrix[1]);       // bottom
 	m_planes[4] = Plane(matrix[3] + matrix[2]);       // near
 	m_planes[5] = Plane(matrix[3] - matrix[2]);       // far
+	*/
+
+	CalculateCorners(matrix);
+
+	const glm::vec3 right = glm::normalize(m_corners[0] - m_corners[1]);
+	const glm::vec3 up = glm::normalize(m_corners[0] - m_corners[3]);
+	const glm::vec3 forward = glm::normalize(m_corners[0] - m_corners[4]);
+	const glm::vec3 pos = matrix[3];
+
+	const glm::vec3 centerFar = 0.5f * (m_corners[0] + m_corners[2]);
+	const glm::vec3 centerNear = 0.5f * (m_corners[4] + m_corners[6]);
+
+	const glm::vec3 centerBottom = 0.5f * (m_corners[2] + m_corners[7]);
+	const glm::vec3 centerTop = 0.5f * (m_corners[0] + m_corners[5]);
+
+	const glm::vec3 centerLeft = 0.5f * (m_corners[1] + m_corners[6]);
+	const glm::vec3 centerRight = 0.5f * (m_corners[0] + m_corners[7]);
+
+	const glm::vec3 frontMultFar = centerFar - pos;
+
+	m_planes[4] = Plane(forward, centerNear);
+	m_planes[5] = Plane(-forward, centerFar);
+
+	const glm::vec3 leftNormal = glm::normalize(glm::cross(frontMultFar, up));
+	const glm::vec3 rightNormal = glm::normalize(glm::cross(up, frontMultFar));
+	m_planes[0] = Plane(leftNormal, centerLeft);
+	m_planes[1] = Plane(rightNormal, centerRight);
+
+	const glm::vec3 bottomNormal = glm::normalize(glm::cross(right, frontMultFar));
+	const glm::vec3 topNormal = glm::normalize(glm::cross(frontMultFar, right));
+	m_planes[2] = Plane(topNormal, centerTop);
+	m_planes[3] = Plane(bottomNormal, centerBottom);
 
 	if (bNormalizePlanes)
 	{
@@ -32,8 +64,6 @@ void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlane
 			m_planes[i].Normalize();
 		}
 	}
-
-	CalculateCorners(matrix);
 }
 
 glm::vec3 Frustum::CalculateCenter() const
@@ -94,26 +124,29 @@ void Frustum::CalculateCorners(const glm::mat4& matrix)
 {
 	const auto inv = glm::inverse(matrix);
 
-	for (unsigned int x = 0; x < 2; ++x)
-	{
-		for (unsigned int y = 0; y < 2; ++y)
-		{
-			for (unsigned int z = 0; z < 2; ++z)
-			{
-				glm::vec4 pt =
-					inv * glm::vec4(
-						2.0f * x - 1.0f,
-						2.0f * y - 1.0f,
-						2.0f * z - 1.0f,
-						1.0f);
+	glm::vec4 pt = inv * glm::vec4(1.0f, 1.0f, -1.0f, 1.0f);
+	m_corners[0] = vec3(pt / pt.w);
 
-				// Reverse Z
-				pt.z *= -1;
+	pt = inv * glm::vec4(-1.0f, 1.0f, -1.0f, 1.0f);
+	m_corners[1] = vec3(pt / pt.w);
 
-				m_corners[x + y * 2 + z * 4] = vec3(pt / pt.w);
-			}
-		}
-	}
+	pt = inv * glm::vec4(-1.0f, -1.0f, -1.0f, 1.0f);
+	m_corners[2] = vec3(pt / pt.w);
+
+	pt = inv * glm::vec4(1.0f, -1.0f, -1.0f, 1.0f);
+	m_corners[3] = vec3(pt / pt.w);
+
+	pt = inv * glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	m_corners[4] = vec3(pt / pt.w);
+
+	pt = inv * glm::vec4(-1.0f, 1.0f, 1.0f, 1.0f);
+	m_corners[5] = vec3(pt / pt.w);
+
+	pt = inv * glm::vec4(-1.0f, -1.0f, 1.0f, 1.0f);
+	m_corners[6] = vec3(pt / pt.w);
+
+	pt = inv * glm::vec4(1.0f, -1.0f, 1.0f, 1.0f);
+	m_corners[7] = vec3(pt / pt.w);
 }
 
 void Frustum::ExtractFrustumPlanes(const glm::mat4& worldMatrix, float aspect, float fovY, float zNear, float zFar)
@@ -136,8 +169,8 @@ void Frustum::ExtractFrustumPlanes(const glm::mat4& worldMatrix, float aspect, f
 	m_planes[0] = Plane(leftNormal, pos);
 	m_planes[1] = Plane(rightNormal, pos);
 
-	const glm::vec3 topNormal = glm::normalize(glm::cross(right, frontMultFar - up * halfVSide));
-	const glm::vec3 bottomNormal = glm::normalize(glm::cross(frontMultFar + up * halfVSide, right));
+	const glm::vec3 bottomNormal = glm::normalize(glm::cross(right, frontMultFar - up * halfVSide));
+	const glm::vec3 topNormal = glm::normalize(glm::cross(frontMultFar + up * halfVSide, right));
 	m_planes[2] = Plane(topNormal, pos);
 	m_planes[3] = Plane(bottomNormal, pos);
 
