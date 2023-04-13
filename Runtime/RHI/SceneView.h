@@ -56,6 +56,8 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
 
+		RHI::RHISceneViewPtr m_sceneView{};
+
 		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui{};
 	};
@@ -85,6 +87,9 @@ namespace Sailor::RHI
 		WorldPtr m_world;
 		float m_deltaTime;
 		float m_currentTime;
+
+	public:
+		void Clear();
 	};
 
 	using RHISceneViewPtr = TSharedPtr<RHISceneView>;

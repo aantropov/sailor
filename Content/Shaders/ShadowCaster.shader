@@ -2,7 +2,7 @@
 colorAttachments: 
 - UNDEFINED
 
-depthStencilAttachment: D32_SFLOAT
+depthStencilAttachment: D16_UNORM
 
 glslCommon: |
   #version 460

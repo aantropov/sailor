@@ -43,7 +43,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	{
 		return;
 	}
-
+	
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -64,7 +64,13 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			char csmDebugName[64];
 			sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
-			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(8192, 8192), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
+			int32_t resFactor = 1;
+			if (i % NumCascades)
+			{
+				resFactor *= 2;
+			}
+
+			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(4096, 4096) * resFactor, 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
 			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 		}
 
@@ -220,6 +226,8 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		char debugMarker[64];
 		sprintf_s(debugMarker, "Record CSM, Cascade: %d", i);
 
+		SAILOR_PROFILE_BLOCK(debugMarker);
+
 		commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 
 		commands->BeginRenderPass(commandList,
@@ -257,6 +265,8 @@ void ShadowPrepassNode::Clear()
 
 glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	Math::Frustum cameraFrustum{};
 	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar);
 
@@ -266,6 +276,8 @@ glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lig
 
 TVector<glm::mat4> ShadowPrepassNode::CalculateLightSpaceMatrices(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	TVector<glm::mat4> ret;
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraNearPlane,

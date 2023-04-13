@@ -40,6 +40,22 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 	}
 }
 
+void RHISceneView::Clear()
+{
+	m_rhiLightsData.Clear();
+	m_directionalLights.Clear();
+
+	m_sortedPointLights.Clear();
+	m_sortedSpotLights.Clear();
+
+	m_cameras.Clear();
+	m_cameraTransforms.Clear();
+
+	m_drawImGui.Clear();
+	m_debugDraw.Clear();
+	m_snapshots.Clear();
+}
+
 void RHISceneView::PrepareSnapshots()
 {
 	SAILOR_PROFILE_FUNCTION();
