@@ -16,8 +16,9 @@ const TVector<glm::vec3>& Frustum::GetCorners() const
 	return m_corners;
 }
 
-void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes)
+void Frustum::ExtractFrustumPlanes(const glm::mat4& projectionViewMatrix, bool bNormalizePlanes)
 {
+	// TODO: Find why the code doesn't work
 	/*m_planes[0] = Plane(matrix[3] + matrix[0]);       // left
 	m_planes[1] = Plane(matrix[3] - matrix[0]);       // right
 	m_planes[2] = Plane(matrix[3] - matrix[1]);       // top
@@ -26,12 +27,11 @@ void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlane
 	m_planes[5] = Plane(matrix[3] - matrix[2]);       // far
 	*/
 
-	CalculateCorners(matrix);
+	CalculateCorners(projectionViewMatrix);
 
 	const glm::vec3 right = glm::normalize(m_corners[0] - m_corners[1]);
 	const glm::vec3 up = glm::normalize(m_corners[0] - m_corners[3]);
 	const glm::vec3 forward = glm::normalize(m_corners[0] - m_corners[4]);
-	const glm::vec3 pos = matrix[3];
 
 	const glm::vec3 centerFar = 0.5f * (m_corners[0] + m_corners[2]);
 	const glm::vec3 centerNear = 0.5f * (m_corners[4] + m_corners[6]);
@@ -42,18 +42,16 @@ void Frustum::ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlane
 	const glm::vec3 centerLeft = 0.5f * (m_corners[1] + m_corners[6]);
 	const glm::vec3 centerRight = 0.5f * (m_corners[0] + m_corners[7]);
 
-	const glm::vec3 frontMultFar = centerFar - pos;
-
 	m_planes[4] = Plane(forward, centerNear);
 	m_planes[5] = Plane(-forward, centerFar);
 
-	const glm::vec3 leftNormal = glm::normalize(glm::cross(frontMultFar, up));
-	const glm::vec3 rightNormal = glm::normalize(glm::cross(up, frontMultFar));
+	const glm::vec3 leftNormal = glm::normalize(glm::cross(forward, up));
+	const glm::vec3 rightNormal = glm::normalize(glm::cross(up, forward));
 	m_planes[0] = Plane(leftNormal, centerLeft);
 	m_planes[1] = Plane(rightNormal, centerRight);
 
-	const glm::vec3 bottomNormal = glm::normalize(glm::cross(right, frontMultFar));
-	const glm::vec3 topNormal = glm::normalize(glm::cross(frontMultFar, right));
+	const glm::vec3 bottomNormal = glm::normalize(glm::cross(right, forward));
+	const glm::vec3 topNormal = glm::normalize(glm::cross(forward, right));
 	m_planes[2] = Plane(topNormal, centerTop);
 	m_planes[3] = Plane(bottomNormal, centerBottom);
 
@@ -124,28 +122,28 @@ void Frustum::CalculateCorners(const glm::mat4& matrix)
 {
 	const auto inv = glm::inverse(matrix);
 
-	glm::vec4 pt = inv * glm::vec4(1.0f, 1.0f, -1.0f, 1.0f);
+	glm::vec4 pt = inv * glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 	m_corners[0] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, 1.0f, -1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, 1.0f, 1.0f, 1.0f);
 	m_corners[1] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, -1.0f, -1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, -1.0f, 1.0f, 1.0f);
 	m_corners[2] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, -1.0f, -1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, -1.0f, 1.0f, 1.0f);
 	m_corners[3] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, 1.0f, -1.0f, 1.0f);
 	m_corners[4] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, 1.0f, 1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, 1.0f, -1.0f, 1.0f);
 	m_corners[5] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, -1.0f, 1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, -1.0f, -1.0f, 1.0f);
 	m_corners[6] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, -1.0f, 1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, -1.0f, -1.0f, 1.0f);
 	m_corners[7] = vec3(pt / pt.w);
 }
 

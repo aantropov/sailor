@@ -167,6 +167,11 @@ void TestComponent::Tick(float deltaTime)
 
 			Math::Frustum frustum;
 			frustum.ExtractFrustumPlanes(transform.GetTransform().Matrix(), camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
+			
+			// Testing ortho matrix
+			//const glm::mat4 m = glm::orthoRH_NO(-100.0f, 100.0f, -100.0f, 100.0f, 0.0f, 900.0f) * glm::inverse(m_cachedFrustum);
+			//frustum.ExtractFrustumPlanes(m_cachedFrustum);
+
 			m_octree.Trace(frustum, m_culledBoxes);
 		}
 	}
@@ -180,9 +185,18 @@ void TestComponent::Tick(float deltaTime)
 	{
 		if (m_cachedFrustum != glm::mat4(1))
 		{
-			//GetWorld()->GetDebugContext()->DrawFrustum(m_cachedFrustum, camera->GetFov(), 500.0f, camera->GetZNear(), camera->GetAspect(), glm::vec4(1.0, 1.0, 0.0, 1.0f));
-			const auto& lightView = glm::inverse(m_dirLight->GetTransformComponent().GetCachedWorldMatrix());
-			GetWorld()->GetDebugContext()->DrawLightCascades(lightView, m_cachedFrustum, camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
+			Math::Frustum frustum;
+			frustum.ExtractFrustumPlanes(m_cachedFrustum, camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
+			GetWorld()->GetDebugContext()->DrawFrustum(frustum);
+			
+			//const auto& lightView = glm::inverse(m_dirLight->GetTransformComponent().GetCachedWorldMatrix());
+			//GetWorld()->GetDebugContext()->DrawLightCascades(lightView, m_cachedFrustum, camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
+
+			//const glm::mat4 m = glm::orthoRH_NO(-100.0f, 100.0f, -100.0f, 100.0f, 0.0f, 900.0f) * glm::inverse(m_cachedFrustum);
+			//Math::Frustum frustum;
+			//frustum.ExtractFrustumPlanes(m);
+			//GetWorld()->GetDebugContext()->DrawFrustum(frustum);
+			/**/
 		}
 	}
 

@@ -97,7 +97,7 @@ namespace Sailor::Math
 
 		SAILOR_API __forceinline const TVector<glm::vec3>& GetCorners() const;
 
-		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& matrix, bool bNormalizePlanes = true);
+		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& projectionViewMatrix, bool bNormalizePlanes = true);
 		SAILOR_API __forceinline void ExtractFrustumPlanes(const glm::mat4& worldMatrix, float aspect, float fovY, float zNear, float zFar);
 
 	protected:
