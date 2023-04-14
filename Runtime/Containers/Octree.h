@@ -200,6 +200,7 @@ namespace Sailor
 
 				if (Insert_Internal(*m_root, pos, extents, element))
 				{
+					m_num++;
 					return true;
 				}
 
@@ -207,7 +208,13 @@ namespace Sailor
 				m_map.Remove(element);
 			}
 
-			return Insert_Internal(*m_root, pos, extents, element);
+			if (Insert_Internal(*m_root, pos, extents, element))
+			{
+				m_num++;
+				return true;
+			}
+
+			return false;
 		}
 
 		bool Remove(const TElementType& element)

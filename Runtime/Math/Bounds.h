@@ -77,7 +77,7 @@ namespace Sailor::Math
 	struct Frustum
 	{
 		SAILOR_API Frustum() : m_corners(8) {}
-		SAILOR_API Frustum(const glm::mat4& matrix) : m_corners(8) { ExtractFrustumPlanes(matrix); }
+		SAILOR_API Frustum(const glm::mat4& projectionViewMatrix) : m_corners(8) { ExtractFrustumPlanes(projectionViewMatrix); }
 
 		SAILOR_API __forceinline bool OverlapsAABB(const AABB& aabb) const;
 		SAILOR_API __forceinline bool OverlapsSphere(const Sphere& sphere) const;

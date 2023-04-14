@@ -227,7 +227,7 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 			{
 				Math::Frustum frustum{};
 				frustum.ExtractFrustumPlanes(lightCascadesMatrices[k] * sceneView->m_directionalLights[j].m_lightMatrix);
-				sceneView->m_stationaryOctree.Trace(frustum, sceneView->m_csmMeshLists[i][j][k]);
+				sceneView->m_csmMeshLists[i][j][k] = std::move(sceneView->TraceScene(frustum));
 			}
 		}
 	}

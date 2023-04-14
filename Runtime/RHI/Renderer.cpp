@@ -220,11 +220,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	rhiSceneView->PrepareDebugDrawCommandLists(world);
 	rhiSceneView->PrepareSnapshots();
 
-	for (auto& snapshot : rhiSceneView->m_snapshots)
-	{
-		snapshot.m_sceneView = rhiSceneView;
-	}
-
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Push frame");

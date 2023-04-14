@@ -56,6 +56,56 @@ void RHISceneView::Clear()
 	m_snapshots.Clear();
 }
 
+TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum) const
+{
+	TVector<RHISceneViewProxy> res;
+
+	// Stationary
+	TVector<RHIMeshProxy> meshProxies;
+	m_stationaryOctree.Trace(frustum, meshProxies);
+
+	res.Reserve(meshProxies.Num());
+	for (auto& meshProxy : meshProxies)
+	{
+		auto& ecsData = m_world->GetECS<StaticMeshRendererECS>()->GetComponentData(meshProxy.m_staticMeshEcs);
+
+		if (ecsData.GetMaterials().Num() == 0)
+		{
+			continue;
+		}
+
+		RHISceneViewProxy viewProxy;
+		viewProxy.m_staticMeshEcs = meshProxy.m_staticMeshEcs;
+		viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
+		viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
+		viewProxy.m_overrideMaterials.Clear();
+		for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
+		{
+			size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);
+
+			auto& material = ecsData.GetMaterials()[materialIndex];
+
+			if (material && material->IsReady())
+			{
+				viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
+			}
+		}
+
+		res.Emplace(std::move(viewProxy));
+	}
+
+	// Static
+	TVector<RHISceneViewProxy> proxies;
+	m_staticOctree.Trace(frustum, proxies);
+	res.Reserve(meshProxies.Num() + proxies.Num());
+
+	for (auto& proxy : proxies)
+	{
+		res.Emplace(std::move(proxy));
+	}
+
+	return res;
+}
 void RHISceneView::PrepareSnapshots()
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -81,49 +131,9 @@ void RHISceneView::PrepareSnapshots()
 		res.m_sortedPointLights = std::move(m_sortedPointLights[i]);
 		res.m_directionalLights = m_directionalLights;
 
-		// Stationary
-		TVector<RHIMeshProxy> meshProxies;
-		m_stationaryOctree.Trace(frustum, meshProxies);
-
-		res.m_proxies.Reserve(meshProxies.Num());
-		for (auto& meshProxy : meshProxies)
-		{
-			auto& ecsData = m_world->GetECS<StaticMeshRendererECS>()->GetComponentData(meshProxy.m_staticMeshEcs);
-
-			if (ecsData.GetMaterials().Num() == 0)
-			{
-				continue;
-			}
-
-			RHISceneViewProxy viewProxy;
-			viewProxy.m_staticMeshEcs = meshProxy.m_staticMeshEcs;
-			viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
-			viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
-			viewProxy.m_overrideMaterials.Clear();
-			for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
-			{
-				size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);
-
-				auto& material = ecsData.GetMaterials()[materialIndex];
-
-				if (material && material->IsReady())
-				{
-					viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
-				}
-			}
-
-			res.m_proxies.Emplace(std::move(viewProxy));
-		}
-
-		// Static
-		TVector<RHISceneViewProxy> proxies;
-		m_staticOctree.Trace(frustum, proxies);
-		res.m_proxies.Reserve(meshProxies.Num() + proxies.Num());
-
-		for (auto& proxy : proxies)
-		{
-			res.m_proxies.Emplace(std::move(proxy));
-		}
+		res.m_csmMeshLists = std::move(m_csmMeshLists[i]);
+		
+		res.m_proxies = std::move(TraceScene(frustum));
 
 		res.m_debugDrawSecondaryCmdList = m_debugDraw[i];
 		m_snapshots.Emplace(std::move(res));

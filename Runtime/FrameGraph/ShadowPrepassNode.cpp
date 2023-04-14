@@ -86,7 +86,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	uint32_t numMeshes = 0;
 
 	SAILOR_PROFILE_BLOCK("Filter sceneView by tag");
-	for (auto& proxy : sceneView.m_proxies)
+	for (auto& proxy : sceneView.m_csmMeshLists[0][0])
 	{
 		for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 		{

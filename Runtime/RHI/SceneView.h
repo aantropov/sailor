@@ -53,10 +53,11 @@ namespace Sailor::RHI
 		TVector<RHILightProxy> m_sortedSpotLights{};
 		TVector<RHILightProxy> m_directionalLights{};
 
+		// Lights->Cascades->Proxies
+		TVector<TVector<TVector<RHISceneViewProxy>>> m_csmMeshLists{};
+
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
-
-		RHI::RHISceneViewPtr m_sceneView{};
 
 		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui{};
@@ -64,6 +65,7 @@ namespace Sailor::RHI
 
 	struct RHISceneView
 	{
+		SAILOR_API TVector<RHISceneViewProxy> TraceScene(const Math::Frustum& frustum) const;
 		SAILOR_API void PrepareSnapshots();
 		SAILOR_API void PrepareDebugDrawCommandLists(WorldPtr world);
 
@@ -74,7 +76,7 @@ namespace Sailor::RHI
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
 		TVector<RHILightProxy> m_directionalLights{};
 		// For each camera
-		TVector<TVector<TVector<TVector<RHIMeshProxy>>>> m_csmMeshLists{};
+		TVector<TVector<TVector<TVector<RHISceneViewProxy>>>> m_csmMeshLists{};
 		TVector<TVector<RHILightProxy>> m_sortedPointLights{};
 		TVector<TVector<RHILightProxy>> m_sortedSpotLights{};
 

@@ -170,7 +170,7 @@ void TestComponent::Tick(float deltaTime)
 			
 			// Testing ortho matrix
 			//const glm::mat4 m = glm::orthoRH_NO(-100.0f, 100.0f, -100.0f, 100.0f, 0.0f, 900.0f) * glm::inverse(m_cachedFrustum);
-			//frustum.ExtractFrustumPlanes(m_cachedFrustum);
+			//frustum.ExtractFrustumPlanes(m);
 
 			m_octree.Trace(frustum, m_culledBoxes);
 		}
