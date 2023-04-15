@@ -33,77 +33,77 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		[=]() -> TParseRes
 		{
 			std::string temperatures;
-			if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
-			{
-				return TParseRes();
-			}
+	if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
+	{
+		return TParseRes();
+	}
 
-			YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
-			if (temperaturesNode["colors"])
-			{
-				TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
+	YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
+	if (temperaturesNode["colors"])
+	{
+		TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
 
-				for (const auto& line : temperaturesData)
-				{
-					const auto temperatureK = line[0];
+		for (const auto& line : temperaturesData)
+		{
+			const auto temperatureK = line[0];
 
-					uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
-					index = glm::clamp(index, 0u, s_maxRgbTemperatures);
+			uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
+			index = glm::clamp(index, 0u, s_maxRgbTemperatures);
 
-					// Should we inverse gamma correction?
-					const vec3 color = vec3(line[5], line[6], line[7]);
+			// Should we inverse gamma correction?
+			const vec3 color = vec3(line[5], line[6], line[7]);
 
-					s_rgbTemperatures[index] = color;
-				}
-			}
+			s_rgbTemperatures[index] = color;
+		}
+	}
 
-			TVector<uint8_t> starCatalogueData;
-			AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
+	TVector<uint8_t> starCatalogueData;
+	AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
 
-			BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
+	BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
 
-			const size_t starCount = abs(header->m_starCount);
-			BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
+	const size_t starCount = abs(header->m_starCount);
+	BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
 
-			TVector<VertexP3C4> vertices(starCount);
-			TVector<uint32_t> indices(starCount);
+	TVector<VertexP3C4> vertices(starCount);
+	TVector<uint32_t> indices(starCount);
 
-			for (uint32_t i = 0; i < starCount; i++)
-			{
-				const BrighStarCatalogue_Entry& entry = starCatalogue[i];
+	for (uint32_t i = 0; i < starCount; i++)
+	{
+		const BrighStarCatalogue_Entry& entry = starCatalogue[i];
 
-				vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
-				vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
+		vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
+		vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
 
-				vertices[i].m_position.x *= 5000.0f;
-				vertices[i].m_position.y *= 5000.0f;
-				vertices[i].m_position.z *= 5000.0f;
+		vertices[i].m_position.x *= 5000.0f;
+		vertices[i].m_position.y *= 5000.0f;
+		vertices[i].m_position.z *= 5000.0f;
 
-				vec4 color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
+		vec4 color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
 
-				vertices[i].m_color.x = pow(color.x, 1 / 2.2f);
-				vertices[i].m_color.y = pow(color.y, 1 / 2.2f);
-				vertices[i].m_color.z = pow(color.z, 1 / 2.2f);
-				vertices[i].m_color.w = pow(color.w, 1 / 2.2f);
+		vertices[i].m_color.x = pow(color.x, 1 / 2.2f);
+		vertices[i].m_color.y = pow(color.y, 1 / 2.2f);
+		vertices[i].m_color.z = pow(color.z, 1 / 2.2f);
+		vertices[i].m_color.w = pow(color.w, 1 / 2.2f);
 
-				indices[i] = i;
-			}
+		indices[i] = i;
+	}
 
-			return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
+	return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
 		})->Then<RHI::RHIMeshPtr, TParseRes>([](const TParseRes& res) mutable
 			{
 				const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
-				const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
+		const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
 
-				auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 
-				RHI::RHIMeshPtr mesh = driver->CreateMesh();
+		RHI::RHIMeshPtr mesh = driver->CreateMesh();
 
-				mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
-				mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
-				driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
+		mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
+		mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
+		driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
 
-				return mesh;
+		return mesh;
 			}, "Create Stars Mesh", Tasks::EThreadType::RHI);
 
 		task->Run();
@@ -251,16 +251,20 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 	if (!m_pCloudsMapTexture)
 	{
-		const std::string path = "Textures/CloudsMap.png";
-
-		if (auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(path))
+		if (!m_clouds)
 		{
-			TexturePtr clouds;
-			if (App::GetSubmodule<TextureImporter>()->LoadTexture(info->GetUID(), clouds))
-			{
-				m_pCloudsMapTexture = clouds->GetRHI();
-			}
+			const std::string path = "Textures/CloudsMap.png";
 
+			if (auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(path))
+			{
+				App::GetSubmodule<TextureImporter>()->LoadTexture(info->GetUID(), m_clouds);
+			}
+		}
+		
+		m_pCloudsMapTexture = m_clouds->GetRHI();
+
+		if(!m_pCloudsMapTexture)
+		{
 			return;
 		}
 	}
@@ -284,7 +288,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseHigh();
-					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
+			AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -298,7 +302,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseLow();
-					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
+			AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
 				})->Run();
 
 				bShouldReturn = true;

@@ -148,6 +148,7 @@ namespace Sailor::Framegraph
 
 		RHI::RHIMeshPtr m_starsMesh{};
 
+		TexturePtr m_clouds{};
 		Tasks::ITaskPtr m_createNoiseLow{};
 		Tasks::ITaskPtr m_createNoiseHigh{};
 
