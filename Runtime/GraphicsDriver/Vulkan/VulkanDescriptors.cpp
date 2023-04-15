@@ -48,6 +48,27 @@ void VulkanDescriptorSetLayout::Compile()
 	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings.Num();
 	layoutInfo.pBindings = m_descriptorSetLayoutBindings.GetData();
 
+	layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+
+	const VkDescriptorBindingFlags flag =
+		//VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |
+		VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+		VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+		VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+
+	TVector<VkDescriptorBindingFlags> flags(layoutInfo.bindingCount);
+
+	for (auto& f : flags)
+	{
+		f = flag;
+	}
+
+	VkDescriptorSetLayoutBindingFlagsCreateInfoEXT bindingFlags = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
+	bindingFlags.bindingCount = layoutInfo.bindingCount;
+	bindingFlags.pBindingFlags = flags.GetData();
+
+	layoutInfo.pNext = &bindingFlags;
+
 	VK_CHECK(vkCreateDescriptorSetLayout(*m_device, &layoutInfo, nullptr, &m_descriptorSetLayout));
 }
 
@@ -69,7 +90,7 @@ VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t max
 	poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.Num());
 	poolInfo.pPoolSizes = descriptorPoolSizes.GetData();
 	poolInfo.maxSets = maxSets;
-	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT | VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
 	poolInfo.pNext = nullptr;
 
 	VK_CHECK(vkCreateDescriptorPool(*m_device, &poolInfo, nullptr, &m_descriptorPool));
@@ -119,8 +140,6 @@ void VulkanDescriptorSet::UpdateDescriptor(uint32_t index)
 
 	m_descriptors[index]->Apply(descriptorWrite);
 	descriptorWrite.dstSet = m_descriptorSet;
-
-	RecalculateCompatibility();
 	vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
 }
 

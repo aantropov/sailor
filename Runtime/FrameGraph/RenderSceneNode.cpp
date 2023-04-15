@@ -9,6 +9,7 @@
 #include "RHI/Batch.hpp"
 #include "RHI/VertexDescription.h"
 #include "RHI/CommandList.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -133,9 +134,10 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	const auto viewport = glm::ivec4(0, colorAttachment->GetTarget()->GetExtent().y, colorAttachment->GetTarget()->GetExtent().x, -colorAttachment->GetTarget()->GetExtent().y);
 	const auto scissor = glm::uvec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y);
 
+	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
 	{
-		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings() });
+		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), textureSamplers });
 		return sets;
 	};
 

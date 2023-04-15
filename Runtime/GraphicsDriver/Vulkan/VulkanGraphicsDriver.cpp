@@ -374,7 +374,7 @@ void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std:
 		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER,
 			(uint64_t)(VkCommandBuffer)*cmdList->m_vulkan.m_commandBuffer,
 			"Command List " + name);
-}
+	}
 	else if (auto sampler = resource.DynamicCast<VulkanSampler>())
 	{
 		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER,
@@ -1324,25 +1324,47 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 
 	if (index != -1)
 	{
+		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);		
+
 		if (bindings->m_vulkan.m_descriptorSet != nullptr)
 		{
-			auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
-			auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [=](const VulkanDescriptorPtr& descriptor)
-				{
-					return descriptor->GetBinding() == layoutBindings[index].m_binding && descriptor->GetArrayElement() == dstArrayElement;
-				});
+			auto cmpFunc = [=](const VulkanDescriptorPtr& descriptor)
+			{
+				return descriptor->GetBinding() == layoutBindings[index].m_binding && descriptor->GetArrayElement() == dstArrayElement;
+			};
 
-			if (descrIt != descriptors.end())
+			auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
+
+			uint32_t arrayIndex = dstArrayElement;
+			bool bFound = false;
+
+			// Firstly we fast check by index, 95% that we hit
+			if (dstArrayElement < descriptors.Num() && cmpFunc(descriptors[dstArrayElement]))
+			{
+				bFound = true;
+			}
+			else
+			{
+				auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), cmpFunc);
+				if (descrIt != descriptors.end())
+				{
+					arrayIndex = (uint32_t)(descrIt - descriptors.begin());
+					bFound = true;
+				}
+			}
+
+			if (bFound)
 			{
 				// Should we fully recreate descriptorSet to avoid race condition?
-				//UpdateDescriptorSet(material);
+				textureBinding->SetTextureBinding(dstArrayElement, value);
+				
+				descriptors[arrayIndex] = VulkanDescriptorCombinedImagePtr::Make(layoutBindings[index].m_binding,
+					dstArrayElement,
+					device->GetSamplers()->GetSampler(value->GetFiltration(), value->GetClamping(), value->HasMipMaps()),
+					value->m_vulkan.m_imageView);
 
-				auto descriptor = (*descrIt).DynamicCast<VulkanDescriptorCombinedImage>();
-				descriptor->SetImageView(value->m_vulkan.m_imageView);
-
-				uint32_t dstArrayElement = (uint32_t)(descrIt - descriptors.begin());
-				bindings->m_vulkan.m_descriptorSet->UpdateDescriptor(dstArrayElement);
-
+				bindings->m_vulkan.m_descriptorSet->UpdateDescriptor(arrayIndex);
+				bindings->RecalculateCompatibility();
 				return;
 			}
 		}
@@ -1350,7 +1372,6 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		// Add new texture binding
 		check(dstArrayElement == 0);
 
-		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
 		textureBinding->SetTextureBindings({ value });
 		textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layoutBindings[index].m_binding, (VkDescriptorType)layoutBindings[index].m_type);
 		textureBinding->SetLayout(layoutBindings[index]);
@@ -1633,7 +1654,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 
 		VkClearValue clearValue;
 		clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
-		clearValue.depthStencil = {clearDepth, 0};// VulkanApi::DefaultClearDepthStencilValue;
+		clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
 
 		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
 		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
@@ -1687,7 +1708,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 
 	VkClearValue clearValue;
 	clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
-	clearValue.depthStencil = {clearDepth, 0};// VulkanApi::DefaultClearDepthStencilValue;
+	clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
 		depthStencilAttachment->m_vulkan.m_imageView,
@@ -2126,8 +2147,8 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 		{
 			break;
 		}
-		
-		const auto& materialLayout = layout->m_descriptionSetLayouts[i];		
+
+		const auto& materialLayout = layout->m_descriptionSetLayouts[i];
 
 		if (bIsCompatible[i])
 		{
@@ -2158,11 +2179,11 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 			if (binding.m_second->IsBind())
 			{
 				if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
-					[&](const auto& lhs) 
+					[&](const auto& lhs)
 					{
 						auto& layout = binding.m_second->GetLayout();
-						const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
-						return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
+				const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
+				return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
 					)
 				{
 					// We don't add extra bindings 
@@ -2234,7 +2255,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 				if (!bindings.ContainsIf([&](const auto& lhs)
 					{
 						auto& layout = lhs->GetLayout();
-						return descrSetLayoutBinding.binding == layout.m_binding;
+				return descrSetLayoutBinding.binding == layout.m_binding;
 					}))
 				{
 					// Check that bound map is Cubemap
@@ -2242,7 +2263,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 					const bool bIsCubemap = index != -1 ? layout->GetShaderLayout()[index].IsCubemap() : false;
 
 					if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler)
-					{						
+					{
 						auto descr = VulkanDescriptorCombinedImagePtr::Make(descrSetLayoutBinding.binding, 0,
 							device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false),
 							bIsCubemap ? m_vkDefaultCubemap : m_vkDefaultTexture);
@@ -2319,6 +2340,8 @@ VulkanGraphicsDriver::CachedDescriptorSet::CachedDescriptorSet(const VulkanPipel
 
 void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material->m_vulkan.m_pipeline->m_layout, bindings);
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets, VK_PIPELINE_BIND_POINT_GRAPHICS);
 

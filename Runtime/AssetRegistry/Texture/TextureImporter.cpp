@@ -31,7 +31,7 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 	
 	auto& driver = RHI::Renderer::GetDriver();
 
-	m_bindlessShaderBindings = driver->CreateShaderBindings();
+	m_textureSamplersBindings = driver->CreateShaderBindings();
 
 	TVector<RHI::RHITexturePtr> defaultTextures(MaxTexturesInScene);
 	for (auto& t : defaultTextures)
@@ -39,8 +39,8 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 		t = driver->GetDefaultTexture();
 	}
 
-	auto textures = driver->AddSamplerToShaderBindings(m_bindlessShaderBindings, "textures", defaultTextures, 0);
-	m_bindlessShaderBindings->RecalculateCompatibility();
+	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers", defaultTextures, 0);
+	m_textureSamplersBindings->RecalculateCompatibility();
 }
 
 TextureImporter::~TextureImporter()
@@ -97,19 +97,12 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 						
+						size_t index = m_textureSamplersIndices[assetInfo->GetUID()];
+						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
 						return true;
 					}
 					return false;
-				}, Tasks::EThreadType::RHI)->Then<TexturePtr, bool>([pTexture, assetInfo, this](bool bImported) mutable
-					{
-						if (bImported)
-						{
-							size_t index = m_bindlessTextures[assetInfo->GetUID()];
-							RHI::Renderer::GetDriver()->UpdateShaderBinding(m_bindlessShaderBindings, "textures", pTexture->m_rhiTexture, (uint32_t)index);
-						}
-
-						return pTexture;
-					}, "Update bindless texture array", Tasks::EThreadType::Render)->Run();
+				}, Tasks::EThreadType::RHI)->Run();
 
 				pTexture->TraceHotReload(newPromise);
 		}
@@ -244,20 +237,14 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 							assetInfo->ShouldSupportStorageBinding() ? (TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) : TextureImporter::DefaultTextureUsage);
 
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
+
+						size_t index = m_textureSamplersCurrentIndex++;
+						m_textureSamplersIndices[assetInfo->GetUID()] = index;
+						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
 					}
 
 					return pTexture;
-				}, "Create RHI Texture", Tasks::EThreadType::RHI)->Then<TexturePtr, TexturePtr>([assetInfo, this](TexturePtr pTexture) mutable
-					{
-						if (pTexture->m_rhiTexture)
-						{
-							size_t index = bindlessTextureIndex++;
-							m_bindlessTextures[assetInfo->GetUID()] = index;
-							RHI::Renderer::GetDriver()->UpdateShaderBinding(m_bindlessShaderBindings, "textures", pTexture->m_rhiTexture, (uint32_t)index);
-						}
-
-						return pTexture;
-					}, "Update bindless texture array", Tasks::EThreadType::Render)->ToTaskWithResult();
+				}, "Create RHI texture", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
 				outTexture = m_loadedTextures[uid] = pTexture;
 

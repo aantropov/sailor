@@ -45,6 +45,11 @@ glslVertex: |
     float metallic;
     float roughness;
     float ao;
+    
+    uint albedoSampler;
+    uint metalnessSampler;
+    uint normalSampler;
+    uint roughnessSampler;
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -94,10 +99,12 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
-  layout(set=3, binding=1) uniform sampler2D albedoSampler;
-  layout(set=3, binding=2) uniform sampler2D metalnessSampler;
-  layout(set=3, binding=3) uniform sampler2D normalSampler;
-  layout(set=3, binding=4) uniform sampler2D roughnessSampler;
+  //layout(set=3, binding=1) uniform sampler2D albedoSampler;
+  //layout(set=3, binding=2) uniform sampler2D metalnessSampler;
+  //layout(set=3, binding=3) uniform sampler2D normalSampler;
+  //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
+  
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
   
   void main() 
   {
@@ -145,6 +152,11 @@ glslFragment: |
     float metallic;
     float roughness;
     float ao;
+    
+    uint albedoSampler;
+    uint metalnessSampler;
+    uint normalSampler;
+    uint roughnessSampler;
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -194,10 +206,12 @@ glslFragment: |
       MaterialData instance[];
   } material;
   
-  layout(set=3, binding=1) uniform sampler2D albedoSampler;
-  layout(set=3, binding=2) uniform sampler2D metalnessSampler;
-  layout(set=3, binding=3) uniform sampler2D normalSampler;
-  layout(set=3, binding=4) uniform sampler2D roughnessSampler;
+  //layout(set=3, binding=1) uniform sampler2D albedoSampler;
+  //layout(set=3, binding=2) uniform sampler2D metalnessSampler;
+  //layout(set=3, binding=3) uniform sampler2D normalSampler;
+  //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
+  
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
   
   MaterialData GetMaterialData()
   {
@@ -345,11 +359,11 @@ glslFragment: |
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
     
     MaterialData material = GetMaterialData();
-    material.albedo = material.albedo * texture(albedoSampler, vin.texcoord) * vin.color;
-    material.metallic = material.metallic * texture(metalnessSampler, vin.texcoord).r;
-    material.roughness = material.roughness * texture(roughnessSampler, vin.texcoord).r;
+    material.albedo = material.albedo * texture(textureSamplers[material.albedoSampler], vin.texcoord) * vin.color;
+    material.metallic = material.metallic * texture(textureSamplers[material.metalnessSampler], vin.texcoord).r;
+    material.roughness = material.roughness * texture(textureSamplers[material.roughnessSampler], vin.texcoord).r;
     
-    vec3 normal = normalize(2.0 * texture(normalSampler, vin.texcoord).rgb - 1.0);    
+    vec3 normal = normalize(2.0 * texture(textureSamplers[material.normalSampler], vin.texcoord).rgb - 1.0);    
     normal = normalize(vin.tangentBasis * normal);
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);

@@ -137,7 +137,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 				//Relax the interface matching rules to allow a larger output vector to match with a smaller input vector, with additional values being discarded.
 				VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
 				VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-				VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME
+				VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME,
+
+				VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
 
 				// For some reasons on some video cards that is not supported for debug configuration (debug layer collisions?)
 				//, VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME 

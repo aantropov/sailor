@@ -364,11 +364,11 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 	auto descriptorSizes = TVector
 	{
-		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4096),
-		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4096)
+		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16536),
+		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16536)
 	};
 
-	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 1024, descriptorSizes);
+	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 2048, descriptorSizes);
 
 	context->m_stagingBufferAllocator = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 1024 * 512, 2 * 1024 * 1024);
 	context->m_stagingBufferAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
@@ -479,9 +479,21 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
 	createInfo.pEnabledFeatures = VK_NULL_HANDLE;
 
+	VkPhysicalDeviceVulkan12Features core12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+	core12.descriptorBindingPartiallyBound = VK_TRUE;
+	core12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+	core12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+	core12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
+	core12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
+
+	core12.descriptorBindingVariableDescriptorCount = VK_TRUE;
+	core12.descriptorIndexing = VK_TRUE;
+	core12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+	core12.pNext = &dynamicRenderingFeature;
+
 	VkPhysicalDeviceVulkan11Features core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	core11.shaderDrawParameters = true;
-	core11.pNext = &dynamicRenderingFeature;
+	core11.pNext = &core12;
 
 	VkPhysicalDeviceSynchronization2Features deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES };
 	deviceFeatures2.synchronization2 = VK_TRUE;

@@ -425,6 +425,8 @@ void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer, uint32_t 
 
 void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet, VkPipelineBindPoint bindPoint)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	VkDescriptorSet* sets = reinterpret_cast<VkDescriptorSet*>(_malloca(descriptorSet.Num() * sizeof(VkDescriptorSet)));
 
 	for (int i = 0; i < descriptorSet.Num(); i++)

@@ -151,9 +151,22 @@ void Material::UpdateRHIResource()
 	SAILOR_PROFILE_BLOCK("Update samplers");
 	for (auto& sampler : m_samplers)
 	{
+		// The sampler could be bound directly to 'sampler2D' by its name
 		if (m_commonShaderBindings->HasBinding(sampler.m_first))
 		{
 			RHI::Renderer::GetDriver()->UpdateShaderBinding(m_commonShaderBindings, sampler.m_first, sampler.m_second->GetRHI());
+		}
+
+		const std::string parameterName = "material." + sampler.m_first;
+
+		// Also the sampler could be bound by texture array, by its name
+		if (m_commonShaderBindings->HasParameter(parameterName))
+		{
+			std::string outBinding;
+			std::string outVariable;
+
+			RHI::RHIShaderBindingSet::ParseParameter(parameterName, outBinding, outVariable);
+			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 		}
 	}
 	SAILOR_PROFILE_END_BLOCK();
@@ -220,6 +233,23 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 
 			const float value = uniform.m_second;
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
+		}
+	}
+
+	for (auto& sampler : m_samplers)
+	{
+		const std::string parameterName = "material." + sampler.m_first;
+
+		if (m_commonShaderBindings->HasParameter(parameterName))
+		{
+			std::string outBinding;
+			std::string outVariable;
+
+			RHI::RHIShaderBindingSet::ParseParameter(parameterName, outBinding, outVariable);
+			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+
+			const uint32_t value = (uint32_t)App::GetSubmodule<TextureImporter>()->GetTextureIndex(sampler.m_second->GetUID());
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
 		}
 	}
