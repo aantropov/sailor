@@ -139,6 +139,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanDescriptorSetLayoutPtr m_setLayout;
 		TVector<VulkanDescriptorPtr> m_descriptors;
 
+		SAILOR_API void UpdateDescriptor(uint32_t index);
+
 		SAILOR_API virtual void Compile() override;
 		SAILOR_API virtual void Release() override;
 

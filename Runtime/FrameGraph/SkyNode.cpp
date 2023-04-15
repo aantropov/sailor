@@ -256,10 +256,12 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		if (auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(path))
 		{
 			TexturePtr clouds;
-			if (App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(info->GetUID(), clouds))
+			if (App::GetSubmodule<TextureImporter>()->LoadTexture(info->GetUID(), clouds))
 			{
 				m_pCloudsMapTexture = clouds->GetRHI();
 			}
+
+			return;
 		}
 	}
 

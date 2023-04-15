@@ -80,17 +80,16 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
 
 	// Calculate max anisotropy
-	VkPhysicalDeviceProperties properties{};
-
-	vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
-	m_maxAllowedAnisotropy = properties.limits.maxSamplerAnisotropy;
-	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts);
+	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProperties);
+	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(m_physicalDeviceProperties.limits.framebufferColorSampleCounts & m_physicalDeviceProperties.limits.framebufferDepthSampleCounts);
 	m_currentMsaaSamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMsaaSamples));
-	m_bSupportsMultiDrawIndirect = properties.limits.maxDrawIndirectCount > 1;
+	m_bSupportsMultiDrawIndirect = m_physicalDeviceProperties.limits.maxDrawIndirectCount > 1;
 
 	CreateLogicalDevice(m_physicalDevice);
-
-	SAILOR_LOG("m_maxAllowedAnisotropy = %.2f", m_maxAllowedAnisotropy);
+	
+	SAILOR_LOG("maxDescriptorSetSampledImages = %d", (int32_t)m_physicalDeviceProperties.limits.maxDescriptorSetSampledImages);
+	SAILOR_LOG("maxSamplerAnisotropy = %.2f", m_physicalDeviceProperties.limits.maxSamplerAnisotropy);
+	SAILOR_LOG("bufferImageGranularity = %d", (int32_t)m_physicalDeviceProperties.limits.bufferImageGranularity);
 	SAILOR_LOG("m_maxAllowedMSAASamples = %d, requestedMSAASamples = %d", m_maxAllowedMsaaSamples, m_currentMsaaSamples);
 	SAILOR_LOG("m_bSupportsMultiDrawIndirect = %d", (int32_t)m_bSupportsMultiDrawIndirect);
 
@@ -100,9 +99,6 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 
 	// Cache memory requirements
 	{
-		m_minStorageBufferOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment;
-		m_minUboOffsetAlignment = properties.limits.minUniformBufferOffsetAlignment;
-		properties.limits.optimalBufferCopyOffsetAlignment;
 		VulkanBufferPtr stagingBuffer = VulkanBufferPtr::Make(VulkanDevicePtr(this),
 			1024,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,

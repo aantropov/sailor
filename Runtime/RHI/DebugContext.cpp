@@ -145,10 +145,10 @@ void DebugContext::DrawFrustum(const Math::Frustum& frustum, const glm::vec4 col
 	DrawLine(corners[6], corners[7], color, duration);
 	DrawLine(corners[7], corners[4], color, duration);
 
-	DrawLine(corners[0], corners[1], color, duration);
-	DrawLine(corners[1], corners[2], color, duration);
-	DrawLine(corners[2], corners[3], color, duration);
-	DrawLine(corners[3], corners[0], color, duration);
+	DrawLine(corners[0], corners[1], glm::vec4(1,1,1,1), duration);
+	DrawLine(corners[1], corners[2], glm::vec4(1,1,1,1), duration);
+	DrawLine(corners[2], corners[3], glm::vec4(1,1,1,1), duration);
+	DrawLine(corners[3], corners[0], glm::vec4(1,1,1,1), duration);
 
 	DrawLine(corners[4], corners[0], color, duration);
 	DrawLine(corners[5], corners[1], color, duration);
@@ -250,10 +250,10 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 		DrawLine(orthoCorners[6], orthoCorners[7], color, duration);
 		DrawLine(orthoCorners[7], orthoCorners[4], color, duration);
 
-		DrawLine(orthoCorners[0], orthoCorners[1], glm::vec4(1, 1, 1, 1), duration);
-		DrawLine(orthoCorners[1], orthoCorners[2], glm::vec4(1, 1, 1, 1), duration);
-		DrawLine(orthoCorners[2], orthoCorners[3], glm::vec4(1, 1, 1, 1), duration);
-		DrawLine(orthoCorners[3], orthoCorners[0], glm::vec4(1, 1, 1, 1), duration);
+		DrawLine(orthoCorners[0], orthoCorners[1], color, duration);
+		DrawLine(orthoCorners[1], orthoCorners[2], color, duration);
+		DrawLine(orthoCorners[2], orthoCorners[3], color, duration);
+		DrawLine(orthoCorners[3], orthoCorners[0], color, duration);
 
 		DrawLine(orthoCorners[4], orthoCorners[0], color, duration);
 		DrawLine(orthoCorners[5], orthoCorners[1], color, duration);

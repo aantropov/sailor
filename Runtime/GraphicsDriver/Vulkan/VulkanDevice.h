@@ -70,12 +70,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void FixLostDevice(const Win32::Window* pViewport);
 
 		SAILOR_API bool IsMultiDrawIndirectSupported() const { return m_bSupportsMultiDrawIndirect; };
-		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_maxAllowedAnisotropy; };
+		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_physicalDeviceProperties.limits.maxSamplerAnisotropy; };
 		SAILOR_API VkSampleCountFlagBits GetMaxAllowedMsaaSamples() const { return m_maxAllowedMsaaSamples; };
 		SAILOR_API VkSampleCountFlagBits GetCurrentMsaaSamples() const { return m_currentMsaaSamples; };
 		SAILOR_API const VkMemoryRequirements& GetMemoryRequirements_StagingBuffer() const { return m_memoryRequirements_StagingBuffer; }
-		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_minUboOffsetAlignment; }
-		SAILOR_API const VkDeviceSize& GetMinSsboOffsetAlignment() const { return m_minStorageBufferOffsetAlignment; }
+		SAILOR_API const VkDeviceSize& GetMinUboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minUniformBufferOffsetAlignment; }
+		SAILOR_API const VkDeviceSize& GetMinSsboOffsetAlignment() const { return m_physicalDeviceProperties.limits.minStorageBufferOffsetAlignment; }
+		SAILOR_API const VkDeviceSize& GetBufferImageGranuality() const { return m_physicalDeviceProperties.limits.bufferImageGranularity; }
 
 		template<typename TData>
 		VkDeviceSize GetUboOffsetAlignment() const
@@ -86,9 +87,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkDeviceSize GetUboOffsetAlignment(size_t size) const
 		{
 			VkDeviceSize dynamicAlignment = size;
-			if (m_minUboOffsetAlignment > 0)
+			const VkDeviceSize& uboOffsetAlignment = GetMinUboOffsetAlignment();
+			if (uboOffsetAlignment > 0)
 			{
-				dynamicAlignment = (dynamicAlignment + m_minUboOffsetAlignment - 1) & ~(m_minUboOffsetAlignment - 1);
+				dynamicAlignment = (dynamicAlignment + uboOffsetAlignment - 1) & ~(uboOffsetAlignment - 1);
 			}
 
 			return dynamicAlignment;
@@ -97,9 +99,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkDeviceSize GetSsboOffsetAlignment(size_t size) const
 		{
 			VkDeviceSize dynamicAlignment = size;
-			if (m_minStorageBufferOffsetAlignment > 0)
+			const VkDeviceSize& ssbboOffsetAlignment = GetMinSsboOffsetAlignment();
+			if (ssbboOffsetAlignment > 0)
 			{
-				dynamicAlignment = (dynamicAlignment + m_minStorageBufferOffsetAlignment - 1) & ~(m_minStorageBufferOffsetAlignment - 1);
+				dynamicAlignment = (dynamicAlignment + ssbboOffsetAlignment - 1) & ~(ssbboOffsetAlignment - 1);
 			}
 
 			return dynamicAlignment;
@@ -146,11 +149,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void CreateFrameSyncSemaphores();
 		SAILOR_API void CleanupSwapChain();
 
-		float m_maxAllowedAnisotropy = 0;
+		VkPhysicalDeviceProperties m_physicalDeviceProperties{};
 		VkSampleCountFlagBits m_maxAllowedMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
-		VkDeviceSize m_minUboOffsetAlignment = 1;
-		VkDeviceSize m_minStorageBufferOffsetAlignment = 1;
 		bool m_bSupportsMultiDrawIndirect = false;
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;

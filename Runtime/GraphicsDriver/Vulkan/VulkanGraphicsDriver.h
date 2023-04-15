@@ -109,7 +109,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShaderBindings, const TVector<RHI::RHIShaderPtr>& shaders, uint32_t setNum);
 
 		// Used for full binding update
-		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHI::RHITexturePtr value);
+		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHI::RHITexturePtr value, uint32_t dstArrayElement = 0);
 		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size);
 
 		// Begin Immediate context
@@ -261,8 +261,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
 
 		// The resources that are used as default
-		VulkanImageViewPtr m_defaultTexture;
-		VulkanImageViewPtr m_defaultCubemap;
+		VulkanImageViewPtr m_vkDefaultTexture;
+		VulkanImageViewPtr m_vkDefaultCubemap;
 
 		// Uniform buffers to store uniforms
 		TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;

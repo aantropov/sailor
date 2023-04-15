@@ -11,6 +11,7 @@
 #include "Tasks/Scheduler.h"
 #include "RHI/Texture.h"
 #include "RHI/Renderer.h"
+#include "RHI/Shader.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
@@ -27,6 +28,19 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 	SAILOR_PROFILE_FUNCTION();
 	m_allocator = ObjectAllocatorPtr::Make();
 	infoHandler->Subscribe(this);
+	
+	auto& driver = RHI::Renderer::GetDriver();
+
+	m_bindlessShaderBindings = driver->CreateShaderBindings();
+
+	TVector<RHI::RHITexturePtr> defaultTextures(MaxTexturesInScene);
+	for (auto& t : defaultTextures)
+	{
+		t = driver->GetDefaultTexture();
+	}
+
+	auto textures = driver->AddSamplerToShaderBindings(m_bindlessShaderBindings, "textures", defaultTextures, 0);
+	m_bindlessShaderBindings->RecalculateCompatibility();
 }
 
 TextureImporter::~TextureImporter()
@@ -68,27 +82,36 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 		{
 			auto newPromise = Tasks::Scheduler::CreateTaskWithResult<bool>("Update Texture",
 				[pTexture, assetInfo, this]() mutable
-			{
-				ByteCode decodedData;
-				int32_t width;
-				int32_t height;
-				uint32_t mipLevels;
-
-				if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
 				{
-					pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
-						mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
-						assetInfo->GetClamping(), 
-						assetInfo->ShouldSupportStorageBinding() ? TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit : TextureImporter::DefaultTextureUsage);
+					ByteCode decodedData;
+					int32_t width;
+					int32_t height;
+					uint32_t mipLevels;
 
-					RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
+					if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
+					{
+						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
+							mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
+							assetInfo->GetClamping(),
+							assetInfo->ShouldSupportStorageBinding() ? TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit : TextureImporter::DefaultTextureUsage);
 
-					return true;
-				}
-				return false;
-			}, Tasks::EThreadType::Render)->Run();
+						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
+						
+						return true;
+					}
+					return false;
+				}, Tasks::EThreadType::RHI)->Then<TexturePtr, bool>([pTexture, assetInfo, this](bool bImported) mutable
+					{
+						if (bImported)
+						{
+							size_t index = m_bindlessTextures[assetInfo->GetUID()];
+							RHI::Renderer::GetDriver()->UpdateShaderBinding(m_bindlessShaderBindings, "textures", pTexture->m_rhiTexture, (uint32_t)index);
+						}
 
-			pTexture->TraceHotReload(newPromise);
+						return pTexture;
+					}, "Update bindless texture array", Tasks::EThreadType::Render)->Run();
+
+				pTexture->TraceHotReload(newPromise);
 		}
 	}
 }
@@ -113,7 +136,7 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 
 		if (stbi_is_hdr(filepath.c_str()))
 		{
-			if(float* pixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			if (float* pixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
 			{
 				const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
 				decodedData.Resize(imageSize);
@@ -201,38 +224,48 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 
 		newPromise = Tasks::Scheduler::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
 			[pTexture, assetInfo, this]() mutable
-		{
-			TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-			pData->bIsImported = ImportTexture(assetInfo->GetUID(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
-
-			if (!pData->bIsImported)
 			{
-				SAILOR_LOG("Cannot Load texture: %s, with uid: %s", assetInfo->GetAssetFilepath().c_str(), assetInfo->GetUID().ToString().c_str());
-			}
+				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
+				pData->bIsImported = ImportTexture(assetInfo->GetUID(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
 
-			return pData;
-		})->Then<TexturePtr, TSharedPtr<Data>>([pTexture, assetInfo, this](TSharedPtr<Data> data) mutable
-		{
-			if (data->bIsImported && data->decodedData.Num() > 0)
-			{
-				pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data->decodedData[0], data->decodedData.Num(), glm::vec3(data->width, data->height, 1.0f),
-					data->mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
-					assetInfo->GetClamping(), 
-					assetInfo->ShouldSupportStorageBinding() ? (TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) : TextureImporter::DefaultTextureUsage);
+				if (!pData->bIsImported)
+				{
+					SAILOR_LOG("Cannot Load texture: %s, with uid: %s", assetInfo->GetAssetFilepath().c_str(), assetInfo->GetUID().ToString().c_str());
+				}
 
-				RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
-			}
+				return pData;
+			})->Then<TexturePtr, TSharedPtr<Data>>([pTexture, assetInfo, this](TSharedPtr<Data> data) mutable
+				{
+					if (data->bIsImported && data->decodedData.Num() > 0)
+					{
+						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data->decodedData[0], data->decodedData.Num(), glm::vec3(data->width, data->height, 1.0f),
+							data->mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
+							assetInfo->GetClamping(),
+							assetInfo->ShouldSupportStorageBinding() ? (TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) : TextureImporter::DefaultTextureUsage);
 
-			return pTexture;
-		}, "Create RHI Texture", Tasks::EThreadType::RHI)->ToTaskWithResult();
+						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
+					}
 
-		outTexture = m_loadedTextures[uid] = pTexture;
+					return pTexture;
+				}, "Create RHI Texture", Tasks::EThreadType::RHI)->Then<TexturePtr, TexturePtr>([assetInfo, this](TexturePtr pTexture) mutable
+					{
+						if (pTexture->m_rhiTexture)
+						{
+							size_t index = bindlessTextureIndex++;
+							m_bindlessTextures[assetInfo->GetUID()] = index;
+							RHI::Renderer::GetDriver()->UpdateShaderBinding(m_bindlessShaderBindings, "textures", pTexture->m_rhiTexture, (uint32_t)index);
+						}
 
-		newPromise->Run();
-		promise = newPromise;
-		m_promises.Unlock(uid);
+						return pTexture;
+					}, "Update bindless texture array", Tasks::EThreadType::Render)->ToTaskWithResult();
 
-		return promise;
+				outTexture = m_loadedTextures[uid] = pTexture;
+
+				newPromise->Run();
+				promise = newPromise;
+				m_promises.Unlock(uid);
+
+				return promise;
 	}
 
 	m_promises.Unlock(uid);

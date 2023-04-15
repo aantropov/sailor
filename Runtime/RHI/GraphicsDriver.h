@@ -147,7 +147,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual bool FillShadersLayout(RHI::RHIShaderBindingSetPtr& pShaderBindings, const TVector<RHIShaderPtr>& shaders, uint32_t setNum) = 0;
 
 		// Used for full binding update
-		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value) = 0;
+		SAILOR_API virtual void UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, RHITexturePtr value, uint32_t index = 0) = 0;
 
 		// Used only for static vertex types
 		template<typename TVertex>
@@ -167,6 +167,8 @@ namespace Sailor::RHI
 
 		SAILOR_API RHIVertexDescriptionPtr& GetOrAddVertexDescription(VertexAttributeBits bits);
 
+		RHI::RHITexturePtr GetDefaultTexture() { return m_defaultTexture; }
+
 		//Immediate context
 		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;
@@ -185,12 +187,13 @@ namespace Sailor::RHI
 			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 		//Immediate context
 
-
 		SAILOR_API virtual void CollectGarbage_RenderThread() = 0;
 		SAILOR_API void TrackResources_ThreadSafe();
 		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, RHIFencePtr handle);
 
 	protected:
+
+		RHI::RHITexturePtr m_defaultTexture;
 
 		SAILOR_API void TrackPendingCommandList_ThreadSafe(RHIFencePtr handle);
 

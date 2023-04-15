@@ -40,6 +40,9 @@ namespace Sailor
 	class TextureImporter final : public TSubmodule<TextureImporter>, public IAssetInfoHandlerListener
 	{
 	public:
+
+		const size_t MaxTexturesInScene = 1 << 18;
+
 		using ByteCode = TVector<uint8_t>;
 
 		static constexpr RHI::ETextureUsageFlags DefaultTextureUsage =
@@ -60,7 +63,15 @@ namespace Sailor
 		SAILOR_API Tasks::TaskPtr<TexturePtr> GetLoadPromise(UID uid);
 		SAILOR_API virtual void CollectGarbage() override;
 
+		SAILOR_API RHI::RHIShaderBindingSetPtr GetBindlessBindingSet() { return m_bindlessShaderBindings; }
+		SAILOR_API size_t GetBindlessIndex(UID uid) const { return m_bindlessTextures[uid]; }
+
 	protected:
+
+		// Bindless texture bindings
+		std::atomic<size_t> bindlessTextureIndex = 0;
+		RHI::RHIShaderBindingSetPtr m_bindlessShaderBindings{};
+		TConcurrentMap<UID, size_t> m_bindlessTextures{};
 
 		TConcurrentMap<UID, Tasks::TaskPtr<TexturePtr>> m_promises;
 		TConcurrentMap<UID, TexturePtr> m_loadedTextures;

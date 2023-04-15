@@ -113,6 +113,17 @@ void VulkanDescriptorSet::RecalculateCompatibility()
 	}
 }
 
+void VulkanDescriptorSet::UpdateDescriptor(uint32_t index)
+{
+	VkWriteDescriptorSet descriptorWrite;
+
+	m_descriptors[index]->Apply(descriptorWrite);
+	descriptorWrite.dstSet = m_descriptorSet;
+
+	RecalculateCompatibility();
+	vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
+}
+
 void VulkanDescriptorSet::Compile()
 {
 	if (!m_descriptorSet)

@@ -63,8 +63,13 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 		VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
 		6);
 
-	m_defaultTexture = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultImage, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
-	m_defaultCubemap = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultCubemap, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+	m_defaultTexture = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
+
+	m_vkDefaultTexture = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultImage, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+	m_vkDefaultCubemap = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultCubemap, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+
+	m_defaultTexture->m_vulkan.m_image = defaultImage;
+	m_defaultTexture->m_vulkan.m_imageView = m_vkDefaultTexture;
 }
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
@@ -75,7 +80,8 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	m_backBuffer.Clear();
 	m_depthStencilBuffer.Clear();
 	m_defaultTexture.Clear();
-	m_defaultCubemap.Clear();
+	m_vkDefaultTexture.Clear();
+	m_vkDefaultCubemap.Clear();
 
 	TrackResources_ThreadSafe();
 
@@ -1268,7 +1274,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 
 	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type, layout.m_arrayCount);
-	binding->SetTextureBinding(array);
+	binding->SetTextureBindings(array);
 
 	pShaderBindings->UpdateLayoutShaderBinding(layout);
 	UpdateDescriptorSet(pShaderBindings);
@@ -1296,7 +1302,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(R
 
 	binding->SetLayout(layout);
 	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type, layout.m_arrayCount);
-	binding->SetTextureBinding(array);
+	binding->SetTextureBindings(array);
 
 	pShaderBindings->UpdateLayoutShaderBinding(layout);
 	UpdateDescriptorSet(pShaderBindings);
@@ -1304,7 +1310,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(R
 	return binding;
 }
 
-void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, RHI::RHITexturePtr value)
+void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, RHI::RHITexturePtr value, uint32_t dstArrayElement)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -1323,7 +1329,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 			auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
 			auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), [=](const VulkanDescriptorPtr& descriptor)
 				{
-					return descriptor->GetBinding() == layoutBindings[index].m_binding;
+					return descriptor->GetBinding() == layoutBindings[index].m_binding && descriptor->GetArrayElement() == dstArrayElement;
 				});
 
 			if (descrIt != descriptors.end())
@@ -1333,15 +1339,19 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 
 				auto descriptor = (*descrIt).DynamicCast<VulkanDescriptorCombinedImage>();
 				descriptor->SetImageView(value->m_vulkan.m_imageView);
-				bindings->m_vulkan.m_descriptorSet->Compile();
+
+				uint32_t dstArrayElement = (uint32_t)(descrIt - descriptors.begin());
+				bindings->m_vulkan.m_descriptorSet->UpdateDescriptor(dstArrayElement);
 
 				return;
 			}
 		}
 
 		// Add new texture binding
+		check(dstArrayElement == 0);
+
 		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
-		textureBinding->SetTextureBinding({ value });
+		textureBinding->SetTextureBindings({ value });
 		textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layoutBindings[index].m_binding, (VkDescriptorType)layoutBindings[index].m_type);
 		textureBinding->SetLayout(layoutBindings[index]);
 		UpdateDescriptorSet(bindings);
@@ -2235,12 +2245,12 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 					{						
 						auto descr = VulkanDescriptorCombinedImagePtr::Make(descrSetLayoutBinding.binding, 0,
 							device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false),
-							bIsCubemap ? m_defaultCubemap : m_defaultTexture);
+							bIsCubemap ? m_vkDefaultCubemap : m_vkDefaultTexture);
 						descriptors.Add(descr);
 					}
 					else if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage)
 					{
-						auto descr = VulkanDescriptorStorageImagePtr::Make(descrSetLayoutBinding.binding, 0, bIsCubemap ? m_defaultCubemap : m_defaultTexture);
+						auto descr = VulkanDescriptorStorageImagePtr::Make(descrSetLayoutBinding.binding, 0, bIsCubemap ? m_vkDefaultCubemap : m_vkDefaultTexture);
 						descriptors.Add(descr);
 					}
 

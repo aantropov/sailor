@@ -65,7 +65,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			char csmDebugName[64];
 			sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
-			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(4096, 4096), 1, RHI::EFormat::D32_SFLOAT, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
+			m_csmShadowMaps.Add(driver->CreateRenderTarget(glm::ivec2(4096, 4096), 1, RHI::EFormat::D16_UNORM, ETextureFiltration::Linear, ETextureClamping::Clamp, usage));
 			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 		}
 
@@ -86,7 +86,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	uint32_t numMeshes = 0;
 
 	SAILOR_PROFILE_BLOCK("Filter sceneView by tag");
-	for (auto& proxy : sceneView.m_csmMeshLists[0][0])
+	for (auto& proxy : sceneView.m_proxies)
 	{
 		for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 		{

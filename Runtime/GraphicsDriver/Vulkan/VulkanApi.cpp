@@ -882,7 +882,11 @@ VulkanImagePtr VulkanApi::CreateImage(
 
 	outImage->Compile();
 
-	const auto requirements = outImage->GetMemoryRequirements();
+	auto requirements = outImage->GetMemoryRequirements();
+	
+	// We must respect bufferImageGranuality
+	//requirements.size += device->GetBufferImageGranuality();
+	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
 
 	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
 	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
@@ -942,7 +946,11 @@ VulkanImagePtr VulkanApi::CreateImage(
 
 	outImage->Compile();
 
-	const auto requirements = outImage->GetMemoryRequirements();
+	auto requirements = outImage->GetMemoryRequirements();
+	
+	// We must respect bufferImageGranuality
+	//requirements.size += device->GetBufferImageGranuality();
+	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
 
 	auto& imageMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), requirements);
 	auto data = imageMemoryAllocator.Allocate(requirements.size, requirements.alignment);
