@@ -183,15 +183,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 	if (textureIt != m_loadedTextures.end())
 	{
 		outTexture = (*textureIt).m_second;
-		if (newPromise != nullptr)
-		{
-			if (!newPromise)
-			{
-				return Tasks::TaskPtr<TexturePtr>::Make(outTexture);
-			}
-
-			return newPromise;
-		}
+		return newPromise ? newPromise : Tasks::TaskPtr<TexturePtr>::Make(outTexture);
 	}
 
 	auto& promise = m_promises.At_Lock(uid, nullptr);

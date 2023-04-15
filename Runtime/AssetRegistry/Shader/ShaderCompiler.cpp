@@ -646,15 +646,7 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& o
 			if (shaderIt != allLoadedPermutations.end())
 			{
 				outShader = (*shaderIt).m_second;
-				if (newPromise != nullptr)
-				{
-					if (!newPromise)
-					{
-						return Tasks::TaskPtr<ShaderSetPtr>::Make(outShader);
-					}
-
-					return newPromise;
-				}
+				return newPromise ? newPromise : Tasks::TaskPtr<ShaderSetPtr>::Make(outShader);
 			}
 		}
 

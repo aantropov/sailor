@@ -366,15 +366,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 	{
 		outModel = (*modelIt).m_second;
 
-		if (newPromise != nullptr)
-		{
-			if (!newPromise)
-			{
-				return Tasks::TaskPtr<ModelPtr>::Make(outModel);
-			}
-
-			return newPromise;
-		}
+		return newPromise ? newPromise : Tasks::TaskPtr<ModelPtr>::Make(outModel);
 	}
 
 	auto& promise = m_promises.At_Lock(uid, nullptr);

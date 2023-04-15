@@ -596,15 +596,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 	{
 		outMaterial = (*materialIt).m_second;
 
-		if (newPromise != nullptr)
-		{
-			if (!newPromise)
-			{
-				return Tasks::TaskPtr<MaterialPtr>::Make(outMaterial);
-			}
-
-			return newPromise;
-		}
+		return newPromise ? newPromise : Tasks::TaskPtr<MaterialPtr>::Make(outMaterial);
 	}
 
 	auto& promise = m_promises.At_Lock(uid, nullptr);
