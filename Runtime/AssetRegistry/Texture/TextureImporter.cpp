@@ -39,6 +39,8 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 		t = driver->GetDefaultTexture();
 	}
 
+	m_textureSamplersCurrentIndex = 1;
+
 	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers", defaultTextures, 0);
 	m_textureSamplersBindings->RecalculateCompatibility();
 }
