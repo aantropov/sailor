@@ -288,7 +288,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseHigh();
-			AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
+					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -302,7 +302,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseLow();
-			AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
+					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
 				})->Run();
 
 				bShouldReturn = true;
@@ -436,8 +436,11 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		auto noise = frameGraph->GetSampler("g_noiseSampler");
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "g_noiseSampler", noise, 8);
 
+		auto linearDepth = GetResolvedAttachment("linearDepth");
+		driver->AddSamplerToShaderBindings(m_pShaderBindings, "linearDepth", linearDepth, 9);
+
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
-		RenderState renderState{ false, false, 0, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
+		RenderState renderState{ false, false, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_pSkyMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSkyShader, m_pShaderBindings);
 		m_pSunMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pSunShader, m_pShaderBindings);
 		m_pComposeMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pComposeShader, m_pShaderBindings);

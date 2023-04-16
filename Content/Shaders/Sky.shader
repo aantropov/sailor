@@ -99,6 +99,7 @@ glslFragment: |
   layout(set=1, binding=5) uniform sampler3D cloudsNoiseHighSampler;
   layout(set=1, binding=7) uniform sampler2D g_ditherPatternSampler;
   layout(set=1, binding=8) uniform sampler2D g_noiseSampler;
+  layout(set=1, binding=9) uniform sampler2D linearDepth;  
   #endif
   
   layout(location = 0) in vec2 fragTexcoord;
@@ -582,7 +583,6 @@ glslFragment: |
        }
 
     #elif defined(CLOUDS)
-    
       #if defined(DITHER)
        vec2 ditherUv = vec2(mod(gl_FragCoord.x, 4), mod(gl_FragCoord.y, 4)) / 4.0f;
        
@@ -592,6 +592,13 @@ glslFragment: |
            discard;
        }
       #endif
+      
+       float linearDepth = abs(texture(linearDepth, fragTexcoord.xy).r);
+       if(linearDepth < 20000.0f)
+       {
+          discard;
+       }
+       
        vec2 uv = fragTexcoord.xy;
        uv.y = 1 - uv.y;
        

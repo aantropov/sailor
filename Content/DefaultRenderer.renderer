@@ -101,6 +101,7 @@ frame:
 ############################
   renderTargets:
   - color: Sky
+  - linearDepth: LinearDepth
 
 ############################
 - name: Environment
