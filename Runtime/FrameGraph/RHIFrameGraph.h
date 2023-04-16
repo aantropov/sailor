@@ -12,6 +12,8 @@ namespace Sailor::RHI
 	{
 	public:
 
+		const uint32_t MaxRecordedCommands = 200;
+		const uint32_t MaxGpuCost = 650;
 
 		SAILOR_API RHIFrameGraph() = default;
 
@@ -40,7 +42,10 @@ namespace Sailor::RHI
 			m_values[name] = value;
 		}
 
-		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outTransferCommandLists, TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists);
+		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView, 
+			TVector<RHI::RHICommandListPtr>& outTransferCommandLists, 
+			TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists,
+			RHISemaphorePtr& outWaitSemaphore);
 
 		SAILOR_API void Clear();
 

@@ -72,11 +72,15 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
 }
 
-void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHICommandListPtr>& outTransferCommandLists, TVector<RHI::RHICommandListPtr>& outCommandLists)
+void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
+	TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
+	TVector<RHI::RHICommandListPtr>& outCommandLists,
+	RHISemaphorePtr& outWaitSemaphore)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
+	auto& driver = RHI::Renderer::GetDriver();
 	auto driverCommands = renderer->GetDriverCommands();
 
 	if (!m_postEffectPlane)
@@ -129,7 +133,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		}
 	}
 
-	if(bShouldRecalculateCompatibility)
+	if (bShouldRecalculateCompatibility)
 	{
 		rhiSceneView->m_rhiLightsData->RecalculateCompatibility();
 	}
@@ -137,11 +141,12 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
 		SAILOR_PROFILE_BLOCK("FrameGraph");
+
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, false);
 		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, true);
 
-		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "FrameGraph:Graphics");
-		RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "FrameGraph:Transfer");
+		driver->SetDebugName(cmdList, "FrameGraph:Graphics");
+		driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
 
 		driverCommands->BeginCommandList(cmdList, true);
 		driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
@@ -151,9 +156,82 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 
 		FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
 
+		RHI::RHISemaphorePtr chainSemaphore{};
+		
+		TVector<Tasks::ITaskPtr> tasks;
+		tasks.Reserve(2);
+
 		for (auto& node : m_graph)
 		{
 			node->Process(this, transferCmdList, cmdList, snapshot);
+
+			const uint32_t numRecordedCommands = transferCmdList->GetNumRecordedCommands() + cmdList->GetNumRecordedCommands();
+			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();
+			if (gpuCost > MaxGpuCost || numRecordedCommands > MaxRecordedCommands)
+			{
+				SAILOR_PROFILE_BLOCK("Chaining command lists");
+
+				driverCommands->EndDebugRegion(cmdList);
+				driverCommands->EndCommandList(cmdList);
+
+				driverCommands->EndDebugRegion(transferCmdList);
+				driverCommands->EndCommandList(transferCmdList);
+
+				// Create tasks
+				{
+					SAILOR_PROFILE_BLOCK("Create RHI submit cmd lists tasks");
+					RHI::RHISemaphorePtr newChainSemaphore = driver->CreateWaitSemaphore();
+
+					tasks.RemoveAll([](const auto& task) { return task == nullptr || task->IsFinished(); });
+
+					auto submitCmdList1 = Tasks::Scheduler::CreateTask("Submit chaining cmd lists",
+						[=]()
+						{
+							RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, RHIFencePtr::Make(), newChainSemaphore, chainSemaphore);
+						}, Tasks::EThreadType::RHI);
+						
+					if (tasks.Num() > 0)
+					{
+						submitCmdList1->Join(tasks[tasks.Num() - 1]);
+					}
+
+					submitCmdList1->Run();
+
+					chainSemaphore = driver->CreateWaitSemaphore();
+					
+					auto submitCmdList2 = Tasks::Scheduler::CreateTask("Submit chaining cmd lists",
+						[=]()
+						{
+							RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), chainSemaphore, newChainSemaphore);;
+						}, Tasks::EThreadType::RHI);
+
+					submitCmdList2->Join(submitCmdList1);
+					submitCmdList2->Run();
+
+					tasks.AddRange({ submitCmdList1, submitCmdList2 });
+					SAILOR_PROFILE_END_BLOCK();
+				}
+
+				// New command lists
+				{
+					SAILOR_PROFILE_BLOCK("Create new command lists");
+
+					cmdList = renderer->GetDriver()->CreateCommandList(false, false);
+					transferCmdList = renderer->GetDriver()->CreateCommandList(false, true);
+
+					driver->SetDebugName(cmdList, "FrameGraph:Graphics");
+					driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
+
+					driverCommands->BeginCommandList(cmdList, true);
+					driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
+
+					driverCommands->BeginCommandList(transferCmdList, true);
+					driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
+
+					SAILOR_PROFILE_END_BLOCK();
+				}
+				SAILOR_PROFILE_END_BLOCK();
+			}
 			//TODO: Submit Transfer command lists
 		}
 
@@ -164,6 +242,14 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView, TVector<RHI::RHIC
 		driverCommands->EndCommandList(transferCmdList);
 		SAILOR_PROFILE_END_BLOCK();
 
+		SAILOR_PROFILE_BLOCK("Wait for submitting of chaining command lists");
+		for (auto& task : tasks)
+		{
+			task->Wait();
+		}
+		SAILOR_PROFILE_END_BLOCK();
+
+		outWaitSemaphore = chainSemaphore;
 		outCommandLists.Emplace(std::move(cmdList));
 		outTransferCommandLists.Emplace(transferCmdList);
 	}

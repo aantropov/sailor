@@ -254,7 +254,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
 			rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-			rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists);
+
+			RHISemaphorePtr chainSemaphore{};
+			rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, chainSemaphore);
 
 			SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
 			for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
@@ -269,7 +271,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			for (auto& cmdList : transferCommandLists)
 			{
 				waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-				GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
+				GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1), chainSemaphore);
 			}
 
 			SAILOR_PROFILE_END_BLOCK();
