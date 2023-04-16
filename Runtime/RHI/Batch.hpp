@@ -37,8 +37,11 @@ namespace Sailor::RHI
 
 		size_t GetHash() const
 		{
+			const size_t renderStateHash = Sailor::GetHash(m_material->GetRenderState());
+			
 			size_t hash = m_material->GetBindings()->GetCompatibilityHashCode();
-			HashCombine(hash, m_mesh->m_vertexBuffer->GetCompatibilityHashCode(), m_mesh->m_indexBuffer->GetCompatibilityHashCode());
+
+			HashCombine(hash, m_mesh->m_vertexBuffer->GetCompatibilityHashCode(), m_mesh->m_indexBuffer->GetCompatibilityHashCode(), renderStateHash);
 			return hash;
 		}
 	};

@@ -80,6 +80,9 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 
 	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
 
+	m_numRecordedCommands = 0;
+	m_gpuCost = 0;
+
 	ClearDependencies();
 }
 
@@ -145,6 +148,9 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferMemoryPtr src, VulkanBufferMemo
 
 	m_bufferDependencies.Add(src.m_buffer);
 	m_bufferDependencies.Add(dst.m_buffer);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 3;
 }
 
 void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, VkDeviceSize srcOffset)
@@ -177,6 +183,9 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr 
 
 	m_bufferDependencies.Add(src);
 	m_imageDependencies.Add(image);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 10;
 }
 
 void VulkanCommandBuffer::EndCommandList()
@@ -381,6 +390,9 @@ void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, Vulkan
 void VulkanCommandBuffer::SetDepthBias(float depthBiasConstantFactor, float depthBiasClamp, float depthBiasSlopeFactor)
 {
 	vkCmdSetDepthBias(m_commandBuffer, depthBiasConstantFactor, depthBiasClamp, depthBiasSlopeFactor);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferMemoryPtr>& buffers, TVector<VkDeviceSize> offsets, uint32_t firstBinding, uint32_t bindingCount)
@@ -396,12 +408,18 @@ void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferMemoryPtr>
 	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
 
 	_freea(vertexBuffers);
+
+	m_numRecordedCommands++;
+	m_gpuCost += (uint32_t)buffers.Num();
 }
 
 void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferMemoryPtr indexBuffer)
 {
 	m_bufferDependencies.Add(indexBuffer.m_buffer);
 	vkCmdBindIndexBuffer(m_commandBuffer, *(indexBuffer.m_buffer), indexBuffer.m_offset, VK_INDEX_TYPE_UINT32);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferPtr>& buffers, const TVector<VkDeviceSize>& offsets, uint32_t firstBinding, uint32_t bindingCount)
@@ -415,12 +433,33 @@ void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferPtr>& buff
 	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
 	m_bufferDependencies.AddRange(buffers);
 	_freea(vertexBuffers);
+
+	m_numRecordedCommands++;
+	m_gpuCost += (uint32_t)buffers.Num();
 }
 
 void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer, uint32_t offset, bool bUint16InsteadOfUint32)
 {
 	m_bufferDependencies.Add(indexBuffer);
 	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, offset, bUint16InsteadOfUint32 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
+}
+
+void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, uint32_t binding, VulkanDescriptorSetPtr descriptorSet, VkPipelineBindPoint bindPoint)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	VkDescriptorSet set{};
+
+	set = *descriptorSet;
+	m_descriptorSetDependencies.Add(descriptorSet);
+
+	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, *pipelineLayout, binding, 1, &set, 0, nullptr);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet, VkPipelineBindPoint bindPoint)
@@ -437,10 +476,16 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 	}
 	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, *pipelineLayout, 0, (uint32_t)descriptorSet.Num(), &sets[0], 0, nullptr);
 	_freea(sets);
+
+	m_numRecordedCommands++;
+	m_gpuCost += (uint32_t)descriptorSet.Num();
 }
 
 bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration)
 {
+	m_numRecordedCommands++;
+	m_gpuCost += 24;
+
 	m_rhiDependecies.AddRange({ dst, src });
 
 	if (src->m_format == dst->m_format && std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0)
@@ -568,39 +613,60 @@ void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& cl
 
 	VkImageSubresourceRange range = dst->m_subresourceRange;
 	vkCmdClearColorImage(m_commandBuffer, *dst->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColorValue, 1, &range);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 5;
 }
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
 {
 	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT, (uint32_t)offset, (uint32_t)size, ptr);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
 {
 	m_pipelineDependencies.Add(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::BindPipeline(VulkanComputePipelinePtr pipeline)
 {
 	m_rhiDependecies.Add(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, *pipeline);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::Dispatch(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
 	vkCmdDispatch(m_commandBuffer, groupX, groupY, groupZ);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 20;
 }
 
 void VulkanCommandBuffer::DrawIndexedIndirect(VulkanBufferMemoryPtr buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride)
 {
 	m_bufferDependencies.Add(buffer.m_buffer);
 	vkCmdDrawIndexedIndirect(m_commandBuffer, *buffer.m_buffer, buffer.m_offset + offset, drawCount, stride);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 20;
 }
 
 void VulkanCommandBuffer::DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
 	vkCmdDrawIndexed(m_commandBuffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 2;
 }
 
 void VulkanCommandBuffer::EndRenderPass()
@@ -612,6 +678,9 @@ void VulkanCommandBuffer::Reset()
 {
 	vkResetCommandBuffer(m_commandBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
 	ClearDependencies();
+
+	m_numRecordedCommands = 0;
+	m_gpuCost = 0;
 }
 
 void VulkanCommandBuffer::AddDependency(RHI::RHIResourcePtr resource)
@@ -664,6 +733,9 @@ void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)
 
 	vkCmdExecuteCommands(m_commandBuffer, 1, secondaryCommandBuffer->GetHandle());
 	m_commandBufferDependencies.Add(secondaryCommandBuffer);
+
+	m_numRecordedCommands++;
+	m_gpuCost += secondaryCommandBuffer->GetGPUCost();
 }
 
 void VulkanCommandBuffer::SetViewport(VulkanStateViewportPtr viewport)
@@ -672,6 +744,9 @@ void VulkanCommandBuffer::SetViewport(VulkanStateViewportPtr viewport)
 	m_cachedViewportSettings = viewport->GetViewport();
 
 	vkCmdSetViewport(m_commandBuffer, 0, 1, &m_cachedViewportSettings);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 bool VulkanCommandBuffer::FitsViewport(const VkViewport& viewport) const
@@ -682,12 +757,18 @@ bool VulkanCommandBuffer::FitsViewport(const VkViewport& viewport) const
 void VulkanCommandBuffer::SetScissor(VulkanStateViewportPtr viewport)
 {
 	vkCmdSetScissor(m_commandBuffer, 0, 1, &viewport->GetScissor());
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLayout, VulkanImagePtr dstImage, VkImageLayout dstImageLayout,
 	uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter)
 {
 	vkCmdBlitImage(m_commandBuffer, *srcImage, srcImageLayout, *dstImage, dstImageLayout, regionCount, pRegions, filter);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 20;
 }
 
 void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
@@ -784,6 +865,9 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 		0, nullptr,
 		0, nullptr,
 		1, &barrier);
+
+	m_numRecordedCommands++;
+	m_gpuCost += image->m_mipLevels * 20;
 }
 
 VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout)
@@ -832,6 +916,9 @@ void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags d
 	memoryBarrier.srcAccessMask = srcAccess;
 	memoryBarrier.dstAccessMask = dstAccess;
 	//vkCmdPipelineBarrier
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
@@ -868,6 +955,9 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 	);
 
 	m_rhiDependecies.Add(image);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
@@ -907,6 +997,9 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat 
 	);
 
 	m_rhiDependecies.Add(image);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
@@ -949,5 +1042,8 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	);
 
 	m_imageDependencies.Add(image);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 

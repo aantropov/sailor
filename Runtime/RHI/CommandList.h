@@ -21,6 +21,9 @@ namespace Sailor::RHI
 
 		bool IsTransferOnly() const { return m_bIsTransferOnly; }
 
+		SAILOR_API uint32_t GetGPUCost() const;
+		SAILOR_API uint32_t GetNumRecordedCommands() const;
+
 	protected:
 
 		bool m_bIsTransferOnly = false;

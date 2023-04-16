@@ -71,6 +71,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void BindVertexBuffers(const TVector<VulkanBufferPtr>& buffers, const TVector<VkDeviceSize>& offsets = { 0 }, uint32_t firstBinding = 0, uint32_t bindingCount = 1);
 		SAILOR_API void BindIndexBuffer(VulkanBufferPtr indexBuffer, uint32_t offset = 0, bool bUint16InsteadOfUint32 = false);
 		SAILOR_API void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSet, VkPipelineBindPoint bindPoint);
+		SAILOR_API void BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayout, uint32_t binding, VulkanDescriptorSetPtr descriptorSet, VkPipelineBindPoint bindPoint);
+
 		SAILOR_API void BindPipeline(VulkanGraphicsPipelinePtr pipeline);
 		SAILOR_API void BindPipeline(VulkanComputePipelinePtr pipeline);
 		SAILOR_API void Dispatch(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
@@ -125,6 +127,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VkAccessFlags GetAccessFlags(VkImageLayout layout);
 		SAILOR_API static VkPipelineStageFlags GetPipelineStage(VkImageLayout layout);
 
+		SAILOR_API uint32_t GetGPUCost() const { return m_gpuCost; }
+		SAILOR_API uint32_t GetNumRecordedCommands() const { return m_numRecordedCommands; }
+
 	protected:
 
 		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
@@ -152,5 +157,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// We're tracking only viewport due to scissor almost never changed
 		bool m_bHasViewport = false;
 		VkViewport m_cachedViewportSettings{};
+
+		uint32_t m_numRecordedCommands = 0;
+		uint32_t m_gpuCost = 0;
 	};
 }
