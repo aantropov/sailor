@@ -136,7 +136,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	m_depthBuffer->m_tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
 	m_depthBuffer->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	m_depthBuffer->m_mipLevels = 1;
-	m_depthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	m_depthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	m_depthBuffer->m_arrayLayers = 1;
 	m_depthBuffer->m_samples = VK_SAMPLE_COUNT_1_BIT;
 	m_depthBuffer->m_defaultLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;

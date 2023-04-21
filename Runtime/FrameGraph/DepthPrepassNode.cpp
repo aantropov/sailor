@@ -118,7 +118,9 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 	if (numMeshes == 0)
 	{
+		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
 		commands->ClearDepthStencil(commandList, depthAttachment, 0.0f);
+		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::TransferDstOptimal, depthAttachment->GetDefaultLayout());
 		return;
 	}
 
