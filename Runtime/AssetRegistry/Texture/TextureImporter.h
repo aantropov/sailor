@@ -41,7 +41,7 @@ namespace Sailor
 	{
 	public:
 
-		const size_t MaxTexturesInScene = 1 << 18;
+		static const size_t MaxTexturesInScene = 1 << 18;
 
 		using ByteCode = TVector<uint8_t>;
 

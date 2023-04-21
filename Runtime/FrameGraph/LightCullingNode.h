@@ -12,8 +12,8 @@ namespace Sailor::Framegraph
 	{
 	public:
 
-		const uint32_t LightsPerTile = 128;
-		const uint32_t TileSize = 16;
+		static const uint32_t LightsPerTile = 128;
+		static const uint32_t TileSize = 16;
 
 		SAILOR_API static const char* GetName() { return m_name; }
 

@@ -12,6 +12,8 @@ namespace Sailor::RHI
 	{
 	public:
 
+		// TODO: Ideally we would like to track performance
+		// and make the decisions on the CPU/GPU frame time
 		const uint32_t MaxRecordedCommands = 200;
 		const uint32_t MaxGpuCost = 650;
 

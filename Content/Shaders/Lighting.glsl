@@ -1,20 +1,11 @@
-#define LIGHTS_CANDIDATES_PER_TILE 196
-#define LIGHTS_PER_TILE 128
-#define NUM_CSM_CASCADES 3
-#define MAX_TEXTURES_IN_SCENE 262144
-
-const int MAX_SHADOWS_IN_VIEW = 1024;
-const int LIGHTS_CULLING_TILE_SIZE = 16;
-const float ShadowCascadeLevels[3] = { 1.0f / 25.0f, 1.0f / 5.0f, 1.0f / 2.0f};
-
 layout(std430)
 struct LightData
 {
   vec3 worldPosition;
   vec3 direction;
-    vec3 intensity;
-    vec3 attenuation;
-    int type;
+  vec3 intensity;
+  vec3 attenuation;
+  int type;
   vec2 cutOff;
   vec3 bounds;
 };

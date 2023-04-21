@@ -109,6 +109,10 @@ namespace Sailor
 	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener
 	{
 		const bool bShouldAutoCompileAllPermutations = false;
+		
+		// Version is used to generate shader's code with all constants
+		const uint32_t Version = 1;
+		static constexpr const char* ConstantsLibrary = "../Content/Shaders/Constants.glsl";
 
 	public:
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
@@ -134,6 +138,8 @@ namespace Sailor
 		TConcurrentMap<UID, TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>>> m_promises;
 		TConcurrentMap<UID, TSharedPtr<ShaderAsset>> m_shaderAssetsCache;
 		TConcurrentMap<UID, TVector<TPair<uint32_t, ShaderSetPtr>>> m_loadedShaders;
+
+		SAILOR_API void UpdateConstantsLibrary();
 
 		// ShaderAsset related functions
 		SAILOR_API static void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& includes = {}, const TVector<std::string>& defines = {});

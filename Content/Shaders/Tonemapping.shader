@@ -1,6 +1,7 @@
 --- 
-includes :
-- "Shaders/Formats.glsl"
+includes:
+- Shaders/Constants.glsl
+- Shaders/Formats.glsl
 
 defines:
 - ACES
