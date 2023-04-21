@@ -85,22 +85,20 @@ glslFragment: |
   } data;
 
   #if defined(COMPOSE)
-  layout(set=1, binding=1) uniform sampler2D skySampler;
-  layout(set=1, binding=2) uniform sampler2D sunSampler;
-  #endif
-  
-  #if defined(SUN)
-  layout(set=1, binding=6) uniform sampler2D cloudsSampler;
-  #endif
-  
-  #if defined(CLOUDS)
-  layout(set=1, binding=1) uniform sampler2D skySampler;
-  layout(set=1, binding=3) uniform sampler2D cloudsMapSampler;
-  layout(set=1, binding=4) uniform sampler3D cloudsNoiseLowSampler;
-  layout(set=1, binding=5) uniform sampler3D cloudsNoiseHighSampler;
-  layout(set=1, binding=7) uniform sampler2D g_ditherPatternSampler;
-  layout(set=1, binding=8) uniform sampler2D g_noiseSampler;
-  layout(set=1, binding=9) uniform sampler2D linearDepth;  
+    layout(set=1, binding=1) uniform sampler2D skySampler;
+    layout(set=1, binding=2) uniform sampler2D sunSampler;
+  #elif defined(SUN)
+    layout(set=1, binding=6) uniform sampler2D cloudsSampler;
+  #elif defined(CLOUDS)
+    layout(set=1, binding=1) uniform sampler2D skySampler;
+    layout(set=1, binding=3) uniform sampler2D cloudsMapSampler;
+    layout(set=1, binding=4) uniform sampler3D cloudsNoiseLowSampler;
+    layout(set=1, binding=5) uniform sampler3D cloudsNoiseHighSampler;
+    layout(set=1, binding=7) uniform sampler2D g_ditherPatternSampler;
+    layout(set=1, binding=8) uniform sampler2D g_noiseSampler;
+    layout(set=1, binding=9) uniform sampler2D linearDepth;  
+  #else
+    layout(set=1, binding=9) uniform sampler2D linearDepth;  
   #endif
   
   layout(location = 0) in vec2 fragTexcoord;
@@ -651,6 +649,14 @@ glslFragment: |
         }
         
     #else
+        vec2 uv = fragTexcoord.xy;
+        uv.y = 1 - uv.y;
+        float linearDepth = abs(texture(linearDepth, uv).r);
+        if(linearDepth < 20000.0f)
+        {
+           discard;
+        }
+       
         dirWorldSpace.xyz = ScreenToView(fragTexcoord.xy, 1.0f, frame.invProjection).xyz;
         dirWorldSpace.z *= -1;
         dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
