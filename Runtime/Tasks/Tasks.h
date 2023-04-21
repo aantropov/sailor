@@ -193,8 +193,6 @@ namespace Sailor
 			template<typename TResult1, typename TArgs1>
 			SAILOR_API TaskPtr<TResult1, TArgs1> Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
-				check(m_self.IsValid());
-
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
 
 				res->SetChainedTaskPrev(m_self);
@@ -206,7 +204,7 @@ namespace Sailor
 					m_chainedTasksNext.Add(res);
 				}
 
-				if (m_bIsStarted || m_bIsInQueue)
+				if (m_bIsStarted || m_bIsInQueue || m_bIsFinished)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
@@ -268,8 +266,6 @@ namespace Sailor
 			template<typename TResult1>
 			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
 			{
-				check(m_self.IsValid());
-
 				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
 
 				res->SetChainedTaskPrev(m_self);
@@ -280,7 +276,7 @@ namespace Sailor
 					m_chainedTasksNext.Add(res);
 				}
 
-				if (m_bIsStarted || m_bIsInQueue)
+				if (m_bIsStarted || m_bIsInQueue || m_bIsFinished)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
@@ -324,8 +320,6 @@ namespace Sailor
 			template<typename TResult1>
 			SAILOR_API TaskPtr<TResult1, void> Then(std::function<TResult1()> function)
 			{
-				check(m_self.IsValid());
-
 				auto res = Scheduler::CreateTask(m_name + " chained task", std::move(function), m_threadType);
 				res->SetChainedTaskPrev(m_self);
 				res->Join(m_self);
@@ -335,7 +329,7 @@ namespace Sailor
 					m_chainedTasksNext.Add(res);
 				}
 
-				if (m_bIsStarted || m_bIsInQueue)
+				if (m_bIsStarted || m_bIsInQueue || m_bIsFinished)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
@@ -394,8 +388,6 @@ namespace Sailor
 			template<typename TResult1, typename TArgs1>
 			SAILOR_API TaskPtr<TResult1, TArgs1 > Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
-				check(m_self.IsValid());
-
 				auto res = Scheduler::CreateTask(std::move(name), std::move(function), thread);
 
 				res->SetChainedTaskPrev(m_self);
@@ -407,7 +399,7 @@ namespace Sailor
 					m_chainedTasksNext.Add(res);
 				}
 
-				if (m_bIsStarted || m_bIsInQueue)
+				if (m_bIsStarted || m_bIsInQueue || m_bIsFinished)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
