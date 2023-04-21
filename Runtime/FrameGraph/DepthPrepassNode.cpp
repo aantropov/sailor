@@ -57,8 +57,6 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
-
 	TDrawCalls<DepthPrepassNode::PerInstanceData> drawCalls;
 	TSet<RHIBatch> batches;
 
@@ -112,8 +110,15 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
+	auto depthAttachment = GetRHIResource("depthStencil").StaticCast<RHI::RHITexture>();
+	if (!depthAttachment)
+	{
+		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+	}
+
 	if (numMeshes == 0)
 	{
+		commands->ClearDepthStencil(commandList, depthAttachment, 0.0f);
 		return;
 	}
 
@@ -166,12 +171,6 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
-	auto depthAttachment = GetRHIResource("depthStencil").StaticCast<RHI::RHITexture>();
-	if (!depthAttachment)
-	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
-	}
-
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
 	const size_t materialsPerThread = (batches.Num()) / numThreads;
 
@@ -190,6 +189,8 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		}
 		return sets;
 	};
+
+	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{},

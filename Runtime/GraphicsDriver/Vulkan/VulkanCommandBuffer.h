@@ -106,6 +106,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter);
 
 		SAILOR_API void ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor);
+		SAILOR_API void ClearDepthStencil(VulkanImageViewPtr dst, float depth, uint32_t stencil);
 
 		SAILOR_API void GenerateMipMaps(VulkanImagePtr image);
 		SAILOR_API void ClearDependencies();

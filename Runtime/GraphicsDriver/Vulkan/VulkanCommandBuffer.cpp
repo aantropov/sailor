@@ -605,6 +605,18 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 	return false;
 }
 
+void VulkanCommandBuffer::ClearDepthStencil(VulkanImageViewPtr dst, float depth, uint32_t stencil)
+{
+	m_rhiDependecies.Add(dst);
+
+	const VkClearDepthStencilValue clearValue{ depth, stencil };
+
+	VkImageSubresourceRange range = dst->m_subresourceRange;
+	vkCmdClearDepthStencilImage(m_commandBuffer, *dst->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearValue, 1, &range);
+	m_numRecordedCommands++;
+	m_gpuCost += 5;
+}
+
 void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor)
 {
 	m_rhiDependecies.Add(dst);
@@ -613,7 +625,6 @@ void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& cl
 
 	VkImageSubresourceRange range = dst->m_subresourceRange;
 	vkCmdClearColorImage(m_commandBuffer, *dst->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColorValue, 1, &range);
-
 	m_numRecordedCommands++;
 	m_gpuCost += 5;
 }

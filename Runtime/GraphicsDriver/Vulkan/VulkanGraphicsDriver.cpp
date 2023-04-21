@@ -1592,6 +1592,11 @@ bool VulkanGraphicsDriver::BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexture
 	return cmd->m_vulkan.m_commandBuffer->BlitImage(src->m_vulkan.m_imageView, dst->m_vulkan.m_imageView, srcRect, dstRect, (VkFilter)filtration);
 }
 
+void VulkanGraphicsDriver::ClearDepthStencil(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr dst, float depth, uint32_t stencil)
+{
+	cmd->m_vulkan.m_commandBuffer->ClearDepthStencil(dst->m_vulkan.m_imageView, depth, stencil);
+}
+
 void VulkanGraphicsDriver::ClearImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr dst, const glm::vec4& clearColor)
 {
 	cmd->m_vulkan.m_commandBuffer->ClearImage(dst->m_vulkan.m_imageView, clearColor);
