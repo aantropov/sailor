@@ -1960,7 +1960,10 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 #else
 
 	SAILOR_PROFILE_BLOCK("Allocate staging device memory");
-	auto deviceMemoryPtr = VulkanDeviceMemoryPtr::Make(device, device->GetMemoryRequirements_StagingBuffer(), VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	auto memReq = device->GetMemoryRequirements_StagingBuffer();
+	memReq.size = std::max(memReq.size, size);
+
+	auto deviceMemoryPtr = VulkanDeviceMemoryPtr::Make(device, memReq, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	SAILOR_PROFILE_END_BLOCK();
 
 	SAILOR_PROFILE_BLOCK("Create staging buffer");
@@ -1971,6 +1974,10 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 
 	m_bufferOffset = 0;
 	m_memoryOffset = 0;
+
+	cmd->m_vulkan.m_commandBuffer->AddDependency(stagingBuffer);
+
+	// stagingBuffer->GetBufferMemoryPtr()
 #endif
 
 	SAILOR_PROFILE_BLOCK("Copy data to staging buffer");

@@ -146,7 +146,11 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	if (bIsRecreating)
 	{
 		// We are using device memory allocator to fastly recreate the swapchain
-		const auto& requirements = m_depthBuffer->GetMemoryRequirements();
+		auto requirements = m_depthBuffer->GetMemoryRequirements();
+		
+		//requirements.size += device->GetBufferImageGranuality();
+		//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
+
 		auto memoryPtr = device->GetMemoryAllocator(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, requirements).Allocate(requirements.size, requirements.alignment);
 		m_depthBuffer->Bind(memoryPtr);
 	}

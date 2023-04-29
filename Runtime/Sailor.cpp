@@ -52,7 +52,7 @@ void App::Initialize()
 
 	s_pInstance = new App();
 
-#if defined(BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
+#if defined(SAILOR_BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
 	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
 #endif
 
@@ -163,7 +163,7 @@ void App::Start()
 			GetSubmodule<Renderer>()->RefreshFrameGraph();
 		}
 
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 		if (auto renderDoc = App::GetSubmodule<RenderDocApi>())
 		{
 			if (systemInputState.IsKeyPressed(VK_F6) && !renderDoc->IsConnected())
@@ -244,7 +244,7 @@ void App::Shutdown()
 {
 	SAILOR_LOG("Sailor Engine Releasing");
 
-#if defined(BUILD_WITH_RENDER_DOC)
+#if defined(SAILOR_BUILD_WITH_RENDER_DOC)
 	if (App::GetSubmodule<RenderDocApi>())
 	{
 		RemoveSubmodule<RenderDocApi>();

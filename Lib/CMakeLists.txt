@@ -28,14 +28,14 @@ set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
 add_compile_definitions($<$<CONFIG:Release>:_SHIPPING>)
 
 # Easy profiler
-if(BUILD_WITH_EASY_PROFILER)
+if(SAILOR_BUILD_WITH_EASY_PROFILER)
     target_link_libraries(SailorLib "${PROJECT_SOURCE_DIR}/External/easy_profiler/bin/easy_profiler.lib")
     add_custom_command(
         TARGET SailorLib POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
                 ${PROJECT_SOURCE_DIR}/External/easy_profiler/bin/easy_profiler.dll
                ${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/easy_profiler.dll)
-endif(BUILD_WITH_EASY_PROFILER)
+endif(SAILOR_BUILD_WITH_EASY_PROFILER)
 
 # Vulkan
 find_package(Vulkan 1.3 REQUIRED)

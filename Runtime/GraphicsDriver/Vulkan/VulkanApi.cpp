@@ -777,6 +777,10 @@ VulkanBufferPtr VulkanApi::CreateBuffer(VulkanDevicePtr device, VkDeviceSize siz
 
 	// TODO: Pass into Allocate the correct allignment for memory device allocation
 	auto requirements = outBuffer->GetMemoryRequirements();
+
+	//requirements.size += device->GetBufferImageGranuality();
+	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
+
 	auto data = device->GetMemoryAllocator(properties, requirements).Allocate(requirements.size, requirements.alignment);
 	outBuffer->Bind(data);
 

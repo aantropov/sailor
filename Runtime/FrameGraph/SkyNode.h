@@ -120,6 +120,7 @@ namespace Sailor::Framegraph
 
 		ShaderSetPtr m_pSunShader{};
 		ShaderSetPtr m_pSkyShader{};
+		ShaderSetPtr m_pSkyEnvShader{};
 		ShaderSetPtr m_pStarsShader{};
 		ShaderSetPtr m_pComposeShader{};
 		ShaderSetPtr m_pCloudsShader{};
@@ -128,14 +129,15 @@ namespace Sailor::Framegraph
 
 		RHI::RHIMaterialPtr m_pStarsMaterial{};
 		RHI::RHIMaterialPtr m_pSkyMaterial{};
+		RHI::RHIMaterialPtr m_pSkyEnvMaterial{};
 		RHI::RHIMaterialPtr m_pSunMaterial{};
 		RHI::RHIMaterialPtr m_pComposeMaterial{};
 		RHI::RHIMaterialPtr m_pCloudsMaterial{};
 		RHI::RHIMaterialPtr m_pSunShaftsMaterial{};
-		RHI::RHIMaterialPtr m_pBlitMaterial{};
+		RHI::RHIMaterialPtr m_pBlitCloudsMaterial{};
 
 		RHI::RHIShaderBindingSetPtr m_pShaderBindings{};
-		RHI::RHIShaderBindingSetPtr m_pBlitBindings{};
+		RHI::RHIShaderBindingSetPtr m_pBlitCloudsBindings{};
 		RHI::RHIShaderBindingSetPtr m_pEnvCubemapBindings[6]{};
 
 		RHI::RHITexturePtr m_pSkyTexture{};

@@ -45,7 +45,7 @@ namespace Sailor::Memory
 		{
 			auto device = Sailor::GraphicsDriver::Vulkan::VulkanApi::GetInstance()->GetMainDevice();
 			auto memoryRequirements = device->GetMemoryRequirements_StagingBuffer();
-			memoryRequirements.size = size;
+			memoryRequirements.size = std::max(size, memoryRequirements.size);
 
 			VulkanDeviceMemoryPtr memPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory>::Make(device,
 				memoryRequirements,

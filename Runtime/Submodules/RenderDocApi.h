@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Submodule.h"
 
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 #include <renderdoc/renderdoc/api/app/renderdoc_app.h>
 #endif
 
@@ -29,10 +29,10 @@ namespace Sailor
 
 	protected:
 
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 		RENDERDOC_API_1_4_2* GetRenderDocAPI();
 		RENDERDOC_API_1_4_2* g_pRenderDocAPI = nullptr;
-#endif // BUILD_WITH_RENDER_DOC
+#endif // SAILOR_BUILD_WITH_RENDER_DOC
 
 	};
 }

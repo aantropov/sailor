@@ -7,14 +7,14 @@ using namespace Sailor;
 
 RenderDocApi::RenderDocApi()
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	GetRenderDocAPI();
 #endif
 }
 
 bool RenderDocApi::IsCapturing() const
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	if (g_pRenderDocAPI)
 	{
 		return g_pRenderDocAPI->IsFrameCapturing();
@@ -25,7 +25,7 @@ bool RenderDocApi::IsCapturing() const
 
 uint32_t RenderDocApi::GetNumCaptures() const
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	if (g_pRenderDocAPI)
 	{
 		return g_pRenderDocAPI->GetNumCaptures();
@@ -37,7 +37,7 @@ uint32_t RenderDocApi::GetNumCaptures() const
 
 bool RenderDocApi::IsConnected() const
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	if (g_pRenderDocAPI)
 	{
 		return g_pRenderDocAPI->IsTargetControlConnected();
@@ -48,7 +48,7 @@ bool RenderDocApi::IsConnected() const
 
 void RenderDocApi::LaunchRenderDocApp()
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	if (g_pRenderDocAPI)
 	{
 		g_pRenderDocAPI->LaunchReplayUI(1, nullptr);
@@ -58,7 +58,7 @@ void RenderDocApi::LaunchRenderDocApp()
 
 void RenderDocApi::SetActiveWindow(void* device, void* wndHandle)
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	if (g_pRenderDocAPI)
 	{
 		g_pRenderDocAPI->SetActiveWindow(device, wndHandle);
@@ -68,7 +68,7 @@ void RenderDocApi::SetActiveWindow(void* device, void* wndHandle)
 
 void RenderDocApi::StartCapture()
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	if (g_pRenderDocAPI)
 	{
 		g_pRenderDocAPI->StartFrameCapture(NULL, NULL);
@@ -78,7 +78,7 @@ void RenderDocApi::StartCapture()
 
 void RenderDocApi::StopCapture()
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	if (g_pRenderDocAPI)
 	{
 		g_pRenderDocAPI->EndFrameCapture(NULL, NULL);
@@ -88,7 +88,7 @@ void RenderDocApi::StopCapture()
 
 void RenderDocApi::TriggerCapture()
 {
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 	if (g_pRenderDocAPI)
 	{
 		g_pRenderDocAPI->TriggerCapture();
@@ -96,7 +96,7 @@ void RenderDocApi::TriggerCapture()
 #endif
 }
 
-#ifdef BUILD_WITH_RENDER_DOC
+#ifdef SAILOR_BUILD_WITH_RENDER_DOC
 RENDERDOC_API_1_4_2* RenderDocApi::GetRenderDocAPI()
 {
 	SAILOR_LOG("Try to initialize RenderDocApi");
