@@ -753,12 +753,18 @@ TVector<VkVertexInputAttributeDescription> VulkanApi::GetAttributeDescriptions(c
 
 uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
 {
-	VkPhysicalDeviceMemoryProperties memProperties;
-	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+	static bool s_bIsInited = false;
+	static VkPhysicalDeviceMemoryProperties s_memProperties{};
 
-	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
+	if(!s_bIsInited)
+	{ 	
+		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &s_memProperties);
+		s_bIsInited = true;
+	}
+
+	for (uint32_t i = 0; i < s_memProperties.memoryTypeCount; i++)
 	{
-		if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+		if (typeFilter & (1 << i) && (s_memProperties.memoryTypes[i].propertyFlags & properties) == properties)
 		{
 			return i;
 		}

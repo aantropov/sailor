@@ -230,8 +230,8 @@ VkFormat VulkanDevice::GetDepthFormat() const
 
 TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
 {
-	uint64_t hash = properties;
-	HashCombine(hash, requirements.memoryTypeBits, requirements.alignment);
+	uint64_t hash{};
+	HashCombine(hash, properties, requirements.memoryTypeBits);
 
 	auto& pAllocator = m_memoryAllocators.At_Lock(hash);
 
