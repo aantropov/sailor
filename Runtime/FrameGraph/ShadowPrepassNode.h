@@ -19,6 +19,8 @@ namespace Sailor
 		static constexpr uint32_t MaxCSM = 2;
 		static constexpr uint32_t NumCascades = 3;
 		static constexpr float ShadowCascadeLevels[NumCascades] = { 1.0f / 25.0f, 1.0f / 5.0f, 1.0f / 2.0f };
+		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {2048,2048}, {1024,1024} };
+
 
 		struct PerInstanceData
 		{
@@ -42,7 +44,7 @@ namespace Sailor
 		SAILOR_API static glm::mat4 CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar);
 
 	protected:
-		
+
 		// Shadow caster material
 		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials;
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);
