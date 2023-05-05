@@ -103,10 +103,10 @@ namespace Sailor::Math
 
 	protected:
 
-		void CalculateCorners(const glm::mat4& matrix);
+		void CalculateCorners(const glm::mat4& matrix, bool bReverseZ);
 
 		// Normals are directed inside frustum
-		// The order is: Left, Right, Top, Bottom, Near, Far		
+		// The order is: Left, Right, Top, Bottom, Near, Far
 		Plane m_planes[6];
 
 		// The order is: 

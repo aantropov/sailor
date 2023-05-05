@@ -60,6 +60,7 @@ glslVertex: |
       mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
+      vec2 cameraParams;
       float currentTime;
       float deltaTime;
   } frame;
@@ -167,6 +168,7 @@ glslFragment: |
       mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
+      vec2 cameraParams;
       float currentTime;
       float deltaTime;
   } frame;
@@ -237,8 +239,8 @@ glslFragment: |
     const float closestDepth = texture(shadowMap, projCoords.xy).r * 0.5 + 0.5;
     const float currentDepth = projCoords.z;
     
-    //float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
-    float shadow = ManualPCF(shadowMap, projCoords, currentDepth, bias);
+    float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
+    //float shadow = ManualPCF(shadowMap, projCoords, currentDepth, bias);
     return shadow;
   }
   
@@ -253,7 +255,7 @@ glslFragment: |
     {
         attenuation = 1.0;
         
-        const int cascadeLayer = SelectCascade(frame.view, worldPos);
+        const int cascadeLayer = SelectCascade(frame.view, worldPos, frame.cameraParams);
         float bias = max(0.0005 * (1.0 - dot(normal, light.direction)), 0.0001);   
         
         if (cascadeLayer < NUM_CSM_CASCADES)

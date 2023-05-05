@@ -206,30 +206,15 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 			maxZ = std::max(maxZ, trf.z);
 		}
 
+		// TODO: Redo
+		minZ = minZ < 0 ? minZ * zMult : minZ / zMult;
+		maxZ = maxZ < 0 ? maxZ / zMult : maxZ * zMult;
+
 		const float zFar = -minZ;
+		const float zNear = -maxZ;
 
-		if (minZ < 0)
-		{
-			minZ *= zMult;
-		}
-		else
-		{
-			minZ /= zMult;
-		}
-
-		if (maxZ < 0)
-		{
-			maxZ /= zMult;
-		}
-		else
-		{
-			maxZ *= zMult;
-		}
-
-		const float zNear = zFar - (maxZ - minZ);
-
-		// Viewport settings
-		const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, zNear, zFar);
+		// Viewport settings, we want to handle all shadows with the reversed Z
+		const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, zFar, zNear);
 
 		// Create matrix and get all extents
 		const glm::mat4 lightViewProjection = lightProjection * lightView;

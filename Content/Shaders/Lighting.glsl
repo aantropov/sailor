@@ -162,7 +162,7 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
        for(int y = -1; y <= 1; ++y)
        {
            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r * 0.5 + 0.5; 
-           shadow += currentDepth - bias < pcfDepth ? 1.0 : 0.0;
+           shadow += currentDepth + bias > pcfDepth ? 1.0 : 0.0;
        }    
    }
    shadow /= 9.0;
@@ -170,16 +170,15 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
    return shadow;
 }
 
-int SelectCascade(mat4 view, vec3 worldPosition)
+int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
 {
-  const float MaxRange = 50000.0f;
   vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0);
   float depthValue = abs(fragPosViewSpace.z);
   
   int layer = -1;
   for (int i = 0; i < NUM_CSM_CASCADES; ++i)
   {
-      if (depthValue < MaxRange * ShadowCascadeLevels[i])
+      if (depthValue < cameraZNearZFar.y * ShadowCascadeLevels[i])
       {
           layer = i;
           break;

@@ -735,6 +735,7 @@ namespace Sailor::RHI
 		glm::mat4 m_invProjection;
 		glm::vec4 m_cameraPosition;
 		glm::ivec2 m_viewportSize;
+		glm::vec2 m_cameraParams;
 		float m_currentTime;
 		float m_deltaTime;
 	};

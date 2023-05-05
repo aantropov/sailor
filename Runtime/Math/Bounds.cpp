@@ -27,7 +27,7 @@ void Frustum::ExtractFrustumPlanes(const glm::mat4& projectionViewMatrix, bool b
 	m_planes[5] = Plane(matrix[3] - matrix[2]);       // far
 	*/
 
-	CalculateCorners(projectionViewMatrix);
+	CalculateCorners(projectionViewMatrix, true);
 
 	const glm::vec3 right = glm::normalize(m_corners[0] - m_corners[1]);
 	const glm::vec3 up = glm::normalize(m_corners[0] - m_corners[3]);
@@ -94,59 +94,47 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 		maxZ = std::max(maxZ, trf.z);
 	}
 
+	// TODO: Redo
+	minZ = minZ < 0 ? minZ * zMult : minZ / zMult;
+	maxZ = maxZ < 0 ? maxZ / zMult : maxZ * zMult;
+
 	const float zFar = -minZ;
+	const float zNear = -maxZ;
 
-	if (minZ < 0)
-	{
-		minZ *= zMult;
-	}
-	else
-	{
-		minZ /= zMult;
-	}
+	// Viewport settings, we want to handle all shadows with the reversed Z
+	const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, zFar, zNear);
 
-	if (maxZ < 0)
-	{
-		maxZ /= zMult;
-	}
-	else
-	{
-		maxZ *= zMult;
-	}
-
-	const float zNear = zFar - (maxZ - minZ);
-
-	// Viewport settings
-	const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, zNear, zFar);
 	return lightProjection;
 }
 
-void Frustum::CalculateCorners(const glm::mat4& matrix)
+void Frustum::CalculateCorners(const glm::mat4& matrix, bool bReverseZ)
 {
 	const auto inv = glm::inverse(matrix);
 
-	glm::vec4 pt = inv * glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	const float reverseZ = bReverseZ ? -1.0f : 1.0f;
+
+	glm::vec4 pt = inv * glm::vec4(1.0f, 1.0f, reverseZ * 1.0f, 1.0f);
 	m_corners[0] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, 1.0f, 1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, 1.0f, reverseZ * 1.0f, 1.0f);
 	m_corners[1] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, -1.0f, 1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, -1.0f, reverseZ * 1.0f, 1.0f);
 	m_corners[2] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, -1.0f, 1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, -1.0f, reverseZ * 1.0f, 1.0f);
 	m_corners[3] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, 1.0f, -1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, 1.0f, reverseZ * -1.0f, 1.0f);
 	m_corners[4] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, 1.0f, -1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, 1.0f, reverseZ * -1.0f, 1.0f);
 	m_corners[5] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, -1.0f, -1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, -1.0f, reverseZ * -1.0f, 1.0f);
 	m_corners[6] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, -1.0f, -1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, -1.0f, reverseZ * -1.0f, 1.0f);
 	m_corners[7] = vec3(pt / pt.w);
 }
 
