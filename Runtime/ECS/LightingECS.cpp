@@ -2,6 +2,7 @@
 #include "ECS/TransformECS.h"
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
+#include "RHI/SceneView.h"
 #include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
 #include "FrameGraph/ShadowPrepassNode.h"
@@ -176,7 +177,6 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 
 			if (light.m_type != ELightType::Directional)
 			{
-
 				for (uint32_t j = 0; j < sceneView->m_cameraTransforms.Num(); j++)
 				{
 					const float sphereRadius = std::max(std::max(light.m_bounds.x, light.m_bounds.y), light.m_bounds.z);
@@ -223,11 +223,29 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 				sceneView->m_cameras[i].GetZNear(),
 				sceneView->m_cameras[i].GetZFar());
 
+			TVector<Math::Frustum> frustums;
+			frustums.Resize(lightCascadesMatrices.Num());
+
 			for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
 			{
-				Math::Frustum frustum{};
-				frustum.ExtractFrustumPlanes(lightCascadesMatrices[k] * sceneView->m_directionalLights[j].m_lightMatrix);
-				sceneView->m_csmMeshLists[i][j][k] = std::move(sceneView->TraceScene(frustum));
+				frustums[k].ExtractFrustumPlanes(lightCascadesMatrices[k] * sceneView->m_directionalLights[j].m_lightMatrix);
+				sceneView->m_csmMeshLists[i][j][k] = std::move(sceneView->TraceScene(frustums[k]));
+
+				if (k > 0)
+				{
+					// Don't duplicate data for higher cascades
+					sceneView->m_csmMeshLists[i][j][k].RemoveAll([k = k, &frustums](const auto& m)
+						{
+							for (uint32_t z = 0; z < k; z++)
+							{
+								if (frustums[z].OverlapsAABB(m.m_worldAabb))
+								{
+									return true;
+								}
+							}
+							return false;
+						});
+				}
 			}
 		}
 	}

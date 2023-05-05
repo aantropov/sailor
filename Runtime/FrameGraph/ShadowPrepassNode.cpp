@@ -96,7 +96,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	{
 		for (uint32_t cascade = 0; cascade < NumCascades; cascade++)
 		{
-			uint32_t index = lightIndex * NumCascades + cascade;			
+			uint32_t index = lightIndex * NumCascades + cascade;
 			for (auto& proxy : sceneView.m_csmMeshLists[lightIndex][cascade])
 			{
 				uint32_t cascadeNumMeshes = 0;
@@ -223,7 +223,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
-	
+
 	SAILOR_PROFILE_BLOCK("Update directional light matrices");
 	TVector<glm::mat4> lightMatrices;
 	lightMatrices.Reserve(NumCSMPasses);
@@ -243,12 +243,12 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			lightMatrices.Add(matrices[i] * sceneView.m_directionalLights[lightIndex].m_lightMatrix);
 		}
 	}
-	
+
 	commands->UpdateShaderBinding(transferCommandList, m_lightMatrices,
 		lightMatrices.GetData(),
 		sizeof(glm::mat4) * lightMatrices.Num(),
 		0);
-	
+
 	SAILOR_PROFILE_END_BLOCK();
 
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
@@ -299,6 +299,17 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 					glm::ivec4(0, shadowMap->GetExtent().y, shadowMap->GetExtent().x, -shadowMap->GetExtent().y),
 					glm::uvec4(0, 0, shadowMap->GetExtent().x, shadowMap->GetExtent().y),
 					glm::vec2(0.0f, 1.0f));
+
+				for (uint32_t i = 0; i < cascade; i++)
+				{
+					const uint32_t prevCascadesIndex = lightIndex * NumCascades + i;
+
+					RHIDrawCall(0, (uint32_t)passes[prevCascadesIndex].Num(), passes[prevCascadesIndex], commandList, shaderBindingsByMaterial,
+						drawCalls[prevCascadesIndex], m_indirectBuffers[prevCascadesIndex],
+						glm::ivec4(0, shadowMap->GetExtent().y, shadowMap->GetExtent().x, -shadowMap->GetExtent().y),
+						glm::uvec4(0, 0, shadowMap->GetExtent().x, shadowMap->GetExtent().y),
+						glm::vec2(0.0f, 1.0f));
+				}
 
 				commands->EndRenderPass(commandList);
 			}

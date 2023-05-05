@@ -79,6 +79,10 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 		viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
 		viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
 		viewProxy.m_overrideMaterials.Clear();
+		
+		viewProxy.m_worldAabb = ecsData.GetModel()->GetBoundsAABB();
+		viewProxy.m_worldAabb.Apply(viewProxy.m_worldMatrix);
+
 		for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
 		{
 			size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);

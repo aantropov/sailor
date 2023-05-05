@@ -32,6 +32,7 @@ namespace Sailor::RHI
 	{
 		size_t m_staticMeshEcs;
 		glm::mat4 m_worldMatrix;
+		Math::AABB m_worldAabb{};
 
 		TVector<RHIMeshPtr> m_meshes;
 		TVector<RHIMaterialPtr> m_overrideMaterials;

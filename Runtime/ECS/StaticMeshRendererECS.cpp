@@ -65,6 +65,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 					proxy.m_staticMeshEcs = GetComponentIndex(&data);
 					proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
 					proxy.m_meshes = data.GetModel()->GetMeshes();
+					proxy.m_worldAabb = data.GetModel()->GetBoundsAABB();
+					proxy.m_worldAabb.Apply(proxy.m_worldMatrix);
 
 					proxy.m_overrideMaterials.Clear();
 					for (size_t i = 0; i < proxy.m_meshes.Num(); i++)

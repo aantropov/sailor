@@ -150,4 +150,67 @@ namespace Sailor::RHI
 		}
 	}
 
+	template<typename TPerInstanceData>
+	void RHIDrawCall(uint32_t start,
+		uint32_t end,
+		const TVector<RHIBatch>& vecBatches,
+		RHI::RHICommandListPtr cmdList,
+		std::function<TVector<RHIShaderBindingSetPtr>(RHIMaterialPtr)> shaderBindings,
+		const TDrawCalls<TPerInstanceData>& drawCalls,
+		RHIBufferPtr& indirectCommandBuffer,
+		glm::ivec4 viewport,
+		glm::uvec4 scissors,
+		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f))
+	{
+		SAILOR_PROFILE_BLOCK("Play draw calls");
+
+		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+
+		RHIMaterialPtr prevMaterial = nullptr;
+		RHIBufferPtr prevVertexBuffer = nullptr;
+		RHIBufferPtr prevIndexBuffer = nullptr;
+
+		size_t indirectBufferOffset = 0;
+		for (uint32_t j = start; j < end; j++)
+		{
+			auto& material = vecBatches[j].m_material;
+			auto& mesh = vecBatches[j].m_mesh;
+			auto& drawCall = drawCalls[vecBatches[j]];
+
+			if (prevMaterial != material)
+			{
+				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(material);
+
+				commands->BindMaterial(cmdList, material);
+				commands->SetViewport(cmdList, (float)viewport.x, (float)viewport.y,
+					(float)viewport.z,
+					(float)viewport.w,
+					glm::vec2(scissors.x, scissors.y),
+					glm::vec2(scissors.z, scissors.w),
+					depthRange.x,
+					depthRange.y);
+
+				commands->BindShaderBindings(cmdList, material, sets);
+				prevMaterial = material;
+			}
+
+			if (prevVertexBuffer != mesh->m_vertexBuffer)
+			{
+				commands->BindVertexBuffer(cmdList, mesh->m_vertexBuffer, 0);
+				prevVertexBuffer = mesh->m_vertexBuffer;
+			}
+
+			if (prevIndexBuffer != mesh->m_indexBuffer)
+			{
+				commands->BindIndexBuffer(cmdList, mesh->m_indexBuffer, 0);
+				prevIndexBuffer = mesh->m_indexBuffer;
+			}
+
+			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawCall.Num();
+			commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawCall.Num(), sizeof(RHI::DrawIndexedIndirectData));
+
+			indirectBufferOffset += bufferSize;
+		}
+	}
 };

@@ -255,13 +255,15 @@ glslFragment: |
     {
         attenuation = 1.0;
         
-        const int cascadeLayer = SelectCascade(frame.view, worldPos, frame.cameraParams);
+        int cascadeLayer = SelectCascade(frame.view, worldPos, frame.cameraParams);
         float bias = max(0.0005 * (1.0 - dot(normal, light.direction)), 0.0001);   
-        
+
+        cascadeLayer = min(cascadeLayer, NUM_CSM_CASCADES - 1);
         if (cascadeLayer < NUM_CSM_CASCADES)
         {
             bias *= ShadowCascadeLevels[cascadeLayer];
         }
+        
         shadow = ShadowCalculation(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias);
     }
     // Point light
@@ -419,7 +421,7 @@ glslFragment: |
     outColor.a = material.albedo.a;
     
     /*
-    const int cascadeLayer = SelectCascade(frame.view, vin.worldPosition);
+    const int cascadeLayer = SelectCascade(frame.view, vin.worldPosition, frame.camera);
     vec3 dColor = vec3(1,0,0);
     if(cascadeLayer == 0)
     {
