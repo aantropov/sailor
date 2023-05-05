@@ -70,6 +70,7 @@ namespace Sailor::Math
 		SAILOR_API __forceinline void Extend(const AABB& inner);
 		SAILOR_API __forceinline void Extend(const glm::vec3& inner);
 		SAILOR_API __forceinline void Apply(const glm::mat4& transformMatrix);
+		SAILOR_API __forceinline bool IsValid() const { return m_min != m_max; }
 
 		SAILOR_API bool operator==(const AABB& rhs) const { return this->m_max == rhs.m_max && this->m_min == rhs.m_min; }
 	};

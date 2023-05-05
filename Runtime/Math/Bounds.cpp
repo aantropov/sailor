@@ -94,6 +94,8 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 		maxZ = std::max(maxZ, trf.z);
 	}
 
+	const float zFar = -minZ;
+
 	if (minZ < 0)
 	{
 		minZ *= zMult;
@@ -112,9 +114,10 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 		maxZ *= zMult;
 	}
 
-	// Reversed Z
-	const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, -minZ, -maxZ);
+	const float zNear = zFar - (maxZ - minZ);
 
+	// Viewport settings
+	const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, zNear, zFar);
 	return lightProjection;
 }
 
@@ -471,7 +474,8 @@ void AABB::Apply(const glm::mat4& transformMatrix)
 	TVector<glm::vec3> points;
 	GetPoints(points);
 
-	m_min = m_max = vec3(0);
+	m_max = glm::vec3(std::numeric_limits<float>::min());
+	m_min = glm::vec3(std::numeric_limits<float>::max());
 
 	for (auto& point : points)
 	{

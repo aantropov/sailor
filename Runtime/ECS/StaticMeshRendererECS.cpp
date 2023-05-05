@@ -30,13 +30,14 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			if (mobilityType == EMobilityType::Stationary && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
 			{
 				const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
-				if (ownerTransform.GetLastFrameChanged() > data.m_lastChanges)
+				Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+
+				if (ownerTransform.GetLastFrameChanged() > data.m_lastChanges && adjustedBounds.IsValid())
 				{
 					RHI::RHIMeshProxy proxy;
 					proxy.m_staticMeshEcs = GetComponentIndex(&data);
 					proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
 
-					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
 					adjustedBounds.Apply(proxy.m_worldMatrix);
 					m_sceneViewProxiesCache->m_stationaryOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
 
@@ -56,7 +57,9 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			if (mobilityType == EMobilityType::Static && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
 			{
 				const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
-				if (ownerTransform.GetLastFrameChanged() > data.m_lastChanges)
+				Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+
+				if (ownerTransform.GetLastFrameChanged() > data.m_lastChanges && adjustedBounds.IsValid())
 				{
 					RHI::RHISceneViewProxy proxy;
 					proxy.m_staticMeshEcs = GetComponentIndex(&data);
@@ -70,7 +73,6 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 						proxy.m_overrideMaterials.Add(data.GetMaterials()[materialIndex]->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
 					}
 
-					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
 					adjustedBounds.Apply(proxy.m_worldMatrix);
 					m_sceneViewProxiesCache->m_staticOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
 					

@@ -26,7 +26,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false, EDepthCompare::GreaterOrEqual);
+			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false, EDepthCompare::LessOrEqual);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -86,7 +86,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	uint32_t numMeshes = 0;
 
 	SAILOR_PROFILE_BLOCK("Filter sceneView by tag");
-	for (auto& proxy : sceneView.m_proxies)
+	for (auto& proxy : sceneView.m_csmMeshLists[0][0])
 	{
 		for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 		{
@@ -244,7 +244,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 				glm::ivec2(0, 0),
 				true,
 				glm::vec4(0.0f),
-				0.0f,
+				1.0f,
 				false,
 				true);
 

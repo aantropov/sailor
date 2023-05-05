@@ -442,6 +442,9 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 {
 	Assimp::Importer importer;
 
+	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
+	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
+
 	const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? aiProcess_OptimizeMeshes : 0);
 	const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
 

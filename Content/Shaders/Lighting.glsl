@@ -162,7 +162,7 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
        for(int y = -1; y <= 1; ++y)
        {
            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r * 0.5 + 0.5; 
-           shadow += currentDepth + bias > pcfDepth ? 1.0 : 0.0;        
+           shadow += currentDepth - bias < pcfDepth ? 1.0 : 0.0;
        }    
    }
    shadow /= 9.0;
