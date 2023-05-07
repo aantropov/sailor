@@ -34,7 +34,7 @@ namespace Sailor
 
 	protected:
 
-		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_depthOnlyMaterials;
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_depthOnlyMaterials;
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 		size_t m_sizePerInstanceData = 0;
 

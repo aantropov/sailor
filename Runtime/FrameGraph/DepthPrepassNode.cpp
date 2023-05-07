@@ -16,7 +16,7 @@ const char* DepthPrepassNode::m_name = "DepthPrepass";
 
 RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertexDescription)
 {
-	auto& material = m_depthOnlyMaterials.At_Lock(vertexDescription->GetVertexAttributeBits());
+	auto& material = m_depthOnlyMaterials[vertexDescription->GetVertexAttributeBits()];
 
 	if (!material)
 	{
@@ -29,7 +29,6 @@ RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescri
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
-	m_depthOnlyMaterials.Unlock(vertexDescription->GetVertexAttributeBits());
 
 	return material;
 }

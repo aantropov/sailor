@@ -66,6 +66,8 @@ namespace Sailor
 		SAILOR_API __forceinline EMobilityType GetMobilityType() const { return m_type; }
 		SAILOR_API __forceinline void SetMobilityType(EMobilityType type) { m_type = type; }
 
+		SAILOR_API size_t GetFrameLastChange() const { return m_frameLastChange; }
+
 	protected:
 
 		size_t m_transformHandle = (size_t)(-1);
@@ -84,7 +86,10 @@ namespace Sailor
 
 		TVector<ComponentPtr> m_components;
 
+		size_t m_frameLastChange = 0;
+
 		friend GameObjectPtr;
 		friend class World;
+		friend class ECS::TBaseSystem;
 	};
 }

@@ -14,10 +14,6 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API __forceinline ObjectPtr GetOwner() const { return m_owner; }
-
-		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
-
 		SAILOR_API __forceinline void SetProjectionMatrix(const glm::mat4& projection) { m_projectionMatrix = projection; }
 
 		SAILOR_API __forceinline const glm::mat4& GetProjectionMatrix() const { return m_projectionMatrix; }
@@ -38,7 +34,6 @@ namespace Sailor
 
 	protected:
 
-		bool m_bIsActive : 1 = true;
 		glm::mat4 m_projectionMatrix{};
 		glm::mat4 m_viewMatrix{};
 
@@ -47,8 +42,6 @@ namespace Sailor
 
 		float m_zNear = 0.1f;
 		float m_zFar = 3000.0f;
-
-		ObjectPtr m_owner;
 
 		friend class CameraECS;
 	};

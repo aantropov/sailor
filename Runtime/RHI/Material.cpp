@@ -10,6 +10,8 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 void RHIShaderBindingSet::RecalculateCompatibility()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	m_compatibilityHashCode = 0;
 
 	for (auto& shaderBinding : m_shaderBindings)

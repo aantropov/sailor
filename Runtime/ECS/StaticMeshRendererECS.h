@@ -18,21 +18,15 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API __forceinline ObjectPtr& GetOwner() { return m_owner; }
-		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
-
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return m_materials; }
 		SAILOR_API __forceinline ModelPtr& GetModel() { return m_model; }
-		SAILOR_API __forceinline const size_t& GetLastFrameChanged() const { return m_lastChanges; }
+		SAILOR_API __forceinline bool ShouldCastShadow() const { return true; }
 
 	protected:
 
 		ModelPtr m_model;
 		TVector<MaterialPtr> m_materials;
 
-		bool m_bIsActive : 1 = true;
-		ObjectPtr m_owner;
-		size_t m_lastChanges = 0;
 		friend class StaticMeshRendererECS;
 	};
 

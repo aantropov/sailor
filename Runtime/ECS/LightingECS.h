@@ -7,6 +7,7 @@
 #include "RHI/Types.h"
 #include "Components/Component.h"
 #include "Memory/Memory.h"
+#include "RHI/SceneView.h"
 
 namespace Sailor
 {
@@ -18,11 +19,6 @@ namespace Sailor
 
 	public:
 
-		SAILOR_API __forceinline GameObjectPtr& GetOwner() { return m_owner; }
-		SAILOR_API __forceinline void SetOwner(const GameObjectPtr& owner) { m_owner = owner; }
-
-		void SetDirty() { m_bIsDirty = true; }
-
 		glm::vec3 m_intensity{ 100.0f, 100.0f, 100.0f };
 		glm::vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
 		glm::vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
@@ -32,21 +28,36 @@ namespace Sailor
 
 	protected:
 
-		bool m_bIsActive : 1 = true;
-		bool m_bIsDirty : 1 = true;
-
-		GameObjectPtr m_owner;
 		friend class LightingECS;
+	};
+
+	class LightShadowState
+	{
+		uint32_t m_componentIndex = 0;
+
+		// <Mesh ECS Index, LastFrameChanged>
+		TVector<TPair<size_t, size_t>> m_cache;
 	};
 
 	class LightingECS : public ECS::TSystem<LightingECS, LightData>
 	{
 	public:
 
+		// Global constants
+		static constexpr uint32_t MaxShadowsInView = 1024;
 		const uint32_t LightsMaxNum = 65535;
+		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
 
+		const RHI::EFormat ShadowMapFormat = RHI::EFormat::D16_UNORM; //2 bytes 
+
+		// CSM is based on https://learnopengl.com/Guest-Articles/2021/CSM
+		// and https://learn.microsoft.com/en-us/windows/win32/dxtecharts/cascaded-shadow-maps		
+		static constexpr uint32_t NumCascades = 3;
+		static constexpr float ShadowCascadeLevels[NumCascades] = { 1.0f / 25.0f, 1.0f / 5.0f, 1.0f / 2.0f };
+		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {2048,2048}, {1024,1024} };
+		
 		// TODO: Tightly pack
-		struct ShaderData
+		struct LightShaderData
 		{
 			 alignas(16) glm::vec3 m_worldPosition;
 			 alignas(16) glm::vec3 m_direction;
@@ -62,12 +73,24 @@ namespace Sailor
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
-		void FillLightsData(RHI::RHISceneViewPtr& sceneView);
+		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
+		
+		float GetShadowsOccupiedMemoryMb() const { return m_shadowMapsMb; }
 
 	protected:
-
+		
+		// Lights
 		TVector<TPair<uint32_t, uint32_t>> m_skipList;
 		RHI::RHIShaderBindingSetPtr m_lightsData;
+
+		// Shadows
+		// Light matrices and shadowMaps
+		RHI::RHIShaderBindingPtr m_shadowMaps;
+		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps;
+
+		RHI::RHIRenderTargetPtr m_defaultShadowMap;
+
+		float m_shadowMapsMb = 0;
 	};
 
 	template ECS::TSystem<LightingECS, LightData>;

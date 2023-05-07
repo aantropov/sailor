@@ -25,6 +25,8 @@
 #include "FrameGraph/LightCullingNode.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 
+#include "ECS/LightingECS.h"
+
 using namespace Sailor;
 
 class ShaderIncluder : public shaderc::CompileOptions::IncluderInterface
@@ -164,17 +166,17 @@ std::string GetCodeGenShaderConstants(uint32_t version)
 	stream << "#define LIGHTS_CULLING_TILE_SIZE " << LightCullingNode::TileSize << "\n";
 	stream << "#define LIGHTS_CANDIDATES_PER_TILE " << 196 << "\n";
 	stream << "#define LIGHTS_PER_TILE " << LightCullingNode::LightsPerTile << "\n";
-	stream << "#define MAX_SHADOWS_IN_VIEW " << ShadowPrepassNode::MaxShadowsInView << "\n";
+	stream << "#define MAX_SHADOWS_IN_VIEW " << LightingECS::MaxShadowsInView << "\n";
 	stream << "#define MAX_TEXTURES_IN_SCENE " << TextureImporter::MaxTexturesInScene << "\n";
-	stream << "#define NUM_CSM_CASCADES " << ShadowPrepassNode::NumCascades << "\n";
+	stream << "#define NUM_CSM_CASCADES " << LightingECS::NumCascades << "\n";
 
-	stream << "const float ShadowCascadeLevels[" << ShadowPrepassNode::NumCascades << "] = { ";
+	stream << "const float ShadowCascadeLevels[" << LightingECS::NumCascades << "] = { ";
 
-	for (uint32_t i = 0; i < ShadowPrepassNode::NumCascades; i++)
+	for (uint32_t i = 0; i < LightingECS::NumCascades; i++)
 	{
-		stream << ShadowPrepassNode::ShadowCascadeLevels[i];
+		stream << LightingECS::ShadowCascadeLevels[i];
 		
-		if (i != ShadowPrepassNode::NumCascades - 1)
+		if (i != LightingECS::NumCascades - 1)
 		{
 			stream << ",";
 		}

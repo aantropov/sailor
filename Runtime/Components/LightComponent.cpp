@@ -53,7 +53,7 @@ void LightComponent::SetCutOff(float innerDegrees, float outerDegrees)
 	LightData& lightData = GetData();
 
 	lightData.m_cutOff = glm::vec2(innerDegrees, outerDegrees);
-	lightData.SetDirty();
+	lightData.MarkDirty();
 }
 
 void LightComponent::SetIntensity(const glm::vec3& value)
@@ -61,7 +61,7 @@ void LightComponent::SetIntensity(const glm::vec3& value)
 	LightData& lightData = GetData();
 
 	lightData.m_intensity = value;
-	lightData.SetDirty();
+	lightData.MarkDirty();
 }
 
 void LightComponent::SetAttenuation(const glm::vec3& value)
@@ -69,7 +69,7 @@ void LightComponent::SetAttenuation(const glm::vec3& value)
 	LightData& lightData = GetData();
 
 	lightData.m_attenuation = value;
-	lightData.SetDirty();
+	lightData.MarkDirty();
 }
 
 void LightComponent::SetBounds(const glm::vec3& value)
@@ -77,7 +77,7 @@ void LightComponent::SetBounds(const glm::vec3& value)
 	LightData& lightData = GetData();
 
 	lightData.m_bounds = value;
-	lightData.SetDirty();
+	lightData.MarkDirty();
 }
 
 void LightComponent::SetLightType(ELightType value)
@@ -85,5 +85,5 @@ void LightComponent::SetLightType(ELightType value)
 	LightData& lightData = GetData();
 
 	lightData.m_type = value;
-	lightData.SetDirty();
+	lightData.MarkDirty();
 }

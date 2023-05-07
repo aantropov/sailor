@@ -4,6 +4,7 @@
 #include "CommandList.h"
 #include "VertexDescription.h"
 #include "FrameGraph/ShadowPrepassNode.h"
+#include "ECS/LightingECS.h"
 
 #ifdef SAILOR_BUILD_WITH_VULKAN
 #include "GraphicsDriver/Vulkan/VulkanPipeline.h"
@@ -161,17 +162,17 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 	TVector<Math::Frustum> cascades;
 	Math::Frustum cameraFrustum{};
 
-	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar * ShadowPrepassNode::ShadowCascadeLevels[0]);
+	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar * LightingECS::ShadowCascadeLevels[0]);
 	cascades.Add(cameraFrustum);
 
 	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY,
-		zFar * ShadowPrepassNode::ShadowCascadeLevels[0],
-		zFar * ShadowPrepassNode::ShadowCascadeLevels[1]);
+		zFar * LightingECS::ShadowCascadeLevels[0],
+		zFar * LightingECS::ShadowCascadeLevels[1]);
 	cascades.Add(cameraFrustum);
 
 	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY,
-		zFar * ShadowPrepassNode::ShadowCascadeLevels[1],
-		zFar * ShadowPrepassNode::ShadowCascadeLevels[2]);
+		zFar * LightingECS::ShadowCascadeLevels[1],
+		zFar * LightingECS::ShadowCascadeLevels[2]);
 	cascades.Add(cameraFrustum);
 
 	constexpr float zMult = 10.0f;

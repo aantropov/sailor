@@ -184,7 +184,7 @@ namespace Sailor
 
 			for (const auto& pair : *this)
 			{
-				res.Add(pair->m_first);
+				res.Add(pair.m_first);
 			}
 
 			return res;
@@ -196,7 +196,7 @@ namespace Sailor
 
 			for (const auto& pair : *this)
 			{
-				res.Add(pair->m_second);
+				res.Add(pair.m_second);
 			}
 
 			return res;

@@ -43,21 +43,20 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 void RHISceneView::Clear()
 {
 	m_rhiLightsData.Clear();
-	m_directionalLights.Clear();
-
-	m_sortedPointLights.Clear();
-	m_sortedSpotLights.Clear();
 
 	m_cameras.Clear();
 	m_cameraTransforms.Clear();
+	m_shadowMapsToUpdate.Clear();
 
 	m_drawImGui.Clear();
 	m_debugDraw.Clear();
 	m_snapshots.Clear();
 }
 
-TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum) const
+TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum, bool bSkipMaterials) const
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	TVector<RHISceneViewProxy> res;
 
 	// Stationary
@@ -79,17 +78,19 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 		viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
 		viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
 		viewProxy.m_overrideMaterials.Clear();
-		
+		viewProxy.m_frame = ecsData.GetFrameLastChange();
+		viewProxy.m_bCastShadows = ecsData.ShouldCastShadow();
 		viewProxy.m_worldAabb = ecsData.GetModel()->GetBoundsAABB();
 		viewProxy.m_worldAabb.Apply(viewProxy.m_worldMatrix);
-
+		
+		viewProxy.m_overrideMaterials.Reserve(viewProxy.m_meshes.Num());
+		// TODO: Should we check AABB for each mesh in model?
 		for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
 		{
 			size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);
 
 			auto& material = ecsData.GetMaterials()[materialIndex];
-
-			if (material && material->IsReady())
+			if (material && material->IsReady() && !bSkipMaterials)
 			{
 				viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
 			}
@@ -110,6 +111,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 
 	return res;
 }
+
 void RHISceneView::PrepareSnapshots()
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -131,13 +133,8 @@ void RHISceneView::PrepareSnapshots()
 		res.m_totalNumLights = m_totalNumLights;
 		res.m_rhiLightsData = m_rhiLightsData;
 		res.m_drawImGui = m_drawImGui;
-		res.m_sortedSpotLights = std::move(m_sortedSpotLights[i]);
-		res.m_sortedPointLights = std::move(m_sortedPointLights[i]);
-		res.m_directionalLights = m_directionalLights;
-
-		res.m_csmMeshLists = std::move(m_csmMeshLists[i]);
-		
-		res.m_proxies = std::move(TraceScene(frustum));
+		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);
+		res.m_proxies = std::move(TraceScene(frustum, false));
 
 		res.m_debugDrawSecondaryCmdList = m_debugDraw[i];
 		m_snapshots.Emplace(std::move(res));

@@ -119,6 +119,8 @@ RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDe
 
 	if (!material)
 	{
+		SAILOR_PROFILE_BLOCK("Create RHI material for resource");
+		
 		SAILOR_LOG("Create RHI material for resource: %s, vertex attribute bits: %llu", GetUID().ToString().c_str(), vertexDescription->GetVertexAttributeBits());
 
 		if (!m_commonShaderBindings)
@@ -130,6 +132,8 @@ RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDe
 		{
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader, m_commonShaderBindings);
 		}
+		
+		SAILOR_PROFILE_END_BLOCK();
 
 		m_commonShaderBindings->RecalculateCompatibility();
 	}

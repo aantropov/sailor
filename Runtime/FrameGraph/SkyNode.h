@@ -100,7 +100,7 @@ namespace Sailor::Framegraph
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_pShaderBindings; }
 		SAILOR_API void SetLocation(float latitudeDegrees, float longitudeDegrees);
-		SAILOR_API void SetDirty() { m_bIsDirty = true;  m_updateEnvCubemapPattern = 0; }
+		SAILOR_API void MarkDirty() { m_bIsDirty = true;  m_updateEnvCubemapPattern = 0; }
 
 		const SkyParams& GetSkyParams() const { return m_skyParams; }
 		SkyParams& GetSkyParams() { return m_skyParams; }

@@ -31,7 +31,7 @@ namespace Sailor::RHI
 		SAILOR_API void AddAttribute(uint32_t location, uint32_t binding, EFormat format, uint32_t offset);
 
 		SAILOR_API const TVector<AttributeDescription>& GetAttributeDescriptions() const { return m_attributes; }
-		SAILOR_API VertexAttributeBits GetVertexAttributeBits() const { return m_bits; }
+		SAILOR_API const VertexAttributeBits& GetVertexAttributeBits() const { return m_bits; }
 
 	protected:
 

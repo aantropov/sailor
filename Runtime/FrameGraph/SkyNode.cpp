@@ -809,7 +809,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 			if (auto node = frameGraph->GetGraphNode("Environment").DynamicCast<EnvironmentNode>())
 			{
-				node->SetDirty();
+				node->MarkDirty();
 			}
 
 		}

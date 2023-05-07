@@ -2,6 +2,7 @@
 #include "ECS/TransformECS.h"
 #include "RHI/Shader.h"
 #include "RHI/Texture.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/SceneView.h"
 #include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
@@ -12,9 +13,38 @@ using namespace Sailor::Tasks;
 
 void LightingECS::BeginPlay()
 {
-	m_lightsData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+	auto& driver = Sailor::RHI::Renderer::GetDriver();
+	m_lightsData = driver->CreateShaderBindings();
+	driver->AddSsboToShaderBindings(m_lightsData, "light", sizeof(LightingECS::LightShaderData), LightsMaxNum, 0, true);
 
-	Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_lightsData, "light", sizeof(LightingECS::ShaderData), LightsMaxNum, 0, true);
+	if (m_csmShadowMaps.Num() == 0)
+	{
+		const auto usage = RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
+			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+			RHI::ETextureUsageBit::TextureTransferDst_Bit |
+			RHI::ETextureUsageBit::Sampled_Bit;
+
+		m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
+
+		for (uint32_t i = 0; i < NumCascades; i++)
+		{
+			char csmDebugName[64];
+			sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
+
+			m_csmShadowMaps.Add(driver->CreateRenderTarget(ShadowCascadeResolutions[i % NumCascades], 1,
+				ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
+			
+			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
+		}
+
+		TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
+		for (uint32_t i = 0; i < MaxShadowsInView; i++)
+		{
+			shadowMaps[i] = (i < m_csmShadowMaps.Num()) ? m_csmShadowMaps[i] : m_defaultShadowMap;
+		}
+
+		m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_lightsData, "shadowMaps", shadowMaps, 7);		
+	}
 }
 
 Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
@@ -28,7 +58,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 
 	driverCommands->BeginDebugRegion(cmdList, "LightingECS:Update Lights", RHI::DebugContext::Color_CmdTransfer);
 
-	TVector<ShaderData> shaderDataBatch;
+	TVector<LightShaderData> shaderDataBatch;
 	shaderDataBatch.Reserve(64);
 	bool bShouldWrite = true;
 	size_t startIndex = 0;
@@ -47,8 +77,9 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		}
 
 		auto& data = m_components[index];
+		auto owner = data.m_owner.StaticCast<GameObject>();
 
-		if (data.GetOwner()->GetMobilityType() == EMobilityType::Static)
+		if (owner->GetMobilityType() == EMobilityType::Static)
 		{
 			bool bPlaced = false;
 
@@ -89,9 +120,9 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		if (!data.m_bIsActive)
 			continue;
 
-		const auto& ownerTransform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
+		const auto& ownerTransform = owner->GetTransformComponent();
 
-		if (data.m_bIsDirty || ownerTransform.GetLastFrameChanged() == GetWorld()->GetCurrentFrame())
+		if (data.m_bIsDirty || data.m_frameLastChange < owner->GetFrameLastChange())
 		{
 			if (bShouldWrite)
 			{
@@ -101,7 +132,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 
 			const auto& lightData = m_components[index];
 
-			ShaderData shaderData;
+			LightShaderData shaderData;
 			shaderData.m_attenuation = lightData.m_attenuation;
 			shaderData.m_bounds = lightData.m_bounds;
 			shaderData.m_intensity = lightData.m_intensity;
@@ -110,6 +141,13 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			shaderData.m_worldPosition = ownerTransform.GetWorldPosition();
 			shaderData.m_cutOff = vec2(glm::cos(glm::radians(lightData.m_cutOff.x)), glm::cos(glm::radians(lightData.m_cutOff.y)));
 			shaderDataBatch.Emplace(std::move(shaderData));
+
+			data.m_frameLastChange = GetWorld()->GetCurrentFrame();
+			
+			if (data.m_frameLastChange != owner->GetFrameLastChange())
+			{
+				UpdateGameObject(owner, GetWorld()->GetCurrentFrame());
+			}
 
 			data.m_bIsDirty = false;
 		}
@@ -122,9 +160,9 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 		{
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, binding,
 				shaderDataBatch.GetData(),
-				sizeof(LightingECS::ShaderData) * shaderDataBatch.Num(),
+				sizeof(LightingECS::LightShaderData) * shaderDataBatch.Num(),
 				binding->GetBufferOffset() +
-				sizeof(LightingECS::ShaderData) * startIndex);
+				sizeof(LightingECS::LightShaderData) * startIndex);
 
 			shaderDataBatch.Clear();
 		}
@@ -138,9 +176,12 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 void LightingECS::EndPlay()
 {
 	m_lightsData.Clear();
+	m_csmShadowMaps.Clear();
+	m_defaultShadowMap.Clear();
+	m_shadowMaps.Clear();
 }
 
-void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
+void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -156,8 +197,10 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 		frustums.Emplace(std::move(frustum));
 	}
 
-	sceneView->m_sortedSpotLights.Resize(sceneView->m_cameraTransforms.Num());
-	sceneView->m_sortedPointLights.Resize(sceneView->m_cameraTransforms.Num());
+	// Sort all the lights per camera
+	TVector<RHI::RHILightProxy> directionalLights;
+	TVector<TVector<RHI::RHILightProxy>> sortedSpotLights{ sceneView->m_cameraTransforms.Num() };
+	TVector<TVector<RHI::RHILightProxy>> sortedPointLights{ sceneView->m_cameraTransforms.Num() };
 
 	// TODO: Cache lights that cast shadows separately to decrease algo complexity
 	for (size_t index = 0; index < m_components.Num(); index++)
@@ -188,35 +231,31 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 
 						if (ELightType::Spot == light.m_type)
 						{
-							auto it = std::lower_bound(sceneView->m_sortedSpotLights[j].begin(), sceneView->m_sortedSpotLights[j].end(), lightProxy);
-							sceneView->m_sortedSpotLights[j].Insert(lightProxy, it - sceneView->m_sortedSpotLights[j].begin());
+							auto it = std::lower_bound(sortedSpotLights[j].begin(), sortedSpotLights[j].end(), lightProxy);
+							sortedSpotLights[j].Insert(lightProxy, it - sortedSpotLights[j].begin());
 						}
 						else
 						{
-							auto it = std::lower_bound(sceneView->m_sortedPointLights[j].begin(), sceneView->m_sortedPointLights[j].end(), lightProxy);
-							sceneView->m_sortedPointLights[j].Insert(lightProxy, it - sceneView->m_sortedPointLights[j].begin());
+							auto it = std::lower_bound(sortedPointLights[j].begin(), sortedPointLights[j].end(), lightProxy);
+							sortedPointLights[j].Insert(lightProxy, it - sortedPointLights[j].begin());
 						}
 					}
 				}
 			}
 			else
 			{
-				sceneView->m_directionalLights.Add(lightProxy);
+				directionalLights.Add(lightProxy);
 			}
 		}
 	}
 
-	sceneView->m_csmMeshLists.Resize(sceneView->m_cameraTransforms.Num());
-
 	for (uint32_t i = 0; i < sceneView->m_cameraTransforms.Num(); i++)
 	{
-		sceneView->m_csmMeshLists[i].Resize(sceneView->m_directionalLights.Num());
-
-		for (uint32_t j = 0; j < sceneView->m_directionalLights.Num(); j++)
+		TVector<RHI::RHIUpdateShadowMapCommand> updateShadowMaps;
+		
+		for (const auto& directionalLight : directionalLights)
 		{
-			sceneView->m_csmMeshLists[i][j].Resize(ShadowPrepassNode::NumCascades);
-
-			auto lightCascadesMatrices = ShadowPrepassNode::CalculateLightProjectionForCascades(sceneView->m_directionalLights[j].m_lightMatrix,
+			auto lightCascadesMatrices = ShadowPrepassNode::CalculateLightProjectionForCascades(directionalLight.m_lightMatrix,
 				sceneView->m_cameraTransforms[i].Matrix(),
 				sceneView->m_cameras[i].GetAspect(),
 				sceneView->m_cameras[i].GetFov(),
@@ -228,13 +267,21 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 
 			for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
 			{
-				frustums[k].ExtractFrustumPlanes(lightCascadesMatrices[k] * sceneView->m_directionalLights[j].m_lightMatrix);
-				sceneView->m_csmMeshLists[i][j][k] = std::move(sceneView->TraceScene(frustums[k]));
+				uint32_t cascadeIndex = (uint32_t)updateShadowMaps.Add(RHI::RHIUpdateShadowMapCommand());
+				auto& cascade = updateShadowMaps[cascadeIndex];
 
+				auto lightMatrix = lightCascadesMatrices[k] * directionalLight.m_lightMatrix;
+
+				frustums[k].ExtractFrustumPlanes(lightMatrix);
+				cascade.m_meshList = sceneView->TraceScene(frustums[k], true);
+
+				// TODO:Redo
+				cascade.m_shadowMap = m_csmShadowMaps[k];
+				cascade.m_lightMatrix = lightMatrix;
 				if (k > 0)
 				{
 					// Don't duplicate data for higher cascades
-					sceneView->m_csmMeshLists[i][j][k].RemoveAll([k = k, &frustums](const auto& m)
+					cascade.m_meshList.RemoveAll([k = k, &frustums](const auto& m)
 						{
 							for (uint32_t z = 0; z < k; z++)
 							{
@@ -245,10 +292,19 @@ void LightingECS::FillLightsData(RHI::RHISceneViewPtr& sceneView)
 							}
 							return false;
 						});
+
+					// We store cascade dependencies
+					for (int32_t z = k; z > 0; z--)
+					{
+						cascade.m_internalCommandsList.Add(cascadeIndex - z);
+					}
 				}
 			}
 		}
+
+		sceneView->m_shadowMapsToUpdate.Emplace(std::move(updateShadowMaps));
 	}
+
 	// TODO: Pass only active lights
 	sceneView->m_totalNumLights = (uint32_t)m_components.Num();
 	sceneView->m_rhiLightsData = m_lightsData;

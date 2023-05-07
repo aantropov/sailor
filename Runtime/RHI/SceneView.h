@@ -30,9 +30,12 @@ namespace Sailor::RHI
 
 	struct RHISceneViewProxy
 	{
-		size_t m_staticMeshEcs;
+		size_t m_staticMeshEcs{};
 		glm::mat4 m_worldMatrix;
 		Math::AABB m_worldAabb{};
+		
+		bool m_bCastShadows{};
+		size_t m_frame{};
 
 		TVector<RHIMeshPtr> m_meshes;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
@@ -40,6 +43,14 @@ namespace Sailor::RHI
 		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;
 
+	};
+
+	struct RHIUpdateShadowMapCommand
+	{
+		glm::mat4 m_lightMatrix{};
+		RHI::RHIRenderTargetPtr m_shadowMap;
+		TVector<uint32_t> m_internalCommandsList;
+		TVector<RHISceneViewProxy> m_meshList;
 	};
 
 	struct RHISceneViewSnapshot
@@ -50,12 +61,7 @@ namespace Sailor::RHI
 		TVector<RHISceneViewProxy> m_proxies{};
 
 		uint32_t m_totalNumLights = 0;
-		TVector<RHILightProxy> m_sortedPointLights{};
-		TVector<RHILightProxy> m_sortedSpotLights{};
-		TVector<RHILightProxy> m_directionalLights{};
-
-		// Lights->Cascades->Proxies
-		TVector<TVector<TVector<RHISceneViewProxy>>> m_csmMeshLists{};
+		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate;
 
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
@@ -66,7 +72,7 @@ namespace Sailor::RHI
 
 	struct RHISceneView
 	{
-		SAILOR_API TVector<RHISceneViewProxy> TraceScene(const Math::Frustum& frustum) const;
+		SAILOR_API TVector<RHISceneViewProxy> TraceScene(const Math::Frustum& frustum, bool bSkipMaterials) const;
 		SAILOR_API void PrepareSnapshots();
 		SAILOR_API void PrepareDebugDrawCommandLists(WorldPtr world);
 
@@ -75,11 +81,9 @@ namespace Sailor::RHI
 
 		uint32_t m_totalNumLights = 0;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
-		TVector<RHILightProxy> m_directionalLights{};
+
 		// For each camera
-		TVector<TVector<TVector<TVector<RHISceneViewProxy>>>> m_csmMeshLists{};
-		TVector<TVector<RHILightProxy>> m_sortedPointLights{};
-		TVector<TVector<RHILightProxy>> m_sortedSpotLights{};
+		TVector<TVector<RHIUpdateShadowMapCommand>> m_shadowMapsToUpdate;
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;

@@ -35,12 +35,8 @@ void TransformComponent::MarkDirty()
 		GetOwner().StaticCast<GameObject>()->GetWorld()->GetECS<TransformECS>()->MarkDirty(this);
 		m_bIsDirty = true;
 	}
-	m_lastChanges = GetOwner().StaticCast<GameObject>()->GetWorld()->GetCurrentFrame();
-}
 
-void TransformComponent::SetOwner(const ObjectPtr& owner)
-{
-	m_owner = owner;
+	m_frameLastChange = GetOwner().StaticCast<GameObject>()->GetWorld()->GetCurrentFrame();
 }
 
 void TransformECS::MarkDirty(TransformComponent* ptr)
@@ -143,6 +139,7 @@ void TransformECS::CalculateMatrices(TransformComponent& parent)
 
 		CalculateMatrices(m_components[child]);
 	}
-
+		
+	UpdateGameObject(parent.GetOwner().StaticCast<GameObject>(), GetWorld()->GetCurrentFrame());
 	parent.m_bIsDirty = false;
 }

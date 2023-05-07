@@ -24,7 +24,7 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 
-		SAILOR_API void SetDirty() { m_bIsDirty = true; };
+		SAILOR_API void MarkDirty() { m_bIsDirty = true; };
 
 	protected:
 

@@ -211,7 +211,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	rhiSceneView->m_world = world;
 	world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
-	world->GetECS<LightingECS>()->FillLightsData(rhiSceneView);
+	world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
 
 	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
 	rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();

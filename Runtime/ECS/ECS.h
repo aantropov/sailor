@@ -20,6 +20,20 @@ namespace Sailor::ECS
 
 		SAILOR_API virtual void Clear() {}
 		SAILOR_API virtual ~TComponent() = default;
+
+		SAILOR_API virtual void MarkDirty() { m_bIsDirty = true; }
+
+		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
+		SAILOR_API __forceinline const ObjectPtr& GetOwner() const { return m_owner; }
+		SAILOR_API __forceinline const size_t& GetFrameLastChange() const { return m_frameLastChange; }
+
+	protected:
+		
+		ObjectPtr m_owner{};
+		
+		size_t m_frameLastChange = 0;
+		bool m_bIsActive : 1 = true;
+		bool m_bIsDirty : 1 = false;
 	};
 
 	using TBaseSystemPtr = TUniquePtr<class TBaseSystem>;
@@ -52,6 +66,8 @@ namespace Sailor::ECS
 		virtual size_t GetComponentType() const { return (size_t)-1; }
 
 		virtual uint32_t GetOrder() const { return 100; }
+
+		void UpdateGameObject(GameObjectPtr gameObject, size_t lastFrameChanges);
 
 	private:
 
