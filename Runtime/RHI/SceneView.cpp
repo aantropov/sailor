@@ -93,7 +93,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 			auto& material = ecsData.GetMaterials()[materialIndex];
 			if (material && material->IsReady() && !bSkipMaterials)
 			{
-				viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i - shift]->m_vertexDescription));
+				viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
 			}
 		}
 
