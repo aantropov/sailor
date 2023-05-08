@@ -85,6 +85,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 		
 		viewProxy.m_overrideMaterials.Reserve(viewProxy.m_meshes.Num());
 		// TODO: Should we check AABB for each mesh in model?
+
 		for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
 		{
 			size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);
@@ -92,7 +93,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 			auto& material = ecsData.GetMaterials()[materialIndex];
 			if (material && material->IsReady() && !bSkipMaterials)
 			{
-				viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
+				viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i - shift]->m_vertexDescription));
 			}
 		}
 

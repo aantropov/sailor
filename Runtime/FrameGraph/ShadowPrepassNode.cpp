@@ -40,22 +40,22 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+
+	if (!m_lightMatrices)
+	{
+		auto shaderBindingSet = sceneView.m_rhiLightsData;
+		m_lightMatrices = shaderBindingSet->GetOrAddShaderBinding("lightsMatrices");
+	}
+
 	if (sceneView.m_shadowMapsToUpdate.Num() == 0)
 	{
 		return;
 	}
 
-	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
-	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-
 	commands->BeginDebugRegion(commandList, std::string(GetName()), DebugContext::Color_CmdGraphics);
-
-	if (!m_lightMatrices)
-	{
-		auto shaderBindingSet = sceneView.m_rhiLightsData;
-		m_lightMatrices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "lightsMatrices", sizeof(glm::mat4), LightingECS::MaxShadowsInView, 6);
-	}
 
 	const uint32_t NumShadowPasses = (uint32_t)sceneView.m_shadowMapsToUpdate.Num();
 
@@ -69,14 +69,9 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 	SAILOR_PROFILE_BLOCK("Filter sceneView by tag");
 
-	TVector<glm::mat4> lightMatrices;
-	lightMatrices.Reserve(NumShadowPasses);
-
 	for (uint32_t passIndex = 0; passIndex < sceneView.m_shadowMapsToUpdate.Num(); passIndex++)
 	{
 		const auto& shadowPass = sceneView.m_shadowMapsToUpdate[passIndex];
-		lightMatrices.Add(shadowPass.m_lightMatrix);
-
 		for (auto& proxy : shadowPass.m_meshList)
 		{
 			for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
@@ -110,11 +105,6 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			}
 		}
 	}
-
-	commands->UpdateShaderBinding(transferCommandList, m_lightMatrices,
-		lightMatrices.GetData(),
-		sizeof(glm::mat4) * lightMatrices.Num(),
-		0);
 
 	SAILOR_PROFILE_END_BLOCK();
 
@@ -226,7 +216,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 			auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 
-			commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &lightMatrices[index]);
+			commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &sceneView.m_shadowMapsToUpdate[index].m_lightMatrix);
 
 			RHIRecordDrawCall(0, (uint32_t)passes[index].Num(), passes[index], commandList, shaderBindingsByMaterial, drawCalls[index], passIndices[index], m_indirectBuffers[index],
 				glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
@@ -241,7 +231,12 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 					glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
 					glm::vec2(0.0f, 1.0f));
 			}
-
+			
+			commands->UpdateShaderBinding(transferCommandList, m_lightMatrices,
+				&shadowPass.m_lightMatrix,
+				sizeof(glm::mat4),
+				sizeof(glm::mat4) * shadowPass.m_lighMatrixIndex);
+	
 			commands->EndRenderPass(commandList);
 
 			commands->EndDebugRegion(commandList);
@@ -253,6 +248,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 void ShadowPrepassNode::Clear()
 {
+	m_lightMatrices.Clear();
 	m_perInstanceData.Clear();
 }
 

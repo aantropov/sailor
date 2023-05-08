@@ -5,6 +5,7 @@
 #include "ECS/ECS.h"
 #include "Engine/Types.h"
 #include "RHI/Types.h"
+#include "Containers/Pair.h"
 #include "Components/Component.h"
 #include "Memory/Memory.h"
 #include "RHI/SceneView.h"
@@ -31,12 +32,17 @@ namespace Sailor
 		friend class LightingECS;
 	};
 
-	class LightShadowState
+	struct CSMLightState
 	{
 		uint32_t m_componentIndex = 0;
+		glm::mat4 m_lightMatrix{};
+		Math::Transform m_cameraTransform{};
+		Math::Transform m_lightTransform{};
 
 		// <Mesh ECS Index, LastFrameChanged>
-		TVector<TPair<size_t, size_t>> m_cache;
+		TVector<TPair<size_t, size_t>> m_snapshot{};
+
+		bool Equals(const CSMLightState& rhs) const;
 	};
 
 	class LightingECS : public ECS::TSystem<LightingECS, LightData>
@@ -79,6 +85,18 @@ namespace Sailor
 
 	protected:
 		
+		SAILOR_API TVector<RHI::RHIUpdateShadowMapCommand> PrepareCSMPasses(
+			const RHI::RHISceneViewPtr& sceneView,
+			const Math::Transform& cameraTransform,
+			const CameraData& cameraData, 
+			const TVector<RHI::RHILightProxy>& directionalLights);
+		
+		SAILOR_API void GetLightsInFrustum(const Math::Frustum& frustum,
+			const Math::Transform& cameraTransform,
+			TVector<RHI::RHILightProxy>& outDirectionalLights, 
+			TVector<RHI::RHILightProxy>& outSortedPointLights,
+			TVector<RHI::RHILightProxy>& outSortedSpotLights);
+
 		// Lights
 		TVector<TPair<uint32_t, uint32_t>> m_skipList;
 		RHI::RHIShaderBindingSetPtr m_lightsData;
@@ -86,7 +104,11 @@ namespace Sailor
 		// Shadows
 		// Light matrices and shadowMaps
 		RHI::RHIShaderBindingPtr m_shadowMaps;
+		RHI::RHIShaderBindingPtr m_lightMatrices;
+		RHI::RHIShaderBindingPtr m_shadowIndices;
+
 		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps;
+		TVector<CSMLightState> m_csmSnapshots;
 
 		RHI::RHIRenderTargetPtr m_defaultShadowMap;
 

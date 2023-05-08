@@ -88,8 +88,13 @@ glslVertex: |
   {
       mat4 instance[];
   } lightsMatrices;
+
+  layout(std430, set = 1, binding = 7) readonly buffer ShadowIndicesSSBO
+  {
+      uint instance[];
+  } shadowIndices;
   
-  layout(set=1, binding=7) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -197,7 +202,12 @@ glslFragment: |
       mat4 instance[];
   } lightsMatrices;
   
-  layout(set=1, binding=7) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(std430, set = 1, binding = 7) readonly buffer ShadowIndicesSSBO
+  {
+      uint instance[];
+  } shadowIndices;
+  
+  layout(set = 1, binding = 8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {

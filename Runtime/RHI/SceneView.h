@@ -19,11 +19,11 @@ namespace Sailor::RHI
 
 	struct RHILightProxy
 	{
-		glm::mat4 m_lightMatrix{};
-		RHITexturePtr m_shadowMap = nullptr;
 		uint32_t m_index = 0;
-		size_t m_lastShadowMapUpdate = 0;
 		float m_distanceToCamera{};
+		glm::mat4 m_lightMatrix{};
+		Math::Transform m_cameraTransform{};
+		Math::Transform m_lightTransform{};
 
 		SAILOR_API bool operator<(const RHILightProxy& rhs) const { return m_distanceToCamera < rhs.m_distanceToCamera; }
 	};
@@ -47,10 +47,11 @@ namespace Sailor::RHI
 
 	struct RHIUpdateShadowMapCommand
 	{
+		uint32_t m_lighMatrixIndex{};
 		glm::mat4 m_lightMatrix{};
-		RHI::RHIRenderTargetPtr m_shadowMap;
-		TVector<uint32_t> m_internalCommandsList;
-		TVector<RHISceneViewProxy> m_meshList;
+		RHI::RHIRenderTargetPtr m_shadowMap{};
+		TVector<uint32_t> m_internalCommandsList{};
+		TVector<RHISceneViewProxy> m_meshList{};
 	};
 
 	struct RHISceneViewSnapshot

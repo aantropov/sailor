@@ -29,7 +29,7 @@ namespace Sailor
 		SAILOR_API __forceinline glm::vec3 GetForwardVector() const { return glm::mat4(m_cachedWorldMatrix) * Math::vec4_Forward; }
 
 		SAILOR_API __forceinline void SetPosition(const glm::vec3& position);
-		SAILOR_API __forceinline void SetPosition(const glm::vec4& position);
+		//SAILOR_API __forceinline void SetPosition(const glm::vec4& position);
 		SAILOR_API __forceinline void SetRotation(const glm::quat& quat);
 		SAILOR_API __forceinline void SetScale(const glm::vec4& scale);
 

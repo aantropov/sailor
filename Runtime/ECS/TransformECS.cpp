@@ -4,28 +4,41 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
+/*
 void TransformComponent::SetPosition(const glm::vec4& position)
 {
-	MarkDirty();
-	SetPosition(vec3(position));
-}
+	if (position != m_transform.m_position)
+	{
+		MarkDirty();
+		SetPosition(vec3(position));
+	}
+}*/
 
 void TransformComponent::SetPosition(const glm::vec3& position)
 {
-	MarkDirty();
-	m_transform.m_position = vec4(position, 1);
+	if (position != vec3(m_transform.m_position))
+	{
+		MarkDirty();
+		m_transform.m_position = vec4(position, 1);
+	}
 }
 
 void TransformComponent::SetRotation(const glm::quat& quat)
 {
-	MarkDirty();
-	m_transform.m_rotation = quat;
+	if (quat != m_transform.m_rotation)
+	{
+		MarkDirty();
+		m_transform.m_rotation = quat;
+	}
 }
 
 void TransformComponent::SetScale(const glm::vec4& scale)
 {
-	MarkDirty();
-	m_transform.m_scale = scale;
+	if (scale != m_transform.m_scale)
+	{
+		MarkDirty();
+		m_transform.m_scale = scale;
+	}
 }
 
 void TransformComponent::MarkDirty()
@@ -139,7 +152,11 @@ void TransformECS::CalculateMatrices(TransformComponent& parent)
 
 		CalculateMatrices(m_components[child]);
 	}
-		
-	UpdateGameObject(parent.GetOwner().StaticCast<GameObject>(), GetWorld()->GetCurrentFrame());
+
+	if (parent.m_bIsDirty)
+	{
+		UpdateGameObject(parent.GetOwner().StaticCast<GameObject>(), GetWorld()->GetCurrentFrame());
+	}
+
 	parent.m_bIsDirty = false;
 }

@@ -52,38 +52,53 @@ void LightComponent::SetCutOff(float innerDegrees, float outerDegrees)
 {
 	LightData& lightData = GetData();
 
-	lightData.m_cutOff = glm::vec2(innerDegrees, outerDegrees);
-	lightData.MarkDirty();
+	if (glm::vec2(innerDegrees, outerDegrees) != lightData.m_cutOff)
+	{
+		lightData.m_cutOff = glm::vec2(innerDegrees, outerDegrees);
+		lightData.MarkDirty();
+	}
 }
 
 void LightComponent::SetIntensity(const glm::vec3& value)
 {
 	LightData& lightData = GetData();
 
-	lightData.m_intensity = value;
-	lightData.MarkDirty();
+	if (value != lightData.m_intensity)
+	{
+		lightData.m_intensity = value;
+		lightData.MarkDirty();
+	}
 }
 
 void LightComponent::SetAttenuation(const glm::vec3& value)
 {
 	LightData& lightData = GetData();
 
-	lightData.m_attenuation = value;
-	lightData.MarkDirty();
+	if (value != lightData.m_attenuation)
+	{
+		lightData.m_attenuation = value;
+		lightData.MarkDirty();
+	}
 }
 
 void LightComponent::SetBounds(const glm::vec3& value)
 {
 	LightData& lightData = GetData();
 
-	lightData.m_bounds = value;
-	lightData.MarkDirty();
+	if (value != lightData.m_bounds)
+	{
+		lightData.m_bounds = value;
+		lightData.MarkDirty();
+	}
 }
 
 void LightComponent::SetLightType(ELightType value)
 {
 	LightData& lightData = GetData();
 
-	lightData.m_type = value;
-	lightData.MarkDirty();
+	if (value != lightData.m_type)
+	{
+		lightData.m_type = value;
+		lightData.MarkDirty();
+	}
 }

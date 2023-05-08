@@ -44,7 +44,7 @@ namespace Sailor
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 
-		// Light matrices and shadowMaps
+		// Light matrices
 		RHI::RHIShaderBindingPtr m_lightMatrices;
 
 		static const char* m_name;

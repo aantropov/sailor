@@ -11,40 +11,67 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
+bool CSMLightState::Equals(const CSMLightState& rhs) const
+{
+	const float CameraPosDelta = 15.0f;
+	const float CameraRotationDelta = 0.9995f;
+
+	if (m_componentIndex != rhs.m_componentIndex ||
+		m_snapshot.Num() != rhs.m_snapshot.Num() ||
+		glm::distance(m_cameraTransform.m_position, rhs.m_cameraTransform.m_position) > CameraPosDelta ||
+		glm::dot(m_cameraTransform.GetForward(), rhs.m_cameraTransform.GetForward()) < CameraRotationDelta ||
+		m_lightTransform.m_position != rhs.m_lightTransform.m_position ||
+		m_lightTransform.m_rotation != rhs.m_lightTransform.m_rotation)
+	{
+		return false;
+	}
+
+	for (uint32_t i = 0; i < m_snapshot.Num(); i++)
+	{
+		if (m_snapshot[i] != rhs.m_snapshot[i])
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void LightingECS::BeginPlay()
 {
 	auto& driver = Sailor::RHI::Renderer::GetDriver();
 	m_lightsData = driver->CreateShaderBindings();
 	driver->AddSsboToShaderBindings(m_lightsData, "light", sizeof(LightingECS::LightShaderData), LightsMaxNum, 0, true);
 
-	if (m_csmShadowMaps.Num() == 0)
+	const auto usage = RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
+		RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+		RHI::ETextureUsageBit::TextureTransferDst_Bit |
+		RHI::ETextureUsageBit::Sampled_Bit;
+
+	m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
+
+	for (uint32_t i = 0; i < NumCascades; i++)
 	{
-		const auto usage = RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
-			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
-			RHI::ETextureUsageBit::TextureTransferDst_Bit |
-			RHI::ETextureUsageBit::Sampled_Bit;
+		char csmDebugName[64];
+		sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
-		m_defaultShadowMap = driver->CreateRenderTarget(glm::ivec2(1, 1), 1, ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
+		m_csmShadowMaps.Add(driver->CreateRenderTarget(ShadowCascadeResolutions[i % NumCascades], 1,
+			ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
 
-		for (uint32_t i = 0; i < NumCascades; i++)
-		{
-			char csmDebugName[64];
-			sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
-
-			m_csmShadowMaps.Add(driver->CreateRenderTarget(ShadowCascadeResolutions[i % NumCascades], 1,
-				ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
-			
-			driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
-		}
-
-		TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
-		for (uint32_t i = 0; i < MaxShadowsInView; i++)
-		{
-			shadowMaps[i] = (i < m_csmShadowMaps.Num()) ? m_csmShadowMaps[i] : m_defaultShadowMap;
-		}
-
-		m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_lightsData, "shadowMaps", shadowMaps, 7);		
+		driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 	}
+
+	TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
+	for (uint32_t i = 0; i < MaxShadowsInView; i++)
+	{
+		shadowMaps[i] = (i < m_csmShadowMaps.Num()) ? m_csmShadowMaps[i] : m_defaultShadowMap;
+	}
+
+	m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_lightsData, "shadowMaps", shadowMaps, 8);
+
+	auto shaderBindingSet = m_lightsData;
+	m_lightMatrices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "lightsMatrices", sizeof(glm::mat4), LightingECS::MaxShadowsInView, 6);
+	m_shadowIndices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "shadowIndices", sizeof(uint32_t), LightingECS::MaxShadowsInView, 7);
 }
 
 Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
@@ -143,7 +170,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			shaderDataBatch.Emplace(std::move(shaderData));
 
 			data.m_frameLastChange = GetWorld()->GetCurrentFrame();
-			
+
 			if (data.m_frameLastChange != owner->GetFrameLastChange())
 			{
 				UpdateGameObject(owner, GetWorld()->GetCurrentFrame());
@@ -179,29 +206,18 @@ void LightingECS::EndPlay()
 	m_csmShadowMaps.Clear();
 	m_defaultShadowMap.Clear();
 	m_shadowMaps.Clear();
+	m_lightMatrices.Clear();
+	m_shadowIndices.Clear();
 }
 
-void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
+void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
+	const Math::Transform& cameraTransform,
+	TVector<RHI::RHILightProxy>& outDirectionalLights,
+	TVector<RHI::RHILightProxy>& outSortedPointLights,
+	TVector<RHI::RHILightProxy>& outSortedSpotLights)
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	TVector<Math::Frustum> frustums;
-	frustums.Reserve(sceneView->m_cameraTransforms.Num());
-
-	for (uint32_t j = 0; j < sceneView->m_cameraTransforms.Num(); j++)
-	{
-		const auto& camera = sceneView->m_cameras[j];
-
-		Math::Frustum frustum;
-		frustum.ExtractFrustumPlanes(sceneView->m_cameraTransforms[j].Matrix(), camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
-		frustums.Emplace(std::move(frustum));
-	}
-
-	// Sort all the lights per camera
-	TVector<RHI::RHILightProxy> directionalLights;
-	TVector<TVector<RHI::RHILightProxy>> sortedSpotLights{ sceneView->m_cameraTransforms.Num() };
-	TVector<TVector<RHI::RHILightProxy>> sortedPointLights{ sceneView->m_cameraTransforms.Num() };
-
+	
 	// TODO: Cache lights that cast shadows separately to decrease algo complexity
 	for (size_t index = 0; index < m_components.Num(); index++)
 	{
@@ -213,96 +229,167 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			RHI::RHILightProxy lightProxy{};
 
 			lightProxy.m_lightMatrix = glm::inverse(ownerTransform.GetCachedWorldMatrix());
-			lightProxy.m_shadowMap = nullptr;
-			lightProxy.m_lastShadowMapUpdate = 0;
+			lightProxy.m_lightTransform = ownerTransform.GetTransform();
 			lightProxy.m_distanceToCamera = 0.0f;
 			lightProxy.m_index = (uint32_t)index;
 
 			if (light.m_type != ELightType::Directional)
 			{
-				for (uint32_t j = 0; j < sceneView->m_cameraTransforms.Num(); j++)
+				const float sphereRadius = std::max(std::max(light.m_bounds.x, light.m_bounds.y), light.m_bounds.z);
+
+				if (frustum.ContainsSphere(Math::Sphere(ownerTransform.GetPosition(), sphereRadius)))
 				{
-					const float sphereRadius = std::max(std::max(light.m_bounds.x, light.m_bounds.y), light.m_bounds.z);
+					// TODO: Sort by screen size, not by distance to camera
+					lightProxy.m_distanceToCamera = glm::length(ownerTransform.GetPosition() - cameraTransform.m_position);
 
-					if (frustums[j].ContainsSphere(Math::Sphere(ownerTransform.GetPosition(), sphereRadius)))
+					if (ELightType::Spot == light.m_type)
 					{
-						// TODO: Sort by screen size, not by distance to camera
-						lightProxy.m_distanceToCamera = glm::length(ownerTransform.GetPosition() - sceneView->m_cameraTransforms[j].m_position);
-
-						if (ELightType::Spot == light.m_type)
-						{
-							auto it = std::lower_bound(sortedSpotLights[j].begin(), sortedSpotLights[j].end(), lightProxy);
-							sortedSpotLights[j].Insert(lightProxy, it - sortedSpotLights[j].begin());
-						}
-						else
-						{
-							auto it = std::lower_bound(sortedPointLights[j].begin(), sortedPointLights[j].end(), lightProxy);
-							sortedPointLights[j].Insert(lightProxy, it - sortedPointLights[j].begin());
-						}
+						auto it = std::lower_bound(outSortedSpotLights.begin(), outSortedSpotLights.end(), lightProxy);
+						outSortedSpotLights.Insert(lightProxy, it - outSortedSpotLights.begin());
+					}
+					else
+					{
+						auto it = std::lower_bound(outSortedPointLights.begin(), outSortedPointLights.end(), lightProxy);
+						outSortedPointLights.Insert(lightProxy, it - outSortedPointLights.begin());
 					}
 				}
 			}
 			else
 			{
-				directionalLights.Add(lightProxy);
+				outDirectionalLights.Add(lightProxy);
 			}
 		}
 	}
+}
 
-	for (uint32_t i = 0; i < sceneView->m_cameraTransforms.Num(); i++)
+TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
+	const RHI::RHISceneViewPtr& sceneView,
+	const Math::Transform& cameraTransform,
+	const CameraData& cameraData,
+	const TVector<RHI::RHILightProxy>& directionalLights)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	uint32_t snapshotIndex = 0;
+	TVector<RHI::RHIUpdateShadowMapCommand> updateShadowMaps{};
+	updateShadowMaps.Reserve(directionalLights.Num() * NumCascades);
+
+	for (const auto& directionalLight : directionalLights)
 	{
-		TVector<RHI::RHIUpdateShadowMapCommand> updateShadowMaps;
-		
-		for (const auto& directionalLight : directionalLights)
+		auto lightCascadesMatrices = ShadowPrepassNode::CalculateLightProjectionForCascades(directionalLight.m_lightMatrix,
+			cameraTransform.Matrix(),
+			cameraData.GetAspect(),
+			cameraData.GetFov(),
+			cameraData.GetZNear(),
+			cameraData.GetZFar());
+
+		TVector<Math::Frustum> frustums;
+		frustums.Resize(lightCascadesMatrices.Num());
+
+		bool bCascadeAdded[NumCascades] = { false, false, false };
+
+		for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
 		{
-			auto lightCascadesMatrices = ShadowPrepassNode::CalculateLightProjectionForCascades(directionalLight.m_lightMatrix,
-				sceneView->m_cameraTransforms[i].Matrix(),
-				sceneView->m_cameras[i].GetAspect(),
-				sceneView->m_cameras[i].GetFov(),
-				sceneView->m_cameras[i].GetZNear(),
-				sceneView->m_cameras[i].GetZFar());
+			auto lightMatrix = lightCascadesMatrices[k] * directionalLight.m_lightMatrix;
+			frustums[k].ExtractFrustumPlanes(lightMatrix);
 
-			TVector<Math::Frustum> frustums;
-			frustums.Resize(lightCascadesMatrices.Num());
+			RHI::RHIUpdateShadowMapCommand cascade;
+			cascade.m_meshList = sceneView->TraceScene(frustums[k], true);
+			cascade.m_shadowMap = m_csmShadowMaps[k];
+			cascade.m_lightMatrix = lightMatrix;
+			cascade.m_lighMatrixIndex = k;
 
-			for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
+			if (k > 0)
 			{
-				uint32_t cascadeIndex = (uint32_t)updateShadowMaps.Add(RHI::RHIUpdateShadowMapCommand());
-				auto& cascade = updateShadowMaps[cascadeIndex];
-
-				auto lightMatrix = lightCascadesMatrices[k] * directionalLight.m_lightMatrix;
-
-				frustums[k].ExtractFrustumPlanes(lightMatrix);
-				cascade.m_meshList = sceneView->TraceScene(frustums[k], true);
-
-				// TODO:Redo
-				cascade.m_shadowMap = m_csmShadowMaps[k];
-				cascade.m_lightMatrix = lightMatrix;
-				if (k > 0)
-				{
-					// Don't duplicate data for higher cascades
-					cascade.m_meshList.RemoveAll([k = k, &frustums](const auto& m)
-						{
-							for (uint32_t z = 0; z < k; z++)
-							{
-								if (frustums[z].OverlapsAABB(m.m_worldAabb))
-								{
-									return true;
-								}
-							}
-							return false;
-						});
-
-					// We store cascade dependencies
-					for (int32_t z = k; z > 0; z--)
+				// Don't duplicate data for higher cascades
+				cascade.m_meshList.RemoveAll([k, &frustums, bCascadeAdded](const auto& m)
 					{
-						cascade.m_internalCommandsList.Add(cascadeIndex - z);
+						for (uint32_t z = 0; z < k; z++)
+						{
+							if (bCascadeAdded[z] && frustums[z].OverlapsAABB(m.m_worldAabb))
+							{
+								return true;
+							}
+						}
+						return false;
+					});
+
+				// We store cascade dependencies
+				for (int32_t z = k; z > 0; z--)
+				{
+					if (bCascadeAdded[k-z])
+					{
+						cascade.m_internalCommandsList.Add((uint32_t)updateShadowMaps.Num() - z);
 					}
 				}
 			}
-		}
 
-		sceneView->m_shadowMapsToUpdate.Emplace(std::move(updateShadowMaps));
+			// Track changes
+			CSMLightState snapshot{};
+			snapshot.m_componentIndex = directionalLight.m_index;
+			snapshot.m_cameraTransform = cameraTransform;
+			snapshot.m_lightTransform = directionalLight.m_lightTransform;
+			snapshot.m_lightMatrix = lightMatrix;
+
+			for (auto& m : cascade.m_meshList)
+			{
+				snapshot.m_snapshot.Add({ m.m_staticMeshEcs, m.m_frame });
+			}
+
+			if (snapshotIndex < m_csmSnapshots.Num())
+			{
+				if (snapshot.Equals(m_csmSnapshots[snapshotIndex]))
+				{
+					snapshotIndex++;
+					continue;
+				}
+				else
+				{
+					m_csmSnapshots[snapshotIndex] = std::move(snapshot);
+				}
+			}
+			else
+			{
+				m_csmSnapshots.Emplace(std::move(snapshot));
+			}
+
+			bCascadeAdded[k] = true;
+			updateShadowMaps.Emplace(cascade);
+			snapshotIndex++;
+		}
+	}
+
+	return updateShadowMaps;
+}
+
+void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	for (uint32_t i = 0; i < sceneView->m_cameraTransforms.Num(); i++)
+	{
+		const auto& camera = sceneView->m_cameras[i];
+		
+		Math::Frustum frustum;
+		frustum.ExtractFrustumPlanes(sceneView->m_cameraTransforms[i].Matrix(), camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
+
+		// Sort all the lights per camera
+		TVector<RHI::RHILightProxy> directionalLights;
+		TVector<RHI::RHILightProxy> sortedSpotLights;
+		TVector<RHI::RHILightProxy> sortedPointLights;
+
+		GetLightsInFrustum(frustum, sceneView->m_cameraTransforms[i], directionalLights, sortedSpotLights, sortedPointLights);
+
+		// Cache calculated csms to decrease the shadow maps rendering
+		const uint32_t numCsmSnapshots = (uint32_t)(sceneView->m_cameraTransforms.Num() * directionalLights.Num() * NumCascades);
+		if (m_csmSnapshots.Num() != numCsmSnapshots)
+		{
+			m_csmSnapshots.Clear();
+			m_csmSnapshots.Reserve(numCsmSnapshots);
+		}
+		
+		auto updateShadowMaps = PrepareCSMPasses(sceneView, sceneView->m_cameraTransforms[i], camera, directionalLights);
+		sceneView->m_shadowMapsToUpdate.Add(std::move(updateShadowMaps));
 	}
 
 	// TODO: Pass only active lights
