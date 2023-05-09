@@ -287,6 +287,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 		frustums.Resize(lightCascadesMatrices.Num());
 
 		bool bCascadeAdded[NumCascades] = { false, false, false };
+		const uint32_t alreadyPlacedPasses = (uint32_t)updateShadowMaps.Num();
 
 		for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
 		{
@@ -315,11 +316,11 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 					});
 
 				// We store cascade dependencies
-				for (int32_t z = k; z > 0; z--)
+				for (uint32_t z = 0; z < k; z++)
 				{
-					if (bCascadeAdded[k-z])
+					if (bCascadeAdded[z])
 					{
-						cascade.m_internalCommandsList.Add((uint32_t)updateShadowMaps.Num() - z);
+						cascade.m_internalCommandsList.Add(alreadyPlacedPasses + z);
 					}
 				}
 			}
