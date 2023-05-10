@@ -267,7 +267,7 @@ void TestComponent::Tick(float deltaTime)
 
 		if (m_skyHash != skyParams.GetHash())
 		{
-			sky->SetDirty();
+			sky->MarkDirty();
 			m_skyHash = skyParams.GetHash();
 		}
 
