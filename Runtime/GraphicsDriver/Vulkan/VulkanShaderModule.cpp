@@ -192,8 +192,8 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	{
 		for (auto& binding : bindings[i])
 		{
-			m_layoutBindings[i].Add(std::move(binding.m_second.m_second));
-			m_bindings[i].Add(std::move(binding.m_second.m_first));
+			m_layoutBindings[i].Add(binding.m_second.m_second);
+			m_bindings[i].Add(binding.m_second.m_first);
 		}
 	}
 }

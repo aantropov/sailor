@@ -10,7 +10,6 @@
 #include "Math/Math.h"
 #include "Containers/Concepts.h"
 
-
 namespace Sailor
 {
 	template<typename TDataType>
@@ -104,6 +103,9 @@ namespace Sailor
 	class SAILOR_API TVector final
 	{
 	public:
+
+		using TIterator = TVectorIterator<TElementType>;
+		using TConstIterator = TConstVectorIterator<const TElementType>;
 
 		static constexpr size_t InvalidIndex = (size_t)-1;
 
@@ -371,13 +373,13 @@ namespace Sailor
 			// No need to resize since it is handled in Emplace functions
 			if (index == m_arrayNum)
 			{
-				Emplace(item);
+				Emplace(std::forward<TElementType>(item));
 				return;
 			}
 
 			ResizeIfNeeded(m_arrayNum + 1);
 			MemMove(index + 1, index, m_arrayNum - index);
-			EmplaceAt(index, item);
+			EmplaceAt(index, std::forward<TElementType>(item));
 		}
 
 		void Insert(const TVector& vector, size_t index)
@@ -428,30 +430,46 @@ namespace Sailor
 
 		size_t RemoveAll(const TPredicate<TElementType>& predicate)
 		{
-			TVector<TElementType> tmp;
-			tmp.Reserve(m_arrayNum);
-
 			size_t num = 0;
-			for (size_t i = 0; i < m_arrayNum; i++)
+
+			if constexpr (IsMoveConstructible<TAllocator>)
 			{
-				if (predicate(m_pRawPtr[i]))
+				TVector<TElementType> tmp;
+				tmp.Reserve(m_arrayNum);
+
+				for (size_t i = 0; i < m_arrayNum; i++)
 				{
-					continue;
+					if (predicate(m_pRawPtr[i]))
+					{
+						continue;
+					}
+
+					if constexpr (IsMoveConstructible<TElementType>)
+					{
+						tmp.Emplace(std::move(m_pRawPtr[i]));
+					}
+					else
+					{
+						tmp.Add(m_pRawPtr[i]);
+					}
+
+					num++;
 				}
 
-				if constexpr (IsMoveConstructible<TElementType>)
-				{
-					tmp.Emplace(std::move(m_pRawPtr[i]));
-				}
-				else
-				{
-					tmp.Add(m_pRawPtr[i]);
-				}
-
-				num++;
+				(*this) = std::move(tmp);
 			}
-
-			(*this) = std::move(tmp);
+			else
+			{
+				for (size_t i = 0; i < m_arrayNum; i++)
+				{
+					if (predicate(m_pRawPtr[i]))
+					{
+						num++;
+						RemoveAt(i);
+						i--;
+					}
+				}
+			}
 
 			return num;
 		}
@@ -600,6 +618,29 @@ namespace Sailor
 
 		TConstVectorIterator<TElementType> begin() const { return TConstVectorIterator<TElementType>(m_pRawPtr); }
 		TConstVectorIterator<TElementType> end() const { return TConstVectorIterator<TElementType>(m_pRawPtr + m_arrayNum); }
+
+		TVectorIterator<TElementType>  First() { return begin(); }
+		TConstVectorIterator<TElementType> First() const { return begin(); }
+
+		TVectorIterator<TElementType>  Last() 
+		{
+			if (m_arrayNum == 0 || m_pRawPtr == nullptr)
+			{
+				return end();
+			}
+
+			return TVectorIterator<TElementType>(m_pRawPtr + m_arrayNum - 1); 
+		}
+
+		TConstVectorIterator<TElementType> Last() const 
+		{
+			if (m_arrayNum == 0 || m_pRawPtr == nullptr)
+			{
+				return end();
+			}
+
+			return TConstVectorIterator<TElementType>(m_pRawPtr + m_arrayNum - 1); 
+		}
 
 		TElementType* GetData() { return m_pRawPtr; }
 		const TElementType* GetData() const { return m_pRawPtr; }

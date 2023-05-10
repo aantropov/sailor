@@ -100,6 +100,8 @@ const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 			assetInfoHandler = (*assetInfoHandlerIt).m_second;
 		}
 
+		check(assetInfoHandler);
+
 		auto uid = m_UIDs.Find(filepath);
 		if (uid != m_UIDs.end())
 		{
