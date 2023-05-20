@@ -43,7 +43,7 @@ void LightingECS::BeginPlay()
 	m_lightsData = driver->CreateShaderBindings();
 	driver->AddSsboToShaderBindings(m_lightsData, "light", sizeof(LightingECS::LightShaderData), LightsMaxNum, 0, true);
 
-	const auto usage = RHI::ETextureUsageBit::DepthStencilAttachment_Bit |
+	const auto usage = RHI::ETextureUsageBit::ColorAttachment_Bit |
 		RHI::ETextureUsageBit::TextureTransferSrc_Bit |
 		RHI::ETextureUsageBit::TextureTransferDst_Bit |
 		RHI::ETextureUsageBit::Sampled_Bit;
@@ -56,7 +56,7 @@ void LightingECS::BeginPlay()
 		sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
 		m_csmShadowMaps.Add(driver->CreateRenderTarget(ShadowCascadeResolutions[i % NumCascades], 1,
-			ShadowMapFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
+			ShadowMapFormat_Csm, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
 
 		driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 	}

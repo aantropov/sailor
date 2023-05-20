@@ -169,6 +169,9 @@ namespace Sailor::RHI
 
 		RHI::RHITexturePtr GetDefaultTexture() { return m_defaultTexture; }
 
+		SAILOR_API virtual RHI::RHITexturePtr GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent) = 0;
+		SAILOR_API virtual void ReleaseTemporaryRenderTarget(RHI::RHITexturePtr renderTarget) = 0;
+
 		//Immediate context
 		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, EBufferUsageFlags usage) = 0;

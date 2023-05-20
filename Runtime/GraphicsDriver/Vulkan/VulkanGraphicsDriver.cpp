@@ -75,6 +75,7 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
 	m_cachedMsaaRenderTargets.Clear();
+	m_temporaryRenderTargets.Clear();
 	m_cachedComputePipelines.Clear();
 	m_cachedDescriptorSets.Clear();
 	m_backBuffer.Clear();
@@ -120,6 +121,7 @@ bool VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 			m_vkInstance->WaitIdle();
 			m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
 			m_cachedMsaaRenderTargets.Clear();
+			m_temporaryRenderTargets.Clear();
 			SAILOR_PROFILE_END_BLOCK();
 		};
 
@@ -1419,7 +1421,40 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 	return computePipeline;
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
+RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
+{
+	size_t hash = (size_t)textureFormat;
+	Sailor::HashCombine(hash, extent);
+
+	auto& cachedVector = m_temporaryRenderTargets.At_Lock(hash);
+	
+	if (cachedVector.Num() > 0)
+	{
+		RHI::RHITexturePtr res = *cachedVector.Last();
+		cachedVector.RemoveAt(cachedVector.Num() - 1);
+		m_temporaryRenderTargets.Unlock(hash);
+		return res;
+	}
+
+	m_temporaryRenderTargets.Unlock(hash);
+
+	auto rt = CreateRenderTarget(extent, 1, textureFormat);
+	return rt;
+}	
+
+void VulkanGraphicsDriver::ReleaseTemporaryRenderTarget(RHI::RHITexturePtr renderTarget)
+{
+	check(renderTarget && renderTarget.IsValid());
+
+	size_t hash = (size_t)renderTarget->GetFormat();
+	Sailor::HashCombine(hash, renderTarget->GetExtent());
+
+	auto& cachedVector = m_temporaryRenderTargets.At_Lock(hash);
+	cachedVector.Emplace(std::move(renderTarget));
+	m_temporaryRenderTargets.Unlock(hash);
+}
+
+RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
 {
 	size_t hash = (size_t)((size_t)textureFormat | (extent.x << 1) | (extent.y << 5));
 	if (m_cachedMsaaRenderTargets.ContainsKey(hash))
@@ -1665,7 +1700,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 		VulkanImageViewPtr vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
 
 		const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
-		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+		VulkanImageViewPtr msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
 
 		cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(targets, resolved,
 			msaaDepthStencilTarget,
@@ -1828,7 +1863,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 			vulkanDepthStencil = depthStencilAttachment->m_vulkan.m_imageView;
 
 			const auto depthExtents = glm::ivec2(vulkanDepthStencil->GetImage()->m_extent.width, vulkanDepthStencil->GetImage()->m_extent.height);
-			msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
+			msaaDepthStencilTarget = vulkanRenderer->GetOrAddMsaaFramebufferRenderTarget((RHI::ETextureFormat)vulkanDepthStencil->GetImage()->m_format, depthExtents)->m_vulkan.m_imageView;
 		}
 
 		cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(

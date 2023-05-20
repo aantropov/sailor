@@ -1,8 +1,6 @@
 ---
 colorAttachments: 
-- UNDEFINED
-
-depthStencilAttachment: D16_UNORM
+- R32_SFLOAT
 
 glslCommon: |
   #version 460
@@ -43,6 +41,10 @@ glslVertex: |
   }
   
 glslFragment: |
+
+  layout(location=0) out float outDepth;
+  
   void main() 
   {
+      outDepth = gl_FragCoord.z;
   }

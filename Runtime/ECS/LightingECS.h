@@ -54,7 +54,8 @@ namespace Sailor
 		const uint32_t LightsMaxNum = 65535;
 		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
 
-		const RHI::EFormat ShadowMapFormat = RHI::EFormat::D16_UNORM; //2 bytes 
+		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R32_SFLOAT;
+		const RHI::EFormat ShadowMapFormat_Csm = RHI::EFormat::R32_SFLOAT;
 
 		// CSM is based on https://learnopengl.com/Guest-Articles/2021/CSM
 		// and https://learn.microsoft.com/en-us/windows/win32/dxtecharts/cascaded-shadow-maps		

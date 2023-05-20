@@ -221,7 +221,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
-		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
+		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
+
+		SAILOR_API virtual RHI::RHITexturePtr GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
+		SAILOR_API virtual void ReleaseTemporaryRenderTarget(RHI::RHITexturePtr renderTarget);
+
 		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader);
 		SAILOR_API TVector<bool> IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
 		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout, 
@@ -273,10 +277,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TSharedPtr<VulkanBufferAllocator> m_generalSsboAllocator;
 		TSharedPtr<VulkanBufferAllocator> m_meshSsboAllocator;
 
-		// Cached MSAA render targets to support MSAA
+		// Cached MSAA render targets to support MSAA for rendering to framebuffer
 		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};
 
-		// Cached VulkanComputePipelines
+		// Cached temporary render targets
+		TConcurrentMap<size_t, TVector<RHI::RHITexturePtr>> m_temporaryRenderTargets{};
+
 		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
 		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 24 };
 

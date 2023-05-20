@@ -28,6 +28,8 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader))
 		{
+			check(pShader->IsReady());
+
 			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false, EDepthCompare::GreaterOrEqual);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
@@ -201,11 +203,16 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 		const auto& shadowPass = sceneView.m_shadowMapsToUpdate[index];
 
+		RHI::RHITexturePtr depthAttachment = driver->GetOrAddTemporaryRenderTarget(driver->GetDepthBuffer()->GetFormat(), shadowPass.m_shadowMap->GetExtent());
+
 		commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 		{
+			commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentOptimal);
+			
 			commands->BeginRenderPass(commandList,
-				TVector<RHI::RHITexturePtr>{},
-				shadowPass.m_shadowMap,
+				TVector<RHI::RHITexturePtr>{shadowPass.m_shadowMap},
+				depthAttachment,
 				glm::vec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
 				glm::ivec2(0, 0),
 				true,
@@ -238,10 +245,15 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 				sizeof(glm::mat4) * shadowPass.m_lighMatrixIndex);
 	
 			commands->EndRenderPass(commandList);
+			commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), EImageLayout::ColorAttachmentOptimal, shadowPass.m_shadowMap->GetDefaultLayout());
+			commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentOptimal, depthAttachment->GetDefaultLayout());
 
-			commands->EndDebugRegion(commandList);
+			driver->ReleaseTemporaryRenderTarget(depthAttachment);
+
 			SAILOR_PROFILE_END_BLOCK();
 		}
+		commands->EndDebugRegion(commandList);
+
 	}
 	commands->EndDebugRegion(commandList);
 }
