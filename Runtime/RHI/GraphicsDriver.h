@@ -169,8 +169,8 @@ namespace Sailor::RHI
 
 		RHI::RHITexturePtr GetDefaultTexture() { return m_defaultTexture; }
 
-		SAILOR_API virtual RHI::RHITexturePtr GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent) = 0;
-		SAILOR_API virtual void ReleaseTemporaryRenderTarget(RHI::RHITexturePtr renderTarget) = 0;
+		SAILOR_API virtual RHI::RHITexturePtr GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
+		SAILOR_API virtual void ReleaseTemporaryRenderTarget(RHI::RHITexturePtr renderTarget);
 
 		//Immediate context
 		SAILOR_API virtual void UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const void* value, size_t size) = 0;
@@ -196,14 +196,15 @@ namespace Sailor::RHI
 
 	protected:
 
-		RHI::RHITexturePtr m_defaultTexture;
+		RHI::RHITexturePtr m_defaultTexture{};
 
 		SAILOR_API void TrackPendingCommandList_ThreadSafe(RHIFencePtr handle);
 
 		SpinLock m_lockTrackedFences;
-		TVector<RHIFencePtr> m_trackedFences;
+		TVector<RHIFencePtr> m_trackedFences{};
 
-		TConcurrentMap<VertexAttributeBits, RHIVertexDescriptionPtr> m_cachedVertexDescriptions;
+		TConcurrentMap<VertexAttributeBits, RHIVertexDescriptionPtr> m_cachedVertexDescriptions{};
+		TConcurrentMap<size_t, TVector<RHI::RHITexturePtr>> m_temporaryRenderTargets{};
 	};
 
 	class IGraphicsDriverCommands

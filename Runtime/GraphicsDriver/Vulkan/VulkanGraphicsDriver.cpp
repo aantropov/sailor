@@ -679,6 +679,10 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	{
 		layout = (VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal;
 	}
+	else if (const bool bIsUsedAsDepthAttachment = usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+	{
+		layout = (VkImageLayout)RHI::EImageLayout::DepthStencilAttachmentOptimal;
+	}
 
 	// Not optimal code
 	//check(layout != (VkImageLayout)RHI::EImageLayout::General);
@@ -1419,39 +1423,6 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 	m_cachedComputePipelines.Unlock(computeShader);
 
 	return computePipeline;
-}
-
-RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
-{
-	size_t hash = (size_t)textureFormat;
-	Sailor::HashCombine(hash, extent);
-
-	auto& cachedVector = m_temporaryRenderTargets.At_Lock(hash);
-	
-	if (cachedVector.Num() > 0)
-	{
-		RHI::RHITexturePtr res = *cachedVector.Last();
-		cachedVector.RemoveAt(cachedVector.Num() - 1);
-		m_temporaryRenderTargets.Unlock(hash);
-		return res;
-	}
-
-	m_temporaryRenderTargets.Unlock(hash);
-
-	auto rt = CreateRenderTarget(extent, 1, textureFormat);
-	return rt;
-}	
-
-void VulkanGraphicsDriver::ReleaseTemporaryRenderTarget(RHI::RHITexturePtr renderTarget)
-{
-	check(renderTarget && renderTarget.IsValid());
-
-	size_t hash = (size_t)renderTarget->GetFormat();
-	Sailor::HashCombine(hash, renderTarget->GetExtent());
-
-	auto& cachedVector = m_temporaryRenderTargets.At_Lock(hash);
-	cachedVector.Emplace(std::move(renderTarget));
-	m_temporaryRenderTargets.Unlock(hash);
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)

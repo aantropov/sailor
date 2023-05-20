@@ -4,6 +4,15 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
+bool RHI::IsDepthFormat(ETextureFormat textureFormat)
+{
+	return textureFormat == RHI::EFormat::D32_SFLOAT_S8_UINT ||
+		textureFormat == RHI::EFormat::D32_SFLOAT ||
+		textureFormat == RHI::EFormat::D16_UNORM ||
+		textureFormat == RHI::EFormat::D16_UNORM_S8_UINT ||
+		textureFormat == RHI::EFormat::D24_UNORM_S8_UINT;
+}
+
 uint64_t PackVertexAttributeFormat(EFormat format)
 {
 	switch (format)

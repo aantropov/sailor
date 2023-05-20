@@ -2,6 +2,7 @@
 #include "Renderer.h"
 #include "CommandList.h"
 #include "Buffer.h"
+#include "RenderTarget.h"
 #include "Fence.h"
 #include "Mesh.h"
 #include "VertexDescription.h"
@@ -114,6 +115,52 @@ RHIVertexDescriptionPtr& IGraphicsDriver::GetOrAddVertexDescription(VertexAttrib
 	m_cachedVertexDescriptions.Unlock(bits);
 
 	return pDescription;
+}
+
+RHI::RHITexturePtr IGraphicsDriver::GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
+{
+	size_t hash = (size_t)textureFormat;
+	Sailor::HashCombine(hash, extent);
+
+	auto& cachedVector = m_temporaryRenderTargets.At_Lock(hash);
+
+	if (cachedVector.Num() > 0)
+	{
+		RHI::RHITexturePtr res = *cachedVector.Last();
+		cachedVector.RemoveAt(cachedVector.Num() - 1);
+		m_temporaryRenderTargets.Unlock(hash);
+		return res;
+	}
+
+	m_temporaryRenderTargets.Unlock(hash);
+
+	RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit;
+
+	if (RHI::IsDepthFormat(textureFormat))
+	{
+		usage |= RHI::ETextureUsageBit::DepthStencilAttachment_Bit;
+	}
+	else
+	{
+		usage |= RHI::ETextureUsageBit::ColorAttachment_Bit;
+	}
+
+	auto rt = CreateRenderTarget(extent, 1, textureFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
+	SetDebugName(rt, "Temporary render target");
+
+	return rt;
+}
+
+void IGraphicsDriver::ReleaseTemporaryRenderTarget(RHI::RHITexturePtr renderTarget)
+{
+	check(renderTarget && renderTarget.IsValid());
+
+	size_t hash = (size_t)renderTarget->GetFormat();
+	Sailor::HashCombine(hash, renderTarget->GetExtent());
+
+	auto& cachedVector = m_temporaryRenderTargets.At_Lock(hash);
+	cachedVector.Emplace(std::move(renderTarget));
+	m_temporaryRenderTargets.Unlock(hash);
 }
 
 void IGraphicsDriverCommands::UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)

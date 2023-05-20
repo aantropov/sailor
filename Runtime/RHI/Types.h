@@ -343,6 +343,8 @@ namespace Sailor::RHI
 
 	using ETextureFormat = EFormat;
 
+	SAILOR_API bool IsDepthFormat(ETextureFormat textureFormat);
+
 	enum ETextureUsageBit : uint8_t
 	{
 		TextureTransferSrc_Bit = 0x00000001,
