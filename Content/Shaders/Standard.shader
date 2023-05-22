@@ -236,22 +236,19 @@ glslFragment: |
   float ShadowCalculation(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
   {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = projCoords * 0.5 + 0.5;
+    projCoords.xy = projCoords.xy * 0.5 + 0.5;
     projCoords.y = 1.0f - projCoords.y;
     
     if(projCoords.x > 1.0f || projCoords.y > 1.0f ||
        projCoords.x < 0.0f || projCoords.y < 0.0f ||
-       projCoords.z < 0.5f)
+       projCoords.z < 0.0f)
     {
       return 1.0f;
     }
     
     const float closestDepth = texture(shadowMap, projCoords.xy).r * 0.5 + 0.5;
-    const float currentDepth = exp(-ESM_C * (projCoords.z));
-    
-    //float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
-    float shadow = 1 - clamp(currentDepth * closestDepth * 7, 0, 1);
-    //float shadow = ManualPCF(shadowMap, projCoords, currentDepth, bias);
+    const float currentDepth = exp(-ESM_C * (projCoords.z - bias));
+    float shadow = 1 - clamp(currentDepth * closestDepth, 0, 1) > 0.39 ? 1.0f : 0.0f;
     return shadow;
   }
   

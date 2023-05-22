@@ -46,6 +46,20 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
+	// TODO:
+	if (!m_pBlurVerticalShader)
+	{
+		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blur.shader");
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurVerticalShader, { "VERTICAL" }))
+		{
+		}
+
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurHorizontalShader, { "HORIZONTAL" }))
+		{
+
+		}
+	}
+
 	if (!m_lightMatrices)
 	{
 		auto shaderBindingSet = sceneView.m_rhiLightsData;

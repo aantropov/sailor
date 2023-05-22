@@ -35,6 +35,11 @@ namespace Sailor
 
 	protected:
 
+		ShaderSetPtr m_pBlurVerticalShader{};
+		ShaderSetPtr m_pBlurHorizontalShader{};
+		RHI::RHIMaterialPtr m_pBlurVerticalMaterial{};
+		RHI::RHIMaterialPtr m_pBlurHorizontalMaterial{};
+
 		// Shadow caster material
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials;
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);
