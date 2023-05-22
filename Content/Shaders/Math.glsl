@@ -1,6 +1,7 @@
 const float PI = 3.14159265359;
 const float TwoPI = 2 * PI;
 const float HalfPI = 0.5 * PI;
+const float E = 2.71828;
 
 vec4 QuatAxisAngle(vec3 axis, float angleRad)
 {

@@ -2,6 +2,15 @@
 colorAttachments: 
 - R32_SFLOAT
 
+defines:
+- ESM
+- VSM
+
+includes:
+- Shaders/Constants.glsl
+- Shaders/Math.glsl
+- Shaders/Lighting.glsl
+
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
@@ -42,9 +51,19 @@ glslVertex: |
   
 glslFragment: |
 
-  layout(location=0) out float outDepth;
+  #if defined(VSM)
+    layout(location=0) out vec2 outDepth;
+  #else
+    layout(location=0) out float outDepth;
+  #endif
   
   void main() 
   {
+    #if defined(VSM)
+      outDepth = vec2(gl_FragCoord.z, gl_FragCoord.z * gl_FragCoord.z);
+    #elif defined(ESM)
+      outDepth = exp(ESM_C * gl_FragCoord.z / gl_FragCoord.w);
+    #else 
       outDepth = gl_FragCoord.z;
+    #endif
   }

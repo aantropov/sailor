@@ -1,3 +1,5 @@
+const float ESM_C = 40.0f;
+
 layout(std430)
 struct LightData
 {

@@ -247,9 +247,10 @@ glslFragment: |
     }
     
     const float closestDepth = texture(shadowMap, projCoords.xy).r * 0.5 + 0.5;
-    const float currentDepth = projCoords.z;
+    const float currentDepth = exp(-ESM_C * (projCoords.z));
     
-    float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
+    //float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
+    float shadow = 1 - clamp(currentDepth * closestDepth * 7, 0, 1);
     //float shadow = ManualPCF(shadowMap, projCoords, currentDepth, bias);
     return shadow;
   }
