@@ -302,8 +302,8 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
 
-	m_currentAttachments = colorAttachments.Select<VkFormat>([](const auto& lhs) { return lhs->GetImage()->m_format; });
-	m_currentDepthAttachment = depthStencilAttachment ? depthStencilAttachment->GetImage()->m_format : VkFormat::VK_FORMAT_UNDEFINED;
+	m_currentAttachments = colorAttachments.Select<VkFormat>([](const auto& lhs) { return lhs->m_format; });
+	m_currentDepthAttachment = depthStencilAttachment ? depthStencilAttachment->m_format : VkFormat::VK_FORMAT_UNDEFINED;
 }
 
 void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,

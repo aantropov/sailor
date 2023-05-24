@@ -205,13 +205,25 @@ frame:
   - depthStencil: DepthBuffer
 
  
+#############################
+#- name: Blit
+#############################
+#  renderTargets:
+#  - src: Secondary
+#  - dst: BackBuffer
+
 ############################
-- name: Blit
+- name: PostProcess
 ############################
+  string:
+  - shader: Shaders/Debug.shader
+  - defines: #CASCADES LIGHT_TILES
+  vec4: ~
   renderTargets:
-  - src: Secondary
-  - dst: BackBuffer
-  
+  - color: BackBuffer
+  - ldrSceneSampler: Secondary
+  - linearDepthSampler: LinearDepth
+
 #############################
 #- name: PostProcess
 #############################
