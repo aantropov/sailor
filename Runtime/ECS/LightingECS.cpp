@@ -303,7 +303,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			
 			if (k == 0)
 			{
-				cascade.m_blurRadius = 7;
+				cascade.m_blurRadius = 5;
 			}
 			else if (k == 1)
 			{

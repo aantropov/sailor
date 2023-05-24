@@ -60,8 +60,8 @@ namespace Sailor
 		// CSM is based on https://learnopengl.com/Guest-Articles/2021/CSM
 		// and https://learn.microsoft.com/en-us/windows/win32/dxtecharts/cascaded-shadow-maps		
 		static constexpr uint32_t NumCascades = 3;
-		static constexpr float ShadowCascadeLevels[NumCascades] = { 1.0f / 25.0f, 1.0f / 5.0f, 1.0f / 2.0f };
-		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {2048,2048}, {1024,1024} };
+		static constexpr float ShadowCascadeLevels[NumCascades] = { 1.0f / 40.0f, 1.0f / 5.0f, 1.0f / 2.0f };
+		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {2048,2048}, {2048,2048}, {2048,2048} };
 		
 		// TODO: Tightly pack
 		struct LightShaderData
