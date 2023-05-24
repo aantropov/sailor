@@ -27,6 +27,7 @@
 #include "RHI/Shader.h"
 #include "Submodules/RenderDocApi.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "RHI/Renderer.h"
 
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
@@ -363,8 +364,11 @@ void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std:
 	}
 	else if (auto material = resource.DynamicCast<RHI::RHIMaterial>())
 	{
-		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_PIPELINE,
-			(uint64_t)(VkPipeline)*material->m_vulkan.m_pipeline, "Pipeline " + name);
+		for(const auto& pipeline : material->m_vulkan.m_pipelines)
+		{
+			device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_PIPELINE,
+				(uint64_t)(VkPipeline)*pipeline, "Pipeline " + name);
+		}
 	}
 	else if (auto shader = resource.DynamicCast<RHI::RHIShader>())
 	{
@@ -1019,14 +1023,17 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		depthStencilFormat = device->GetDepthFormat();
 	}
 
-	res->m_vulkan.m_pipeline = VulkanGraphicsPipelinePtr::Make(device,
+	auto pipeline = VulkanGraphicsPipelinePtr::Make(device,
 		pipelineLayout,
 		TVector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
 		device->GetPipelineBuilder()->BuildPipeline(vertexDescription, topology, renderState, colorAttachments, depthStencilFormat),
 		0);
 
-	res->m_vulkan.m_pipeline->m_renderPass = device->GetRenderPass();
-	res->m_vulkan.m_pipeline->Compile();
+	pipeline->m_renderPass = device->GetRenderPass();
+	pipeline->Compile();
+
+	res->m_vulkan.m_pipelines.Emplace(std::move(pipeline));
+
 	res->SetBindings(shaderBindigs);
 
 	return res;
@@ -1465,7 +1472,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 
 void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr)
 {
-	cmd->m_vulkan.m_commandBuffer->PushConstants(material->m_vulkan.m_pipeline->m_layout, 0, size, ptr);
+	cmd->m_vulkan.m_commandBuffer->PushConstants(material->m_vulkan.m_pipelines[0]->m_layout, 0, size, ptr);
 }
 
 void VulkanGraphicsDriver::GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target)
@@ -2109,7 +2116,10 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
 
 void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material)
 {
-	cmd->m_vulkan.m_commandBuffer->BindPipeline(material->m_vulkan.m_pipeline);
+	auto pipeline = material->m_vulkan.GetOrAddPipeline(cmd->m_vulkan.m_commandBuffer->GetCurrentColorAttachments(),
+		(VkFormat)cmd->m_vulkan.m_commandBuffer->GetCurrentDepthAttachment());
+
+	cmd->m_vulkan.m_commandBuffer->BindPipeline(pipeline);
 	if (material->GetRenderState().GetDepthBias() != 0.0f)
 	{
 		cmd->m_vulkan.m_commandBuffer->SetDepthBias(material->GetRenderState().GetDepthBias());
@@ -2360,8 +2370,8 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material->m_vulkan.m_pipeline->m_layout, bindings);
-	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipeline->m_layout, sets, VK_PIPELINE_BIND_POINT_GRAPHICS);
+	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material->m_vulkan.m_pipelines[0]->m_layout, bindings);
+	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipelines[0]->m_layout, sets, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
 	// Need to handle ShaderBindingSet, since it auto destructs all bindings and buffers
 	for (const auto& dep : bindings)

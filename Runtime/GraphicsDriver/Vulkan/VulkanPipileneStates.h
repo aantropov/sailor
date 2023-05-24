@@ -4,7 +4,6 @@
 #include "vulkan/vulkan.h"
 #include "Memory/RefPtr.hpp"
 #include "RHI/Types.h"
-#include "RHI/Renderer.h"
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
@@ -22,6 +21,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanStateDynamicRendering(const TVector<VkFormat>& colorAttachments, VkFormat depthAttachment, VkFormat stencilAttachment);
 
 		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
+
+		SAILOR_API bool Equals(const TVector<VkFormat>& colorAttachments,
+			VkFormat depthAttachment,
+			VkFormat stencilAttachment) const;
 
 	private:
 

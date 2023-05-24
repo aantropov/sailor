@@ -153,6 +153,19 @@ namespace Sailor
 			return m_pRawPtr[index];
 		}
 
+		template<typename TElementType1>
+		TVector<TElementType1> Select(const std::function<TElementType1(const TElementType&)>& func) const
+		{
+			TVector<TElementType1> res;
+			res.Reserve(m_arrayNum);
+
+			for (uint32_t i = 0; i < m_arrayNum; i++)
+			{
+				res.Add(func(m_pRawPtr[i]));
+			}
+
+			return res;
+		}
 
 		template<typename TElementType1>
 		TVector<TElementType1> ToVector() const

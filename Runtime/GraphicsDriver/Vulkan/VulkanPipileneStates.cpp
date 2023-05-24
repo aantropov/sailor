@@ -24,6 +24,16 @@ VulkanStateDynamicRendering::VulkanStateDynamicRendering(const TVector<VkFormat>
 	m_dynamicRenderingExtension.pNext = VK_NULL_HANDLE;
 }
 
+bool VulkanStateDynamicRendering::Equals(const TVector<VkFormat>& colorAttachments,
+	VkFormat depthAttachment,
+	VkFormat stencilAttachment) const
+{
+	return m_colorAttachments == colorAttachments && 
+		(depthAttachment == VkFormat::VK_FORMAT_UNDEFINED ||
+		(m_depthAttachment == depthAttachment && 
+		m_stencilAttachment == stencilAttachment));
+}
+
 void VulkanStateDynamicRendering::Apply(VkGraphicsPipelineCreateInfo& state) const
 {
 	check(state.pNext == nullptr);
@@ -252,6 +262,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	// We don't expect collisions in the dictionary
 	size_t hashCode = 0;
 	Sailor::HashCombine(hashCode, renderState, topology, depthStencilFormat);
 
@@ -290,15 +301,16 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 
 		res = TVector<VulkanPipelineStatePtr>
 		{
+			pStateDynamicRendering, // We must have that the first element
+
 			pStateViewport,
-				pVertexDescription,
-				pInputAssembly,
-				pStateRasterizer,
-				pDynamicState,
-				pDepthStencil,
-				GetBlendState(renderState.GetBlendMode()),
-				pStateDynamicRendering,
-				pMultisample
+			pVertexDescription,
+			pInputAssembly,
+			pStateRasterizer,
+			pDynamicState,
+			pDepthStencil,
+			GetBlendState(renderState.GetBlendMode()),
+			pMultisample
 		};
 	}
 

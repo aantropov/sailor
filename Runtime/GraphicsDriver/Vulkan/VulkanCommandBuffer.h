@@ -131,7 +131,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API uint32_t GetGPUCost() const { return m_gpuCost; }
 		SAILOR_API uint32_t GetNumRecordedCommands() const { return m_numRecordedCommands; }
 
+		SAILOR_API const TVector<VkFormat>& GetCurrentColorAttachments() const { return m_currentAttachments; }
+		SAILOR_API VkFormat GetCurrentDepthAttachment() const { return m_currentDepthAttachment; }
+
 	protected:
+
+		TVector<VkFormat> m_currentAttachments;
+		VkFormat m_currentDepthAttachment;
 
 		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
 		VulkanImagePtr m_depthStencilAttachmentDependency;

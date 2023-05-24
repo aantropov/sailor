@@ -39,18 +39,19 @@ namespace Sailor
 		ShaderSetPtr m_pBlurHorizontalShader{};
 		RHI::RHIMaterialPtr m_pBlurVerticalMaterial{};
 		RHI::RHIMaterialPtr m_pBlurHorizontalMaterial{};
+		RHI::RHIShaderBindingSetPtr m_pBlurShaderBindings{};
 
 		// Shadow caster material
-		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials;
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials{};
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);
 
 		// Record drawcalls
 		size_t m_sizePerInstanceData = 0;
-		RHI::RHIShaderBindingSetPtr m_perInstanceData;
-		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
+		RHI::RHIShaderBindingSetPtr m_perInstanceData{};
+		TVector<RHI::RHIBufferPtr> m_indirectBuffers{};
 
 		// Light matrices
-		RHI::RHIShaderBindingPtr m_lightMatrices;
+		RHI::RHIShaderBindingPtr m_lightMatrices{};
 
 		static const char* m_name;
 	};

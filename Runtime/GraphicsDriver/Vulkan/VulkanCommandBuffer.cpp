@@ -18,6 +18,9 @@
 #include "Containers/Pair.h"
 #include "Memory/RefPtr.hpp"
 
+#include "RHI/Renderer.h"
+#include "RHI/GraphicsDriver.h"
+
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
@@ -113,6 +116,9 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& col
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = flags;
 	beginInfo.pInheritanceInfo = &inheritanceInfo;
+
+	m_currentAttachments = colorAttachments;
+	m_currentDepthAttachment = depthStencilAttachment;
 
 	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
 }
@@ -295,6 +301,9 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	}
 
 	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
+
+	m_currentAttachments = colorAttachments.Select<VkFormat>([](const auto& lhs) { return lhs->GetImage()->m_format; });
+	m_currentDepthAttachment = depthStencilAttachment ? depthStencilAttachment->GetImage()->m_format : VkFormat::VK_FORMAT_UNDEFINED;
 }
 
 void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& colorAttachments,

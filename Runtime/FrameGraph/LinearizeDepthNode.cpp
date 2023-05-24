@@ -73,12 +73,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
-	commands->BindMaterial(commandList, m_postEffectMaterial);
-	commands->SetDefaultViewport(commandList);
-	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
-	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
-	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });
-	commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
+
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{target},
 		nullptr,
@@ -89,6 +84,13 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		0.0f,
 		false);
 
+	commands->BindMaterial(commandList, m_postEffectMaterial);
+	commands->SetDefaultViewport(commandList);
+	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
+	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
+	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });
+	commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
+	
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
 

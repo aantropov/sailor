@@ -3,7 +3,7 @@
 #include "Types.h"
 #include "Containers/Map.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
-#include "GraphicsDriver/Vulkan/VulkanBufferMemory.h"
+#include "GraphicsDriver/Vulkan/VulkanPipeline.h"
 
 namespace Sailor::RHI
 {
@@ -51,9 +51,11 @@ namespace Sailor::RHI
 	{
 	public:
 #if defined(SAILOR_BUILD_WITH_VULKAN)
-		struct
+		struct Vulkan
 		{
-			Sailor::GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr m_pipeline;
+			GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment);
+			TVector<GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr> m_pipelines;
+
 		} m_vulkan;
 #endif
 		SAILOR_API RHIMaterial(RenderState renderState, RHIShaderPtr vertexShader, RHIShaderPtr fragmentShader) :

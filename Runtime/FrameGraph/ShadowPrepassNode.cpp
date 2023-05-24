@@ -49,14 +49,27 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	// TODO:
 	if (!m_pBlurVerticalShader)
 	{
+		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
+		RenderState renderState{ false, false, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
+
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blur.shader");
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurVerticalShader, { "VERTICAL" }))
 		{
+			m_pBlurShaderBindings = driver->CreateShaderBindings();
+			RHIShaderBindingPtr data = driver->AddBufferToShaderBindings(m_pBlurShaderBindings, "data", sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer);
+			driver->FillShadersLayout(m_pBlurShaderBindings, { m_pBlurVerticalShader->GetDebugVertexShaderRHI(), m_pBlurVerticalShader->GetDebugFragmentShaderRHI() }, 1);
+
+			m_pBlurVerticalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurVerticalShader, m_pBlurShaderBindings);
+
+			const float blurRadius = 3.0f;
+			glm::vec4 blurData[] = { {blurRadius, 0, 0, 0}, {0,0,0,0}, {0,0,0,0} };
+
+			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCommandList, data, &blurData, sizeof(glm::vec4) * 3);
 		}
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurHorizontalShader, { "HORIZONTAL" }))
 		{
-
+			m_pBlurHorizontalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurVerticalShader, m_pBlurShaderBindings);
 		}
 	}
 
@@ -91,12 +104,12 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		for (auto& proxy : shadowPass.m_meshList)
 		{
 			for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
-			{				
+			{
 				if (!proxy.m_bCastShadows)
 				{
 					continue;
 				}
-				
+
 				const auto& mesh = proxy.m_meshes[i];
 				auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription);
 
@@ -209,6 +222,11 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		return sets;
 	};
 
+	auto fullscreenMesh = frameGraph->GetFullscreenNdcQuad();
+
+	const uint32_t firstIndex = (uint32_t)fullscreenMesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+	const uint32_t vertexOffset = (uint32_t)fullscreenMesh->m_vertexBuffer->GetOffset() / (uint32_t)fullscreenMesh->m_vertexDescription->GetVertexStride();
+
 	for (uint32_t index = 0; index < sceneView.m_shadowMapsToUpdate.Num(); index++)
 	{
 		char debugMarker[64];
@@ -218,14 +236,15 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		const auto& shadowPass = sceneView.m_shadowMapsToUpdate[index];
 
 		RHI::RHITexturePtr depthAttachment = driver->GetOrAddTemporaryRenderTarget(driver->GetDepthBuffer()->GetFormat(), shadowPass.m_shadowMap->GetExtent());
+		RHI::RHITexturePtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent());
 
 		commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 		{
-			commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(commandList, blurAttachment, blurAttachment->GetFormat(), blurAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 			commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentOptimal);
-			
+
 			commands->BeginRenderPass(commandList,
-				TVector<RHI::RHITexturePtr>{shadowPass.m_shadowMap},
+				TVector<RHI::RHITexturePtr>{ blurAttachment },
 				depthAttachment,
 				glm::vec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
 				glm::ivec2(0, 0),
@@ -252,17 +271,55 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 					glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
 					glm::vec2(0.0f, 1.0f));
 			}
-			
+
 			commands->UpdateShaderBinding(transferCommandList, m_lightMatrices,
 				&shadowPass.m_lightMatrix,
 				sizeof(glm::mat4),
 				sizeof(glm::mat4) * shadowPass.m_lighMatrixIndex);
-	
+
 			commands->EndRenderPass(commandList);
-			commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), EImageLayout::ColorAttachmentOptimal, shadowPass.m_shadowMap->GetDefaultLayout());
 			commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentOptimal, depthAttachment->GetDefaultLayout());
+			commands->ImageMemoryBarrier(commandList, blurAttachment, blurAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, EImageLayout::ShaderReadOnlyOptimal);
+
+			// Blur
+			commands->BeginDebugRegion(commandList, "Blur cascades", DebugContext::Color_CmdPostProcess);
+			{
+				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
+				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
+
+				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+
+				commands->BeginRenderPass(commandList,
+					TVector<RHI::RHITexturePtr>{shadowPass.m_shadowMap},
+					nullptr,
+					glm::vec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+					glm::ivec2(0, 0),
+					false,
+					glm::vec4(0.0f),
+					0.0f,
+					false);
+
+				commands->BindMaterial(commandList, m_pBlurHorizontalMaterial);
+				commands->BindShaderBindings(commandList, m_pBlurHorizontalMaterial, { sceneView.m_frameBindings, m_pBlurShaderBindings });
+
+				commands->SetViewport(commandList,
+					0, 0,
+					(float)shadowPass.m_shadowMap->GetExtent().x, (float)shadowPass.m_shadowMap->GetExtent().y,
+					glm::vec2(0, 0),
+					glm::vec2(shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+					0, 1.0f);
+
+				commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+				commands->EndRenderPass(commandList);
+
+				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), EImageLayout::ColorAttachmentOptimal, shadowPass.m_shadowMap->GetDefaultLayout());
+			}
+			commands->ImageMemoryBarrier(commandList, blurAttachment, blurAttachment->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, blurAttachment->GetDefaultLayout());
+
+			commands->EndDebugRegion(commandList);
 
 			driver->ReleaseTemporaryRenderTarget(depthAttachment);
+			driver->ReleaseTemporaryRenderTarget(blurAttachment);
 
 			SAILOR_PROFILE_END_BLOCK();
 		}

@@ -3,10 +3,58 @@
 #include "Shader.h"
 #include "RHI/Texture.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanPipeline.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
+
+GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	uint32_t stateIndex = 0;
+
+	for (auto& p : m_pipelines)
+	{
+		stateIndex = 0;
+		for (auto& state : p->m_pipelineStates)
+		{
+			if (const auto pDynamicState = state.DynamicCast<GraphicsDriver::Vulkan::VulkanStateDynamicRendering>())
+			{
+				if (pDynamicState->Equals(colorAttachments, depthStencilAttachment, depthStencilAttachment))
+				{
+					return p;
+				}
+				
+				break;
+			}
+
+			stateIndex++;
+		}
+	}
+	
+	auto device = VulkanApi::GetInstance()->GetMainDevice();
+
+	TVector<VulkanPipelineStatePtr> states = m_pipelines[0]->m_pipelineStates;
+
+	const VkFormat stencilAttachmentFormat = (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment) & VK_IMAGE_ASPECT_STENCIL_BIT) ? depthStencilAttachment : VK_FORMAT_UNDEFINED;
+	
+	states[stateIndex] = GraphicsDriver::Vulkan::VulkanStateDynamicRenderingPtr::Make(colorAttachments, depthStencilAttachment, stencilAttachmentFormat);
+
+	GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr pipeline = VulkanGraphicsPipelinePtr::Make(device,
+		m_pipelines[0]->m_layout,
+		m_pipelines[0]->m_stages,
+		states,
+		0);
+
+	pipeline->m_renderPass = device->GetRenderPass();
+	pipeline->Compile();
+
+	m_pipelines.Emplace(std::move(pipeline));
+
+	return *m_pipelines.Last();
+}
 
 void RHIShaderBindingSet::RecalculateCompatibility()
 {

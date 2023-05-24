@@ -701,12 +701,6 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 
-		commands->BindMaterial(commandList, m_pStarsMaterial);
-		commands->BindShaderBindings(commandList, m_pStarsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
-		commands->PushConstants(commandList, m_pStarsMaterial, sizeof(PushConstants), &pushConstants);
-
-		commands->SetDefaultViewport(commandList);
-
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{target},
 			depthAttachment,
@@ -717,6 +711,12 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 			0.0f,
 			false);
 
+		commands->BindMaterial(commandList, m_pStarsMaterial);
+		commands->BindShaderBindings(commandList, m_pStarsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
+		commands->PushConstants(commandList, m_pStarsMaterial, sizeof(PushConstants), &pushConstants);
+
+		commands->SetDefaultViewport(commandList);
+		
 		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
 
 		commands->BeginDebugRegion(commandList, "Blit Clouds", DebugContext::Color_CmdPostProcess);
