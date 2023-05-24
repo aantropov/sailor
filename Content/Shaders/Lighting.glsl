@@ -1,4 +1,4 @@
-const float ESM_C = 40.0f;
+const float ESM_C = 80.0f;
 
 layout(std430)
 struct LightData
@@ -136,13 +136,13 @@ vec3 GaussianBlur(sampler2D textureSampler, vec2 uv, vec2 texelSize, uint radius
 
     const uint blurRadius = min(radius, stepCount);
   
-  vec3 pixelSum = vec3(0.0f);
+    vec3 pixelSum = vec3(0.0f);
   
     for(int i = 0; i < blurRadius; i++)
     {  
         vec2 texCoordOffset = i * texelSize;
         vec3 color = texture(textureSampler, uv + texCoordOffset).xyz + texture(textureSampler, uv - texCoordOffset).xyz;
-    pixelSum += color * weights[blurRadius-1][i];
+        pixelSum += color * weights[blurRadius-1][i];
     }
 
     return pixelSum;

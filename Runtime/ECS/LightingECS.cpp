@@ -299,6 +299,16 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cascade.m_shadowMap = m_csmShadowMaps[k];
 			cascade.m_lightMatrix = lightMatrix;
 			cascade.m_lighMatrixIndex = k;
+			cascade.m_blurRadius = 1;
+			
+			if (k == 0)
+			{
+				cascade.m_blurRadius = 7;
+			}
+			else if (k == 1)
+			{
+				cascade.m_blurRadius = 3;
+			}
 
 			if (k > 0)
 			{
@@ -339,7 +349,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 
 			if (snapshotIndex < m_csmSnapshots.Num())
 			{
-				if (snapshot.Fits(m_csmSnapshots[snapshotIndex]))
+				if (snapshot.Equals(m_csmSnapshots[snapshotIndex]))
 				{
 					snapshotIndex++;
 					continue;
