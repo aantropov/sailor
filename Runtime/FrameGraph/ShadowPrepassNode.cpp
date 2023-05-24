@@ -61,7 +61,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 			m_pBlurVerticalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurVerticalShader, m_pBlurShaderBindings);
 
-			const float blurRadius = 3.0f;
+			const float blurRadius = 7.0f;
 			glm::vec4 blurData[] = { {blurRadius, 0, 0, 0}, {0,0,0,0}, {0,0,0,0} };
 
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCommandList, data, &blurData, sizeof(glm::vec4) * 3);
@@ -242,6 +242,9 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		{
 			commands->ImageMemoryBarrier(commandList, blurAttachment, blurAttachment->GetFormat(), blurAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 			commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentOptimal);
+
+			RHIShaderBindingPtr blurSampler = driver->AddSamplerToShaderBindings(m_pBlurShaderBindings, "colorSampler", { blurAttachment }, 1);
+			m_pBlurShaderBindings->RecalculateCompatibility();
 
 			commands->BeginRenderPass(commandList,
 				TVector<RHI::RHITexturePtr>{ blurAttachment },

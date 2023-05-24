@@ -22,7 +22,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 
-		SAILOR_API bool Equals(const TVector<VkFormat>& colorAttachments,
+		SAILOR_API bool Fits(const TVector<VkFormat>& colorAttachments,
 			VkFormat depthAttachment,
 			VkFormat stencilAttachment) const;
 

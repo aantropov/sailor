@@ -339,7 +339,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 
 			if (snapshotIndex < m_csmSnapshots.Num())
 			{
-				if (snapshot.Equals(m_csmSnapshots[snapshotIndex]))
+				if (snapshot.Fits(m_csmSnapshots[snapshotIndex]))
 				{
 					snapshotIndex++;
 					continue;

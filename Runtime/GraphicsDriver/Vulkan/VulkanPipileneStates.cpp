@@ -24,7 +24,7 @@ VulkanStateDynamicRendering::VulkanStateDynamicRendering(const TVector<VkFormat>
 	m_dynamicRenderingExtension.pNext = VK_NULL_HANDLE;
 }
 
-bool VulkanStateDynamicRendering::Equals(const TVector<VkFormat>& colorAttachments,
+bool VulkanStateDynamicRendering::Fits(const TVector<VkFormat>& colorAttachments,
 	VkFormat depthAttachment,
 	VkFormat stencilAttachment) const
 {

@@ -22,7 +22,7 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 		{
 			if (const auto pDynamicState = state.DynamicCast<GraphicsDriver::Vulkan::VulkanStateDynamicRendering>())
 			{
-				if (pDynamicState->Equals(colorAttachments, depthStencilAttachment, depthStencilAttachment))
+				if (pDynamicState->Fits(colorAttachments, depthStencilAttachment, depthStencilAttachment))
 				{
 					return p;
 				}
