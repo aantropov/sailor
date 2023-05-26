@@ -175,9 +175,9 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
 int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
 {
   vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0);
-  float depthValue = abs(fragPosViewSpace.z);
+  float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
   
-  int layer = -1;
+  int layer = NUM_CSM_CASCADES;
   for (int i = 0; i < NUM_CSM_CASCADES; ++i)
   {
       if (depthValue < cameraZNearZFar.y * ShadowCascadeLevels[i])
@@ -186,10 +186,6 @@ int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
           break;
       }
   }
-  if (layer == -1)
-  {
-      layer = NUM_CSM_CASCADES;
-  }
-      
+
   return layer;
 }

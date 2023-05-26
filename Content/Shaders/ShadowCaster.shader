@@ -62,7 +62,7 @@ glslFragment: |
     #if defined(VSM)
       outDepth = vec2(gl_FragCoord.z, gl_FragCoord.z * gl_FragCoord.z);
     #elif defined(ESM)
-      outDepth = exp(ESM_C * gl_FragCoord.z / gl_FragCoord.w);
+      outDepth = exp(ESM_C * gl_FragCoord.z);
     #else 
       outDepth = gl_FragCoord.z;
     #endif

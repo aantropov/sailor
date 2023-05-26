@@ -246,9 +246,9 @@ glslFragment: |
       return 1.0f;
     }
     
-    const float closestDepth = texture(shadowMap, projCoords.xy).r * 0.5 + 0.5;
-    const float currentDepth = exp(-ESM_C * (projCoords.z - bias));
-    float shadow = 1 - clamp(currentDepth * closestDepth, 0, 1);// > 0.39 ? 1.0f : 0.0f;
+    const float closestDepth = texture(shadowMap, projCoords.xy).r;
+    const float currentDepth = exp(-ESM_C * (projCoords.z + bias));
+    float shadow = clamp(1 - currentDepth * closestDepth, 0, 1);// > 0.39 ? 1.0f : 0.0f;
     return shadow;
   }
   
@@ -264,13 +264,13 @@ glslFragment: |
         attenuation = 1.0;
         
         int cascadeLayer = SelectCascade(frame.view, worldPos, frame.cameraParams);
-        float bias = max(0.005 * (1.0 - dot(normal, light.direction)), 0.01);
+        float bias = 0.025 * max(0.06 * (1.0 - dot(normal, light.direction)), 0.05);
 
-        cascadeLayer = min(cascadeLayer, NUM_CSM_CASCADES - 1);
+        /*cascadeLayer = min(cascadeLayer, NUM_CSM_CASCADES - 1);
         if (cascadeLayer < NUM_CSM_CASCADES)
         {
-            bias *= ShadowCascadeLevels[cascadeLayer];
-        }
+            bias *= ShadowCascadeLevels[0];
+        }*/
         
         shadow = ShadowCalculation(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias);
     }

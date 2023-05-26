@@ -385,14 +385,12 @@ void ShadowPrepassNode::Clear()
 	m_perInstanceData.Clear();
 }
 
-glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar)
+glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float zMult)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	Math::Frustum cameraFrustum{};
 	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar);
-
-	constexpr float zMult = 10.0f;
 	return cameraFrustum.CalculateOrthoMatrixByView(lightView, zMult);
 }
 
@@ -403,15 +401,15 @@ TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const 
 	TVector<glm::mat4> ret;
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraNearPlane,
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[0]));
+		cameraFarPlane * LightingECS::ShadowCascadeLevels[0], 15.0f));
 
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * LightingECS::ShadowCascadeLevels[0],
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[1]));
+		cameraFarPlane * LightingECS::ShadowCascadeLevels[1], 10.0f));
 
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * LightingECS::ShadowCascadeLevels[1],
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[2]));
+		cameraFarPlane * LightingECS::ShadowCascadeLevels[2], 5.0f));
 
 	return ret;
 }
