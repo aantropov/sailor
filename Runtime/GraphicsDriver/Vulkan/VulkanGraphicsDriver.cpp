@@ -176,20 +176,8 @@ bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
 	const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const
 {
-	TVector<VulkanCommandBufferPtr> primaryBuffers;
-	TVector<VulkanSemaphorePtr> vkWaitSemaphores;
-
-	primaryBuffers.Reserve(primaryCommandBuffers.Num());
-	for (auto& buffer : primaryCommandBuffers)
-	{
-		primaryBuffers.Add(buffer->m_vulkan.m_commandBuffer);
-	}
-
-	vkWaitSemaphores.Reserve(waitSemaphores.Num());
-	for (auto& buffer : waitSemaphores)
-	{
-		vkWaitSemaphores.Add(buffer->m_vulkan.m_semaphore);
-	}
+	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
+	const TVector<VulkanSemaphorePtr> vkWaitSemaphores = waitSemaphores.Select<VulkanSemaphorePtr>([](const auto& lhs) { return lhs->m_vulkan.m_semaphore; });
 
 	return m_vkInstance->GetMainDevice()->PresentFrame(state, primaryBuffers, vkWaitSemaphores);
 }
