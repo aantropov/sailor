@@ -117,16 +117,16 @@ RHIVertexDescriptionPtr& IGraphicsDriver::GetOrAddVertexDescription(VertexAttrib
 	return pDescription;
 }
 
-RHI::RHITexturePtr IGraphicsDriver::GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
+RHI::RHIRenderTargetPtr IGraphicsDriver::GetOrAddTemporaryRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent, uint32_t mipLevels)
 {
 	size_t hash = (size_t)textureFormat;
-	Sailor::HashCombine(hash, extent);
+	Sailor::HashCombine(hash, extent, mipLevels);
 
 	auto& cachedVector = m_temporaryRenderTargets.At_Lock(hash);
 
 	if (cachedVector.Num() > 0)
 	{
-		RHI::RHITexturePtr res = *cachedVector.Last();
+		RHI::RHIRenderTargetPtr res = *cachedVector.Last();
 		cachedVector.RemoveAt(cachedVector.Num() - 1);
 		m_temporaryRenderTargets.Unlock(hash);
 		return res;
@@ -145,18 +145,20 @@ RHI::RHITexturePtr IGraphicsDriver::GetOrAddTemporaryRenderTarget(RHI::EFormat t
 		usage |= RHI::ETextureUsageBit::ColorAttachment_Bit;
 	}
 
-	auto rt = CreateRenderTarget(extent, 1, textureFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
+	auto rt = CreateRenderTarget(extent, mipLevels, textureFormat, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage);
 	SetDebugName(rt, "Temporary render target");
 
 	return rt;
 }
 
-void IGraphicsDriver::ReleaseTemporaryRenderTarget(RHI::RHITexturePtr renderTarget)
+void IGraphicsDriver::ReleaseTemporaryRenderTarget(RHI::RHIRenderTargetPtr renderTarget)
 {
 	check(renderTarget && renderTarget.IsValid());
 
 	size_t hash = (size_t)renderTarget->GetFormat();
-	Sailor::HashCombine(hash, renderTarget->GetExtent());
+	const uint32_t mipLevels = renderTarget->GetMipLevels();
+
+	Sailor::HashCombine(hash, renderTarget->GetExtent(), mipLevels);
 
 	auto& cachedVector = m_temporaryRenderTargets.At_Lock(hash);
 	cachedVector.Emplace(std::move(renderTarget));

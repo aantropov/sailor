@@ -56,7 +56,7 @@ void LightingECS::BeginPlay()
 		sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
 		m_csmShadowMaps.Add(driver->CreateRenderTarget(ShadowCascadeResolutions[i % NumCascades], 1,
-			ShadowMapFormat_Csm, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
+			ShadowMapFormat_Evsm, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
 
 		driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 	}
@@ -303,11 +303,11 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			
 			if (k == 0)
 			{
-				cascade.m_blurRadius = 5;
+				cascade.m_blurRadius = 3;
 			}
 			else if (k == 1)
 			{
-				cascade.m_blurRadius = 3;
+				cascade.m_blurRadius = 2;
 			}
 
 			if (k > 0)

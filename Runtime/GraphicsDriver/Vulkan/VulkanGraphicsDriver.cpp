@@ -714,21 +714,18 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
 
-	if (mipLevels > 1)
+	for (uint32_t i = 0; i < mipLevels; i++)
 	{
-		for (uint32_t i = 0; i < mipLevels; i++)
-		{
-			// TODO: Should we support ranges for mips?
-			RHI::RHITexturePtr mipLevel = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+		// TODO: Should we support ranges for mips?
+		RHI::RHITexturePtr mipLevel = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
 
-			mipLevel->m_vulkan.m_image = outTexture->m_vulkan.m_image;
-			mipLevel->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, mipLevel->m_vulkan.m_image);
-			mipLevel->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
-			mipLevel->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
-			mipLevel->m_vulkan.m_imageView->Compile();
+		mipLevel->m_vulkan.m_image = outTexture->m_vulkan.m_image;
+		mipLevel->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, mipLevel->m_vulkan.m_image);
+		mipLevel->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
+		mipLevel->m_vulkan.m_imageView->m_subresourceRange.levelCount = 1;
+		mipLevel->m_vulkan.m_imageView->Compile();
 
-			outTexture->m_mipLayers.Emplace(mipLevel);
-		}
+		outTexture->m_mipLayers.Emplace(mipLevel);
 	}
 
 	RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
@@ -1006,7 +1003,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		pushConstants,
 		0);
 
-	auto colorAttachments = shader->GetColorAttachments().ToVector<VkFormat>();
+	auto colorAttachments = TVector<VkFormat>(shader->GetColorAttachments());
 	if (colorAttachments.Num() == 0)
 	{
 		const auto defaultFormat = VK_FORMAT_R16G16B16A16_SFLOAT; //device->GetColorFormat(); 
@@ -2120,10 +2117,7 @@ void VulkanGraphicsDriver::BindMaterial(RHI::RHICommandListPtr cmd, RHI::RHIMate
 		(VkFormat)cmd->m_vulkan.m_commandBuffer->GetCurrentDepthAttachment());
 
 	cmd->m_vulkan.m_commandBuffer->BindPipeline(pipeline);
-	if (material->GetRenderState().GetDepthBias() != 0.0f)
-	{
-		cmd->m_vulkan.m_commandBuffer->SetDepthBias(material->GetRenderState().GetDepthBias());
-	}
+	cmd->m_vulkan.m_commandBuffer->SetDepthBias(material->GetRenderState().GetDepthBias());
 }
 
 void VulkanGraphicsDriver::BindVertexBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr vertexBuffer, uint32_t offset)

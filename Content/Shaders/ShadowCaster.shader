@@ -5,6 +5,7 @@ colorAttachments:
 defines:
 - ESM
 - VSM
+- EVSM
 
 includes:
 - Shaders/Constants.glsl
@@ -53,6 +54,8 @@ glslFragment: |
 
   #if defined(VSM)
     layout(location=0) out vec2 outDepth;
+  #elif defined(EVSM)
+    layout(location=0) out vec4 outDepth;
   #else
     layout(location=0) out float outDepth;
   #endif
@@ -63,6 +66,11 @@ glslFragment: |
       outDepth = vec2(gl_FragCoord.z, gl_FragCoord.z * gl_FragCoord.z);
     #elif defined(ESM)
       outDepth = exp(ESM_C * gl_FragCoord.z);
+    #elif defined(EVSM)
+      outDepth.x = exp(EVSM_C * gl_FragCoord.z);
+      outDepth.y = outDepth.x * outDepth.x;
+      outDepth.z = -exp(-EVSM_C * gl_FragCoord.z);
+      outDepth.w = outDepth.z * outDepth.z;
     #else 
       outDepth = gl_FragCoord.z;
     #endif

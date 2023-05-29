@@ -1,4 +1,5 @@
 const float ESM_C = 80.0f;
+const float EVSM_C = 10.0f;
 
 layout(std430)
 struct LightData
@@ -189,3 +190,17 @@ int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
 
   return layer;
 }
+
+/*
+float Chebyshev(vec2 moments, float currentDepth, float minVariance)
+{
+    if(currentDepth < moments.x)
+    {
+        return 1.0f;
+    }
+    
+    float variance = max(minVariance, moments.y - moments.x * moments.x);
+    float d = currentDepth - moments.x;
+    return variance / (variance + d * d);
+}
+*/

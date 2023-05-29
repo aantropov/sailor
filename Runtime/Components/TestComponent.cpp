@@ -46,8 +46,9 @@ void TestComponent::BeginPlay()
 		for (int j = 0; j < 10; j++)
 		{
 			auto gameObject2 = GetWorld()->Instantiate();
-			gameObject2->GetTransformComponent().SetPosition(vec3(j * 300, 0, i * 250));
-			gameObject2->GetTransformComponent().SetScale(vec4(10, 10, 10, 1));
+			gameObject2->SetMobilityType(EMobilityType::Static);
+			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, 0, i * 2500));
+			gameObject2->GetTransformComponent().SetScale(vec4(1, 1, 1, 0));
 			gameObject2->AddComponent<MeshRendererComponent>();
 		}
 	/**/

@@ -26,7 +26,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ShadowCaster.shader");
 		ShaderSetPtr pShader;
 
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader, { "ESM" }))
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader, { "EVSM" }))
 		{
 			check(pShader->IsReady());
 
@@ -235,7 +235,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[index];
 
-			RHI::RHITexturePtr depthAttachment = driver->GetOrAddTemporaryRenderTarget(driver->GetDepthBuffer()->GetFormat(), shadowPass.m_shadowMap->GetExtent());
+			RHI::RHIRenderTargetPtr depthAttachment = driver->GetOrAddTemporaryRenderTarget(driver->GetDepthBuffer()->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 1);
 			
 			commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 			{
@@ -284,7 +284,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 				if (shadowPass.m_blurRadius > 0)
 				{
-					RHI::RHITexturePtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent());
+					RHI::RHIRenderTargetPtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 6);
 
 					const float blurFloat = (float)shadowPass.m_blurRadius;
 					RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(commandList, blurDataBinding, &blurFloat, sizeof(float));
@@ -330,7 +330,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 					// Blur Vertical
 					commands->BeginDebugRegion(commandList, "Blur Vertical", DebugContext::Color_CmdPostProcess);
 					{
-						RHIShaderBindingPtr blurSampler = driver->AddSamplerToShaderBindings(m_pBlurShaderBindings, "colorSampler", { blurAttachment }, 1);
+						RHIShaderBindingPtr blurSampler = driver->AddSamplerToShaderBindings(m_pBlurShaderBindings, "colorSampler", TVector<RHITexturePtr>{ blurAttachment }, 1);
 						m_pBlurShaderBindings->RecalculateCompatibility();
 
 						commands->BeginRenderPass(commandList,
@@ -401,7 +401,7 @@ TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const 
 	TVector<glm::mat4> ret;
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraNearPlane,
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[0], 15.0f));
+		cameraFarPlane * LightingECS::ShadowCascadeLevels[0], 20.0f));
 
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * LightingECS::ShadowCascadeLevels[0],

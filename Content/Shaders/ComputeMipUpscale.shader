@@ -1,6 +1,8 @@
 includes:
 - Shaders/Constants.glsl
-defines: []
+defines:
+- BLOOM
+- MIN
 glslCommon: |
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
@@ -69,6 +71,7 @@ glslCompute: |
   
       // Based on [Jimenez14] http://goo.gl/eomGso
       vec4 s;
+  #if defined(BLOOM)
       s =  load_lds(sm_idx - TILE_SIZE - 1);
       s += load_lds(sm_idx - TILE_SIZE    ) * 2.0;
       s += load_lds(sm_idx - TILE_SIZE + 1);
@@ -80,7 +83,7 @@ glslCompute: |
       s += load_lds(sm_idx + TILE_SIZE - 1);
       s += load_lds(sm_idx + TILE_SIZE    ) * 2.0;
       s += load_lds(sm_idx + TILE_SIZE + 1);
-  
+      
       vec4 bloom = s * (1.0 / 16.0);
   
       vec4 out_pixel = imageLoad(u_output_image, pixel_coords);
@@ -92,6 +95,23 @@ glslCompute: |
           out_pixel += texture(u_dirt_texture, uv) * PushConstants.u_dirt_intensity * bloom * PushConstants.u_bloom_intensity;
       }
       
+      imageStore(u_output_image, pixel_coords, out_pixel);
+  #elif defined(MIN)
+      s = load_lds(sm_idx - TILE_SIZE - 1);
+      s = min(s, load_lds(sm_idx - TILE_SIZE    ));
+      s = min(s, load_lds(sm_idx - TILE_SIZE + 1));
+      
+      s = min(s, load_lds(sm_idx - 1));
+      s = min(s, load_lds(sm_idx    ));
+      s = min(s, load_lds(sm_idx + 1));
+      
+      s = min(s, load_lds(sm_idx + TILE_SIZE - 1));
+      s = min(s, load_lds(sm_idx + TILE_SIZE    ));
+      s = min(s, load_lds(sm_idx + TILE_SIZE + 1));
+      
+      vec4 out_pixel = imageLoad(u_output_image, pixel_coords);
+           out_pixel = min(s, out_pixel);
   
       imageStore(u_output_image, pixel_coords, out_pixel);
+  #endif
   }

@@ -54,13 +54,14 @@ namespace Sailor
 		const uint32_t LightsMaxNum = 65535;
 		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
 
-		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R32_SFLOAT;
-		const RHI::EFormat ShadowMapFormat_Csm = RHI::EFormat::R32_SFLOAT;
+		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R32G32B32A32_SFLOAT;
+		const RHI::EFormat ShadowMapFormat_Evsm = RHI::EFormat::R32G32B32A32_SFLOAT;
 
 		// CSM is based on https://learnopengl.com/Guest-Articles/2021/CSM
 		// and https://learn.microsoft.com/en-us/windows/win32/dxtecharts/cascaded-shadow-maps
 		// ESM is based on https://dl.acm.org/doi/pdf/10.5555/1375714.1375741
 		// EVSM is based on https://www.cg.tuwien.ac.at/research/publications/2013/ADORJAN-2013-ASE/ADORJAN-2013-ASE-thesis.pdf
+		// Also handy paper: https://dl.acm.org/doi/pdf/10.5555/1375714.1375739
 		static constexpr uint32_t NumCascades = 3;
 		static constexpr float ShadowCascadeLevels[NumCascades] = { 1.0f / 40.0f, 1.0f / 10.0f, 1.0f / 2.0f };
 		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {2048,2048}, {2048,2048}, {2048,2048} };

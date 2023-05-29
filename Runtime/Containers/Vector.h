@@ -122,6 +122,17 @@ namespace Sailor
 
 		TVector(const TVector& other) requires IsCopyConstructible<TElementType> : TVector(other.GetData(), other.Num()) {}
 
+		template<typename TElementType1>
+		TVector(const TVector<TElementType1>& other) requires IsCopyConstructible<TElementType1>
+		{
+			Reserve(other.Num());
+
+			for (uint32_t i = 0; i < other.Num(); i++)
+			{
+				Add(static_cast<TElementType>(other.m_pRawPtr[i]));
+			}
+		}
+
 		TVector(TVector&& other) noexcept requires IsMoveConstructible<TAllocator> { Swap(*this, other); }
 
 		TVector(const TElementType* rawPtr, size_t count) requires IsCopyConstructible<TElementType>
@@ -165,28 +176,6 @@ namespace Sailor
 			}
 
 			return res;
-		}
-
-		template<typename TElementType1>
-		TVector<TElementType1> ToVector() const
-		{
-			/*if constexpr (IsTriviallyCopyable<TElementType1> && IsTriviallyCopyable<TElementType>)
-			{
-				TVector<TElementType1> res((TElementType1*)(&m_pRawPtr), m_arrayNum);
-				return res;
-			}
-			else*/
-			{
-				TVector<TElementType1> res;
-				res.Reserve(m_arrayNum);
-
-				for (uint32_t i = 0; i < m_arrayNum; i++)
-				{
-					res.Add((TElementType1)m_pRawPtr[i]);
-				}
-
-				return res;
-			}
 		}
 
 		template<typename TAllocator1>
@@ -489,8 +478,11 @@ namespace Sailor
 
 		void RemoveAt(size_t index, size_t count = 1)
 		{
+			check(index < m_arrayNum);
+			check(index + count <= m_arrayNum);
+
 			DestructElements(index, count);
-			if (m_arrayNum - count != 0)
+			if (m_arrayNum != index + count)
 			{
 				const size_t tailElementsNum = m_arrayNum - index - count;
 				const size_t elementsToRecreate = min(tailElementsNum, count);
@@ -509,7 +501,7 @@ namespace Sailor
 				if (elementsToMove)
 				{
 					MemMove(index + count, m_arrayNum - elementsToMove, elementsToMove);
-				}
+				}			
 			}
 
 			m_arrayNum -= count;
@@ -635,24 +627,24 @@ namespace Sailor
 		TVectorIterator<TElementType>  First() { return begin(); }
 		TConstVectorIterator<TElementType> First() const { return begin(); }
 
-		TVectorIterator<TElementType>  Last() 
+		TVectorIterator<TElementType>  Last()
 		{
 			if (m_arrayNum == 0 || m_pRawPtr == nullptr)
 			{
 				return end();
 			}
 
-			return TVectorIterator<TElementType>(m_pRawPtr + m_arrayNum - 1); 
+			return TVectorIterator<TElementType>(m_pRawPtr + m_arrayNum - 1);
 		}
 
-		TConstVectorIterator<TElementType> Last() const 
+		TConstVectorIterator<TElementType> Last() const
 		{
 			if (m_arrayNum == 0 || m_pRawPtr == nullptr)
 			{
 				return end();
 			}
 
-			return TConstVectorIterator<TElementType>(m_pRawPtr + m_arrayNum - 1); 
+			return TConstVectorIterator<TElementType>(m_pRawPtr + m_arrayNum - 1);
 		}
 
 		TElementType* GetData() { return m_pRawPtr; }
