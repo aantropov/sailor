@@ -299,7 +299,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cascade.m_shadowMap = m_csmShadowMaps[k];
 			cascade.m_lightMatrix = lightMatrix;
 			cascade.m_lighMatrixIndex = k;
-			cascade.m_blurRadius = glm::vec2(1, 3);
+			cascade.m_blurRadius = glm::vec2(2, 2);
 			
 			if (k == 0)
 			{

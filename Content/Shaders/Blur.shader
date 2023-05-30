@@ -79,10 +79,7 @@ glslFragment: |
     outColor /= data.blurSampleCount.x;
   #else
     #ifdef EVSM
-        // Umbra 
-        outColor.zw = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.x)).zw;
-        // Penumbra
-        outColor.xy = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.y)).xy;
+        outColor = GaussianBlur_Evsm(colorSampler, fragTexcoord, texelSize, ivec2(data.blurRadius.xy));
     #else
         outColor.xyz = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.x));
     #endif
