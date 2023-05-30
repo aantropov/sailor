@@ -232,18 +232,6 @@ glslFragment: |
   }
   
   const float Epsilon = 0.00001;
-  
-  float Chebyshev(vec2 moments, float currentDepth, float minVariance)
-  {
-      if(currentDepth < moments.x)
-      {
-          return clamp(moments.x / currentDepth, 0, 1);
-      }
-      
-      float variance = max(minVariance, moments.y - moments.x * moments.x);
-      float d = currentDepth - moments.x;
-      return variance / (variance + d * d);
-  }
 
   float ShadowCalculation(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
   {
@@ -258,22 +246,16 @@ glslFragment: |
       return 1.0f;
     }
     
-    //ESM
-    /*
-    const float closestDepth = texture(shadowMap, projCoords.xy).r;
-    const float currentDepth = exp(-EVSM_C * (projCoords.z + bias));
-    float shadow = 1 - clamp(currentDepth * closestDepth, 0, 1);// > 0.39 ? 1.0f : 0.0f;
-    return shadow;
-    */
-    
     vec4 shadow = texture(shadowMap, projCoords.xy);// > 0.39 ? 1.0f : 0.0f;
-    const float currentDepth = exp(EVSM_C * (projCoords.z + bias));
-    const float negCurrentDepth = -exp(-EVSM_C * (projCoords.z + bias));
+    const float currentDepth = exp(EVSM_C1 * (projCoords.z + 0.003 * bias));
+    const float negCurrentDepth = -exp(-EVSM_C2 * (projCoords.z + 0.0001 * bias));
     
-    float posValue = Chebyshev(shadow.xy, currentDepth, 0.0001);
-    float negValue = Chebyshev(shadow.zw, negCurrentDepth, 0.0001);
+    float posValue = Chebyshev(shadow.xy, currentDepth, 0.01, 0);
+    float negValue = Chebyshev(shadow.zw, negCurrentDepth, 0, 0);
     
-    return 1 - posValue;//1 - negValue;//min(posValue, negValue);
+    //return 1 - clamp(negValue, 0, 1);
+    //return 1 - clamp(posValue, 0, 1);
+    return clamp(1 - max(posValue, negValue), 0, 1);
   }
   
   vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
@@ -287,17 +269,9 @@ glslFragment: |
     {
         attenuation = 1.0;
         
-        int cascadeLayer = SelectCascade(frame.view, worldPos, frame.cameraParams);
-        float bias = 0.004 * max(0.01 * (1.0 - dot(normal, light.direction)), 0.1);
+        const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraParams), NUM_CSM_CASCADES - 1);
+        const float bias = (1.0 - dot(normal, light.direction)) * (1 + cascadeLayer);
 
-        cascadeLayer = min(cascadeLayer, NUM_CSM_CASCADES - 1);
-        
-        bias *= (1 + cascadeLayer);
-        /*if (cascadeLayer < NUM_CSM_CASCADES)
-        {
-            bias *= ShadowCascadeLevels[0];
-        }*/
-        
         shadow = ShadowCalculation(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias);
     }
     // Point light

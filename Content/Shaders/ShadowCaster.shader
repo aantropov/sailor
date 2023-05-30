@@ -67,9 +67,9 @@ glslFragment: |
     #elif defined(ESM)
       outDepth = exp(ESM_C * gl_FragCoord.z);
     #elif defined(EVSM)
-      outDepth.x = exp(EVSM_C * gl_FragCoord.z);
+      outDepth.x = exp(EVSM_C1 * gl_FragCoord.z);
       outDepth.y = outDepth.x * outDepth.x;
-      outDepth.z = -exp(-EVSM_C * gl_FragCoord.z);
+      outDepth.z = -exp(-EVSM_C2 * gl_FragCoord.z);
       outDepth.w = outDepth.z * outDepth.z;
     #else 
       outDepth = gl_FragCoord.z;

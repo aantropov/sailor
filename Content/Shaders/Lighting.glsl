@@ -1,5 +1,6 @@
 const float ESM_C = 80.0f;
-const float EVSM_C = 10.0f;
+const float EVSM_C1 = 40.0f;
+const float EVSM_C2 = 40.0f;
 
 layout(std430)
 struct LightData
@@ -117,7 +118,7 @@ vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
     return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 } 
 
-vec3 GaussianBlur(sampler2D textureSampler, vec2 uv, vec2 texelSize, uint radius)
+vec4 GaussianBlur(sampler2D textureSampler, vec2 uv, vec2 texelSize, uint radius)
 {
   const int stepCount = 12;
   
@@ -136,13 +137,13 @@ vec3 GaussianBlur(sampler2D textureSampler, vec2 uv, vec2 texelSize, uint radius
     { 0.0539209, 0.0535478, 0.0524437, 0.050654, 0.0482506, 0.0453272, 0.0419936, 0.0383686, 0.034573, 0.0307232, 0.0269255, 0.0232718}};
 
     const uint blurRadius = min(radius, stepCount);
-  
-    vec3 pixelSum = vec3(0.0f);
+
+    vec4 pixelSum = vec4(0.0f);
   
     for(int i = 0; i < blurRadius; i++)
     {  
         vec2 texCoordOffset = i * texelSize;
-        vec3 color = texture(textureSampler, uv + texCoordOffset).xyz + texture(textureSampler, uv - texCoordOffset).xyz;
+        vec4 color = texture(textureSampler, uv + texCoordOffset) + texture(textureSampler, uv - texCoordOffset);
         pixelSum += color * weights[blurRadius-1][i];
     }
 
@@ -191,16 +192,27 @@ int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
   return layer;
 }
 
-/*
-float Chebyshev(vec2 moments, float currentDepth, float minVariance)
+  
+float Linstep(float minVal, float maxVal, float val) 
 {
-    if(currentDepth < moments.x)
+	return clamp((val - minVal) / (maxVal - minVal), 0.0, 1.0);
+}
+
+float ReduceLightBleed(float p_max, float amount) 
+{
+	return Linstep(amount, 1.0, p_max);
+}
+
+float Chebyshev(vec2 moments, float currentDepth, float minVariance, float linstep)
+{
+    float d = currentDepth - moments.x;
+    
+    if(d < 0)
     {
-        return 1.0f;
+        return 1.0;
     }
     
     float variance = max(minVariance, moments.y - moments.x * moments.x);
-    float d = currentDepth - moments.x;
-    return variance / (variance + d * d);
+    
+    return ReduceLightBleed(variance / (variance + d * d), linstep);
 }
-*/

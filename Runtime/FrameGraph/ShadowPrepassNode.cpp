@@ -52,12 +52,12 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		RenderState renderState{ false, false, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
 
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blur.shader");
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurVerticalShader, { "VERTICAL" }))
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurVerticalShader, { "VERTICAL", "EVSM" }))
 		{
 			m_pBlurVerticalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurVerticalShader, m_pBlurShaderBindings);
 		}
 
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurHorizontalShader, { "HORIZONTAL" }))
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurHorizontalShader, { "HORIZONTAL", "EVSM" }))
 		{
 			m_pBlurHorizontalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurHorizontalShader, m_pBlurShaderBindings);
 		}
@@ -236,7 +236,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[index];
 
 			RHI::RHIRenderTargetPtr depthAttachment = driver->GetOrAddTemporaryRenderTarget(driver->GetDepthBuffer()->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 1);
-			
+
 			commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 			{
 				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
@@ -282,12 +282,10 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
 
-				if (shadowPass.m_blurRadius > 0)
+				if (shadowPass.m_blurRadius.length() > 0.1f)
 				{
 					RHI::RHIRenderTargetPtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 6);
-
-					const float blurFloat = (float)shadowPass.m_blurRadius;
-					RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(commandList, blurDataBinding, &blurFloat, sizeof(float));
+					RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(commandList, blurDataBinding, &shadowPass.m_blurRadius, sizeof(glm::vec2));
 
 					// Blur Horizontal
 					commands->BeginDebugRegion(commandList, "Blur Horizontal", DebugContext::Color_CmdPostProcess);
@@ -401,7 +399,7 @@ TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const 
 	TVector<glm::mat4> ret;
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraNearPlane,
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[0], 20.0f));
+		cameraFarPlane * LightingECS::ShadowCascadeLevels[0], 10.0f));
 
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * LightingECS::ShadowCascadeLevels[0],
@@ -409,7 +407,7 @@ TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const 
 
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraFarPlane * LightingECS::ShadowCascadeLevels[1],
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[2], 5.0f));
+		cameraFarPlane * LightingECS::ShadowCascadeLevels[2], 10.0f));
 
 	return ret;
 }

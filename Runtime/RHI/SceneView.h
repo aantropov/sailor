@@ -48,7 +48,7 @@ namespace Sailor::RHI
 	struct RHIUpdateShadowMapCommand
 	{
 		uint32_t m_lighMatrixIndex{};
-		uint32_t m_blurRadius{};
+		glm::vec2 m_blurRadius{}; // [Umbra, Penumbra]
 		RHI::RHIRenderTargetPtr m_shadowMap{};
 		glm::mat4 m_lightMatrix{};
 		TVector<uint32_t> m_internalCommandsList{};

@@ -8,6 +8,7 @@ defines :
 - HORIZONTAL
 - VERTICAL
 - RADIAL
+- EVSM
 
 glslCommon: |
   #version 460
@@ -65,7 +66,6 @@ glslFragment: |
   #endif
   
   #ifdef RADIAL
-    
     vec2 direction = (data.blurCenter.xy - fragTexcoord.xy) * texelSize.xy * data.blurRadius.x;
     outColor = vec4(0, 0, 0, 0);
     vec2 uv = fragTexcoord.xy;
@@ -78,7 +78,14 @@ glslFragment: |
     
     outColor /= data.blurSampleCount.x;
   #else
-    outColor.xyz = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.x));
+    #ifdef EVSM
+        // Umbra 
+        outColor.zw = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.x)).zw;
+        // Penumbra
+        outColor.xy = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.y)).xy;
+    #else
+        outColor.xyz = GaussianBlur(colorSampler, fragTexcoord, texelSize, uint(data.blurRadius.x));
+    #endif
   #endif
   
   }
