@@ -145,7 +145,7 @@ glslFragment: |
     {
         dColor = vec3(1,1,0);
     }
-    else if(layer == 1)
+    else if(layer == 2)
     {
         dColor = vec3(0,0,1);
     }

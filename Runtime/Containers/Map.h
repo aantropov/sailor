@@ -120,8 +120,12 @@ namespace Sailor
 		bool Find(const TKeyType& key, TValueType const*& out) const
 		{
 			auto it = Find(key);
-			out = &it->m_second;
-			return it != Super::end();
+			if (it != Super::end())
+			{
+				out = &it->m_second;
+				return true;
+			}
+			return false;
 		}
 
 		Super::TIterator Find(const TKeyType& key)

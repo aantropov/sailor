@@ -1,9 +1,10 @@
 #pragma once
-#include "yaml-cpp/include/yaml-cpp/yaml.h"
 #include "Core/Defines.h"
 #include "Containers/Concepts.h"
 #include "Math/Math.h"
 #include "Containers/Containers.h"
+
+#include "yaml-cpp/include/yaml-cpp/yaml.h"
 
 namespace Sailor
 {
@@ -215,11 +216,11 @@ namespace YAML
 		{
 			Node node;
 
-			if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
+			if constexpr (Sailor::IsBaseOf<Sailor::IYamlSerializable, T>)
 			{
 				node = rhs.Serialize();
 			}
-			else if constexpr (IsEnum<T>)
+			else if constexpr (Sailor::IsEnum<T>)
 			{
 				node = SerializeEnum(rhs);
 			}
@@ -233,12 +234,12 @@ namespace YAML
 
 		static bool decode(const Node& node, T& rhs)
 		{
-			if constexpr (IsBaseOf<Sailor::IYamlSerializable, T>)
+			if constexpr (Sailor::IsBaseOf<Sailor::IYamlSerializable, T>)
 			{
 				rhs.Deserialize(node);
 				return true;
 			}
-			else if constexpr (IsEnum<T>)
+			else if constexpr (Sailor::IsEnum<T>)
 			{
 				DeserializeEnum(node, rhs);
 				return true;

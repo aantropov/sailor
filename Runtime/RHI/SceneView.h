@@ -63,7 +63,7 @@ namespace Sailor::RHI
 		TVector<RHISceneViewProxy> m_proxies{};
 
 		uint32_t m_totalNumLights = 0;
-		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate;
+		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
 
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};

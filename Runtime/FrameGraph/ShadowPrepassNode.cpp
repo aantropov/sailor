@@ -88,11 +88,8 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	{
 		const uint32_t NumShadowPasses = (uint32_t)sceneView.m_shadowMapsToUpdate.Num();
 
-		TVector<TDrawCalls<ShadowPrepassNode::PerInstanceData>> drawCalls;
-		drawCalls.Resize(NumShadowPasses);
-
-		TVector<TSet<RHIBatch>> batches{ NumShadowPasses };
-		batches.Resize(NumShadowPasses);
+		TVector<TDrawCalls<ShadowPrepassNode::PerInstanceData>> drawCalls(NumShadowPasses);
+		TVector<TSet<RHIBatch>> batches(NumShadowPasses);
 
 		uint32_t numMeshes = 0;
 
@@ -154,16 +151,12 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
 		SAILOR_PROFILE_END_BLOCK();
 
-		TVector<ShadowPrepassNode::PerInstanceData> gpuMatricesData;
-		gpuMatricesData.AddDefault(numMeshes);
+		TVector<ShadowPrepassNode::PerInstanceData> gpuMatricesData(numMeshes);
 
 		SAILOR_PROFILE_BLOCK("Calculate SSBO offsets");
 		size_t ssboIndex = 0;
-		TVector<TVector<RHIBatch>> passes;
-		passes.Resize(NumShadowPasses);
-
-		TVector<TVector<uint32_t>> passIndices;
-		passIndices.Resize(NumShadowPasses);
+		TVector<TVector<RHIBatch>> passes(NumShadowPasses);
+		TVector<TVector<uint32_t>> passIndices(NumShadowPasses);
 
 		for (uint32_t i = 0; i < NumShadowPasses; i++)
 		{
@@ -262,13 +255,18 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 					glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
 					glm::vec2(0.0f, 1.0f));
 
-				for (auto& dependencyPass : shadowPass.m_internalCommandsList)
+				for (uint32_t dependencyPass : shadowPass.m_internalCommandsList)
 				{
-					RHIDrawCall(0, (uint32_t)passes[dependencyPass].Num(), passes[dependencyPass], commandList, shaderBindingsByMaterial,
-						drawCalls[dependencyPass], m_indirectBuffers[dependencyPass],
-						glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
-						glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
-						glm::vec2(0.0f, 1.0f));
+					const uint32_t numBatches = (uint32_t)passes[dependencyPass].Num();
+
+					if (numBatches > 0)
+					{
+						RHIDrawCall(0, numBatches, passes[dependencyPass], commandList, shaderBindingsByMaterial,
+							drawCalls[dependencyPass], m_indirectBuffers[dependencyPass],
+							glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
+							glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+							glm::vec2(0.0f, 1.0f));
+					}
 				}
 
 				commands->UpdateShaderBinding(transferCommandList, m_lightMatrices,
@@ -401,13 +399,12 @@ TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const 
 		cameraNearPlane,
 		cameraFarPlane * LightingECS::ShadowCascadeLevels[0], 10.0f));
 
-	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[0],
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[1], 10.0f));
-
-	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[1],
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[2], 10.0f));
+	for (uint32_t i = 0; i < LightingECS::NumCascades - 1; i++)
+	{
+		ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
+			cameraFarPlane * LightingECS::ShadowCascadeLevels[i],
+			cameraFarPlane * LightingECS::ShadowCascadeLevels[i + 1], 10.0f));
+	}
 
 	return ret;
 }

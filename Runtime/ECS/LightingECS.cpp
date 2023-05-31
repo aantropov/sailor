@@ -283,14 +283,15 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cameraData.GetZNear(),
 			cameraData.GetZFar());
 
-		TVector<Math::Frustum> frustums;
-		frustums.Resize(lightCascadesMatrices.Num());
+		TVector<Math::Frustum> frustums(lightCascadesMatrices.Num());
 
-		bool bCascadeAdded[NumCascades] = { false, false, false };
+		bool bCascadeAdded[NumCascades];
 		const uint32_t alreadyPlacedPasses = (uint32_t)updateShadowMaps.Num();
 
 		for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
 		{
+			bCascadeAdded[k] = false;
+
 			auto lightMatrix = lightCascadesMatrices[k] * directionalLight.m_lightMatrix;
 			frustums[k].ExtractFrustumPlanes(lightMatrix);
 
@@ -299,7 +300,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cascade.m_shadowMap = m_csmShadowMaps[k];
 			cascade.m_lightMatrix = lightMatrix;
 			cascade.m_lighMatrixIndex = k;
-			cascade.m_blurRadius = glm::vec2(2, 2);
+			cascade.m_blurRadius = glm::vec2(1, 5);
 			
 			if (k == 0)
 			{
@@ -307,7 +308,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			}
 			else if (k == 1)
 			{
-				cascade.m_blurRadius = glm::vec2(1, 3);
+				cascade.m_blurRadius = glm::vec2(1, 5);
 			}
 
 			if (k > 0)
@@ -342,7 +343,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			snapshot.m_lightTransform = directionalLight.m_lightTransform;
 			snapshot.m_lightMatrix = lightMatrix;
 
-			for (auto& m : cascade.m_meshList)
+			for (const auto& m : cascade.m_meshList)
 			{
 				snapshot.m_snapshot.Add({ m.m_staticMeshEcs, m.m_frame });
 			}
@@ -365,7 +366,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			}
 
 			bCascadeAdded[k] = true;
-			updateShadowMaps.Emplace(cascade);
+			updateShadowMaps.Emplace(std::move(cascade));
 			snapshotIndex++;
 		}
 	}

@@ -5,5 +5,5 @@
 #define LIGHTS_PER_TILE 128
 #define MAX_SHADOWS_IN_VIEW 1024
 #define MAX_TEXTURES_IN_SCENE 262144
-#define NUM_CSM_CASCADES 3
-const float ShadowCascadeLevels[3] = { 0.025,0.1,0.5}; 
+#define NUM_CSM_CASCADES 4
+const float ShadowCascadeLevels[4] = { 0.025,0.0666667,0.166667,0.5}; 

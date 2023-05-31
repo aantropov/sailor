@@ -129,7 +129,7 @@ namespace Sailor
 
 			for (uint32_t i = 0; i < other.Num(); i++)
 			{
-				Add(static_cast<TElementType>(other.m_pRawPtr[i]));
+				Add(static_cast<TElementType>(other[i]));
 			}
 		}
 
