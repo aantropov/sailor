@@ -443,6 +443,7 @@ namespace Sailor
 				{
 					if (predicate(m_pRawPtr[i]))
 					{
+						num++;
 						continue;
 					}
 
@@ -454,8 +455,6 @@ namespace Sailor
 					{
 						tmp.Add(m_pRawPtr[i]);
 					}
-
-					num++;
 				}
 
 				(*this) = std::move(tmp);

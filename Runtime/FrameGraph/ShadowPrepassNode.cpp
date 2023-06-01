@@ -250,10 +250,13 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 				commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &sceneView.m_shadowMapsToUpdate[index].m_lightMatrix);
 
-				RHIRecordDrawCall(0, (uint32_t)passes[index].Num(), passes[index], commandList, shaderBindingsByMaterial, drawCalls[index], passIndices[index], m_indirectBuffers[index],
-					glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
-					glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
-					glm::vec2(0.0f, 1.0f));
+				if (passes[index].Num() > 0)
+				{
+					RHIRecordDrawCall(0, (uint32_t)passes[index].Num(), passes[index], commandList, shaderBindingsByMaterial, drawCalls[index], passIndices[index], m_indirectBuffers[index],
+						glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
+						glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+						glm::vec2(0.0f, 1.0f));
+				}
 
 				for (uint32_t dependencyPass : shadowPass.m_internalCommandsList)
 				{

@@ -217,7 +217,7 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 	TVector<RHI::RHILightProxy>& outSortedSpotLights)
 {
 	SAILOR_PROFILE_FUNCTION();
-	
+
 	// TODO: Cache lights that cast shadows separately to decrease algo complexity
 	for (size_t index = 0; index < m_components.Num(); index++)
 	{
@@ -301,7 +301,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cascade.m_lightMatrix = lightMatrix;
 			cascade.m_lighMatrixIndex = k;
 			cascade.m_blurRadius = glm::vec2(1, 5);
-			
+
 			if (k == 0)
 			{
 				cascade.m_blurRadius = glm::vec2(2, 5);
@@ -313,26 +313,27 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 
 			if (k > 0)
 			{
-				// Don't duplicate data for higher cascades
-				cascade.m_meshList.RemoveAll([k, &frustums, bCascadeAdded](const auto& m)
-					{
-						for (uint32_t z = 0; z < k; z++)
-						{
-							if (bCascadeAdded[z] && frustums[z].OverlapsAABB(m.m_worldAabb))
-							{
-								return true;
-							}
-						}
-						return false;
-					});
-
-				// We store cascade dependencies
+				uint32_t shift = 0;
 				for (uint32_t z = 0; z < k; z++)
 				{
-					if (bCascadeAdded[z])
+					if (!bCascadeAdded[z])
 					{
-						cascade.m_internalCommandsList.Add(alreadyPlacedPasses + z);
+						continue;
 					}
+
+					// Don't duplicate data for higher cascades
+					const uint32_t removed = (uint32_t)cascade.m_meshList.RemoveAll([z, &frustums, bCascadeAdded](const auto& m)
+						{
+							return frustums[z].OverlapsAABB(m.m_worldAabb);
+						});
+
+					// We store cascade dependencies
+					if (removed > 0)
+					{
+						cascade.m_internalCommandsList.Add(alreadyPlacedPasses + shift);
+					}
+
+					shift++;
 				}
 			}
 
@@ -381,7 +382,7 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 	for (uint32_t i = 0; i < sceneView->m_cameraTransforms.Num(); i++)
 	{
 		const auto& camera = sceneView->m_cameras[i];
-		
+
 		Math::Frustum frustum;
 		frustum.ExtractFrustumPlanes(sceneView->m_cameraTransforms[i].Matrix(), camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
 
@@ -399,7 +400,7 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			m_csmSnapshots.Clear();
 			m_csmSnapshots.Reserve(numCsmSnapshots);
 		}
-		
+
 		auto updateShadowMaps = PrepareCSMPasses(sceneView, sceneView->m_cameraTransforms[i], camera, directionalLights);
 		sceneView->m_shadowMapsToUpdate.Add(std::move(updateShadowMaps));
 	}
