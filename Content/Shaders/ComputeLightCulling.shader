@@ -11,10 +11,10 @@ glslCompute: |
   layout(local_size_x = LIGHTS_CULLING_TILE_SIZE, local_size_y = LIGHTS_CULLING_TILE_SIZE, local_size_z = 1) in;  
   layout(push_constant) uniform Constants
   {
-  	mat4 invViewProjection;
-  	ivec2 viewportSize;
-  	ivec2 numTiles;	
-      int lightsNum;
+    mat4 invViewProjection;
+    ivec2 viewportSize;
+    ivec2 numTiles;	
+    int lightsNum;
   } PushConstants;
   
   layout(std430, set = 0, binding = 0) readonly buffer LightDataSSBO
@@ -68,7 +68,7 @@ glslCompute: |
       // Bottom right point
       screenSpace[3] = vec4(vec2(tileId.x + 1, tileId.y + 1) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
   	
-  	// Center point
+  	  // Center point
       screenSpace[4] = (screenSpace[0] + screenSpace[3]) * 0.5f;
   	
       vec3 viewSpace[5];

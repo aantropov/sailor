@@ -1,10 +1,5 @@
 ---
-colorAttachments: 
-- R32_SFLOAT
-
 defines:
-- ESM
-- VSM
 - EVSM
 
 includes:
@@ -52,9 +47,7 @@ glslVertex: |
   
 glslFragment: |
 
-  #if defined(VSM)
-    layout(location=0) out vec2 outDepth;
-  #elif defined(EVSM)
+  #if defined(EVSM)
     layout(location=0) out vec4 outDepth;
   #else
     layout(location=0) out float outDepth;
@@ -62,11 +55,7 @@ glslFragment: |
   
   void main() 
   {
-    #if defined(VSM)
-      outDepth = vec2(gl_FragCoord.z, gl_FragCoord.z * gl_FragCoord.z);
-    #elif defined(ESM)
-      outDepth = exp(ESM_C * gl_FragCoord.z);
-    #elif defined(EVSM)
+    #if defined(EVSM)
       outDepth.x = exp(EVSM_C1 * gl_FragCoord.z);
       outDepth.y = outDepth.x * outDepth.x;
       outDepth.z = -exp(-EVSM_C2 * gl_FragCoord.z);

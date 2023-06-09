@@ -25,7 +25,7 @@ namespace Sailor
 		glm::vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
 		glm::vec2 m_cutOff{ 30.0f, 45.0f };
 		ELightType m_type = ELightType::Point;
-		bool m_bCastShadows = true;
+		RHI::EShadowType m_shadowType = RHI::EShadowType::EVSM;
 
 	protected:
 
@@ -54,7 +54,7 @@ namespace Sailor
 		const uint32_t LightsMaxNum = 65535;
 		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
 
-		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R32G32B32A32_SFLOAT;
+		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R16_SFLOAT;
 		const RHI::EFormat ShadowMapFormat_Evsm = RHI::EFormat::R32G32B32A32_SFLOAT;
 
 		// CSM is based on https://learnopengl.com/Guest-Articles/2021/CSM
@@ -64,18 +64,19 @@ namespace Sailor
 		// Also handy paper: https://dl.acm.org/doi/pdf/10.5555/1375714.1375739
 		static constexpr uint32_t NumCascades = 4;
 		static constexpr float ShadowCascadeLevels[NumCascades] = { 1.0f / 40.0f, 1.0f / 10.0f, 1.0f / 3.0f, 1.0f / 2.0f };
-		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {2048,2048}, {2048,2048}, {2048,2048} };
+		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {4096,4096}, {4096,4096}, {4096,4096} };
 		static constexpr glm::ivec2 ShadowCascadeBlur[NumCascades] = { glm::vec2(2, 5), glm::vec2(1, 4), glm::vec2(1, 3), glm::vec2(1, 2) };
 
 		// TODO: Tightly pack
 		struct LightShaderData
 		{
+			 uint32_t m_type;
+			 uint32_t m_shadowType;
 			 alignas(16) glm::vec3 m_worldPosition;
 			 alignas(16) glm::vec3 m_direction;
 			 alignas(16) glm::vec3 m_intensity;
 			 alignas(16) glm::vec3 m_attenuation;
-			 int32_t m_type;
-			 glm::vec2 m_cutOff;
+			 alignas(16) glm::vec2 m_cutOff;
 			 alignas(16) glm::vec3 m_bounds;
 		};
 

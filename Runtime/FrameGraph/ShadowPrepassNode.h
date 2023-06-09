@@ -42,8 +42,10 @@ namespace Sailor
 		RHI::RHIShaderBindingSetPtr m_pBlurShaderBindings{};
 
 		// Shadow caster material
-		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials{};
-		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex);
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials_Evsm{};
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials_Pcf{};
+
+		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType);
 
 		// Record drawcalls
 		size_t m_sizePerInstanceData = 0;

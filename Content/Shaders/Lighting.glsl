@@ -1,15 +1,15 @@
-const float ESM_C = 80.0f;
 const float EVSM_C1 = 40.0f;
 const float EVSM_C2 = 40.0f;
 
 layout(std430)
 struct LightData
 {
+  uint type;
+  uint shadowType;
   vec3 worldPosition;
   vec3 direction;
   vec3 intensity;
   vec3 attenuation;
-  int type;
   vec2 cutOff;
   vec3 bounds;
 };
@@ -74,44 +74,6 @@ vec3 FresnelSchlick(vec3 F0, float cosTheta)
 {
   return F0 + (vec3(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
 }
-
-// Old
-float DistributionGGX(vec3 N, vec3 H, float roughness)
-{
-    float a      = roughness*roughness;
-    float a2     = a*a;
-    float NdotH  = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH*NdotH;
-  
-    float num   = a2;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-  
-    return num / denom;
-}
-
-float GeometrySchlickGGX(float NdotV, float roughness)
-{
-    float r = (roughness + 1.0);
-    float k = (r*r) / 8.0;
-
-    float num   = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-  
-    return num / denom;
-}
-
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
-{
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx2  = GeometrySchlickGGX(NdotV, roughness);
-    float ggx1  = GeometrySchlickGGX(NdotL, roughness);
-  
-    return ggx1 * ggx2;
-}
-//
-
 
 vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 {
@@ -261,3 +223,49 @@ float Chebyshev(vec2 moments, float currentDepth, float minVariance, float linst
     
     return ReduceLightBleed(variance / (variance + d * d), linstep);
 }
+
+float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int cascadeLayer)
+{
+  vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+  projCoords = projCoords * 0.5 + 0.5;
+  projCoords.y = 1.0f - projCoords.y;
+  
+  if(projCoords.x > 1.0f || projCoords.y > 1.0f ||
+     projCoords.x < 0.0f || projCoords.y < 0.0f ||
+     projCoords.z < 0.5f)
+  {
+    return 1.0f;
+  }
+  
+  const float closestDepth = texture(shadowMap, projCoords.xy).r * 0.5 + 0.5;
+  const float currentDepth = projCoords.z;
+  
+  //float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
+  float shadow = ManualPCF(shadowMap, projCoords, currentDepth, bias);
+  return shadow;  
+}
+
+float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int cascadeLayer)
+{
+  vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+  projCoords.xy = projCoords.xy * 0.5 + 0.5;
+  projCoords.y = 1.0f - projCoords.y;
+  
+  if(projCoords.x > 1.0f || projCoords.y > 1.0f ||
+     projCoords.x < 0.0f || projCoords.y < 0.0f ||
+     projCoords.z < 0.0f)
+  {
+    return 1.0f;
+  }
+  
+  vec4 shadow = texture(shadowMap, projCoords.xy);// > 0.39 ? 1.0f : 0.0f;
+  const float currentDepth = exp(EVSM_C1 * (projCoords.z + 0.003 * bias * pow(0.5, cascadeLayer)));
+  const float negCurrentDepth = -exp(-EVSM_C2 * (projCoords.z + 0.0001 * bias));
+  
+  float posValue = Chebyshev(shadow.xy, currentDepth, 0.01, 0);
+  float negValue = Chebyshev(shadow.zw, negCurrentDepth, 0, 0) * (cascadeLayer > 2 ? 0 : 1);
+  
+  return clamp(1 - max(posValue, negValue), 0, 1);
+}
+
+ 

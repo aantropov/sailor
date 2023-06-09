@@ -10,6 +10,13 @@
 
 namespace Sailor::RHI
 {
+	enum class EShadowType : uint32_t
+	{
+		None = 0,
+		PCF,
+		EVSM
+	};
+
 	struct RHIMeshProxy
 	{
 		size_t m_staticMeshEcs = 0;
@@ -21,6 +28,7 @@ namespace Sailor::RHI
 	{
 		uint32_t m_index = 0;
 		float m_distanceToCamera{};
+		EShadowType m_shadowType = EShadowType::None;
 		glm::mat4 m_lightMatrix{};
 		Math::Transform m_cameraTransform{};
 		Math::Transform m_lightTransform{};
@@ -48,6 +56,7 @@ namespace Sailor::RHI
 	struct RHIUpdateShadowMapCommand
 	{
 		uint32_t m_lighMatrixIndex{};
+		EShadowType m_shadowType = EShadowType::None;
 		glm::vec2 m_blurRadius{}; // [Umbra, Penumbra]
 		RHI::RHIRenderTargetPtr m_shadowMap{};
 		glm::mat4 m_lightMatrix{};

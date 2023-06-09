@@ -232,32 +232,6 @@ glslFragment: |
   }
   
   const float Epsilon = 0.00001;
-
-  float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int cascadeLayer)
-  {
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords.xy = projCoords.xy * 0.5 + 0.5;
-    projCoords.y = 1.0f - projCoords.y;
-    
-    if(projCoords.x > 1.0f || projCoords.y > 1.0f ||
-       projCoords.x < 0.0f || projCoords.y < 0.0f ||
-       projCoords.z < 0.0f)
-    {
-      return 1.0f;
-    }
-    
-    vec4 shadow = texture(shadowMap, projCoords.xy);// > 0.39 ? 1.0f : 0.0f;
-    const float currentDepth = exp(EVSM_C1 * (projCoords.z + 0.003 * bias * pow(0.5, cascadeLayer)));
-    const float negCurrentDepth = -exp(-EVSM_C2 * (projCoords.z + 0.0001 * bias));
-    
-    float posValue = Chebyshev(shadow.xy, currentDepth, 0.01, 0);
-    float negValue = Chebyshev(shadow.zw, negCurrentDepth, 0, 0) * (cascadeLayer != 0 ? 0 : 1);
-    
-    //return 1 - clamp(negValue, 0, 1);
-    //return 1 - clamp(posValue, 0, 1);
-    return clamp(1 - max(posValue, negValue), 0, 1);
-  }
-  
   vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
@@ -268,11 +242,20 @@ glslFragment: |
     if(light.type == 0)
     {
         attenuation = 1.0;
-        
+      
         const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraParams), NUM_CSM_CASCADES - 1);
-        const float bias = (1.0 - dot(normal, light.direction)) * (1 + cascadeLayer);
-
-        shadow = ShadowCalculation_Evsm(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);
+        
+        // EVSM only for the first cascade
+        if(light.shadowType == 2 && cascadeLayer == 0)
+        {
+          const float bias = (1.0 - dot(normal, light.direction)) * (1 + cascadeLayer);
+          shadow = ShadowCalculation_Evsm(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);
+        }
+        else
+        {
+          const float bias = max(0.000075 * (1.0 - dot(normal, light.direction)), 0.000005);   
+          shadow = ShadowCalculation_Pcf(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);    
+        }
     }
     // Point light
     else if(light.type == 1)

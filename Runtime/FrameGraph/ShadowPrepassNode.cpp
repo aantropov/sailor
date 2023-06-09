@@ -17,16 +17,22 @@ using namespace Sailor::RHI;
 const char* ShadowPrepassNode::m_name = "ShadowPrepass";
 #endif
 
-RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertexDescription)
+RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, RHI::EShadowType shadowType)
 {
-	auto& material = m_shadowMaterials[vertexDescription->GetVertexAttributeBits()];
+	auto& material = shadowType == EShadowType::EVSM ? m_shadowMaterials_Evsm[vertexDescription->GetVertexAttributeBits()] : m_shadowMaterials_Pcf[vertexDescription->GetVertexAttributeBits()];
 
 	if (!material)
 	{
 		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ShadowCaster.shader");
 		ShaderSetPtr pShader;
 
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader, { "EVSM" }))
+		TVector<std::string> defines;
+		if (shadowType == EShadowType::EVSM)
+		{
+			defines.Add("EVSM");
+		}
+
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader, defines))
 		{
 			check(pShader->IsReady());
 
@@ -108,7 +114,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 					}
 
 					const auto& mesh = proxy.m_meshes[i];
-					auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription);
+					auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType);
 
 					const bool bIsDepthMaterialReady = depthMaterial &&
 						depthMaterial->GetVertexShader() &&
@@ -248,7 +254,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 				auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 
-				commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription), 64, &sceneView.m_shadowMapsToUpdate[index].m_lightMatrix);
+				commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription, shadowPass.m_shadowType), 64, &sceneView.m_shadowMapsToUpdate[index].m_lightMatrix);
 
 				if (passes[index].Num() > 0)
 				{
@@ -283,7 +289,7 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
 
-				if (shadowPass.m_blurRadius.length() > 0.1f)
+				if (shadowPass.m_shadowType == EShadowType::EVSM && shadowPass.m_blurRadius.length() > 0.1f)
 				{
 					RHI::RHIRenderTargetPtr blurAttachment = driver->GetOrAddTemporaryRenderTarget(shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 6);
 					RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(commandList, blurDataBinding, &shadowPass.m_blurRadius, sizeof(glm::vec2));
@@ -382,6 +388,8 @@ void ShadowPrepassNode::Clear()
 {
 	m_lightMatrices.Clear();
 	m_perInstanceData.Clear();
+	m_shadowMaterials_Pcf.Clear();
+	m_shadowMaterials_Evsm.Clear();
 }
 
 glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float zMult)

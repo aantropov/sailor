@@ -56,7 +56,8 @@ void LightingECS::BeginPlay()
 		sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
 		m_csmShadowMaps.Add(driver->CreateRenderTarget(ShadowCascadeResolutions[i % NumCascades], 1,
-			ShadowMapFormat_Evsm, RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
+			i % NumCascades == 0 ? ShadowMapFormat_Evsm : ShadowMapFormat,
+			RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
 
 		driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 	}
@@ -160,10 +161,11 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			const auto& lightData = m_components[index];
 
 			LightShaderData shaderData;
+			shaderData.m_type = (uint32_t)lightData.m_type;
+			shaderData.m_shadowType = (uint32_t)lightData.m_shadowType;
 			shaderData.m_attenuation = lightData.m_attenuation;
 			shaderData.m_bounds = lightData.m_bounds;
 			shaderData.m_intensity = lightData.m_intensity;
-			shaderData.m_type = (int32_t)lightData.m_type;
 			shaderData.m_direction = ownerTransform.GetForwardVector();
 			shaderData.m_worldPosition = ownerTransform.GetWorldPosition();
 			shaderData.m_cutOff = vec2(glm::cos(glm::radians(lightData.m_cutOff.x)), glm::cos(glm::radians(lightData.m_cutOff.y)));
@@ -222,7 +224,7 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 	for (size_t index = 0; index < m_components.Num(); index++)
 	{
 		auto& light = m_components[index];
-		if (light.m_bCastShadows && light.m_bIsActive)
+		if (light.m_shadowType != RHI::EShadowType::None && light.m_bIsActive)
 		{
 			const auto& ownerTransform = light.m_owner.StaticCast<GameObject>()->GetTransformComponent();
 
@@ -232,6 +234,7 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 			lightProxy.m_lightTransform = ownerTransform.GetTransform();
 			lightProxy.m_distanceToCamera = 0.0f;
 			lightProxy.m_index = (uint32_t)index;
+			lightProxy.m_shadowType = light.m_shadowType;
 
 			if (light.m_type != ELightType::Directional)
 			{
@@ -285,12 +288,12 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 
 		TVector<Math::Frustum> frustums(lightCascadesMatrices.Num());
 
-		bool bCascadeAdded[NumCascades];
+		RHI::EShadowType bCascadeAdded[NumCascades];
 		const uint32_t alreadyPlacedPasses = (uint32_t)updateShadowMaps.Num();
 
 		for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
 		{
-			bCascadeAdded[k] = false;
+			bCascadeAdded[k] = RHI::EShadowType::None;
 
 			auto lightMatrix = lightCascadesMatrices[k] * directionalLight.m_lightMatrix;
 			frustums[k].ExtractFrustumPlanes(lightMatrix);
@@ -301,13 +304,21 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cascade.m_lightMatrix = lightMatrix;
 			cascade.m_lighMatrixIndex = k;
 			cascade.m_blurRadius = ShadowCascadeBlur[k];
+			
+			// For EVSM only 1st cascade is EVSM
+			cascade.m_shadowType = k > 0 ? RHI::EShadowType::PCF : directionalLight.m_shadowType;
 
 			if (k > 0)
 			{
-				uint32_t shift = 0;
+				int32_t shift = -1;
 				for (uint32_t z = 0; z < k; z++)
 				{
-					if (!bCascadeAdded[z])
+					if (bCascadeAdded[z] != RHI::EShadowType::None)
+					{
+						shift++;
+					}
+
+					if (bCascadeAdded[z] != cascade.m_shadowType)
 					{
 						continue;
 					}
@@ -323,8 +334,6 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 					{
 						cascade.m_internalCommandsList.Add(alreadyPlacedPasses + shift);
 					}
-
-					shift++;
 				}
 			}
 
@@ -357,7 +366,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 				m_csmSnapshots.Emplace(std::move(snapshot));
 			}
 
-			bCascadeAdded[k] = true;
+			bCascadeAdded[k] = cascade.m_shadowType;
 			updateShadowMaps.Emplace(std::move(cascade));
 			snapshotIndex++;
 		}
