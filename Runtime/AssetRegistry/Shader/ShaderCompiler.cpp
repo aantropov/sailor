@@ -609,7 +609,7 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 		auto errors = Utils::SplitStringByLines(fullError.c_str());
 		for (const auto& error : errors)
 		{
-			SAILOR_LOG("Error %d: %s", errorNum++, error.c_str());
+			SAILOR_LOG_ERROR("Error %d: %s", errorNum++, error.c_str());
 
 			for (uint32_t i = 0; i < error.size(); i++)
 			{

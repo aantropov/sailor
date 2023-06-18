@@ -34,13 +34,10 @@ void ConsoleWindow::Initialize(bool bInShouldAttach)
 }
 
 // Global handler for break and exit signals from the console.
-BOOL WINAPI console_handler(DWORD signal) {
-	if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) {
-#if defined(USE_FILE_LOG)
-		// Add failsafe here as there is cases where the log would be cut/empty otherwise.
-		if (FileLog::exists())
-			FileLog::get().flush();
-#endif
+BOOL WINAPI console_handler(DWORD signal) 
+{
+	if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) 
+	{
 		ñonsoleExit = true;
 		// Sleep here to give application time to close down nicely. After this time
 		// ExitProcess will be called and force the application to stop immediately.

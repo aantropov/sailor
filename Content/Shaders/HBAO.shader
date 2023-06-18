@@ -13,7 +13,8 @@ glslVertex: |
   layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
   
   layout(location=0) out vec2 fragTexcoord;
-  layout(set=1, binding=1) uniform sampler2D depthSampler;  
+  layout(set=1, binding=1) uniform sampler2D depthSampler;
+  layout(set=1, binding=2) uniform sampler2D linearDepthSampler;
   
   void main() 
   {
@@ -43,6 +44,7 @@ glslFragment: |
   } data;
   
   layout(set=1, binding=1) uniform sampler2D depthSampler;  
+  layout(set=1, binding=2) uniform sampler2D linearDepthSampler;
   
   layout(location=0) in vec2 fragTexcoord;
   layout(location=0) out vec4 outColor;
@@ -62,13 +64,45 @@ glslFragment: |
     {-0.7071068, -0.7071069},
   };
   
+  float TakeSmallerAbsDelta(float Left, float Mid, float Right)
+  {
+    float A = Mid - Left;
+    float B = Right - Mid;
+    return (abs(A) < abs(B)) ? A : B;
+  }
+
   vec3 GetViewSpacePos(vec2 UV)
   {
-    float Depth = texture(depthSampler, UV).r;
-    return ClipSpaceToViewSpace(vec4(UV.x, UV.y, Depth, 1.0f), frame.invProjection).xyz;
+    float Depth = texture(linearDepthSampler, UV).r;
+    return ClipSpaceToViewSpace(vec4(UV.x, UV.y, 0, 1), frame.invProjection).xyz * Depth;
   }
   
-  vec2 SnapTexel(vec2 uv, float depthPixelSize)
+  vec3 GetViewSpaceNormal(vec2 UV, vec2 depthPixelSize)
+  {   
+    vec2 InvDepthPixelSize = rcp(depthPixelSize);
+    
+    vec2 UVLeft     = UV + vec2(-1.0, 0.0 ) * InvDepthPixelSize.xy;
+    vec2 UVRight    = UV + vec2(1.0,  0.0 ) * InvDepthPixelSize.xy;
+    vec2 UVDown     = UV + vec2(0.0,  -1.0) * InvDepthPixelSize.xy;
+    vec2 UVUp       = UV + vec2(0.0,  1.0 ) * InvDepthPixelSize.xy;
+
+    float Depth      = texture(linearDepthSampler, UV).r;
+    float DepthLeft  = texture(linearDepthSampler, UVLeft).r;
+    float DepthRight = texture(linearDepthSampler, UVRight).r;
+    float DepthDown  = texture(linearDepthSampler, UVDown).r;
+    float DepthUp    = texture(linearDepthSampler, UVUp).r;
+
+    float DepthDdx = TakeSmallerAbsDelta(DepthLeft, Depth, DepthRight);
+    float DepthDdy = TakeSmallerAbsDelta(DepthDown, Depth, DepthUp);
+
+    vec3 Mid    =  vec3(UV.x, UV.y, Depth);
+    vec3 Right  =  vec3(UVRight.x, UVRight.y, Depth + DepthDdx) - Mid;
+    vec3 Up     =  vec3(UVUp.x, UVUp.y, Depth + DepthDdy) - Mid;
+
+    return normalize(cross(Right, Up));
+  }
+  
+  vec2 SnapTexel(vec2 uv, vec2 depthPixelSize)
   {
      return round(uv * depthPixelSize) * (1.0f / depthPixelSize);
   }
@@ -103,7 +137,7 @@ glslFragment: |
     vec2 SampleRadius,
     vec3 ViewSpaceOriginPos,
     vec3 ViewSpaceOriginNormal,
-    float depthPixelSize
+    vec2 depthPixelSize
     )
   {
     // calculate the nearest neighbour sample along the direction vector
@@ -137,5 +171,15 @@ glslFragment: |
 
   void main()
   {
-     outColor = texture(depthSampler, fragTexcoord);
+    vec3 ViewSpacePosition = GetViewSpacePos(fragTexcoord);
+    
+    // sky dome check
+    if (ViewSpacePosition.z < 1.0)
+    {
+        outColor = vec4(ViewSpacePosition.z);
+       // return;
+    }
+    
+    outColor = vec4(ViewSpacePosition.z) / 1000000;
+    //outColor = texture(depthSampler, fragTexcoord);
   }

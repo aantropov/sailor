@@ -160,6 +160,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 		SAILOR_API VulkanPipelineStateBuilder(VulkanDevicePtr pDevice);
 		SAILOR_API const TVector<VulkanPipelineStatePtr>& BuildPipeline(const RHI::RHIVertexDescriptionPtr& vertexDescription,
+			const TSet<uint32_t>& vertexAttributeBindings,
 			RHI::EPrimitiveTopology topology,
 			const RHI::RenderState& renderState,
 			const TVector<VkFormat>& colorAttachmentFormats,

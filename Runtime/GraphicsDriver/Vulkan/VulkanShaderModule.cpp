@@ -45,9 +45,16 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	SAILOR_PROFILE_FUNCTION();
 
 	SpvReflectShaderModule module;
-
 	SpvReflectResult result = spvReflectCreateShaderModule(code.Num() * sizeof(code[0]), &code[0], &module);
+
 	check(result == SPV_REFLECT_RESULT_SUCCESS);
+	check(module.entry_point_count > 0);
+
+	const uint32_t numBoundVertexAttributes = module.entry_points[0].input_variable_count;
+	for(uint32_t i = 0; i < numBoundVertexAttributes; i++)
+	{
+		m_vertexAttributeBindings.Insert(module.entry_points[0].input_variables[i]->location);
+	}
 
 	uint32_t count = 0;
 	result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);

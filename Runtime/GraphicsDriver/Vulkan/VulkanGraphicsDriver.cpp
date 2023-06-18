@@ -1011,7 +1011,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	auto pipeline = VulkanGraphicsPipelinePtr::Make(device,
 		pipelineLayout,
 		TVector{ vertex->m_vulkan.m_shader, fragment->m_vulkan.m_shader },
-		device->GetPipelineBuilder()->BuildPipeline(vertexDescription, topology, renderState, colorAttachments, depthStencilFormat),
+		device->GetPipelineBuilder()->BuildPipeline(vertexDescription, vertex->m_vulkan.m_shader->GetVertexAttributesBindings(), topology, renderState, colorAttachments, depthStencilFormat),
 		0);
 
 	pipeline->m_renderPass = device->GetRenderPass();

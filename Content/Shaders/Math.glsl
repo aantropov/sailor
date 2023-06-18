@@ -8,6 +8,11 @@ float rcp(float value)
   return 1.0 / value;
 }
 
+vec2 rcp(vec2 value)
+{
+  return 1.0 / value;
+}
+
 float saturate(float value)
 {
   return clamp(value, 0.0, 1.0);
@@ -131,6 +136,13 @@ vec4 ClipSpaceToViewSpace(vec4 clip, mat4 invProjection)
 	view.z *= -1;
 	
     return view;
+}
+
+// Convert view space coordinates to screen space
+vec4 ViewSpaceToScreenSpace(vec4 view, mat4 projection)
+{
+    vec4 res = projection * view;
+    return res / res.w;
 }
 
 // Convert screen space coordinates to view space.

@@ -231,7 +231,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VkAccessFlags ComputeAccessFlagsForFormat(VkFormat format);
 
 		SAILOR_API static VkVertexInputBindingDescription GetBindingDescription(const RHI::RHIVertexDescriptionPtr& vertexDescription);
-		SAILOR_API static TVector<VkVertexInputAttributeDescription> GetAttributeDescriptions(const RHI::RHIVertexDescriptionPtr& vertexDescription);
+		SAILOR_API static TVector<VkVertexInputAttributeDescription> GetAttributeDescriptions(const RHI::RHIVertexDescriptionPtr& vertexDescription, const TSet<uint32_t>& vertexAttributeBindings = {});
 
 	private:
 

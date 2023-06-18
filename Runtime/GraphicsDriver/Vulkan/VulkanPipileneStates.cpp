@@ -255,6 +255,7 @@ VulkanPipelineStateBuilder::VulkanPipelineStateBuilder(VulkanDevicePtr pDevice)
 }
 
 const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(const RHI::RHIVertexDescriptionPtr& vertexDescription,
+	const TSet<uint32_t>& vertexAttributeBindings,
 	RHI::EPrimitiveTopology topology,
 	const RHI::RenderState& renderState,
 	const TVector<VkFormat>& colorAttachmentFormats,
@@ -283,7 +284,7 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 	{
 		const VulkanStateVertexDescriptionPtr pVertexDescription = VulkanStateVertexDescriptionPtr::Make(
 			VulkanApi::GetBindingDescription(vertexDescription),
-			VulkanApi::GetAttributeDescriptions(vertexDescription));
+			VulkanApi::GetAttributeDescriptions(vertexDescription, vertexAttributeBindings));
 
 		const VkFormat stencilAttachmentFormat = (VulkanApi::ComputeAspectFlagsForFormat(depthStencilFormat) & VK_IMAGE_ASPECT_STENCIL_BIT) ? depthStencilFormat : VK_FORMAT_UNDEFINED;
 

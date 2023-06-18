@@ -151,7 +151,7 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	s_pInstance->m_device = VulkanDevicePtr::Make(viewport, msaaSamples);
 
 	SAILOR_LOG("Vulkan initialized");
-	}
+}
 
 void VulkanApi::WaitIdle()
 {
@@ -735,17 +735,26 @@ VkVertexInputBindingDescription VulkanApi::GetBindingDescription(const RHI::RHIV
 	return bindingDescription;
 }
 
-TVector<VkVertexInputAttributeDescription> VulkanApi::GetAttributeDescriptions(const RHI::RHIVertexDescriptionPtr& vertexDescription)
+TVector<VkVertexInputAttributeDescription> VulkanApi::GetAttributeDescriptions(const RHI::RHIVertexDescriptionPtr& vertexDescription, const TSet<uint32_t>& vertexAttributeBindings)
 {
 	const auto& attributes = vertexDescription->GetAttributeDescriptions();
-	TVector<VkVertexInputAttributeDescription> attributeDescriptions(attributes.Num());
+	TVector<VkVertexInputAttributeDescription> attributeDescriptions;
+	attributeDescriptions.Reserve(attributes.Num());
 
 	for (uint32_t i = 0; i < attributes.Num(); i++)
 	{
-		attributeDescriptions[i].binding = attributes[i].m_binding;
-		attributeDescriptions[i].location = attributes[i].m_location;
-		attributeDescriptions[i].format = (VkFormat)attributes[i].m_format;
-		attributeDescriptions[i].offset = attributes[i].m_offset;
+		// If the set is empty then we're going to bind all the attributes
+		if (vertexAttributeBindings.Num() == 0 || vertexAttributeBindings.Contains(attributes[i].m_location))
+		{
+			VkVertexInputAttributeDescription attribute;
+
+			attribute.binding = attributes[i].m_binding;
+			attribute.location = attributes[i].m_location;
+			attribute.format = (VkFormat)attributes[i].m_format;
+			attribute.offset = attributes[i].m_offset;
+
+			attributeDescriptions.Emplace(std::move(attribute));
+		}
 	}
 
 	return attributeDescriptions;
@@ -756,8 +765,8 @@ uint32_t VulkanApi::FindMemoryByType(VkPhysicalDevice physicalDevice, uint32_t t
 	static bool s_bIsInited = false;
 	static VkPhysicalDeviceMemoryProperties s_memProperties{};
 
-	if(!s_bIsInited)
-	{ 	
+	if (!s_bIsInited)
+	{
 		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &s_memProperties);
 		s_bIsInited = true;
 	}
@@ -893,7 +902,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->Compile();
 
 	auto requirements = outImage->GetMemoryRequirements();
-	
+
 	// We must respect bufferImageGranuality
 	//requirements.size += device->GetBufferImageGranuality();
 	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
@@ -957,7 +966,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->Compile();
 
 	auto requirements = outImage->GetMemoryRequirements();
-	
+
 	// We must respect bufferImageGranuality
 	//requirements.size += device->GetBufferImageGranuality();
 	//requirements.alignment = std::max(requirements.alignment, device->GetBufferImageGranuality());
@@ -1029,7 +1038,7 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 
 	const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[binding];
 
-	
+
 	size_t numDescriptorsInLayout = 0;
 	for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
 	{
@@ -1039,7 +1048,7 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 		}
 
 		numDescriptorsInLayout += layoutBinding.descriptorCount;
-		
+
 		// Heavy and slow, TODO: should we more carefully check the compatibility of descriptor sets and layouts?
 		/*if (!descriptorSet->m_descriptors.ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
 		{
