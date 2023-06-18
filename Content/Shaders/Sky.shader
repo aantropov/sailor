@@ -523,7 +523,7 @@ glslFragment: |
 
     // Perspective compensation
     /*vec4 cameraDir = vec4(0,0,0,0);
-    cameraDir.xyz = ScreenToView(vec2(0.5, 0.5), 1.0f, frame.invProjection).xyz;    
+    cameraDir.xyz = ScreenSpaceToViewSpace(vec2(0.5, 0.5), 1.0f, frame.invProjection).xyz;    
     cameraDir.z *= -1;
     cameraDir = normalize(inverse(frame.view) * cameraDir);
     const float cosA = dot(cameraDir.xyz, viewDir);
@@ -604,7 +604,7 @@ glslFragment: |
        vec2 uv = fragTexcoord.xy;
        uv.y = 1 - uv.y;
        
-       dirWorldSpace.xyz = ScreenToView(uv, 1.0f, frame.invProjection).xyz;
+       dirWorldSpace.xyz = ScreenSpaceToViewSpace(uv, 1.0f, frame.invProjection).xyz;
        dirWorldSpace.z *= -1;
        dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
         
@@ -655,7 +655,7 @@ glslFragment: |
        vec2 uv = fragTexcoord.xy;
        uv.y = 1 - uv.y;
        
-       dirWorldSpace.xyz = ScreenToView(uv, 1.0f, frame.invProjection).xyz;
+       dirWorldSpace.xyz = ScreenSpaceToViewSpace(uv, 1.0f, frame.invProjection).xyz;
        dirWorldSpace.z *= -1;
        dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
         
@@ -714,7 +714,7 @@ glslFragment: |
         }
       #endif
       
-        dirWorldSpace.xyz = ScreenToView(fragTexcoord.xy, 1.0f, frame.invProjection).xyz;
+        dirWorldSpace.xyz = ScreenSpaceToViewSpace(fragTexcoord.xy, 1.0f, frame.invProjection).xyz;
         dirWorldSpace.z *= -1;
         dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
         

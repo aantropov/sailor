@@ -75,7 +75,7 @@ glslCompute: |
       // Now convert the screen space points to view space
       for ( int i = 0; i < 5; i++ ) 
       {
-          viewSpace[i] = ScreenToView(screenSpace[i], frame.viewportSize, frame.invProjection).xyz;		
+          viewSpace[i] = ScreenSpaceToViewSpace(screenSpace[i], frame.viewportSize, frame.invProjection).xyz;		
       }
   
   	ViewFrustum frustum;

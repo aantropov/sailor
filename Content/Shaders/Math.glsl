@@ -95,9 +95,9 @@ vec4 slerp(vec4 start, vec4 end, float t)
 }
 
 // Vulkan NDC, Reverse Z: minDepth = 1.0, maxDepth = 0.0
-const vec2 ndcUpperLeft = vec2(-1.0, -1.0);
-const float ndcNearPlane = 0.0;
-const float ndcFarPlane = 1.0;
+const vec2 NdcUpperLeft = vec2(-1.0, -1.0);
+const float NdcNearPlane = 0.0;
+const float NdcFarPlane = 1.0;
 
 struct ViewFrustum
 {
@@ -120,7 +120,7 @@ vec4 ComputePlane(vec3 p0, vec3 p1, vec3 p2)
 }
 
 // Convert clip space coordinates to view space
-vec4 ClipToView(vec4 clip, mat4 invProjection)
+vec4 ClipSpaceToViewSpace(vec4 clip, mat4 invProjection)
 {
     // View space position
     vec4 view = invProjection * clip;
@@ -134,7 +134,7 @@ vec4 ClipToView(vec4 clip, mat4 invProjection)
 }
 
 // Convert screen space coordinates to view space.
-vec4 ScreenToView(vec4 screen, vec2 viewportSize, mat4 invProjection)
+vec4 ScreenSpaceToViewSpace(vec4 screen, vec2 viewportSize, mat4 invProjection)
 {
     // Convert to normalized texture coordinates
     vec2 texCoord = screen.xy / viewportSize;
@@ -142,16 +142,16 @@ vec4 ScreenToView(vec4 screen, vec2 viewportSize, mat4 invProjection)
     // Convert to clip space
     vec4 clip = vec4(vec2(texCoord.x, texCoord.y) * 2.0f - 1.0f, screen.z, screen.w);
 
-    return ClipToView(clip, invProjection);
+    return ClipSpaceToViewSpace(clip, invProjection);
 }
 
 // Convert screen space coordinates to view space.
-vec4 ScreenToView(vec2 texCoord, float z, mat4 invProjection)
+vec4 ScreenSpaceToViewSpace(vec2 texCoord, float z, mat4 invProjection)
 {
     // Convert to clip space
     vec4 clip = vec4(vec2(texCoord.x, texCoord.y) * 2.0f - 1.0f, z, 1.0f);
 
-    return ClipToView(clip, invProjection);
+    return ClipSpaceToViewSpace(clip, invProjection);
 }
 
 // https://gist.github.com/wwwtyro/beecc31d65d1004f5a9d

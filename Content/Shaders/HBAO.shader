@@ -65,7 +65,7 @@ glslFragment: |
   vec3 GetViewSpacePos(vec2 UV)
   {
     float Depth = texture(depthSampler, UV).r;
-    return ClipToView(vec4(UV.x, UV.y, Depth, 1.0f), frame.invProjection).xyz;
+    return ClipSpaceToViewSpace(vec4(UV.x, UV.y, Depth, 1.0f), frame.invProjection).xyz;
   }
   
   vec2 SnapTexel(vec2 uv, float depthPixelSize)

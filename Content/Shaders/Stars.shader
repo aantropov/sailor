@@ -81,7 +81,7 @@ glslFragment: |
     
     vec4 dirWorldSpace = vec4(0);
     
-    dirWorldSpace.xyz = ScreenToView(viewportPos, 1.0f, frame.invProjection).xyz;
+    dirWorldSpace.xyz = ScreenSpaceToViewSpace(viewportPos, 1.0f, frame.invProjection).xyz;
     dirWorldSpace.z *= -1;
     dirWorldSpace = normalize(inverse(frame.view) * dirWorldSpace);
 
