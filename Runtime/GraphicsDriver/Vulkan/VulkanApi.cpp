@@ -40,7 +40,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 {
 	if (messageSeverity > VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
 	{
-		std::cerr << "!!! Validation layer: " << pCallbackData->pMessage << std::endl;
+		SAILOR_LOG_ERROR("Validation layer: %s", pCallbackData->pMessage);
 	}
 	else
 	{

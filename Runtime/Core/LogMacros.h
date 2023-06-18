@@ -45,17 +45,20 @@
 			SetConsoleTextAttribute(hConsole, 4); \
 			if(!bIsRendererThread) \
 			{ \
-				std::cout << /* "Worker(" << currentThread << ") thread: " <<*/ (buffer) << std::endl; \
+				std::cerr << /* "Worker(" << currentThread << ") thread: " <<*/ (buffer) << std::endl; \
 			} \
 			else \
 			{ \
-				std::cout << "Renderer thread: " << (buffer) << std::endl; \
+				std::cerr << "Renderer thread: " << (buffer) << std::endl; \
 			} \
 			SetConsoleTextAttribute(hConsole, 15); \
 		}, Tasks::EThreadType::Main)->Run(); \
 	} \
 	else \
 	{ \
-		std::cout /*<< "Main thread: " */ << (buffer) << std::endl; \
+		auto hConsole = GetStdHandle(STD_OUTPUT_HANDLE); \
+		SetConsoleTextAttribute(hConsole, 4); \
+		std::cerr /*<< "Main thread: " */ << (buffer) << std::endl; \
+		SetConsoleTextAttribute(hConsole, 15); \
 	} \
 }
