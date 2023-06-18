@@ -57,17 +57,18 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pLinearizeDepthShader);
 	}
 
-	PushConstants constants{};
-	constants.m_invProjection = sceneView.m_camera->GetInvProjection();
 
 	// How to correctly handle linearization
 	// https://thxforthefish.com/posts/reverse_z/
-
+	
+	// struct PushConstants { mat4 m_invProjection; vec4 m_cameraParams; } constants;
+	// constants.m_invProjection = sceneView.m_camera->GetInvProjection();
+	
 	// Standard projection matrix or ReverseZ projection with infinity far plane
 	//constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
 
 	// ReverseZ projection matrix
-	constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
+	//constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
 
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
@@ -89,7 +90,8 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });
-	commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
+	
+	//commands->PushConstants(commandList, m_postEffectMaterial, sizeof(PushConstants), &constants);
 	
 	const uint32_t firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();

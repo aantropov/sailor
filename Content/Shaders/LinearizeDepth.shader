@@ -12,22 +12,17 @@ glslCommon: |
  #version 460
  #extension GL_ARB_separate_shader_objects : enable
  
- layout(set = 0, binding = 0) uniform FrameData
- {
- 	mat4 view;
- 	mat4 projection;
- 	vec4 cameraPosition;
- 	ivec2 viewportSize;
-    vec2 cameraParams;
- 	float currentTime;
- 	float deltaTime;
- } frame;
- 
- layout(push_constant) uniform Constants
- {
- 	mat4 invProjection;	
- 	vec4 cameraParams; //cameraParams: (Znear, ZFar, 0, 0)
- } PushConstants;
+  layout(set = 0, binding = 0) uniform FrameData
+  {
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;
+  } frame;
  
 glslVertex: |
  layout(location=DefaultPositionBinding) in vec3 inPosition;
@@ -53,14 +48,14 @@ glslFragment: |
  void main() 
  {
  	float depth = texture(depthSampler, fragTexcoord).x;
- 	vec4 vss = vec4(0, 0, depth, 1);	
- 	vec4 invVss = PushConstants.invProjection * vss;
+ 	vec4 vss = vec4(0, 0, depth, 1);
+ 	vec4 invVss = frame.invProjection * vss;
  	float zvs = invVss.z / invVss.w;
  	
  #ifdef REVERSE_Z_INF_FAR_PLANE
- 	float linearDepth = -PushConstants.cameraParams.y / depth;
+ 	float linearDepth = -frame.cameraZNearZFar.x / depth;
  #else
- 	float linearDepth = -(PushConstants.cameraParams.x * PushConstants.cameraParams.y)/(depth*(PushConstants.cameraParams.x - PushConstants.cameraParams.y) + PushConstants.cameraParams.y);
+ 	float linearDepth = -(frame.cameraZNearZFar.y * frame.cameraZNearZFar.x)/(depth*(frame.cameraZNearZFar.y - frame.cameraZNearZFar.x) + frame.cameraZNearZFar.x);
  #endif
  	outColor = vec4(-linearDepth);
  }

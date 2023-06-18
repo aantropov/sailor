@@ -31,7 +31,15 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	if (!target)
 	{
-		target = frameGraph->GetRenderTarget("BackBuffer");
+		if (m_unresolvedResourceParams.ContainsKey("color"))
+		{
+			const std::string colorAttachment = m_unresolvedResourceParams["color"];
+			target = frameGraph->GetRenderTarget(colorAttachment);
+		}
+		else
+		{
+			target = frameGraph->GetRenderTarget("BackBuffer");
+		}
 	}
 
 	if (!m_pShader)
@@ -81,6 +89,23 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			auto rhiTexture = GetResolvedAttachment(r.First());
 			driver->UpdateShaderBinding(m_shaderBindings, r.First(), rhiTexture);
 		}
+	}
+
+	bool bShouldRecalculateCompatibility = false;
+	for (auto& r : m_unresolvedResourceParams)
+	{
+		if (r.m_first != "color")
+		{
+			auto rhiTexture = frameGraph->GetRenderTarget(r.m_second);
+			driver->UpdateShaderBinding(m_shaderBindings, r.First(), rhiTexture);
+			bShouldRecalculateCompatibility = true;
+		}
+	}
+
+	if (bShouldRecalculateCompatibility)
+	{
+		// We must update since some of render targets are changed
+		m_shaderBindings->RecalculateCompatibility();
 	}
 
 	SAILOR_PROFILE_BLOCK("Image barriers");

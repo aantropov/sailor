@@ -60,7 +60,7 @@ glslVertex: |
       mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
-      vec2 cameraParams;
+      vec2 cameraZNearZFar;
       float currentTime;
       float deltaTime;
   } frame;
@@ -173,7 +173,7 @@ glslFragment: |
       mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
-      vec2 cameraParams;
+      vec2 cameraZNearZFar;
       float currentTime;
       float deltaTime;
   } frame;
@@ -243,7 +243,7 @@ glslFragment: |
     {
         attenuation = 1.0;
       
-        const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraParams), NUM_CSM_CASCADES - 1);
+        const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
         
         // EVSM only for the first cascade
         if(light.shadowType == 2 && cascadeLayer == 0)

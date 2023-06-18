@@ -51,7 +51,7 @@
 			{ \
 				std::cerr << "Renderer thread: " << (buffer) << std::endl; \
 			} \
-			SetConsoleTextAttribute(hConsole, 15); \
+			SetConsoleTextAttribute(hConsole, 7); \
 		}, Tasks::EThreadType::Main)->Run(); \
 	} \
 	else \
@@ -59,6 +59,6 @@
 		auto hConsole = GetStdHandle(STD_OUTPUT_HANDLE); \
 		SetConsoleTextAttribute(hConsole, 4); \
 		std::cerr /*<< "Main thread: " */ << (buffer) << std::endl; \
-		SetConsoleTextAttribute(hConsole, 15); \
+		SetConsoleTextAttribute(hConsole, 7); \
 	} \
 }

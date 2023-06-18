@@ -18,7 +18,7 @@ glslVertex: |
       mat4 projection;
       vec4 cameraPosition;
       ivec2 viewportSize;
-      vec2 cameraParams;
+      vec2 cameraZNearZFar;
       float currentTime;
       float deltaTime;
   } frame;

@@ -14,7 +14,7 @@ glslVertex: |
   
   layout(location=0) out vec2 fragTexcoord;
   layout(set=1, binding=1) uniform sampler2D depthSampler;
-  layout(set=1, binding=2) uniform sampler2D linearDepthSampler;
+  //layout(set=1, binding=2) uniform sampler2D linearDepthSampler;
   
   void main() 
   {
@@ -30,7 +30,7 @@ glslFragment: |
       mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
-      vec2 cameraParams;
+      vec2 cameraZNearZFar;
       float currentTime;
       float deltaTime;
   } frame;
@@ -44,13 +44,13 @@ glslFragment: |
   } data;
   
   layout(set=1, binding=1) uniform sampler2D depthSampler;  
-  layout(set=1, binding=2) uniform sampler2D linearDepthSampler;
   
   layout(location=0) in vec2 fragTexcoord;
   layout(location=0) out vec4 outColor;
  
   const uint NumDirections = 8;
   const uint NumSamples = 8;
+   const float OcclusionOffset = 0.001f;
   
   const vec2 Directions[8] = 
   {
@@ -73,8 +73,8 @@ glslFragment: |
 
   vec3 GetViewSpacePos(vec2 UV)
   {
-    float Depth = texture(linearDepthSampler, UV).r;
-    return ClipSpaceToViewSpace(vec4(UV.x, UV.y, 0, 1), frame.invProjection).xyz * Depth;
+    float Depth = texture(depthSampler, UV).r;
+    return ClipSpaceToViewSpace(vec4(UV.x, UV.y, Depth, 1.0f), frame.invProjection).xyz;
   }
   
   vec3 GetViewSpaceNormal(vec2 UV, vec2 depthPixelSize)
@@ -86,20 +86,20 @@ glslFragment: |
     vec2 UVDown     = UV + vec2(0.0,  -1.0) * InvDepthPixelSize.xy;
     vec2 UVUp       = UV + vec2(0.0,  1.0 ) * InvDepthPixelSize.xy;
 
-    float Depth      = texture(linearDepthSampler, UV).r;
-    float DepthLeft  = texture(linearDepthSampler, UVLeft).r;
-    float DepthRight = texture(linearDepthSampler, UVRight).r;
-    float DepthDown  = texture(linearDepthSampler, UVDown).r;
-    float DepthUp    = texture(linearDepthSampler, UVUp).r;
+    float Depth      = texture(depthSampler, UV).r;
+    float DepthLeft  = texture(depthSampler, UVLeft).r;
+    float DepthRight = texture(depthSampler, UVRight).r;
+    float DepthDown  = texture(depthSampler, UVDown).r;
+    float DepthUp    = texture(depthSampler, UVUp).r;
 
     float DepthDdx = TakeSmallerAbsDelta(DepthLeft, Depth, DepthRight);
     float DepthDdy = TakeSmallerAbsDelta(DepthDown, Depth, DepthUp);
 
-    vec3 Mid    =  vec3(UV.x, UV.y, Depth);
-    vec3 Right  =  vec3(UVRight.x, UVRight.y, Depth + DepthDdx) - Mid;
-    vec3 Up     =  vec3(UVUp.x, UVUp.y, Depth + DepthDdy) - Mid;
+    vec4 Mid    =  ClipSpaceToViewSpace(vec4(UV.x, UV.y, Depth, 1.0f), frame.invProjection);
+    vec4 Right  =  ClipSpaceToViewSpace(vec4(UVRight.x, UVRight.y, Depth + DepthDdx, 1.0f), frame.invProjection) - Mid;
+    vec4 Up     =  ClipSpaceToViewSpace(vec4(UVUp.x, UVUp.y, Depth + DepthDdy, 1.0f), frame.invProjection) - Mid;
 
-    return normalize(cross(Right, Up));
+    return normalize(cross(Right.xyz, Up.xyz));
   }
   
   vec2 SnapTexel(vec2 uv, vec2 depthPixelSize)
@@ -174,12 +174,18 @@ glslFragment: |
     vec3 ViewSpacePosition = GetViewSpacePos(fragTexcoord);
     
     // sky dome check
-    if (ViewSpacePosition.z < 1.0)
+    if (ViewSpacePosition.z > 49000)
     {
-        outColor = vec4(ViewSpacePosition.z);
-       // return;
+        outColor = vec4(1,0,0,1);
+        return;
     }
     
-    outColor = vec4(ViewSpacePosition.z) / 1000000;
-    //outColor = texture(depthSampler, fragTexcoord);
+    const vec2 depthTextureSize = textureSize(depthSampler, 0);
+    vec3 ViewSpaceNormal = normalize(GetViewSpaceNormal(fragTexcoord, depthTextureSize));
+    
+    ViewSpacePosition += ViewSpaceNormal * OcclusionOffset * (1  + 0.1 * ViewSpacePosition.z / frame.cameraZNearZFar.x);
+    
+    outColor.xyz = ViewSpaceNormal;
+    
+     //outColor = texture(depthSampler, fragTexcoord);
   }

@@ -22,6 +22,11 @@ const glm::vec4& BaseFrameGraphNode::GetVec4(const std::string& name) const
 	return m_vectorParams[name];
 }
 
+void BaseFrameGraphNode::SetRHIResource_Unresolved(const std::string& name, const std::string& value)
+{
+	m_unresolvedResourceParams[name] = value;
+}
+
 void BaseFrameGraphNode::SetRHIResource(const std::string& name, RHIResourcePtr value)
 {
 	m_resourceParams[name] = value;
@@ -48,6 +53,7 @@ RHIResourcePtr BaseFrameGraphNode::GetRHIResource(const std::string& name) const
 	{
 		return RHIResourcePtr();
 	}
+
 	return m_resourceParams[name];
 }
 

@@ -19,6 +19,9 @@ namespace Sailor::Framegraph
 		SAILOR_API void SetVec4(const std::string& name, const glm::vec4& value);
 		SAILOR_API void SetRHIResource(const std::string& name, RHI::RHIResourcePtr value);
 
+		// Used to resolve render resources during frame recording
+		SAILOR_API void SetRHIResource_Unresolved(const std::string& name, const std::string& value);
+
 		SAILOR_API RHI::RHITexturePtr GetResolvedAttachment(const std::string& name) const;
 		SAILOR_API RHI::RHIResourcePtr GetRHIResource(const std::string& name) const;
 		SAILOR_API const glm::vec4& GetVec4(const std::string& name) const;
@@ -36,6 +39,7 @@ namespace Sailor::Framegraph
 		TMap<std::string, std::string> m_stringParams;
 		TMap<std::string, glm::vec4> m_vectorParams;
 		TMap<std::string, RHI::RHIResourcePtr> m_resourceParams;
+		TMap<std::string, std::string> m_unresolvedResourceParams;
 
 		std::string m_tag{};
 	};

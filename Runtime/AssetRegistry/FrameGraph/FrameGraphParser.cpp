@@ -188,6 +188,12 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 			{
 				pNewNode->SetRHIResource(param.m_first, pTextureTarget);
 			}
+			else
+			{
+				// We cannot bind some of per frame render targets (DepthBuffer, BackBuffer, etc...), 
+				// So lets save their names to resolve later
+				pNewNode->SetRHIResource_Unresolved(param.m_first, param.m_second);
+			}
 		}
 		// TODO: Build params
 		graph.Add(pNewNode);

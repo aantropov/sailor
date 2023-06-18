@@ -20,7 +20,7 @@ glslVertex: |
       mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
-      vec2 cameraParams;
+      vec2 cameraZNearZFar;
       float currentTime;
       float deltaTime;
   } frame;
@@ -70,7 +70,7 @@ glslFragment: |
       mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
-      vec2 cameraParams;
+      vec2 cameraZNearZFar;
       float currentTime;
       float deltaTime;
   } frame;
@@ -127,7 +127,7 @@ glslFragment: |
     int layer = NUM_CSM_CASCADES;
     for (int i = 0; i < NUM_CSM_CASCADES; ++i)
     {
-        if (linearDepth < frame.cameraParams.y * ShadowCascadeLevels[i])
+        if (linearDepth < frame.cameraZNearZFar.y * ShadowCascadeLevels[i])
         {
             layer = i;
             break;
