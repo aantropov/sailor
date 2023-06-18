@@ -124,6 +124,12 @@ vec4 ComputePlane(vec3 p0, vec3 p1, vec3 p2)
     return plane;
 }
 
+float LinearizeDepth(float depth, vec2 cameraZNearZFar)
+{
+    return cameraZNearZFar.x * cameraZNearZFar.y / 
+    (cameraZNearZFar.y + depth * (cameraZNearZFar.x - cameraZNearZFar.y));
+}
+
 // Convert clip space coordinates to view space
 vec4 ClipSpaceToViewSpace(vec4 clip, mat4 invProjection)
 {

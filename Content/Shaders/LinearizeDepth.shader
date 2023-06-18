@@ -1,6 +1,7 @@
 ---
 includes:
 - Shaders/Constants.glsl
+- Shaders/Math.glsl
 
 defines: 
 - REVERSE_Z_INF_FAR_PLANE
@@ -55,7 +56,7 @@ glslFragment: |
  #ifdef REVERSE_Z_INF_FAR_PLANE
  	float linearDepth = -frame.cameraZNearZFar.x / depth;
  #else
- 	float linearDepth = -(frame.cameraZNearZFar.y * frame.cameraZNearZFar.x)/(depth*(frame.cameraZNearZFar.y - frame.cameraZNearZFar.x) + frame.cameraZNearZFar.x);
+ 	float linearDepth = -LinearizeDepth(depth, frame.cameraZNearZFar.yx);
  #endif
  	outColor = vec4(-linearDepth);
  }

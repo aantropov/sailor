@@ -22,6 +22,16 @@ const glm::vec4& BaseFrameGraphNode::GetVec4(const std::string& name) const
 	return m_vectorParams[name];
 }
 
+void BaseFrameGraphNode::SetFloat(const std::string& name, float value)
+{
+	m_floatParams[name] = value;
+}
+
+float BaseFrameGraphNode::GetFloat(const std::string& name) const
+{
+	return m_floatParams[name];
+}
+
 void BaseFrameGraphNode::SetRHIResource_Unresolved(const std::string& name, const std::string& value)
 {
 	m_unresolvedResourceParams[name] = value;

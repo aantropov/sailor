@@ -41,9 +41,11 @@ glslFragment: |
     float occlusionPower;
     float occlusionAttenuation;
     float occlusionBias;
+    float noiseScale;
   } data;
   
-  layout(set=1, binding=1) uniform sampler2D depthSampler;  
+  layout(set=1, binding=1) uniform sampler2D depthSampler;
+  layout(set=1, binding=2) uniform sampler2D noiseSampler;
   
   layout(location=0) in vec2 fragTexcoord;
   layout(location=0) out vec4 outColor;
@@ -102,9 +104,9 @@ glslFragment: |
     return normalize(cross(Right.xyz, Up.xyz));
   }
   
-  vec2 SnapTexel(vec2 uv, vec2 depthPixelSize)
+  vec2 SnapTexel(vec2 uv, vec2 invDepthPixelSize)
   {
-     return round(uv * depthPixelSize) * (1.0f / depthPixelSize);
+     return round(uv * rcp(invDepthPixelSize)) * invDepthPixelSize;
   }
   
   float SampleAO(inout float SinH, vec3 ViewSpaceSamplePos, vec3 ViewSpaceOriginPos, vec3 ViewSpaceOriginNormal)
@@ -137,17 +139,17 @@ glslFragment: |
     vec2 SampleRadius,
     vec3 ViewSpaceOriginPos,
     vec3 ViewSpaceOriginNormal,
-    vec2 depthPixelSize
+    vec2 invDepthPixelSize
     )
   {
     // calculate the nearest neighbour sample along the direction vector
-    vec2 SingleTexelStep = Direction * rcp(depthPixelSize);
+    vec2 SingleTexelStep = Direction * invDepthPixelSize;
     Direction *= SampleRadius;
 
     // jitter the starting position for ray marching between the nearest neighbour and the sample step size
-    vec2 StepUV = SnapTexel(Direction * rcp(NumSamples + 1.0f), depthPixelSize);
+    vec2 StepUV = SnapTexel(Direction * rcp(NumSamples + 1.0f), invDepthPixelSize);
     vec2 JitteredOffset = mix(SingleTexelStep, StepUV, Jitter);
-    vec2 RayStart = SnapTexel(RayOrigin + JitteredOffset, depthPixelSize);
+    vec2 RayStart = SnapTexel(RayOrigin + JitteredOffset, invDepthPixelSize);
     vec2 RayEnd = RayStart + Direction;
 
     // top occlusion keeps track of the occlusion contribution of the last found occluder.
@@ -159,7 +161,7 @@ glslFragment: |
     [[unroll]]
     for (uint Step = 0; Step < NumSamples; ++Step)
     {
-        vec2 UV = SnapTexel(mix(RayStart, RayEnd, Step / float(NumSamples)), depthPixelSize);
+        vec2 UV = SnapTexel(mix(RayStart, RayEnd, Step / float(NumSamples)), invDepthPixelSize);
         vec3 ViewSpaceSamplePos = GetViewSpacePos(UV);
 
         Occlusion += SampleAO(SinH, ViewSpaceSamplePos, ViewSpaceOriginPos, ViewSpaceOriginNormal);
@@ -181,11 +183,49 @@ glslFragment: |
     }
     
     const vec2 depthTextureSize = textureSize(depthSampler, 0);
+    const vec2 noiseTextureSize = textureSize(noiseSampler, 0);
+    
     vec3 ViewSpaceNormal = normalize(GetViewSpaceNormal(fragTexcoord, depthTextureSize));
     
     ViewSpacePosition += ViewSpaceNormal * OcclusionOffset * (1  + 0.1 * ViewSpacePosition.z / frame.cameraZNearZFar.x);
     
-    outColor.xyz = ViewSpaceNormal;
+    vec3 Noise = texture(noiseSampler, fragTexcoord * data.noiseScale).xyz;
+    vec2 NoiseOffset = (Noise.xy * 2.0 - 1.0) / 4.0;
+
+    //ViewSpace
+    //vec3 ViewSpace1Pixel = vec3(data.occlusionRadius / noiseTextureSize.x + 0.5, 0, LinearizeDepth(ViewSpacePosition.z, frame.cameraZNearZFar.yx));
+    //float SampleRadius = length(ScreenSpaceToViewSpace(ViewSpace1Pixel.xy, ViewSpace1Pixel.z, frame.invProjection));
+
+    const float MaxAORadius_DepthScalar = 2.3;
     
-     //outColor = texture(depthSampler, fragTexcoord);
+    float ScreenSpace1Meter = length(ScreenSpaceToViewSpace(vec2(0,0), 100.0, frame.invProjection));
+    float MaxAORadius = (ViewSpacePosition.z - frame.cameraZNearZFar.x) * ScreenSpace1Meter * MaxAORadius_DepthScalar;
+    float SampleRadius = min(data.occlusionRadius, MaxAORadius);
+
+    float ResolutionRatio = (noiseTextureSize.y / depthTextureSize.y);
+    float ScreenSpaceRadius = ((5 * SampleRadius * ResolutionRatio) / ViewSpacePosition.z);
+
+    if(ScreenSpaceRadius < 1.0)
+    {
+        outColor = vec4(1.0f);
+        return;
+    }
+    
+    float OcclusionFactor = 0.0;
+    
+    [[unroll]]
+    for (uint i = 0; i < NumDirections; ++i)
+    {
+        vec2 Direction = normalize(Directions[i] + NoiseOffset);
+        
+        OcclusionFactor += SampleRayAO(fragTexcoord,
+            Direction,
+            Noise.y,
+            ScreenSpaceRadius * depthTextureSize,
+            ViewSpacePosition,
+            ViewSpaceNormal,
+            rcp(depthTextureSize));
+    }
+
+    outColor = vec4(1 - saturate((data.occlusionPower / NumDirections) * OcclusionFactor));
   }

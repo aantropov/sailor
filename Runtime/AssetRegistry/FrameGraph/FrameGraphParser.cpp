@@ -166,7 +166,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 			}
 			else if (param.m_second.IsFloat())
 			{
-				pNewNode->SetVec4(param.m_first, glm::vec4(param.m_second.GetFloat()));
+				pNewNode->SetFloat(param.m_first, param.m_second.GetFloat());
 			}
 			else if (param.m_second.IsString())
 			{

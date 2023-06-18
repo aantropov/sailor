@@ -84,6 +84,11 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, v.First(), v.Second());
 		}
 
+		for (auto& f : m_floatParams)
+		{
+			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, f.First(), f.Second());
+		}
+
 		for (auto& r : m_resourceParams)
 		{
 			auto rhiTexture = GetResolvedAttachment(r.First());
