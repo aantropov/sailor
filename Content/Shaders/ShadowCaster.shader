@@ -38,7 +38,7 @@ glslVertex: |
       PerInstanceData instance[];
   } data;
   
-  layout(location=0) in vec3 inPosition;
+  layout(location=DefaultPositionBinding) in vec3 inPosition;
   
   void main() 
   {

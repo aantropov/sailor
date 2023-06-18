@@ -46,6 +46,7 @@ namespace Sailor
 		}
 
 		SAILOR_API TVector<GameObjectPtr> GetGameObjects() { return m_objects; }
+		SAILOR_API const TVector<GameObjectPtr>& GetGameObjects() const { return m_objects; }
 
 		SAILOR_API void Clear();
 		SAILOR_API size_t GetCurrentFrame() const { return m_currentFrame; }

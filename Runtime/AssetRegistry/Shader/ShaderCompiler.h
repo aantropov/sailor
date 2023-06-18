@@ -111,7 +111,7 @@ namespace Sailor
 		const bool bShouldAutoCompileAllPermutations = false;
 		
 		// Version is used to generate shader's code with all constants
-		const uint32_t Version = 1;
+		const uint32_t Version = 2;
 		static constexpr const char* ConstantsLibrary = "../Content/Shaders/Constants.glsl";
 
 	public:

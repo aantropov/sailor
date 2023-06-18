@@ -33,6 +33,7 @@ namespace Sailor
 		TVector<glm::vec4> m_lightVelocities;
 		TVector<GameObjectPtr> m_lights;
 		TOctree<Math::AABB> m_octree{};
+		TVector<GameObjectPtr> m_objects;
 
 		TVector<Math::AABB> m_culledBoxes{};
 		TVector<Math::AABB> m_boxes{};

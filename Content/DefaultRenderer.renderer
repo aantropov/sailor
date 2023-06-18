@@ -170,7 +170,7 @@ frame:
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
-  
+
 ############################
 - name: DebugDraw
 ############################
@@ -220,7 +220,7 @@ frame:
   - defines: #CASCADES LIGHT_TILES
   vec4: ~
   renderTargets:
-  - color: BackBuffer
+  - color: Main
   - ldrSceneSampler: Secondary
   - linearDepthSampler: LinearDepth
 
@@ -236,6 +236,19 @@ frame:
 #  - color: BackBuffer
 #  - depthStencil: DepthBuffer
 #  - colorSampler: Secondary
+
+############################
+- name: PostProcess
+############################
+  string:
+  - shader: Shaders/HBAO.shader
+  - defines: ~
+  vec4:
+  - data.radius: [0.5,0,0,0]
+  renderTargets:
+  - color: BackBuffer
+  - depthStencil: DepthBuffer
+  - depthSampler: Main
 
 #############################
 - name: RenderImGui

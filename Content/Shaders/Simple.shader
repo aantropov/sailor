@@ -66,10 +66,10 @@ glslVertex: |
   }
   #endif
   
-  layout(location=0) in vec3 inPosition;
-  layout(location=1) in vec3 inNormal;
-  layout(location=2) in vec2 inTexcoord;
-  layout(location=3) in vec4 inColor;
+  layout(location=DefaultPositionBinding) in vec3 inPosition;
+  layout(location=DefaultNormalBinding) in vec3 inNormal;
+  layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
+  layout(location=DefaultColorBinding) in vec4 inColor;
   
   layout(location=0) out vec4 fragColor;
   layout(location=1) out vec2 fragTexcoord;
@@ -99,7 +99,7 @@ glslFragment: |
   layout(set=3, binding=1) uniform sampler2D diffuseSampler;
   #endif
   
-  layout(location = 0) out vec4 outColor;
+  layout(location=0) out vec4 outColor;
   
   void main() 
   {

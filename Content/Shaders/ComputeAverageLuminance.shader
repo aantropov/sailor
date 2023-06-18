@@ -8,6 +8,7 @@ glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
   #extension GL_EXT_shader_atomic_float : enable
+
 glslCompute: |  
   // The code below taken from the next source: https://bruop.github.io/exposure/
   layout(std430, set = 0, binding = 0) buffer DataSSBO

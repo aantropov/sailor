@@ -12,12 +12,12 @@ glslCommon: |
   #extension GL_ARB_separate_shader_objects : enable
 
 glslVertex: |
-  layout(location=0) in vec3 inPosition;
-  layout(location=1) in vec3 inNormal;
-  layout(location=2) in vec2 inTexcoord;
-  layout(location=3) in vec4 inColor;
-  layout(location=4) in vec3 inTangent;
-  layout(location=5) in vec3 inBitangent;
+  layout(location=DefaultPositionBinding) in vec3 inPosition;
+  layout(location=DefaultNormalBinding) in vec3 inNormal;
+  layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
+  layout(location=DefaultColorBinding) in vec4 inColor;
+  layout(location=DefaultTangentBinding) in vec3 inTangent;
+  layout(location=DefaultBitangentBinding) in vec3 inBitangent;
 
   layout(location=0)
   flat out uint materialInstance;

@@ -1,5 +1,7 @@
 --- 
-includes : ~
+includes:
+- Shaders/Constants.glsl
+
 defines : ~
 
 glslCommon: |
@@ -7,10 +9,8 @@ glslCommon: |
   #extension GL_ARB_separate_shader_objects : enable
 
 glslVertex: |
-  layout(location=0) in vec3 inPosition;
-  layout(location=1) in vec3 inNormal;
-  layout(location=2) in vec2 inTexcoord;
-  layout(location=3) in vec4 inColor;
+  layout(location=DefaultPositionBinding) in vec3 inPosition;
+  layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
   
   layout(location=0) out vec2 fragTexcoord;
   
@@ -35,8 +35,8 @@ glslFragment: |
   
   layout(set=1, binding=0) uniform sampler2D colorSampler;
   
-  layout(location = 0) in vec2 fragTexcoord;
-  layout(location = 0) out vec4 outColor;
+  layout(location=0) in vec2 fragTexcoord;
+  layout(location=0) out vec4 outColor;
   
   void main() 
   {

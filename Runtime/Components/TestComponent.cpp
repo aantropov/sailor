@@ -21,7 +21,7 @@ void TestComponent::BeginPlay()
 	m_mainModel = GetWorld()->Instantiate();
 	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
-	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.25f * 3.14f, 0)));
+	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * 3.14f, 0)));
 	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
 
 	for (int32_t i = -1000; i < 1000; i += 32)
@@ -42,14 +42,17 @@ void TestComponent::BeginPlay()
 	}
 
 	/*
+	for(int k = 0; k < 4; k++)
 	for (int i = 0; i < 10; i++)
 		for (int j = 0; j < 10; j++)
 		{
 			auto gameObject2 = GetWorld()->Instantiate();
-			gameObject2->SetMobilityType(EMobilityType::Static);
-			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, 0, i * 2500));
+			gameObject2->SetMobilityType(EMobilityType::Stationary);
+			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, k * 3000, i * 2500));
 			gameObject2->GetTransformComponent().SetScale(vec4(1, 1, 1, 0));
 			gameObject2->AddComponent<MeshRendererComponent>();
+
+			m_objects.Add(gameObject2);
 		}
 	/**/
 
@@ -93,8 +96,8 @@ void TestComponent::BeginPlay()
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 
 	auto& transform = GetOwner()->GetTransformComponent();
-	transform.SetPosition(glm::vec4(0.0f, 3000.0f, 1000.0f, 0.0f));
-	transform.SetRotation(quat(vec3(-45, 12.5f, 0)));
+	transform.SetPosition(glm::vec4(0.0f, 150.0f, 0.0f, 0.0f));
+	//transform.SetRotation(quat(vec3(-45, 12.5f, 0)));
 }
 
 void TestComponent::EndPlay()
@@ -217,6 +220,13 @@ void TestComponent::Tick(float deltaTime)
 		m_lights[i]->GetTransformComponent().SetPosition(position + deltaTime * m_lightVelocities[i]);
 	}
 
+	for (auto& go : m_objects)
+	{
+		auto r = go->GetTransformComponent().GetRotation();
+		r *= angleAxis(glm::radians(deltaTime * 10.0f), Math::vec3_Up);
+		go->GetTransformComponent().SetRotation(r);
+	}
+
 	if (GetWorld()->GetInput().IsKeyPressed('R'))
 	{
 		for (auto& go : GetWorld()->GetGameObjects())
@@ -229,7 +239,7 @@ void TestComponent::Tick(float deltaTime)
 					{
 						mat = Material::CreateInstance(GetWorld(), mat);
 
-						const glm::vec4 color = glm::vec4(glm::ballRand(1.0f), 1);
+						const glm::vec4 color = max(vec4(0), glm::vec4(glm::ballRand(1.0f), 1));
 
 						commands->SetMaterialParameter(GetWorld()->GetCommandList(),
 							mat->GetShaderBindings(), "material.albedo", color);

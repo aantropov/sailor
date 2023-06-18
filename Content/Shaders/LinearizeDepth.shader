@@ -1,4 +1,7 @@
 ---
+includes:
+- Shaders/Constants.glsl
+
 defines: 
 - REVERSE_Z_INF_FAR_PLANE
 
@@ -27,18 +30,14 @@ glslCommon: |
  } PushConstants;
  
 glslVertex: |
- layout(location=0) in vec3 inPosition;
- layout(location=1) in vec3 inNormal;
- layout(location=2) in vec2 inTexcoord;
- layout(location=3) in vec4 inColor;
+ layout(location=DefaultPositionBinding) in vec3 inPosition;
+ layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
  
- layout(location=0) out vec4 fragColor;
- layout(location=1) out vec2 fragTexcoord;
+ layout(location=0) out vec2 fragTexcoord;
  
  void main() 
  {
  	gl_Position = vec4(inPosition, 1);
- 	fragColor = inColor;
  	fragTexcoord = inTexcoord;
  
  	// Flip Y
@@ -46,11 +45,10 @@ glslVertex: |
  }
 
 glslFragment: |
- layout(location=0) in vec4 fragColor;
- layout(location=1) in vec2 fragTexcoord;
+ layout(location=0) in vec2 fragTexcoord;
  
  layout(set=1, binding=0) uniform sampler2D depthSampler;
- layout(location = 0) out vec4 outColor;
+ layout(location=0) out vec4 outColor;
  
  void main() 
  {

@@ -121,7 +121,7 @@ RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDe
 	{
 		SAILOR_PROFILE_BLOCK("Create RHI material for resource");
 		
-		SAILOR_LOG("Create RHI material for resource: %s, vertex attribute bits: %llu", GetUID().ToString().c_str(), vertexDescription->GetVertexAttributeBits());
+		//SAILOR_LOG("Create RHI material for resource: %s, vertex attribute bits: %llu", GetUID().ToString().c_str(), vertexDescription->GetVertexAttributeBits());
 
 		if (!m_commonShaderBindings)
 		{
@@ -143,7 +143,7 @@ RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDe
 
 void Material::UpdateRHIResource()
 {
-	SAILOR_LOG("Update material RHI resource: %s", GetUID().ToString().c_str());
+	//SAILOR_LOG("Update material RHI resource: %s", GetUID().ToString().c_str());
 
 	// All RHI materials are outdated now
 	m_rhiMaterials.Clear();

@@ -43,10 +43,8 @@ glslVertex: |
       LightsGrid instance[];
   } lightsGrid;
   
-  layout(location=0) in vec3 inPosition;
-  layout(location=1) in vec3 inNormal;
-  layout(location=2) in vec2 inTexcoord;
-  layout(location=3) in vec4 inColor;
+  layout(location=DefaultPositionBinding) in vec3 inPosition;
+  layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
   
   layout(location=0) out vec2 fragTexcoord;
   
@@ -62,8 +60,8 @@ glslVertex: |
   }
 
 glslFragment: |
-  layout(location = 0) in vec2 fragTexcoord;
-  layout(location = 0) out vec4 outColor;
+  layout(location=0) in vec2 fragTexcoord;
+  layout(location=0) out vec4 outColor;
   
   layout(set = 0, binding = 0) uniform FrameData
   {

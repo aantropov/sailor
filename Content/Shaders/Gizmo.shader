@@ -1,4 +1,7 @@
 ---
+includes:
+- Shaders/Constants.glsl
+
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
@@ -9,8 +12,9 @@ glslVertex: |
   	mat4 viewProjection;
   } PushConstants; 
   
-  layout(location=0) in vec3 inPosition;
-  layout(location=3) in vec4 inColor;
+  layout(location=DefaultPositionBinding) in vec3 inPosition;
+  layout(location=DefaultColorBinding) in vec4 inColor;
+  
   layout(location=0) out vec4 fragColor;
   
   void main() 
@@ -21,7 +25,7 @@ glslVertex: |
 
 glslFragment: |
   layout(location=0) in vec4 fragColor;
-  layout(location = 0) out vec4 outColor;
+  layout(location=0) out vec4 outColor;
   
   layout(set=0, binding=1) uniform sampler2D g_defaultSampler;
   

@@ -169,15 +169,15 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
 {
    float shadow = 0.0;
    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-   for(int x = -1; x <= 1; ++x)
+   for(int x = -2; x <= 2; ++x)
    {
-       for(int y = -1; y <= 1; ++y)
+       for(int y = -2; y <= 2; ++y)
        {
            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r * 0.5 + 0.5; 
            shadow += currentDepth + bias > pcfDepth ? 1.0 : 0.0;
        }    
    }
-   shadow /= 9.0;
+   shadow /= 25.0;
    
    return shadow;
 }
@@ -267,5 +267,3 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float 
   
   return clamp(1 - max(posValue, negValue), 0, 1);
 }
-
- 

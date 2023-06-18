@@ -27,8 +27,8 @@ glslVertex: |
   	mat4 model;
   } PushConstants;
   
-  layout(location=0) in vec3 inPosition;
-  layout(location=3) in vec4 inColor;
+  layout(location=DefaultPositionBinding) in vec3 inPosition;
+  layout(location=DefaultColorBinding) in vec4 inColor;
   
   layout(location=0) out vec4 fragColor;
   layout(location=1) out vec4 fragWPosition;
@@ -47,13 +47,13 @@ glslVertex: |
   }
 
 glslFragment: |
-  layout(location = 0) in vec4 fragColor;
-  layout(location = 1) in vec4 worldPos;
-  layout(location = 2) in vec4 fragUV;
+  layout(location=0) in vec4 fragColor;
+  layout(location=1) in vec4 worldPos;
+  layout(location=2) in vec4 fragUV;
   
-  layout(location = 0) out vec4 outColor;
+  layout(location=0) out vec4 outColor;
   
-  layout(set = 0, binding = 0) uniform FrameData
+  layout(set=0, binding=0) uniform FrameData
   {
   	mat4 view;
   	mat4 projection;
@@ -64,12 +64,12 @@ glslFragment: |
   	float deltaTime;
   } frame;
   
-  layout(set = 1, binding = 0) uniform PostProcessDataUBO
+  layout(set=1, binding=0) uniform PostProcessDataUBO
   {
     vec4 lightDirection;
   } data;
   
-  layout(set = 1, binding = 6) uniform sampler2D cloudsSampler;
+  layout(set=1, binding=6) uniform sampler2D cloudsSampler;
 
   const float R = 6371000.0f; // Earth radius in m
   

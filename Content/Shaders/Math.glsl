@@ -3,6 +3,16 @@ const float TwoPI = 2 * PI;
 const float HalfPI = 0.5 * PI;
 const float E = 2.71828;
 
+float rcp(float value)
+{
+  return 1.0 / value;
+}
+
+float saturate(float value)
+{
+  return clamp(value, 0.0, 1.0);
+}
+
 vec4 QuatAxisAngle(vec3 axis, float angleRad)
 {
   const float halfAngle = angleRad / 2.0f;

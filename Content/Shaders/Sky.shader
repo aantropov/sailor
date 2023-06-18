@@ -19,10 +19,8 @@ glslCommon: |
   #version 450
 
 glslVertex: |
-  layout(location=0) in vec3 inPosition;
-  layout(location=1) in vec3 inNormal;
-  layout(location=2) in vec2 inTexcoord;
-  layout(location=3) in vec4 inColor;
+  layout(location=DefaultPositionBinding) in vec3 inPosition;
+  layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
   
   layout(location=0) out vec2 fragTexcoord;
 
@@ -154,8 +152,8 @@ glslFragment: |
     layout(set=1, binding=9) uniform sampler2D linearDepth;  
   #endif
   
-  layout(location = 0) in vec2 fragTexcoord;
-  layout(location = 0) out vec4 outColor;
+  layout(location=0) in vec2 fragTexcoord;
+  layout(location=0) out vec4 outColor;
   
   #define INTEGRAL_STEPS 8
   #define INTEGRAL_STEPS_2 128
