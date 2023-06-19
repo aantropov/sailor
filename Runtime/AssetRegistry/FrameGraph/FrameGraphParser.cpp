@@ -88,8 +88,9 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 	{
 		const bool bUsedWithComputeShaders = renderTarget.m_second.m_bIsCompatibleWithComputeShaders;
 		const bool bShouldGenerateMips = renderTarget.m_second.m_bGenerateMips;
+		const bool bIsDepthFormat = RHI::IsDepthFormat(renderTarget.m_second.m_format);
 
-		const RHI::ETextureUsageFlags defaultUsage = RHI::ETextureUsageBit::ColorAttachment_Bit |
+		const RHI::ETextureUsageFlags defaultUsage = (bIsDepthFormat ? RHI::ETextureUsageBit::DepthStencilAttachment_Bit : RHI::ETextureUsageBit::ColorAttachment_Bit) |
 			RHI::ETextureUsageBit::TextureTransferSrc_Bit |
 			RHI::ETextureUsageBit::TextureTransferDst_Bit |
 			RHI::ETextureUsageBit::Sampled_Bit |
@@ -113,7 +114,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 		}
 		else
 		{
-			RHI::RHITexturePtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec2(renderTarget.m_second.m_width, renderTarget.m_second.m_height),
+			RHI::RHIRenderTargetPtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec2(renderTarget.m_second.m_width, renderTarget.m_second.m_height),
 				numMips, renderTarget.m_second.m_format, filtration, clamping, defaultUsage);
 
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);

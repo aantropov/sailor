@@ -37,8 +37,8 @@ void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaa
 	GraphicsDriver::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
 	m_vkInstance = GraphicsDriver::Vulkan::VulkanApi::GetInstance();
 
-	m_backBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
-	m_depthStencilBuffer = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::DepthStencilAttachmentOptimal);
+	m_backBuffer = RHI::RHIRenderTargetPtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
+	m_depthStencilBuffer = RHI::RHIRenderTargetPtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::DepthStencilAttachmentOptimal);
 
 	if (RenderDocApi* renderDocApi = App::GetSubmodule<RenderDocApi>())
 	{
@@ -149,18 +149,20 @@ TVector<bool> VulkanGraphicsDriver::IsCompatible(VulkanPipelineLayoutPtr layout,
 	return VulkanApi::IsCompatible(layout, sets);
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::GetBackBuffer() const
+RHI::RHIRenderTargetPtr VulkanGraphicsDriver::GetBackBuffer() const
 {
 	return m_backBuffer;
 }
 
-RHI::RHITexturePtr VulkanGraphicsDriver::GetDepthBuffer() const
+RHI::RHIRenderTargetPtr VulkanGraphicsDriver::GetDepthBuffer() const
 {
 	return m_depthStencilBuffer;
 }
 
 bool VulkanGraphicsDriver::AcquireNextImage()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	const bool bRes = m_vkInstance->GetMainDevice()->AcquireNextImage();
 
 	m_backBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetBackBuffer();
@@ -168,6 +170,22 @@ bool VulkanGraphicsDriver::AcquireNextImage()
 
 	m_depthStencilBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetDepthBuffer();
 	m_depthStencilBuffer->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_imageView->m_image;
+
+	if (RHI::IsDepthFormat(m_depthStencilBuffer->GetFormat()))
+	{
+		m_depthStencilBuffer->m_depthAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
+		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
+		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
+		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView->Compile();
+	}
+
+	if (RHI::IsDepthStencilFormat(m_depthStencilBuffer->GetFormat()))
+	{
+		m_depthStencilBuffer->m_stencilAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
+		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
+		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
+		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView->Compile();
+	}
 
 	return bRes;
 }
@@ -352,7 +370,7 @@ void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std:
 	}
 	else if (auto material = resource.DynamicCast<RHI::RHIMaterial>())
 	{
-		for(const auto& pipeline : material->m_vulkan.m_pipelines)
+		for (const auto& pipeline : material->m_vulkan.m_pipelines)
 		{
 			device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_PIPELINE,
 				(uint64_t)(VkPipeline)*pipeline, "Pipeline " + name);
@@ -701,6 +719,22 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	outTexture->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(outTexture->GetDefaultLayout());
 	outTexture->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_vulkan.m_image);
 	outTexture->m_vulkan.m_imageView->Compile();
+
+	if (RHI::IsDepthFormat(format))
+	{
+		outTexture->m_depthAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+		outTexture->m_depthAspect->m_vulkan.m_image = outTexture->m_vulkan.m_image;
+		outTexture->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
+		outTexture->m_depthAspect->m_vulkan.m_imageView->Compile();
+
+		if (RHI::IsDepthStencilFormat(format))
+		{
+			outTexture->m_stencilAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+			outTexture->m_stencilAspect->m_vulkan.m_image = outTexture->m_vulkan.m_image;
+			outTexture->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
+			outTexture->m_stencilAspect->m_vulkan.m_imageView->Compile();
+		}
+	}
 
 	for (uint32_t i = 0; i < mipLevels; i++)
 	{
@@ -1322,7 +1356,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 
 	if (index != -1)
 	{
-		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);		
+		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
 
 		if (bindings->m_vulkan.m_descriptorSet != nullptr)
 		{
@@ -1355,7 +1389,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 			{
 				// Should we fully recreate descriptorSet to avoid race condition?
 				textureBinding->SetTextureBinding(dstArrayElement, value);
-				
+
 				descriptors[arrayIndex] = VulkanDescriptorCombinedImagePtr::Make(layoutBindings[index].m_binding,
 					dstArrayElement,
 					device->GetSamplers()->GetSampler(value->GetFiltration(), value->GetClamping(), value->HasMipMaps()),
@@ -2192,8 +2226,8 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 					[&](const auto& lhs)
 					{
 						auto& layout = binding.m_second->GetLayout();
-				const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
-				return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
+						const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
+						return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
 					)
 				{
 					// We don't add extra bindings 
@@ -2265,7 +2299,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 				if (!bindings.ContainsIf([&](const auto& lhs)
 					{
 						auto& layout = lhs->GetLayout();
-				return descrSetLayoutBinding.binding == layout.m_binding;
+						return descrSetLayoutBinding.binding == layout.m_binding;
 					}))
 				{
 					// Check that bound map is Cubemap

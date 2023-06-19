@@ -43,6 +43,13 @@ renderTargets:
   clamping: Clamp
   bIsSurface: false
 
+- name: HalfDepth
+  format: D32_SFLOAT_S8_UINT
+  width: 512
+  height: 512
+  bIsCompatibleWithComputeShaders: false
+  bIsSurface: false
+
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT
   width: 512
@@ -238,17 +245,28 @@ frame:
 #  - colorSampler: Secondary
 
 ############################
+- name: Blit
+############################
+  renderTargets:
+  - src: DepthBuffer
+  - dst: HalfDepth
+  
+############################
 - name: PostProcess
 ############################
   string:
   - shader: Shaders/HBAO.shader
   - defines: ~
-  vec4:
-  - data.radius: [0.5,0,0,0]
+  float:
+  - data.occlusionRadius: 600
+  - data.occlusionPower: 1.5
+  - data.occlusionAttenuation: 1
+  - data.occlusionBias: 0.05
+  - data.noiseScale: 50
   renderTargets:
   - color: BackBuffer
-  - depthStencil: DepthBuffer
-  - depthSampler: Main
+  - depthSampler: HalfDepth
+  - noiseSampler: g_noiseSampler
 
 #############################
 - name: RenderImGui

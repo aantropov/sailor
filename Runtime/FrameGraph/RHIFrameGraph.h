@@ -23,11 +23,11 @@ namespace Sailor::RHI
 		SAILOR_API TVector<FrameGraphNodePtr>& GetGraph() { return m_graph; }
 
 		SAILOR_API void SetSampler(const std::string& name, RHI::RHITexturePtr sampler);
-		SAILOR_API void SetRenderTarget(const std::string& name, RHI::RHITexturePtr sampler);
+		SAILOR_API void SetRenderTarget(const std::string& name, RHI::RHIRenderTargetPtr sampler);
 		SAILOR_API void SetSurface(const std::string& name, RHI::RHISurfacePtr surface);
 
 		SAILOR_API RHI::RHITexturePtr GetSampler(const std::string& name);
-		SAILOR_API RHI::RHITexturePtr GetRenderTarget(const std::string& name);
+		SAILOR_API RHI::RHIRenderTargetPtr GetRenderTarget(const std::string& name);
 		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
 
 		SAILOR_API RHI::RHIMeshPtr GetFullscreenNdcQuad() { return m_postEffectPlane; }
@@ -56,7 +56,7 @@ namespace Sailor::RHI
 		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const;
 
 		TMap<std::string, RHI::RHITexturePtr> m_samplers;
-		TMap<std::string, RHI::RHITexturePtr> m_renderTargets;
+		TMap<std::string, RHI::RHIRenderTargetPtr> m_renderTargets;
 		TMap<std::string, RHI::RHISurfacePtr> m_surfaces;
 		TMap<std::string, glm::vec4> m_values;
 		TVector<Framegraph::FrameGraphNodePtr> m_graph;

@@ -20,6 +20,7 @@
 
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
+#include "RHI/RenderTarget.h"
 
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;

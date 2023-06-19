@@ -14,7 +14,7 @@ glslVertex: |
   
   layout(location=0) out vec2 fragTexcoord;
   layout(set=1, binding=1) uniform sampler2D depthSampler;
-  //layout(set=1, binding=2) uniform sampler2D linearDepthSampler;
+  layout(set=1, binding=2) uniform sampler2D noiseSampler;
   
   void main() 
   {
@@ -52,7 +52,7 @@ glslFragment: |
  
   const uint NumDirections = 8;
   const uint NumSamples = 8;
-   const float OcclusionOffset = 0.001f;
+  const float OcclusionOffset = 0.00001f;
   
   const vec2 Directions[8] = 
   {
@@ -79,9 +79,9 @@ glslFragment: |
     return ClipSpaceToViewSpace(vec4(UV.x, UV.y, Depth, 1.0f), frame.invProjection).xyz;
   }
   
-  vec3 GetViewSpaceNormal(vec2 UV, vec2 depthPixelSize)
+  vec3 GetViewSpaceNormal(vec2 UV, vec2 depthTextureSize)
   {   
-    vec2 InvDepthPixelSize = rcp(depthPixelSize);
+    vec2 InvDepthPixelSize = rcp(depthTextureSize);
     
     vec2 UVLeft     = UV + vec2(-1.0, 0.0 ) * InvDepthPixelSize.xy;
     vec2 UVRight    = UV + vec2(1.0,  0.0 ) * InvDepthPixelSize.xy;
@@ -101,12 +101,12 @@ glslFragment: |
     vec4 Right  =  ClipSpaceToViewSpace(vec4(UVRight.x, UVRight.y, Depth + DepthDdx, 1.0f), frame.invProjection) - Mid;
     vec4 Up     =  ClipSpaceToViewSpace(vec4(UVUp.x, UVUp.y, Depth + DepthDdy, 1.0f), frame.invProjection) - Mid;
 
-    return normalize(cross(Right.xyz, Up.xyz));
+    return normalize(cross(Up.xyz, Right.xyz));
   }
   
-  vec2 SnapTexel(vec2 uv, vec2 invDepthPixelSize)
+  vec2 SnapTexel(vec2 uv, vec2 depthTextureSize)
   {
-     return round(uv * rcp(invDepthPixelSize)) * invDepthPixelSize;
+     return round(uv * depthTextureSize) * rcp(depthTextureSize);
   }
   
   float SampleAO(inout float SinH, vec3 ViewSpaceSamplePos, vec3 ViewSpaceOriginPos, vec3 ViewSpaceOriginNormal)
@@ -139,17 +139,17 @@ glslFragment: |
     vec2 SampleRadius,
     vec3 ViewSpaceOriginPos,
     vec3 ViewSpaceOriginNormal,
-    vec2 invDepthPixelSize
+    vec2 depthTextureSize
     )
   {
     // calculate the nearest neighbour sample along the direction vector
-    vec2 SingleTexelStep = Direction * invDepthPixelSize;
+    vec2 SingleTexelStep = Direction * rcp(depthTextureSize);
     Direction *= SampleRadius;
 
     // jitter the starting position for ray marching between the nearest neighbour and the sample step size
-    vec2 StepUV = SnapTexel(Direction * rcp(NumSamples + 1.0f), invDepthPixelSize);
+    vec2 StepUV = SnapTexel(Direction * rcp(NumSamples + 1.0f), depthTextureSize);
     vec2 JitteredOffset = mix(SingleTexelStep, StepUV, Jitter);
-    vec2 RayStart = SnapTexel(RayOrigin + JitteredOffset, invDepthPixelSize);
+    vec2 RayStart = SnapTexel(RayOrigin + JitteredOffset, depthTextureSize);
     vec2 RayEnd = RayStart + Direction;
 
     // top occlusion keeps track of the occlusion contribution of the last found occluder.
@@ -161,7 +161,7 @@ glslFragment: |
     [[unroll]]
     for (uint Step = 0; Step < NumSamples; ++Step)
     {
-        vec2 UV = SnapTexel(mix(RayStart, RayEnd, Step / float(NumSamples)), invDepthPixelSize);
+        vec2 UV = SnapTexel(mix(RayStart, RayEnd, Step / float(NumSamples)), depthTextureSize);
         vec3 ViewSpaceSamplePos = GetViewSpacePos(UV);
 
         Occlusion += SampleAO(SinH, ViewSpaceSamplePos, ViewSpaceOriginPos, ViewSpaceOriginNormal);
@@ -169,7 +169,6 @@ glslFragment: |
 
     return Occlusion;
   }
-
 
   void main()
   {
@@ -192,18 +191,24 @@ glslFragment: |
     vec3 Noise = texture(noiseSampler, fragTexcoord * data.noiseScale).xyz;
     vec2 NoiseOffset = (Noise.xy * 2.0 - 1.0) / 4.0;
 
-    //ViewSpace
-    //vec3 ViewSpace1Pixel = vec3(data.occlusionRadius / noiseTextureSize.x + 0.5, 0, LinearizeDepth(ViewSpacePosition.z, frame.cameraZNearZFar.yx));
-    //float SampleRadius = length(ScreenSpaceToViewSpace(ViewSpace1Pixel.xy, ViewSpace1Pixel.z, frame.invProjection));
-
-    const float MaxAORadius_DepthScalar = 2.3;
+    float SampleRadius = 0;
+   
+    if(true)
+    {
+      const float MaxAORadius_DepthScalar = 2.3;
+      float ScreenSpace1Meter = length(ViewSpaceToScreenSpace(vec4(0, 1, 0, 1), frame.projection));
+      float MaxAORadius = (ViewSpacePosition.z - frame.cameraZNearZFar.x) * ScreenSpace1Meter * MaxAORadius_DepthScalar;
+      SampleRadius = min(data.occlusionRadius, MaxAORadius);
+    }
+    else
+    {
+      vec3 ViewSpace1Pixel = vec3(data.occlusionRadius / frame.viewportSize.x + 0.5, 0, -LinearizeDepth(ViewSpacePosition.z, frame.cameraZNearZFar.yx));
+      SampleRadius = length(ScreenSpaceToViewSpace(ViewSpace1Pixel.xy, ViewSpace1Pixel.z, frame.invProjection));
+    }
     
-    float ScreenSpace1Meter = length(ScreenSpaceToViewSpace(vec2(0,0), 100.0, frame.invProjection));
-    float MaxAORadius = (ViewSpacePosition.z - frame.cameraZNearZFar.x) * ScreenSpace1Meter * MaxAORadius_DepthScalar;
-    float SampleRadius = min(data.occlusionRadius, MaxAORadius);
-
-    float ResolutionRatio = (noiseTextureSize.y / depthTextureSize.y);
-    float ScreenSpaceRadius = ((5 * SampleRadius * ResolutionRatio) / ViewSpacePosition.z);
+    float ProjectionScale = 50;
+    float ResolutionRatio = (depthTextureSize.y / frame.viewportSize.y);
+    float ScreenSpaceRadius = ((ProjectionScale * SampleRadius * ResolutionRatio) / ViewSpacePosition.z);
 
     if(ScreenSpaceRadius < 1.0)
     {
@@ -221,11 +226,12 @@ glslFragment: |
         OcclusionFactor += SampleRayAO(fragTexcoord,
             Direction,
             Noise.y,
-            ScreenSpaceRadius * depthTextureSize,
+            ScreenSpaceRadius * rcp(depthTextureSize),
             ViewSpacePosition,
             ViewSpaceNormal,
-            rcp(depthTextureSize));
+            depthTextureSize);
     }
 
     outColor = vec4(1 - saturate((data.occlusionPower / NumDirections) * OcclusionFactor));
+    //outColor.xyz = ViewSpaceNormal;
   }

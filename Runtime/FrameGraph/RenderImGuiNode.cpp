@@ -4,6 +4,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/Texture.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/CommandList.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
@@ -26,9 +27,13 @@ void RenderImGuiNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
 
 	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color");
-	if (!colorAttachment)
+	for (auto& r : m_unresolvedResourceParams)
 	{
-		colorAttachment = frameGraph->GetRenderTarget("BackBuffer");
+		if (r.First() == "color")
+		{
+			colorAttachment = frameGraph->GetRenderTarget(r.Second());
+			break;
+		}
 	}
 
 	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");

@@ -1,4 +1,5 @@
 #include "Types.h"
+#include "RHI/RenderTarget.h"
 #include "Renderer.h"
 #include "Mesh.h"
 #include "CommandList.h"

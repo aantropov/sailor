@@ -20,9 +20,18 @@ namespace Sailor::RHI
 			RHITexture(filtration, clamping, bShouldGenerateMips, defaultLayout)
 		{}
 
+		// Only for formats that handles both depth & stencil
+		RHITexturePtr GetDepthAspect() const { return m_depthAspect; }
+		RHITexturePtr GetStencilAspect() const { return m_stencilAspect; }
+
+		// Only for mip levels > 1
 		RHITexturePtr GetMipLayer(uint32_t layer) const;
 		uint32_t GetMipLevels() const { return (uint32_t)m_mipLayers.Num(); }
+
 	protected:
+
+		RHITexturePtr m_depthAspect;
+		RHITexturePtr m_stencilAspect;
 
 		TVector<RHITexturePtr> m_mipLayers;
 

@@ -4,6 +4,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/Texture.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "Engine/World.h"
@@ -92,6 +93,15 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		for (auto& r : m_resourceParams)
 		{
 			auto rhiTexture = GetResolvedAttachment(r.First());
+			if (rhiTexture && RHI::IsDepthFormat(rhiTexture->GetFormat()))
+			{
+				if (auto renderTarget = rhiTexture.DynamicCast<RHIRenderTarget>())
+				{
+					driver->UpdateShaderBinding(m_shaderBindings, r.First(), renderTarget->GetDepthAspect());
+					continue;
+				}
+			}
+			
 			driver->UpdateShaderBinding(m_shaderBindings, r.First(), rhiTexture);
 		}
 	}
@@ -101,8 +111,14 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	{
 		if (r.m_first != "color")
 		{
-			auto rhiTexture = frameGraph->GetRenderTarget(r.m_second);
-			driver->UpdateShaderBinding(m_shaderBindings, r.First(), rhiTexture);
+			RHI::RHIRenderTargetPtr rhiTexture = frameGraph->GetRenderTarget(r.m_second);
+			RHITexturePtr target = rhiTexture;
+			if (RHI::IsDepthStencilFormat(rhiTexture->GetFormat()))
+			{
+				target = rhiTexture->GetDepthAspect();
+			}
+
+			driver->UpdateShaderBinding(m_shaderBindings, r.First(), target);
 			bShouldRecalculateCompatibility = true;
 		}
 	}

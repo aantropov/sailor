@@ -3,6 +3,7 @@
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
 #include "RHI/VertexDescription.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/CommandList.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Tasks/Tasks.h"
@@ -35,7 +36,7 @@ void RHIFrameGraph::SetSampler(const std::string& name, RHI::RHITexturePtr sampl
 	m_samplers[name] = sampler;
 }
 
-void RHIFrameGraph::SetRenderTarget(const std::string& name, RHI::RHITexturePtr sampler)
+void RHIFrameGraph::SetRenderTarget(const std::string& name, RHI::RHIRenderTargetPtr sampler)
 {
 	m_renderTargets[name] = sampler;
 }
@@ -266,7 +267,7 @@ RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name)
 	return m_samplers[name];
 }
 
-RHI::RHITexturePtr RHIFrameGraph::GetRenderTarget(const std::string& name)
+RHI::RHIRenderTargetPtr RHIFrameGraph::GetRenderTarget(const std::string& name)
 {
 	if (!m_renderTargets.ContainsKey(name))
 	{

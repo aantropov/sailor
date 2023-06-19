@@ -37,8 +37,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, const std::string& name);
 
 		SAILOR_API virtual void WaitIdle();
-		SAILOR_API virtual RHI::RHITexturePtr GetBackBuffer() const;
-		SAILOR_API virtual RHI::RHITexturePtr GetDepthBuffer() const;
+		SAILOR_API virtual RHI::RHIRenderTargetPtr GetBackBuffer() const;
+		SAILOR_API virtual RHI::RHIRenderTargetPtr GetDepthBuffer() const;
 
 		SAILOR_API virtual RHI::RHISemaphorePtr CreateWaitSemaphore();
 		SAILOR_API virtual RHI::RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
@@ -281,8 +281,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
 
-		RHI::RHITexturePtr m_backBuffer;
-		RHI::RHITexturePtr m_depthStencilBuffer;
+		RHI::RHIRenderTargetPtr m_backBuffer;
+		RHI::RHIRenderTargetPtr m_depthStencilBuffer;
 		ShaderSetPtr m_pEquirect2Cubemap;
 	};
 };

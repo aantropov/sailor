@@ -51,9 +51,16 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 	RHI::RHITexturePtr src = GetResolvedAttachment("src");
 	RHI::RHITexturePtr dst = GetResolvedAttachment("dst");
 
-	if (!dst)
+	for (auto& r : m_unresolvedResourceParams)
 	{
-		dst = frameGraph->GetRenderTarget("BackBuffer");
+		if (r.First() == "src")
+		{
+			src = frameGraph->GetRenderTarget(r.Second());
+		}
+		else if (r.First() == "dst")
+		{
+			dst = frameGraph->GetRenderTarget(r.Second());
+		}
 	}
 
 	//glm::vec4 srcRegion = GetVec4("srcRegion");
@@ -64,7 +71,9 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), src->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), RHI::EImageLayout::TransferDstOptimal);
 
-	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion);
+	const bool bIsDepthFormat = RHI::IsDepthFormat(src->GetFormat()) || RHI::IsDepthFormat(dst->GetFormat());
+
+	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion, bIsDepthFormat ? ETextureFiltration::Nearest : ETextureFiltration::Linear);
 
 	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src->GetDefaultLayout());
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());

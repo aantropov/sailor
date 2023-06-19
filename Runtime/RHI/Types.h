@@ -344,6 +344,7 @@ namespace Sailor::RHI
 	using ETextureFormat = EFormat;
 
 	SAILOR_API bool IsDepthFormat(ETextureFormat textureFormat);
+	SAILOR_API bool IsDepthStencilFormat(ETextureFormat textureFormat);
 
 	enum ETextureUsageBit : uint8_t
 	{

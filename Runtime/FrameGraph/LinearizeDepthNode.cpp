@@ -4,6 +4,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/Texture.h"
+#include "RHI/RenderTarget.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "Engine/World.h"
@@ -26,9 +27,13 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
 
 	auto depthAttachment = GetResolvedAttachment("depthStencil");
-	if (!depthAttachment)
+	for (auto& r : m_unresolvedResourceParams)
 	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+		if (r.First() == "depthStencil")
+		{
+			depthAttachment = frameGraph->GetRenderTarget(r.Second());
+			break;
+		}
 	}
 
 	if (!m_pLinearizeDepthShader)

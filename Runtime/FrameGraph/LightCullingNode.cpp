@@ -4,6 +4,7 @@
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/Texture.h"
+#include "RHI/RenderTarget.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 
@@ -37,7 +38,7 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer").DynamicCast<RHI::RHITexture>();
 	}
 
 #ifdef _DEBUG
