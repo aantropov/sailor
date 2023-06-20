@@ -107,7 +107,7 @@ glslFragment: |
   #if defined(AO)
     outColor = texture(g_aoSampler, fragTexcoord);
   #elif defined(LIGHT_TILES)
-    outColor = texture(linearDepthSampler, fragTexcoord).r / 50000;
+    outColor = vec4(texture(linearDepthSampler, fragTexcoord).r / 50000);
   
     vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
     vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);

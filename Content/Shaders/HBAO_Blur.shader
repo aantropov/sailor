@@ -69,7 +69,7 @@ glslFragment: |
 
   void main()
   {
-    vec2 aoPixelSize = rcp(textureSize(aoSampler, 0));
+    vec2 aoPixelSize = rcp(textureSize(depthSampler, 0));
     
     #if defined(HORIZONTAL)
       aoPixelSize.y = 0;

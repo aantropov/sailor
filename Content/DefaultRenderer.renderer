@@ -199,7 +199,7 @@ frame:
   - data.occlusionPower: 1.5
   - data.occlusionAttenuation: 0.1
   - data.occlusionBias: 0.05
-  - data.noiseScale: 10
+  - data.noiseScale: 25
   renderTargets:
   - color: AO
   - depthSampler: HalfDepth
@@ -213,7 +213,7 @@ frame:
   - defines: VERTICAL
   float:
   - data.sharpness: 0.5
-  - data.distanceScale: 1
+  - data.distanceScale: 2
   - data.radius: 5
   renderTargets:
   - color: TemporaryR8
@@ -228,7 +228,7 @@ frame:
   - defines: HORIZONTAL
   float:
   - data.sharpness: 0.5
-  - data.distanceScale: 1
+  - data.distanceScale: 2
   - data.radius: 5
   renderTargets:
   - color: g_AO
@@ -278,7 +278,7 @@ frame:
   - toneMappingShader: Shaders/Tonemapping.shader
   - toneMappingDefines: UNCHARTED2 LUMINANCE
   vec4:
-  - data.exposure: [2.0, 0, 0, 0]
+  - data.exposure: [1.0, 0, 0, 0]
   - data.whitePoint: [1.4, 1.5, 1.4, 0]
   renderTargets:
   - color: Secondary
