@@ -6,6 +6,7 @@
 #include "RHI/Types.h"
 #include "AssetRegistry/UID.h"
 #include "Core/YamlSerializable.h"
+#include "Tasks/Scheduler.h"
 
 namespace Sailor
 {
@@ -78,36 +79,45 @@ namespace Sailor
 
 			bool operator==(const RenderTarget& rhs) const { return m_name == rhs.m_name; }
 
+			static uint32_t ParseUintValue(const std::string& str)
+			{
+				uint32_t res = 1;
+				std::stringstream strStream(str);
+
+				if (!(strStream >> res))
+				{
+					auto strings = Utils::SplitString(str, "/");
+					float multiplier = strings.Num() > 1 ? 1.0f / (float)std::atof(strings[1].c_str()) : 1.0f;
+
+					if (str.starts_with("ViewportWidth"))
+					{
+						res = std::max(1u, (uint32_t)((float)App::GetViewportWindow()->GetWidth() * multiplier));
+					}
+					else if (str.starts_with("ViewportHeight"))
+					{
+						res = std::max(1u, (uint32_t)((float)App::GetViewportWindow()->GetHeight() * multiplier));
+					}
+					else
+					{
+						ensure(false, "Variable cannot be parsed");
+					}
+				}
+				
+				return res;
+			}
+
 			virtual void Deserialize(const YAML::Node& inData)
 			{
 				m_name = inData["name"].as<std::string>();
 
 				if (inData["width"])
 				{
-					std::string str = inData["width"].as<std::string>();
-					std::stringstream strStream(str);
-
-					if (!(strStream >> m_width))
-					{
-						if (str == "ViewportWidth")
-						{
-							m_width = std::max(1, App::GetViewportWindow()->GetWidth());
-						}
-					}
+					m_width = ParseUintValue(inData["width"].as<std::string>());
 				}
 
 				if (inData["height"])
 				{
-					std::string str = inData["height"].as<std::string>();
-					std::stringstream strStream(str);
-
-					if (!(strStream >> m_height))
-					{
-						if (str == "ViewportHeight")
-						{
-							m_height = std::max(1, App::GetViewportWindow()->GetHeight());
-						}
-					}
+					m_height = ParseUintValue(inData["height"].as<std::string>());
 				}
 
 				if (inData["format"])

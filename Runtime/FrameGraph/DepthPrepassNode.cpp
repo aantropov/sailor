@@ -6,6 +6,7 @@
 #include "RHI/Types.h"
 #include "RHI/Batch.hpp"
 #include "RHI/VertexDescription.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -48,6 +49,9 @@ RHI::ESortingOrder DepthPrepassNode::GetSortingOrder() const
 void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::string clearDepth;
+	TryGetString("ClearDepth", clearDepth);
+	const bool bShouldClearDepth = clearDepth == "true";
 
 	const std::string QueueTag = GetString("Tag");
 	const size_t QueueTagHash = GetHash(QueueTag);
@@ -72,15 +76,19 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 				break;
 			}
 
+			if (proxy.GetMaterials()[i]->GetRenderState().GetTag() != QueueTagHash)
+			{
+				continue;
+			}
+
 			const auto& mesh = proxy.m_meshes[i];
+
 			auto depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription);
 
-			if (proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader())
+			const bool bRequiredCustomDepth = proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader();
+			if (bRequiredCustomDepth)
 			{
-				// TODO: Fix custom depth shader
-				// We don't support that yet
-				//depthMaterial = proxy.GetMaterials()[i];
-				continue;
+				depthMaterial = proxy.GetMaterials()[i];
 			}
 
 			const bool bIsDepthMaterialReady = depthMaterial &&
@@ -93,18 +101,29 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 				continue;
 			}
 
-			if (proxy.GetMaterials()[i]->GetRenderState().GetTag() == QueueTagHash)
+			DepthPrepassNode::PerInstanceData data;
+			data.model = proxy.m_worldMatrix;
+
+			if (bRequiredCustomDepth)
 			{
-				DepthPrepassNode::PerInstanceData data;
-				data.model = proxy.m_worldMatrix;
-
-				RHIBatch batch(depthMaterial, mesh);
-
-				drawCalls[batch][mesh].Add(data);
-				batches.Insert(batch);
-
-				numMeshes++;
+				RHIShaderBindingPtr shaderBinding;
+				if (depthMaterial->GetBindings()->GetShaderBindings().ContainsKey("material"))
+				{
+					shaderBinding = depthMaterial->GetBindings()->GetShaderBindings()["material"];
+				}
+				data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 			}
+			else
+			{
+				data.materialInstance = 0;
+			}
+
+			RHIBatch batch(depthMaterial, mesh);
+
+			drawCalls[batch][mesh].Add(data);
+			batches.Insert(batch);
+
+			numMeshes++;
 		}
 	}
 	SAILOR_PROFILE_END_BLOCK();
@@ -117,9 +136,6 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 
 	if (numMeshes == 0)
 	{
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
-		commands->ClearDepthStencil(commandList, depthAttachment, 0.0f);
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::TransferDstOptimal, depthAttachment->GetDefaultLayout());
 		return;
 	}
 
@@ -180,13 +196,14 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		m_indirectBuffers.Resize(numThreads);
 	}
 
+	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
 	{
 		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
 
 		if (material->GetRenderState().IsRequiredCustomDepthShader())
 		{
-			sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData , material->GetBindings() });
+			sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData , material->GetBindings(), textureSamplers });
 		}
 		return sets;
 	};
@@ -198,7 +215,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		depthAttachment,
 		glm::vec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y),
 		glm::ivec2(0, 0),
-		true,
+		bShouldClearDepth,
 		glm::vec4(0.0f),
 		0.0f,
 		true,

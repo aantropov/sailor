@@ -135,6 +135,16 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		}
 	}
 
+	// TODO: Move to another place
+	if (auto g_aoSampler = GetRenderTarget("AO"))
+	{
+		if (g_aoSampler != rhiSceneView->m_rhiLightsData->GetOrAddShaderBinding("g_aoSampler")->GetTextureBinding())
+		{
+			renderer->GetDriver()->AddSamplerToShaderBindings(rhiSceneView->m_rhiLightsData, "g_aoSampler", g_aoSampler, 9);
+			bShouldRecalculateCompatibility = true;
+		}
+	}
+
 	if (bShouldRecalculateCompatibility)
 	{
 		rhiSceneView->m_rhiLightsData->RecalculateCompatibility();

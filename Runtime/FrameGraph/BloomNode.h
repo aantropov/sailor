@@ -29,7 +29,7 @@ namespace Sailor::Framegraph
 		struct PushConstantsDownscale
 		{
 			glm::vec4  m_threshold; // x -> threshold, yzw -> (threshold - knee, 2.0 * knee, 0.25 * knee)
-			bool       m_useThreshold;
+			bool	   m_useThreshold;
 		};
 
 		struct PushConstantsUpscale

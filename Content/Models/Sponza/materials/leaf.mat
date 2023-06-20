@@ -1,7 +1,7 @@
 bEnableDepthTest: true
 bEnableZWrite: true
 bSupportMultisampling: true
-bCustomDepthShader: false
+bCustomDepthShader: true
 depthBias: 0
 renderQueue: Masked
 defines: 

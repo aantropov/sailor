@@ -7,6 +7,7 @@ includes:
 defines:
 - CASCADES
 - LIGHT_TILES
+- AO
 
 glslCommon: |
   #version 460
@@ -42,6 +43,8 @@ glslVertex: |
   {
       LightsGrid instance[];
   } lightsGrid;
+
+  layout(set=2, binding=9) uniform sampler2D g_aoSampler;
   
   layout(location=DefaultPositionBinding) in vec3 inPosition;
   layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
@@ -95,10 +98,15 @@ glslFragment: |
       LightsGrid instance[];
   } lightsGrid;
   
+  layout(set=2, binding=9) uniform sampler2D g_aoSampler;
+  
   void main() 
   {
     outColor = texture(ldrSceneSampler, fragTexcoord);
-  #if defined(LIGHT_TILES)
+    
+  #if defined(AO)
+    outColor = texture(g_aoSampler, fragTexcoord);
+  #elif defined(LIGHT_TILES)
     outColor = texture(linearDepthSampler, fragTexcoord).r / 50000;
   
     vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);

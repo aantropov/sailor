@@ -21,21 +21,40 @@ void ClearNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	SAILOR_PROFILE_FUNCTION();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	glm::vec4 clearColor = GetVec4("clearColor");
-
-	commands->BeginDebugRegion(commandList, GetName(), glm::vec4(clearColor.x, clearColor.y, clearColor.z, 0.5f));
 
 	RHITexturePtr dst{};
 
-	if (RHI::RHISurfacePtr surfaceAttachment = GetRHIResource("color").DynamicCast<RHISurface>())
+	if (RHI::RHISurfacePtr surfaceAttachment = GetRHIResource("target").DynamicCast<RHISurface>())
 	{
 		RHITexturePtr dst2 = surfaceAttachment->GetTarget();
 
 		commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), dst2->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
-		commands->ClearImage(commandList, dst2, clearColor);
+		if (RHI::IsDepthFormat(dst2->GetFormat()))
+		{
+			float clearDepth = GetFloat("clearDepth");
+			float clearStencil = GetFloat("clearStencil");
+
+			commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f));
+			commands->ClearDepthStencil(commandList, dst2, clearDepth, (uint32_t)clearStencil);
+			commands->EndDebugRegion(commandList);
+		}
+		else
+		{
+			glm::vec4 clearColor = GetVec4("clearColor");
+			commands->BeginDebugRegion(commandList, GetName(), glm::vec4(clearColor.x, clearColor.y, clearColor.z, 0.5f));
+			commands->ClearImage(commandList, dst2, clearColor);
+			commands->EndDebugRegion(commandList);
+		}
 		commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), EImageLayout::TransferDstOptimal, dst2->GetDefaultLayout());
 
 		dst = surfaceAttachment->GetResolved();
+		
+		commands->EndDebugRegion(commandList);
+
+		if (!surfaceAttachment->NeedsResolve())
+		{
+			return;
+		}
 	}
 	else if (RHI::RHITexturePtr colorAttachment = GetRHIResource("color").DynamicCast<RHITexture>())
 	{
@@ -43,15 +62,34 @@ void ClearNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	}
 	else
 	{
-		auto backBuffer = frameGraph->GetRenderTarget("BackBuffer");
-		dst = backBuffer;
+		for (auto& r : m_unresolvedResourceParams)
+		{
+			if (r.First() == "target")
+			{
+				dst = frameGraph->GetRenderTarget(r.Second());
+				break;
+			}
+		}
 	}
 
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
-	commands->ClearImage(commandList, dst, clearColor);
-	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
+	if (RHI::IsDepthFormat(dst->GetFormat()))
+	{
+		float clearDepth = GetFloat("clearDepth");
+		float clearStencil = GetFloat("clearStencil");
 
-	commands->EndDebugRegion(commandList);
+		commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f));
+		commands->ClearDepthStencil(commandList, dst, clearDepth, (uint32_t)clearStencil);
+		commands->EndDebugRegion(commandList);
+	}
+	else
+	{
+		glm::vec4 clearColor = GetVec4("clearColor");
+		commands->BeginDebugRegion(commandList, GetName(), glm::vec4(clearColor.x, clearColor.y, clearColor.z, 0.5f));
+		commands->ClearImage(commandList, dst, clearColor);
+		commands->EndDebugRegion(commandList);
+	}
+	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
 }
 
 void ClearNode::Clear()

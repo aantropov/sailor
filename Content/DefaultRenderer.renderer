@@ -45,17 +45,18 @@ renderTargets:
 
 - name: HalfDepth
   format: D32_SFLOAT_S8_UINT
-  width: 512
-  height: 512
-  bIsCompatibleWithComputeShaders: false
-  bIsSurface: false
+  width: ViewportWidth/2
+  height: ViewportWidth/2
 
+- name: AO
+  format: R8_UNORM
+  width: ViewportWidth/2
+  height: ViewportWidth/2
+  
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT
   width: 512
   height: 512
-  bIsCompatibleWithComputeShaders: true
-  bIsSurface: false
   
 - name: QuarterMain2
   format: R16G16B16A16_SFLOAT
@@ -73,11 +74,19 @@ renderTargets:
 ############################
 frame:
 ############################
+
 - name: DepthPrepass
   string:
   - Tag: Opaque
+  - ClearDepth: true
   renderTargets:
   - depthStencil: DepthBuffer
+
+- name: DepthPrepass
+  string:
+  - Tag: Masked
+  renderTargets:
+  - depthStencil: DepthBuffer 
  
 ############################
 - name: LinearizeDepth
@@ -97,7 +106,7 @@ frame:
   vec4:
   - clearColor: [1.502, 2.08, 2.61, 2.5]
   renderTargets:
-  - color: Main
+  - target: Main
 
 ############################
 - name: ShadowPrepass
@@ -160,6 +169,32 @@ frame:
   - src: Sky
   - dst: Main
   
+############################
+# HBAO
+############################
+- name: Blit
+############################
+  renderTargets:
+  - src: DepthBuffer
+  - dst: HalfDepth
+  
+############################
+- name: PostProcess
+############################
+  string:
+  - shader: Shaders/HBAO.shader
+  - defines: ~
+  float:
+  - data.occlusionRadius: 700
+  - data.occlusionPower: 2.0
+  - data.occlusionAttenuation: 0.1
+  - data.occlusionBias: 0.05
+  - data.noiseScale: 10
+  renderTargets:
+  - color: AO
+  - depthSampler: HalfDepth
+  - noiseSampler: g_noiseSampler
+
 ############################
 - name: RenderScene
 ############################
@@ -224,10 +259,10 @@ frame:
 ############################
   string:
   - shader: Shaders/Debug.shader
-  - defines: #CASCADES LIGHT_TILES
+  - defines: #AO #CASCADES LIGHT_TILES
   vec4: ~
   renderTargets:
-  - color: Main
+  - color: BackBuffer
   - ldrSceneSampler: Secondary
   - linearDepthSampler: LinearDepth
 
@@ -243,30 +278,6 @@ frame:
 #  - color: BackBuffer
 #  - depthStencil: DepthBuffer
 #  - colorSampler: Secondary
-
-############################
-- name: Blit
-############################
-  renderTargets:
-  - src: DepthBuffer
-  - dst: HalfDepth
-  
-############################
-- name: PostProcess
-############################
-  string:
-  - shader: Shaders/HBAO.shader
-  - defines: ~
-  float:
-  - data.occlusionRadius: 600
-  - data.occlusionPower: 1.5
-  - data.occlusionAttenuation: 1
-  - data.occlusionBias: 0.05
-  - data.noiseScale: 50
-  renderTargets:
-  - color: BackBuffer
-  - depthSampler: HalfDepth
-  - noiseSampler: g_noiseSampler
 
 #############################
 - name: RenderImGui

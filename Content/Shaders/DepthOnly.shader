@@ -21,6 +21,7 @@ glslVertex: |
   struct PerInstanceData
   {
       mat4 model;
+      uint materialInstance;
   };
   
   layout(std140, set = 1, binding = 0) readonly buffer PerInstanceDataSSBO
