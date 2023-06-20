@@ -52,6 +52,16 @@ renderTargets:
   format: R8_UNORM
   width: ViewportWidth/2
   height: ViewportWidth/2
+
+- name: TemporaryR8
+  format: R8_UNORM
+  width: ViewportWidth
+  height: ViewportWidth
+
+- name: g_AO
+  format: R8_UNORM
+  width: ViewportWidth
+  height: ViewportWidth
   
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT
@@ -186,7 +196,7 @@ frame:
   - defines: ~
   float:
   - data.occlusionRadius: 700
-  - data.occlusionPower: 2.0
+  - data.occlusionPower: 1.5
   - data.occlusionAttenuation: 0.1
   - data.occlusionBias: 0.05
   - data.noiseScale: 10
@@ -194,6 +204,36 @@ frame:
   - color: AO
   - depthSampler: HalfDepth
   - noiseSampler: g_noiseSampler
+
+############################
+- name: PostProcess
+############################
+  string:
+  - shader: Shaders/HBAO_Blur.shader
+  - defines: VERTICAL
+  float:
+  - data.sharpness: 0.5
+  - data.distanceScale: 1
+  - data.radius: 5
+  renderTargets:
+  - color: TemporaryR8
+  - aoSampler: AO
+  - depthSampler: DepthBuffer
+
+############################
+- name: PostProcess
+############################
+  string:
+  - shader: Shaders/HBAO_Blur.shader
+  - defines: HORIZONTAL
+  float:
+  - data.sharpness: 0.5
+  - data.distanceScale: 1
+  - data.radius: 5
+  renderTargets:
+  - color: g_AO
+  - aoSampler: TemporaryR8
+  - depthSampler: DepthBuffer
 
 ############################
 - name: RenderScene

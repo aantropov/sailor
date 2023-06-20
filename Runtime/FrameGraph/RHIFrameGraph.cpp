@@ -136,7 +136,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	}
 
 	// TODO: Move to another place
-	if (auto g_aoSampler = GetRenderTarget("AO"))
+	if (auto g_aoSampler = GetRenderTarget("g_AO"))
 	{
 		if (g_aoSampler != rhiSceneView->m_rhiLightsData->GetOrAddShaderBinding("g_aoSampler")->GetTextureBinding())
 		{
