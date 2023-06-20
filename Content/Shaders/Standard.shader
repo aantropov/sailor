@@ -95,6 +95,7 @@ glslVertex: |
   } shadowIndices;
   
   layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=9) uniform sampler2D g_aoSampler;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -196,7 +197,7 @@ glslFragment: |
   layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
   layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
   layout(set=1, binding=5) uniform samplerCube g_envCubemap;
-  
+
   layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
   {
       mat4 instance[];
@@ -207,7 +208,8 @@ glslFragment: |
       uint instance[];
   } shadowIndices;
   
-  layout(set = 1, binding = 8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=9) uniform sampler2D g_aoSampler;
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -344,7 +346,7 @@ glslFragment: |
     vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
     
     // Total ambient lighting contribution.  
-    return diffuseIBL + specularIBL;
+    return material.ao * (diffuseIBL + specularIBL);
   }
   
   // Constant normal incidence Fresnel factor for all dielectrics.
@@ -353,11 +355,13 @@ glslFragment: |
   void main() 
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
+    const vec2 viewportUv = gl_FragCoord.xy * rcp(frame.viewportSize);
     
     MaterialData material = GetMaterialData();
     material.albedo = material.albedo * texture(textureSamplers[material.albedoSampler], vin.texcoord) * vin.color;
     material.metallic = material.metallic * texture(textureSamplers[material.metalnessSampler], vin.texcoord).r;
     material.roughness = material.roughness * texture(textureSamplers[material.roughnessSampler], vin.texcoord).r;
+    material.ao = texture(g_aoSampler, viewportUv).r;
     
     vec3 normal = normalize(2.0 * texture(textureSamplers[material.normalSampler], vin.texcoord).rgb - 1.0);    
     normal = normalize(vin.tangentBasis * normal);
@@ -410,25 +414,4 @@ glslFragment: |
     }
 
     outColor.a = material.albedo.a;
-    
-    /*
-    const int cascadeLayer = SelectCascade(frame.view, vin.worldPosition, frame.camera);
-    vec3 dColor = vec3(1,0,0);
-    if(cascadeLayer == 0)
-    {
-        dColor = vec3(0,1,0);
-    }
-    else if(cascadeLayer == 1)
-    {
-        dColor = vec3(1,1,0);
-    }
-    else if(cascadeLayer == 1)
-    {
-        dColor = vec3(0,0,1);
-    }
-    else
-        dColor = vec3(0,1,1);
-    
-    outColor.rgb = mix(outColor.rgb, dColor, 0.5);
-    /**/
   }
