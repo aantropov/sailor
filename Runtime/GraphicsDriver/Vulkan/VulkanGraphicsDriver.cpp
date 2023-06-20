@@ -168,23 +168,26 @@ bool VulkanGraphicsDriver::AcquireNextImage()
 	m_backBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetBackBuffer();
 	m_backBuffer->m_vulkan.m_image = m_backBuffer->m_vulkan.m_imageView->m_image;
 
-	m_depthStencilBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetDepthBuffer();
-	m_depthStencilBuffer->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_imageView->m_image;
-
-	if (RHI::IsDepthFormat(m_depthStencilBuffer->GetFormat()))
+	if (m_depthStencilBuffer->m_vulkan.m_imageView != m_vkInstance->GetMainDevice()->GetDepthBuffer())
 	{
-		m_depthStencilBuffer->m_depthAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
-		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView->Compile();
-	}
+		m_depthStencilBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetDepthBuffer();
+		m_depthStencilBuffer->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_imageView->m_image;
 
-	if (RHI::IsDepthStencilFormat(m_depthStencilBuffer->GetFormat()))
-	{
-		m_depthStencilBuffer->m_stencilAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
-		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView->Compile();
+		if (RHI::IsDepthFormat(m_depthStencilBuffer->GetFormat()))
+		{
+			m_depthStencilBuffer->m_depthAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
+			m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
+			m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
+			m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView->Compile();
+		}
+
+		if (RHI::IsDepthStencilFormat(m_depthStencilBuffer->GetFormat()))
+		{
+			m_depthStencilBuffer->m_stencilAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
+			m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
+			m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
+			m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView->Compile();
+		}
 	}
 
 	return bRes;
