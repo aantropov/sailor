@@ -221,15 +221,15 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	rhiSceneView->PrepareDebugDrawCommandLists(world);
 	rhiSceneView->PrepareSnapshots();
 
-	SAILOR_PROFILE_END_BLOCK();
-
-	SAILOR_PROFILE_BLOCK("Push frame");
-
 	auto preRenderingJob = Tasks::CreateTask("Trace command lists & Track RHI resources",
-		[this]()
+		[this, rhiSceneView = rhiSceneView]()
 		{
 			this->GetDriver()->TrackResources_ThreadSafe();
 		}, Sailor::Tasks::EThreadType::Render);
+
+	SAILOR_PROFILE_END_BLOCK();
+
+	SAILOR_PROFILE_BLOCK("Push frame");
 
 	auto renderingJob = Tasks::CreateTask("Render Frame",
 		[this, frame, rhiSceneView]() mutable
@@ -316,6 +316,19 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		}, Sailor::Tasks::EThreadType::Render);
 
 	renderingJob->Join(preRenderingJob);
+
+	auto rhiFrameGraph = m_frameGraph->GetRHI();
+	auto tasks = rhiFrameGraph->Prepare(rhiSceneView);
+
+	for (auto& t : tasks)
+	{
+		preRenderingJob->Join(t);
+	}
+
+	for (auto& t : tasks)
+	{
+		t->Run();
+	}
 
 	App::GetSubmodule<Tasks::Scheduler>()->Run(preRenderingJob);
 	App::GetSubmodule<Tasks::Scheduler>()->Run(renderingJob);

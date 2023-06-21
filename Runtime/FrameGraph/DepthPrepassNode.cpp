@@ -46,9 +46,96 @@ RHI::ESortingOrder DepthPrepassNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
+Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraph* frameGraph, const RHI::RHISceneViewSnapshot& sceneView)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	const std::string QueueTag = GetString("Tag");
+	const size_t QueueTagHash = GetHash(QueueTag);
+
+	Tasks::TaskPtr res = Tasks::CreateTask("Prepare DepthPrepassNode",
+		[=, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
+
+			syncSharedResources.Lock();
+
+			m_numMeshes = 0;
+			m_drawCalls.Clear();
+			m_batches.Clear();
+
+			SAILOR_PROFILE_BLOCK("Filter sceneView by tag");
+			for (auto& proxy : sceneViewSnapshot.m_proxies)
+			{
+				for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
+				{
+					const bool bHasMaterial = proxy.GetMaterials().Num() > i;
+					if (!bHasMaterial)
+					{
+						break;
+					}
+
+					if (proxy.GetMaterials()[i]->GetRenderState().GetTag() != QueueTagHash)
+					{
+						continue;
+					}
+
+					const auto& mesh = proxy.m_meshes[i];
+
+					auto depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription);
+
+					const bool bRequiredCustomDepth = proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader();
+					if (bRequiredCustomDepth)
+					{
+						depthMaterial = proxy.GetMaterials()[i];
+					}
+
+					const bool bIsDepthMaterialReady = depthMaterial &&
+						depthMaterial->GetVertexShader() &&
+						depthMaterial->GetFragmentShader() &&
+						depthMaterial->GetRenderState().IsEnabledZWrite();
+
+					if (!bIsDepthMaterialReady)
+					{
+						continue;
+					}
+
+					DepthPrepassNode::PerInstanceData data;
+					data.model = proxy.m_worldMatrix;
+
+					if (bRequiredCustomDepth)
+					{
+						RHIShaderBindingPtr shaderBinding;
+						if (depthMaterial->GetBindings()->GetShaderBindings().ContainsKey("material"))
+						{
+							shaderBinding = depthMaterial->GetBindings()->GetShaderBindings()["material"];
+						}
+						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
+					}
+					else
+					{
+						data.materialInstance = 0;
+					}
+
+					RHIBatch batch(depthMaterial, mesh);
+
+					m_drawCalls[batch][mesh].Add(data);
+					m_batches.Insert(batch);
+
+					m_numMeshes++;
+				}
+			}
+			SAILOR_PROFILE_END_BLOCK();
+
+			syncSharedResources.Unlock();
+		});
+
+	return res;
+}
+
 void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_syncSharedResources.Lock();
+
 	std::string clearDepth;
 	TryGetString("ClearDepth", clearDepth);
 	const bool bShouldClearDepth = clearDepth == "true";
@@ -60,100 +147,33 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	TDrawCalls<DepthPrepassNode::PerInstanceData> drawCalls;
-	TSet<RHIBatch> batches;
-
-	uint32_t numMeshes = 0;
-
-	SAILOR_PROFILE_BLOCK("Filter sceneView by tag");
-	for (auto& proxy : sceneView.m_proxies)
-	{
-		for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
-		{
-			const bool bHasMaterial = proxy.GetMaterials().Num() > i;
-			if (!bHasMaterial)
-			{
-				break;
-			}
-
-			if (proxy.GetMaterials()[i]->GetRenderState().GetTag() != QueueTagHash)
-			{
-				continue;
-			}
-
-			const auto& mesh = proxy.m_meshes[i];
-
-			auto depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription);
-
-			const bool bRequiredCustomDepth = proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader();
-			if (bRequiredCustomDepth)
-			{
-				depthMaterial = proxy.GetMaterials()[i];
-			}
-
-			const bool bIsDepthMaterialReady = depthMaterial &&
-				depthMaterial->GetVertexShader() &&
-				depthMaterial->GetFragmentShader() &&
-				depthMaterial->GetRenderState().IsEnabledZWrite();
-
-			if (!bIsDepthMaterialReady)
-			{
-				continue;
-			}
-
-			DepthPrepassNode::PerInstanceData data;
-			data.model = proxy.m_worldMatrix;
-
-			if (bRequiredCustomDepth)
-			{
-				RHIShaderBindingPtr shaderBinding;
-				if (depthMaterial->GetBindings()->GetShaderBindings().ContainsKey("material"))
-				{
-					shaderBinding = depthMaterial->GetBindings()->GetShaderBindings()["material"];
-				}
-				data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
-			}
-			else
-			{
-				data.materialInstance = 0;
-			}
-
-			RHIBatch batch(depthMaterial, mesh);
-
-			drawCalls[batch][mesh].Add(data);
-			batches.Insert(batch);
-
-			numMeshes++;
-		}
-	}
-	SAILOR_PROFILE_END_BLOCK();
-
 	auto depthAttachment = GetRHIResource("depthStencil").StaticCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	if (numMeshes == 0)
+	if (m_numMeshes == 0)
 	{
+		m_syncSharedResources.Unlock();
 		return;
 	}
 
 	SAILOR_PROFILE_BLOCK("Create storage for matrices");
 
-	if (!m_perInstanceData || m_sizePerInstanceData < sizeof(DepthPrepassNode::PerInstanceData) * numMeshes)
+	if (!m_perInstanceData || m_sizePerInstanceData < sizeof(DepthPrepassNode::PerInstanceData) * m_numMeshes)
 	{
 		m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-		Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(DepthPrepassNode::PerInstanceData), numMeshes, 0);
-		m_sizePerInstanceData = sizeof(DepthPrepassNode::PerInstanceData) * numMeshes;
+		Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(DepthPrepassNode::PerInstanceData), m_numMeshes, 0);
+		m_sizePerInstanceData = sizeof(DepthPrepassNode::PerInstanceData) * m_numMeshes;
 	}
 
 	RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
 	SAILOR_PROFILE_END_BLOCK();
 
 	TVector<DepthPrepassNode::PerInstanceData> gpuMatricesData;
-	gpuMatricesData.AddDefault(numMeshes);
-	auto vecBatches = batches.ToVector();
+	gpuMatricesData.AddDefault(m_numMeshes);
+	auto vecBatches = m_batches.ToVector();
 
 	SAILOR_PROFILE_BLOCK("Calculate SSBO offsets");
 	size_t ssboIndex = 0;
@@ -161,7 +181,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	for (uint32_t j = 0; j < vecBatches.Num(); j++)
 	{
 		bool bIsInited = false;
-		for (auto& instancedDrawCall : drawCalls[vecBatches[j]])
+		for (auto& instancedDrawCall : m_drawCalls[vecBatches[j]])
 		{
 			auto& mesh = instancedDrawCall.First();
 			auto& matrices = instancedDrawCall.Second();
@@ -189,7 +209,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	SAILOR_PROFILE_END_BLOCK();
 
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
-	const size_t materialsPerThread = (batches.Num()) / numThreads;
+	const size_t materialsPerThread = (m_batches.Num()) / numThreads;
 
 	if (m_indirectBuffers.Num() < numThreads)
 	{
@@ -221,13 +241,15 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		true,
 		true);
 
-	RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, drawCalls, storageIndex, m_indirectBuffers[0],
+	RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
 		glm::ivec4(0, depthAttachment->GetExtent().y, depthAttachment->GetExtent().x, -depthAttachment->GetExtent().y),
 		glm::uvec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y));
 
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);
+
+	m_syncSharedResources.Unlock();
 }
 
 void DepthPrepassNode::Clear()

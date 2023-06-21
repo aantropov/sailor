@@ -5,6 +5,7 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "RHI/Batch.hpp"
 
 namespace Sailor::Framegraph
 {
@@ -29,6 +30,7 @@ namespace Sailor::Framegraph
 
 		SAILOR_API static const char* GetName() { return m_name; }
 
+		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraph* frameGraph, const RHI::RHISceneViewSnapshot& sceneView);
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 		SAILOR_API RHI::ESortingOrder GetSortingOrder() const;
@@ -36,6 +38,11 @@ namespace Sailor::Framegraph
 	protected:
 
 		static const char* m_name;
+
+		uint32_t m_numMeshes = 0;
+		SpinLock m_syncSharedResources;
+		RHI::TDrawCalls<PerInstanceData> m_drawCalls;
+		TSet<RHI::RHIBatch> m_batches;
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;

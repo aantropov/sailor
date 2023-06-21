@@ -74,6 +74,25 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
 }
 
+TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView)
+{
+	TVector<Sailor::Tasks::TaskPtr<void, void>> res;
+
+	for (auto& snapshot : rhiSceneView->m_snapshots)
+	{
+		for (auto& node : m_graph)
+		{
+			auto task = node->Prepare(this, snapshot);
+			if (task.IsValid())
+			{
+				res.Emplace(std::move(task));
+			}
+		}
+	}
+
+	return res;
+}
+
 void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 	TVector<RHI::RHICommandListPtr>& outCommandLists,

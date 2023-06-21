@@ -3,6 +3,7 @@
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
+#include "Tasks/Tasks.h"
 
 using namespace Sailor::Framegraph;
 
@@ -43,6 +44,8 @@ namespace Sailor::RHI
 		{
 			m_values[name] = value;
 		}
+
+		SAILOR_API TVector<Sailor::Tasks::TaskPtr<void,void>> Prepare(RHI::RHISceneViewPtr rhiSceneView);
 
 		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView, 
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists, 

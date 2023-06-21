@@ -30,6 +30,7 @@ namespace Sailor::Framegraph
 		SAILOR_API const std::string& GetString(const std::string& name) const;		
 		SAILOR_API bool TryGetString(const std::string& name, string& string) const;
 
+		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraph* frameGraph, const RHI::RHISceneViewSnapshot& sceneView) { return Sailor::Tasks::TaskPtr<void, void>(); }
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
 		SAILOR_API virtual void Clear() = 0;
 

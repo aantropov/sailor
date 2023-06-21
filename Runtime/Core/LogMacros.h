@@ -12,7 +12,7 @@
 	{ \
 		const bool bIsRendererThread = scheduler->IsRendererThread(); \
 		const uint64_t currentThread = (uint64_t)GetCurrentThread(); \
-		scheduler->CreateTask("Log", [=]() \
+		Tasks::CreateTask("Log", [=]() \
 		{ \
 			if(!bIsRendererThread) \
 			{ \
@@ -39,7 +39,7 @@
 	{ \
 		const bool bIsRendererThread = scheduler->IsRendererThread(); \
 		const uint64_t currentThread = (uint64_t)GetCurrentThread(); \
-		scheduler->CreateTask("LogError", [=]() \
+		Tasks::CreateTask("LogError", [=]() \
 		{ \
 			auto hConsole = GetStdHandle(STD_OUTPUT_HANDLE); \
 			SetConsoleTextAttribute(hConsole, 4); \
