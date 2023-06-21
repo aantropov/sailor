@@ -45,7 +45,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 {
 	DWORD currentThreadId = GetCurrentThreadId();
 
-	auto pReleaseResource = Tasks::Scheduler::CreateTask("Release command buffer",
+	auto pReleaseResource = Tasks::CreateTask("Release command buffer",
 		[
 			duplicatedCommandBuffer = m_commandBuffer,
 			duplicatedCommandPool = m_commandPool,

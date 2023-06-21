@@ -82,7 +82,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 	{
 		if (TextureAssetInfoPtr assetInfo = dynamic_cast<TextureAssetInfo*>(inAssetInfo))
 		{
-			auto newPromise = Tasks::Scheduler::CreateTaskWithResult<bool>("Update Texture",
+			auto newPromise = Tasks::CreateTaskWithResult<bool>("Update Texture",
 				[pTexture, assetInfo, this]() mutable
 				{
 					ByteCode decodedData;
@@ -209,7 +209,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 			bool bIsImported;
 		};
 
-		newPromise = Tasks::Scheduler::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
+		newPromise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
 			[pTexture, assetInfo, this]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();

@@ -55,7 +55,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	SAILOR_PROFILE_END_BLOCK();
 
-	task = Tasks::Scheduler::CreateTaskWithResult<RHI::RHICommandListPtr>("Record ImGui Draw Command List",
+	task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record ImGui Draw Command List",
 		[=]()
 		{
 			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, false);

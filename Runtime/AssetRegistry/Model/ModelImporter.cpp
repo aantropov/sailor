@@ -299,13 +299,6 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
-	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
-	{
-		if (modelAssetInfo->ShouldGenerateMaterials())
-		{
-			GenerateMaterialAssets(modelAssetInfo);
-		}
-	}
 }
 
 void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
@@ -394,7 +387,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
 			bool m_bIsImported = false;
 		};
 
-		newPromise = Tasks::Scheduler::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
+		newPromise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
@@ -473,7 +466,7 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(UID uid, TVector<Materi
 
 	if (ModelAssetInfoPtr modelInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
-		Tasks::TaskPtr<bool> loadingFinished = Tasks::Scheduler::CreateTaskWithResult<bool>("Load Default Materials", []() { return true; });
+		Tasks::TaskPtr<bool> loadingFinished = Tasks::CreateTaskWithResult<bool>("Load Default Materials", []() { return true; });
 
 		for (auto& assetInfo : modelInfo->GetDefaultMaterials())
 		{

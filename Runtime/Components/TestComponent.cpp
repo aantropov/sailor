@@ -20,7 +20,7 @@ void TestComponent::BeginPlay()
 
 	m_mainModel = GetWorld()->Instantiate();
 	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
-	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
+	m_mainModel->GetTransformComponent().SetScale(vec4(100, 100, 100, 1));
 	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * 3.14f, 0)));
 	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
 
@@ -62,7 +62,7 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 	lightComponent->SetLightType(ELightType::Directional);
 
-	auto spotLight = GetWorld()->Instantiate();
+	/*auto spotLight = GetWorld()->Instantiate();
 	lightComponent = spotLight->AddComponent<LightComponent>();
 	spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
 	spotLight->GetTransformComponent().SetRotation(quat(vec3(-45, 0.0f, 0.0f)));

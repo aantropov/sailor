@@ -20,7 +20,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 	// TODO: Check the sync between CPUFrame and Recording
 	for (const auto& camera : m_cameras)
 	{
-		auto task = Tasks::Scheduler::CreateTaskWithResult<RHI::RHICommandListPtr>("Record DebugContext Draw Command List",
+		auto task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record DebugContext Draw Command List",
 			[=]()
 			{
 				const auto& matrix = camera.GetProjectionMatrix() * camera.GetViewMatrix();

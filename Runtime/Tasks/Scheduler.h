@@ -9,9 +9,9 @@
 #include "Memory/UniquePtr.hpp"
 #include "Tasks/Tasks.h"
 
-#define SAILOR_ENQUEUE_TASK(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda))
-#define SAILOR_ENQUEUE_TASK_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Render))
-#define SAILOR_ENQUEUE_TASK_RHI_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::Scheduler::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::RHI))
+#define SAILOR_ENQUEUE_TASK(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda))
+#define SAILOR_ENQUEUE_TASK_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Render))
+#define SAILOR_ENQUEUE_TASK_RHI_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::RHI))
 
 namespace Sailor
 {
@@ -84,37 +84,6 @@ namespace Sailor
 			SAILOR_API uint32_t GetNumWorkerThreads() const;
 			SAILOR_API uint32_t GetNumRenderingJobs() const;
 			SAILOR_API uint32_t GetNumRHIThreads() const { return RHIThreadsNum; }
-
-			template<typename TResult = void, typename TArgs = void>
-			SAILOR_API static TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
-			{
-				auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
-				task->m_self = task;
-				return task;
-			}
-
-			template<typename TArgs>
-			SAILOR_API static TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, std::function<void(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
-			{
-				auto task = TaskPtr<void, TArgs>::Make(name, std::move(lambda), thread);
-				task->m_self = task;
-				return task;
-			}
-
-			template<typename TResult>
-			SAILOR_API static TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, std::function<TResult()> lambda, EThreadType thread = EThreadType::Worker)
-			{
-				auto task = TaskPtr<TResult, void>::Make(name, std::move(lambda), thread);
-				task->m_self = task;
-				return task;
-			}
-
-			SAILOR_API static TaskPtr<void, void> CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread = EThreadType::Worker)
-			{
-				auto task = TaskPtr<void, void>::Make(name, std::move(lambda), thread);
-				task->m_self = task;
-				return task;
-			}
 
 			SAILOR_API void Run(const ITaskPtr& pJob, bool bAutoRunChainedTasks = true);
 			SAILOR_API void Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTasks = true);

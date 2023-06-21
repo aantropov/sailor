@@ -196,7 +196,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 					tasks.RemoveAll([](const auto& task) { return task == nullptr || task->IsFinished(); });
 
-					auto submitCmdList1 = Tasks::Scheduler::CreateTask("Submit chaining cmd lists",
+					auto submitCmdList1 = Tasks::CreateTask("Submit chaining cmd lists",
 						[=]()
 						{
 							RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, RHIFencePtr::Make(), newChainSemaphore, chainSemaphore);
@@ -211,7 +211,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 					chainSemaphore = driver->CreateWaitSemaphore();
 					
-					auto submitCmdList2 = Tasks::Scheduler::CreateTask("Submit chaining cmd lists",
+					auto submitCmdList2 = Tasks::CreateTask("Submit chaining cmd lists",
 						[=]()
 						{
 							RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), chainSemaphore, newChainSemaphore);;

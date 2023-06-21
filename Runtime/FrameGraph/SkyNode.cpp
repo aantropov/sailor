@@ -29,7 +29,7 @@ using TParseRes = TPair<TVector<VertexP3C4>, TVector<uint32_t>>;
 
 Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 {
-	auto task = Tasks::Scheduler::CreateTaskWithResult<TParseRes>("Parse Stars Mesh",
+	auto task = Tasks::CreateTaskWithResult<TParseRes>("Parse Stars Mesh",
 		[=]() -> TParseRes
 		{
 			std::string temperatures;
@@ -126,7 +126,7 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow() const
 
 	for (uint32_t z = 0; z < CloudsNoiseLowResolution; z++)
 	{
-		auto pTask = Tasks::Scheduler::CreateTask("Generate Clouds Noise Low", [=, &res]()
+		auto pTask = Tasks::CreateTask("Generate Clouds Noise Low", [=, &res]()
 			{
 				for (uint32_t y = 0; y < CloudsNoiseLowResolution; y++)
 				{
@@ -285,7 +285,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		auto pathNoiseHigh = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseHigh.bin"));
 		if (!AssetRegistry::ReadBinaryFile(pathNoiseHigh, noiseHigh))
 		{
-			m_createNoiseHigh = Tasks::Scheduler::CreateTask("Generate Clouds Noise High",
+			m_createNoiseHigh = Tasks::CreateTask("Generate Clouds Noise High",
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseHigh();
@@ -299,7 +299,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 		auto pathNoiseLow = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseLow.bin"));
 		if (!AssetRegistry::ReadBinaryFile(pathNoiseLow, noiseLow))
 		{
-			m_createNoiseLow = Tasks::Scheduler::CreateTask("Generate Clouds Noise Low",
+			m_createNoiseLow = Tasks::CreateTask("Generate Clouds Noise Low",
 				[=]()
 				{
 					auto cache = GenerateCloudsNoiseLow();

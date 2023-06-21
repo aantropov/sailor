@@ -403,7 +403,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
-		Tasks::TaskPtr<bool> saveCacheJob = scheduler->CreateTaskWithResult<bool>("Save Shader Cache", [=]()
+		Tasks::TaskPtr<bool> saveCacheJob = Tasks::CreateTaskWithResult<bool>("Save Shader Cache", [=]()
 			{
 				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
 				m_shaderCache.SaveCache();
@@ -416,7 +416,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
 		{
-			Tasks::ITaskPtr job = scheduler->CreateTask("Compile shader", [i, pShader, assetInfo, permutationsToCompile]()
+			Tasks::ITaskPtr job = Tasks::CreateTask("Compile shader", [i, pShader, assetInfo, permutationsToCompile]()
 				{
 					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
 					App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
@@ -782,7 +782,7 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& o
 		{
 			auto pShader = ShaderSetPtr::Make(m_allocator, uid, defines);
 
-			newPromise = Tasks::Scheduler::CreateTaskWithResult<ShaderSetPtr>("Load shader",
+			newPromise = Tasks::CreateTaskWithResult<ShaderSetPtr>("Load shader",
 				[pShader, assetInfo, this, permutation]()
 				{
 					UpdateRHIResource(pShader, permutation);

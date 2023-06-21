@@ -126,7 +126,7 @@ bool VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
 			SAILOR_PROFILE_END_BLOCK();
 		};
 
-		auto task = Tasks::Scheduler::CreateTask("Fix lost device", fixLostDevice_RenderThread, Tasks::EThreadType::Render);
+		auto task = Tasks::CreateTask("Fix lost device", fixLostDevice_RenderThread, Tasks::EThreadType::Render);
 		task->Run();
 		task->Wait();
 

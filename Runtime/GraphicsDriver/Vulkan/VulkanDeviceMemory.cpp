@@ -70,7 +70,7 @@ void VulkanDeviceMemory::Copy(VkDeviceSize offset, VkDeviceSize size, const void
 		TVector<Tasks::ITaskPtr> tasks;
 		for (uint32_t i = 0; i < numThreads; i++)
 		{
-			auto pTask = scheduler->CreateTask("VulkanDeviceMemory, CPU side memory copy", [pBufferData, i, src_data, size]()
+			auto pTask = Tasks::CreateTask("VulkanDeviceMemory, CPU side memory copy", [pBufferData, i, src_data, size]()
 			{
 				std::memcpy((char*)pBufferData + i * size / numThreads, ((char*)src_data + i * size / numThreads), (size_t)(size / numThreads));
 			})->Run();

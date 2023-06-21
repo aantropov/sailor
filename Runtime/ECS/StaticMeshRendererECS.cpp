@@ -20,7 +20,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 	//TODO: Resolve New/Delete components
 
-	auto updateStationaryTask = Tasks::Scheduler::CreateTask("StaticMeshRendererECS:Update Stationary Objects",
+	auto updateStationaryTask = Tasks::CreateTask("StaticMeshRendererECS:Update Stationary Objects",
 		[this]()
 	{
 		for (auto& data : m_components)
@@ -54,7 +54,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		}
 	}, EThreadType::RHI)->Run();
 
-	auto updateStaticTask = Tasks::Scheduler::CreateTask("StaticMeshRendererECS:Update Static Objects",
+	auto updateStaticTask = Tasks::CreateTask("StaticMeshRendererECS:Update Static Objects",
 		[this]()
 	{
 		for (auto& data : m_components)

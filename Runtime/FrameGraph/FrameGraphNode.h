@@ -5,6 +5,7 @@
 #include "RHI/Types.h"
 #include "BaseFrameGraphNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
+#include "Tasks/Tasks.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 
 namespace Sailor::Framegraph
@@ -64,6 +65,7 @@ namespace Sailor::Framegraph
 	public:
 		SAILOR_API static const char* GetName() { return m_name; }
 
+		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraph* frameGraph, const RHI::RHISceneViewSnapshot& sceneView) { return Sailor::Tasks::TaskPtr<void, void>(); }
 		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override {}
 		SAILOR_API virtual void Clear() override {}
 	

@@ -183,7 +183,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		const uint32_t start = (uint32_t)materialsPerThread * i;
 		const uint32_t end = (uint32_t)materialsPerThread * (i + 1);
 
-		auto task = Tasks::Scheduler::CreateTask("Record draw calls in secondary command list",
+		auto task = Tasks::CreateTask("Record draw calls in secondary command list",
 			[&, i = i, start = start, end = end]()
 		{
 			RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
