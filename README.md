@@ -1,4 +1,4 @@
-![image](https://github.com/aantropov/sailor/assets/3637761/533bc9d4-7e16-4e07-a63c-e1e321fa476b)
+![image](https://github.com/aantropov/sailor/assets/3637761/352593a9-ee55-4444-b884-6bd30ece53bd)
 ![image](https://github.com/aantropov/sailor/assets/3637761/2ca20784-5784-4e77-a824-8e3032919785)
 ![3](https://user-images.githubusercontent.com/3637761/216842844-0312267c-52a6-41d4-ba6d-a2b785fb7725.png)
 ![image](https://user-images.githubusercontent.com/3637761/216842799-a3d871fe-0f46-4cb5-9c9f-fb9cbc713f8d.png)
