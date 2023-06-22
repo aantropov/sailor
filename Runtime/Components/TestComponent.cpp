@@ -20,7 +20,7 @@ void TestComponent::BeginPlay()
 
 	m_mainModel = GetWorld()->Instantiate();
 	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
-	m_mainModel->GetTransformComponent().SetScale(vec4(100, 100, 100, 1));
+	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
 	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * 3.14f, 0)));
 	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
 
@@ -137,12 +137,11 @@ void TestComponent::Tick(float deltaTime)
 	if (GetWorld()->GetInput().IsKeyDown('Z'))
 		delta += vec3(0, 0, 1);
 
+	const float boost = GetWorld()->GetInput().IsKeyDown(VK_SHIFT) ? 100.0f : 1.0f;
+
 	if (glm::length(delta) > 0)
 	{
-		const float boost = 10.0f;
-		vec4 shift = vec4(glm::normalize(delta) * sensitivity * deltaTime, 1.0f);
-
-		//shift *= boost;
+		vec4 shift = vec4(glm::normalize(delta) * boost * sensitivity * deltaTime, 1.0f);
 
 		const vec4 newPosition = transform.GetPosition() + shift;
 

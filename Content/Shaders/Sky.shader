@@ -597,7 +597,9 @@ glslFragment: |
   void main()
   {
     vec4 dirWorldSpace = vec4(0);
-    const vec3 origin = vec3(0, R, 0) + frame.cameraPosition.xyz;
+    
+    // Convert from centimeters to meters
+    const vec3 origin = vec3(0, R, 0) + frame.cameraPosition.xyz * 0.01f;
     const vec3 dirToSun = normalize(-data.lightDirection.xyz);
     
     #if defined(COMPOSE)
