@@ -35,7 +35,26 @@ Currently the code is tested only on `Windows`, using `MSVC` (Visual Studio).
   - [ECS](#ECS)
   - [GameObjects and Components](#Components)
 - [Third Parties](#ThirdParties)
-  
+
+## <a name="Concept"></a> Concept
+Sailor is an engine that is made with the focus on the usability as for engine programmers as for gameplay programmers.
+In spite of the fact that the editor hasn't been implemented yet, the project contains a number of features that makes the development
+fast and easy. 
+
+The game engine follows `Unity's` ideology in aspect of Asset Management, GameObjects and Components. It has hot reload for assets including tracking of outdated shader permutations.
+On the other hand, gameplay code is written in C++, and could be easy based on ECS or Components (single responsibility) approaches. Multi-Threading is availiable in game thread and the game instance's memory is tracked by explicit allocators.
+
+The high-level rendering uses FrameGraph, similar to `Frostbite` engine. The lighting is calculated with Tile-Based Forward Rendering (Forward+). Overall the renderer is made with the idea of parallelism. The compute shaders are greatly used for many of general graphics calculations.
+
+The coding standard is similar to `CryEngine`, while the contract of containers inspired by `Unreal Engine`. The codebase is written with the folowwing idea under the hood: the C++ code should readable and highly optimized simulteniously, templates are used where it solves the issues, and the code is a bit simplified overall. Also Task's contract is similar to C#'s Tasks.
+
+### <a name="Why"></a> Why?
+Why the engine is called 'Sailor'?
+- The Sailor is a tool that helps you to ship.
+   
+Why you need to 'write one more renderer'?
+- The Sailor is not just a renderer. That's designed as a game engine and contains functionality that is usually avoided in 'just renderer' projects, for example: Tasks, Hot reloading, Shader compilation & reflection, Material system and Memory allocators.
+
 ## Screenshots
 ![image](https://github.com/aantropov/sailor/assets/3637761/352593a9-ee55-4444-b884-6bd30ece53bd)
 ![image](https://github.com/aantropov/sailor/assets/3637761/2ca20784-5784-4e77-a824-8e3032919785)
