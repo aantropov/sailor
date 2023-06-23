@@ -6,6 +6,15 @@ The engine is render agnostic (with limitations) by design.
 The codebase is written using a `C++` coding style and the project is written for the `C++20` standard for `x64` platform. 
 Currently the code is tested only on `Windows`, using `MSVC` (Microsoft Visual Studio). 
 
+## Screenshots
+
+<p float="left">
+  <img src="https://github.com/aantropov/sailor/assets/3637761/2135ae32-b95b-4bdb-bbbb-ec1e01b40946" width="480" />
+  <img src="https://github.com/aantropov/sailor/assets/3637761/2ca20784-5784-4e77-a824-8e3032919785" width="480" />
+  <img src="https://github.com/aantropov/sailor/assets/3637761/6ac3e042-7519-43c3-b7ab-a1e14b7b4df2" width="480" />
+  <img src="https://user-images.githubusercontent.com/3637761/216842844-0312267c-52a6-41d4-ba6d-a2b785fb7725.png" width="480" />
+</p>
+
 ## Table of Contents
 - [Concept](#Concept)
   - [Why?](#Why)
@@ -71,10 +80,3 @@ Why did you decide to write the basic code such as containers, window creation, 
 ```
 
 - If cmake finished successfully, it will create a Sailor.sln file in the build directory that can be opened with visual studio. Right click the SailorExec project -> set as startup project. Change from debug to release, and then build and start without debugging.
-
-## Screenshots
-![image](https://github.com/aantropov/sailor/assets/3637761/352593a9-ee55-4444-b884-6bd30ece53bd)
-![image](https://github.com/aantropov/sailor/assets/3637761/2ca20784-5784-4e77-a824-8e3032919785)
-![3](https://user-images.githubusercontent.com/3637761/216842844-0312267c-52a6-41d4-ba6d-a2b785fb7725.png)
-![image](https://user-images.githubusercontent.com/3637761/216842799-a3d871fe-0f46-4cb5-9c9f-fb9cbc713f8d.png)
-![2](https://user-images.githubusercontent.com/3637761/216842838-920cb66e-a79b-4ddd-8883-314eb60ae958.png)
