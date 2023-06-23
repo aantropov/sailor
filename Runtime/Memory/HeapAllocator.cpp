@@ -314,11 +314,6 @@ void Page::Free(void* pData)
 	{
 		m_occupiedSpace -= sizeof(Header) * 2 + block->m_size;
 
-		if (!pNext->m_bIsFree)
-		{
-			m_occupiedSpace -= pNext->m_size;
-		}
-
 		// Merge left first
 		pPrev->m_size += block->m_size + headerSize;
 		pNext->m_prev = Offset(pPrev, m_pData);
@@ -636,12 +631,9 @@ void SmallPoolAllocator::Free(void* ptr)
 	{
 		m_emptyPages.Add(blockIndex);
 
-		if (page.m_bIsInFreeList)
-		{
-			auto it = std::find(m_freeList.begin(), m_freeList.end(), blockIndex);
-			std::iter_swap(m_freeList.end() - 1, it);
-			m_freeList.RemoveLast();
-		}
+		auto it = std::find(m_freeList.begin(), m_freeList.end(), blockIndex);
+		std::iter_swap(m_freeList.end() - 1, it);
+		m_freeList.RemoveLast();
 
 		page.Clear();
 	}

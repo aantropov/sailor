@@ -145,5 +145,5 @@ void RHISceneView::PrepareSnapshots()
 const TVector<RHIMaterialPtr>& RHISceneViewProxy::GetMaterials() const
 {
 	// TODO: Create default materials inside model
-	return m_overrideMaterials.Num() > 0 ? m_overrideMaterials : m_overrideMaterials;
+	return m_overrideMaterials;
 }

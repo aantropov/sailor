@@ -636,6 +636,7 @@ void Sailor::Memory::RunMemoryBenchmark()
 
 	std::vector<Result> results;
 
+	results.reserve(3);
 	results.push_back(TestCase_MemoryPerformance<HeapAllocator>::RunTests());
 	results.push_back(TestCase_MemoryPerformance<LockFreeHeapAllocator>::RunTests());
 	results.push_back(TestCase_MemoryPerformance<MallocAllocator>::RunTests());

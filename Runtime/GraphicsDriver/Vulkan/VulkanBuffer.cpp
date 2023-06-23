@@ -12,7 +12,8 @@ VulkanBuffer::VulkanBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUs
 	m_size(size),
 	m_usage(usage),
 	m_sharingMode(sharingMode),
-	m_device(device)
+	m_device(device),
+	m_buffer()
 {
 }
 

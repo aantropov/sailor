@@ -54,7 +54,7 @@ namespace Sailor
 
 			std::string m_name{};
 			float m_float{ 0.0f };
-			glm::vec4 m_vec4{ 0.0f,0.0f,0.0f,1.0f };
+			glm::vec4 m_vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
 			std::string m_string{};
 
 			bool m_bIsFloat = false;
@@ -69,7 +69,7 @@ namespace Sailor
 			std::string m_name;
 			uint32_t m_width = 1;
 			uint32_t m_height = 1;
-			RHI::ETextureFormat m_format;
+			RHI::ETextureFormat m_format{};
 			RHI::ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;
 			RHI::ETextureClamping m_clamping = RHI::ETextureClamping::Clamp;
 			bool m_bIsSurface : 1 = false;
@@ -102,7 +102,7 @@ namespace Sailor
 						ensure(false, "Variable cannot be parsed");
 					}
 				}
-				
+
 				return res;
 			}
 

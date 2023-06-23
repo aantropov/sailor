@@ -93,7 +93,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	}
 
 	if (m_bIsDirty)
-	{	
+	{
 		if (!m_envMapTexture)
 		{
 			string envMapFilepath;
@@ -184,7 +184,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 			commands->BeginDebugRegion(commandList, "Compute pre-filtered specular environment map", DebugContext::Color_CmdCompute);
 			{
-				struct PushConstants { int32_t level{}; float roughness; };
+				struct PushConstants { int32_t level{}; float roughness{}; };
 				const uint32_t NumMipTailLevels = EnvMapLevels - 1;
 
 				commands->ImageMemoryBarrier(commandList, rawEnvCubemap, rawEnvCubemap->GetFormat(), rawEnvCubemap->GetDefaultLayout(), EImageLayout::TransferSrcOptimal);

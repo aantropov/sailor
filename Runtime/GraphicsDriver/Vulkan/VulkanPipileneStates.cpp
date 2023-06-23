@@ -87,7 +87,7 @@ void VulkanStateDynamicViewport::Apply(VkGraphicsPipelineCreateInfo& state) cons
 	state.pViewportState = &m_viewportState;
 }
 
-VulkanStateVertexDescription::VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const TVector<VkVertexInputAttributeDescription> attributes) :
+VulkanStateVertexDescription::VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, TVector<VkVertexInputAttributeDescription> attributes) :
 	m_bindingDescription(binding), m_attributeDescriptions(std::move(attributes)), m_vertexInput{}
 {
 	m_vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;

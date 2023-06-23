@@ -268,7 +268,7 @@ namespace Sailor
 
 		size_t RemoveAll(const TPredicate<TElementType>& predicate)
 		{
-			size_t num;
+			size_t num = 0;
 			TVector<TElementType> toRemove;
 			for (auto& el : *this)
 			{

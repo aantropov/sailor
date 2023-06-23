@@ -57,9 +57,9 @@ namespace Sailor
 			float m_deltaTimeSeconds = 0.0f;
 			glm::ivec2 m_mouseDelta{ 0.0f, 0.0f };
 			glm::ivec2 m_mouseDeltaToCenter{ 0.0f,0.0f };
-			FrameInputState m_inputState;
-			std::array<RHI::RHICommandListPtr, NumCommandLists> m_updateResourcesCommandBuffers;
-			Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
+			FrameInputState m_inputState{};
+			std::array<RHI::RHICommandListPtr, NumCommandLists> m_updateResourcesCommandBuffers{};
+			Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui{};
 			WorldPtr m_world;
 		};
 

@@ -68,7 +68,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		SAILOR_API VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, const TVector<VkVertexInputAttributeDescription> attributes);
+		SAILOR_API VulkanStateVertexDescription(const VkVertexInputBindingDescription& binding, TVector<VkVertexInputAttributeDescription> attributes);
 
 		SAILOR_API void Apply(struct VkGraphicsPipelineCreateInfo& state) const override;
 

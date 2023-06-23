@@ -39,7 +39,7 @@ class ShaderIncluder : public shaderc::CompileOptions::IncluderInterface
 
 		auto container = new std::array<std::string, 2>;
 		(*container)[0] = requestedSource;
-		(*container)[1] = contents;
+		(*container)[1] = std::move(contents);
 
 		shaderc_include_result* data = new shaderc_include_result();
 
@@ -460,7 +460,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 		{
 			yamlNode = YAML::Load(shaderText);
 		}
-		catch (std::exception e)
+		catch (const std::exception& e)
 		{
 			SAILOR_LOG_ERROR("Cannot parse YAML: %s, %s", filepath.c_str(), e.what());
 		}
@@ -582,6 +582,9 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 	case RHI::EShaderStage::Compute:
 		kind = shaderc_glsl_compute_shader;
 		break;
+	default:
+		check(false);
+		break;
 	}
 
 	/*
@@ -600,13 +603,13 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 		return false;
 	}*/
 
-	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source.c_str(), kind, filename.c_str(), "main", options);
+	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, filename.c_str(), "main", options);
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
 	{
 		const size_t numErrors = module.GetNumErrors();
 		const size_t numWarnings = module.GetNumWarnings();
-		const std::string fullError = module.GetErrorMessage().c_str();
+		const std::string fullError = module.GetErrorMessage();
 
 		uint32_t start = 0;
 		bool bFound = false;
@@ -615,7 +618,7 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 		SAILOR_LOG("Failed to compile shader");
 
 		uint32_t errorNum = 1;
-		auto errors = Utils::SplitStringByLines(fullError.c_str());
+		auto errors = Utils::SplitStringByLines(fullError);
 		for (const auto& error : errors)
 		{
 			SAILOR_LOG_ERROR("Error %d: %s", errorNum++, error.c_str());

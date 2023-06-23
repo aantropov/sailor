@@ -41,7 +41,7 @@ namespace Sailor::Memory
 	protected:
 
 		VkMemoryPropertyFlags m_memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-		VkBufferUsageFlags m_usage;
+		VkBufferUsageFlags m_usage{};
 		VkSharingMode m_sharing = VkSharingMode::VK_SHARING_MODE_CONCURRENT;
 	};
 

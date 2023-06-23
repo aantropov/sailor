@@ -209,7 +209,7 @@ VulkanShaderModule::VulkanShaderModule(VulkanDevicePtr pDevice, const RHI::Shade
 
 VulkanShaderModule::~VulkanShaderModule()
 {
-	Release();
+	VulkanShaderModule::Release();
 }
 
 void VulkanShaderModule::Compile()

@@ -17,7 +17,7 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TV
 
 VulkanDescriptorSetLayout::~VulkanDescriptorSetLayout()
 {
-	Release();
+	VulkanDescriptorSetLayout::Release();
 }
 
 bool VulkanDescriptorSetLayout::operator==(const VulkanDescriptorSetLayout& rhs) const
@@ -206,7 +206,7 @@ void VulkanDescriptorSet::Release()
 
 VulkanDescriptorSet::~VulkanDescriptorSet()
 {
-	Release();
+	VulkanDescriptorSet::Release();
 }
 
 VulkanDescriptor::VulkanDescriptor(uint32_t dstBinding, uint32_t dstArrayElement, VkDescriptorType descriptorType) :

@@ -234,6 +234,5 @@ uint32_t ConsoleWindow::Read(char* OutBuffer, uint32_t BufferSize)
 	// adjust buffer
 	memmove(m_buffer, m_buffer + eol_pos + 1, BufferSize - eol_pos - 1);
 
-	BufferSize -= eol_pos + 1;
 	return (uint32_t)strlen(out);
 }

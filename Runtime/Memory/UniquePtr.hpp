@@ -11,7 +11,7 @@ namespace Sailor
 	public:
 
 		template<typename... TArgs>
-		static TUniquePtr<T> Make(TArgs&&... args) noexcept
+		static TUniquePtr<T> Make(TArgs&&... args)
 		{
 			return TUniquePtr<T>(new T(std::forward<TArgs>(args)...));
 		}

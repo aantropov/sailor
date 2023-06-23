@@ -18,7 +18,7 @@
 namespace Sailor
 {
 	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
-	class TOctree final
+	class TOctree
 	{
 		static constexpr uint32_t NumElementsInNode = 8u;
 
@@ -26,7 +26,7 @@ namespace Sailor
 
 		struct TBounds
 		{
-			TBounds() {}
+			TBounds() = default;
 			TBounds(const glm::ivec3& pos, const glm::ivec3& extents) : m_position(pos), m_extents(extents) {}
 
 			bool operator==(const TBounds& rhs) const { return m_position == rhs.m_position || m_extents == rhs.m_extents; }

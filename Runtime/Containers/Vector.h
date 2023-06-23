@@ -25,8 +25,13 @@ namespace Sailor
 
 		TVectorIterator() : m_element(nullptr) {}
 
-		TVectorIterator(const TVectorIterator&) = default;
-		TVectorIterator(TVectorIterator&&) = default;
+		TVectorIterator(const TVectorIterator& rhs) : m_element(rhs.m_element) {}
+
+		TVectorIterator(TVectorIterator&& rhs)
+		{
+			m_element = rhs.m_element;
+			rhs.m_element = nullptr;
+		}
 
 		~TVectorIterator() = default;
 

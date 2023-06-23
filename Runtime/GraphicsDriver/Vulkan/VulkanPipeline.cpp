@@ -33,7 +33,7 @@ VulkanPipelineLayout::VulkanPipelineLayout(
 
 VulkanPipelineLayout::~VulkanPipelineLayout()
 {
-	Release();
+	VulkanPipelineLayout::Release();
 }
 
 void VulkanPipelineLayout::Release()

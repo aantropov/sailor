@@ -68,7 +68,7 @@ std::string Utils::wchar_to_UTF8(const wchar_t* in)
 std::wstring Utils::UTF8_to_wchar(const char* in)
 {
 	std::wstring out;
-	uint32_t codepoint;
+	uint32_t codepoint = 0;
 	while (*in != 0)
 	{
 		unsigned char ch = static_cast<unsigned char>(*in);
@@ -112,8 +112,7 @@ DWORD Utils::GetRandomColorHex()
 
 void Utils::SetThreadName(size_t dwThreadID, const std::string& threadName)
 {
-	HRESULT r;
-	r = SetThreadDescription(
+	SetThreadDescription(
 		(HANDLE)(dwThreadID),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
@@ -121,8 +120,7 @@ void Utils::SetThreadName(size_t dwThreadID, const std::string& threadName)
 
 void Utils::SetThreadName(const std::string& threadName)
 {
-	HRESULT r;
-	r = SetThreadDescription(
+	SetThreadDescription(
 		GetCurrentThread(),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
@@ -130,8 +128,7 @@ void Utils::SetThreadName(const std::string& threadName)
 
 void Utils::SetThreadName(std::thread* thread, const std::string& threadName)
 {
-	HRESULT r;
-	r = SetThreadDescription(
+	SetThreadDescription(
 		(HANDLE)thread->native_handle(),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
@@ -140,7 +137,7 @@ void Utils::SetThreadName(std::thread* thread, const std::string& threadName)
 std::string Utils::RemoveFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
-	size_t lastdot = filename.find_last_of(".");
+	size_t lastdot = filename.find_last_of('.');
 	lastdot++;
 	if (lastdot == std::string::npos)
 		return filename;
@@ -161,7 +158,7 @@ std::string Utils::GetFileFolder(const std::string& filepath)
 std::string Utils::GetFileExtension(const std::string& filename)
 {
 	SAILOR_PROFILE_FUNCTION();
-	size_t lastdot = filename.find_last_of(".");
+	size_t lastdot = filename.find_last_of('.');
 	lastdot++;
 	if (lastdot == std::string::npos)
 		return std::string();

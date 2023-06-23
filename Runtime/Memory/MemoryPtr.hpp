@@ -78,7 +78,7 @@ namespace Sailor::Memory
 			if (m_pRawPtr.has_value() && m_pAllocator)
 			{
 				auto allocator = m_pAllocator.Lock();
-				allocator->Free(m_pRawPtr.value());
+				allocator->Free(*m_pRawPtr);
 			}
 		}
 

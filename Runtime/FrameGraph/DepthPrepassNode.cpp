@@ -126,7 +126,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraph* frameGr
 			SAILOR_PROFILE_END_BLOCK();
 
 			syncSharedResources.Unlock();
-		});
+		}, Tasks::EThreadType::RHI);
 
 	return res;
 }

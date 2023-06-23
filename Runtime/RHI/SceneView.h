@@ -103,9 +103,9 @@ namespace Sailor::RHI
 		TVector<Tasks::TaskPtr<RHI::RHICommandListPtr>> m_debugDraw;
 		TVector<RHISceneViewSnapshot> m_snapshots;
 
-		WorldPtr m_world;
-		float m_deltaTime;
-		float m_currentTime;
+		WorldPtr m_world{};
+		float m_deltaTime{};
+		float m_currentTime{};
 
 	public:
 		void Clear();

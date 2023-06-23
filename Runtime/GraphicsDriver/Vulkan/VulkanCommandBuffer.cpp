@@ -95,7 +95,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& col
 	ClearDependencies();
 
 	//TODO: Pass inheritanceFlags
-	const bool bHasStencil = depthStencilAttachment && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment) & VK_IMAGE_ASPECT_STENCIL_BIT);
+	const bool bHasStencil = depthStencilAttachment != VkFormat::VK_FORMAT_UNDEFINED && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment) & VK_IMAGE_ASPECT_STENCIL_BIT);
 
 	VkCommandBufferInheritanceRenderingInfoKHR attachments{};
 	attachments.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO;
@@ -999,9 +999,6 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat 
 	barrier.subresourceRange = image->m_subresourceRange;
 	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
 
-	barrier.srcAccessMask = 0; // TODO
-	barrier.dstAccessMask = 0; // TODO
-
 	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout);
 	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout);
 
@@ -1043,9 +1040,6 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	barrier.subresourceRange.levelCount = image->m_mipLevels;
 	barrier.subresourceRange.baseArrayLayer = 0;
 	barrier.subresourceRange.layerCount = image->m_arrayLayers;
-
-	barrier.srcAccessMask = 0; // TODO
-	barrier.dstAccessMask = 0; // TODO
 
 	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout);
 	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout);

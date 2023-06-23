@@ -50,7 +50,7 @@ namespace Sailor
 			AssignRawPtr(pRawPtr, nullptr);
 
 			// We're storing object
-			m_pControlBlock->m_sharedPtrCounter = pRawPtr ? 1 : 0;
+			m_pControlBlock->m_sharedPtrCounter = 1;
 		}
 
 		// Basic copy/assignment

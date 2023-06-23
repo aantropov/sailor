@@ -66,17 +66,17 @@ namespace Sailor
 		void ForcelyUpdateUniforms();
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
-		std::atomic<bool> m_bIsDirty;
+		std::atomic<bool> m_bIsDirty{};
 
 		ShaderSetPtr m_shader{};
 		RHI::RHIShaderBindingSetPtr m_commonShaderBindings{};
 
-		RHI::RenderState m_renderState;
+		RHI::RenderState m_renderState{};
 
-		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_rhiMaterials;
-		TConcurrentMap<std::string, TexturePtr> m_samplers;
-		TConcurrentMap<std::string, glm::vec4> m_uniformsVec4;
-		TConcurrentMap<std::string, float> m_uniformsFloat;
+		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_rhiMaterials{};
+		TConcurrentMap<std::string, TexturePtr> m_samplers{};
+		TConcurrentMap<std::string, glm::vec4> m_uniformsVec4{};
+		TConcurrentMap<std::string, float> m_uniformsFloat{};
 
 		friend class MaterialImporter;
 	};

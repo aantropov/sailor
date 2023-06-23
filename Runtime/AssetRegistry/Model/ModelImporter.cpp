@@ -56,87 +56,85 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 {
 	MaterialAsset::Data data;
 
-	if (mesh->mMaterialIndex >= 0)
+	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+
+	data.m_name = material->GetName().C_Str();
+
+	const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(material, aiTextureType_DIFFUSE);
+	const TVector<std::string> specularMaps = TraceUsedTextures_Assimp(material, aiTextureType_SPECULAR);
+	const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(material, aiTextureType_AMBIENT);
+	const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(material, aiTextureType_NORMALS);
+	const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(material, aiTextureType_EMISSIVE);
+
+	data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Standard.shader");
+
+	glm::vec4 diffuse{};
+	glm::vec4 ambient{};
+	glm::vec4 emission{};
+	glm::vec4 specular{};
+
+	auto FillData = [](const aiMaterialProperty* property, const std::string& name, glm::vec4* ptr)
 	{
-		aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-
-		data.m_name = material->GetName().C_Str();
-
-		const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(material, aiTextureType_DIFFUSE);
-		const TVector<std::string> specularMaps = TraceUsedTextures_Assimp(material, aiTextureType_SPECULAR);
-		const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(material, aiTextureType_AMBIENT);
-		const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(material, aiTextureType_NORMALS);
-		const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(material, aiTextureType_EMISSIVE);
-
-		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Standard.shader");
-
-		glm::vec4 diffuse{};
-		glm::vec4 ambient{};
-		glm::vec4 emission{};
-		glm::vec4 specular{};
-
-		auto FillData = [](const aiMaterialProperty* property, const std::string& name, glm::vec4* ptr)
+		const string key = property->mKey.C_Str();
+		TVector<size_t> locations;
+		Utils::FindAllOccurances(key, name, locations, 0);
+		if (locations.Num() > 0)
 		{
-			const string key = property->mKey.C_Str();
-			TVector<size_t> locations;
-			Utils::FindAllOccurances(key, name, locations, 0);
-			if (locations.Num() > 0)
+			memcpy(ptr, property->mData, property->mDataLength);
+			return true;
+		}
+
+		return false;
+	};
+
+	for (uint32_t i = 0; i < material->mNumProperties; i++)
+	{
+		const auto property = material->mProperties[i];
+		if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
+		{
+			if (FillData(property, std::string("diffuse"), &diffuse) ||
+				FillData(property, std::string("ambient"), &ambient) ||
+				FillData(property, std::string("emission"), &emission) ||
+				FillData(property, std::string("specular"), &specular))
 			{
-				memcpy(ptr, property->mData, property->mDataLength);
-				return true;
+				continue;
 			}
-
-			return false;
-		};
-
-		for (uint32_t i = 0; i < material->mNumProperties; i++)
-		{
-			const auto property = material->mProperties[i];
-			if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
-			{
-				if (FillData(property, std::string("diffuse"), &diffuse) ||
-					FillData(property, std::string("ambient"), &ambient) ||
-					FillData(property, std::string("emission"), &emission) ||
-					FillData(property, std::string("specular"), &specular))
-				{
-					continue;
-				}
-			}
-		}
-
-		data.m_uniformsVec4.Add({ "material.albedo", diffuse });
-		data.m_uniformsVec4.Add({ "material.ambient", ambient });
-		data.m_uniformsVec4.Add({ "material.emission", emission });
-		data.m_uniformsVec4.Add({ "material.specular", specular });
-
-		data.m_uniformsFloat.Add({ "material.roughness" , 1.0f });
-		data.m_uniformsFloat.Add({ "material.metallic" , 1.0f });
-
-		if (!diffuseMaps.IsEmpty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("albedoTexture", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));
-		}
-
-		if (!ambientMaps.IsEmpty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + ambientMaps[0])));
-		}
-
-		if (!normalMaps.IsEmpty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + normalMaps[0])));
-		}
-
-		if (!specularMaps.IsEmpty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + specularMaps[0])));
-		}
-
-		if (!emissionMaps.IsEmpty())
-		{
-			data.m_samplers.Add(MaterialAsset::SamplerEntry("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + emissionMaps[0])));
 		}
 	}
+
+	data.m_uniformsVec4.Add({ "material.albedo", diffuse });
+	data.m_uniformsVec4.Add({ "material.ambient", ambient });
+	data.m_uniformsVec4.Add({ "material.emission", emission });
+	data.m_uniformsVec4.Add({ "material.specular", specular });
+
+	data.m_uniformsFloat.Add({ "material.roughness" , 1.0f });
+	data.m_uniformsFloat.Add({ "material.metallic" , 1.0f });
+
+	if (!diffuseMaps.IsEmpty())
+	{
+		data.m_samplers.Add(MaterialAsset::SamplerEntry("albedoTexture", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));
+	}
+
+	if (!ambientMaps.IsEmpty())
+	{
+		data.m_samplers.Add(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + ambientMaps[0])));
+	}
+
+	if (!normalMaps.IsEmpty())
+	{
+		data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + normalMaps[0])));
+	}
+
+	if (!specularMaps.IsEmpty())
+	{
+		data.m_samplers.Add(MaterialAsset::SamplerEntry("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + specularMaps[0])));
+	}
+
+	if (!emissionMaps.IsEmpty())
+	{
+		data.m_samplers.Add(MaterialAsset::SamplerEntry("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + emissionMaps[0])));
+	}
+
 	return data;
 }
 

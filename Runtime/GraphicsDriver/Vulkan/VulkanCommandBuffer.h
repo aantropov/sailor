@@ -137,7 +137,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	protected:
 
 		TVector<VkFormat> m_currentAttachments;
-		VkFormat m_currentDepthAttachment;
+		VkFormat m_currentDepthAttachment = VkFormat::VK_FORMAT_UNDEFINED;
 
 		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
 		VulkanImagePtr m_depthStencilAttachmentDependency;

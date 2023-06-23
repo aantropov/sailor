@@ -26,7 +26,7 @@ namespace Sailor::Memory
 				size_t m_pageIndex = 0;
 				size_t m_size = 0;
 				bool m_bIsFree : 1;
-				uint8_t m_meta;
+				uint8_t m_meta = 0;
 			};
 
 			class Page

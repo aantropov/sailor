@@ -25,8 +25,8 @@ namespace Sailor
 
 		SAILOR_API MaterialAssetInfoHandler(AssetRegistry* assetRegistry);
 
-		SAILOR_API virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const;
-		SAILOR_API virtual AssetInfoPtr CreateAssetInfo() const;
+		SAILOR_API virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
+		SAILOR_API AssetInfoPtr CreateAssetInfo() const;
 
 		SAILOR_API virtual ~MaterialAssetInfoHandler() = default;
 	};

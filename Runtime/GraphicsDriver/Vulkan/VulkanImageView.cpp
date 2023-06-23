@@ -17,7 +17,7 @@ void VulkanImageView::Release()
 
 VulkanImageView::~VulkanImageView()
 {
-	Release();
+	VulkanImageView::Release();
 }
 
 VulkanImageView::VulkanImageView(VulkanDevicePtr device, VulkanImagePtr image) :

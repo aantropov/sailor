@@ -42,7 +42,25 @@ namespace Sailor::Memory
 
 			MemoryBlock(const MemoryBlock& memoryBlock) = delete;
 			MemoryBlock& operator=(const MemoryBlock& memoryBlock) = delete;
-			MemoryBlock& operator=(MemoryBlock&& memoryBlock) = default;
+			MemoryBlock& operator=(MemoryBlock&& memoryBlock)
+			{
+				m_ptr = memoryBlock.m_ptr;
+				m_blockSize = memoryBlock.m_blockSize;
+				m_emptySpace = memoryBlock.m_emptySpace;
+				m_blockIndex = memoryBlock.m_blockIndex;
+				m_owner = memoryBlock.m_owner;
+				m_layout = std::move(memoryBlock.m_layout);
+				m_notTrackedEmptySpace = memoryBlock.m_notTrackedEmptySpace;
+				m_bIsOutOfSync = memoryBlock.m_bIsOutOfSync;
+
+				memoryBlock.m_owner = nullptr;
+				memoryBlock.m_blockIndex = InvalidIndex;
+				memoryBlock.m_emptySpace = 0;
+				memoryBlock.m_blockSize = 0;
+				memoryBlock.m_layout.clear();
+				memoryBlock.m_notTrackedEmptySpace = 0;
+				memoryBlock.m_bIsOutOfSync = false;
+			}
 
 			MemoryBlock(MemoryBlock&& memoryBlock) noexcept
 			{

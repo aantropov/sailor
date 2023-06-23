@@ -54,9 +54,9 @@ namespace Sailor::RHI
 		struct Vulkan
 		{
 			GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment);
-			TVector<GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr> m_pipelines;
+			TVector<GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr> m_pipelines{};
 
-		} m_vulkan;
+		} m_vulkan{};
 #endif
 		SAILOR_API RHIMaterial(RenderState renderState, RHIShaderPtr vertexShader, RHIShaderPtr fragmentShader) :
 			m_renderState(std::move(renderState)),

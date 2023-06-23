@@ -249,7 +249,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			if (m_driverInstance->AcquireNextImage())
 			{
-				if (!bRunCommandLists && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+				if (!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 				{
 					auto rhiFrameGraph = m_frameGraph->GetRHI();
 

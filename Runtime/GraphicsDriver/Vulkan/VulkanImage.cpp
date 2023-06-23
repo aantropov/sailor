@@ -32,7 +32,7 @@ VkMemoryRequirements VulkanImage::GetMemoryRequirements() const
 
 VulkanImage::~VulkanImage()
 {
-	Release();
+	VulkanImage::Release();
 }
 
 VulkanImage::VulkanImage(VulkanDevicePtr device) :

@@ -15,9 +15,9 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API virtual void BeginPlay();
-		SAILOR_API virtual void EndPlay();
-		SAILOR_API virtual void Tick(float deltaTime);
+		SAILOR_API void BeginPlay();
+		SAILOR_API void EndPlay();
+		SAILOR_API void Tick(float deltaTime);
 
 		SAILOR_API void SetName(std::string name) { m_name = std::move(name); }
 		SAILOR_API const std::string& GetName() const { return m_name; }

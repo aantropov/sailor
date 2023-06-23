@@ -261,7 +261,6 @@ void App::Shutdown()
 	RemoveSubmodule<TextureAssetInfoHandler>();
 	RemoveSubmodule<ModelAssetInfoHandler>();
 	RemoveSubmodule<FrameGraphAssetInfoHandler>();
-	RemoveSubmodule<ImGuiApi>();
 
 	// We need to finish all jobs before release
 	GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
@@ -279,6 +278,7 @@ void App::Shutdown()
 
 	RemoveSubmodule<AssetRegistry>();
 
+	RemoveSubmodule<ImGuiApi>();
 	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<Tasks::Scheduler>();
 

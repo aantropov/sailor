@@ -224,7 +224,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
 		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader);
 		SAILOR_API TVector<bool> IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
-		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout, 
+		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout,
 			//const TVector<TVector<RHI::ShaderLayoutBinding>>& shaderLayoutBindings,
 			const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
 
@@ -279,7 +279,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
 		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 24 };
 
-		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance;
+		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance{};
 
 		RHI::RHIRenderTargetPtr m_backBuffer;
 		RHI::RHIRenderTargetPtr m_depthStencilBuffer;

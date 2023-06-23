@@ -51,7 +51,7 @@ namespace Sailor
 	protected:
 
 		TVector<RHI::RHIMeshPtr> m_meshes;
-		std::atomic<bool> m_bIsReady;
+		std::atomic<bool> m_bIsReady{};
 
 		Math::AABB m_boundsAabb;
 		Math::Sphere m_boundsSphere;
