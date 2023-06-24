@@ -19,6 +19,7 @@ Currently the code is tested only on `Windows`, using `MSVC` (Microsoft Visual S
 - [Concept](#Concept)
   - [Why?](#Why)
   - [Building for Windows](#WindowsBuild)
+- [Infrastructure](#Infrastructure)
 - [Asset Management](#AssetManagement)
   - [AssetInfo and AssetFile](#AssetInfo)
   - [Asset Importers](#AssetImporters)
@@ -39,6 +40,7 @@ Currently the code is tested only on `Windows`, using `MSVC` (Microsoft Visual S
 - [Game Code](#GameCode)
   - [ECS](#ECS)
   - [GameObjects and Components](#Components)
+- [Feature List](#FeatureList)
 - [Third Parties](#ThirdParties)
 
 ## <a name="Concept"></a> Concept
@@ -80,3 +82,25 @@ Why did you decide to write the basic code such as containers, window creation, 
 ```
 
 - If cmake finished successfully, it will create a Sailor.sln file in the build directory that can be opened with visual studio. Right click the SailorExec project -> set as startup project. Change from debug to release, and then build and start without debugging.
+
+## <a name="Infrastructure"></a> Infrastructure
+#### Repository infrastructure
+There are 2 main projects in MSVC solution, `SailorLib` and `SailorExec`, which have 2 binary outputs, `Sailor.lib` and `Sailor.exe`, correspondingly.
+- `/Runtime` folder contains the game engine source code
+- `/Content` folder contains assets.
+- `/Content/Shaders` contains shaders.
+- `/Cache` folder consists of temporary objects, such as compiled shader binaries, precalculated data, etc..
+- Third parties are located under `/External` folder and added to the repository as git submodules.
+
+#### Core functionaly
+The `Sailor's` core functionality is implemented with a number of `TSubmodule<T>` that allows to control lifetime/order of initialization and decrease the coupling. The idea under internal submodules is based on:
+- Implement a high level layer of abstraction with 'single responsibility' instances.
+- Avoid the usage of singletons and make the code more friendly for test writing.
+- Create a simple mechanism that allows easy add new core functionality.
+
+## <a name="AssetManagement"></a> Asset Management
+### <a name="AssetInfo"></a> AssetInfo and AssetFile
+### <a name="AssetImporters"></a> Asset Importers
+
+
+  
