@@ -101,7 +101,7 @@ The `Sailor's` core functionality is implemented with a number of `TSubmodule<T>
 ## <a name="AssetManagement"></a> Asset Management
 The idea under `Sailor's` `AssetManagement` is similar to `Unity's` approach. For each asset, game engine generates `.asset` meta file under the same folder, which stores detailed information about the asset, how the asset should be imported, id, import time and other parameters.
 
-The engine handles timestamps of asset files and asset info, which are used to find outdated files.
+The engine handles timestamps of files in meta, and uses them to find outdated assets.
 The game engine API operates with unique ids `UIDs` which are generated during asset import and stored in the '.asset' files.
 
 ### <a name="AssetInfo"></a> AssetInfo and AssetFile
@@ -109,7 +109,7 @@ The game engine API operates with unique ids `UIDs` which are generated during a
 `AssetInfo` instances are serialized/deserialized to `Yaml` format which is chosen by its human readability.
 
 Each asset type (model, texture, render config, material, shader and others) has derived meta, which 'extends' the base POD class with extra properties, 
-'ModelAssetInfo', `TextureAssetInfo`, `MaterialAssetInfo` and others.
+`ModelAssetInfo`, `TextureAssetInfo`, `MaterialAssetInfo` and others.
 
 ### <a name="AssetImporters"></a> Asset Importers
 
