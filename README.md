@@ -99,8 +99,43 @@ The `Sailor's` core functionality is implemented with a number of `TSubmodule<T>
 - Create a simple mechanism that allows easy add new core functionality.
 
 ## <a name="AssetManagement"></a> Asset Management
+The idea under `Sailor's` `AssetManagement` is similar to `Unity's` approach. For each asset, game engine generates `.asset` meta file under the same folder, which stores detailed information about the asset, how the asset should be imported, id, import time and other parameters.
+
+The engine handles timestamps of asset files and asset info, which are used to find outdated files.
+The game engine API operates with unique ids `UIDs` which are generated during asset import and stored in the '.asset' files.
+
 ### <a name="AssetInfo"></a> AssetInfo and AssetFile
+`AssetInfo` class is a base class of meta information which stores just `UID`, timestamps and asset filename. 
+`AssetInfo` instances are serialized/deserialized to `Yaml` format which is chosen by its human readability.
+
+Each asset type (model, texture, render config, material, shader and others) has derived meta, which 'extends' the base POD class with extra properties, 
+'ModelAssetInfo', `TextureAssetInfo`, `MaterialAssetInfo` and others.
+
 ### <a name="AssetImporters"></a> Asset Importers
 
+`AssetRegistry` is a main submodule which contains scan functionality, handles the asset infos library and registers/unregisters `AssetInfoHandlers`.
+`IAssetInfoHandler` is an interface which provides callbacks for basic asset importers logic, such as dispatcherization by extension during asset importing/loading.
+`IAssetInfoHandlerListener` is an interface which provides callbacks for resolving outdated assets.
 
-  
+`ModelImporter`, `TextureImporter`, `MaterialImporter` and others are submodules with loading logic, also these instances handle the loaded assets and prevent them from being destructed.
+There is no basic class for importers, but all of them follows the general approach:
+- They have async loading method `Tasks::TaskPtr<bool> AssetImporter::LoadAsset(UID uid, AssetPtr& outAsset);`
+- They have instant loading method `bool AssetImporter::LoadModel_Immediate(UID uid, AssetPtr& outAsset);`
+- They contain `ObjectAllocator`, which handle all assets of the same type in one place.
+- They resolve loading promises and hot reload logic.
+
+This code loads `Sponza.obj` model asynchroniously, while the 'contract' returns a valid `ObjectPtr` instance immediately. 
+```
+ModelPtr pModel = nullptr;
+if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
+{
+  App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), pModel);
+}
+
+...
+
+if(!pModel->IsReady())
+{
+  SAILOR_LOG("We should wait a bit");
+}
+```
