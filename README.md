@@ -98,6 +98,19 @@ The `Sailor's` core functionality is implemented with a number of `TSubmodule<T>
 - Avoid the usage of singletons and make the code more friendly for test writing.
 - Create a simple mechanism that allows easy add new core functionality.
 
+This code creates the instance of `CustomSubmodule`
+```
+// Declaration
+class CustomSubmodule : public TSubmodule<CustomSubmodule> { ... };
+
+...
+
+// Usage
+App::AddSubmodule(TSubmodule<CustomSubmodule>::Make());
+App::GetSubmodule<CustomSubmodule>()->Function();
+App::RemoveSubmodule<CustomSubmodule>();
+```
+
 ## <a name="AssetManagement"></a> Asset Management
 The idea under `Sailor's` `AssetManagement` is similar to `Unity's` approach. For each asset, game engine generates `.asset` meta file under the same folder, which stores detailed information about the asset, how the asset should be imported, id, import time and other parameters.
 
