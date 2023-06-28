@@ -24,7 +24,7 @@ Currently the code is tested only on `Windows`, using `MSVC` (Microsoft Visual S
   - [AssetInfo and AssetFile](#AssetInfo)
   - [Asset Importers](#AssetImporters)
 - [Memory Management](#MemoryManagement)
-  - [Memory Allocator](#MemoryAllocator)
+  - [Memory Allocators](#MemoryAllocators)
   - [Smart Pointers](#SmartPointers)
 - [Multi-Threading](#MultiThreading)
   - [Threads](#MTThreads)
@@ -157,14 +157,43 @@ if(!pModel->IsReady())
 A explanation of the few different memory management systems in `Sailor`: Memory Allocators, Smart Pointers, and Standard C++ Memory Management.
 The engine is designed to use a number of memory management approaches to achieve the best results in aspect of Memory Management and all memory management related code is located under `/Runtime/Memory` folder. 
 
-### <a name="MemoryAllocator"></a> Memory Allocator
-There are different types of CPU allocators persist in the engine. 
-Global allocators contain static allocate/free functions together with non static methods to allow engine developers to use different allocation strategies including inline allocators. 
-- MallocAllocator - that is a global allocator that contains contract for the usage of malloc/free from standart library.
-- LockFreeHeapAllocator - that is a global allocator based on HeapAllocator (by design we have an instance of HeapAllocator per thread).
-- HeapAllocator - that is an allocator inspired by `id Tech 4` engine. The allocator uses different allocation strategies for different sizes of allocations.
+### <a name="MemoryAllocators"></a> Memory Allocators
+There are different types of allocators persist in the engine, and all of them are designed to solve different problems.
+
+Global allocators contain static 'allocate/free' functions together with non static 'Allocate/Free' methods to allow engine developers use different allocation strategies, including the inline allocators. 
+- `MallocAllocator` - that is a global allocator that contains contract for the usage of malloc/free from standart library.
+- `LockFreeHeapAllocator` - that is a thread-safe global allocator based on `HeapAllocator` (by design we have an instance of HeapAllocator per thread).
+
+The main CPU allocator is
+- `HeapAllocator` - that is an allocator inspired by `id Tech 4` engine. The allocator uses different allocation strategies for different sizes of allocations: pools for small, intrusive lists for medium and 'malloc/free' for huge.
+
+The pointer agnostic allocators are slow but used to handle any kind of memory, especially GPU memory management is based on them:
+- `TBlockAllocator` - Uses block allocation strategy. Designed as universal allocator for GPU memory management. Economic but slow.
+- `TPoolAllocator` - Uses pooling as main allocation strategy. Faster than `TBlockAllocator` but have more memory consumption. Could be used for GPU texture memory management.
+- `TMultiPoolAllocator` - Uses multi pools per allocation size. Faster than `TPoolAllocator`, but have much more memory consumption.
+
+The pointer agnostic allocators are based on `TMemoryPtr<T>` and `TManagedMemory<T>` which provides the contract for memory operations such as 'shift', 'offset' pointers and others.
+
+- `ObjectAllocator` - That is a main 'game-thread' allocator which is used for tracking of game objects and asset instances. All high level entities such as `Components`, `GameObjects`, `Textures`, `Models`, and others must be created with 
+the instance of the `ObjectAllocator`. The allocator is thread safe.
+The core idea is to have many `ObjectAllocators` which store the objects by its scopes: `AssetImporters` stores all `Assets` by its types in the same memory, `World` also has the main `ObjectAllocator` which stores all world's game objects and its data together, etc..
+That allows directly splits memory by different logic and better hit the cache.
 
 ### <a name="SmartPointers"></a> Smart Pointers
+`Sailor` has a custom implementation of C++11 smart pointers designed to ease the burden of memory allocation and tracking. 
+This implementation includes the industry standard `Shared Pointers`, `Weak Pointers`, and `Unique Pointers`.
+It also adds `Object Pointer` which is designed for high-level, game memory management and `Ref Pointer` which is fast, simple pointer used in the renderer's code.
+
+- `TSharedPtr` - A Shared Pointer owns the object it references, indefinitely preventing deletion of that object, and ultimately handling its deletion when no Shared Pointer references it. 
+A Shared Pointer can be empty, meaning it doesn't reference any object.
+- `TWeakPtr` - Weak Pointers are similar to Shared Pointers, but do not own the object they reference, and therefore do not affect its lifecycle. This property can be very useful, as it breaks reference cycles, but it also means that a Weak Pointer can become null at any time, without warning. 
+For this reason, a Weak Pointer can produce a Shared Pointer to the object it references, ensuring programmers safe access to the object on a temporary basis.
+- `TUniquePtr` - A Unique Pointer solely and explicitly owns the object it references. Since there can only be one Unique Pointer to a given resource, 
+Unique Pointers can transfer ownership, but cannot share it. Any attempts to copy a Unique Pointer will result in a compile error. 
+When a Unique Pointer is goes out of scope, it will automatically delete the object it references.
+- `TRefPtr` - A Reference Pointer owns the object in the similar way of `TSharedPtr`, but the technical realisation is intrusive and stored objects must be derived from `TRefPtrBase`. The pointer occupies only 8 bytes on x64 platform.
+- `TObjectPtr` - An Object Pointer owns the object in the similar way of `TSharedPtr`, but allows programmer forcely delete the object without producing of dangling pointers. 
+There must be specified the instance of `ObjectAllocator` to create the instance of `ObjectPtr`.
 
 ## <a name="MultiThreading"></a> Multi-Threading
 ### <a name="MTThreads"></a> Threads
