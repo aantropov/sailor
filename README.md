@@ -195,6 +195,18 @@ When a Unique Pointer is goes out of scope, it will automatically delete the obj
 - `TObjectPtr` - An Object Pointer owns the object in the similar way of `TSharedPtr`, but allows programmer forcely delete the object without producing of dangling pointers. 
 There must be specified the instance of `ObjectAllocator` to create the instance of `ObjectPtr`.
 
+The folowing code creates the instances of objects and stores them into the pointers.
+```
+// RefPtr
+RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+
+...
+
+// ObjectPtr
+Memory::ObjectAllocatorPtr allocator = Memory::ObjectAllocatorPtr::Make();
+ModelPtr model = ModelPtr::Make(allocator, uid);
+```
+
 ## <a name="MultiThreading"></a> Multi-Threading
 ### <a name="MTThreads"></a> Threads
 ### <a name="ECS"></a> ECS
