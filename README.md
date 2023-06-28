@@ -62,7 +62,7 @@ Why is the engine called 'Sailor'?
 Why do you need to 'write one more renderer'?
 - The Sailor is not just a renderer. That's designed as a game engine and contains functionality that is usually avoided in 'just renderer' projects, for example: Tasks, Hot reloading, Shader compilation & reflection, Material system and Memory allocators.
 
-Why did you decide to write the basic code such as containers, window creation, etc.. with your own?
+Why did you decide to write the basic code such as containers, window creation, etc. with your own?
 - By technical and conceptual reasons.
 
 ### <a name="WindowsBuild"></a> Windows build instructions
@@ -89,7 +89,7 @@ There are 2 main projects in MSVC solution, `SailorLib` and `SailorExec`, which 
 - `/Runtime` folder contains the game engine source code
 - `/Content` folder contains assets.
 - `/Content/Shaders` contains shaders.
-- `/Cache` folder consists of temporary objects, such as compiled shader binaries, precalculated data, etc..
+- `/Cache` folder consists of temporary objects, such as compiled shader binaries, precalculated data, etc.
 - Third parties are located under `/External` folder and added to the repository as git submodules.
 
 #### Core functionaly
@@ -174,10 +174,9 @@ The pointer agnostic allocators are slow but used to handle any kind of memory, 
 
 The pointer agnostic allocators are based on `TMemoryPtr<T>` and `TManagedMemory<T>` which provides the contract for memory operations such as 'shift', 'offset' pointers and others.
 
-- `ObjectAllocator` - That is a main 'game-thread' allocator which is used for tracking of game objects and asset instances. All high level entities such as `Components`, `GameObjects`, `Textures`, `Models`, and others must be created with 
-the instance of the `ObjectAllocator`. The allocator is thread safe.
-The core idea is to have many `ObjectAllocators` which store the objects by its scopes: `AssetImporters` stores all `Assets` by its types in the same memory, `World` also has the main `ObjectAllocator` which stores all world's game objects and its data together, etc..
-That allows directly splits memory by different logic and better hit the cache.
+- `ObjectAllocator` - That is a main 'game-thread' allocator which is used for tracking of game objects and asset instances. All high level entities such as `Components`, `GameObjects`, `Textures`, `Models`, and others must be created with the instance of the `ObjectAllocator`. The allocator is thread safe.
+The core idea is to have many `ObjectAllocators` which store the objects by its scopes: `AssetImporters` stores all `Assets` by its types in the same memory, `World` also has the main `ObjectAllocator` which stores all world's game objects and its data together, etc. in similar way how is it organized in `BitSquid`/`Stingray`.
+That allows better control the memory and decrease the fragmentation. Also splitting the objects by its scopes better hits the cache.
 
 ### <a name="SmartPointers"></a> Smart Pointers
 `Sailor` has a custom implementation of C++11 smart pointers designed to ease the burden of memory allocation and tracking. 
