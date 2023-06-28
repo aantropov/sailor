@@ -23,13 +23,6 @@ Currently the code is tested only on `Windows`, using `MSVC` (Microsoft Visual S
 - [Asset Management](#AssetManagement)
   - [AssetInfo and AssetFile](#AssetInfo)
   - [Asset Importers](#AssetImporters)
-- [Rendering](#Rendering)
-  - [Vulkan Graphics Driver](#Vulkan)
-  - [Shaders Compilation](#Shader)
-  - [GPU Memory Management](#GPUMM)
-    - [GPU Allocator](#GPUMMAllocator)
-    - [GPU Managed Memory Pointers](#GPUMMMM)
-  - [Frame Graph](#FrameGraph)
 - [Memory Management](#MemoryManagement)
   - [Memory Allocator](#MemoryAllocator)
   - [Smart Pointers](#SmartPointers)
@@ -40,6 +33,13 @@ Currently the code is tested only on `Windows`, using `MSVC` (Microsoft Visual S
 - [Game Code](#GameCode)
   - [ECS](#ECS)
   - [GameObjects and Components](#Components)
+- [Rendering](#Rendering)
+  - [Vulkan Graphics Driver](#Vulkan)
+  - [Shaders Compilation](#Shader)
+  - [GPU Memory Management](#GPUMM)
+    - [GPU Allocator](#GPUMMAllocator)
+    - [GPU Managed Memory Pointers](#GPUMMMM)
+  - [Frame Graph](#FrameGraph)
 - [Feature List](#FeatureList)
 - [Third Parties](#ThirdParties)
 
@@ -133,7 +133,7 @@ Each asset type (model, texture, render config, material, shader and others) has
 `ModelImporter`, `TextureImporter`, `MaterialImporter` and others are submodules with loading logic, also these instances handle the loaded assets and prevent them from being destructed.
 There is no basic class for importers, but all of them follows the general approach:
 - They have async loading method `Tasks::TaskPtr<bool> AssetImporter::LoadAsset(UID uid, AssetPtr& outAsset);`
-- They have instant loading method `bool AssetImporter::LoadModel_Immediate(UID uid, AssetPtr& outAsset);`
+- They have instant loading method `bool AssetImporter::LoadAsset_Immediate(UID uid, AssetPtr& outAsset);`
 - They contain `ObjectAllocator`, which handle all assets of the same type in one place.
 - They resolve loading promises and hot reload logic.
 
@@ -152,3 +152,29 @@ if(!pModel->IsReady())
   SAILOR_LOG("We should wait a bit");
 }
 ```
+
+## <a name="MemoryManagement"></a> Memory Management
+A explanation of the few different memory management systems in `Sailor`: Memory Allocators, Smart Pointers, and Standard C++ Memory Management.
+The engine is designed to use a number of memory management approaches to achieve the best results in aspect of Memory Management and all memory management related code is located under `/Runtime/Memory` folder. 
+
+### <a name="MemoryAllocator"></a> Memory Allocator
+There are different types of CPU allocators persist in the engine. 
+Global allocators contain static allocate/free functions together with non static methods to allow engine developers to use different allocation strategies including inline allocators. 
+- MallocAllocator - that is a global allocator that contains contract for the usage of malloc/free from standart library.
+- LockFreeHeapAllocator - that is a global allocator based on HeapAllocator (by design we have an instance of HeapAllocator per thread).
+- HeapAllocator - that is an allocator inspired by `id Tech 4` engine. The allocator uses different allocation strategies for different sizes of allocations.
+
+### <a name="SmartPointers"></a> Smart Pointers
+
+## <a name="MultiThreading"></a> Multi-Threading
+### <a name="MTThreads"></a> Threads
+### <a name="ECS"></a> ECS
+### <a name="Tasks"></a> Tasks
+
+## <a name="GameCode"></a> Game Code
+### <a name="ECS"></a> ECS
+### <a name="GameObjects and Components"></a> Components
+
+## <a name="Rendering"></a> Rendering
+## <a name="FeatureList"></a> Feature List
+## <a name="ThirdParties"></a> Third Parties
