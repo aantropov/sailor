@@ -49,22 +49,22 @@ The high-level rendering utilizes FrameGraph, mirroring the approach of the `Fro
 The coding standard mirrors that of `CryEngine`, with the contract of containers drawing inspiration from `Unreal Engine`. The codebase aligns with the belief that C++ code should be simultaneously readable and highly optimized. Templates are employed where they resolve issues, and overall, the code is somewhat simplified. Additionally, the Task's contract resembles that of C#'s Tasks.
 
 ### <a name="Why"></a> Why?
-Why is the engine named 'Sailor'?
-- Sailor, as a tool, assists you in setting your game development voyage underway. Sailor is the best in shipping.
+Why is the engine named '`Sailor`'?
+- `Sailor`, as a tool, assists you in setting your game development voyage underway. `Sailor` is the best in shipping.
 
 Why develop 'yet another renderer'?
-- Sailor extends beyond a simple renderer. It's conceived as a comprehensive game engine and incorporates functionalities often overlooked in 'mere renderer' projects, such as Tasks, Hot reloading, Shader compilation & reflection, Material system, and Memory allocators.
+- `Sailor` extends beyond a simple renderer. It's conceived as a comprehensive game engine and incorporates functionalities often overlooked in 'mere renderer' projects, such as Tasks, Hot reloading, Shader compilation & reflection, Material system, and Memory allocators.
 
 Why write the fundamental code such as containers, window creation, etc. on your own?
 - This decision was driven by technical and conceptual considerations.
 
 ### <a name="WindowsBuild"></a> Windows Build Instructions
-Follow the steps below to build the Sailor project on a Windows platform:
+Follow the steps below to build the `Sailor` project on a Windows platform:
 
 1. [Download and install the Windows Vulkan SDK](https://vulkan.lunarg.com/): Vulkan SDK provides all necessary tools, libraries and headers to develop Vulkan applications.
 2. [Download and install the Windows cmake x64 installer](https://cmake.org/download/): CMake is a tool that helps manage the build process of software using compiler-independent methods.
     - During the installation process, make sure to select "Add cmake to the system PATH for all users".
-3. Download the Sailor repository including all its submodules: The repository contains all the source code and assets needed to build and run the Sailor project.
+3. Download the `Sailor` repository including all its submodules: The repository contains all the source code and assets needed to build and run the `Sailor` project.
 
 #### Building for Visual Studio 2019/2022
 
@@ -95,7 +95,7 @@ The MSVC solution contains two main projects, namely `SailorLib` and `SailorExec
 
 ### <a name="CoreFunc"></a> Core Functionality
 
-The core functionality of `Sailor` is implemented using a set of `TSubmodule<T>` classes. These allow for control over initialization order/lifetime and reduce coupling between components. The design philosophy behind these internal submodules is to:
+The core functionality of Sailor is implemented using a set of `TSubmodule<T>` classes. These allow for control over initialization order/lifetime and reduce coupling between components. The design philosophy behind these internal submodules is to:
 
 - Provide a high-level layer of abstraction with instances adhering to the 'single responsibility' principle.
 - Avoid the use of singletons to make the code more test-friendly.
@@ -186,7 +186,7 @@ These pointer agnostic allocators leverage `TMemoryPtr<T>` and `TManagedMemory<T
 #### <a name="ObjectAllocator"></a> Object Allocator
 The `ObjectAllocator` serves as the primary allocator for game objects and asset instances within the 'game-thread'. It offers thread-safe tracking and management of these entities. All high-level entities, such as components, game objects, textures, and models, must be created using an instance of the `ObjectAllocator`. The allocation of objects within the ObjectAllocator is organized based on scopes, following a similar approach used in the `BitSquid`/`Stingray` engines. This strategy allows for efficient memory control, reducing fragmentation and optimizing cache utilization.
 
-The careful selection and implementation of these memory allocators in Sailor contribute to its overall performance, efficiency, and scalability.
+The careful selection and implementation of these memory allocators in `Sailor` contribute to its overall performance, efficiency, and scalability.
 
 ### <a name="SmartPointers"></a> Smart Pointers
 `Sailor` has a custom implementation of C++11 smart pointers designed to ease the burden of memory allocation and tracking. 
@@ -234,9 +234,9 @@ Tasks within the `Sailor` Engine are synchronized using `std::condition_variable
 Additionally, the `Sailor` Engine provides flexibility in task execution. Developers have the ability to launch a task on a specific thread or a group of threads, enabling fine-grained control over task allocation and workload distribution. This level of control allows for efficient utilization of resources and can optimize performance for specific scenarios or workloads.
 
 ### <a name="Tasks"></a> Tasks
-Tasks are a fundamental feature in the Sailor Engine, providing a powerful mechanism for managing asynchronous operations and synchronizing dependent tasks. With tasks, you can efficiently handle complex workflows and parallelize computations, leading to improved performance and responsiveness.
+Tasks are a fundamental feature in the `Sailor` Engine, providing a powerful mechanism for managing asynchronous operations and synchronizing dependent tasks. With tasks, you can efficiently handle complex workflows and parallelize computations, leading to improved performance and responsiveness.
 #### <a name="TaskScheduling"></a> Task Scheduling and Execution
-The Sailor Engine utilizes a task scheduler to manage the execution of tasks. The scheduler dynamically distributes tasks across available threads, maximizing parallelism and utilizing the available processing power of the system.
+The `Sailor` Engine utilizes a task scheduler to manage the execution of tasks. The scheduler dynamically distributes tasks across available threads, maximizing parallelism and utilizing the available processing power of the system.
 
 Tasks can be created using the `Tasks::CreateTask()` function, which takes a lambda function representing the task's operation. You can specify the desired thread type for the task, such as `EThreadType::Worker` or `EThreadType::Render`, depending on the nature of the task and its requirements.
 
@@ -258,48 +258,78 @@ newPromise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
 		}, "Create RHI texture", Tasks::EThreadType::RHI)->ToTaskWithResult()->Run();
 ```
 #### <a name="TasksBenefits"></a> Benefits of Using Tasks
-Using tasks in the Sailor Engine offers several benefits:
+Using tasks in the `Sailor` Engine offers several benefits:
 - Improved Performance: Tasks enable parallel execution of independent operations, making efficient use of available CPU resources and reducing processing time.
 - Simplified Workflow: Task dependencies and continuations provide a structured way to define the order of operations, making complex workflows easier to manage and reason about.
 - Concurrency Control: Tasks provide a built-in mechanism for synchronizing and coordinating dependent operations, ensuring that tasks execute in the correct order.
 - Thread Flexibility: The ability to specify the desired thread type for each task allows for fine-grained control over the execution environment, optimizing resource utilization.
 
-Tasks are a powerful tool in the Sailor Engine, facilitating the implementation of scalable and efficient systems. Whether it's loading assets, performing calculations, or initializing game systems, tasks enable you to harness the full potential of multi-threading and asynchronous execution.
+Tasks are a powerful tool in the `Sailor` Engine, facilitating the implementation of scalable and efficient systems. Whether it's loading assets, performing calculations, or initializing game systems, tasks enable you to harness the full potential of multi-threading and asynchronous execution.
 
 ## <a name="GameCode"></a> Game Code
-The "Game Code" section of the Sailor engine refers to the user-defined code that implements the specific gameplay and functionality of a game built using the engine. This section includes game objects, components, and the ECS (Entity-Component-System) architecture.
+The "Game Code" section of the `Sailor` engine refers to the user-defined code that implements the specific gameplay and functionality of a game built using the engine. This section includes game objects, components, and the ECS (Entity-Component-System) architecture.
 
 ### <a name="GameObjectsandComponents"></a> GameObjects and Components
-In the Sailor engine, game objects and components play a crucial role in defining the entities and their behavior within the game world. Following the architectural approach similar to Unity, Sailor promotes the principle of Single Responsibility, where each component has a specific purpose and encapsulates a particular aspect of an entity's behavior.
+In the `Sailor` engine, game objects and components play a crucial role in defining the entities and their behavior within the game world. Following the architectural approach similar to `Unity`, `Sailor` promotes the principle of Single Responsibility, where each component has a specific purpose and encapsulates a particular aspect of an entity's behavior.
 
 #### <a name="World"></a> World
 
-The World class acts as a container for game objects and takes charge of their lifecycle management within the Sailor engine. It offers essential functionalities for creating, updating, and destroying game objects. Notably, Sailor supports the existence of multiple independent Worlds, each having its own dedicated ObjectAllocator. This ensures efficient memory management by keeping the game memory utilized by the objects within each world separate and organized.
+The `World` class acts as a container for game objects and takes charge of their lifecycle management within the `Sailor` engine. It offers essential functionalities for creating, updating, and destroying game objects. Notably, `Sailor` supports the existence of multiple independent Worlds, each having its own dedicated `ObjectAllocator`. This ensures efficient memory management by keeping the game memory utilized by the objects within each world separate and organized.
 
 #### <a name="GameObject"></a> GameObject
 
-The GameObject class represents an individual game object or entity within the game world. It serves as a container for components and encompasses the behavior and properties of entities. In line with the design pattern observed in Unity, each GameObject in Sailor includes a TransformComponent. This component defines the position, rotation, and scale of the GameObject, allowing for the establishment and management of the scene hierarchy. GameObjects can be created, updated, and destroyed dynamically during gameplay.
+The `GameObject` class represents an individual game object or entity within the game world. It serves as a container for components and encompasses the behavior and properties of entities. In line with the design pattern observed in `Unity`, each `GameObject` in `Sailor` includes a TransformComponent. This component defines the position, rotation, and scale of the GameObject, allowing for the establishment and management of the scene hierarchy. `GameObject`s can be created, updated, and destroyed dynamically during gameplay.
 
 #### <a name="Component"></a> Component
 
-The Component class plays a crucial role in specifying a specific aspect of an entity's behavior. Components in Sailor define various properties and behaviors, such as rendering, physics, input handling, and more. These components are attached to game objects and assume the responsibility of updating the entity's state and behavior throughout gameplay. Adhering to the principle of Single Responsibility, each component focuses on a distinct aspect of an entity's behavior, ensuring modular and maintainable code structure.
+The `Component` class plays a crucial role in specifying a specific aspect of an entity's behavior. `Component`s in `Sailor` define various properties and behaviors, such as rendering, physics, input handling, and more. These components are attached to game objects and assume the responsibility of updating the entity's state and behavior throughout gameplay. Adhering to the principle of Single Responsibility, each component focuses on a distinct aspect of an entity's behavior, ensuring modular and maintainable code structure.
 
-By leveraging inheritance from the Object class, both GameObjects and Components conform to the requirements of the ObjectAllocator in Sailor. This inheritance enables efficient memory management and resource allocation for game objects and components, while providing a unified programming interface and shared functionalities, such as memory management and reference counting, across the Sailor engine.
+By leveraging inheritance from the `Object` class, both `GameObject`s and `Components` conform to the requirements of the `ObjectAllocator` in `Sailor`. This inheritance enables efficient memory management and resource allocation for game objects and components, while providing a unified programming interface and shared functionalities, such as memory management and reference counting, across the `Sailor` engine.
 
-The utilization of GameObjects and Components, inheriting from the Object class, empowers developers with a robust and scalable game architecture. It ensures optimized memory management and resource allocation, while offering a consistent programming interface for the creation and management of game entities.
+The utilization of `GameObject`s and `Component`s, inheriting from the `Object` class, empowers developers with a robust and scalable game architecture. It ensures optimized memory management and resource allocation, while offering a consistent programming interface for the creation and management of game entities.
 
 ### <a name="ECS"></a> ECS (Entity-Component-System)
 
-The Entity-Component-System (ECS) architecture in the Sailor engine provides a powerful approach for organizing and managing game logic. It separates entities (game objects), their behavior (components), and the systems responsible for updating and processing component data. This architecture promotes modularity, performance, and flexibility in game development.
-In addition to managing game objects, the World also contains instances of ECS systems. These systems are responsible for processing and updating component data, enabling efficient and structured game logic.
+The Entity-Component-System (ECS) architecture in the `Sailor` engine provides a powerful approach for organizing and managing game logic. It separates entities (game objects), their behavior (components), and the systems responsible for updating and processing component data. This architecture promotes modularity, performance, and flexibility in game development.
+In addition to managing game objects, the `World` also contains instances of ECS systems. These systems are responsible for processing and updating component data, enabling efficient and structured game logic.
 
 #### <a name="ECSCustom"></a> Adding Custom ECS Systems
-Extending the functionality of the ECS architecture in Sailor is straightforward. To add a custom ECS system, developers can simply inherit from the TBaseSystem<TComponentData> class. Here, TComponentData represents a plain-old-data (POD) structure that stores the necessary properties required by the system. By creating a new TComponentData structure and inheriting from TBaseSystem, developers can define their own custom systems tailored to their game's specific requirements.
+Extending the functionality of the ECS architecture in `Sailor` is straightforward. To add a custom ECS system, developers can simply inherit from the `TBaseSystem<TComponentData>` class. Here, `TComponentData` represents a plain-old-data (POD) structure that stores the necessary properties required by the system. By creating a new `TComponentData` structure and inheriting from `TBaseSystem`, developers can define their own custom systems tailored to their game's specific requirements.
 
-The TBaseSystem<TComponentData> class provides a solid foundation for creating custom ECS systems. It handles the processing and updating of component data, allowing developers to focus on implementing the specific behavior and functionality required by their game. This modular approach enables easy integration of custom systems into the broader ECS architecture of the Sailor engine.
+The `TBaseSystem<TComponentData>` class provides a solid foundation for creating custom ECS systems. It handles the processing and updating of component data, allowing developers to focus on implementing the specific behavior and functionality required by their game. This modular approach enables easy integration of custom systems into the broader ECS architecture of the `Sailor` engine.
 
-By leveraging the World class and extending TBaseSystem<TComponentData>, developers can seamlessly incorporate custom ECS systems into their games. This empowers developers to efficiently manage and update component data, enabling the creation of diverse and complex gameplay experiences. The Sailor engine's ECS architecture provides the necessary tools and flexibility to build scalable and performant game systems while maintaining code organization and reusability.
+By leveraging the `World` class and extending `TBaseSystem<TComponentData>`, developers can seamlessly incorporate custom ECS systems into their games. This empowers developers to efficiently manage and update component data, enabling the creation of diverse and complex gameplay experiences. The `Sailor` engine's ECS architecture provides the necessary tools and flexibility to build scalable and performant game systems while maintaining code organization and reusability.
 
 ## <a name="Rendering"></a> Rendering
 ## <a name="FeatureList"></a> Feature List
+The `Sailor` engine offers a wide range of features designed to enhance game development and provide a solid foundation for building immersive experiences. Here are some key features grouped into different categories:
+
+### Rendering Features:
+- Data Driven Renderer: The engine employs a data-driven approach to rendering, enabling flexible and customizable rendering techniques.
+- Bindless Renderer: The engine utilizes a bindless graphics renderer, leveraging Vulkan 1.3 for efficient and high-performance rendering.
+- FrameGraph: The engine incorporates a FrameGraph system, facilitating high-level rendering and resource management for efficient rendering pipelines.
+- HDR (High Dynamic Range) and Bloom: The engine supports HDR rendering and bloom effects, enhancing visual quality and realism.
+- Clouds Rendering: The engine includes advanced clouds rendering techniques, allowing for realistic and dynamic rendering of clouds in the game world.
+- Eye Adaptation: The engine includes eye adaptation techniques, allowing for realistic adjustment of exposure and brightness based on scene lighting conditions.
+  
+### Lighting and Shadows:
+- Tile Based Rendering (Forward+): The engine utilizes Tile Based Rendering (Forward+) for efficient lighting calculations, improving performance in complex scenes.
+- CSM/EVSM (Cascaded Shadow Maps/Exponential Variance Shadow Maps): The engine supports CSM and EVSM for high-quality shadow rendering, achieving accurate and detailed shadow effects.
+- HBAO (Horizon-Based Ambient Occlusion): The engine supports HBAO for realistic ambient occlusion rendering, enhancing visual quality and immersion.
+
+### Performance and Optimization:
+- Multi-Threading Support: The engine provides multi-threading capabilities, allowing for parallel execution of tasks and efficient utilization of CPU resources.
+- Advanced CPU/GPU Memory Management: The engine incorporates advanced memory management techniques for both CPU and GPU, optimizing memory usage and improving performance.
+
 ## <a name="ThirdParties"></a> Third Parties
+Here are some of the notable third-party libraries used in the `Sailor` project:
+
+- `Vulkan SDK`: Provides the necessary tools, libraries, and headers to develop Vulkan applications.
+- `Assimp`: A library for importing various 3D model formats into the `Sailor` engine.
+- `nlohmann/json`: A C++ library for JSON serialization and deserialization.
+- `yaml-cpp`: A C++ library for YAML parsing and generation.
+- `EasyProfiler`: A lightweight profiling library for performance analysis and optimization.
+- `ImGui`: A graphical user interface library for creating interactive tools and interfaces.
+- `magic_enum`: A header-only library for working with C++ enums, providing reflection and iteration capabilities.
+- `RenderDoc`: A powerful graphics debugger and profiler for capturing and analyzing rendering frames.
+- `SPIRV-Reflect`: A library for parsing and analyzing SPIR-V shader reflection data.
