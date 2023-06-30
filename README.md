@@ -219,9 +219,54 @@ ModelPtr model = ModelPtr::Make(allocator, uid);
 ```
 
 ## <a name="MultiThreading"></a> Multi-Threading
-### <a name="MTThreads"></a> Threads
-### <a name="ECS"></a> ECS
+The `Sailor` Engine embraces the power of multi-threading to maximize performance and responsiveness. 
+This section explores the multi-threading capabilities of the engine and highlights two key components: the Scheduler and Tasks.
+
+### <a name="Scheduler"></a> Scheduler
+The Scheduler in the `Sailor` Engine is designed to efficiently manage and distribute tasks across multiple threads, leveraging the available hardware resources to their fullest extent. The engine dynamically adjusts the number of threads based on the logical cores available on the system, ensuring optimal performance.
+
+The Scheduler categorizes threads into different types to handle specific aspects of the engine's operations. These include:
+- Main Thread: Responsible for handling critical game logic, input processing, and high-level control flow.
+- Render Thread: Handles rendering-related tasks, such as updating the GPU resources, rendering graphics, and managing the rendering pipeline.
+- RHI Thread: Focused on the Render Hardware Interface (RHI), responsible for managing low-level rendering operations and interacting with the underlying graphics API.
+- Worker Threads: Dedicated threads that handle background tasks, parallel computations, and other non-rendering related operations.
+
+Tasks within the `Sailor` Engine are synchronized using `std::condition_variables`, enabling efficient coordination and synchronization between threads. This synchronization mechanism ensures that tasks are executed in the correct order and that dependencies between tasks are properly managed.
+
+Additionally, the `Sailor` Engine provides flexibility in task execution. Developers have the ability to launch a task on a specific thread or a group of threads, enabling fine-grained control over task allocation and workload distribution. This level of control allows for efficient utilization of resources and can optimize performance for specific scenarios or workloads.
+
 ### <a name="Tasks"></a> Tasks
+Tasks are a fundamental feature in the Sailor Engine, providing a powerful mechanism for managing asynchronous operations and synchronizing dependent tasks. With tasks, you can efficiently handle complex workflows and parallelize computations, leading to improved performance and responsiveness.
+#### <a name="TaskScheduling"></a> Task Scheduling and Execution
+The Sailor Engine utilizes a task scheduler to manage the execution of tasks. The scheduler dynamically distributes tasks across available threads, maximizing parallelism and utilizing the available processing power of the system.
+
+Tasks can be created using the `Tasks::CreateTask()` function, which takes a lambda function representing the task's operation. You can specify the desired thread type for the task, such as `EThreadType::Worker` or `EThreadType::Render`, depending on the nature of the task and its requirements.
+
+#### <a name="TaskDependencies"></a> Task Dependencies and Continuations
+Tasks can have dependencies on other tasks, allowing you to create complex task graphs and enforce order of execution. You can use the `Then()` method to specify a continuation function that will be executed once the dependent task completes successfully.
+
+Here's an example that demonstrates the loading of a texture on the `EThreadType::Worker` thread and subsequent initialization on the `EThreadType::Render thread`:
+```
+newPromise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
+  [pTexture, assetInfo, this]() mutable
+	{
+		TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
+	  ...
+		return pData;
+	})->Then<TexturePtr, TSharedPtr<Data>>([pTexture, assetInfo, this](TSharedPtr<Data> data) mutable
+		{
+			...
+			return pTexture;
+		}, "Create RHI texture", Tasks::EThreadType::RHI)->ToTaskWithResult()->Run();
+```
+#### <a name="TasksBenefits"></a> Benefits of Using Tasks
+Using tasks in the Sailor Engine offers several benefits:
+- Improved Performance: Tasks enable parallel execution of independent operations, making efficient use of available CPU resources and reducing processing time.
+- Simplified Workflow: Task dependencies and continuations provide a structured way to define the order of operations, making complex workflows easier to manage and reason about.
+- Concurrency Control: Tasks provide a built-in mechanism for synchronizing and coordinating dependent operations, ensuring that tasks execute in the correct order.
+- Thread Flexibility: The ability to specify the desired thread type for each task allows for fine-grained control over the execution environment, optimizing resource utilization.
+
+Tasks are a powerful tool in the Sailor Engine, facilitating the implementation of scalable and efficient systems. Whether it's loading assets, performing calculations, or initializing game systems, tasks enable you to harness the full potential of multi-threading and asynchronous execution.
 
 ## <a name="GameCode"></a> Game Code
 ### <a name="ECS"></a> ECS
