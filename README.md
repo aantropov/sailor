@@ -61,16 +61,12 @@ Why write the fundamental code such as containers, window creation, etc. on your
 - This decision was driven by technical and conceptual considerations.
 
 ### <a name="WindowsBuild"></a> Windows Build Instructions
-
 Follow the steps below to build the Sailor project on a Windows platform:
 
 1. [Download and install the Windows Vulkan SDK](https://vulkan.lunarg.com/): Vulkan SDK provides all necessary tools, libraries and headers to develop Vulkan applications.
-
 2. [Download and install the Windows cmake x64 installer](https://cmake.org/download/): CMake is a tool that helps manage the build process of software using compiler-independent methods.
     - During the installation process, make sure to select "Add cmake to the system PATH for all users".
-
 3. Download the Sailor repository including all its submodules: The repository contains all the source code and assets needed to build and run the Sailor project.
-
 
 #### Building for Visual Studio 2019/2022
 
