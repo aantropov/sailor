@@ -1,8 +1,6 @@
 # Sailor Engine
 ## About
-`Sailor` represents a game engine prototype, which is primarily developed with an emphasis on performance optimization and user convenience. This technical solution effectively utilizes multithreading and incorporates a bindless graphics renderer built on `Vulkan 1.3`.
-
-The engine's architecture was intentionally designed to be render agnostic, ensuring it doesn't have a fixed dependency on any specific rendering technology (with some limitations taken into account). The project's code adheres to the C++ coding style, and the project itself was designed to meet the `C++20` standard for the `x64` platform. Please note that as of now, the code has only been tested on the Windows operating system using the `MSVC` compiler (`Microsoft Visual Studio`).
+`Sailor` is a high-performance game engine prototype, designed with an emphasis on optimization and usability. It boasts a bindless graphics renderer built on `Vulkan 1.3` and uses multithreading effectively. Designed to be render agnostic, the engine doesn't rely on any specific rendering technology (some limitations notwithstanding). The code adheres to the C++ coding style and conforms to the `C++20` standard for the `x64` platform. Please note, the code has been tested only on Windows operating system with the `MSVC` compiler (`Microsoft Visual Studio`).
 
 ## Screenshots
 
@@ -269,8 +267,38 @@ Using tasks in the Sailor Engine offers several benefits:
 Tasks are a powerful tool in the Sailor Engine, facilitating the implementation of scalable and efficient systems. Whether it's loading assets, performing calculations, or initializing game systems, tasks enable you to harness the full potential of multi-threading and asynchronous execution.
 
 ## <a name="GameCode"></a> Game Code
-### <a name="ECS"></a> ECS
-### <a name="GameObjects and Components"></a> Components
+The "Game Code" section of the Sailor engine refers to the user-defined code that implements the specific gameplay and functionality of a game built using the engine. This section includes game objects, components, and the ECS (Entity-Component-System) architecture.
+
+### <a name="GameObjectsandComponents"></a> GameObjects and Components
+In the Sailor engine, game objects and components play a crucial role in defining the entities and their behavior within the game world. Following the architectural approach similar to Unity, Sailor promotes the principle of Single Responsibility, where each component has a specific purpose and encapsulates a particular aspect of an entity's behavior.
+
+#### <a name="World"></a> World
+
+The World class acts as a container for game objects and takes charge of their lifecycle management within the Sailor engine. It offers essential functionalities for creating, updating, and destroying game objects. Notably, Sailor supports the existence of multiple independent Worlds, each having its own dedicated ObjectAllocator. This ensures efficient memory management by keeping the game memory utilized by the objects within each world separate and organized.
+
+#### <a name="GameObject"></a> GameObject
+
+The GameObject class represents an individual game object or entity within the game world. It serves as a container for components and encompasses the behavior and properties of entities. In line with the design pattern observed in Unity, each GameObject in Sailor includes a TransformComponent. This component defines the position, rotation, and scale of the GameObject, allowing for the establishment and management of the scene hierarchy. GameObjects can be created, updated, and destroyed dynamically during gameplay.
+
+#### <a name="Component"></a> Component
+
+The Component class plays a crucial role in specifying a specific aspect of an entity's behavior. Components in Sailor define various properties and behaviors, such as rendering, physics, input handling, and more. These components are attached to game objects and assume the responsibility of updating the entity's state and behavior throughout gameplay. Adhering to the principle of Single Responsibility, each component focuses on a distinct aspect of an entity's behavior, ensuring modular and maintainable code structure.
+
+By leveraging inheritance from the Object class, both GameObjects and Components conform to the requirements of the ObjectAllocator in Sailor. This inheritance enables efficient memory management and resource allocation for game objects and components, while providing a unified programming interface and shared functionalities, such as memory management and reference counting, across the Sailor engine.
+
+The utilization of GameObjects and Components, inheriting from the Object class, empowers developers with a robust and scalable game architecture. It ensures optimized memory management and resource allocation, while offering a consistent programming interface for the creation and management of game entities.
+
+### <a name="ECS"></a> ECS (Entity-Component-System)
+
+The Entity-Component-System (ECS) architecture in the Sailor engine provides a powerful approach for organizing and managing game logic. It separates entities (game objects), their behavior (components), and the systems responsible for updating and processing component data. This architecture promotes modularity, performance, and flexibility in game development.
+In addition to managing game objects, the World also contains instances of ECS systems. These systems are responsible for processing and updating component data, enabling efficient and structured game logic.
+
+#### <a name="ECSCustom"></a> Adding Custom ECS Systems
+Extending the functionality of the ECS architecture in Sailor is straightforward. To add a custom ECS system, developers can simply inherit from the TBaseSystem<TComponentData> class. Here, TComponentData represents a plain-old-data (POD) structure that stores the necessary properties required by the system. By creating a new TComponentData structure and inheriting from TBaseSystem, developers can define their own custom systems tailored to their game's specific requirements.
+
+The TBaseSystem<TComponentData> class provides a solid foundation for creating custom ECS systems. It handles the processing and updating of component data, allowing developers to focus on implementing the specific behavior and functionality required by their game. This modular approach enables easy integration of custom systems into the broader ECS architecture of the Sailor engine.
+
+By leveraging the World class and extending TBaseSystem<TComponentData>, developers can seamlessly incorporate custom ECS systems into their games. This empowers developers to efficiently manage and update component data, enabling the creation of diverse and complex gameplay experiences. The Sailor engine's ECS architecture provides the necessary tools and flexibility to build scalable and performant game systems while maintaining code organization and reusability.
 
 ## <a name="Rendering"></a> Rendering
 ## <a name="FeatureList"></a> Feature List
