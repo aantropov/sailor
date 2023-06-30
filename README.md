@@ -1,10 +1,8 @@
 # Sailor Engine
 ## About
-The `Sailor` is a game engine prototype made with the focus on high-performance and usability. The technical solution uses multithreading and has a bindless renderer made with `Vulkan 1.3`.
+`Sailor` represents a game engine prototype, which is primarily developed with an emphasis on performance optimization and user convenience. This technical solution effectively utilizes multithreading and incorporates a bindless graphics renderer built on `Vulkan 1.3`.
 
-The engine is render agnostic (with limitations) by design.
-The codebase is written using a `C++` coding style and the project is written for the `C++20` standard for `x64` platform. 
-Currently the code is tested only on `Windows`, using `MSVC` (Microsoft Visual Studio). 
+The engine's architecture was intentionally designed to be render agnostic, ensuring it doesn't have a fixed dependency on any specific rendering technology (with some limitations taken into account). The project's code adheres to the C++ coding style, and the project itself was designed to meet the `C++20` standard for the `x64` platform. Please note that as of now, the code has only been tested on the Windows operating system using the `MSVC` compiler (`Microsoft Visual Studio`).
 
 ## Screenshots
 
@@ -44,36 +42,39 @@ Currently the code is tested only on `Windows`, using `MSVC` (Microsoft Visual S
 - [Third Parties](#ThirdParties)
 
 ## <a name="Concept"></a> Concept
-The `Sailor` is an engine that is made with the focus on the usability as for engine programmers as for gameplay programmers.
-In spite of the fact that the editor hasn't been implemented yet, the project contains a number of features that makes the development
-fast and easy. 
+`Sailor` is a purposefully designed engine that emphasizes usability for both engine and gameplay programmers. While the engine editor is currently not implemented, the project boasts a range of features that streamline development. 
 
-The game engine follows `Unity's` ideology in aspects of Asset Management, GameObjects and Components. It has hot reload for assets including tracking of outdated shader permutations.
-On the other hand, gameplay code is written in C++, and could be easy based on ECS or Components (single responsibility) approaches. Multithreading is available in game threads and the game instance's memory is tracked by explicit allocators.
+Adhering to `Unity's` ideology, `Sailor` employs strategies such as Asset Management, GameObjects, and Components. Furthermore, it offers a hot reload for assets, including tracking of outdated shader permutations. Gameplay code, written in `C++`, easily aligns with ECS or Components (single responsibility) approaches. Multithreading is available in game code, and the game instance's memory is tracked by explicit allocators.
 
-The high-level rendering uses FrameGraph, similar to `Frostbite` engine. The lighting is calculated with Tile-Based Forward Rendering (Forward+). Overall the renderer is made with the idea of parallelism. The compute shaders are greatly used for many general graphics calculations.
+The high-level rendering utilizes FrameGraph, mirroring the approach of the `Frostbite` engine. Lighting is calculated using Tile-Based Forward Rendering (Forward+), with the overall renderer designed around the concept of parallelism. Compute shaders are heavily utilized for general graphics calculations.
 
-The coding standard is similar to `CryEngine`, while the contract of containers is inspired by `Unreal Engine`. The codebase is written with the following idea under the hood: the C++ code should be readable and highly optimized simultaneously, templates are used where it solves the issues, and the code is a bit simplified overall. Also Task's contract is similar to C#'s Tasks.
+The coding standard mirrors that of `CryEngine`, with the contract of containers drawing inspiration from `Unreal Engine`. The codebase aligns with the belief that C++ code should be simultaneously readable and highly optimized. Templates are employed where they resolve issues, and overall, the code is somewhat simplified. Additionally, the Task's contract resembles that of C#'s Tasks.
 
 ### <a name="Why"></a> Why?
-Why is the engine called 'Sailor'?
-- The Sailor is a tool that helps you to ship.
-   
-Why do you need to 'write one more renderer'?
-- The Sailor is not just a renderer. That's designed as a game engine and contains functionality that is usually avoided in 'just renderer' projects, for example: Tasks, Hot reloading, Shader compilation & reflection, Material system and Memory allocators.
+Why is the engine named 'Sailor'?
+- Sailor, as a tool, assists you in setting your game development voyage underway. Sailor is the best in shipping.
 
-Why did you decide to write the basic code such as containers, window creation, etc. with your own?
-- By technical and conceptual reasons.
+Why develop 'yet another renderer'?
+- Sailor extends beyond a simple renderer. It's conceived as a comprehensive game engine and incorporates functionalities often overlooked in 'mere renderer' projects, such as Tasks, Hot reloading, Shader compilation & reflection, Material system, and Memory allocators.
 
-### <a name="WindowsBuild"></a> Windows build instructions
-- [Download and install Windows Vulkan sdk](https://vulkan.lunarg.com/)
-- [Download and install Windows cmake x64 installer](https://cmake.org/download/)
-  - Make sure to select "Add cmake to the system Path for all users"
-- Download repository including submodules
+Why write the fundamental code such as containers, window creation, etc. on your own?
+- This decision was driven by technical and conceptual considerations.
+
+### <a name="WindowsBuild"></a> Windows Build Instructions
+
+Follow the steps below to build the Sailor project on a Windows platform:
+
+1. [Download and install the Windows Vulkan SDK](https://vulkan.lunarg.com/): Vulkan SDK provides all necessary tools, libraries and headers to develop Vulkan applications.
+
+2. [Download and install the Windows cmake x64 installer](https://cmake.org/download/): CMake is a tool that helps manage the build process of software using compiler-independent methods.
+    - During the installation process, make sure to select "Add cmake to the system PATH for all users".
+
+3. Download the Sailor repository including all its submodules: The repository contains all the source code and assets needed to build and run the Sailor project.
+
 
 #### Building for Visual Studio 2019/2022
 
-- In windows powershell
+To build the project for Visual Studio 2019/2022, execute the following commands in Windows PowerShell:
 
 ```
  cd Sailor
@@ -81,24 +82,33 @@ Why did you decide to write the basic code such as containers, window creation, 
  cmake -S . -B .\Build\
 ```
 
-- If cmake finished successfully, it will create a Sailor.sln file in the build directory that can be opened with visual studio. Right click the SailorExec project -> set as startup project. Change from debug to release, and then build and start without debugging.
+Upon successful completion of the cmake process, a `Sailor.sln` file will be generated within the `Build` directory. You can open this file with Visual Studio. To run the project:
+
+1. In Visual Studio, right-click the `SailorExec` project and select "Set as Startup Project".
+2. Switch the project configuration from "Debug" to "Release".
+3. Finally, select "Build Solution" to build the project and then "Start Without Debugging" to run it.
 
 ## <a name="Infrastructure"></a> Infrastructure
-#### Repository infrastructure
-There are 2 main projects in MSVC solution, `SailorLib` and `SailorExec`, which have 2 binary outputs, `Sailor.lib` and `Sailor.exe`, correspondingly.
-- `/Runtime` folder contains the game engine source code
-- `/Content` folder contains assets.
-- `/Content/Shaders` contains shaders.
-- `/Cache` folder consists of temporary objects, such as compiled shader binaries, precalculated data, etc.
-- Third parties are located under `/External` folder and added to the repository as git submodules.
+### <a name="RepoInfra"></a> Repository Infrastructure
 
-#### Core functionaly
-The `Sailor's` core functionality is implemented with a number of `TSubmodule<T>` that allows to control lifetime/order of initialization and decrease the coupling. The idea under internal submodules is based on:
-- Implement a high level layer of abstraction with 'single responsibility' instances.
-- Avoid the usage of singletons and make the code more friendly for test writing.
-- Create a simple mechanism that allows easy add new core functionality.
+The MSVC solution contains two main projects, namely `SailorLib` and `SailorExec`, resulting in two binary outputs: `Sailor.lib` and `Sailor.exe`, respectively. The repository is structured as follows:
 
-This code creates the instance of `CustomSubmodule`
+- `/Runtime`: This directory contains the game engine source code.
+- `/Content`: This directory stores assets.
+- `/Content/Shaders`: This directory is for shaders.
+- `/Cache`: This directory is designated for temporary objects such as compiled shader binaries, precalculated data, etc.
+- `/External`: Third-party dependencies are located under this directory and are included in the repository as git submodules.
+
+### <a name="CoreFunc"></a> Core Functionality
+
+The core functionality of `Sailor` is implemented using a set of `TSubmodule<T>` classes. These allow for control over initialization order/lifetime and reduce coupling between components. The design philosophy behind these internal submodules is to:
+
+- Provide a high-level layer of abstraction with instances adhering to the 'single responsibility' principle.
+- Avoid the use of singletons to make the code more test-friendly.
+- Develop a simple mechanism to facilitate the addition of new core functionalities.
+
+The following code snippet illustrates how to create an instance of `CustomSubmodule`:
+
 ```
 // Declaration
 class CustomSubmodule : public TSubmodule<CustomSubmodule> { ... };
@@ -112,32 +122,30 @@ App::RemoveSubmodule<CustomSubmodule>();
 ```
 
 ## <a name="AssetManagement"></a> Asset Management
-The idea under `Sailor's` `AssetManagement` is similar to `Unity's` approach. For each asset, game engine generates `.asset` meta file under the same folder, which stores detailed information about the asset, how the asset should be imported, id, import time and other parameters.
 
-The engine handles timestamps of files in meta, and uses them to find outdated assets.
-The game engine API operates with unique ids `UIDs` which are generated during asset import and stored in the '.asset' files.
+`Sailor`'s asset management system draws inspiration from `Unity`'s approach. For each asset, the game engine generates a `.asset` metafile in the same directory. This file stores detailed information about the asset, including how it should be imported, its unique identifier (UID), import time, and other relevant parameters.
+
+The engine manages file timestamps in metafiles and uses these to detect outdated assets. The game engine API operates with UIDs, which are generated during asset import and stored in the '.asset' files.
 
 ### <a name="AssetInfo"></a> AssetInfo and AssetFile
-`AssetInfo` class is a base class of meta information which stores just `UID`, timestamps and asset filename. 
-`AssetInfo` instances are serialized/deserialized to `Yaml` format which is chosen by its human readability.
 
-Each asset type (model, texture, render config, material, shader and others) has derived meta, which 'extends' the base POD class with extra properties, 
-`ModelAssetInfo`, `TextureAssetInfo`, `MaterialAssetInfo` and others.
+The `AssetInfo` class serves as a base for storing metadata such as the UID, timestamps, and the asset filename. Instances of `AssetInfo` are serialized/deserialized into a human-readable `Yaml` format.
+
+Each type of asset (e.g., model, texture, render config, material, shader) has its own derived meta class that extends the base POD class with extra properties. Examples include `ModelAssetInfo`, `TextureAssetInfo`, `MaterialAssetInfo`, and more.
 
 ### <a name="AssetImporters"></a> Asset Importers
 
-`AssetRegistry` is a main submodule which contains scan functionality, handles the asset infos library and registers/unregisters `AssetInfoHandlers`.
-`IAssetInfoHandler` is an interface which provides callbacks for basic asset importers logic, such as dispatcherization by extension during asset importing/loading.
-`IAssetInfoHandlerListener` is an interface which provides callbacks for resolving outdated assets.
+The `AssetRegistry` submodule handles scanning, manages the asset info library, and registers/unregisters `AssetInfoHandlers`. The `IAssetInfoHandler` interface provides callbacks for fundamental asset importer logic, like dispatching by extension during asset importing/loading. The `IAssetInfoHandlerListener` interface provides callbacks for resolving outdated assets.
 
-`ModelImporter`, `TextureImporter`, `MaterialImporter` and others are submodules with loading logic, also these instances handle the loaded assets and prevent them from being destructed.
-There is no basic class for importers, but all of them follows the general approach:
-- They have async loading method `Tasks::TaskPtr<bool> AssetImporter::LoadAsset(UID uid, AssetPtr& outAsset);`
-- They have instant loading method `bool AssetImporter::LoadAsset_Immediate(UID uid, AssetPtr& outAsset);`
-- They contain `ObjectAllocator`, which handle all assets of the same type in one place.
-- They resolve loading promises and hot reload logic.
+Asset importers, such as `ModelImporter`, `TextureImporter`, and `MaterialImporter`, contain loading logic. These instances manage loaded assets and prevent their destruction. While there's no base class for importers, they all follow a common pattern:
 
-This code loads `Sponza.obj` model asynchroniously, while the 'contract' returns a valid `ObjectPtr` instance immediately. 
+- Each has an asynchronous loading method: `Tasks::TaskPtr<bool> AssetImporter::LoadAsset(UID uid, AssetPtr& outAsset);`
+- Each has an immediate loading method: `bool AssetImporter::LoadAsset_Immediate(UID uid, AssetPtr& outAsset);`
+- Each contains an `ObjectAllocator`, which handles all assets of the same type in one place.
+- Each resolves loading promises and hot reload logic.
+
+The following code snippet illustrates the asynchronous loading of the `Sponza.obj` model. Note that the 'contract' returns a valid `ObjectPtr` instance immediately.
+
 ```
 ModelPtr pModel = nullptr;
 if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
@@ -154,29 +162,37 @@ if(!pModel->IsReady())
 ```
 
 ## <a name="MemoryManagement"></a> Memory Management
-A explanation of the few different memory management systems in `Sailor`: Memory Allocators, Smart Pointers, and Standard C++ Memory Management.
-The engine is designed to use a number of memory management approaches to achieve the best results in aspect of Memory Management and all memory management related code is located under `/Runtime/Memory` folder. 
+Memory Management in `Sailor` encompasses several different systems, including Memory Allocators, Smart Pointers, and Standard C++ Memory Management. The engine is purposefully designed to leverage these varied memory management strategies to optimize both performance and efficiency. All related code for memory management is conveniently located in the '/Runtime/Memory' folder.
 
 ### <a name="MemoryAllocators"></a> Memory Allocators
-There are different types of allocators persist in the engine, and all of them are designed to solve different problems.
+The `Sailor` engine incorporates a diverse range of memory allocators designed to address specific requirements and optimize memory usage. These allocators play a crucial role in enhancing performance and efficiency within the engine.
 
-Global allocators contain static 'allocate/free' functions together with non static 'Allocate/Free' methods to allow engine developers use different allocation strategies, including the inline allocators. 
-- `MallocAllocator` - that is a global allocator that contains contract for the usage of malloc/free from standart library.
-- `LockFreeHeapAllocator` - that is a thread-safe global allocator based on `HeapAllocator` (by design we have an instance of HeapAllocator per thread).
+#### <a name="GlobalAllocators"></a> Global Allocators
+The engine includes global allocators that offer both static and non-static allocation methods, enabling developers to leverage different allocation strategies, including inline allocators. The following global allocators are available:
 
-The main CPU allocator is
-- `HeapAllocator` - that is an allocator inspired by `id Tech 4` engine. The allocator uses different allocation strategies for different sizes of allocations: pools for small, intrusive lists for medium and 'malloc/free' for huge.
+- `MallocAllocator`: This global allocator provides a contract for utilizing the malloc and free functions from the standard library. It offers a familiar interface for memory management and allocation.
+- `LockFreeHeapAllocator`: As a thread-safe global allocator, the `LockFreeHeapAllocator` is based on the `HeapAllocator` design, with each thread having its own dedicated instance. This ensures efficient and secure memory allocation in a multi-threaded environment.
 
-The pointer agnostic allocators are slow but used to handle any kind of memory, especially GPU memory management is based on them:
-- `TBlockAllocator` - Uses block allocation strategy. Designed as universal allocator for GPU memory management. Economic but slow.
-- `TPoolAllocator` - Uses pooling as main allocation strategy. Faster than `TBlockAllocator` but have more memory consumption. Could be used for GPU texture memory management.
-- `TMultiPoolAllocator` - Uses multi pools per allocation size. Faster than `TPoolAllocator`, but have much more memory consumption.
+#### <a name="HeapAllocator"></a> Heap Allocator
+`HeapAllocator` in `Sailor` draws inspiration from the `id Tech 4` engine. It utilizes distinct allocation strategies based on the size of the allocations. This allocator employs the following strategies:
 
-The pointer agnostic allocators are based on `TMemoryPtr<T>` and `TManagedMemory<T>` which provides the contract for memory operations such as 'shift', 'offset' pointers and others.
+- Pools: For small-sized allocations, `HeapAllocator` employs pool-based allocation, which efficiently manages memory for these allocations.
+- Intrusive Lists: Medium-sized allocations utilize intrusive lists, enabling optimized memory usage for this category of allocations.
+- `malloc`/`free`: Large-sized allocations are handled using the standard malloc and free functions from the `C++` standard library.
 
-- `ObjectAllocator` - That is a main 'game-thread' allocator which is used for tracking of game objects and asset instances. All high level entities such as `Components`, `GameObjects`, `Textures`, `Models`, and others must be created with the instance of the `ObjectAllocator`. The allocator is thread safe.
-The core idea is to have many `ObjectAllocators` which store the objects by its scopes: `AssetImporters` stores all `Assets` by its types in the same memory, `World` also has the main `ObjectAllocator` which stores all world's game objects and its data together, etc. in similar way how is it organized in `BitSquid`/`Stingray`.
-That allows better control the memory and decrease the fragmentation. Also splitting the objects by its scopes better hits the cache.
+#### <a name="PointerAgnosticAllocators"></a> Pointer Agnostic Allocators
+The engine also includes pointer agnostic allocators that are primarily used for handling various types of memory, particularly for GPU memory management. These allocators are slower in performance but offer versatility in managing different memory types. The pointer agnostic allocators in `Sailor` include:
+
+- `TBlockAllocator`: This allocator employs a block allocation strategy and serves as a universal allocator for GPU memory management. While it may have lower performance characteristics, it offers an economical solution for managing GPU memory.
+- `TPoolAllocator`: Using pooling as its main allocation strategy, the `TPoolAllocator` outperforms the `TBlockAllocator` in terms of speed. It is well-suited for GPU texture memory management, albeit with a slightly higher memory footprint.
+- `TMultiPoolAllocator`: The `TMultiPoolAllocator` takes pooling to the next level by utilizing multiple pools per allocation size. This results in improved performance compared to the `TPoolAllocator`, although it does come with increased memory consumption.
+
+These pointer agnostic allocators leverage `TMemoryPtr<T>` and `TManagedMemory<T>` to provide a standardized interface for various memory operations, including pointer shifting and offset calculations.
+
+#### <a name="ObjectAllocator"></a> Object Allocator
+The `ObjectAllocator` serves as the primary allocator for game objects and asset instances within the 'game-thread'. It offers thread-safe tracking and management of these entities. All high-level entities, such as components, game objects, textures, and models, must be created using an instance of the `ObjectAllocator`. The allocation of objects within the ObjectAllocator is organized based on scopes, following a similar approach used in the `BitSquid`/`Stingray` engines. This strategy allows for efficient memory control, reducing fragmentation and optimizing cache utilization.
+
+The careful selection and implementation of these memory allocators in Sailor contribute to its overall performance, efficiency, and scalability.
 
 ### <a name="SmartPointers"></a> Smart Pointers
 `Sailor` has a custom implementation of C++11 smart pointers designed to ease the burden of memory allocation and tracking. 
