@@ -16,27 +16,39 @@
   - [Why?](#Why)
   - [Building for Windows](#WindowsBuild)
 - [Infrastructure](#Infrastructure)
+  - [Repository Infrastructure](#RepoInfra)
+  - [Core Functionality](#CoreFunc)
 - [Asset Management](#AssetManagement)
   - [AssetInfo and AssetFile](#AssetInfo)
   - [Asset Importers](#AssetImporters)
 - [Memory Management](#MemoryManagement)
   - [Memory Allocators](#MemoryAllocators)
+    - [Global Allocators](#GlobalAllocators)
+    - [Heap Allocator](#HeapAllocator)
+    - [Pointer Agnostic Allocators](#PointerAgnosticAllocators)
+    - [Object Allocator](#ObjectAllocator)
   - [Smart Pointers](#SmartPointers)
 - [Multi-Threading](#MultiThreading)
-  - [Threads](#MTThreads)
-  - [ECS](#ECS)
+  - [Scheduler](#Scheduler)
   - [Tasks](#Tasks)
+    - [Task Scheduling and Execution](#TaskScheduling)
+    - [Task Dependencies and Continuations](#TaskDependencies)
+    - [Benefits of Using Tasks](#TasksBenefits)
 - [Game Code](#GameCode)
+  - [GameObjects and Components](#GameObjectsandComponents)
+    - [World](#World)
+    - [GameObject](#GameObject)
+    - [Component](#Component)
   - [ECS](#ECS)
-  - [GameObjects and Components](#Components)
+    - [Adding Custom ECS Systems](#ECSCustom)
 - [Rendering](#Rendering)
-  - [Vulkan Graphics Driver](#Vulkan)
-  - [Shaders Compilation](#Shader)
-  - [GPU Memory Management](#GPUMM)
-    - [GPU Allocator](#GPUMMAllocator)
-    - [GPU Managed Memory Pointers](#GPUMMMM)
+  - [Vulkan Graphics Driver](#VulkanGraphicsDriver)
+  - [GPU Memory Management](#GPUMemory)
   - [Frame Graph](#FrameGraph)
 - [Feature List](#FeatureList)
+  - [Rendering Features](#RenderingFeatures)
+  - [Lighting and Shadows](#LightingFeatures)
+  - [Performance and Optimization](#PerformanceFeatures)
 - [Third Parties](#ThirdParties)
 
 ## <a name="Concept"></a> Concept
@@ -305,12 +317,12 @@ By leveraging the `World` class and extending `TBaseSystem<TComponentData>`, dev
 
 The `VulkanGraphicsDriver` layer is an essential component of this system. It is tasked with the high-level orchestration of `Vulkan` rendering, handling `Vulkan` objects directly. These objects, along with the `VulkanAPI`, manifest as RAII (Resource Acquisition Is Initialization) objects and a wrapper over the Raw `Vulkan` API. This layered setup enforces a principle where each layer only interacts with its immediate neighbours. For instance, the `VulkanGraphicsDriver` communicates with `Vulkan` and `RHI` objects, while `Vulkan` objects remain oblivious to the `RHI`. This division of responsibilities fosters a well-organized and robust rendering architecture.
 
-### Vulkan Graphics Driver
+### <a name="VulkanGraphicsDriver"></a> Vulkan Graphics Driver
 `Sailor`'s Vulkan Graphics Driver layer is responsible for the high-level orchestration of Vulkan rendering. It manages Vulkan objects and oversees the interactions between the application and the Vulkan API.
 
 Beyond these functionalities, the VulkanGraphicsDriver also resolves any inconsistent DescriptorSets, maintaining an internal cache for their efficient utilization. This feature ensures the smooth operation of rendering processes and contributes significantly to the overall performance of the engine.
 
-### GPU Memory Management
+### <a name="GPUMemory"></a> GPU Memory Management
 Contemporary rendering APIs offer direct memory management access, enabling the grouping of objects and memory sharing among them to minimize GPU allocations. `Sailor` harnesses this capacity and implements its GPU memory management based on Pointer Agnostic Allocators. This strategy closely aligns with monads, with the dereference operator (`*`) being a central concept.
 
 The Vulkan Graphics Driver in `Sailor` accommodates VulkanMemory pointers' implementations and global allocators. These permit various operations like the allocation of diverse memory types and the placement of GPU objects in them, creating sub-buffers within buffers, and sharing buffers across multiple GPU objects.
@@ -325,7 +337,7 @@ TSharedPtr<VulkanBufferAllocator> m_meshSsboAllocator;
 
 An advanced GPU memory management system eases bindless rendering implementation. The current codebase facilitates the tracking of object placement within the memory.
 
-### Frame Graph
+### <a name="FrameGraph"></a> Frame Graph
 At the core of `Sailor`'s scene rendering lies the `FrameGraph`. The `FrameGraph` comprises `RenderNode`s, creating a flexible rendering pipeline. To forge a custom `RenderNode`, it's as straightforward as extending the `FrameGraphNode<YourNodeType, YourNodeName>` base class, utilizing the Curiously Recurring Template Pattern (CRTP). `RenderNode`s register themselves and dynamically generate instances with all necessary parameters upon parsing the '.renderer' file. 
 
 The `Sailor` engine provides a wide array of nodes to empower your rendering pipeline, including but not limited to:
@@ -392,7 +404,7 @@ frame:
 ## <a name="FeatureList"></a> Feature List
 The `Sailor` engine offers a wide range of features designed to enhance game development and provide a solid foundation for building immersive experiences. Here are some key features grouped into different categories:
 
-### Rendering Features:
+### <a name="RenderingFeatures"></a> Rendering Features:
 - Data Driven Renderer: The engine employs a data-driven approach to rendering, enabling flexible and customizable rendering techniques.
 - Bindless Renderer: The engine utilizes a bindless graphics renderer, leveraging Vulkan 1.3 for efficient and high-performance rendering.
 - FrameGraph: The engine incorporates a FrameGraph system, facilitating high-level rendering and resource management for efficient rendering pipelines.
@@ -400,13 +412,13 @@ The `Sailor` engine offers a wide range of features designed to enhance game dev
 - Clouds Rendering: The engine includes advanced clouds rendering techniques, allowing for realistic and dynamic rendering of clouds in the game world.
 - Eye Adaptation: The engine includes eye adaptation techniques, allowing for realistic adjustment of exposure and brightness based on scene lighting conditions.
   
-### Lighting and Shadows:
+### <a name="LightingFeatures"></a> Lighting and Shadows:
 - Forward+ Tile Based Rendering: `Sailor` leverages the Forward+ Tile Based Rendering technique, which ensures optimized lighting computations and superior performance even within intricate and detail-rich scenes.
 - Cascaded Shadow Maps (CSM) and Exponential Variance Shadow Maps (EVSM): `Sailor` incorporates the methodologies of both CSM and EVSM, resulting in precise, high-quality shadow rendering that enriches visual depth and detail.
 - Horizon-Based Ambient Occlusion (HBAO): By supporting HBAO, `Sailor` enhances depth perception and scene realism. This technique improves the overall visual quality by accurately rendering ambient occlusion, thereby enhancing user immersion.
 - Physically Based Rendering (PBR): Inspired by Unreal Engine and Disney's material model, `Sailor` employs PBR for realistic rendering. This leads to the creation of materials and lighting effects that mimic real-world physical properties, enhancing the lifelikeness of the rendered scenes.
 
-### Performance and Optimization:
+### <a name="PerformanceFeatures"></a> Performance and Optimization:
 - Multi-Threading Support: The engine provides multi-threading capabilities, allowing for parallel execution of tasks and efficient utilization of CPU resources.
 - Advanced CPU/GPU Memory Management: The engine incorporates advanced memory management techniques for both CPU and GPU, optimizing memory usage and improving performance.
 
