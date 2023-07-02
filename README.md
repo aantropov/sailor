@@ -305,6 +305,26 @@ By leveraging the `World` class and extending `TBaseSystem<TComponentData>`, dev
 
 The `VulkanGraphicsDriver` layer is an essential component of this system. It is tasked with the high-level orchestration of `Vulkan` rendering, handling `Vulkan` objects directly. These objects, along with the `VulkanAPI`, manifest as RAII (Resource Acquisition Is Initialization) objects and a wrapper over the Raw `Vulkan` API. This layered setup enforces a principle where each layer only interacts with its immediate neighbours. For instance, the `VulkanGraphicsDriver` communicates with `Vulkan` and `RHI` objects, while `Vulkan` objects remain oblivious to the `RHI`. This division of responsibilities fosters a well-organized and robust rendering architecture.
 
+### Vulkan Graphics Driver
+`Sailor`'s Vulkan Graphics Driver layer is responsible for the high-level orchestration of Vulkan rendering. It manages Vulkan objects and oversees the interactions between the application and the Vulkan API.
+
+Beyond these functionalities, the VulkanGraphicsDriver also resolves any inconsistent DescriptorSets, maintaining an internal cache for their efficient utilization. This feature ensures the smooth operation of rendering processes and contributes significantly to the overall performance of the engine.
+
+### GPU Memory Management
+Contemporary rendering APIs offer direct memory management access, enabling the grouping of objects and memory sharing among them to minimize GPU allocations. `Sailor` harnesses this capacity and implements its GPU memory management based on Pointer Agnostic Allocators. This strategy closely aligns with monads, with the dereference operator (`*`) being a central concept.
+
+The Vulkan Graphics Driver in `Sailor` accommodates VulkanMemory pointers' implementations and global allocators. These permit various operations like the allocation of diverse memory types and the placement of GPU objects in them, creating sub-buffers within buffers, and sharing buffers across multiple GPU objects.
+
+Moreover, the Vulkan Graphics Driver encompasses a variety of GPU allocators, thereby aiding fragmentation reduction:
+```cpp
+TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>> m_uniformBuffers;
+TSharedPtr<VulkanBufferAllocator> m_materialSsboAllocator;
+TSharedPtr<VulkanBufferAllocator> m_generalSsboAllocator;
+TSharedPtr<VulkanBufferAllocator> m_meshSsboAllocator;
+```
+
+An advanced GPU memory management system eases bindless rendering implementation. The current codebase facilitates the tracking of object placement within the memory.
+
 ### Frame Graph
 At the core of `Sailor`'s scene rendering lies the `FrameGraph`. The `FrameGraph` comprises `RenderNode`s, creating a flexible rendering pipeline. To forge a custom `RenderNode`, it's as straightforward as extending the `FrameGraphNode<YourNodeType, YourNodeName>` base class, utilizing the Curiously Recurring Template Pattern (CRTP). `RenderNode`s register themselves and dynamically generate instances with all necessary parameters upon parsing the '.renderer' file. 
 
@@ -368,9 +388,6 @@ frame:
   - color: BackBuffer
   - depthStencil: DepthBuffer
 ```
-
-### Vulkan Graphics Driver
-The Vulkan Graphics Driver layer in `Sailor` is responsible for the high-level organization of Vulkan rendering. It operates Vulkan objects and manages interactions between the application and the Vulkan API.
 
 ## <a name="FeatureList"></a> Feature List
 The `Sailor` engine offers a wide range of features designed to enhance game development and provide a solid foundation for building immersive experiences. Here are some key features grouped into different categories:
