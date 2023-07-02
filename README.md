@@ -301,6 +301,77 @@ The `TBaseSystem<TComponentData>` class provides a solid foundation for creating
 By leveraging the `World` class and extending `TBaseSystem<TComponentData>`, developers can seamlessly incorporate custom ECS systems into their games. This empowers developers to efficiently manage and update component data, enabling the creation of diverse and complex gameplay experiences. The `Sailor` engine's ECS architecture provides the necessary tools and flexibility to build scalable and performant game systems while maintaining code organization and reusability.
 
 ## <a name="Rendering"></a> Rendering
+`Sailor`'s rendering architecture is designed around a multi-layered approach, aiming to reduce coupling and enhance modularity. At the heart of this architecture lies the Render Hardware Interface (RHI). This abstracts away specifics of the underlying rendering implementation, serving as a central hub that interfaces with the different layers.
+
+The `VulkanGraphicsDriver` layer is an essential component of this system. It is tasked with the high-level orchestration of `Vulkan` rendering, handling `Vulkan` objects directly. These objects, along with the `VulkanAPI`, manifest as RAII (Resource Acquisition Is Initialization) objects and a wrapper over the Raw `Vulkan` API. This layered setup enforces a principle where each layer only interacts with its immediate neighbours. For instance, the `VulkanGraphicsDriver` communicates with `Vulkan` and `RHI` objects, while `Vulkan` objects remain oblivious to the `RHI`. This division of responsibilities fosters a well-organized and robust rendering architecture.
+
+### Frame Graph
+At the core of `Sailor`'s scene rendering lies the `FrameGraph`. The `FrameGraph` comprises `RenderNode`s, creating a flexible rendering pipeline. To forge a custom `RenderNode`, it's as straightforward as extending the `FrameGraphNode<YourNodeType, YourNodeName>` base class, utilizing the Curiously Recurring Template Pattern (CRTP). `RenderNode`s register themselves and dynamically generate instances with all necessary parameters upon parsing the '.renderer' file. 
+
+The `Sailor` engine provides a wide array of nodes to empower your rendering pipeline, including but not limited to:
+- BlitNode 
+- BloomNode 
+- ClearNode 
+- DebugDrawNode 
+- DepthPrepassNode 
+- EnvironmentNode 
+- EyeAdaptationNode 
+- FrameGraphNode 
+- LightCullingNode 
+- LinearizeDepthNode 
+- PostProcessNode 
+- RenderImGuiNode 
+- RenderSceneNode 
+- ShadowPrepassNode 
+- SkyNode
+
+Below is a snippet showcasing a sample `FrameGraph` configuration:
+
+```text
+samplers: ~
+float:
+- PI: 3.1415926
+renderTargets:
+- name: Main
+  format: R16G16B16A16_SFLOAT
+  width: ViewportWidth
+  height: ViewportHeight
+
+frame:
+- name: DepthPrepass
+  string:
+  - Tag: Opaque
+  - ClearDepth: true
+  renderTargets:
+  - depthStencil: DepthBuffer
+ 
+- name: Clear
+  vec4:
+  - clearColor: [1.502, 2.08, 2.61, 2.5]
+  renderTargets:
+  - target: Main
+
+- name: RenderScene
+  string:
+  - Tag: Opaque
+  renderTargets:
+  - color: Main
+  - depthStencil: DepthBuffer
+  
+- name: Blit
+  renderTargets:
+  - src: Main
+  - dst: BackBuffer
+
+- name: RenderImGui
+  renderTargets:
+  - color: BackBuffer
+  - depthStencil: DepthBuffer
+```
+
+### Vulkan Graphics Driver
+The Vulkan Graphics Driver layer in `Sailor` is responsible for the high-level organization of Vulkan rendering. It operates Vulkan objects and manages interactions between the application and the Vulkan API.
+
 ## <a name="FeatureList"></a> Feature List
 The `Sailor` engine offers a wide range of features designed to enhance game development and provide a solid foundation for building immersive experiences. Here are some key features grouped into different categories:
 
