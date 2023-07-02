@@ -313,9 +313,10 @@ The `Sailor` engine offers a wide range of features designed to enhance game dev
 - Eye Adaptation: The engine includes eye adaptation techniques, allowing for realistic adjustment of exposure and brightness based on scene lighting conditions.
   
 ### Lighting and Shadows:
-- Tile Based Rendering (Forward+): The engine utilizes Tile Based Rendering (Forward+) for efficient lighting calculations, improving performance in complex scenes.
-- CSM/EVSM (Cascaded Shadow Maps/Exponential Variance Shadow Maps): The engine supports CSM and EVSM for high-quality shadow rendering, achieving accurate and detailed shadow effects.
-- HBAO (Horizon-Based Ambient Occlusion): The engine supports HBAO for realistic ambient occlusion rendering, enhancing visual quality and immersion.
+- Forward+ Tile Based Rendering: `Sailor` leverages the Forward+ Tile Based Rendering technique, which ensures optimized lighting computations and superior performance even within intricate and detail-rich scenes.
+- Cascaded Shadow Maps (CSM) and Exponential Variance Shadow Maps (EVSM): `Sailor` incorporates the methodologies of both CSM and EVSM, resulting in precise, high-quality shadow rendering that enriches visual depth and detail.
+- Horizon-Based Ambient Occlusion (HBAO): By supporting HBAO, `Sailor` enhances depth perception and scene realism. This technique improves the overall visual quality by accurately rendering ambient occlusion, thereby enhancing user immersion.
+- Physically Based Rendering (PBR): Inspired by Unreal Engine and Disney's material model, `Sailor` employs PBR for realistic rendering. This leads to the creation of materials and lighting effects that mimic real-world physical properties, enhancing the lifelikeness of the rendered scenes.
 
 ### Performance and Optimization:
 - Multi-Threading Support: The engine provides multi-threading capabilities, allowing for parallel execution of tasks and efficient utilization of CPU resources.
