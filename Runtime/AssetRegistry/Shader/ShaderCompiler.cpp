@@ -799,7 +799,7 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(UID uid, ShaderSetPtr& o
 			App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 			m_promises.Unlock(uid);
 
-			return (entry.end() - 1)->m_second;
+			return newPromise;
 		}
 	}
 
@@ -813,6 +813,12 @@ bool ShaderCompiler::LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, cons
 {
 	SAILOR_PROFILE_FUNCTION();
 	auto task = LoadShader(uid, outShader, defines);
+
+	if (!task)
+	{
+		return false;
+	}
+
 	task->Wait();
 	return task->GetResult().IsValid();
 }
