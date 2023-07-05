@@ -25,7 +25,8 @@ target_compile_features(SailorLib PUBLIC cxx_std_20)
 target_link_libraries(SailorLib yaml-cpp::yaml-cpp assimp::assimp nlohmann_json::nlohmann_json)
 
 if(NOT ${CMAKE_BUILD_TYPE} MATCHES Release)
-    target_compile_definitions(SailorLib PUBLIC SAILOR_VULKAN_ENABLE_VALIDATION_LAYER)
+    target_compile_definitions(SailorLib PUBLIC SAILOR_VULKAN_ENABLE_VALIDATION_LAYER)    
+else()
     target_compile_definitions(SailorLib PUBLIC _SHIPPING)
 endif()
 
