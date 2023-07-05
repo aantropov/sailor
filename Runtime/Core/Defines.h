@@ -11,7 +11,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <cassert>
 
 #if defined(BUILD_WITH_EASY_PROFILER)
-#include "easy_profiler/include/easy/profiler.h"
+#include "easy_profiler/easy_profiler_core/include/easy/profiler.h"
 #endif
 
 #define GLM_FORCE_RADIANS
