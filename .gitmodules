@@ -25,3 +25,6 @@
 [submodule "External/assimp"]
 	path = External/assimp
 	url = https://github.com/assimp/assimp.git
+[submodule "External/easy_profiler"]
+	path = External/easy_profiler
+	url = https://github.com/yse/easy_profiler.git
