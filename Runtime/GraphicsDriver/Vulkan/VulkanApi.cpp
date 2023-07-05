@@ -118,28 +118,31 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	}
 
 	VkInstanceCreateInfo createInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
+
 	createInfo.pApplicationInfo = &appInfo;
 	createInfo.ppEnabledExtensionNames = extensions.GetData();
 	createInfo.enabledExtensionCount = (uint32_t)extensions.Num();
-
-	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_KHRONOS_synchronization2" };
+	createInfo.pNext = nullptr;
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
+	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_KHRONOS_synchronization2" };
+
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
 		createInfo.ppEnabledLayerNames = validationLayers.GetData();
 		createInfo.enabledLayerCount = (uint32_t)validationLayers.Num();
 
-		PopulateDebugMessengerCreateInfo(debugCreateInfo);
-		createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
-
 		if (!CheckValidationLayerSupport(validationLayers))
 		{
 			SAILOR_LOG("Not all debug layers are supported");
 		}
+
+		PopulateDebugMessengerCreateInfo(debugCreateInfo);
+		createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
 	}
 	else
 	{
+		createInfo.ppEnabledLayerNames = nullptr;
 		createInfo.enabledLayerCount = 0;
 	}
 

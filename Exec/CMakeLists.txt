@@ -7,4 +7,4 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT S
 
 set_property(TARGET SailorExec PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${SAILOR_BINARIES_DIR}")
 
-set_target_properties(SailorExec PROPERTIES OUTPUT_NAME "Sailor_exec")
+set_target_properties(SailorExec PROPERTIES OUTPUT_NAME "SailorEngine-${CMAKE_BUILD_TYPE}")

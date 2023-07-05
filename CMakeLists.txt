@@ -15,12 +15,14 @@ option(SAILOR_VULKAN_STAGING_BUFFERS_COMBINE "Vulkan combine staging buffers" ON
 option(SAILOR_VULKAN_STORE_VERTICES_INDICES_IN_SSBO "Vulkan store all meshes in one ssbo buffer" ON)
 option(SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING "Vulkan MSAA impacts texture sampling" OFF)
 
-
 set(SAILOR_RUNTIME_DIR "${PROJECT_SOURCE_DIR}/Runtime/")
 set(SAILOR_EXTERNAL_DIR "${PROJECT_SOURCE_DIR}/External/")
 set(SAILOR_BINARIES_DIR "${PROJECT_SOURCE_DIR}/Binaries/")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${SAILOR_BINARIES_DIR}")
 
+if (NOT CMAKE_BUILD_TYPE)
+	SET(CMAKE_BUILD_TYPE Release)
+endif()
 
 set(BUILD_SHARED_LIBS OFF)
 
@@ -38,13 +40,10 @@ add_subdirectory(${SAILOR_EXTERNAL_DIR}/assimp)
 add_subdirectory(${SAILOR_EXTERNAL_DIR}/nlohmann_json)
 
 if(SAILOR_BUILD_WITH_EASY_PROFILER)
-    add_subdirectory(${SAILOR_EXTERNAL_DIR}/easy_profiler)
+	add_subdirectory(${SAILOR_EXTERNAL_DIR}/easy_profiler)
 endif(SAILOR_BUILD_WITH_EASY_PROFILER)
 
-
-
 message ("cxx Flags:" ${CMAKE_CXX_FLAGS})
-
 
 add_subdirectory(Exec)
 add_subdirectory(Lib)

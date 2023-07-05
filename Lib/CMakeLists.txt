@@ -18,7 +18,6 @@ foreach(Source IN ITEMS ${SAILOR_RUNTIME_SOURCES})
     source_group("Runtime/${GroupPath}" FILES "${Source}")
 endforeach()
 
-
 add_library(SailorLib SHARED ${SAILOR_RUNTIME_SOURCES} ${SAILOR_LIB_SOURCES})
 set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
 target_include_directories(SailorLib PUBLIC ${SAILOR_RUNTIME_DIR} ${SAILOR_EXTERNAL_DIR})
@@ -46,7 +45,6 @@ if(WIN32)
     target_compile_definitions(SailorLib PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(SailorLib Winmm.lib)
 endif()
-
 
 if(SAILOR_CONSOLE)
     target_compile_definitions(SailorLib PUBLIC SAILOR_WITH_CONSOLE)
@@ -98,4 +96,5 @@ target_sources(SailorLib PRIVATE
 )
 
 set_target_properties(SailorLib PROPERTIES PREFIX "")
-set_target_properties(SailorLib PROPERTIES OUTPUT_NAME "Sailor")
+set_target_properties(SailorLib PROPERTIES DEBUG_POSTFIX "")
+set_target_properties(SailorLib PROPERTIES OUTPUT_NAME "Sailor-${CMAKE_BUILD_TYPE}")
