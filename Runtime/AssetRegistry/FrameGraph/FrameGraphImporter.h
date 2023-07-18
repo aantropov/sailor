@@ -20,7 +20,7 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API FrameGraph(const UID& uid) : Object(uid) {}
+		SAILOR_API FrameGraph(const FileId& uid) : Object(uid) {}
 		SAILOR_API virtual bool IsReady() const override { return true; }
 
 		SAILOR_API RHI::RHIFrameGraphPtr GetRHI() { return m_frameGraph; }
@@ -44,18 +44,18 @@ namespace Sailor
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		SAILOR_API FrameGraphAssetPtr LoadFrameGraphAsset(UID uid);
+		SAILOR_API FrameGraphAssetPtr LoadFrameGraphAsset(FileId uid);
 
-		SAILOR_API bool LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFrameGraph);
-		SAILOR_API bool Instantiate_Immediate(UID uid, FrameGraphPtr& outFrameGraph);
+		SAILOR_API bool LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& outFrameGraph);
+		SAILOR_API bool Instantiate_Immediate(FileId uid, FrameGraphPtr& outFrameGraph);
 
 		SAILOR_API static void RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod);
 
 	protected:
 
-		SAILOR_API FrameGraphPtr BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const;
+		SAILOR_API FrameGraphPtr BuildFrameGraph(const FileId& uid, const FrameGraphAssetPtr& frameGraphAsset) const;
 
-		TConcurrentMap<UID, FrameGraphPtr> m_loadedFrameGraphs{};
+		TConcurrentMap<FileId, FrameGraphPtr> m_loadedFrameGraphs{};
 		Memory::ObjectAllocatorPtr m_allocator{};
 	};
 }

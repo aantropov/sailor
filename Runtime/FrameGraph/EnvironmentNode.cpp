@@ -34,7 +34,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeBrdfLut.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetUID(), m_pComputeBrdfShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeBrdfShader);
 		}
 
 		m_computeBrdfBindings = driver->CreateShaderBindings();
@@ -44,7 +44,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeEnvMap_IBL.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetUID(), m_pComputeSpecularShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeSpecularShader);
 		}
 
 		m_computeSpecularBindings = driver->CreateShaderBindings();
@@ -54,7 +54,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeIrradianceMap.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetUID(), m_pComputeIrradianceShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pComputeIrradianceShader);
 		}
 
 		m_computeIrradianceBindings = driver->CreateShaderBindings();
@@ -101,7 +101,7 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			{
 				if (const auto& assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(envMapFilepath))
 				{
-					App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetUID(), m_envMapTexture);
+					App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), m_envMapTexture);
 				}
 				return;
 			}

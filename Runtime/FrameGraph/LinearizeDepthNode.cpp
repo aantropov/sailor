@@ -39,7 +39,7 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	if (!m_pLinearizeDepthShader)
 	{
 		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/LinearizeDepth.shader");
-		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetUID(), m_pLinearizeDepthShader);
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(computeShaderInfo->GetFileId(), m_pLinearizeDepthShader);
 	}
 
 	auto target = GetResolvedAttachment("target");

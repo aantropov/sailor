@@ -33,7 +33,7 @@ void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 
 	if (outData["defaultMaterials"])
 	{
-		m_materials = outData["defaultMaterials"].as<TVector<UID>>();
+		m_materials = outData["defaultMaterials"].as<TVector<FileId>>();
 	}
 }
 

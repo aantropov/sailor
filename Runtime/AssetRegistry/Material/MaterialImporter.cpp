@@ -1,6 +1,6 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "MaterialAssetInfo.h"
@@ -35,7 +35,7 @@ MaterialPtr Material::CreateInstance(WorldPtr world, const MaterialPtr& material
 {
 	auto allocator = world->GetAllocator();
 
-	MaterialPtr newMaterial = MaterialPtr::Make(allocator, material->GetUID());
+	MaterialPtr newMaterial = MaterialPtr::Make(allocator, material->GetFileId());
 
 	newMaterial->m_uniformsVec4 = material->m_uniformsVec4;
 	newMaterial->m_uniformsFloat = material->m_uniformsFloat;
@@ -121,7 +121,7 @@ RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDe
 	{
 		SAILOR_PROFILE_BLOCK("Create RHI material for resource");
 
-		//SAILOR_LOG("Create RHI material for resource: %s, vertex attribute bits: %llu", GetUID().ToString().c_str(), vertexDescription->GetVertexAttributeBits());
+		//SAILOR_LOG("Create RHI material for resource: %s, vertex attribute bits: %llu", GetFileId().ToString().c_str(), vertexDescription->GetVertexAttributeBits());
 
 		if (!m_commonShaderBindings)
 		{
@@ -143,7 +143,7 @@ RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDe
 
 void Material::UpdateRHIResource()
 {
-	//SAILOR_LOG("Update material RHI resource: %s", GetUID().ToString().c_str());
+	//SAILOR_LOG("Update material RHI resource: %s", GetFileId().ToString().c_str());
 
 	// All RHI materials are outdated now
 	m_rhiMaterials.Clear();
@@ -253,7 +253,7 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 			RHI::RHIShaderBindingSet::ParseParameter(parameterName, outBinding, outVariable);
 			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 
-			const uint32_t value = (uint32_t)App::GetSubmodule<TextureImporter>()->GetTextureIndex(sampler.m_second->GetUID());
+			const uint32_t value = (uint32_t)App::GetSubmodule<TextureImporter>()->GetTextureIndex(sampler.m_second->GetFileId());
 			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
 		}
 	}
@@ -390,7 +390,7 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 
 	if (outData["shaderUid"])
 	{
-		m_pData->m_shader = outData["shaderUid"].as<UID>();
+		m_pData->m_shader = outData["shaderUid"].as<FileId>();
 	}
 
 	const size_t tag = GetHash(renderQueue);
@@ -418,11 +418,11 @@ void MaterialImporter::OnImportAsset(AssetInfoPtr assetInfo)
 
 void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
-	MaterialPtr material = GetLoadedMaterial(assetInfo->GetUID());
+	MaterialPtr material = GetLoadedMaterial(assetInfo->GetFileId());
 	if (bWasExpired && material)
 	{
 		// We need to start load the material
-		if (auto pMaterialAsset = LoadMaterialAsset(assetInfo->GetUID()))
+		if (auto pMaterialAsset = LoadMaterialAsset(assetInfo->GetFileId()))
 		{
 			auto updateMaterial = Tasks::CreateTask("Update Material", [=]() mutable
 				{
@@ -440,7 +440,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					pMaterial->SetShader(pShader);
 					pShader->AddHotReloadDependentObject(material);
 
-					const UID uid = pMaterial->GetUID();
+					const FileId uid = pMaterial->GetFileId();
 					const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
 
 					auto updateRHI = Tasks::CreateTask("Update material RHI resource", [=]() mutable
@@ -465,7 +465,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					{
 						TexturePtr texture;
 
-						if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, texture))
+						if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_fileId, texture))
 						{
 							auto updateSampler = loadTextureTask->Then<void, TexturePtr>(
 								[=](TexturePtr pTexture) mutable
@@ -494,7 +494,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					updateRHI->Run();
 				});
 
-			if (auto promise = GetLoadPromise(assetInfo->GetUID()))
+			if (auto promise = GetLoadPromise(assetInfo->GetFileId()))
 			{
 				updateMaterial->Join(promise);
 			}
@@ -504,12 +504,12 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 	}
 }
 
-bool MaterialImporter::IsMaterialLoaded(UID uid) const
+bool MaterialImporter::IsMaterialLoaded(FileId uid) const
 {
 	return m_loadedMaterials.ContainsKey(uid);
 }
 
-TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
+TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(FileId uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -529,11 +529,11 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(UID uid)
 		return TSharedPtr<MaterialAsset>(material);
 	}
 
-	SAILOR_LOG("Cannot find material asset info with UID: %s", uid.ToString().c_str());
+	SAILOR_LOG("Cannot find material asset info with FileId: %s", uid.ToString().c_str());
 	return TSharedPtr<MaterialAsset>();
 }
 
-const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
+const FileId& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
 {
 	YAML::Node newMaterial;
 
@@ -549,7 +549,7 @@ const UID& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepat
 	return App::GetSubmodule<AssetRegistry>()->LoadAsset(assetFilepath);
 }
 
-bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
+bool MaterialImporter::LoadMaterial_Immediate(FileId uid, MaterialPtr& outMaterial)
 {
 	SAILOR_PROFILE_FUNCTION();
 	auto task = LoadMaterial(uid, outMaterial);
@@ -558,7 +558,7 @@ bool MaterialImporter::LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial)
 	return task->GetResult().IsValid();
 }
 
-MaterialPtr MaterialImporter::GetLoadedMaterial(UID uid)
+MaterialPtr MaterialImporter::GetLoadedMaterial(FileId uid)
 {
 	// Check loaded materials
 	auto materialIt = m_loadedMaterials.Find(uid);
@@ -569,7 +569,7 @@ MaterialPtr MaterialImporter::GetLoadedMaterial(UID uid)
 	return MaterialPtr();
 }
 
-Tasks::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(UID uid)
+Tasks::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(FileId uid)
 {
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
@@ -580,7 +580,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::GetLoadPromise(UID uid)
 	return Tasks::TaskPtr<MaterialPtr>();
 }
 
-Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr& outMaterial)
+Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialPtr& outMaterial)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -625,7 +625,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 		pMaterial->SetShader(pShader);
 		pShader->AddHotReloadDependentObject(pMaterial);
 
-		const UID uid = pMaterial->GetUID();
+		const FileId uid = pMaterial->GetFileId();
 		const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
 
 		newPromise = Tasks::CreateTaskWithResult<MaterialPtr>("Load material",
@@ -654,7 +654,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 				{
 					TexturePtr pTexture;
 
-					if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_uid, pTexture))
+					if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_fileId, pTexture))
 					{
 						auto updateSampler = loadTextureTask->Then<void, TexturePtr>(
 							[=](TexturePtr texture) mutable
@@ -703,12 +703,12 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(UID uid, MaterialPtr&
 
 void MaterialImporter::CollectGarbage()
 {
-	TVector<UID> uidsToRemove;
+	TVector<FileId> uidsToRemove;
 	for (auto& promise : m_promises)
 	{
 		if (promise.m_second && promise.m_second->IsFinished())
 		{
-			UID uid = promise.m_first;
+			FileId uid = promise.m_first;
 			uidsToRemove.Emplace(uid);
 		}
 	}

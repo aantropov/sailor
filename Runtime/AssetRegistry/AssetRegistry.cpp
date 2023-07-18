@@ -71,16 +71,16 @@ std::string AssetRegistry::GetMetaFilePath(const std::string& assetFilepath)
 	return assetFilepath + "." + MetaFileExtension;
 }
 
-const UID& AssetRegistry::GetOrLoadAsset(const std::string& assetFilepath)
+const FileId& AssetRegistry::GetOrLoadAsset(const std::string& assetFilepath)
 {
 	if (auto assetInfo = GetAssetInfoPtr(assetFilepath))
 	{
-		return assetInfo->GetUID();
+		return assetInfo->GetFileId();
 	}
 	return LoadAsset(assetFilepath);
 }
 
-const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
+const FileId& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 {
 	// Convert to absolute path
 	const std::string filepath = (!assetFilepath._Starts_with(ContentRootFolder)) ?
@@ -102,8 +102,8 @@ const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 
 		check(assetInfoHandler);
 
-		auto uid = m_UIDs.Find(filepath);
-		if (uid != m_UIDs.end())
+		auto uid = m_fileIds.Find(filepath);
+		if (uid != m_fileIds.end())
 		{
 			auto assetInfoIt = m_loadedAssetInfo.Find(uid->m_second);
 			if (assetInfoIt != m_loadedAssetInfo.end())
@@ -118,7 +118,7 @@ const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 			}
 
 			// Meta were delete
-			m_UIDs.Remove(uid->m_first);
+			m_fileIds.Remove(uid->m_first);
 		}
 
 		AssetInfoPtr assetInfo = nullptr;
@@ -133,13 +133,13 @@ const UID& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 			assetInfo = assetInfoHandler->ImportAsset(filepath);
 		}
 
-		m_loadedAssetInfo[assetInfo->GetUID()] = assetInfo;
-		m_UIDs[filepath] = assetInfo->GetUID();
+		m_loadedAssetInfo[assetInfo->GetFileId()] = assetInfo;
+		m_fileIds[filepath] = assetInfo->GetFileId();
 
-		return assetInfo->GetUID();
+		return assetInfo->GetFileId();
 	}
 
-	return UID::Invalid;
+	return FileId::Invalid;
 }
 
 void AssetRegistry::ScanFolder(const std::string& folderPath)
@@ -159,7 +159,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 	}
 }
 
-AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(UID uid) const
+AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(FileId uid) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -173,8 +173,8 @@ AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(UID uid) const
 
 AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFilepath) const
 {
-	auto it = m_UIDs.Find(ContentRootFolder + assetFilepath);
-	if (it != m_UIDs.end())
+	auto it = m_fileIds.Find(ContentRootFolder + assetFilepath);
+	if (it != m_fileIds.end())
 	{
 		return GetAssetInfoPtr_Internal(it->m_second);
 	}

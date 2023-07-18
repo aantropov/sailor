@@ -28,3 +28,6 @@
 [submodule "External/easy_profiler"]
 	path = External/easy_profiler
 	url = https://github.com/yse/easy_profiler.git
+[submodule "External/refl-cpp"]
+	path = External/refl-cpp
+	url = https://github.com/veselink1/refl-cpp.git

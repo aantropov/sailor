@@ -1,5 +1,5 @@
 #include "ModelImporter.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "ModelAssetInfo.h"
@@ -323,12 +323,12 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";
 		std::filesystem::create_directory(materialsFolder);
 
-		UID materialUID = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));
-		assetInfo->GetDefaultMaterials().Add(materialUID);
+		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));
+		assetInfo->GetDefaultMaterials().Add(materialFileId);
 	}
 }
 
-bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
+bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -337,7 +337,7 @@ bool ModelImporter::LoadModel_Immediate(UID uid, ModelPtr& outModel)
 	return task->GetResult().IsValid();
 }
 
-Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(UID uid, ModelPtr& outModel)
+Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -458,7 +458,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 	return true;
 }
 
-Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials)
+Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<MaterialPtr>& outMaterials)
 {
 	outMaterials.Clear();
 
@@ -494,12 +494,12 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(UID uid, TVector<Materi
 
 void ModelImporter::CollectGarbage()
 {
-	TVector<UID> uidsToRemove;
+	TVector<FileId> uidsToRemove;
 	for (auto& promise : m_promises)
 	{
 		if (promise.m_second->IsFinished())
 		{
-			UID uid = promise.m_first;
+			FileId uid = promise.m_first;
 			uidsToRemove.Emplace(uid);
 		}
 	}

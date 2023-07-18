@@ -317,7 +317,7 @@ bool ImGuiApi::ImGui_Init(InitInfo* info)
 
 	if (auto uiShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ImGuiUI.shader"))
 	{
-		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(uiShaderInfo->GetUID(), bd->Shader);
+		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(uiShaderInfo->GetFileId(), bd->Shader);
 	}
 
 	check(bd->Shader.IsValid());

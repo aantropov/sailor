@@ -2,7 +2,8 @@
 #include "Sailor.h"
 #include "Memory/SharedPtr.hpp"
 #include "Tasks/Scheduler.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
+#include "Engine/InstanceId.h"
 #include "Containers/ConcurrentSet.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Engine/Types.h"
@@ -14,7 +15,7 @@ namespace Sailor
 	{
 	public:
 		
-		Object(UID uid) : m_UID(std::move(uid)) {}
+		Object(FileId uid) : m_fileId(std::move(uid)) {}		
 
 #ifdef SAILOR_EDITOR
 
@@ -40,13 +41,14 @@ namespace Sailor
 		Object& operator=(Object&&) = default;
 
 		// Object could be related to loaded asset, texture, material, etc..
-		SAILOR_API const UID& GetUID() const { return m_UID; }
+		SAILOR_API const FileId& GetFileId() const { return m_fileId; }
 
 		SAILOR_API std::type_index GetType() const { return std::type_index(typeid(*this)); }
 
 	protected:
 
-		UID m_UID = UID::Invalid;
+		FileId m_fileId = FileId::Invalid;
+		InstanceId m_instanceId = InstanceId::Invalid;
 
 #ifdef SAILOR_EDITOR
 		TConcurrentSet<ObjectPtr> m_hotReloadDeps;

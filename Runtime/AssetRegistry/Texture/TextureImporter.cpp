@@ -1,5 +1,5 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "TextureAssetInfo.h"
 #include "Core/Utils.h"
@@ -53,7 +53,7 @@ TextureImporter::~TextureImporter()
 	}
 }
 
-TexturePtr TextureImporter::GetLoadedTexture(UID uid)
+TexturePtr TextureImporter::GetLoadedTexture(FileId uid)
 {
 	// Check loaded materials
 	auto it = m_loadedTextures.Find(uid);
@@ -64,7 +64,7 @@ TexturePtr TextureImporter::GetLoadedTexture(UID uid)
 	return TexturePtr();
 }
 
-Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(UID uid)
+Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(FileId uid)
 {
 	auto it = m_promises.Find(uid);
 	if (it != m_promises.end())
@@ -77,7 +77,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(UID uid)
 
 void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpired)
 {
-	TexturePtr pTexture = GetLoadedTexture(inAssetInfo->GetUID());
+	TexturePtr pTexture = GetLoadedTexture(inAssetInfo->GetFileId());
 	if (bWasExpired && pTexture)
 	{
 		if (TextureAssetInfoPtr assetInfo = dynamic_cast<TextureAssetInfo*>(inAssetInfo))
@@ -90,7 +90,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 					int32_t height;
 					uint32_t mipLevels;
 
-					if (ImportTexture(assetInfo->GetUID(), decodedData, width, height, mipLevels))
+					if (ImportTexture(assetInfo->GetFileId(), decodedData, width, height, mipLevels))
 					{
 						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
 							mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
@@ -99,7 +99,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 						
-						size_t index = m_textureSamplersIndices[assetInfo->GetUID()];
+						size_t index = m_textureSamplersIndices[assetInfo->GetFileId()];
 						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
 						return true;
 					}
@@ -115,12 +115,12 @@ void TextureImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
 
-bool TextureImporter::IsTextureLoaded(UID uid) const
+bool TextureImporter::IsTextureLoaded(FileId uid) const
 {
 	return m_loadedTextures.ContainsKey(uid);
 }
 
-bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
+bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -157,14 +157,14 @@ bool TextureImporter::ImportTexture(UID uid, ByteCode& decodedData, int32_t& wid
 	return false;
 }
 
-bool TextureImporter::LoadTexture_Immediate(UID uid, TexturePtr& outTexture)
+bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
 {
 	auto task = LoadTexture(uid, outTexture);
 	task->Wait();
 	return task->GetResult().IsValid();
 }
 
-Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& outTexture)
+Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -213,11 +213,11 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 			[pTexture, assetInfo, this]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-				pData->bIsImported = ImportTexture(assetInfo->GetUID(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
+				pData->bIsImported = ImportTexture(assetInfo->GetFileId(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
 
 				if (!pData->bIsImported)
 				{
-					SAILOR_LOG("Cannot Load texture: %s, with uid: %s", assetInfo->GetAssetFilepath().c_str(), assetInfo->GetUID().ToString().c_str());
+					SAILOR_LOG("Cannot Load texture: %s, with uid: %s", assetInfo->GetAssetFilepath().c_str(), assetInfo->GetFileId().ToString().c_str());
 				}
 
 				return pData;
@@ -233,7 +233,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 
 						size_t index = m_textureSamplersCurrentIndex++;
-						m_textureSamplersIndices[assetInfo->GetUID()] = index;
+						m_textureSamplersIndices[assetInfo->GetFileId()] = index;
 						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
 					}
 
@@ -257,12 +257,12 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(UID uid, TexturePtr& out
 
 void TextureImporter::CollectGarbage()
 {
-	TVector<UID> uidsToRemove;
+	TVector<FileId> uidsToRemove;
 	for (auto& promise : m_promises)
 	{
 		if (promise.m_second && promise.m_second->IsFinished())
 		{
-			UID uid = promise.m_first;
+			FileId uid = promise.m_first;
 			uidsToRemove.Emplace(uid);
 		}
 	}

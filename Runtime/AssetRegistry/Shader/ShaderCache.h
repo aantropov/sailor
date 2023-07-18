@@ -3,7 +3,7 @@
 #include <ctime>
 #include "Containers/Vector.h"
 #include "Containers/Map.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "Core/Singleton.hpp"
 #include <nlohmann_json/include/nlohmann/json.hpp>
 #include <mutex>
@@ -30,16 +30,16 @@ namespace Sailor
 		SAILOR_API void Initialize();
 		SAILOR_API void Shutdown();
 
-		SAILOR_API void CachePrecompiledGlsl(const UID& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl, const std::string& computeGlsl);
-		SAILOR_API void CacheSpirvWithDebugInfo(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv);
-		SAILOR_API void CacheSpirv_ThreadSafe(const UID& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv);
+		SAILOR_API void CachePrecompiledGlsl(const FileId& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl, const std::string& computeGlsl);
+		SAILOR_API void CacheSpirvWithDebugInfo(const FileId& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv);
+		SAILOR_API void CacheSpirv_ThreadSafe(const FileId& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv);
 		
-		SAILOR_API bool GetSpirvCode(const UID& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, TVector<uint32_t>& computeSpirv, bool bIsDebug = false);
+		SAILOR_API bool GetSpirvCode(const FileId& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, TVector<uint32_t>& computeSpirv, bool bIsDebug = false);
 
-		SAILOR_API void Remove(const UID& uid);
+		SAILOR_API void Remove(const FileId& uid);
 
-		SAILOR_API bool Contains(const UID& uid) const;
-		SAILOR_API bool IsExpired(const UID& uid, uint32_t permutation) const;
+		SAILOR_API bool Contains(const FileId& uid) const;
+		SAILOR_API bool IsExpired(const FileId& uid, uint32_t permutation) const;
 
 		SAILOR_API void LoadCache();
 		SAILOR_API void SaveCache(bool bForcely = false);
@@ -47,19 +47,19 @@ namespace Sailor
 		SAILOR_API void ClearAll();
 		SAILOR_API void ClearExpired();
 
-		SAILOR_API static std::filesystem::path GetPrecompiledShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
-		SAILOR_API static std::filesystem::path GetCachedShaderFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
-		SAILOR_API static std::filesystem::path GetCachedShaderWithDebugFilepath(const UID& uid, int32_t permutation, const std::string& shaderKind);
+		SAILOR_API static std::filesystem::path GetPrecompiledShaderFilepath(const FileId& uid, int32_t permutation, const std::string& shaderKind);
+		SAILOR_API static std::filesystem::path GetCachedShaderFilepath(const FileId& uid, int32_t permutation, const std::string& shaderKind);
+		SAILOR_API static std::filesystem::path GetCachedShaderWithDebugFilepath(const FileId& uid, int32_t permutation, const std::string& shaderKind);
 
 	protected:
 
-		bool GetTimeStamp(const UID& uid, time_t& outTimestamp) const;
+		bool GetTimeStamp(const FileId& uid, time_t& outTimestamp) const;
 
 		class ShaderCacheEntry final : IJsonSerializable
 		{
 		public:
 
-			UID m_UID;
+			FileId m_fileId;
 
 			// Last time shader changed
 			std::time_t m_timestamp;
@@ -72,7 +72,7 @@ namespace Sailor
 		class ShaderCacheData final : IJsonSerializable
 		{
 		public:
-			TMap<UID, TVector<ShaderCache::ShaderCacheEntry*>> m_data;
+			TMap<FileId, TVector<ShaderCache::ShaderCacheEntry*>> m_data;
 
 			SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
 			SAILOR_API virtual void Deserialize(const nlohmann::json& inData);

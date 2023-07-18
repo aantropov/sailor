@@ -1,7 +1,7 @@
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/Texture.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "FrameGraphAssetInfo.h"
 #include "Core/Utils.h"
@@ -38,7 +38,7 @@ void FrameGraphImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpi
 {
 }
 
-FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(UID uid)
+FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -58,11 +58,11 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(UID uid)
 		return FrameGraphAssetPtr(frameGraphAsset);
 	}
 
-	SAILOR_LOG("Cannot find frameGraph asset info with UID: %s", uid.ToString().c_str());
+	SAILOR_LOG("Cannot find frameGraph asset info with FileId: %s", uid.ToString().c_str());
 	return FrameGraphAssetPtr();
 }
 
-bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFrameGraph)
+bool FrameGraphImporter::LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& outFrameGraph)
 {
 	auto it = m_loadedFrameGraphs.Find(uid);
 	if (it != m_loadedFrameGraphs.end())
@@ -82,7 +82,7 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(UID uid, FrameGraphPtr& outFra
 	return false;
 }
 
-bool FrameGraphImporter::Instantiate_Immediate(UID uid, FrameGraphPtr& outFrameGraph)
+bool FrameGraphImporter::Instantiate_Immediate(FileId uid, FrameGraphPtr& outFrameGraph)
 {
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{

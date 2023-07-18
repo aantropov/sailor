@@ -222,11 +222,11 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSkyShader, { "FILL" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSkyEnvShader, { });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSunShader, { "SUN" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComposeShader, { "COMPOSE" });
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pCloudsShader, { "CLOUDS" /*,"DITHER", "DISCARD_BY_DEPTH"*/ });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSkyShader, { "FILL" });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSkyEnvShader, { });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSunShader, { "SUN" });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComposeShader, { "COMPOSE" });
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pCloudsShader, { "CLOUDS" /*,"DITHER", "DISCARD_BY_DEPTH"*/ });
 		}
 	}
 
@@ -236,7 +236,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pSunShaftsShader, {});
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pSunShaftsShader, {});
 		}
 	}
 
@@ -246,7 +246,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pBlitShader, {});
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pBlitShader, {});
 		}
 	}
 
@@ -258,7 +258,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 			if (auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(path))
 			{
-				App::GetSubmodule<TextureImporter>()->LoadTexture(info->GetUID(), m_clouds);
+				App::GetSubmodule<TextureImporter>()->LoadTexture(info->GetFileId(), m_clouds);
 			}
 		}
 		
@@ -343,7 +343,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pStarsShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pStarsShader);
 		}
 	}
 

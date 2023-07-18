@@ -13,7 +13,7 @@ YAML::Node AssetInfo::Serialize() const
 	YAML::Node outData;
 	const std::string filename = std::filesystem::path(GetAssetFilepath()).filename().string();
 
-	outData["uid"] = m_UID;
+	outData["fileId"] = m_fileId;
 	outData["filename"] = filename;
 	outData["assetImportTime"] = m_assetImportTime;
 	return outData;
@@ -21,7 +21,7 @@ YAML::Node AssetInfo::Serialize() const
 
 void AssetInfo::Deserialize(const YAML::Node& inData)
 {
-	m_UID = inData["uid"].as<UID>();
+	m_fileId = inData["fileId"].as<FileId>();
 	m_assetFilename = inData["filename"].as<std::string>();
 	m_assetImportTime = inData["assetImportTime"].as<std::time_t>();
 }
@@ -111,7 +111,7 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) co
 	YAML::Node newMeta;
 	GetDefaultMeta(newMeta);
 
-	newMeta["uid"] = UID::CreateNewUID().Serialize();
+	newMeta["fileId"] = FileId::CreateNewFileId().Serialize();
 	newMeta["filename"] = std::filesystem::path(assetFilepath).filename().string();
 	newMeta["assetImportTime"] = std::time(nullptr);
 

@@ -198,9 +198,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	{
 		m_frameGraph.Clear();
 
-		if (auto frameGraphUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
+		if (auto frameGraphFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
 		{
-			App::GetSubmodule<FrameGraphImporter>()->Instantiate_Immediate(frameGraphUID->GetUID(), m_frameGraph);
+			App::GetSubmodule<FrameGraphImporter>()->Instantiate_Immediate(frameGraphFileId->GetFileId(), m_frameGraph);
 		}
 
 		m_bFrameGraphOutdated = false;

@@ -31,7 +31,7 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pShader, {});
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pShader, {});
 		}
 	}
 

@@ -32,7 +32,7 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API Model(UID uid, TVector<RHI::RHIMeshPtr> meshes = {}) :
+		SAILOR_API Model(FileId uid, TVector<RHI::RHIMeshPtr> meshes = {}) :
 			Object(std::move(uid)),
 			m_meshes(std::move(meshes)) {}
 
@@ -78,10 +78,10 @@ namespace Sailor
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 
-		SAILOR_API Tasks::TaskPtr<ModelPtr> LoadModel(UID uid, ModelPtr& outModel);
-		SAILOR_API bool LoadModel_Immediate(UID uid, ModelPtr& outModel);
+		SAILOR_API Tasks::TaskPtr<ModelPtr> LoadModel(FileId uid, ModelPtr& outModel);
+		SAILOR_API bool LoadModel_Immediate(FileId uid, ModelPtr& outModel);
 
-		SAILOR_API Tasks::TaskPtr<bool> LoadDefaultMaterials(UID uid, TVector<MaterialPtr>& outMaterials);
+		SAILOR_API Tasks::TaskPtr<bool> LoadDefaultMaterials(FileId uid, TVector<MaterialPtr>& outMaterials);
 
 		SAILOR_API virtual void CollectGarbage() override;
 
@@ -91,8 +91,8 @@ namespace Sailor
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 
-		TConcurrentMap<UID, Tasks::TaskPtr<ModelPtr>> m_promises;
-		TConcurrentMap<UID, ModelPtr> m_loadedModels;
+		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
+		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
 
 		ObjectAllocatorPtr m_allocator;
 	};

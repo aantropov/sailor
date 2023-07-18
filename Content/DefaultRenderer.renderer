@@ -1,19 +1,19 @@
 ---
 samplers:
 - name: g_defaultSampler
-  uid: ''
+  fileId: ''
   path: Textures/VulkanLogo.png
 
 - name: g_lensDirtSampler
-  uid: ''
+  fileId: ''
   path: Textures/Bokeh__Lens_Dirt_9.jpg 
 
 - name: g_ditherPatternSampler
-  uid: ''
+  fileId: ''
   path: Textures/DitherPattern.png
 
 - name: g_noiseSampler
-  uid: ''
+  fileId: ''
   path: Textures/Noise.png
 
 float:

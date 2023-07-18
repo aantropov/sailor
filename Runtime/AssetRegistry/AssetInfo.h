@@ -2,7 +2,7 @@
 #include <string>
 #include <ctime>
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "Core/Singleton.hpp"
 #include "Containers/Vector.h"
 #include "Core/YamlSerializable.h"
@@ -17,7 +17,7 @@ namespace Sailor
 		SAILOR_API AssetInfo();
 		SAILOR_API virtual ~AssetInfo() = default;
 
-		SAILOR_API const UID& GetUID() const { return m_UID; }
+		SAILOR_API const FileId& GetFileId() const { return m_fileId; }
 
 		SAILOR_API std::string GetRelativeAssetFilepath() const;
 		SAILOR_API std::string GetRelativeMetaFilepath() const;
@@ -46,7 +46,7 @@ namespace Sailor
 		std::time_t m_assetImportTime;
 		std::string m_folder;
 		std::string m_assetFilename;
-		UID m_UID;
+		FileId m_fileId;
 
 		friend class IAssetInfoHandler;
 	};

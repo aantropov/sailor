@@ -1,6 +1,6 @@
 #include "FrameGraphParser.h"
 #include "FrameGraphAssetInfo.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "Core/Utils.h"
 #include <filesystem>
@@ -77,7 +77,7 @@ void FrameGraphAsset::Deserialize(const YAML::Node& inData)
 	}
 }
 
-FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGraphAssetPtr& frameGraphAsset) const
+FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const FrameGraphAssetPtr& frameGraphAsset) const
 {
 	FrameGraphPtr pFrameGraph = FrameGraphPtr::Make(m_allocator, uid);
 	RHI::RHIFrameGraphPtr pRhiFrameGraph = RHI::RHIFrameGraphPtr::Make();
@@ -131,15 +131,15 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const UID& uid, const FrameGra
 	for (auto& sampler : frameGraphAsset->m_samplers)
 	{
 		TexturePtr texture;
-		if (sampler.m_second.m_uid)
+		if (sampler.m_second.m_fileId)
 		{
-			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second.m_uid, texture);
+			App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(sampler.m_second.m_fileId, texture);
 		}
 		else
 		{
 			if (auto assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(sampler.m_second.m_path))
 			{
-				App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetUID(), texture);
+				App::GetSubmodule<TextureImporter>()->LoadTexture_Immediate(assetInfo->GetFileId(), texture);
 			}
 		}
 

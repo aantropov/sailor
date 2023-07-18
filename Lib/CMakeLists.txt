@@ -7,7 +7,7 @@ file (GLOB_RECURSE SAILOR_RUNTIME_SOURCES
 
 file (GLOB_RECURSE SAILOR_LIB_SOURCES
     "*.h"
-    "*.cpp")
+    "*.cpp") 
 
 source_group("" FILES ${SAILOR_LIB_SOURCES})
 
@@ -22,7 +22,7 @@ add_library(SailorLib SHARED ${SAILOR_RUNTIME_SOURCES} ${SAILOR_LIB_SOURCES})
 set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
 target_include_directories(SailorLib PUBLIC ${SAILOR_RUNTIME_DIR} ${SAILOR_EXTERNAL_DIR})
 target_compile_features(SailorLib PUBLIC cxx_std_20)
-target_link_libraries(SailorLib yaml-cpp::yaml-cpp assimp::assimp nlohmann_json::nlohmann_json)
+target_link_libraries(SailorLib yaml-cpp::yaml-cpp assimp::assimp nlohmann_json::nlohmann_json refl-cpp::refl-cpp)
 
 if(NOT ${CMAKE_BUILD_TYPE} MATCHES Release)
     target_compile_definitions(SailorLib PUBLIC SAILOR_VULKAN_ENABLE_VALIDATION_LAYER)    

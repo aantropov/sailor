@@ -23,7 +23,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 
 	if (!material)
 	{
-		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ShadowCaster.shader");
+		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ShadowCaster.shader");
 		ShaderSetPtr pShader;
 
 		TVector<std::string> defines;
@@ -32,7 +32,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 			defines.Add("EVSM");
 		}
 
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), pShader, defines))
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines))
 		{
 			check(pShader->IsReady());
 
@@ -57,13 +57,13 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
 		RenderState renderState{ false, false, 0.0f, false, ECullMode::Front, EBlendMode::None, EFillMode::Fill, 0, false };
 
-		auto shaderUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blur.shader");
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurVerticalShader, { "VERTICAL", "EVSM" }))
+		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/Blur.shader");
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), m_pBlurVerticalShader, { "VERTICAL", "EVSM" }))
 		{
 			m_pBlurVerticalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurVerticalShader, m_pBlurShaderBindings);
 		}
 
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderUID->GetUID(), m_pBlurHorizontalShader, { "HORIZONTAL", "EVSM" }))
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), m_pBlurHorizontalShader, { "HORIZONTAL", "EVSM" }))
 		{
 			m_pBlurHorizontalMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pBlurHorizontalShader, m_pBlurShaderBindings);
 		}

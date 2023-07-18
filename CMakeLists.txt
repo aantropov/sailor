@@ -37,6 +37,11 @@ set(ASSIMP_BUILD_TESTS OFF)
 set(ASSIMP_INSTALL OFF)
 add_subdirectory(${SAILOR_EXTERNAL_DIR}/assimp)
 
+set(BUILD_TESTING OFF)
+set(BUILD_EXAMPLES OFF)
+set(BUILD_BENCHES OFF)
+add_subdirectory(${SAILOR_EXTERNAL_DIR}/refl-cpp)
+
 add_subdirectory(${SAILOR_EXTERNAL_DIR}/nlohmann_json)
 
 if(SAILOR_BUILD_WITH_EASY_PROFILER)

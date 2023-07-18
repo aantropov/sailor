@@ -10,7 +10,7 @@
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
 #include "Engine/Types.h"
@@ -27,7 +27,7 @@ namespace Sailor
 
 		static SAILOR_API MaterialPtr CreateInstance(WorldPtr world, const MaterialPtr& material);
 
-		SAILOR_API Material(UID uid) : Object(uid) {}
+		SAILOR_API Material(FileId uid) : Object(uid) {}
 
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API bool IsDirty() const { return m_bIsDirty.load(); }
@@ -90,22 +90,22 @@ namespace Sailor
 		public:
 
 			SAILOR_API SamplerEntry() = default;
-			SAILOR_API SamplerEntry(std::string name, const UID& uid) : m_name(std::move(name)), m_uid(uid) {}
+			SAILOR_API SamplerEntry(std::string name, const FileId& uid) : m_name(std::move(name)), m_fileId(uid) {}
 
 			std::string m_name;
-			UID m_uid;
+			FileId m_fileId;
 
 			SAILOR_API virtual YAML::Node Serialize() const
 			{
 				YAML::Node outData;
-				outData[m_name] = m_uid;
+				outData[m_name] = m_fileId;
 				return outData;
 			}
 
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData)
 			{
 				m_name = inData.begin()->first.as<std::string>();
-				m_uid = inData.begin()->second.as<UID>();
+				m_fileId = inData.begin()->second.as<FileId>();
 			}
 		};
 
@@ -120,7 +120,7 @@ namespace Sailor
 			TVector<TPair<std::string, glm::vec4>> m_uniformsVec4;
 			TVector<TPair<std::string, float>> m_uniformsFloat;
 
-			UID m_shader;
+			FileId m_shader;
 		};
 
 		SAILOR_API virtual ~MaterialAsset() = default;
@@ -130,7 +130,7 @@ namespace Sailor
 
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_pData->m_renderState; }
 		SAILOR_API const std::string& GetRenderQueue() const { return m_pData->m_renderQueue; }
-		SAILOR_API const UID& GetShader() const { return m_pData->m_shader; }
+		SAILOR_API const FileId& GetShader() const { return m_pData->m_shader; }
 		SAILOR_API const TVector<std::string>& GetShaderDefines() const { return  m_pData->m_shaderDefines; }
 		SAILOR_API const TVector<SamplerEntry>& GetSamplers() const { return m_pData->m_samplers; }
 		SAILOR_API const TVector<TPair<std::string, glm::vec4>>& GetUniformsVec4() const { return m_pData->m_uniformsVec4; }
@@ -152,15 +152,15 @@ namespace Sailor
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		SAILOR_API TSharedPtr<MaterialAsset> LoadMaterialAsset(UID uid);
+		SAILOR_API TSharedPtr<MaterialAsset> LoadMaterialAsset(FileId uid);
 
-		SAILOR_API bool LoadMaterial_Immediate(UID uid, MaterialPtr& outMaterial);
-		SAILOR_API Tasks::TaskPtr<MaterialPtr> LoadMaterial(UID uid, MaterialPtr& outMaterial);
+		SAILOR_API bool LoadMaterial_Immediate(FileId uid, MaterialPtr& outMaterial);
+		SAILOR_API Tasks::TaskPtr<MaterialPtr> LoadMaterial(FileId uid, MaterialPtr& outMaterial);
 
-		SAILOR_API const UID& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
+		SAILOR_API const FileId& CreateMaterialAsset(const std::string& assetpath, MaterialAsset::Data data);
 
-		SAILOR_API MaterialPtr GetLoadedMaterial(UID uid);
-		SAILOR_API Tasks::TaskPtr<MaterialPtr> GetLoadPromise(UID uid);
+		SAILOR_API MaterialPtr GetLoadedMaterial(FileId uid);
+		SAILOR_API Tasks::TaskPtr<MaterialPtr> GetLoadPromise(FileId uid);
 
 		SAILOR_API virtual void CollectGarbage() override;
 
@@ -168,10 +168,10 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API bool IsMaterialLoaded(UID uid) const;
+		SAILOR_API bool IsMaterialLoaded(FileId uid) const;
 
-		TConcurrentMap<UID, Tasks::TaskPtr<MaterialPtr>> m_promises;
-		TConcurrentMap<UID, MaterialPtr> m_loadedMaterials;
+		TConcurrentMap<FileId, Tasks::TaskPtr<MaterialPtr>> m_promises;
+		TConcurrentMap<FileId, MaterialPtr> m_loadedMaterials;
 
 		Memory::ObjectAllocatorPtr m_allocator;
 	};

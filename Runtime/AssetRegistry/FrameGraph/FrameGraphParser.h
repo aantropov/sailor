@@ -4,7 +4,7 @@
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
 #include "RHI/Types.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "Core/YamlSerializable.h"
 #include "Tasks/Scheduler.h"
 
@@ -19,7 +19,7 @@ namespace Sailor
 		public:
 			std::string m_name;
 			std::string m_path;
-			UID m_uid;
+			FileId m_fileId;
 
 			bool operator==(const Resource& rhs) const { return m_name == rhs.m_name; }
 
@@ -27,7 +27,7 @@ namespace Sailor
 			{
 				m_name = inData["name"].as<std::string>();
 				m_path = inData["path"].as<std::string>();
-				m_uid.Deserialize(inData["uid"]);
+				m_fileId.Deserialize(inData["fileId"]);
 			}
 		};
 

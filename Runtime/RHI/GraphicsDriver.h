@@ -1,5 +1,5 @@
 #pragma once
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "Types.h"
 #include "Engine/Object.h"
 

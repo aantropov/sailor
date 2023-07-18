@@ -18,12 +18,12 @@ namespace Sailor
 		SAILOR_API bool ShouldGenerateMaterials() const { return m_bShouldGenerateMaterials; }
 		SAILOR_API bool ShouldBatchByMaterial() const { return m_bShouldBatchByMaterials; }
 
-		SAILOR_API const TVector<UID>& GetDefaultMaterials() const { return m_materials; }
-		SAILOR_API TVector<UID>& GetDefaultMaterials() { return m_materials; }
+		SAILOR_API const TVector<FileId>& GetDefaultMaterials() const { return m_materials; }
+		SAILOR_API TVector<FileId>& GetDefaultMaterials() { return m_materials; }
 
 	private:
 
-		TVector<UID> m_materials;
+		TVector<FileId> m_materials;
 		bool m_bShouldGenerateMaterials = true;
 		bool m_bShouldBatchByMaterials = true;
 	};

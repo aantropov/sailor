@@ -2,7 +2,7 @@
 #include <string>
 #include <fstream>
 #include "Containers/Containers.h"
-#include "AssetRegistry/UID.h"
+#include "AssetRegistry/FileId.h"
 #include "Core/Submodule.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "Core/Singleton.hpp"
@@ -64,11 +64,11 @@ namespace Sailor
 
 		SAILOR_API void ScanContentFolder();
 		SAILOR_API void ScanFolder(const std::string& folderPath);
-		SAILOR_API const UID& LoadAsset(const std::string& filepath);
-		SAILOR_API const UID& GetOrLoadAsset(const std::string& filepath);
+		SAILOR_API const FileId& LoadAsset(const std::string& filepath);
+		SAILOR_API const FileId& GetOrLoadAsset(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
-		TAssetInfoPtr GetAssetInfoPtr(UID uid) const
+		TAssetInfoPtr GetAssetInfoPtr(FileId uid) const
 		{
 			return 	dynamic_cast<TAssetInfoPtr>(GetAssetInfoPtr_Internal(uid));
 		}
@@ -80,7 +80,7 @@ namespace Sailor
 		}
 
 		template<class TAssetInfo>
-		void GetAllAssetInfos(TVector<UID>& outAssetInfos) const
+		void GetAllAssetInfos(TVector<FileId>& outAssetInfos) const
 		{
 			outAssetInfos.Clear();
 			for (const auto& assetInfo : m_loadedAssetInfo)
@@ -97,11 +97,11 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(UID uid) const;
+		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
 
-		TMap<UID, AssetInfoPtr> m_loadedAssetInfo;
-		TMap<std::string, UID> m_UIDs;
+		TMap<FileId, AssetInfoPtr> m_loadedAssetInfo;
+		TMap<std::string, FileId> m_fileIds;
 		TMap<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
 	};
 }

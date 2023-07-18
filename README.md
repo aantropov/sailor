@@ -129,13 +129,13 @@ App::RemoveSubmodule<CustomSubmodule>();
 
 ## <a name="AssetManagement"></a> Asset Management
 
-`Sailor`'s asset management system draws inspiration from `Unity`'s approach. For each asset, the game engine generates a `.asset` metafile in the same directory. This file stores detailed information about the asset, including how it should be imported, its unique identifier (UID), import time, and other relevant parameters.
+`Sailor`'s asset management system draws inspiration from `Unity`'s approach. For each asset, the game engine generates a `.asset` metafile in the same directory. This file stores detailed information about the asset, including how it should be imported, its unique identifier (FileId), import time, and other relevant parameters.
 
-The engine manages file timestamps in metafiles and uses these to detect outdated assets. The game engine API operates with UIDs, which are generated during asset import and stored in the '.asset' files.
+The engine manages file timestamps in metafiles and uses these to detect outdated assets. The game engine API operates with FileIds, which are generated during asset import and stored in the '.asset' files.
 
 ### <a name="AssetInfo"></a> AssetInfo and AssetFile
 
-The `AssetInfo` class serves as a base for storing metadata such as the UID, timestamps, and the asset filename. Instances of `AssetInfo` are serialized/deserialized into a human-readable `Yaml` format.
+The `AssetInfo` class serves as a base for storing metadata such as the FileId, timestamps, and the asset filename. Instances of `AssetInfo` are serialized/deserialized into a human-readable `Yaml` format.
 
 Each type of asset (e.g., model, texture, render config, material, shader) has its own derived meta class that extends the base POD class with extra properties. Examples include `ModelAssetInfo`, `TextureAssetInfo`, `MaterialAssetInfo`, and more.
 
@@ -145,8 +145,8 @@ The `AssetRegistry` submodule handles scanning, manages the asset info library, 
 
 Asset importers, such as `ModelImporter`, `TextureImporter`, and `MaterialImporter`, contain loading logic. These instances manage loaded assets and prevent their destruction. While there's no base class for importers, they all follow a common pattern:
 
-- Each has an asynchronous loading method: `Tasks::TaskPtr<bool> AssetImporter::LoadAsset(UID uid, AssetPtr& outAsset);`
-- Each has an immediate loading method: `bool AssetImporter::LoadAsset_Immediate(UID uid, AssetPtr& outAsset);`
+- Each has an asynchronous loading method: `Tasks::TaskPtr<bool> AssetImporter::LoadAsset(FileId uid, AssetPtr& outAsset);`
+- Each has an immediate loading method: `bool AssetImporter::LoadAsset_Immediate(FileId uid, AssetPtr& outAsset);`
 - Each contains an `ObjectAllocator`, which handles all assets of the same type in one place.
 - Each resolves loading promises and hot reload logic.
 
@@ -154,9 +154,9 @@ The following code snippet illustrates the asynchronous loading of the `Sponza.o
 
 ```
 ModelPtr pModel = nullptr;
-if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
+if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 {
-  App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), pModel);
+  App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), pModel);
 }
 
 ...

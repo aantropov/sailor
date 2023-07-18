@@ -32,7 +32,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeHistogram.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComputeHistogramShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeHistogramShader);
 		}
 	}
 
@@ -40,7 +40,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeAverageLuminance.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComputeAverageShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeAverageShader);
 		}
 	}
 
@@ -54,7 +54,7 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pToneMappingShader, defines);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pToneMappingShader, defines);
 		}
 	}
 

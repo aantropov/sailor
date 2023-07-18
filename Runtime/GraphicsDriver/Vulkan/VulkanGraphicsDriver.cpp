@@ -1508,7 +1508,7 @@ void VulkanGraphicsDriver::ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, R
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeEquirect2Cube.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetUID(), m_pEquirect2Cubemap);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderInfo->GetFileId(), m_pEquirect2Cubemap);
 		}
 
 		check(m_pEquirect2Cubemap);

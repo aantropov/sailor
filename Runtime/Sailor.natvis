@@ -68,10 +68,16 @@
 		</Expand>
 	</Type>
 
+	<!-- FileId visualizer -->
+	<Type Name="Sailor::FileId">
+		<DisplayString Condition="m_fileId.empty()">Invalid</DisplayString>
+		<DisplayString Condition="!m_fileId.empty()">m_fileId</DisplayString>
+	</Type>
+
 	<!-- UID visualizer -->
 	<Type Name="Sailor::UID">
 		<DisplayString Condition="m_UID.empty()">Invalid</DisplayString>
-		<DisplayString Condition="!m_UID.empty()">m_UID</DisplayString>		
-	</Type>	
-	
+		<DisplayString Condition="!m_UID.empty()">m_UID</DisplayString>
+	</Type>
+
 </AutoVisualizer>

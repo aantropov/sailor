@@ -29,7 +29,7 @@ void LightCullingNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	if (!m_pComputeShader)
 	{
 		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeLightCulling.shader");
-		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(computeShaderInfo->GetUID(), m_pComputeShader);
+		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(computeShaderInfo->GetFileId(), m_pComputeShader);
 	}
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();

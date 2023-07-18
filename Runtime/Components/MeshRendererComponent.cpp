@@ -12,11 +12,11 @@ void MeshRendererComponent::BeginPlay()
 
 	GetData().SetOwner(GetOwner());
 
-	//if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/KnightArtorias/Artorias.fbx"))
-	if (auto modelUID = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
+	//if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/KnightArtorias/Artorias.fbx"))
+	if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
 	{
-		App::GetSubmodule<ModelImporter>()->LoadModel(modelUID->GetUID(), GetModel());
-		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelUID->GetUID(), GetMaterials());
+		App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), GetModel());
+		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelFileId->GetFileId(), GetMaterials());
 	}
 }
 

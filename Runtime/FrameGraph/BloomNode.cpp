@@ -33,7 +33,7 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeBloomDownscale.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComputeDownscaleShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeDownscaleShader);
 		}
 	}
 
@@ -41,7 +41,7 @@ void BloomNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	{
 		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeBloomUpscale.shader"))
 		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetUID(), m_pComputeUpscaleShader);
+			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeUpscaleShader);
 		}
 	}
 

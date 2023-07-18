@@ -24,7 +24,7 @@ namespace Sailor
 	public:
 
 		// We aren't able to create shader without asset
-		SAILOR_API ShaderSet(UID uid, const TVector<std::string>& defines) : Object(std::move(uid)), m_defines(defines) {}
+		SAILOR_API ShaderSet(FileId uid, const TVector<std::string>& defines) : Object(std::move(uid)), m_defines(defines) {}
 
 		SAILOR_API virtual bool IsReady() const override;
 
@@ -117,16 +117,16 @@ namespace Sailor
 	public:
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
-		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(const UID& uid);
-		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const UID& uid);
+		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(const FileId& uid);
+		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(const FileId& uid);
 
 		SAILOR_API virtual ~ShaderCompiler() override;
 
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
-		SAILOR_API bool LoadShader_Immediate(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
-		SAILOR_API Tasks::TaskPtr<ShaderSetPtr> LoadShader(UID uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
+		SAILOR_API bool LoadShader_Immediate(FileId uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
+		SAILOR_API Tasks::TaskPtr<ShaderSetPtr> LoadShader(FileId uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
 
 		SAILOR_API virtual void CollectGarbage() override;
 
@@ -135,9 +135,9 @@ namespace Sailor
 		ShaderCache m_shaderCache;
 		Memory::ObjectAllocatorPtr m_allocator;
 
-		TConcurrentMap<UID, TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>>> m_promises;
-		TConcurrentMap<UID, TSharedPtr<ShaderAsset>> m_shaderAssetsCache;
-		TConcurrentMap<UID, TVector<TPair<uint32_t, ShaderSetPtr>>> m_loadedShaders;
+		TConcurrentMap<FileId, TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>>> m_promises;
+		TConcurrentMap<FileId, TSharedPtr<ShaderAsset>> m_shaderAssetsCache;
+		TConcurrentMap<FileId, TVector<TPair<uint32_t, ShaderSetPtr>>> m_loadedShaders;
 
 		SAILOR_API void UpdateConstantsLibrary();
 
@@ -146,8 +146,8 @@ namespace Sailor
 
 		// Compile related functions
 		SAILOR_API bool ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint32_t permutation);
-		SAILOR_API bool GetSpirvCode(const UID& assetUID, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
-		SAILOR_API bool GetSpirvCode(const UID& assetUID, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
+		SAILOR_API bool GetSpirvCode(const FileId& assetFileId, const TVector<std::string>& defines, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
+		SAILOR_API bool GetSpirvCode(const FileId& assetFileId, uint32_t permutation, RHI::ShaderByteCode& outVertexByteCode, RHI::ShaderByteCode& outFragmentByteCode, RHI::ShaderByteCode& outComputeByteCode, bool bIsDebug);
 		SAILOR_API static bool CompileGlslToSpirv(const std::string& filename, const std::string& source, RHI::EShaderStage shaderKind, RHI::ShaderByteCode& outByteCode, bool bIsDebug);
 
 		SAILOR_API static uint32_t GetPermutation(const TVector<std::string>& defines, const TVector<std::string>& actualDefines);
