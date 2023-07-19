@@ -444,9 +444,12 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 	if (shaderAssetInfo)
 	{
 		FileId uid = shaderAssetInfo->GetFileId();
-		if (const auto& loadedShader = m_shaderAssetsCache.Find(uid); loadedShader != m_shaderAssetsCache.end())
+
+		auto& shaderAsset = m_shaderAssetsCache.At_Lock(uid);
+		if (shaderAsset)
 		{
-			return loadedShader->m_second;
+			m_shaderAssetsCache.Unlock(uid);
+			return shaderAsset;
 		}
 
 		const std::string& filepath = shaderAssetInfo->GetAssetFilepath();
@@ -464,11 +467,14 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 		{
 			SAILOR_LOG_ERROR("Cannot parse YAML: %s, %s", filepath.c_str(), e.what());
 		}
-
+		
 		ShaderAsset* shader = new ShaderAsset();
 		shader->Deserialize(yamlNode);
+		shaderAsset = TSharedPtr<ShaderAsset>(shader);
+		
+		m_shaderAssetsCache.Unlock(uid);
 
-		return m_shaderAssetsCache[uid] = TSharedPtr<ShaderAsset>(shader);
+		return shaderAsset;
 	}
 
 	SAILOR_LOG("Cannot find shader asset info!");
