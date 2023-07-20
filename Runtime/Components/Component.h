@@ -5,13 +5,16 @@
 #include "Tasks/Scheduler.h"
 #include "Engine/Types.h"
 #include "Engine/Object.h"
+#include "Core/Reflection.hpp"
 
 namespace Sailor
 {	
 	// All components are tracked
-	class Component : public Object
+	class Component : public Object, public IReflectable
 	{
 	public:
+
+		SAILOR_REFLECTABLE()
 
 		SAILOR_API virtual void BeginPlay() {}
 		SAILOR_API virtual void EndPlay() {}
@@ -37,3 +40,9 @@ namespace Sailor
 		friend class GameObject;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::Component),
+	func(GetFileId, property("fileId")),
+	func(GetInstanceId, property("instanceId"))
+)

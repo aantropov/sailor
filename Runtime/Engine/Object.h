@@ -14,8 +14,8 @@ namespace Sailor
 	class Object
 	{
 	public:
-		
-		Object(FileId uid) : m_fileId(std::move(uid)) {}		
+
+		Object(FileId uid) : m_fileId(std::move(uid)) {}
 
 #ifdef SAILOR_EDITOR
 
@@ -43,7 +43,8 @@ namespace Sailor
 		// Object could be related to loaded asset, texture, material, etc..
 		SAILOR_API const FileId& GetFileId() const { return m_fileId; }
 
-		SAILOR_API std::type_index GetType() const { return std::type_index(typeid(*this)); }
+		// Needs to resolve reflection
+		SAILOR_API const InstanceId& GetInstanceId() const { return m_instanceId; }
 
 	protected:
 

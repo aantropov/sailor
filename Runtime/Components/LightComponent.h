@@ -14,6 +14,8 @@ namespace Sailor
 	{
 	public:
 
+		SAILOR_REFLECTABLE()
+
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API virtual void OnGizmo() override;
@@ -37,6 +39,14 @@ namespace Sailor
 		SAILOR_API __forceinline LightData& GetData();
 
 		size_t m_handle = (size_t)(-1);
-
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::LightComponent, bases<Sailor::Component>),
+	func(GetIntensity, property("intensity")),
+	func(GetAttenuation, property("attenuation")),
+	func(GetBounds, property("bounds")),
+	func(GetCutOff, property("cutOff")),
+	func(GetLightType, property("lightType"))
+)

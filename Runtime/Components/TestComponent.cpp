@@ -10,6 +10,7 @@
 #include "ECS/TransformECS.h"
 #include "glm/glm/gtc/random.hpp"
 #include "imgui.h"
+#include "Core/Reflection.hpp"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -61,6 +62,9 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 3000.0f, 1000.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 	lightComponent->SetLightType(ELightType::Directional);
+
+	auto data1 = Reflection::Serialize(lightComponent);
+	auto data2 = Reflection::Serialize(lightComponent.StaticCast<Component>());
 
 	/*auto spotLight = GetWorld()->Instantiate();
 	lightComponent = spotLight->AddComponent<LightComponent>();
