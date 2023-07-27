@@ -12,7 +12,7 @@ namespace Sailor
 	{
 	public:
 
-		// Instances can be obtained only through calls to Get()
+		// instances can be obtained only through calls to Get()
 		template <typename T>
 		static const TypeInfo& Get()
 		{
@@ -28,10 +28,12 @@ namespace Sailor
 
 	private:
 
+		// were only storing the name for demonstration purposes,
+		// but this can be extended to hold other properties as well
 		std::string m_name;
 
-		// Given a type_descriptor, we construct a TypeInfo
-		// with all the metadata we care about
+		// given a type_descriptor, we construct a TypeInfo
+		// with all the metadata we care about (currently only name)
 		template <typename T, typename... Fields>
 		TypeInfo(refl::type_descriptor<T> td)
 			: m_name(td.name)
@@ -40,47 +42,84 @@ namespace Sailor
 
 	};
 
+	class ReflectionInfo : public IYamlSerializable
+	{
+	public:
+
+		virtual YAML::Node Serialize() const
+		{
+			assert(m_typeInfo);
+
+			YAML::Node res{};
+			res["typename"] = m_typeInfo->Name();
+			res["members"] = m_members;
+
+			return res;
+		};
+
+		virtual void Deserialize(const YAML::Node& inData) { assert(0); }
+
+		const TypeInfo& GetTypeInfo() const { return *m_typeInfo; }
+		const TVector<YAML::Node>& GetMembers() const { return m_members; }
+
+	private:
+
+		// TODO: Rethink the approach
+		const TypeInfo* m_typeInfo{};
+		TVector<YAML::Node> m_members{};
+
+		friend class Reflection;
+	};
+
 	class SAILOR_API IReflectable
 	{
 	public:
 		virtual const TypeInfo& GetTypeInfo() const = 0;
+		virtual ReflectionInfo GetReflectionInfo() const = 0;
 	};
 
 #define SAILOR_REFLECTABLE() \
     virtual const TypeInfo& GetTypeInfo() const override \
     { \
         return TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-    }
+    } \
+	virtual ReflectionInfo GetReflectionInfo() const override \
+	{ \
+		TypeInfo typeInfo = TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
+		ReflectionInfo res = Reflection::Reflect<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
+		return res; \
+	} \
 
 	class SAILOR_API Reflection
 	{
 	public:
 
-		template<typename TComponent>
-		static YAML::Node Serialize(TObjectPtr<TComponent> ptr) requires IsBaseOf<Component, TComponent>
+		template<typename T>
+		static ReflectionInfo Reflect(const T* ptr) requires IsBaseOf<IReflectable, T>
 		{
-			YAML::Node res{};
-
-			res["class"] = refl::reflect(*ptr).name.c_str();
-
-			const TypeInfo& typeInfo = ptr->GetTypeInfo();
+			ReflectionInfo reflection;
+			reflection.m_typeInfo = &ptr->GetTypeInfo();
 
 			for_each(refl::reflect(*ptr).members, [&](auto member)
 				{
 					if constexpr (is_readable(member))// && refl::descriptor::has_attribute<serializable>(member))
 					{
+						YAML::Node node{};
+
 						if constexpr (Sailor::IsEnum<decltype(member(*ptr))>)
 						{
-							//res[get_display_name(member)] = SerializeEnum(member(*ptr));
+							node[get_display_name(member)] = SerializeEnum<decltype(member(*ptr))>(member(*ptr));
 						}
 						else
 						{
-							res[get_display_name(member)] = member(*ptr);
+							node[get_display_name(member)] = member(*ptr);
 						}
+						reflection.m_members.Add(node);
 					}
 				});
 
-			return res;
+
+			return reflection;
 		}
 	};
 }
