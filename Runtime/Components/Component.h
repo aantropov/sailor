@@ -5,16 +5,16 @@
 #include "Tasks/Scheduler.h"
 #include "Engine/Types.h"
 #include "Engine/Object.h"
-#include "Core/Reflection.hpp"
+#include "Core/Reflection.h"
 
 namespace Sailor
 {	
 	// All components are tracked
 	class Component : public Object, public IReflectable
 	{
-	public:
+		SAILOR_REFLECTABLE(Component)
 
-		SAILOR_REFLECTABLE()
+	public:
 
 		SAILOR_API virtual void BeginPlay() {}
 		SAILOR_API virtual void EndPlay() {}

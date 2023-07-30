@@ -3,7 +3,6 @@
 #include "refl-cpp/include/refl.hpp"
 #include "Engine/Types.h"
 #include "Memory/ObjectPtr.hpp"
-#include "Components/Component.h"
 #include "YamlSerializable.h"
 
 namespace Sailor
@@ -26,6 +25,12 @@ namespace Sailor
 			return m_name;
 		}
 
+		size_t GetHash() const
+		{
+			std::hash<std::string> h;
+			return h(m_name);
+		}
+
 	private:
 
 		// were only storing the name for demonstration purposes,
@@ -39,7 +44,6 @@ namespace Sailor
 			: m_name(td.name)
 		{
 		}
-
 	};
 
 	class ReflectionInfo : public IYamlSerializable
@@ -64,7 +68,7 @@ namespace Sailor
 
 	private:
 
-		// TODO: Rethink the approach
+		// TODO: Rethink the approach with raw pointer
 		const TypeInfo* m_typeInfo{};
 		TVector<YAML::Node> m_members{};
 
@@ -78,21 +82,78 @@ namespace Sailor
 		virtual ReflectionInfo GetReflectionInfo() const = 0;
 	};
 
-#define SAILOR_REFLECTABLE() \
-    virtual const TypeInfo& GetTypeInfo() const override \
-    { \
-        return TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-    } \
+	/*
+	template<typename T>
+	class SAILOR_API IReflectable : public IReflectable
+	{
+		static const TypeInfo& GetStaticTypeInfo()
+		{
+			return TypeInfo::Get<::refl::trait::remove_qualifiers_t<T>>();
+		}
+
+	protected:
+		class SAILOR_API RegistrationFactoryMethod
+		{
+		public:
+			RegistrationFactoryMethod(const TypeInfo& type, auto factoryMethod)
+			{
+				if (!s_bRegistered)
+				{
+					Reflection::RegisterFactoryMethod(type, factoryMethod);
+					s_bRegistered = true;
+				}
+			}
+		protected:
+			static bool s_bRegistered;
+		};
+		static inline volatile RegistrationFactoryMethod s_registrationFactoryMethod{ GetStaticTypeInfo() };
+	}; */
+
+#define SAILOR_REFLECTABLE(__CLASSNAME__) \
+	public: \
+	static const TypeInfo& GetStaticTypeInfo() \
+	{ \
+		return TypeInfo::Get<__CLASSNAME__>(); \
+	} \
+	virtual const TypeInfo& GetTypeInfo() const override \
+	{ \
+		return TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
+	} \
 	virtual ReflectionInfo GetReflectionInfo() const override \
 	{ \
 		TypeInfo typeInfo = TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
 		ReflectionInfo res = Reflection::Reflect<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 		return res; \
 	} \
+	protected: \
+	class SAILOR_API RegistrationFactoryMethod \
+	{ \
+	public: \
+		RegistrationFactoryMethod(const TypeInfo& type) \
+		{ \
+			if (!s_bRegistered) \
+			{ \
+				auto placementNew = [](void* ptr) mutable \
+				{ \
+					return new (ptr) __CLASSNAME__(); \
+				}; \
+				Reflection::RegisterFactoryMethod(type, placementNew); \
+				s_bRegistered = true; \
+			} \
+		} \
+	protected: \
+		static inline bool s_bRegistered = false; \
+	}; \
+	static inline volatile RegistrationFactoryMethod s_registrationFactoryMethod{ GetStaticTypeInfo() }; \
+	private: \
 
 	class SAILOR_API Reflection
 	{
 	public:
+		using TPlacementFactoryMethod = std::function<IReflectable* (void*)>;
+
+		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
+		static IReflectable* Create(const TypeInfo& type);
 
 		template<typename T>
 		static ReflectionInfo Reflect(const T* ptr) requires IsBaseOf<IReflectable, T>
@@ -121,5 +182,7 @@ namespace Sailor
 
 			return reflection;
 		}
+
+	private:
 	};
 }

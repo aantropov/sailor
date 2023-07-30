@@ -185,7 +185,7 @@ void VulkanDescriptorSet::Release()
 			duplicatedPool = m_descriptorPool,
 			duplicatedSet = m_descriptorSet,
 			duplicatedDevice = m_device
-		]()
+		]() mutable
 		{
 			if (duplicatedSet)
 			{

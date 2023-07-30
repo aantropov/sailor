@@ -12,9 +12,9 @@ namespace Sailor
 {
 	class LightComponent : public Component
 	{
-	public:
+		SAILOR_REFLECTABLE(LightComponent)
 
-		SAILOR_REFLECTABLE()
+	public:
 
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void EndPlay() override;
@@ -45,6 +45,7 @@ namespace Sailor
 REFL_AUTO(
 	type(Sailor::LightComponent, bases<Sailor::Component>),
 	func(GetIntensity, property("intensity")),
+	func(SetIntensity, property("intensity")),
 	func(GetAttenuation, property("attenuation")),
 	func(GetBounds, property("bounds")),
 	func(GetCutOff, property("cutOff")),

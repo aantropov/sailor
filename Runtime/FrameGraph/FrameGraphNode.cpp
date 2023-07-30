@@ -1,4 +1,4 @@
- #include "FrameGraphNode.h"
+#include "FrameGraphNode.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -15,10 +15,13 @@ namespace Sailor::Internal
 
 void FrameGraphBuilder::RegisterFrameGraphNode(const std::string& nodeName, std::function<FrameGraphNodePtr(void)> factoryMethod)
 {
-	if (!Internal::g_pNodeFactoryMethods)
-	{
-		Internal::g_pNodeFactoryMethods = TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>>::Make();
-	}
+	static std::once_flag s_once{};
+
+	std::call_once(s_once, [&]() {
+		if (!Internal::g_pNodeFactoryMethods)
+		{
+			Internal::g_pNodeFactoryMethods = TUniquePtr<TMap<std::string, std::function<FrameGraphNodePtr(void)>>>::Make();
+		}});
 
 	(*Internal::g_pNodeFactoryMethods)[nodeName] = factoryMethod;
 }

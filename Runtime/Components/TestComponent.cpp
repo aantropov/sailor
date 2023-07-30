@@ -10,7 +10,7 @@
 #include "ECS/TransformECS.h"
 #include "glm/glm/gtc/random.hpp"
 #include "imgui.h"
-#include "Core/Reflection.hpp"
+#include "Core/Reflection.h"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
