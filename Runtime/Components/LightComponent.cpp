@@ -48,13 +48,13 @@ void LightComponent::OnGizmo()
 	GetOwner()->GetWorld()->GetDebugContext()->DrawArrow(worldPosition, glm::vec3(worldPosition) + forward * originSize, vec4(1, 1, 1, 1));
 }
 
-void LightComponent::SetCutOff(float innerDegrees, float outerDegrees)
+void LightComponent::SetCutOff(const glm::vec2& innerOuterDegrees)
 {
 	LightData& lightData = GetData();
 
-	if (glm::vec2(innerDegrees, outerDegrees) != lightData.m_cutOff)
+	if (innerOuterDegrees != lightData.m_cutOff)
 	{
-		lightData.m_cutOff = glm::vec2(innerDegrees, outerDegrees);
+		lightData.m_cutOff = innerOuterDegrees;
 		lightData.MarkDirty();
 	}
 }

@@ -55,8 +55,8 @@ void World::Tick(FrameState& frameState)
 	{
 		if (!el->m_bBeginPlayCalled)
 		{
-			el->BeginPlay();
 			el->m_bBeginPlayCalled = true;
+			el->BeginPlay();
 		}
 		else
 		{

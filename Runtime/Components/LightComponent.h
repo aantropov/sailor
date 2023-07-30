@@ -28,7 +28,7 @@ namespace Sailor
 		SAILOR_API __forceinline const glm::vec2& GetCutOff() const { return GetData().m_cutOff; }
 		SAILOR_API __forceinline ELightType GetLightType() const { return (ELightType)GetData().m_type; }
 
-		SAILOR_API __forceinline void SetCutOff(float innerDegrees, float outerDegrees);
+		SAILOR_API __forceinline void SetCutOff(const glm::vec2& innerOuterDegrees);
 		SAILOR_API __forceinline void SetIntensity(const glm::vec3& value);
 		SAILOR_API __forceinline void SetAttenuation(const glm::vec3& value);
 		SAILOR_API __forceinline void SetBounds(const glm::vec3& value);
@@ -44,10 +44,19 @@ namespace Sailor
 
 REFL_AUTO(
 	type(Sailor::LightComponent, bases<Sailor::Component>),
+
 	func(GetIntensity, property("intensity")),
 	func(SetIntensity, property("intensity")),
+
 	func(GetAttenuation, property("attenuation")),
+	func(SetAttenuation, property("attenuation")),
+
 	func(GetBounds, property("bounds")),
+	func(SetBounds, property("bounds")),
+
 	func(GetCutOff, property("cutOff")),
-	func(GetLightType, property("lightType"))
+	func(SetCutOff, property("cutOff")),
+
+	func(GetLightType, property("lightType")),
+	func(SetLightType, property("lightType"))
 )

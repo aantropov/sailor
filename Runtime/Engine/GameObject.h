@@ -27,21 +27,47 @@ namespace Sailor
 		SAILOR_API explicit operator bool() const { return !m_bPendingDestroy; }
 
 		template<typename TComponent, typename... TArgs >
-		SAILOR_API TObjectPtr<TComponent> AddComponent(TArgs&& ... args)
+		SAILOR_API TObjectPtr<TComponent> AddComponent(TArgs&& ... args) requires IsBaseOf<Component, TComponent>
 		{
 			check(m_pWorld);
 			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward<TArgs>(args) ...);
 
 			newObject->m_owner = m_self;
-			m_components.Add(newObject);
 
 			if (m_bBeginPlayCalled)
 			{
 				newObject->BeginPlay();
 				newObject->m_bBeginPlayCalled = true;
+				m_componentsToAdd.Add(newObject);
+			}
+			else
+			{
+				m_components.Add(newObject);
 			}
 
 			return newObject;
+		}
+
+		SAILOR_API ComponentPtr AddComponentRaw(ComponentPtr component)
+		{
+			check(m_pWorld);
+			check(!component->m_bBeginPlayCalled);
+			check(!component->GetOwner().IsValid());
+
+			component->m_owner = m_self;
+			
+			if (m_bBeginPlayCalled)
+			{
+				component->BeginPlay();
+				component->m_bBeginPlayCalled = true;
+				m_componentsToAdd.Add(component);
+			}
+			else
+			{
+				m_components.Add(component);
+			}
+
+			return component;
 		}
 
 		template<typename TComponent>
@@ -55,6 +81,13 @@ namespace Sailor
 				}
 			}
 
+			for (auto& el : m_componentsToAdd)
+			{
+				if (auto res = el.DynamicCast<TComponent>())
+				{
+					return res;
+				}
+			}
 			return TObjectPtr<TComponent>();
 		}
 
@@ -85,6 +118,7 @@ namespace Sailor
 		GameObjectPtr m_self;
 
 		TVector<ComponentPtr> m_components;
+		TVector<ComponentPtr> m_componentsToAdd;
 
 		size_t m_frameLastChange = 0;
 

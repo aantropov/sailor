@@ -62,9 +62,15 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 3000.0f, 1000.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 	lightComponent->SetLightType(ELightType::Directional);
+	
+	/*
+	ReflectionInfo reflection = lightComponent->GetReflectionInfo();
+	ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetOwner()->GetWorld()->GetAllocator());
+	GetOwner()->AddComponentRaw(newComponent);
+	newComponent->ApplyReflection(reflection);
+	*/
 
-	auto data1 = lightComponent->GetReflectionInfo();
-	auto data2 = (lightComponent.StaticCast<Component>())->GetReflectionInfo();
+	//Reflection::ApplyReflection(data3.GetRawPtr(), data1);
 
 	/*auto spotLight = GetWorld()->Instantiate();
 	lightComponent = spotLight->AddComponent<LightComponent>();

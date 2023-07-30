@@ -25,7 +25,7 @@ bool GameObject::RemoveComponent(ComponentPtr component)
 {
 	check(component);
 
-	if (m_components.RemoveFirst(component))
+	if (m_components.RemoveFirst(component) || m_componentsToAdd.RemoveFirst(component))
 	{
 		component->EndPlay();
 		component.DestroyObject(m_pWorld->GetAllocator());
@@ -43,6 +43,12 @@ void GameObject::RemoveAllComponents()
 		el.DestroyObject(m_pWorld->GetAllocator());
 	}
 
+	for (auto& el : m_componentsToAdd)
+	{
+		el->EndPlay();
+		el.DestroyObject(m_pWorld->GetAllocator());
+	}
+	
 	m_components.Clear(true);
 }
 
@@ -69,4 +75,7 @@ void GameObject::Tick(float deltaTime)
 		el->OnGizmo();
 #endif
 	}
+
+	m_components.AddRange(m_componentsToAdd);
+	m_componentsToAdd.Clear();
 }

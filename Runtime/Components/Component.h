@@ -42,7 +42,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::Component),
+	type(Sailor::Component, bases<Sailor::IReflectable>),
 	func(GetFileId, property("fileId")),
 	func(GetInstanceId, property("instanceId"))
 )
