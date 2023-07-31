@@ -239,7 +239,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			static Utils::Timer timer;
 			timer.Start();
 
-			bool bRunCommandLists = false;
 			TVector<RHI::RHICommandListPtr> primaryCommandLists;
 			TVector<RHI::RHICommandListPtr> transferCommandLists;
 			TVector<RHISemaphorePtr> waitFrameUpdate;
@@ -250,16 +249,19 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			if (m_driverInstance->AcquireNextImage())
 			{
+				RHISemaphorePtr chainSemaphore{};
+
 				if (!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 				{
 					auto rhiFrameGraph = m_frameGraph->GetRHI();
 
 					rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
 					rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-
-					RHISemaphorePtr chainSemaphore{};
+					
 					rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, chainSemaphore);
+				}
 
+				{
 					SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
 					for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
 					{
@@ -277,8 +279,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 
 					SAILOR_PROFILE_END_BLOCK();
-
-					bRunCommandLists = true;
 				}
 
 				if (m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))

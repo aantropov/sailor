@@ -160,6 +160,7 @@ void App::Start()
 		if (systemInputState.IsKeyPressed(VK_F5))
 		{
 			GetSubmodule<AssetRegistry>()->ScanContentFolder();
+			GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 			GetSubmodule<Renderer>()->RefreshFrameGraph();
 		}
 
