@@ -33,36 +33,38 @@
 		{ \
 			if constexpr (is_writable(member)) \
 			{ \
-				const std::string prop = get_display_name(member); \
-				size_t index = reflection.GetMembers().FindIf([&](const auto& lhs) { return lhs[prop].IsDefined(); }); \
-				if (index != -1) \
+				const std::string displayName = get_display_name(member); \
+				if (reflection.GetProperties().ContainsKey(displayName)) \
 				{ \
-					const YAML::Node& node = reflection.GetMembers()[index][prop]; \
-					if constexpr (is_field(member)) \
+					const YAML::Node& node = reflection.GetProperties()[displayName]; \
+					if(node.IsDefined()) \
 					{ \
-						using FieldType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>; \
-						if constexpr (Sailor::IsEnum<FieldType>) \
+						if constexpr (is_field(member)) \
 						{ \
-							DeserializeEnum<FieldType>(node, member(*ptr)); \
+							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>; \
+							if constexpr (Sailor::IsEnum<PropertyType>) \
+							{ \
+								DeserializeEnum<PropertyType>(node, member(*ptr)); \
+							} \
+							else \
+							{ \
+								member(*ptr) = node.as<PropertyType>(); \
+							} \
 						} \
-						else \
+						else if constexpr (refl::descriptor::is_function(member)) \
 						{ \
-							member(*ptr) = node.as<FieldType>(); \
+							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>; \
+							PropertyType v{}; \
+							if constexpr (Sailor::IsEnum<PropertyType>) \
+							{ \
+								DeserializeEnum<PropertyType>(node, v); \
+							} \
+							else \
+							{ \
+								v = node.as<PropertyType>(); \
+							} \
+							member(*ptr, v); \
 						} \
-					} \
-					else if constexpr (refl::descriptor::is_function(member)) \
-					{ \
-						using FieldType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>; \
-						FieldType v{}; \
-						if constexpr (Sailor::IsEnum<FieldType>) \
-						{ \
-							DeserializeEnum<FieldType>(node, v); \
-						} \
-						else \
-						{ \
-							v = node.as<FieldType>(); \
-						} \
-						member(*ptr, v); \
 					} \
 				} \
 			} \
@@ -80,6 +82,7 @@
 					return new (ptr) __CLASSNAME__(); \
 				}; \
 				Reflection::RegisterFactoryMethod(type, placementNew); \
+				Reflection::RegisterType(type.Name(), &type); \
 				s_bRegistered = true; \
 			} \
 		} \
@@ -103,27 +106,12 @@ namespace Sailor
 			return ti;
 		}
 
-		const std::string& Name() const
-		{
-			return m_name;
-		}
+		const std::string& Name() const { return m_name; }
+		size_t Size() const { return m_size; }
+		size_t GetHash() const { std::hash<std::string> h; return h(m_name); }
 
-		size_t Size() const
-		{
-			return m_size;
-		}
-
-		size_t GetHash() const
-		{
-			std::hash<std::string> h;
-			return h(m_name);
-		}
-
-		bool operator==(const TypeInfo& rhs) const
-		{
-			// TODO: Should we optimize that?
-			return m_name == rhs.Name();
-		}
+		// TODO: Should we optimize that?
+		bool operator==(const TypeInfo& rhs) const { return m_name == rhs.Name(); }
 
 	private:
 
@@ -144,27 +132,21 @@ namespace Sailor
 	{
 	public:
 
-		virtual YAML::Node Serialize() const
-		{
-			assert(m_typeInfo);
-
-			YAML::Node res{};
-			res["typename"] = m_typeInfo->Name();
-			res["members"] = m_members;
-
-			return res;
-		};
-
-		virtual void Deserialize(const YAML::Node& inData) { assert(0); }
+		virtual YAML::Node Serialize() const;
+		virtual void Deserialize(const YAML::Node& inData);
 
 		const TypeInfo& GetTypeInfo() const { return *m_typeInfo; }
-		const TVector<YAML::Node>& GetMembers() const { return m_members; }
+		const TMap<std::string, YAML::Node>& GetProperties() const { return m_properties; }
 
 	private:
 
 		// TODO: Rethink the approach with raw pointer
 		const TypeInfo* m_typeInfo{};
-		TVector<YAML::Node> m_members{};
+
+		// We store all properties already serialized to YAML to simplify the cooding
+		// Ideally we need to introduce Proxies, that store the properties, without 
+		// binding to specific serialization format
+		TMap<std::string, YAML::Node> m_properties{};
 
 		friend class Reflection;
 	};
@@ -180,6 +162,7 @@ namespace Sailor
 	namespace Internal
 	{
 		extern TUniquePtr<TConcurrentMap<std::string, std::function<IReflectable* (void*)>>> g_pPlacementFactoryMethods;
+		extern TUniquePtr<TConcurrentMap<std::string, const TypeInfo*>> g_pReflectionTypes;
 	}
 
 	class SAILOR_API Reflection
@@ -188,6 +171,7 @@ namespace Sailor
 		using TPlacementFactoryMethod = std::function<IReflectable* (void*)>;
 
 		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
+		static void RegisterType(const std::string& typeName, const TypeInfo* pType);
 
 		template<typename T = Object>
 		static TObjectPtr<T> CreateObject(const TypeInfo& type, Memory::ObjectAllocatorPtr pAllocator) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T>
@@ -200,6 +184,8 @@ namespace Sailor
 			return pRes;
 		}
 
+		static const TypeInfo& GetTypeByName(const std::string& typeName);
+
 		template<typename T>
 		static ReflectionInfo ReflectStatic(const T* ptr) requires IsBaseOf<IReflectable, T>
 		{
@@ -210,17 +196,16 @@ namespace Sailor
 				{
 					if constexpr (is_readable(member))// && refl::descriptor::has_attribute<serializable>(member))
 					{
-						YAML::Node node{};
-
-						if constexpr (Sailor::IsEnum<decltype(member(*ptr))>)
+						using PropertyType = decltype(member(*ptr));
+						const std::string displayName = get_display_name(member);
+						if constexpr (Sailor::IsEnum<PropertyType>)
 						{
-							node[get_display_name(member)] = SerializeEnum<decltype(member(*ptr))>(member(*ptr));
+							reflection.m_properties[displayName] = SerializeEnum<PropertyType>(member(*ptr));
 						}
 						else
 						{
-							node[get_display_name(member)] = member(*ptr);
+							reflection.m_properties[displayName] = member(*ptr);
 						}
-						reflection.m_members.Add(node);
 					}
 				});
 
