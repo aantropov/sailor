@@ -72,7 +72,7 @@ void App::Initialize()
 	EASY_MAIN_THREAD;
 #endif
 
-	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_8, bIsEnabledVulkanValidationLayers));
+	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bIsEnabledVulkanValidationLayers));
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
@@ -263,12 +263,13 @@ void App::Shutdown()
 	RemoveSubmodule<FrameGraphAssetInfoHandler>();
 
 	// We need to finish all jobs before release
+	RemoveSubmodule<ImGuiApi>();
 	GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
 	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
 	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::RHI);
 	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 
-	App::GetSubmodule<Renderer>()->Clear();
+	App::GetSubmodule<Renderer>()->BeginConditionalDestroy();
 
 	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<MaterialImporter>();
@@ -278,7 +279,6 @@ void App::Shutdown()
 
 	RemoveSubmodule<AssetRegistry>();
 
-	RemoveSubmodule<ImGuiApi>();
 	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<Tasks::Scheduler>();
 

@@ -42,7 +42,7 @@ ImGuiApi::~ImGuiApi()
 	SAILOR_PROFILE_FUNCTION();
 
 	ImGui_ImplWin32_Shutdown();
-	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Release ImGui", ([]() { ImGuiApi::ImGui_Shutdown(); }));
+	ImGuiApi::ImGui_Shutdown();
 }
 
 void ImGuiApi::NewFrame()

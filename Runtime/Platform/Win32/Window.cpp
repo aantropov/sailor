@@ -297,7 +297,10 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 		pWindow = Window::g_windows[windowIndex];
 	}
 
-	App::GetSubmodule<ImGuiApi>()->HandleWin32(hWnd, msg, wParam, lParam);
+	if (auto* imGui = App::GetSubmodule<ImGuiApi>())
+	{
+		imGui->HandleWin32(hWnd, msg, wParam, lParam);
+	}
 
 	switch (msg)
 	{

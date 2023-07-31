@@ -97,6 +97,8 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::RHI);
 
+	check(m_cachedDescriptorSets.Num() == 0);
+
 	GraphicsDriver::Vulkan::VulkanApi::Shutdown();
 }
 
@@ -886,6 +888,12 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 		descriptors);
 
 	bindings->m_vulkan.m_descriptorSet->Compile();
+
+#ifndef _SHIPPING
+	VkDescriptorSet handleSet = *bindings->m_vulkan.m_descriptorSet;
+	static uint32_t s_debugIterator = 0;
+	m_vkInstance->GetMainDevice()->SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_SET, (uint64_t)handleSet, std::format("ShaderBinding's Descriptor Set {}", s_debugIterator++));
+#endif 
 }
 
 RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader)
@@ -2339,6 +2347,13 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 			descriptors);
 		SAILOR_PROFILE_END_BLOCK();
 
+#ifndef _SHIPPING
+		if (VkDescriptorSet handleSet = *descriptorSet)
+		{
+			m_vkInstance->GetMainDevice()->SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_SET, (uint64_t)handleSet, "Compatible Cache Descriptor Set");
+		}
+#endif
+		
 		SAILOR_PROFILE_BLOCK("Compile new descriptor sets");
 		descriptorSet->Compile();
 		descriptorSets.Add(descriptorSet);

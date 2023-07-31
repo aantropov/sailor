@@ -112,7 +112,7 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 
 	if (!diffuseMaps.IsEmpty())
 	{
-		data.m_samplers.Add(MaterialAsset::SamplerEntry("albedoTexture", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));
+		data.m_samplers.Add(MaterialAsset::SamplerEntry("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));
 	}
 
 	if (!ambientMaps.IsEmpty())

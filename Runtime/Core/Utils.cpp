@@ -15,6 +15,7 @@
 
 #include <sstream>
 #include <string>
+#include <format>
 
 #include <windows.h>
 #include "Containers/Vector.h"
@@ -108,6 +109,22 @@ DWORD Utils::GetRandomColorHex()
 	);
 
 	return (DWORD)res;
+}
+
+std::string Utils::GetCurrentThreadName()
+{
+	if (App::GetSubmodule<Tasks::Scheduler>()->IsMainThread())
+	{
+		return std::string("Thread Main");
+	}
+	else if (App::GetSubmodule<Tasks::Scheduler>()->IsRendererThread())
+	{
+		return std::string("Thread Render");
+	}
+	else
+	{
+		return std::format("Thread {}", GetCurrentThreadId());
+	}
 }
 
 void Utils::SetThreadName(size_t dwThreadID, const std::string& threadName)

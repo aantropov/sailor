@@ -177,13 +177,14 @@ Scheduler::~Scheduler()
 		worker->Join();
 	}
 
+	App::GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
+
 	for (auto worker : m_workerThreads)
 	{
 		delete worker;
 	}
-	m_workerThreads.Clear();
 
-	App::GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
+	m_workerThreads.Clear();
 }
 
 uint32_t Scheduler::GetNumWorkerThreads() const

@@ -93,7 +93,6 @@ Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples
 
 Renderer::~Renderer()
 {
-	m_cachedSceneViews.Clear();
 	Renderer::GetDriver()->WaitIdle();
 	m_driverInstance.Clear();
 }
@@ -139,9 +138,11 @@ RHI::EFormat Renderer::GetDepthFormat() const
 	return Renderer::GetDriver()->GetDepthBuffer()->GetFormat();
 }
 
-void Renderer::Clear()
+void Renderer::BeginConditionalDestroy()
 {
 	m_frameGraph.Clear();
+	m_cachedSceneViews.Clear();
+	Renderer::GetDriver()->WaitIdle();
 }
 
 TUniquePtr<IGraphicsDriver>& Renderer::GetDriver()

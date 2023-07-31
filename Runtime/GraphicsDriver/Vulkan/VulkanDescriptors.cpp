@@ -180,26 +180,28 @@ void VulkanDescriptorSet::Release()
 {
 	DWORD currentThreadId = GetCurrentThreadId();
 
-	auto pReleaseResource = Tasks::CreateTask("Release descriptor set",
-		[
-			duplicatedPool = m_descriptorPool,
-			duplicatedSet = m_descriptorSet,
-			duplicatedDevice = m_device
-		]() mutable
-		{
-			if (duplicatedSet)
-			{
-				vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
-			}
-		});
-
 	if (m_currentThreadId == currentThreadId)
 	{
-		pReleaseResource->Execute();
-		m_device.Clear();
+		vkFreeDescriptorSets(*m_device, *m_descriptorPool, 1, &m_descriptorSet);
 	}
 	else
 	{
+		check(m_descriptorPool.IsValid());
+		check(m_device.IsValid());
+
+		auto pReleaseResource = Tasks::CreateTask("Release descriptor set",
+			[
+				duplicatedPool = std::move(m_descriptorPool),
+				duplicatedSet = std::move(m_descriptorSet),
+				duplicatedDevice = std::move(m_device)
+			]() mutable
+			{
+				if (duplicatedSet && duplicatedDevice && duplicatedPool)
+				{
+					vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
+				}
+			});
+
 		App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
 	}
 }

@@ -146,8 +146,6 @@ void VulkanDevice::vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer)
 VulkanDevice::~VulkanDevice()
 {
 	vkDestroyDevice(m_device, nullptr);
-
-	m_surface.Clear();
 }
 
 void VulkanDevice::Shutdown()
@@ -164,7 +162,7 @@ void VulkanDevice::Shutdown()
 	m_commandPool.Clear();
 
 	// 1 Main, 1 Render, 2 RHI
-	check(m_threadContext.Num() == 4);
+	check(m_threadContext.Num() <= 4);
 
 	for (auto& pair : m_threadContext)
 	{
@@ -183,6 +181,7 @@ void VulkanDevice::Shutdown()
 
 	m_samplers.Clear();
 	m_pipelineBuilder.Clear();
+	m_surface.Clear();
 	m_threadContext.Clear();
 
 	m_memoryAllocators.Clear();
@@ -195,6 +194,10 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 	{
 		res = CreateThreadContext();
 
+#ifndef _SHIPPING
+		VkDescriptorPool pool = *res->m_descriptorPool;
+		SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_POOL, (uint64_t)pool, Utils::GetCurrentThreadName());
+#endif 
 		// We don't want to create ThreadContext for each thread, only for Main, RHI and Render
 		check(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
 	}
