@@ -86,7 +86,7 @@ VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsa
 	m_bSupportsMultiDrawIndirect = m_physicalDeviceProperties.limits.maxDrawIndirectCount > 1;
 
 	CreateLogicalDevice(m_physicalDevice);
-	
+
 	SAILOR_LOG("maxDescriptorSetSampledImages = %d", (int32_t)m_physicalDeviceProperties.limits.maxDescriptorSetSampledImages);
 	SAILOR_LOG("maxSamplerAnisotropy = %.2f", m_physicalDeviceProperties.limits.maxSamplerAnisotropy);
 	SAILOR_LOG("bufferImageGranularity = %d", (int32_t)m_physicalDeviceProperties.limits.bufferImageGranularity);
@@ -409,7 +409,20 @@ bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
 	CreateFrameDependencies();
 
 	m_bIsSwapChainOutdated = false;
-	m_bNeedToTransitSwapchainToPresent = true;
+
+	SAILOR_ENQUEUE_TASK_RENDER_THREAD_CMD("RecreateSwapchain: Initialize DepthStencil RenderTarget", ([swapchain = m_swapchain](Sailor::RHI::RHICommandListPtr cmdList)
+		{
+			for (const auto& sc : swapchain->GetImageViews())
+			{
+				cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(sc, sc->m_format, VK_IMAGE_LAYOUT_UNDEFINED, sc->GetImage()->m_defaultLayout);
+			}
+
+			cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(swapchain->GetDepthBufferView(),
+				swapchain->GetDepthBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
+				swapchain->GetDepthBufferView()->GetImage()->m_defaultLayout);
+
+		}));
+
 	return true;
 }
 
@@ -470,7 +483,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT blendFeatures{};
 	blendFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
 	blendFeatures.advancedBlendCoherentOperations = VK_TRUE;
-	
+
 	floatFeatures.pNext = &blendFeatures;
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
@@ -512,7 +525,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	*/
 
 	// We need relaxed vertex->fragment output
-	VkPhysicalDeviceMaintenance4Features maintence4{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES};
+	VkPhysicalDeviceMaintenance4Features maintence4{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES };
 	maintence4.pNext = &deviceFeatures2;
 	maintence4.maintenance4 = VK_TRUE;
 
