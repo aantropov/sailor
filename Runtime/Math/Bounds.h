@@ -9,6 +9,35 @@
 
 namespace Sailor::Math
 {
+	struct Triangle
+	{
+		vec3 m_centroid{};
+		vec3 m_vertices[3];
+		vec3 m_normals[3];
+		vec2 m_uvs;
+		u8 m_materialIndex{};
+	};
+
+	struct Ray
+	{
+		vec3 m_origin{};
+		vec3 m_direction{};
+	};
+
+	struct RaycastHit
+	{
+		static constexpr float NoIntersection = std::numeric_limits<float>().infinity();
+
+		bool HasIntersection() const { return m_point != vec3(NoIntersection); }
+		vec3 m_point = vec3(NoIntersection);
+		vec3 m_normal{};
+		vec2 m_textureCoord{};
+		vec2 m_textureCoord2{};
+		vec3 m_barycentricCoordinate{};
+		float m_rayLenght = NoIntersection;
+		uint32_t m_triangleIndex = (uint32_t)-1;
+	};
+
 	struct Plane
 	{
 		glm::vec4 m_abcd = { 0.f, 1.f, 0.f, 0.0f };
@@ -115,6 +144,10 @@ namespace Sailor::Math
 		//  2  3  6  7
 		TVector<glm::vec3> m_corners;
 	};
+
+	bool IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength = 10e30);
+	bool IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength = 10e30);
+	bool IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength = 10e30);
 }
 
 namespace std

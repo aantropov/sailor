@@ -35,6 +35,9 @@ namespace {
 		aiProcess_GenNormals |
 		aiProcess_GenUVCoords |
 		aiProcess_Debone |
+		aiProcess_RemoveRedundantMaterials |
+		aiProcess_FindDegenerates |
+		aiProcess_GenBoundingBoxes |
 		aiProcess_ValidateDataStructure;
 }
 
@@ -158,6 +161,8 @@ ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene
 	assert(mesh->HasNormals());
 
 	Sailor::ModelImporter::MeshContext meshContext;
+	meshContext.bounds.m_min = *(vec3*)(&mesh->mAABB.mMin);
+	meshContext.bounds.m_max = *(vec3*)(&mesh->mAABB.mMax);
 
 	for (uint32_t i = 0; i < mesh->mNumVertices; i++)
 	{
@@ -206,14 +211,6 @@ ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene
 		}
 
 		meshContext.outVertices.Add(std::move(vertex));
-
-		if (!meshContext.bIsInited)
-		{
-			meshContext.bounds.m_max = meshContext.bounds.m_min = vertex.m_position;
-			meshContext.bIsInited = true;
-		}
-
-		meshContext.bounds.Extend(vertex.m_position);
 	}
 
 	for (uint32_t i = 0; i < mesh->mNumFaces; i++)
@@ -397,11 +394,6 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					{
 						for (const auto& mesh : data->m_parsedMeshes)
 						{
-							if (!mesh.bIsInited)
-							{
-								continue;
-							}
-
 							RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
 							ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 							ptr->m_bounds = mesh.bounds;

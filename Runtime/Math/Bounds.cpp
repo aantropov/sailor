@@ -1,5 +1,6 @@
-#include "Core/Defines.h"
+﻿#include "Core/Defines.h"
 #include "Math/Bounds.h"
+#include <glm/glm/gtx/intersect.hpp>
 
 using namespace Sailor;
 using namespace Sailor::Math;
@@ -467,7 +468,123 @@ void AABB::Apply(const glm::mat4& transformMatrix)
 
 	for (auto& point : points)
 	{
-		const auto& tranformed = transformMatrix * glm::vec4(point, 1.0f);
-		Extend(tranformed);
+		const auto& transformed = transformMatrix * glm::vec4(point, 1.0f);
+		Extend(transformed);
 	}
+}
+
+bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength)
+{
+	outRaycastHit = RaycastHit();
+
+	float distance = std::numeric_limits<float>::max();
+	vec2 baryPosition{};
+
+	if (bool res = glm::intersectRayTriangle(ray.m_origin, ray.m_direction,
+		tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2],
+		baryPosition, distance))
+	{
+		if (distance < maxRayLength)
+		{
+			outRaycastHit.m_barycentricCoordinate = vec3(baryPosition.x, baryPosition.y, 1.0f - baryPosition.x - baryPosition.y);
+			outRaycastHit.m_point = ray.m_origin + ray.m_direction * distance;
+			outRaycastHit.m_triangleIndex = 0;
+			outRaycastHit.m_rayLenght = distance;
+		}
+	}
+
+	return outRaycastHit.HasIntersection();
+}
+
+bool Math::IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength)
+{
+	outRaycastHit = RaycastHit();
+	outRaycastHit.m_rayLenght = maxRayLength;
+
+	float distance = std::numeric_limits<float>::max();
+	vec2 baryPosition{};
+
+	uint32_t index = 0;
+	for (const auto& tri : tris)
+	{
+		if (bool res = glm::intersectRayTriangle(ray.m_origin, ray.m_direction,
+			tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2],
+			baryPosition, distance))
+		{
+			if (distance < outRaycastHit.m_rayLenght)
+			{
+				outRaycastHit.m_barycentricCoordinate = vec3(baryPosition.x, baryPosition.y, 1.0f - baryPosition.x - baryPosition.y);
+				outRaycastHit.m_point = ray.m_origin + ray.m_direction * distance;
+				outRaycastHit.m_triangleIndex = index;
+				outRaycastHit.m_rayLenght = distance;
+			}
+		}
+
+		index++;
+	}
+
+	return outRaycastHit.HasIntersection();
+}
+
+/*
+// This is the famous Möller–Trumbore intersection algorithm, which is still pretty close to ‘as fast as possible’.
+// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+void IntersectRayTriangle(Ray& ray, const Triangle& tri)
+{
+	const vec3 edge1 = tri.m_vertices[1] - tri.m_vertices[0];
+	const vec3 edge2 = tri.m_vertices[2] - tri.m_vertices[0];
+	const vec3 h = cross(ray.m_direction, edge2);
+	const float a = dot(edge1, h);
+
+	if (a > -0.0001f && a < 0.0001f)
+	{
+		// ray parallel to triangle
+		return;
+	}
+
+	const float f = 1 / a;
+	const vec3 s = ray.m_origin - tri.m_vertices[0];
+	const float u = f * dot(s, h);
+
+	if (u < 0 || u > 1)
+	{
+		return;
+	}
+
+	const vec3 q = cross(s, edge1);
+	const float v = f * dot(ray.m_direction, q);
+
+	if (v < 0 || u + v > 1)
+	{
+		return;
+	}
+
+	const float t = f * dot(edge2, q);
+	if (t > 0.0001f)
+	{
+		ray.m_t = min(ray.m_t, t);
+	}
+}*/
+
+bool Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength)
+{
+	float tx1 = (bmin.x - ray.m_origin.x) / ray.m_direction.x;
+	float tx2 = (bmax.x - ray.m_origin.x) / ray.m_direction.x;
+
+	float tmin = min(tx1, tx2);
+	float tmax = max(tx1, tx2);
+
+	float ty1 = (bmin.y - ray.m_origin.y) / ray.m_direction.y;
+	float ty2 = (bmax.y - ray.m_origin.y) / ray.m_direction.y;
+
+	tmin = max(tmin, min(ty1, ty2));
+	tmax = min(tmax, max(ty1, ty2));
+
+	float tz1 = (bmin.z - ray.m_origin.z) / ray.m_direction.z;
+	float tz2 = (bmax.z - ray.m_origin.z) / ray.m_direction.z;
+
+	tmin = max(tmin, min(tz1, tz2));
+	tmax = min(tmax, max(tz1, tz2));
+
+	return tmax >= tmin && tmin < maxRayLength && tmax > 0;
 }

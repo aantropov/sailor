@@ -69,7 +69,6 @@ namespace Sailor
 			TVector<RHI::VertexP3N3T3B3UV2C4> outVertices;
 			TVector<uint32_t> outIndices;
 			Math::AABB bounds{};
-			bool bIsInited = false;
 		};
 
 		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);

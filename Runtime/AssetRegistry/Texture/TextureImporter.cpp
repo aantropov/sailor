@@ -13,8 +13,14 @@
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 
+#ifndef STB_IMAGE_IMPLEMENTATION
+
 #define STB_IMAGE_IMPLEMENTATION
+#define STBI_MSC_SECURE_CRT
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image.h"
+
+#endif
 
 using namespace Sailor;
 
