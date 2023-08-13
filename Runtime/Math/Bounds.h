@@ -14,7 +14,9 @@ namespace Sailor::Math
 		vec3 m_centroid{};
 		vec3 m_vertices[3];
 		vec3 m_normals[3];
-		vec2 m_uvs;
+		vec3 m_tangent[3];
+		vec3 m_bitangent[3];
+		vec2 m_uvs[3];
 		u8 m_materialIndex{};
 	};
 

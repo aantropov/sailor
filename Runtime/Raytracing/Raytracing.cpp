@@ -193,9 +193,40 @@ namespace Sailor::Internal
 	}
 }
 
-Tasks::TaskPtr<TSharedPtr<Raytracing::Texture2D<u8>>> Raytracing::LoadTexture()
+Tasks::TaskPtr<TSharedPtr<Raytracing::Texture2D<u8vec4>>> Raytracing::LoadTexture(const char* file)
 {
-	return Tasks::TaskPtr<TSharedPtr<Raytracing::Texture2D<u8>>>();
+	auto task = Tasks::CreateTaskWithResult<TSharedPtr<Raytracing::Texture2D<u8vec4>>>(file,
+		[file = file]() mutable
+		{
+			TSharedPtr<Raytracing::Texture2D<u8vec4>> tex = TSharedPtr<Raytracing::Texture2D<u8vec4>>::Make();
+
+			int32_t width{};
+			int32_t height{};
+			uint32_t imageSize{};
+			void* pixels = nullptr;
+
+			int32_t texChannels = 0;
+			if (stbi_is_hdr(file) && (pixels = stbi_loadf(file, &width, &height, &texChannels, STBI_rgb_alpha)))
+			{
+				imageSize = (uint32_t)width * height * sizeof(float) * 4;
+			}
+			else if (pixels = stbi_load(file, &width, &height, &texChannels, STBI_rgb_alpha))
+			{
+				imageSize = (uint32_t)width * height * 4;
+			}
+			else
+			{
+				check(false);
+			}
+
+			tex->m_data.Resize(imageSize);
+			::memcpy(tex->m_data.GetData(), pixels, imageSize);
+			stbi_image_free(pixels);
+
+			return tex;
+		});
+
+	return task;
 }
 
 void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const mat4& viewProjection, const aiScene* scene)
@@ -234,9 +265,75 @@ void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const mat4& v
 		auto n1 = *reinterpret_cast<vec3*>(&mesh->mNormals[face.mIndices[1]]) * viewProjectionN;
 		auto n2 = *reinterpret_cast<vec3*>(&mesh->mNormals[face.mIndices[2]]) * viewProjectionN;
 
-		tri.m_normals[0] = normalize(n0);
-		tri.m_normals[1] = normalize(n1);
-		tri.m_normals[2] = normalize(n2);
+		tri.m_normals[0] = n0;
+		tri.m_normals[1] = n1;
+		tri.m_normals[2] = n2;
+
+		if (mesh->HasTextureCoords(0))
+		{
+			tri.m_uvs[0] =
+			{
+				mesh->mTextureCoords[0][face.mIndices[0]].x,
+				mesh->mTextureCoords[0][face.mIndices[0]].y
+			};
+
+			tri.m_uvs[1] =
+			{
+				mesh->mTextureCoords[0][face.mIndices[1]].x,
+				mesh->mTextureCoords[0][face.mIndices[1]].y
+			};
+
+			tri.m_uvs[2] =
+			{
+				mesh->mTextureCoords[0][face.mIndices[2]].x,
+				mesh->mTextureCoords[0][face.mIndices[2]].y
+			};
+		}
+
+		if (mesh->HasTangentsAndBitangents())
+		{
+			tri.m_tangent[0] =
+			{
+				mesh->mTangents[face.mIndices[0]].x,
+				mesh->mTangents[face.mIndices[0]].y,
+				mesh->mTangents[face.mIndices[0]].z
+			};
+
+			tri.m_tangent[1] =
+			{
+				mesh->mTangents[face.mIndices[1]].x,
+				mesh->mTangents[face.mIndices[1]].y,
+				mesh->mTangents[face.mIndices[1]].z
+			};
+
+			tri.m_tangent[2] =
+			{
+				mesh->mTangents[face.mIndices[2]].x,
+				mesh->mTangents[face.mIndices[2]].y,
+				mesh->mTangents[face.mIndices[2]].z
+			};
+
+			tri.m_bitangent[0] =
+			{
+				mesh->mBitangents[face.mIndices[0]].x,
+				mesh->mBitangents[face.mIndices[0]].y,
+				mesh->mBitangents[face.mIndices[0]].z
+			};
+
+			tri.m_bitangent[1] =
+			{
+				mesh->mBitangents[face.mIndices[1]].x,
+				mesh->mBitangents[face.mIndices[1]].y,
+				mesh->mBitangents[face.mIndices[1]].z
+			};
+
+			tri.m_bitangent[2] =
+			{
+				mesh->mBitangents[face.mIndices[2]].x,
+				mesh->mBitangents[face.mIndices[2]].y,
+				mesh->mBitangents[face.mIndices[2]].z
+			};
+		}
 
 		tri.m_materialIndex = mesh->mMaterialIndex;
 		//memcpy(&mesh->mVertices[face.mIndices[0]], tri.m_vertices, sizeof(float) * 3);
@@ -317,20 +414,20 @@ void Raytracing::Run()
 		aiNode* cameraNode = rootNode->FindNode(aiCamera->mName);
 
 		mat4 cameraTransformationMatrix{};
-		memcpy(&cameraTransformationMatrix, &cameraNode->mTransformation, sizeof(float) * 16);
+		::memcpy(&cameraTransformationMatrix, &cameraNode->mTransformation, sizeof(float) * 16);
 
 		vec4 camPos{ 0,0,0,1 };
-		memcpy(&camPos, &aiCamera->mPosition, sizeof(float) * 3);
+		::memcpy(&camPos, &aiCamera->mPosition, sizeof(float) * 3);
 		camPos = camPos * cameraTransformationMatrix;
 		camPos /= camPos.w;
 
 		vec3 viewDir{};
-		memcpy(&viewDir, &aiCamera->mLookAt, sizeof(float) * 3);
+		::memcpy(&viewDir, &aiCamera->mLookAt, sizeof(float) * 3);
 		viewDir = vec3(vec4(viewDir, 0) * cameraTransformationMatrix);
 		viewDir = normalize(viewDir);
 
 		vec3 camUp{};
-		memcpy(&camUp, &aiCamera->mUp, sizeof(float) * 3);
+		::memcpy(&camUp, &aiCamera->mUp, sizeof(float) * 3);
 		camUp = normalize(camUp);
 
 		viewMatrix = transpose(glm::lookAtRH(vec3(camPos.xyz), vec3(camPos.xyz) + viewDir, camUp));
@@ -344,6 +441,26 @@ void Raytracing::Run()
 	m_triangles.Reserve(numFaces);
 
 	ProcessNode_Assimp(m_triangles, viewMatrix * projectionMatrix, scene->mRootNode, scene);
+
+	// Loading textures
+	{
+		TVector<Tasks::ITaskPtr> tasks;
+		tasks.Reserve(scene->mNumMaterials * 4);
+		for (uint32_t i = 0; i < scene->mNumMaterials; i++)
+		{
+			auto& material = scene->mMaterials[i];
+			aiString path;
+			material->GetTexture(aiTextureType_DIFFUSE, 0, &path);
+
+			tasks.Add(LoadTexture(path.C_Str()));
+			(*tasks.Last())->Run();
+		}
+
+		for (auto& task : tasks)
+		{
+			task->Wait();
+		}
+	}
 
 	BVH bvh(numFaces);
 	bvh.BuildBVH(m_triangles);
@@ -366,59 +483,66 @@ void Raytracing::Run()
 	auto viewportUpperLeft = cameraCenter - vec3(0, 0, focalLength) - viewportU / 2.0f - viewportV / 2.0f;
 	auto pixel00Loc = viewportUpperLeft + 0.5f * (pixelDeltaU + pixelDeltaV);
 
-	TVector<Tasks::ITaskPtr> tasks;
-	tasks.Reserve((height * width) / (GroupSize * GroupSize));
-	for (uint32_t y = 0; y < height; y += GroupSize)
+	// Raytracing
 	{
-		for (uint32_t x = 0; x < width; x += GroupSize)
+		TVector<Tasks::ITaskPtr> tasks;
+		tasks.Reserve((height * width) / (GroupSize * GroupSize));
+		for (uint32_t y = 0; y < height; y += GroupSize)
 		{
-			auto task = Tasks::CreateTask("Calculate raytracing",
-				[=,
-				&output,
-				&bvh,
-				this]() mutable
-				{
-					Ray ray;
-					for (uint32_t v = 0; v < GroupSize; v++)
+			for (uint32_t x = 0; x < width; x += GroupSize)
+			{
+				auto task = Tasks::CreateTask("Calculate raytracing",
+					[=,
+					&output,
+					&bvh,
+					this]() mutable
 					{
-						for (uint32_t u = 0; u < GroupSize; u++)
+						Ray ray;
+						for (uint32_t v = 0; v < GroupSize; v++)
 						{
-							RaycastHit hit;
-							const uint32_t index = (y + v) * width + (x + u);
-							auto pixelCenter = pixel00Loc + ((float)(x + u) * pixelDeltaU) + ((float)(y + v) * pixelDeltaV);
-
-							ray.m_origin = cameraCenter;
-							ray.m_direction = glm::normalize(pixelCenter - cameraCenter);
-
-							output[index] = u8vec3(0u, 0u, 255u);
-
-							//if (Math::IntersectRayTriangle(ray, m_triangles, hit) && abs(hit.m_point.z) < 1.0f)
-							if (bvh.IntersectBVH(ray, m_triangles, hit, 0) && hit.m_point.z < 1.0f && hit.m_point.z > 0.0f)
+							for (uint32_t u = 0; u < GroupSize; u++)
 							{
-								uint8_t depth = (uint8_t)(pow(hit.m_point.z, 30) * 255.0f);
-								//output[index] = u8vec3(255u, 255u, depth);
+								RaycastHit hit;
+								const uint32_t index = (y + v) * width + (x + u);
+								auto pixelCenter = pixel00Loc + ((float)(x + u) * pixelDeltaU) + ((float)(y + v) * pixelDeltaV);
 
-								const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
+								ray.m_origin = cameraCenter;
+								ray.m_direction = glm::normalize(pixelCenter - cameraCenter);
 
-								vec3 normal = 255.0f * (normalize(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
-									hit.m_barycentricCoordinate.y * tri.m_normals[1] +
-									hit.m_barycentricCoordinate.z * tri.m_normals[2]));
+								output[index] = u8vec3(0u, 0u, 255u);
 
-								output[index] = normal;
+								//if (Math::IntersectRayTriangle(ray, m_triangles, hit) && abs(hit.m_point.z) < 1.0f)
+								if (bvh.IntersectBVH(ray, m_triangles, hit, 0) && hit.m_point.z < 1.0f && hit.m_point.z > 0.0f)
+								{
+									uint8_t depth = (uint8_t)(pow(hit.m_point.z, 30) * 255.0f);
+									//output[index] = u8vec3(255u, 255u, depth);
+
+									const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
+
+									vec3 normal = 255.0f * (normalize(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
+										hit.m_barycentricCoordinate.y * tri.m_normals[1] +
+										hit.m_barycentricCoordinate.z * tri.m_normals[2]));
+
+									vec2 uv = 255.0f * (normalize(hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
+										hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
+										hit.m_barycentricCoordinate.z * tri.m_uvs[2]));
+
+									output[index] = vec3(uv.x, uv.y, 1);
+								}
 							}
 						}
-					}
 
-				}, Tasks::EThreadType::Worker);
+					}, Tasks::EThreadType::Worker);
 
-			task->Run();
-			tasks.Emplace(std::move(task));
+				task->Run();
+				tasks.Emplace(std::move(task));
+			}
 		}
-	}
 
-	for (auto& task : tasks)
-	{
-		task->Wait();
+		for (auto& task : tasks)
+		{
+			task->Wait();
+		}
 	}
 
 	Internal::WriteImage(outputFile, output, width, height);

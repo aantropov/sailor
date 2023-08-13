@@ -50,11 +50,6 @@ namespace Sailor
 
 	public:
 
-		struct Material
-		{
-			u8 m_albedoIndex = -1;
-		};
-
 		template<typename T>
 		struct Texture2D
 		{
@@ -71,6 +66,11 @@ namespace Sailor
 			}
 		};
 
+		struct Material
+		{
+			u8 m_albedoIndex = -1;
+		};
+		
 		void Run();
 
 	protected:
@@ -78,8 +78,7 @@ namespace Sailor
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};
 
-		Tasks::TaskPtr<TSharedPtr<Texture2D<u8>>> LoadTexture();
-
-		TVector<TSharedPtr<Texture2D<u8>>> m_textures;
+		Tasks::TaskPtr<TSharedPtr<Texture2D<u8vec4>>> LoadTexture(const char* file);
+		TVector<TSharedPtr<Texture2D<u8vec4>>> m_textures;
 	};
 }
