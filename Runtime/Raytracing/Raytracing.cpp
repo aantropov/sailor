@@ -62,10 +62,10 @@ bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris
 	else
 	{
 		RaycastHit res1{};
-		IntersectBVH(ray, tris, res1, node.m_leftNode, res1.m_rayLenght);
+		IntersectBVH(ray, tris, res1, node.m_leftNode, maxRayLength);
 
 		RaycastHit res2{};
-		IntersectBVH(ray, tris, res2, node.m_leftNode + 1, res2.m_rayLenght);
+		IntersectBVH(ray, tris, res2, node.m_leftNode + 1, maxRayLength);
 
 		outResult = res1.m_rayLenght < res2.m_rayLenght ? res1 : res2;
 	}
@@ -229,7 +229,7 @@ Tasks::TaskPtr<TSharedPtr<Raytracing::Texture2D<u8vec4>>> Raytracing::LoadTextur
 	return task;
 }
 
-void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const mat4& viewProjection, const aiScene* scene)
+void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const aiScene* scene)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -238,7 +238,7 @@ void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const mat4& v
 
 	const size_t startIndex = outScene.Num();
 
-	outScene.AddDefault(mesh->mNumFaces);
+	outScene.AddDefault(3);// mesh->mNumFaces);
 	for (uint32_t i = 0; i < mesh->mNumFaces; i++)
 	{
 		aiFace face = mesh->mFaces[i];
@@ -247,92 +247,40 @@ void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const mat4& v
 			continue;
 		}
 
+		if (i == 3)
+		{
+			break;
+		}
+
 		Math::Triangle& tri = outScene[startIndex + i];
 
-		auto v0 = vec4(*reinterpret_cast<vec3*>(&mesh->mVertices[face.mIndices[0]]), 1) * viewProjection;
-		auto v1 = vec4(*reinterpret_cast<vec3*>(&mesh->mVertices[face.mIndices[1]]), 1) * viewProjection;
-		auto v2 = vec4(*reinterpret_cast<vec3*>(&mesh->mVertices[face.mIndices[2]]), 1) * viewProjection;
+		// TODO: use pointers instead of memcpy
+		memcpy(&tri.m_vertices[0], &mesh->mVertices[face.mIndices[0]], sizeof(float) * 3);
+		memcpy(&tri.m_vertices[1], &mesh->mVertices[face.mIndices[1]], sizeof(float) * 3);
+		memcpy(&tri.m_vertices[2], &mesh->mVertices[face.mIndices[2]], sizeof(float) * 3);
 
-		tri.m_vertices[0] = vec3(v0.xyz) / v0.w;
-		tri.m_vertices[1] = vec3(v1.xyz) / v1.w;
-		tri.m_vertices[2] = vec3(v2.xyz) / v2.w;
+		memcpy(&tri.m_normals[0], &mesh->mNormals[face.mIndices[0]], sizeof(float) * 3);
+		memcpy(&tri.m_normals[1], &mesh->mNormals[face.mIndices[1]], sizeof(float) * 3);
+		memcpy(&tri.m_normals[2], &mesh->mNormals[face.mIndices[2]], sizeof(float) * 3);
 
 		tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) * 0.333f;
 
-		mat3 viewProjectionN = viewProjection;
-
-		auto n0 = *reinterpret_cast<vec3*>(&mesh->mNormals[face.mIndices[0]]) * viewProjectionN;
-		auto n1 = *reinterpret_cast<vec3*>(&mesh->mNormals[face.mIndices[1]]) * viewProjectionN;
-		auto n2 = *reinterpret_cast<vec3*>(&mesh->mNormals[face.mIndices[2]]) * viewProjectionN;
-
-		tri.m_normals[0] = n0;
-		tri.m_normals[1] = n1;
-		tri.m_normals[2] = n2;
-
 		if (mesh->HasTextureCoords(0))
 		{
-			tri.m_uvs[0] =
-			{
-				mesh->mTextureCoords[0][face.mIndices[0]].x,
-				mesh->mTextureCoords[0][face.mIndices[0]].y
-			};
-
-			tri.m_uvs[1] =
-			{
-				mesh->mTextureCoords[0][face.mIndices[1]].x,
-				mesh->mTextureCoords[0][face.mIndices[1]].y
-			};
-
-			tri.m_uvs[2] =
-			{
-				mesh->mTextureCoords[0][face.mIndices[2]].x,
-				mesh->mTextureCoords[0][face.mIndices[2]].y
-			};
+			memcpy(&tri.m_uvs[0], &mesh->mTextureCoords[0][face.mIndices[0]], sizeof(float) * 2);
+			memcpy(&tri.m_uvs[1], &mesh->mTextureCoords[0][face.mIndices[1]], sizeof(float) * 2);
+			memcpy(&tri.m_uvs[2], &mesh->mTextureCoords[0][face.mIndices[2]], sizeof(float) * 2);
 		}
 
 		if (mesh->HasTangentsAndBitangents())
 		{
-			tri.m_tangent[0] =
-			{
-				mesh->mTangents[face.mIndices[0]].x,
-				mesh->mTangents[face.mIndices[0]].y,
-				mesh->mTangents[face.mIndices[0]].z
-			};
+			memcpy(&tri.m_tangent[0], &mesh->mTangents[face.mIndices[0]], sizeof(float) * 3);
+			memcpy(&tri.m_tangent[1], &mesh->mTangents[face.mIndices[1]], sizeof(float) * 3);
+			memcpy(&tri.m_tangent[2], &mesh->mTangents[face.mIndices[2]], sizeof(float) * 3);
 
-			tri.m_tangent[1] =
-			{
-				mesh->mTangents[face.mIndices[1]].x,
-				mesh->mTangents[face.mIndices[1]].y,
-				mesh->mTangents[face.mIndices[1]].z
-			};
-
-			tri.m_tangent[2] =
-			{
-				mesh->mTangents[face.mIndices[2]].x,
-				mesh->mTangents[face.mIndices[2]].y,
-				mesh->mTangents[face.mIndices[2]].z
-			};
-
-			tri.m_bitangent[0] =
-			{
-				mesh->mBitangents[face.mIndices[0]].x,
-				mesh->mBitangents[face.mIndices[0]].y,
-				mesh->mBitangents[face.mIndices[0]].z
-			};
-
-			tri.m_bitangent[1] =
-			{
-				mesh->mBitangents[face.mIndices[1]].x,
-				mesh->mBitangents[face.mIndices[1]].y,
-				mesh->mBitangents[face.mIndices[1]].z
-			};
-
-			tri.m_bitangent[2] =
-			{
-				mesh->mBitangents[face.mIndices[2]].x,
-				mesh->mBitangents[face.mIndices[2]].y,
-				mesh->mBitangents[face.mIndices[2]].z
-			};
+			memcpy(&tri.m_bitangent[0], &mesh->mBitangents[face.mIndices[0]], sizeof(float) * 3);
+			memcpy(&tri.m_bitangent[1], &mesh->mBitangents[face.mIndices[1]], sizeof(float) * 3);
+			memcpy(&tri.m_bitangent[2], &mesh->mBitangents[face.mIndices[2]], sizeof(float) * 3);
 		}
 
 		tri.m_materialIndex = mesh->mMaterialIndex;
@@ -340,19 +288,19 @@ void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const mat4& v
 	}
 }
 
-void ProcessNode_Assimp(TVector<Triangle>& outScene, const mat4& viewProjection, aiNode* node, const aiScene* scene)
+void ProcessNode_Assimp(TVector<Triangle>& outScene, aiNode* node, const aiScene* scene)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	for (uint32_t i = 0; i < node->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		ProcessMesh_Assimp(mesh, outScene, viewProjection, scene);
+		ProcessMesh_Assimp(mesh, outScene, scene);
 	}
 
 	for (uint32_t i = 0; i < node->mNumChildren; i++)
 	{
-		ProcessNode_Assimp(outScene, viewProjection, node->mChildren[i], scene);
+		ProcessNode_Assimp(outScene, node->mChildren[i], scene);
 	}
 }
 
@@ -363,7 +311,7 @@ void Raytracing::Run()
 	const uint32_t GroupSize = 8;
 
 	const char* outputFile = "output.png";
-	const char* sceneFile = "../Content/Models/Duck/Duck.gltf";
+	const char* sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
 
 	Assimp::Importer importer;
 
@@ -378,10 +326,10 @@ void Raytracing::Run()
 		aiProcess_Debone |
 		aiProcess_ValidateDataStructure |
 		aiProcess_FindDegenerates |
-		aiProcess_ImproveCacheLocality |
-		aiProcess_FindInvalidData |
-		//aiProcess_MakeLeftHanded |
-		aiProcess_FlipWindingOrder;
+		//aiProcess_ImproveCacheLocality |
+		//aiProcess_FindInvalidData | 
+		//aiProcess_FlipWindingOrder |
+		0;
 
 	const auto scene = importer.ReadFile(sceneFile, DefaultImportFlags_Assimp);
 
@@ -393,21 +341,30 @@ void Raytracing::Run()
 
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", sceneFile);
 
-	float aspectRatio = 16.0f / 9.0f;
-	const uint32_t width = 320;
+	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : 16.0f / 9.0f;
+	const uint32_t width = 1024;
 	const uint32_t height = static_cast<uint32_t>(width / aspectRatio);
+	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(40.0f);
+	const float vFov = 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio));
+
+	const float zMin = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneNear : 0.01f;
+	const float zMax = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneFar : 1000.0f;
 
 	// Camera
-	mat4 projectionMatrix = transpose(glm::perspectiveFovRH(45.0f, (float)width, (float)height, 0.01f, 1000.0f));
+	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(hFov, (float)width, (float)height, zMin, zMax));
 	mat4 viewMatrix{ 1 };
 
+	auto cameraPos = vec3(2, 2, 5);
+	auto cameraUp = normalize(vec3(0, 1, 0));
+	auto cameraForward = normalize(-cameraPos);
+	
+	auto axis = cross(cameraForward, cameraUp);
+	cameraUp = cross(axis, cameraForward);
+
+	// View
 	if (scene->HasCameras())
 	{
 		const auto& aiCamera = scene->mCameras[0];
-
-		// Projection
-		aspectRatio = aiCamera->mAspect;
-		projectionMatrix = transpose(glm::perspectiveFovRH(aiCamera->mHorizontalFOV, (float)width, (float)height, aiCamera->mClipPlaneNear, aiCamera->mClipPlaneFar));
 
 		// View
 		aiNode* rootNode = scene->mRootNode;
@@ -420,68 +377,65 @@ void Raytracing::Run()
 		::memcpy(&camPos, &aiCamera->mPosition, sizeof(float) * 3);
 		camPos = camPos * cameraTransformationMatrix;
 		camPos /= camPos.w;
+		cameraPos = camPos.xyz;
 
-		vec3 viewDir{};
-		::memcpy(&viewDir, &aiCamera->mLookAt, sizeof(float) * 3);
-		viewDir = vec3(vec4(viewDir, 0) * cameraTransformationMatrix);
-		viewDir = normalize(viewDir);
+		::memcpy(&cameraForward, &aiCamera->mLookAt, sizeof(float) * 3);
+		cameraForward = vec3(vec4(cameraForward, 0) * cameraTransformationMatrix);
+		cameraForward = normalize(cameraForward);
 
-		vec3 camUp{};
-		::memcpy(&camUp, &aiCamera->mUp, sizeof(float) * 3);
-		camUp = normalize(camUp);
-
-		viewMatrix = transpose(glm::lookAtRH(vec3(camPos.xyz), vec3(camPos.xyz) + viewDir, camUp));
+		::memcpy(&cameraUp, &aiCamera->mUp, sizeof(float) * 3);
+		cameraUp = normalize(cameraUp);		
+		
+		viewMatrix = transpose(glm::lookAtRH(vec3(camPos.xyz), vec3(camPos.xyz) + cameraForward, cameraUp));
 	}
+
+	const auto cameraRight = normalize(cross(cameraForward, cameraUp));
 
 	uint32_t numFaces = 0;
 	for (uint32_t i = 0; i < scene->mNumMeshes; i++)
 	{
 		numFaces += scene->mMeshes[i]->mNumFaces;
 	}
+
+	numFaces = 3;
 	m_triangles.Reserve(numFaces);
 
-	ProcessNode_Assimp(m_triangles, viewMatrix * projectionMatrix, scene->mRootNode, scene);
+	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene);
 
 	// Loading textures
-	{
-		TVector<Tasks::ITaskPtr> tasks;
-		tasks.Reserve(scene->mNumMaterials * 4);
-		for (uint32_t i = 0; i < scene->mNumMaterials; i++)
-		{
-			auto& material = scene->mMaterials[i];
-			aiString path;
-			material->GetTexture(aiTextureType_DIFFUSE, 0, &path);
-
-			tasks.Add(LoadTexture(path.C_Str()));
-			(*tasks.Last())->Run();
-		}
-
-		for (auto& task : tasks)
-		{
-			task->Wait();
-		}
-	}
+	//{
+	//	TVector<Tasks::ITaskPtr> tasks;
+	//	tasks.Reserve(scene->mNumMaterials * 4);
+	//	for (uint32_t i = 0; i < scene->mNumMaterials; i++)
+	//	{
+	//		auto& material = scene->mMaterials[i];
+	//		aiString path;
+	//		material->GetTexture(aiTextureType_DIFFUSE, 0, &path);
+	//
+	//		tasks.Add(LoadTexture(path.C_Str()));
+	//		(*tasks.Last())->Run();
+	//	}
+	//
+	//	for (auto& task : tasks)
+	//	{
+	//		task->Wait();
+	//	}
+	//}
 
 	BVH bvh(numFaces);
 	bvh.BuildBVH(m_triangles);
 
 	TVector<u8vec3> output(width * height * sizeof(u8vec3));
 
-	// Basic consts
-	auto focalLength = -1.0f;
-	auto cameraCenter = vec3(0, 0, 0);
-
-	// Calculate the vectors across the horizontal and down the vertical viewport edges.
-	auto viewportU = vec3(2.0f, 0, 0);
-	auto viewportV = vec3(0, -2.0f, 0);
-
-	// Calculate the horizontal and vertical delta vectors from pixel to pixel.
-	auto pixelDeltaU = viewportU / (float)width;
-	auto pixelDeltaV = viewportV / (float)height;
-
-	// Calculate the location of the upper left pixel.
-	auto viewportUpperLeft = cameraCenter - vec3(0, 0, focalLength) - viewportU / 2.0f - viewportV / 2.0f;
-	auto pixel00Loc = viewportUpperLeft + 0.5f * (pixelDeltaU + pixelDeltaV);
+	quat halfViewH = glm::angleAxis(hFov * 0.5f, cameraUp);
+	auto axis1 = normalize(halfViewH * cameraForward);
+	auto axis2 = normalize(cross(axis1, cameraUp));
+	quat halfViewV = glm::angleAxis(vFov * 0.5f, -axis2);
+	
+	auto viewportUpperLeft = cameraPos + halfViewH * inverse(halfViewV) * cameraForward;
+	auto viewportUpperRight = cameraPos + inverse(halfViewH) * inverse(halfViewV) * cameraForward;
+	auto viewportBottomLeft = cameraPos + halfViewH * halfViewV * cameraForward;
+	auto viewportBottomRight = cameraPos + inverse(halfViewH) * halfViewV * cameraForward;
 
 	// Raytracing
 	{
@@ -504,19 +458,22 @@ void Raytracing::Run()
 							{
 								RaycastHit hit;
 								const uint32_t index = (y + v) * width + (x + u);
-								auto pixelCenter = pixel00Loc + ((float)(x + u) * pixelDeltaU) + ((float)(y + v) * pixelDeltaV);
+								
+								const float tu = (x + u) / (float)width;
+								const float tv = (y + v) / (float)height;
 
-								ray.m_origin = cameraCenter;
-								ray.m_direction = glm::normalize(pixelCenter - cameraCenter);
+								const vec3 midTop = viewportUpperLeft + (viewportUpperRight - viewportUpperLeft) * tu;
+								const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * tu;
+								const vec3 rayDirection = midTop + (midBottom - midTop) * tv;
 
-								output[index] = u8vec3(0u, 0u, 255u);
+								ray.m_origin = cameraPos;
+								ray.m_direction = glm::normalize(rayDirection - cameraPos);
+
+								output[index] = u8vec3(0u, 0u, 0u);
 
 								//if (Math::IntersectRayTriangle(ray, m_triangles, hit) && abs(hit.m_point.z) < 1.0f)
-								if (bvh.IntersectBVH(ray, m_triangles, hit, 0) && hit.m_point.z < 1.0f && hit.m_point.z > 0.0f)
+								if (bvh.IntersectBVH(ray, m_triangles, hit, 0)/* && hit.m_point.z < 1.0f && hit.m_point.z > 0.0f*/)
 								{
-									uint8_t depth = (uint8_t)(pow(hit.m_point.z, 30) * 255.0f);
-									//output[index] = u8vec3(255u, 255u, depth);
-
 									const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
 									vec3 normal = 255.0f * (normalize(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
@@ -527,7 +484,7 @@ void Raytracing::Run()
 										hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
 										hit.m_barycentricCoordinate.z * tri.m_uvs[2]));
 
-									output[index] = vec3(uv.x, uv.y, 1);
+									output[index] = normal;
 								}
 							}
 						}
