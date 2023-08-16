@@ -55,7 +55,7 @@ bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris
 			if (res.m_rayLenght < outResult.m_rayLenght)
 			{
 				outResult = res;
-				outResult.m_triangleIndex += node.m_firstTriIdx + i;
+				outResult.m_triangleIndex = m_triIdx[node.m_firstTriIdx + i];
 			}
 		}
 	}
@@ -238,18 +238,13 @@ void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const aiScene
 
 	const size_t startIndex = outScene.Num();
 
-	outScene.AddDefault(3);// mesh->mNumFaces);
+	outScene.AddDefault(mesh->mNumFaces);
 	for (uint32_t i = 0; i < mesh->mNumFaces; i++)
 	{
 		aiFace face = mesh->mFaces[i];
 		if (face.mNumIndices != 3)
 		{
 			continue;
-		}
-
-		if (i == 3)
-		{
-			break;
 		}
 
 		Math::Triangle& tri = outScene[startIndex + i];
@@ -311,7 +306,10 @@ void Raytracing::Run()
 	const uint32_t GroupSize = 8;
 
 	const char* outputFile = "output.png";
-	const char* sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
+	const char* sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
+	//const char* sceneFile = "../Content/Models/Duck/Duck.gltf";
+	//const char* sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
+	//const char* sceneFile = "../Content/Models/Triangle/Triangle.gltf";
 
 	Assimp::Importer importer;
 
@@ -327,8 +325,8 @@ void Raytracing::Run()
 		aiProcess_ValidateDataStructure |
 		aiProcess_FindDegenerates |
 		//aiProcess_ImproveCacheLocality |
-		//aiProcess_FindInvalidData | 
-		//aiProcess_FlipWindingOrder |
+		aiProcess_FindInvalidData |
+		aiProcess_FlipWindingOrder |
 		0;
 
 	const auto scene = importer.ReadFile(sceneFile, DefaultImportFlags_Assimp);
@@ -351,13 +349,14 @@ void Raytracing::Run()
 	const float zMax = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneFar : 1000.0f;
 
 	// Camera
-	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(hFov, (float)width, (float)height, zMin, zMax));
+	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(vFov, (float)width, (float)height, zMin, zMax));
 	mat4 viewMatrix{ 1 };
 
-	auto cameraPos = vec3(2, 2, 5);
+	auto cameraPos = vec3(0, 0.1, 0);
 	auto cameraUp = normalize(vec3(0, 1, 0));
-	auto cameraForward = normalize(-cameraPos);
-	
+	//auto cameraForward = normalize(-cameraPos);
+	auto cameraForward = vec3(0,0,-1);
+
 	auto axis = cross(cameraForward, cameraUp);
 	cameraUp = cross(axis, cameraForward);
 
@@ -366,7 +365,6 @@ void Raytracing::Run()
 	{
 		const auto& aiCamera = scene->mCameras[0];
 
-		// View
 		aiNode* rootNode = scene->mRootNode;
 		aiNode* cameraNode = rootNode->FindNode(aiCamera->mName);
 
@@ -384,8 +382,8 @@ void Raytracing::Run()
 		cameraForward = normalize(cameraForward);
 
 		::memcpy(&cameraUp, &aiCamera->mUp, sizeof(float) * 3);
-		cameraUp = normalize(cameraUp);		
-		
+		cameraUp = normalize(cameraUp);
+
 		viewMatrix = transpose(glm::lookAtRH(vec3(camPos.xyz), vec3(camPos.xyz) + cameraForward, cameraUp));
 	}
 
@@ -397,7 +395,6 @@ void Raytracing::Run()
 		numFaces += scene->mMeshes[i]->mNumFaces;
 	}
 
-	numFaces = 3;
 	m_triangles.Reserve(numFaces);
 
 	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene);
@@ -431,7 +428,7 @@ void Raytracing::Run()
 	auto axis1 = normalize(halfViewH * cameraForward);
 	auto axis2 = normalize(cross(axis1, cameraUp));
 	quat halfViewV = glm::angleAxis(vFov * 0.5f, -axis2);
-	
+
 	auto viewportUpperLeft = cameraPos + halfViewH * inverse(halfViewV) * cameraForward;
 	auto viewportUpperRight = cameraPos + inverse(halfViewH) * inverse(halfViewV) * cameraForward;
 	auto viewportBottomLeft = cameraPos + halfViewH * halfViewV * cameraForward;
@@ -458,7 +455,7 @@ void Raytracing::Run()
 							{
 								RaycastHit hit;
 								const uint32_t index = (y + v) * width + (x + u);
-								
+
 								const float tu = (x + u) / (float)width;
 								const float tv = (y + v) / (float)height;
 
@@ -469,6 +466,8 @@ void Raytracing::Run()
 								ray.m_origin = cameraPos;
 								ray.m_direction = glm::normalize(rayDirection - cameraPos);
 
+
+
 								output[index] = u8vec3(0u, 0u, 0u);
 
 								//if (Math::IntersectRayTriangle(ray, m_triangles, hit) && abs(hit.m_point.z) < 1.0f)
@@ -476,15 +475,16 @@ void Raytracing::Run()
 								{
 									const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
-									vec3 normal = 255.0f * (normalize(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
+									vec3 normal = 255.0f * (hit.m_barycentricCoordinate.x * tri.m_normals[0] +
 										hit.m_barycentricCoordinate.y * tri.m_normals[1] +
-										hit.m_barycentricCoordinate.z * tri.m_normals[2]));
+										hit.m_barycentricCoordinate.z * tri.m_normals[2]);
 
-									vec2 uv = 255.0f * (normalize(hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
+									vec2 uv = 255.0f * (hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
 										hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
-										hit.m_barycentricCoordinate.z * tri.m_uvs[2]));
+										hit.m_barycentricCoordinate.z * tri.m_uvs[2]);
 
-									output[index] = normal;
+									//output[index] = vec3(uv.x, uv.y, 0.0f);
+									output[index] = normal;// vec3(uv.x, uv.y, 0.0f);
 								}
 							}
 						}

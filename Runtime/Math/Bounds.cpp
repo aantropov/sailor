@@ -476,6 +476,7 @@ void AABB::Apply(const glm::mat4& transformMatrix)
 bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength)
 {
 	outRaycastHit = RaycastHit();
+	outRaycastHit.m_rayLenght = maxRayLength;
 
 	float distance = std::numeric_limits<float>::max();
 	vec2 baryPosition{};
@@ -486,8 +487,11 @@ bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit&
 	{
 		if (distance < maxRayLength)
 		{
-			outRaycastHit.m_barycentricCoordinate = vec3(baryPosition.x, baryPosition.y, 1.0f - baryPosition.x - baryPosition.y);
+			outRaycastHit.m_barycentricCoordinate = vec3(1.0f - baryPosition.x - baryPosition.y, baryPosition.x, baryPosition.y);
 			outRaycastHit.m_point = ray.m_origin + ray.m_direction * distance;
+			outRaycastHit.m_normal = outRaycastHit.m_barycentricCoordinate.x * tri.m_normals[0] +
+				outRaycastHit.m_barycentricCoordinate.y * tri.m_normals[1] +
+				outRaycastHit.m_barycentricCoordinate.z * tri.m_normals[2];
 			outRaycastHit.m_triangleIndex = 0;
 			outRaycastHit.m_rayLenght = distance;
 		}
@@ -498,32 +502,8 @@ bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit&
 
 bool Math::IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength)
 {
-	outRaycastHit = RaycastHit();
-	outRaycastHit.m_rayLenght = maxRayLength;
-
-	float distance = std::numeric_limits<float>::max();
-	vec2 baryPosition{};
-
-	uint32_t index = 0;
-	for (const auto& tri : tris)
-	{
-		if (bool res = glm::intersectRayTriangle(ray.m_origin, ray.m_direction,
-			tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2],
-			baryPosition, distance))
-		{
-			if (distance < outRaycastHit.m_rayLenght)
-			{
-				outRaycastHit.m_barycentricCoordinate = vec3(baryPosition.x, baryPosition.y, 1.0f - baryPosition.x - baryPosition.y);
-				outRaycastHit.m_point = ray.m_origin + ray.m_direction * distance;
-				outRaycastHit.m_triangleIndex = index;
-				outRaycastHit.m_rayLenght = distance;
-			}
-		}
-
-		index++;
-	}
-
-	return outRaycastHit.HasIntersection();
+	check(false);
+	return false;
 }
 
 /*
