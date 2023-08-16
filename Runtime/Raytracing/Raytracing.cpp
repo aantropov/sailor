@@ -193,42 +193,6 @@ namespace Sailor::Internal
 	}
 }
 
-Tasks::TaskPtr<TSharedPtr<Raytracing::Texture2D>> Raytracing::LoadTexture(const char* file)
-{
-	auto task = Tasks::CreateTaskWithResult<TSharedPtr<Raytracing::Texture2D>>(file,
-		[file = file]() mutable
-		{
-			TSharedPtr<Raytracing::Texture2D> tex = TSharedPtr<Raytracing::Texture2D>::Make();
-
-			int32_t width{};
-			int32_t height{};
-			uint32_t imageSize{};
-			void* pixels = nullptr;
-
-			int32_t texChannels = 0;
-			if (stbi_is_hdr(file) && (pixels = stbi_loadf(file, &width, &height, &texChannels, STBI_rgb_alpha)))
-			{
-				imageSize = (uint32_t)width * height * sizeof(float) * 4;
-			}
-			else if (pixels = stbi_load(file, &width, &height, &texChannels, STBI_rgb_alpha))
-			{
-				imageSize = (uint32_t)width * height * 4;
-			}
-			else
-			{
-				check(false);
-			}
-
-			tex->m_data.Resize(imageSize);
-			::memcpy(tex->m_data.GetData(), pixels, imageSize);
-			stbi_image_free(pixels);
-
-			return tex;
-		});
-
-	return task;
-}
-
 void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const aiScene* scene)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -299,6 +263,8 @@ void ProcessNode_Assimp(TVector<Triangle>& outScene, aiNode* node, const aiScene
 	}
 }
 
+Raytracing::Texture2D::~Texture2D() {}
+
 void Raytracing::Run()
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -306,10 +272,10 @@ void Raytracing::Run()
 	const uint32_t GroupSize = 8;
 
 	const char* outputFile = "output.png";
-	//const char* sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
-	const char* sceneFile = "../Content/Models/Duck/Duck.gltf";
-	//const char* sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
-	//const char* sceneFile = "../Content/Models/Triangle/Triangle.gltf";
+	//const std::filesystem::path sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
+	const std::filesystem::path sceneFile = "../Content/Models/Duck/Duck.gltf";
+	//const std::filesystem::path sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
+	//const std::filesystem::path sceneFile = "../Content/Models/Triangle/Triangle.gltf";
 
 	Assimp::Importer importer;
 
@@ -326,10 +292,10 @@ void Raytracing::Run()
 		aiProcess_FindDegenerates |
 		//aiProcess_ImproveCacheLocality |
 		aiProcess_FindInvalidData |
-		aiProcess_FlipWindingOrder |
+		//aiProcess_FlipWindingOrder |
 		0;
 
-	const auto scene = importer.ReadFile(sceneFile, DefaultImportFlags_Assimp);
+	const auto scene = importer.ReadFile(sceneFile.string().c_str(), DefaultImportFlags_Assimp);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
@@ -337,7 +303,7 @@ void Raytracing::Run()
 		return;
 	}
 
-	ensure(scene->HasCameras(), "Scene %s has no Cameras!", sceneFile);
+	ensure(scene->HasCameras(), "Scene %s has no Cameras!", sceneFile.string().c_str());
 
 	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : 16.0f / 9.0f;
 	const uint32_t width = 1024;
@@ -352,10 +318,10 @@ void Raytracing::Run()
 	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(vFov, (float)width, (float)height, zMin, zMax));
 	mat4 viewMatrix{ 1 };
 
-	auto cameraPos = vec3(0, 0.1, 0);
+	auto cameraPos = vec3(3, 3, 5);
 	auto cameraUp = normalize(vec3(0, 1, 0));
-	//auto cameraForward = normalize(-cameraPos);
-	auto cameraForward = vec3(0,0,-1);
+	auto cameraForward = normalize(-cameraPos);
+	//auto cameraForward = vec3(0, 0, -1);
 
 	auto axis = cross(cameraForward, cameraUp);
 	cameraUp = cross(axis, cameraForward);
@@ -396,9 +362,131 @@ void Raytracing::Run()
 	}
 
 	m_triangles.Reserve(numFaces);
-
 	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene);
 
+	{
+		auto FillData = [](const aiMaterialProperty* property, const std::string& name, glm::vec4* ptr)
+		{
+			const string key = property->mKey.C_Str();
+			TVector<size_t> locations;
+			Utils::FindAllOccurances(key, name, locations, 0);
+			if (locations.Num() > 0)
+			{
+				memcpy(ptr, property->mData, property->mDataLength);
+				return true;
+			}
+
+			return false;
+		};
+
+		auto TraceUsedTextures_Assimp = [](aiMaterial* mat, aiTextureType type)
+		{
+			TVector<std::string> textures;
+			for (uint32_t i = 0; i < mat->GetTextureCount(type); i++)
+			{
+				aiString str;
+				mat->GetTexture(type, i, &str);
+				textures.Add(str.C_Str());
+			}
+			return textures;
+		};
+
+		std::function<void(uint32_t, const char*)> LoadTexture =
+			[&m_textures = m_textures,
+			sceneFile = sceneFile,
+			&scene = scene](uint32_t i, const char* filename) mutable
+		{
+			m_textures[i] = TSharedPtr<Texture2D>::Make();
+
+			const auto& texture = scene->mTextures[i];
+			sceneFile.replace_filename(filename);
+
+			int32_t texChannels = 0;
+			if (stbi_uc* pixels = stbi_load(sceneFile.string().c_str(), &m_textures[i]->m_width, &m_textures[i]->m_height, &texChannels, STBI_rgb_alpha))
+			{
+				//m_textures[i]->m_data = (u8*)pixels;
+				m_textures[i]->Initialize<u8vec4>((u8*)pixels);
+				stbi_image_free(pixels);
+			}
+		};
+
+		TVector<Tasks::ITaskPtr> loadTexturesTasks;
+		m_materials.Resize(scene->mNumMaterials);
+		m_textures.Resize(1000);
+
+		uint32_t textureIndex = 0;
+		for (uint32_t i = 0; i < scene->mNumMaterials; i++)
+		{
+			auto& material = m_materials[i];
+			const auto& aiMaterial = scene->mMaterials[i];
+
+			const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_DIFFUSE);
+			const TVector<std::string> specularMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_SPECULAR);
+			const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_AMBIENT);
+			const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_NORMALS);
+			const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_EMISSIVE);
+
+			for (uint32_t i = 0; i < aiMaterial->mNumProperties; i++)
+			{
+				const auto property = aiMaterial->mProperties[i];
+				if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
+				{
+					if (FillData(property, std::string("diffuse"), &material.m_diffuse) ||
+						FillData(property, std::string("ambient"), &material.m_ambient) ||
+						FillData(property, std::string("emission"), &material.m_emission) ||
+						FillData(property, std::string("specular"), &material.m_specular))
+					{
+						continue;
+					}
+				}
+			}
+
+			if (!diffuseMaps.IsEmpty())
+			{
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, diffuseMaps[0].c_str()); })->Run();
+				loadTexturesTasks.Emplace(std::move(task));
+				material.m_diffuseIndex = textureIndex;
+				textureIndex++;
+			}
+
+			if (!ambientMaps.IsEmpty())
+			{
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, ambientMaps[0].c_str()); })->Run();
+				loadTexturesTasks.Emplace(std::move(task));
+				material.m_ambientIndex = textureIndex;
+				textureIndex++;
+			}
+
+			if (!normalMaps.IsEmpty())
+			{
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, normalMaps[0].c_str()); })->Run();
+				loadTexturesTasks.Emplace(std::move(task));
+				material.m_normalIndex = textureIndex;
+				textureIndex++;
+			}
+
+			if (!specularMaps.IsEmpty())
+			{
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, specularMaps[0].c_str()); })->Run();
+				loadTexturesTasks.Emplace(std::move(task));
+				material.m_specularIndex = textureIndex;
+				textureIndex++;
+			}
+
+			if (!emissionMaps.IsEmpty())
+			{
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, emissionMaps[0].c_str()); })->Run();
+				loadTexturesTasks.Emplace(std::move(task));
+				material.m_emissionIndex = textureIndex;
+				textureIndex++;
+			}
+		}
+
+		for (auto& task : loadTexturesTasks)
+		{
+			task->Wait();
+		}
+	}
 	// Loading textures
 	//{
 	//	TVector<Tasks::ITaskPtr> tasks;
@@ -449,40 +537,57 @@ void Raytracing::Run()
 					this]() mutable
 					{
 						Ray ray;
+						vec2 prevUV = vec2(1000.0f);
+						u8vec4 diffuseSample{};
+						uint32_t prevMatIndex = -1;
+						const float VariableShaderRate = 0.25f;
+						ray.m_origin = cameraPos;
+
 						for (uint32_t v = 0; v < GroupSize; v++)
 						{
+							float tv = (y + v) / (float)height;
 							for (uint32_t u = 0; u < GroupSize; u++)
 							{
-								RaycastHit hit;
 								const uint32_t index = (y + v) * width + (x + u);
-
-								const float tu = (x + u) / (float)width;
-								const float tv = (y + v) / (float)height;
+								float tu = (x + u) / (float)width;
 
 								const vec3 midTop = viewportUpperLeft + (viewportUpperRight - viewportUpperLeft) * tu;
 								const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * tu;
-								const vec3 rayDirection = midTop + (midBottom - midTop) * tv;
+								ray.m_direction = glm::normalize(midTop + (midBottom - midTop) * tv - cameraPos);
 
-								ray.m_origin = cameraPos;
-								ray.m_direction = glm::normalize(rayDirection - cameraPos);
-
-								output[index] = u8vec3(0u, 0u, 0u);
-
-								//if (Math::IntersectRayTriangle(ray, m_triangles, hit) && abs(hit.m_point.z) < 1.0f)
-								if (bvh.IntersectBVH(ray, m_triangles, hit, 0)/* && hit.m_point.z < 1.0f && hit.m_point.z > 0.0f*/)
+								RaycastHit hit;
+								if (bvh.IntersectBVH(ray, m_triangles, hit, 0))
 								{
 									const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
-									vec3 normal = 255.0f * (hit.m_barycentricCoordinate.x * tri.m_normals[0] +
+									vec3 normal = 255.0f * (0.5f + 0.5f * vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
 										hit.m_barycentricCoordinate.y * tri.m_normals[1] +
-										hit.m_barycentricCoordinate.z * tri.m_normals[2]);
+										hit.m_barycentricCoordinate.z * tri.m_normals[2]));
 
-									vec2 uv = 255.0f * (hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
+									vec2 uv = hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
 										hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
-										hit.m_barycentricCoordinate.z * tri.m_uvs[2]);
+										hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
-									//output[index] = vec3(uv.x, uv.y, 0.0f);
-									output[index] = normal;// vec3(uv.x, uv.y, 0.0f);
+									const auto delta = prevUV - uv;
+									const float dUv = dot(delta, delta);
+
+									const auto& material = m_materials[tri.m_materialIndex];
+									const float diffuseTexelSize = 1.0f / (m_textures[material.m_diffuseIndex]->m_width * m_textures[material.m_diffuseIndex]->m_height);
+									if (dUv > diffuseTexelSize * VariableShaderRate || prevMatIndex != tri.m_materialIndex)
+									{
+										if (material.m_diffuseIndex != -1)
+										{
+											diffuseSample = m_textures[material.m_diffuseIndex]->Sample<u8vec4>(uv);
+											prevUV = uv;
+											prevMatIndex = tri.m_materialIndex;
+										}
+									}
+
+									output[index] = diffuseSample;
+								}
+								else
+								{
+									output[index] = u8vec3(0u, 0u, 0u);
 								}
 							}
 						}

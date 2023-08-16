@@ -39,6 +39,14 @@ namespace Sailor
 		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
 		using ITaskPtr = TSharedPtr <class ITask>;
 
+		template<typename TResult = void, typename TArgs = void, typename... TFArgs>
+		SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs, TFArgs...)> lambda, EThreadType thread, TFArgs&& ... args)
+		{
+			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda(std::forward<TFArgs>(args)...)), thread);
+			task->m_self = task;
+			return task;
+		}
+
 		template<typename TResult = void, typename TArgs = void>
 		SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
 		{
