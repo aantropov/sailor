@@ -47,22 +47,21 @@ namespace Sailor
 
 	class SAILOR_API Raytracing
 	{
-
 	public:
 
-		template<typename T>
 		struct Texture2D
 		{
-			TVector<T> m_data{};
+			TVector<u8> m_data{};
 			uint32_t m_width{};
 			uint32_t m_height{};
 
+			template<typename T>
 			const T& Sample(vec2 uv) const
 			{
 				uint32_t tX = floor(uv.x * m_width);
 				uint32_t tY = floor(uv.y * m_height);
 
-				return m_data[tY.y * m_width + tX];
+				return *((T*)(&m_data[(tY.y * sizeof(T)) * m_width + tX * sizeof(T)]));
 			}
 		};
 
@@ -77,8 +76,8 @@ namespace Sailor
 
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};
-
-		Tasks::TaskPtr<TSharedPtr<Texture2D<u8vec4>>> LoadTexture(const char* file);
-		TVector<TSharedPtr<Texture2D<u8vec4>>> m_textures;
+		TVector<Texture2D> m_textures{};
+		
+		Tasks::TaskPtr<TSharedPtr<Texture2D>> LoadTexture(const char* file);
 	};
 }

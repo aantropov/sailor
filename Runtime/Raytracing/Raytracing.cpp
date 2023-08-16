@@ -193,12 +193,12 @@ namespace Sailor::Internal
 	}
 }
 
-Tasks::TaskPtr<TSharedPtr<Raytracing::Texture2D<u8vec4>>> Raytracing::LoadTexture(const char* file)
+Tasks::TaskPtr<TSharedPtr<Raytracing::Texture2D>> Raytracing::LoadTexture(const char* file)
 {
-	auto task = Tasks::CreateTaskWithResult<TSharedPtr<Raytracing::Texture2D<u8vec4>>>(file,
+	auto task = Tasks::CreateTaskWithResult<TSharedPtr<Raytracing::Texture2D>>(file,
 		[file = file]() mutable
 		{
-			TSharedPtr<Raytracing::Texture2D<u8vec4>> tex = TSharedPtr<Raytracing::Texture2D<u8vec4>>::Make();
+			TSharedPtr<Raytracing::Texture2D> tex = TSharedPtr<Raytracing::Texture2D>::Make();
 
 			int32_t width{};
 			int32_t height{};
@@ -306,8 +306,8 @@ void Raytracing::Run()
 	const uint32_t GroupSize = 8;
 
 	const char* outputFile = "output.png";
-	const char* sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
-	//const char* sceneFile = "../Content/Models/Duck/Duck.gltf";
+	//const char* sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
+	const char* sceneFile = "../Content/Models/Duck/Duck.gltf";
 	//const char* sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
 	//const char* sceneFile = "../Content/Models/Triangle/Triangle.gltf";
 
@@ -465,8 +465,6 @@ void Raytracing::Run()
 
 								ray.m_origin = cameraPos;
 								ray.m_direction = glm::normalize(rayDirection - cameraPos);
-
-
 
 								output[index] = u8vec3(0u, 0u, 0u);
 
