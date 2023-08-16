@@ -12,11 +12,16 @@ namespace Sailor
 	{
 		struct BVHNode //40 bytes
 		{
-			vec3 m_aabbMin{};
-			vec3 m_aabbMax{};
-			uint32_t m_leftNode{};
-			uint32_t m_firstTriIdx{};
-			uint32_t m_triCount{};
+			union
+			{
+				struct { vec3 m_aabbMin; uint m_leftFirst; };
+				__m128 m_aabbMin4;
+			};
+			union
+			{
+				struct { vec3 m_aabbMax; uint m_triCount; };
+				__m128 m_aabbMax4;
+			};
 
 			bool IsLeaf() const { return m_triCount > 0; }
 		};
@@ -31,12 +36,13 @@ namespace Sailor
 		}
 
 		void BuildBVH(const TVector<Math::Triangle>& tris);
-		bool IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength = 10e30) const;
+		bool IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength = std::numeric_limits<float>::max()) const;
 
 	protected:
 
 		void UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris);
 		void Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris);
+		float EvaluateSAH(BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos);
 
 		TVector<BVHNode> m_nodes;
 		TVector<uint32_t> m_triIdx;
@@ -51,7 +57,7 @@ namespace Sailor
 
 		struct Texture2D
 		{
-			const int32_t BlockSize = 8;
+			const int32_t BlockSize = 16;
 
 			TVector<u8> m_data;
 			int32_t m_width{};
@@ -70,17 +76,34 @@ namespace Sailor
 				{
 					for (int32_t bx = 0; bx < blockWidth; ++bx)
 					{
+						u8* dst = blockData + ((by * blockWidth + bx) * BlockSize * BlockSize) * sizeof(T);
+
 						for (int32_t y = 0; y < BlockSize; ++y)
 						{
-							for (int32_t x = 0; x < BlockSize; ++x)
+							int32_t srcY = by * BlockSize + y;
+
+							if (srcY < m_height)
 							{
-								int32_t srcX = bx * BlockSize + x;
-								int32_t srcY = by * BlockSize + y;
-								if (srcX < m_width && srcY < m_height)
+								u8* src = linearData + srcY * m_width * sizeof(T);
+
+								if (bx * BlockSize + BlockSize - 1 < m_width)
 								{
-									T* src = (T*)(linearData + (srcY * m_width + srcX) * sizeof(T));
-									T* dst = (T*)(blockData + ((by * blockWidth + bx) * BlockSize * BlockSize + y * BlockSize + x) * sizeof(T));
-									*dst = *src;
+									std::memcpy(dst, src + bx * BlockSize * sizeof(T), BlockSize * sizeof(T));
+									dst += BlockSize * sizeof(T);
+								}
+								else
+								{
+									for (int32_t x = 0; x < BlockSize; ++x)
+									{
+										int32_t srcX = bx * BlockSize + x;
+										if (srcX < m_width)
+										{
+											T* srcElem = (T*)(src + srcX * sizeof(T));
+											T* dstElem = (T*)dst;
+											*dstElem = *srcElem;
+											dst += sizeof(T);
+										}
+									}
 								}
 							}
 						}

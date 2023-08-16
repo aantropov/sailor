@@ -22,8 +22,29 @@ namespace Sailor::Math
 
 	struct Ray
 	{
-		vec3 m_origin{};
-		vec3 m_direction{};
+		Ray() { O4 = D4 = rD4 = _mm_set1_ps(1); }
+		Ray(const vec3& origin, const vec3& direction) : m_origin(origin)
+		{
+			SetDirection(direction);
+		}
+
+		const vec3& GetOrigin() const { return m_origin; }
+		const vec3& GetDirection() const { return m_direction; }
+		
+		const __m128& GetOrigin4() const { return O4; }
+		const __m128& GetDirection4() const { return D4; }
+		const __m128& GetReciprocalDirection4() const { return rD4; }
+
+		void SetOrigin(const vec3& value) { m_origin = value; }
+		void SetDirection(const vec3& value) { m_direction = value; m_rDirection = 1.0f / value; }
+
+	protected:
+
+		union { struct { vec3 m_origin; float dummy1; }; __m128 O4; };
+		union { struct { vec3 m_direction; float dummy2; }; __m128 D4; };
+		union { struct { vec3 m_rDirection; float dummy3; }; __m128 rD4; };
+
+		friend float IntersectRayAABB(const Ray& ray, const __m128 bmin4, const __m128 bmax4, float maxRayLength);
 	};
 
 	struct RaycastHit
@@ -98,6 +119,8 @@ namespace Sailor::Math
 		SAILOR_API __forceinline glm::vec3 GetCenter() const;
 		SAILOR_API __forceinline glm::vec3 GetExtents() const;
 
+		SAILOR_API __forceinline float Volume() const;
+		SAILOR_API __forceinline float Area() const;
 		SAILOR_API __forceinline void Extend(const AABB& inner);
 		SAILOR_API __forceinline void Extend(const glm::vec3& inner);
 		SAILOR_API __forceinline void Apply(const glm::mat4& transformMatrix);
@@ -147,9 +170,12 @@ namespace Sailor::Math
 		TVector<glm::vec3> m_corners;
 	};
 
-	bool IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength = 10e30);
-	bool IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength = 10e30);
-	bool IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength = 10e30);
+	bool IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength = FLT_MAX);
+	bool IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength = FLT_MAX);
+
+	// Return value is distance to AABB
+	float IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength = FLT_MAX);
+	float IntersectRayAABB(const Ray& ray, const __m128 bmin4, const __m128 bmax4, float maxRayLength = FLT_MAX);
 }
 
 namespace std

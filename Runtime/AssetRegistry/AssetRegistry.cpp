@@ -124,7 +124,7 @@ const FileId& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 		AssetInfoPtr assetInfo = nullptr;
 		if (std::filesystem::exists(assetInfoFile))
 		{
-			SAILOR_LOG("Load asset info: %s", assetInfoFile.c_str());
+			//SAILOR_LOG("Load asset info: %s", assetInfoFile.c_str());
 			assetInfo = assetInfoHandler->LoadAssetInfo(assetInfoFile);
 		}
 		else

@@ -430,6 +430,18 @@ void Frustum::OverlapsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outR
 	}
 }
 
+float AABB::Volume() const
+{
+	vec3 e = m_max - m_min;
+	return e.x * e.y * e.z;
+}
+
+float AABB::Area() const
+{
+	vec3 e = m_max - m_min;
+	return e.x * e.y + e.y * e.z + e.z * e.x;
+}
+
 void AABB::Extend(const AABB& inner)
 {
 	m_min = glm::min(inner.m_min, m_min);
@@ -481,14 +493,14 @@ bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit&
 	float distance = std::numeric_limits<float>::max();
 	vec2 baryPosition{};
 
-	if (bool res = glm::intersectRayTriangle(ray.m_origin, ray.m_direction,
+	if (bool res = glm::intersectRayTriangle(ray.GetOrigin(), ray.GetDirection(),
 		tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2],
 		baryPosition, distance))
 	{
 		if (distance < maxRayLength)
 		{
 			outRaycastHit.m_barycentricCoordinate = vec3(1.0f - baryPosition.x - baryPosition.y, baryPosition.x, baryPosition.y);
-			outRaycastHit.m_point = ray.m_origin + ray.m_direction * distance;
+			outRaycastHit.m_point = ray.GetOrigin() + ray.GetDirection() * distance;
 			outRaycastHit.m_normal = outRaycastHit.m_barycentricCoordinate.x * tri.m_normals[0] +
 				outRaycastHit.m_barycentricCoordinate.y * tri.m_normals[1] +
 				outRaycastHit.m_barycentricCoordinate.z * tri.m_normals[2];
@@ -513,7 +525,7 @@ void IntersectRayTriangle(Ray& ray, const Triangle& tri)
 {
 	const vec3 edge1 = tri.m_vertices[1] - tri.m_vertices[0];
 	const vec3 edge2 = tri.m_vertices[2] - tri.m_vertices[0];
-	const vec3 h = cross(ray.m_direction, edge2);
+	const vec3 h = cross(ray.GetDirection(), edge2);
 	const float a = dot(edge1, h);
 
 	if (a > -0.0001f && a < 0.0001f)
@@ -523,7 +535,7 @@ void IntersectRayTriangle(Ray& ray, const Triangle& tri)
 	}
 
 	const float f = 1 / a;
-	const vec3 s = ray.m_origin - tri.m_vertices[0];
+	const vec3 s = ray.GetOrigin() - tri.m_vertices[0];
 	const float u = f * dot(s, h);
 
 	if (u < 0 || u > 1)
@@ -532,7 +544,7 @@ void IntersectRayTriangle(Ray& ray, const Triangle& tri)
 	}
 
 	const vec3 q = cross(s, edge1);
-	const float v = f * dot(ray.m_direction, q);
+	const float v = f * dot(ray.GetDirection(), q);
 
 	if (v < 0 || u + v > 1)
 	{
@@ -546,25 +558,49 @@ void IntersectRayTriangle(Ray& ray, const Triangle& tri)
 	}
 }*/
 
-bool Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength)
+float Math::IntersectRayAABB(const Ray& ray, const __m128 bmin4, const __m128 bmax4, float maxRayLength)
 {
-	float tx1 = (bmin.x - ray.m_origin.x) / ray.m_direction.x;
-	float tx2 = (bmax.x - ray.m_origin.x) / ray.m_direction.x;
+	static __m128 mask4 = _mm_cmpeq_ps(_mm_setzero_ps(), _mm_set_ps(1, 0, 0, 0));
+
+	__m128 t1 = _mm_mul_ps(_mm_sub_ps(_mm_and_ps(bmin4, mask4), ray.O4), ray.rD4);
+	__m128 t2 = _mm_mul_ps(_mm_sub_ps(_mm_and_ps(bmax4, mask4), ray.O4), ray.rD4);
+	__m128 vmax4 = _mm_max_ps(t1, t2), vmin4 = _mm_min_ps(t1, t2);
+
+	float tmax = min(vmax4.m128_f32[0], min(vmax4.m128_f32[1], vmax4.m128_f32[2]));
+	float tmin = max(vmin4.m128_f32[0], max(vmin4.m128_f32[1], vmin4.m128_f32[2]));
+
+	if (tmax >= tmin && tmin < maxRayLength && tmax > 0)
+	{
+		return tmin;
+	}
+
+	return std::numeric_limits<float>::max();
+}
+
+float Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength)
+{
+	float tx1 = (bmin.x - ray.GetOrigin().x) / ray.GetDirection().x;
+	float tx2 = (bmax.x - ray.GetOrigin().x) / ray.GetDirection().x;
 
 	float tmin = min(tx1, tx2);
 	float tmax = max(tx1, tx2);
 
-	float ty1 = (bmin.y - ray.m_origin.y) / ray.m_direction.y;
-	float ty2 = (bmax.y - ray.m_origin.y) / ray.m_direction.y;
+	float ty1 = (bmin.y - ray.GetOrigin().y) / ray.GetDirection().y;
+	float ty2 = (bmax.y - ray.GetOrigin().y) / ray.GetDirection().y;
 
 	tmin = max(tmin, min(ty1, ty2));
 	tmax = min(tmax, max(ty1, ty2));
 
-	float tz1 = (bmin.z - ray.m_origin.z) / ray.m_direction.z;
-	float tz2 = (bmax.z - ray.m_origin.z) / ray.m_direction.z;
+	float tz1 = (bmin.z - ray.GetOrigin().z) / ray.GetDirection().z;
+	float tz2 = (bmax.z - ray.GetOrigin().z) / ray.GetDirection().z;
 
 	tmin = max(tmin, min(tz1, tz2));
 	tmax = min(tmax, max(tz1, tz2));
 
-	return tmax >= tmin && tmin < maxRayLength && tmax > 0;
+	if (tmax >= tmin && tmin < maxRayLength && tmax > 0)
+	{
+		return tmin;
+	}
+
+	return std::numeric_limits<float>::max();
 }

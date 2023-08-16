@@ -36,38 +36,98 @@
 using namespace Sailor;
 using namespace Sailor::Math;
 
-bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength) const
+float BVH::EvaluateSAH(BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos)
 {
-	check(tris.Num() * 2 - 1 == m_nodes.Num());
+	Math::AABB leftBox;
+	Math::AABB rightBox;
 
-	const BVHNode& node = m_nodes[nodeIdx];
-	if (!Math::IntersectRayAABB(ray, node.m_aabbMin, node.m_aabbMax))
-	{
-		return false;
-	}
+	int32_t leftCount = 0;
+	int32_t rightCount = 0;
 
-	if (node.IsLeaf())
+	for (uint i = 0; i < node.m_triCount; i++)
 	{
-		RaycastHit res{};
-		for (uint i = 0; i < node.m_triCount; i++)
+		const Math::Triangle& triangle = tris[m_triIdx[node.m_leftFirst + i]];
+		if (triangle.m_centroid[axis] < pos)
 		{
-			Math::IntersectRayTriangle(ray, tris[m_triIdx[node.m_firstTriIdx + i]], res, outResult.m_rayLenght);
-			if (res.m_rayLenght < outResult.m_rayLenght)
-			{
-				outResult = res;
-				outResult.m_triangleIndex = m_triIdx[node.m_firstTriIdx + i];
-			}
+			leftCount++;
+			leftBox.Extend(triangle.m_vertices[0]);
+			leftBox.Extend(triangle.m_vertices[1]);
+			leftBox.Extend(triangle.m_vertices[2]);
+		}
+		else
+		{
+			rightCount++;
+			rightBox.Extend(triangle.m_vertices[0]);
+			rightBox.Extend(triangle.m_vertices[1]);
+			rightBox.Extend(triangle.m_vertices[2]);
 		}
 	}
-	else
+	float cost = leftCount * leftBox.Area() + rightCount * rightBox.Area();
+	return cost > 0 ? cost : 1e30f;
+}
+
+bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength) const
+{
+	const BVHNode* node = &m_nodes[m_rootNodeIdx], * stack[64];
+	uint stackPtr = 0;
+	Math::RaycastHit res{};
+	while (1)
 	{
-		RaycastHit res1{};
-		IntersectBVH(ray, tris, res1, node.m_leftNode, maxRayLength);
+		if (node->IsLeaf())
+		{
+			for (uint i = 0; i < node->m_triCount; i++)
+			{
+				if (Math::IntersectRayTriangle(ray, tris[m_triIdx[node->m_leftFirst + i]], res, maxRayLength))
+				{
+					outResult = res;
+					outResult.m_triangleIndex = m_triIdx[node->m_leftFirst + i];
 
-		RaycastHit res2{};
-		IntersectBVH(ray, tris, res2, node.m_leftNode + 1, maxRayLength);
+					maxRayLength = std::min(maxRayLength, res.m_rayLenght);
+				}
+			}
+			if (stackPtr == 0)
+			{
+				break;
+			}
+			else
+			{
+				node = stack[--stackPtr];
+			}
 
-		outResult = res1.m_rayLenght < res2.m_rayLenght ? res1 : res2;
+			continue;
+		}
+
+		const BVH::BVHNode* child1 = &m_nodes[node->m_leftFirst];
+		const BVH::BVHNode* child2 = &m_nodes[node->m_leftFirst + 1];
+
+		float dist1 = IntersectRayAABB(ray, child1->m_aabbMin, child1->m_aabbMax, maxRayLength);
+		float dist2 = IntersectRayAABB(ray, child2->m_aabbMin, child2->m_aabbMax, maxRayLength);
+
+		if (dist1 > dist2)
+		{
+			swap(dist1, dist2);
+			swap(child1, child2);
+		}
+
+		if (dist1 == std::numeric_limits<float>::max())
+		{
+			if (stackPtr == 0)
+			{
+				break;
+			}
+			else
+			{
+				node = stack[--stackPtr];
+			}
+		}
+		else
+		{
+			node = child1;
+			if (dist2 != std::numeric_limits<float>::max())
+			{
+				stack[stackPtr++] = child2;
+			}
+		}
 	}
 
 	return outResult.HasIntersection();
@@ -80,7 +140,7 @@ void BVH::UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris
 	node.m_aabbMin = vec3(1e30f);
 	node.m_aabbMax = vec3(-1e30f);
 
-	for (uint first = node.m_firstTriIdx, i = 0; i < node.m_triCount; i++)
+	for (uint first = node.m_leftFirst, i = 0; i < node.m_triCount; i++)
 	{
 		uint leafTriIdx = m_triIdx[first + i];
 		const Triangle& leafTri = tris[leafTriIdx];
@@ -104,6 +164,7 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 	}
 
 	// determine split axis and position
+	/*
 	vec3 extent = node.m_aabbMax - node.m_aabbMin;
 	int32_t axis = 0;
 
@@ -118,9 +179,27 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 	}
 
 	float splitPos = node.m_aabbMin[axis] + extent[axis] * 0.5f;
+	*/
+
+	int32_t bestAxis = -1;
+	float bestPos = 0, bestCost = 1e30f;
+	for (int32_t axis = 0; axis < 3; axis++)
+	{
+		for (uint i = 0; i < node.m_triCount; i++)
+		{
+			const Math::Triangle& triangle = tris[m_triIdx[node.m_leftFirst + i]];
+			float candidatePos = triangle.m_centroid[axis];
+			float cost = EvaluateSAH(node, tris, axis, candidatePos);
+			if (cost < bestCost)
+				bestPos = candidatePos, bestAxis = axis, bestCost = cost;
+		}
+	}
+
+	int32_t axis = bestAxis;
+	float splitPos = bestPos;
 
 	// in-place partition
-	int32_t i = node.m_firstTriIdx;
+	int32_t i = node.m_leftFirst;
 	int32_t j = i + node.m_triCount - 1;
 
 	while (i <= j)
@@ -136,7 +215,7 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 	}
 
 	// abort split if one of the sides is empty
-	uint32_t leftCount = i - node.m_firstTriIdx;
+	uint32_t leftCount = i - node.m_leftFirst;
 
 	if (leftCount == 0 || leftCount == node.m_triCount)
 	{
@@ -147,12 +226,12 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 	uint32_t leftChildIdx = m_nodesUsed++;
 	uint32_t rightChildIdx = m_nodesUsed++;
 
-	m_nodes[leftChildIdx].m_firstTriIdx = node.m_firstTriIdx;
+	m_nodes[leftChildIdx].m_leftFirst = node.m_leftFirst;
 	m_nodes[leftChildIdx].m_triCount = leftCount;
-	m_nodes[rightChildIdx].m_firstTriIdx = i;
+	m_nodes[rightChildIdx].m_leftFirst = i;
 	m_nodes[rightChildIdx].m_triCount = node.m_triCount - leftCount;
 
-	node.m_leftNode = leftChildIdx;
+	node.m_leftFirst = leftChildIdx;
 	node.m_triCount = 0;
 
 	UpdateNodeBounds(leftChildIdx, tris);
@@ -172,8 +251,7 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 	}
 
 	BVHNode& root = m_nodes[m_rootNodeIdx];
-	root.m_leftNode = 0;
-	root.m_firstTriIdx = 0;
+	root.m_leftFirst = 0;
 	root.m_triCount = (uint32_t)tris.Num();
 
 	UpdateNodeBounds(m_rootNodeIdx, tris);
@@ -269,7 +347,7 @@ void Raytracing::Run()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	const uint32_t GroupSize = 8;
+	const uint32_t GroupSize = 32;
 
 	const char* outputFile = "output.png";
 	//const std::filesystem::path sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
@@ -288,10 +366,10 @@ void Raytracing::Run()
 		aiProcess_GenNormals |
 		aiProcess_GenUVCoords |
 		aiProcess_Debone |
-		aiProcess_ValidateDataStructure |
+		//aiProcess_ValidateDataStructure |
 		aiProcess_FindDegenerates |
 		//aiProcess_ImproveCacheLocality |
-		aiProcess_FindInvalidData |
+		//aiProcess_FindInvalidData |
 		//aiProcess_FlipWindingOrder |
 		0;
 
@@ -525,6 +603,8 @@ void Raytracing::Run()
 	// Raytracing
 	{
 		TVector<Tasks::ITaskPtr> tasks;
+		TVector<Tasks::ITaskPtr> tasksThisThread;
+
 		tasks.Reserve((height * width) / (GroupSize * GroupSize));
 		for (uint32_t y = 0; y < height; y += GroupSize)
 		{
@@ -541,7 +621,7 @@ void Raytracing::Run()
 						u8vec4 diffuseSample{};
 						uint32_t prevMatIndex = -1;
 						const float VariableShaderRate = 0.25f;
-						ray.m_origin = cameraPos;
+						ray.SetOrigin(cameraPos);
 
 						for (uint32_t v = 0; v < GroupSize; v++)
 						{
@@ -553,7 +633,7 @@ void Raytracing::Run()
 
 								const vec3 midTop = viewportUpperLeft + (viewportUpperRight - viewportUpperLeft) * tu;
 								const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * tu;
-								ray.m_direction = glm::normalize(midTop + (midBottom - midTop) * tv - cameraPos);
+								ray.SetDirection(glm::normalize(midTop + (midBottom - midTop) * tv - cameraPos));
 
 								RaycastHit hit;
 								if (bvh.IntersectBVH(ray, m_triangles, hit, 0))
@@ -594,9 +674,21 @@ void Raytracing::Run()
 
 					}, Tasks::EThreadType::Worker);
 
-				task->Run();
-				tasks.Emplace(std::move(task));
+				if (((x + y) / GroupSize) % 32 == 0)
+				{
+					tasksThisThread.Emplace(task);
+				}
+				else
+				{
+					task->Run();
+					tasks.Emplace(std::move(task));
+				}
 			}
+		}
+
+		for (auto& task : tasksThisThread)
+		{
+			task->Execute();
 		}
 
 		for (auto& task : tasks)
@@ -606,5 +698,5 @@ void Raytracing::Run()
 	}
 
 	Internal::WriteImage(outputFile, output, width, height);
-	::system(outputFile);
+	//::system(outputFile);
 }
