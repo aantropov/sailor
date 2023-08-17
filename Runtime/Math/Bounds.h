@@ -28,15 +28,15 @@ namespace Sailor::Math
 			SetDirection(direction);
 		}
 
-		const vec3& GetOrigin() const { return m_origin; }
-		const vec3& GetDirection() const { return m_direction; }
+		__forceinline const vec3& GetOrigin() const { return m_origin; }
+		__forceinline const vec3& GetDirection() const { return m_direction; }
 		
-		const __m128& GetOrigin4() const { return O4; }
-		const __m128& GetDirection4() const { return D4; }
-		const __m128& GetReciprocalDirection4() const { return rD4; }
+		__forceinline const __m128& GetOrigin4() const { return O4; }
+		__forceinline const __m128& GetDirection4() const { return D4; }
+		__forceinline const __m128& GetReciprocalDirection4() const { return rD4; }
 
-		void SetOrigin(const vec3& value) { m_origin = value; }
-		void SetDirection(const vec3& value) { m_direction = value; m_rDirection = 1.0f / value; }
+		__forceinline void SetOrigin(const vec3& value) { m_origin = value; }
+		__forceinline void SetDirection(const vec3& value) { m_direction = value; m_rDirection = 1.0f / value; }
 
 	protected:
 

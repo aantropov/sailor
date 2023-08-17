@@ -36,7 +36,80 @@
 using namespace Sailor;
 using namespace Sailor::Math;
 
-float BVH::EvaluateSAH(BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos)
+float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t& outAxis, float& outSplitPos) const
+{
+	struct Bin { Math::AABB m_bounds{}; int m_triCount = 0; };
+
+	const uint32_t NumPlanes = 8;
+	const uint32_t NumBins = 8;
+
+	float bestCost = std::numeric_limits<float>::max();
+	for (uint32_t a = 0; a < 3; a++)
+	{
+		float boundsMin = std::numeric_limits<float>::max();
+		float boundsMax = std::numeric_limits<float>::min();
+
+		for (uint32_t i = 0; i < node.m_triCount; i++)
+		{
+			const Math::Triangle& triangle = tris[m_triIdx[node.m_leftFirst + i]];
+			boundsMin = std::min(boundsMin, triangle.m_centroid[a]);
+			boundsMax = std::max(boundsMax, triangle.m_centroid[a]);
+		}
+
+		if (boundsMin == boundsMax)
+		{
+			continue;
+		}
+
+		Bin bin[NumBins];
+		float scale = NumBins / (boundsMax - boundsMin);
+		for (uint i = 0; i < node.m_triCount; i++)
+		{
+			const Math::Triangle& triangle = tris[m_triIdx[node.m_leftFirst + i]];
+			int32_t binIdx = std::min((int32_t)NumBins - 1,
+				(int32_t)((triangle.m_centroid[a] - boundsMin) * scale));
+			bin[binIdx].m_triCount++;
+			bin[binIdx].m_bounds.Extend(triangle.m_vertices[0]);
+			bin[binIdx].m_bounds.Extend(triangle.m_vertices[1]);
+			bin[binIdx].m_bounds.Extend(triangle.m_vertices[2]);
+		}
+
+		float leftArea[NumBins - 1];
+		float rightArea[NumBins - 1];
+		int32_t leftCount[NumBins - 1];
+		int32_t rightCount[NumBins - 1];
+
+		Math::AABB leftBox;
+		Math::AABB rightBox;
+		int32_t leftSum = 0, rightSum = 0;
+		for (int32_t i = 0; i < NumBins - 1; i++)
+		{
+			leftSum += bin[i].m_triCount;
+			leftCount[i] = leftSum;
+			leftBox.Extend(bin[i].m_bounds);
+			leftArea[i] = leftBox.Area();
+			rightSum += bin[NumBins - 1 - i].m_triCount;
+			rightCount[NumBins - 2 - i] = rightSum;
+			rightBox.Extend(bin[NumBins - 1 - i].m_bounds);
+			rightArea[NumBins - 2 - i] = rightBox.Area();
+		}
+
+		scale = (boundsMax - boundsMin) / NumBins;
+		for (int32_t i = 0; i < NumBins - 1; i++)
+		{
+			float planeCost = leftCount[i] * leftArea[i] + rightCount[i] * rightArea[i];
+			if (planeCost < bestCost)
+			{
+				outAxis = a;
+				outSplitPos = boundsMin + scale * (i + 1);
+				bestCost = planeCost;
+			}
+		}
+	}
+	return bestCost;
+}
+
+float BVH::EvaluateSAH(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos) const
 {
 	Math::AABB leftBox;
 	Math::AABB rightBox;
@@ -100,8 +173,8 @@ bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris
 		const BVH::BVHNode* child1 = &m_nodes[node->m_leftFirst];
 		const BVH::BVHNode* child2 = &m_nodes[node->m_leftFirst + 1];
 
-		float dist1 = IntersectRayAABB(ray, child1->m_aabbMin, child1->m_aabbMax, maxRayLength);
-		float dist2 = IntersectRayAABB(ray, child2->m_aabbMin, child2->m_aabbMax, maxRayLength);
+		float dist1 = IntersectRayAABB(ray, child1->m_aabbMin4, child1->m_aabbMax4, maxRayLength);
+		float dist2 = IntersectRayAABB(ray, child2->m_aabbMin4, child2->m_aabbMax4, maxRayLength);
 
 		if (dist1 > dist2)
 		{
@@ -163,40 +236,15 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 		return;
 	}
 
-	// determine split axis and position
-	/*
-	vec3 extent = node.m_aabbMax - node.m_aabbMin;
-	int32_t axis = 0;
+	int32_t axis{};
+	float splitPos{};
+	float splitCost = FindBestSplitPlane(node, tris, axis, splitPos);
 
-	if (extent.y > extent.x)
+	float nosplitCost = node.CalculateCost();
+	if (splitCost >= nosplitCost)
 	{
-		axis = 1;
+		return;
 	}
-
-	if (extent.z > extent[axis])
-	{
-		axis = 2;
-	}
-
-	float splitPos = node.m_aabbMin[axis] + extent[axis] * 0.5f;
-	*/
-
-	int32_t bestAxis = -1;
-	float bestPos = 0, bestCost = 1e30f;
-	for (int32_t axis = 0; axis < 3; axis++)
-	{
-		for (uint i = 0; i < node.m_triCount; i++)
-		{
-			const Math::Triangle& triangle = tris[m_triIdx[node.m_leftFirst + i]];
-			float candidatePos = triangle.m_centroid[axis];
-			float cost = EvaluateSAH(node, tris, axis, candidatePos);
-			if (cost < bestCost)
-				bestPos = candidatePos, bestAxis = axis, bestCost = cost;
-		}
-	}
-
-	int32_t axis = bestAxis;
-	float splitPos = bestPos;
 
 	// in-place partition
 	int32_t i = node.m_leftFirst;
@@ -565,25 +613,6 @@ void Raytracing::Run()
 			task->Wait();
 		}
 	}
-	// Loading textures
-	//{
-	//	TVector<Tasks::ITaskPtr> tasks;
-	//	tasks.Reserve(scene->mNumMaterials * 4);
-	//	for (uint32_t i = 0; i < scene->mNumMaterials; i++)
-	//	{
-	//		auto& material = scene->mMaterials[i];
-	//		aiString path;
-	//		material->GetTexture(aiTextureType_DIFFUSE, 0, &path);
-	//
-	//		tasks.Add(LoadTexture(path.C_Str()));
-	//		(*tasks.Last())->Run();
-	//	}
-	//
-	//	for (auto& task : tasks)
-	//	{
-	//		task->Wait();
-	//	}
-	//}
 
 	BVH bvh(numFaces);
 	bvh.BuildBVH(m_triangles);
@@ -606,6 +635,8 @@ void Raytracing::Run()
 		TVector<Tasks::ITaskPtr> tasksThisThread;
 
 		tasks.Reserve((height * width) / (GroupSize * GroupSize));
+		tasksThisThread.Reserve((height * width) / (GroupSize * GroupSize) / 32);
+
 		for (uint32_t y = 0; y < height; y += GroupSize)
 		{
 			for (uint32_t x = 0; x < width; x += GroupSize)

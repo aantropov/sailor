@@ -438,8 +438,8 @@ float AABB::Volume() const
 
 float AABB::Area() const
 {
-	vec3 e = m_max - m_min;
-	return e.x * e.y + e.y * e.z + e.z * e.x;
+	const vec3 e = m_max - m_min;
+	return 2.0f * (e.x * e.y + e.y * e.z + e.z * e.x);
 }
 
 void AABB::Extend(const AABB& inner)

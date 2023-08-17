@@ -24,6 +24,13 @@ namespace Sailor
 			};
 
 			bool IsLeaf() const { return m_triCount > 0; }
+
+			float CalculateCost() const
+			{
+				const vec3 e = m_aabbMax - m_aabbMin;
+				float surfaceArea = e.x * e.y + e.y * e.z + e.z * e.x;
+				return m_triCount * surfaceArea;
+			}
 		};
 
 	public:
@@ -42,7 +49,8 @@ namespace Sailor
 
 		void UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris);
 		void Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris);
-		float EvaluateSAH(BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos);
+		float EvaluateSAH(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos) const;
+		float FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t& outAxis, float& outSplitPos) const;
 
 		TVector<BVHNode> m_nodes;
 		TVector<uint32_t> m_triIdx;
