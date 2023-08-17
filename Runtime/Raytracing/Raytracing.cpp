@@ -38,9 +38,11 @@ using namespace Sailor::Math;
 
 float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t& outAxis, float& outSplitPos) const
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	struct Bin { Math::AABB m_bounds{}; int m_triCount = 0; };
 
-	const uint32_t NumBins = 4;
+	const uint32_t NumBins = 8;
 
 	float bestCost = std::numeric_limits<float>::max();
 	for (uint32_t a = 0; a < 3; a++)
@@ -80,7 +82,8 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 
 		Math::AABB leftBox;
 		Math::AABB rightBox;
-		int32_t leftSum = 0, rightSum = 0;
+		int32_t leftSum = 0;
+		int32_t rightSum = 0;
 		for (int32_t i = 0; i < NumBins - 1; i++)
 		{
 			leftSum += bin[i].m_triCount;
@@ -110,6 +113,8 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 
 float BVH::EvaluateSAH(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t axis, float pos) const
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	Math::AABB leftBox;
 	Math::AABB rightBox;
 
@@ -138,8 +143,10 @@ float BVH::EvaluateSAH(const BVHNode& node, const TVector<Math::Triangle>& tris,
 	return cost > 0 ? cost : 1e30f;
 }
 
-bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength) const
+bool BVH::IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength) const
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	const BVHNode* node = &m_nodes[m_rootNodeIdx], * stack[64];
 	uint stackPtr = 0;
 	Math::RaycastHit res{};
@@ -149,10 +156,10 @@ bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris
 		{
 			for (uint i = 0; i < node->m_triCount; i++)
 			{
-				if (Math::IntersectRayTriangle(ray, tris[m_triIdx[node->m_leftFirst + i]], res, maxRayLength))
+				if (Math::IntersectRayTriangle(ray, m_triangles[node->m_leftFirst + i], res, maxRayLength))
 				{
 					outResult = res;
-					outResult.m_triangleIndex = m_triIdx[node->m_leftFirst + i];
+					outResult.m_triangleIndex = m_triIdxMapping[node->m_leftFirst + i];
 
 					maxRayLength = std::min(maxRayLength, res.m_rayLenght);
 				}
@@ -172,8 +179,8 @@ bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris
 		const BVH::BVHNode* child1 = &m_nodes[node->m_leftFirst];
 		const BVH::BVHNode* child2 = &m_nodes[node->m_leftFirst + 1];
 
-		float dist1 = IntersectRayAABB(ray, child1->m_aabbMin4, child1->m_aabbMax4, maxRayLength);
-		float dist2 = IntersectRayAABB(ray, child2->m_aabbMin4, child2->m_aabbMax4, maxRayLength);
+		float dist1 = IntersectRayAABB(ray, child1->m_aabbMin, child1->m_aabbMax, maxRayLength);
+		float dist2 = IntersectRayAABB(ray, child2->m_aabbMin, child2->m_aabbMax, maxRayLength);
 
 		if (dist1 > dist2)
 		{
@@ -207,6 +214,8 @@ bool BVH::IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris
 
 void BVH::UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	BVH::BVHNode& node = m_nodes[nodeIdx];
 
 	node.m_aabbMin = vec3(1e30f);
@@ -227,6 +236,8 @@ void BVH::UpdateNodeBounds(uint32_t nodeIdx, const TVector<Math::Triangle>& tris
 
 void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	// terminate recursion
 	BVH::BVHNode& node = m_nodes[nodeIdx];
 
@@ -290,6 +301,8 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 
 void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	check(tris.Num() * 2 - 1 == m_nodes.Num());
 
 	for (uint32_t i = 0; i < m_nodes.Num(); i++)
@@ -303,12 +316,45 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 
 	UpdateNodeBounds(m_rootNodeIdx, tris);
 	Subdivide(m_rootNodeIdx, tris);
+
+	// Cache locality
+	m_triangles.Reserve(tris.Num());
+	m_triIdxMapping.AddDefault(tris.Num());
+		
+	// TODO: Parallilize
+	for (uint32_t i = 0; i < m_nodes.Num(); i++)
+	{
+		if (m_nodes[i].IsLeaf())
+		{
+			const uint32_t triIndex = m_nodes[i].m_leftFirst;
+			m_nodes[i].m_leftFirst = (int32_t)m_triangles.Num();
+
+			TVector<uint32_t> sorted(m_nodes[i].m_triCount);
+			for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
+			{
+				sorted[j] = m_triIdx[triIndex + j];
+			}
+
+			sorted.Sort([&](const auto& lhs, const auto& rhs)
+				{
+					return tris[lhs].SquareArea() > tris[rhs].SquareArea();
+				});
+
+			for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
+			{
+				const uint32_t triId = sorted[j];// m_triIdx[triIndex + j];
+				m_triIdxMapping[m_triangles.Num()] = triId;
+				m_triangles.Add(tris[triId]);
+			}
+		}
+	}
 }
 
 namespace Sailor::Internal
 {
 	void WriteImage(const char* outputFileName, const TVector<u8vec3>& data, uint32_t width, uint32_t height)
 	{
+		SAILOR_PROFILE_FUNCTION();
 		const uint32_t Channels = 3;
 
 		if (!stbi_write_png(outputFileName, width, height, Channels, &data[0], width * Channels))
@@ -394,10 +440,10 @@ void Raytracing::Run()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	const uint32_t GroupSize = 32;
+	const uint32_t GroupSize = 8;
 
 	const char* outputFile = "output.png";
-	const std::filesystem::path sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
+	const std::filesystem::path sceneFile = "../Content/Models/Sponza/Sponza.obj";
 	//const std::filesystem::path sceneFile = "../Content/Models/Duck/Duck.gltf";
 	//const std::filesystem::path sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
 	//const std::filesystem::path sceneFile = "../Content/Models/Triangle/Triangle.gltf";
@@ -431,7 +477,7 @@ void Raytracing::Run()
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", sceneFile.string().c_str());
 
 	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : 16.0f / 9.0f;
-	const uint32_t width = 1024;
+	const uint32_t width = 1920;
 	const uint32_t height = static_cast<uint32_t>(width / aspectRatio);
 	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(50.0f);
 	const float vFov = 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio));
@@ -443,7 +489,7 @@ void Raytracing::Run()
 	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(vFov, (float)width, (float)height, zMin, zMax));
 	mat4 viewMatrix{ 1 };
 
-	auto cameraPos = vec3(0, 1.5, 0);
+	auto cameraPos = vec3(0, 15, 0);
 	auto cameraUp = normalize(vec3(0, 1, 0));
 	//auto cameraForward = normalize(-cameraPos);
 	auto cameraForward = vec3(1, 0, 0);
@@ -658,6 +704,8 @@ void Raytracing::Run()
 							float tv = (y + v) / (float)height;
 							for (uint32_t u = 0; u < GroupSize; u++)
 							{
+								SAILOR_PROFILE_BLOCK("Raycasting");
+
 								const uint32_t index = (y + v) * width + (x + u);
 								float tu = (x + u) / (float)width;
 
@@ -666,8 +714,10 @@ void Raytracing::Run()
 								ray.SetDirection(glm::normalize(midTop + (midBottom - midTop) * tv - cameraPos));
 
 								RaycastHit hit;
-								if (bvh.IntersectBVH(ray, m_triangles, hit, 0))
+								if (bvh.IntersectBVH(ray, hit, 0))
 								{
+									SAILOR_PROFILE_BLOCK("Sampling");
+
 									const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
 									vec3 normal = 255.0f * (0.5f + 0.5f * vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
@@ -694,11 +744,15 @@ void Raytracing::Run()
 									}
 
 									output[index] = diffuseSample;
+
+									SAILOR_PROFILE_END_BLOCK();
 								}
 								else
 								{
 									output[index] = u8vec3(0u, 0u, 0u);
 								}
+
+								SAILOR_PROFILE_END_BLOCK();
 							}
 						}
 

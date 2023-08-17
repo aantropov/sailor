@@ -43,7 +43,7 @@ namespace Sailor
 		}
 
 		void BuildBVH(const TVector<Math::Triangle>& tris);
-		bool IntersectBVH(const Math::Ray& ray, const TVector<Math::Triangle>& tris, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength = std::numeric_limits<float>::max()) const;
+		bool IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength = std::numeric_limits<float>::max()) const;
 
 	protected:
 
@@ -54,6 +54,8 @@ namespace Sailor
 
 		TVector<BVHNode> m_nodes;
 		TVector<uint32_t> m_triIdx;
+		TVector<Math::Triangle> m_triangles;
+		TVector<uint32_t> m_triIdxMapping;
 
 		uint32_t m_rootNodeIdx = 0;
 		uint32_t m_nodesUsed = 1;
@@ -74,6 +76,8 @@ namespace Sailor
 			template<typename T>
 			void Initialize(u8* linearData)
 			{
+				SAILOR_PROFILE_FUNCTION();
+
 				m_data.Resize(m_width * m_height * sizeof(T));
 
 				u8* blockData = m_data.GetData();
@@ -122,6 +126,8 @@ namespace Sailor
 			template<typename T>
 			const T Sample(vec2 uv) const
 			{
+				SAILOR_PROFILE_FUNCTION();
+
 				float fx = fmodf(uv.x * m_width, (float)m_width);
 				float fy = fmodf(uv.y * m_height, (float)m_height);
 

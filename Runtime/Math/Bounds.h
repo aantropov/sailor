@@ -18,6 +18,9 @@ namespace Sailor::Math
 		vec3 m_bitangent[3];
 		vec2 m_uvs[3];
 		u8 m_materialIndex{};
+
+		float SquareArea() const;
+		float Area() const;
 	};
 
 	struct Ray
@@ -30,13 +33,14 @@ namespace Sailor::Math
 
 		__forceinline const vec3& GetOrigin() const { return m_origin; }
 		__forceinline const vec3& GetDirection() const { return m_direction; }
-		
+		__forceinline const vec3& GetReciprocalDirection() const { return m_rDirection; }
+
 		__forceinline const __m128& GetOrigin4() const { return O4; }
 		__forceinline const __m128& GetDirection4() const { return D4; }
 		__forceinline const __m128& GetReciprocalDirection4() const { return rD4; }
 
 		__forceinline void SetOrigin(const vec3& value) { m_origin = value; }
-		__forceinline void SetDirection(const vec3& value) { m_direction = value; m_rDirection = 1.0f / value; }
+		__forceinline void SetDirection(const vec3& value) { m_direction = value; m_rDirection = vec3(1.0f / m_direction.x, 1.0f / m_direction.y, 1.0f / m_direction.z); }
 
 	protected:
 
@@ -96,8 +100,8 @@ namespace Sailor::Math
 
 	struct AABB
 	{
-		glm::vec3 m_min{};
-		glm::vec3 m_max{};
+		glm::vec3 m_min = vec3(10e30f);
+		glm::vec3 m_max = -vec3(10e30f);
 
 		AABB() = default;
 		AABB(glm::vec3 center, glm::vec3 extents);
@@ -172,10 +176,10 @@ namespace Sailor::Math
 
 	bool IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength = FLT_MAX);
 	bool IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength = FLT_MAX);
+	bool IntersectRayTriangle(const glm::vec3& r0, const glm::vec3& rd, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3& outBarycentric, float& outDistance);
 
 	// Return value is distance to AABB
 	float IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength = FLT_MAX);
-	float IntersectRayAABB(const Ray& ray, const __m128 bmin4, const __m128 bmax4, float maxRayLength = FLT_MAX);
 }
 
 namespace std

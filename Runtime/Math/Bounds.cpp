@@ -485,17 +485,69 @@ void AABB::Apply(const glm::mat4& transformMatrix)
 	}
 }
 
+inline bool Math::IntersectRayTriangle(const glm::vec3& r0, const glm::vec3& rd, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3& outBarycentric, float& outDistance)
+{
+	auto e0 = v1 - v0;
+	auto e1 = v2 - v0;
+
+	auto pvec = glm::cross(rd, e1);
+	auto det = glm::dot(e0, pvec);
+
+	if (det < std::numeric_limits<float>::epsilon())
+	{
+		return false;
+	}
+
+	auto inv_det = 1.f / det;
+
+	auto tvec = r0 - v0;
+	outBarycentric.y = glm::dot(tvec, pvec) * inv_det;
+
+	if (outBarycentric.y < 0.f || outBarycentric.y > 1.f)
+	{
+		return false;
+	}
+
+	auto qvec = glm::cross(tvec, e0);
+	outBarycentric.z = glm::dot(rd, qvec) * inv_det;
+
+	if (outBarycentric.z < 0.f || outBarycentric.y + outBarycentric.z > 1.f)
+	{
+		return false;
+	}
+
+	outBarycentric.x = 1.f - outBarycentric.y - outBarycentric.z;
+	outDistance = glm::dot(e1, qvec) * inv_det;
+	return true;
+}
+
+float Math::Triangle::SquareArea() const
+{
+	float a = length(m_vertices[0] - m_vertices[1]);
+	float b = length(m_vertices[0] - m_vertices[2]);
+	float c = length(m_vertices[2] - m_vertices[1]);
+
+	float s = (a + b + c) / 2;
+	return s * (s - a) * (s - b) * (s - c);
+}
+
+float Math::Triangle::Area() const
+{
+	return sqrt(SquareArea());
+}
+
 bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	outRaycastHit = RaycastHit();
 	outRaycastHit.m_rayLenght = maxRayLength;
 
 	float distance = std::numeric_limits<float>::max();
 	vec2 baryPosition{};
 
-	if (bool res = glm::intersectRayTriangle(ray.GetOrigin(), ray.GetDirection(),
-		tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2],
-		baryPosition, distance))
+	//if (bool res = Math::IntersectRayTriangle(ray.GetOrigin(), ray.GetReciprocalDirection(), tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2], baryPosition, distance))
+	if (bool res = glm::intersectRayTriangle(ray.GetOrigin(), ray.GetDirection(), tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2], baryPosition, distance))
 	{
 		if (distance < maxRayLength)
 		{
@@ -558,46 +610,24 @@ void IntersectRayTriangle(Ray& ray, const Triangle& tri)
 	}
 }*/
 
-float Math::IntersectRayAABB(const Ray& ray, const __m128 bmin4, const __m128 bmax4, float maxRayLength)
-{
-	static __m128 mask4 = _mm_cmpeq_ps(_mm_setzero_ps(), _mm_set_ps(1, 0, 0, 0));
-
-	__m128 t1 = _mm_mul_ps(_mm_sub_ps(_mm_and_ps(bmin4, mask4), ray.O4), ray.rD4);
-	__m128 t2 = _mm_mul_ps(_mm_sub_ps(_mm_and_ps(bmax4, mask4), ray.O4), ray.rD4);
-	__m128 vmax4 = _mm_max_ps(t1, t2), vmin4 = _mm_min_ps(t1, t2);
-
-	float tmax = min(vmax4.m128_f32[0], min(vmax4.m128_f32[1], vmax4.m128_f32[2]));
-	float tmin = max(vmin4.m128_f32[0], max(vmin4.m128_f32[1], vmin4.m128_f32[2]));
-
-	if (tmax >= tmin && tmin < maxRayLength && tmax > 0)
-	{
-		return tmin;
-	}
-
-	return std::numeric_limits<float>::max();
-}
-
+/**/
 float Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength)
 {
-	float tx1 = (bmin.x - ray.GetOrigin().x) / ray.GetDirection().x;
-	float tx2 = (bmax.x - ray.GetOrigin().x) / ray.GetDirection().x;
+	SAILOR_PROFILE_FUNCTION();
 
-	float tmin = min(tx1, tx2);
-	float tmax = max(tx1, tx2);
+	__m128 _bmin = _mm_setr_ps(bmin.x, bmin.y, bmin.z, 0.f);
+	__m128 _bmax = _mm_setr_ps(bmax.x, bmax.y, bmax.z, 0.f);
+	__m128 t1 = _mm_mul_ps(_mm_sub_ps(_bmin, ray.GetOrigin4()), ray.GetReciprocalDirection4());
+	__m128 t2 = _mm_mul_ps(_mm_sub_ps(_bmax, ray.GetOrigin4()), ray.GetReciprocalDirection4());
 
-	float ty1 = (bmin.y - ray.GetOrigin().y) / ray.GetDirection().y;
-	float ty2 = (bmax.y - ray.GetOrigin().y) / ray.GetDirection().y;
+	float vmax[4ull], vmin[4ull];
+	_mm_store_ps(vmax, _mm_max_ps(t1, t2));
+	_mm_store_ps(vmin, _mm_min_ps(t1, t2));
 
-	tmin = max(tmin, min(ty1, ty2));
-	tmax = min(tmax, max(ty1, ty2));
+	float tmax = glm::min(vmax[0], glm::min(vmax[1], vmax[2]));
+	float tmin = glm::max(vmin[0], glm::max(vmin[1], vmin[2]));
 
-	float tz1 = (bmin.z - ray.GetOrigin().z) / ray.GetDirection().z;
-	float tz2 = (bmax.z - ray.GetOrigin().z) / ray.GetDirection().z;
-
-	tmin = max(tmin, min(tz1, tz2));
-	tmax = min(tmax, max(tz1, tz2));
-
-	if (tmax >= tmin && tmin < maxRayLength && tmax > 0)
+	if (tmax >= tmin && tmin < maxRayLength && tmax > 0.f)
 	{
 		return tmin;
 	}
