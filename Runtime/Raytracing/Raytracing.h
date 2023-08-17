@@ -122,8 +122,18 @@ namespace Sailor
 			template<typename T>
 			const T Sample(vec2 uv) const
 			{
-				float fx = uv.x * m_width;
-				float fy = uv.y * m_height;
+				float fx = fmodf(uv.x * m_width, (float)m_width);
+				float fy = fmodf(uv.y * m_height, (float)m_height);
+
+				if (fx < 0.0f)
+				{
+					fx = m_width + fx;
+				}
+
+				if (fy < 0.0f)
+				{
+					fy = m_height + fy;
+				}
 
 				int32_t tX = static_cast<int32_t>(floor(fx));
 				int32_t tY = static_cast<int32_t>(floor(fy));

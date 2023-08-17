@@ -46,7 +46,7 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 	for (uint32_t a = 0; a < 3; a++)
 	{
 		float boundsMin = std::numeric_limits<float>::max();
-		float boundsMax = -100000.0f;
+		float boundsMax = -300000.0f;
 
 		for (uint32_t i = 0; i < node.m_triCount; i++)
 		{
@@ -397,8 +397,8 @@ void Raytracing::Run()
 	const uint32_t GroupSize = 32;
 
 	const char* outputFile = "output.png";
-	//const std::filesystem::path sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
-	const std::filesystem::path sceneFile = "../Content/Models/Duck/Duck.gltf";
+	const std::filesystem::path sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
+	//const std::filesystem::path sceneFile = "../Content/Models/Duck/Duck.gltf";
 	//const std::filesystem::path sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
 	//const std::filesystem::path sceneFile = "../Content/Models/Triangle/Triangle.gltf";
 
@@ -433,7 +433,7 @@ void Raytracing::Run()
 	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : 16.0f / 9.0f;
 	const uint32_t width = 1024;
 	const uint32_t height = static_cast<uint32_t>(width / aspectRatio);
-	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(40.0f);
+	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(50.0f);
 	const float vFov = 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio));
 
 	const float zMin = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneNear : 0.01f;
@@ -443,10 +443,10 @@ void Raytracing::Run()
 	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(vFov, (float)width, (float)height, zMin, zMax));
 	mat4 viewMatrix{ 1 };
 
-	auto cameraPos = vec3(3, 3, 5);
+	auto cameraPos = vec3(0, 1.5, 0);
 	auto cameraUp = normalize(vec3(0, 1, 0));
-	auto cameraForward = normalize(-cameraPos);
-	//auto cameraForward = vec3(0, 0, -1);
+	//auto cameraForward = normalize(-cameraPos);
+	auto cameraForward = vec3(1, 0, 0);
 
 	auto axis = cross(cameraForward, cameraUp);
 	cameraUp = cross(axis, cameraForward);
@@ -728,5 +728,5 @@ void Raytracing::Run()
 	}
 
 	Internal::WriteImage(outputFile, output, width, height);
-	//::system(outputFile);
+	::system(outputFile);
 }
