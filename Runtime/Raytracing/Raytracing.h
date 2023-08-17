@@ -28,7 +28,7 @@ namespace Sailor
 			float CalculateCost() const
 			{
 				const vec3 e = m_aabbMax - m_aabbMin;
-				float surfaceArea = e.x * e.y + e.y * e.z + e.z * e.x;
+				float surfaceArea = 2.0f * (e.x * e.y + e.y * e.z + e.z * e.x);
 				return m_triCount * surfaceArea;
 			}
 		};

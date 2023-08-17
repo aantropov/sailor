@@ -40,14 +40,13 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 {
 	struct Bin { Math::AABB m_bounds{}; int m_triCount = 0; };
 
-	const uint32_t NumPlanes = 8;
-	const uint32_t NumBins = 8;
+	const uint32_t NumBins = 4;
 
 	float bestCost = std::numeric_limits<float>::max();
 	for (uint32_t a = 0; a < 3; a++)
 	{
 		float boundsMin = std::numeric_limits<float>::max();
-		float boundsMax = std::numeric_limits<float>::min();
+		float boundsMax = -100000.0f;
 
 		for (uint32_t i = 0; i < node.m_triCount; i++)
 		{
