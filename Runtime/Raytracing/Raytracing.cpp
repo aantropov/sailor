@@ -374,10 +374,6 @@ void Raytracing::Run()
 					this]() mutable
 					{
 						Ray ray;
-						vec2 prevUV = vec2(1000.0f);
-						u8vec4 diffuseSample{};
-						uint32_t prevMatIndex = -1;
-						const float VariableShaderRate = 0.25f;
 						ray.SetOrigin(cameraPos);
 
 						for (uint32_t v = 0; v < GroupSize; v++)
@@ -394,48 +390,7 @@ void Raytracing::Run()
 								const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * tu;
 								ray.SetDirection(glm::normalize(midTop + (midBottom - midTop) * tv - cameraPos));
 
-								RaycastHit hit;
-								if (bvh.IntersectBVH(ray, hit, 0))
-								{
-									SAILOR_PROFILE_BLOCK("Sampling");
-
-									const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
-
-									vec3 normal = 255.0f * (0.5f + 0.5f * vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
-										hit.m_barycentricCoordinate.y * tri.m_normals[1] +
-										hit.m_barycentricCoordinate.z * tri.m_normals[2]));
-
-									vec2 uv = hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
-										hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
-										hit.m_barycentricCoordinate.z * tri.m_uvs[2];
-
-									const auto delta = prevUV - uv;
-									const float dUv = dot(delta, delta);
-
-									const auto& material = m_materials[tri.m_materialIndex];
-									if (material.m_normalIndex != 255)
-									{
-										const float diffuseTexelSize = 1.0f / (m_textures[material.m_normalIndex]->m_width * m_textures[material.m_normalIndex]->m_height);
-										if (dUv > diffuseTexelSize * VariableShaderRate || prevMatIndex != tri.m_materialIndex)
-										{
-											if (material.m_diffuseIndex != -1)
-											{
-												diffuseSample = m_textures[material.m_normalIndex]->Sample<u8vec4>(uv);
-												prevUV = uv;
-												prevMatIndex = tri.m_materialIndex;
-											}
-										}
-
-										output[index] = diffuseSample;
-									}
-
-									SAILOR_PROFILE_END_BLOCK();
-								}
-								else
-								{
-									output[index] = u8vec3(0u, 0u, 0u);
-								}
-
+								output[index] = u8vec3(Raytrace(ray, bvh));
 								SAILOR_PROFILE_END_BLOCK();
 							}
 						}
@@ -493,4 +448,53 @@ void Raytracing::Run()
 	SAILOR_PROFILE_BLOCK("Open Image");
 	::system(outputFile);
 	SAILOR_PROFILE_END_BLOCK();
+}
+
+
+vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	RaycastHit hit;
+	if (bvh.IntersectBVH(ray, hit, 0))
+	{
+		SAILOR_PROFILE_BLOCK("Sampling");
+
+		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
+
+		vec4 diffuse{ 1 };
+		vec3 normal{ 1 };
+
+		const vec3 faceNormal = 255.0f * (0.5f + 0.5f * vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
+			hit.m_barycentricCoordinate.y * tri.m_normals[1] +
+			hit.m_barycentricCoordinate.z * tri.m_normals[2]));
+		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] +
+			hit.m_barycentricCoordinate.y * tri.m_tangent[1] +
+			hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
+		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] +
+			hit.m_barycentricCoordinate.y * tri.m_bitangent[1] +
+			hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
+
+		const mat3 tbn(tangent, bitangent, normal);
+
+		vec2 uv = hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
+			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
+			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
+
+		const auto& material = m_materials[tri.m_materialIndex];
+		if (material.m_diffuseIndex != 255)
+		{
+			diffuse = m_textures[material.m_diffuseIndex]->Sample<u8vec4>(uv);
+		}
+
+		if (material.m_normalIndex != 255)
+		{
+			normal = (vec4(m_textures[material.m_normalIndex]->Sample<u8vec4>(uv)) - 128.0f) / 128.0f;
+		}
+
+		SAILOR_PROFILE_END_BLOCK();
+
+		return faceNormal;
+	}
+	return vec3(1);
 }

@@ -485,42 +485,6 @@ void AABB::Apply(const glm::mat4& transformMatrix)
 	}
 }
 
-inline bool Math::IntersectRayTriangle(const glm::vec3& r0, const glm::vec3& rd, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3& outBarycentric, float& outDistance)
-{
-	auto e0 = v1 - v0;
-	auto e1 = v2 - v0;
-
-	auto pvec = glm::cross(rd, e1);
-	auto det = glm::dot(e0, pvec);
-
-	if (det < std::numeric_limits<float>::epsilon())
-	{
-		return false;
-	}
-
-	auto inv_det = 1.f / det;
-
-	auto tvec = r0 - v0;
-	outBarycentric.y = glm::dot(tvec, pvec) * inv_det;
-
-	if (outBarycentric.y < 0.f || outBarycentric.y > 1.f)
-	{
-		return false;
-	}
-
-	auto qvec = glm::cross(tvec, e0);
-	outBarycentric.z = glm::dot(rd, qvec) * inv_det;
-
-	if (outBarycentric.z < 0.f || outBarycentric.y + outBarycentric.z > 1.f)
-	{
-		return false;
-	}
-
-	outBarycentric.x = 1.f - outBarycentric.y - outBarycentric.z;
-	outDistance = glm::dot(e1, qvec) * inv_det;
-	return true;
-}
-
 float Math::Triangle::SquareArea() const
 {
 	float a = length(m_vertices[0] - m_vertices[1]);

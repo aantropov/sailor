@@ -5,11 +5,14 @@
 #include "Containers/Vector.h"
 #include "Memory/SharedPtr.hpp"
 #include "Tasks/Scheduler.h"
+#include "BVH.h"
 
 namespace Sailor
 {
 	class Raytracing
 	{
+		const float VariableShaderRate = 0.005f;
+
 	public:
 
 		struct Texture2D
@@ -133,6 +136,8 @@ namespace Sailor
 		void Run();
 
 	protected:
+
+		vec3 Raytrace(const Math::Ray& r, const BVH& bvh) const;
 
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};
