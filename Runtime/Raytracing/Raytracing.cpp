@@ -241,7 +241,7 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 	// terminate recursion
 	BVH::BVHNode& node = m_nodes[nodeIdx];
 
-	if (node.m_triCount <= 2)
+	if (node.m_triCount <= 4)
 	{
 		return;
 	}
@@ -317,10 +317,11 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 	UpdateNodeBounds(m_rootNodeIdx, tris);
 	Subdivide(m_rootNodeIdx, tris);
 
+	SAILOR_PROFILE_BLOCK("Copy/Locality triangle data");
 	// Cache locality
 	m_triangles.Reserve(tris.Num());
 	m_triIdxMapping.AddDefault(tris.Num());
-		
+
 	// TODO: Parallilize
 	for (uint32_t i = 0; i < m_nodes.Num(); i++)
 	{
@@ -329,6 +330,15 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 			const uint32_t triIndex = m_nodes[i].m_leftFirst;
 			m_nodes[i].m_leftFirst = (int32_t)m_triangles.Num();
 
+			if (m_triangles.Num() == 1)
+			{
+				const uint32_t triId = m_triIdx[triIndex];
+				m_triIdxMapping[m_triangles.Num()] = triId;
+				m_triangles.Add(tris[triId]);
+				continue;
+			}
+
+			SAILOR_PROFILE_BLOCK("Sort Triangles by area");
 			TVector<uint32_t> sorted(m_nodes[i].m_triCount);
 			for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
 			{
@@ -339,15 +349,19 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 				{
 					return tris[lhs].SquareArea() > tris[rhs].SquareArea();
 				});
+			SAILOR_PROFILE_END_BLOCK();
 
+			SAILOR_PROFILE_BLOCK("Copy data");
 			for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
 			{
 				const uint32_t triId = sorted[j];// m_triIdx[triIndex + j];
 				m_triIdxMapping[m_triangles.Num()] = triId;
 				m_triangles.Add(tris[triId]);
 			}
+			SAILOR_PROFILE_END_BLOCK();
 		}
 	}
+	SAILOR_PROFILE_END_BLOCK();
 }
 
 namespace Sailor::Internal
@@ -440,7 +454,10 @@ void Raytracing::Run()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	const uint32_t GroupSize = 8;
+	Utils::Timer raytracingTimer;
+	raytracingTimer.Start();
+
+	const uint32_t GroupSize = 32;
 
 	const char* outputFile = "output.png";
 	const std::filesystem::path sceneFile = "../Content/Models/Sponza/Sponza.obj";
@@ -479,7 +496,7 @@ void Raytracing::Run()
 	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : 16.0f / 9.0f;
 	const uint32_t width = 1920;
 	const uint32_t height = static_cast<uint32_t>(width / aspectRatio);
-	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(50.0f);
+	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(80.0f);
 	const float vFov = 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio));
 
 	const float zMin = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneNear : 0.01f;
@@ -489,7 +506,7 @@ void Raytracing::Run()
 	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(vFov, (float)width, (float)height, zMin, zMax));
 	mat4 viewMatrix{ 1 };
 
-	auto cameraPos = vec3(0, 15, 0);
+	auto cameraPos = vec3(0, 500, 0);
 	auto cameraUp = normalize(vec3(0, 1, 0));
 	//auto cameraForward = normalize(-cameraPos);
 	auto cameraForward = vec3(1, 0, 0);
@@ -662,7 +679,9 @@ void Raytracing::Run()
 	BVH bvh(numFaces);
 	bvh.BuildBVH(m_triangles);
 
-	TVector<u8vec3> output(width * height * sizeof(u8vec3));
+	SAILOR_PROFILE_BLOCK("Viewport Calcs");
+
+	TVector<u8vec3> output(width * height);
 
 	quat halfViewH = glm::angleAxis(hFov * 0.5f, cameraUp);
 	auto axis1 = normalize(halfViewH * cameraForward);
@@ -674,8 +693,12 @@ void Raytracing::Run()
 	auto viewportBottomLeft = cameraPos + halfViewH * halfViewV * cameraForward;
 	auto viewportBottomRight = cameraPos + inverse(halfViewH) * halfViewV * cameraForward;
 
+	SAILOR_PROFILE_END_BLOCK();
+
 	// Raytracing
 	{
+		SAILOR_PROFILE_BLOCK("Prepare raytracing tasks");
+
 		TVector<Tasks::ITaskPtr> tasks;
 		TVector<Tasks::ITaskPtr> tasksThisThread;
 
@@ -732,18 +755,21 @@ void Raytracing::Run()
 									const float dUv = dot(delta, delta);
 
 									const auto& material = m_materials[tri.m_materialIndex];
-									const float diffuseTexelSize = 1.0f / (m_textures[material.m_diffuseIndex]->m_width * m_textures[material.m_diffuseIndex]->m_height);
-									if (dUv > diffuseTexelSize * VariableShaderRate || prevMatIndex != tri.m_materialIndex)
+									if (material.m_diffuseIndex != 255)
 									{
-										if (material.m_diffuseIndex != -1)
+										const float diffuseTexelSize = 1.0f / (m_textures[material.m_diffuseIndex]->m_width * m_textures[material.m_diffuseIndex]->m_height);
+										if (dUv > diffuseTexelSize * VariableShaderRate || prevMatIndex != tri.m_materialIndex)
 										{
-											diffuseSample = m_textures[material.m_diffuseIndex]->Sample<u8vec4>(uv);
-											prevUV = uv;
-											prevMatIndex = tri.m_materialIndex;
+											if (material.m_diffuseIndex != -1)
+											{
+												diffuseSample = m_textures[material.m_diffuseIndex]->Sample<u8vec4>(uv);
+												prevUV = uv;
+												prevMatIndex = tri.m_materialIndex;
+											}
 										}
-									}
 
-									output[index] = diffuseSample;
+										output[index] = diffuseSample;
+									}
 
 									SAILOR_PROFILE_END_BLOCK();
 								}
@@ -769,18 +795,35 @@ void Raytracing::Run()
 				}
 			}
 		}
+		SAILOR_PROFILE_END_BLOCK();
 
+		SAILOR_PROFILE_BLOCK("Calcs on Main thread");
 		for (auto& task : tasksThisThread)
 		{
 			task->Execute();
 		}
+		SAILOR_PROFILE_END_BLOCK();
 
+		SAILOR_PROFILE_BLOCK("Wait all calcs");
 		for (auto& task : tasks)
 		{
 			task->Wait();
 		}
+		SAILOR_PROFILE_END_BLOCK();
 	}
 
+	raytracingTimer.Stop();
+	//profiler::dumpBlocksToFile("test_profile.prof");
+
+	char msg[2048];
+	sprintf_s(msg, "Time in sec: %.2f", (float)raytracingTimer.ResultMs() * 0.001f);
+	MessageBoxA(0, msg, msg, 0);
+
+	SAILOR_PROFILE_BLOCK("Write Image");
 	Internal::WriteImage(outputFile, output, width, height);
+	SAILOR_PROFILE_END_BLOCK();
+
+	SAILOR_PROFILE_BLOCK("Open Image");
 	::system(outputFile);
+	SAILOR_PROFILE_END_BLOCK();
 }
