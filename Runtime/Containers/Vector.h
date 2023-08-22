@@ -505,7 +505,7 @@ namespace Sailor
 				if (elementsToMove)
 				{
 					MemMove(index + count, m_arrayNum - elementsToMove, elementsToMove);
-				}			
+				}
 			}
 
 			m_arrayNum -= count;
@@ -581,19 +581,27 @@ namespace Sailor
 			TElementType* pRawPtr = static_cast<TElementType*>(m_allocator.Allocate(newCapacity * sizeof(TElementType)));
 			std::swap(m_pRawPtr, pRawPtr);
 
-			if constexpr (IsMoveConstructible<TElementType>)
+			if (m_arrayNum > 0)
 			{
-				ConstructMoveElements(0, pRawPtr[0], newCapacity - slack);
-			}
-			else
-			{
-				ConstructElements(0, pRawPtr[0], newCapacity - slack);
-			}
+				if constexpr (IsMoveConstructible<TElementType>)
+				{
+					ConstructMoveElements(0, pRawPtr[0], newCapacity - slack);
+				}
+				else if constexpr (IsCopyConstructible<TElementType>)
+				{
+					ConstructElements(0, pRawPtr[0], newCapacity - slack);
+				}
+				else
+				{
+					// No way to save elements
+					check(false);
+				}
 
-			// Destruct old elements
-			for (size_t i = 0; i < newCapacity - slack; i++)
-			{
-				pRawPtr[i].~TElementType();
+				// Destruct old elements
+				for (size_t i = 0; i < newCapacity - slack; i++)
+				{
+					pRawPtr[i].~TElementType();
+				}
 			}
 
 			m_allocator.Free(pRawPtr);

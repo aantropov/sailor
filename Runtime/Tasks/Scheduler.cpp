@@ -91,11 +91,11 @@ void WorkerThread::Process()
 	{
 		std::unique_lock<std::mutex> lk(threadExecutionMutex);
 		m_refresh.wait(lk, [this, &pCurrentJob, scheduler]
-		{
-			return TryFetchJob(pCurrentJob) ||
-				scheduler->TryFetchNextAvailiableJob(pCurrentJob, m_threadType) ||
-				(bool)scheduler->m_bIsTerminating;
-		});
+			{
+				return TryFetchJob(pCurrentJob) ||
+					scheduler->TryFetchNextAvailiableJob(pCurrentJob, m_threadType) ||
+					(bool)scheduler->m_bIsTerminating;
+			});
 
 		if (pCurrentJob)
 		{
@@ -117,6 +117,13 @@ void WorkerThread::Process()
 
 void Scheduler::Initialize()
 {
+	m_tasksPool.AddDefault(MaxTasksInPool);
+
+	for (uint32_t i = 0; i < MaxTasksInPool; i++)
+	{
+		m_freeList.push((uint16_t)(MaxTasksInPool - i - 1));
+	}
+
 	m_mainThreadId = GetCurrentThreadId();
 
 	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
@@ -292,9 +299,9 @@ void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTa
 
 	auto result = m_workerThreads.FindIf(
 		[&](const auto& worker)
-	{
-		return worker->GetThreadId() == threadId;
-	});
+		{
+			return worker->GetThreadId() == threadId;
+		});
 
 	if (result != -1)
 	{
@@ -344,9 +351,9 @@ bool Scheduler::TryFetchNextAvailiableJob(ITaskPtr& pOutJob, EThreadType threadT
 	{
 		const auto result = (*pOutQueue).FindIf(
 			[&](const ITaskPtr& job)
-		{
-			return job->IsReadyToStart();
-		});
+			{
+				return job->IsReadyToStart();
+			});
 
 		if (result != -1)
 		{
@@ -432,4 +439,22 @@ bool Scheduler::IsMainThread() const
 bool Scheduler::IsRendererThread() const
 {
 	return m_renderingThreadId == GetCurrentThreadId();
+}
+
+uint16_t Scheduler::AcquireTaskSyncBlock()
+{
+	uint16_t last = 0;
+	if (m_freeList.try_pop(last))
+	{
+		return last;
+	}
+
+	ensure(false, "Increase the pool size of task block primitives! Scheduler::MaxTasksInPool");
+
+	return 0;
+}
+
+void Scheduler::ReleaseTaskSyncBlock(const ITask& task)
+{
+	m_freeList.push(task.m_taskSyncBlockHandle);
 }

@@ -39,11 +39,18 @@ namespace Sailor
 		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
 		using ITaskPtr = TSharedPtr <class ITask>;
 
+		struct TaskSyncBlock
+		{
+			std::condition_variable m_onComplete{};
+			std::mutex m_mutex{};
+		};
+
 		template<typename TResult = void, typename TArgs = void>
 		SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
 			task->m_self = task;
+			task->m_taskSyncBlockHandle = App::GetSubmodule<Scheduler>()->AcquireTaskSyncBlock();
 			return task;
 		}
 
@@ -61,15 +68,24 @@ namespace Sailor
 
 		class ITask
 		{
+		protected:
+
+			enum StateMask : uint8_t
+			{
+				IsInQueueBit = (uint8_t)(1),
+				IsStartedBit = (uint8_t)(1 << 1),
+				IsFinishedBit = (uint8_t)(1 << 2)
+			};
+
 		public:
 
 			SAILOR_API virtual float GetProgress() { return 0.0f; }
-			SAILOR_API virtual bool IsFinished() const { return m_bIsFinished; }
-			SAILOR_API virtual bool IsExecuting() const { return m_bIsStarted && !m_bIsFinished; }
-			SAILOR_API virtual bool IsStarted() const { return m_bIsStarted; }
+			SAILOR_API virtual bool IsFinished() const { return m_state & StateMask::IsFinishedBit; }
+			SAILOR_API virtual bool IsExecuting() const { return IsStarted() && !IsFinished(); }
+			SAILOR_API virtual bool IsStarted() const { return m_state & StateMask::IsStartedBit; }
 			SAILOR_API virtual bool IsReadyToStart() const
 			{
-				return !m_bIsStarted && !m_bIsFinished && m_numBlockers == 0;
+				return !IsStarted() && !IsFinished() && m_numBlockers == 0;
 			}
 
 			SAILOR_API virtual void Execute() = 0;
@@ -85,8 +101,8 @@ namespace Sailor
 			// Run current task and all chained
 			SAILOR_API TSharedPtr<ITask> Run();
 
-			SAILOR_API bool IsInQueue() const { return m_bIsInQueue; }
-			SAILOR_API void OnEnqueue() { m_bIsInQueue = true; }
+			SAILOR_API bool IsInQueue() const { return m_state & StateMask::IsInQueueBit; }
+			SAILOR_API void OnEnqueue() { m_state |= StateMask::IsInQueueBit; }
 
 			// Lock this thread while job is executing
 			SAILOR_API void Wait();
@@ -108,34 +124,23 @@ namespace Sailor
 			{
 			}
 
+			EThreadType m_threadType;
+			std::atomic<uint8_t> m_state = 0;
+			std::atomic<uint16_t> m_numBlockers;
+			uint16_t m_taskSyncBlockHandle = 0;
+
 			TWeakPtr<ITask> m_self;
 			TVector<TWeakPtr<ITask>> m_chainedTasksNext;
 			TSharedPtr<ITask> m_chainedTaskPrev;
 
-			std::atomic<bool> m_bIsFinished = false;
-			std::atomic<bool> m_bIsStarted = false;
-			std::atomic<bool> m_bIsInQueue = false;
-
-			std::atomic<uint32_t> m_numBlockers;
-
 			TVector<TWeakPtr<ITask>> m_dependencies;
+
 			std::string m_name;
-
-			std::condition_variable m_onComplete;
-			std::mutex m_mutex;
-
-			EThreadType m_threadType;
 
 			friend class Scheduler;
 
 			template<typename TResult, typename TArgs>
 			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
-
-			template<typename TArgs>
-			friend TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, typename TFunction<void, TArgs>::type lambda, EThreadType thread);
-
-			template<typename TResult>
-			friend TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, typename TFunction<TResult, void>::type lambda, EThreadType thread);
 		};
 
 		template<typename TResult>
@@ -182,11 +187,14 @@ namespace Sailor
 			using ArgsBase = ITaskWithArgs<TArgs>;
 			using Function = typename TFunction<TResult, TArgs>::type;
 
-			SAILOR_API virtual ~Task() = default;
+			SAILOR_API virtual ~Task()
+			{
+				App::GetSubmodule<Scheduler>()->ReleaseTaskSyncBlock(*this);
+			}
 
 			SAILOR_API void Execute() override
 			{
-				ITask::m_bIsStarted = true;
+				ITask::m_state |= StateMask::IsStartedBit;
 
 				if (m_function)
 				{
@@ -235,7 +243,7 @@ namespace Sailor
 				: ITask("TaskResult", EThreadType::Worker)
 			{
 				ResultBase::m_result = std::move(result);
-				ITask::m_bIsFinished = true;
+				ITask::m_state |= StateMask::IsFinishedBit;
 			}
 
 			SAILOR_API Task(const std::string& name, Function function, EThreadType thread) : ITask(name, thread)
@@ -258,11 +266,13 @@ namespace Sailor
 				res->Join(ITask::m_self);
 
 				{
-					std::unique_lock<std::mutex> lk(ITask::m_mutex);
+					auto& taskSyncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
+
+					std::unique_lock<std::mutex> lk(taskSyncBlock.m_mutex);
 					ITask::m_chainedTasksNext.Add(res);
 				}
 
-				if (ITask::m_bIsStarted || ITask::m_bIsInQueue || ITask::m_bIsFinished)
+				if (ITask::IsStarted() || ITask::IsInQueue() || ITask::IsFinished())
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
@@ -282,7 +292,7 @@ namespace Sailor
 				ITask::m_chainedTasksNext.Add(res);
 				res->Join(ITask::m_self);
 
-				if (ITask::m_bIsStarted || ITask::m_bIsInQueue)
+				if (ITask::IsStarted() || ITask::IsInQueue())
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
@@ -294,8 +304,6 @@ namespace Sailor
 			Function m_function;
 
 			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
-			friend TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, typename TFunction<void, TArgs>::type lambda, EThreadType thread);
-			friend TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, typename TFunction<TResult, void>::type lambda, EThreadType thread);
 		};
 	}
 }

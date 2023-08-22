@@ -28,7 +28,8 @@ void ITask::Join(const TWeakPtr<ITask>& job)
 
 bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
 {
-	std::unique_lock<std::mutex> lk(m_mutex);
+	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
+	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 
 	if (IsFinished())
 	{
@@ -67,9 +68,13 @@ TSharedPtr<ITask> ITask::Run()
 
 void ITask::Complete()
 {
-	check(!m_bIsFinished);
+	SAILOR_PROFILE_FUNCTION();
 
-	std::unique_lock<std::mutex> lk(m_mutex);
+	check(!IsFinished());
+
+	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
+
+	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 
 	TMap<EThreadType, uint32_t> threadTypesToRefresh;
 
@@ -91,17 +96,20 @@ void ITask::Complete()
 		App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread(threadType.m_first, threadType.m_second > 1);
 	}
 
-	m_bIsFinished = true;
-	m_onComplete.notify_all();
+	m_state |= StateMask::IsFinishedBit;
+	syncBlock.m_onComplete.notify_all();
 }
 
 void ITask::Wait()
 {
 	SAILOR_PROFILE_FUNCTION();
-	std::unique_lock<std::mutex> lk(m_mutex);
+	
+	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
 
-	if (!m_bIsFinished)
+	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
+
+	if (!IsFinished())
 	{
-		m_onComplete.wait(lk);
+		syncBlock.m_onComplete.wait(lk);
 	}
 }

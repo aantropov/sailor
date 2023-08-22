@@ -38,11 +38,10 @@ namespace Sailor
 
 	protected:
 
+		TRefPtrBase() = default;
+
 		TRefBase* m_pRawPtr = nullptr;
-
 		TSmartPtrCounter& GetRefCounter() const noexcept { return m_pRawPtr->m_refCounter; }
-
-		virtual ~TRefPtrBase() = default;
 	};
 
 	template<typename T>
@@ -143,7 +142,7 @@ namespace Sailor
 			AssignRawPtr(nullptr);
 		}
 
-		virtual ~TRefPtr() override
+		~TRefPtr()
 		{
 			DecrementRefCounter();
 		}

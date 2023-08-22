@@ -9,6 +9,9 @@
 #include "Memory/UniquePtr.hpp"
 #include "Tasks/Tasks.h"
 
+// TODO: Implement ConcurrentList
+#include <concurrent_queue.h>
+
 #define SAILOR_ENQUEUE_TASK(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda))
 #define SAILOR_ENQUEUE_TASK_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Render))
 #define SAILOR_ENQUEUE_TASK_RHI_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::RHI))
@@ -71,6 +74,7 @@ namespace Sailor
 		class Scheduler final : public TSubmodule<Scheduler>
 		{
 			const uint8_t RHIThreadsNum = 2u;
+			const size_t MaxTasksInPool = 16384;
 
 		public:
 
@@ -103,6 +107,10 @@ namespace Sailor
 
 			SAILOR_API void RunChainedTasks(const ITaskPtr& pJob);
 
+			SAILOR_API TaskSyncBlock& GetTaskSyncBlock(const ITask& task) { return m_tasksPool[task.m_taskSyncBlockHandle]; }
+			SAILOR_API uint16_t AcquireTaskSyncBlock();
+			SAILOR_API void ReleaseTaskSyncBlock(const ITask& task);
+
 		protected:
 
 			SAILOR_API void RunChainedTasks_Internal(const ITaskPtr& pJob, const ITaskPtr& pJobToIgnore);
@@ -124,7 +132,14 @@ namespace Sailor
 			DWORD m_mainThreadId = -1;
 			DWORD m_renderingThreadId = -1;
 
+			// Task Synchronization primitives pool
+			concurrency::concurrent_queue<uint16_t> m_freeList{};
+			TVector<TaskSyncBlock> m_tasksPool{};
+
 			friend class WorkerThread;
+
+			template<typename TResult, typename TArgs>
+			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
 		};
 	}
 }
