@@ -25,6 +25,7 @@
 #include "Submodules/RenderDocApi.h"
 #include "timeApi.h"
 #include "Submodules/ImGuiApi.h"
+#include "Raytracing/Raytracing.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -101,6 +102,11 @@ void App::Initialize()
 
 void App::Start()
 {
+
+	Raytracing r;
+	r.Run();
+	return;
+
 	s_pInstance->m_pViewportWindow->SetActive(true);
 	s_pInstance->m_pViewportWindow->SetRunning(true);
 
@@ -171,7 +177,7 @@ void App::Start()
 			{
 				renderDoc->LaunchRenderDocApp();
 			}
-		}
+	}
 #endif
 
 		if (bCanCreateNewFrame)
@@ -227,7 +233,7 @@ void App::Start()
 		systemInputState = GlobalInput::GetInputState();
 		systemInputState.TrackForChanges(oldInputState);
 
-	}
+}
 
 	s_pInstance->m_pViewportWindow->SetActive(false);
 	s_pInstance->m_pViewportWindow->SetRunning(false);
@@ -249,7 +255,7 @@ void App::Shutdown()
 	if (App::GetSubmodule<RenderDocApi>())
 	{
 		RemoveSubmodule<RenderDocApi>();
-	}
+}
 #endif
 
 	RemoveSubmodule<EngineLoop>();

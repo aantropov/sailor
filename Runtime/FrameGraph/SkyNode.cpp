@@ -90,7 +90,7 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 	}
 
 	return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
-		})->Then<RHI::RHIMeshPtr, TParseRes>([](const TParseRes& res) mutable
+		})->Then<RHI::RHIMeshPtr>([](const TParseRes& res) mutable
 			{
 				const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
 		const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();

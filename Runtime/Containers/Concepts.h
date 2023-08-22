@@ -40,6 +40,9 @@ namespace Sailor
 	concept IsSame = std::is_same<T, R>::value;
 
 	template<typename T>
+	concept NotVoid = !std::is_same_v<T, void>;
+
+	template<typename T>
 	concept TIsFunction = std::is_function<T>::value;
 
 	template <typename T, typename U>
@@ -50,6 +53,32 @@ namespace Sailor
 
 	template<typename T>
 	using TCompare = std::function<bool(const T&, const T&)>;
+
+	struct EmptyType {};
+
+	template<typename R, typename A>
+	struct TFunction
+	{
+		using type = std::function<R(A)>;
+	};
+
+	template <typename R>
+	struct TFunction<R, void>
+	{
+		using type = std::function<R()>;
+	};
+
+	template <typename A>
+	struct TFunction<void, A>
+	{
+		using type = std::function<void(A)>;
+	};
+
+	template <>
+	struct TFunction<void, void>
+	{
+		using type = std::function<void()>;
+	};
 
 	template<typename T, typename U>
 	__forceinline bool Equals(const T& lhs, const U& rhs)
@@ -70,5 +99,4 @@ namespace Sailor
 	{
 		return GetAddress(lhs) == GetAddress(rhs);
 	}
-
 }

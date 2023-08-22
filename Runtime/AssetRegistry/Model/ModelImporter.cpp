@@ -388,7 +388,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
 				res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
 				return res;
-			})->Then<ModelPtr, TSharedPtr<Data>>([model](TSharedPtr<Data> data) mutable
+			})->Then<ModelPtr>([model](TSharedPtr<Data> data) mutable
 				{
 					if (data->m_bIsImported)
 					{

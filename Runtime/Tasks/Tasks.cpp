@@ -15,13 +15,6 @@ using namespace std;
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-TaskPtr<void, void> Sailor::Tasks::CreateTask(const std::string & name, std::function<void()> lambda, EThreadType thread)
-{
-	auto task = TaskPtr<void, void>::Make(name, std::move(lambda), thread);
-	task->m_self = task;
-	return task;
-}
-
 void ITask::Join(const TWeakPtr<ITask>& job)
 {
 	if (!job)

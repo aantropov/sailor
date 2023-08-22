@@ -498,7 +498,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 				auto compileTask = CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
 				if (compileTask)
 				{
-					compileTask->Then<void, bool>([=](bool bRes)
+					compileTask->Then([=](bool bRes)
 						{
 							if (bRes)
 							{

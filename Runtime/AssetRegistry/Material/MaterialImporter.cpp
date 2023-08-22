@@ -467,7 +467,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 
 						if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_fileId, texture))
 						{
-							auto updateSampler = loadTextureTask->Then<void, TexturePtr>(
+							auto updateSampler = loadTextureTask->Then(
 								[=](TexturePtr pTexture) mutable
 								{
 									if (pTexture)
@@ -656,7 +656,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 
 					if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(sampler.m_fileId, pTexture))
 					{
-						auto updateSampler = loadTextureTask->Then<void, TexturePtr>(
+						auto updateSampler = loadTextureTask->Then(
 							[=](TexturePtr texture) mutable
 							{
 								if (texture)

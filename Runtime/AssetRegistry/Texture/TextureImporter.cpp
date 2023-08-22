@@ -227,7 +227,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 				}
 
 				return pData;
-			})->Then<TexturePtr, TSharedPtr<Data>>([pTexture, assetInfo, this](TSharedPtr<Data> data) mutable
+			})->Then<TexturePtr>([pTexture, assetInfo, this](TSharedPtr<Data> data) mutable
 				{
 					if (data->bIsImported && data->decodedData.Num() > 0)
 					{

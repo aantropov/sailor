@@ -39,16 +39,8 @@ namespace Sailor
 		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
 		using ITaskPtr = TSharedPtr <class ITask>;
 
-		template<typename TResult = void, typename TArgs = void, typename... TFArgs>
-		SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs, TFArgs...)> lambda, EThreadType thread, TFArgs&& ... args)
-		{
-			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda(std::forward<TFArgs>(args)...)), thread);
-			task->m_self = task;
-			return task;
-		}
-
 		template<typename TResult = void, typename TArgs = void>
-		SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
+		SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
 			task->m_self = task;
@@ -56,22 +48,16 @@ namespace Sailor
 		}
 
 		template<typename TArgs>
-		SAILOR_API TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, std::function<void(TArgs)> lambda, EThreadType thread = EThreadType::Worker)
+		SAILOR_API TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, typename TFunction<void, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
-			auto task = TaskPtr<void, TArgs>::Make(name, std::move(lambda), thread);
-			task->m_self = task;
-			return task;
+			return CreateTask<void, TArgs>(name, lambda, thread);
 		}
 
 		template<typename TResult>
-		SAILOR_API TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, std::function<TResult()> lambda, EThreadType thread = EThreadType::Worker)
+		SAILOR_API TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, typename TFunction<TResult, void>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
-			auto task = TaskPtr<TResult, void>::Make(name, std::move(lambda), thread);
-			task->m_self = task;
-			return task;
+			return CreateTask<TResult, void>(name, lambda, thread);
 		}
-
-		SAILOR_API TaskPtr<void, void> CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread = EThreadType::Worker);
 
 		class ITask
 		{
@@ -101,20 +87,6 @@ namespace Sailor
 
 			SAILOR_API bool IsInQueue() const { return m_bIsInQueue; }
 			SAILOR_API void OnEnqueue() { m_bIsInQueue = true; }
-
-			// Add new one task that waits this task before start
-			/*
-			template<typename TResult>
-			TSharedPtr<Task<TResult, void>> Then(std::function<TResult()> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker, bool bAutoRun = true)
-			{
-				auto res = Tasks::CreateTask<TResult>(std::move(name), std::move(function), thread);
-				res->Join(this);
-
-				if (bAutoRun)
-				{
-				}
-				return res;
-			}*/
 
 			// Lock this thread while job is executing
 			SAILOR_API void Wait();
@@ -155,16 +127,15 @@ namespace Sailor
 			EThreadType m_threadType;
 
 			friend class Scheduler;
-			friend TaskPtr<void, void> CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread);
-
-			template<typename TResult>
-			friend TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, std::function<TResult()> lambda, EThreadType thread);
 
 			template<typename TResult, typename TArgs>
-			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs)> lambda, EThreadType thread);
+			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
 
 			template<typename TArgs>
-			friend TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, std::function<void(TArgs)> lambda, EThreadType thread);
+			friend TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, typename TFunction<void, TArgs>::type lambda, EThreadType thread);
+
+			template<typename TResult>
+			friend TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, typename TFunction<TResult, void>::type lambda, EThreadType thread);
 		};
 
 		template<typename TResult>
@@ -174,9 +145,11 @@ namespace Sailor
 
 			SAILOR_API const TResult& GetResult() const { return m_result; }
 
+			TResult m_result{};
+
 		protected:
 
-			TResult m_result{};
+			ITaskWithResult() = default;
 		};
 
 		template<typename TArgs>
@@ -188,66 +161,108 @@ namespace Sailor
 
 		protected:
 
+			ITaskWithArgs() = default;
+
 			TArgs m_args{};
 		};
 
+		struct EmptyType1 {};
+		struct EmptyType2 {};
+
 		template<typename TResult = void, typename TArgs = void>
-		class Task : public ITask, public ITaskWithResult<TResult>, public ITaskWithArgs<TArgs>
+		class Task :
+			public std::conditional_t<NotVoid<TResult>, ITaskWithResult<TResult>, EmptyType1>,
+			public std::conditional_t<NotVoid<TArgs>, ITaskWithArgs<TArgs>, EmptyType2>,
+			public ITask
 		{
-			using Task::ITask::m_chainedTasksNext;
-			using Task::ITask::m_chainedTaskPrev;
 
 		public:
+
+			using ResultBase = ITaskWithResult<TResult>;
+			using ArgsBase = ITaskWithArgs<TArgs>;
+			using Function = typename TFunction<TResult, TArgs>::type;
 
 			SAILOR_API virtual ~Task() = default;
 
 			SAILOR_API void Execute() override
 			{
-				m_bIsStarted = true;
+				ITask::m_bIsStarted = true;
 
 				if (m_function)
 				{
-					ITaskWithResult<TResult>::m_result = m_function(ITaskWithArgs<TArgs>::m_args);
-				}
-
-				for (auto& m_chainedTaskNext : m_chainedTasksNext)
-				{
-					// We could have a chained task without Args
-					if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr()))
+					if constexpr (NotVoid<TArgs>)
 					{
-						taskWithArgs->SetArgs(ITaskWithResult<TResult>::m_result);
+						if constexpr (NotVoid<TResult>)
+						{
+							ResultBase::m_result = m_function(ArgsBase::m_args);
+						}
+						else
+						{
+							m_function(ArgsBase::m_args);
+						}
+					}
+					else
+					{
+						if constexpr (NotVoid<TResult>)
+						{
+							ResultBase::m_result = m_function();
+						}
+						else
+						{
+							m_function();
+						}
 					}
 				}
 
-				Complete();
+				if constexpr (NotVoid<TResult>)
+				{
+					const auto& result = ResultBase::m_result;
+
+					for (auto& m_chainedTaskNext : ITask::m_chainedTasksNext)
+					{
+						if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr()))
+						{
+							taskWithArgs->SetArgs(result);
+						}
+					}
+				}
+
+				ITask::Complete();
 			}
 
-			SAILOR_API Task(TResult result) : ITask("TaskResult", EThreadType::Worker)
+			template<typename TResult1>
+			SAILOR_API Task(TResult1 result) requires NotVoid<TResult1>&& NotVoid<TResult>
+				: ITask("TaskResult", EThreadType::Worker)
 			{
-				ITaskWithResult<TResult>::m_result = std::move(result);
-				m_bIsFinished = true;
+				ResultBase::m_result = std::move(result);
+				ITask::m_bIsFinished = true;
 			}
 
-			SAILOR_API Task(const std::string& name, std::function<TResult(TArgs)> function, EThreadType thread) : ITask(name, thread)
+			SAILOR_API Task(const std::string& name, Function function, EThreadType thread) : ITask(name, thread)
 			{
 				m_function = std::move(function);
 			}
 
-			template<typename TResult1, typename TArgs1>
-			SAILOR_API TaskPtr<TResult1, TArgs1> Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
+			template<typename TContinuationResult = void>
+			SAILOR_API TaskPtr<TContinuationResult, TResult> Then(typename TFunction<TContinuationResult, TResult>::type function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
 			{
-				auto res = Tasks::CreateTask(std::move(name), std::move(function), thread);
+				auto res = Tasks::CreateTask<TContinuationResult, TResult>(std::move(name), std::move(function), thread);
 
-				res->SetChainedTaskPrev(m_self);
-				res->SetArgs(ITaskWithResult<TResult>::m_result);
-				res->Join(m_self);
+				res->SetChainedTaskPrev(ITask::m_self);
 
+				if constexpr (NotVoid<TResult>)
 				{
-					std::unique_lock<std::mutex> lk(m_mutex);
-					m_chainedTasksNext.Add(res);
+					res->SetArgs(ResultBase::m_result);
 				}
 
-				if (m_bIsStarted || m_bIsInQueue || m_bIsFinished)
+				res->Join(ITask::m_self);
+
+				{
+					std::unique_lock<std::mutex> lk(ITask::m_mutex);
+					ITask::m_chainedTasksNext.Add(res);
+				}
+
+				if (ITask::m_bIsStarted || ITask::m_bIsInQueue || ITask::m_bIsFinished)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
@@ -257,16 +272,17 @@ namespace Sailor
 
 			SAILOR_API TaskPtr<TResult, void> ToTaskWithResult()
 			{
-				auto res = Tasks::CreateTaskWithResult<TResult>("Get result task", std::move([=]()
-					{
-						return m_self.Lock().DynamicCast<ITaskWithResult<TResult>>()->GetResult();
-					}), m_threadType);
+				auto res = Tasks::CreateTaskWithResult<TResult>("Get result task",
+					std::move([=]()
+						{
+							return ITask::m_self.Lock().DynamicCast<ITaskWithResult<TResult>>()->GetResult();
+						}), ITask::m_threadType);
 
-				res->SetChainedTaskPrev(m_self);
-				m_chainedTasksNext.Add(res);
-				res->Join(m_self);
+				res->SetChainedTaskPrev(ITask::m_self);
+				ITask::m_chainedTasksNext.Add(res);
+				res->Join(ITask::m_self);
 
-				if (m_bIsStarted || m_bIsInQueue)
+				if (ITask::m_bIsStarted || ITask::m_bIsInQueue)
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
@@ -275,189 +291,11 @@ namespace Sailor
 
 		protected:
 
-			std::function<TResult(TArgs)> m_function;
+			Function m_function;
 
-			friend TaskPtr<void, void> CreateTask(const std::string& name, std::function<void()> lambda, EThreadType thread);
-			friend TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, std::function<TResult()> lambda, EThreadType thread);
-			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, std::function<TResult(TArgs)> lambda, EThreadType thread);
-			friend TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, std::function<void(TArgs)> lambda, EThreadType thread);
-		};
-
-		template<>
-		class Task<void, void> : public ITask
-		{
-			using Task::ITask::m_chainedTasksNext;
-			using Task::ITask::m_chainedTaskPrev;
-
-		public:
-
-			SAILOR_API virtual ~Task() = default;
-
-			SAILOR_API virtual void Execute() override
-			{
-				m_bIsStarted = true;
-
-				if (m_function)
-				{
-					m_function();
-				}
-
-				Complete();
-			}
-
-			SAILOR_API Task(const std::string& name, std::function<void()> function, EThreadType thread) :
-				ITask(name, thread)
-			{
-				m_function = std::move(function);
-			}
-
-			template<typename TResult1>
-			SAILOR_API TSharedPtr<Task<TResult1, void>> Then(std::function<TResult1()> function)
-			{
-				auto res = Tasks::CreateTask(m_name + " chained task", std::move(function), m_threadType);
-
-				res->SetChainedTaskPrev(m_self);
-				res->Join(m_self);
-
-				{
-					std::unique_lock<std::mutex> lk(m_mutex);
-					m_chainedTasksNext.Add(res);
-				}
-
-				if (m_bIsStarted || m_bIsInQueue || m_bIsFinished)
-				{
-					App::GetSubmodule<Scheduler>()->Run(res);
-				}
-
-				return res;
-			}
-
-		protected:
-
-			std::function<void()> m_function;
-		};
-
-		template<typename TArgs>
-		class Task<void, TArgs> : public ITask, public ITaskWithArgs<TArgs>
-		{
-			using Task::ITask::m_chainedTasksNext;
-			using Task::ITask::m_chainedTaskPrev;
-
-		public:
-
-			SAILOR_API virtual ~Task() = default;
-
-			SAILOR_API virtual void Execute() override
-			{
-				m_bIsStarted = true;
-
-				if (m_function)
-				{
-					m_function(ITaskWithArgs<TArgs>::m_args);
-				}
-
-				Complete();
-			}
-
-			SAILOR_API Task(const std::string& name, std::function<void(TArgs)> function, EThreadType thread) :
-				ITask(name, thread)
-			{
-				m_function = std::move(function);
-			}
-
-			template<typename TResult1>
-			SAILOR_API TaskPtr<TResult1, void> Then(std::function<TResult1()> function)
-			{
-				auto res = Tasks::CreateTask(m_name + " chained task", std::move(function), m_threadType);
-				res->SetChainedTaskPrev(m_self);
-				res->Join(m_self);
-
-				{
-					std::unique_lock<std::mutex> lk(m_mutex);
-					m_chainedTasksNext.Add(res);
-				}
-
-				if (m_bIsStarted || m_bIsInQueue || m_bIsFinished)
-				{
-					App::GetSubmodule<Scheduler>()->Run(res);
-				}
-
-				return res;
-			}
-
-		protected:
-
-			std::function<void(TArgs)> m_function;
-		};
-
-		template<typename TResult>
-		class Task<TResult, void> : public ITask, public ITaskWithResult<TResult>
-		{
-			using Task::ITask::m_chainedTasksNext;
-			using Task::ITask::m_chainedTaskPrev;
-
-		public:
-
-			SAILOR_API virtual ~Task() = default;
-
-			SAILOR_API virtual void Execute() override
-			{
-				m_bIsStarted = true;
-
-				if (m_function)
-				{
-					ITaskWithResult<TResult>::m_result = m_function();
-				}
-
-				for (auto& m_chainedTaskNext : m_chainedTasksNext)
-				{
-					// We could have a chained task without Args
-					if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr()))
-					{
-						taskWithArgs->SetArgs(ITaskWithResult<TResult>::m_result);
-					}
-				}
-
-				Complete();
-			}
-
-			SAILOR_API Task(TResult result) : ITask("TaskResult", EThreadType::Worker)
-			{
-				ITaskWithResult<TResult>::m_result = std::move(result);
-				m_bIsFinished = true;
-			}
-
-			SAILOR_API Task(const std::string& name, std::function<TResult()> function, EThreadType thread) :
-				ITask(name, thread)
-			{
-				m_function = std::move(function);
-			}
-
-			template<typename TResult1, typename TArgs1>
-			SAILOR_API TaskPtr<TResult1, TArgs1 > Then(std::function<TResult1(TArgs1)> function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
-			{
-				auto res = Tasks::CreateTask(std::move(name), std::move(function), thread);
-
-				res->SetChainedTaskPrev(m_self);
-				res->SetArgs(ITaskWithResult<TResult>::GetResult());
-				res->Join(m_self);
-
-				{
-					std::unique_lock<std::mutex> lk(m_mutex);
-					m_chainedTasksNext.Add(res);
-				}
-
-				if (m_bIsStarted || m_bIsInQueue || m_bIsFinished)
-				{
-					App::GetSubmodule<Scheduler>()->Run(res);
-				}
-
-				return res;
-			}
-
-		protected:
-
-			std::function<TResult()> m_function;
+			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
+			friend TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, typename TFunction<void, TArgs>::type lambda, EThreadType thread);
+			friend TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, typename TFunction<TResult, void>::type lambda, EThreadType thread);
 		};
 	}
 }
