@@ -212,7 +212,7 @@ void Raytracing::Run()
 	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene);
 
 	{
-		auto FillData = [](const aiMaterialProperty* property, const std::string& name, glm::vec4* ptr)
+		auto FillData = [](const aiMaterialProperty* property, const std::string& name, void* ptr)
 		{
 			const string key = property->mKey.C_Str();
 			TVector<size_t> locations;
@@ -278,10 +278,9 @@ void Raytracing::Run()
 				const auto property = aiMaterial->mProperties[i];
 				if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
 				{
-					if (FillData(property, std::string("diffuse"), &material.m_diffuse) ||
-						FillData(property, std::string("ambient"), &material.m_ambient) ||
-						FillData(property, std::string("emission"), &material.m_emission) ||
-						FillData(property, std::string("specular"), &material.m_specular))
+					if (FillData(property, std::string("diffuse"), &material.m_baseColorFactor) ||						
+						FillData(property, std::string("emission"), &material.m_emissiveFactor) ||
+						FillData(property, std::string("specular"), &material.m_specularColorFactor))
 					{
 						continue;
 					}
@@ -292,7 +291,7 @@ void Raytracing::Run()
 			{
 				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, diffuseMaps[0].c_str()); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
-				material.m_diffuseIndex = textureIndex;
+				material.m_baseColorIndex = textureIndex;
 				textureIndex++;
 			}
 
@@ -324,7 +323,7 @@ void Raytracing::Run()
 			{
 				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, emissionMaps[0].c_str()); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
-				material.m_emissionIndex = textureIndex;
+				material.m_emissiveIndex = textureIndex;
 				textureIndex++;
 			}
 		}
@@ -376,10 +375,10 @@ void Raytracing::Run()
 						Ray ray;
 						ray.SetOrigin(cameraPos);
 
-						for (uint32_t v = 0; v < GroupSize; v++)
+						for (uint32_t v = 0; v < GroupSize && (y + v) < height; v++)
 						{
 							float tv = (y + v) / (float)height;
-							for (uint32_t u = 0; u < GroupSize; u++)
+							for (uint32_t u = 0; u < GroupSize && (u + x) < width; u++)
 							{
 								SAILOR_PROFILE_BLOCK("Raycasting");
 
@@ -462,34 +461,25 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 
 		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
-		vec4 diffuse{ 1 };
-		vec3 normal{ 1 };
+		const vec3 faceNormal = vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] + hit.m_barycentricCoordinate.y * tri.m_normals[1] + hit.m_barycentricCoordinate.z * tri.m_normals[2]);
+		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] + hit.m_barycentricCoordinate.y * tri.m_tangent[1] + hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
+		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] + hit.m_barycentricCoordinate.y * tri.m_bitangent[1] + hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
 
-		const vec3 faceNormal = 255.0f * (0.5f + 0.5f * vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] +
-			hit.m_barycentricCoordinate.y * tri.m_normals[1] +
-			hit.m_barycentricCoordinate.z * tri.m_normals[2]));
-		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] +
-			hit.m_barycentricCoordinate.y * tri.m_tangent[1] +
-			hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
-		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] +
-			hit.m_barycentricCoordinate.y * tri.m_bitangent[1] +
-			hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
-
-		const mat3 tbn(tangent, bitangent, normal);
+		const mat3 tbn(tangent, bitangent, faceNormal);
 
 		vec2 uv = hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
 			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
 			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
 		const auto& material = m_materials[tri.m_materialIndex];
-		if (material.m_diffuseIndex != 255)
+		if (material.m_baseColorIndex != 255)
 		{
-			diffuse = m_textures[material.m_diffuseIndex]->Sample<u8vec4>(uv);
+			//diffuse = m_textures[material.m_baseColorIndex]->Sample<u8vec4>(uv);
 		}
 
 		if (material.m_normalIndex != 255)
 		{
-			normal = (vec4(m_textures[material.m_normalIndex]->Sample<u8vec4>(uv)) - 128.0f) / 128.0f;
+			//faceNormal = (vec4(m_textures[material.m_normalIndex]->Sample<u8vec4>(uv)) - 128.0f) / 128.0f;
 		}
 
 		SAILOR_PROFILE_END_BLOCK();

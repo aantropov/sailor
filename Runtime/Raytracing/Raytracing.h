@@ -121,16 +121,27 @@ namespace Sailor
 
 		struct Material
 		{
-			u8 m_diffuseIndex = -1;
+			glm::vec4 m_baseColorFactor = vec4(1, 1, 1, 1);
+			glm::vec3 m_emissiveFactor = vec3(1, 1, 1);
+
+			glm::vec3 m_specularColorFactor = vec3(1, 1, 1);
+
+			float m_metallicFactor = 1;
+			float m_roughnessFactor = 1;
+			float m_indexOfRefraction = 1.5f;
+			float m_occlusionFactor = 1;
+			float m_transmissionFactor = 0;
+			float m_specularFactor = 1;
+
+			u8 m_baseColorIndex = -1;
 			u8 m_ambientIndex = -1;
 			u8 m_specularIndex = -1;
-			u8 m_emissionIndex = -1;
+			u8 m_emissiveIndex = -1;
 			u8 m_normalIndex = -1;
-
-			glm::vec4 m_diffuse{};
-			glm::vec4 m_ambient{};
-			glm::vec4 m_emission{};
-			glm::vec4 m_specular{};
+			u8 m_metallicRoughnessIndex = -1; // already in linear
+			u8 m_occlusionIndex = -1;
+			u8 m_transmissionIndex = -1;
+			u8 m_specularColorIndex = -1;
 		};
 
 		void Run();
