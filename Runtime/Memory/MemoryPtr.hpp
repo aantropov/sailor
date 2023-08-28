@@ -29,6 +29,14 @@ namespace Sailor::Memory
 		const TPtr operator*() const { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
 		TPtr operator*() { return Memory::GetPointer(m_ptr, m_offset + m_alignmentOffset, m_size); }
 
+		size_t GetHash() const
+		{
+			size_t hashCode = 0;
+			Sailor::HashCombine(hashCode, m_ptr, m_offset, m_alignmentOffset, m_blockIndex, m_size);
+
+			return hashCode;
+		}
+
 		void Clear()
 		{
 			m_offset = 0;

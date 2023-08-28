@@ -22,6 +22,14 @@ namespace Sailor::Memory
 
 		SAILOR_API explicit operator bool() const;
 
+		size_t GetHash() const
+		{
+			size_t hashCode = 0;
+			Sailor::HashCombine(hashCode, m_deviceMemory, m_offset, m_size);
+
+			return hashCode;
+		}
+
 		TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory> m_deviceMemory{};
 		size_t m_offset{};
 		size_t m_size{};
