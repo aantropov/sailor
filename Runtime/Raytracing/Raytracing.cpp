@@ -111,6 +111,8 @@ void Raytracing::Run()
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	//EASY_PROFILER_ENABLE
+
 	Utils::Timer raytracingTimer;
 	raytracingTimer.Start();
 
@@ -153,7 +155,7 @@ void Raytracing::Run()
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", sceneFile.string().c_str());
 
 	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : 16.0f / 10.0f;
-	const uint32_t width = 1920;
+	const uint32_t width = 1024;
 	const uint32_t height = static_cast<uint32_t>(width / aspectRatio);
 	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(80.0f);
 	const float vFov = 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio));
@@ -213,49 +215,49 @@ void Raytracing::Run()
 
 	{
 		auto FillData = [](const aiMaterialProperty* property, const std::string& name, void* ptr)
-		{
-			const string key = property->mKey.C_Str();
-			TVector<size_t> locations;
-			Utils::FindAllOccurances(key, name, locations, 0);
-			if (locations.Num() > 0)
 			{
-				memcpy(ptr, property->mData, property->mDataLength);
-				return true;
-			}
+				const string key = property->mKey.C_Str();
+				TVector<size_t> locations;
+				Utils::FindAllOccurances(key, name, locations, 0);
+				if (locations.Num() > 0)
+				{
+					memcpy(ptr, property->mData, property->mDataLength);
+					return true;
+				}
 
-			return false;
-		};
+				return false;
+			};
 
 		auto TraceUsedTextures_Assimp = [](aiMaterial* mat, aiTextureType type)
-		{
-			TVector<std::string> textures;
-			for (uint32_t i = 0; i < mat->GetTextureCount(type); i++)
 			{
-				aiString str;
-				mat->GetTexture(type, i, &str);
-				textures.Add(str.C_Str());
-			}
-			return textures;
-		};
+				TVector<std::string> textures;
+				for (uint32_t i = 0; i < mat->GetTextureCount(type); i++)
+				{
+					aiString str;
+					mat->GetTexture(type, i, &str);
+					textures.Add(str.C_Str());
+				}
+				return textures;
+			};
 
 		std::function<void(uint32_t, const char*)> LoadTexture =
 			[&m_textures = m_textures,
 			sceneFile = sceneFile,
 			&scene = scene](uint32_t i, const char* filename) mutable
-		{
-			m_textures[i] = TSharedPtr<Texture2D>::Make();
-
-			const auto& texture = scene->mTextures[i];
-			sceneFile.replace_filename(filename);
-
-			int32_t texChannels = 0;
-			if (stbi_uc* pixels = stbi_load(sceneFile.string().c_str(), &m_textures[i]->m_width, &m_textures[i]->m_height, &texChannels, STBI_rgb_alpha))
 			{
-				//m_textures[i]->m_data = (u8*)pixels;
-				m_textures[i]->Initialize<u8vec4>((u8*)pixels);
-				stbi_image_free(pixels);
-			}
-		};
+				m_textures[i] = TSharedPtr<Texture2D>::Make();
+
+				const auto& texture = scene->mTextures[i];
+				sceneFile.replace_filename(filename);
+
+				int32_t texChannels = 0;
+				if (stbi_uc* pixels = stbi_load(sceneFile.string().c_str(), &m_textures[i]->m_width, &m_textures[i]->m_height, &texChannels, STBI_rgb_alpha))
+				{
+					//m_textures[i]->m_data = (u8*)pixels;
+					m_textures[i]->Initialize<u8vec4>((u8*)pixels);
+					stbi_image_free(pixels);
+				}
+			};
 
 		TVector<Tasks::ITaskPtr> loadTexturesTasks;
 		m_materials.Resize(scene->mNumMaterials);
@@ -267,18 +269,19 @@ void Raytracing::Run()
 			auto& material = m_materials[i];
 			const auto& aiMaterial = scene->mMaterials[i];
 
-			const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_DIFFUSE);
+			const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_BASE_COLOR);
 			const TVector<std::string> specularMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_SPECULAR);
-			const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_AMBIENT);
-			const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_NORMALS);
-			const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_EMISSIVE);
+			const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_AMBIENT_OCCLUSION);
+			const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_NORMAL_CAMERA);
+			const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_EMISSION_COLOR);
+			const TVector<std::string> metalnessMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_METALNESS);
 
 			for (uint32_t i = 0; i < aiMaterial->mNumProperties; i++)
 			{
 				const auto property = aiMaterial->mProperties[i];
 				if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
 				{
-					if (FillData(property, std::string("diffuse"), &material.m_baseColorFactor) ||						
+					if (FillData(property, std::string("diffuse"), &material.m_baseColorFactor) ||
 						FillData(property, std::string("emission"), &material.m_emissiveFactor) ||
 						FillData(property, std::string("specular"), &material.m_specularColorFactor))
 					{
@@ -461,6 +464,7 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 
 		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
+
 		const vec3 faceNormal = vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] + hit.m_barycentricCoordinate.y * tri.m_normals[1] + hit.m_barycentricCoordinate.z * tri.m_normals[2]);
 		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] + hit.m_barycentricCoordinate.y * tri.m_tangent[1] + hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
 		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] + hit.m_barycentricCoordinate.y * tri.m_bitangent[1] + hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
@@ -471,20 +475,49 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
 			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
-		const auto& material = m_materials[tri.m_materialIndex];
-		if (material.m_baseColorIndex != 255)
-		{
-			//diffuse = m_textures[material.m_baseColorIndex]->Sample<u8vec4>(uv);
-		}
-
-		if (material.m_normalIndex != 255)
-		{
-			//faceNormal = (vec4(m_textures[material.m_normalIndex]->Sample<u8vec4>(uv)) - 128.0f) / 128.0f;
-		}
+		SampledData sample = GetSampledData(tri.m_materialIndex, uv);
 
 		SAILOR_PROFILE_END_BLOCK();
 
 		return faceNormal;
 	}
 	return vec3(1);
+}
+
+Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, glm::vec2 uv) const
+{
+	const auto& material = m_materials[materialIndex];
+
+	Raytracing::SampledData res{};
+	res.m_baseColor = material.m_baseColorFactor;
+	res.m_ambient = vec3(0, 0, 0);
+	res.m_specular = material.m_specularColorFactor;
+	res.m_emissive = vec3(0,0,0);
+
+	if (material.m_baseColorIndex != 255)
+	{
+		res.m_baseColor *= m_textures[material.m_baseColorIndex]->Sample<u8vec4>(uv);
+	}
+
+	if (material.m_ambientIndex != 255)
+	{
+		res.m_ambient = m_textures[material.m_ambientIndex]->Sample<u8vec3>(uv);
+	}
+
+	if (material.m_emissiveIndex != 255)
+	{
+		res.m_emissive *= m_textures[material.m_emissiveIndex]->Sample<vec3>(uv) * material.m_emissiveFactor;
+	}
+
+	if (material.m_specularColorIndex != 255)
+	{
+		res.m_specular *= vec3(m_textures[material.m_specularColorIndex]->Sample<u8vec4>(uv));
+	}
+
+	if (material.m_normalIndex != 255)
+	{
+		res.m_normal = vec3(m_textures[material.m_normalIndex]->Sample<u8vec3>(uv));
+	}
+
+	return res;
 }

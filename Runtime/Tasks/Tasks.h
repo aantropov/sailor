@@ -135,7 +135,7 @@ namespace Sailor
 
 			TVector<TWeakPtr<ITask>> m_dependencies;
 
-			std::string m_name;
+			std::string m_name; // TODO: remove name, to save 40 bytes
 
 			friend class Scheduler;
 
@@ -173,7 +173,7 @@ namespace Sailor
 
 		struct EmptyType1 {};
 		struct EmptyType2 {};
-
+		
 		template<typename TResult = void, typename TArgs = void>
 		class Task :
 			public std::conditional_t<NotVoid<TResult>, ITaskWithResult<TResult>, EmptyType1>,

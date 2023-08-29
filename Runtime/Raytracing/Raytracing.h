@@ -119,6 +119,16 @@ namespace Sailor
 			Texture2D& operator=(Texture2D&) = delete;
 		};
 
+		struct SampledData
+		{
+			glm::vec4 m_baseColor{};
+			glm::vec3 m_ambient{};
+			glm::vec3 m_specular{};
+			glm::vec3 m_emissive{};
+			glm::vec3 m_normal{};
+			float m_metallicRoughness{};
+		};
+
 		struct Material
 		{
 			glm::vec4 m_baseColorFactor = vec4(1, 1, 1, 1);
@@ -147,6 +157,8 @@ namespace Sailor
 		void Run();
 
 	protected:
+
+		__forceinline Raytracing::SampledData GetSampledData(const size_t& materialIndex, glm::vec2 uv) const;
 
 		vec3 Raytrace(const Math::Ray& r, const BVH& bvh) const;
 
