@@ -186,6 +186,6 @@ AssetRegistry::~AssetRegistry()
 {
 	for (const auto& assetIt : m_loadedAssetInfo)
 	{
-		delete assetIt.m_second;
+		delete *assetIt.m_second;
 	}
 }
