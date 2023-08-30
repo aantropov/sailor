@@ -266,7 +266,7 @@ namespace Sailor
 			}
 
 			// TODO: rethink the approach when default constructor is missed
-			Super::ForcelyInsert(TElementType(key, TValueType()));
+			Super::ForcelyInsert(std::move(TElementType(key, TValueType())));
 
 			const size_t index = hash % Super::m_buckets.Num();
 			auto& element = Super::m_buckets[index];

@@ -37,6 +37,25 @@
 using namespace Sailor;
 using namespace Sailor::Math;
 
+void Raytracing::ParseParamsFromCommandLineArgs(Raytracing::Params& res, const char** args, int32_t num)
+{
+	for (int32_t i = 1; i < num; i += 2)
+	{
+		if (strcmp("--in", args[i]) == 0)
+		{
+			res.m_pathToModel = std::string(args[i + 1]);
+		}
+		else if (strcmp("--out", args[i]) == 0)
+		{
+			res.m_pathToModel = std::string(args[i + 1]);
+		}
+		else if (strcmp("--height", args[i]) == 0)
+		{
+			res.m_height = atoi(args[i + 1]);
+		}
+	}
+}
+
 void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const aiScene* scene)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -107,7 +126,7 @@ void ProcessNode_Assimp(TVector<Triangle>& outScene, aiNode* node, const aiScene
 	}
 }
 
-void Raytracing::Run()
+void Raytracing::Run(const Raytracing::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -117,14 +136,6 @@ void Raytracing::Run()
 	raytracingTimer.Start();
 
 	const uint32_t GroupSize = 32;
-
-	const char* outputFile = "output.png";
-
-	//const std::filesystem::path sceneFile = "../Content/Models/Sponza2/Sponza.gltf";
-	const std::filesystem::path sceneFile = "../Content/Models/ABeautifulGame/ABeautifulGame.gltf";
-	//const std::filesystem::path sceneFile = "../Content/Models/Duck/Duck.gltf";
-	//const std::filesystem::path sceneFile = "../Content/Models/BoxTextured/BoxTextured.gltf";
-	//const std::filesystem::path sceneFile = "../Content/Models/Triangle/Triangle.gltf";
 
 	Assimp::Importer importer;
 
@@ -144,7 +155,7 @@ void Raytracing::Run()
 		//aiProcess_FlipWindingOrder |
 		0;
 
-	const auto scene = importer.ReadFile(sceneFile.string().c_str(), DefaultImportFlags_Assimp);
+	const auto scene = importer.ReadFile(params.m_pathToModel.string().c_str(), DefaultImportFlags_Assimp);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
@@ -152,11 +163,11 @@ void Raytracing::Run()
 		return;
 	}
 
-	ensure(scene->HasCameras(), "Scene %s has no Cameras!", sceneFile.string().c_str());
+	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
 	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : 16.0f / 10.0f;
-	const uint32_t width = 1024;
-	const uint32_t height = static_cast<uint32_t>(width / aspectRatio);
+	const uint32_t height = params.m_height;
+	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
 	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(80.0f);
 	const float vFov = 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio));
 
@@ -214,50 +225,35 @@ void Raytracing::Run()
 	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene);
 
 	{
-		auto FillData = [](const aiMaterialProperty* property, const std::string& name, void* ptr)
-			{
-				const string key = property->mKey.C_Str();
-				TVector<size_t> locations;
-				Utils::FindAllOccurances(key, name, locations, 0);
-				if (locations.Num() > 0)
-				{
-					memcpy(ptr, property->mData, property->mDataLength);
-					return true;
-				}
-
-				return false;
-			};
-
-		auto TraceUsedTextures_Assimp = [](aiMaterial* mat, aiTextureType type)
-			{
-				TVector<std::string> textures;
-				for (uint32_t i = 0; i < mat->GetTextureCount(type); i++)
-				{
-					aiString str;
-					mat->GetTexture(type, i, &str);
-					textures.Add(str.C_Str());
-				}
-				return textures;
-			};
-
 		std::function<void(uint32_t, const char*)> LoadTexture =
 			[&m_textures = m_textures,
-			sceneFile = sceneFile,
+			sceneFile = params.m_pathToModel,
 			&scene = scene](uint32_t i, const char* filename) mutable
+		{
+			m_textures[i] = TSharedPtr<Texture2D>::Make();
+
+			int32_t texChannels = 0;
+			stbi_uc* pixels = nullptr;
+
+			if (filename[0] == '*')
 			{
-				m_textures[i] = TSharedPtr<Texture2D>::Make();
+				const uint32 texIndex = atoi(&filename[1]);
+				aiTexture* pAITexture = scene->mTextures[texIndex];
 
-				const auto& texture = scene->mTextures[i];
+				pixels = stbi_load_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth, &m_textures[i]->m_width, &m_textures[i]->m_height, &texChannels, STBI_rgb_alpha);
+			}
+			else
+			{
 				sceneFile.replace_filename(filename);
+				pixels = stbi_load(sceneFile.string().c_str(), &m_textures[i]->m_width, &m_textures[i]->m_height, &texChannels, STBI_rgb_alpha);
+			}
 
-				int32_t texChannels = 0;
-				if (stbi_uc* pixels = stbi_load(sceneFile.string().c_str(), &m_textures[i]->m_width, &m_textures[i]->m_height, &texChannels, STBI_rgb_alpha))
-				{
-					//m_textures[i]->m_data = (u8*)pixels;
-					m_textures[i]->Initialize<u8vec4>((u8*)pixels);
-					stbi_image_free(pixels);
-				}
-			};
+			if (pixels)
+			{
+				m_textures[i]->Initialize<u8vec4>((u8*)pixels);
+				stbi_image_free(pixels);
+			}
+		};
 
 		TVector<Tasks::ITaskPtr> loadTexturesTasks;
 		m_materials.Resize(scene->mNumMaterials);
@@ -269,62 +265,43 @@ void Raytracing::Run()
 			auto& material = m_materials[i];
 			const auto& aiMaterial = scene->mMaterials[i];
 
-			const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_BASE_COLOR);
-			const TVector<std::string> specularMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_SPECULAR);
-			const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_AMBIENT_OCCLUSION);
-			const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_NORMAL_CAMERA);
-			const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_EMISSION_COLOR);
-			const TVector<std::string> metalnessMaps = TraceUsedTextures_Assimp(aiMaterial, aiTextureType_METALNESS);
-
-			for (uint32_t i = 0; i < aiMaterial->mNumProperties; i++)
+			aiString fileName;
+			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName) == AI_SUCCESS ||
+				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName) == AI_SUCCESS)
 			{
-				const auto property = aiMaterial->mProperties[i];
-				if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
-				{
-					if (FillData(property, std::string("diffuse"), &material.m_baseColorFactor) ||
-						FillData(property, std::string("emission"), &material.m_emissiveFactor) ||
-						FillData(property, std::string("specular"), &material.m_specularColorFactor))
-					{
-						continue;
-					}
-				}
-			}
-
-			if (!diffuseMaps.IsEmpty())
-			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, diffuseMaps[0].c_str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_baseColorIndex = textureIndex;
 				textureIndex++;
 			}
 
-			if (!ambientMaps.IsEmpty())
+			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, ambientMaps[0].c_str()); })->Run();
-				loadTexturesTasks.Emplace(std::move(task));
-				material.m_ambientIndex = textureIndex;
-				textureIndex++;
-			}
-
-			if (!normalMaps.IsEmpty())
-			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, normalMaps[0].c_str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_normalIndex = textureIndex;
 				textureIndex++;
 			}
 
-			if (!specularMaps.IsEmpty())
+			if (aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, specularMaps[0].c_str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
+				loadTexturesTasks.Emplace(std::move(task));
+				material.m_metallicRoughnessIndex = textureIndex;
+				textureIndex++;
+			}
+
+			if (aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName) == AI_SUCCESS)
+			{
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_specularIndex = textureIndex;
 				textureIndex++;
 			}
 
-			if (!emissionMaps.IsEmpty())
+			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, emissionMaps[0].c_str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_emissiveIndex = textureIndex;
 				textureIndex++;
@@ -440,18 +417,15 @@ void Raytracing::Run()
 	SAILOR_PROFILE_BLOCK("Write Image");
 	{
 		const uint32_t Channels = 3;
-		if (!stbi_write_png(outputFile, width, height, Channels, &output[0], width * Channels))
+		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, &output[0], width * Channels))
 		{
 			SAILOR_LOG("Raytracing WriteImage error");
 		}
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
-	SAILOR_PROFILE_BLOCK("Open Image");
-	::system(outputFile);
-	SAILOR_PROFILE_END_BLOCK();
+	::system(params.m_output.string().c_str());
 }
-
 
 vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 {
@@ -479,7 +453,7 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 
 		SAILOR_PROFILE_END_BLOCK();
 
-		return faceNormal;
+		return sample.m_baseColor;
 	}
 	return vec3(1);
 }
@@ -492,7 +466,7 @@ Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, 
 	res.m_baseColor = material.m_baseColorFactor;
 	res.m_ambient = vec3(0, 0, 0);
 	res.m_specular = material.m_specularColorFactor;
-	res.m_emissive = vec3(0,0,0);
+	res.m_emissive = vec3(0, 0, 0);
 
 	if (material.m_baseColorIndex != 255)
 	{

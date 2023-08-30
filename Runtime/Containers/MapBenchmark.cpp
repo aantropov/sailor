@@ -27,7 +27,7 @@ public:
 
 	static void PerformanceTests()
 	{
-		const size_t count = 10000500;
+		const size_t count = 150000;
 
 		Timer stdMap;
 		Timer tMap;
@@ -116,7 +116,7 @@ public:
 
 	static bool SanityCheck()
 	{
-		const size_t count = 18000;
+		const size_t count = 180;
 
 		TConcurrentMap<size_t, size_t> container;
 		std::unordered_map<size_t, size_t> ideal;

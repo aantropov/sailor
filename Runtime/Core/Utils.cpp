@@ -25,6 +25,15 @@
 using namespace Sailor;
 using namespace Sailor::Utils;
 
+float Utils::SRGBToLinear(float srgb)
+{
+	if (srgb <= 0.04045f)
+	{
+		return srgb * 0.0773993808f; // 1/12.92 = 0.0773993808
+	}
+	return powf(srgb * 0.9478672986f + 0.0521327014f, 2.4f); // 1/1.055 = 0.9478672986 and 0.055/1.055 = 0.0521327014
+}
+
 std::string Utils::wchar_to_UTF8(const wchar_t* in)
 {
 	std::string out;

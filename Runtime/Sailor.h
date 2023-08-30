@@ -24,7 +24,7 @@ namespace Sailor
 		static const char* EngineName;
 
 		static void Initialize();
-		static void Start();
+		static void Start(const char** commandLineArgs = nullptr, int32_t num = 0);
 		static void Stop();
 		static void Shutdown();
 

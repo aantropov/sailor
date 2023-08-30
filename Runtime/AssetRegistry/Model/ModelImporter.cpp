@@ -113,7 +113,7 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 	data.m_uniformsFloat.Add({ "material.roughness" , 1.0f });
 	data.m_uniformsFloat.Add({ "material.metallic" , 1.0f });
 
-	if (!diffuseMaps.IsEmpty())
+	if (!diffuseMaps.IsEmpty() && diffuseMaps[0].front() != '*')
 	{
 		data.m_samplers.Add(MaterialAsset::SamplerEntry("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));
 	}

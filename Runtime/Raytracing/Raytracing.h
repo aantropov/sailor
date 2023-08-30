@@ -6,6 +6,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Tasks/Scheduler.h"
 #include "BVH.h"
+#include <filesystem>
 
 namespace Sailor
 {
@@ -15,6 +16,15 @@ namespace Sailor
 
 	public:
 
+		struct Params
+		{
+			std::filesystem::path m_pathToModel;
+			std::filesystem::path m_output;
+			uint32_t m_height;
+		};
+
+		static void ParseParamsFromCommandLineArgs(Params& params, const char** args, int32_t num);
+		
 		struct Texture2D
 		{
 			const int32_t BlockSize = 16;
@@ -154,7 +164,7 @@ namespace Sailor
 			u8 m_specularColorIndex = -1;
 		};
 
-		void Run();
+		void Run(const Raytracing::Params& params);
 
 	protected:
 
