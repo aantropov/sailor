@@ -148,7 +148,7 @@ void App::Start()
 			auto it = consoleVars.Find(cmd);
 			if (it != consoleVars.end())
 			{
-				it->m_second();
+				it.Value()();
 			}
 		}
 
