@@ -15,12 +15,12 @@
 
 namespace Sailor
 {
-	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator>
+	template<typename TElementType, typename TAllocator = Memory::DefaultGlobalAllocator, const size_t ReservedElements = 12>
 	class TSet
 	{
 	public:
 
-		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 6, TAllocator>>;
+		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType)* ReservedElements, TAllocator>>;
 
 		class SAILOR_API TEntry
 		{
@@ -381,9 +381,9 @@ namespace Sailor
 
 		__forceinline bool ShouldRehash() const
 		{
-			// We assume that each bucket has ~6 elements inside
+			// We assume that each bucket has ~ReservedElements elements inside
 			// TODO: Rethink the approach
-			return (float)m_num > (float)m_buckets.Num() * 6;
+			return (size_t)m_num > (m_buckets.Num() * ReservedElements) / 2u;
 		}
 
 		void Rehash(size_t desiredBucketsNum)

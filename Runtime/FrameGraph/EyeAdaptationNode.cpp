@@ -134,9 +134,9 @@ void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, false };
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pToneMappingShader, m_shaderBindings);
 
-		for (auto& v : m_vectorParams)
+		for (const auto& v : m_vectorParams)
 		{
-			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, v.First(), v.Second());
+			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, v.First(), *v.Second());
 		}
 
 		if (m_vectorParams.ContainsKey("data.whitePoint"))

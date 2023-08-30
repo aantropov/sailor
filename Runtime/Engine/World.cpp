@@ -19,7 +19,7 @@ World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(f
 	}
 
 	m_sortedEcs.Reserve(ecsArray.Num());
-	for (auto& ecs : m_ecs)
+	for (const auto& ecs : m_ecs)
 	{
 		auto it = upper_bound(m_sortedEcs.begin(), m_sortedEcs.end(), ecs.m_first,
 			[&](auto& lhs, auto& rhs) { return m_ecs[lhs]->GetOrder() < m_ecs[rhs]->GetOrder(); });
@@ -135,8 +135,8 @@ void World::Clear()
 	m_pendingDestroyObjects.Clear();
 	m_pDebugContext.Clear();
 
-	for (auto& ecs : m_ecs)
+	for (const auto& ecs : m_ecs)
 	{
-		ecs.m_second->EndPlay();
+		(*ecs.m_second)->EndPlay();
 	}
 }

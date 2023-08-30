@@ -252,9 +252,9 @@ namespace Sailor
 		{
 			if (node.m_elements.Num())
 			{
-				for (auto& el : node.m_elements)
+				for (const auto& el : node.m_elements)
 				{
-					if (frustum.OverlapsAABB(Math::AABB(el.m_second.m_position, el.m_second.m_extents)))
+					if (frustum.OverlapsAABB(Math::AABB(el.m_second->m_position, el.m_second->m_extents)))
 					{
 						outElements.Add(el.m_first);
 					}
@@ -405,9 +405,9 @@ namespace Sailor
 
 					Subdivide(node);
 
-					for (auto& el : elements)
+					for (const auto& el : elements)
 					{
-						const bool bWasPlaced = Insert_Internal(node, el.m_second.m_position, el.m_second.m_extents, el.m_first);
+						const bool bWasPlaced = Insert_Internal(node, el.m_second->m_position, el.m_second->m_extents, el.m_first);
 						check(bWasPlaced);
 					}
 

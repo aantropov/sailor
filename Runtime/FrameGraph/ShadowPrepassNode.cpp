@@ -176,10 +176,10 @@ void ShadowPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPt
 			for (uint32_t j = 0; j < vecBatches.Num(); j++)
 			{
 				bool bIsInited = false;
-				for (auto& instancedDrawCall : drawCalls[i][vecBatches[j]])
+				for (const auto& instancedDrawCall : drawCalls[i][vecBatches[j]])
 				{
 					auto& mesh = instancedDrawCall.First();
-					auto& matrices = instancedDrawCall.Second();
+					auto& matrices = *instancedDrawCall.Second();
 
 					memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(ShadowPrepassNode::PerInstanceData) * matrices.Num());
 

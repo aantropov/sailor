@@ -91,9 +91,9 @@ void ITask::Complete()
 
 	m_dependencies.Clear();
 
-	for (auto& threadType : threadTypesToRefresh)
+	for (const auto& threadType : threadTypesToRefresh)
 	{
-		App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread(threadType.m_first, threadType.m_second > 1);
+		App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread(threadType.m_first, *threadType.m_second > 1);
 	}
 
 	m_state |= StateMask::IsFinishedBit;

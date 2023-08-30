@@ -27,11 +27,11 @@ void RenderImGuiNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
 
 	RHI::RHITexturePtr colorAttachment = GetResolvedAttachment("color");
-	for (auto& r : m_unresolvedResourceParams)
+	for (const auto& r : m_unresolvedResourceParams)
 	{
 		if (r.First() == "color")
 		{
-			colorAttachment = frameGraph->GetRenderTarget(r.Second());
+			colorAttachment = frameGraph->GetRenderTarget(*r.Second());
 			break;
 		}
 	}

@@ -181,10 +181,10 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	for (uint32_t j = 0; j < vecBatches.Num(); j++)
 	{
 		bool bIsInited = false;
-		for (auto& instancedDrawCall : m_drawCalls[vecBatches[j]])
+		for (const auto& instancedDrawCall : m_drawCalls[vecBatches[j]])
 		{
 			auto& mesh = instancedDrawCall.First();
-			auto& matrices = instancedDrawCall.Second();
+			auto& matrices = *instancedDrawCall.Second();
 
 			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(DepthPrepassNode::PerInstanceData) * matrices.Num());
 

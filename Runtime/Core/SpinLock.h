@@ -20,12 +20,12 @@ namespace Sailor
 		SpinLock& operator=(SpinLock&&) = delete;
 		SpinLock& operator=(const SpinLock&) = delete;
 
-		SAILOR_API __forceinline void Lock() volatile noexcept
+		SAILOR_API __forceinline void Lock() noexcept
 		{
 			while (m_lock.test_and_set(std::memory_order_acquire)) { ; }
 		}
 
-		SAILOR_API __forceinline bool TryLock() volatile noexcept
+		SAILOR_API __forceinline bool TryLock() noexcept
 		{
 			if (!m_lock.test(std::memory_order_acquire))
 			{
@@ -36,7 +36,7 @@ namespace Sailor
 			return false;
 		}
 
-		SAILOR_API __forceinline void Unlock() volatile noexcept
+		SAILOR_API __forceinline void Unlock() noexcept
 		{
 			m_lock.clear(std::memory_order_release);
 		}

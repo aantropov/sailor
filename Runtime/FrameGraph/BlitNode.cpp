@@ -51,15 +51,15 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 	RHI::RHITexturePtr src = GetResolvedAttachment("src");
 	RHI::RHITexturePtr dst = GetResolvedAttachment("dst");
 
-	for (auto& r : m_unresolvedResourceParams)
+	for (const auto& r : m_unresolvedResourceParams)
 	{
 		if (r.First() == "src")
 		{
-			src = frameGraph->GetRenderTarget(r.Second());
+			src = frameGraph->GetRenderTarget(*r.Second());
 		}
 		else if (r.First() == "dst")
 		{
-			dst = frameGraph->GetRenderTarget(r.Second());
+			dst = frameGraph->GetRenderTarget(*r.Second());
 		}
 	}
 

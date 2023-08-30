@@ -197,10 +197,10 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 
 	for (uint32_t i = 0; i < count; i++)
 	{
-		for (auto& binding : bindings[i])
+		for (const auto& binding : bindings[i])
 		{
-			m_layoutBindings[i].Add(binding.m_second.m_second);
-			m_bindings[i].Add(binding.m_second.m_first);
+			m_layoutBindings[i].Add(binding.m_second->m_second);
+			m_bindings[i].Add(binding.m_second->m_first);
 		}
 	}
 }

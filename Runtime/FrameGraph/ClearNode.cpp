@@ -62,11 +62,11 @@ void ClearNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 	}
 	else
 	{
-		for (auto& r : m_unresolvedResourceParams)
+		for (const auto& r : m_unresolvedResourceParams)
 		{
 			if (r.First() == "target")
 			{
-				dst = frameGraph->GetRenderTarget(r.Second());
+				dst = frameGraph->GetRenderTarget(*r.Second());
 				break;
 			}
 		}

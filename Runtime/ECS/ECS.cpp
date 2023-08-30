@@ -31,9 +31,9 @@ TVector<TBaseSystemPtr> ECSFactory::CreateECS() const
 {
 	TVector<TBaseSystemPtr> res;
 
-	for (auto& ecs : *Sailor::Internal::g_factoryMethods)
+	for (const auto& ecs : *Sailor::Internal::g_factoryMethods)
 	{
-		res.Emplace(ecs.m_second());
+		res.Add((*ecs.m_second)());
 	}
 	
 	res.Sort([](const auto& lhs, const auto& rhs) { return lhs->GetOrder() < rhs->GetOrder(); });

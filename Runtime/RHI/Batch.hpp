@@ -125,10 +125,10 @@ namespace Sailor::RHI
 			drawIndirect.Reserve(drawCall.Num());
 
 			uint32_t ssboOffset = 0;
-			for (auto& instancedDrawCall : drawCall)
+			for (const auto& instancedDrawCall : drawCall)
 			{
 				auto& mesh = instancedDrawCall.First();
-				auto& matrices = instancedDrawCall.Second();
+				auto& matrices = *instancedDrawCall.Second();
 
 				RHI::DrawIndexedIndirectData data{};
 				data.m_indexCount = (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t);

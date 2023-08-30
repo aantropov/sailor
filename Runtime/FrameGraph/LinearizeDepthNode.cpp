@@ -27,11 +27,11 @@ void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListP
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdGraphics);
 
 	auto depthAttachment = GetResolvedAttachment("depthStencil");
-	for (auto& r : m_unresolvedResourceParams)
+	for (const auto& r : m_unresolvedResourceParams)
 	{
 		if (r.First() == "depthStencil")
 		{
-			depthAttachment = frameGraph->GetRenderTarget(r.Second());
+			depthAttachment = frameGraph->GetRenderTarget(*r.Second());
 			break;
 		}
 	}

@@ -409,7 +409,7 @@ namespace Sailor
 			return true;
 		}
 
-		__forceinline bool ShouldRehash() const { return (float)m_num > (float)m_buckets.Num() * 6; }
+		__forceinline bool ShouldRehash() const { return (size_t)m_num > m_buckets.Num() * 6; }
 		__forceinline void Rehash(size_t desiredBucketsNum)
 		{
 			if (desiredBucketsNum <= m_buckets.Num())

@@ -97,7 +97,7 @@ const FileId& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 		auto assetInfoHandlerIt = m_assetInfoHandlers.Find(extension);
 		if (assetInfoHandlerIt != m_assetInfoHandlers.end())
 		{
-			assetInfoHandler = (*assetInfoHandlerIt).m_second;
+			assetInfoHandler = *(*assetInfoHandlerIt).m_second;
 		}
 
 		check(assetInfoHandler);
@@ -105,20 +105,20 @@ const FileId& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 		auto uid = m_fileIds.Find(filepath);
 		if (uid != m_fileIds.end())
 		{
-			auto assetInfoIt = m_loadedAssetInfo.Find(uid->m_second);
+			auto assetInfoIt = m_loadedAssetInfo.Find(uid.Value());
 			if (assetInfoIt != m_loadedAssetInfo.end())
 			{
-				AssetInfoPtr assetInfo = assetInfoIt->m_second;
+				AssetInfoPtr assetInfo = assetInfoIt.Value();
 				if (assetInfo->IsMetaExpired() || assetInfo->IsAssetExpired())
 				{
 					SAILOR_LOG("Reload asset info: %s", assetInfoFile.c_str());
 					assetInfoHandler->ReloadAssetInfo(assetInfo);
 				}
-				return (*uid).m_second;
+				return uid.Value();
 			}
 
 			// Meta were delete
-			m_fileIds.Remove(uid->m_first);
+			m_fileIds.Remove(uid.Key());
 		}
 
 		AssetInfoPtr assetInfo = nullptr;
@@ -166,7 +166,7 @@ AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(FileId uid) const
 	auto it = m_loadedAssetInfo.Find(uid);
 	if (it != m_loadedAssetInfo.end())
 	{
-		return it->m_second;
+		return it.Value();
 	}
 	return nullptr;
 }
@@ -176,7 +176,7 @@ AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFil
 	auto it = m_fileIds.Find(ContentRootFolder + assetFilepath);
 	if (it != m_fileIds.end())
 	{
-		return GetAssetInfoPtr_Internal(it->m_second);
+		return GetAssetInfoPtr_Internal(it.Value());
 	}
 
 	return nullptr;
@@ -184,8 +184,8 @@ AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFil
 
 AssetRegistry::~AssetRegistry()
 {
-	for (auto& asset : m_loadedAssetInfo)
+	for (const auto& assetIt : m_loadedAssetInfo)
 	{
-		delete asset.m_second;
+		delete assetIt.m_second;
 	}
 }

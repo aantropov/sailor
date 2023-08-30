@@ -85,7 +85,7 @@ namespace Sailor
 			outAssetInfos.Clear();
 			for (const auto& assetInfo : m_loadedAssetInfo)
 			{
-				if (dynamic_cast<TAssetInfo*>(assetInfo.m_second))
+				if (dynamic_cast<TAssetInfo*>(*assetInfo.m_second))
 				{
 					outAssetInfos.Add(assetInfo.m_first);
 				}

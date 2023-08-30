@@ -80,17 +80,17 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		RenderState renderState{ false, false, 0, false, ECullMode::None, EBlendMode::None, EFillMode::Fill, 0, bShouldUseMsaaTarget };
 		m_postEffectMaterial = driver->CreateMaterial(vertexDescription, EPrimitiveTopology::TriangleList, renderState, m_pShader, m_shaderBindings);
 
-		for (auto& v : m_vectorParams)
+		for (const auto& v : m_vectorParams)
 		{
-			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, v.First(), v.Second());
+			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, v.First(), *v.Second());
 		}
 
-		for (auto& f : m_floatParams)
+		for (const auto& f : m_floatParams)
 		{
-			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, f.First(), f.Second());
+			commands->SetMaterialParameter(transferCommandList, m_shaderBindings, f.First(), *f.Second());
 		}
 
-		for (auto& r : m_resourceParams)
+		for (const auto& r : m_resourceParams)
 		{
 			auto rhiTexture = GetResolvedAttachment(r.First());
 			if (rhiTexture && RHI::IsDepthFormat(rhiTexture->GetFormat()))
@@ -107,11 +107,11 @@ void PostProcessNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	}
 
 	bool bShouldRecalculateCompatibility = false;
-	for (auto& r : m_unresolvedResourceParams)
+	for (const auto& r : m_unresolvedResourceParams)
 	{
 		if (r.m_first != "color")
 		{
-			RHI::RHIRenderTargetPtr rhiTexture = frameGraph->GetRenderTarget(r.m_second);
+			RHI::RHIRenderTargetPtr rhiTexture = frameGraph->GetRenderTarget(*r.m_second);
 			RHITexturePtr target = rhiTexture;
 			if (RHI::IsDepthStencilFormat(rhiTexture->GetFormat()))
 			{

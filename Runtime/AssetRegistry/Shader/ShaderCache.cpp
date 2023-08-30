@@ -64,7 +64,7 @@ void ShaderCache::ShaderCacheData::Serialize(nlohmann::json& outData) const
 
 		std::vector<json> entriesJson;
 
-		for (const auto& permutation : entry.m_second)
+		for (const auto& permutation : *entry.m_second)
 		{
 			json temp;
 			permutation->Serialize(temp);
@@ -132,7 +132,7 @@ void ShaderCache::Shutdown()
 
 	for (const auto& entries : m_cache.m_data)
 	{
-		for (const auto& entry : entries.m_second)
+		for (const auto& entry : *entries.m_second)
 		{
 			delete entry;
 		}
@@ -194,7 +194,7 @@ void ShaderCache::ClearExpired()
 	{
 		if (Contains(entries.m_first))
 		{
-			for (const auto& entry : entries.m_second)
+			for (const auto& entry : *entries.m_second)
 			{
 				if (!IsExpired(entry->m_fileId, entry->m_permutation))
 				{
@@ -277,7 +277,7 @@ void ShaderCache::Remove(const FileId& uid)
 	{
 		const auto& entries = *it;
 
-		for (const auto& pEntry : entries.m_second)
+		for (const auto& pEntry : *entries.m_second)
 		{
 			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::VertexShaderTag));
 			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
@@ -295,7 +295,7 @@ void ShaderCache::Remove(const FileId& uid)
 		}
 
 		m_bIsDirty = true;
-		m_cache.m_data.Remove(it->m_first);
+		m_cache.m_data.Remove(it.Key());
 	}
 }
 
