@@ -12,7 +12,7 @@
 namespace Sailor
 {
 	template<typename TKeyType, typename TValueType, typename TAllocator = Memory::DefaultGlobalAllocator>
-	class TMap final : public TSet<TPair<TKeyType, size_t>, TAllocator, 12>
+	class TMap final : public TSet<TPair<TKeyType, size_t>, TAllocator>
 	{
 	public:
 
@@ -123,6 +123,16 @@ namespace Sailor
 			}
 		}
 
+		void Add(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
+		{
+			Insert(key, value);
+		}
+
+		void Add(const TKeyType& key, TValueType&& value) requires IsMoveConstructible<TValueType>
+		{
+			Insert(key, value);
+		}
+
 		void Insert(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
 		{
 			size_t index = 0;
@@ -228,6 +238,13 @@ namespace Sailor
 		TValueType& operator[] (const TKeyType& key)
 		{
 			return *m_values[GetOrAdd(key).m_second];
+		}
+
+		void Clear(uint32_t desiredBucketsNum = 8)
+		{
+			Super::Clear(desiredBucketsNum);
+			m_values.Clear();
+			m_freeList.Clear();
 		}
 
 		// TODO: rethink the approach for const operator []

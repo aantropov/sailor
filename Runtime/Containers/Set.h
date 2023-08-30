@@ -20,7 +20,7 @@ namespace Sailor
 	{
 	public:
 
-		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType)* ReservedElements, TAllocator>>;
+		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * ReservedElements, TAllocator>>;
 
 		class SAILOR_API TEntry
 		{
@@ -383,7 +383,7 @@ namespace Sailor
 		{
 			// We assume that each bucket has ~ReservedElements elements inside
 			// TODO: Rethink the approach
-			return (size_t)m_num > (m_buckets.Num() * ReservedElements) / 2u;
+			return (size_t)m_num > (m_buckets.Num() * 4);
 		}
 
 		void Rehash(size_t desiredBucketsNum)
