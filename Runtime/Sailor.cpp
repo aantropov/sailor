@@ -103,17 +103,17 @@ void App::Initialize()
 void App::Start(const char** commandLineArgs, int32_t num)
 {
 	{
-		Raytracing::Params params{};
-		params.m_output = "output.png";
-		params.m_height = 768;
-		params.m_pathToModel = "../Content/Models/DuckGlb/Duck.glb";
-
-		Raytracing::ParseParamsFromCommandLineArgs(params, commandLineArgs, num);
-		Raytracing r;
-
-		r.Run(params);
-		return;
-	}
+		//Raytracing::Params params{};
+		//params.m_output = "output.png";
+		//params.m_height = 768;
+		//params.m_pathToModel = "../Content/Models/DuckGlb/Duck.glb";
+		//
+		//Raytracing::ParseParamsFromCommandLineArgs(params, commandLineArgs, num);
+		//Raytracing r;
+		//
+		//r.Run(params);
+		//return;
+	}	//
 
 	s_pInstance->m_pViewportWindow->SetActive(true);
 	s_pInstance->m_pViewportWindow->SetRunning(true);
