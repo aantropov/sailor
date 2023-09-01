@@ -225,10 +225,10 @@ void Raytracing::Run(const Raytracing::Params& params)
 	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene);
 
 	{
-		std::function<void(uint32_t, const char*)> LoadTexture =
+		std::function<void(uint32_t, const char*, bool)> LoadTexture =
 			[&m_textures = m_textures,
 			sceneFile = params.m_pathToModel,
-			&scene = scene](uint32_t i, const char* filename) mutable
+			&scene = scene](uint32_t i, const char* filename, bool bConvertToLinear) mutable
 		{
 			m_textures[i] = TSharedPtr<Texture2D>::Make();
 
@@ -250,7 +250,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 
 			if (pixels)
 			{
-				m_textures[i]->Initialize<u8vec4>((u8*)pixels);
+				m_textures[i]->Initialize<vec4>((u8vec4*)pixels, bConvertToLinear, false);
 				stbi_image_free(pixels);
 			}
 		};
@@ -269,7 +269,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName) == AI_SUCCESS ||
 				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), true); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_baseColorIndex = textureIndex;
 				textureIndex++;
@@ -277,7 +277,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 
 			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), false); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_normalIndex = textureIndex;
 				textureIndex++;
@@ -285,7 +285,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 
 			if (aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), false); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_metallicRoughnessIndex = textureIndex;
 				textureIndex++;
@@ -293,7 +293,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 
 			if (aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), false); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_specularIndex = textureIndex;
 				textureIndex++;
@@ -301,11 +301,30 @@ void Raytracing::Run(const Raytracing::Params& params)
 
 			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str()); })->Run();
+				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), true); })->Run();
 				loadTexturesTasks.Emplace(std::move(task));
 				material.m_emissiveIndex = textureIndex;
 				textureIndex++;
 			}
+
+			aiColor3D color3D{};
+			aiColor4D color4D{};
+			float color1D = 0.0f;
+
+			if (aiMaterial->Get(AI_MATKEY_COLOR_EMISSIVE, color3D) == AI_SUCCESS)
+			{
+				material.m_emissiveFactor = vec3(color3D.r, color3D.g, color3D.b);
+			}
+			else
+			{
+				material.m_emissiveFactor = material.HasEmissiveTexture() ? glm::vec3(0.0f) : glm::vec3(1.0f);
+			}
+
+			material.m_emissiveFactor *= aiMaterial->Get(AI_MATKEY_EMISSIVE_INTENSITY, color1D) == AI_SUCCESS ? color1D : 1.0f;
+			material.m_transmissionFactor = aiMaterial->Get(AI_MATKEY_TRANSMISSION_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
+			material.m_baseColorFactor = (aiMaterial->Get(AI_MATKEY_BASE_COLOR, color4D) == AI_SUCCESS) ? vec4(color4D.r, color4D.g, color4D.b, color4D.a) : glm::vec4(1.0f);
+			material.m_roughnessFactor = aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
+			material.m_metallicFactor = aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
 		}
 
 		for (auto& task : loadTexturesTasks)
@@ -319,7 +338,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 
 	SAILOR_PROFILE_BLOCK("Viewport Calcs");
 
-	TVector<u8vec3> output(width * height);
+	TVector<vec3> output(width * height);
 
 	quat halfViewH = glm::angleAxis(hFov * 0.5f, cameraUp);
 	auto axis1 = normalize(halfViewH * cameraForward);
@@ -369,7 +388,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 								const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * tu;
 								ray.SetDirection(glm::normalize(midTop + (midBottom - midTop) * tv - cameraPos));
 
-								output[index] = u8vec3(Raytrace(ray, bvh));
+								output[index] = Raytrace(ray, bvh);
 								SAILOR_PROFILE_END_BLOCK();
 							}
 						}
@@ -408,7 +427,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 	//profiler::dumpBlocksToFile("test_profile.prof");
 
 	char msg[2048];
-	if (raytracingTimer.ResultMs() > 6000.0f)
+	//if (raytracingTimer.ResultMs() > 6000.0f)
 	{
 		sprintf_s(msg, "Time in sec: %.2f", (float)raytracingTimer.ResultMs() * 0.001f);
 		MessageBoxA(0, msg, msg, 0);
@@ -416,8 +435,14 @@ void Raytracing::Run(const Raytracing::Params& params)
 
 	SAILOR_PROFILE_BLOCK("Write Image");
 	{
+		TVector<u8vec3> outSrgb(width * height);
+		for (uint32_t i = 0; i < width * height; i++)
+		{
+			outSrgb[i] = Utils::LinearToSRGB(output[i]);
+		}
+
 		const uint32_t Channels = 3;
-		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, &output[0], width * Channels))
+		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, &outSrgb[0], width * Channels))
 		{
 			SAILOR_LOG("Raytracing WriteImage error");
 		}
@@ -470,12 +495,12 @@ Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, 
 
 	if (material.m_baseColorIndex != 255)
 	{
-		res.m_baseColor *= m_textures[material.m_baseColorIndex]->Sample<u8vec4>(uv);
+		res.m_baseColor *= m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
 	}
 
 	if (material.m_ambientIndex != 255)
 	{
-		res.m_ambient = m_textures[material.m_ambientIndex]->Sample<u8vec3>(uv);
+		res.m_ambient = m_textures[material.m_ambientIndex]->Sample<vec3>(uv);
 	}
 
 	if (material.m_emissiveIndex != 255)
@@ -485,12 +510,12 @@ Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, 
 
 	if (material.m_specularColorIndex != 255)
 	{
-		res.m_specular *= vec3(m_textures[material.m_specularColorIndex]->Sample<u8vec4>(uv));
+		res.m_specular *= vec3(m_textures[material.m_specularColorIndex]->Sample<vec4>(uv));
 	}
 
 	if (material.m_normalIndex != 255)
 	{
-		res.m_normal = vec3(m_textures[material.m_normalIndex]->Sample<u8vec3>(uv));
+		res.m_normal = vec3(m_textures[material.m_normalIndex]->Sample<vec3>(uv));
 	}
 
 	return res;

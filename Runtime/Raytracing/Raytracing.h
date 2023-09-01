@@ -24,105 +24,110 @@ namespace Sailor
 		};
 
 		static void ParseParamsFromCommandLineArgs(Params& params, const char** args, int32_t num);
-		
+
 		struct Texture2D
 		{
-			const int32_t BlockSize = 16;
+			const uint32_t BlockSize = 16;
 
 			TVector<u8> m_data;
 			int32_t m_width{};
 			int32_t m_height{};
+			bool m_bUseBlockEncoding = false;
 
-			template<typename T>
-			void Initialize(u8* linearData)
+			template<typename TOutputData, typename TInputData>
+			void Initialize(TInputData* data, bool bConvertToSrgb, bool useBlockEncoding = false)
 			{
+				m_bUseBlockEncoding = useBlockEncoding;
 				SAILOR_PROFILE_FUNCTION();
 
-				m_data.Resize(m_width * m_height * sizeof(T));
+				m_data.Resize(m_width * m_height * sizeof(TOutputData));
 
-				u8* blockData = m_data.GetData();
-				const int32_t blockWidth = (m_width + BlockSize - 1) / BlockSize;
-				const int32_t blockHeight = (m_height + BlockSize - 1) / BlockSize;
-
-				for (int32_t by = 0; by < blockHeight; ++by)
+				if (useBlockEncoding)
 				{
-					for (int32_t bx = 0; bx < blockWidth; ++bx)
+					for (uint32_t blockY = 0; blockY < (uint32_t)m_height; blockY += BlockSize)
 					{
-						u8* dst = blockData + ((by * blockWidth + bx) * BlockSize * BlockSize) * sizeof(T);
-
-						for (int32_t y = 0; y < BlockSize; ++y)
+						for (uint32_t blockX = 0; blockX < (uint32_t)m_width; blockX += BlockSize)
 						{
-							int32_t srcY = by * BlockSize + y;
-
-							if (srcY < m_height)
+							for (uint32_t y = blockY; y < blockY + BlockSize && y < (uint32_t)m_height; ++y)
 							{
-								u8* src = linearData + srcY * m_width * sizeof(T);
+								for (uint32_t x = blockX; x < blockX + BlockSize && x < (uint32_t)m_width; ++x)
+								{
+									uint32_t idx = y * m_width + x;
 
-								if (bx * BlockSize + BlockSize - 1 < m_width)
-								{
-									std::memcpy(dst, src + bx * BlockSize * sizeof(T), BlockSize * sizeof(T));
-									dst += BlockSize * sizeof(T);
-								}
-								else
-								{
-									for (int32_t x = 0; x < BlockSize; ++x)
-									{
-										int32_t srcX = bx * BlockSize + x;
-										if (srcX < m_width)
-										{
-											T* srcElem = (T*)(src + srcX * sizeof(T));
-											T* dstElem = (T*)dst;
-											*dstElem = *srcElem;
-											dst += sizeof(T);
-										}
-									}
+									TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * idx);
+									TInputData* src = data + idx;
+
+									*dst = bConvertToSrgb ? Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
 								}
 							}
 						}
 					}
 				}
+				else
+				{
+					for (uint32_t i = 0; i < (uint32_t)m_width * m_height; i++)
+					{
+						TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * i);
+						TInputData* src = data + i;
+
+						*dst = bConvertToSrgb ? Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
+					}
+				}
 			}
 
 			template<typename T>
-			const T Sample(vec2 uv) const
+			const T Sample(const vec2& uv) const
 			{
 				SAILOR_PROFILE_FUNCTION();
 
-				float fx = fmodf(uv.x * m_width, (float)m_width);
-				float fy = fmodf(uv.y * m_height, (float)m_height);
+				// Convert UV to pixel space once, and compute the required values.
+				const float fx = uv.x * (m_width - 1);
+				const float fy = uv.y * (m_height - 1);
 
-				if (fx < 0.0f)
+				const int32_t tX0 = static_cast<int32_t>(fx);
+				const int32_t tY0 = static_cast<int32_t>(fy);
+				const int32_t tX1 = std::min(tX0 + 1, m_width - 1);
+				const int32_t tY1 = std::min(tY0 + 1, m_height - 1);
+
+				// Compute the fractional parts
+				const float fracX = fx - tX0;
+				const float fracY = fy - tY0;
+
+				T* topLeft;
+				T* topRight;
+				T* bottomLeft;
+				T* bottomRight;
+
+				if (m_bUseBlockEncoding)
 				{
-					fx = m_width + fx;
+					const uint32_t BlockSize = 16;
+
+					const int32_t blockBaseIdxX0 = (tX0 / BlockSize) * BlockSize;
+					const int32_t blockBaseIdxY0 = (tY0 / BlockSize) * m_width * BlockSize;
+					const int32_t blockBaseIdxX1 = (tX1 / BlockSize) * BlockSize;
+					const int32_t blockBaseIdxY1 = (tY1 / BlockSize) * m_width * BlockSize;
+
+					topLeft = (T*)m_data.GetData() + blockBaseIdxY0 + blockBaseIdxX0 + (tY0 % BlockSize) * m_width + tX0 % BlockSize;
+					topRight = (T*)m_data.GetData() + blockBaseIdxY0 + blockBaseIdxX1 + (tY0 % BlockSize) * m_width + tX1 % BlockSize;
+					bottomLeft = (T*)m_data.GetData() + blockBaseIdxY1 + blockBaseIdxX0 + (tY1 % BlockSize) * m_width + tX0 % BlockSize;
+					bottomRight = (T*)m_data.GetData() + blockBaseIdxY1 + blockBaseIdxX1 + (tY1 % BlockSize) * m_width + tX1 % BlockSize;
+				}
+				else
+				{
+					topLeft = (T*)m_data.GetData() + tX0 + tY0 * m_width;
+					topRight = (T*)m_data.GetData() + tX1 + tY0 * m_width;
+					bottomLeft = (T*)m_data.GetData() + tX0 + tY1 * m_width;
+					bottomRight = (T*)m_data.GetData() + tX1 + tY1 * m_width;
 				}
 
-				if (fy < 0.0f)
-				{
-					fy = m_height + fy;
-				}
+				// Bilinear interpolation using direct memory access
+				const T topMix = *topLeft + fracX * (*topRight - *topLeft);
+				const T bottomMix = *bottomLeft + fracX * (*bottomRight - *bottomLeft);
+				const T finalSample = topMix + fracY * (bottomMix - topMix);
 
-				int32_t tX = static_cast<int32_t>(floor(fx));
-				int32_t tY = static_cast<int32_t>(floor(fy));
-
-				const float fracX = fx - tX;
-				const float fracY = fy - tY;
-
-				int32_t blockWidth = (m_width + BlockSize - 1) / BlockSize;
-				int32_t blockIndex = (tY / BlockSize) * blockWidth + (tX / BlockSize);
-				int32_t inBlockX = tX % BlockSize;
-				int32_t inBlockY = tY % BlockSize;
-
-				const T* blockStart = (T*)(m_data.GetData() + blockIndex * BlockSize * BlockSize * sizeof(T));
-				const T* topLeft = blockStart + (inBlockY * BlockSize + inBlockX);
-				const T* topRight = (inBlockX + 1 < BlockSize && tX + 1 < m_width) ? topLeft + 1 : topLeft;
-				const T* bottomLeft = (inBlockY + 1 < BlockSize && tY + 1 < m_height) ? topLeft + BlockSize : topLeft;
-				const T* bottomRight = (inBlockX + 1 < BlockSize && inBlockY + 1 < BlockSize && tX + 1 < m_width && tY + 1 < m_height) ? bottomLeft + 1 : bottomLeft;
-
-				T interpolatedTop = glm::mix(*topLeft, *topRight, fracX);
-				T interpolatedBottom = glm::mix(*bottomLeft, *bottomRight, fracX);
-
-				return glm::mix(interpolatedTop, interpolatedBottom, fracY);
+				return finalSample;
 			}
+
 
 			Texture2D() = default;
 			Texture2D(Texture2D&) = delete;
@@ -152,6 +157,15 @@ namespace Sailor
 			float m_occlusionFactor = 1;
 			float m_transmissionFactor = 0;
 			float m_specularFactor = 1;
+
+			bool HasEmissiveTexture() const { return m_emissiveIndex != -1; }
+			bool HasBaseTexture() const { return m_baseColorIndex != -1; }
+			bool HasAmbientTexture() const { return m_ambientIndex != -1; }
+			bool HasNormalTexture() const { return m_normalIndex != -1; }
+			bool HasMetallicRoughnessTexture() const { return m_metallicRoughnessIndex != -1; }
+			bool HasSpecularTexture() const { return m_specularColorIndex != -1; }
+			bool HasOcclusionTexture() const { return m_occlusionIndex != -1; }
+			bool HasTransmissionTexture() const { return m_transmissionIndex != -1; }
 
 			u8 m_baseColorIndex = -1;
 			u8 m_ambientIndex = -1;

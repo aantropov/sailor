@@ -33,7 +33,12 @@ namespace Sailor
 		SAILOR_API std::string GetCurrentThreadName();
 
 		SAILOR_API DWORD GetRandomColorHex();
-		SAILOR_API float SRGBToLinear(float srgb);
+
+		SAILOR_API __forceinline glm::vec4 LinearToSRGB(const glm::vec4& linearRGB);
+		SAILOR_API __forceinline glm::vec4 SRGBToLinear(const glm::vec4& srgbIn);
+
+		SAILOR_API __forceinline glm::vec3 LinearToSRGB(const glm::vec3& linearRGB);
+		SAILOR_API __forceinline glm::vec3 SRGBToLinear(const glm::vec3& srgbIn);
 
 		SAILOR_API int64_t GetCurrentTimeMs();
 		SAILOR_API int64_t GetCurrentTimeMicro();

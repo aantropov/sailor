@@ -25,13 +25,29 @@
 using namespace Sailor;
 using namespace Sailor::Utils;
 
-float Utils::SRGBToLinear(float srgb)
+glm::vec4 Utils::LinearToSRGB(const glm::vec4& linearRGB)
 {
-	if (srgb <= 0.04045f)
-	{
-		return srgb * 0.0773993808f; // 1/12.92 = 0.0773993808
-	}
-	return powf(srgb * 0.9478672986f + 0.0521327014f, 2.4f); // 1/1.055 = 0.9478672986 and 0.055/1.055 = 0.0521327014
+	return vec4(LinearToSRGB(linearRGB.xyz), linearRGB.a);
+}
+
+glm::vec4 Utils::SRGBToLinear(const glm::vec4& srgbIn)
+{
+	return vec4(SRGBToLinear(srgbIn.xyz), srgbIn.a);
+}
+
+glm::vec3 Utils::LinearToSRGB(const glm::vec3& linearRGB)
+{
+	auto cutoff = glm::lessThan(linearRGB, glm::vec3(0.0031308f));
+	glm::vec3 higher = glm::vec3(1.055f) * glm::pow(linearRGB, glm::vec3(1.f / 2.4f)) - glm::vec3(0.055f);
+	glm::vec3 lower = linearRGB * glm::vec3(12.92f);
+
+	return glm::mix(higher, lower, cutoff);
+}
+
+glm::vec3 Utils::SRGBToLinear(const glm::vec3& srgbIn)
+{
+	glm::vec3 bLess = glm::step(glm::vec3(0.04045f), srgbIn);
+	return glm::mix(srgbIn / glm::vec3(12.92f), glm::pow((srgbIn + glm::vec3(0.055f)) / glm::vec3(1.055f), glm::vec3(2.4f)), bLess);
 }
 
 std::string Utils::wchar_to_UTF8(const wchar_t* in)
