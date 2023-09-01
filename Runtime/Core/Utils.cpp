@@ -25,6 +25,16 @@
 using namespace Sailor;
 using namespace Sailor::Utils;
 
+glm::vec4 Utils::LinearToSRGB(const glm::u8vec4& linearRGB)
+{
+	return vec4(LinearToSRGB(vec4(linearRGB)));
+}
+
+glm::vec4 Utils::SRGBToLinear(const glm::u8vec4& srgbIn)
+{
+	return vec4(SRGBToLinear(vec4(srgbIn)));
+}
+
 glm::vec4 Utils::LinearToSRGB(const glm::vec4& linearRGB)
 {
 	return vec4(LinearToSRGB(linearRGB.xyz), linearRGB.a);

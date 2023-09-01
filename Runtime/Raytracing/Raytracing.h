@@ -57,7 +57,7 @@ namespace Sailor
 									TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * idx);
 									TInputData* src = data + idx;
 
-									*dst = bConvertToSrgb ? Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
+									*dst = bConvertToSrgb ? (TOutputData)Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
 								}
 							}
 						}
@@ -70,7 +70,7 @@ namespace Sailor
 						TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * i);
 						TInputData* src = data + i;
 
-						*dst = bConvertToSrgb ? Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
+						*dst = bConvertToSrgb ? (TOutputData)Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
 					}
 				}
 			}
@@ -128,7 +128,6 @@ namespace Sailor
 				return finalSample;
 			}
 
-
 			Texture2D() = default;
 			Texture2D(Texture2D&) = delete;
 			Texture2D& operator=(Texture2D&) = delete;
@@ -158,14 +157,14 @@ namespace Sailor
 			float m_transmissionFactor = 0;
 			float m_specularFactor = 1;
 
-			bool HasEmissiveTexture() const { return m_emissiveIndex != -1; }
-			bool HasBaseTexture() const { return m_baseColorIndex != -1; }
-			bool HasAmbientTexture() const { return m_ambientIndex != -1; }
-			bool HasNormalTexture() const { return m_normalIndex != -1; }
-			bool HasMetallicRoughnessTexture() const { return m_metallicRoughnessIndex != -1; }
-			bool HasSpecularTexture() const { return m_specularColorIndex != -1; }
-			bool HasOcclusionTexture() const { return m_occlusionIndex != -1; }
-			bool HasTransmissionTexture() const { return m_transmissionIndex != -1; }
+			bool HasEmissiveTexture() const { return m_emissiveIndex != u8(-1); }
+			bool HasBaseTexture() const { return m_baseColorIndex != u8(-1); }
+			bool HasAmbientTexture() const { return m_ambientIndex != u8(-1); }
+			bool HasNormalTexture() const { return m_normalIndex != u8(-1); }
+			bool HasMetallicRoughnessTexture() const { return m_metallicRoughnessIndex != u8(-1); }
+			bool HasSpecularTexture() const { return m_specularColorIndex != u8(-1); }
+			bool HasOcclusionTexture() const { return m_occlusionIndex != u8(-1); }
+			bool HasTransmissionTexture() const { return m_transmissionIndex != u8(-1); }
 
 			u8 m_baseColorIndex = -1;
 			u8 m_ambientIndex = -1;

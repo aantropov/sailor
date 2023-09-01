@@ -126,6 +126,66 @@ void ProcessNode_Assimp(TVector<Triangle>& outScene, aiNode* node, const aiScene
 	}
 }
 
+template<typename T>
+Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<Raytracing::Texture2D>>& m_textures, const std::filesystem::path& sceneFile, const aiScene* scene, uint32_t textureIndex, const std::string& filename, bool bConvertToLinear)
+{
+	auto ptr = m_textures[textureIndex] = TSharedPtr<Raytracing::Texture2D>::Make();
+
+	Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
+		[
+			scene = scene,
+			pTexture = ptr,
+			sceneFile = sceneFile,
+			fileName = filename,
+			bConvertToLinear = bConvertToLinear
+		]() mutable
+		{
+			int32_t texChannels = 0;
+			void* pixels = nullptr;
+
+			if (fileName[0] == '*')
+			{
+				const uint32 texIndex = atoi(&fileName[1]);
+				aiTexture* pAITexture = scene->mTextures[texIndex];
+				pixels = stbi_load_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth,
+					&pTexture->m_width,
+					&pTexture->m_height,
+					&texChannels, STBI_rgb_alpha);
+
+				pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, false);
+			}
+			else
+			{
+				sceneFile.replace_filename(fileName);
+				if (stbi_is_hdr(sceneFile.string().c_str()))
+				{
+					pixels = stbi_load(sceneFile.string().c_str(),
+						&pTexture->m_width,
+						&pTexture->m_height,
+						&texChannels, STBI_rgb_alpha);
+
+					pTexture->Initialize<T, vec4>((vec4*)pixels, bConvertToLinear, false);
+				}
+				else
+				{
+					pixels = stbi_loadf(sceneFile.string().c_str(),
+						&pTexture->m_width,
+						&pTexture->m_height,
+						&texChannels, STBI_rgb_alpha);
+
+					pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, false);
+				}
+			}
+
+			if (pixels)
+			{
+				stbi_image_free(pixels);
+			}
+		})->Run();
+
+		return task;
+};
+
 void Raytracing::Run(const Raytracing::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -225,36 +285,6 @@ void Raytracing::Run(const Raytracing::Params& params)
 	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene);
 
 	{
-		std::function<void(uint32_t, const char*, bool)> LoadTexture =
-			[&m_textures = m_textures,
-			sceneFile = params.m_pathToModel,
-			&scene = scene](uint32_t i, const char* filename, bool bConvertToLinear) mutable
-		{
-			m_textures[i] = TSharedPtr<Texture2D>::Make();
-
-			int32_t texChannels = 0;
-			stbi_uc* pixels = nullptr;
-
-			if (filename[0] == '*')
-			{
-				const uint32 texIndex = atoi(&filename[1]);
-				aiTexture* pAITexture = scene->mTextures[texIndex];
-
-				pixels = stbi_load_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth, &m_textures[i]->m_width, &m_textures[i]->m_height, &texChannels, STBI_rgb_alpha);
-			}
-			else
-			{
-				sceneFile.replace_filename(filename);
-				pixels = stbi_load(sceneFile.string().c_str(), &m_textures[i]->m_width, &m_textures[i]->m_height, &texChannels, STBI_rgb_alpha);
-			}
-
-			if (pixels)
-			{
-				m_textures[i]->Initialize<vec4>((u8vec4*)pixels, bConvertToLinear, false);
-				stbi_image_free(pixels);
-			}
-		};
-
 		TVector<Tasks::ITaskPtr> loadTexturesTasks;
 		m_materials.Resize(scene->mNumMaterials);
 		m_textures.Resize(scene->mNumMaterials * 5);
@@ -269,40 +299,35 @@ void Raytracing::Run(const Raytracing::Params& params)
 			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName) == AI_SUCCESS ||
 				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), true); })->Run();
-				loadTexturesTasks.Emplace(std::move(task));
+				loadTexturesTasks.Emplace(LoadTexture_Task<vec4>(m_textures, params.m_pathToModel, scene, textureIndex, std::string(fileName.C_Str()), true));
 				material.m_baseColorIndex = textureIndex;
 				textureIndex++;
 			}
 
 			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), false); })->Run();
-				loadTexturesTasks.Emplace(std::move(task));
+				loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, std::string(fileName.C_Str()), false));
 				material.m_normalIndex = textureIndex;
 				textureIndex++;
 			}
 
 			if (aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), false); })->Run();
-				loadTexturesTasks.Emplace(std::move(task));
+				loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, std::string(fileName.C_Str()), false));
 				material.m_metallicRoughnessIndex = textureIndex;
 				textureIndex++;
 			}
 
 			if (aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), false); })->Run();
-				loadTexturesTasks.Emplace(std::move(task));
+				loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, std::string(fileName.C_Str()), false));
 				material.m_specularIndex = textureIndex;
 				textureIndex++;
 			}
 
 			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName) == AI_SUCCESS)
 			{
-				Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture", [=]() { LoadTexture(textureIndex, fileName.C_Str(), true); })->Run();
-				loadTexturesTasks.Emplace(std::move(task));
+				loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, std::string(fileName.C_Str()), true));
 				material.m_emissiveIndex = textureIndex;
 				textureIndex++;
 			}
@@ -463,7 +488,6 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 
 		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
-
 		const vec3 faceNormal = vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] + hit.m_barycentricCoordinate.y * tri.m_normals[1] + hit.m_barycentricCoordinate.z * tri.m_normals[2]);
 		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] + hit.m_barycentricCoordinate.y * tri.m_tangent[1] + hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
 		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] + hit.m_barycentricCoordinate.y * tri.m_bitangent[1] + hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
@@ -491,31 +515,32 @@ Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, 
 	res.m_baseColor = material.m_baseColorFactor;
 	res.m_ambient = vec3(0, 0, 0);
 	res.m_specular = material.m_specularColorFactor;
-	res.m_emissive = vec3(0, 0, 0);
+	res.m_emissive = material.m_emissiveFactor;
 
-	if (material.m_baseColorIndex != 255)
+	if (material.HasBaseTexture())
 	{
 		res.m_baseColor *= m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
 	}
 
-	if (material.m_ambientIndex != 255)
+	if (material.HasAmbientTexture())
 	{
-		res.m_ambient = m_textures[material.m_ambientIndex]->Sample<vec3>(uv);
+		//res.m_ambient = m_textures[material.m_ambientIndex]->Sample<u8vec3>(uv);
 	}
 
-	if (material.m_emissiveIndex != 255)
+	if (material.HasEmissiveTexture())
 	{
-		res.m_emissive *= m_textures[material.m_emissiveIndex]->Sample<vec3>(uv) * material.m_emissiveFactor;
+		//res.m_emissive = m_textures[material.m_emissiveIndex]->Sample<u8vec3>(uv);
 	}
 
-	if (material.m_specularColorIndex != 255)
+	if (material.HasSpecularTexture())
 	{
-		res.m_specular *= vec3(m_textures[material.m_specularColorIndex]->Sample<vec4>(uv));
+		//res.m_specular *= vec3(m_textures[material.m_specularColorIndex]->Sample<u8vec4>(uv));
 	}
 
-	if (material.m_normalIndex != 255)
+	if (material.HasNormalTexture())
 	{
-		res.m_normal = vec3(m_textures[material.m_normalIndex]->Sample<vec3>(uv));
+		//vec3 normal = m_textures[material.m_normalIndex]->Sample<vec3>(uv);
+		//res.m_normal = (normal * (1.0f / 127.5f)) - vec3(1.0f);
 	}
 
 	return res;

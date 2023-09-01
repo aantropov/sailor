@@ -34,6 +34,9 @@ namespace Sailor
 
 		SAILOR_API DWORD GetRandomColorHex();
 
+		SAILOR_API __forceinline glm::vec4 LinearToSRGB(const glm::u8vec4& linearRGB);
+		SAILOR_API __forceinline glm::vec4 SRGBToLinear(const glm::u8vec4& srgbIn);
+
 		SAILOR_API __forceinline glm::vec4 LinearToSRGB(const glm::vec4& linearRGB);
 		SAILOR_API __forceinline glm::vec4 SRGBToLinear(const glm::vec4& srgbIn);
 
