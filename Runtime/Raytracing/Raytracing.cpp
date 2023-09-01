@@ -47,7 +47,7 @@ void Raytracing::ParseParamsFromCommandLineArgs(Raytracing::Params& res, const c
 		}
 		else if (strcmp("--out", args[i]) == 0)
 		{
-			res.m_pathToModel = std::string(args[i + 1]);
+			res.m_output = std::string(args[i + 1]);
 		}
 		else if (strcmp("--height", args[i]) == 0)
 		{
