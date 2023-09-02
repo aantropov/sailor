@@ -35,7 +35,7 @@ namespace Sailor
 			bool m_bUseBlockEncoding = false;
 
 			template<typename TOutputData, typename TInputData>
-			void Initialize(TInputData* data, bool bConvertToSrgb, bool useBlockEncoding = false)
+			void Initialize(TInputData* data, bool bConvertToSrgb, bool useBlockEncoding = false, bool bNormalMap = false)
 			{
 				m_bUseBlockEncoding = useBlockEncoding;
 				SAILOR_PROFILE_FUNCTION();
@@ -58,6 +58,11 @@ namespace Sailor
 									TInputData* src = data + idx;
 
 									*dst = bConvertToSrgb ? (TOutputData)Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
+
+									if (bNormalMap)
+									{
+										*dst = (*dst * (1.0f / 127.5f)) - 1.0f;
+									}
 								}
 							}
 						}
@@ -71,6 +76,11 @@ namespace Sailor
 						TInputData* src = data + i;
 
 						*dst = bConvertToSrgb ? (TOutputData)Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
+
+						if (bNormalMap)
+						{
+							*dst = (*dst * (1.0f / 127.5f)) - 1.0f;
+						}
 					}
 				}
 			}
@@ -137,10 +147,9 @@ namespace Sailor
 		{
 			glm::vec4 m_baseColor{};
 			glm::vec3 m_ambient{};
-			glm::vec3 m_specular{};
+			glm::vec3 m_orm{};
 			glm::vec3 m_emissive{};
 			glm::vec3 m_normal{};
-			float m_metallicRoughness{};
 		};
 
 		struct Material
