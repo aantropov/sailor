@@ -446,6 +446,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 								const uint32_t index = (y + v) * width + (x + u);
 								float tu = (x + u) / (float)width;
 
+
 								const vec3 midTop = viewportUpperLeft + (viewportUpperRight - viewportUpperLeft) * tu;
 								const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * tu;
 								ray.SetDirection(glm::normalize(midTop + (midBottom - midTop) * tv - cameraPos));
@@ -541,9 +542,17 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 
 		const vec3 worldNormal = tbn * sample.m_normal;
 
-		return sample.m_baseColor;
+		RaycastHit hitLight{};
+		const vec3 toLight = normalize(vec3(1, 1, -1));
+
+		Ray rayToLight(hit.m_point + 0.01f * faceNormal, toLight);
+		if (!bvh.IntersectBVH(rayToLight, hitLight, 0))
+		{
+			return std::max(0.0f, glm::dot(worldNormal, toLight)) * sample.m_baseColor;
+		}
 	}
-	return vec3(1);
+
+	return vec3(0);
 }
 
 Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, glm::vec2 uv) const

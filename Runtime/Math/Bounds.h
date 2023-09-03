@@ -40,7 +40,11 @@ namespace Sailor::Math
 		__forceinline const __m128& GetReciprocalDirection4() const { return rD4; }
 
 		__forceinline void SetOrigin(const vec3& value) { m_origin = value; }
-		__forceinline void SetDirection(const vec3& value) { m_direction = value; m_rDirection = vec3(1.0f / m_direction.x, 1.0f / m_direction.y, 1.0f / m_direction.z); }
+		__forceinline void SetDirection(const vec3& value)
+		{
+			m_direction = value;
+			m_rDirection = 1.0f / m_direction;
+		}
 
 	protected:
 
