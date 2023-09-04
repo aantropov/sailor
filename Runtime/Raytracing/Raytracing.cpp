@@ -140,11 +140,11 @@ Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<Raytracing::Texture2D>>& m_t
 	Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
 		[
 			scene = scene,
-				pTexture = ptr,
-				sceneFile = sceneFile,
-				fileName = filename,
-				bConvertToLinear = bConvertToLinear,
-				bNormalMap = bNormalMap
+			pTexture = ptr,
+			sceneFile = sceneFile,
+			fileName = filename,
+			bConvertToLinear = bConvertToLinear,
+			bNormalMap = bNormalMap
 		]() mutable
 		{
 			int32_t texChannels = 0;
@@ -493,7 +493,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 	//if (raytracingTimer.ResultMs() > 6000.0f)
 	{
 		sprintf_s(msg, "Time in sec: %.2f", (float)raytracingTimer.ResultMs() * 0.001f);
-		//MessageBoxA(0, msg, msg, 0);
+		MessageBoxA(0, msg, msg, 0);
 	}
 
 	SAILOR_PROFILE_BLOCK("Write Image");
@@ -544,9 +544,10 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 
 		RaycastHit hitLight{};
 		const vec3 toLight = normalize(vec3(1, 1, -1));
+		const vec3 offset = 0.00001f * toLight;
 
-		Ray rayToLight(hit.m_point + 0.01f * faceNormal, toLight);
-		if (!bvh.IntersectBVH(rayToLight, hitLight, 0))
+		Ray rayToLight(hit.m_point + offset, toLight);
+		if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 		{
 			return std::max(0.0f, glm::dot(worldNormal, toLight)) * sample.m_baseColor;
 		}

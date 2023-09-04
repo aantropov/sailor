@@ -41,7 +41,7 @@ namespace Sailor
 		}
 
 		void BuildBVH(const TVector<Math::Triangle>& tris);
-		bool IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength = std::numeric_limits<float>::max()) const;
+		bool IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength = std::numeric_limits<float>::max(), uint32_t ignoreTriangle = (uint32_t)(-1)) const;
 
 	protected:
 

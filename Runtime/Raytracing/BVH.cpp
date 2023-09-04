@@ -127,7 +127,7 @@ float BVH::EvaluateSAH(const BVHNode& node, const TVector<Math::Triangle>& tris,
 	return cost > 0 ? cost : 1e30f;
 }
 
-bool BVH::IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength) const
+bool BVH::IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const uint nodeIdx, float maxRayLength, uint32_t ignoreTriangle) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -140,10 +140,12 @@ bool BVH::IntersectBVH(const Math::Ray& ray, Math::RaycastHit& outResult, const 
 		{
 			for (uint i = 0; i < node->m_triCount; i++)
 			{
-				if (Math::IntersectRayTriangle(ray, m_triangles[node->m_leftFirst + i], res, maxRayLength))
+				const uint32_t triangleIndex = m_triIdxMapping[node->m_leftFirst + i];
+
+				if (ignoreTriangle != triangleIndex && Math::IntersectRayTriangle(ray, m_triangles[node->m_leftFirst + i], res, maxRayLength))
 				{
 					outResult = res;
-					outResult.m_triangleIndex = m_triIdxMapping[node->m_leftFirst + i];
+					outResult.m_triangleIndex = triangleIndex;
 
 					maxRayLength = std::min(maxRayLength, res.m_rayLenght);
 				}
