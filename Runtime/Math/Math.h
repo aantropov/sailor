@@ -11,6 +11,8 @@ using namespace glm;
 
 namespace Sailor::Math
 {
+	const float Pi = 3.1415926f;
+
 	const glm::vec3 vec3_Zero = glm::vec3(0, 0, 0);
 	const glm::vec3 vec3_One = glm::vec3(1, 1, 1);
 

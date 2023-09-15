@@ -139,12 +139,12 @@ Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<Raytracing::Texture2D>>& m_t
 
 	Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
 		[
-			scene = scene,
-			pTexture = ptr,
-			sceneFile = sceneFile,
-			fileName = filename,
-			bConvertToLinear = bConvertToLinear,
-			bNormalMap = bNormalMap
+				scene = scene,
+				pTexture = ptr,
+				sceneFile = sceneFile,
+				fileName = filename,
+				bConvertToLinear = bConvertToLinear,
+				bNormalMap = bNormalMap
 		]() mutable
 		{
 			int32_t texChannels = 0;
@@ -232,7 +232,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
-	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : 16.0f / 10.0f;
+	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : (4.0f / 3.0f);
 	const uint32_t height = params.m_height;
 	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
 	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(80.0f);
@@ -245,13 +245,13 @@ void Raytracing::Run(const Raytracing::Params& params)
 	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(vFov, (float)width, (float)height, zMin, zMax));
 	mat4 viewMatrix{ 1 };
 
-	auto cameraPos = vec3(-1.2f, 0.7f, -1.0f) * 0.5f;
+	auto cameraPos = /*vec3(0, 0, 10);*/vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	auto cameraUp = normalize(vec3(0, 1, 0));
 	auto cameraForward = normalize(-cameraPos);
 	//auto cameraForward = -vec3(0.5f, 0.7f, 1.0f);
 
-	auto axis = cross(cameraForward, cameraUp);
-	cameraUp = cross(axis, cameraForward);
+	auto axis = normalize(cross(cameraForward, cameraUp));
+	cameraUp = normalize(cross(axis, cameraForward));
 
 	// View
 	if (scene->HasCameras())
@@ -377,16 +377,12 @@ void Raytracing::Run(const Raytracing::Params& params)
 			{
 				material.m_emissiveFactor = vec3(color3D.r, color3D.g, color3D.b);
 			}
-			else
-			{
-				material.m_emissiveFactor = material.HasEmissiveTexture() ? glm::vec3(0.0f) : glm::vec3(1.0f);
-			}
 
 			material.m_emissiveFactor *= aiMaterial->Get(AI_MATKEY_EMISSIVE_INTENSITY, color1D) == AI_SUCCESS ? color1D : 1.0f;
 			material.m_transmissionFactor = aiMaterial->Get(AI_MATKEY_TRANSMISSION_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
 			material.m_baseColorFactor = (aiMaterial->Get(AI_MATKEY_BASE_COLOR, color4D) == AI_SUCCESS) ? vec4(color4D.r, color4D.g, color4D.b, color4D.a) : glm::vec4(1.0f);
-			material.m_roughnessFactor = aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
-			material.m_metallicFactor = aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
+			material.m_roughnessFactor = aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
+			material.m_metallicFactor = aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
 		}
 
 		for (auto& task : loadTexturesTasks)
@@ -447,11 +443,19 @@ void Raytracing::Run(const Raytracing::Params& params)
 								float tu = (x + u) / (float)width;
 
 
-								const vec3 midTop = viewportUpperLeft + (viewportUpperRight - viewportUpperLeft) * tu;
-								const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * tu;
-								ray.SetDirection(glm::normalize(midTop + (midBottom - midTop) * tv - cameraPos));
+								vec3 accumulator = vec3(0);
+								for (uint32_t sample = 0; sample < params.m_numSamples; sample++)
+								{
+									auto offset = sample == 0 ? vec2(0, 0) : glm::linearRand(vec2(0, 0), vec2(1.0f / width, 1.0f / height));
 
-								output[index] = Raytrace(ray, bvh);
+									const vec3 midTop = viewportUpperLeft + (viewportUpperRight - viewportUpperLeft) * (tu + offset.x);
+									const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * (tu + offset.x);
+									ray.SetDirection(glm::normalize(midTop + (midBottom - midTop) * (tv + offset.y) - cameraPos));
+
+									accumulator += Raytrace(ray, bvh);
+								}
+
+								output[index] = accumulator / (float)params.m_numSamples;
 								SAILOR_PROFILE_END_BLOCK();
 							}
 						}
@@ -490,7 +494,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 	//profiler::dumpBlocksToFile("test_profile.prof");
 
 	char msg[2048];
-	//if (raytracingTimer.ResultMs() > 6000.0f)
+	if (raytracingTimer.ResultMs() > 10000.0f)
 	{
 		sprintf_s(msg, "Time in sec: %.2f", (float)raytracingTimer.ResultMs() * 0.001f);
 		MessageBoxA(0, msg, msg, 0);
@@ -501,7 +505,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 		TVector<u8vec3> outSrgb(width * height);
 		for (uint32_t i = 0; i < width * height; i++)
 		{
-			outSrgb[i] = Utils::LinearToSRGB(output[i]);
+			outSrgb[i] = glm::clamp(Utils::LinearToSRGB(output[i]) * 255.0f, 0.0f, 255.0f);
 		}
 
 		const uint32_t Channels = 3;
@@ -513,6 +517,60 @@ void Raytracing::Run(const Raytracing::Params& params)
 	SAILOR_PROFILE_END_BLOCK();
 
 	::system(params.m_output.string().c_str());
+}
+
+float DistributionGGX(const vec3& N, const vec3& H, float roughness)
+{
+	float a = roughness * roughness;
+	float a2 = a * a;
+	float NdotH = std::max(dot(N, H), 0.0f);
+	float NdotH2 = NdotH * NdotH;
+
+	float nom = a2;
+	float denom = (NdotH2 * (a2 - 1.0f) + 1.0f);
+	denom = glm::pi<float>() * denom * denom;
+
+	return nom / denom;
+}
+
+vec3 FresnelSchlick(float cosTheta, const vec3& F0)
+{
+	return F0 + (1.0f - F0) * glm::pow(1.0f - cosTheta, 5.0f);
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+	float k = (roughness * roughness) / 2.0f; // Different k value calculation
+	float denom = NdotV * (1.0f - k) + k;
+	return NdotV / denom;
+}
+
+vec3 Raytracing::CalculatePBR(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const
+{
+	const float ambientOcclusion = sample.m_orm.x;
+	const float roughness = sample.m_orm.y;
+	const float metallic = sample.m_orm.z;
+
+	vec3 F0 = mix(vec3(0.04f), vec3(sample.m_baseColor), metallic);
+
+	vec3 halfwayVector = normalize(viewDirection + lightDirection);
+	float NDF = DistributionGGX(worldNormal, halfwayVector, roughness);
+	vec3 F = FresnelSchlick(std::max(glm::dot(halfwayVector, viewDirection), 0.0f), F0);
+	float geomA = GeometrySchlickGGX(glm::dot(worldNormal, lightDirection), roughness);
+	float geomB = GeometrySchlickGGX(glm::dot(worldNormal, viewDirection), roughness);
+	float geometricTerm = geomA * geomB;
+
+	vec3 kS = F;
+	vec3 kD = vec3(1.0f) - kS;
+	kD *= 1.0f - metallic;
+
+	float denominator = (4.0f * std::max(glm::dot(worldNormal, viewDirection), 0.0f) * std::max(glm::dot(worldNormal, lightDirection), 0.0f)) + 0.001f;
+	vec3 specularTerm = (F * NDF * geometricTerm) / denominator;
+	vec3 diffuseTerm = (kD * sample.m_baseColor.xyz) / glm::pi<float>();
+
+	vec3 lighting = (diffuseTerm + specularTerm);// *(vec3(1.0f) - vec3(ambientOcclusion));
+
+	return lighting;
 }
 
 vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
@@ -532,24 +590,30 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh) const
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 
-		vec2 uv = hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
+		const vec2 uv = hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
 			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
 			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
-		SampledData sample = GetSampledData(tri.m_materialIndex, uv);
+		const SampledData sample = GetSampledData(tri.m_materialIndex, uv);
+		const vec3 viewDirection = -normalize(ray.GetDirection());
 
-		SAILOR_PROFILE_END_BLOCK();
-
-		const vec3 worldNormal = tbn * sample.m_normal;
+		vec3 worldNormal = tbn * sample.m_normal;
+		if (glm::dot(worldNormal, viewDirection) < 0.0f)
+		{
+			worldNormal = -worldNormal;
+		}
 
 		RaycastHit hitLight{};
 		const vec3 toLight = normalize(vec3(1, 1, -1));
-		const vec3 offset = 0.00001f * toLight;
+		const vec3 offset = -0.0000001f * worldNormal;// 0.1f * faceNormal;
+
+		SAILOR_PROFILE_END_BLOCK();
 
 		Ray rayToLight(hit.m_point + offset, toLight);
 		if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 		{
-			return std::max(0.0f, glm::dot(worldNormal, toLight)) * sample.m_baseColor;
+			return CalculatePBR(viewDirection, faceNormal, toLight, sample);
+			//return pow(std::max(0.0f, glm::dot(worldNormal, toLight)), 3.0f) * sample.m_baseColor;
 		}
 	}
 
@@ -562,7 +626,6 @@ Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, 
 
 	Raytracing::SampledData res{};
 	res.m_baseColor = material.m_baseColorFactor;
-	res.m_ambient = vec3(0, 0, 0);
 	res.m_normal = vec3(0, 0, 1.0f);
 	res.m_orm = vec3(0.0f, material.m_roughnessFactor, material.m_metallicFactor);
 	res.m_emissive = material.m_emissiveFactor;
@@ -572,19 +635,15 @@ Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, 
 		res.m_baseColor *= m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
 	}
 
-	if (material.HasAmbientTexture())
-	{
-		res.m_ambient = m_textures[material.m_ambientIndex]->Sample<vec3>(uv);
-	}
-
 	if (material.HasEmissiveTexture())
 	{
-		res.m_emissive = m_textures[material.m_emissiveIndex]->Sample<vec3>(uv);
+		res.m_emissive *= m_textures[material.m_emissiveIndex]->Sample<vec3>(uv);
 	}
 
 	if (material.HasMetallicRoughnessTexture())
 	{
-		res.m_orm = m_textures[material.m_metallicRoughnessIndex]->Sample<vec3>(uv);
+		const vec3 ormSample = m_textures[material.m_metallicRoughnessIndex]->Sample<vec3>(uv);
+		res.m_orm = vec3(ormSample.r, res.m_orm.g * ormSample.g, res.m_orm.b * ormSample.b);
 	}
 
 	if (material.HasNormalTexture())

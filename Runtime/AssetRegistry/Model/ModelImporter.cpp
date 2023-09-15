@@ -123,7 +123,7 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 		data.m_samplers.Add(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + ambientMaps[0])));
 	}
 
-	if (!normalMaps.IsEmpty())
+	if (!normalMaps.IsEmpty() && normalMaps[0].front() != '*')
 	{
 		data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + normalMaps[0])));
 	}

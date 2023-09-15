@@ -21,6 +21,7 @@ namespace Sailor
 			std::filesystem::path m_pathToModel;
 			std::filesystem::path m_output;
 			uint32_t m_height;
+			uint32_t m_numSamples;
 		};
 
 		static void ParseParamsFromCommandLineArgs(Params& params, const char** args, int32_t num);
@@ -35,7 +36,7 @@ namespace Sailor
 			bool m_bUseBlockEncoding = false;
 
 			template<typename TOutputData, typename TInputData>
-			void Initialize(TInputData* data, bool bConvertToSrgb, bool useBlockEncoding = false, bool bNormalMap = false)
+			void Initialize(TInputData* data, bool bConvertToLinear, bool useBlockEncoding = false, bool bNormalMap = false)
 			{
 				m_bUseBlockEncoding = useBlockEncoding;
 				SAILOR_PROFILE_FUNCTION();
@@ -57,11 +58,16 @@ namespace Sailor
 									TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * idx);
 									TInputData* src = data + idx;
 
-									*dst = bConvertToSrgb ? (TOutputData)Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
-
 									if (bNormalMap)
 									{
-										*dst = (*dst * (1.0f / 127.5f)) - 1.0f;
+										*dst = (TOutputData(*src) * (1.0f / 127.5f)) - 1.0f;
+										(*dst).y *= -1.0f;
+									}
+									else
+									{
+										*dst = bConvertToLinear ?
+											((TOutputData)Utils::SRGBToLinear(TOutputData(*src) * (1.0f / 255.0f))) :
+											(TOutputData(*src) * (1.0f / 255.0f));
 									}
 								}
 							}
@@ -75,11 +81,16 @@ namespace Sailor
 						TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * i);
 						TInputData* src = data + i;
 
-						*dst = bConvertToSrgb ? (TOutputData)Utils::SRGBToLinear(TOutputData(*src)) : TOutputData(*src);
-
 						if (bNormalMap)
 						{
-							*dst = (*dst * (1.0f / 127.5f)) - 1.0f;
+							*dst = (TOutputData(*src) * (1.0f / 127.5f)) - 1.0f;
+							(*dst).y *= -1.0f;
+						}
+						else
+						{
+							*dst = bConvertToLinear ?
+								(TOutputData)Utils::SRGBToLinear(TOutputData(*src) * (1.0f / 255.0f)) :
+								(TOutputData(*src) * (1.0f / 255.0f));
 						}
 					}
 				}
@@ -146,7 +157,6 @@ namespace Sailor
 		struct SampledData
 		{
 			glm::vec4 m_baseColor{};
-			glm::vec3 m_ambient{};
 			glm::vec3 m_orm{};
 			glm::vec3 m_emissive{};
 			glm::vec3 m_normal{};
@@ -155,12 +165,12 @@ namespace Sailor
 		struct Material
 		{
 			glm::vec4 m_baseColorFactor = vec4(1, 1, 1, 1);
-			glm::vec3 m_emissiveFactor = vec3(1, 1, 1);
+			glm::vec3 m_emissiveFactor = vec3(0, 0, 0);
 
 			glm::vec3 m_specularColorFactor = vec3(1, 1, 1);
 
-			float m_metallicFactor = 1;
-			float m_roughnessFactor = 1;
+			float m_metallicFactor = 1.0f;
+			float m_roughnessFactor = 1.0f;
 			float m_indexOfRefraction = 1.5f;
 			float m_occlusionFactor = 1;
 			float m_transmissionFactor = 0;
@@ -191,6 +201,8 @@ namespace Sailor
 	protected:
 
 		__forceinline Raytracing::SampledData GetSampledData(const size_t& materialIndex, glm::vec2 uv) const;
+
+		vec3 CalculatePBR(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const;
 
 		vec3 Raytrace(const Math::Ray& r, const BVH& bvh) const;
 

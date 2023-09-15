@@ -22,7 +22,7 @@ void TestComponent::BeginPlay()
 	m_mainModel = GetWorld()->Instantiate();
 	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
-	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * 3.14f, 0)));
+	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * Math::Pi, 0)));
 	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
 
 	for (int32_t i = -1000; i < 1000; i += 32)
