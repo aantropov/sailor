@@ -182,6 +182,75 @@ namespace Sailor::Math
 	bool IntersectRayTriangle(const Ray& ray, const TVector<Triangle>& tris, RaycastHit& outRaycastHit, float maxRayLength = FLT_MAX);
 	bool IntersectRayTriangle(const glm::vec3& r0, const glm::vec3& rd, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3& outBarycentric, float& outDistance);
 
+	// Copied from GLM version, with changed epsilon to zero
+	template<typename T, qualifier Q>
+	bool IntersectRayTriangle
+	(
+		vec<3, T, Q> const& orig, vec<3, T, Q> const& dir,
+		vec<3, T, Q> const& vert0, vec<3, T, Q> const& vert1, vec<3, T, Q> const& vert2,
+		vec<2, T, Q>& baryPosition, T& distance
+	)
+	{
+		// find vectors for two edges sharing vert0
+		vec<3, T, Q> const edge1 = vert1 - vert0;
+		vec<3, T, Q> const edge2 = vert2 - vert0;
+
+		// begin calculating determinant - also used to calculate U parameter
+		vec<3, T, Q> const p = glm::cross(dir, edge2);
+
+		// if determinant is near zero, ray lies in plane of triangle
+		T const det = glm::dot(edge1, p);
+
+		vec<3, T, Q> Perpendicular(0);
+
+		if (det > 0.0f)
+		{
+			// calculate distance from vert0 to ray origin
+			vec<3, T, Q> const dist = orig - vert0;
+
+			// calculate U parameter and test bounds
+			baryPosition.x = glm::dot(dist, p);
+			if (baryPosition.x < static_cast<T>(0) || baryPosition.x > det)
+				return false;
+
+			// prepare to test V parameter
+			Perpendicular = glm::cross(dist, edge1);
+
+			// calculate V parameter and test bounds
+			baryPosition.y = glm::dot(dir, Perpendicular);
+			if ((baryPosition.y < static_cast<T>(0)) || ((baryPosition.x + baryPosition.y) > det))
+				return false;
+		}
+		else if (det < 0.0f)
+		{
+			// calculate distance from vert0 to ray origin
+			vec<3, T, Q> const dist = orig - vert0;
+
+			// calculate U parameter and test bounds
+			baryPosition.x = glm::dot(dist, p);
+			if ((baryPosition.x > static_cast<T>(0)) || (baryPosition.x < det))
+				return false;
+
+			// prepare to test V parameter
+			Perpendicular = glm::cross(dist, edge1);
+
+			// calculate V parameter and test bounds
+			baryPosition.y = glm::dot(dir, Perpendicular);
+			if ((baryPosition.y > static_cast<T>(0)) || (baryPosition.x + baryPosition.y < det))
+				return false;
+		}
+		else
+			return false; // ray is parallel to the plane of the triangle
+
+		T inv_det = static_cast<T>(1) / det;
+
+		// calculate distance, ray intersects triangle
+		distance = glm::dot(edge2, Perpendicular) * inv_det;
+		baryPosition *= inv_det;
+
+		return true;
+	}
+
 	// Return value is distance to AABB
 	float IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength = FLT_MAX);
 }

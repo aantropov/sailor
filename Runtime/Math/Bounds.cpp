@@ -510,8 +510,7 @@ bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit&
 	float distance = std::numeric_limits<float>::max();
 	vec2 baryPosition{};
 
-	//if (bool res = Math::IntersectRayTriangle(ray.GetOrigin(), ray.GetReciprocalDirection(), tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2], baryPosition, distance))
-	if (bool res = glm::intersectRayTriangle(ray.GetOrigin(), ray.GetDirection(), tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2], baryPosition, distance))
+	if (bool res = Math::IntersectRayTriangle(ray.GetOrigin(), ray.GetDirection(), tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2], baryPosition, distance))
 	{
 		if (distance < maxRayLength)
 		{
@@ -574,7 +573,6 @@ void IntersectRayTriangle(Ray& ray, const Triangle& tri)
 	}
 }*/
 
-/**/
 float Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -584,7 +582,7 @@ float Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::v
 	__m128 t1 = _mm_mul_ps(_mm_sub_ps(_bmin, ray.GetOrigin4()), ray.GetReciprocalDirection4());
 	__m128 t2 = _mm_mul_ps(_mm_sub_ps(_bmax, ray.GetOrigin4()), ray.GetReciprocalDirection4());
 
-	float vmax[4ull], vmin[4ull];
+	float vmax[4], vmin[4];
 	_mm_store_ps(vmax, _mm_max_ps(t1, t2));
 	_mm_store_ps(vmin, _mm_min_ps(t1, t2));
 

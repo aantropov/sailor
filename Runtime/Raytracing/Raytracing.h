@@ -22,6 +22,7 @@ namespace Sailor
 			std::filesystem::path m_output;
 			uint32_t m_height;
 			uint32_t m_numSamples;
+			uint32_t m_numBounces;
 		};
 
 		static void ParseParamsFromCommandLineArgs(Params& params, const char** args, int32_t num);
@@ -61,7 +62,7 @@ namespace Sailor
 									if (bNormalMap)
 									{
 										*dst = (TOutputData(*src) * (1.0f / 127.5f)) - 1.0f;
-										(*dst).y *= -1.0f;
+
 									}
 									else
 									{
@@ -84,7 +85,6 @@ namespace Sailor
 						if (bNormalMap)
 						{
 							*dst = (TOutputData(*src) * (1.0f / 127.5f)) - 1.0f;
-							(*dst).y *= -1.0f;
 						}
 						else
 						{
@@ -101,9 +101,13 @@ namespace Sailor
 			{
 				SAILOR_PROFILE_FUNCTION();
 
+				vec2 wrappedUV;
+				wrappedUV.x = uv.x - std::floor(uv.x);
+				wrappedUV.y = uv.y - std::floor(uv.y);
+
 				// Convert UV to pixel space once, and compute the required values.
-				const float fx = uv.x * (m_width - 1);
-				const float fy = uv.y * (m_height - 1);
+				const float fx = wrappedUV.x * (m_width - 1);
+				const float fy = wrappedUV.y * (m_height - 1);
 
 				const int32_t tX0 = static_cast<int32_t>(fx);
 				const int32_t tY0 = static_cast<int32_t>(fy);
@@ -203,8 +207,7 @@ namespace Sailor
 		__forceinline Raytracing::SampledData GetSampledData(const size_t& materialIndex, glm::vec2 uv) const;
 
 		vec3 CalculatePBR(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const;
-
-		vec3 Raytrace(const Math::Ray& r, const BVH& bvh) const;
+		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle) const;
 
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};

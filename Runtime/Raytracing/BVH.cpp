@@ -32,7 +32,7 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 	for (uint32_t a = 0; a < 3; a++)
 	{
 		float boundsMin = std::numeric_limits<float>::max();
-		float boundsMax = -300000.0f;
+		float boundsMax = -30000000.0f;
 
 		for (uint32_t i = 0; i < node.m_triCount; i++)
 		{
@@ -308,21 +308,13 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 	m_triangles.Reserve(tris.Num());
 	m_triIdxMapping.AddDefault(tris.Num());
 
-	// TODO: Parallilize
+	// TODO: Parallelize
 	for (uint32_t i = 0; i < m_nodes.Num(); i++)
 	{
 		if (m_nodes[i].IsLeaf())
 		{
 			const uint32_t triIndex = m_nodes[i].m_leftFirst;
 			m_nodes[i].m_leftFirst = (int32_t)m_triangles.Num();
-
-			if (m_triangles.Num() == 1)
-			{
-				const uint32_t triId = m_triIdx[triIndex];
-				m_triIdxMapping[m_triangles.Num()] = triId;
-				m_triangles.Add(tris[triId]);
-				continue;
-			}
 
 			SAILOR_PROFILE_BLOCK("Sort Triangles by area");
 			TVector<uint32_t> sorted(m_nodes[i].m_triCount);

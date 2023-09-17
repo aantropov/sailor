@@ -47,21 +47,20 @@ glm::vec4 Utils::SRGBToLinear(const glm::vec4& srgbIn)
 
 glm::vec3 Utils::LinearToSRGB(const glm::vec3& linearRGB)
 {
-	//return vec3(powf(linearRGB.x, 1.0f / 2.2f), powf(linearRGB.y, 1.0f / 2.2f), powf(linearRGB.z, 1.0f / 2.2f));
-
 	auto cutoff = glm::lessThan(linearRGB, glm::vec3(0.0031308f));
 	glm::vec3 higher = glm::vec3(1.055f) * glm::pow(linearRGB, glm::vec3(1.f / 2.4f)) - glm::vec3(0.055f);
 	glm::vec3 lower = linearRGB * glm::vec3(12.92f);
 
 	return glm::mix(higher, lower, cutoff);
+
+	//return vec3(powf(linearRGB.x, 1.0f / 2.2f), powf(linearRGB.y, 1.0f / 2.2f), powf(linearRGB.z, 1.0f / 2.2f));
 }
 
 glm::vec3 Utils::SRGBToLinear(const glm::vec3& srgbIn)
 {
-	//return vec3(powf(srgbIn.x, 2.2f), powf(srgbIn.y, 2.2f), powf(srgbIn.z, 2.2f));
-
 	glm::vec3 bLess = glm::step(glm::vec3(0.04045f), srgbIn);
 	return glm::mix(srgbIn / glm::vec3(12.92f), glm::pow((srgbIn + glm::vec3(0.055f)) / glm::vec3(1.055f), glm::vec3(2.4f)), bLess);
+	//return vec3(powf(srgbIn.x, 2.2f), powf(srgbIn.y, 2.2f), powf(srgbIn.z, 2.2f));
 }
 
 std::string Utils::wchar_to_UTF8(const wchar_t* in)
