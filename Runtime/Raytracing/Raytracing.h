@@ -23,6 +23,7 @@ namespace Sailor
 			uint32_t m_height;
 			uint32_t m_numSamples;
 			uint32_t m_numBounces;
+			uint32_t m_msaa;
 		};
 
 		static void ParseParamsFromCommandLineArgs(Params& params, const char** args, int32_t num);
@@ -164,6 +165,7 @@ namespace Sailor
 			glm::vec3 m_orm{};
 			glm::vec3 m_emissive{};
 			glm::vec3 m_normal{};
+			float m_transmission = 0.0f;
 		};
 
 		struct Material
@@ -206,8 +208,9 @@ namespace Sailor
 
 		__forceinline Raytracing::SampledData GetSampledData(const size_t& materialIndex, glm::vec2 uv) const;
 
-		vec3 CalculatePBR(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const;
-		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle) const;
+		vec3 CalculateBRDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const;
+		vec3 CalculateBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const;
+		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Raytracing::Params& params) const;
 
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};

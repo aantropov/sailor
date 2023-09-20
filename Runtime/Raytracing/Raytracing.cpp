@@ -1,4 +1,4 @@
-#include "Raytracing.h"
+﻿#include "Raytracing.h"
 #include "Tasks/Scheduler.h"
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
@@ -185,11 +185,11 @@ Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<Raytracing::Texture2D>>& m_t
 	Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
 		[
 			scene = scene,
-				pTexture = ptr,
-				sceneFile = sceneFile,
-				fileName = filename,
-				bConvertToLinear = bConvertToLinear,
-				bNormalMap = bNormalMap
+			pTexture = ptr,
+			sceneFile = sceneFile,
+			fileName = filename,
+			bConvertToLinear = bConvertToLinear,
+			bNormalMap = bNormalMap
 		]() mutable
 		{
 			int32_t texChannels = 0;
@@ -291,11 +291,13 @@ void Raytracing::Run(const Raytracing::Params& params)
 	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(vFov, (float)width, (float)height, zMin, zMax));
 	mat4 viewMatrix{ 1 };
 
-	//auto cameraPos = vec3(0.0f, 0.5f, 0.65f) * 0.5f; //vec3(0, 0, 4);
+	//auto cameraPos = vec3(0, 10, 10);
 	auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
+	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
+
 	auto cameraUp = normalize(vec3(0, 1, 0));
 	auto cameraForward = normalize(-cameraPos);
-	//auto cameraForward = -vec3(0.5f, 0.7f, 1.0f);
+	//auto cameraForward = glm::normalize(glm::vec3(0.0f, -0.0f, -1.0f));
 
 	auto axis = normalize(cross(cameraForward, cameraUp));
 	cameraUp = normalize(cross(axis, cameraForward));
@@ -416,6 +418,22 @@ void Raytracing::Run(const Raytracing::Params& params)
 				}
 			}
 
+			if (aiMaterial->GetTexture(aiTextureType_TRANSMISSION, 0, &fileName) == AI_SUCCESS)
+			{
+				const std::string file(fileName.C_Str());
+				if (m_textureMapping.ContainsKey(file))
+				{
+					material.m_transmissionIndex = m_textureMapping[file];
+				}
+				else
+				{
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, false));
+					material.m_transmissionIndex = textureIndex;
+					m_textureMapping[file] = textureIndex;
+					textureIndex++;
+				}
+			}
+
 			aiColor3D color3D{};
 			aiColor4D color4D{};
 			float color1D = 0.0f;
@@ -489,13 +507,13 @@ void Raytracing::Run(const Raytracing::Params& params)
 								const uint32_t index = (y + v) * width + (x + u);
 								float tu = (x + u) / (float)width;
 
-								if ((x + u) == 340 && (y + v) == 567)
+								if ((x + u) == 433 && ((y + v) == 454))
 								{
 									volatile uint32_t a = 0;
 								}
 
 								vec3 accumulator = vec3(0);
-								for (uint32_t sample = 0; sample < params.m_numSamples; sample++)
+								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
 									auto offset = sample == 0 ? vec2(0, 0) : glm::linearRand(vec2(0, 0), vec2(1.0f / width, 1.0f / height));
 
@@ -503,10 +521,10 @@ void Raytracing::Run(const Raytracing::Params& params)
 									const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * (tu + offset.x);
 									ray.SetDirection(vec3(0.001f, 0.001f, 0.001f) + glm::normalize(midTop + (midBottom - midTop) * (tv + offset.y) - cameraPos));
 
-									accumulator += Raytrace(ray, bvh, params.m_numBounces, (uint32_t)(-1));
+									accumulator += Raytrace(ray, bvh, params.m_numBounces, (uint32_t)(-1), params);
 								}
 
-								output[index] = accumulator / (float)params.m_numSamples;
+								output[index] = accumulator / (float)params.m_msaa;
 								SAILOR_PROFILE_END_BLOCK();
 							}
 						}
@@ -581,7 +599,7 @@ float DistributionGGX(const vec3& N, const vec3& H, float roughness)
 	float denom = (NdotH2 * (a2 - 1.0f) + 1.0f);
 	denom = glm::pi<float>() * denom * denom;
 
-	return nom / denom;
+	return nom / std::max(denom, 0.00001f);
 }
 
 vec3 FresnelSchlick(float cosTheta, const vec3& F0)
@@ -596,7 +614,50 @@ float GeometrySchlickGGX(float NdotV, float roughness)
 	return NdotV / denom;
 }
 
-vec3 Raytracing::CalculatePBR(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const
+vec3 Raytracing::CalculateBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lDirection, const SampledData& sample) const
+{
+	// FLip light direction
+	const vec3 lightDirection = lDirection + 2.0f * worldNormal * dot(-lDirection, worldNormal);
+
+	const float ambientOcclusion = sample.m_orm.x;
+	const float roughness = sample.m_orm.y;
+	const float metallic = sample.m_orm.z;
+	const float transmission = sample.m_transmission;
+
+	if (transmission <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	const float nDotL = abs(glm::dot(worldNormal, lightDirection));
+	const float nDotV = abs(glm::dot(worldNormal, viewDirection));
+
+	const vec3 F0 = vec3(0.04f);
+
+	const vec3 halfwayVector = normalize(viewDirection + lightDirection);
+	const float NDF = DistributionGGX(worldNormal, halfwayVector, roughness);
+	const vec3 F = FresnelSchlick(std::max(abs(glm::dot(halfwayVector, viewDirection)), 0.0f), F0);
+
+	float geomA = GeometrySchlickGGX(nDotL, roughness);
+	float geomB = GeometrySchlickGGX(nDotV, roughness);
+	float geometricTerm = geomA * geomB;
+
+	vec3 kT = (1.0f - F) * transmission * (1.0f - metallic) * sample.m_baseColor.xyz;
+
+	// TODO: Two sided
+	if (nDotL < 0.0f || nDotV < 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	float denominator = (4.0f * std::max(nDotV, 0.0f) * std::max(nDotL, 0.0f)) + 0.001f;
+	vec3 specularTerm = (kT * NDF * geometricTerm) / denominator;
+	vec3 lighting = (specularTerm);
+
+	return lighting;
+}
+
+vec3 Raytracing::CalculateBRDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const
 {
 	const float ambientOcclusion = sample.m_orm.x;
 	const float roughness = sample.m_orm.y;
@@ -617,9 +678,10 @@ vec3 Raytracing::CalculatePBR(const vec3& viewDirection, const vec3& worldNormal
 	vec3 kS = F;
 	vec3 kD = vec3(1.0f) - kS;
 	kD *= 1.0f - metallic;
+	kD *= 1.0f - sample.m_transmission;
 
 	// TODO: Two sided
-	if (nDotL < 0.0f  || nDotV < 0.0f)
+	if (nDotL < 0.0f || nDotV < 0.0f)
 	{
 		return vec3(0.0f);
 	}
@@ -656,9 +718,10 @@ vec3 ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
 
 float GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 {
+	const float infCompensation = 0.00001f;
 	float a = roughness * roughness;
-	float NdotH = std::max(dot(N, H), 0.0001f);
-	float VdotH = std::max(dot(V, H), 0.0001f);
+	float NdotH = std::max(dot(N, H), infCompensation);
+	float VdotH = std::max(dot(V, H), infCompensation);
 
 	//float D = a / (glm::pi<float>() * pow(NdotH * NdotH * (a - 1.0f) + 1.0f, 2.0f));
 	float D = (a * a) / (glm::pi<float>() * pow(NdotH * NdotH * (a * a - 1.0f) + 1.0f, 2.0f));
@@ -667,7 +730,7 @@ float GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 	return pdf;
 }
 
-vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle) const
+vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Raytracing::Params& params) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -679,9 +742,14 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
-		const vec3 faceNormal = vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] + hit.m_barycentricCoordinate.y * tri.m_normals[1] + hit.m_barycentricCoordinate.z * tri.m_normals[2]);
+		vec3 faceNormal = vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] + hit.m_barycentricCoordinate.y * tri.m_normals[1] + hit.m_barycentricCoordinate.z * tri.m_normals[2]);
 		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] + hit.m_barycentricCoordinate.y * tri.m_tangent[1] + hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
 		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] + hit.m_barycentricCoordinate.y * tri.m_bitangent[1] + hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
+
+		if (dot(faceNormal, ray.GetDirection()) > 0.0f)
+		{
+			faceNormal *= -1.0f;
+		}
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 
@@ -695,7 +763,7 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 		RaycastHit hitLight{};
 		const vec3 toLight = normalize(vec3(1, 1, -1));
-		const vec3 offset = 0.00001f * faceNormal;
+		vec3 offset = 0.00001f * faceNormal;
 
 		SAILOR_PROFILE_END_BLOCK();
 
@@ -703,16 +771,16 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		Ray rayToLight(hit.m_point + offset, toLight);
 		if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 		{
-			res += CalculatePBR(viewDirection, worldNormal, toLight, sample);
+			const float angle = abs(glm::dot(toLight, worldNormal));
+			res += CalculateBRDF(viewDirection, worldNormal, toLight, sample) * 3.0f * angle;
 		}
-
 		SAILOR_PROFILE_END_BLOCK();
-
-		SAILOR_PROFILE_BLOCK("Bounces");
 
 		if (bounceLimit > 0)
 		{
-			const uint32_t numExtraSamples = 64;
+			SAILOR_PROFILE_BLOCK("Bounces");
+			const uint32_t numExtraSamples = bounceLimit == params.m_numBounces ? params.m_numSamples : 1;
+			float contribution = 0.0f;
 
 			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
 			for (uint32_t i = 0; i < numExtraSamples; i++)
@@ -721,18 +789,51 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 				vec3 H = ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal);
 				vec3 direction = 2.0f * dot(viewDirection, H) * H - viewDirection;
 
-				float pdf = GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
-				float weight = std::min(50.0f, 1.0f / pdf);
+				const bool bTransmission = sample.m_orm.z < 1.0f && sample.m_transmission > 0.0f && (glm::linearRand(0.0f, 1.0f) > 0.5f);
+				if (bTransmission)
+				{
+					direction += 2.0f * worldNormal * dot(-direction, worldNormal);
+				}
 
-				const Ray rayToDirection(hit.m_point + offset, direction);
-				indirect += weight * CalculatePBR(viewDirection, worldNormal, direction, sample) * Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex);
+				float pdf = GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
+
+				if (!isnan(pdf) && pdf > 0.0001f)
+				{
+					pdf = 1.0f / pdf;
+
+					const float angle = abs(glm::dot(direction, worldNormal));
+
+					vec3 term = vec3(0.0f, 0.0f, 0.0f);
+					if (bTransmission)
+					{
+						offset = -0.00001f * faceNormal;
+						//const vec3 lDirection = lightDirection - 2.0f * worldNormal * dot(-lightDirection, worldNormal);
+						term = CalculateBTDF(viewDirection, worldNormal, direction, sample);
+					}
+					else
+					{
+						term = CalculateBRDF(viewDirection, worldNormal, direction, sample);
+					}
+
+					const Ray rayToDirection(hit.m_point + offset, direction);
+					indirect += glm::max(vec3(0.0f, 0.0f, 0.0f),
+						pdf *
+						term *
+						angle *
+						Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex, params));
+
+					contribution += 1.0f;
+				}
 			}
-			res += indirect / (float)numExtraSamples;
+
+			if (contribution > 0.0f)
+			{
+				res += /* sample.m_orm.r * */ (indirect / contribution);
+			}
+			SAILOR_PROFILE_END_BLOCK();
 		}
 
 		res += sample.m_emissive;
-
-		SAILOR_PROFILE_END_BLOCK();
 	}
 	else
 	{
@@ -751,6 +852,7 @@ Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, 
 	res.m_normal = vec3(0, 0, 1.0f);
 	res.m_orm = vec3(0.0f, material.m_roughnessFactor, material.m_metallicFactor);
 	res.m_emissive = material.m_emissiveFactor;
+	res.m_transmission = material.m_transmissionFactor;
 
 	if (material.HasBaseTexture())
 	{
@@ -771,6 +873,11 @@ Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, 
 	if (material.HasNormalTexture())
 	{
 		res.m_normal = m_textures[material.m_normalIndex]->Sample<vec3>(uv);
+	}
+
+	if (material.HasTransmissionTexture())
+	{
+		res.m_transmission *= m_textures[material.m_transmissionIndex]->Sample<vec3>(uv).r;
 	}
 
 	return res;
