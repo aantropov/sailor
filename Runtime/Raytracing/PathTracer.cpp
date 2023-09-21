@@ -103,7 +103,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	const float zMax = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneFar : 1000.0f;
 
 	// Camera
-	//auto cameraPos = vec3(0, 10, 10);
+	//auto cameraPos = vec3(0, 0, 10);
 	auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
 
@@ -310,6 +310,15 @@ void PathTracer::Run(const PathTracer::Params& params)
 						Ray ray;
 						ray.SetOrigin(cameraPos);
 
+						uint32_t debugX = 450;
+						uint32_t debugY = 390;
+
+						if (!(x < debugX && (x + GroupSize) > debugX &&
+							y < debugY && (y + GroupSize) > debugY))
+						{
+							//return;
+						}
+
 						for (uint32_t v = 0; v < GroupSize && (y + v) < height; v++)
 						{
 							float tv = (y + v) / (float)height;
@@ -320,7 +329,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 								const uint32_t index = (y + v) * width + (x + u);
 								float tu = (x + u) / (float)width;
 
-								if ((x + u) == 433 && ((y + v) == 454))
+								if ((x + u) == debugX && ((y + v) == debugY))
 								{
 									volatile uint32_t a = 0;
 								}
@@ -417,10 +426,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] + hit.m_barycentricCoordinate.y * tri.m_tangent[1] + hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
 		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] + hit.m_barycentricCoordinate.y * tri.m_bitangent[1] + hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
 
-		/*if (dot(faceNormal, ray.GetDirection()) > 0.0f)
+		if (dot(faceNormal, ray.GetDirection()) > 0.0f)
 		{
 			faceNormal *= -1.0f;
-		}*/
+		}
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 
@@ -456,25 +465,37 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			const uint32_t numExtraSamples = bounceLimit == params.m_numBounces ? params.m_numSamples : 1;
 			float contribution = 0.0f;
 
-			// Cache friendly distribution of directions
 			for (uint32_t i = 0; i < numExtraSamples; i++)
 			{
+				const bool bFullMetallic = sample.m_orm.z == 1.0f && sample.m_orm.y == 0.0f;
+				const bool bSpecular = bFullMetallic || glm::linearRand(0.0f, 1.0f) > 0.5f;
+
+				const float importanceRoughness = bSpecular ? sample.m_orm.y : 1.0f;
+
 				vec2 randomSample = vec2(glm::linearRand(0.0f, 1.0f), glm::linearRand(0.0f, 1.0f));
-				vec3 H = LightingModel::ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal);
+				vec3 H = LightingModel::ImportanceSampleGGX(randomSample, importanceRoughness, worldNormal);
 				vec3 direction = 2.0f * dot(viewDirection, H) * H - viewDirection;
 
-				const bool bTransmission = sample.m_orm.z < 1.0f && sample.m_transmission > 0.0f && (glm::linearRand(0.0f, 1.0f) > 0.5f);
+				const bool bHasTransmission = sample.m_orm.z < 1.0f && sample.m_transmission > 0.0f;
+				const bool bTransmission = bHasTransmission && (glm::linearRand(0.0f, 1.0f) > 0.5f);
+
 				if (bTransmission)
 				{
 					direction += 2.0f * worldNormal * dot(-direction, worldNormal);
 				}
 
-				float pdf = LightingModel::GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
+				const float pdfSpec = LightingModel::GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
+				const float pdfLambert = abs(dot(direction, worldNormal)) / Math::Pi;
+
+				float pdf = bFullMetallic ? pdfSpec : ((pdfSpec + pdfLambert) * 0.5f);
+
+				if (bHasTransmission)
+				{
+					pdf *= 0.5f;
+				}
 
 				if (!isnan(pdf) && pdf > 0.0001f)
 				{
-					pdf = 1.0f / pdf;
-
 					const float angle = abs(glm::dot(direction, worldNormal));
 
 					vec3 term = vec3(0.0f, 0.0f, 0.0f);
@@ -491,10 +512,9 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 					const Ray rayToDirection(hit.m_point + offset, direction);
 					indirect += glm::max(vec3(0.0f, 0.0f, 0.0f),
-						pdf *
-						term *
-						angle *
-						Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex, params));
+						(term *
+							angle *
+							Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex, params)) / pdf);
 
 					contribution += 1.0f;
 				}

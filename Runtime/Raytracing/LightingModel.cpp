@@ -10,7 +10,7 @@ using namespace Sailor::Raytracing;
 
 float LightingModel::DistributionGGX(const vec3& N, const vec3& H, float roughness)
 {
-	float a = roughness * roughness;
+	float a = std::max(roughness * roughness, 0.001f);
 	float a2 = a * a;
 	float NdotH = std::max(dot(N, H), 0.0001f);
 	float NdotH2 = NdotH * NdotH;
@@ -19,7 +19,7 @@ float LightingModel::DistributionGGX(const vec3& N, const vec3& H, float roughne
 	float denom = (NdotH2 * (a2 - 1.0f) + 1.0f);
 	denom = glm::pi<float>() * denom * denom;
 
-	return nom / std::max(denom, 0.00001f);
+	return nom / denom;
 }
 
 vec3 LightingModel::FresnelSchlick(float cosTheta, const vec3& F0)
@@ -117,7 +117,7 @@ vec3 LightingModel::CalculateBRDF(const vec3& viewDirection, const vec3& worldNo
 
 vec3 LightingModel::ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
 {
-	float a = roughness * roughness;
+	float a = std::max(roughness * roughness, 0.001f);
 
 	float phi = 2.0f * glm::pi<float>() * Xi.x;
 	float cosTheta = sqrt((1.0f - Xi.y) / (1.0f + (a * a - 1.0f) * Xi.y));
@@ -128,7 +128,7 @@ vec3 LightingModel::ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
 	H.y = sinTheta * sin(phi);
 	H.z = cosTheta;
 
-	vec3 up = abs(n.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 up = abs(n.z) < 0.999f ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
 	vec3 tangent = normalize(cross(up, n));
 	vec3 bitangent = cross(n, tangent);
 
@@ -139,7 +139,7 @@ vec3 LightingModel::ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
 float LightingModel::GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 {
 	const float infCompensation = 0.00001f;
-	float a = roughness * roughness;
+	float a = std::max(roughness * roughness, 0.001f);
 	float NdotH = std::max(dot(N, H), infCompensation);
 	float VdotH = std::max(dot(V, H), infCompensation);
 
