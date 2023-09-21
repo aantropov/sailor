@@ -25,7 +25,7 @@
 #include "Submodules/RenderDocApi.h"
 #include "timeApi.h"
 #include "Submodules/ImGuiApi.h"
-#include "Raytracing/Raytracing.h"
+#include "Raytracing/PathTracer.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -103,17 +103,20 @@ void App::Initialize()
 void App::Start(const char** commandLineArgs, int32_t num)
 {
 	{
-		//Raytracing::Params params{};
+		//Raytracing::PathTracer::Params params{};
 		//params.m_output = "output.png";
 		//params.m_height = 768;
-		//params.m_pathToModel = "../Content/Models/DuckGlb/Duck.glb";
+		//params.m_msaa = 16;
+		//params.m_numSamples = 128;
+		//params.m_numBounces = 3;
+		//params.m_pathToModel = "../Content/Models/round12/round12.glb";
 		//
-		//Raytracing::ParseParamsFromCommandLineArgs(params, commandLineArgs, num);
-		//Raytracing r;
+		//Raytracing::PathTracer::ParseParamsFromCommandLineArgs(params, commandLineArgs, num);
+		//Raytracing::PathTracer r;
 		//
 		//r.Run(params);
 		//return;
-	}	//
+	}
 
 	s_pInstance->m_pViewportWindow->SetActive(true);
 	s_pInstance->m_pViewportWindow->SetRunning(true);
@@ -184,7 +187,7 @@ void App::Start(const char** commandLineArgs, int32_t num)
 			if (systemInputState.IsKeyPressed(VK_F6) && !renderDoc->IsConnected())
 			{
 				renderDoc->LaunchRenderDocApp();
-			}
+		}
 	}
 #endif
 
@@ -263,7 +266,7 @@ void App::Shutdown()
 	if (App::GetSubmodule<RenderDocApi>())
 	{
 		RemoveSubmodule<RenderDocApi>();
-}
+	}
 #endif
 
 	RemoveSubmodule<EngineLoop>();

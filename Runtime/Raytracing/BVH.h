@@ -3,7 +3,9 @@
 #include "Math/Bounds.h"
 #include "Containers/Vector.h"
 
-namespace Sailor
+using namespace Sailor;
+
+namespace Sailor::Raytracing
 {
 	//Inspired by https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/
 	class BVH

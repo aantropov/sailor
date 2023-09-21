@@ -1,22 +1,11 @@
-﻿#include "Raytracing.h"
+﻿#include "PathTracer.h"
 #include "Tasks/Scheduler.h"
-#include "Containers/Vector.h"
-#include "Containers/Set.h"
-#include "Containers/Map.h"
-#include "Containers/List.h"
-#include "Containers/Octree.h"
-#include "Memory/MemoryBlockAllocator.hpp"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
-#include "Memory/SharedPtr.hpp"
-#include "Memory/WeakPtr.hpp"
-#include "Memory/UniquePtr.hpp"
-#include "Containers/Containers.h"
 #include "glm/glm/glm.hpp"
 #include "Math/Math.h"
 #include "Math/Bounds.h"
 #include "glm/glm/gtc/random.hpp"
-#include "BVH.h"
 
 #include "stb/stb_image.h"
 
@@ -32,12 +21,11 @@
 #include "assimp/DefaultLogger.hpp"
 #include "assimp/LogStream.hpp"
 
-#include "nlohmann_json/include/nlohmann/json.hpp"
-
 using namespace Sailor;
 using namespace Sailor::Math;
+using namespace Sailor::Raytracing;
 
-void Raytracing::ParseParamsFromCommandLineArgs(Raytracing::Params& res, const char** args, int32_t num)
+void PathTracer::ParseParamsFromCommandLineArgs(PathTracer::Params& res, const char** args, int32_t num)
 {
 	for (int32_t i = 1; i < num; i += 2)
 	{
@@ -56,189 +44,7 @@ void Raytracing::ParseParamsFromCommandLineArgs(Raytracing::Params& res, const c
 	}
 }
 
-void GenerateTangentBitangent(
-	vec3& outTangent,
-	vec3& outBitangent,
-	const vec3* vert,
-	const vec2* uv)
-{
-	vec3 edge1 = vert[1] - vert[0];
-	vec3 edge2 = vert[2] - vert[0];
-
-	vec2 deltaUV1 = uv[1] - uv[0];
-	vec2 deltaUV2 = uv[2] - uv[0];
-
-	float denominator = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
-	if (abs(denominator) < 1e-6f)
-	{
-		return;
-	}
-
-	float f = 1.0f / denominator;
-
-	outTangent = vec3(
-		f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x),
-		f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y),
-		f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z)
-	);
-
-	vec3 normal = cross(edge1, edge2);
-	outBitangent = normalize(cross(normal, outTangent));
-	outTangent = normalize(outTangent);
-}
-
-void ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const aiScene* scene)
-{
-	SAILOR_PROFILE_FUNCTION();
-
-	check(mesh->HasPositions());
-	check(mesh->HasNormals());
-
-	const size_t startIndex = outScene.Num();
-
-	outScene.AddDefault(mesh->mNumFaces);
-	for (uint32_t i = 0; i < mesh->mNumFaces; i++)
-	{
-		aiFace face = mesh->mFaces[i];
-		if (face.mNumIndices != 3)
-		{
-			continue;
-		}
-
-		Math::Triangle& tri = outScene[startIndex + i];
-
-		// TODO: use pointers instead of memcpy
-		memcpy(&tri.m_vertices[0], &mesh->mVertices[face.mIndices[0]], sizeof(float) * 3);
-		memcpy(&tri.m_vertices[1], &mesh->mVertices[face.mIndices[1]], sizeof(float) * 3);
-		memcpy(&tri.m_vertices[2], &mesh->mVertices[face.mIndices[2]], sizeof(float) * 3);
-
-		memcpy(&tri.m_normals[0], &mesh->mNormals[face.mIndices[0]], sizeof(float) * 3);
-		memcpy(&tri.m_normals[1], &mesh->mNormals[face.mIndices[1]], sizeof(float) * 3);
-		memcpy(&tri.m_normals[2], &mesh->mNormals[face.mIndices[2]], sizeof(float) * 3);
-
-		tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) * 0.333f;
-
-		if (mesh->HasTextureCoords(0))
-		{
-			memcpy(&tri.m_uvs[0], &mesh->mTextureCoords[0][face.mIndices[0]], sizeof(float) * 2);
-			memcpy(&tri.m_uvs[1], &mesh->mTextureCoords[0][face.mIndices[1]], sizeof(float) * 2);
-			memcpy(&tri.m_uvs[2], &mesh->mTextureCoords[0][face.mIndices[2]], sizeof(float) * 2);
-		}
-
-		if (mesh->HasTangentsAndBitangents())
-		{
-			memcpy(&tri.m_tangent[0], &mesh->mTangents[face.mIndices[0]], sizeof(float) * 3);
-			memcpy(&tri.m_tangent[1], &mesh->mTangents[face.mIndices[1]], sizeof(float) * 3);
-			memcpy(&tri.m_tangent[2], &mesh->mTangents[face.mIndices[2]], sizeof(float) * 3);
-
-			memcpy(&tri.m_bitangent[0], &mesh->mBitangents[face.mIndices[0]], sizeof(float) * 3);
-			memcpy(&tri.m_bitangent[1], &mesh->mBitangents[face.mIndices[1]], sizeof(float) * 3);
-			memcpy(&tri.m_bitangent[2], &mesh->mBitangents[face.mIndices[2]], sizeof(float) * 3);
-		}
-		else
-		{
-			vec3 t = vec3(0.0f, 0.0f, 0.0f);
-			vec3 b = vec3(0.0f, 0.0f, 0.0f);
-			GenerateTangentBitangent(t, b, &tri.m_vertices[0], &tri.m_uvs[0]);
-
-			memcpy(&tri.m_tangent[0], &t, sizeof(float) * 3);
-			memcpy(&tri.m_tangent[1], &t, sizeof(float) * 3);
-			memcpy(&tri.m_tangent[2], &t, sizeof(float) * 3);
-
-			memcpy(&tri.m_bitangent[0], &b, sizeof(float) * 3);
-			memcpy(&tri.m_bitangent[1], &b, sizeof(float) * 3);
-			memcpy(&tri.m_bitangent[2], &b, sizeof(float) * 3);
-		}
-
-		tri.m_materialIndex = mesh->mMaterialIndex;
-		//memcpy(&mesh->mVertices[face.mIndices[0]], tri.m_vertices, sizeof(float) * 3);
-	}
-}
-
-void ProcessNode_Assimp(TVector<Triangle>& outScene, aiNode* node, const aiScene* scene)
-{
-	SAILOR_PROFILE_FUNCTION();
-
-	for (uint32_t i = 0; i < node->mNumMeshes; i++)
-	{
-		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		ProcessMesh_Assimp(mesh, outScene, scene);
-	}
-
-	for (uint32_t i = 0; i < node->mNumChildren; i++)
-	{
-		ProcessNode_Assimp(outScene, node->mChildren[i], scene);
-	}
-}
-
-template<typename T>
-Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<Raytracing::Texture2D>>& m_textures,
-	const std::filesystem::path& sceneFile,
-	const aiScene* scene,
-	uint32_t textureIndex,
-	const std::string& filename,
-	bool bConvertToLinear,
-	bool bNormalMap = false)
-{
-	auto ptr = m_textures[textureIndex] = TSharedPtr<Raytracing::Texture2D>::Make();
-
-	Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
-		[
-			scene = scene,
-			pTexture = ptr,
-			sceneFile = sceneFile,
-			fileName = filename,
-			bConvertToLinear = bConvertToLinear,
-			bNormalMap = bNormalMap
-		]() mutable
-		{
-			int32_t texChannels = 0;
-			void* pixels = nullptr;
-
-			if (fileName[0] == '*')
-			{
-				const uint32 texIndex = atoi(&fileName[1]);
-				aiTexture* pAITexture = scene->mTextures[texIndex];
-				pixels = stbi_load_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth,
-					&pTexture->m_width,
-					&pTexture->m_height,
-					&texChannels, STBI_rgb_alpha);
-
-				pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, false, bNormalMap);
-			}
-			else
-			{
-				sceneFile.replace_filename(fileName);
-				if (stbi_is_hdr(sceneFile.string().c_str()))
-				{
-					pixels = stbi_loadf(sceneFile.string().c_str(),
-						&pTexture->m_width,
-						&pTexture->m_height,
-						&texChannels, STBI_rgb_alpha);
-
-					pTexture->Initialize<T, vec4>((vec4*)pixels, bConvertToLinear, false, bNormalMap);
-				}
-				else
-				{
-					pixels = stbi_load(sceneFile.string().c_str(),
-						&pTexture->m_width,
-						&pTexture->m_height,
-						&texChannels, STBI_rgb_alpha);
-
-					pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, false, bNormalMap);
-				}
-			}
-
-			if (pixels)
-			{
-				stbi_image_free(pixels);
-			}
-		})->Run();
-
-		return task;
-};
-
-void Raytracing::Run(const Raytracing::Params& params)
+void PathTracer::Run(const PathTracer::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -281,7 +87,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : (4.0f / 3.0f);
 	const uint32_t height = params.m_height;
 	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
-	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(60.0f);
+	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(90.0f);
 	const float vFov = 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio));
 
 	const float zMin = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneNear : 0.01f;
@@ -588,149 +394,7 @@ void Raytracing::Run(const Raytracing::Params& params)
 	::system(params.m_output.string().c_str());
 }
 
-float DistributionGGX(const vec3& N, const vec3& H, float roughness)
-{
-	float a = roughness * roughness;
-	float a2 = a * a;
-	float NdotH = std::max(dot(N, H), 0.0001f);
-	float NdotH2 = NdotH * NdotH;
-
-	float nom = a2;
-	float denom = (NdotH2 * (a2 - 1.0f) + 1.0f);
-	denom = glm::pi<float>() * denom * denom;
-
-	return nom / std::max(denom, 0.00001f);
-}
-
-vec3 FresnelSchlick(float cosTheta, const vec3& F0)
-{
-	return F0 + (1.0f - F0) * glm::pow(1.0f - cosTheta, 5.0f);
-}
-
-float GeometrySchlickGGX(float NdotV, float roughness)
-{
-	float k = (roughness * roughness) / 2.0f; // Different k value calculation
-	float denom = NdotV * (1.0f - k) + k;
-	return NdotV / denom;
-}
-
-vec3 Raytracing::CalculateBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lDirection, const SampledData& sample) const
-{
-	// FLip light direction
-	const vec3 lightDirection = lDirection + 2.0f * worldNormal * dot(-lDirection, worldNormal);
-
-	const float ambientOcclusion = sample.m_orm.x;
-	const float roughness = sample.m_orm.y;
-	const float metallic = sample.m_orm.z;
-	const float transmission = sample.m_transmission;
-
-	if (transmission <= 0.0f)
-	{
-		return vec3(0.0f);
-	}
-
-	const float nDotL = abs(glm::dot(worldNormal, lightDirection));
-	const float nDotV = abs(glm::dot(worldNormal, viewDirection));
-
-	const vec3 F0 = vec3(0.04f);
-
-	const vec3 halfwayVector = normalize(viewDirection + lightDirection);
-	const float NDF = DistributionGGX(worldNormal, halfwayVector, roughness);
-	const vec3 F = FresnelSchlick(std::max(abs(glm::dot(halfwayVector, viewDirection)), 0.0f), F0);
-
-	float geomA = GeometrySchlickGGX(nDotL, roughness);
-	float geomB = GeometrySchlickGGX(nDotV, roughness);
-	float geometricTerm = geomA * geomB;
-
-	vec3 kT = (1.0f - F) * transmission * (1.0f - metallic) * sample.m_baseColor.xyz;
-
-	// TODO: Two sided
-	if (nDotL < 0.0f || nDotV < 0.0f)
-	{
-		return vec3(0.0f);
-	}
-
-	float denominator = (4.0f * std::max(nDotV, 0.0f) * std::max(nDotL, 0.0f)) + 0.001f;
-	vec3 specularTerm = (kT * NDF * geometricTerm) / denominator;
-	vec3 lighting = (specularTerm);
-
-	return lighting;
-}
-
-vec3 Raytracing::CalculateBRDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample) const
-{
-	const float ambientOcclusion = sample.m_orm.x;
-	const float roughness = sample.m_orm.y;
-	const float metallic = sample.m_orm.z;
-
-	const float nDotL = glm::dot(worldNormal, lightDirection);
-	const float nDotV = glm::dot(worldNormal, viewDirection);
-
-	vec3 F0 = mix(vec3(0.04f), vec3(sample.m_baseColor), metallic);
-
-	vec3 halfwayVector = normalize(viewDirection + lightDirection);
-	float NDF = DistributionGGX(worldNormal, halfwayVector, roughness);
-	vec3 F = FresnelSchlick(std::max(glm::dot(halfwayVector, viewDirection), 0.0f), F0);
-	float geomA = GeometrySchlickGGX(nDotL, roughness);
-	float geomB = GeometrySchlickGGX(nDotV, roughness);
-	float geometricTerm = geomA * geomB;
-
-	vec3 kS = F;
-	vec3 kD = vec3(1.0f) - kS;
-	kD *= 1.0f - metallic;
-	kD *= 1.0f - sample.m_transmission;
-
-	// TODO: Two sided
-	if (nDotL < 0.0f || nDotV < 0.0f)
-	{
-		return vec3(0.0f);
-	}
-
-	float denominator = (4.0f * std::max(nDotV, 0.0f) * std::max(nDotL, 0.0f)) + 0.001f;
-	vec3 specularTerm = (F * NDF * geometricTerm) / denominator;
-	vec3 diffuseTerm = (kD * sample.m_baseColor.xyz) / glm::pi<float>();
-
-	vec3 lighting = (diffuseTerm + specularTerm);// *(vec3(1.0f) - vec3(ambientOcclusion));
-
-	return lighting;
-}
-
-vec3 ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
-{
-	float a = roughness * roughness;
-
-	float phi = 2.0f * glm::pi<float>() * Xi.x;
-	float cosTheta = sqrt((1.0f - Xi.y) / (1.0f + (a * a - 1.0f) * Xi.y));
-	float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
-
-	vec3 H;
-	H.x = sinTheta * cos(phi);
-	H.y = sinTheta * sin(phi);
-	H.z = cosTheta;
-
-	vec3 up = abs(n.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-	vec3 tangent = normalize(cross(up, n));
-	vec3 bitangent = cross(n, tangent);
-
-	vec3 sampleVec = tangent * H.x + bitangent * H.y + n * H.z;
-	return normalize(sampleVec);
-}
-
-float GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
-{
-	const float infCompensation = 0.00001f;
-	float a = roughness * roughness;
-	float NdotH = std::max(dot(N, H), infCompensation);
-	float VdotH = std::max(dot(V, H), infCompensation);
-
-	//float D = a / (glm::pi<float>() * pow(NdotH * NdotH * (a - 1.0f) + 1.0f, 2.0f));
-	float D = (a * a) / (glm::pi<float>() * pow(NdotH * NdotH * (a * a - 1.0f) + 1.0f, 2.0f));
-	float pdf = D * NdotH / (4.0f * VdotH);
-
-	return pdf;
-}
-
-vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Raytracing::Params& params) const
+vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const PathTracer::Params& params) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -757,7 +421,7 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
 			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
-		const SampledData sample = GetSampledData(tri.m_materialIndex, uv);
+		const LightingModel::SampledData sample = GetSampledData(tri.m_materialIndex, uv);
 		const vec3 viewDirection = -normalize(ray.GetDirection());
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
 
@@ -772,7 +436,7 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 		{
 			const float angle = abs(glm::dot(toLight, worldNormal));
-			res += CalculateBRDF(viewDirection, worldNormal, toLight, sample) * 3.0f * angle;
+			res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * 3.0f * angle;
 		}
 		SAILOR_PROFILE_END_BLOCK();
 
@@ -786,7 +450,7 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			for (uint32_t i = 0; i < numExtraSamples; i++)
 			{
 				vec2 randomSample = vec2(glm::linearRand(0.0f, 1.0f), glm::linearRand(0.0f, 1.0f));
-				vec3 H = ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal);
+				vec3 H = LightingModel::ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal);
 				vec3 direction = 2.0f * dot(viewDirection, H) * H - viewDirection;
 
 				const bool bTransmission = sample.m_orm.z < 1.0f && sample.m_transmission > 0.0f && (glm::linearRand(0.0f, 1.0f) > 0.5f);
@@ -795,7 +459,7 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					direction += 2.0f * worldNormal * dot(-direction, worldNormal);
 				}
 
-				float pdf = GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
+				float pdf = LightingModel::GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
 
 				if (!isnan(pdf) && pdf > 0.0001f)
 				{
@@ -808,11 +472,11 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					{
 						offset = -0.00001f * faceNormal;
 						//const vec3 lDirection = lightDirection - 2.0f * worldNormal * dot(-lightDirection, worldNormal);
-						term = CalculateBTDF(viewDirection, worldNormal, direction, sample);
+						term = LightingModel::CalculateBTDF(viewDirection, worldNormal, direction, sample);
 					}
 					else
 					{
-						term = CalculateBRDF(viewDirection, worldNormal, direction, sample);
+						term = LightingModel::CalculateBRDF(viewDirection, worldNormal, direction, sample);
 					}
 
 					const Ray rayToDirection(hit.m_point + offset, direction);
@@ -843,11 +507,11 @@ vec3 Raytracing::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 	return res;
 }
 
-Raytracing::SampledData Raytracing::GetSampledData(const size_t& materialIndex, glm::vec2 uv) const
+LightingModel::SampledData PathTracer::GetSampledData(const size_t& materialIndex, glm::vec2 uv) const
 {
 	const auto& material = m_materials[materialIndex];
 
-	Raytracing::SampledData res{};
+	LightingModel::SampledData res{};
 	res.m_baseColor = material.m_baseColorFactor;
 	res.m_normal = vec3(0, 0, 1.0f);
 	res.m_orm = vec3(0.0f, material.m_roughnessFactor, material.m_metallicFactor);

@@ -1,24 +1,15 @@
-#include "Raytracing.h"
+#include "BVH.h"
 #include "Tasks/Scheduler.h"
 #include "Containers/Vector.h"
-#include "Containers/Set.h"
-#include "Containers/Map.h"
-#include "Containers/List.h"
-#include "Memory/MemoryBlockAllocator.hpp"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
-#include "Memory/SharedPtr.hpp"
-#include "Memory/WeakPtr.hpp"
-#include "Memory/UniquePtr.hpp"
-#include "Containers/Containers.h"
 #include "glm/glm/glm.hpp"
 #include "Math/Math.h"
 #include "Math/Bounds.h"
-#include "glm/glm/gtc/random.hpp"
-#include "BVH.h"
 
 using namespace Sailor;
 using namespace Sailor::Math;
+using namespace Sailor::Raytracing;
 
 float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>& tris, int32_t& outAxis, float& outSplitPos) const
 {
