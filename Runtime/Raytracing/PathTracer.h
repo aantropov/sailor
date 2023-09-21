@@ -16,8 +16,6 @@ namespace Sailor::Raytracing
 {
 	class PathTracer
 	{
-		const float VariableShaderRate = 0.005f;
-
 	public:
 
 		struct Params

@@ -62,7 +62,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		//aiProcess_Triangulate |
 		aiProcess_FlipUVs |
 		//aiProcess_SortByPType |
-		aiProcess_PreTransformVertices |
+		//aiProcess_PreTransformVertices |
 		aiProcess_GenNormals |
 		aiProcess_GenUVCoords |
 		//aiProcess_Debone |
@@ -84,19 +84,25 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
-	float aspectRatio = scene->HasCameras() ? scene->mCameras[0]->mAspect : (4.0f / 3.0f);
+	float aspectRatio = (scene->HasCameras() && scene->mCameras[0]->mAspect > 0.0f)
+		? scene->mCameras[0]->mAspect
+		: (4.0f / 3.0f);
+
 	const uint32_t height = params.m_height;
 	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
-	const float hFov = scene->HasCameras() ? scene->mCameras[0]->mHorizontalFOV : glm::radians(90.0f);
-	const float vFov = 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio));
+
+	const float hFov = (scene->HasCameras() && scene->mCameras[0]->mHorizontalFOV > 0.0f)
+		? scene->mCameras[0]->mHorizontalFOV
+		: glm::radians(90.0f);
+
+	const float vFov = (aspectRatio > 0.0f && hFov > 0.0f)
+		? 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio))
+		: 0.0f;
 
 	const float zMin = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneNear : 0.01f;
 	const float zMax = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneFar : 1000.0f;
 
 	// Camera
-	const mat4 projectionMatrix = transpose(glm::perspectiveFovRH(vFov, (float)width, (float)height, zMin, zMax));
-	mat4 viewMatrix{ 1 };
-
 	//auto cameraPos = vec3(0, 10, 10);
 	auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
@@ -113,26 +119,27 @@ void PathTracer::Run(const PathTracer::Params& params)
 	{
 		const auto& aiCamera = scene->mCameras[0];
 
-		aiNode* rootNode = scene->mRootNode;
-		aiNode* cameraNode = rootNode->FindNode(aiCamera->mName);
+		aiNode* pRootNode = scene->mRootNode;
+		aiNode* pCameraNode = pRootNode->FindNode(aiCamera->mName);
 
-		mat4 cameraTransformationMatrix{};
-		::memcpy(&cameraTransformationMatrix, &cameraNode->mTransformation, sizeof(float) * 16);
+		aiMatrix4x4 aiMatrix{};
+		aiNode* cur = pCameraNode;
+		while (cur != nullptr)
+		{
+			aiMatrix = aiMatrix * cur->mTransformation;
+			cur = cur->mParent;
+		}
 
-		vec4 camPos{ 0,0,0,1 };
-		::memcpy(&camPos, &aiCamera->mPosition, sizeof(float) * 3);
-		camPos = camPos * cameraTransformationMatrix;
-		camPos /= camPos.w;
-		cameraPos = camPos.xyz;
-
-		::memcpy(&cameraForward, &aiCamera->mLookAt, sizeof(float) * 3);
-		cameraForward = vec3(vec4(cameraForward, 0) * cameraTransformationMatrix);
-		cameraForward = normalize(cameraForward);
-
+		mat4 matrix{};
+		::memcpy(&matrix, &aiMatrix, sizeof(float) * 16);
 		::memcpy(&cameraUp, &aiCamera->mUp, sizeof(float) * 3);
-		cameraUp = normalize(cameraUp);
+		::memcpy(&cameraForward, &aiCamera->mLookAt, sizeof(float) * 3);
+		::memcpy(&cameraPos, &aiCamera->mPosition, sizeof(float) * 3);
 
-		viewMatrix = transpose(glm::lookAtRH(vec3(camPos.xyz), vec3(camPos.xyz) + cameraForward, cameraUp));
+		const vec4 translation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) * matrix;
+		cameraPos = vec3(translation.xyz) / translation.w;
+		cameraUp = glm::normalize(glm::vec3(glm::vec4(cameraUp, 0.0f) * matrix));
+		cameraForward = glm::normalize(glm::vec3(glm::vec4(cameraForward, 0.0f) * matrix));
 	}
 
 	const auto cameraRight = normalize(cross(cameraForward, cameraUp));
@@ -144,7 +151,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 
 	m_triangles.Reserve(numFaces);
-	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene);
+	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene, glm::mat4(1.0f));
 
 	{
 		TVector<Tasks::ITaskPtr> loadTexturesTasks;
@@ -410,10 +417,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] + hit.m_barycentricCoordinate.y * tri.m_tangent[1] + hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
 		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] + hit.m_barycentricCoordinate.y * tri.m_bitangent[1] + hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
 
-		if (dot(faceNormal, ray.GetDirection()) > 0.0f)
+		/*if (dot(faceNormal, ray.GetDirection()) > 0.0f)
 		{
 			faceNormal *= -1.0f;
-		}
+		}*/
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 
@@ -427,7 +434,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 		RaycastHit hitLight{};
 		const vec3 toLight = normalize(vec3(1, 1, -1));
-		vec3 offset = 0.00001f * faceNormal;
+		vec3 offset = 0.000001f * faceNormal;
 
 		SAILOR_PROFILE_END_BLOCK();
 
@@ -443,10 +450,13 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		if (bounceLimit > 0)
 		{
 			SAILOR_PROFILE_BLOCK("Bounces");
+
+			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
+
 			const uint32_t numExtraSamples = bounceLimit == params.m_numBounces ? params.m_numSamples : 1;
 			float contribution = 0.0f;
 
-			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
+			// Cache friendly distribution of directions
 			for (uint32_t i = 0; i < numExtraSamples; i++)
 			{
 				vec2 randomSample = vec2(glm::linearRand(0.0f, 1.0f), glm::linearRand(0.0f, 1.0f));

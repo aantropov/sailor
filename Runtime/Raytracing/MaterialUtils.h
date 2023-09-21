@@ -179,10 +179,13 @@ namespace Sailor::Raytracing
 		u8 m_specularColorIndex = -1;
 	};
 
-	void ProcessNode_Assimp(TVector<Math::Triangle>& outScene, aiNode* node, const aiScene* scene);
-	void ProcessMesh_Assimp(aiMesh* mesh, TVector<Math::Triangle>& outScene, const aiScene* scene);
+	SAILOR_API uint PackVec3ToByte(vec3 v);
+	SAILOR_API vec3 UnpackByteToVec3(uint byte);
 
-	void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv);
+	SAILOR_API void ProcessNode_Assimp(TVector<Math::Triangle>& outScene, aiNode* node, const aiScene* scene, const glm::mat4& matrix);
+	SAILOR_API void ProcessMesh_Assimp(aiMesh* mesh, TVector<Math::Triangle>& outScene, const aiScene* scene, const glm::mat4& matrix);
+
+	SAILOR_API void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv);
 
 	template<typename T>
 	Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<Texture2D>>& m_textures,
