@@ -58,19 +58,27 @@ void PathTracer::Run(const PathTracer::Params& params)
 	Assimp::Importer importer;
 
 	const unsigned int DefaultImportFlags_Assimp =
-		//aiProcess_CalcTangentSpace |
-		//aiProcess_Triangulate |
 		aiProcess_FlipUVs |
-		//aiProcess_SortByPType |
-		//aiProcess_PreTransformVertices |
 		aiProcess_GenNormals |
 		aiProcess_GenUVCoords |
+
+		//We don't need that since we are generating the missing tangents/bitangents with our own
+		//aiProcess_CalcTangentSpace |
+
+		//We only support gltf, which by specification contains only triangles
+		//aiProcess_Triangulate |
+		//aiProcess_SortByPType |
+
+		// Assimp wrongly applies the matrix transform on camera pos, that's why we apply the matrix calcs with our own
+		//aiProcess_PreTransformVertices |
+
+		// We expect only valid gltfs
 		//aiProcess_Debone |
-		//aiProcess_FixInfacingNormals |
 		//aiProcess_ValidateDataStructure |
+		//aiProcess_FixInfacingNormals |
+		//aiProcess_FindInvalidData |
 		//aiProcess_FindDegenerates |
 		//aiProcess_ImproveCacheLocality |
-		//aiProcess_FindInvalidData |
 		//aiProcess_FlipWindingOrder |
 		0;
 
@@ -144,13 +152,13 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	const auto cameraRight = normalize(cross(cameraForward, cameraUp));
 
-	uint32_t numFaces = 0;
+	uint32_t expectedNumFaces = 0;
 	for (uint32_t i = 0; i < scene->mNumMeshes; i++)
 	{
-		numFaces += scene->mMeshes[i]->mNumFaces;
+		expectedNumFaces += scene->mMeshes[i]->mNumFaces;
 	}
 
-	m_triangles.Reserve(numFaces);
+	m_triangles.Reserve(expectedNumFaces);
 	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene, glm::mat4(1.0f));
 
 	{
@@ -269,7 +277,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		}
 	}
 
-	BVH bvh(numFaces);
+	BVH bvh((uint32_t)m_triangles.Num());
 	bvh.BuildBVH(m_triangles);
 
 	SAILOR_PROFILE_BLOCK("Viewport Calcs");
