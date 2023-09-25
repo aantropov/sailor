@@ -318,15 +318,16 @@ void PathTracer::Run(const PathTracer::Params& params)
 						Ray ray;
 						ray.SetOrigin(cameraPos);
 
-						uint32_t debugX = 450;
-						uint32_t debugY = 390;
+#ifdef _DEBUG
+						uint32_t debugX = 440;
+						uint32_t debugY = 105;
 
 						if (!(x < debugX && (x + GroupSize) > debugX &&
 							y < debugY && (y + GroupSize) > debugY))
 						{
-							//return;
+							return;
 						}
-
+#endif
 						for (uint32_t v = 0; v < GroupSize && (y + v) < height; v++)
 						{
 							float tv = (y + v) / (float)height;
@@ -337,11 +338,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 								const uint32_t index = (y + v) * width + (x + u);
 								float tu = (x + u) / (float)width;
 
+#ifdef _DEBUG
 								if ((x + u) == debugX && ((y + v) == debugY))
 								{
 									volatile uint32_t a = 0;
 								}
-
+#endif
 								vec3 accumulator = vec3(0);
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
@@ -424,6 +426,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 	vec3 res = vec3(0);
 	RaycastHit hit;
+
 	if (bvh.IntersectBVH(ray, hit, 0, std::numeric_limits<float>().max(), ignoreTriangle))
 	{
 		SAILOR_PROFILE_BLOCK("Sampling");
@@ -530,12 +533,27 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 			if (contribution > 0.0f)
 			{
-				res += /* sample.m_orm.r * */ (indirect / contribution);
+				res += /* sample.m_orm.r */ (indirect / contribution);
 			}
+
 			SAILOR_PROFILE_END_BLOCK();
 		}
 
 		res += sample.m_emissive;
+
+		// Alpha Blending
+		if (bounceLimit > 0 && sample.m_baseColor.a < 0.97f)
+		{
+			Math::Ray newRay{};
+			newRay.SetDirection(ray.GetDirection());
+			newRay.SetOrigin(hit.m_point + ray.GetDirection() * 0.0001f);
+
+			PathTracer::Params p = params;
+			p.m_numBounces = std::max(0u, params.m_numBounces - 1);
+
+			res = res * sample.m_baseColor.a +
+				Raytrace(newRay, bvh, bounceLimit - 1, hit.m_triangleIndex, p) * (1.0f - sample.m_baseColor.a);
+		}
 	}
 	else
 	{

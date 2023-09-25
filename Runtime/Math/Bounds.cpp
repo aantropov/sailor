@@ -512,7 +512,7 @@ bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit&
 
 	if (bool res = Math::IntersectRayTriangle(ray.GetOrigin(), ray.GetDirection(), tri.m_vertices[0], tri.m_vertices[1], tri.m_vertices[2], baryPosition, distance))
 	{
-		if (distance < maxRayLength)
+		if (distance < maxRayLength && distance > -0.0000001f)
 		{
 			outRaycastHit.m_barycentricCoordinate = vec3(1.0f - baryPosition.x - baryPosition.y, baryPosition.x, baryPosition.y);
 			outRaycastHit.m_point = ray.GetOrigin() + ray.GetDirection() * distance;
