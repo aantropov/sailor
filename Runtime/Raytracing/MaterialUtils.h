@@ -185,6 +185,8 @@ namespace Sailor::Raytracing
 	SAILOR_API void ProcessNode_Assimp(TVector<Math::Triangle>& outScene, aiNode* node, const aiScene* scene, const glm::mat4& matrix);
 	SAILOR_API void ProcessMesh_Assimp(aiMesh* mesh, TVector<Math::Triangle>& outScene, const aiScene* scene, const glm::mat4& matrix);
 
+	SAILOR_API mat4 GetWorldTransformMatrix(const aiScene* scene, const char* name);
+
 	SAILOR_API void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv);
 
 	template<typename T>

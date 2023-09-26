@@ -126,20 +126,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 	if (scene->HasCameras())
 	{
 		const auto& aiCamera = scene->mCameras[0];
-
-		aiNode* pRootNode = scene->mRootNode;
-		aiNode* pCameraNode = pRootNode->FindNode(aiCamera->mName);
-
-		aiMatrix4x4 aiMatrix{};
-		aiNode* cur = pCameraNode;
-		while (cur != nullptr)
-		{
-			aiMatrix = aiMatrix * cur->mTransformation;
-			cur = cur->mParent;
-		}
-
-		mat4 matrix{};
-		::memcpy(&matrix, &aiMatrix, sizeof(float) * 16);
+		
+		mat4 matrix = GetWorldTransformMatrix(scene, scene->mCameras[0]->mName.C_Str());
 		::memcpy(&cameraUp, &aiCamera->mUp, sizeof(float) * 3);
 		::memcpy(&cameraForward, &aiCamera->mLookAt, sizeof(float) * 3);
 		::memcpy(&cameraPos, &aiCamera->mPosition, sizeof(float) * 3);
@@ -275,6 +263,35 @@ void PathTracer::Run(const PathTracer::Params& params)
 		{
 			task->Wait();
 		}
+	}
+
+	if (scene->HasLights())
+	{
+		aiNode* pRootNode = scene->mRootNode;
+
+		for (uint32_t i = 0; i < scene->mNumLights; i++)
+		{
+			const aiNode* pLightNode = pRootNode->FindNode(scene->mLights[i]->mName);
+			const mat4 matrix = GetWorldTransformMatrix(scene, scene->mLights[i]->mName.C_Str());
+
+			if (scene->mLights[i]->mType == aiLightSource_DIRECTIONAL)
+			{
+				m_directionalLights.Add(DirectionalLight());
+				memcpy(&m_directionalLights[i].m_direction, &scene->mLights[i]->mDirection, sizeof(float) * 3);
+				memcpy(&m_directionalLights[i].m_intensity, &scene->mLights[i]->mColorDiffuse, sizeof(float) * 3);
+
+				m_directionalLights[i].m_direction = glm::normalize(glm::vec3(glm::vec4(m_directionalLights[i].m_direction, 0.0f) * matrix));
+				m_directionalLights[i].m_intensity /= 683.0f;
+			}
+		}
+	}
+	else
+	{
+		DirectionalLight defaultLight;
+		defaultLight.m_direction = normalize(vec3(1, 1, -1));
+		defaultLight.m_intensity = vec3(3.0f, 3.0f, 3.0f);
+
+		m_directionalLights.Add(defaultLight);
 	}
 
 	BVH bvh((uint32_t)m_triangles.Num());
@@ -453,19 +470,22 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
 
 		RaycastHit hitLight{};
-		const vec3 toLight = normalize(vec3(1, 1, -1));
 		vec3 offset = 0.000001f * faceNormal;
 
 		SAILOR_PROFILE_END_BLOCK();
 
-		SAILOR_PROFILE_BLOCK("Direct lighting");
-		Ray rayToLight(hit.m_point + offset, toLight);
-		if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+		for (uint32_t i = 0; i < m_directionalLights.Num(); i++)
 		{
-			const float angle = abs(glm::dot(toLight, worldNormal));
-			res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * 3.0f * angle;
+			SAILOR_PROFILE_BLOCK("Direct lighting");
+			const vec3 toLight = -m_directionalLights[i].m_direction;
+			Ray rayToLight(hit.m_point + offset, toLight);
+			if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+			{
+				const float angle = max(0.0f, glm::dot(toLight, worldNormal));
+				res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * m_directionalLights[i].m_intensity * angle;
+			}
+			SAILOR_PROFILE_END_BLOCK();
 		}
-		SAILOR_PROFILE_END_BLOCK();
 
 		if (bounceLimit > 0)
 		{
@@ -557,7 +577,17 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 	}
 	else
 	{
-		res = vec3(0.5f, 0.5f, 0.5f);
+		/*
+		for (uint32_t i = 0; i < m_directionalLights.Num(); i++)
+		{
+			SAILOR_PROFILE_BLOCK("Direct lighting for ambient");
+			const vec3 toLight = -m_directionalLights[i].m_direction;
+			res += m_directionalLights[i].m_intensity * angle;
+
+			SAILOR_PROFILE_END_BLOCK();
+		}*/
+
+		res = max(res, vec3(0.5f, 0.5f, 0.5f));
 	}
 
 	return res;

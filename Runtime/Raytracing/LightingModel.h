@@ -7,6 +7,12 @@ using namespace glm;
 
 namespace Sailor::Raytracing
 {
+	struct DirectionalLight
+	{
+		vec3 m_direction{ 0.0f, -1.0f, 0.0f };
+		vec3 m_intensity{ 1.0f,1.0f,1.0f };
+	};
+
 	class LightingModel
 	{
 	public:

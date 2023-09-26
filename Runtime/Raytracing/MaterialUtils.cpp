@@ -160,6 +160,23 @@ void Raytracing::ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, c
 	}
 }
 
+SAILOR_API mat4 Raytracing::GetWorldTransformMatrix(const aiScene* scene, const char* name)
+{
+	mat4 matrix{ 1 };
+	aiMatrix4x4 aiMatrix{};
+
+	aiNode* pRootNode = scene->mRootNode;
+	aiNode* cur = pRootNode->FindNode(name);
+
+	while (cur != nullptr)
+	{
+		aiMatrix = aiMatrix * cur->mTransformation;
+		cur = cur->mParent;
+	}
+	::memcpy(&matrix, &aiMatrix, sizeof(float) * 16);
+	return matrix;
+}
+
 void Raytracing::ProcessNode_Assimp(TVector<Triangle>& outScene, aiNode* node, const aiScene* scene, const glm::mat4& parentMatrix)
 {
 	SAILOR_PROFILE_FUNCTION();

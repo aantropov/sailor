@@ -38,6 +38,7 @@ namespace Sailor::Raytracing
 
 		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Params& params) const;
 
+		TVector<DirectionalLight> m_directionalLights{};
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};
 		TVector<TSharedPtr<Texture2D>> m_textures{};
