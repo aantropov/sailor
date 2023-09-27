@@ -558,7 +558,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 						term = LightingModel::CalculateBRDF(viewDirection, worldNormal, direction, sample);
 					}
 
-					const float weight = std::min(1.0f, 1.0f / pdf);
+					const float weight = 1.0f / pdf;
 					const Ray rayToDirection(hit.m_point + offset, direction);
 
 					indirect += glm::max(vec3(0.0f, 0.0f, 0.0f),
@@ -608,7 +608,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			SAILOR_PROFILE_END_BLOCK();
 		}*/
 
-		res = max(res, vec3(0.5f, 0.5f, 0.5f));
+		res = max(res, vec3(1.0f, 1.0f, 1.0f));
 	}
 
 	return res;
