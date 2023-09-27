@@ -340,8 +340,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 						ray.SetOrigin(cameraPos);
 
 #ifdef _DEBUG
-						uint32_t debugX = 440;
-						uint32_t debugY = 105;
+						uint32_t debugX = 1161;
+						uint32_t debugY = 804;
 
 						if (!(x < debugX && (x + GroupSize) > debugX &&
 							y < debugY && (y + GroupSize) > debugY))
@@ -484,6 +484,12 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const vec3 viewDirection = -normalize(ray.GetDirection());
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
 
+		const bool bMirror = sample.m_orm.y <= 0.001f;
+		const bool bFullDielectric = sample.m_orm.z == 0.0f;
+		const bool bFullMetallic = sample.m_orm.z == 1.0f;
+		const bool bOnlySpecularRay = (bFullDielectric || bFullMetallic) && bMirror;
+		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
+
 		const bool bHasAlphaBlending = sample.m_baseColor.a < 0.97f;
 		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
 
@@ -516,16 +522,14 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 			for (uint32_t i = 0; i < numExtraSamples; i++)
 			{
-				const bool bFullMetallic = sample.m_orm.z == 1.0f && sample.m_orm.y == 0.0f;
-				const bool bSpecular = bFullMetallic || glm::linearRand(0.0f, 1.0f) > 0.5f;
+				const bool bSpecular = bOnlySpecularRay || glm::linearRand(0.0f, 1.0f) > 0.5f;
+				const bool bTransmission = bHasTransmission && (glm::linearRand(0.0f, 1.0f) > 0.5f);
+
 				const float importanceRoughness = bSpecular ? sample.m_orm.y : 1.0f;
 
 				vec2 randomSample = vec2(glm::linearRand(0.0f, 1.0f), glm::linearRand(0.0f, 1.0f));
 				vec3 H = LightingModel::ImportanceSampleGGX(randomSample, importanceRoughness, worldNormal);
 				vec3 direction = 2.0f * dot(viewDirection, H) * H - viewDirection;
-
-				const bool bHasTransmission = sample.m_orm.z < 1.0f && sample.m_transmission > 0.0f;
-				const bool bTransmission = bHasTransmission && (glm::linearRand(0.0f, 1.0f) > 0.5f);
 
 				if (bTransmission)
 				{
@@ -535,7 +539,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 				const float pdfSpec = LightingModel::GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
 				const float pdfLambert = abs(dot(direction, worldNormal)) / Math::Pi;
 
-				float pdf = bFullMetallic ? pdfSpec : ((pdfSpec + pdfLambert) * 0.5f);
+				float pdf = bOnlySpecularRay ? pdfSpec : ((pdfSpec + pdfLambert) * 0.5f);
 
 				if (bHasTransmission)
 				{
@@ -561,11 +565,13 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					const float weight = 1.0f / pdf;
 					const Ray rayToDirection(hit.m_point + offset, direction);
 
-					indirect += glm::max(vec3(0.0f, 0.0f, 0.0f),
+					indirect += glm::clamp(
 						weight *
 						term *
 						angle *
-						Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex, params));
+						Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex, params),
+						vec3(0.0f, 0.0f, 0.0f),
+						vec3(10.0f, 10.0f, 10.0f));
 
 					contribution += 1.0f;
 				}

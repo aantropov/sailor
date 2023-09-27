@@ -138,8 +138,8 @@ vec3 LightingModel::ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
 
 float LightingModel::GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 {
-	const float infCompensation = 0.00001f;
-	float a = std::max(roughness * roughness, 0.001f);
+	const float infCompensation = 0.001f;
+	float a = std::max(roughness * roughness, infCompensation);
 	float NdotH = std::max(dot(N, H), infCompensation);
 	float VdotH = std::max(dot(V, H), infCompensation);
 
