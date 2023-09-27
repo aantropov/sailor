@@ -126,8 +126,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 	if (scene->HasCameras())
 	{
 		const auto& aiCamera = scene->mCameras[0];
-		
-		mat4 matrix = GetWorldTransformMatrix(scene, scene->mCameras[0]->mName.C_Str());
+
+		mat4 matrix = GetWorldTransformMatrix(scene, scene->mCameras[2]->mName.C_Str());
 		::memcpy(&cameraUp, &aiCamera->mUp, sizeof(float) * 3);
 		::memcpy(&cameraForward, &aiCamera->mLookAt, sizeof(float) * 3);
 		::memcpy(&cameraPos, &aiCamera->mPosition, sizeof(float) * 3);
@@ -319,8 +319,11 @@ void PathTracer::Run(const PathTracer::Params& params)
 		TVector<Tasks::ITaskPtr> tasks;
 		TVector<Tasks::ITaskPtr> tasksThisThread;
 
-		tasks.Reserve((height * width) / (GroupSize * GroupSize));
-		tasksThisThread.Reserve((height * width) / (GroupSize * GroupSize) / 32);
+		std::atomic<uint32_t> finishedTasks = 0;
+		const uint32_t numTasks = (height * width) / (GroupSize * GroupSize);
+
+		tasks.Reserve(numTasks);
+		tasksThisThread.Reserve(numTasks / 32);
 
 		for (uint32_t y = 0; y < height; y += GroupSize)
 		{
@@ -328,6 +331,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 			{
 				auto task = Tasks::CreateTask("Calculate raytracing",
 					[=,
+					&finishedTasks,
 					&output,
 					&bvh,
 					this]() mutable
@@ -378,6 +382,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 							}
 						}
 
+						finishedTasks++;
+
 					}, Tasks::EThreadType::Worker);
 
 				if (((x + y) / GroupSize) % 32 == 0)
@@ -397,26 +403,28 @@ void PathTracer::Run(const PathTracer::Params& params)
 		for (auto& task : tasksThisThread)
 		{
 			task->Execute();
+
+			const float progress = finishedTasks.load() / (float)numTasks;
+			SAILOR_LOG("PathTracer Progress: %.2f", progress);
 		}
 		SAILOR_PROFILE_END_BLOCK();
 
 		SAILOR_PROFILE_BLOCK("Wait all calcs");
 		for (auto& task : tasks)
 		{
-			task->Wait();
+			if (!task->IsFinished())
+			{
+				task->Wait();
+
+				const float progress = finishedTasks.load() / (float)numTasks;
+				SAILOR_LOG("PathTracer Progress: %.2f", progress);
+			}
 		}
 		SAILOR_PROFILE_END_BLOCK();
 	}
 
 	raytracingTimer.Stop();
 	//profiler::dumpBlocksToFile("test_profile.prof");
-
-	char msg[2048];
-	if (raytracingTimer.ResultMs() > 10000.0f)
-	{
-		sprintf_s(msg, "Time in sec: %.2f", (float)raytracingTimer.ResultMs() * 0.001f);
-		MessageBoxA(0, msg, msg, 0);
-	}
 
 	SAILOR_PROFILE_BLOCK("Write Image");
 	{
@@ -433,6 +441,13 @@ void PathTracer::Run(const PathTracer::Params& params)
 		}
 	}
 	SAILOR_PROFILE_END_BLOCK();
+
+	char msg[2048];
+	if (raytracingTimer.ResultMs() > 10000.0f)
+	{
+		sprintf_s(msg, "Time in sec: %.2f", (float)raytracingTimer.ResultMs() * 0.001f);
+		MessageBoxA(0, msg, msg, 0);
+	}
 
 	::system(params.m_output.string().c_str());
 }
@@ -469,6 +484,9 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const vec3 viewDirection = -normalize(ray.GetDirection());
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
 
+		const bool bHasAlphaBlending = sample.m_baseColor.a < 0.97f;
+		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
+
 		RaycastHit hitLight{};
 		vec3 offset = 0.000001f * faceNormal;
 
@@ -493,14 +511,13 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
 
-			const uint32_t numExtraSamples = bounceLimit == params.m_numBounces ? params.m_numSamples : 1;
+			const uint32_t numExtraSamples = bounceLimit == params.m_numBounces ? numSamples : 1;
 			float contribution = 0.0f;
 
 			for (uint32_t i = 0; i < numExtraSamples; i++)
 			{
 				const bool bFullMetallic = sample.m_orm.z == 1.0f && sample.m_orm.y == 0.0f;
 				const bool bSpecular = bFullMetallic || glm::linearRand(0.0f, 1.0f) > 0.5f;
-
 				const float importanceRoughness = bSpecular ? sample.m_orm.y : 1.0f;
 
 				vec2 randomSample = vec2(glm::linearRand(0.0f, 1.0f), glm::linearRand(0.0f, 1.0f));
@@ -541,11 +558,14 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 						term = LightingModel::CalculateBRDF(viewDirection, worldNormal, direction, sample);
 					}
 
+					const float weight = std::min(1.0f, 1.0f / pdf);
 					const Ray rayToDirection(hit.m_point + offset, direction);
+
 					indirect += glm::max(vec3(0.0f, 0.0f, 0.0f),
-						(term *
-							angle *
-							Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex, params)) / pdf);
+						weight *
+						term *
+						angle *
+						Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex, params));
 
 					contribution += 1.0f;
 				}
@@ -562,7 +582,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		res += sample.m_emissive;
 
 		// Alpha Blending
-		if (bounceLimit > 0 && sample.m_baseColor.a < 0.97f)
+		if (bounceLimit > 0 && bHasAlphaBlending)
 		{
 			Math::Ray newRay{};
 			newRay.SetDirection(ray.GetDirection());
@@ -570,6 +590,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 			PathTracer::Params p = params;
 			p.m_numBounces = std::max(0u, params.m_numBounces - 1);
+			p.m_numSamples = std::max(1u, params.m_numSamples - numSamples);
 
 			res = res * sample.m_baseColor.a +
 				Raytrace(newRay, bvh, bounceLimit - 1, hit.m_triangleIndex, p) * (1.0f - sample.m_baseColor.a);
