@@ -15,8 +15,16 @@ using namespace Sailor;
 
 namespace Sailor::Raytracing
 {
+	enum class SamplerClamping
+	{
+		Clamp = 0,
+		Repeat
+	};
+
 	struct Texture2D
 	{
+		SamplerClamping m_clamping = SamplerClamping::Clamp;
+
 		const uint32_t BlockSize = 16;
 
 		TVector<u8> m_data;
@@ -90,8 +98,19 @@ namespace Sailor::Raytracing
 			SAILOR_PROFILE_FUNCTION();
 
 			vec2 wrappedUV;
-			wrappedUV.x = uv.x - std::floor(uv.x);
-			wrappedUV.y = uv.y - std::floor(uv.y);
+
+			switch (m_clamping)
+			{
+			case SamplerClamping::Clamp:
+				wrappedUV.x = std::clamp(uv.x, 0.0f, 1.0f);
+				wrappedUV.y = std::clamp(uv.y, 0.0f, 1.0f);
+				break;
+
+			case SamplerClamping::Repeat:
+				wrappedUV.x = uv.x - std::floor(uv.x);
+				wrappedUV.y = uv.y - std::floor(uv.y);
+				break;
+			}
 
 			// Convert UV to pixel space once, and compute the required values.
 			const float fx = wrappedUV.x * (m_width - 1);

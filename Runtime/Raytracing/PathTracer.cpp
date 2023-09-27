@@ -161,8 +161,10 @@ void PathTracer::Run(const PathTracer::Params& params)
 			const auto& aiMaterial = scene->mMaterials[i];
 
 			aiString fileName;
-			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName) == AI_SUCCESS ||
-				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName) == AI_SUCCESS)
+			aiTextureMapMode mapping;
+
+			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS ||
+				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -174,11 +176,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 					loadTexturesTasks.Emplace(LoadTexture_Task<vec4>(m_textures, params.m_pathToModel, scene, textureIndex, file, true));
 					material.m_baseColorIndex = textureIndex;
 					m_textureMapping[file] = textureIndex;
+					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 					textureIndex++;
 				}
 			}
 
-			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName) == AI_SUCCESS)
+			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -190,12 +193,13 @@ void PathTracer::Run(const PathTracer::Params& params)
 					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, false, true));
 					material.m_normalIndex = textureIndex;
 					m_textureMapping[file] = textureIndex;
+					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 					textureIndex++;
 				}
 			}
 
-			if (aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName) == AI_SUCCESS ||
-				aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName) == AI_SUCCESS)
+			if (aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS ||
+				aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -207,11 +211,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, false));
 					material.m_metallicRoughnessIndex = textureIndex;
 					m_textureMapping[file] = textureIndex;
+					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 					textureIndex++;
 				}
 			}
 
-			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName) == AI_SUCCESS)
+			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -223,11 +228,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, true));
 					material.m_emissiveIndex = textureIndex;
 					m_textureMapping[file] = textureIndex;
+					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 					textureIndex++;
 				}
 			}
 
-			if (aiMaterial->GetTexture(aiTextureType_TRANSMISSION, 0, &fileName) == AI_SUCCESS)
+			if (aiMaterial->GetTexture(aiTextureType_TRANSMISSION, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -239,6 +245,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, false));
 					material.m_transmissionIndex = textureIndex;
 					m_textureMapping[file] = textureIndex;
+					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 					textureIndex++;
 				}
 			}
@@ -379,12 +386,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 								output[index] = accumulator / (float)params.m_msaa;
 								SAILOR_PROFILE_END_BLOCK();
-							}
-						}
+			}
+		}
 
 						finishedTasks++;
 
-					}, Tasks::EThreadType::Worker);
+	}, Tasks::EThreadType::Worker);
 
 				if (((x + y) / GroupSize) % 32 == 0)
 				{
@@ -395,7 +402,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 					task->Run();
 					tasks.Emplace(std::move(task));
 				}
-			}
+}
 		}
 		SAILOR_PROFILE_END_BLOCK();
 
