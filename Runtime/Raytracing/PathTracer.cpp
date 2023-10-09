@@ -25,21 +25,70 @@ using namespace Sailor;
 using namespace Sailor::Math;
 using namespace Sailor::Raytracing;
 
+std::string GetArgValue(const char** args, int32_t& i, int32_t num)
+{
+	if (i + 1 >= num)
+	{
+		return "";
+	}
+
+	i++;
+	std::string value = args[i];
+
+	if (value[0] == '\"')
+	{
+		while (i < num && value[value.length() - 1] != '\"')
+		{
+			i++;
+			value += " " + std::string(args[i]);
+		}
+		value = value.substr(1, value.length() - 2);
+	}
+
+	return value;
+}
+
 void PathTracer::ParseParamsFromCommandLineArgs(PathTracer::Params& res, const char** args, int32_t num)
 {
-	for (int32_t i = 1; i < num; i += 2)
+	for (int32_t i = 1; i < num; i++)
 	{
-		if (strcmp("--in", args[i]) == 0)
+		std::string arg = args[i];
+
+		if (arg == "--in")
 		{
-			res.m_pathToModel = std::string(args[i + 1]);
+			res.m_pathToModel = GetArgValue(args, i, num);
 		}
-		else if (strcmp("--out", args[i]) == 0)
+		else if (arg == "--out")
 		{
-			res.m_output = std::string(args[i + 1]);
+			res.m_output = GetArgValue(args, i, num);
 		}
-		else if (strcmp("--height", args[i]) == 0)
+		else if (arg == "--height")
 		{
-			res.m_height = atoi(args[i + 1]);
+			res.m_height = atoi(GetArgValue(args, i, num).c_str());
+		}
+		else if (arg == "--samples")
+		{
+			const uint32_t samples = atoi(GetArgValue(args, i, num).c_str());
+
+			res.m_msaa = samples <= 32 ? std::min(4u, samples) : 8u;
+			res.m_numSamples = std::max(1u, (uint32_t)std::lround(samples / (float)res.m_msaa));
+		}
+		else if (arg == "--bounces")
+		{
+			res.m_numBounces = atoi(GetArgValue(args, i, num).c_str());
+		}
+		else if (arg == "--camera")
+		{
+			res.m_camera = GetArgValue(args, i, num);
+		}
+		else if (arg == "--ambient")
+		{
+			const std::string& hexStr = GetArgValue(args, i, num);
+			const int32_t r = std::stoi(hexStr.substr(0, 2), nullptr, 16);
+			const int32_t g = std::stoi(hexStr.substr(2, 2), nullptr, 16);
+			const int32_t b = std::stoi(hexStr.substr(4, 2), nullptr, 16);
+
+			res.m_ambient = glm::vec3(r / 255.0f, g / 255.0f, b / 255.0f);
 		}
 	}
 }
@@ -125,9 +174,19 @@ void PathTracer::Run(const PathTracer::Params& params)
 	// View
 	if (scene->HasCameras())
 	{
-		const auto& aiCamera = scene->mCameras[0];
+		int32_t cameraIndex = 0;
+		for (uint32_t i = 0; i < scene->mNumCameras; i++)
+		{
+			if (std::strcmp(params.m_camera.c_str(), scene->mCameras[i]->mName.C_Str()) == 0)
+			{
+				cameraIndex = i;
+				break;
+			}
+		}
 
-		mat4 matrix = GetWorldTransformMatrix(scene, scene->mCameras[2]->mName.C_Str());
+		const auto& aiCamera = scene->mCameras[cameraIndex];
+
+		mat4 matrix = GetWorldTransformMatrix(scene, scene->mCameras[cameraIndex]->mName.C_Str());
 		::memcpy(&cameraUp, &aiCamera->mUp, sizeof(float) * 3);
 		::memcpy(&cameraForward, &aiCamera->mLookAt, sizeof(float) * 3);
 		::memcpy(&cameraPos, &aiCamera->mPosition, sizeof(float) * 3);
@@ -155,13 +214,14 @@ void PathTracer::Run(const PathTracer::Params& params)
 		m_textures.Resize(scene->mNumMaterials * 5);
 
 		uint32_t textureIndex = 0;
+		aiTextureMapMode mapping = aiTextureMapMode::aiTextureMapMode_Wrap;
+
 		for (uint32_t i = 0; i < scene->mNumMaterials; i++)
 		{
 			auto& material = m_materials[i];
 			const auto& aiMaterial = scene->mMaterials[i];
 
 			aiString fileName;
-			aiTextureMapMode mapping = aiTextureMapMode::aiTextureMapMode_Wrap;
 
 			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS ||
 				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
@@ -277,6 +337,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 			}
 		}
 	}
+	/*
 	else
 	{
 		DirectionalLight defaultLight;
@@ -284,7 +345,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		defaultLight.m_intensity = vec3(3.0f, 3.0f, 3.0f);
 
 		m_directionalLights.Add(defaultLight);
-	}
+	}*/
 
 	BVH bvh((uint32_t)m_triangles.Num());
 	bvh.BuildBVH(m_triangles);
@@ -371,12 +432,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 								output[index] = accumulator / (float)params.m_msaa;
 								SAILOR_PROFILE_END_BLOCK();
-					}
-			}
+							}
+						}
 
 						finishedTasks++;
 
-		}, Tasks::EThreadType::Worker);
+					}, Tasks::EThreadType::Worker);
 
 				if (((x + y) / GroupSize) % 32 == 0)
 				{
@@ -387,17 +448,23 @@ void PathTracer::Run(const PathTracer::Params& params)
 					task->Run();
 					tasks.Emplace(std::move(task));
 				}
-	}
-}
+			}
+		}
 		SAILOR_PROFILE_END_BLOCK();
 
 		SAILOR_PROFILE_BLOCK("Calcs on Main thread");
+		float lastPrg = 0.0f;
 		for (auto& task : tasksThisThread)
 		{
 			task->Execute();
 
 			const float progress = finishedTasks.load() / (float)numTasks;
-			SAILOR_LOG("PathTracer Progress: %.2f", progress);
+
+			if (progress - lastPrg > 0.05f)
+			{
+				SAILOR_LOG("PathTracer Progress: %.2f", progress);
+				lastPrg = progress;
+			}
 		}
 		SAILOR_PROFILE_END_BLOCK();
 
@@ -409,7 +476,11 @@ void PathTracer::Run(const PathTracer::Params& params)
 				task->Wait();
 
 				const float progress = finishedTasks.load() / (float)numTasks;
-				SAILOR_LOG("PathTracer Progress: %.2f", progress);
+				if (progress - lastPrg > 0.05f)
+				{
+					SAILOR_LOG("PathTracer Progress: %.2f", progress);
+					lastPrg = progress;
+				}
 			}
 		}
 		SAILOR_PROFILE_END_BLOCK();
@@ -606,7 +677,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			SAILOR_PROFILE_END_BLOCK();
 		}*/
 
-		res = max(res, vec3(1.0f, 1.0f, 1.0f));
+		res = max(res, params.m_ambient);
 	}
 
 	return res;

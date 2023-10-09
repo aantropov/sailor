@@ -22,10 +22,12 @@ namespace Sailor::Raytracing
 		{
 			std::filesystem::path m_pathToModel;
 			std::filesystem::path m_output;
+			std::string m_camera;
 			uint32_t m_height;
 			uint32_t m_numSamples;
 			uint32_t m_numBounces;
 			uint32_t m_msaa;
+			vec3 m_ambient;
 		};
 
 		static void ParseParamsFromCommandLineArgs(Params& params, const char** args, int32_t num);
