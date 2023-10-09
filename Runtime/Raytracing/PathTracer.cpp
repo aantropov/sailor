@@ -161,7 +161,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 			const auto& aiMaterial = scene->mMaterials[i];
 
 			aiString fileName;
-			aiTextureMapMode mapping;
+			aiTextureMapMode mapping = aiTextureMapMode::aiTextureMapMode_Wrap;
 
 			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS ||
 				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
