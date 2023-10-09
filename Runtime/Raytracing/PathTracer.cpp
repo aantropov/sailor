@@ -173,11 +173,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec4>(m_textures, params.m_pathToModel, scene, textureIndex, file, true));
-					material.m_baseColorIndex = textureIndex;
-					m_textureMapping[file] = textureIndex;
-					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-					textureIndex++;
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec4>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, true));
+					m_textureMapping[file] = material.m_baseColorIndex = textureIndex++;
 				}
 			}
 
@@ -190,11 +187,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, false, true));
-					material.m_normalIndex = textureIndex;
-					m_textureMapping[file] = textureIndex;
-					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-					textureIndex++;
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, false, true));
+					m_textureMapping[file] = material.m_normalIndex = textureIndex++;
 				}
 			}
 
@@ -208,11 +202,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, false));
-					material.m_metallicRoughnessIndex = textureIndex;
-					m_textureMapping[file] = textureIndex;
-					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-					textureIndex++;
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, false));
+					m_textureMapping[file] = material.m_metallicRoughnessIndex = textureIndex++;
 				}
 			}
 
@@ -225,11 +216,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, true));
-					material.m_emissiveIndex = textureIndex;
-					m_textureMapping[file] = textureIndex;
-					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-					textureIndex++;
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, true));
+					m_textureMapping[file] = material.m_emissiveIndex = textureIndex++;
 				}
 			}
 
@@ -242,11 +230,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, false));
-					material.m_transmissionIndex = textureIndex;
-					m_textureMapping[file] = textureIndex;
-					m_textures[textureIndex]->m_clamping = mapping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-					textureIndex++;
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, false));
+					m_textureMapping[file] = material.m_transmissionIndex = textureIndex++;
 				}
 			}
 
@@ -386,12 +371,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 								output[index] = accumulator / (float)params.m_msaa;
 								SAILOR_PROFILE_END_BLOCK();
+					}
 			}
-		}
 
 						finishedTasks++;
 
-	}, Tasks::EThreadType::Worker);
+		}, Tasks::EThreadType::Worker);
 
 				if (((x + y) / GroupSize) % 32 == 0)
 				{
@@ -402,8 +387,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 					task->Run();
 					tasks.Emplace(std::move(task));
 				}
+	}
 }
-		}
 		SAILOR_PROFILE_END_BLOCK();
 
 		SAILOR_PROFILE_BLOCK("Calcs on Main thread");

@@ -97,7 +97,7 @@ namespace Sailor::Raytracing
 		{
 			SAILOR_PROFILE_FUNCTION();
 
-			vec2 wrappedUV;
+			vec2 wrappedUV{};
 
 			switch (m_clamping)
 			{
@@ -214,19 +214,21 @@ namespace Sailor::Raytracing
 		const aiScene* scene,
 		uint32_t textureIndex,
 		const std::string& filename,
+		aiTextureMapMode clamping,
 		bool bConvertToLinear,
 		bool bNormalMap = false)
 	{
 		auto ptr = m_textures[textureIndex] = TSharedPtr<Texture2D>::Make();
+		ptr->m_clamping = clamping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 
 		Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
 			[
 				scene = scene,
-					pTexture = ptr,
-					sceneFile = sceneFile,
-					fileName = filename,
-					bConvertToLinear = bConvertToLinear,
-					bNormalMap = bNormalMap
+				pTexture = ptr,
+				sceneFile = sceneFile,
+				fileName = filename,
+				bConvertToLinear = bConvertToLinear,
+				bNormalMap = bNormalMap
 			]() mutable
 			{
 				int32_t texChannels = 0;
