@@ -3,12 +3,18 @@
 `Sailor` is a high-performance game engine prototype, designed with an emphasis on optimization and usability. It boasts a bindless graphics renderer built on `Vulkan 1.3` and uses multithreading effectively. Designed to be render agnostic, the engine doesn't rely on any specific rendering technology (some limitations notwithstanding). The code adheres to the C++ coding style and conforms to the `C++20` standard for the `x64` platform. Please note, the code has been tested only on Windows operating system with the `MSVC` compiler (`Microsoft Visual Studio`).
 
 ## Screenshots
-
+### Realtime (Vulkan)
 <p float="left">
   <img src="https://github.com/aantropov/sailor/assets/3637761/2135ae32-b95b-4bdb-bbbb-ec1e01b40946" width="400" />
   <img src="https://github.com/aantropov/sailor/assets/3637761/2ca20784-5784-4e77-a824-8e3032919785" width="400" />
   <img src="https://github.com/aantropov/sailor/assets/3637761/6ac3e042-7519-43c3-b7ab-a1e14b7b4df2" width="400" />
   <img src="https://user-images.githubusercontent.com/3637761/216842844-0312267c-52a6-41d4-ba6d-a2b785fb7725.png" width="400" />
+</p>
+
+### Pathtracer (CPU, GLTF)
+<p float="left">
+  <img src="https://github.com/aantropov/sailor/assets/3637761/eba69658-b618-4b70-9fd2-473d288c9dfc" width="400" />
+  <img src="https://github.com/aantropov/sailor/assets/3637761/951bc7e0-f04d-43a9-8dba-f1e934fea8ba" width="400" />
 </p>
 
 ## Table of Contents
@@ -417,6 +423,7 @@ The `Sailor` engine offers a wide range of features designed to enhance game dev
 - Cascaded Shadow Maps (CSM) and Exponential Variance Shadow Maps (EVSM): `Sailor` incorporates the methodologies of both CSM and EVSM, resulting in precise, high-quality shadow rendering that enriches visual depth and detail.
 - Horizon-Based Ambient Occlusion (HBAO): By supporting HBAO, `Sailor` enhances depth perception and scene realism. This technique improves the overall visual quality by accurately rendering ambient occlusion, thereby enhancing user immersion.
 - Physically Based Rendering (PBR): Inspired by Unreal Engine and Disney's material model, `Sailor` employs PBR for realistic rendering. This leads to the creation of materials and lighting effects that mimic real-world physical properties, enhancing the lifelikeness of the rendered scenes.
+- CPU PBR Pathtracer for GLTF scenes: With this feature, `Sailor` offers a CPU-based path tracing approach specifically for GLTF scenes, promoting advanced, physically accurate lighting computations.
 
 ### <a name="PerformanceFeatures"></a> Performance and Optimization:
 - Multi-Threading Support: The engine provides multi-threading capabilities, allowing for parallel execution of tasks and efficient utilization of CPU resources.
