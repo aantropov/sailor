@@ -141,24 +141,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
-	float aspectRatio = (scene->HasCameras() && scene->mCameras[0]->mAspect > 0.0f)
-		? scene->mCameras[0]->mAspect
-		: (4.0f / 3.0f);
-
-	const uint32_t height = params.m_height;
-	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
-
-	const float hFov = (scene->HasCameras() && scene->mCameras[0]->mHorizontalFOV > 0.0f)
-		? scene->mCameras[0]->mHorizontalFOV
-		: glm::radians(90.0f);
-
-	const float vFov = (aspectRatio > 0.0f && hFov > 0.0f)
-		? 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio))
-		: 0.0f;
-
-	const float zMin = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneNear : 0.01f;
-	const float zMax = scene->HasCameras() ? scene->mCameras[0]->mClipPlaneFar : 1000.0f;
-
 	// Camera
 	//auto cameraPos = vec3(0, 0, 10);
 	auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
@@ -172,9 +154,9 @@ void PathTracer::Run(const PathTracer::Params& params)
 	cameraUp = normalize(cross(axis, cameraForward));
 
 	// View
+	int32_t cameraIndex = 0;
 	if (scene->HasCameras())
 	{
-		int32_t cameraIndex = 0;
 		for (uint32_t i = 0; i < scene->mNumCameras; i++)
 		{
 			if (std::strcmp(params.m_camera.c_str(), scene->mCameras[i]->mName.C_Str()) == 0)
@@ -196,6 +178,24 @@ void PathTracer::Run(const PathTracer::Params& params)
 		cameraUp = glm::normalize(glm::vec3(glm::vec4(cameraUp, 0.0f) * matrix));
 		cameraForward = glm::normalize(glm::vec3(glm::vec4(cameraForward, 0.0f) * matrix));
 	}
+
+	float aspectRatio = (scene->HasCameras() && scene->mCameras[cameraIndex]->mAspect > 0.0f)
+		? scene->mCameras[cameraIndex]->mAspect
+		: (4.0f / 3.0f);
+
+	const uint32_t height = params.m_height;
+	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
+
+	const float hFov = (scene->HasCameras() && scene->mCameras[cameraIndex]->mHorizontalFOV > 0.0f)
+		? scene->mCameras[cameraIndex]->mHorizontalFOV
+		: glm::radians(90.0f);
+
+	const float vFov = (aspectRatio > 0.0f && hFov > 0.0f)
+		? 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio))
+		: 0.0f;
+
+	const float zMin = scene->HasCameras() ? scene->mCameras[cameraIndex]->mClipPlaneNear : 0.01f;
+	const float zMax = scene->HasCameras() ? scene->mCameras[cameraIndex]->mClipPlaneFar : 1000.0f;
 
 	const auto cameraRight = normalize(cross(cameraForward, cameraUp));
 
