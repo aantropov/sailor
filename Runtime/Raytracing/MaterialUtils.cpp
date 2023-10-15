@@ -120,6 +120,13 @@ void Raytracing::ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, c
 			memcpy(&tri.m_uvs[2], &mesh->mTextureCoords[0][face.mIndices[2]], sizeof(float) * 2);
 		}
 
+		if (mesh->HasTextureCoords(1))
+		{
+			memcpy(&tri.m_uvs2[0], &mesh->mTextureCoords[1][face.mIndices[0]], sizeof(float) * 2);
+			memcpy(&tri.m_uvs2[1], &mesh->mTextureCoords[1][face.mIndices[1]], sizeof(float) * 2);
+			memcpy(&tri.m_uvs2[2], &mesh->mTextureCoords[1][face.mIndices[2]], sizeof(float) * 2);
+		}
+
 		if (mesh->HasTangentsAndBitangents())
 		{
 			memcpy(&tri.m_tangent[0], &mesh->mTangents[face.mIndices[0]], sizeof(float) * 3);

@@ -142,8 +142,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
 	// Camera
-	//auto cameraPos = vec3(0, 0, 10);
-	auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
+	auto cameraPos = vec3(0, 0, 10);
+	//auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
 
 	auto cameraUp = normalize(vec3(0, 1, 0));
@@ -179,7 +179,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		cameraForward = glm::normalize(glm::vec3(glm::vec4(cameraForward, 0.0f) * matrix));
 	}
 
-	float aspectRatio = (scene->HasCameras() && scene->mCameras[cameraIndex]->mAspect > 0.0f)
+	const float aspectRatio = (scene->HasCameras() && scene->mCameras[cameraIndex]->mAspect > 0.0f)
 		? scene->mCameras[cameraIndex]->mAspect
 		: (4.0f / 3.0f);
 
@@ -190,9 +190,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		? scene->mCameras[cameraIndex]->mHorizontalFOV
 		: glm::radians(90.0f);
 
-	const float vFov = (aspectRatio > 0.0f && hFov > 0.0f)
-		? 2.0f * atan(tan(hFov / 2.0f) * (1.0f / aspectRatio))
-		: 0.0f;
+	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
 
 	const float zMin = scene->HasCameras() ? scene->mCameras[cameraIndex]->mClipPlaneNear : 0.01f;
 	const float zMax = scene->HasCameras() ? scene->mCameras[cameraIndex]->mClipPlaneFar : 1000.0f;
@@ -214,8 +212,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 		m_textures.Resize(scene->mNumMaterials * 5);
 
 		uint32_t textureIndex = 0;
-		aiTextureMapMode mapping = aiTextureMapMode::aiTextureMapMode_Wrap;
-
 		for (uint32_t i = 0; i < scene->mNumMaterials; i++)
 		{
 			auto& material = m_materials[i];
@@ -223,8 +219,42 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 			aiString fileName;
 
-			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS ||
-				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
+			// Parse specific properties
+			for (uint32_t j = 0; j < aiMaterial->mNumProperties; j++)
+			{
+				const auto& prop = aiMaterial->mProperties[j];
+				if (strcmp("$mat.gltf.alphaMode", prop->mKey.C_Str()) == 0)
+				{
+					check(prop->mType == aiPropertyTypeInfo::aiPTI_String);
+
+					material.m_blendMode = BlendMode::Opaque;
+
+					aiString s;
+					if (aiReturn::aiReturn_SUCCESS != aiGetMaterialString(aiMaterial, prop->mKey.data, prop->mSemantic, prop->mIndex, &s))
+					{
+						continue;
+					}
+
+					if (strcmp("BLEND", s.C_Str()) == 0)
+					{
+						material.m_blendMode = BlendMode::Blend;
+					}
+					else if (strcmp("MASK", s.C_Str()) == 0)
+					{
+						material.m_blendMode = BlendMode::Mask;
+					}
+				}
+				else if (strcmp("$mat.gltf.alphaCutoff", prop->mKey.C_Str()) == 0)
+				{
+					check(prop->mType == aiPropertyTypeInfo::aiPTI_Float);
+					memcpy(&material.m_alphaCutoff, prop->mData, 4);
+				}
+			}
+
+			aiTextureMapMode mapping[8] = { aiTextureMapMode::aiTextureMapMode_Wrap };
+
+			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping[0]) == AI_SUCCESS ||
+				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping[0]) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -233,12 +263,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec4>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, true));
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec4>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], true));
 					m_textureMapping[file] = material.m_baseColorIndex = textureIndex++;
 				}
 			}
 
-			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
+			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping[1]) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -247,13 +277,13 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, false, true));
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[1], false, true));
 					m_textureMapping[file] = material.m_normalIndex = textureIndex++;
 				}
 			}
 
-			if (aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS ||
-				aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
+			if (aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping[2]) == AI_SUCCESS ||
+				aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping[2]) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -262,12 +292,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, false));
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[2], false));
 					m_textureMapping[file] = material.m_metallicRoughnessIndex = textureIndex++;
 				}
 			}
 
-			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
+			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping[3]) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -276,12 +306,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, true));
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[3], true));
 					m_textureMapping[file] = material.m_emissiveIndex = textureIndex++;
 				}
 			}
 
-			if (aiMaterial->GetTexture(aiTextureType_TRANSMISSION, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping) == AI_SUCCESS)
+			if (aiMaterial->GetTexture(aiTextureType_TRANSMISSION, 0, &fileName, nullptr, nullptr, nullptr, nullptr, &mapping[4]) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
 				if (m_textureMapping.ContainsKey(file))
@@ -290,7 +320,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping, false));
+					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[4], false));
 					m_textureMapping[file] = material.m_transmissionIndex = textureIndex++;
 				}
 			}
@@ -402,7 +432,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 							return;
 						}
 #endif
-						for (uint32_t v = 0; v < GroupSize && (y + v) < height; v++)
+						for (uint32_t v = 0; (v < GroupSize) && (y + v) < height; v++)
 						{
 							float tv = (y + v) / (float)height;
 							for (uint32_t u = 0; u < GroupSize && (u + x) < width; u++)
@@ -543,6 +573,8 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
 			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
+		//const auto& material = m_materials[tri.m_materialIndex];
+
 		const LightingModel::SampledData sample = GetSampledData(tri.m_materialIndex, uv);
 		const vec3 viewDirection = -normalize(ray.GetDirection());
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
@@ -553,7 +585,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const bool bOnlySpecularRay = (bFullDielectric || bFullMetallic) && bMirror;
 		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
 
-		const bool bHasAlphaBlending = sample.m_baseColor.a < 0.97f;
+		const bool bHasAlphaBlending = !sample.m_bIsOpaque && sample.m_baseColor.a < 1.0f;
 		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
 
 		RaycastHit hitLight{};
@@ -693,6 +725,7 @@ LightingModel::SampledData PathTracer::GetSampledData(const size_t& materialInde
 	res.m_orm = vec3(0.0f, material.m_roughnessFactor, material.m_metallicFactor);
 	res.m_emissive = material.m_emissiveFactor;
 	res.m_transmission = material.m_transmissionFactor;
+	res.m_bIsOpaque = material.m_blendMode == BlendMode::Opaque;
 
 	if (material.HasBaseTexture())
 	{
@@ -718,6 +751,11 @@ LightingModel::SampledData PathTracer::GetSampledData(const size_t& materialInde
 	if (material.HasTransmissionTexture())
 	{
 		res.m_transmission *= m_textures[material.m_transmissionIndex]->Sample<vec3>(uv).r;
+	}
+
+	if (material.m_blendMode == BlendMode::Mask)
+	{
+		res.m_baseColor.a = res.m_baseColor.a > material.m_alphaCutoff;
 	}
 
 	return res;

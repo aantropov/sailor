@@ -165,6 +165,13 @@ namespace Sailor::Raytracing
 		Texture2D& operator=(Texture2D&) = delete;
 	};
 
+	enum BlendMode : uint8_t
+	{
+		Opaque = 0,
+		Blend,
+		Mask
+	};
+
 	struct Material
 	{
 		glm::vec4 m_baseColorFactor = vec4(1, 1, 1, 1);
@@ -177,6 +184,7 @@ namespace Sailor::Raytracing
 		float m_occlusionFactor = 1;
 		float m_transmissionFactor = 0;
 		float m_specularFactor = 1;
+		float m_alphaCutoff = 0.5f;
 
 		bool HasEmissiveTexture() const { return m_emissiveIndex != u8(-1); }
 		bool HasBaseTexture() const { return m_baseColorIndex != u8(-1); }
@@ -196,6 +204,8 @@ namespace Sailor::Raytracing
 		u8 m_occlusionIndex = -1;
 		u8 m_transmissionIndex = -1;
 		u8 m_specularColorIndex = -1;
+
+		BlendMode m_blendMode = BlendMode::Opaque;
 	};
 
 	SAILOR_API uint PackVec3ToByte(vec3 v);
@@ -224,11 +234,11 @@ namespace Sailor::Raytracing
 		Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
 			[
 				scene = scene,
-				pTexture = ptr,
-				sceneFile = sceneFile,
-				fileName = filename,
-				bConvertToLinear = bConvertToLinear,
-				bNormalMap = bNormalMap
+					pTexture = ptr,
+					sceneFile = sceneFile,
+					fileName = filename,
+					bConvertToLinear = bConvertToLinear,
+					bNormalMap = bNormalMap
 			]() mutable
 			{
 				int32_t texChannels = 0;
@@ -238,12 +248,24 @@ namespace Sailor::Raytracing
 				{
 					const uint32 texIndex = atoi(&fileName[1]);
 					aiTexture* pAITexture = scene->mTextures[texIndex];
-					pixels = stbi_load_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth,
-						&pTexture->m_width,
-						&pTexture->m_height,
-						&texChannels, STBI_rgb_alpha);
 
-					pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, false, bNormalMap);
+					if (stbi_is_hdr_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth))
+					{
+						pixels = stbi_loadf_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth,
+							&pTexture->m_width,
+							&pTexture->m_height,
+							&texChannels, STBI_rgb_alpha);
+
+						pTexture->Initialize<T, vec4>((vec4*)pixels, bConvertToLinear, false, bNormalMap);
+					}
+					else
+					{
+						pixels = stbi_load_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth,
+							&pTexture->m_width,
+							&pTexture->m_height,
+							&texChannels, STBI_rgb_alpha);
+						pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, false, bNormalMap);
+					}
 				}
 				else
 				{

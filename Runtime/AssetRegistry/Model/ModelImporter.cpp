@@ -113,6 +113,8 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 	data.m_uniformsFloat.Add({ "material.roughness" , 1.0f });
 	data.m_uniformsFloat.Add({ "material.metallic" , 1.0f });
 
+	// TODO: Add support for glb?
+
 	if (!diffuseMaps.IsEmpty() && diffuseMaps[0].front() != '*')
 	{
 		data.m_samplers.Add(MaterialAsset::SamplerEntry("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));
@@ -128,12 +130,12 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 		data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + normalMaps[0])));
 	}
 
-	if (!specularMaps.IsEmpty())
+	if (!specularMaps.IsEmpty() && specularMaps[0].front() != '*')
 	{
 		data.m_samplers.Add(MaterialAsset::SamplerEntry("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + specularMaps[0])));
 	}
 
-	if (!emissionMaps.IsEmpty())
+	if (!emissionMaps.IsEmpty() && emissionMaps[0].front() != '*')
 	{
 		data.m_samplers.Add(MaterialAsset::SamplerEntry("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + emissionMaps[0])));
 	}

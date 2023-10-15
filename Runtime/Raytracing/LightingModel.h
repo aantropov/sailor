@@ -24,6 +24,7 @@ namespace Sailor::Raytracing
 			glm::vec3 m_emissive{};
 			glm::vec3 m_normal{};
 			float m_transmission = 0.0f;
+			bool m_bIsOpaque = true;
 		};
 
 		static vec3 CalculateBRDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample);
