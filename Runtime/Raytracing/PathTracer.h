@@ -43,7 +43,7 @@ namespace Sailor::Raytracing
 		TVector<DirectionalLight> m_directionalLights{};
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};
-		TVector<TSharedPtr<Texture2D>> m_textures{};
+		TVector<TSharedPtr<CombinedSampler2D>> m_textures{};
 		TMap<std::string, uint32_t> m_textureMapping{};
 	};
 }

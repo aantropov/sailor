@@ -15,80 +15,44 @@ using namespace Sailor;
 
 namespace Sailor::Raytracing
 {
-	enum class SamplerClamping
+	enum class SamplerClamping : uint8_t
 	{
 		Clamp = 0,
 		Repeat
 	};
 
-	struct Texture2D
+	struct CombinedSampler2D
 	{
 		uint8_t m_channels = 3;
 		SamplerClamping m_clamping = SamplerClamping::Clamp;
 
-		const uint32_t BlockSize = 16;
-
-		TVector<u8> m_data;
 		int32_t m_width{};
 		int32_t m_height{};
-		bool m_bUseBlockEncoding = false;
+
+		mat4 m_transform = mat4(1);
+		TVector<u8> m_data;
 
 		template<typename TOutputData, typename TInputData>
-		void Initialize(TInputData* data, bool bConvertToLinear, bool useBlockEncoding = false, bool bNormalMap = false)
+		void Initialize(TInputData* data, bool bConvertToLinear, bool bNormalMap = false)
 		{
-			m_bUseBlockEncoding = useBlockEncoding;
 			SAILOR_PROFILE_FUNCTION();
 
 			m_data.Resize(m_width * m_height * sizeof(TOutputData));
 
-			if (useBlockEncoding)
+			for (uint32_t i = 0; i < (uint32_t)m_width * m_height; i++)
 			{
-				for (uint32_t blockY = 0; blockY < (uint32_t)m_height; blockY += BlockSize)
+				TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * i);
+				TInputData* src = data + i;
+
+				if (bNormalMap)
 				{
-					for (uint32_t blockX = 0; blockX < (uint32_t)m_width; blockX += BlockSize)
-					{
-						for (uint32_t y = blockY; y < blockY + BlockSize && y < (uint32_t)m_height; ++y)
-						{
-							for (uint32_t x = blockX; x < blockX + BlockSize && x < (uint32_t)m_width; ++x)
-							{
-								uint32_t idx = y * m_width + x;
-
-								TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * idx);
-								TInputData* src = data + idx;
-
-								if (bNormalMap)
-								{
-									*dst = (TOutputData(*src) * (1.0f / 127.5f)) - 1.0f;
-
-								}
-								else
-								{
-									*dst = bConvertToLinear ?
-										((TOutputData)Utils::SRGBToLinear(TOutputData(*src) * (1.0f / 255.0f))) :
-										(TOutputData(*src) * (1.0f / 255.0f));
-								}
-							}
-						}
-					}
+					*dst = (TOutputData(*src) * (1.0f / 127.5f)) - 1.0f;
 				}
-			}
-			else
-			{
-				for (uint32_t i = 0; i < (uint32_t)m_width * m_height; i++)
+				else
 				{
-					TOutputData* dst = (TOutputData*)(m_data.GetData() + sizeof(TOutputData) * i);
-					TInputData* src = data + i;
-
-					if (bNormalMap)
-					{
-						*dst = (TOutputData(*src) * (1.0f / 127.5f)) - 1.0f;
-					}
-					else
-					{
-						*dst = bConvertToLinear ?
-							(TOutputData)Utils::SRGBToLinear(TOutputData(*src) * (1.0f / 255.0f)) :
-							(TOutputData(*src) * (1.0f / 255.0f));
-					}
+					*dst = bConvertToLinear ?
+						(TOutputData)Utils::SRGBToLinear(TOutputData(*src) * (1.0f / 255.0f)) :
+						(TOutputData(*src) * (1.0f / 255.0f));
 				}
 			}
 		}
@@ -131,27 +95,10 @@ namespace Sailor::Raytracing
 			T* bottomLeft;
 			T* bottomRight;
 
-			if (m_bUseBlockEncoding)
-			{
-				const uint32_t BlockSize = 16;
-
-				const int32_t blockBaseIdxX0 = (tX0 / BlockSize) * BlockSize;
-				const int32_t blockBaseIdxY0 = (tY0 / BlockSize) * m_width * BlockSize;
-				const int32_t blockBaseIdxX1 = (tX1 / BlockSize) * BlockSize;
-				const int32_t blockBaseIdxY1 = (tY1 / BlockSize) * m_width * BlockSize;
-
-				topLeft = (T*)m_data.GetData() + blockBaseIdxY0 + blockBaseIdxX0 + (tY0 % BlockSize) * m_width + tX0 % BlockSize;
-				topRight = (T*)m_data.GetData() + blockBaseIdxY0 + blockBaseIdxX1 + (tY0 % BlockSize) * m_width + tX1 % BlockSize;
-				bottomLeft = (T*)m_data.GetData() + blockBaseIdxY1 + blockBaseIdxX0 + (tY1 % BlockSize) * m_width + tX0 % BlockSize;
-				bottomRight = (T*)m_data.GetData() + blockBaseIdxY1 + blockBaseIdxX1 + (tY1 % BlockSize) * m_width + tX1 % BlockSize;
-			}
-			else
-			{
-				topLeft = (T*)m_data.GetData() + tX0 + tY0 * m_width;
-				topRight = (T*)m_data.GetData() + tX1 + tY0 * m_width;
-				bottomLeft = (T*)m_data.GetData() + tX0 + tY1 * m_width;
-				bottomRight = (T*)m_data.GetData() + tX1 + tY1 * m_width;
-			}
+			topLeft = (T*)m_data.GetData() + tX0 + tY0 * m_width;
+			topRight = (T*)m_data.GetData() + tX1 + tY0 * m_width;
+			bottomLeft = (T*)m_data.GetData() + tX0 + tY1 * m_width;
+			bottomRight = (T*)m_data.GetData() + tX1 + tY1 * m_width;
 
 			// Bilinear interpolation using direct memory access
 			const T topMix = *topLeft + fracX * (*topRight - *topLeft);
@@ -161,9 +108,9 @@ namespace Sailor::Raytracing
 			return finalSample;
 		}
 
-		Texture2D() = default;
-		Texture2D(Texture2D&) = delete;
-		Texture2D& operator=(Texture2D&) = delete;
+		CombinedSampler2D() = default;
+		CombinedSampler2D(CombinedSampler2D&) = delete;
+		CombinedSampler2D& operator=(CombinedSampler2D&) = delete;
 	};
 
 	enum BlendMode : uint8_t
@@ -220,7 +167,7 @@ namespace Sailor::Raytracing
 	SAILOR_API void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv);
 
 	template<typename T>
-	Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<Texture2D>>& m_textures,
+	Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<CombinedSampler2D>>& m_textures,
 		const std::filesystem::path& sceneFile,
 		const aiScene* scene,
 		uint32_t textureIndex,
@@ -229,7 +176,7 @@ namespace Sailor::Raytracing
 		bool bConvertToLinear,
 		bool bNormalMap = false)
 	{
-		auto ptr = m_textures[textureIndex] = TSharedPtr<Texture2D>::Make();
+		auto ptr = m_textures[textureIndex] = TSharedPtr<CombinedSampler2D>::Make();
 		ptr->m_clamping = clamping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 
 		if constexpr (IsSame<vec4, T>)
@@ -242,62 +189,54 @@ namespace Sailor::Raytracing
 		}
 
 		Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
-			[
-				scene = scene,
-					pTexture = ptr,
-					sceneFile = sceneFile,
-					fileName = filename,
-					bConvertToLinear = bConvertToLinear,
-					bNormalMap = bNormalMap
+			[scene = scene,
+			pTexture = ptr,
+			sceneFile = sceneFile,
+			fileName = filename,
+			bConvertToLinear = bConvertToLinear,
+			bNormalMap = bNormalMap
 			]() mutable
 			{
 				int32_t texChannels = 0;
 				void* pixels = nullptr;
 
+				auto LoadTextureData = [&](const stbi_uc* data, int length) -> bool
+					{
+						if (stbi_is_hdr_from_memory(data, length))
+						{
+							pixels = (void*)stbi_loadf_from_memory(data, length, &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
+							return true;
+						}
+						else
+						{
+							pixels = (void*)stbi_load_from_memory(data, length, &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
+							return false;
+						}
+					};
+
+				bool bIsHDR = false;
 				if (fileName[0] == '*')
 				{
 					const uint32 texIndex = atoi(&fileName[1]);
 					aiTexture* pAITexture = scene->mTextures[texIndex];
-
-					if (stbi_is_hdr_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth))
-					{
-						pixels = stbi_loadf_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth,
-							&pTexture->m_width,
-							&pTexture->m_height,
-							&texChannels, STBI_rgb_alpha);
-
-						pTexture->Initialize<T, vec4>((vec4*)pixels, bConvertToLinear, false, bNormalMap);
-					}
-					else
-					{
-						pixels = stbi_load_from_memory((stbi_uc*)pAITexture->pcData, pAITexture->mWidth,
-							&pTexture->m_width,
-							&pTexture->m_height,
-							&texChannels, STBI_rgb_alpha);
-						pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, false, bNormalMap);
-					}
+					bIsHDR = LoadTextureData((stbi_uc*)pAITexture->pcData, pAITexture->mWidth);
 				}
 				else
 				{
 					sceneFile.replace_filename(fileName);
-					if (stbi_is_hdr(sceneFile.string().c_str()))
-					{
-						pixels = stbi_loadf(sceneFile.string().c_str(),
-							&pTexture->m_width,
-							&pTexture->m_height,
-							&texChannels, STBI_rgb_alpha);
+					bIsHDR = stbi_is_hdr(sceneFile.string().c_str());
+					pixels = bIsHDR
+						? (void*)stbi_loadf(sceneFile.string().c_str(), &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha)
+						: (void*)stbi_load(sceneFile.string().c_str(), &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
+				}
 
-						pTexture->Initialize<T, vec4>((vec4*)pixels, bConvertToLinear, false, bNormalMap);
-					}
-					else
-					{
-						pixels = stbi_load(sceneFile.string().c_str(),
-							&pTexture->m_width,
-							&pTexture->m_height,
-							&texChannels, STBI_rgb_alpha);
-
-						pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, false, bNormalMap);
-					}
+				if (bIsHDR)
+				{
+					pTexture->Initialize<T, vec4>((vec4*)pixels, bConvertToLinear, bNormalMap);
+				}
+				else
+				{
+					pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, bNormalMap);
 				}
 
 				if (pixels)
