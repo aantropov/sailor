@@ -253,11 +253,14 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 			aiTextureMapMode mapping[2] = { aiTextureMapMode::aiTextureMapMode_Wrap };
 
-			if (aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS ||
+			if ((aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS) ||
 				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
-				if (m_textureMapping.ContainsKey(file))
+				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+				if (m_textureMapping.ContainsKey(file) &&
+					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
+					m_textures[m_textureMapping[file]]->m_channels == 4)
 				{
 					material.m_baseColorIndex = m_textureMapping[file];
 				}
@@ -273,7 +276,10 @@ void PathTracer::Run(const PathTracer::Params& params)
 			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
-				if (m_textureMapping.ContainsKey(file))
+				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+				if (m_textureMapping.ContainsKey(file) &&
+					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
+					m_textures[m_textureMapping[file]]->m_channels == 3)
 				{
 					material.m_normalIndex = m_textureMapping[file];
 				}
@@ -286,11 +292,14 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
 
-			if (aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS ||
-				aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
+			if ((aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS) ||
+				aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
-				if (m_textureMapping.ContainsKey(file))
+				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+				if (m_textureMapping.ContainsKey(file) &&
+					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
+					m_textures[m_textureMapping[file]]->m_channels == 3)
 				{
 					material.m_metallicRoughnessIndex = m_textureMapping[file];
 				}
@@ -306,7 +315,10 @@ void PathTracer::Run(const PathTracer::Params& params)
 			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
 			{
 				const std::string file(fileName.C_Str());
-				if (m_textureMapping.ContainsKey(file))
+				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+				if (m_textureMapping.ContainsKey(file) && 
+					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
+					m_textures[m_textureMapping[file]]->m_channels == 3)
 				{
 					material.m_emissiveIndex = m_textureMapping[file];
 				}
@@ -431,8 +443,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 						ray.SetOrigin(cameraPos);
 
 #ifdef _DEBUG
-						uint32_t debugX = 1161;
-						uint32_t debugY = 804;
+						uint32_t debugX = 133;
+						uint32_t debugY = 276;
 
 						if (!(x < debugX && (x + GroupSize) > debugX &&
 							y < debugY && (y + GroupSize) > debugY))

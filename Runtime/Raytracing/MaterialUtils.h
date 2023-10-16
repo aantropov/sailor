@@ -23,6 +23,7 @@ namespace Sailor::Raytracing
 
 	struct Texture2D
 	{
+		uint8_t m_channels = 3;
 		SamplerClamping m_clamping = SamplerClamping::Clamp;
 
 		const uint32_t BlockSize = 16;
@@ -230,6 +231,15 @@ namespace Sailor::Raytracing
 	{
 		auto ptr = m_textures[textureIndex] = TSharedPtr<Texture2D>::Make();
 		ptr->m_clamping = clamping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+
+		if constexpr (IsSame<vec4, T>)
+		{
+			ptr->m_channels = 4;
+		}
+		else if constexpr (IsSame<vec3, T>)
+		{
+			ptr->m_channels = 3;
+		}
 
 		Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
 			[
