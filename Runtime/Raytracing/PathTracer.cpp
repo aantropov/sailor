@@ -502,7 +502,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 								vec3 accumulator = vec3(0);
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
-									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f / width, 1.0f / height));
+									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f, 1.0f));
 									const vec3 pixelDir = _pixel00Dir + ((u + x) + offset.x) * _pixelDeltaU + ((y + v) - offset.y) * _pixelDeltaV;
 
 									ray.SetDirection(glm::normalize(pixelDir));
