@@ -431,15 +431,20 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	TVector<vec3> output(width * height);
 
-	quat halfViewH = glm::angleAxis(hFov * 0.5f, cameraUp);
-	auto axis1 = normalize(halfViewH * cameraForward);
-	auto axis2 = normalize(cross(axis1, cameraUp));
-	quat halfViewV = glm::angleAxis(vFov * 0.5f, -axis2);
+	float h = tan(vFov / 2);
+	const float ViewportHeight = 2.0f * h;
+	const float ViewportWidth = aspectRatio * ViewportHeight;
 
-	auto viewportUpperLeft = cameraPos + halfViewH * inverse(halfViewV) * cameraForward;
-	auto viewportUpperRight = cameraPos + inverse(halfViewH) * inverse(halfViewV) * cameraForward;
-	auto viewportBottomLeft = cameraPos + halfViewH * halfViewV * cameraForward;
-	auto viewportBottomRight = cameraPos + inverse(halfViewH) * halfViewV * cameraForward;
+	vec3 _u = normalize(cross(cameraUp, -cameraForward));
+	vec3 _v = cross(-cameraForward, _u);
+
+	const vec3 ViewportU = ViewportWidth * _u;
+	const vec3 ViewportV = ViewportHeight * _v;
+	const vec3 ViewportPivot = cameraPos - (ViewportU + ViewportV) * 0.5f + cameraForward;
+
+	const vec3 _pixelDeltaU = ViewportU / (float)width;
+	const vec3 _pixelDeltaV = ViewportV / (float)height;
+	const vec3 _pixel00Dir = ViewportPivot + 0.5f * (_pixelDeltaU + _pixelDeltaV) - cameraPos;
 
 	SAILOR_PROFILE_END_BLOCK();
 	// Raytracing
@@ -481,14 +486,13 @@ void PathTracer::Run(const PathTracer::Params& params)
 #endif
 						for (uint32_t v = 0; (v < GroupSize) && (y + v) < height; v++)
 						{
-							float tv = (y + v) / (float)height;
+							const float tv = (y + v) / (float)height;
 							for (uint32_t u = 0; u < GroupSize && (u + x) < width; u++)
 							{
 								SAILOR_PROFILE_BLOCK("Raycasting");
 
-								const uint32_t index = (y + v) * width + (x + u);
-								float tu = (x + u) / (float)width;
-
+								const uint32_t index = (height - (y + v)) * width + (x + u);
+								const float tu = (x + u) / (float)width;
 #ifdef _DEBUG
 								if ((x + u) == debugX && ((y + v) == debugY))
 								{
@@ -498,11 +502,10 @@ void PathTracer::Run(const PathTracer::Params& params)
 								vec3 accumulator = vec3(0);
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
-									auto offset = sample == 0 ? vec2(0, 0) : glm::linearRand(vec2(0, 0), vec2(1.0f / width, 1.0f / height));
+									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f / width, 1.0f / height));
+									const vec3 pixelDir = _pixel00Dir + ((u + x) + offset.x) * _pixelDeltaU + ((y + v) - offset.y) * _pixelDeltaV;
 
-									const vec3 midTop = viewportUpperLeft + (viewportUpperRight - viewportUpperLeft) * (tu + offset.x);
-									const vec3 midBottom = viewportBottomLeft + (viewportBottomRight - viewportBottomLeft) * (tu + offset.x);
-									ray.SetDirection(vec3(0.001f, 0.001f, 0.001f) + glm::normalize(midTop + (midBottom - midTop) * (tv + offset.y) - cameraPos));
+									ray.SetDirection(glm::normalize(pixelDir));
 
 									accumulator += Raytrace(ray, bvh, params.m_numBounces, (uint32_t)(-1), params);
 								}
