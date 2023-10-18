@@ -28,8 +28,6 @@ namespace Sailor::Raytracing
 
 		int32_t m_width{};
 		int32_t m_height{};
-
-		mat4 m_transform = mat4(1);
 		TVector<u8> m_data;
 
 		template<typename TOutputData, typename TInputData>
@@ -122,6 +120,8 @@ namespace Sailor::Raytracing
 
 	struct Material
 	{
+		glm::mat3 m_uvTransform = mat3(1);
+
 		glm::vec4 m_baseColorFactor = vec4(1, 1, 1, 1);
 		glm::vec3 m_emissiveFactor = vec3(0, 0, 0);
 		glm::vec3 m_specularColorFactor = vec3(1, 1, 1);

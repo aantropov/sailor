@@ -142,7 +142,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
 	// Camera
-	auto cameraPos = vec3(0, 0, 10);
+	auto cameraPos = vec3(0, 0, 2);
 	//auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
 
@@ -219,10 +219,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 			aiString fileName;
 
+
 			// Parse specific properties
 			for (uint32_t j = 0; j < aiMaterial->mNumProperties; j++)
 			{
 				const auto& prop = aiMaterial->mProperties[j];
+
 				if (strcmp("$mat.gltf.alphaMode", prop->mKey.C_Str()) == 0)
 				{
 					check(prop->mType == aiPropertyTypeInfo::aiPTI_String);
@@ -316,7 +318,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 			{
 				const std::string file(fileName.C_Str());
 				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) && 
+				if (m_textureMapping.ContainsKey(file) &&
 					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
 					m_textures[m_textureMapping[file]]->m_channels == 3)
 				{
@@ -359,6 +361,31 @@ void PathTracer::Run(const PathTracer::Params& params)
 			material.m_baseColorFactor = (aiMaterial->Get(AI_MATKEY_BASE_COLOR, color4D) == AI_SUCCESS) ? vec4(color4D.r, color4D.g, color4D.b, color4D.a) : glm::vec4(1.0f);
 			material.m_roughnessFactor = aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
 			material.m_metallicFactor = aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
+
+			aiUVTransform uvTransform{};
+
+			if (aiMaterial->Get(AI_MATKEY_UVTRANSFORM_DIFFUSE(0), uvTransform) == AI_SUCCESS)
+			{
+				struct transform
+				{
+					float offsetX{}, offsetY{};
+					float scaleX{}, scaleY{};
+					float rotation{};
+				};
+
+				transform t;
+				memcpy(&t, &uvTransform, sizeof(float) * 5);
+
+				glm::mat3 scale = mat3(t.scaleX, 0, 0, 0, t.scaleY, 0, 0, 0, 1);
+				glm::mat3 translation = mat3(1, 0, 0, 0, 1, 0, t.offsetX, t.offsetY, 1);
+				glm::mat3 rotation = mat3(
+					cos(t.rotation), -sin(t.rotation), 0,
+					sin(t.rotation), cos(t.rotation), 0,
+					0, 0, 1
+				);
+
+				material.m_uvTransform = translation * rotation * scale;
+			}
 		}
 
 		for (auto& task : loadTexturesTasks)
@@ -593,9 +620,9 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
 			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
-		//const auto& material = m_materials[tri.m_materialIndex];
+		const vec2 uvTransformed = (m_materials[tri.m_materialIndex].m_uvTransform * vec3(uv, 1));
 
-		const LightingModel::SampledData sample = GetSampledData(tri.m_materialIndex, uv);
+		const LightingModel::SampledData sample = GetSampledData(tri.m_materialIndex, uvTransformed);
 		const vec3 viewDirection = -normalize(ray.GetDirection());
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
 
