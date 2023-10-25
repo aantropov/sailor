@@ -25,6 +25,7 @@ namespace Sailor::Raytracing
 			std::string m_camera;
 			uint32_t m_height;
 			uint32_t m_numSamples;
+			uint32_t m_numAmbientSamples;
 			uint32_t m_numBounces;
 			uint32_t m_msaa;
 			vec3 m_ambient;

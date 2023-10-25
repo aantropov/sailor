@@ -34,6 +34,8 @@ namespace Sailor::Raytracing
 		static vec3 FresnelSchlick(float cosTheta, const vec3& F0);
 		static float DistributionGGX(const vec3& N, const vec3& H, float roughness);
 
+		static float PowerHeuristic(int nf, float fPdf, int ng, float gPdf);
+		static vec3 ImportanceSampleDiffuse(vec2 Xi, const vec3& n);
 		static vec3 ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n);
 		static float GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness);
 	};

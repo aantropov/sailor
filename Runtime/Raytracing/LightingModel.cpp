@@ -136,6 +136,32 @@ vec3 LightingModel::ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
 	return normalize(sampleVec);
 }
 
+float LightingModel::PowerHeuristic(int nf, float fPdf, int ng, float gPdf)
+{
+	float f = nf * fPdf;
+	float g = ng * gPdf;
+	return (f * f) / (f * f + g * g);
+}
+
+vec3 LightingModel::ImportanceSampleDiffuse(vec2 Xi, const vec3& n)
+{
+	float phi = 2.0f * glm::pi<float>() * Xi.x;
+	float cosTheta = sqrt(1.0f - Xi.y);
+	float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+
+	vec3 s;
+	s.x = sinTheta * cos(phi);
+	s.y = sinTheta * sin(phi);
+	s.z = cosTheta;
+
+	vec3 up = abs(n.z) < 0.999f ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 tangent = normalize(cross(up, n));
+	vec3 bitangent = cross(n, tangent);
+
+	vec3 sampleVec = tangent * s.x + bitangent * s.y + n * s.z;
+	return normalize(sampleVec);
+}
+
 float LightingModel::GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 {
 	const float infCompensation = 0.001f;

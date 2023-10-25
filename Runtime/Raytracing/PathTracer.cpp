@@ -475,8 +475,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 						ray.SetOrigin(cameraPos);
 
 #ifdef _DEBUG
-						uint32_t debugX = 133;
-						uint32_t debugY = 276;
+						uint32_t debugX = 381;
+						uint32_t debugY = height - 647 - 1;
 
 						if (!(x < debugX && (x + GroupSize) > debugX &&
 							y < debugY && (y + GroupSize) > debugY))
@@ -491,7 +491,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 							{
 								SAILOR_PROFILE_BLOCK("Raycasting");
 
-								const uint32_t index = (height - (y + v)) * width + (x + u);
+								const uint32_t index = (height - (y + v) - 1) * width + (x + u);
 								const float tu = (x + u) / (float)width;
 #ifdef _DEBUG
 								if ((x + u) == debugX && ((y + v) == debugY))
@@ -606,6 +606,8 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 	{
 		SAILOR_PROFILE_BLOCK("Sampling");
 
+		const bool bFirstIntersection = bounceLimit == params.m_numBounces;
+
 		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
 		vec3 faceNormal = vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] + hit.m_barycentricCoordinate.y * tri.m_normals[1] + hit.m_barycentricCoordinate.z * tri.m_normals[2]);
@@ -638,31 +640,93 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const bool bHasAlphaBlending = !sample.m_bIsOpaque && sample.m_baseColor.a < 1.0f;
 		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
 
-		RaycastHit hitLight{};
 		vec3 offset = 0.000001f * faceNormal;
 
 		SAILOR_PROFILE_END_BLOCK();
 
-		for (uint32_t i = 0; i < m_directionalLights.Num(); i++)
+		// Direct lighting
 		{
-			SAILOR_PROFILE_BLOCK("Direct lighting");
-			const vec3 toLight = -m_directionalLights[i].m_direction;
-			Ray rayToLight(hit.m_point + offset, toLight);
-			if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+			RaycastHit hitLight{};
+			for (uint32_t i = 0; i < m_directionalLights.Num(); i++)
 			{
-				const float angle = max(0.0f, glm::dot(toLight, worldNormal));
-				res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * m_directionalLights[i].m_intensity * angle;
+				SAILOR_PROFILE_BLOCK("Direct lighting");
+				const vec3 toLight = -m_directionalLights[i].m_direction;
+				Ray rayToLight(hit.m_point + offset, toLight);
+				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+				{
+					const float angle = max(0.0f, glm::dot(toLight, worldNormal));
+					res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * m_directionalLights[i].m_intensity * angle;
+				}
+				SAILOR_PROFILE_END_BLOCK();
 			}
-			SAILOR_PROFILE_END_BLOCK();
 		}
 
+		// Ambient lighting
+		{
+			// Random ray
+			vec3 ambient1 = vec3(0, 0, 0);
+			const float pdfSphere = 1.0f / (Pi * 4.0f);
+
+			const uint32_t ambientNumSamples = (bFirstIntersection ? params.m_numAmbientSamples : 1u);
+
+			// Random sampling loop
+			for (uint32_t i = 0; i < ambientNumSamples; i++)
+			{
+				RaycastHit hitLight{};
+				const vec3 toLight = glm::sphericalRand(1.0f);
+				Ray rayToLight(hit.m_point + offset, toLight);
+				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+				{
+					const float angle = max(0.0f, glm::dot(toLight, worldNormal));
+					ambient1 += (LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * params.m_ambient * angle) / pdfSphere;
+				}
+			}
+			ambient1 /= (float)ambientNumSamples;
+
+			// Importance sampling ray
+			vec3 ambient2 = vec3(0, 0, 0);
+			float avgPdfLambert = 0.0f;
+
+			// Importance sampling loop
+			for (uint32_t i = 0; i < ambientNumSamples; i++)
+			{
+				vec2 randomSample = vec2(glm::linearRand(0.0f, 1.0f), glm::linearRand(0.0f, 1.0f));
+				vec3 H = LightingModel::ImportanceSampleDiffuse(randomSample, worldNormal);
+				vec3 direction = 2.0f * dot(viewDirection, H) * H - viewDirection;
+
+				const float angle = max(0.0f, glm::dot(direction, worldNormal));
+				const float pdfLambert = abs(dot(direction, worldNormal)) / Math::Pi;
+
+				avgPdfLambert += pdfLambert;
+
+				RaycastHit hitLight{};
+				Ray rayToLight(hit.m_point + offset, direction);
+				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+				{
+					ambient2 += (LightingModel::CalculateBRDF(viewDirection, worldNormal, direction, sample) * params.m_ambient * angle) / pdfLambert;
+				}
+			}
+
+			ambient2 /= (float)ambientNumSamples;
+			avgPdfLambert /= (float)ambientNumSamples;
+
+			const vec3 ambient = ambient1 + ambient2;
+			if (ambient.x + ambient.y + ambient.z > 0.0f)
+			{
+				const vec3 combinedAmbient = ambient1 * LightingModel::PowerHeuristic(ambientNumSamples, pdfSphere, ambientNumSamples, avgPdfLambert) +
+					ambient2 * LightingModel::PowerHeuristic(ambientNumSamples, avgPdfLambert, ambientNumSamples, pdfSphere);
+				res += combinedAmbient;
+			}
+		}
+
+		// Indirect lighting
 		if (bounceLimit > 0)
 		{
 			SAILOR_PROFILE_BLOCK("Bounces");
 
 			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
 
-			const uint32_t numExtraSamples = bounceLimit == params.m_numBounces ? numSamples : 1;
+			const uint32_t numExtraSamples = bFirstIntersection ? numSamples : 1;
 			float contribution = 0.0f;
 
 			for (uint32_t i = 0; i < numExtraSamples; i++)
@@ -673,7 +737,9 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 				const float importanceRoughness = bSpecular ? sample.m_orm.y : 1.0f;
 
 				vec2 randomSample = vec2(glm::linearRand(0.0f, 1.0f), glm::linearRand(0.0f, 1.0f));
-				vec3 H = LightingModel::ImportanceSampleGGX(randomSample, importanceRoughness, worldNormal);
+				vec3 H = bSpecular ? LightingModel::ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal) :
+					LightingModel::ImportanceSampleDiffuse(randomSample, worldNormal);
+
 				vec3 direction = 2.0f * dot(viewDirection, H) * H - viewDirection;
 
 				if (bTransmission)
