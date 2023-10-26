@@ -196,7 +196,7 @@ float LightingModel::GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 	return pdf;
 }
 
-bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& outDirection, vec2 randomSample)
+bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample)
 {
 	const bool bMirror = sample.m_orm.y <= 0.001f;
 	const bool bFullDielectric = sample.m_orm.z == 0.0f;
@@ -212,15 +212,18 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 	vec3 H = bSpecular ? LightingModel::ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal) :
 		LightingModel::ImportanceSampleLambert(randomSample, worldNormal);
 
-	outDirection = 2.0f * dot(viewDirection, H) * H - viewDirection;
-
-	if (bOutTransmissionRay)
+	if (inOutDirection == vec3(0, 0, 0))
 	{
-		outDirection += 2.0f * worldNormal * dot(-outDirection, worldNormal);
+		inOutDirection = 2.0f * dot(viewDirection, H) * H - viewDirection;
+
+		if (bOutTransmissionRay)
+		{
+			inOutDirection += 2.0f * worldNormal * dot(-inOutDirection, worldNormal);
+		}
 	}
 
 	const float pdfSpec = LightingModel::GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
-	const float pdfLambert = abs(dot(outDirection, worldNormal)) / Math::Pi;
+	const float pdfLambert = abs(dot(inOutDirection, worldNormal)) / Math::Pi;
 
 	outPdf = bOnlySpecularRay ? pdfSpec : ((pdfSpec + pdfLambert) * 0.5f);
 
@@ -231,26 +234,21 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 
 	if (!isnan(outPdf) && outPdf > 0.0001f)
 	{
-		const float angle = abs(glm::dot(outDirection, worldNormal));
+		const float angle = abs(glm::dot(inOutDirection, worldNormal));
 
 		vec3 term = vec3(0.0f, 0.0f, 0.0f);
 		if (bOutTransmissionRay)
 		{
-			term = LightingModel::CalculateBTDF(viewDirection, worldNormal, outDirection, sample);
+			term = LightingModel::CalculateBTDF(viewDirection, worldNormal, inOutDirection, sample);
 		}
 		else
 		{
-			term = LightingModel::CalculateBRDF(viewDirection, worldNormal, outDirection, sample);
+			term = LightingModel::CalculateBRDF(viewDirection, worldNormal, inOutDirection, sample);
 		}
 
 		const float weight = 1.0f / outPdf;
 
-		outTerm = glm::clamp(
-			weight *
-			term *
-			angle,
-			vec3(0.0f, 0.0f, 0.0f),
-			vec3(10.0f, 10.0f, 10.0f));
+		outTerm = weight * term * angle;
 
 		return true;
 	}

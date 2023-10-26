@@ -672,21 +672,23 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			vec3 ambient1 = vec3(0, 0, 0);
 			const float pdfHemisphere = 1.0f / (Pi * 2.0f);
 
-			const uint32_t ambientNumSamples = (bFirstIntersection ? params.m_numAmbientSamples : 1u);
+			const uint32_t ambientNumSamples = bFirstIntersection ? params.m_numAmbientSamples : 1u;
+			const uint32_t numExtraSamples = bFirstIntersection ? numSamples : 1;
 
 			// Hemisphere sampling loop
 			for (uint32_t i = 0; i < ambientNumSamples; i++)
 			{
-				vec2 randomSample = NextVec2_Linear(); //NextVec2_BlueNoise(randSeedX, randSeedY);
+				const vec2 randomSample = NextVec2_BlueNoise(randSeedX, randSeedY);
 				vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
-				const vec3 toLight = 2.0f * dot(viewDirection, H) * H - viewDirection;
+				vec3 toLight = 2.0f * dot(viewDirection, H) * H - viewDirection;
 
 				RaycastHit hitLight{};
 				Ray rayToLight(hit.m_point + offset, toLight);
 				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 				{
 					const float angle = max(0.0f, glm::dot(toLight, worldNormal));
-					ambient1 += (LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * params.m_ambient * angle) / pdfHemisphere;
+					ambient1 += glm::clamp((LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * params.m_ambient * angle) / pdfHemisphere,
+						vec3(0, 0, 0), vec3(10, 10, 10));
 				}
 			}
 			ambient1 /= (float)ambientNumSamples;
@@ -695,73 +697,60 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			vec3 ambient2 = vec3(0, 0, 0);
 			float avgPdfLambert = 0.0f;
 
-			// Importance sampling loop
-			for (uint32_t i = 0; i < ambientNumSamples; i++)
-			{
-				vec3 term{};
-				float pdf = 0.0f;
-				bool bTransmissionRay = false;
-				vec3 direction{};
-
-				vec2 randomSample = NextVec2_Linear(); //NextVec2_BlueNoise(randSeedX, randSeedY);
-				if (LightingModel::Sample(sample, worldNormal, viewDirection, term, pdf, bTransmissionRay, direction, randomSample))
-				{
-					RaycastHit hitLight{};
-					Ray rayToLight(hit.m_point + (bTransmissionRay ? -offset : offset), direction);
-					if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
-					{
-						ambient2 += term * params.m_ambient;
-						avgPdfLambert += pdf;
-					}
-				}
-			}
-
-			ambient2 /= (float)ambientNumSamples;
-			avgPdfLambert /= (float)ambientNumSamples;
-
-			const vec3 ambient = ambient1 + ambient2;
-			if (ambient.x + ambient.y + ambient.z > 0.0f)
-			{
-				const vec3 combinedAmbient = ambient1 * LightingModel::PowerHeuristic(ambientNumSamples, pdfHemisphere, ambientNumSamples, avgPdfLambert) +
-					ambient2 * LightingModel::PowerHeuristic(ambientNumSamples, avgPdfLambert, ambientNumSamples, pdfHemisphere);
-				res += combinedAmbient;
-			}
-		}
-
-		// Indirect lighting
-		if (bounceLimit > 0)
-		{
-			SAILOR_PROFILE_BLOCK("Bounces");
-
+			// Indirect lighting
 			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
+			float indirectContribution = 0.0f;
 
-			const uint32_t numExtraSamples = bFirstIntersection ? numSamples : 1;
-			float contribution = 0.0f;
-
+			// Importance sampling loop
 			for (uint32_t i = 0; i < numExtraSamples; i++)
 			{
 				vec3 term{};
 				float pdf = 0.0f;
 				bool bTransmissionRay = false;
-				vec3 direction{};
+				vec3 direction = vec3(0);
 
-				vec2 randomSample = NextVec2_Linear(); //NextVec2_BlueNoise(randSeedX, randSeedY);
-
+				const vec2 randomSample = NextVec2_BlueNoise(randSeedX, randSeedY);
 				if (LightingModel::Sample(sample, worldNormal, viewDirection, term, pdf, bTransmissionRay, direction, randomSample))
 				{
-					const Ray rayToDirection(hit.m_point + (bTransmissionRay ? -offset : offset), direction);
-					indirect += term * Raytrace(rayToDirection, bvh, bounceLimit - 1, hit.m_triangleIndex, params);
+					RaycastHit hitLight{};
+					Ray rayToLight(hit.m_point + (bTransmissionRay ? -offset : offset), direction);
 
-					contribution += 1.0f;
+					if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+					{
+						vec3 value = glm::clamp(term * params.m_ambient, vec3(0, 0, 0), vec3(10, 10, 10));
+
+						// Ambient lighting
+						ambient2 += value;
+						avgPdfLambert += pdf;
+
+						// Indirect lighting with the correct pdf in case of miss
+						indirect += value;
+					}
+					else if (bounceLimit > 0)
+					{
+						// Indirect lighting with bounces in case of hit
+						indirect += glm::clamp(term * Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params), vec3(0, 0, 0), vec3(10, 10, 10));						
+					}
+
+					indirectContribution += 1.0f;
 				}
 			}
 
-			if (contribution > 0.0f)
+			ambient2 /= (float)numExtraSamples;
+			avgPdfLambert /= (float)numExtraSamples;
+
+			const vec3 ambient = ambient1 + ambient2;
+			if (ambient.x + ambient.y + ambient.z > 0.0f)
 			{
-				res += (indirect / contribution);
+				const vec3 combinedAmbient = ambient1 * LightingModel::PowerHeuristic(ambientNumSamples, pdfHemisphere, numExtraSamples, avgPdfLambert) +
+					ambient2 * LightingModel::PowerHeuristic(numExtraSamples, avgPdfLambert, ambientNumSamples, pdfHemisphere);
+				res += combinedAmbient;
 			}
 
-			SAILOR_PROFILE_END_BLOCK();
+			if (indirectContribution > 0.0f)
+			{
+				res += (indirect / indirectContribution);
+			}
 		}
 
 		res += sample.m_emissive;

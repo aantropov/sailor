@@ -27,7 +27,7 @@ namespace Sailor::Raytracing
 			bool m_bIsOpaque = true;
 		};
 
-		static bool Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& outDirection, vec2 randomSample);
+		static bool Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample);
 
 		static vec3 CalculateBRDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample);
 		static vec3 CalculateBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample);
