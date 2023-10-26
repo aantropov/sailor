@@ -37,7 +37,10 @@ namespace Sailor::Raytracing
 
 	protected:
 
-		__forceinline LightingModel::SampledData GetSampledData(const size_t& materialIndex, glm::vec2 uv) const;
+		static vec2 NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY);
+		__forceinline static vec2 NextVec2_Linear();
+
+		__forceinline LightingModel::SampledData GetMaterialData(const size_t& materialIndex, glm::vec2 uv) const;
 
 		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Params& params) const;
 

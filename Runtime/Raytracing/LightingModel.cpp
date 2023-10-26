@@ -2,6 +2,7 @@
 #include "Containers/Vector.h"
 #include "Core/Utils.h"
 #include "Math/Math.h"
+#include "glm/glm/gtc/random.hpp"
 
 using namespace glm;
 using namespace Sailor;
@@ -143,10 +144,29 @@ float LightingModel::PowerHeuristic(int nf, float fPdf, int ng, float gPdf)
 	return (f * f) / (f * f + g * g);
 }
 
-vec3 LightingModel::ImportanceSampleDiffuse(vec2 Xi, const vec3& n)
+vec3 LightingModel::ImportanceSampleLambert(vec2 Xi, const vec3& n)
 {
 	float phi = 2.0f * glm::pi<float>() * Xi.x;
 	float cosTheta = sqrt(1.0f - Xi.y);
+	float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+
+	vec3 s;
+	s.x = sinTheta * cos(phi);
+	s.y = sinTheta * sin(phi);
+	s.z = cosTheta;
+
+	vec3 up = abs(n.z) < 0.999f ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 tangent = normalize(cross(up, n));
+	vec3 bitangent = cross(n, tangent);
+
+	vec3 sampleVec = tangent * s.x + bitangent * s.y + n * s.z;
+	return normalize(sampleVec);
+}
+
+vec3 LightingModel::ImportanceSampleHemisphere(vec2 Xi, const vec3& n)
+{
+	float phi = 2.0f * glm::pi<float>() * Xi.x;
+	float cosTheta = 1.0f - Xi.y;
 	float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
 
 	vec3 s;
@@ -174,4 +194,66 @@ float LightingModel::GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 	float pdf = D * NdotH / (4.0f * VdotH);
 
 	return pdf;
+}
+
+bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& outDirection, vec2 randomSample)
+{
+	const bool bMirror = sample.m_orm.y <= 0.001f;
+	const bool bFullDielectric = sample.m_orm.z == 0.0f;
+	const bool bFullMetallic = sample.m_orm.z == 1.0f;
+	const bool bOnlySpecularRay = (bFullDielectric || bFullMetallic) && bMirror;
+	const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
+
+	const bool bSpecular = bOnlySpecularRay || glm::linearRand(0.0f, 1.0f) > 0.5f;
+	bOutTransmissionRay = bHasTransmission && (glm::linearRand(0.0f, 1.0f) > 0.5f);
+
+	const float importanceRoughness = bSpecular ? sample.m_orm.y : 1.0f;
+
+	vec3 H = bSpecular ? LightingModel::ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal) :
+		LightingModel::ImportanceSampleLambert(randomSample, worldNormal);
+
+	outDirection = 2.0f * dot(viewDirection, H) * H - viewDirection;
+
+	if (bOutTransmissionRay)
+	{
+		outDirection += 2.0f * worldNormal * dot(-outDirection, worldNormal);
+	}
+
+	const float pdfSpec = LightingModel::GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
+	const float pdfLambert = abs(dot(outDirection, worldNormal)) / Math::Pi;
+
+	outPdf = bOnlySpecularRay ? pdfSpec : ((pdfSpec + pdfLambert) * 0.5f);
+
+	if (bHasTransmission)
+	{
+		outPdf *= 0.5f;
+	}
+
+	if (!isnan(outPdf) && outPdf > 0.0001f)
+	{
+		const float angle = abs(glm::dot(outDirection, worldNormal));
+
+		vec3 term = vec3(0.0f, 0.0f, 0.0f);
+		if (bOutTransmissionRay)
+		{
+			term = LightingModel::CalculateBTDF(viewDirection, worldNormal, outDirection, sample);
+		}
+		else
+		{
+			term = LightingModel::CalculateBRDF(viewDirection, worldNormal, outDirection, sample);
+		}
+
+		const float weight = 1.0f / outPdf;
+
+		outTerm = glm::clamp(
+			weight *
+			term *
+			angle,
+			vec3(0.0f, 0.0f, 0.0f),
+			vec3(10.0f, 10.0f, 10.0f));
+
+		return true;
+	}
+
+	return false;
 }

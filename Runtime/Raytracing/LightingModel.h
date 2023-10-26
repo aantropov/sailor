@@ -27,6 +27,8 @@ namespace Sailor::Raytracing
 			bool m_bIsOpaque = true;
 		};
 
+		static bool Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& outDirection, vec2 randomSample);
+
 		static vec3 CalculateBRDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample);
 		static vec3 CalculateBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample);
 
@@ -35,7 +37,8 @@ namespace Sailor::Raytracing
 		static float DistributionGGX(const vec3& N, const vec3& H, float roughness);
 
 		static float PowerHeuristic(int nf, float fPdf, int ng, float gPdf);
-		static vec3 ImportanceSampleDiffuse(vec2 Xi, const vec3& n);
+		static vec3 ImportanceSampleLambert(vec2 Xi, const vec3& n);
+		static vec3 ImportanceSampleHemisphere(vec2 Xi, const vec3& n);
 		static vec3 ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n);
 		static float GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness);
 	};

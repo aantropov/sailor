@@ -23,6 +23,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #define GLM_SWIZZLE_XYZW
 #define GLM_FORCE_SWIZZLE
 #define GLM_GTC_random
+#define GLM_GTX_matrix_transform_2d
 //#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 
 #ifndef _WINDEF_
