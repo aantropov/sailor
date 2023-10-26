@@ -535,6 +535,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 		SAILOR_PROFILE_BLOCK("Calcs on Main thread");
 		float lastPrg = 0.0f;
+		float eta = 0.0f;
 		for (auto& task : tasksThisThread)
 		{
 			task->Execute();
@@ -543,6 +544,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 			if (progress - lastPrg > 0.05f)
 			{
+				if (eta == 0.0f)
+				{
+					eta = raytracingTimer.ResultAccumulatedMs() * 20.0f * 0.001f * 1.5f;
+					SAILOR_LOG("PathTracer ETA: ~%.2fsec (%.2fmin)", eta, round(eta / 60.0f));
+				}
+
 				SAILOR_LOG("PathTracer Progress: %.2f", progress);
 				lastPrg = progress;
 			}
@@ -729,7 +736,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					else if (bounceLimit > 0)
 					{
 						// Indirect lighting with bounces in case of hit
-						indirect += glm::clamp(term * Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params), vec3(0, 0, 0), vec3(10, 10, 10));						
+						indirect += glm::clamp(term * Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params), vec3(0, 0, 0), vec3(10, 10, 10));
 					}
 
 					indirectContribution += 1.0f;

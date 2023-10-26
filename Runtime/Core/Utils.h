@@ -53,6 +53,7 @@ namespace Sailor
 			int64_t m_counterEnd = 0;
 			int64_t m_counterAcc = 0;
 			double m_pcFrequence = 0.0;
+			bool m_bIsStarted = false;
 
 			void Start();
 			void Stop();

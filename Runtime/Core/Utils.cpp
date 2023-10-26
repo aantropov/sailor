@@ -347,6 +347,8 @@ void Utils::Timer::Start()
 
 	QueryPerformanceCounter(&li);
 	m_counterStart = li.QuadPart;
+
+	m_bIsStarted = true;
 }
 
 void Utils::Timer::Stop()
@@ -356,10 +358,18 @@ void Utils::Timer::Stop()
 	m_counterEnd = li.QuadPart;
 
 	m_counterAcc += m_counterEnd - m_counterStart;
+
+	m_bIsStarted = false;
 }
 
 int64_t Utils::Timer::ResultMs() const
 {
+	if (m_bIsStarted)
+	{
+		LARGE_INTEGER li;
+		QueryPerformanceCounter(&li);
+		return int64_t(double(li.QuadPart - m_counterStart) / m_pcFrequence);
+	}
 	return int64_t(double(m_counterEnd - m_counterStart) / m_pcFrequence);
 }
 
@@ -369,6 +379,14 @@ int64_t Utils::Timer::ResultAccumulatedMs() const
 	{
 		return 0;
 	}
+
+	if (m_bIsStarted)
+	{
+		LARGE_INTEGER li;
+		QueryPerformanceCounter(&li);
+		return int64_t(double(li.QuadPart - m_counterStart + m_counterAcc) / m_pcFrequence);
+	}
+
 	return int64_t((double)m_counterAcc / m_pcFrequence);
 }
 
