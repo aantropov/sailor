@@ -65,7 +65,6 @@ vec3 LightingModel::CalculateBTDF(const vec3& viewDirection, const vec3& worldNo
 
 	vec3 kT = (1.0f - F) * transmission * (1.0f - metallic) * sample.m_baseColor.xyz;
 
-	// TODO: Two sided
 	if (nDotL < 0.0f || nDotV < 0.0f)
 	{
 		return vec3(0.0f);
@@ -101,7 +100,6 @@ vec3 LightingModel::CalculateBRDF(const vec3& viewDirection, const vec3& worldNo
 	kD *= 1.0f - metallic;
 	kD *= 1.0f - sample.m_transmission;
 
-	// TODO: Two sided
 	if (nDotL < 0.0f || nDotV < 0.0f)
 	{
 		return vec3(0.0f);
@@ -201,7 +199,7 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 	const bool bMirror = sample.m_orm.y <= 0.001f;
 	const bool bFullDielectric = sample.m_orm.z == 0.0f;
 	const bool bFullMetallic = sample.m_orm.z == 1.0f;
-	const bool bOnlySpecularRay = (bFullDielectric || bFullMetallic) && bMirror;
+	const bool bOnlySpecularRay = bFullMetallic && bMirror;
 	const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
 
 	const bool bSpecular = bOnlySpecularRay || glm::linearRand(0.0f, 1.0f) > 0.5f;
