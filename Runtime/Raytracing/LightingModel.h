@@ -23,18 +23,25 @@ namespace Sailor::Raytracing
 			glm::vec3 m_orm{};
 			glm::vec3 m_emissive{};
 			glm::vec3 m_normal{};
+			float m_ior = 1.5f;
+			float m_thicknessFactor = 0.0f;
 			float m_transmission = 0.0f;
 			bool m_bIsOpaque = true;
 		};
 
-		static bool Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample);
+		static bool Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection,
+			float fromIor, float toIor, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample);
 
 		static vec3 CalculateBRDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample);
 		static vec3 CalculateBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample);
+		static vec3 CalculateVolumetricBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample, float envIor);
+
+		static vec3 CalculateRefraction(const vec3& rayDirection, const vec3& worldNormal, float fromIor, float toIor);
 
 		static float GeometrySchlickGGX(float NdotV, float roughness);
 		static vec3 FresnelSchlick(float cosTheta, const vec3& F0);
 		static float DistributionGGX(const vec3& N, const vec3& H, float roughness);
+		static float DistributionBeckmann(const vec3& N, const vec3& H, float roughness);
 
 		static float PowerHeuristic(int nf, float fPdf, int ng, float gPdf);
 		static vec3 ImportanceSampleLambert(vec2 Xi, const vec3& n);

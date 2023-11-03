@@ -143,7 +143,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
 	// Camera
-	auto cameraPos = vec3(0, 0, 2);
+	auto cameraPos = vec3(0, 0, 1);
 	//auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
 
@@ -220,12 +220,13 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 			aiString fileName;
 
+			//SAILOR_LOG("\n\n\n");
 
 			// Parse specific properties
 			for (uint32_t j = 0; j < aiMaterial->mNumProperties; j++)
 			{
 				const auto& prop = aiMaterial->mProperties[j];
-
+				//SAILOR_LOG("Prop: %s", prop->mKey.C_Str());
 				if (strcmp("$mat.gltf.alphaMode", prop->mKey.C_Str()) == 0)
 				{
 					check(prop->mType == aiPropertyTypeInfo::aiPTI_String);
@@ -251,6 +252,11 @@ void PathTracer::Run(const PathTracer::Params& params)
 				{
 					check(prop->mType == aiPropertyTypeInfo::aiPTI_Float);
 					memcpy(&material.m_alphaCutoff, prop->mData, 4);
+				}
+				else if (strcmp("$mat.refracti", prop->mKey.C_Str()) == 0)
+				{
+					check(prop->mType == aiPropertyTypeInfo::aiPTI_Float);
+					memcpy(&material.m_indexOfRefraction, prop->mData, 4);
 				}
 			}
 
@@ -362,6 +368,10 @@ void PathTracer::Run(const PathTracer::Params& params)
 			material.m_baseColorFactor = (aiMaterial->Get(AI_MATKEY_BASE_COLOR, color4D) == AI_SUCCESS) ? vec4(color4D.r, color4D.g, color4D.b, color4D.a) : glm::vec4(1.0f);
 			material.m_roughnessFactor = aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
 			material.m_metallicFactor = aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
+
+			material.m_thicknessFactor = aiMaterial->Get(AI_MATKEY_VOLUME_THICKNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
+			material.m_attenuationColor = (aiMaterial->Get(AI_MATKEY_VOLUME_ATTENUATION_COLOR, color3D) == AI_SUCCESS) ? vec3(color3D.r, color3D.g, color3D.b) : glm::vec3(1.0f);
+			material.m_attenuationDistance = aiMaterial->Get(AI_MATKEY_VOLUME_ATTENUATION_DISTANCE, color1D) == AI_SUCCESS ? color1D : std::numeric_limits<float>().max();
 
 			aiUVTransform uvTransform{};
 
@@ -476,8 +486,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 						ray.SetOrigin(cameraPos);
 
 #ifdef _DEBUG
-						uint32_t debugX = 381;
-						uint32_t debugY = height - 647 - 1;
+						uint32_t debugX = 500;
+						uint32_t debugY = height - 300 - 1;
 
 						if (!(x < debugX && (x + GroupSize) > debugX &&
 							y < debugY && (y + GroupSize) > debugY))
@@ -508,7 +518,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 									ray.SetDirection(glm::normalize(pixelDir));
 
-									accumulator += Raytrace(ray, bvh, params.m_numBounces, (uint32_t)(-1), params);
+									accumulator += Raytrace(ray, bvh, params.m_numBounces, (uint32_t)(-1), params, 1.0f);
 								}
 
 								output[index] = accumulator / (float)params.m_msaa;
@@ -603,7 +613,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	::system(params.m_output.string().c_str());
 }
 
-vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const PathTracer::Params& params) const
+vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const PathTracer::Params& params, float environmentIor) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -617,7 +627,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 	{
 		SAILOR_PROFILE_BLOCK("Sampling");
 
-		const bool bFirstIntersection = bounceLimit == params.m_numBounces;
+		const bool bIsFirstIntersection = bounceLimit == params.m_numBounces;
 
 		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
@@ -625,7 +635,8 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] + hit.m_barycentricCoordinate.y * tri.m_tangent[1] + hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
 		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] + hit.m_barycentricCoordinate.y * tri.m_bitangent[1] + hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
 
-		if (dot(faceNormal, ray.GetDirection()) > 0.0f)
+		const bool bIsOppositeRay = dot(faceNormal, ray.GetDirection()) < 0.0f;
+		if (!bIsOppositeRay)
 		{
 			faceNormal *= -1.0f;
 		}
@@ -636,22 +647,21 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
 			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
-		const vec2 uvTransformed = (m_materials[tri.m_materialIndex].m_uvTransform * vec3(uv, 1));
+		const auto material = m_materials[tri.m_materialIndex];
+		const vec2 uvTransformed = (material.m_uvTransform * vec3(uv, 1));
 
 		const LightingModel::SampledData sample = GetMaterialData(tri.m_materialIndex, uvTransformed);
 		const vec3 viewDirection = -normalize(ray.GetDirection());
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
 
-		const bool bMirror = sample.m_orm.y <= 0.001f;
-		const bool bFullDielectric = sample.m_orm.z == 0.0f;
-		const bool bFullMetallic = sample.m_orm.z == 1.0f;
-		const bool bOnlySpecularRay = (bFullDielectric || bFullMetallic) && bMirror;
-		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
-
 		const bool bHasAlphaBlending = !sample.m_bIsOpaque && sample.m_baseColor.a < 1.0f;
 		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
 
 		const vec3 offset = 0.000001f * faceNormal;
+
+		const bool bFullMetallic = sample.m_orm.z == 1.0f;
+		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
+		const bool bThickVolume = bHasTransmission && material.m_thicknessFactor > 0.0f;
 
 		SAILOR_PROFILE_END_BLOCK();
 
@@ -679,8 +689,8 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			vec3 ambient1 = vec3(0, 0, 0);
 			const float pdfHemisphere = 1.0f / (Pi * 2.0f);
 
-			const uint32_t ambientNumSamples = bFirstIntersection ? params.m_numAmbientSamples : 1u;
-			const uint32_t numExtraSamples = bFirstIntersection ? numSamples : 1;
+			const uint32_t ambientNumSamples = bIsFirstIntersection ? params.m_numAmbientSamples : 1u;
+			const uint32_t numExtraSamples = bIsFirstIntersection ? numSamples : 1;
 
 			// Hemisphere sampling loop
 			for (uint32_t i = 0; i < ambientNumSamples; i++)
@@ -708,6 +718,8 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
 			float indirectContribution = 0.0f;
 
+			const float toIor = bIsOppositeRay ? sample.m_ior : 1.0f;
+
 			// Importance sampling loop
 			for (uint32_t i = 0; i < numExtraSamples; i++)
 			{
@@ -717,10 +729,23 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 				vec3 direction = vec3(0);
 
 				const vec2 randomSample = NextVec2_BlueNoise(randSeedX, randSeedY);
-				if (LightingModel::Sample(sample, worldNormal, viewDirection, term, pdf, bTransmissionRay, direction, randomSample))
+				if (LightingModel::Sample(sample, worldNormal, viewDirection, environmentIor, toIor, term, pdf, bTransmissionRay, direction, randomSample))
 				{
+					float newEnvironmentIor = environmentIor;
+
+					if (bIsOppositeRay && bTransmissionRay && bThickVolume)
+					{
+						newEnvironmentIor = sample.m_ior;
+					}
+					else if (!bIsOppositeRay && bTransmissionRay && bThickVolume)
+					{
+						newEnvironmentIor = 1.0f;
+					}
+
 					RaycastHit hitLight{};
-					Ray rayToLight(hit.m_point + (bTransmissionRay ? -offset : offset), direction);
+					Ray rayToLight(hit.m_point + ((bTransmissionRay && !bThickVolume) ? -offset : offset), direction);
+
+					//const bool bIntersected = bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex);
 
 					if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 					{
@@ -735,8 +760,16 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					}
 					else if (bounceLimit > 0)
 					{
+						vec3 lightAttenuation = vec3(1, 1, 1);
+						if (bIsOppositeRay && bTransmissionRay && bThickVolume)
+						{
+							const float distance = glm::length(hitLight.m_point - hit.m_point);
+							vec3 attenuationCoefficient = material.m_attenuationDistance / material.m_attenuationColor;
+							lightAttenuation = glm::exp(-distance * attenuationCoefficient);
+						}
+
 						// Indirect lighting with bounces in case of hit
-						indirect += glm::clamp(term * Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params), vec3(0, 0, 0), vec3(10, 10, 10));
+						indirect += glm::clamp(term * lightAttenuation * Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params, newEnvironmentIor), vec3(0, 0, 0), vec3(10, 10, 10));
 					}
 
 					indirectContribution += 1.0f;
@@ -774,7 +807,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			p.m_numSamples = std::max(1u, params.m_numSamples - numSamples);
 
 			res = res * sample.m_baseColor.a +
-				Raytrace(newRay, bvh, bounceLimit - 1, hit.m_triangleIndex, p) * (1.0f - sample.m_baseColor.a);
+				Raytrace(newRay, bvh, bounceLimit - 1, hit.m_triangleIndex, p, environmentIor) * (1.0f - sample.m_baseColor.a);
 		}
 	}
 	else
@@ -796,6 +829,8 @@ LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialInd
 	res.m_emissive = material.m_emissiveFactor;
 	res.m_transmission = material.m_transmissionFactor;
 	res.m_bIsOpaque = material.m_blendMode == BlendMode::Opaque;
+	res.m_thicknessFactor = material.m_thicknessFactor;
+	res.m_ior = material.m_indexOfRefraction;
 
 	if (material.HasBaseTexture())
 	{

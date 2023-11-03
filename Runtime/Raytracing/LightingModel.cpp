@@ -3,11 +3,27 @@
 #include "Core/Utils.h"
 #include "Math/Math.h"
 #include "glm/glm/gtc/random.hpp"
+#include "MaterialUtils.h"
 
 using namespace glm;
 using namespace Sailor;
 using namespace Sailor::Math;
 using namespace Sailor::Raytracing;
+
+float LightingModel::DistributionBeckmann(const vec3& N, const vec3& H, float roughness)
+{
+	float alpha = std::max(roughness * roughness, 0.001f);
+	float NdotH = std::max(std::abs(dot(N, H)), 0.0001f);
+	float NdotH2 = NdotH * NdotH;
+
+	float tan2Theta = (1.0f - NdotH2) / NdotH2;
+	float alpha2 = alpha * alpha;
+
+	float nom = std::exp(-tan2Theta / alpha2);
+	float denom = glm::pi<float>() * alpha2 * NdotH2 * NdotH2;
+
+	return nom / denom;
+}
 
 float LightingModel::DistributionGGX(const vec3& N, const vec3& H, float roughness)
 {
@@ -35,11 +51,26 @@ float LightingModel::GeometrySchlickGGX(float NdotV, float roughness)
 	return NdotV / denom;
 }
 
+vec3 LightingModel::CalculateVolumetricBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample, float envIor)
+{
+	const float roughness = sample.m_orm.y;
+	const float metallic = sample.m_orm.z;
+	const float transmission = sample.m_transmission;
+
+	if (transmission <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	const vec3 dielectricSpecular = vec3(0.04f);
+	const vec3 F0 = mix(dielectricSpecular, vec3(sample.m_baseColor), metallic);
+	vec3 F = FresnelSchlick(std::max(abs(glm::dot(viewDirection, worldNormal)), 0.0f), F0);
+
+	return transmission * (vec3(1.0) - F);
+}
+
 vec3 LightingModel::CalculateBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lDirection, const LightingModel::SampledData& sample)
 {
-	// Flip light direction
-	const vec3 lightDirection = lDirection + 2.0f * worldNormal * dot(-lDirection, worldNormal);
-
 	const float ambientOcclusion = sample.m_orm.x;
 	const float roughness = sample.m_orm.y;
 	const float metallic = sample.m_orm.z;
@@ -50,12 +81,12 @@ vec3 LightingModel::CalculateBTDF(const vec3& viewDirection, const vec3& worldNo
 		return vec3(0.0f);
 	}
 
-	const float nDotL = abs(glm::dot(worldNormal, lightDirection));
+	const float nDotL = abs(glm::dot(worldNormal, lDirection));
 	const float nDotV = abs(glm::dot(worldNormal, viewDirection));
 
 	const vec3 F0 = vec3(0.04f);
 
-	const vec3 halfwayVector = normalize(viewDirection + lightDirection);
+	const vec3 halfwayVector = normalize(viewDirection + lDirection);
 	const float NDF = DistributionGGX(worldNormal, halfwayVector, roughness);
 	const vec3 F = FresnelSchlick(std::max(abs(glm::dot(halfwayVector, viewDirection)), 0.0f), F0);
 
@@ -86,7 +117,9 @@ vec3 LightingModel::CalculateBRDF(const vec3& viewDirection, const vec3& worldNo
 	const float nDotL = glm::dot(worldNormal, lightDirection);
 	const float nDotV = glm::dot(worldNormal, viewDirection);
 
-	vec3 F0 = mix(vec3(0.04f), vec3(sample.m_baseColor), metallic);
+	const vec3 dielectricSpecular = vec3(0.04f);
+
+	vec3 F0 = mix(dielectricSpecular, vec3(sample.m_baseColor), metallic);
 
 	vec3 halfwayVector = normalize(viewDirection + lightDirection);
 	float NDF = DistributionGGX(worldNormal, halfwayVector, roughness);
@@ -194,13 +227,31 @@ float LightingModel::GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 	return pdf;
 }
 
-bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample)
+vec3 LightingModel::CalculateRefraction(const vec3& rayDirection, const vec3& worldNormal, float fromIor, float toIor)
+{
+	float eta = fromIor / toIor;
+
+	float cosi = -glm::dot(worldNormal, rayDirection);
+	float k = 1 - eta * eta * (1 - cosi * cosi);
+
+	if (k < 0)
+	{
+		return glm::vec3(0.0f);
+	}
+	else
+	{
+		return normalize(eta * rayDirection + (eta * cosi - sqrt(k)) * worldNormal);
+	}
+}
+
+bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, float fromIor, float toIor, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample)
 {
 	const bool bMirror = sample.m_orm.y <= 0.001f;
 	const bool bFullDielectric = sample.m_orm.z == 0.0f;
 	const bool bFullMetallic = sample.m_orm.z == 1.0f;
-	const bool bOnlySpecularRay = bFullMetallic && bMirror;
+	const bool bOnlySpecularRay = bMirror;
 	const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
+	const bool bIsThickVolume = bHasTransmission && sample.m_thicknessFactor > 0.0f;
 
 	const bool bSpecular = bOnlySpecularRay || glm::linearRand(0.0f, 1.0f) > 0.5f;
 	bOutTransmissionRay = bHasTransmission && (glm::linearRand(0.0f, 1.0f) > 0.5f);
@@ -217,6 +268,11 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 		if (bOutTransmissionRay)
 		{
 			inOutDirection += 2.0f * worldNormal * dot(-inOutDirection, worldNormal);
+			
+			if (bIsThickVolume)
+			{
+				inOutDirection = CalculateRefraction(-viewDirection, worldNormal, fromIor, toIor);
+			}
 		}
 	}
 
@@ -237,7 +293,18 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 		vec3 term = vec3(0.0f, 0.0f, 0.0f);
 		if (bOutTransmissionRay)
 		{
-			term = LightingModel::CalculateBTDF(viewDirection, worldNormal, inOutDirection, sample);
+			if (bIsThickVolume)
+			{
+				term = vec3(1, 1, 1);
+				//LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, inOutDirection, sample, fromIor);
+				return true;
+			}
+			else
+			{
+				// Flip light direction
+				inOutDirection += 2.0f * worldNormal * dot(-inOutDirection, worldNormal);
+				term = LightingModel::CalculateBTDF(viewDirection, worldNormal, inOutDirection, sample);
+			}
 		}
 		else
 		{

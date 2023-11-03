@@ -125,6 +125,7 @@ namespace Sailor::Raytracing
 		glm::vec4 m_baseColorFactor = vec4(1, 1, 1, 1);
 		glm::vec3 m_emissiveFactor = vec3(0, 0, 0);
 		glm::vec3 m_specularColorFactor = vec3(1, 1, 1);
+		glm::vec3 m_attenuationColor = vec3(1, 1, 1);
 
 		float m_metallicFactor = 1.0f;
 		float m_roughnessFactor = 1.0f;
@@ -133,6 +134,8 @@ namespace Sailor::Raytracing
 		float m_transmissionFactor = 0;
 		float m_specularFactor = 1;
 		float m_alphaCutoff = 0.5f;
+		float m_thicknessFactor = 0.0f;
+		float m_attenuationDistance = std::numeric_limits<float>().max();
 
 		bool HasEmissiveTexture() const { return m_emissiveIndex != u8(-1); }
 		bool HasBaseTexture() const { return m_baseColorIndex != u8(-1); }
