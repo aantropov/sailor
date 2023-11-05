@@ -289,7 +289,18 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 					return false;
 				}
 
-				outTerm = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, inOutDirection, sample, fromIor);
+				const float angle = abs(glm::dot(inOutDirection, worldNormal));
+				float g = -0.55f;
+				const vec3 scatterDirection = inOutDirection;
+				outPdf = IsotropicPhaseFunctionPDF();
+				if (g != 0.0f)
+				{
+					outPdf = HenyeyGreensteinPhaseFunctionPDF(viewDirection, scatterDirection, g);
+				}
+
+				outTerm = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, inOutDirection, sample, fromIor) * angle;
+				outTerm /= outPdf;
+
 				return true;
 			}
 		}
@@ -327,4 +338,20 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 	}
 
 	return false;
+}
+
+float LightingModel::IsotropicPhaseFunctionPDF()
+{
+	return 1.0f / (4.0f * Math::Pi);
+}
+
+float LightingModel::HenyeyGreensteinPhaseFunctionPDF(const vec3& viewDirection, const vec3& scatterDirection, float g)
+{
+	// Implement the Henyey-Greenstein phase function PDF calculation here
+	// g is the anisotropy parameter, typically between -1 (backscatter) and 1 (forward scatter)
+	float cosTheta = glm::dot(viewDirection, scatterDirection);
+	float denominator = 1 + g * g - 2 * g * cosTheta;
+	float HG = (1 - g * g) / (4 * Math::Pi * denominator * glm::sqrt(denominator));
+
+	return HG;
 }
