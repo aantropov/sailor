@@ -143,7 +143,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
 	// Camera
-	auto cameraPos = vec3(0, 0, 1);
+	auto cameraPos = vec3(0, 0, 0.5);
 	//auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
 
@@ -369,7 +369,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 			material.m_roughnessFactor = aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
 			material.m_metallicFactor = aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
 
-			material.m_thicknessFactor = aiMaterial->Get(AI_MATKEY_VOLUME_THICKNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
+			material.m_thicknessFactor = aiMaterial->Get(AI_MATKEY_VOLUME_THICKNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
 			material.m_attenuationColor = (aiMaterial->Get(AI_MATKEY_VOLUME_ATTENUATION_COLOR, color3D) == AI_SUCCESS) ? vec3(color3D.r, color3D.g, color3D.b) : glm::vec3(1.0f);
 			material.m_attenuationDistance = aiMaterial->Get(AI_MATKEY_VOLUME_ATTENUATION_DISTANCE, color1D) == AI_SUCCESS ? color1D : std::numeric_limits<float>().max();
 
@@ -486,8 +486,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 						ray.SetOrigin(cameraPos);
 
 #ifdef _DEBUG
-						uint32_t debugX = 500;
-						uint32_t debugY = height - 300 - 1;
+						uint32_t debugX = 260u;
+						uint32_t debugY = height - 370u - 1;
 
 						if (!(x < debugX && (x + GroupSize) > debugX &&
 							y < debugY && (y + GroupSize) > debugY))
@@ -505,9 +505,9 @@ void PathTracer::Run(const PathTracer::Params& params)
 								const uint32_t index = (height - (y + v) - 1) * width + (x + u);
 								const float tu = (x + u) / (float)width;
 #ifdef _DEBUG
-								if ((x + u) == debugX && ((y + v) == debugY))
+								if (((x + u) == debugX) && ((y + v) == debugY))
 								{
-									volatile uint32_t a = 0;
+									volatile uint8_t a = 0;
 								}
 #endif
 								vec3 accumulator = vec3(0);
@@ -656,6 +656,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 		const bool bHasAlphaBlending = !sample.m_bIsOpaque && sample.m_baseColor.a < 1.0f;
 		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
+		const uint32_t numAmbientSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numAmbientSamples)) : params.m_numAmbientSamples;
 
 		const vec3 offset = 0.000001f * faceNormal;
 
@@ -689,7 +690,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			vec3 ambient1 = vec3(0, 0, 0);
 			const float pdfHemisphere = 1.0f / (Pi * 2.0f);
 
-			const uint32_t ambientNumSamples = bIsFirstIntersection ? params.m_numAmbientSamples : 1u;
+			const uint32_t ambientNumSamples = bIsFirstIntersection ? numAmbientSamples : 1u;
 			const uint32_t numExtraSamples = bIsFirstIntersection ? numSamples : 1;
 
 			// Hemisphere sampling loop
@@ -744,8 +745,6 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 					RaycastHit hitLight{};
 					Ray rayToLight(hit.m_point + ((bTransmissionRay && !bThickVolume) ? -offset : offset), direction);
-
-					//const bool bIntersected = bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex);
 
 					if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 					{
@@ -805,6 +804,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			PathTracer::Params p = params;
 			p.m_numBounces = std::max(0u, params.m_numBounces - 1);
 			p.m_numSamples = std::max(1u, params.m_numSamples - numSamples);
+			p.m_numAmbientSamples = std::max(1u, params.m_numAmbientSamples - numAmbientSamples);
 
 			res = res * sample.m_baseColor.a +
 				Raytrace(newRay, bvh, bounceLimit - 1, hit.m_triangleIndex, p, environmentIor) * (1.0f - sample.m_baseColor.a);
