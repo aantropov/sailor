@@ -143,7 +143,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
 	// Camera
-	auto cameraPos = vec3(0, 0, 0.5);
+	auto cameraPos = vec3(0, 0.5f, 2.0f);
 	//auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
 
@@ -719,7 +719,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			vec3 indirect = vec3(0.0f, 0.0f, 0.0f);
 			float indirectContribution = 0.0f;
 
-			const float toIor = bIsOppositeRay ? sample.m_ior : 1.0f;
+			const float toIor = bThickVolume ? (bIsOppositeRay ? sample.m_ior : 1.0f) : environmentIor;
 
 			// Importance sampling loop
 			for (uint32_t i = 0; i < numExtraSamples; i++)
@@ -763,8 +763,9 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 						if (bIsOppositeRay && bTransmissionRay && bThickVolume)
 						{
 							const float distance = glm::length(hitLight.m_point - hit.m_point);
-							vec3 attenuationCoefficient = material.m_attenuationDistance / material.m_attenuationColor;
-							lightAttenuation = glm::exp(-distance * attenuationCoefficient);
+							const vec3 c = -log(material.m_attenuationColor) / material.m_attenuationDistance;
+
+							lightAttenuation = glm::exp(-c * distance);
 						}
 
 						// Indirect lighting with bounces in case of hit

@@ -53,7 +53,6 @@ float LightingModel::GeometrySchlickGGX(float NdotV, float roughness)
 
 vec3 LightingModel::CalculateVolumetricBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const SampledData& sample, float envIor)
 {
-	const float roughness = sample.m_orm.y;
 	const float metallic = sample.m_orm.z;
 	const float transmission = sample.m_transmission;
 
@@ -64,13 +63,26 @@ vec3 LightingModel::CalculateVolumetricBTDF(const vec3& viewDirection, const vec
 
 	const vec3 dielectricSpecular = vec3(0.04f);
 	const vec3 F0 = mix(dielectricSpecular, vec3(sample.m_baseColor), metallic);
-	vec3 F = FresnelSchlick(std::max(abs(glm::dot(viewDirection, worldNormal)), 0.0f), F0);
+	// Ensure that the Fresnel term is always positive.
+	vec3 F = FresnelSchlick(glm::clamp(glm::dot(viewDirection, worldNormal), 0.0f, 1.0f), F0);
 
-	return transmission * (vec3(1.0) - F);
+	vec3 Ft = (1.0f - F) * transmission;
+	float iorRatio = envIor / sample.m_ior;
+
+	float cosThetaI = glm::clamp(glm::dot(viewDirection, worldNormal), 0.0f, 1.0f);
+	float sinThetaTSquared = iorRatio * iorRatio * (1.0f - cosThetaI * cosThetaI);
+	float transmissionCorrection = sinThetaTSquared <= 1.0f ? glm::sqrt(1.0f - sinThetaTSquared) : 0.0f;
+
+	vec3 transmissionColor = vec3(sample.m_baseColor) * Ft * transmissionCorrection;
+
+	return transmissionColor;
 }
 
 vec3 LightingModel::CalculateBTDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lDirection, const LightingModel::SampledData& sample)
 {
+	// Flip light direction
+	const vec3 lightDirection = lDirection + 2.0f * worldNormal * dot(-lDirection, worldNormal);
+
 	const float ambientOcclusion = sample.m_orm.x;
 	const float roughness = sample.m_orm.y;
 	const float metallic = sample.m_orm.z;
@@ -81,12 +93,12 @@ vec3 LightingModel::CalculateBTDF(const vec3& viewDirection, const vec3& worldNo
 		return vec3(0.0f);
 	}
 
-	const float nDotL = abs(glm::dot(worldNormal, lDirection));
+	const float nDotL = abs(glm::dot(worldNormal, lightDirection));
 	const float nDotV = abs(glm::dot(worldNormal, viewDirection));
 
 	const vec3 F0 = vec3(0.04f);
 
-	const vec3 halfwayVector = normalize(viewDirection + lDirection);
+	const vec3 halfwayVector = normalize(viewDirection + lightDirection);
 	const float NDF = DistributionGGX(worldNormal, halfwayVector, roughness);
 	const vec3 F = FresnelSchlick(std::max(abs(glm::dot(halfwayVector, viewDirection)), 0.0f), F0);
 
@@ -268,10 +280,17 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 		if (bOutTransmissionRay)
 		{
 			inOutDirection += 2.0f * worldNormal * dot(-inOutDirection, worldNormal);
-			
+
 			if (bIsThickVolume)
 			{
-				inOutDirection = CalculateRefraction(-viewDirection, worldNormal, fromIor, toIor);
+				inOutDirection = CalculateRefraction(inOutDirection, worldNormal, fromIor, toIor);
+				if (inOutDirection == vec3(0, 0, 0))
+				{
+					return false;
+				}
+
+				outTerm = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, inOutDirection, sample, fromIor);
+				return true;
 			}
 		}
 	}
@@ -293,18 +312,7 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 		vec3 term = vec3(0.0f, 0.0f, 0.0f);
 		if (bOutTransmissionRay)
 		{
-			if (bIsThickVolume)
-			{
-				term = vec3(1, 1, 1);
-				//LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, inOutDirection, sample, fromIor);
-				return true;
-			}
-			else
-			{
-				// Flip light direction
-				inOutDirection += 2.0f * worldNormal * dot(-inOutDirection, worldNormal);
-				term = LightingModel::CalculateBTDF(viewDirection, worldNormal, inOutDirection, sample);
-			}
+			term = LightingModel::CalculateBTDF(viewDirection, worldNormal, inOutDirection, sample);
 		}
 		else
 		{
