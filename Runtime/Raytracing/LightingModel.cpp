@@ -159,6 +159,29 @@ vec3 LightingModel::CalculateBRDF(const vec3& viewDirection, const vec3& worldNo
 	return lighting;
 }
 
+vec3 LightingModel::ImportanceSampleBeckmann(vec2 Xi, float roughness, const vec3& n)
+{
+	float alpha = std::max(roughness * roughness, 0.001f);
+
+	float phi = 2.0f * glm::pi<float>() * Xi.x;
+	// The Beckmann sampling equations use tan^2(theta) instead of cos(theta)
+	float tanTheta2 = -alpha * alpha * log(1.0f - Xi.y);
+	float cosTheta = 1.0f / sqrt(1.0f + tanTheta2);
+	float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+
+	vec3 H;
+	H.x = sinTheta * cos(phi);
+	H.y = sinTheta * sin(phi);
+	H.z = cosTheta;
+
+	vec3 up = abs(n.z) < 0.999f ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 tangent = normalize(cross(up, n));
+	vec3 bitangent = cross(n, tangent);
+
+	vec3 sampleVec = tangent * H.x + bitangent * H.y + n * H.z;
+	return normalize(sampleVec);
+}
+
 vec3 LightingModel::ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
 {
 	float a = std::max(roughness * roughness, 0.001f);
@@ -239,6 +262,26 @@ float LightingModel::GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness)
 	return pdf;
 }
 
+float LightingModel::Beckmann_PDF(vec3 N, vec3 H, vec3 V, float roughness)
+{
+	const float infCompensation = 0.001f;
+	float alpha = std::max(roughness * roughness, infCompensation);
+	float NdotH = std::max(dot(N, H), infCompensation);
+	float VdotH = std::max(dot(V, H), infCompensation);
+
+	float tanThetaH = sqrt(1.0f - NdotH * NdotH) / NdotH;
+	float tanThetaHSquared = tanThetaH * tanThetaH;
+	float alphaSquared = alpha * alpha;
+
+	// Computing Beckmann's D term (normal distribution function)
+	float D = exp(-tanThetaHSquared / alphaSquared) / (glm::pi<float>() * alphaSquared * pow(NdotH, 4.0f));
+
+	// The PDF using the D term
+	float pdf = D * NdotH / (4.0f * VdotH);
+
+	return pdf;
+}
+
 vec3 LightingModel::CalculateRefraction(const vec3& rayDirection, const vec3& worldNormal, float fromIor, float toIor)
 {
 	float eta = fromIor / toIor;
@@ -258,9 +301,8 @@ vec3 LightingModel::CalculateRefraction(const vec3& rayDirection, const vec3& wo
 
 bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, float fromIor, float toIor, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample)
 {
-	const bool bMirror = sample.m_orm.y <= 0.001f;
-	const bool bFullDielectric = sample.m_orm.z == 0.0f;
 	const bool bFullMetallic = sample.m_orm.z == 1.0f;
+	const bool bMirror = bFullMetallic && sample.m_orm.y <= 0.001f;
 	const bool bOnlySpecularRay = bMirror;
 	const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
 	const bool bIsThickVolume = bHasTransmission && sample.m_thicknessFactor > 0.0f;
@@ -269,9 +311,18 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 	bOutTransmissionRay = bHasTransmission && (glm::linearRand(0.0f, 1.0f) > 0.5f);
 
 	const float importanceRoughness = bSpecular ? sample.m_orm.y : 1.0f;
-
-	vec3 H = bSpecular ? LightingModel::ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal) :
-		LightingModel::ImportanceSampleLambert(randomSample, worldNormal);
+	const bool bSpecularBeckman = importanceRoughness < 0.2f;
+	vec3 H;
+	if (bSpecularBeckman)
+	{
+		H = bSpecular ? LightingModel::ImportanceSampleBeckmann(randomSample, sample.m_orm.y, worldNormal) :
+			LightingModel::ImportanceSampleLambert(randomSample, worldNormal);
+	}
+	else
+	{
+		H = bSpecular ? LightingModel::ImportanceSampleGGX(randomSample, sample.m_orm.y, worldNormal) :
+			LightingModel::ImportanceSampleLambert(randomSample, worldNormal);
+	}
 
 	if (inOutDirection == vec3(0, 0, 0))
 	{
@@ -306,9 +357,11 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 		}
 	}
 
-	const float pdfSpec = LightingModel::GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
-	const float pdfLambert = abs(dot(inOutDirection, worldNormal)) / Math::Pi;
+	const float pdfSpec = bSpecularBeckman ?
+		LightingModel::Beckmann_PDF(worldNormal, H, viewDirection, sample.m_orm.y) :
+		LightingModel::GGX_PDF(worldNormal, H, viewDirection, sample.m_orm.y);
 
+	const float pdfLambert = abs(dot(inOutDirection, worldNormal)) / Math::Pi;
 	outPdf = bOnlySpecularRay ? pdfSpec : ((pdfSpec + pdfLambert) * 0.5f);
 
 	if (bHasTransmission)

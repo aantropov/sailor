@@ -47,8 +47,10 @@ namespace Sailor::Raytracing
 		static vec3 ImportanceSampleLambert(vec2 Xi, const vec3& n);
 		static vec3 ImportanceSampleHemisphere(vec2 Xi, const vec3& n);
 		static vec3 ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n);
+		static vec3 ImportanceSampleBeckmann(vec2 Xi, float roughness, const vec3& n);
+		
 		static float GGX_PDF(vec3 N, vec3 H, vec3 V, float roughness);
-
+		static float Beckmann_PDF(vec3 N, vec3 H, vec3 V, float roughness);
 		static float IsotropicPhaseFunctionPDF();
 		static float HenyeyGreensteinPhaseFunctionPDF(const vec3& viewDirection, const vec3& scatterDirection, float g);
 	};

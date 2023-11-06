@@ -26,7 +26,7 @@ namespace Sailor::Raytracing
 			uint32_t m_height;
 			uint32_t m_numSamples;
 			uint32_t m_numAmbientSamples;
-			uint32_t m_numBounces;
+			uint32_t m_maxBounces;
 			uint32_t m_msaa;
 			vec3 m_ambient;
 		};
@@ -42,7 +42,7 @@ namespace Sailor::Raytracing
 
 		__forceinline LightingModel::SampledData GetMaterialData(const size_t& materialIndex, glm::vec2 uv) const;
 
-		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Params& params, float environmentIor = 1.0f) const;
+		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Params& params, float inAcc, float environmentIor = 1.0f) const;
 
 		TVector<DirectionalLight> m_directionalLights{};
 		TVector<Math::Triangle> m_triangles{};

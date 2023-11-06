@@ -76,7 +76,7 @@ void PathTracer::ParseParamsFromCommandLineArgs(PathTracer::Params& res, const c
 		}
 		else if (arg == "--bounces")
 		{
-			res.m_numBounces = atoi(GetArgValue(args, i, num).c_str());
+			res.m_maxBounces = atoi(GetArgValue(args, i, num).c_str());
 		}
 		else if (arg == "--camera")
 		{
@@ -143,7 +143,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
 
 	// Camera
-	auto cameraPos = vec3(0, 0.5f, 2.0f);
+	auto cameraPos = vec3(0, 0.75f, 5.0f);
 	//auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
 	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
 
@@ -189,7 +189,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	const float hFov = (scene->HasCameras() && scene->mCameras[cameraIndex]->mHorizontalFOV > 0.0f)
 		? scene->mCameras[cameraIndex]->mHorizontalFOV
-		: glm::radians(90.0f);
+		: glm::radians(60.0f);
 
 	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
 
@@ -486,8 +486,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 						ray.SetOrigin(cameraPos);
 
 #ifdef _DEBUG
-						uint32_t debugX = 260u;
-						uint32_t debugY = height - 370u - 1;
+						uint32_t debugX = 524u;
+						uint32_t debugY = height - 100u - 1;
 
 						if (!(x < debugX && (x + GroupSize) > debugX &&
 							y < debugY && (y + GroupSize) > debugY))
@@ -518,7 +518,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 									ray.SetDirection(glm::normalize(pixelDir));
 
-									accumulator += Raytrace(ray, bvh, params.m_numBounces, (uint32_t)(-1), params, 1.0f);
+									accumulator += Raytrace(ray, bvh, params.m_maxBounces, (uint32_t)(-1), params, 1.0f, 1.0f);
 								}
 
 								output[index] = accumulator / (float)params.m_msaa;
@@ -613,7 +613,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	::system(params.m_output.string().c_str());
 }
 
-vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const PathTracer::Params& params, float environmentIor) const
+vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const PathTracer::Params& params, float inAcc, float environmentIor) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -627,7 +627,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 	{
 		SAILOR_PROFILE_BLOCK("Sampling");
 
-		const bool bIsFirstIntersection = bounceLimit == params.m_numBounces;
+		const bool bIsFirstIntersection = bounceLimit == params.m_maxBounces;
 
 		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 
@@ -666,6 +666,20 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 		SAILOR_PROFILE_END_BLOCK();
 
+		if (!bIsOppositeRay && bThickVolume)
+		{
+			const vec3 newDirection = LightingModel::CalculateRefraction(ray.GetDirection(), worldNormal, environmentIor, 1.0f);
+
+			if (newDirection == vec3(0, 0, 0) || bounceLimit == 0)
+			{
+				return vec3(0, 0, 0);
+			}
+
+			Ray rayToLight(hit.m_point, newDirection);
+
+			return Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params, inAcc, 1.0f);
+		}
+
 		// Direct lighting
 		{
 			RaycastHit hitLight{};
@@ -696,12 +710,13 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			// Hemisphere sampling loop
 			for (uint32_t i = 0; i < ambientNumSamples; i++)
 			{
-				const vec2 randomSample = NextVec2_BlueNoise(randSeedX, randSeedY);
+				const vec2 randomSample = NextVec2_Linear();
 				vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
 				vec3 toLight = 2.0f * dot(viewDirection, H) * H - viewDirection;
 
 				RaycastHit hitLight{};
 				Ray rayToLight(hit.m_point + offset, toLight);
+
 				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 				{
 					const float angle = max(0.0f, glm::dot(toLight, worldNormal));
@@ -709,6 +724,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 						vec3(0, 0, 0), vec3(10, 10, 10));
 				}
 			}
+
 			ambient1 /= (float)ambientNumSamples;
 
 			// Importance sampling ray
@@ -744,7 +760,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					}
 
 					RaycastHit hitLight{};
-					Ray rayToLight(hit.m_point + ((bTransmissionRay && !bThickVolume) ? -offset : offset), direction);
+					Ray rayToLight(hit.m_point + (bTransmissionRay ? -offset : offset), direction);
 
 					if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
 					{
@@ -768,8 +784,16 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 							lightAttenuation = glm::exp(-c * distance);
 						}
 
+						vec3 raytraced = vec3(0, 0, 0);
+
+						const float newAcc = inAcc * length(term * lightAttenuation) * sample.m_baseColor.a;
+						if (newAcc > 0.01f)
+						{
+							raytraced = Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params, newAcc, newEnvironmentIor);
+						}
+
 						// Indirect lighting with bounces in case of hit
-						indirect += glm::clamp(term * lightAttenuation * Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params, newEnvironmentIor), vec3(0, 0, 0), vec3(10, 10, 10));
+						indirect += glm::clamp(term * lightAttenuation * raytraced, vec3(0, 0, 0), vec3(10, 10, 10));
 					}
 
 					indirectContribution += 1.0f;
@@ -803,12 +827,12 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			newRay.SetOrigin(hit.m_point + ray.GetDirection() * 0.0001f);
 
 			PathTracer::Params p = params;
-			p.m_numBounces = std::max(0u, params.m_numBounces - 1);
+			p.m_maxBounces = std::max(0u, params.m_maxBounces - 1);
 			p.m_numSamples = std::max(1u, params.m_numSamples - numSamples);
 			p.m_numAmbientSamples = std::max(1u, params.m_numAmbientSamples - numAmbientSamples);
 
 			res = res * sample.m_baseColor.a +
-				Raytrace(newRay, bvh, bounceLimit - 1, hit.m_triangleIndex, p, environmentIor) * (1.0f - sample.m_baseColor.a);
+				Raytrace(newRay, bvh, bounceLimit - 1, hit.m_triangleIndex, p, inAcc * (1.0f - sample.m_baseColor.a), environmentIor) * (1.0f - sample.m_baseColor.a);
 		}
 	}
 	else
