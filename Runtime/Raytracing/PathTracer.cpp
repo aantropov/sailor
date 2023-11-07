@@ -486,8 +486,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 						ray.SetOrigin(cameraPos);
 
 #ifdef _DEBUG
-						uint32_t debugX = 524u;
-						uint32_t debugY = height - 100u - 1;
+						uint32_t debugX = 975u;
+						uint32_t debugY = height - 355u - 1;
 
 						if (!(x < debugX && (x + GroupSize) > debugX &&
 							y < debugY && (y + GroupSize) > debugY))
@@ -613,6 +613,41 @@ void PathTracer::Run(const PathTracer::Params& params)
 	::system(params.m_output.string().c_str());
 }
 
+vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const PathTracer::Params& params, float currentIor, uint32_t ignoreTriangle) const
+{
+	for (uint32_t j = 0; j < params.m_maxBounces; j++)
+	{
+		RaycastHit hitLight{};
+		Ray rayToLight(startPoint, toLight);
+
+		if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), ignoreTriangle))
+		{
+			return vec3(1, 1, 1);
+		}
+
+		const auto& material = m_materials[m_triangles[hitLight.m_triangleIndex].m_materialIndex];
+
+		const bool bHitOpposite = dot(toLight, hitLight.m_normal) < 0.0f;
+		const bool bHitThickVolume = material.m_transmissionFactor > 0.0f && material.m_thicknessFactor > 0.0f;
+
+		if (!bHitThickVolume)
+		{
+			break;
+		}
+
+		vec3 hitWorldNormal = bHitOpposite ? hitLight.m_normal : -hitLight.m_normal;
+
+		toLight = LightingModel::CalculateRefraction(toLight, hitWorldNormal, currentIor, bHitOpposite ? material.m_indexOfRefraction : 1.0f);
+		currentIor = bHitOpposite ? material.m_indexOfRefraction : 1.0f;
+
+		//ambient1 *= LightingModel::CalculateVolumetricBTDF(viewDirection, hitWorldNormal, toLight, ,  )
+
+		startPoint = hitLight.m_point;
+		ignoreTriangle = hitLight.m_triangleIndex;
+	}
+
+	return vec3(0, 0, 0);
+}
 vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const PathTracer::Params& params, float inAcc, float environmentIor) const
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -675,7 +710,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 				return vec3(0, 0, 0);
 			}
 
-			Ray rayToLight(hit.m_point, newDirection);
+			Ray rayToLight(hit.m_point, newDirection - offset);
+
+			//const float angle = abs(glm::dot(newDirection, worldNormal));
+			//vec3 term = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, newDirection, sample, environmentIor) * angle;
 
 			return Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params, inAcc, 1.0f);
 		}
@@ -708,20 +746,22 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			const uint32_t numExtraSamples = bIsFirstIntersection ? numSamples : 1;
 
 			// Hemisphere sampling loop
-			for (uint32_t i = 0; i < ambientNumSamples; i++)
+			if (!bThickVolume)
 			{
-				const vec2 randomSample = NextVec2_Linear();
-				vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
-				vec3 toLight = 2.0f * dot(viewDirection, H) * H - viewDirection;
-
-				RaycastHit hitLight{};
-				Ray rayToLight(hit.m_point + offset, toLight);
-
-				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+				for (uint32_t i = 0; i < ambientNumSamples; i++)
 				{
-					const float angle = max(0.0f, glm::dot(toLight, worldNormal));
-					ambient1 += glm::clamp((LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * params.m_ambient * angle) / pdfHemisphere,
-						vec3(0, 0, 0), vec3(10, 10, 10));
+					const vec2 randomSample = NextVec2_Linear();
+					vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
+					vec3 toLight = bThickVolume ? glm::sphericalRand(1.0f) : (2.0f * dot(viewDirection, H) * H - viewDirection);
+
+					vec3 att = TraceSky(hit.m_point + offset, toLight, bvh, params, environmentIor, hit.m_triangleIndex);
+					if (att != vec3(0, 0, 0))
+					{
+						const float angle = max(0.0f, glm::dot(toLight, worldNormal));
+						att *= LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample);
+						ambient1 += glm::clamp((att * params.m_ambient * angle) / pdfHemisphere,
+							vec3(0, 0, 0), vec3(10, 10, 10));
+					}
 				}
 			}
 
@@ -775,6 +815,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					}
 					else if (bounceLimit > 0)
 					{
+						// Indirect
 						vec3 lightAttenuation = vec3(1, 1, 1);
 						if (bIsOppositeRay && bTransmissionRay && bThickVolume)
 						{
@@ -785,15 +826,29 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 						}
 
 						vec3 raytraced = vec3(0, 0, 0);
-
 						const float newAcc = inAcc * length(term * lightAttenuation) * sample.m_baseColor.a;
 						if (newAcc > 0.01f)
 						{
 							raytraced = Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params, newAcc, newEnvironmentIor);
 						}
 
+						vec3 value = glm::clamp(term * lightAttenuation * raytraced, vec3(0, 0, 0), vec3(10, 10, 10));
+
 						// Indirect lighting with bounces in case of hit
-						indirect += glm::clamp(term * lightAttenuation * raytraced, vec3(0, 0, 0), vec3(10, 10, 10));
+						indirect += value;
+
+						// Ambient 2, Sky is reachable
+						const auto& hitMaterial = m_materials[m_triangles[hitLight.m_triangleIndex].m_materialIndex];
+						if (!bThickVolume && hitMaterial.m_transmissionFactor > 0.0f && hitMaterial.m_thicknessFactor > 0.0f)
+						{
+							vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), bvh, params, environmentIor, hitLight.m_triangleIndex);
+
+							if (att != vec3(0, 0, 0))
+							{
+								ambient2 += value;
+								avgPdfLambert += pdf;
+							}
+						}
 					}
 
 					indirectContribution += 1.0f;

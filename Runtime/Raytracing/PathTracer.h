@@ -42,6 +42,8 @@ namespace Sailor::Raytracing
 
 		__forceinline LightingModel::SampledData GetMaterialData(const size_t& materialIndex, glm::vec2 uv) const;
 
+
+		vec3 TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const PathTracer::Params& params, float currentIor, uint32_t ignoreTriangle) const;
 		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Params& params, float inAcc, float environmentIor = 1.0f) const;
 
 		TVector<DirectionalLight> m_directionalLights{};

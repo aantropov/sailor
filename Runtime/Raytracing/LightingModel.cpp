@@ -340,18 +340,10 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 					return false;
 				}
 
-				const float angle = abs(glm::dot(inOutDirection, worldNormal));
-				float g = -0.55f;
-				const vec3 scatterDirection = inOutDirection;
-				outPdf = IsotropicPhaseFunctionPDF();
-				if (g != 0.0f)
-				{
-					outPdf = HenyeyGreensteinPhaseFunctionPDF(viewDirection, scatterDirection, g);
-				}
+				//const float angle = abs(glm::dot(inOutDirection, worldNormal));
+				//outTerm = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, inOutDirection, sample, fromIor) * angle;
 
-				outTerm = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, inOutDirection, sample, fromIor) * angle;
-				outTerm /= outPdf;
-
+				outTerm = vec3(1, 1, 1);
 				return true;
 			}
 		}
