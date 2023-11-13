@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Core/Defines.h"
 #include "Math/Bounds.h"
 #include "Containers/Vector.h"
@@ -45,6 +45,7 @@ namespace Sailor::Raytracing
 
 		vec3 TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const PathTracer::Params& params, float currentIor, uint32_t ignoreTriangle) const;
 		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Params& params, float inAcc, float environmentIor = 1.0f) const;
+
 
 		TVector<DirectionalLight> m_directionalLights{};
 		TVector<Math::Triangle> m_triangles{};

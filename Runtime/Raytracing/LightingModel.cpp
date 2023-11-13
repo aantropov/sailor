@@ -203,7 +203,7 @@ vec3 LightingModel::ImportanceSampleGGX(vec2 Xi, float roughness, const vec3& n)
 	return normalize(sampleVec);
 }
 
-float LightingModel::PowerHeuristic(int nf, float fPdf, int ng, float gPdf)
+float LightingModel::PowerHeuristic(int32_t nf, float fPdf, int32_t ng, float gPdf)
 {
 	float f = nf * fPdf;
 	float g = ng * gPdf;
