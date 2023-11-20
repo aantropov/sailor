@@ -440,7 +440,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	SAILOR_PROFILE_BLOCK("Viewport Calcs");
 
-	TVector<vec3> output(width * height);
+	CombinedSampler2D outputTex;
+	outputTex.Initialize<vec3>(width, height);
 
 	float h = tan(vFov / 2);
 	const float ViewportHeight = 2.0f * h;
@@ -478,7 +479,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 				auto task = Tasks::CreateTask("Calculate raytracing",
 					[=,
 					&finishedTasks,
-					&output,
+					&outputTex,
 					&bvh,
 					this]() mutable
 					{
@@ -521,14 +522,16 @@ void PathTracer::Run(const PathTracer::Params& params)
 									accumulator += Raytrace(ray, bvh, params.m_maxBounces, (uint32_t)(-1), params, 1.0f, 1.0f);
 								}
 
-								output[index] = accumulator / (float)params.m_msaa;
+								vec3 res = accumulator / (float)params.m_msaa;
+								outputTex.SetPixel(x + u, height - (y + v) - 1, res);
+
 								SAILOR_PROFILE_END_BLOCK();
 							}
 						}
 
 						finishedTasks++;
 
-					}, Tasks::EThreadType::Worker);
+			}, Tasks::EThreadType::Worker);
 
 				if (((x + y) / GroupSize) % 32 == 0)
 				{
@@ -539,8 +542,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 					task->Run();
 					tasks.Emplace(std::move(task));
 				}
-			}
 		}
+	}
 		SAILOR_PROFILE_END_BLOCK();
 
 		SAILOR_PROFILE_BLOCK("Calcs on Main thread");
@@ -582,7 +585,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 			}
 		}
 		SAILOR_PROFILE_END_BLOCK();
-	}
+}
 
 	raytracingTimer.Stop();
 	//profiler::dumpBlocksToFile("test_profile.prof");
@@ -590,9 +593,25 @@ void PathTracer::Run(const PathTracer::Params& params)
 	SAILOR_PROFILE_BLOCK("Write Image");
 	{
 		TVector<u8vec3> outSrgb(width * height);
-		for (uint32_t i = 0; i < width * height; i++)
+		const float aberrationAmount = (0.5f / width);
+
+		for (uint32_t y = 0; y < height; y++)
 		{
-			outSrgb[i] = glm::clamp(Utils::LinearToSRGB(output[i]) * 255.0f, 0.0f, 255.0f);
+			for (uint32_t x = 0; x < width; x++)
+			{
+				vec2 uv = vec2((float)x / width, (float)y / height);
+
+				// Fetch the color values from the offset positions
+				vec3 greenColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, 0));
+				vec3 blueColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, aberrationAmount));
+				vec3 redColor = outputTex.Sample<vec3>(uv + vec2(-aberrationAmount, -aberrationAmount));
+
+				// Combine the shifted channels
+				vec3 chromaAberratedColor = vec3(redColor.r, greenColor.g, blueColor.b);
+
+				// Write the result back to the output array
+				outSrgb[x + y * width] = glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f);
+			}
 		}
 
 		const uint32_t Channels = 3;
@@ -788,7 +807,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 			const float toIor = bThickVolume ? (bIsOppositeRay ? sample.m_ior : 1.0f) : environmentIor;
 			bool bHasTransmissionRay = false;
-			
+
 			// Importance sampling loop
 			for (uint32_t i = 0; i < numExtraSamples; i++)
 			{
@@ -797,7 +816,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 				bool bTransmissionRay = false;
 				vec3 direction = vec3(0);
 				bool bSample = false;
-				
+
 				while (!bSample || (bThickVolume && !bHasTransmissionRay && i == (numExtraSamples - 1)))
 				{
 					direction = vec3(0);

@@ -30,6 +30,16 @@ namespace Sailor::Raytracing
 		int32_t m_height{};
 		TVector<u8> m_data;
 
+		template<typename TOutputData>
+		void Initialize(uint32_t width, uint32_t height, uint8_t channels = 3, SamplerClamping clamping = SamplerClamping::Clamp)
+		{
+			m_width = width;
+			m_height = height;
+			m_data.Resize(width * height * sizeof(TOutputData));
+			m_channels = channels;
+			m_clamping = clamping;
+		}
+
 		template<typename TOutputData, typename TInputData>
 		void Initialize(TInputData* data, bool bConvertToLinear, bool bNormalMap = false)
 		{
@@ -53,6 +63,14 @@ namespace Sailor::Raytracing
 						(TOutputData(*src) * (1.0f / 255.0f));
 				}
 			}
+		}
+
+		template<typename T>
+		__forceinline void SetPixel(uint32_t x, uint32_t y, const T& value)
+		{
+			auto ptr = reinterpret_cast<T*>(m_data.GetData());
+
+			ptr[x + y * m_width] = value;
 		}
 
 		template<typename T>
