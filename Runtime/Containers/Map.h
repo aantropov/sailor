@@ -5,6 +5,7 @@
 #include <concepts>
 #include <type_traits>
 #include "Core/Defines.h"
+#include "Memory/LockFreeHeapAllocator.h"
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
 #include "Containers/Pair.h"
