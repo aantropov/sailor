@@ -400,7 +400,7 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 MaterialImporter::MaterialImporter(MaterialAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-	m_allocator = ObjectAllocatorPtr::Make();
+	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
 	infoHandler->Subscribe(this);
 }
 

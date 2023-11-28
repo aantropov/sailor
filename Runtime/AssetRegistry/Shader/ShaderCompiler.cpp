@@ -128,7 +128,7 @@ void ShaderAsset::Deserialize(const YAML::Node& inData)
 ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-	m_allocator = ObjectAllocatorPtr::Make();
+	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
 	m_shaderCache.Initialize();
 	infoHandler->Subscribe(this);
 

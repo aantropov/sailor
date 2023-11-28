@@ -270,7 +270,7 @@ bool Model::IsReady() const
 ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-	m_allocator = ObjectAllocatorPtr::Make();
+	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
 	infoHandler->Subscribe(this);
 }
 

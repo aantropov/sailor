@@ -32,7 +32,7 @@ bool Texture::IsReady() const
 TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();
-	m_allocator = ObjectAllocatorPtr::Make();
+	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
 	infoHandler->Subscribe(this);
 	
 	auto& driver = RHI::Renderer::GetDriver();

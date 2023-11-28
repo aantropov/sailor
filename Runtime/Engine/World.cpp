@@ -8,7 +8,7 @@ using namespace Sailor;
 
 World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false), m_currentFrame(0)
 {
-	m_allocator = Memory::ObjectAllocatorPtr::Make();
+	m_allocator = Memory::ObjectAllocatorPtr::Make(EAllocationPolicy::LocalMemory_SingleThread);
 
 	auto ecsArray = App::GetSubmodule<ECS::ECSFactory>()->CreateECS();
 
