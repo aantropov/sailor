@@ -112,9 +112,13 @@ namespace Sailor
 		using TIterator = TBaseIterator<TElementType, typename Super::TElementContainer::TIterator>;
 		using TConstIterator = TBaseIterator<const TElementType, typename Super::TElementContainer::TConstIterator>;
 
-		using TValueContainer = Sailor::TVector<std::optional<TValueType>>;
+		using TValueContainer = Sailor::TVector<std::optional<TValueType>, TAllocator>;
 
-		TMap(const uint32_t desiredNumBuckets = 16) : Super(desiredNumBuckets), m_values(desiredNumBuckets * 4) {  }
+		TMap(const uint32_t desiredNumBuckets = 16) : Super(desiredNumBuckets)
+		{
+			m_values.Reserve(desiredNumBuckets);
+		}
+
 		TMap(std::initializer_list<TElementType> initList)
 		{
 			m_values.Reserve(std::max(Super::m_buckets.Num(), initList.size()));
@@ -123,6 +127,30 @@ namespace Sailor
 				Insert(el);
 			}
 		}
+
+		TMap(const TMap& rhs)
+		{
+			Clear((uint32_t)rhs.m_buckets.Num());
+			for (const auto& el : rhs)
+			{
+				Insert(el.m_first, *el.m_second);
+			}
+		}
+
+		TMap& operator=(const TMap& rhs)
+		{
+			Clear((uint32_t)rhs.m_buckets.Num());
+			for (const auto& el : rhs)
+			{
+				Insert(el.m_first, *el.m_second);
+			}
+			return *this;
+		}
+
+		TMap(TMap&&) = default;
+		TMap& operator=(TMap&&) noexcept = default;
+
+		~TMap() = default;
 
 		void Add(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
 		{
@@ -347,9 +375,17 @@ namespace Sailor
 		{
 			TVector<TValueType> res(Super::Num());
 
-			for (const auto& pair : *this)
+			for (const auto& value : m_values)
 			{
-				res.Add(pair.m_second);
+				if (value.has_value())
+				{
+					res.Add(value.value());
+
+					if (res.Capacity() == res.Num())
+					{
+						break;
+					}
+				}
 			}
 
 			return res;
@@ -365,7 +401,7 @@ namespace Sailor
 	protected:
 
 		TValueContainer m_values;
-		TVector<size_t> m_freeList;
+		TVector<size_t, TAllocator> m_freeList;
 
 		TElementType& GetOrAdd(const TKeyType& key)
 		{

@@ -76,7 +76,7 @@ void ITask::Complete()
 
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 
-	TMap<EThreadType, uint32_t> threadTypesToRefresh;
+	TVector<uint32_t> threadTypesToRefresh(magic_enum::enum_count<EThreadType>());
 
 	for (auto& job : m_dependencies)
 	{
@@ -84,16 +84,16 @@ void ITask::Complete()
 		{
 			if (--pJob->m_numBlockers == 0)
 			{
-				threadTypesToRefresh[pJob->GetThreadType()]++;
+				threadTypesToRefresh[(uint32_t)pJob->GetThreadType()]++;
 			}
 		}
 	}
 
 	m_dependencies.Clear();
 
-	for (const auto& threadType : threadTypesToRefresh)
+	for (uint32_t i = 0; i < threadTypesToRefresh.Num(); i++)
 	{
-		App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread(threadType.m_first, *threadType.m_second > 1);
+		App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread((EThreadType)i, threadTypesToRefresh[i] > 1);
 	}
 
 	m_state |= StateMask::IsFinishedBit;
@@ -103,7 +103,7 @@ void ITask::Complete()
 void ITask::Wait()
 {
 	SAILOR_PROFILE_FUNCTION();
-	
+
 	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
 
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);

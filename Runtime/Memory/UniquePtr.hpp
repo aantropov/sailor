@@ -83,7 +83,7 @@ namespace Sailor
 		const T& operator*() const { return *m_pRawPtr; }
 
 		bool IsValid() const noexcept { return m_pRawPtr != nullptr; }
-		
+
 		explicit operator bool() const  noexcept { return m_pRawPtr != nullptr; }
 
 		bool operator==(const TUniquePtr& pRhs) const
@@ -98,8 +98,11 @@ namespace Sailor
 
 		void Clear() noexcept
 		{
-			delete m_pRawPtr;
-			m_pRawPtr = nullptr;
+			if (m_pRawPtr)
+			{
+				delete m_pRawPtr;
+				m_pRawPtr = nullptr;
+			}
 		}
 
 		~TUniquePtr()
@@ -125,8 +128,11 @@ namespace Sailor
 
 			Clear();
 
-			m_pRawPtr = pPtr.m_pRawPtr;
-			pPtr.m_pRawPtr = nullptr;
+			if (pPtr)
+			{
+				m_pRawPtr = pPtr.m_pRawPtr;
+				pPtr.m_pRawPtr = nullptr;
+			}
 		}
 
 		friend class TUniquePtr;

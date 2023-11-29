@@ -88,7 +88,7 @@ namespace Sailor
 		}
 
 		template<typename R>
-		SAILOR_API TObjectPtr(const TObjectPtr<R>& pDerivedPtr) noexcept  requires IsBaseOf<T, R>
+		SAILOR_API TObjectPtr(const TObjectPtr<R>& pDerivedPtr) noexcept requires IsBaseOf<T, R>
 		{			
 			m_pAllocator = pDerivedPtr.m_pAllocator;
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);

@@ -3,6 +3,10 @@
 #include <windows.h>
 #include <mutex>
 
+#include "Memory/UniquePtr.hpp"
+#include "Containers/ConcurrentMap.h"
+#include "HeapAllocator.h"
+
 using namespace Sailor;
 using namespace Sailor::Memory;
 
@@ -10,7 +14,9 @@ using namespace Sailor::Memory;
 // handle that in class
 std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>& GetAllocator()
 {
-	static std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>> g_lockFreeAllocators = std::make_unique<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>();
+	static std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>> g_lockFreeAllocators = 
+		std::make_unique<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, Memory::MallocAllocator>>();
+
 	return g_lockFreeAllocators;
 }
 
