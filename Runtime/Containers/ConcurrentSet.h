@@ -20,7 +20,7 @@ namespace Sailor
 	{
 	public:
 
-		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 6, TAllocator>>;
+		using TElementContainer = TVector<TElementType, TAllocator>;
 
 		class TEntry
 		{
@@ -28,7 +28,7 @@ namespace Sailor
 
 			TEntry(size_t hashCode) : m_hashCode(hashCode) {}
 			TEntry(TEntry&&) = default;
-			TEntry(const volatile TEntry& rhs)
+			TEntry(const TEntry& rhs)
 			{
 				m_bloom = rhs.m_bloom;
 				m_hashCode = rhs.m_hashCode;
@@ -39,7 +39,7 @@ namespace Sailor
 			}
 
 			TEntry& operator=(TEntry&&) = default;
-			TEntry& operator=(const volatile TEntry& rhs)
+			TEntry& operator=(const TEntry& rhs)
 			{
 				m_bloom = rhs.m_bloom;
 				m_hashCode = rhs.m_hashCode;
@@ -77,8 +77,8 @@ namespace Sailor
 			TElementContainer m_elements;
 
 			// That's unsafe but we handle that properly
-			volatile TEntry* m_next = nullptr;
-			volatile TEntry* m_prev = nullptr;
+			TEntry* m_next = nullptr;
+			TEntry* m_prev = nullptr;
 
 			friend class TConcurrentSet;
 		};
@@ -101,7 +101,7 @@ namespace Sailor
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(volatile TEntry* bucket, TElementIterator it) : m_it(std::move(it)), m_currentBucket(bucket) {}
+			TBaseIterator(TEntry* bucket, TElementIterator it) : m_it(std::move(it)), m_currentBucket(bucket) {}
 
 			operator TBaseIterator<const TDataType, TElementIterator>() { return TBaseIterator<const TDataType, TElementIterator>(m_currentBucket, m_it); }
 
@@ -153,7 +153,7 @@ namespace Sailor
 
 		protected:
 
-			volatile TEntry* m_currentBucket;
+			TEntry* m_currentBucket;
 			TElementIterator m_it;
 
 			friend class TEntry;
@@ -383,7 +383,7 @@ namespace Sailor
 				return;
 			}
 
-			element->GetContainer().EmplaceBack(std::move(inElement));
+			element->GetContainer().Emplace(std::move(inElement));
 			element->m_bloom |= hash;
 
 			m_num++;
@@ -420,7 +420,7 @@ namespace Sailor
 			TVector<TConcurrentEntryPtr, TAllocator> buckets(desiredBucketsNum);
 			TVector<TConcurrentEntryPtr, TAllocator>::Swap(buckets, m_buckets);
 
-			volatile TEntry* current = (TEntry*)m_first;
+			TEntry* current = (TEntry*)m_first;
 
 			m_num = 0;
 			m_first = nullptr;
@@ -456,8 +456,8 @@ namespace Sailor
 		size_t m_num = 0;
 
 		// That's unsafe but we handle that properly
-		volatile TEntry* m_first = nullptr;
-		volatile TEntry* m_last = nullptr;
+		TEntry* m_first = nullptr;
+		TEntry* m_last = nullptr;
 	};
 
 	SAILOR_API void RunSetBenchmark();

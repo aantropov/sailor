@@ -172,10 +172,10 @@ namespace Sailor
 			if (element && element->LikelyContains(hash))
 			{
 				auto& container = element->GetContainer();
-
-				typename Super::TElementContainer::TIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
-				if (it != container.end())
+				size_t index = container.FindIf([&](const TElementType& el) { return el.First() == key; });
+				if (index != -1)
 				{
+					typename Super::TElementContainer::TIterator it = Super::TElementContainer::TIterator(container.GetData() + index);
 					return Super::TIterator(element.GetRawPtr(), it);
 				}
 			}
@@ -191,9 +191,10 @@ namespace Sailor
 			if (element && element->LikelyContains(hash))
 			{
 				auto& container = element->GetContainer();
-				typename Super::TElementContainer::TConstIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
-				if (it != container.end())
+				size_t index = container.FindIf([&](const TElementType& el) { return el.First() == key; });
+				if (index != -1)
 				{
+					typename Super::TElementContainer::TConstIterator it = Super::TElementContainer::TConstIterator(container.GetData() + index);
 					return Super::TConstIterator(element.GetRawPtr(), it);
 				}
 			}
@@ -257,10 +258,11 @@ namespace Sailor
 				{
 					auto& container = element->GetContainer();
 
-					TElementType* out;
-					if (container.FindIf(out, [&](const TElementType& element) { return element.First() == key; }))
+					size_t index = container.FindIf([&](const TElementType& element) { return element.First() == key; });
+
+					if (index != -1)
 					{
-						return *out;
+						return *(container.GetData() + index);
 					}
 				}
 			}
@@ -285,10 +287,11 @@ namespace Sailor
 				{
 					auto& container = element->GetContainer();
 
-					TElementType* out;
-					if (container.FindIf(out, [&](const TElementType& element) { return element.First() == key; }))
+					size_t index = container.FindIf([&](const TElementType& element) { return element.First() == key; });
+
+					if (index != -1)
 					{
-						return *out;
+						return *(container.GetData() + index);
 					}
 				}
 			}
