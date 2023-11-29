@@ -267,6 +267,12 @@ namespace Sailor
 				}
 			}
 
+			if (Super::ShouldRehash() && Super::TryLockAll())
+			{
+				Super::Rehash(Super::m_buckets.Capacity() * 4);
+				Super::UnlockAll();
+			}
+
 			// TODO: rethink the approach when default constructor is missed
 			Super::Insert_Internal(TElementType(key, TValueType()), hash);
 
@@ -294,6 +300,12 @@ namespace Sailor
 						return *(container.GetData() + index);
 					}
 				}
+			}
+
+			if (Super::ShouldRehash() && Super::TryLockAll())
+			{
+				Super::Rehash(Super::m_buckets.Capacity() * 4);
+				Super::UnlockAll();
 			}
 
 			Super::Insert_Internal(TElementType(key, std::move(defaultValue)), hash);

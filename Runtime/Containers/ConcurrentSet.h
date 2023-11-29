@@ -164,7 +164,7 @@ namespace Sailor
 		using TConcurrentEntryPtr = TUniquePtr<TEntry>;
 		using TBucketContainer = TVector<TConcurrentEntryPtr, TAllocator>;
 
-		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 8) { m_buckets.Resize(desiredNumBuckets); }
+		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 16) { m_buckets.Resize(desiredNumBuckets); }
 		SAILOR_API TConcurrentSet(TConcurrentSet&&) = default;
 		SAILOR_API TConcurrentSet(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType> : TConcurrentSet((uint32_t)rhs.m_buckets.Num())
 		{
@@ -409,7 +409,7 @@ namespace Sailor
 			return true;
 		}
 
-		__forceinline bool ShouldRehash() const { return (size_t)m_num > m_buckets.Num() * 6; }
+		__forceinline bool ShouldRehash() const { return (size_t)m_num > m_buckets.Num() * 4; }
 		__forceinline void Rehash(size_t desiredBucketsNum)
 		{
 			if (desiredBucketsNum <= m_buckets.Num())
