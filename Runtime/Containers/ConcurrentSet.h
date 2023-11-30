@@ -15,6 +15,13 @@
 
 namespace Sailor
 {
+	enum class ERehashPolicy
+	{
+		Never = 0,
+		IfNotWriting,
+		Always
+	};
+
 	template<typename TElementType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class TConcurrentSet
 	{
@@ -164,9 +171,9 @@ namespace Sailor
 		using TConcurrentEntryPtr = TUniquePtr<TEntry>;
 		using TBucketContainer = TVector<TConcurrentEntryPtr, TAllocator>;
 
-		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 16) { m_buckets.Resize(desiredNumBuckets); }
+		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 16, ERehashPolicy policy = ERehashPolicy::Never) : m_rehashPolicy(policy) { m_buckets.Resize(desiredNumBuckets); }
 		SAILOR_API TConcurrentSet(TConcurrentSet&&) = default;
-		SAILOR_API TConcurrentSet(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType> : TConcurrentSet((uint32_t)rhs.m_buckets.Num())
+		SAILOR_API TConcurrentSet(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType> : TConcurrentSet((uint32_t)rhs.m_buckets.Num(), rhs.m_rehashPolicy)
 		{
 			for (const auto& el : rhs)
 			{
@@ -177,6 +184,8 @@ namespace Sailor
 		SAILOR_API TConcurrentSet& operator=(TConcurrentSet&&) = default;
 		SAILOR_API TConcurrentSet& operator=(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType>
 		{
+			m_rehashPolicy = rhs.m_rehashPolicy;
+
 			Clear((uint32_t)rhs.m_buckets.Num());
 			for (const auto& el : rhs)
 			{
@@ -230,10 +239,9 @@ namespace Sailor
 
 		void Insert(TElementType inElement)
 		{
-			if (ShouldRehash() && TryLockAll())
+			if (ShouldRehash())
 			{
 				Rehash(m_buckets.Capacity() * 4);
-				UnlockAll();
 			}
 
 			const auto& hash = Sailor::GetHash(inElement);
@@ -409,12 +417,25 @@ namespace Sailor
 			return true;
 		}
 
-		__forceinline bool ShouldRehash() const { return (size_t)m_num > m_buckets.Num() * 4; }
+		__forceinline bool ShouldRehash() const
+		{
+			return m_rehashPolicy != ERehashPolicy::Never && (size_t)m_num > m_buckets.Num() * 4;
+		}
+
 		__forceinline void Rehash(size_t desiredBucketsNum)
 		{
 			if (desiredBucketsNum <= m_buckets.Num())
 			{
 				return;
+			}
+
+			if (m_rehashPolicy == ERehashPolicy::IfNotWriting && !TryLockAll())
+			{
+				return;
+			}
+			else if (m_rehashPolicy == ERehashPolicy::Always)
+			{
+				LockAll();
 			}
 
 			TVector<TConcurrentEntryPtr, TAllocator> buckets(desiredBucketsNum);
@@ -448,12 +469,16 @@ namespace Sailor
 			}
 
 			buckets.Clear();
+
+			UnlockAll();
 		}
 
 		TBucketContainer m_buckets{};
 		SpinLock m_locks[concurrencyLevel];
 
 		size_t m_num = 0;
+
+		ERehashPolicy m_rehashPolicy;
 
 		// That's unsafe but we handle that properly
 		TEntry* m_first = nullptr;

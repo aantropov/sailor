@@ -20,7 +20,7 @@ namespace Sailor
 		using Super = Sailor::TConcurrentSet<TPair<TKeyType, TValueType>, concurrencyLevel, TAllocator>;
 		using TElementType = Sailor::TPair<TKeyType, TValueType>;
 
-		SAILOR_API TConcurrentMap(const uint32_t desiredNumBuckets = 16) : Super(desiredNumBuckets) {  }
+		SAILOR_API TConcurrentMap(const uint32_t desiredNumBuckets = 24, ERehashPolicy policy = ERehashPolicy::Never) : Super(desiredNumBuckets, policy) {  }
 		SAILOR_API TConcurrentMap(TConcurrentMap&&) = default;
 		SAILOR_API TConcurrentMap(const TConcurrentMap&) = default;
 		SAILOR_API TConcurrentMap& operator=(TConcurrentMap&&) noexcept = default;
@@ -249,37 +249,7 @@ namespace Sailor
 
 		SAILOR_API TElementType& GetOrAdd(const TKeyType& key)
 		{
-			const auto& hash = Sailor::GetHash(key);
-			{
-				const size_t index = hash % Super::m_buckets.Num();
-				auto& element = Super::m_buckets[index];
-
-				if (element)
-				{
-					auto& container = element->GetContainer();
-
-					size_t index = container.FindIf([&](const TElementType& element) { return element.First() == key; });
-
-					if (index != -1)
-					{
-						return *(container.GetData() + index);
-					}
-				}
-			}
-
-			if (Super::ShouldRehash() && Super::TryLockAll())
-			{
-				Super::Rehash(Super::m_buckets.Capacity() * 4);
-				Super::UnlockAll();
-			}
-
-			// TODO: rethink the approach when default constructor is missed
-			Super::Insert_Internal(TElementType(key, TValueType()), hash);
-
-			const size_t index = hash % Super::m_buckets.Num();
-			auto& element = Super::m_buckets[index];
-
-			return *element->GetContainer().Last();
+			return GetOrAdd(key, TValueType());
 		}
 
 		SAILOR_API TElementType& GetOrAdd(const TKeyType& key, TValueType defaultValue)
@@ -302,10 +272,9 @@ namespace Sailor
 				}
 			}
 
-			if (Super::ShouldRehash() && Super::TryLockAll())
+			if (Super::ShouldRehash())
 			{
 				Super::Rehash(Super::m_buckets.Capacity() * 4);
-				Super::UnlockAll();
 			}
 
 			Super::Insert_Internal(TElementType(key, std::move(defaultValue)), hash);
