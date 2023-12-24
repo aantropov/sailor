@@ -13,9 +13,8 @@
 
 ### Pathtracer (CPU, GLTF)
 <p float="left">
-  <img src="https://github.com/aantropov/sailor/assets/3637761/eba69658-b618-4b70-9fd2-473d288c9dfc" width="400" />
-  <img src="https://github.com/aantropov/sailor/assets/3637761/951bc7e0-f04d-43a9-8dba-f1e934fea8ba" width="400" />
   <img src="https://github.com/aantropov/sailor/assets/3637761/086c1dc0-f7f4-47a4-bd0f-d2cef4e84fd8" width="400" />
+  <img src="https://github.com/aantropov/sailor/assets/3637761/84e58446-65d2-4358-90ec-8d6a59a81076" width="400" />
 </p>
 
 ## Table of Contents
