@@ -91,11 +91,11 @@ namespace Sailor
 
 					if (str.starts_with("ViewportWidth"))
 					{
-						res = std::max(1u, (uint32_t)((float)App::GetViewportWindow()->GetWidth() * multiplier));
+						res = std::max(1u, (uint32_t)((float)App::GetMainWindow()->GetRenderArea().x * multiplier));
 					}
 					else if (str.starts_with("ViewportHeight"))
 					{
-						res = std::max(1u, (uint32_t)((float)App::GetViewportWindow()->GetHeight() * multiplier));
+						res = std::max(1u, (uint32_t)((float)App::GetMainWindow()->GetRenderArea().y * multiplier));
 					}
 					else
 					{

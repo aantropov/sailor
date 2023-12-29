@@ -15,19 +15,19 @@ using namespace Sailor::Win32;
 
 TVector<Window*> Window::g_windows;
 
-bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested)
+void Window::TrackExternalViewport(HWND hwnd)
+{
+	SetParent(m_hWnd, hwnd);
+}
+
+bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, HWND parentHwnd)
 {
 	m_windowClassName = className;
-	m_bIsVsyncRequested = bIsVsyncRequested;
-	m_width = inWidth;
-	m_height = inHeight;
-	m_bIsFullscreen = inbIsFullScreen;
 
-	WNDCLASSEX            wcx;
-	PIXELFORMATDESCRIPTOR pfd;
-	RECT                  rect;
-	DWORD                 style, exStyle;
-	int                   x, y, format;
+	WNDCLASSEX            wcx{};
+	RECT                  rect{};
+	DWORD                 style{}, exStyle{};
+	int32_t               x{}, y{};
 
 	m_hInstance = static_cast<HINSTANCE>(GetModuleHandle(NULL));
 
@@ -48,25 +48,30 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		return false;
 	}
 
-	// Window styles
 	style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_OVERLAPPED;
 	exStyle = WS_EX_APPWINDOW;
 
-	// Centrate window
-	x = (GetSystemMetrics(SM_CXSCREEN) - m_width) / 2;
-	y = (GetSystemMetrics(SM_CYSCREEN) - m_height) / 2;
+	x = (GetSystemMetrics(SM_CXSCREEN) - inWidth) / 2;
+	y = (GetSystemMetrics(SM_CYSCREEN) - inHeight) / 2;
 
 	rect.left = x;
-	rect.right = x + m_width;
+	rect.right = x + inWidth;
 	rect.top = y;
-	rect.bottom = y + m_height;
+	rect.bottom = y + inHeight;
 
 	// Setup window size with styles
 	AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 
 	// Create window
-	m_hWnd = CreateWindowEx(exStyle, m_windowClassName.c_str(), title, style, rect.left, rect.top,
-		rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, m_hInstance, NULL);
+	m_hWnd = CreateWindowEx(exStyle,
+		m_windowClassName.c_str(),
+		title,
+		style,
+		rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+		parentHwnd,
+		NULL,
+		m_hInstance,
+		NULL);
 
 	if (!m_hWnd)
 	{
@@ -75,9 +80,6 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		return false;
 	}
 
-	g_windows.Add(this);
-
-	// ÔGet window descriptor
 	m_hDC = GetDC(m_hWnd);
 
 	if (!m_hDC)
@@ -86,6 +88,9 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		sprintf_s(message, "GetDC fail (%d)", GetLastError());
 		return false;
 	}
+
+	PIXELFORMATDESCRIPTOR pfd;
+	int32_t format;
 
 	// Pixel format description
 	memset(&pfd, 0, sizeof(pfd));
@@ -105,10 +110,16 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		return false;
 	}
 
-	// TODO: Init Vulkan
+	g_windows.Add(this);
+	
+	m_bIsVsyncRequested = bIsVsyncRequested;
+	m_width = inWidth;
+	m_height = inHeight;
+	m_bIsFullscreen = inbIsFullScreen;
 
 	// Set up window size
 	ChangeWindowSize(m_width, m_height, m_bIsFullscreen);
+
 
 	SAILOR_LOG("Window created");
 	return true;
@@ -122,7 +133,6 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	LONG    result;
 	int     x, y;
 
-	// If we change from fullscreen mode
 	if (bInIsFullScreen && !m_bIsFullscreen)
 	{
 		ChangeDisplaySettings(NULL, CDS_RESET);
@@ -131,7 +141,6 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 
 	m_bIsFullscreen = bInIsFullScreen;
 
-	// Fullscreen mode
 	if (m_bIsFullscreen)
 	{
 		memset(&devMode, 0, sizeof(devMode));
@@ -151,7 +160,6 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 		}
 	}
 
-	// If fullscreen mode setuped succesfully
 	if (m_bIsFullscreen)
 	{
 		ShowCursor(FALSE);
@@ -161,11 +169,10 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 		x = y = 0;
 	}
 	else
-	{ //Window
+	{
 		style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_OVERLAPPEDWINDOW;
 		exStyle = WS_EX_APPWINDOW;
 
-		// Centralize window
 		x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
 		y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 	}
@@ -197,7 +204,6 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	width = rect.right - rect.left;
 	height = rect.bottom - rect.top;
 
-	// Centralize cursor in the center of the screen
 	SetCursorPos(x + width / 2, y + height / 2);
 }
 

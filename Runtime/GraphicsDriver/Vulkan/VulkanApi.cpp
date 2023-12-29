@@ -66,7 +66,7 @@ void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 	createInfo.pfnUserCallback = VulkanDebugCallback;
 }
 
-void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples, bool bInIsEnabledValidationLayers)
+void VulkanApi::Initialize(Window* viewport, RHI::EMsaaSamples msaaSamples, bool bInIsEnabledValidationLayers)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -85,9 +85,9 @@ void VulkanApi::Initialize(const Window* viewport, RHI::EMsaaSamples msaaSamples
 	// Create Vulkan instance
 	VkApplicationInfo appInfo{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
 
-	appInfo.pApplicationName = App::ApplicationName;
+	appInfo.pApplicationName = App::GetApplicationName();
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.pEngineName = "Sailor";
+	appInfo.pEngineName = App::GetEngineName();
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 
 #if defined(VK_API_VERSION_1_3)

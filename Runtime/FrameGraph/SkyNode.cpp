@@ -377,7 +377,7 @@ void SkyNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfer
 
 	if (!m_pCloudsTexture)
 	{
-		const float size = std::min(App::GetViewportWindow()->GetWidth() * CloudsResolutionFactor, App::GetViewportWindow()->GetHeight() * CloudsResolutionFactor);
+		const float size = std::min(App::GetMainWindow()->GetRenderArea().x * CloudsResolutionFactor, App::GetMainWindow()->GetRenderArea().y * CloudsResolutionFactor);
 
 		m_pCloudsTexture = driver->CreateRenderTarget(
 			commandList,

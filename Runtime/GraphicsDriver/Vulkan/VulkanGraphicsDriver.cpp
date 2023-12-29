@@ -32,7 +32,7 @@
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-void VulkanGraphicsDriver::Initialize(const Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
+void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	GraphicsDriver::Vulkan::VulkanApi::Initialize(pViewport, msaaSamples, bIsDebug);
 	m_vkInstance = GraphicsDriver::Vulkan::VulkanApi::GetInstance();
@@ -112,13 +112,13 @@ bool VulkanGraphicsDriver::ShouldFixLostDevice(const Win32::Window* pViewport)
 	return m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport);
 }
 
-bool VulkanGraphicsDriver::FixLostDevice(const Win32::Window* pViewport)
+bool VulkanGraphicsDriver::FixLostDevice(Win32::Window* pViewport)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport))
 	{
-		auto fixLostDevice_RenderThread = [this, pViewport = pViewport]()
+		auto fixLostDevice_RenderThread = [this, pViewport = pViewport]() mutable
 		{
 			SAILOR_PROFILE_BLOCK("Fix lost device");
 			m_vkInstance->WaitIdle();

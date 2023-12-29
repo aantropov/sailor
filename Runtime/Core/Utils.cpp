@@ -462,3 +462,26 @@ glm::vec3 Utils::ConvertToEuclidean(float rightAscension, float declination, flo
 
 	return out;
 }
+
+std::string Utils::GetArgValue(const char** args, int32_t& i, int32_t num)
+{
+	if (i + 1 >= num)
+	{
+		return "";
+	}
+
+	i++;
+	std::string value = args[i];
+
+	if (value[0] == '\"')
+	{
+		while (i < num && value[value.length() - 1] != '\"')
+		{
+			i++;
+			value += " " + std::string(args[i]);
+		}
+		value = value.substr(1, value.length() - 2);
+	}
+
+	return value;
+}

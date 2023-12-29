@@ -105,7 +105,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 0.0f, 0 };
 		static constexpr VkClearValue DefaultClearColor{ {0.0f,0.0f,0.0f,0.0f} };
 
-		SAILOR_API static void Initialize(const Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+		SAILOR_API static void Initialize(Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API virtual ~VulkanApi() override;
 
 		SAILOR_API static void WaitIdle();

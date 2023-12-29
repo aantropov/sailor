@@ -71,7 +71,7 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 	return VK_SAMPLE_COUNT_1_BIT;
 }
 
-VulkanDevice::VulkanDevice(const Window* pViewport, RHI::EMsaaSamples requestMsaa)
+VulkanDevice::VulkanDevice(Window* pViewport, RHI::EMsaaSamples requestMsaa)
 {
 	// Create Win32 surface
 	CreateWin32Surface(pViewport);
@@ -341,7 +341,8 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	}
 	else
 	{
-		VK_CHECK(m_graphicsQueue->Submit(submitInfo, fence));
+		auto result = m_graphicsQueue->Submit(submitInfo, fence);
+		VK_CHECK(result);
 	}
 
 	_freea(waits);
@@ -393,7 +394,7 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 	}
 }
 
-bool VulkanDevice::RecreateSwapchain(const Window* pViewport)
+bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 {
 	if (pViewport->GetWidth() == 0 || pViewport->GetHeight() == 0)
 	{
@@ -585,19 +586,21 @@ void VulkanDevice::CreateWin32Surface(const Window* viewport)
 	m_surface = VulkanSurfacePtr::Make(surface, VulkanApi::GetVkInstance());
 }
 
-void VulkanDevice::CreateSwapchain(const Window* viewport)
+void VulkanDevice::CreateSwapchain(Window* pViewport)
 {
 	m_oldSwapchain = m_swapchain;
 
 	m_swapchain = VulkanSwapchainPtr::Make(
 		VulkanDevicePtr(this),
-		viewport->GetWidth(),
-		viewport->GetHeight(),
-		viewport->IsVsyncRequested(),
+		pViewport->GetWidth(),
+		pViewport->GetHeight(),
+		pViewport->IsVsyncRequested(),
 		m_oldSwapchain);
 
 	const float height = (float)m_swapchain->GetExtent().height;
 	const float width = (float)m_swapchain->GetExtent().width;
+
+	pViewport->SetRenderArea(ivec2(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height));
 
 	// Flip Y-axis to point up in viewport
 	// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
@@ -631,11 +634,18 @@ void VulkanDevice::WaitIdle()
 
 bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
 {
-	return IsSwapChainOutdated() || (m_swapchain && (pViewport->GetWidth() != m_swapchain->GetExtent().width ||
-		pViewport->GetHeight() != m_swapchain->GetExtent().height));
+	if (IsSwapChainOutdated())
+	{
+		return true;
+	}
+
+	const SwapChainSupportDetails swapChainSupport = VulkanApi::QuerySwapChainSupport(GetPhysicalDevice(), m_surface);
+	const VkExtent2D swapchainExtent = VulkanApi::ChooseSwapExtent(swapChainSupport.m_capabilities, pViewport->GetWidth(), pViewport->GetHeight());
+
+	return m_swapchain && (swapchainExtent.width != m_swapchain->GetExtent().width || swapchainExtent.height != m_swapchain->GetExtent().height);
 }
 
-void VulkanDevice::FixLostDevice(const Win32::Window* pViewport)
+void VulkanDevice::FixLostDevice(Win32::Window* pViewport)
 {
 	RecreateSwapchain(pViewport);
 }

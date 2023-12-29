@@ -37,10 +37,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR cmdArds, int32_t num)
 	const char** ansiArgs = ConvertToAnsi(szArglist, nArgs);
 
 	{
-		Sailor::App::Initialize();
-		App::Start(ansiArgs, nArgs);
+		App::Initialize(ansiArgs, nArgs);
+		App::Start();
 		App::Stop();
-		Sailor::App::Shutdown();
+		App::Shutdown();
 	}
 
 	for (int i = 0; i < nArgs; ++i)

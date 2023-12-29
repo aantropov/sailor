@@ -31,13 +31,39 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 
 App* App::s_pInstance = nullptr;
-const char* App::ApplicationName = "SailorEngine";
-const char* App::EngineName = "Sailor";
 
-void App::Initialize()
+AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 {
-	timeBeginPeriod(1);
+	AppArgs params{};
 
+	for (int32_t i = 1; i < num; i++)
+	{
+		std::string arg = args[i];
+
+		if (arg == "--port")
+		{
+			params.m_editorPort = atoi(Utils::GetArgValue(args, i, num).c_str());
+		}
+		else if (arg == "--hwnd")
+		{
+			const unsigned long long hwndInt = std::stoull(Utils::GetArgValue(args, i, num));
+			params.m_editorHwnd = reinterpret_cast<HWND>(hwndInt);
+		}
+		else if (arg == "--editor")
+		{
+			params.m_bIsEditor = true;
+		}
+		else if (arg == "--waitfordebugger")
+		{
+			params.m_bWaitForDebugger = true;
+		}
+	}
+
+	return params;
+}
+
+void App::Initialize(const char** commandLineArgs, int32_t num)
+{
 	SAILOR_PROFILE_FUNCTION();
 
 	if (s_pInstance != nullptr)
@@ -45,10 +71,29 @@ void App::Initialize()
 		return;
 	}
 
+	timeBeginPeriod(1);
+	const AppArgs params = ParseCommandLineArgs(commandLineArgs, num);
+	if (params.m_bWaitForDebugger)
+	{
+		uint32_t timeout = 5000;
+		while (!::IsDebuggerPresent()) 
+		{
+			::Sleep(100); 
+			timeout -= 100; 
+			if (timeout < 0)
+			{
+				exit(0);
+			}
+		}
+	}
+
 	Win32::ConsoleWindow::Initialize(false);
 
 #ifdef SAILOR_WITH_CONSOLE
-	Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
+	if (params.m_bRunConsole)
+	{
+		Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
+	}
 #endif
 
 	s_pInstance = new App();
@@ -57,8 +102,8 @@ void App::Initialize()
 	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
 #endif
 
-	s_pInstance->m_pViewportWindow = TUniquePtr<Win32::Window>::Make();
-	s_pInstance->m_pViewportWindow->Create("Sailor Viewport", "SailorViewport", 1024, 768);
+	s_pInstance->m_pMainWindow = TUniquePtr<Win32::Window>::Make();
+	s_pInstance->m_pMainWindow->Create("Sailor Viewport", "SailorViewport", 1024, 768, false, false, params.m_editorHwnd);
 
 #ifdef SAILOR_VULKAN_ENABLE_VALIDATION_LAYER
 	const bool bIsEnabledVulkanValidationLayers = true;
@@ -73,7 +118,7 @@ void App::Initialize()
 	EASY_MAIN_THREAD;
 #endif
 
-	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pViewportWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bIsEnabledVulkanValidationLayers));
+	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bIsEnabledVulkanValidationLayers));
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
@@ -94,32 +139,16 @@ void App::Initialize()
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
-	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pViewportWindow->GetHWND()));
+	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
 	s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
 
 	SAILOR_LOG("Sailor Engine initialized");
 }
 
-void App::Start(const char** commandLineArgs, int32_t num)
+void App::Start()
 {
-	{
-		//Raytracing::PathTracer::Params params{};
-		//params.m_output = "output.png";
-		//params.m_height = 768;
-		//params.m_msaa = 16;
-		//params.m_numSamples = 128;
-		//params.m_numBounces = 3;
-		//params.m_pathToModel = "../Content/Models/round12/round12.glb";
-		//
-		//Raytracing::PathTracer::ParseParamsFromCommandLineArgs(params, commandLineArgs, num);
-		//Raytracing::PathTracer r;
-		//
-		//r.Run(params);
-		//return;
-	}
-
-	s_pInstance->m_pViewportWindow->SetActive(true);
-	s_pInstance->m_pViewportWindow->SetRunning(true);
+	s_pInstance->m_pMainWindow->SetActive(true);
+	s_pInstance->m_pMainWindow->SetRunning(true);
 
 	uint32_t frameCounter = 0U;
 	Utils::Timer timer;
@@ -144,7 +173,7 @@ void App::Start(const char** commandLineArgs, int32_t num)
 
 	FrameInputState systemInputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
 
-	while (s_pInstance->m_pViewportWindow->IsRunning())
+	while (s_pInstance->m_pMainWindow->IsRunning())
 	{
 		timer.Start();
 
@@ -187,14 +216,14 @@ void App::Start(const char** commandLineArgs, int32_t num)
 			if (systemInputState.IsKeyPressed(VK_F6) && !renderDoc->IsConnected())
 			{
 				renderDoc->LaunchRenderDocApp();
+			}
 		}
-	}
 #endif
 
 		if (bCanCreateNewFrame)
 		{
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pViewportWindow->GetCenterPointClient(), bFirstFrame ? nullptr : &lastFrame);
+			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pMainWindow->GetCenterPointClient(), bFirstFrame ? nullptr : &lastFrame);
 			App::GetSubmodule<EngineLoop>()->ProcessCpuFrame(currentFrame);
 			bFirstFrame = false;
 		}
@@ -232,7 +261,7 @@ void App::Start(const char** commandLineArgs, int32_t num)
 				stats.m_numSubmittedCommandBuffers
 			);
 
-			s_pInstance->m_pViewportWindow->SetWindowTitle(Buff);
+			s_pInstance->m_pMainWindow->SetWindowTitle(Buff);
 
 			frameCounter = 0U;
 			timer.Clear();
@@ -244,10 +273,10 @@ void App::Start(const char** commandLineArgs, int32_t num)
 		systemInputState = GlobalInput::GetInputState();
 		systemInputState.TrackForChanges(oldInputState);
 
-}
+	}
 
-	s_pInstance->m_pViewportWindow->SetActive(false);
-	s_pInstance->m_pViewportWindow->SetRunning(false);
+	s_pInstance->m_pMainWindow->SetActive(false);
+	s_pInstance->m_pMainWindow->SetRunning(false);
 
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
@@ -255,7 +284,7 @@ void App::Start(const char** commandLineArgs, int32_t num)
 
 void App::Stop()
 {
-	s_pInstance->m_pViewportWindow->SetActive(false);
+	s_pInstance->m_pMainWindow->SetActive(false);
 }
 
 void App::Shutdown()
@@ -305,7 +334,7 @@ void App::Shutdown()
 	delete s_pInstance;
 }
 
-TUniquePtr<Win32::Window>& App::GetViewportWindow()
+TUniquePtr<Win32::Window>& App::GetMainWindow()
 {
-	return s_pInstance->m_pViewportWindow;
+	return s_pInstance->m_pMainWindow;
 }

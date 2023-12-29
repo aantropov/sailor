@@ -8,8 +8,8 @@ using namespace Sailor::Tasks;
 
 float CameraComponent::CalculateAspect()
 {
-	const int32_t width = Sailor::App::GetViewportWindow()->GetWidth();
-	const int32_t height = Sailor::App::GetViewportWindow()->GetHeight();
+	const int32_t width = Sailor::App::GetMainWindow()->GetRenderArea().x;
+	const int32_t height = Sailor::App::GetMainWindow()->GetRenderArea().y;
 
 	return (height + width) > 0 ? width / (float)height : 1.0f;
 }

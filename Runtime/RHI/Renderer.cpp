@@ -52,7 +52,7 @@ bool IDelayedInitialization::IsReady() const
 	return m_dependencies.Num() == 0;
 }
 
-Renderer::Renderer(Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
+Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	m_pViewport = pViewport;
 	m_msaaSamples = msaaSamples;

@@ -31,7 +31,7 @@ namespace Sailor::Raytracing
 			vec3 m_ambient;
 		};
 
-		static void ParseParamsFromCommandLineArgs(Params& params, const char** args, int32_t num);
+		static void ParseCommandLineArgs(Params& params, const char** args, int32_t num);
 
 		void Run(const Params& params);
 

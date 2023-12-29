@@ -14,26 +14,27 @@ namespace Sailor
 {
 	class AssetRegistry;
 
+	struct AppArgs
+	{
+		bool m_bWaitForDebugger = false;
+		bool m_bRunConsole = true;
+		bool m_bIsEditor = false;
+		uint32_t m_editorPort = 32800;
+		HWND m_editorHwnd{};
+	};
+
 	class SAILOR_API App
 	{
+		static constexpr size_t MaxSubmodules = 64u;
 
 	public:
 
-		static constexpr size_t MaxSubmodules = 64u;
-		static const char* ApplicationName;
-		static const char* EngineName;
-
-		static void Initialize();
-		static void Start(const char** commandLineArgs = nullptr, int32_t num = 0);
+		static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
+		static void Start();
 		static void Stop();
 		static void Shutdown();
 
-		static TUniquePtr<Win32::Window>& GetViewportWindow();
-
-		static SubmoduleBase* GetSubmodule(uint32_t index)
-		{
-			return s_pInstance->m_submodules[index].GetRawPtr();
-		}
+		static SubmoduleBase* GetSubmodule(uint32_t index) { return s_pInstance->m_submodules[index].GetRawPtr(); }
 
 		template<typename T>
 		static T* GetSubmodule()
@@ -66,9 +67,13 @@ namespace Sailor
 			s_pInstance->m_submodules[TSubmodule<T>::GetTypeId()].Clear();
 		}
 
+		static TUniquePtr<Win32::Window>& GetMainWindow();
+		static const char* GetApplicationName() { return "SailorEngine"; }
+		static const char* GetEngineName() { return "SailorEngine"; }
+
 	protected:
 
-		TUniquePtr<Win32::Window> m_pViewportWindow;
+		TUniquePtr<Win32::Window> m_pMainWindow;
 
 	private:
 

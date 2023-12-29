@@ -29,7 +29,7 @@ namespace Sailor::RHI
 	public:
 		static constexpr uint32_t MaxFramesInQueue = 2;
 
-		SAILOR_API Renderer(class Win32::Window const* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+		SAILOR_API Renderer(class Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API ~Renderer() override;
 
 		SAILOR_API RHI::EMsaaSamples GetMsaaSamples() const { return m_msaaSamples; }
@@ -63,7 +63,7 @@ namespace Sailor::RHI
 
 		RHI::Stats m_stats;
 
-		class Win32::Window const* m_pViewport;
+		class Win32::Window* m_pViewport;
 
 		FrameGraphPtr m_frameGraph;
 		TConcurrentMap<WorldPtr, RHISceneViewPtr> m_cachedSceneViews;

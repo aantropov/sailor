@@ -47,6 +47,8 @@ namespace Sailor
 		SAILOR_API int64_t GetCurrentTimeMicro();
 		SAILOR_API int64_t GetCurrentTimeNano();
 
+		std::string GetArgValue(const char** args, int32_t& i, int32_t num);
+
 		struct SAILOR_API Timer
 		{
 			int64_t m_counterStart = 0;

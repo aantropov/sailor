@@ -56,13 +56,13 @@ namespace Sailor::RHI
 	{
 	public:
 
-		SAILOR_API virtual void Initialize(const Sailor::Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
+		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
 		SAILOR_API virtual ~IGraphicsDriver() = default;
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const = 0;
 
-		SAILOR_API virtual bool ShouldFixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
-		SAILOR_API virtual bool FixLostDevice(const Sailor::Win32::Window* pViewport) = 0;
+		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport) = 0;
+		SAILOR_API virtual bool FixLostDevice(Win32::Window* pViewport) = 0;
 
 		SAILOR_API virtual bool AcquireNextImage() = 0;
 		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,

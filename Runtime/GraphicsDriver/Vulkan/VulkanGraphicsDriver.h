@@ -23,13 +23,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		SAILOR_API virtual void Initialize(const Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API virtual ~VulkanGraphicsDriver() override;
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const;
 
 		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport);
-		SAILOR_API virtual bool FixLostDevice(const Win32::Window* pViewport);
+		SAILOR_API virtual bool FixLostDevice(Win32::Window* pViewport);
 
 		SAILOR_API virtual bool AcquireNextImage();
 		SAILOR_API virtual bool PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const;

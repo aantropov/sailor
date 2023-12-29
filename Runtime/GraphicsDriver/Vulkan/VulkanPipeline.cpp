@@ -123,7 +123,7 @@ void VulkanGraphicsPipeline::Compile()
 	VkGraphicsPipelineCreateInfo pipelineInfo = {};
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipelineInfo.layout = *m_layout;
-	pipelineInfo.renderPass = *m_renderPass;
+	pipelineInfo.renderPass = m_renderPass ? *m_renderPass : nullptr;
 	pipelineInfo.subpass = m_subpass;
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 	pipelineInfo.pNext = nullptr;

@@ -26,30 +26,7 @@ using namespace Sailor;
 using namespace Sailor::Math;
 using namespace Sailor::Raytracing;
 
-std::string GetArgValue(const char** args, int32_t& i, int32_t num)
-{
-	if (i + 1 >= num)
-	{
-		return "";
-	}
-
-	i++;
-	std::string value = args[i];
-
-	if (value[0] == '\"')
-	{
-		while (i < num && value[value.length() - 1] != '\"')
-		{
-			i++;
-			value += " " + std::string(args[i]);
-		}
-		value = value.substr(1, value.length() - 2);
-	}
-
-	return value;
-}
-
-void PathTracer::ParseParamsFromCommandLineArgs(PathTracer::Params& res, const char** args, int32_t num)
+void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args, int32_t num)
 {
 	for (int32_t i = 1; i < num; i++)
 	{
@@ -57,34 +34,34 @@ void PathTracer::ParseParamsFromCommandLineArgs(PathTracer::Params& res, const c
 
 		if (arg == "--in")
 		{
-			res.m_pathToModel = GetArgValue(args, i, num);
+			res.m_pathToModel = Utils::GetArgValue(args, i, num);
 		}
 		else if (arg == "--out")
 		{
-			res.m_output = GetArgValue(args, i, num);
+			res.m_output = Utils::GetArgValue(args, i, num);
 		}
 		else if (arg == "--height")
 		{
-			res.m_height = atoi(GetArgValue(args, i, num).c_str());
+			res.m_height = atoi(Utils::GetArgValue(args, i, num).c_str());
 		}
 		else if (arg == "--samples")
 		{
-			const uint32_t samples = atoi(GetArgValue(args, i, num).c_str());
+			const uint32_t samples = atoi(Utils::GetArgValue(args, i, num).c_str());
 
 			res.m_msaa = samples <= 32 ? std::min(4u, samples) : 8u;
 			res.m_numSamples = std::max(1u, (uint32_t)std::lround(samples / (float)res.m_msaa));
 		}
 		else if (arg == "--bounces")
 		{
-			res.m_maxBounces = atoi(GetArgValue(args, i, num).c_str());
+			res.m_maxBounces = atoi(Utils::GetArgValue(args, i, num).c_str());
 		}
 		else if (arg == "--camera")
 		{
-			res.m_camera = GetArgValue(args, i, num);
+			res.m_camera = Utils::GetArgValue(args, i, num);
 		}
 		else if (arg == "--ambient")
 		{
-			const std::string& hexStr = GetArgValue(args, i, num);
+			const std::string& hexStr = Utils::GetArgValue(args, i, num);
 			const int32_t r = std::stoi(hexStr.substr(0, 2), nullptr, 16);
 			const int32_t g = std::stoi(hexStr.substr(2, 2), nullptr, 16);
 			const int32_t b = std::stoi(hexStr.substr(4, 2), nullptr, 16);
