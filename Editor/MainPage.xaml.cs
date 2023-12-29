@@ -1,23 +1,44 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Editor
 {
     public partial class MainPage : ContentPage
     {
-        int count = 0;
+        static string GetEngineWorkingDirectory()
+        {
+            string currentDirectory = AppContext.BaseDirectory;
+            string directoryFiveLevelsUp = Path.GetFullPath(Path.Combine(currentDirectory, "..", "..", "..", "..", ".."));
+
+            return directoryFiveLevelsUp + "\\";
+        }
+        static string GetEngineExec(bool bIsDebug)
+        {
+            return GetEngineWorkingDirectory() + (bIsDebug ? "SailorEngine-Debug.exe" :"SailorEngine-Release.exe");
+        }
 
         public MainPage()
         {
             InitializeComponent();
         }
 
-        private void OnCounterClicked(object sender, EventArgs e)
+        private void OnRunSailorEngineClicked(object sender, EventArgs e)
         {
+#if WINDOWS
+
+            IntPtr handle = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+            
+            string commandArgs = $"--hwnd {handle} --editor";
+            if (WaitForDebuggerAttachedCheckBox.IsChecked)
+            {
+                commandArgs += " --waitfordebugger";
+            }
 
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                FileName = Directory.GetCurrentDirectory() + "\\SailorEngine-Release.exe",
-                Arguments = "",
+                FileName = GetEngineExec(RunDebugConfigurationCheckBox.IsChecked),
+                Arguments = commandArgs,
+                WorkingDirectory = GetEngineWorkingDirectory(),
                 UseShellExecute = false
             };
 
@@ -34,15 +55,7 @@ namespace Editor
                 // Обработка исключения
                 Console.WriteLine($"Ошибка при запуске процесса: {ex.Message}");
             }
-
-            count++;
-
-            if (count == 1)
-                CounterBtn.Text = $"Clicked {count} time";
-            else
-                CounterBtn.Text = $"Clicked {count} times";
-
-            SemanticScreenReader.Announce(CounterBtn.Text);
+#endif
         }
     }
 }

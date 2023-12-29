@@ -1,5 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+﻿<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="Editor.MainPage">
 
@@ -9,30 +8,30 @@
             Padding="30,0"
             VerticalOptions="Center">
 
-            <Image
-                Source="dotnet_bot.png"
-                SemanticProperties.Description="Cute dot net bot waving hi to you!"
+            <BoxView
+                x:Name="TestView"
                 HeightRequest="200"
-                HorizontalOptions="Center" />
+                WidthRequest="400"
+                MaximumHeightRequest="200"
+                MaximumWidthRequest="400"
+                />
 
-            <Label
-                Text="Sailor!"
-                SemanticProperties.HeadingLevel="Level1"
-                FontSize="32"
-                HorizontalOptions="Center" />
+            <!-- CheckBox with Label on the same line -->
+            <HorizontalStackLayout HorizontalOptions="Center">
+                <CheckBox x:Name="WaitForDebuggerAttachedCheckBox" />
+                <Label Text="WaitForDebuggerAttached" VerticalOptions="Center"/>
+            </HorizontalStackLayout>
 
-            <Label
-                Text="Welcome to .NET Multi-platform App UI"
-                SemanticProperties.HeadingLevel="Level2"
-                SemanticProperties.Description="Welcome to dot net Multi platform App U I"
-                FontSize="18"
-                HorizontalOptions="Center" />
+            <!-- CheckBox with Label on the same line -->
+            <HorizontalStackLayout HorizontalOptions="Center">
+                <CheckBox x:Name="RunDebugConfigurationCheckBox" IsChecked="True" />
+                <Label Text="RunDebugConfiguration" VerticalOptions="Center"/>
+            </HorizontalStackLayout>
 
             <Button
-                x:Name="CounterBtn"
-                Text="Click me"
-                SemanticProperties.Hint="Counts the number of times you click"
-                Clicked="OnCounterClicked"
+                x:Name="RunSailorEngine"
+                Text="Run Sailor Engine Process"
+                Clicked="OnRunSailorEngineClicked"
                 HorizontalOptions="Center" />
 
         </VerticalStackLayout>
