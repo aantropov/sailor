@@ -16,8 +16,8 @@ namespace Sailor::RHI
 	{
 	public:
 
-		SAILOR_API RHICubemap(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips, EImageLayout defaultLayout = EImageLayout::ShaderReadOnlyOptimal) :
-			RHITexture(filtration, clamping, bShouldGenerateMips, defaultLayout)
+		SAILOR_API RHICubemap(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips, EImageLayout defaultLayout = EImageLayout::ShaderReadOnlyOptimal, ESamplerReductionMode reduction = ESamplerReductionMode::Average) :
+			RHITexture(filtration, clamping, bShouldGenerateMips, defaultLayout, reduction)
 		{}
 
 		RHITexturePtr GetFace(uint32_t face, uint32_t mipLevel = 0) const;

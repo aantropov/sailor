@@ -16,8 +16,8 @@ namespace Sailor::RHI
 	{
 	public:
 
-		SAILOR_API RHIRenderTarget(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips, EImageLayout defaultLayout = EImageLayout::ShaderReadOnlyOptimal) :
-			RHITexture(filtration, clamping, bShouldGenerateMips, defaultLayout)
+		SAILOR_API RHIRenderTarget(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips, EImageLayout defaultLayout = EImageLayout::ShaderReadOnlyOptimal, ESamplerReductionMode reduction = ESamplerReductionMode::Average) :
+			RHITexture(filtration, clamping, bShouldGenerateMips, defaultLayout, reduction)
 		{}
 
 		// Only for formats that handles both depth & stencil

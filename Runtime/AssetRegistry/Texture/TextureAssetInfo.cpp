@@ -16,6 +16,7 @@ YAML::Node TextureAssetInfo::Serialize() const
 	outData["bShouldSupportStorageBinding"] = m_bShouldSupportStorageBinding;
 	outData["clamping"] = SerializeEnum<RHI::ETextureClamping>(m_clamping);
 	outData["filtration"] = SerializeEnum<RHI::ETextureFiltration>(m_filtration);
+	outData["reduction"] = SerializeEnum<RHI::ESamplerReductionMode>(m_reduction);
 	outData["format"] = SerializeEnum<RHI::ETextureFormat>(m_format);
 
 	return outData;
@@ -32,6 +33,11 @@ void TextureAssetInfo::Deserialize(const YAML::Node& outData)
 	if (outData["filtration"])
 	{
 		DeserializeEnum<RHI::ETextureFiltration>(outData["filtration"], m_filtration);
+	}
+
+	if (outData["reduction"])
+	{
+		DeserializeEnum<RHI::ESamplerReductionMode>(outData["reduction"], m_reduction);
 	}
 
 	if (outData["bShouldGenerateMips"])

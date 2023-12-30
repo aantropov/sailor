@@ -51,6 +51,13 @@ namespace Sailor::RHI
 		Bicubic
 	};
 
+	enum class ESamplerReductionMode : uint8_t
+	{
+		Average = 0,
+		Min = 1,
+		Max = 2
+	};
+
 	enum class ETextureClamping : uint8_t
 	{
 		Clamp = 0,

@@ -63,6 +63,8 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 		}
 	}
 
+	const bool bIsDepthFormat = RHI::IsDepthFormat(src->GetFormat()) || RHI::IsDepthFormat(dst->GetFormat());
+
 	//glm::vec4 srcRegion = GetVec4("srcRegion");
 	//glm::vec4 dstRegion = GetVec4("dstRegion");
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
@@ -71,7 +73,6 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), src->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), RHI::EImageLayout::TransferDstOptimal);
 
-	const bool bIsDepthFormat = RHI::IsDepthFormat(src->GetFormat()) || RHI::IsDepthFormat(dst->GetFormat());
 
 	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion, bIsDepthFormat ? ETextureFiltration::Nearest : ETextureFiltration::Linear);
 
@@ -111,7 +112,7 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 			commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), src->GetDefaultLayout(), RHI::EImageLayout::ShaderReadOnlyOptimal);
 
-			BlitToSurface(commandList, frameGraph, sceneView, src, dstSurface);
+			BlitRaw(commandList, frameGraph, sceneView, src, dstSurface->GetTarget());
 
 			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
 			commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::ShaderReadOnlyOptimal, src->GetDefaultLayout());
@@ -121,11 +122,11 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 	commands->EndDebugRegion(commandList);
 }
 
-void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
+void BlitNode::BlitRaw(RHI::RHICommandListPtr commandList,
 	RHI::RHIFrameGraph* frameGraph,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHITexturePtr src,
-	RHI::RHISurfacePtr dst)
+	RHI::RHITexturePtr dst)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -135,14 +136,12 @@ void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
 	driver->AddSamplerToShaderBindings(m_shaderBindings, "colorSampler", src, 0);
 	m_shaderBindings->RecalculateCompatibility();
 
-	auto target = dst->GetTarget();
-
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
 	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHISurfacePtr>{dst},
+		TVector<RHI::RHITexturePtr>{dst},
 		nullptr,
-		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+		glm::vec4(0, 0, dst->GetExtent().x, dst->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
@@ -160,9 +159,9 @@ void BlitNode::BlitToSurface(RHI::RHICommandListPtr commandList,
 	// TODO: Support regions
 	commands->SetViewport(commandList,
 		0, 0,
-		(float)target->GetExtent().x, (float)target->GetExtent().y,
+		(float)dst->GetExtent().x, (float)dst->GetExtent().y,
 		glm::vec2(0, 0),
-		glm::vec2(target->GetExtent().x, target->GetExtent().y),
+		glm::vec2(dst->GetExtent().x, dst->GetExtent().y),
 		0, 1.0f);
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);

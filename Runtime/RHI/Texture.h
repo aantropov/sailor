@@ -22,13 +22,15 @@ namespace Sailor::RHI
 		} m_vulkan;
 #endif
 
-		SAILOR_API RHITexture(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips, EImageLayout defaultLayout = EImageLayout::ShaderReadOnlyOptimal) :
+		SAILOR_API RHITexture(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips, EImageLayout defaultLayout = EImageLayout::ShaderReadOnlyOptimal, ESamplerReductionMode reduction = ESamplerReductionMode::Average) :
 			m_filtration(filtration),
 			m_clamping(clamping),
 			m_bHasMipMaps(bShouldGenerateMips),
-			m_defaultLayout(defaultLayout)
+			m_defaultLayout(defaultLayout),
+			m_reduction(reduction)
 		{}
 
+		SAILOR_API ESamplerReductionMode GetSamplerReduction() const { return m_reduction; }
 		SAILOR_API ETextureFiltration GetFiltration() const { return m_filtration; }
 		SAILOR_API ETextureClamping GetClamping() const { return m_clamping; }
 		SAILOR_API bool HasMipMaps() const { return m_bHasMipMaps; }
@@ -38,6 +40,7 @@ namespace Sailor::RHI
 
 	protected:
 
+		ESamplerReductionMode m_reduction = RHI::ESamplerReductionMode::Average;
 		ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;
 		ETextureClamping m_clamping = RHI::ETextureClamping::Repeat;
 		EImageLayout m_defaultLayout = EImageLayout::ColorAttachmentOptimal;

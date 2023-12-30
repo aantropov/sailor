@@ -22,11 +22,11 @@ namespace Sailor::Framegraph
 
 	protected:
 
-		SAILOR_API void BlitToSurface(RHI::RHICommandListPtr commandList,
+		SAILOR_API void BlitRaw(RHI::RHICommandListPtr commandList,
 			RHI::RHIFrameGraph* frameGraph,
 			const RHI::RHISceneViewSnapshot& sceneView,
 			RHI::RHITexturePtr src,
-			RHI::RHISurfacePtr dst);
+			RHI::RHITexturePtr dst);
 
 		ShaderSetPtr m_pShader{};
 		RHI::RHIMaterialPtr m_blitToMsaaTargetMaterial{};

@@ -497,6 +497,8 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	createInfo.pEnabledFeatures = VK_NULL_HANDLE;
 
 	VkPhysicalDeviceVulkan12Features core12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+	core12.samplerFilterMinmax = VK_TRUE;
+
 	core12.descriptorBindingPartiallyBound = VK_TRUE;
 	core12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 	core12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;

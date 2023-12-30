@@ -47,6 +47,14 @@ renderTargets:
   format: D32_SFLOAT_S8_UINT
   width: ViewportWidth/2
   height: ViewportWidth/2
+  
+- name: DepthHighZ
+  format: R32_SFLOAT
+  width: ViewportWidth/2
+  height: ViewportWidth/2
+  bIsCompatibleWithComputeShaders: true
+  bGenerateMips: true
+  reduction: Min
 
 - name: AO
   format: R8_UNORM
@@ -187,6 +195,15 @@ frame:
   renderTargets:
   - src: DepthBuffer
   - dst: HalfDepth
+
+############################
+# DepthHighZ
+############################
+- name: DepthHighZ
+############################
+  renderTargets:
+  - src: HalfDepth
+  - dst: DepthHighZ
   
 ############################
 - name: PostProcess

@@ -100,6 +100,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 		const uint32_t numMips = std::min(renderTarget.m_second->m_maxMipLevel, bShouldGenerateMips ? (uint32_t)std::floor(std::log2f((float)maxExtent)) + 1 : 1u);
 		const RHI::ETextureFiltration filtration = renderTarget.m_second->m_filtration;
 		const RHI::ETextureClamping clamping = renderTarget.m_second->m_clamping;
+		const  RHI::ESamplerReductionMode reduction = renderTarget.m_second->m_reduction;
 
 		if (renderTarget.m_second->m_bIsSurface)
 		{
@@ -115,7 +116,7 @@ FrameGraphPtr FrameGraphImporter::BuildFrameGraph(const FileId& uid, const Frame
 		else
 		{
 			RHI::RHIRenderTargetPtr rhiRenderTarget = RHI::Renderer::GetDriver()->CreateRenderTarget(glm::vec2(renderTarget.m_second->m_width, renderTarget.m_second->m_height),
-				numMips, renderTarget.m_second->m_format, filtration, clamping, defaultUsage);
+				numMips, renderTarget.m_second->m_format, filtration, clamping, defaultUsage, reduction);
 
 			pRhiFrameGraph->SetRenderTarget(renderTarget.m_first, rhiRenderTarget);
 

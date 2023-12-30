@@ -95,7 +95,8 @@ namespace Sailor::RHI
 			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
 			ETextureFiltration filtration = ETextureFiltration::Linear,
 			ETextureClamping clamping = ETextureClamping::Clamp,
-			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
+			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit,
+			RHI::ESamplerReductionMode reduction = RHI::ESamplerReductionMode::Average) = 0;
 
 		SAILOR_API virtual RHI::RHIRenderTargetPtr CreateRenderTarget(
 			glm::ivec2 extent,
@@ -103,7 +104,8 @@ namespace Sailor::RHI
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
-			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) = 0;
+			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit,
+			RHI::ESamplerReductionMode reduction = RHI::ESamplerReductionMode::Average) = 0;
 
 		SAILOR_API virtual RHI::RHIRenderTargetPtr CreateRenderTarget(
 			RHI::RHICommandListPtr cmdList,
@@ -112,7 +114,8 @@ namespace Sailor::RHI
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
-			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) = 0;
+			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit,
+			RHI::ESamplerReductionMode reduction = RHI::ESamplerReductionMode::Average) = 0;
 
 		SAILOR_API virtual RHI::RHISurfacePtr CreateSurface(
 			glm::ivec2 extent,
@@ -128,7 +131,8 @@ namespace Sailor::RHI
 			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
 			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
-			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) = 0;
+			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::ColorAttachment_Bit | RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit,
+			RHI::ESamplerReductionMode reduction = RHI::ESamplerReductionMode::Average) = 0;
 
 		SAILOR_API virtual RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
 		SAILOR_API virtual RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs) = 0;

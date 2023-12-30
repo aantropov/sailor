@@ -12,7 +12,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		SAILOR_API VulkanSampler(VulkanDevicePtr pDevice, VkFilter filter, VkSamplerAddressMode addressMode, bool bUseMips = true, bool bIsAnisotropyEnabled = true, float maxAnisotropy = 8);
+		SAILOR_API VulkanSampler(VulkanDevicePtr pDevice, VkFilter filter, 
+			VkSamplerAddressMode addressMode, 
+			bool bUseMips = true, 
+			bool bIsAnisotropyEnabled = true,
+			float maxAnisotropy = 8,
+			VkSamplerReductionMode reduction = VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
+
 		SAILOR_API ~VulkanSampler();
 
 		SAILOR_API operator VkSampler() const { return m_textureSampler; }
@@ -27,10 +33,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 		VulkanSamplerCache(VulkanDevicePtr pDevice);
 
-		VulkanSamplerPtr GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const;
+		VulkanSamplerPtr GetSampler(RHI::ETextureFiltration filtration, 
+			RHI::ETextureClamping clampingMode, 
+			bool bHasMipMaps,
+			RHI::ESamplerReductionMode reduction) const;
 
 	private:
 
-		std::array<VulkanSamplerPtr, 8> m_samplers;
+		std::array<VulkanSamplerPtr, 24> m_samplers;
 	};
 }

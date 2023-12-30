@@ -119,14 +119,14 @@ bool VulkanGraphicsDriver::FixLostDevice(Win32::Window* pViewport)
 	if (m_vkInstance->GetMainDevice()->ShouldFixLostDevice(pViewport))
 	{
 		auto fixLostDevice_RenderThread = [this, pViewport = pViewport]() mutable
-		{
-			SAILOR_PROFILE_BLOCK("Fix lost device");
-			m_vkInstance->WaitIdle();
-			m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
-			m_cachedMsaaRenderTargets.Clear();
-			m_temporaryRenderTargets.Clear();
-			SAILOR_PROFILE_END_BLOCK();
-		};
+			{
+				SAILOR_PROFILE_BLOCK("Fix lost device");
+				m_vkInstance->WaitIdle();
+				m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
+				m_cachedMsaaRenderTargets.Clear();
+				m_temporaryRenderTargets.Clear();
+				SAILOR_PROFILE_END_BLOCK();
+			};
 
 		auto task = Tasks::CreateTask("Fix lost device", fixLostDevice_RenderThread, Tasks::EThreadType::Render);
 		task->Run();
@@ -491,7 +491,8 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
 	RHI::ETextureClamping clamping,
-	RHI::ETextureUsageFlags usage)
+	RHI::ETextureUsageFlags usage,
+	RHI::ESamplerReductionMode reduction)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -554,19 +555,25 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
 	RHI::ETextureClamping clamping,
-	RHI::ETextureUsageFlags usage)
+	RHI::ETextureUsageFlags usage,
+	RHI::ESamplerReductionMode reduction)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal;
+	VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
 
 	if (const bool bIsUsedAsStorage = usage & VK_IMAGE_USAGE_STORAGE_BIT)
 	{
 		layout = (VkImageLayout)RHI::EImageLayout::General;
+		if (RHI::IsDepthFormat(format))
+		{
+			tiling = VK_IMAGE_TILING_LINEAR;
+		}
 	}
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHICubemapPtr outCubemap = RHI::RHICubemapPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout);
+	RHI::RHICubemapPtr outCubemap = RHI::RHICubemapPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout, reduction);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
@@ -578,7 +585,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 		mipLevels,
 		VkImageType::VK_IMAGE_TYPE_2D,
 		(VkFormat)format,
-		VK_IMAGE_TILING_OPTIMAL,
+		tiling,
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 		VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
@@ -592,7 +599,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 
 		if (i > 0)
 		{
-			res = RHI::RHICubemapPtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+			res = RHI::RHICubemapPtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
 			res->m_vulkan.m_image = outCubemap->m_vulkan.m_image;
 			res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(outCubemap->m_vulkan.m_image->GetDevice(), outCubemap->m_vulkan.m_image);
 			res->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel = i;
@@ -604,7 +611,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 
 		for (uint32_t face = 0; face < 6; face++)
 		{
-			RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+			RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
 
 			target->m_vulkan.m_image = outCubemap->m_vulkan.m_image;
 			target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
@@ -648,7 +655,8 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
 	RHI::ETextureClamping clamping,
-	RHI::ETextureUsageFlags usage)
+	RHI::ETextureUsageFlags usage,
+	RHI::ESamplerReductionMode reduction)
 {
 	// Update layout
 	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
@@ -662,7 +670,8 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 		format,
 		filtration,
 		clamping,
-		usage);
+		usage,
+		reduction);
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
@@ -680,15 +689,22 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
 	RHI::ETextureClamping clamping,
-	RHI::ETextureUsageFlags usage)
+	RHI::ETextureUsageFlags usage,
+	RHI::ESamplerReductionMode reduction)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal;
+	VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
 
 	if (const bool bIsUsedAsStorage = usage & VK_IMAGE_USAGE_STORAGE_BIT)
 	{
 		layout = (VkImageLayout)RHI::EImageLayout::General;
+
+		if (RHI::IsDepthFormat(format))
+		{
+			tiling = VK_IMAGE_TILING_LINEAR;
+		}
 	}
 	else if (const bool bIsUsedAsColorAttachment = usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
 	{
@@ -703,7 +719,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	//check(layout != (VkImageLayout)RHI::EImageLayout::General);
 
 	auto device = m_vkInstance->GetMainDevice();
-	RHI::RHIRenderTargetPtr outTexture = RHI::RHIRenderTargetPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout);
+	RHI::RHIRenderTargetPtr outTexture = RHI::RHIRenderTargetPtr::Make(filtration, clamping, mipLevels > 1, (RHI::EImageLayout)layout, reduction);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
@@ -715,7 +731,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 		mipLevels,
 		VkImageType::VK_IMAGE_TYPE_2D,
 		(VkFormat)format,
-		VK_IMAGE_TILING_OPTIMAL,
+		tiling,
 		(uint32_t)usage,
 		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 		VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT,
@@ -727,14 +743,14 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 
 	if (RHI::IsDepthFormat(format))
 	{
-		outTexture->m_depthAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+		outTexture->m_depthAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
 		outTexture->m_depthAspect->m_vulkan.m_image = outTexture->m_vulkan.m_image;
 		outTexture->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
 		outTexture->m_depthAspect->m_vulkan.m_imageView->Compile();
 
 		if (RHI::IsDepthStencilFormat(format))
 		{
-			outTexture->m_stencilAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+			outTexture->m_stencilAspect = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
 			outTexture->m_stencilAspect->m_vulkan.m_image = outTexture->m_vulkan.m_image;
 			outTexture->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, outTexture->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
 			outTexture->m_stencilAspect->m_vulkan.m_imageView->Compile();
@@ -744,7 +760,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	for (uint32_t i = 0; i < mipLevels; i++)
 	{
 		// TODO: Should we support ranges for mips?
-		RHI::RHITexturePtr mipLevel = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout);
+		RHI::RHITexturePtr mipLevel = RHI::RHITexturePtr::Make(filtration, clamping, false, (RHI::EImageLayout)layout, reduction);
 
 		mipLevel->m_vulkan.m_image = outTexture->m_vulkan.m_image;
 		mipLevel->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, mipLevel->m_vulkan.m_image);
@@ -849,7 +865,7 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 					if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
 					{
 						auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index,
-							device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps()),
+							device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps(), texture->GetSamplerReduction()),
 							texture->m_vulkan.m_imageView);
 						descriptors.Add(descr);
 					}
@@ -1372,9 +1388,9 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		if (bindings->m_vulkan.m_descriptorSet != nullptr)
 		{
 			auto cmpFunc = [=](const VulkanDescriptorPtr& descriptor)
-			{
-				return descriptor->GetBinding() == layoutBindings[index].m_binding && descriptor->GetArrayElement() == dstArrayElement;
-			};
+				{
+					return descriptor->GetBinding() == layoutBindings[index].m_binding && descriptor->GetArrayElement() == dstArrayElement;
+				};
 
 			auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
 
@@ -1403,7 +1419,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 
 				descriptors[arrayIndex] = VulkanDescriptorCombinedImagePtr::Make(layoutBindings[index].m_binding,
 					dstArrayElement,
-					device->GetSamplers()->GetSampler(value->GetFiltration(), value->GetClamping(), value->HasMipMaps()),
+					device->GetSamplers()->GetSampler(value->GetFiltration(), value->GetClamping(), value->HasMipMaps(), value->GetSamplerReduction()),
 					value->m_vulkan.m_imageView);
 
 				bindings->m_vulkan.m_descriptorSet->UpdateDescriptor(arrayIndex);
@@ -2251,7 +2267,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 						if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
 						{
 							auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index,
-								device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps()),
+								device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps(), texture->GetSamplerReduction()),
 								texture->m_vulkan.m_imageView);
 							descriptors.Add(descr);
 						}
@@ -2318,7 +2334,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 					if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler)
 					{
 						auto descr = VulkanDescriptorCombinedImagePtr::Make(descrSetLayoutBinding.binding, 0,
-							device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false),
+							device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::ESamplerReductionMode::Average),
 							bIsCubemap ? m_vkDefaultCubemap : m_vkDefaultTexture);
 						descriptors.Add(descr);
 					}
@@ -2353,7 +2369,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 			m_vkInstance->GetMainDevice()->SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_SET, (uint64_t)handleSet, "Compatible Cache Descriptor Set");
 		}
 #endif
-		
+
 		SAILOR_PROFILE_BLOCK("Compile new descriptor sets");
 		descriptorSet->Compile();
 		descriptorSets.Add(descriptorSet);

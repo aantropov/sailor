@@ -12,7 +12,8 @@ VulkanSampler::VulkanSampler(VulkanDevicePtr pDevice,
 	VkSamplerAddressMode addressMode,
 	bool bUseMips,
 	bool bIsAnisotropyEnabled,
-	float maxAnisotropy) :
+	float maxAnisotropy,
+	VkSamplerReductionMode reduction) :
 	m_device(pDevice)
 {
 	VkSamplerCreateInfo samplerInfo{};
@@ -38,6 +39,12 @@ VulkanSampler::VulkanSampler(VulkanDevicePtr pDevice,
 	samplerInfo.minLod = 0.0f;
 	samplerInfo.maxLod = bUseMips ? 64.0f : 0.0f;
 
+	VkSamplerReductionModeCreateInfoEXT createInfoReduction = {};
+
+	createInfoReduction.sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT;
+	createInfoReduction.reductionMode = reduction;
+	samplerInfo.pNext = &createInfoReduction;
+
 	VK_CHECK(vkCreateSampler(*m_device, &samplerInfo, nullptr, &m_textureSampler));
 }
 
@@ -48,26 +55,31 @@ VulkanSampler::~VulkanSampler()
 
 VulkanSamplerCache::VulkanSamplerCache(VulkanDevicePtr pDevice)
 {
-	for (uint32_t i = 0; i < 8; i++)
+	for (uint32_t reduction = 0; reduction < 3; reduction++)
 	{
-		bool bUseMips = (i & 1);
-		VkSamplerAddressMode addressing = (i >> 1) & 1 ? VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT : VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-		VkFilter filter = (i >> 2) & 1 ? VkFilter::VK_FILTER_NEAREST : VkFilter::VK_FILTER_LINEAR;
+		for (uint32_t i = 0; i < 8; i++)
+		{
+			bool bUseMips = (i & 1);
+			VkSamplerAddressMode addressing = (i >> 1) & 1 ? VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT : VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			VkFilter filter = (i >> 2) & 1 ? VkFilter::VK_FILTER_NEAREST : VkFilter::VK_FILTER_LINEAR;
 
-		m_samplers[i] = VulkanSamplerPtr::Make(pDevice,
-			filter,
-			addressing,
-			bUseMips,
-			true,
-			8.0f);
+			m_samplers[i + reduction * 8] = VulkanSamplerPtr::Make(pDevice,
+				filter,
+				addressing,
+				bUseMips,
+				true,
+				8.0f,
+				(VkSamplerReductionMode)reduction);
+		}
 	}
 }
 
-VulkanSamplerPtr VulkanSamplerCache::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps) const
+VulkanSamplerPtr VulkanSamplerCache::GetSampler(RHI::ETextureFiltration filtration, RHI::ETextureClamping clampingMode, bool bHasMipMaps, RHI::ESamplerReductionMode reduction) const
 {
 	uint8_t index = bHasMipMaps ? 1 : 0;
 	index += clampingMode == RHI::ETextureClamping::Repeat ? 2 : 0;
 	index += filtration == RHI::ETextureFiltration::Nearest ? 4 : 0;
+	index += ((uint32_t)reduction) * 8;
 
 	return m_samplers[index];
 }
