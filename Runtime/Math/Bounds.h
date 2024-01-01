@@ -96,9 +96,13 @@ namespace Sailor::Math
 
 	struct Sphere
 	{
-		glm::vec3 m_center;
-		float m_radius;
+		union
+		{
+			struct { glm::vec3 m_center; float m_radius; };
+			glm::vec4 m_vec4;
+		};
 
+		const vec4& GetVec4() const { return m_vec4; }
 		Sphere() : m_center(0.0f, 0.0f, 0.0f), m_radius(1.0f) {}
 		Sphere(glm::vec3 center, float radius) : m_center(center), m_radius(radius) {}
 	};
@@ -127,6 +131,8 @@ namespace Sailor::Math
 
 		SAILOR_API __forceinline glm::vec3 GetCenter() const;
 		SAILOR_API __forceinline glm::vec3 GetExtents() const;
+
+		SAILOR_API __forceinline Sphere ToSphere() const;
 
 		SAILOR_API __forceinline float Volume() const;
 		SAILOR_API __forceinline float Area() const;

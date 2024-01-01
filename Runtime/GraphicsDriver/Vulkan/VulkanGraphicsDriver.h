@@ -41,7 +41,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIRenderTargetPtr GetDepthBuffer() const;
 
 		SAILOR_API virtual RHI::RHISemaphorePtr CreateWaitSemaphore();
-		SAILOR_API virtual RHI::RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false);
+		SAILOR_API virtual RHI::RHICommandListPtr CreateCommandList(bool bIsSecondary = false, RHI::ECommandListQueue queue = RHI::ECommandListQueue::Graphics);
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(RHI::RHICommandListPtr& cmdBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
 		SAILOR_API virtual RHI::RHIBufferPtr CreateIndirectBuffer(size_t size);
@@ -102,6 +102,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Shader binding set
 		SAILOR_API virtual RHI::RHIShaderBindingSetPtr CreateShaderBindings();
+		
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, RHI::RHIBufferPtr buffer, const std::string& name, uint32_t shaderBinding);
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset);
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType);
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding);

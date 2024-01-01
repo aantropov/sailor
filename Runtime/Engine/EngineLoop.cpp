@@ -58,7 +58,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record ImGui Draw Command List",
 		[=]()
 		{
-			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, false);
+			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record ImGui Draw Command List");
 			// Default swapchain format

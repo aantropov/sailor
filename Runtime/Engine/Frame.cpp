@@ -60,7 +60,7 @@ FrameState& FrameState::operator=(FrameState frameState)
 
 RHI::RHICommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 {
-	auto cmdList = m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
+	auto cmdList = m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Transfer);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "World");
 
 	return cmdList;

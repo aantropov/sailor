@@ -16,7 +16,7 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, si
 	const VkDeviceSize bufferSize = vertexBuffer;
 	const VkDeviceSize indexBufferSize = indexBuffer;
 
-	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
+	RHI::RHICommandListPtr cmdList = CreateCommandList(false, RHI::ECommandListQueue::Transfer);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "UpdateMesh");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 

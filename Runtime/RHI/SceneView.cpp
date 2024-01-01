@@ -24,7 +24,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 			[=]()
 			{
 				const auto& matrix = camera.GetProjectionMatrix() * camera.GetViewMatrix();
-				RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, false);
+				RHI::RHICommandListPtr secondaryCmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);

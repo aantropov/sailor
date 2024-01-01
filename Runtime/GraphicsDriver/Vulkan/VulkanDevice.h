@@ -26,6 +26,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 		VulkanCommandPoolPtr m_commandPool;
 		VulkanCommandPoolPtr m_transferCommandPool;
+		VulkanCommandPoolPtr m_computeCommandPool;
 		VulkanDescriptorPoolPtr m_descriptorPool;
 		TSharedPtr<VulkanBufferAllocator> m_stagingBufferAllocator;
 	};
@@ -59,7 +60,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
-		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(bool bOnlyTransferQueue = false);
+		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(RHI::ECommandListQueue queue = RHI::ECommandListQueue::Graphics);
 
 		SAILOR_API void SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 			VulkanFencePtr fence = nullptr,

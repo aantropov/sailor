@@ -464,6 +464,14 @@ glm::vec3 AABB::GetExtents() const
 	return (m_max - m_min) * 0.5f;
 }
 
+Sphere AABB::ToSphere() const
+{
+	const vec3& extents = GetExtents();
+	const float radius = std::max(std::max(extents.x, extents.y), extents.z);
+
+	return Sphere(GetCenter(), radius);
+}
+
 AABB::AABB(glm::vec3 center, glm::vec3 extents)
 {
 	m_min = center - extents;

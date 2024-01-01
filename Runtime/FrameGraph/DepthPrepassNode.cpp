@@ -100,6 +100,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraph* frameGr
 
 					DepthPrepassNode::PerInstanceData data;
 					data.model = proxy.m_worldMatrix;
+					data.bIsCulled = 0;
+					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 
 					if (bRequiredCustomDepth)
 					{
@@ -136,9 +138,13 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	SAILOR_PROFILE_FUNCTION();
 	m_syncSharedResources.Lock();
 
-	std::string clearDepth;
-	TryGetString("ClearDepth", clearDepth);
-	const bool bShouldClearDepth = clearDepth == "true";
+	std::string temp;
+	TryGetString("ClearDepth", temp);
+	const bool bShouldClearDepth = temp == "true";
+
+	temp.clear();
+	TryGetString("GPUCulling", temp);
+	const bool bGpuCullingEnabled = temp == "true";
 
 	const std::string QueueTag = GetString("Tag");
 	const size_t QueueTagHash = GetHash(QueueTag);
@@ -153,7 +159,25 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	if (m_numMeshes == 0)
+	if (bGpuCullingEnabled)
+	{
+		if (!m_pComputeMeshCullingShader)
+		{
+			if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeMeshCulling.shader"))
+			{
+				App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeMeshCullingShader);
+			}
+		}
+
+		if (!m_computeMeshCullingBindings.IsValid())
+		{
+			auto depthHighZ = GetResolvedAttachment("depthHighZ").StaticCast<RHI::RHITexture>();
+			m_computeMeshCullingBindings = driver->CreateShaderBindings();
+			driver->AddSamplerToShaderBindings(m_computeMeshCullingBindings, "depthHighZ", depthHighZ, 0);
+		}
+	}
+
+	if (m_numMeshes == 0 || (bGpuCullingEnabled && !m_pComputeMeshCullingShader.IsValid()))
 	{
 		m_syncSharedResources.Unlock();
 		return;
@@ -214,19 +238,25 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	if (m_indirectBuffers.Num() < numThreads)
 	{
 		m_indirectBuffers.Resize(numThreads);
+		m_cullingIndirectBufferBinding.Resize(numThreads);
+
+		for (uint32_t i = 0; i < numThreads; i++)
+		{
+			m_cullingIndirectBufferBinding[i] = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+		}
 	}
 
 	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
-	{
-		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
-
-		if (material->GetRenderState().IsRequiredCustomDepthShader())
 		{
-			sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData , material->GetBindings(), textureSamplers });
-		}
-		return sets;
-	};
+			TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
+
+			if (material->GetRenderState().IsRequiredCustomDepthShader())
+			{
+				sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData , material->GetBindings(), textureSamplers });
+			}
+			return sets;
+		};
 
 	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 
@@ -241,10 +271,31 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 		true,
 		true);
 
-	RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
-		glm::ivec4(0, depthAttachment->GetExtent().y, depthAttachment->GetExtent().x, -depthAttachment->GetExtent().y),
-		glm::uvec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y));
+	if (bGpuCullingEnabled)
+	{
+		auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
 
+#ifdef _DEBUG
+		cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
+#endif
+		RHIRecordDrawCallGPUCulling(0, 
+			(uint32_t)vecBatches.Num(), vecBatches, 
+			commandList, transferCommandList, 
+			shaderBindingsByMaterial, 
+			m_drawCalls, 
+			storageIndex, 
+			m_indirectBuffers[0],
+			glm::ivec4(0, depthAttachment->GetExtent().y, depthAttachment->GetExtent().x, -depthAttachment->GetExtent().y),
+			glm::uvec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y),
+			glm::vec2(0.0f, 1.0f), cullingComputeShader, m_cullingIndirectBufferBinding[0],
+			{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings });
+	}
+	else
+	{
+		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
+			glm::ivec4(0, depthAttachment->GetExtent().y, depthAttachment->GetExtent().x, -depthAttachment->GetExtent().y),
+			glm::uvec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y));
+	}
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

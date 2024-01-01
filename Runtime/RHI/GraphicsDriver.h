@@ -12,7 +12,7 @@
 auto lambda = Lambda; \
 auto submit = [lambda]() \
 { \
-	Sailor::RHI::RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, false); \
+	Sailor::RHI::RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics); \
 	Sailor::RHI::Renderer::GetDriver()->SetDebugName(cmdList, Name); \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
@@ -27,7 +27,7 @@ Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Nam
 auto lambda = Lambda; \
 auto submit = [lambda]() \
 { \
-	Sailor::RHI::RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, true); \
+	Sailor::RHI::RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Transfer); \
 	Sailor::RHI::Renderer::GetDriver()->SetDebugName(cmdList, Name); \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
@@ -76,7 +76,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHIRenderTargetPtr GetDepthBuffer() const = 0;
 
 		SAILOR_API virtual RHISemaphorePtr CreateWaitSemaphore() = 0;
-		SAILOR_API virtual RHICommandListPtr CreateCommandList(bool bIsSecondary = false, bool bOnlyTransferQueue = false) = 0;
+		SAILOR_API virtual RHICommandListPtr CreateCommandList(bool bIsSecondary = false, RHI::ECommandListQueue queue = RHI::ECommandListQueue::Graphics) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateBuffer(RHICommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateIndirectBuffer(size_t size) = 0;
@@ -141,6 +141,7 @@ namespace Sailor::RHI
 
 		// Shader binding set
 		SAILOR_API virtual RHIShaderBindingSetPtr CreateShaderBindings() = 0;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, RHIBufferPtr buffer, const std::string& name, uint32_t shaderBinding) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSsboToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset = false) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding) = 0;

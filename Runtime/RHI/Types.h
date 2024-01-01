@@ -368,6 +368,13 @@ namespace Sailor::RHI
 
 	typedef uint8_t ETextureUsageFlags;
 
+	enum class ECommandListQueue : uint8_t
+	{
+		Graphics = 0,
+		Transfer = 1,
+		Compute = 2
+	};
+
 	enum class EShaderStage : uint8_t
 	{
 		Vertex = 0x00000001,

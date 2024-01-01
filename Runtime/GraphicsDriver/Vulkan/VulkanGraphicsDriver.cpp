@@ -271,17 +271,27 @@ RHI::RHISemaphorePtr VulkanGraphicsDriver::CreateWaitSemaphore()
 	return res;
 }
 
-RHI::RHICommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary, bool bOnlyTransferQueue)
+RHI::RHICommandListPtr VulkanGraphicsDriver::CreateCommandList(bool bIsSecondary, RHI::ECommandListQueue queue)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHICommandListPtr cmdList = RHI::RHICommandListPtr::Make(bOnlyTransferQueue);
+	RHI::RHICommandListPtr cmdList = RHI::RHICommandListPtr::Make(queue);
+	VkCommandBufferLevel level = bIsSecondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
-	cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device,
-		bOnlyTransferQueue ? device->GetCurrentThreadContext().m_transferCommandPool : device->GetCurrentThreadContext().m_commandPool,
-		bIsSecondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	switch (queue)
+	{
+	case RHI::ECommandListQueue::Graphics:
+		cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_commandPool, level);
+		break;
+	case RHI::ECommandListQueue::Transfer:
+		cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_transferCommandPool, level);
+		break;
+	case RHI::ECommandListQueue::Compute:
+		cmdList->m_vulkan.m_commandBuffer = VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_computeCommandPool, level);
+		break;
+	}
 
 	return cmdList;
 }
@@ -290,7 +300,7 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateIndirectBuffer(size_t size)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	const uint32_t usage = RHI::EBufferUsageBit::IndirectBuffer_Bit | RHI::EBufferUsageBit::BufferTransferDst_Bit | RHI::EBufferUsageBit::BufferTransferSrc_Bit;
+	const uint32_t usage = RHI::EBufferUsageBit::IndirectBuffer_Bit | RHI::EBufferUsageBit::StorageBuffer_Bit | RHI::EBufferUsageBit::BufferTransferDst_Bit | RHI::EBufferUsageBit::BufferTransferSrc_Bit;
 
 	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage);
 	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
@@ -507,7 +517,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	vkExtent.height = extent.y;
 	vkExtent.depth = extent.z;
 
-	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Texture");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
@@ -630,7 +640,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 	outCubemap->m_vulkan.m_imageView->Compile();
 	outCubemap->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(outCubemap->GetDefaultLayout());
 
-	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Cubemap");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
@@ -659,7 +669,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::ESamplerReductionMode reduction)
 {
 	// Update layout
-	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Render Target");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
@@ -827,7 +837,7 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 		target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 		target->m_vulkan.m_imageView->Compile();
 
-		RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, false);
+		RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Create Surface");
 		RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 		RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(cmdList,
@@ -898,6 +908,7 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 	}
 
 	// Should we just update descriptor set instead of recreation?
+	// VK_KHR_descriptor_update_template
 	bindings->m_vulkan.m_descriptorSet = VulkanDescriptorSetPtr::Make(device,
 		device->GetCurrentThreadContext().m_descriptorPool,
 		VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
@@ -1158,7 +1169,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSe
 
 	auto device = m_vkInstance->GetMainDevice();
 
-	RHI::RHICommandListPtr commandList = RHI::RHICommandListPtr::Make(true);
+	RHI::RHICommandListPtr commandList = RHI::RHICommandListPtr::Make(RHI::ECommandListQueue::Transfer);
 	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_transferCommandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 
 	auto& shaderBinding = bindings->GetOrAddShaderBinding(parameter);
@@ -1201,6 +1212,50 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddShaderBinding(RHI::RHIShaderBi
 	return pBinding;
 }
 
+// TODO: Refactoring remove code duplication
+RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, RHI::RHIBufferPtr buffer, const std::string& name, uint32_t shaderBinding)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto device = m_vkInstance->GetMainDevice();
+
+	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
+
+	auto vulkanBufferMemoryPtr = buffer->m_vulkan.m_buffer;
+	binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(vulkanBufferMemoryPtr, TSharedPtr<VulkanBufferAllocator>(nullptr));
+	binding->m_vulkan.m_storageInstanceIndex = 0;
+	binding->m_vulkan.m_bBindSsboWithOffset = true;
+
+	// // First try to find in existed layouts
+	const auto& layouts = pShaderBindings->GetLayoutBindings();
+	size_t index = layouts.FindIf([=](const auto& el) { return el.m_binding == shaderBinding; });
+
+	auto bindingType = buffer->GetUsage() & RHI::EBufferUsageBit::StorageBuffer_Bit ? RHI::EShaderBindingType::StorageBuffer : RHI::EShaderBindingType::UniformBuffer;
+	if (index == -1)
+	{
+		RHI::ShaderLayoutBinding layout;
+		layout.m_binding = shaderBinding;
+		layout.m_name = name;
+		layout.m_size = (uint32_t)buffer->GetSize();
+		layout.m_type = bindingType;
+		layout.m_paddedSize = (uint32_t)buffer->GetSize();
+
+		pShaderBindings->UpdateLayoutShaderBinding(layout);
+
+		binding->SetLayout(layout);
+	}
+	else
+	{
+		binding->SetLayout(layouts[index]);
+	}
+
+	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(shaderBinding, (VkDescriptorType)bindingType);
+	UpdateDescriptorSet(pShaderBindings);
+
+	return binding;
+}
+
+// TODO: Refactoring remove code duplication
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -2084,7 +2139,7 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertice
 	const VkDeviceSize bufferSize = vertexBuffer;
 	const VkDeviceSize indexBufferSize = indexBuffer;
 
-	RHI::RHICommandListPtr cmdList = CreateCommandList(false, true);
+	RHI::RHICommandListPtr cmdList = CreateCommandList(false, RHI::ECommandListQueue::Transfer);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Update Mesh");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 

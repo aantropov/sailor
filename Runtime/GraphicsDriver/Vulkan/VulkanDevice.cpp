@@ -295,10 +295,23 @@ bool VulkanDevice::IsMipsSupported(VkFormat format) const
 	return true;
 }
 
-VulkanCommandBufferPtr VulkanDevice::CreateCommandBuffer(bool bOnlyTransferQueue)
+VulkanCommandBufferPtr VulkanDevice::CreateCommandBuffer(RHI::ECommandListQueue queue)
 {
-	return VulkanCommandBufferPtr::Make(VulkanDevicePtr(this),
-		bOnlyTransferQueue ? GetCurrentThreadContext().m_transferCommandPool : GetCurrentThreadContext().m_commandPool);
+	switch (queue)
+	{
+	case RHI::ECommandListQueue::Graphics:
+		return VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), GetCurrentThreadContext().m_commandPool);
+		break;
+	case RHI::ECommandListQueue::Transfer:
+		return VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), GetCurrentThreadContext().m_transferCommandPool);
+		break;
+	case RHI::ECommandListQueue::Compute:
+		return VulkanCommandBufferPtr::Make(VulkanDevicePtr(this), GetCurrentThreadContext().m_computeCommandPool);
+		break;
+	}
+
+	check(0);
+	return nullptr;
 }
 
 void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
@@ -335,14 +348,17 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	submitInfo.pWaitSemaphores = &waits[0];
 	submitInfo.pWaitDstStageMask = &waitStages[0];
 
-	if (commandBuffer->GetCommandPool()->GetQueueFamilyIndex() == m_queueFamilies.m_transferFamily.value_or(-1))
+	if (commandBuffer->GetCommandPool()->GetQueueFamilyIndex() == m_queueFamilies.m_computeFamily.value_or(-1))
+	{
+		VK_CHECK(m_computeQueue->Submit(submitInfo, fence));
+	}
+	else if (commandBuffer->GetCommandPool()->GetQueueFamilyIndex() == m_queueFamilies.m_transferFamily.value_or(-1))
 	{
 		VK_CHECK(m_transferQueue->Submit(submitInfo, fence));
 	}
 	else
 	{
-		auto result = m_graphicsQueue->Submit(submitInfo, fence);
-		VK_CHECK(result);
+		VK_CHECK(m_graphicsQueue->Submit(submitInfo, fence));
 	}
 
 	_freea(waits);
@@ -365,6 +381,7 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
 	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_computeFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 
 	auto descriptorSizes = TVector
 	{
@@ -722,7 +739,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 
 	if (m_bNeedToTransitSwapchainToPresent)
 	{
-		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(false);
+		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(RHI::ECommandListQueue::Graphics);
 
 		transitCmd->BeginCommandList();
 		for (const auto& swapchain : m_swapchain->GetImageViews())

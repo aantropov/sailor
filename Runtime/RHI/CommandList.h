@@ -10,7 +10,7 @@ namespace Sailor::RHI
 	{
 	public:
 
-		RHICommandList(bool bIsTransferOnly) : m_bIsTransferOnly(bIsTransferOnly) {}
+		RHICommandList(RHI::ECommandListQueue queue) : m_queue(queue) {}
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		struct
@@ -19,13 +19,13 @@ namespace Sailor::RHI
 		} m_vulkan;
 #endif
 
-		bool IsTransferOnly() const { return m_bIsTransferOnly; }
-
+		bool IsTransferOnly() const { return m_queue == RHI::ECommandListQueue::Transfer; }
+		RHI::ECommandListQueue GetQueue() const { return m_queue; }
 		SAILOR_API uint32_t GetGPUCost() const;
 		SAILOR_API uint32_t GetNumRecordedCommands() const;
 
 	protected:
 
-		bool m_bIsTransferOnly = false;
+		RHI::ECommandListQueue m_queue = RHI::ECommandListQueue::Graphics;
 	};
 };

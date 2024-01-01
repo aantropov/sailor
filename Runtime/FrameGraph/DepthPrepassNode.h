@@ -17,9 +17,11 @@ namespace Sailor
 		struct PerInstanceData
 		{
 			alignas(16) glm::mat4 model;
+			alignas(16) vec4 sphereBounds;
 			alignas(16) uint32_t materialInstance = 0;
+			alignas(16) uint32_t bIsCulled = 0;
 
-			bool operator==(const PerInstanceData& rhs) const { return this->model == model; }
+			bool operator==(const PerInstanceData& rhs) const { return model == rhs.model; }
 
 			size_t GetHash() const
 			{
@@ -46,8 +48,13 @@ namespace Sailor
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 		size_t m_sizePerInstanceData = 0;
 
-		RHI::RHIMaterialPtr GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertex);		
+		RHI::RHIMaterialPtr GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertex);
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
+		TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
+
+		// Culling
+		ShaderSetPtr m_pComputeMeshCullingShader{};
+		RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
 
 		static const char* m_name;
 	};

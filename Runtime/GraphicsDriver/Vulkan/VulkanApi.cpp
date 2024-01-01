@@ -337,6 +337,12 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, V
 			indices.m_presentFamily = i;
 		}
 
+		SAILOR_LOG("VkQueueFamily:%d, Graphics: %d, Compute:%d, Transfer:%d, Present:%d", i,
+			queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT ? 1 : 0,
+			queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT ? 1 : 0,
+			queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT ? 1 : 0,
+			presentSupport ? 1 : 0);
+
 		i++;
 	}
 
@@ -832,7 +838,7 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
-	auto cmdBuffer = device->CreateCommandBuffer(true);
+	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer(*stagingBufferManagedPtr, dst, size, 0, 0);
 	cmdBuffer->EndCommandList();
@@ -843,7 +849,7 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 
 VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
-	auto cmdBuffer = device->CreateCommandBuffer(true);
+	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage, sharingMode);;
 	cmdBuffer->EndCommandList();
@@ -859,7 +865,7 @@ void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryP
 {
 	auto fence = VulkanFencePtr::Make(device);
 
-	auto cmdBuffer = device->CreateCommandBuffer(true);
+	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer(src, dst, size, srcOffset, dstOffset);
 	cmdBuffer->EndCommandList();

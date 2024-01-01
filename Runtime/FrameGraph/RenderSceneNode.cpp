@@ -204,7 +204,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		auto task = Tasks::CreateTask("Record draw calls in secondary command list",
 			[&, i = i, start = start, end = end]()
 			{
-				RHICommandListPtr cmdList = driver->CreateCommandList(true, false);
+				RHICommandListPtr cmdList = driver->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 				RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
 				commands->BeginSecondaryCommandList(cmdList, true, true);
 				RHIRecordDrawCall(start, end, vecBatches, cmdList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[i + 1],

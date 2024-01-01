@@ -262,7 +262,7 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 void Material::ForcelyUpdateUniforms()
 {
 	SAILOR_PROFILE_BLOCK("Create command list");
-	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, true);
+	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Transfer);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Forcely Update Uniforms");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 	UpdateUniforms(cmdList);

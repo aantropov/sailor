@@ -38,7 +38,7 @@ namespace Sailor::RHI
 		size_t GetHash() const
 		{
 			const size_t renderStateHash = Sailor::GetHash(m_material->GetRenderState());
-			
+
 			size_t hash = m_material->GetBindings()->GetCompatibilityHashCode();
 
 			HashCombine(hash, m_mesh->m_vertexBuffer->GetCompatibilityHashCode(), m_mesh->m_indexBuffer->GetCompatibilityHashCode(), renderStateHash);
@@ -48,6 +48,116 @@ namespace Sailor::RHI
 
 	template<typename TPerInstanceData>
 	using TDrawCalls = TMap<RHIBatch, TMap<RHI::RHIMeshPtr, TVector<TPerInstanceData>>>;
+
+	template<typename TPerInstanceData>
+	void RHIRecordDrawCallGPUCulling(uint32_t start,
+		uint32_t end,
+		const TVector<RHIBatch>& vecBatches,
+		RHI::RHICommandListPtr graphicsCmdList,
+		RHI::RHICommandListPtr transferCmdList,
+		std::function<TVector<RHIShaderBindingSetPtr>(RHIMaterialPtr)> shaderBindings,
+		const TDrawCalls<TPerInstanceData>& drawCalls,
+		const TVector<uint32_t>& storageIndex,
+		RHIBufferPtr& indirectCommandBuffer,
+		glm::ivec4 viewport,
+		glm::uvec4 scissors,
+		glm::vec2 depthRange,
+		RHIShaderPtr computeCullingShader,
+		RHIShaderBindingSetPtr& indirectCommandBufferBinding,
+		const TVector<RHIShaderBindingSetPtr>& cullingDistpatchBindings)
+	{
+		SAILOR_PROFILE_BLOCK("Record draw calls");
+
+		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();	
+		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+
+		size_t indirectBufferSize = 0;
+		for (uint32_t j = start; j < end; j++)
+		{
+			indirectBufferSize += drawCalls[vecBatches[j]].Num() * sizeof(RHI::DrawIndexedIndirectData);
+		}
+
+		if (!indirectCommandBuffer.IsValid() || indirectCommandBuffer->GetSize() < indirectBufferSize)
+		{
+			const size_t slack = 256;
+
+			indirectCommandBuffer.Clear();
+			indirectCommandBuffer = driver->CreateIndirectBuffer(indirectBufferSize + slack);
+			
+			auto binding = Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(indirectCommandBufferBinding,
+				indirectCommandBuffer,
+				"drawIndexedIndirect",
+				0);
+		}
+
+		RHIMaterialPtr prevMaterial = nullptr;
+		RHIBufferPtr prevVertexBuffer = nullptr;
+		RHIBufferPtr prevIndexBuffer = nullptr;
+
+		size_t indirectBufferOffset = 0;
+		for (uint32_t j = start; j < end; j++)
+		{
+			auto& material = vecBatches[j].m_material;
+			auto& mesh = vecBatches[j].m_mesh;
+			auto& drawCall = drawCalls[vecBatches[j]];
+
+			if (prevMaterial != material)
+			{
+				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(material);
+
+				commands->BindMaterial(graphicsCmdList, material);
+				commands->SetViewport(graphicsCmdList, (float)viewport.x, (float)viewport.y,
+					(float)viewport.z,
+					(float)viewport.w,
+					glm::vec2(scissors.x, scissors.y),
+					glm::vec2(scissors.z, scissors.w),
+					depthRange.x,
+					depthRange.y);
+
+				commands->BindShaderBindings(graphicsCmdList, material, sets);
+				prevMaterial = material;
+			}
+
+			if (prevVertexBuffer != mesh->m_vertexBuffer)
+			{
+				commands->BindVertexBuffer(graphicsCmdList, mesh->m_vertexBuffer, 0);
+				prevVertexBuffer = mesh->m_vertexBuffer;
+			}
+
+			if (prevIndexBuffer != mesh->m_indexBuffer)
+			{
+				commands->BindIndexBuffer(graphicsCmdList, mesh->m_indexBuffer, 0);
+				prevIndexBuffer = mesh->m_indexBuffer;
+			}
+
+			TVector<RHI::DrawIndexedIndirectData> drawIndirect;
+			drawIndirect.Reserve(drawCall.Num());
+
+			uint32_t ssboOffset = 0;
+			for (const auto& instancedDrawCall : drawCall)
+			{
+				auto& mesh = instancedDrawCall.First();
+				auto& matrices = *instancedDrawCall.Second();
+
+				RHI::DrawIndexedIndirectData data{};
+				data.m_indexCount = (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t);
+				data.m_instanceCount = (uint32_t)matrices.Num();
+				data.m_firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
+				data.m_vertexOffset = mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+				data.m_firstInstance = storageIndex[j] + ssboOffset;
+				drawIndirect.Emplace(std::move(data));
+
+				ssboOffset += (uint32_t)matrices.Num();
+			}
+
+			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
+			commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+			commands->Dispatch(transferCmdList, computeCullingShader, 32, 32, 1, cullingDistpatchBindings);
+			commands->DrawIndexedIndirect(graphicsCmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
+
+			indirectBufferOffset += bufferSize;
+		}
+	}
 
 	template<typename TPerInstanceData>
 	void RHIRecordDrawCall(uint32_t start,
@@ -100,7 +210,7 @@ namespace Sailor::RHI
 				commands->SetViewport(cmdList, (float)viewport.x, (float)viewport.y,
 					(float)viewport.z,
 					(float)viewport.w,
-					glm::vec2(scissors.x, scissors.y), 
+					glm::vec2(scissors.x, scissors.y),
 					glm::vec2(scissors.z, scissors.w),
 					depthRange.x,
 					depthRange.y);
