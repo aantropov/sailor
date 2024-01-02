@@ -22,7 +22,7 @@ namespace Sailor
 			uint32_t bIsCulled = 0;
 			uint64_t padding;
 
-			bool operator==(const PerInstanceData& rhs) const { return model == rhs.model; }
+			bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
 
 			size_t GetHash() const
 			{
@@ -51,9 +51,9 @@ namespace Sailor
 
 		RHI::RHIMaterialPtr GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertex);
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
-		TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
 
 		// Culling
+		TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
 		ShaderSetPtr m_pComputeMeshCullingShader{};
 		RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
 

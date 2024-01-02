@@ -97,7 +97,7 @@ frame:
   string:
   - Tag: Opaque
   - ClearDepth: true
-  - GPUCulling: true
+  - GPUCulling: false
   renderTargets:
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
@@ -105,8 +105,10 @@ frame:
 - name: DepthPrepass
   string:
   - Tag: Masked
+  - GPUCulling: false
   renderTargets:
   - depthStencil: DepthBuffer
+  - depthHighZ: DepthHighZ
  
 ############################
 - name: LinearizeDepth
@@ -259,18 +261,22 @@ frame:
 ############################
   string:
   - Tag: Opaque
+  - GPUCulling: false
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
+  - depthHighZ: DepthHighZ
   
 ############################
 - name: RenderScene
 ############################
   string:
   - Tag: Masked
+  - GPUCulling: false
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
+  - depthHighZ: DepthHighZ
 
 ############################
 - name: DebugDraw

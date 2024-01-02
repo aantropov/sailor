@@ -1,7 +1,9 @@
 includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
-defines: []
+defines:
+- FRUSTUM_CULLING
+- OCCLUSION_CULLING
 glslCommon: |
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
@@ -58,19 +60,21 @@ glslCompute: |
   
   shared ViewFrustum frustum;
   
-  #define GROUP_SIZE 16
+  #define GROUP_SIZE 32
   
   bool FrustumCulling(uint instanceIndex)
   {
     // Calculations are in view space
     vec4 sphereBounds = data.instance[instanceIndex].sphereBounds;
-    vec3 center = (frame.view * (data.instance[instanceIndex].model * vec4(sphereBounds.xyz, 1.0f))).xyz;
+    vec4 center = frame.view * (data.instance[instanceIndex].model * vec4(sphereBounds.xyz, 1.0f));
+    center.xyz /= center.w;
+    center.z *= -1.0f;
     
     float radius = sphereBounds.w * max(max(data.instance[instanceIndex].model[0][0], data.instance[instanceIndex].model[1][1]), data.instance[instanceIndex].model[2][2]);
+
+    bool bIsCulled = !SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.y, frame.cameraZNearZFar.x);
   
-    bool bIsInView = SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.x, frame.cameraZNearZFar.y);
-  
-  	return bIsInView;
+  	return bIsCulled;
   }
   
   layout(local_size_x = GROUP_SIZE, local_size_y = GROUP_SIZE) in;
@@ -79,7 +83,7 @@ glslCompute: |
     // Step 1: Calculate View Frustum
     if (gl_LocalInvocationIndex == 0)
   	{
-        frustum = CreateViewFrustum(frame.viewportSize, frame.view, frame.invProjection);		
+        frustum = CreateViewFrustum(frame.viewportSize, frame.invProjection);		
   	}
   	
   	barrier();
@@ -98,8 +102,8 @@ glslCompute: |
             break;
         }
         
-        bool bIsInView = FrustumCulling(instanceId);
-        data.instance[instanceId].isCulled = bIsInView ? 0 : 1;
+        bool bIsCulled = FrustumCulling(instanceId);
+        data.instance[instanceId].isCulled = bIsCulled ? 1 : 0;
     }
 
     barrier();

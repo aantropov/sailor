@@ -16,8 +16,12 @@ namespace Sailor::Framegraph
 		class PerInstanceData
 		{
 		public:
-			alignas(16) glm::mat4 model;
-			alignas(16) uint32_t materialInstance = 0;
+
+			glm::mat4 model;
+			vec4 sphereBounds;
+			uint32_t materialInstance = 0;
+			uint32_t bIsCulled = 0;
+			uint64_t padding;
 
 			bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
 
@@ -47,6 +51,11 @@ namespace Sailor::Framegraph
 
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 		size_t m_sizePerInstanceData = 0;
+
+		// Culling
+		TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
+		ShaderSetPtr m_pComputeMeshCullingShader{};
+		RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
 	};
 
 	template class TFrameGraphNode<RenderSceneNode>;

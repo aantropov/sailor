@@ -79,9 +79,11 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraph* frameGra
 							shaderBinding = material->GetBindings()->GetShaderBindings()["material"];
 						}
 
-						PerInstanceData data;
+						RenderSceneNode::PerInstanceData data;
 						data.model = proxy.m_worldMatrix;
 						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
+						data.bIsCulled = 0;
+						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 
 						RHI::RHIBatch batch(material, mesh);
 
@@ -108,14 +110,35 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	SAILOR_PROFILE_FUNCTION();
 	m_syncSharedResources.Lock();
 
+	std::string temp;
+	TryGetString("GPUCulling", temp);
+	const bool bGpuCullingEnabled = temp == "true";
+
 	const std::string QueueTag = GetString("Tag");
 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
+	
+	if (bGpuCullingEnabled)
+	{
+		if (!m_pComputeMeshCullingShader)
+		{
+			if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeMeshCulling.shader"))
+			{
+				App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeMeshCullingShader);
+			}
+		}
 
-	if (m_numMeshes == 0)
+		if (!m_computeMeshCullingBindings.IsValid())
+		{
+			auto depthHighZ = GetResolvedAttachment("depthHighZ").StaticCast<RHI::RHITexture>();
+			m_computeMeshCullingBindings = driver->CreateShaderBindings();
+			driver->AddSamplerToShaderBindings(m_computeMeshCullingBindings, "depthHighZ", depthHighZ, 0);
+		}
+	}
+
+	if (m_numMeshes == 0 || (bGpuCullingEnabled && !m_pComputeMeshCullingShader.IsValid()))
 	{
 		m_syncSharedResources.Unlock();
 		return;
@@ -165,6 +188,12 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	if (m_indirectBuffers.Num() < numThreads)
 	{
 		m_indirectBuffers.Resize(numThreads);
+		m_cullingIndirectBufferBinding.Resize(numThreads);
+
+		for (uint32_t i = 0; i < numThreads; i++)
+		{
+			m_cullingIndirectBufferBinding[i] = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+		}
 	}
 
 	TVector<RHICommandListPtr> secondaryCommandLists(m_batches.Num() > numThreads ? (numThreads - 1) : 0);
@@ -195,6 +224,8 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	}
 	SAILOR_PROFILE_END_BLOCK();
 
+	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
+
 	SAILOR_PROFILE_BLOCK("Create secondary command lists");
 	for (uint32_t i = 0; i < secondaryCommandLists.Num(); i++)
 	{
@@ -202,13 +233,46 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		const uint32_t end = (uint32_t)materialsPerThread * (i + 1);
 
 		auto task = Tasks::CreateTask("Record draw calls in secondary command list",
-			[&, i = i, start = start, end = end]()
+			[&, i = i, start = start, end = end, transferCommandList = transferCommandList]()
 			{
 				RHICommandListPtr cmdList = driver->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 				RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
 				commands->BeginSecondaryCommandList(cmdList, true, true);
-				RHIRecordDrawCall(start, end, vecBatches, cmdList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[i + 1],
-					viewport, scissor);
+				
+				if (bGpuCullingEnabled)
+				{
+					auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
+
+#ifdef _DEBUG
+					cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
+#endif
+					RHIRecordDrawCallGPUCulling(start,
+						end,
+						vecBatches,
+						cmdList, transferCommandList,
+						shaderBindingsByMaterial,
+						m_drawCalls,
+						storageIndex,
+						m_indirectBuffers[i + 1],
+						viewport,
+						scissor,
+						glm::vec2(0.0f, 1.0f),
+						cullingComputeShader, m_cullingIndirectBufferBinding[i + 1],
+						{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[i + 1], sceneView.m_frameBindings });
+				}
+				else
+				{
+					RHIRecordDrawCall(start,
+						end,
+						vecBatches,
+						cmdList,
+						shaderBindingsByMaterial,
+						m_drawCalls,
+						storageIndex,
+						m_indirectBuffers[i + 1],
+						viewport,
+						scissor);
+				}
 
 				commands->EndCommandList(cmdList);
 				secondaryCommandLists[i] = std::move(cmdList);
@@ -244,16 +308,40 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			0.0f,
 			true);
 
-		RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
-			(uint32_t)vecBatches.Num(),
-			vecBatches,
-			commandList,
-			shaderBindingsByMaterial,
-			m_drawCalls,
-			storageIndex,
-			m_indirectBuffers[0],
-			viewport,
-			scissor);
+		if (bGpuCullingEnabled)
+		{
+			auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
+
+#ifdef _DEBUG
+			cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
+#endif
+			RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+				(uint32_t)vecBatches.Num(), 
+				vecBatches,
+				commandList, transferCommandList,
+				shaderBindingsByMaterial,
+				m_drawCalls,
+				storageIndex,
+				m_indirectBuffers[0],
+				viewport,
+				scissor,
+				glm::vec2(0.0f, 1.0f), 
+				cullingComputeShader, m_cullingIndirectBufferBinding[0],
+				{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings });
+		}
+		else
+		{
+			RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+				(uint32_t)vecBatches.Num(),
+				vecBatches,
+				commandList,
+				shaderBindingsByMaterial,
+				m_drawCalls,
+				storageIndex,
+				m_indirectBuffers[0],
+				viewport,
+				scissor);
+		}
 
 		commands->EndRenderPass(commandList);
 		SAILOR_PROFILE_END_BLOCK();

@@ -178,7 +178,11 @@ namespace Sailor::RHI
 		constants.m_numInstances = totalNumInstances;
 		constants.m_firstInstanceIndex = firstInstanceIndex;
 
-		commands->Dispatch(transferCmdList, computeCullingShader, 32, 32, 1, cullingDistpatchBindings, &constants, sizeof(constants));
+		commands->BeginDebugRegion(transferCmdList, "GPU Culling", DebugContext::Color_CmdCompute);
+		{
+			commands->Dispatch(transferCmdList, computeCullingShader, 32, 32, 1, cullingDistpatchBindings, &constants, sizeof(constants));
+		}
+		commands->EndDebugRegion(transferCmdList);
 	}
 
 	template<typename TPerInstanceData>

@@ -48,8 +48,6 @@ void ClearNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transf
 		commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), EImageLayout::TransferDstOptimal, dst2->GetDefaultLayout());
 
 		dst = surfaceAttachment->GetResolved();
-		
-		commands->EndDebugRegion(commandList);
 
 		if (!surfaceAttachment->NeedsResolve())
 		{
