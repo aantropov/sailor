@@ -77,18 +77,18 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 	glm::vec4 specular{};
 
 	auto FillData = [](const aiMaterialProperty* property, const std::string& name, glm::vec4* ptr)
-	{
-		const string key = property->mKey.C_Str();
-		TVector<size_t> locations;
-		Utils::FindAllOccurances(key, name, locations, 0);
-		if (locations.Num() > 0)
 		{
-			memcpy(ptr, property->mData, property->mDataLength);
-			return true;
-		}
+			const string key = property->mKey.C_Str();
+			TVector<size_t> locations;
+			Utils::FindAllOccurances(key, name, locations, 0);
+			if (locations.Num() > 0)
+			{
+				memcpy(ptr, property->mData, property->mDataLength);
+				return true;
+			}
 
-		return false;
-	};
+			return false;
+		};
 
 	for (uint32_t i = 0; i < material->mNumProperties; i++)
 	{
@@ -430,7 +430,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
 	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
 
-	const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? aiProcess_OptimizeMeshes : 0);
+	const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? (aiProcess_OptimizeMeshes | aiProcess_ImproveCacheLocality) : 0);
 	const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)

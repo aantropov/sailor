@@ -68,7 +68,7 @@ namespace Sailor::RHI
 	{
 		SAILOR_PROFILE_BLOCK("Record draw calls");
 
-		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();	
+		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 		size_t indirectBufferSize = 0;
@@ -83,7 +83,7 @@ namespace Sailor::RHI
 
 			indirectCommandBuffer.Clear();
 			indirectCommandBuffer = driver->CreateIndirectBuffer(indirectBufferSize + slack);
-			
+
 			auto binding = Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(indirectCommandBufferBinding,
 				indirectCommandBuffer,
 				"drawIndexedIndirect",
@@ -93,6 +93,10 @@ namespace Sailor::RHI
 		RHIMaterialPtr prevMaterial = nullptr;
 		RHIBufferPtr prevVertexBuffer = nullptr;
 		RHIBufferPtr prevIndexBuffer = nullptr;
+
+		uint32_t firstInstanceIndex = storageIndex[0];
+		uint32_t totalNumInstances = 0;
+		uint32_t totalNumBatches = 0;
 
 		size_t indirectBufferOffset = 0;
 		for (uint32_t j = start; j < end; j++)
@@ -133,6 +137,8 @@ namespace Sailor::RHI
 			TVector<RHI::DrawIndexedIndirectData> drawIndirect;
 			drawIndirect.Reserve(drawCall.Num());
 
+			firstInstanceIndex = std::min(firstInstanceIndex, storageIndex[j]);
+
 			uint32_t ssboOffset = 0;
 			for (const auto& instancedDrawCall : drawCall)
 			{
@@ -148,15 +154,31 @@ namespace Sailor::RHI
 				drawIndirect.Emplace(std::move(data));
 
 				ssboOffset += (uint32_t)matrices.Num();
+
+				totalNumBatches++;
+				totalNumInstances += (uint32_t)matrices.Num();
 			}
 
 			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
 			commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
-			commands->Dispatch(transferCmdList, computeCullingShader, 32, 32, 1, cullingDistpatchBindings);
 			commands->DrawIndexedIndirect(graphicsCmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 
 			indirectBufferOffset += bufferSize;
 		}
+
+		struct PushConstants
+		{
+			uint32_t m_numBatches = 0;
+			uint32_t m_numInstances = 0;
+			uint32_t m_firstInstanceIndex = 0;
+		};
+
+		PushConstants constants{};
+		constants.m_numBatches = totalNumBatches;
+		constants.m_numInstances = totalNumInstances;
+		constants.m_firstInstanceIndex = firstInstanceIndex;
+
+		commands->Dispatch(transferCmdList, computeCullingShader, 32, 32, 1, cullingDistpatchBindings, &constants, sizeof(constants));
 	}
 
 	template<typename TPerInstanceData>

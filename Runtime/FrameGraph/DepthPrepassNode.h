@@ -16,10 +16,11 @@ namespace Sailor
 
 		struct PerInstanceData
 		{
-			alignas(16) glm::mat4 model;
-			alignas(16) vec4 sphereBounds;
-			alignas(16) uint32_t materialInstance = 0;
-			alignas(16) uint32_t bIsCulled = 0;
+			glm::mat4 model;
+			vec4 sphereBounds;
+			uint32_t materialInstance = 0;
+			uint32_t bIsCulled = 0;
+			uint64_t padding;
 
 			bool operator==(const PerInstanceData& rhs) const { return model == rhs.model; }
 

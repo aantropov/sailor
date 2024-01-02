@@ -85,13 +85,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Compile Update="MainPage.xaml.cs">
-	    <DependentUpon>MainPage.xaml</DependentUpon>
+	  <Compile Update="SceneView.xaml.cs">
+	    <DependentUpon>SceneView.xaml</DependentUpon>
 	  </Compile>
 	</ItemGroup>
 
 	<ItemGroup>
-	  <MauiXaml Update="MainPage.xaml">
+	  <MauiXaml Update="SceneView.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	</ItemGroup>

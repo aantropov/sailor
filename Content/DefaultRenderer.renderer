@@ -97,14 +97,16 @@ frame:
   string:
   - Tag: Opaque
   - ClearDepth: true
+  - GPUCulling: true
   renderTargets:
   - depthStencil: DepthBuffer
+  - depthHighZ: DepthHighZ
 
 - name: DepthPrepass
   string:
   - Tag: Masked
   renderTargets:
-  - depthStencil: DepthBuffer 
+  - depthStencil: DepthBuffer
  
 ############################
 - name: LinearizeDepth

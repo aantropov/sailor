@@ -78,38 +78,20 @@ glslCompute: |
           viewSpace[i] = ScreenSpaceToViewSpace(screenSpace[i], frame.viewportSize, frame.invProjection).xyz;		
       }
   
-  	ViewFrustum frustum;
+    ViewFrustum frustum;
   
-      // Left plane
-      frustum.planes[0] = ComputePlane(eyePos, viewSpace[2], viewSpace[0]);
-      // Right plane
-      frustum.planes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
-      // Top plane
-      frustum.planes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);
-      // Bottom plane
-      frustum.planes[3] = ComputePlane(eyePos, viewSpace[3], viewSpace[2]);
+    // Left plane
+    frustum.planes[0] = ComputePlane(eyePos, viewSpace[2], viewSpace[0]);
+    // Right plane
+    frustum.planes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
+    // Top plane
+    frustum.planes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);
+    // Bottom plane
+    frustum.planes[3] = ComputePlane(eyePos, viewSpace[3], viewSpace[2]);
   	
   	frustum.center = viewSpace[4].xy;
   	
   	return frustum;
-  }
-  
-  bool Overlaps(vec3 lightPos, float radius, ViewFrustum frustum, float zNear, float zFar)
-  {
-  	if (lightPos.z - radius > zNear || lightPos.z + radius < zFar) 
-  	{
-  		return false;
-  	}
-  	
-  	for(int i = 0; i < 4; i++)
-  	{
-  		if(dot(frustum.planes[i].xyz, lightPos) - frustum.planes[i].w < -radius)
-  		{
-  			return false;
-  		}
-  	}
-  
-  	return true;
   }
   
   void main()
@@ -195,7 +177,7 @@ glslCompute: |
   		zNear += diff;
   		
   		// If greater than zero, then it is a visible light
-  		if (Overlaps(lightPosViewSpace.xyz, radius, frustum, zNear, zFar)) 
+  		if (SphereFrustumOverlaps(lightPosViewSpace.xyz, radius, frustum, zNear, zFar)) 
   		{
   			// Add index to the shared array of visible indices
   			uint offset = atomicAdd(lightCountForTile, 1);

@@ -172,6 +172,64 @@ vec4 ScreenSpaceToViewSpace(vec2 texCoord, float z, mat4 invProjection)
     return ClipSpaceToViewSpace(clip, invProjection);
 }
 
+// Construct view frustum
+ViewFrustum CreateViewFrustum(ivec2 viewportSize, mat4 viewMatrix, mat4 invProjection)
+{
+  vec3 eyePos = vec3(0,0,0);
+  vec4 screenSpace[5];
+
+  // Top left point
+  screenSpace[0] = vec4(0.0f, 0.0f, -1.0f, 1.0f );
+  // Top right point
+  screenSpace[1] = vec4(vec2(viewportSize.x, 0.0f), -1.0f, 1.0f );
+  // Bottom left point
+  screenSpace[2] = vec4(vec2(0.0f, viewportSize.y), -1.0f, 1.0f );
+  // Bottom right point
+  screenSpace[3] = vec4(viewportSize.xy, -1.0f, 1.0f );
+  // Center point
+  screenSpace[4] = (screenSpace[0] + screenSpace[3]) * 0.5f;
+  
+  vec3 viewSpace[5];
+  // Now convert the screen space points to view space
+  for ( int i = 0; i < 5; i++ ) 
+  {
+      vec4 viewSpacePoint = viewMatrix * vec4(ScreenSpaceToViewSpace(screenSpace[i], viewportSize, invProjection).xyz, 1.0f);
+      viewSpace[i] = viewSpacePoint.xyz / viewSpacePoint.w;
+  }
+
+  ViewFrustum frustum;
+
+  // Left plane
+  frustum.planes[0] = ComputePlane(eyePos, viewSpace[2], viewSpace[0]);
+  // Right plane
+  frustum.planes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
+  // Top plane
+  frustum.planes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);
+  // Bottom plane
+  frustum.planes[3] = ComputePlane(eyePos, viewSpace[3], viewSpace[2]);
+  
+  frustum.center = viewSpace[4].xy;
+  
+  return frustum;
+}
+
+bool SphereFrustumOverlaps(vec3 lightPos, float radius, ViewFrustum frustum, float zNear, float zFar)
+{
+  if (lightPos.z - radius > zNear || lightPos.z + radius < zFar) 
+  {
+    return false;
+  }
+  
+  for(int i = 0; i < 4; i++)
+  {
+    if(dot(frustum.planes[i].xyz, lightPos) - frustum.planes[i].w < -radius)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
 // https://gist.github.com/wwwtyro/beecc31d65d1004f5a9d
 vec2 RaySphereIntersect(vec3 r0, vec3 rd, vec3 s0, float sr) 
 {

@@ -337,11 +337,11 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, V
 			indices.m_presentFamily = i;
 		}
 
-		SAILOR_LOG("VkQueueFamily:%d, Graphics: %d, Compute:%d, Transfer:%d, Present:%d", i,
+		/*SAILOR_LOG("VkQueueFamily:%d, Graphics: %d, Compute:%d, Transfer:%d, Present:%d", i,
 			queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT ? 1 : 0,
 			queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT ? 1 : 0,
 			queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT ? 1 : 0,
-			presentSupport ? 1 : 0);
+			presentSupport ? 1 : 0);*/
 
 		i++;
 	}
