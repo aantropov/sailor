@@ -34,7 +34,9 @@ glslVertex: |
   struct PerInstanceData
   {
       mat4 model;
+      vec4 sphereBounds;
       uint materialInstance;
+      uint isCulled;
   };
   
   struct MaterialData
@@ -107,11 +109,6 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
-  //layout(set=3, binding=1) uniform sampler2D albedoSampler;
-  //layout(set=3, binding=2) uniform sampler2D metalnessSampler;
-  //layout(set=3, binding=3) uniform sampler2D normalSampler;
-  //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
-  
   layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
   
   void main() 
@@ -119,7 +116,7 @@ glslVertex: |
     vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
-    gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
 
     vout.color = inColor;
@@ -148,7 +145,9 @@ glslFragment: |
   struct PerInstanceData
   {
       mat4 model;
+      vec4 sphereBounds;
       uint materialInstance;
+      uint isCulled;
   };
   
   struct MaterialData

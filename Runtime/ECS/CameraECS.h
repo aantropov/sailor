@@ -54,5 +54,10 @@ namespace Sailor
 		void CopyCameraData(RHI::RHISceneViewPtr& outCameras);
 
 		virtual uint32_t GetOrder() const override { return 100; }
+
+	private:
+
+		TVector<CameraData> m_rhiCameras;
+		TVector<Math::Transform> m_rhiCameraTransforms;
 	};
 }

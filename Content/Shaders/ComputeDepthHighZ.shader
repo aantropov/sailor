@@ -22,6 +22,7 @@ glslCompute: |
   void main()
   {
     uvec2 pos = gl_GlobalInvocationID.xy;
+    
     // Sampler is set up to do min reduction, so this computes the minimum depth of a 2x2 texel quad
     float depth = texture(inputDepth, (vec2(pos) + vec2(0.5)) / PushConstants.outputSize).x;
     imageStore(outputDepth, ivec2(pos), vec4(depth));

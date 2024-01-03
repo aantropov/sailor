@@ -190,6 +190,7 @@ namespace Sailor::RHI
 		uint32_t end,
 		const TVector<RHIBatch>& vecBatches,
 		RHI::RHICommandListPtr cmdList,
+		RHI::RHICommandListPtr transferCmdList,
 		std::function<TVector<RHIShaderBindingSetPtr>(RHIMaterialPtr)> shaderBindings,
 		const TDrawCalls<TPerInstanceData>& drawCalls,
 		const TVector<uint32_t>& storageIndex,
@@ -279,7 +280,7 @@ namespace Sailor::RHI
 			}
 
 			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
-			commands->UpdateBuffer(cmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+			commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
 			commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 
 			indirectBufferOffset += bufferSize;

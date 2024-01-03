@@ -15,7 +15,7 @@ namespace Sailor::RHI
 
 		// TODO: Ideally we would like to track performance
 		// and make the decisions on the CPU/GPU frame time
-		const uint32_t MaxRecordedCommands = 200;
+		const uint32_t MaxRecordedCommands = 350;
 		const uint32_t MaxGpuCost = 650;
 
 		SAILOR_API RHIFrameGraph() = default;

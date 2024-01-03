@@ -140,6 +140,7 @@ RHI::EFormat Renderer::GetDepthFormat() const
 
 void Renderer::BeginConditionalDestroy()
 {
+	m_previousRenderFrame.Clear();
 	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
 	Renderer::GetDriver()->WaitIdle();
@@ -194,6 +195,11 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		return false;
 	}
 
+	if (m_previousRenderFrame.IsValid() && m_previousRenderFrame->IsFinished())
+	{
+		m_previousRenderFrame.Clear();
+	}
+
 	SAILOR_PROFILE_END_BLOCK();
 	if ((!m_frameGraph || m_bFrameGraphOutdated) && !m_pViewport->IsIconic())
 	{
@@ -223,7 +229,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	rhiSceneView->PrepareSnapshots();
 
 	auto preRenderingJob = Tasks::CreateTask("Trace command lists & Track RHI resources",
-		[this, rhiSceneView = rhiSceneView]()
+		[this]()
 		{
 			this->GetDriver()->TrackResources_ThreadSafe();
 		}, Sailor::Tasks::EThreadType::Render);
@@ -257,7 +263,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 					rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
 					rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-					
+
 					rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, chainSemaphore);
 				}
 
@@ -323,6 +329,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	for (auto& t : tasks)
 	{
+		if (m_previousRenderFrame != nullptr)
+		{
+			t->Join(m_previousRenderFrame);
+		}
 		preRenderingJob->Join(t);
 	}
 
@@ -334,6 +344,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	App::GetSubmodule<Tasks::Scheduler>()->Run(preRenderingJob);
 	App::GetSubmodule<Tasks::Scheduler>()->Run(renderingJob);
 
+	m_previousRenderFrame = renderingJob;
 	SAILOR_PROFILE_END_BLOCK();
 
 	return true;

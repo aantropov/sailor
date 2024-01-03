@@ -61,12 +61,13 @@ namespace Sailor::RHI
 		std::atomic<bool> m_bFrameGraphOutdated = false;
 		std::atomic<bool> m_bForceStop = false;
 
-		RHI::Stats m_stats;
+		RHI::Stats m_stats{};
 
 		class Win32::Window* m_pViewport;
 
-		FrameGraphPtr m_frameGraph;
-		TConcurrentMap<WorldPtr, RHISceneViewPtr> m_cachedSceneViews;
-		TUniquePtr<IGraphicsDriver> m_driverInstance;
+		FrameGraphPtr m_frameGraph{};
+		TConcurrentMap<WorldPtr, RHISceneViewPtr> m_cachedSceneViews{};
+		TUniquePtr<IGraphicsDriver> m_driverInstance{};
+		Tasks::ITaskPtr m_previousRenderFrame{};
 	};
 };

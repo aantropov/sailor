@@ -185,10 +185,14 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		driverCommands->BeginCommandList(transferCmdList, true);
 		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 
-		FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
+		driverCommands->BeginDebugRegion(transferCmdList, "Fill Frame Data", DebugContext::Color_CmdTransfer);
+		{
+			FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
+		}
+		driverCommands->EndDebugRegion(transferCmdList);
 
 		RHI::RHISemaphorePtr chainSemaphore{};
-		
+
 		TVector<Tasks::ITaskPtr> tasks;
 		tasks.Reserve(2);
 
@@ -220,7 +224,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 						{
 							RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, RHIFencePtr::Make(), newChainSemaphore, chainSemaphore);
 						}, Tasks::EThreadType::RHI);
-						
+
 					if (tasks.Num() > 0)
 					{
 						submitCmdList1->Join(tasks[tasks.Num() - 1]);
@@ -229,11 +233,11 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					submitCmdList1->Run();
 
 					chainSemaphore = driver->CreateWaitSemaphore();
-					
+
 					auto submitCmdList2 = Tasks::CreateTask("Submit chaining cmd lists",
 						[=]()
 						{
-							RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), chainSemaphore, newChainSemaphore);;
+							RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), chainSemaphore, newChainSemaphore);
 						}, Tasks::EThreadType::RHI);
 
 					submitCmdList2->Join(submitCmdList1);

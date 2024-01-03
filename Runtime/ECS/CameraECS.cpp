@@ -8,6 +8,9 @@ using namespace Sailor::Tasks;
 
 Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 {
+	m_rhiCameras.Clear();
+	m_rhiCameraTransforms.Clear();
+
 	for (auto& data : m_components)
 	{
 		if (data.m_bIsActive)
@@ -15,6 +18,10 @@ Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 			// The origin
 			const mat4 origin = glm::mat4(1);// glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up);
 			data.m_viewMatrix = origin * glm::inverse(data.m_owner.StaticCast<GameObject>()->GetTransformComponent().GetCachedWorldMatrix());
+
+			const Sailor::Math::Transform& transform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent().GetTransform();
+			m_rhiCameras.Add(data);
+			m_rhiCameraTransforms.Add(transform);
 		}
 	}
 
@@ -40,14 +47,8 @@ glm::mat4 CameraData::GetInvViewProjection() const
 void CameraECS::CopyCameraData(RHI::RHISceneViewPtr& outCameras)
 {
 	outCameras->m_cameras.Clear(false);
-	for (auto& data : m_components)
-	{
-		if (data.m_bIsActive)
-		{
-			const Sailor::Math::Transform& transform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent().GetTransform();
+	outCameras->m_cameraTransforms.Clear(false);
 
-			outCameras->m_cameras.Add(data);
-			outCameras->m_cameraTransforms.Add(transform);
-		}
-	}
+	outCameras->m_cameras = std::move(m_rhiCameras);
+	outCameras->m_cameraTransforms = std::move(m_rhiCameraTransforms);
 }

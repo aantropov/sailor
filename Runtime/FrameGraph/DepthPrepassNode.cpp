@@ -292,7 +292,7 @@ void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr
 	}
 	else
 	{
-		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
+		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, transferCommandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
 			glm::ivec4(0, depthAttachment->GetExtent().y, depthAttachment->GetExtent().x, -depthAttachment->GetExtent().y),
 			glm::uvec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y));
 	}
