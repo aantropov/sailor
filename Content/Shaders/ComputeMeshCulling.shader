@@ -2,7 +2,6 @@ includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
 defines:
-- FRUSTUM_CULLING
 - OCCLUSION_CULLING
 glslCommon: |
   #version 450
@@ -13,7 +12,7 @@ glslCompute: |
   
   layout(push_constant) uniform Constants
   {
-  	uint numBatches;
+    uint numBatches;
     uint numInstances;
     uint firstInstanceIndex;
   } PushConstants;
@@ -49,7 +48,7 @@ glslCompute: |
   layout(set = 3, binding = 0) uniform FrameData
   {
       mat4 view;
-      mat4 projection;	
+      mat4 projection;  
       mat4 invProjection;
       vec4 cameraPosition;
       ivec2 viewportSize;
@@ -59,6 +58,39 @@ glslCompute: |
   } frame;
   
   shared ViewFrustum frustum;
+
+  bool OcclusionCulling(uint instanceIndex)
+  {
+    ivec2 depthHighZSize = textureSize(depthHighZ, 0);
+    
+    vec4 sphereBounds = data.instance[instanceIndex].sphereBounds;
+    vec4 center = frame.view * (data.instance[instanceIndex].model * vec4(sphereBounds.xyz, 1.0f));
+    center.xyz /= center.w;
+    center.z *= -1.0f;
+    
+    float radius = sphereBounds.w;
+    
+    vec4 aabb;
+    if (ProjectSphere(center.xyz, radius, frame.cameraZNearZFar.x, frame.projection[0][0], frame.projection[1][1], aabb))
+    {   
+      float width = (aabb.z - aabb.x) * depthHighZSize.x;
+      float height = (aabb.w - aabb.y) * depthHighZSize.y;
+    
+      //find the mipmap level that will match the screen size of the sphere
+      float level = floor(log2(max(width, height)));
+    
+      //sample the depth pyramid at that specific level
+      vec2 uv = (aabb.xy + aabb.zw) * 0.5;
+      float depth = textureLod(depthHighZ, uv, level).x;
+    
+      float depthSphere = frame.cameraZNearZFar.x / (center.z - radius);
+    
+      //if the depth of the sphere is in front of the depth pyramid value, then the object is visible
+      return depthSphere < depth;
+    }
+    
+    return false;
+  }
   
   bool FrustumCulling(uint instanceIndex)
   {
@@ -72,7 +104,7 @@ glslCompute: |
 
     bool bIsCulled = !SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.y, frame.cameraZNearZFar.x);
   
-  	return bIsCulled;
+    return bIsCulled;
   }
   
   layout(local_size_x = GPU_CULLING_GROUP_SIZE, local_size_y = GPU_CULLING_GROUP_SIZE) in;
@@ -80,16 +112,16 @@ glslCompute: |
   { 
     // Step 1: Calculate View Frustum
     if (gl_LocalInvocationIndex == 0)
-  	{
-        frustum = CreateViewFrustum(frame.viewportSize, frame.invProjection);		
-  	}
-  	
-  	barrier();
+    {
+        frustum = CreateViewFrustum(frame.viewportSize, frame.invProjection);
+    }
+    
+    barrier();
    
     // Step 2: Perform culling (split instances by threads)
-    uint globalIndex = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * GPU_CULLING_GROUP_SIZE;    
+    uint globalIndex = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * GPU_CULLING_GROUP_SIZE;
     uint threadCount = GPU_CULLING_GROUP_SIZE * GPU_CULLING_GROUP_SIZE;    
-  	uint instancePerThread = (PushConstants.numInstances + threadCount - 1) / threadCount;
+    uint instancePerThread = (PushConstants.numInstances + threadCount - 1) / threadCount;
         
     for (uint i = 0; i < instancePerThread; i++)
     {
@@ -100,7 +132,12 @@ glslCompute: |
             break;
         }
         
-        bool bIsCulled = FrustumCulling(instanceId);
+        #ifdef OCCLUSION_CULLING
+          bool bIsCulled = FrustumCulling(instanceId) || OcclusionCulling(instanceId);
+        #else
+          bool bIsCulled = FrustumCulling(instanceId);
+        #endif
+        
         data.instance[instanceId].isCulled = bIsCulled ? 1 : 0;
     }
 

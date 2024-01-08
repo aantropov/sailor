@@ -106,8 +106,8 @@ const float NdcFarPlane = 1.0;
 
 struct ViewFrustum
 {
-	vec4 planes[4];	
-	vec2 center;
+    vec4 planes[4]; 
+    vec2 center;
 };
 
 vec4 ComputePlane(vec3 p0, vec3 p1, vec3 p2)
@@ -138,9 +138,9 @@ vec4 ClipSpaceToViewSpace(vec4 clip, mat4 invProjection)
     // Perspective projection
     view = view/view.w;
 
-	// Reverse Z
-	view.z *= -1;
-	
+    // Reverse Z
+    view.z *= -1;
+    
     return view;
 }
 
@@ -275,10 +275,32 @@ float NormAngle180(float angle)
 // See: http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
 float RadicalInverse_VdC(uint bits)
 {
-	bits = (bits << 16u) | (bits >> 16u);
-	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+}
+
+// 2D Polyhedral Bounds of a Clipped, Perspective-Projected 3D Sphere. Michael Mara, Morgan McGuire. 2013
+bool ProjectSphere(vec3 C, float r, float znear, float P00, float P11, out vec4 aabb)
+{
+  if (C.z < r + znear)
+      return false;
+
+  vec2 cx = -C.xz;
+  vec2 vx = vec2(sqrt(dot(cx, cx) - r * r), r);
+  vec2 minx = mat2(vx.x, vx.y, -vx.y, vx.x) * cx;
+  vec2 maxx = mat2(vx.x, -vx.y, vx.y, vx.x) * cx;
+
+  vec2 cy = -C.yz;
+  vec2 vy = vec2(sqrt(dot(cy, cy) - r * r), r);
+  vec2 miny = mat2(vy.x, vy.y, -vy.y, vy.x) * cy;
+  vec2 maxy = mat2(vy.x, -vy.y, vy.y, vy.x) * cy;
+
+  aabb = vec4(minx.x / minx.y * P00, miny.x / miny.y * P11, maxx.x / maxx.y * P00, maxy.x / maxy.y * P11);
+  aabb = aabb.xwzy * vec4(0.5f, -0.5f, 0.5f, -0.5f) + vec4(0.5f); // clip space -> uv space
+
+  return true;
 }

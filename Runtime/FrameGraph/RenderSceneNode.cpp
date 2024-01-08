@@ -95,7 +95,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraph* frameGra
 				}
 			}
 			SAILOR_PROFILE_END_BLOCK();
-			
+
 			syncSharedResources.Unlock();
 		});
 
@@ -119,14 +119,14 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	
+
 	if (bGpuCullingEnabled)
 	{
 		if (!m_pComputeMeshCullingShader)
 		{
 			if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeMeshCulling.shader"))
 			{
-				App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeMeshCullingShader);
+				App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeMeshCullingShader, { "OCCLUSION_CULLING" });
 			}
 		}
 
@@ -238,7 +238,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				RHICommandListPtr cmdList = driver->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 				RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
 				commands->BeginSecondaryCommandList(cmdList, true, true);
-				
+
 				if (bGpuCullingEnabled)
 				{
 					auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
@@ -316,7 +316,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
 #endif
 			RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
-				(uint32_t)vecBatches.Num(), 
+				(uint32_t)vecBatches.Num(),
 				vecBatches,
 				commandList, transferCommandList,
 				shaderBindingsByMaterial,
@@ -325,7 +325,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 				m_indirectBuffers[0],
 				viewport,
 				scissor,
-				glm::vec2(0.0f, 1.0f), 
+				glm::vec2(0.0f, 1.0f),
 				cullingComputeShader, m_cullingIndirectBufferBinding[0],
 				{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings });
 		}
@@ -333,7 +333,7 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 		{
 			RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
 				(uint32_t)vecBatches.Num(),
-				vecBatches, 
+				vecBatches,
 				commandList, transferCommandList,
 				shaderBindingsByMaterial,
 				m_drawCalls,
