@@ -93,7 +93,10 @@ void ITask::Complete()
 
 	for (uint32_t i = 0; i < threadTypesToRefresh.Num(); i++)
 	{
-		App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread((EThreadType)i, threadTypesToRefresh[i] > 1);
+		if (threadTypesToRefresh[i] > 0)
+		{
+			App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread((EThreadType)i, threadTypesToRefresh[i] > 1);
+		}
 	}
 
 	m_state |= StateMask::IsFinishedBit;
