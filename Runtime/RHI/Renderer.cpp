@@ -251,7 +251,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			static uint32_t totalFramesCount = 0U;
 
-			SAILOR_PROFILE_BLOCK("Submit & Wait frame command list");
+			SAILOR_PROFILE_BLOCK("Submit & Wait frame command lists");
 			for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
 			{
 				if (auto pCommandList = frameInstance.GetCommandBuffer(i))
@@ -260,6 +260,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
 				}
 			}
+			SAILOR_PROFILE_END_BLOCK();
 
 			SAILOR_PROFILE_BLOCK("Present Frame");
 			if (m_driverInstance->AcquireNextImage())
@@ -277,6 +278,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				}
 
 				{
+					SAILOR_PROFILE_BLOCK("Submit transfer command lists");
 					for (auto& cmdList : transferCommandLists)
 					{
 						waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
