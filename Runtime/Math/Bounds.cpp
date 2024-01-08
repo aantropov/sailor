@@ -467,7 +467,7 @@ glm::vec3 AABB::GetExtents() const
 Sphere AABB::ToSphere() const
 {
 	const vec3& extents = GetExtents();
-	const float radius = std::max(std::max(extents.x, extents.y), extents.z);
+	const float radius = glm::length(extents);
 
 	return Sphere(GetCenter(), radius);
 }

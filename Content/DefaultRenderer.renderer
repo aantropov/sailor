@@ -97,7 +97,7 @@ frame:
   string:
   - Tag: Opaque
   - ClearDepth: true
-  - GPUCulling: false
+  - GPUCulling: true
   renderTargets:
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
@@ -105,7 +105,7 @@ frame:
 - name: DepthPrepass
   string:
   - Tag: Masked
-  - GPUCulling: false
+  - GPUCulling: true
   renderTargets:
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
@@ -261,7 +261,7 @@ frame:
 ############################
   string:
   - Tag: Opaque
-  - GPUCulling: false
+  - GPUCulling: true
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
@@ -272,7 +272,7 @@ frame:
 ############################
   string:
   - Tag: Masked
-  - GPUCulling: false
+  - GPUCulling: true
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer

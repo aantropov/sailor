@@ -179,6 +179,10 @@ std::string GenerateConstantsLibrary(uint32_t version)
 	stream << "#define LIGHTS_CANDIDATES_PER_TILE " << 196 << "\n";
 	stream << "#define LIGHTS_PER_TILE " << LightCullingNode::LightsPerTile << "\n";
 
+	stream << "\n" << "// GPU Culling" << "\n";
+	stream << "#define GPU_CULLING_GROUP_SIZE " << RHI::Renderer::GPUCullingGroupSize << "\n";
+	
+
 	stream << "\n" << "// Shadows" << "\n";
 	stream << "#define MAX_SHADOWS_IN_VIEW " << LightingECS::MaxShadowsInView << "\n";
 	stream << "#define MAX_TEXTURES_IN_SCENE " << TextureImporter::MaxTexturesInScene << "\n";

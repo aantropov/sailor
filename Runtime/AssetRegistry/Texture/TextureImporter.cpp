@@ -250,8 +250,8 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 
 				outTexture = m_loadedTextures[uid] = pTexture;
 
-				newPromise->Run();
 				promise = newPromise;
+				newPromise->Run();
 				m_promises.Unlock(uid);
 
 				return promise;
@@ -266,13 +266,20 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 void TextureImporter::CollectGarbage()
 {
 	TVector<FileId> uidsToRemove;
-	for (auto& promise : m_promises)
+	
+	auto ids = m_promises.GetKeys();
+
+	for (const auto& id : ids)
 	{
-		if (promise.m_second && promise.m_second->IsFinished())
+		auto promise = m_promises.At_Lock(id);
+
+		if (promise.IsValid() && promise->IsFinished())
 		{
-			FileId uid = promise.m_first;
+			FileId uid = id;
 			uidsToRemove.Emplace(uid);
 		}
+
+		m_promises.Unlock(id);
 	}
 
 	for (auto& uid : uidsToRemove)

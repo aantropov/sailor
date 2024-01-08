@@ -60,8 +60,6 @@ glslCompute: |
   
   shared ViewFrustum frustum;
   
-  #define GROUP_SIZE 32
-  
   bool FrustumCulling(uint instanceIndex)
   {
     // Calculations are in view space
@@ -70,14 +68,14 @@ glslCompute: |
     center.xyz /= center.w;
     center.z *= -1.0f;
     
-    float radius = sphereBounds.w * max(max(data.instance[instanceIndex].model[0][0], data.instance[instanceIndex].model[1][1]), data.instance[instanceIndex].model[2][2]);
+    float radius = sphereBounds.w;
 
     bool bIsCulled = !SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.y, frame.cameraZNearZFar.x);
   
   	return bIsCulled;
   }
   
-  layout(local_size_x = GROUP_SIZE, local_size_y = GROUP_SIZE) in;
+  layout(local_size_x = GPU_CULLING_GROUP_SIZE, local_size_y = GPU_CULLING_GROUP_SIZE) in;
   void main()
   { 
     // Step 1: Calculate View Frustum
@@ -89,8 +87,8 @@ glslCompute: |
   	barrier();
    
     // Step 2: Perform culling (split instances by threads)
-    uint globalIndex = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * GROUP_SIZE;    
-    uint threadCount = GROUP_SIZE * GROUP_SIZE;    
+    uint globalIndex = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * GPU_CULLING_GROUP_SIZE;    
+    uint threadCount = GPU_CULLING_GROUP_SIZE * GPU_CULLING_GROUP_SIZE;    
   	uint instancePerThread = (PushConstants.numInstances + threadCount - 1) / threadCount;
         
     for (uint i = 0; i < instancePerThread; i++)

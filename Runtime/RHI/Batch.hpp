@@ -11,7 +11,7 @@
 using namespace GraphicsDriver::Vulkan;
 
 namespace Sailor::RHI
-{
+{	
 	class RHIBatch
 	{
 	public:
@@ -180,7 +180,7 @@ namespace Sailor::RHI
 
 		commands->BeginDebugRegion(transferCmdList, "GPU Culling", DebugContext::Color_CmdCompute);
 		{
-			commands->Dispatch(transferCmdList, computeCullingShader, 32, 32, 1, cullingDistpatchBindings, &constants, sizeof(constants));
+			commands->Dispatch(transferCmdList, computeCullingShader, RHI::Renderer::GPUCullingGroupSize, RHI::Renderer::GPUCullingGroupSize, 1, cullingDistpatchBindings, &constants, sizeof(constants));
 		}
 		commands->EndDebugRegion(transferCmdList);
 	}

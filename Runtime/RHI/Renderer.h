@@ -27,6 +27,10 @@ namespace Sailor::RHI
 	class Renderer : public TSubmodule<Renderer>
 	{
 	public:
+
+		// TODO: Move to RHI::Constants?
+		static constexpr uint32_t GPUCullingGroupSize = 32;
+
 		static constexpr uint32_t MaxFramesInQueue = 2;
 
 		SAILOR_API Renderer(class Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
