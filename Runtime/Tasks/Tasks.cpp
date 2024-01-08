@@ -76,7 +76,8 @@ void ITask::Complete()
 
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 
-	TVector<uint32_t> threadTypesToRefresh(magic_enum::enum_count<EThreadType>());
+	check(magic_enum::enum_count<EThreadType>() == 4);
+	TVector<uint32_t> threadTypesToRefresh({ 0,0,0,0 });
 
 	for (auto& job : m_dependencies)
 	{
