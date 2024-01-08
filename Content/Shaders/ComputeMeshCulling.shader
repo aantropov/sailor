@@ -8,7 +8,7 @@ glslCommon: |
   #extension GL_ARB_separate_shader_objects : enable
   #extension GL_EXT_shader_atomic_float : enable
 glslCompute: |
-  // Inspired by https://vkguide.dev/docs/gpudriven/compute_culling/  
+  // Inspired by https://vkguide.dev/docs/gpudriven/compute_culling/
   
   layout(push_constant) uniform Constants
   {
@@ -31,7 +31,7 @@ glslCompute: |
     uint instanceCount;
     uint firstIndex;
     int vertexOffset;
-    uint firstInstance;  
+    uint firstInstance;
   };
   
   layout(set = 0, binding = 0) uniform sampler2D depthHighZ;
@@ -107,7 +107,7 @@ glslCompute: |
     return bIsCulled;
   }
   
-  layout(local_size_x = GPU_CULLING_GROUP_SIZE, local_size_y = GPU_CULLING_GROUP_SIZE) in;
+  layout(local_size_x = GPU_CULLING_GROUP_SIZE) in;
   void main()
   { 
     // Step 1: Calculate View Frustum
@@ -119,8 +119,8 @@ glslCompute: |
     barrier();
    
     // Step 2: Perform culling (split instances by threads)
-    uint globalIndex = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * GPU_CULLING_GROUP_SIZE;
-    uint threadCount = GPU_CULLING_GROUP_SIZE * GPU_CULLING_GROUP_SIZE;    
+    uint globalIndex = gl_GlobalInvocationID.x;
+    uint threadCount = GPU_CULLING_GROUP_SIZE;
     uint instancePerThread = (PushConstants.numInstances + threadCount - 1) / threadCount;
         
     for (uint i = 0; i < instancePerThread; i++)

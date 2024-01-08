@@ -15,7 +15,7 @@
 #define LIGHTS_PER_TILE 128
 
 // GPU Culling
-#define GPU_CULLING_GROUP_SIZE 32
+#define GPU_CULLING_GROUP_SIZE 256
 
 // Shadows
 #define MAX_SHADOWS_IN_VIEW 1024

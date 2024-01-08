@@ -29,7 +29,7 @@ namespace Sailor::RHI
 	public:
 
 		// TODO: Move to RHI::Constants?
-		static constexpr uint32_t GPUCullingGroupSize = 32;
+		static constexpr uint32_t GPUCullingGroupSize = 256;
 
 		static constexpr uint32_t MaxFramesInQueue = 2;
 
