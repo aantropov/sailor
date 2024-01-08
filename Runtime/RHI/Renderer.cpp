@@ -251,16 +251,19 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 			static uint32_t totalFramesCount = 0U;
 
-			SAILOR_PROFILE_BLOCK("Submit & Wait frame command lists");
-			for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
-			{
-				if (auto pCommandList = frameInstance.GetCommandBuffer(i))
+			auto updateFrameRHI = [&frameInstance = frameInstance, &waitFrameUpdate = waitFrameUpdate]()
 				{
-					waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
-					GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
-				}
-			}
-			SAILOR_PROFILE_END_BLOCK();
+					SAILOR_PROFILE_BLOCK("Submit & Wait frame command lists");
+					for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
+					{
+						if (auto pCommandList = frameInstance.GetCommandBuffer(i))
+						{
+							waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+							GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
+						}
+					}
+					SAILOR_PROFILE_END_BLOCK();
+				};
 
 			SAILOR_PROFILE_BLOCK("Present Frame");
 			if (m_driverInstance->AcquireNextImage())
@@ -277,16 +280,17 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, chainSemaphore);
 				}
 
+				SAILOR_PROFILE_BLOCK("Submit transfer command lists");
 				{
-					SAILOR_PROFILE_BLOCK("Submit transfer command lists");
+					updateFrameRHI();
+
 					for (auto& cmdList : transferCommandLists)
 					{
 						waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
 						GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1), chainSemaphore);
 					}
-
-					SAILOR_PROFILE_END_BLOCK();
 				}
+				SAILOR_PROFILE_END_BLOCK();
 
 				if (m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
 				{
@@ -315,7 +319,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					m_stats.m_gpuFps = 0;
 				}
 			}
-
+			else
+			{
+				updateFrameRHI();
+			}
 			SAILOR_PROFILE_END_BLOCK();
 
 			rhiSceneView->Clear();
