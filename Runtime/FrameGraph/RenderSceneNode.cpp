@@ -37,7 +37,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraph* frameGra
 	const std::string QueueTag = GetString("Tag");
 	const size_t QueueTagHash = GetHash(QueueTag);
 
-	Tasks::TaskPtr res = Tasks::CreateTask("Prepare RenderSceneNode",
+	Tasks::TaskPtr res = Tasks::CreateTask("Prepare RenderSceneNode  " + std::to_string(sceneView.m_frame),
 		[=, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
 
 			syncSharedResources.Lock();

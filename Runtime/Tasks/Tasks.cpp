@@ -72,12 +72,10 @@ void ITask::Complete()
 
 	check(!IsFinished());
 
-	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
-
+	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	
+	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
-
-	check(magic_enum::enum_count<EThreadType>() == 4);
-	TVector<uint32_t> threadTypesToRefresh({ 0,0,0,0 });
 
 	for (auto& job : m_dependencies)
 	{
@@ -85,20 +83,12 @@ void ITask::Complete()
 		{
 			if (--pJob->m_numBlockers == 0)
 			{
-				threadTypesToRefresh[(uint32_t)pJob->GetThreadType()]++;
+				scheduler->NotifyWorkerThread(pJob->GetThreadType());
 			}
 		}
 	}
 
 	m_dependencies.Clear();
-
-	for (uint32_t i = 0; i < threadTypesToRefresh.Num(); i++)
-	{
-		if (threadTypesToRefresh[i] > 0)
-		{
-			App::GetSubmodule<Tasks::Scheduler>()->NotifyWorkerThread((EThreadType)i, threadTypesToRefresh[i] > 1);
-		}
-	}
 
 	m_state |= StateMask::IsFinishedBit;
 	syncBlock.m_onComplete.notify_all();

@@ -127,6 +127,7 @@ void RHISceneView::PrepareSnapshots()
 		frustum.ExtractFrustumPlanes(m_cameraTransforms[i].Matrix(), camera.GetAspect(), camera.GetFov(), camera.GetZNear(), camera.GetZFar());
 
 		res.m_deltaTime = m_deltaTime;
+		res.m_frame = m_world->GetCurrentFrame();
 		res.m_cameraTransform = m_cameraTransforms[i];
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;

@@ -67,6 +67,7 @@ namespace Sailor::RHI
 	struct RHISceneViewSnapshot
 	{
 		float m_deltaTime = 0.0f;
+		uint64_t m_frame = 0ull;
 		Math::Transform m_cameraTransform{};
 		TUniquePtr<CameraData> m_camera{};
 		TVector<RHISceneViewProxy> m_proxies{};
