@@ -228,12 +228,9 @@ namespace Sailor
 
 					for (auto& m_chainedTaskNext : ITask::m_chainedTasksNext)
 					{
-						if (auto nextTask = m_chainedTaskNext.TryLock())
+						if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr()))
 						{
-							if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(nextTask.GetRawPtr()))
-							{
-								taskWithArgs->SetArgs(result);
-							}
+							taskWithArgs->SetArgs(result);
 						}
 					}
 				}
@@ -290,14 +287,13 @@ namespace Sailor
 
 			SAILOR_API __forceinline void ChainTasks(ITaskPtr nextTask)
 			{
-				nextTask->Join(ITask::m_self);
 				nextTask->SetChainedTaskPrev(ITask::m_self.Lock());
-
 				{
 					auto& taskSyncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
 					std::unique_lock<std::mutex> lk(taskSyncBlock.m_mutex);
 					ITask::m_chainedTasksNext.Add(nextTask);
 				}
+				nextTask->Join(ITask::m_self);
 			}
 
 			SAILOR_API __forceinline void RunTaskIfNeeded(const ITaskPtr& task)
