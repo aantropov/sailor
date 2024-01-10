@@ -41,13 +41,13 @@ bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
 	return true;
 }
 
-void ITask::SetChainedTaskPrev(TWeakPtr<ITask>& job)
+void ITask::SetChainedTaskPrev(ITaskPtr job)
 {
 	check(!m_chainedTaskPrev);
 	if (job)
 	{
 		//Job could be equal null
-		m_chainedTaskPrev = job.Lock();
+		m_chainedTaskPrev = std::move(job);
 	}
 }
 

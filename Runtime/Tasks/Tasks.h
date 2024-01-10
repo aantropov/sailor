@@ -110,9 +110,9 @@ namespace Sailor
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
 			SAILOR_API const TVector<TWeakPtr<ITask>>& GetChainedTasksNext() const { return m_chainedTasksNext; }
-			SAILOR_API const TSharedPtr<ITask>& GetChainedTaskPrev() const { return m_chainedTaskPrev; }
+			SAILOR_API const ITaskPtr& GetChainedTaskPrev() const { return m_chainedTaskPrev; }
 
-			SAILOR_API void SetChainedTaskPrev(TWeakPtr<ITask>& job);
+			SAILOR_API void SetChainedTaskPrev(ITaskPtr task);
 
 		protected:
 
@@ -255,61 +255,58 @@ namespace Sailor
 			}
 
 			template<typename TContinuationResult = void>
-			SAILOR_API TaskPtr<TContinuationResult, TResult> Then(typename TFunction<TContinuationResult, TResult>::type function, std::string name = "ChainedTask", EThreadType thread = EThreadType::Worker)
+			SAILOR_API TaskPtr<TContinuationResult, TResult> Then(
+				typename TFunction<TContinuationResult, TResult>::type function,
+				std::string name = "ChainedTask",
+				EThreadType thread = EThreadType::Worker)
 			{
-				auto res = Tasks::CreateTask<TContinuationResult, TResult>(std::move(name), std::move(function), thread);
-
-				res->SetChainedTaskPrev(ITask::m_self);
-
+				auto resultTask = Tasks::CreateTask<TContinuationResult, TResult>(std::move(name), std::move(function), thread);
 				if constexpr (NotVoid<TResult>)
 				{
-					res->SetArgs(ResultBase::m_result);
+					resultTask->SetArgs(ResultBase::m_result);
 				}
 
-				res->Join(ITask::m_self);
+				ChainTasks(resultTask);
+				RunTaskIfNeeded(resultTask);
 
-				{
-					auto& taskSyncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
-
-					std::unique_lock<std::mutex> lk(taskSyncBlock.m_mutex);
-					ITask::m_chainedTasksNext.Add(res);
-				}
-
-				if (ITask::IsStarted() || ITask::IsInQueue() || ITask::IsFinished())
-				{
-					App::GetSubmodule<Scheduler>()->Run(res);
-				}
-
-				return res;
+				return resultTask;
 			}
 
 			SAILOR_API TaskPtr<TResult, void> ToTaskWithResult()
 			{
-				auto res = Tasks::CreateTaskWithResult<TResult>("Get result task",
+				auto resultTask = Tasks::CreateTaskWithResult<TResult>("Get result task",
 					std::move([=]()
 						{
 							return ITask::m_self.Lock().DynamicCast<ITaskWithResult<TResult>>()->GetResult();
 						}), ITask::m_threadType);
 
-				res->SetChainedTaskPrev(ITask::m_self);
-				res->Join(ITask::m_self);
+				ChainTasks(resultTask);
+				RunTaskIfNeeded(resultTask);
 
-				{
-					auto& taskSyncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
-
-					std::unique_lock<std::mutex> lk(taskSyncBlock.m_mutex);
-					ITask::m_chainedTasksNext.Add(res);
-				}
-
-				if (ITask::IsStarted() || ITask::IsInQueue() || ITask::IsFinished())
-				{
-					App::GetSubmodule<Scheduler>()->Run(res);
-				}
-
-				return res;
+				return resultTask;
 			}
 
 		protected:
+
+			SAILOR_API __forceinline void ChainTasks(ITaskPtr nextTask)
+			{
+				nextTask->Join(ITask::m_self);
+				nextTask->SetChainedTaskPrev(ITask::m_self.Lock());
+
+				{
+					auto& taskSyncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
+					std::unique_lock<std::mutex> lk(taskSyncBlock.m_mutex);
+					ITask::m_chainedTasksNext.Add(nextTask);
+				}
+			}
+
+			SAILOR_API __forceinline void RunTaskIfNeeded(const ITaskPtr& task)
+			{
+				if (ITask::IsInQueue() || ITask::IsStarted() || ITask::IsFinished())
+				{
+					App::GetSubmodule<Scheduler>()->Run(task);
+				}
+			}
 
 			Function m_function;
 
