@@ -22,22 +22,23 @@ void ITask::Join(const TWeakPtr<ITask>& job)
 		return;
 	}
 
-	TSharedPtr<ITask> pOtherJob = job.Lock();
+	ITaskPtr pOtherJob = job.Lock();
 	pOtherJob->AddDependency(m_self.Lock());
 }
 
-bool ITask::AddDependency(TSharedPtr<ITask> dependentJob)
+bool ITask::AddDependency(ITaskPtr dependentJob)
 {
 	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
-
-	if (IsFinished())
 	{
-		return false;
-	}
+		if (IsFinished())
+		{
+			return false;
+		}
 
-	dependentJob->m_numBlockers++;
-	m_dependencies.Emplace(dependentJob);
+		dependentJob->m_numBlockers++;
+		m_dependencies.Emplace(dependentJob);
+	}
 	return true;
 }
 
@@ -59,9 +60,9 @@ void ITask::Join(const TVector<TWeakPtr<ITask>>& jobs)
 	}
 }
 
-TSharedPtr<ITask> ITask::Run()
+ITaskPtr ITask::Run()
 {
-	TSharedPtr<ITask> res = m_self.Lock();
+	ITaskPtr res = m_self.Lock();
 	App::GetSubmodule<Scheduler>()->Run(res);
 	return res;
 }
@@ -73,25 +74,24 @@ void ITask::Complete()
 	check(!IsFinished());
 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
-	
 	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
-
-	for (auto& job : m_dependencies)
 	{
-		if (auto pJob = job.TryLock())
+		for (auto& job : m_dependencies)
 		{
-			if (--pJob->m_numBlockers == 0)
+			if (auto pJob = job.TryLock())
 			{
-				scheduler->NotifyWorkerThread(pJob->GetThreadType());
+				if (--pJob->m_numBlockers == 0)
+				{
+					scheduler->NotifyWorkerThread(pJob->GetThreadType());
+				}
 			}
 		}
+
+		m_dependencies.Clear();
+		m_state |= StateMask::IsFinishedBit;
+		syncBlock.m_onComplete.notify_all();
 	}
-
-	m_dependencies.Clear();
-
-	m_state |= StateMask::IsFinishedBit;
-	syncBlock.m_onComplete.notify_all();
 }
 
 void ITask::Wait()
@@ -99,7 +99,6 @@ void ITask::Wait()
 	SAILOR_PROFILE_FUNCTION();
 
 	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
-
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 
 	if (!IsFinished())

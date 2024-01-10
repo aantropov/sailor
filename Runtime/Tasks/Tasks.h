@@ -99,7 +99,7 @@ namespace Sailor
 			SAILOR_API void Join(const TVector<TWeakPtr<ITask>>& jobsDependent);
 
 			// Run current task and all chained
-			SAILOR_API TSharedPtr<ITask> Run();
+			SAILOR_API ITaskPtr Run();
 
 			SAILOR_API bool IsInQueue() const { return m_state & StateMask::IsInQueueBit; }
 			SAILOR_API void OnEnqueue() { m_state |= StateMask::IsInQueueBit; }
@@ -116,7 +116,7 @@ namespace Sailor
 
 		protected:
 
-			SAILOR_API bool AddDependency(TSharedPtr<ITask> dependentJob);
+			SAILOR_API bool AddDependency(ITaskPtr dependentJob);
 
 			SAILOR_API virtual void Complete();
 
