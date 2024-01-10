@@ -173,7 +173,7 @@ namespace Sailor
 
 		struct EmptyType1 {};
 		struct EmptyType2 {};
-		
+
 		template<typename TResult = void, typename TArgs = void>
 		class Task :
 			public std::conditional_t<NotVoid<TResult>, ITaskWithResult<TResult>, EmptyType1>,
@@ -228,9 +228,12 @@ namespace Sailor
 
 					for (auto& m_chainedTaskNext : ITask::m_chainedTasksNext)
 					{
-						if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr()))
+						if (auto nextTask = m_chainedTaskNext.TryLock())
 						{
-							taskWithArgs->SetArgs(result);
+							if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(nextTask.GetRawPtr()))
+							{
+								taskWithArgs->SetArgs(result);
+							}
 						}
 					}
 				}
@@ -289,13 +292,20 @@ namespace Sailor
 						}), ITask::m_threadType);
 
 				res->SetChainedTaskPrev(ITask::m_self);
-				ITask::m_chainedTasksNext.Add(res);
 				res->Join(ITask::m_self);
 
-				if (ITask::IsStarted() || ITask::IsInQueue())
+				{
+					auto& taskSyncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
+
+					std::unique_lock<std::mutex> lk(taskSyncBlock.m_mutex);
+					ITask::m_chainedTasksNext.Add(res);
+				}
+
+				if (ITask::IsStarted() || ITask::IsInQueue() || ITask::IsFinished())
 				{
 					App::GetSubmodule<Scheduler>()->Run(res);
 				}
+
 				return res;
 			}
 
