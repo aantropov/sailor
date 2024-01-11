@@ -30,15 +30,13 @@ bool ITask::AddDependency(ITaskPtr dependentJob)
 {
 	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
+	if (IsFinished())
 	{
-		if (IsFinished())
-		{
-			return false;
-		}
-
-		dependentJob->m_numBlockers++;
-		m_dependencies.Emplace(dependentJob);
+		return false;
 	}
+
+	dependentJob->m_numBlockers++;
+	m_dependencies.Emplace(dependentJob);
 	return true;
 }
 
@@ -76,22 +74,21 @@ void ITask::Complete()
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
+
+	for (auto& job : m_dependencies)
 	{
-		for (auto& job : m_dependencies)
+		if (auto pJob = job.TryLock())
 		{
-			if (auto pJob = job.TryLock())
+			if (--pJob->m_numBlockers == 0)
 			{
-				if (--pJob->m_numBlockers == 0)
-				{
-					scheduler->NotifyWorkerThread(pJob->GetThreadType());
-				}
+				scheduler->NotifyWorkerThread(pJob->GetThreadType());
 			}
 		}
-
-		m_dependencies.Clear();
-		m_state |= StateMask::IsFinishedBit;
-		syncBlock.m_onComplete.notify_all();
 	}
+
+	m_dependencies.Clear();
+	m_state |= StateMask::IsFinishedBit;
+	syncBlock.m_onComplete.notify_all();
 }
 
 void ITask::Wait()

@@ -288,12 +288,12 @@ namespace Sailor
 			SAILOR_API __forceinline void ChainTasks(ITaskPtr nextTask)
 			{
 				nextTask->SetChainedTaskPrev(ITask::m_self.Lock());
+				nextTask->Join(ITask::m_self);
 				{
 					auto& taskSyncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
 					std::unique_lock<std::mutex> lk(taskSyncBlock.m_mutex);
 					ITask::m_chainedTasksNext.Add(nextTask);
 				}
-				nextTask->Join(ITask::m_self);
 			}
 
 			SAILOR_API __forceinline void RunTaskIfNeeded(const ITaskPtr& task)
