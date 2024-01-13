@@ -89,13 +89,13 @@ namespace Sailor
 
 		template<typename R>
 		SAILOR_API TObjectPtr(const TObjectPtr<R>& pDerivedPtr) noexcept requires IsBaseOf<T, R>
-		{			
+		{
 			m_pAllocator = pDerivedPtr.m_pAllocator;
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 		}
 
 		template<typename R>
-		SAILOR_API TObjectPtr(TObjectPtr<R>&& pDerivedPtr) noexcept requires IsBaseOf<T,R>
+		SAILOR_API TObjectPtr(TObjectPtr<R>&& pDerivedPtr) noexcept requires IsBaseOf<T, R>
 		{
 			Swap(std::move(pDerivedPtr));
 		}
@@ -207,7 +207,10 @@ namespace Sailor
 		SAILOR_API void DestroyObject(Memory::ObjectAllocatorPtr pAllocator)
 		{
 			check(pAllocator == m_pAllocator);
-			ForcelyDestroyObject();
+			if (IsValid())
+			{
+				ForcelyDestroyObject();
+			}
 		}
 
 		// Only if you know what you're doing

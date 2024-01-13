@@ -34,7 +34,7 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 	SAILOR_PROFILE_FUNCTION();
 	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
 	infoHandler->Subscribe(this);
-	
+
 	auto& driver = RHI::Renderer::GetDriver();
 
 	m_textureSamplersBindings = driver->CreateShaderBindings();
@@ -105,7 +105,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 							assetInfo->GetSamplerReduction());
 
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
-						
+
 						size_t index = m_textureSamplersIndices[assetInfo->GetFileId()];
 						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
 						return true;
@@ -175,32 +175,20 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	Tasks::TaskPtr<TexturePtr> newPromise;
-	outTexture = nullptr;
-
 	// Check promises first
-	auto it = m_promises.Find(uid);
-	if (it != m_promises.end())
-	{
-		newPromise = (*it).m_second;
-	}
+	auto& promise = m_promises.At_Lock(uid, nullptr);
+	auto& loadedTexture = m_loadedTextures.At_Lock(uid, TexturePtr());
 
 	// Check loaded textures
-	auto textureIt = m_loadedTextures.Find(uid);
-	if (textureIt != m_loadedTextures.end())
+	if (loadedTexture)
 	{
-		outTexture = (*textureIt).m_second;
-		return newPromise ? newPromise : Tasks::TaskPtr<TexturePtr>::Make(outTexture);
-	}
+		outTexture = loadedTexture;
+		auto res = promise ? promise : Tasks::TaskPtr<TexturePtr>::Make(outTexture);
 
-	auto& promise = m_promises.At_Lock(uid, nullptr);
-
-	// We have promise
-	if (promise)
-	{
-		outTexture = m_loadedTextures[uid];
+		m_loadedTextures.Unlock(uid);
 		m_promises.Unlock(uid);
-		return promise;
+
+		return res;
 	}
 
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
@@ -216,7 +204,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 			bool bIsImported;
 		};
 
-		newPromise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
+		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
 			[pTexture, assetInfo, this]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
@@ -248,16 +236,18 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 					return pTexture;
 				}, "Create RHI texture", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
-				outTexture = m_loadedTextures[uid] = pTexture;
+				outTexture = loadedTexture = pTexture;
+				promise->Run();
 
-				promise = newPromise;
-				newPromise->Run();
 				m_promises.Unlock(uid);
+				m_loadedTextures.Unlock(uid);
 
 				return promise;
 	}
 
+	outTexture = nullptr;
 	m_promises.Unlock(uid);
+	m_loadedTextures.Unlock(uid);
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
 	return Tasks::TaskPtr<TexturePtr>();
@@ -266,14 +256,14 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 void TextureImporter::CollectGarbage()
 {
 	TVector<FileId> uidsToRemove;
-	
+
 	auto ids = m_promises.GetKeys();
 
 	for (const auto& id : ids)
 	{
 		auto promise = m_promises.At_Lock(id);
 
-		if (promise.IsValid() && promise->IsFinished())
+		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
 		{
 			FileId uid = id;
 			uidsToRemove.Emplace(uid);
