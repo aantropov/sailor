@@ -337,13 +337,16 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	for (auto& t : prepareRenderFrame)
 	{
+		t->Join(renderFrame);
+
 		if (m_previousRenderFrame.IsValid())
 		{
-			t->Join(m_previousRenderFrame);
+			renderFrame->Join(m_previousRenderFrame);
 		}
-		renderFrame->Join(t);
-	}
 
+		renderFrame1->Join(t);
+		
+	}
 	renderFrame1->Join(renderFrame);
 
 	renderFrame1->Run();
