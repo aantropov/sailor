@@ -97,7 +97,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraph* frameGra
 			SAILOR_PROFILE_END_BLOCK();
 
 			syncSharedResources.Unlock();
-		});
+		}, Tasks::EThreadType::RHI);
 
 	return res;
 }

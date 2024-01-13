@@ -40,7 +40,10 @@ namespace Sailor
 			SAILOR_API WorkerThread(WorkerThread& copy) = delete;
 			SAILOR_API WorkerThread& operator =(WorkerThread& rhs) = delete;
 
+			SAILOR_API void SetExecFlag();
+			SAILOR_API std::mutex& GetExecMutex() { return m_execMutex; }
 			SAILOR_API DWORD GetThreadId() const { return m_threadId; }
+			SAILOR_API bool IsBusy() const { return m_bIsBusy.load(); }
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
 			SAILOR_API void ForcelyPushJob(const ITaskPtr& pJob);
@@ -51,6 +54,7 @@ namespace Sailor
 
 		protected:
 
+			SAILOR_API void ProcessTask(ITaskPtr& task);
 			SAILOR_API bool TryFetchJob(ITaskPtr& pOutJob);
 
 			std::string m_threadName;
@@ -59,7 +63,9 @@ namespace Sailor
 			EThreadType m_threadType;
 			DWORD m_threadId;
 
+			size_t m_bExecFlag = 0;
 			std::atomic<bool> m_bIsBusy;
+			std::mutex m_execMutex;
 
 			// Specific jobs for this thread
 			std::mutex m_queueMutex;
@@ -75,6 +81,7 @@ namespace Sailor
 		{
 			const uint8_t RHIThreadsNum = 2u;
 			const size_t MaxTasksInPool = 16384;
+			static const uint32_t MaxThreadTypes = (uint32_t)magic_enum::enum_count<EThreadType>();
 
 		public:
 
@@ -86,7 +93,7 @@ namespace Sailor
 			SAILOR_API void WaitIdle(EThreadType type);
 
 			SAILOR_API uint32_t GetNumWorkerThreads() const;
-			SAILOR_API uint32_t GetNumRenderingJobs() const;
+			SAILOR_API uint32_t GetNumTasks(EThreadType thread) const;
 			SAILOR_API uint32_t GetNumRHIThreads() const { return RHIThreadsNum; }
 
 			SAILOR_API void Run(const ITaskPtr& pJob, bool bAutoRunChainedTasks = true);
@@ -102,6 +109,7 @@ namespace Sailor
 
 			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; }
 			SAILOR_API DWORD GetRendererThreadId() const;
+			SAILOR_API EThreadType GetCurrentThreadType() const;
 
 			SAILOR_API Scheduler() = default;
 
@@ -121,9 +129,9 @@ namespace Sailor
 				TVector<ITaskPtr>*& pOutQueue,
 				std::condition_variable*& pOutCondVar);
 
-			std::mutex m_queueMutex[4];
-			std::condition_variable m_refreshCondVar[4];
-			TVector<ITaskPtr> m_pCommonJobsQueue[4];
+			std::mutex m_queueMutex[MaxThreadTypes];
+			std::condition_variable m_refreshCondVar[MaxThreadTypes];
+			TVector<ITaskPtr> m_pCommonJobsQueue[MaxThreadTypes];
 
 			std::atomic<uint32_t> m_numBusyThreads;
 			TVector<WorkerThread*> m_workerThreads;
@@ -135,6 +143,7 @@ namespace Sailor
 			// Task Synchronization primitives pool
 			concurrency::concurrent_queue<uint16_t> m_freeList{};
 			TVector<TaskSyncBlock> m_tasksPool{};
+			TMap<DWORD, EThreadType> m_threadTypes{};
 
 			friend class WorkerThread;
 

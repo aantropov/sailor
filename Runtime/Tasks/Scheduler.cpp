@@ -25,6 +25,8 @@ WorkerThread::WorkerThread(
 	m_pCommonJobsQueue(pJobsQueue)
 {
 	m_pThread = TUniquePtr<std::thread>::Make(&WorkerThread::Process, this);
+	HANDLE threadHandle = m_pThread->native_handle();
+	m_threadId = ::GetThreadId(threadHandle);
 }
 
 void WorkerThread::Join()
@@ -67,6 +69,27 @@ bool WorkerThread::TryFetchJob(ITaskPtr& pOutJob)
 	return false;
 }
 
+void WorkerThread::ProcessTask(ITaskPtr& task)
+{
+	if (task)
+	{
+		SAILOR_PROFILE_BLOCK(task->GetName());
+		m_bIsBusy = true;
+
+		task->Execute();
+		task.Clear();
+
+		m_bIsBusy = false;
+		SAILOR_PROFILE_END_BLOCK();
+	}
+}
+
+void WorkerThread::SetExecFlag()
+{
+	std::unique_lock<std::mutex> lk(m_execMutex);
+	m_bExecFlag++;
+}
+
 void WorkerThread::Process()
 {
 	Sailor::Utils::SetThreadName(m_threadName);
@@ -85,33 +108,21 @@ void WorkerThread::Process()
 	Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>();
 
 	ITaskPtr pCurrentJob;
-
-	std::mutex threadExecutionMutex;
 	while (!scheduler->m_bIsTerminating)
 	{
-		std::unique_lock<std::mutex> lk(threadExecutionMutex);
-		m_refresh.wait(lk, [this, &pCurrentJob, scheduler]
-			{
-				return TryFetchJob(pCurrentJob) ||
-					scheduler->TryFetchNextAvailiableJob(pCurrentJob, m_threadType) ||
-					(bool)scheduler->m_bIsTerminating;
-			});
-
-		if (pCurrentJob)
 		{
-			m_bIsBusy = true;
-			SAILOR_PROFILE_BLOCK(pCurrentJob->GetName());
-
-			pCurrentJob->Execute();
-			pCurrentJob.Clear();
-
-			scheduler->NotifyWorkerThread(m_threadType);
-
-			SAILOR_PROFILE_END_BLOCK();
-			m_bIsBusy = false;
+			std::unique_lock<std::mutex> lk(m_execMutex);
+			m_refresh.wait(lk, [=, &pCurrentJob]()
+				{
+					const bool res = ((m_bExecFlag > 0) && (TryFetchJob(pCurrentJob) ||
+						scheduler->TryFetchNextAvailiableJob(pCurrentJob, m_threadType))) ||
+						(bool)scheduler->m_bIsTerminating;
+					return res;
+				});
+			m_bExecFlag--;
 		}
 
-		lk.unlock();
+		ProcessTask(pCurrentJob);
 	}
 }
 
@@ -125,6 +136,7 @@ void Scheduler::Initialize()
 	}
 
 	m_mainThreadId = GetCurrentThreadId();
+	m_threadTypes[m_mainThreadId] = EThreadType::Main;
 
 	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 
@@ -139,6 +151,7 @@ void Scheduler::Initialize()
 		m_queueMutex[(uint32_t)EThreadType::Render],
 		m_pCommonJobsQueue[(uint32_t)EThreadType::Render]);
 
+	m_threadTypes[newRenderingThread->GetThreadId()] = EThreadType::Render;
 	m_workerThreads.Emplace(newRenderingThread);
 
 	for (uint32_t i = 0; i < numThreads; i++)
@@ -148,6 +161,8 @@ void Scheduler::Initialize()
 			m_refreshCondVar[(uint32_t)EThreadType::Worker],
 			m_queueMutex[(uint32_t)EThreadType::Worker],
 			m_pCommonJobsQueue[(uint32_t)EThreadType::Worker]);
+
+		m_threadTypes[newThread->GetThreadId()] = EThreadType::Worker;
 
 		m_workerThreads.Emplace(newThread);
 	}
@@ -160,6 +175,7 @@ void Scheduler::Initialize()
 			m_queueMutex[(uint32_t)EThreadType::RHI],
 			m_pCommonJobsQueue[(uint32_t)EThreadType::RHI]);
 
+		m_threadTypes[newThread->GetThreadId()] = EThreadType::RHI;
 		m_workerThreads.Emplace(newThread);
 	}
 
@@ -222,7 +238,7 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pJob, const ITaskPtr& p
 	for (auto& chainedTasksNext : pJob->GetChainedTasksNext())
 	{
 		ITaskPtr pCurrentChainedTask;
-		if (pCurrentChainedTask = chainedTasksNext.TryLock())
+		if (pCurrentChainedTask = chainedTasksNext)
 		{
 			if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted())
 			{
@@ -271,13 +287,13 @@ void Scheduler::Run(const ITaskPtr& pJob, bool bAutoRunChainedTasks)
 	pJob.GetRawPtr()->OnEnqueue();
 
 	{
-		std::mutex* pOutMutex;
+		std::mutex* pOutQueueMutex;
 		TVector<ITaskPtr>* pOutQueue;
 		std::condition_variable* pOutCondVar;
 
-		GetThreadSyncVarsByThreadType(pJob->GetThreadType(), pOutMutex, pOutQueue, pOutCondVar);
+		GetThreadSyncVarsByThreadType(pJob->GetThreadType(), pOutQueueMutex, pOutQueue, pOutCondVar);
 
-		const std::lock_guard<std::mutex> lock(*pOutMutex);
+		const std::lock_guard<std::mutex> lock(*pOutQueueMutex);
 		pOutQueue->Add(pJob);
 	}
 
@@ -305,32 +321,33 @@ void Scheduler::Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTa
 
 	if (result != -1)
 	{
+		m_workerThreads[result]->SetExecFlag();
 		m_workerThreads[result]->ForcelyPushJob(pJob);
 		return;
 	}
 	check(m_mainThreadId == threadId);
 	// Add to Main thread if cannot find the thread in workers
 	{
-		std::mutex* pOutMutex;
+		std::mutex* pOutQueueMutex;
 		TVector<ITaskPtr>* pOutQueue;
 		std::condition_variable* pOutCondVar;
 
-		GetThreadSyncVarsByThreadType(EThreadType::Main, pOutMutex, pOutQueue, pOutCondVar);
+		GetThreadSyncVarsByThreadType(EThreadType::Main, pOutQueueMutex, pOutQueue, pOutCondVar);
 
-		const std::lock_guard<std::mutex> lock(*pOutMutex);
+		const std::lock_guard<std::mutex> lock(*pOutQueueMutex);
 		pOutQueue->Add(pJob);
 	}
 }
 
 void Scheduler::GetThreadSyncVarsByThreadType(
 	EThreadType threadType,
-	std::mutex*& pOutMutex,
+	std::mutex*& pOutQueueMutex,
 	TVector<ITaskPtr>*& pOutQueue,
 	std::condition_variable*& pOutCondVar)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	pOutMutex = &m_queueMutex[(uint32_t)threadType];
+	pOutQueueMutex = &m_queueMutex[(uint32_t)threadType];
 	pOutQueue = &m_pCommonJobsQueue[(uint32_t)threadType];
 	pOutCondVar = &m_refreshCondVar[(uint32_t)threadType];
 }
@@ -339,13 +356,13 @@ bool Scheduler::TryFetchNextAvailiableJob(ITaskPtr& pOutJob, EThreadType threadT
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::mutex* pOutMutex;
+	std::mutex* pOutQueueMutex;
 	TVector<ITaskPtr>* pOutQueue;
 	std::condition_variable* pOutCondVar;
 
-	GetThreadSyncVarsByThreadType(threadType, pOutMutex, pOutQueue, pOutCondVar);
+	GetThreadSyncVarsByThreadType(threadType, pOutQueueMutex, pOutQueue, pOutCondVar);
 
-	const std::lock_guard<std::mutex> lock(*pOutMutex);
+	const std::lock_guard<std::mutex> lock(*pOutQueueMutex);
 
 	if (!(*pOutQueue).IsEmpty())
 	{
@@ -370,12 +387,19 @@ bool Scheduler::TryFetchNextAvailiableJob(ITaskPtr& pOutJob, EThreadType threadT
 void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads)
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	std::mutex* pOutMutex;
+	std::mutex* pOutQueueMutex;
 	TVector<ITaskPtr>* pOutQueue;
 	std::condition_variable* pOutCondVar;
 
-	GetThreadSyncVarsByThreadType(threadType, pOutMutex, pOutQueue, pOutCondVar);
+	GetThreadSyncVarsByThreadType(threadType, pOutQueueMutex, pOutQueue, pOutCondVar);
+
+	for (uint32_t i = 0; i < m_workerThreads.Num(); i++)
+	{
+		if (m_workerThreads[i]->GetThreadType() == threadType)
+		{
+			m_workerThreads[i]->SetExecFlag();
+		}
+	}
 
 	if (bNotifyAllThreads)
 	{
@@ -387,21 +411,26 @@ void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThread
 	}
 }
 
-uint32_t Scheduler::GetNumRenderingJobs() const
+EThreadType Scheduler::GetCurrentThreadType() const
 {
-	return (uint32_t)m_pCommonJobsQueue[(uint32_t)EThreadType::Render].Num();
+	return m_threadTypes[GetCurrentThreadId()];
+}
+
+uint32_t Scheduler::GetNumTasks(EThreadType thread) const
+{
+	return (uint32_t)m_pCommonJobsQueue[(uint32_t)thread].Num();
 }
 
 void Scheduler::WaitIdle(EThreadType type)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::mutex* pOutMutex;
+	std::mutex* pOutQueueMutex;
 	TVector<ITaskPtr>* pOutQueue;
 	std::condition_variable* pOutCondVar;
 	TVector<ITaskPtr> waitFor;
 
-	GetThreadSyncVarsByThreadType(type, pOutMutex, pOutQueue, pOutCondVar);
+	GetThreadSyncVarsByThreadType(type, pOutQueueMutex, pOutQueue, pOutCondVar);
 
 	{
 		const std::unique_lock<std::mutex> lock(m_queueMutex[(uint8_t)type]);

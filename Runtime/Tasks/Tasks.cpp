@@ -73,21 +73,26 @@ void ITask::Complete()
 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
-	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
-
-	for (auto& job : m_dependencies)
 	{
-		if (auto pJob = job.TryLock())
+		std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
+
+		for (auto& job : m_dependencies)
 		{
-			if (--pJob->m_numBlockers == 0)
+			if (auto pJob = job.TryLock())
 			{
-				scheduler->NotifyWorkerThread(pJob->GetThreadType());
+				if (--pJob->m_numBlockers == 0)
+				{
+					scheduler->NotifyWorkerThread(pJob->GetThreadType());
+				}
 			}
 		}
+
+		m_chainedTaskPrev.Clear();
+		m_dependencies.Clear();
+		m_state |= StateMask::IsFinishedBit;
+		syncBlock.m_bCompletionFlag = true;
 	}
 
-	m_dependencies.Clear();
-	m_state |= StateMask::IsFinishedBit;
 	syncBlock.m_onComplete.notify_all();
 }
 
@@ -100,6 +105,6 @@ void ITask::Wait()
 
 	if (!IsFinished())
 	{
-		syncBlock.m_onComplete.wait(lk);
+		syncBlock.m_onComplete.wait(lk, [&]() { return syncBlock.m_bCompletionFlag; });
 	}
 }

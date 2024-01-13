@@ -340,33 +340,20 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	Tasks::TaskPtr<ModelPtr> newPromise;
-	outModel = nullptr;
-
 	// Check promises first
-	auto it = m_promises.Find(uid);
-	if (it != m_promises.end())
-	{
-		newPromise = (*it).m_second;
-	}
-
-	// Check loaded model
-	auto modelIt = m_loadedModels.Find(uid);
-	if (modelIt != m_loadedModels.end())
-	{
-		outModel = (*modelIt).m_second;
-
-		return newPromise ? newPromise : Tasks::TaskPtr<ModelPtr>::Make(outModel);
-	}
-
 	auto& promise = m_promises.At_Lock(uid, nullptr);
+	auto& loadedModel = m_loadedModels.At_Lock(uid, ModelPtr());
 
-	// We have promise
-	if (promise)
+	// Check loaded assets
+	if (loadedModel)
 	{
+		outModel = loadedModel;
+		auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel);
+
+		m_loadedModels.Unlock(uid);
 		m_promises.Unlock(uid);
-		outModel = m_loadedModels[uid];
-		return promise;
+
+		return res;
 	}
 
 	// There is no promise, we need to load model
@@ -384,7 +371,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			bool m_bIsImported = false;
 		};
 
-		newPromise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
+		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
 			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
@@ -411,15 +398,19 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					return model;
 				}, "Update RHI Meshes", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
-				outModel = m_loadedModels[uid] = model;
-				newPromise->Run();
-				promise = newPromise;
+				outModel = loadedModel = model;
+				promise->Run();
+
+				m_loadedModels.Unlock(uid);
 				m_promises.Unlock(uid);
 
 				return promise;
 	}
 
+	outModel = nullptr;
+	m_loadedModels.Unlock(uid);
 	m_promises.Unlock(uid);
+
 	return Tasks::TaskPtr<ModelPtr>();
 }
 

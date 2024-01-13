@@ -43,6 +43,7 @@ namespace Sailor
 		{
 			std::condition_variable m_onComplete{};
 			std::mutex m_mutex{};
+			bool m_bCompletionFlag = false;
 		};
 
 		template<typename TResult = void, typename TArgs = void>
@@ -109,7 +110,7 @@ namespace Sailor
 
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
-			SAILOR_API const TVector<TWeakPtr<ITask>>& GetChainedTasksNext() const { return m_chainedTasksNext; }
+			SAILOR_API const TVector<ITaskPtr>& GetChainedTasksNext() const { return m_chainedTasksNext; }
 			SAILOR_API const ITaskPtr& GetChainedTaskPrev() const { return m_chainedTaskPrev; }
 
 			SAILOR_API void SetChainedTaskPrev(ITaskPtr task);
@@ -126,12 +127,13 @@ namespace Sailor
 
 			EThreadType m_threadType;
 			std::atomic<uint8_t> m_state = 0;
-			std::atomic<uint16_t> m_numBlockers;
+			std::atomic<uint16_t> m_numBlockers = 0;
 			uint16_t m_taskSyncBlockHandle = 0;
 
 			TWeakPtr<ITask> m_self;
-			TVector<TWeakPtr<ITask>> m_chainedTasksNext;
-			TSharedPtr<ITask> m_chainedTaskPrev;
+
+			TVector<ITaskPtr> m_chainedTasksNext;
+			ITaskPtr m_chainedTaskPrev;
 
 			TVector<TWeakPtr<ITask>> m_dependencies;
 
@@ -228,9 +230,12 @@ namespace Sailor
 
 					for (auto& m_chainedTaskNext : ITask::m_chainedTasksNext)
 					{
-						if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(m_chainedTaskNext.Lock().GetRawPtr()))
+						if (auto task = m_chainedTaskNext)
 						{
-							taskWithArgs->SetArgs(result);
+							if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(task.GetRawPtr()))
+							{
+								taskWithArgs->SetArgs(result);
+							}
 						}
 					}
 				}

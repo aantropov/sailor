@@ -160,7 +160,12 @@ namespace Sailor::RHI
 			}
 
 			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
-			commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+			commands->BeginDebugRegion(transferCmdList, "Update Indirect Buffer", DebugContext::Color_CmdTransfer);
+			{
+				commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+			}
+			commands->EndDebugRegion(transferCmdList);
+
 			commands->DrawIndexedIndirect(graphicsCmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 
 			indirectBufferOffset += bufferSize;

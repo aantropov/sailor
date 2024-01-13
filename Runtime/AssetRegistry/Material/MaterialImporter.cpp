@@ -584,33 +584,20 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	Tasks::TaskPtr<MaterialPtr> newPromise;
-	outMaterial = nullptr;
-
 	// Check promises first
-	auto it = m_promises.Find(uid);
-	if (it != m_promises.end())
-	{
-		newPromise = (*it).m_second;
-	}
-
-	// Check loaded materials
-	auto materialIt = m_loadedMaterials.Find(uid);
-	if (materialIt != m_loadedMaterials.end())
-	{
-		outMaterial = (*materialIt).m_second;
-
-		return newPromise ? newPromise : Tasks::TaskPtr<MaterialPtr>::Make(outMaterial);
-	}
-
 	auto& promise = m_promises.At_Lock(uid, nullptr);
+	auto& loadedMaterial = m_loadedMaterials.At_Lock(uid, MaterialPtr());
 
-	// We have promise
-	if (promise)
+	// Check loaded assets
+	if (loadedMaterial)
 	{
+		outMaterial = loadedMaterial;
+		auto res = promise ? promise : Tasks::TaskPtr<MaterialPtr>::Make(outMaterial);
+
+		m_loadedMaterials.Unlock(uid);
 		m_promises.Unlock(uid);
-		outMaterial = m_loadedMaterials[uid];
-		return promise;
+
+		return res;
 	}
 
 	// We need to start load the material
@@ -628,7 +615,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 		const FileId uid = pMaterial->GetFileId();
 		const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
 
-		newPromise = Tasks::CreateTaskWithResult<MaterialPtr>("Load material",
+		promise = Tasks::CreateTaskWithResult<MaterialPtr>("Load material",
 			[pMaterial, pMaterialAsset, assetFilename = assetFilename]() mutable
 			{
 				// We're updating rhi on worker thread during load since we have no deps
@@ -685,19 +672,22 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 				return pMaterial;
 			});
 
-		outMaterial = m_loadedMaterials[uid] = pMaterial;
+		outMaterial = loadedMaterial = pMaterial;
 
-		newPromise->Join(pLoadShader);
-		App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
+		promise->Join(pLoadShader);
+		promise->Run();
 
-		promise = newPromise;
 		m_promises.Unlock(uid);
+		m_loadedMaterials.Unlock(uid);
 
 		return promise;
 	}
 
+	outMaterial = nullptr;
 	m_promises.Unlock(uid);
+	m_loadedMaterials.Unlock(uid);
 
+	SAILOR_LOG("Cannot find material with uid: %s", uid.ToString().c_str());
 	return Tasks::TaskPtr<MaterialPtr>();
 }
 
