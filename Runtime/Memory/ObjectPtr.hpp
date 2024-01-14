@@ -206,9 +206,9 @@ namespace Sailor
 		// Only allocator handler could destroy the object by design
 		SAILOR_API void DestroyObject(Memory::ObjectAllocatorPtr pAllocator)
 		{
-			check(pAllocator == m_pAllocator);
 			if (IsValid())
 			{
+				check(pAllocator == m_pAllocator);
 				ForcelyDestroyObject();
 			}
 		}
