@@ -108,14 +108,14 @@ namespace Sailor
 			SAILOR_API bool IsRendererThread() const;
 
 			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; }
-			SAILOR_API DWORD GetRendererThreadId() const;
+			SAILOR_API DWORD GetRendererThreadId() const { return m_renderingThreadId; }
 			SAILOR_API EThreadType GetCurrentThreadType() const;
 
 			SAILOR_API Scheduler() = default;
 
 			SAILOR_API void RunChainedTasks(const ITaskPtr& pJob);
 
-			SAILOR_API TaskSyncBlock& GetTaskSyncBlock(const ITask& task) { return m_tasksPool[task.m_taskSyncBlockHandle]; }
+			SAILOR_API TaskSyncBlock& GetTaskSyncBlock(const ITask& task) { return m_taskSyncPool[task.m_taskSyncBlockHandle]; }
 			SAILOR_API uint16_t AcquireTaskSyncBlock();
 			SAILOR_API void ReleaseTaskSyncBlock(const ITask& task);
 
@@ -142,7 +142,7 @@ namespace Sailor
 
 			// Task Synchronization primitives pool
 			concurrency::concurrent_queue<uint16_t> m_freeList{};
-			TVector<TaskSyncBlock> m_tasksPool{};
+			TVector<TaskSyncBlock> m_taskSyncPool{};
 			TMap<DWORD, EThreadType> m_threadTypes{};
 
 			friend class WorkerThread;

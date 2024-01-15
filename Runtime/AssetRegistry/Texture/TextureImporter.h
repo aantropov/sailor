@@ -73,8 +73,8 @@ namespace Sailor
 		RHI::RHIShaderBindingSetPtr m_textureSamplersBindings{};
 		TConcurrentMap<FileId, size_t> m_textureSamplersIndices{};
 
-		TConcurrentMap<FileId, Tasks::TaskPtr<TexturePtr>> m_promises;
-		TConcurrentMap<FileId, TexturePtr> m_loadedTextures;
+		TConcurrentMap<FileId, Tasks::TaskPtr<TexturePtr>> m_promises{};
+		TConcurrentMap<FileId, TexturePtr> m_loadedTextures{};
 
 		Memory::ObjectAllocatorPtr m_allocator;
 

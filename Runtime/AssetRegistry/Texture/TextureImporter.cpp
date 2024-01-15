@@ -257,7 +257,9 @@ void TextureImporter::CollectGarbage()
 {
 	TVector<FileId> uidsToRemove;
 
+	m_promises.LockAll();
 	auto ids = m_promises.GetKeys();
+	m_promises.UnlockAll();
 
 	for (const auto& id : ids)
 	{

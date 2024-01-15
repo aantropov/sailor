@@ -128,7 +128,7 @@ void WorkerThread::Process()
 
 void Scheduler::Initialize()
 {
-	m_tasksPool.AddDefault(MaxTasksInPool);
+	m_taskSyncPool.AddDefault(MaxTasksInPool);
 
 	for (uint32_t i = 0; i < MaxTasksInPool; i++)
 	{
@@ -151,7 +151,8 @@ void Scheduler::Initialize()
 		m_queueMutex[(uint32_t)EThreadType::Render],
 		m_pCommonJobsQueue[(uint32_t)EThreadType::Render]);
 
-	m_threadTypes[newRenderingThread->GetThreadId()] = EThreadType::Render;
+	m_renderingThreadId = newRenderingThread->GetThreadId();
+	m_threadTypes[m_renderingThreadId] = EThreadType::Render;
 	m_workerThreads.Emplace(newRenderingThread);
 
 	for (uint32_t i = 0; i < numThreads; i++)
@@ -180,11 +181,6 @@ void Scheduler::Initialize()
 	}
 
 	SAILOR_LOG("Initialize JobSystem. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
-}
-
-DWORD Scheduler::GetRendererThreadId() const
-{
-	return m_workerThreads[0]->GetThreadId();
 }
 
 Scheduler::~Scheduler()
@@ -475,6 +471,7 @@ uint16_t Scheduler::AcquireTaskSyncBlock()
 	uint16_t last = 0;
 	if (m_freeList.try_pop(last))
 	{
+		m_taskSyncPool[last].m_bCompletionFlag = false;
 		return last;
 	}
 
