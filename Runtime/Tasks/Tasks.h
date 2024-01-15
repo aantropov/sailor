@@ -110,7 +110,7 @@ namespace Sailor
 
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
-			SAILOR_API const TVector<ITaskPtr>& GetChainedTasksNext() const { return m_chainedTasksNext; }
+			SAILOR_API const TVector<TWeakPtr<ITask>>& GetChainedTasksNext() const { return m_chainedTasksNext; }
 			SAILOR_API const ITaskPtr& GetChainedTaskPrev() const { return m_chainedTaskPrev; }
 
 			SAILOR_API void SetChainedTaskPrev(ITaskPtr task);
@@ -132,7 +132,7 @@ namespace Sailor
 
 			TWeakPtr<ITask> m_self;
 
-			TVector<ITaskPtr> m_chainedTasksNext;
+			TVector<TWeakPtr<ITask>> m_chainedTasksNext;
 			ITaskPtr m_chainedTaskPrev;
 
 			TVector<TWeakPtr<ITask>> m_dependencies;
@@ -230,7 +230,7 @@ namespace Sailor
 
 					for (auto& m_chainedTaskNext : ITask::m_chainedTasksNext)
 					{
-						if (auto task = m_chainedTaskNext)
+						if (auto task = m_chainedTaskNext.Lock())
 						{
 							if (auto taskWithArgs = dynamic_cast<ITaskWithArgs<TResult>*>(task.GetRawPtr()))
 							{

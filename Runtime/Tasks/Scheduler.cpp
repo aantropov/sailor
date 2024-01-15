@@ -238,7 +238,7 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pJob, const ITaskPtr& p
 	for (auto& chainedTasksNext : pJob->GetChainedTasksNext())
 	{
 		ITaskPtr pCurrentChainedTask;
-		if (pCurrentChainedTask = chainedTasksNext)
+		if (pCurrentChainedTask = chainedTasksNext.TryLock())
 		{
 			if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted())
 			{
