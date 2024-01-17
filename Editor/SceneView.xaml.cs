@@ -10,10 +10,11 @@ namespace Editor
             BackgroundColor = Colors.Gray;
             InitializeComponent();
         }
-        
+
         private void OnRunSailorEngineClicked(object sender, EventArgs e)
         {
-            SailorEngine.RunProcess(RunDebugConfigurationCheckBox.IsChecked, WaitForDebuggerAttachedCheckBox.IsChecked ? "--waitfordebugger" : "");
+            string commandLineArgs = WaitForDebuggerAttachedCheckBox.IsChecked ? "--waitfordebugger" : "";
+            SailorEngine.RunProcess(RunDebugConfigurationCheckBox.IsChecked, commandLineArgs);
         }
     }
 }

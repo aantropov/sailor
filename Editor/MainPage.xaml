@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Editor.MainPage"
+             BackgroundColor="DarkGray"
+             Title="">
+
+    <ContentPage.MenuBarItems>
+        <MenuBarItem Text = "File">
+            <MenuFlyoutItem Text ="Save"></MenuFlyoutItem>
+            <MenuFlyoutSeparator/>
+            <MenuFlyoutItem Text ="Exit"></MenuFlyoutItem>
+        </MenuBarItem>
+    </ContentPage.MenuBarItems>
+
+    <Grid RowSpacing="3" ColumnSpacing="3">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="200"/>
+        </Grid.ColumnDefinitions>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="150"/>
+            <RowDefinition Height="200"/>
+        </Grid.RowDefinitions>
+
+        <BoxView Grid.Row="0" Grid.Column="0" Color="AliceBlue" Grid.RowSpan="2"/>
+        <BoxView Grid.Row="2" Grid.Column="0" Color="Aqua"/>
+        <BoxView Grid.Row="1" Grid.Column="1" Color="Beige" Grid.ColumnSpan="2"  Grid.RowSpan="2"/>
+        
+        <BoxView Grid.Row="0" Grid.Column="1" Color="Aquamarine" Grid.RowSpan="1"/>
+        <BoxView Grid.Row="0" Grid.Column="2" Color="Azure" Grid.RowSpan="1"/>
+    </Grid>
+    <!--<StackLayout Spacing="3">
+        <ContentView BackgroundColor="Aqua" VerticalOptions="StartAndExpand" HeightRequest="800" WidthRequest="500"></ContentView>
+        <ContentView BackgroundColor="SpringGreen" VerticalOptions="End" HeightRequest="100" WidthRequest="500"></ContentView>
+    </StackLayout>-->
+
+</ContentPage>
