@@ -1,13 +1,12 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace Editor
+namespace Editor.Views
 {
     public partial class SceneView : ContentView
     {
         public SceneView()
         {
-            BackgroundColor = Colors.Gray;
             InitializeComponent();
         }
 

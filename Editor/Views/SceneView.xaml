@@ -1,0 +1,42 @@
+﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Name="this"
+             x:Class="Editor.Views.SceneView">
+
+    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
+        <ScrollView>
+            <VerticalStackLayout
+            Spacing="25"
+            Padding="30,0"
+            VerticalOptions="Center">
+
+                <BoxView
+                x:Name="TestView"
+                HeightRequest="200"
+                WidthRequest="400"
+                MaximumHeightRequest="200"
+                MaximumWidthRequest="400"
+                />
+
+                <!-- CheckBox with Label on the same line -->
+                <HorizontalStackLayout HorizontalOptions="Center">
+                    <CheckBox x:Name="WaitForDebuggerAttachedCheckBox" />
+                    <Label Text="WaitForDebuggerAttached" VerticalOptions="Center"/>
+                </HorizontalStackLayout>
+
+                <!-- CheckBox with Label on the same line -->
+                <HorizontalStackLayout HorizontalOptions="Center">
+                    <CheckBox x:Name="RunDebugConfigurationCheckBox" IsChecked="True" />
+                    <Label Text="RunDebugConfiguration" VerticalOptions="Center"/>
+                </HorizontalStackLayout>
+
+                <Button
+                x:Name="RunSailorEngine"
+                Text="Run Sailor Engine Process"
+                Clicked="OnRunSailorEngineClicked"
+                HorizontalOptions="Center" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </Frame>
+</ContentView>

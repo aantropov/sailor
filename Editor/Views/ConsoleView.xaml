@@ -1,0 +1,30 @@
+﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Name="this"
+             x:Class="Editor.Views.ConsoleView">
+
+    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
+        <VerticalStackLayout>
+            <Label Text="Console" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"/>
+            <ScrollView>
+                <VerticalStackLayout
+            Spacing="5"            
+            VerticalOptions="Start"
+            HorizontalOptions="StartAndExpand">
+                    <Label Text="Some text1"/>
+                    <Label Text="Some text2"/>
+                    <Label Text="Some text3"/>
+                    <Label Text="Some text4"/>
+                    <Label Text="Some text5"/>
+                    <Label Text="Some text6"/>
+                    <Label Text="Some text7"/>
+                    <Label Text="Some text8"/>
+                    <Label Text="Some text9"/>
+                    <Label Text="Some text0"/>
+                    <Label Text="Some text3"/>
+                    <Label Text="Some text4"/>
+                </VerticalStackLayout>
+            </ScrollView>
+        </VerticalStackLayout>
+    </Frame>
+</ContentView>
