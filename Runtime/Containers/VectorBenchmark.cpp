@@ -14,35 +14,84 @@ using namespace Sailor::Memory;
 using Timer = Utils::Timer;
 
 template<uint32_t numBytes>
-struct TData
+struct TPlainData
 {
-	TData(uint32_t value)
+	TPlainData(uint32_t value)
+	{
+		memset(m_data, value, numBytes * sizeof(uint8_t));
+	}
+
+	bool operator==(const TPlainData& rhs) const
+	{
+		return memcmp(m_data, rhs.m_data, numBytes * sizeof(uint8_t)) == 0;
+	}
+
+	uint8_t m_data[numBytes];
+};
+
+template<uint32_t numBytes>
+struct TDeepData
+{
+	TDeepData(uint32_t value)
 	{
 		m_value = value;
 		m_data = new uint8_t[numBytes];
 		memset(m_data, value, numBytes * sizeof(uint8_t));
 	}
 
-	TData(const TData& rhs)
+	TDeepData(const TDeepData& rhs)
 	{
 		m_value = rhs.m_value;
 		m_data = new uint8_t[numBytes];
 		memcpy(m_data, rhs.m_data, numBytes * sizeof(uint8_t));
 	}
 
-	TData& operator=(const TData& rhs)
+	TDeepData(TDeepData&& rhs) noexcept
+	{
+		check(rhs.m_data != nullptr);
+
+		m_value = rhs.m_value;
+
+		if (m_data == rhs.m_data)
+		{
+			return;
+		}
+
+		std::swap(m_data, rhs.m_data);
+	}
+
+	TDeepData& operator=(const TDeepData& rhs)
 	{
 		m_value = rhs.m_value;
+
+		if (m_data == nullptr)
+		{
+			m_data = new uint8_t[numBytes];
+		}
+
 		memcpy(m_data, rhs.m_data, numBytes * sizeof(uint8_t));
 		return *this;
 	}
 
-	~TData()
+	TDeepData& operator=(TDeepData&& rhs) noexcept
+	{
+		m_value = rhs.m_value;
+
+		if (m_data == rhs.m_data)
+		{
+			return *this;
+		}
+
+		std::swap(m_data, rhs.m_data);
+		return *this;
+	}
+
+	~TDeepData()
 	{
 		delete[] m_data;
 	}
 
-	bool operator==(const TData& rhs) const
+	bool operator==(const TDeepData& rhs) const
 	{
 		return m_value == rhs.m_value && memcmp(m_data, rhs.m_data, numBytes * sizeof(uint8_t)) == 0;
 	}
@@ -125,8 +174,6 @@ public:
 		for (size_t i = 0; i < countToRemoveSwap; i++)
 		{
 			const size_t pos = rand() % container.Num();
-			const auto valueToRemove = container[pos];
-
 			container.RemoveAtSwap(pos);
 		}
 		tVectorRemoveSwap.Stop();
@@ -147,7 +194,7 @@ public:
 		for (size_t i = 0; i < countToRemove; i++)
 		{
 			const size_t pos = rand() % container.Num();
-			const auto valueToRemove = container[pos];
+			const auto& valueToRemove = container[pos];
 
 			container.RemoveFirst(valueToRemove);
 		}
@@ -368,21 +415,18 @@ public:
 
 void Sailor::RunVectorBenchmark()
 {
-	using TDataSmall = TData<5>;
-	using TDataMedium = TData<125>;
-	using TDataHuge = TData<1023>;
+	using TDeepData = TDeepData<513>;
+	using TPlainData = TPlainData<511>;
 
 	printf("\nStarting Vector benchmark...\n");
-	
+
 	TVector<Result> res;
 
-	res.Add(TestCase_VectorPerfromance<TDataSmall, TVector<TDataSmall>>::RunTests());
-	res.Add(TestCase_VectorPerfromance<TDataMedium, TVector<TDataMedium>>::RunTests());
-	res.Add(TestCase_VectorPerfromance<TDataHuge, TVector<TDataHuge>>::RunTests());
-	
-	res.Add(TestCase_VectorPerfromance<TDataSmall, std::vector<TDataSmall>>::RunTests());
-	res.Add(TestCase_VectorPerfromance<TDataMedium, std::vector<TDataMedium>>::RunTests());
-	res.Add(TestCase_VectorPerfromance<TDataHuge, std::vector<TDataHuge>>::RunTests());
+	res.Add(TestCase_VectorPerfromance<TPlainData, TVector<TPlainData>> ::RunTests());
+	res.Add(TestCase_VectorPerfromance<TDeepData, TVector<TDeepData>>::RunTests());
+
+	res.Add(TestCase_VectorPerfromance<TPlainData, std::vector<TPlainData>> ::RunTests());
+	res.Add(TestCase_VectorPerfromance<TDeepData, std::vector<TDeepData>>::RunTests());
 
 	for (auto& r : res)
 	{
@@ -390,6 +434,4 @@ void Sailor::RunVectorBenchmark()
 	}
 
 	printf("\n\n");
-
-	//TestCase_VectorPerfromance<TData, std::vector<TData>>::RunTests();
 }
