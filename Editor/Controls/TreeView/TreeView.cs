@@ -131,7 +131,7 @@ namespace Editor.Controls
                     {
                         new ResourceImage
                         {
-                            Resource = isItem? "FolderTreeView/item.png" :"FolderTreeView/folderopen.png" ,
+                            Resource = isItem? "item.png" :"folderopen.png" ,
                             HeightRequest= 16,
                             WidthRequest = 16
                         },

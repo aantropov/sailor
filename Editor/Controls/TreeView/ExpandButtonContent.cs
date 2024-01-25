@@ -15,7 +15,7 @@
             {
                 Content = new ResourceImage
                 {
-                    Resource = isLeafNode ? "FolderTreeView/blank.png" : "FolderTreeView/folderopen.png",
+                    Resource = isLeafNode ? "blank.png" : "folderopen.png",
                     HeightRequest = 16,
                     WidthRequest = 16
                 };
@@ -24,7 +24,7 @@
             {
                 Content = new ResourceImage
                 {
-                    Resource = node.IsExpanded ? "FolderTreeView/openglyph.png" : "FolderTreeView/collpsedglyph.png",
+                    Resource = node.IsExpanded ? "openglyph.png" : "collpsedglyph.png",
                     HeightRequest = 16,
                     WidthRequest = 16
                 };
