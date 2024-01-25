@@ -88,8 +88,8 @@
 	  <Compile Update="Views\HierarchyView.xaml.cs">
 	    <DependentUpon>HierarchyView.xaml</DependentUpon>
 	  </Compile>
-	  <Compile Update="Views\FolderView.xaml.cs">
-	    <DependentUpon>FolderView.xaml</DependentUpon>
+	  <Compile Update="Views\ContentFolderView.xaml.cs">
+	    <DependentUpon>ContentFolderView.xaml</DependentUpon>
 	  </Compile>
 	  <Compile Update="Views\InspectorView.xaml.cs">
 	    <DependentUpon>InspectorView.xaml</DependentUpon>
@@ -109,7 +109,7 @@
 	  <MauiXaml Update="Views\HierarchyView.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
-	  <MauiXaml Update="Views\FolderView.xaml">
+	  <MauiXaml Update="Views\ContentFolderView.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\InspectorView.xaml">
@@ -121,6 +121,15 @@
 	  <MauiXaml Update="Views\SceneView.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <MauiImage Include="Resources\Images\FolderTreeView\blank.png" />
+	  <MauiImage Include="Resources\Images\FolderTreeView\collpsedglyph.png" />
+	  <MauiImage Include="Resources\Images\FolderTreeView\folderclosed.png" />
+	  <MauiImage Include="Resources\Images\FolderTreeView\folderopen.png" />
+	  <MauiImage Include="Resources\Images\FolderTreeView\item.png" />
+	  <MauiImage Include="Resources\Images\FolderTreeView\openglyph.png" />
 	</ItemGroup>
 
 </Project>
