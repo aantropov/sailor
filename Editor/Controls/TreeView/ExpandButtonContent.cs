@@ -15,7 +15,7 @@
             {
                 Content = new ResourceImage
                 {
-                    Resource = isLeafNode ? "blank.png" : "folderopen.png",
+                    Resource = isLeafNode ? "blank.png" : "folder_open.png",
                     HeightRequest = 16,
                     WidthRequest = 16
                 };

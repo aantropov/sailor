@@ -22,7 +22,7 @@ namespace Editor.Views
         private void PopulateTreeView()
         {
             var xamlItemGroups = companyTreeViewBuilder.GroupData(service);
-            var rootNodes = FolderTree.ProcessXamlItemGroups(xamlItemGroups);
+            var rootNodes = Controls.TreeView.ProcessXamlItemGroups(xamlItemGroups);
             FolderTree.RootNodes = rootNodes;
         }
     }

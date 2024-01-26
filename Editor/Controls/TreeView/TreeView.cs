@@ -7,7 +7,7 @@ namespace Editor.Controls
 {
     public class TreeView : ScrollView
     {
-        private readonly StackLayout _StackLayout = new StackLayout { Orientation = StackOrientation.Vertical };
+        private readonly StackLayout _StackLayout = new() { Orientation = StackOrientation.Vertical };
 
         //TODO: This initializes the list, but there is nothing listening to INotifyCollectionChanged so no nodes will get rendered
         private IList<TreeViewNode> _RootNodes = new ObservableCollection<TreeViewNode>();
@@ -120,7 +120,7 @@ namespace Editor.Controls
         }
 
         // Main code: 
-        private TreeViewNode CreateTreeViewNode(object bindingContext, Label label, bool isItem)
+        private static TreeViewNode CreateTreeViewNode(object bindingContext, Label label, bool isItem)
         {
             var node = new TreeViewNode
             {
@@ -131,7 +131,7 @@ namespace Editor.Controls
                     {
                         new ResourceImage
                         {
-                            Resource = isItem? "item.png" :"folderopen.png" ,
+                            Resource = isItem? "blueprint.png" : "folder.png",
                             HeightRequest= 16,
                             WidthRequest = 16
                         },
@@ -147,7 +147,7 @@ namespace Editor.Controls
             return node;
         }
 
-        private void CreateXamlItem(IList<TreeViewNode> children, TreeViewItem xamlItem)
+        private static void CreateXamlItem(IList<TreeViewNode> children, TreeViewItem xamlItem)
         {
             var label = new Label
             {
@@ -156,21 +156,21 @@ namespace Editor.Controls
             };
             label.SetBinding(Label.TextProperty, "Key");
 
-            var xamlItemTreeViewNode = CreateTreeViewNode(xamlItem, label, true);
+            var xamlItemTreeViewNode = TreeView.CreateTreeViewNode(xamlItem, label, true);
             children.Add(xamlItemTreeViewNode);
         }
 
-/*        private static void ProcessXamlItems(TreeViewNode node, XamlItemGroup xamlItemGroup)
-        {
-            var children = new ObservableCollection<TreeViewNode>();
-            foreach (var xamlItem in xamlItemGroup.XamlItems.OrderBy(xi => xi.Key))
-            {
-                CreateXamlItem(children, xamlItem);
-            }
-            node.ChildrenList = children;
-        }
-*/
-        public ObservableCollection<TreeViewNode> ProcessXamlItemGroups(TreeViewItemGroup xamlItemGroups)
+        /*        private static void ProcessXamlItems(TreeViewNode node, XamlItemGroup xamlItemGroup)
+                {
+                    var children = new ObservableCollection<TreeViewNode>();
+                    foreach (var xamlItem in xamlItemGroup.XamlItems.OrderBy(xi => xi.Key))
+                    {
+                        CreateXamlItem(children, xamlItem);
+                    }
+                    node.ChildrenList = children;
+                }
+        */
+        public static ObservableCollection<TreeViewNode> ProcessXamlItemGroups(TreeViewItemGroup xamlItemGroups)
         {
             var rootNodes = new ObservableCollection<TreeViewNode>();
 
@@ -183,15 +183,15 @@ namespace Editor.Controls
                 };
                 label.SetBinding(Label.TextProperty, "Name");
 
-                var groupTreeViewNode = CreateTreeViewNode(xamlItemGroup, label, false);
+                var groupTreeViewNode = TreeView.CreateTreeViewNode(xamlItemGroup, label, false);
 
                 rootNodes.Add(groupTreeViewNode);
 
-                groupTreeViewNode.ChildrenList = ProcessXamlItemGroups(xamlItemGroup);
+                groupTreeViewNode.ChildrenList = TreeView.ProcessXamlItemGroups(xamlItemGroup);
 
                 foreach (var xamlItem in xamlItemGroup.XamlItems)
                 {
-                    CreateXamlItem(groupTreeViewNode.ChildrenList, xamlItem);
+                    TreeView.CreateXamlItem(groupTreeViewNode.ChildrenList, xamlItem);
                 }
             }
 

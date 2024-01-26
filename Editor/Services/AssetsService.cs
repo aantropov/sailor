@@ -1,4 +1,5 @@
 ﻿using Editor.Models;
+using System.IO;
 
 namespace Editor.Services
 {
@@ -39,11 +40,15 @@ namespace Editor.Services
             foreach (var file in Directory.GetFiles(directoryPath))
             {
                 var fileInfo = new FileInfo(file);
+                if (fileInfo.Extension != ".asset")
+                    continue;
+                
                 Files.Add(new AssetFile
                 {
-                    Name = fileInfo.Name,
+                    Name = Path.ChangeExtension(fileInfo.Name, null),
                     Id = Files.Count + 1,
-                    FolderId = parentFolderId
+                    FolderId = parentFolderId,
+                    FileInfo = fileInfo
                 });
             }
         }

@@ -11,27 +11,21 @@ namespace Editor.Controls
 
         private DateTime _ExpandButtonClickedTime;
 
-        private readonly BoxView _SpacerBoxView = new BoxView() { Color = Colors.Transparent };
-        private readonly BoxView _EmptyBox = new BoxView { BackgroundColor = Colors.Blue, Opacity = .5 };
+        private readonly BoxView _SpacerBoxView = new() { Color = Colors.Transparent };
+        private readonly BoxView _EmptyBox = new() { BackgroundColor = Colors.Blue, Opacity = .5 };
 
-        private const int ExpandButtonWidth = 32;
-        private ContentView _ExpandButtonContent = new ();
+        private readonly ContentView _ExpandButtonContent = new();
 
-        private readonly Grid _MainGrid = new Grid
+        private readonly Grid _MainGrid = new()
         {
             VerticalOptions = LayoutOptions.Start,
             HorizontalOptions = LayoutOptions.Fill,
             RowSpacing = 2
         };
 
-        private readonly StackLayout _ContentStackLayout = new StackLayout { Orientation = StackOrientation.Horizontal };
-
-        private readonly ContentView _ContentView = new ContentView
-        {
-            HorizontalOptions = LayoutOptions.Fill,
-        };
-
-        private readonly StackLayout _ChildrenStackLayout = new StackLayout
+        private readonly StackLayout _ContentStackLayout = new() { Orientation = StackOrientation.Horizontal };
+        private readonly ContentView _ContentView = new() { HorizontalOptions = LayoutOptions.Fill, };
+        private readonly StackLayout _ChildrenStackLayout = new()
         {
             Orientation = StackOrientation.Vertical,
             Spacing = 0,
@@ -39,11 +33,11 @@ namespace Editor.Controls
         };
 
         private IList<TreeViewNode> _Children = new ObservableCollection<TreeViewNode>();
-        private readonly TapGestureRecognizer _TapGestureRecognizer = new TapGestureRecognizer();
-        private readonly TapGestureRecognizer _ExpandButtonGestureRecognizer = new TapGestureRecognizer();
-        private readonly TapGestureRecognizer _DoubleClickGestureRecognizer = new TapGestureRecognizer();
+        private readonly TapGestureRecognizer _TapGestureRecognizer = new();
+        private readonly TapGestureRecognizer _ExpandButtonGestureRecognizer = new();
+        private readonly TapGestureRecognizer _DoubleClickGestureRecognizer = new();
 
-        internal readonly BoxView SelectionBoxView = new BoxView { Color = Colors.Blue, Opacity = .5, IsVisible = false };
+        internal readonly BoxView SelectionBoxView = new() { Color = Colors.Blue, Opacity = .5, IsVisible = false };
 
         private TreeView ParentTreeView => Parent?.Parent as TreeView;
         private double IndentWidth => Depth * SpacerWidth;
@@ -207,10 +201,6 @@ namespace Editor.Controls
             VerticalOptions = LayoutOptions.Start;
 
             Render();
-        }
-
-        void _DoubleClickGestureRecognizer_Tapped(object sender, EventArgs e)
-        {
         }
 
         private void ChildSelected(TreeViewNode child)
