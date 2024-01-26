@@ -5,9 +5,17 @@
              xmlns:controls="clr-namespace:Editor.Controls">
 
     <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
-        <VerticalStackLayout>
-            <Label Text="Folder" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"/>
-            <controls:TreeView BackgroundColor="White" Margin="4" x:Name="FolderTree" HeightRequest="1024"/>
-         </VerticalStackLayout>
+        <Grid RowSpacing="0" ColumnSpacing="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="25"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Label Text="Folder" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"  Grid.Row="0" Grid.Column="0"/>
+            <controls:TreeView BackgroundColor="White" Margin="4" x:Name="FolderTree" Grid.Row="1" Grid.Column="0"/>
+        </Grid>
     </Frame>
 </ContentView>
