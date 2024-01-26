@@ -9,13 +9,18 @@ namespace Editor
 {
     internal class SailorEngine
     {
-        static string GetEngineWorkingDirectory()
+        public static string GetEngineContentDirectory()
+        {
+            return Path.Combine(GetEngineWorkingDirectory(), "..", "Content");
+        }
+
+        public static string GetEngineWorkingDirectory()
         {
             string currentDirectory = AppContext.BaseDirectory;
             string directoryFiveLevelsUp = Path.GetFullPath(Path.Combine(currentDirectory, "..", "..", "..", "..", ".."));
             return directoryFiveLevelsUp + "\\";
         }
-        static string GetPathToEngineExec(bool bIsDebug)
+        public static string GetPathToEngineExec(bool bIsDebug)
         {
             return GetEngineWorkingDirectory() + (bIsDebug ? "SailorEngine-Debug.exe" : "SailorEngine-Release.exe");
         }

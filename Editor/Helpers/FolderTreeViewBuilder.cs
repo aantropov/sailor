@@ -5,16 +5,16 @@ namespace Editor.Helpers
 {
     public class FolderTreeViewBuilder
     {
-        private TreeViewItemGroup FindParentDepartment(TreeViewItemGroup group, Department department)
+        private TreeViewItemGroup FindParentFolder(TreeViewItemGroup group, AssetFolder folder)
         {
-            if (group.GroupId == department.ParentDepartmentId)
+            if (group.GroupId == folder.ParentFolderId)
                 return group;
 
             if (group.Children != null)
             {
                 foreach (var currentGroup in group.Children)
                 {
-                    var search = FindParentDepartment(currentGroup, department);
+                    var search = FindParentFolder(currentGroup, folder);
 
                     if (search != null)
                         return search;
@@ -26,43 +26,43 @@ namespace Editor.Helpers
 
         public TreeViewItemGroup GroupData(AssetsService service)
         {
-            var company = service.GetCompany();
-            var departments = service.GetDepartments().OrderBy(x => x.ParentDepartmentId);
-            var employees = service.GetEmployees();
+            var projectRoot = service.Root;
+            var folders = service.Folders.OrderBy(x => x.ParentFolderId);
+            var assets = service.Files;
 
-            var companyGroup = new TreeViewItemGroup();
-            companyGroup.Name = company.CompanyName;
+            var projectRootGroup = new TreeViewItemGroup();
+            projectRootGroup.Name = projectRoot.Name;
 
-            foreach (var dept in departments)
+            foreach (var dept in folders)
             {
                 var itemGroup = new TreeViewItemGroup();
-                itemGroup.Name = dept.DepartmentName;
-                itemGroup.GroupId = dept.DepartmentId;
+                itemGroup.Name = dept.Name;
+                itemGroup.GroupId = dept.Id;
 
-                // Employees first
-                var employeesDepartment = employees.Where(x => x.DepartmentId == dept.DepartmentId);
+                // Assets first
+                var assetsFolder = assets.Where(x => x.FolderId == dept.Id);
 
-                foreach (var emp in employeesDepartment)
+                foreach (var emp in assetsFolder)
                 {
                     var item = new TreeViewItem();
-                    item.ItemId = emp.EmployeeId;
-                    item.Key = emp.EmployeeName;
+                    item.ItemId = emp.Id;
+                    item.Key = emp.Name;
 
                     itemGroup.XamlItems.Add(item);
                 }
 
-                // Departments now
-                if (dept.ParentDepartmentId == -1)
+                // Folders now
+                if (dept.ParentFolderId == -1)
                 {
-                    companyGroup.Children.Add(itemGroup);
+                    projectRootGroup.Children.Add(itemGroup);
                 }
                 else
                 {
                     TreeViewItemGroup parentGroup = null;
 
-                    foreach (var group in companyGroup.Children)
+                    foreach (var group in projectRootGroup.Children)
                     {
-                        parentGroup = FindParentDepartment(group, dept);
+                        parentGroup = FindParentFolder(group, dept);
 
                         if (parentGroup != null)
                         {
@@ -73,7 +73,7 @@ namespace Editor.Helpers
                 }
             }
 
-            return companyGroup;
+            return projectRootGroup;
         }
     }
 }

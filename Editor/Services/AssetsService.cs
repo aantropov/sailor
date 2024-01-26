@@ -4,51 +4,48 @@ namespace Editor.Services
 {
     public class AssetsService
     {
-        public Company GetCompany()
+        public ProjectRoot Root { get; private set; }
+        public List<AssetFolder> Folders { get; private set; }
+        public List<AssetFile> Files { get; private set; }
+
+        public AssetsService() => AddProjectRoot(SailorEngine.GetEngineContentDirectory());
+        public void AddProjectRoot(string projectRoot)
         {
-            return new Company()
-            {
-                CompanyId = 1,
-                CompanyName = "TC Solutions"
-            };
+            Folders = new List<AssetFolder>();
+            Files = new List<AssetFile>();
+
+            Root = new ProjectRoot { Name = projectRoot, Id = 1 };
+            ProcessDirectory(Root, projectRoot, -1);
         }
 
-        public IEnumerable<Department> GetDepartments()
+        private void ProcessDirectory(ProjectRoot root, string directoryPath, int parentFolderId)
         {
-            return new List<Department>()
+            foreach (var directory in Directory.GetDirectories(directoryPath))
             {
-                new Department() { CompanyId = 1, DepartmentId = 1, DepartmentName = "IT", ParentDepartmentId = -1 },
-                new Department() { CompanyId = 1,  DepartmentId = 2, DepartmentName = "Accounting", ParentDepartmentId = -1 },
-                new Department() { CompanyId = 1,  DepartmentId = 3, DepartmentName = "Production", ParentDepartmentId = -1 },
-                new Department() { CompanyId = 1,  DepartmentId = 4, DepartmentName = "Software", ParentDepartmentId = 1 },
-                new Department() { CompanyId = 1,  DepartmentId = 5, DepartmentName = "Support", ParentDepartmentId = 1 },
-                new Department() { CompanyId = 1,  DepartmentId = 6, DepartmentName = "Testing", ParentDepartmentId = 4 },
-                new Department() { CompanyId = 1,  DepartmentId = 7, DepartmentName = "Accounts receivable", ParentDepartmentId = 2 },
-                new Department() { CompanyId = 1,  DepartmentId = 8, DepartmentName = "Accounts payable", ParentDepartmentId = 2 },
-                new Department() { CompanyId = 1,  DepartmentId = 9, DepartmentName = "Customers and services", ParentDepartmentId = 8 }
-            };
-        }
+                var dirInfo = new DirectoryInfo(directory);
+                var folder = new AssetFolder
+                {
+                    CompanyId = root.Id,
+                    Name = dirInfo.Name,
+                    Id = Folders.Count + 1,
+                    ParentFolderId = parentFolderId
+                };
 
-        public IEnumerable<Employee> GetEmployees()
-        {
-            return new List<Employee>()
+                Folders.Add(folder);
+
+                ProcessDirectory(root, directory, folder.Id);
+            }
+
+            foreach (var file in Directory.GetFiles(directoryPath))
             {
-                new Employee() { EmployeeId = 1, EmployeeName = "Luis", DepartmentId = 1 },
-                new Employee() { EmployeeId = 2, EmployeeName = "Pepe", DepartmentId = 1 },
-                new Employee() { EmployeeId = 3, EmployeeName = "Juan", DepartmentId = 2 },
-                new Employee() { EmployeeId = 4, EmployeeName = "Inés", DepartmentId = 3 },
-                new Employee() { EmployeeId = 5, EmployeeName = "Sara", DepartmentId = 3 },
-                new Employee() { EmployeeId = 6, EmployeeName = "Sofy", DepartmentId = 4 },
-                new Employee() { EmployeeId = 7, EmployeeName = "Hugo", DepartmentId = 5 },
-                new Employee() { EmployeeId = 8, EmployeeName = "Gema", DepartmentId = 5 },
-                new Employee() { EmployeeId = 9, EmployeeName = "Olga", DepartmentId = 6 },
-                new Employee() { EmployeeId = 1, EmployeeName = "Otto", DepartmentId = 6 },
-                new Employee() { EmployeeId = 2, EmployeeName = "Axel", DepartmentId = 6 },
-                new Employee() { EmployeeId = 3, EmployeeName = "Eloy", DepartmentId = 7 },
-                new Employee() { EmployeeId = 4, EmployeeName = "Flor", DepartmentId = 8 },
-                new Employee() { EmployeeId = 5, EmployeeName = "Aída", DepartmentId = 9 },
-                new Employee() { EmployeeId = 6, EmployeeName = "Ruth", DepartmentId = 9 }
-            };
+                var fileInfo = new FileInfo(file);
+                Files.Add(new AssetFile
+                {
+                    Name = fileInfo.Name,
+                    Id = Files.Count + 1,
+                    FolderId = parentFolderId
+                });
+            }
         }
     }
 }
