@@ -4,13 +4,22 @@
              x:Class="Editor.Views.ConsoleView">
 
     <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
-        <VerticalStackLayout>
-            <Label Text="Console" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"/>
-            <ScrollView>
+
+        <Grid RowSpacing="0" ColumnSpacing="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="25"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Label Text="Console" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"  Grid.Row="0" Grid.Column="0"/>
+            <ScrollView Grid.Row="1" Grid.Column="0">
                 <VerticalStackLayout
-            Spacing="5"            
-            VerticalOptions="Start"
-            HorizontalOptions="StartAndExpand">
+                    Spacing="5"
+                    VerticalOptions="Start"
+                    HorizontalOptions="StartAndExpand">
                     <Label Text="Some text1"/>
                     <Label Text="Some text2"/>
                     <Label Text="Some text3"/>
@@ -25,6 +34,6 @@
                     <Label Text="Some text4"/>
                 </VerticalStackLayout>
             </ScrollView>
-        </VerticalStackLayout>
+        </Grid>
     </Frame>
 </ContentView>
