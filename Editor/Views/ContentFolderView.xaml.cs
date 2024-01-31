@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Editor.Controls;
 using Editor.Helpers;
 using Editor.Models;
 using Editor.Services;
@@ -19,15 +20,16 @@ namespace Editor.Views
 
             PopulateTreeView();
 
-            FolderTree.SelectedItemChanged += OnSelectAssetFile;
+            FolderTree.SelectedItemChanged += OnSelectTreeViewNode;
         }
 
-        public static void OnSelectAssetFile(object sender, EventArgs e)
+        public static void OnSelectTreeViewNode(object sender, EventArgs args)
         {
-            var assetFile = sender as AssetFile;
+            var selectionChanged = args as TreeView.OnSelectItemEventArgs;
+            var assetFile = selectionChanged.Model as TreeViewItem<AssetFile>;
             if (assetFile != null)
             { 
-                MauiProgram.GetService<SelectionService>().OnAssetSelect(assetFile);
+                MauiProgram.GetService<SelectionService>().OnSelectAsset(assetFile.Model);
             }
         }
 

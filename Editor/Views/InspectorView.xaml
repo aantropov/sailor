@@ -4,8 +4,25 @@
              x:Class="Editor.Views.InspectorView">
 
     <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
-        <VerticalStackLayout>
-            <Label Text="Inspector" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"/>
-        </VerticalStackLayout>
+        <Grid RowSpacing="0" ColumnSpacing="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="25"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Label Text="Inspector" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25" Grid.Row="0" Grid.Column="0"/>
+            <ScrollView Grid.Row="1" Grid.Column="0">
+                <VerticalStackLayout
+                    Spacing="5"
+                    VerticalOptions="Start"
+                    HorizontalOptions="StartAndExpand">
+                    <Label x:Name="SomeText" Text="Some text"/>
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
     </Frame>
 </ContentView>

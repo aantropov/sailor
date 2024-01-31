@@ -5,11 +5,11 @@ namespace Editor.Services
 {
     public class SelectionService
     {
-        public static event EventHandler OnSelectionChanged;
+        public event Action<AssetFile> OnSelectAssetAction = delegate { };
 
-        public void OnAssetSelect(AssetFile assetFile)
+        public void OnSelectAsset(AssetFile assetFile)
         {
-            OnSelectionChanged?.Invoke(assetFile, null);
+            OnSelectAssetAction?.Invoke(assetFile);
         }
     }
 }
