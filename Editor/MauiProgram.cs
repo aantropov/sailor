@@ -24,6 +24,7 @@ namespace Editor
                 });
 
             builder.Services.AddSingleton<AssetsService>();
+            builder.Services.AddSingleton<SelectionService>();
             builder.Services.AddSingleton<FolderTreeViewBuilder>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ContentFolderView>();

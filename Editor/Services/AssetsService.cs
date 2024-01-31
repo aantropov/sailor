@@ -26,7 +26,7 @@ namespace Editor.Services
                 var dirInfo = new DirectoryInfo(directory);
                 var folder = new AssetFolder
                 {
-                    CompanyId = root.Id,
+                    ProjectRootId = root.Id,
                     Name = dirInfo.Name,
                     Id = Folders.Count + 1,
                     ParentFolderId = parentFolderId

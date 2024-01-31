@@ -5,14 +5,14 @@ namespace Editor.Helpers
 {
     public class FolderTreeViewBuilder
     {
-        private TreeViewItemGroup FindParentFolder(TreeViewItemGroup group, AssetFolder folder)
+        private TreeViewItemGroup<AssetFolder, AssetFile> FindParentFolder(TreeViewItemGroup<AssetFolder, AssetFile> group, AssetFolder folder)
         {
             if (group.GroupId == folder.ParentFolderId)
                 return group;
 
-            if (group.Children != null)
+            if (group.ChildrenGroups != null)
             {
-                foreach (var currentGroup in group.Children)
+                foreach (var currentGroup in group.ChildrenGroups)
                 {
                     var search = FindParentFolder(currentGroup, folder);
 
@@ -24,49 +24,51 @@ namespace Editor.Helpers
             return null;
         }
 
-        public TreeViewItemGroup GroupData(AssetsService service)
+        public TreeViewItemGroup<AssetFolder, AssetFile> PopulateDirectory(AssetsService service)
         {
             var projectRoot = service.Root;
             var folders = service.Folders.OrderBy(x => x.ParentFolderId);
             var assets = service.Files;
 
-            var projectRootGroup = new TreeViewItemGroup();
-            projectRootGroup.Name = projectRoot.Name;
+            var projectRootGroup = new TreeViewItemGroup<AssetFolder, AssetFile>();
+            projectRootGroup.Key = projectRoot.Name;
 
-            foreach (var dept in folders)
+            foreach (var folder in folders)
             {
-                var itemGroup = new TreeViewItemGroup();
-                itemGroup.Name = dept.Name;
-                itemGroup.GroupId = dept.Id;
+                var itemGroup = new TreeViewItemGroup<AssetFolder, AssetFile>();
+                itemGroup.Model = folder;
+                itemGroup.GroupId = folder.Id;
+                itemGroup.Key = folder.Name;
 
                 // Assets first
-                var assetsFolder = assets.Where(x => x.FolderId == dept.Id);
+                var assetsInFolder = assets.Where(x => x.FolderId == folder.Id);
 
-                foreach (var emp in assetsFolder)
+                foreach (var file in assetsInFolder)
                 {
-                    var item = new TreeViewItem();
-                    item.ItemId = emp.Id;
-                    item.Key = emp.Name;
+                    var item = new TreeViewItem<AssetFile>();
+                    item.Model = file;
+                    item.ItemId = file.Id;
+                    item.Key = file.Name;
 
-                    itemGroup.XamlItems.Add(item);
+                    itemGroup.ChildrenItems.Add(item);
                 }
 
                 // Folders now
-                if (dept.ParentFolderId == -1)
+                if (folder.ParentFolderId == -1)
                 {
-                    projectRootGroup.Children.Add(itemGroup);
+                    projectRootGroup.ChildrenGroups.Add(itemGroup);
                 }
                 else
                 {
-                    TreeViewItemGroup parentGroup = null;
+                    TreeViewItemGroup<AssetFolder, AssetFile> parentGroup = null;
 
-                    foreach (var group in projectRootGroup.Children)
+                    foreach (var group in projectRootGroup.ChildrenGroups)
                     {
-                        parentGroup = FindParentFolder(group, dept);
+                        parentGroup = FindParentFolder(group, folder);
 
                         if (parentGroup != null)
                         {
-                            parentGroup.Children.Add(itemGroup);
+                            parentGroup.ChildrenGroups.Add(itemGroup);
                             break;
                         }
                     }

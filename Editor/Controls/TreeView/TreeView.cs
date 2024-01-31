@@ -2,11 +2,18 @@
 using Editor.Models;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Editor.Controls
 {
     public class TreeView : ScrollView
     {
+        public class OnSelectItemEventArgs : EventArgs
+        {
+            public TreeViewNode Node { get; set; }
+            public object Model { get; set; }
+        }
+
         private readonly StackLayout _StackLayout = new() { Orientation = StackOrientation.Vertical };
 
         //TODO: This initializes the list, but there is nothing listening to INotifyCollectionChanged so no nodes will get rendered
@@ -35,7 +42,8 @@ namespace Editor.Controls
 
                 _SelectedItem = value;
 
-                SelectedItemChanged?.Invoke(this, new EventArgs());
+                var args = new OnSelectItemEventArgs() { Node = value, Model = value?.BindingContext };
+                SelectedItemChanged?.Invoke(this, args);
             }
         }
         public IList<TreeViewNode> RootNodes
@@ -147,7 +155,7 @@ namespace Editor.Controls
             return node;
         }
 
-        private static void CreateXamlItem(IList<TreeViewNode> children, TreeViewItem xamlItem)
+        private static void PopulateItem(IList<TreeViewNode> children, TreeViewItemBase itemModel)
         {
             var label = new Label
             {
@@ -156,7 +164,7 @@ namespace Editor.Controls
             };
             label.SetBinding(Label.TextProperty, "Key");
 
-            var xamlItemTreeViewNode = TreeView.CreateTreeViewNode(xamlItem, label, true);
+            var xamlItemTreeViewNode = TreeView.CreateTreeViewNode(itemModel, label, true);
             children.Add(xamlItemTreeViewNode);
         }
 
@@ -170,28 +178,28 @@ namespace Editor.Controls
                     node.ChildrenList = children;
                 }
         */
-        public static ObservableCollection<TreeViewNode> ProcessXamlItemGroups(TreeViewItemGroup xamlItemGroups)
+        public static ObservableCollection<TreeViewNode> PopulateGroup(TreeViewItemGroupBase groupModel)
         {
             var rootNodes = new ObservableCollection<TreeViewNode>();
 
-            foreach (var xamlItemGroup in xamlItemGroups.Children.OrderBy(xig => xig.Name))
+            foreach (var itemGroup in groupModel.ChildrenGroupsBase.OrderBy(xig => xig.Key))
             {
                 var label = new Label
                 {
                     VerticalOptions = LayoutOptions.Center,
                     TextColor = Colors.Black
                 };
-                label.SetBinding(Label.TextProperty, "Name");
+                label.SetBinding(Label.TextProperty, "Key");
 
-                var groupTreeViewNode = TreeView.CreateTreeViewNode(xamlItemGroup, label, false);
+                var groupTreeViewNode = TreeView.CreateTreeViewNode(itemGroup, label, false);
 
                 rootNodes.Add(groupTreeViewNode);
 
-                groupTreeViewNode.ChildrenList = TreeView.ProcessXamlItemGroups(xamlItemGroup);
+                groupTreeViewNode.ChildrenList = TreeView.PopulateGroup(itemGroup);
 
-                foreach (var xamlItem in xamlItemGroup.XamlItems)
+                foreach (var item in itemGroup.ChildrenItemsBase)
                 {
-                    TreeView.CreateXamlItem(groupTreeViewNode.ChildrenList, xamlItem);
+                    TreeView.PopulateItem(groupTreeViewNode.ChildrenList, item);
                 }
             }
 
