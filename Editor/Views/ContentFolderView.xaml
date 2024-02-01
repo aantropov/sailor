@@ -4,7 +4,7 @@
              x:Class="Editor.Views.ContentFolderView"
              xmlns:controls="clr-namespace:Editor.Controls">
 
-    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
+    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
         <Grid RowSpacing="0" ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>

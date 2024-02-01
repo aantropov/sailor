@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<TargetFrameworks>net7.0-maccatalyst</TargetFrameworks>
-		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net7.0-windows10.0.19041.0</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
 		<!-- Uncomment to also build the tizen app. You will need to install tizen by following this: https://github.com/Samsung/Tizen.NET -->
 		<!-- <TargetFrameworks>$(TargetFrameworks);net7.0-tizen</TargetFrameworks> -->
 		<OutputType>Exe</OutputType>
@@ -121,15 +121,6 @@
 	  <MauiXaml Update="Views\SceneView.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <MauiImage Include="Resources\Images\FolderTreeView\blank.png" />
-	  <MauiImage Include="Resources\Images\FolderTreeView\collpsedglyph.png" />
-	  <MauiImage Include="Resources\Images\FolderTreeView\folderclosed.png" />
-	  <MauiImage Include="Resources\Images\FolderTreeView\folderopen.png" />
-	  <MauiImage Include="Resources\Images\FolderTreeView\item.png" />
-	  <MauiImage Include="Resources\Images\FolderTreeView\openglyph.png" />
 	</ItemGroup>
 
 </Project>

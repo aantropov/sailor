@@ -4,6 +4,7 @@ using Editor.Services;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Microsoft.Maui.Controls;
 
 namespace Editor.Views
 {
@@ -23,7 +24,10 @@ namespace Editor.Views
 
         private void OnSelectAssetFile(AssetFile file)
         {
-            OnPropertyChanged();
+            // If we don't do that then TemplateSelector is not called
+            var refresh = InspectedItem.ItemsSource;
+            InspectedItem.ItemsSource = null;
+            InspectedItem.ItemsSource = refresh;
         }
     }
 }

@@ -24,7 +24,9 @@ namespace Editor.Services
 
         public void OnSelectAsset(AssetFile assetFile)
         {
+            SelectedItems.Clear();
             SelectedItems.Add(assetFile);
+
             OnSelectAssetAction?.Invoke(assetFile);
         }
     }

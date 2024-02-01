@@ -3,7 +3,7 @@
              x:Name="this"
              x:Class="Editor.Views.HierarchyView">
 
-    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
+    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
         <VerticalStackLayout>
             <Label Text="HierarchyView" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"/>
         </VerticalStackLayout>

@@ -17,7 +17,7 @@
         </ResourceDictionary>
     </ContentView.Resources>
 
-    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
+    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
         <Grid RowSpacing="0" ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -34,14 +34,9 @@
                     Spacing="5"
                     VerticalOptions="Start"
                     HorizontalOptions="StartAndExpand">
-
-                    <!--ItemsSource="{Binding InspectedItems}"-->
                     <RefreshView>
                         <CollectionView x:Name="InspectedItem" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource TemplateSelector}"/>
                     </RefreshView>
-                    <!--<CollectionView x:Name="InspectedItem" ItemTemplate="{StaticResource InspectorTemplateSelector}" />-->
-                    <!--<ContentControl ContentTemplate="{StaticResource MyTemplate}" />-->
-
                 </VerticalStackLayout>
             </ScrollView>
         </Grid>
