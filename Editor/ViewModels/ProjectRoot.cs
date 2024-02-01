@@ -1,4 +1,4 @@
-﻿namespace Editor.Models
+﻿namespace Editor.ViewModels
 {
     public class ProjectRoot
     {

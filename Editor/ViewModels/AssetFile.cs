@@ -1,6 +1,6 @@
 ﻿using System.Security.Cryptography.X509Certificates;
 
-namespace Editor.Models
+namespace Editor.ViewModels
 {
     public class AssetFile
     {

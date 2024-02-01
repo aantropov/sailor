@@ -1,7 +1,21 @@
 ﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Name="this"
-             x:Class="Editor.Views.InspectorView">
+             x:Class="Editor.Views.InspectorView"
+             xmlns:models="clr-namespace:Editor.ViewModels"
+             xmlns:helpers="clr-namespace:Editor.Helpers">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <!--<DataTemplate x:Key="AssetFileTemplate" x:DataType="models:AssetFile">
+                <VerticalStackLayout>
+                    <Label Text="Asset File"/>
+                    <Label Text="{Binding Name}"/>
+                </VerticalStackLayout>
+            </DataTemplate>-->
+            <helpers:InspectorTemplateSelector x:Key="TemplateSelector"/>
+        </ResourceDictionary>
+    </ContentView.Resources>
 
     <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}" BackgroundColor="{Binding IconBackgroundColor, FallbackValue='Grey'}">
         <Grid RowSpacing="0" ColumnSpacing="0">
@@ -20,7 +34,14 @@
                     Spacing="5"
                     VerticalOptions="Start"
                     HorizontalOptions="StartAndExpand">
-                    <Label x:Name="SomeText" Text="Some text"/>
+
+                    <!--ItemsSource="{Binding InspectedItems}"-->
+                    <RefreshView>
+                        <CollectionView x:Name="InspectedItem" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource TemplateSelector}"/>
+                    </RefreshView>
+                    <!--<CollectionView x:Name="InspectedItem" ItemTemplate="{StaticResource InspectorTemplateSelector}" />-->
+                    <!--<ContentControl ContentTemplate="{StaticResource MyTemplate}" />-->
+
                 </VerticalStackLayout>
             </ScrollView>
         </Grid>

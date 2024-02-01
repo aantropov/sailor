@@ -8,9 +8,9 @@
              xmlns:views="clr-namespace:Editor.Views"
              xmlns:controls="clr-namespace:Editor.Controls">
 
-    <ContentPage.BindingContext>
+    <!--<ContentPage.BindingContext>
         <views:ContentFolderView/>
-    </ContentPage.BindingContext>
+    </ContentPage.BindingContext>-->
     
     <ContentPage.MenuBarItems>
         <MenuBarItem Text = "File">

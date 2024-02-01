@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 using Editor.Controls;
 using Editor.Helpers;
-using Editor.Models;
+using Editor.ViewModels;
 using Editor.Services;
 
 namespace Editor.Views
