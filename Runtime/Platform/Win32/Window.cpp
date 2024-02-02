@@ -144,14 +144,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	m_height = inHeight;
 	m_bIsFullscreen = inbIsFullScreen;
 
-	if (m_parentHwnd)
-	{
-		TrackParentWindowPosition();
-	}
-	else
-	{
-		ChangeWindowSize(m_width, m_height, m_bIsFullscreen);
-	}
+	ChangeWindowSize(m_width, m_height, m_bIsFullscreen);
 
 	SAILOR_LOG("Window created");
 	return true;
@@ -214,8 +207,10 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	rect.top = y;
 	rect.bottom = y + height;
 
-	//Setup styles
-	AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+	if (m_parentHwnd == 0)
+	{
+		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+	}
 
 	SetWindowLong(m_hWnd, GWL_STYLE, style);
 	SetWindowLong(m_hWnd, GWL_EXSTYLE, exStyle);
