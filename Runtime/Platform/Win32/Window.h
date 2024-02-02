@@ -16,6 +16,7 @@ namespace Sailor::Win32
 		HWND      m_hWnd = nullptr;
 		HDC       m_hDC = nullptr;
 
+		HWND      m_parentHwnd = nullptr;
 
 		std::atomic<int> m_width = 1024;
 		std::atomic<int> m_height = 768;
@@ -54,18 +55,18 @@ namespace Sailor::Win32
 		SAILOR_API int32_t GetHeight() const { return m_height; }
 		SAILOR_API bool IsVsyncRequested() const { return m_bIsVsyncRequested; }
 
-		SAILOR_API void TrackExternalViewport(HWND hwnd);
-
-		SAILOR_API bool CreateContext(HWND hwnd);
 		SAILOR_API bool Create(LPCSTR title = "Sailor", LPCSTR className = "SailorViewport", int32_t width = 1920, int32_t height = 1080, bool bIsFullScreen = false, bool bRequestVsync = false, HWND parentHwnd = NULL);
 		SAILOR_API void Destroy();
 
 		SAILOR_API glm::ivec2 GetRenderArea() const { return m_renderArea; }
 		SAILOR_API void SetRenderArea(const glm::ivec2& renderArea) { m_renderArea = renderArea; }
 
+		SAILOR_API void TrackParentWindowPosition();
+
 		// Window size
 		SAILOR_API glm::ivec2 GetCenterPointScreen() const;
 		SAILOR_API glm::ivec2 GetCenterPointClient() const;
+		SAILOR_API void SetWindowPos(const RECT& rect);
 		SAILOR_API void RecalculateWindowSize();
 		SAILOR_API void ChangeWindowSize(int32_t width, int32_t height, bool bIsFullScreen = false);
 

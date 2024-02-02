@@ -76,10 +76,10 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	if (params.m_bWaitForDebugger)
 	{
 		uint32_t timeout = 5000;
-		while (!::IsDebuggerPresent()) 
+		while (!::IsDebuggerPresent())
 		{
-			::Sleep(100); 
-			timeout -= 100; 
+			::Sleep(100);
+			timeout -= 100;
 			if (timeout < 0)
 			{
 				exit(0);
@@ -152,6 +152,7 @@ void App::Start()
 
 	uint32_t frameCounter = 0U;
 	Utils::Timer timer;
+	Utils::Timer trackEditor;
 	FrameState currentFrame;
 	FrameState lastFrame;
 	bool bCanCreateNewFrame = true;
@@ -176,6 +177,7 @@ void App::Start()
 	while (s_pInstance->m_pMainWindow->IsRunning())
 	{
 		timer.Start();
+		trackEditor.Start();
 
 		Win32::ConsoleWindow::GetInstance()->Update();
 
@@ -245,6 +247,13 @@ void App::Start()
 		}
 
 		timer.Stop();
+		trackEditor.Stop();
+
+		if (trackEditor.ResultAccumulatedMs() > 100)
+		{
+			s_pInstance->m_pMainWindow->TrackParentWindowPosition();
+			trackEditor.Clear();
+		}
 
 		if (timer.ResultAccumulatedMs() > 1000)
 		{
@@ -272,7 +281,6 @@ void App::Start()
 		auto oldInputState = systemInputState;
 		systemInputState = GlobalInput::GetInputState();
 		systemInputState.TrackForChanges(oldInputState);
-
 	}
 
 	s_pInstance->m_pMainWindow->SetActive(false);

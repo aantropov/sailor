@@ -26,7 +26,7 @@
 
                 <!-- CheckBox with Label on the same line -->
                 <HorizontalStackLayout HorizontalOptions="Center">
-                    <CheckBox x:Name="RunDebugConfigurationCheckBox" IsChecked="True" />
+                    <CheckBox x:Name="RunDebugConfigurationCheckBox" IsChecked="False" />
                     <Label Text="RunDebugConfiguration" VerticalOptions="Center"/>
                 </HorizontalStackLayout>
 

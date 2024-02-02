@@ -15,13 +15,38 @@ using namespace Sailor::Win32;
 
 TVector<Window*> Window::g_windows;
 
-void Window::TrackExternalViewport(HWND hwnd)
+void Window::SetWindowPos(const RECT& rect)
 {
-	SetParent(m_hWnd, hwnd);
+	::SetWindowPos(m_hWnd, HWND_TOP, rect.left, rect.top,
+		rect.right - rect.left, rect.bottom - rect.top,
+		SWP_FRAMECHANGED);
+}
+
+void Window::TrackParentWindowPosition()
+{
+	if (!m_parentHwnd)
+	{
+		return;
+	}
+
+	RECT rect = Utils::GetWindowSizeAndPosition(m_parentHwnd);
+
+	if (rect.left != rect.right && rect.bottom != rect.top)
+	{
+		// TODO: Wait for networking integration
+		rect.top += 45;
+		rect.right -= 600;
+		rect.bottom -= 250;
+
+		::SetWindowPos(m_hWnd, m_parentHwnd, rect.left, rect.top,
+			rect.right - rect.left, rect.bottom - rect.top,
+			SWP_FRAMECHANGED);
+	}
 }
 
 bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inHeight, bool inbIsFullScreen, bool bIsVsyncRequested, HWND parentHwnd)
 {
+	m_parentHwnd = parentHwnd;
 	m_windowClassName = className;
 
 	WNDCLASSEX            wcx{};
@@ -48,8 +73,8 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		return false;
 	}
 
-	style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_OVERLAPPED;
-	exStyle = WS_EX_APPWINDOW;
+	style = m_parentHwnd ? WS_POPUP : WS_OVERLAPPEDWINDOW;
+	exStyle = m_parentHwnd ? 0 : WS_EX_APPWINDOW;
 
 	x = (GetSystemMetrics(SM_CXSCREEN) - inWidth) / 2;
 	y = (GetSystemMetrics(SM_CYSCREEN) - inHeight) / 2;
@@ -59,8 +84,10 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	rect.top = y;
 	rect.bottom = y + inHeight;
 
-	// Setup window size with styles
-	AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+	if (m_parentHwnd == nullptr)
+	{
+		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+	}
 
 	// Create window
 	m_hWnd = CreateWindowEx(exStyle,
@@ -111,15 +138,20 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	}
 
 	g_windows.Add(this);
-	
+
 	m_bIsVsyncRequested = bIsVsyncRequested;
 	m_width = inWidth;
 	m_height = inHeight;
 	m_bIsFullscreen = inbIsFullScreen;
 
-	// Set up window size
-	ChangeWindowSize(m_width, m_height, m_bIsFullscreen);
-
+	if (m_parentHwnd)
+	{
+		TrackParentWindowPosition();
+	}
+	else
+	{
+		ChangeWindowSize(m_width, m_height, m_bIsFullscreen);
+	}
 
 	SAILOR_LOG("Window created");
 	return true;
@@ -170,8 +202,8 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	}
 	else
 	{
-		style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_OVERLAPPEDWINDOW;
-		exStyle = WS_EX_APPWINDOW;
+		style = m_parentHwnd ? WS_POPUP : WS_OVERLAPPEDWINDOW;
+		exStyle = m_parentHwnd ? 0 : WS_EX_APPWINDOW;
 
 		x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
 		y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
@@ -189,7 +221,7 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	SetWindowLong(m_hWnd, GWL_EXSTYLE, exStyle);
 
 	// Refresh window position
-	SetWindowPos(m_hWnd, HWND_TOP, rect.left, rect.top,
+	::SetWindowPos(m_hWnd, HWND_TOP, rect.left, rect.top,
 		rect.right - rect.left, rect.bottom - rect.top,
 		SWP_FRAMECHANGED);
 
@@ -211,7 +243,7 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 {
 	SAILOR_PROFILE_FUNCTION()
 
-	MSG msg;
+		MSG msg;
 	for (int i = 0; i < g_windows.Num(); i++)
 	{
 		while (PeekMessage(&msg, g_windows[i]->GetHWND(), 0, 0, PM_REMOVE))
@@ -260,26 +292,22 @@ void Window::RecalculateWindowSize()
 
 void Window::Destroy()
 {
-	// Restore window size
 	if (m_bIsFullscreen)
 	{
 		ChangeDisplaySettings(NULL, CDS_RESET);
 		ShowCursor(TRUE);
 	}
 
-	// Release window context
 	if (m_hDC)
 	{
 		ReleaseDC(m_hWnd, m_hDC);
 	}
 
-	// Destroy window
 	if (m_hWnd)
 	{
 		DestroyWindow(m_hWnd);
 	}
 
-	// Release window class
 	if (m_hInstance)
 	{
 		UnregisterClass(m_windowClassName.c_str(), m_hInstance);
@@ -312,10 +340,13 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 	case WM_SIZE:
 	{
-		pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);
-		//pWindow->RecalculateWindowSize();
-		pWindow->m_width = LOWORD(lParam);
-		pWindow->m_height = HIWORD(lParam);
+		if (pWindow)
+		{
+			pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);
+			//pWindow->RecalculateWindowSize();
+			pWindow->m_width = LOWORD(lParam);
+			pWindow->m_height = HIWORD(lParam);
+		}
 
 		return FALSE;
 	}
