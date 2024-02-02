@@ -249,7 +249,7 @@ void App::Start()
 		timer.Stop();
 		trackEditor.Stop();
 
-		if (trackEditor.ResultAccumulatedMs() > 100)
+		if (trackEditor.ResultAccumulatedMs() > 33)
 		{
 			s_pInstance->m_pMainWindow->TrackParentWindowPosition();
 			trackEditor.Clear();

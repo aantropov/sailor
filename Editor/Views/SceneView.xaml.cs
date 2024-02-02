@@ -8,6 +8,7 @@ namespace Editor.Views
         public SceneView()
         {
             InitializeComponent();
+            SailorEngine.RunProcess(RunDebugConfigurationCheckBox.IsChecked, "");
         }
 
         private void OnRunSailorEngineClicked(object sender, EventArgs e)

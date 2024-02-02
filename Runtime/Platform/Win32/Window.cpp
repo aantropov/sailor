@@ -34,9 +34,10 @@ void Window::TrackParentWindowPosition()
 	if (rect.left != rect.right && rect.bottom != rect.top)
 	{
 		// TODO: Wait for networking integration
-		rect.top += 45;
-		rect.right -= 600;
-		rect.bottom -= 250;
+		rect.top += 79;
+		rect.right -= 608;
+		rect.left += 8;
+		rect.bottom -= 238;
 
 		::SetWindowPos(m_hWnd, m_parentHwnd, rect.left, rect.top,
 			rect.right - rect.left, rect.bottom - rect.top,
