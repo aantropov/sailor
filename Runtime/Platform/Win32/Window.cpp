@@ -41,7 +41,7 @@ void Window::TrackParentWindowPosition()
 
 		::SetWindowPos(m_hWnd, m_parentHwnd, rect.left, rect.top,
 			rect.right - rect.left, rect.bottom - rect.top,
-			SWP_FRAMECHANGED);
+			SWP_NOACTIVATE);
 	}
 }
 
