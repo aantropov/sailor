@@ -1,5 +1,6 @@
 ﻿using Editor.ViewModels;
 using System.IO;
+using YamlDotNet.RepresentationModel;
 
 namespace Editor.Services
 {
@@ -17,6 +18,47 @@ namespace Editor.Services
 
             Root = new ProjectRoot { Name = projectRoot, Id = 1 };
             ProcessDirectory(Root, projectRoot, -1);
+        }
+
+        private AssetFile ProcessAssetFile(FileInfo assetInfo, int parentFolderId)
+        {
+            FileInfo assetFile = new FileInfo(Path.ChangeExtension(assetInfo.FullName, null));
+
+            AssetFile newAssetFile;
+
+            var extension = Path.GetExtension(assetFile.FullName);
+            if (extension == ".png" ||
+                extension == ".jpg" ||
+                extension == ".bmp")
+            {
+                newAssetFile = new TextureFile();
+            }
+            else
+            {
+                newAssetFile = new AssetFile();
+            }
+
+            newAssetFile.Name = assetFile.Name;
+            newAssetFile.Id = Files.Count + 1;
+            newAssetFile.FolderId = parentFolderId;
+            newAssetFile.AssetInfo = assetInfo;
+            newAssetFile.Asset = assetFile;
+
+            using var yamlAssetInfo = new FileStream(assetInfo.FullName, FileMode.Open);
+            using var reader = new StreamReader(yamlAssetInfo);
+            var yaml = new YamlStream();
+            yaml.Load(reader);
+
+            var root = (YamlMappingNode)yaml.Documents[0].RootNode;
+
+            foreach (var e in root.Children)
+            {
+                newAssetFile.Properties[e.Key.ToString()] = e.Value.ToString();
+            }
+
+            yamlAssetInfo.Close();
+
+            return newAssetFile;
         }
 
         private void ProcessDirectory(ProjectRoot root, string directoryPath, int parentFolderId)
@@ -39,17 +81,19 @@ namespace Editor.Services
 
             foreach (var file in Directory.GetFiles(directoryPath))
             {
-                var fileInfo = new FileInfo(file);
-                if (fileInfo.Extension != ".asset")
+                var assetInfo = new FileInfo(file);
+                if (assetInfo.Extension != ".asset")
                     continue;
-                
-                Files.Add(new AssetFile
+
+                try
                 {
-                    Name = Path.ChangeExtension(fileInfo.Name, null),
-                    Id = Files.Count + 1,
-                    FolderId = parentFolderId,
-                    FileInfo = fileInfo
-                });
+                    var newAssetInfo = ProcessAssetFile(assetInfo, parentFolderId);
+                    Files.Add(newAssetInfo);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.ToString());
+                }
             }
         }
     }

@@ -22,22 +22,28 @@ namespace Editor.Helpers
 
             AssetFileTexture = new DataTemplate(() =>
             {
+                var stackLayout = new VerticalStackLayout();
+
                 var label = new Label();
-                label.SetBinding(Label.TextProperty, new Binding("Name"));
-                label.TextColor = Color.FromRgb(0, 255, 0);
-                return label;
+                //label.SetBinding(Label.TextProperty, new Binding("Name", BindingMode.Default, null, null, "{0} (Type: Texture)"));
+
+                var image = new Image();
+                image.SetBinding(Image.SourceProperty, new Binding("ImageSource"));
+                image.Aspect = Aspect.Center;
+
+                stackLayout.Children.Add(label);
+                stackLayout.Children.Add(image);
+                
+                return stackLayout;
             });
         }
         protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
         {
-            var assetFile = (AssetFile)item;
+            var assetFile = (TextureFile)item;
 
             if (assetFile != null)
             {
-                if (assetFile.Name.EndsWith(".png"))
-                {
-                    return AssetFileTexture;
-                }
+                return AssetFileTexture;
             }
 
             return Default;
