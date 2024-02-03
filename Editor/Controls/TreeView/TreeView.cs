@@ -1,10 +1,10 @@
 ﻿//6
-using Editor.ViewModels;
+using SailorEditor.ViewModels;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Security.Cryptography.X509Certificates;
 
-namespace Editor.Controls
+namespace SailorEditor.Controls
 {
     public class TreeView : ScrollView
     {

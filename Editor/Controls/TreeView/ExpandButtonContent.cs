@@ -1,4 +1,4 @@
-﻿namespace Editor.Controls
+﻿namespace SailorEditor.Controls
 {
     public class ExpandButtonContent : ContentView
     {

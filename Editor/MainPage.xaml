@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:local="clr-namespace:Editor"
-             x:Class="Editor.MainPage"             
+             xmlns:local="clr-namespace:SailorEditor"
+             x:Class="SailorEditor.MainPage"
              Title=""
              BackgroundColor="Grey"
-             xmlns:views="clr-namespace:Editor.Views"
-             xmlns:controls="clr-namespace:Editor.Controls">
+             xmlns:views="clr-namespace:SailorEditor.Views"
+             xmlns:controls="clr-namespace:SailorEditor.Controls">
 
     <!--<ContentPage.BindingContext>
         <views:ContentFolderView/>

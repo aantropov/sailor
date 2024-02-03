@@ -1,5 +1,5 @@
 ﻿//3
-namespace Editor.Controls
+namespace SailorEditor.Controls
 {
     public class ResourceImage : Image
     {

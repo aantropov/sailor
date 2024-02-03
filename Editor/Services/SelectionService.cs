@@ -1,8 +1,8 @@
-﻿using Editor.ViewModels;
+﻿using SailorEditor.ViewModels;
 using System.Collections.ObjectModel;
 using System.IO;
 
-namespace Editor.Services
+namespace SailorEditor.Services
 {
     public class SelectionService
     {

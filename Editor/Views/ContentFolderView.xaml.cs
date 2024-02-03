@@ -1,11 +1,11 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Editor.Controls;
-using Editor.Helpers;
-using Editor.ViewModels;
-using Editor.Services;
+using SailorEditor.Controls;
+using SailorEditor.Helpers;
+using SailorEditor.ViewModels;
+using SailorEditor.Services;
 
-namespace Editor.Views
+namespace SailorEditor.Views
 {
     public partial class ContentFolderView : ContentView
     {

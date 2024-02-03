@@ -1,8 +1,8 @@
-using Editor.Helpers;
-using Editor.Services;
+using SailorEditor.Helpers;
+using SailorEditor.Services;
 using System.Diagnostics;
 
-namespace Editor
+namespace SailorEditor
 {
     public partial class MainPage : ContentPage
     {

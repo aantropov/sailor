@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace Editor.Views
+namespace SailorEditor.Views
 {
     public partial class SceneView : ContentView
     {
@@ -10,7 +10,6 @@ namespace Editor.Views
             InitializeComponent();
             SailorEngine.RunProcess(RunDebugConfigurationCheckBox.IsChecked, "");
         }
-
         private void OnRunSailorEngineClicked(object sender, EventArgs e)
         {
             string commandLineArgs = WaitForDebuggerAttachedCheckBox.IsChecked ? "--waitfordebugger" : "";

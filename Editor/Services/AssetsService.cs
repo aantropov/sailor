@@ -1,15 +1,14 @@
-﻿using Editor.ViewModels;
+﻿using SailorEditor.ViewModels;
 using System.IO;
 using YamlDotNet.RepresentationModel;
 
-namespace Editor.Services
+namespace SailorEditor.Services
 {
     public class AssetsService
     {
         public ProjectRoot Root { get; private set; }
         public List<AssetFolder> Folders { get; private set; }
         public List<AssetFile> Files { get; private set; }
-
         public AssetsService() => AddProjectRoot(SailorEngine.GetEngineContentDirectory());
         public void AddProjectRoot(string projectRoot)
         {
@@ -30,13 +29,11 @@ namespace Editor.Services
             if (extension == ".png" ||
                 extension == ".jpg" ||
                 extension == ".bmp")
-            {
                 newAssetFile = new TextureFile();
-            }
+            else if (extension == ".shader")
+                newAssetFile = new ShaderFile();
             else
-            {
                 newAssetFile = new AssetFile();
-            }
 
             newAssetFile.Name = assetFile.Name;
             newAssetFile.Id = Files.Count + 1;
@@ -44,19 +41,21 @@ namespace Editor.Services
             newAssetFile.AssetInfo = assetInfo;
             newAssetFile.Asset = assetFile;
 
-            using var yamlAssetInfo = new FileStream(assetInfo.FullName, FileMode.Open);
-            using var reader = new StreamReader(yamlAssetInfo);
-            var yaml = new YamlStream();
-            yaml.Load(reader);
-
-            var root = (YamlMappingNode)yaml.Documents[0].RootNode;
-
-            foreach (var e in root.Children)
+            using (var yamlAssetInfo = new FileStream(assetInfo.FullName, FileMode.Open))
+            using (var reader = new StreamReader(yamlAssetInfo))
             {
-                newAssetFile.Properties[e.Key.ToString()] = e.Value.ToString();
-            }
+                var yaml = new YamlStream();
+                yaml.Load(reader);
 
-            yamlAssetInfo.Close();
+                var root = (YamlMappingNode)yaml.Documents[0].RootNode;
+
+                foreach (var e in root.Children)
+                {
+                    newAssetFile.Properties[e.Key.ToString()] = e.Value.ToString();
+                }
+
+                yamlAssetInfo.Close();
+            }
 
             return newAssetFile;
         }

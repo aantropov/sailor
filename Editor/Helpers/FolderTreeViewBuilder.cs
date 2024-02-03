@@ -1,7 +1,7 @@
-﻿using Editor.ViewModels;
-using Editor.Services;
+﻿using SailorEditor.ViewModels;
+using SailorEditor.Services;
 
-namespace Editor.Helpers
+namespace SailorEditor.Helpers
 {
     public class FolderTreeViewBuilder
     {

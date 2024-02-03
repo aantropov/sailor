@@ -1,12 +1,12 @@
-﻿using Editor.Helpers;
-using Editor.ViewModels;
-using Editor.Services;
+﻿using SailorEditor.Helpers;
+using SailorEditor.ViewModels;
+using SailorEditor.Services;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Maui.Controls;
 
-namespace Editor.Views
+namespace SailorEditor.Views
 {
     public partial class InspectorView : ContentView
     {

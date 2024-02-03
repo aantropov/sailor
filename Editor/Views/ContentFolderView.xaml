@@ -1,8 +1,8 @@
 ﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Name="this"
-             x:Class="Editor.Views.ContentFolderView"
-             xmlns:controls="clr-namespace:Editor.Controls">
+             x:Class="SailorEditor.Views.ContentFolderView"
+             xmlns:controls="clr-namespace:SailorEditor.Controls">
 
     <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
         <Grid RowSpacing="0" ColumnSpacing="0">

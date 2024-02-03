@@ -1,4 +1,4 @@
-﻿namespace Editor.ViewModels
+﻿namespace SailorEditor.ViewModels
 {
     public class AssetFolder
     {

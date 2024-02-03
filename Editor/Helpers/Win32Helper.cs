@@ -1,5 +1,5 @@
-﻿using Editor.ViewModels;
-using Editor.Services;
+﻿using SailorEditor.ViewModels;
+using SailorEditor.Services;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml;
 using System.Runtime.InteropServices;
@@ -8,7 +8,7 @@ using Window = Microsoft.Maui.Controls.Window;
 using Microsoft.Maui.Controls;
 using Microsoft.UI.Windowing;
 
-namespace Editor.Helpers
+namespace SailorEditor.Helpers
 {
     static class Win32Helper
     {

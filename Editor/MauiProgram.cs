@@ -1,11 +1,11 @@
-﻿using Editor.Views;
+﻿using SailorEditor.Views;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls.Compatibility.Hosting;
 using Microsoft.Maui.Embedding;
-using Editor.Helpers;
-using Editor.Services;
+using SailorEditor.Helpers;
+using SailorEditor.Services;
 
-namespace Editor
+namespace SailorEditor
 {
     public static class MauiProgram
     {

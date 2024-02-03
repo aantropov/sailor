@@ -1,4 +1,4 @@
-﻿namespace Editor
+﻿namespace SailorEditor
 {
     public partial class App : Application
     {

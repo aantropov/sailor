@@ -1,7 +1,7 @@
 ﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Name="this"
-             x:Class="Editor.Views.HierarchyView">
+             x:Class="SailorEditor.Views.HierarchyView">
 
     <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
         <VerticalStackLayout>

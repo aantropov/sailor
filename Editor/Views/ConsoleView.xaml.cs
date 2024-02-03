@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace Editor.Views
+namespace SailorEditor.Views
 {
     public partial class ConsoleView : ContentView
     {
