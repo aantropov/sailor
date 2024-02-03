@@ -39,7 +39,7 @@ namespace Editor.Helpers
         }
         protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
         {
-            var assetFile = (TextureFile)item;
+            var assetFile = item as TextureFile;
 
             if (assetFile != null)
             {
