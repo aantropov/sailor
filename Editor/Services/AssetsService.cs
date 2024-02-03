@@ -28,10 +28,13 @@ namespace SailorEditor.Services
             var extension = Path.GetExtension(assetFile.FullName);
             if (extension == ".png" ||
                 extension == ".jpg" ||
-                extension == ".bmp")
+                extension == ".bmp" ||
+                extension == ".hdr")
                 newAssetFile = new TextureFile();
             else if (extension == ".shader")
                 newAssetFile = new ShaderFile();
+            else if (extension == ".glsl")
+                newAssetFile = new ShaderLibraryFile();
             else
                 newAssetFile = new AssetFile();
 

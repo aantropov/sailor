@@ -15,6 +15,16 @@ using namespace Sailor::Win32;
 
 TVector<Window*> Window::g_windows;
 
+bool Window::IsParentWindowValid() const
+{
+	if (m_parentHwnd == 0)
+	{
+		return true;
+	}
+
+	return ::IsWindow(m_parentHwnd);
+}
+
 void Window::SetWindowPos(const RECT& rect)
 {
 	::SetWindowPos(m_hWnd, HWND_TOP, rect.left, rect.top,

@@ -127,7 +127,6 @@ glslVertex: |
   }
 
 glslFragment: |
-  
   layout(location=0)
   flat in uint materialInstance;
   

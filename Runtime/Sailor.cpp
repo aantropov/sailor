@@ -199,7 +199,7 @@ void App::Start()
 
 		GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
 
-		if (systemInputState.IsKeyPressed(VK_ESCAPE))
+		if (systemInputState.IsKeyPressed(VK_ESCAPE) || !s_pInstance->m_pMainWindow->IsParentWindowValid())
 		{
 			Stop();
 			break;
