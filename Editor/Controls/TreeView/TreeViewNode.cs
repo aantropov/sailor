@@ -54,7 +54,7 @@ namespace SailorEditor.Controls
         /// Occurs when the user double clicks on the node
         /// </summary>
         public event EventHandler DoubleClicked;
-
+        
         protected override void OnParentSet()
         {
             base.OnParentSet();

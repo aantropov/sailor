@@ -1,11 +1,12 @@
 ﻿using SailorEditor.Engine;
 using SailorEditor.Helpers;
+using System.ComponentModel;
 using WinRT;
 using YamlDotNet.RepresentationModel;
 
 namespace SailorEditor.ViewModels
 {
-    public class AssetFile
+    public class AssetFile : INotifyPropertyChanged
     {
         public FileInfo Asset { get; set; }
         public FileInfo AssetInfo { get; set; }
@@ -16,6 +17,7 @@ namespace SailorEditor.ViewModels
         public int FolderId { get; set; }
         public bool IsDirty { get; protected set; } = false;
 
+        public event PropertyChangedEventHandler PropertyChanged;
         public virtual bool PreloadResources() { return true; }
         protected bool IsLoaded { get; set; }
     }

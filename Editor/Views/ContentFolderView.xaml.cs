@@ -10,13 +10,11 @@ namespace SailorEditor.Views
     public partial class ContentFolderView : ContentView
     {
         AssetsService service;
-        FolderTreeViewBuilder companyTreeViewBuilder;
         public ContentFolderView()
         {
             InitializeComponent();
 
             this.service = MauiProgram.GetService<AssetsService>();
-            this.companyTreeViewBuilder = MauiProgram.GetService<FolderTreeViewBuilder>();
 
             PopulateTreeView();
 
@@ -28,14 +26,13 @@ namespace SailorEditor.Views
             var selectionChanged = args as TreeView.OnSelectItemEventArgs;
             var assetFile = selectionChanged.Model as TreeViewItem<AssetFile>;
             if (assetFile != null)
-            { 
+            {
                 MauiProgram.GetService<SelectionService>().OnSelectAsset(assetFile.Model);
             }
         }
-
         private void PopulateTreeView()
         {
-            var foldersModel = companyTreeViewBuilder.PopulateDirectory(service);
+            var foldersModel = FolderTreeViewBuilder.PopulateDirectory(service);
             var rootNodes = Controls.TreeView.PopulateGroup(foldersModel);
             FolderTree.RootNodes = rootNodes;
         }

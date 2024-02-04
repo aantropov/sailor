@@ -16,7 +16,6 @@ namespace SailorEditor
             var builder = MauiApp.CreateBuilder();
             builder
                 .UseMauiApp<App>()
-                //.UseMauiCompatibility()
                 .ConfigureFonts(fonts =>
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
@@ -25,7 +24,6 @@ namespace SailorEditor
 
             builder.Services.AddSingleton<AssetsService>();
             builder.Services.AddSingleton<SelectionService>();
-            builder.Services.AddSingleton<FolderTreeViewBuilder>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ContentFolderView>();
 

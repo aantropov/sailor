@@ -3,9 +3,9 @@ using SailorEditor.Services;
 
 namespace SailorEditor.Helpers
 {
-    public class FolderTreeViewBuilder
+    public static class FolderTreeViewBuilder
     {
-        private TreeViewItemGroup<AssetFolder, AssetFile> FindParentFolder(TreeViewItemGroup<AssetFolder, AssetFile> group, AssetFolder folder)
+        private static TreeViewItemGroup<AssetFolder, AssetFile> FindParentFolder(TreeViewItemGroup<AssetFolder, AssetFile> group, AssetFolder folder)
         {
             if (group.GroupId == folder.ParentFolderId)
                 return group;
@@ -24,7 +24,7 @@ namespace SailorEditor.Helpers
             return null;
         }
 
-        public TreeViewItemGroup<AssetFolder, AssetFile> PopulateDirectory(AssetsService service)
+        public static TreeViewItemGroup<AssetFolder, AssetFile> PopulateDirectory(AssetsService service)
         {
             var projectRoot = service.Root;
             var folders = service.Folders.OrderBy(x => x.ParentFolderId);

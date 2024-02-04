@@ -6,14 +6,9 @@ namespace SailorEditor
 {
     public partial class MainPage : ContentPage
     {
-        AssetsService service;
-        FolderTreeViewBuilder companyTreeViewBuilder;
-        public MainPage(AssetsService service, FolderTreeViewBuilder companyTreeViewBuilder)
+        public MainPage()
         {
             InitializeComponent();
-
-            this.service = service;
-            this.companyTreeViewBuilder = companyTreeViewBuilder;
         }
     }
 }
