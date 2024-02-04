@@ -118,11 +118,13 @@ namespace SailorEditor.Helpers
 
                 var image = new Image
                 {
+                    WidthRequest = 256,
+                    HeightRequest = 256,
                     Aspect = Aspect.AspectFit,
                     HorizontalOptions = LayoutOptions.Start,
                     VerticalOptions = LayoutOptions.Start
                 };
-                image.SetBinding(Image.SourceProperty, new Binding("Thumbnail"));
+                image.SetBinding(Image.SourceProperty, new Binding("Texture"));
 
                 var generateMipsCheckBox = TemplateBuilder.CreateCheckBox("ShouldGenerateMips");
                 var storageBindingCheckBox = TemplateBuilder.CreateCheckBox("ShouldSupportStorageBinding");

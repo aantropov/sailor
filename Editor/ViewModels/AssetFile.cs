@@ -23,7 +23,7 @@ namespace SailorEditor.ViewModels
     }
     public class TextureFile : AssetFile
     {
-        public ImageSource Thumbnail { get; set; }
+        public ImageSource Texture { get; set; }
         public bool ShouldGenerateMips { get; set; }
         public bool ShouldSupportStorageBinding { get; set; }
         public TextureClamping Clamping { get; set; }
@@ -37,7 +37,7 @@ namespace SailorEditor.ViewModels
             {
                 try
                 {
-                    Thumbnail = TemplateBuilder.ResizeImageToThumbnail(Asset.FullName);
+                    Texture = ImageSource.FromFile(Asset.FullName);
                 }
                 catch (Exception ex)
                 {
