@@ -1,8 +1,11 @@
-﻿using SailorEditor.Engine;
+﻿using Microsoft.Maui.Controls.Compatibility;
+using SailorEditor.Engine;
 using SailorEditor.Helpers;
 using System.ComponentModel;
-using WinRT;
+using System.Runtime.CompilerServices;
 using YamlDotNet.RepresentationModel;
+using YamlDotNet.Serialization.NamingConventions;
+using YamlDotNet.Serialization;
 
 namespace SailorEditor.ViewModels
 {
@@ -15,25 +18,143 @@ namespace SailorEditor.ViewModels
         public string Name { get; set; }
         public int Id { get; set; }
         public int FolderId { get; set; }
-        public bool IsDirty { get; protected set; } = false;
+        public bool IsDirty
+        {
+            get { return isDirty; }
+            set
+            {
+                if (isDirty != value)
+                {
+                    isDirty = value;
+
+                    OnPropertyChanged(nameof(IsDirty));
+                }
+            }
+        }
 
         public event PropertyChangedEventHandler PropertyChanged;
-        public virtual bool PreloadResources() { return true; }
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        public virtual bool PreloadResources(bool force) => true;
+        public void UpdateAssetFile()
+        {
+            UpdateModel();
+
+            using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
+            using (var writer = new StreamWriter(yamlAssetInfo))
+            {
+                var serializer = new SerializerBuilder()
+                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                    .Build();
+
+                var yaml = serializer.Serialize(Properties);
+                writer.Write(yaml);
+            }
+
+            IsDirty = false;
+        }
+        public void Revert()
+        {
+            PreloadResources(true);
+            IsDirty = false;
+        }
         protected bool IsLoaded { get; set; }
+        protected virtual void UpdateModel() { }
+
+        bool isDirty = false;
     }
     public class TextureFile : AssetFile
     {
-        public ImageSource Texture { get; set; }
-        public bool ShouldGenerateMips { get; set; }
-        public bool ShouldSupportStorageBinding { get; set; }
-        public TextureClamping Clamping { get; set; }
-        public TextureFiltration Filtration { get; set; }
-
-        public TextureFormat Format { get; set; }
-
-        public override bool PreloadResources()
+        public ImageSource Texture { get; protected set; }
+        public bool ShouldGenerateMips
         {
-            if (!IsLoaded)
+            get { return shouldGenerateMips; }
+            set
+            {
+                if (shouldGenerateMips != value)
+                {
+                    shouldGenerateMips = value;
+                    IsDirty = true;
+
+                    OnPropertyChanged(nameof(ShouldGenerateMips));
+                }
+            }
+        }
+        public bool ShouldSupportStorageBinding
+        {
+            get { return shouldSupportStorageBinding; }
+            set
+            {
+                if (shouldSupportStorageBinding != value)
+                {
+                    shouldSupportStorageBinding = value;
+                    IsDirty = true;
+
+                    OnPropertyChanged(nameof(ShouldSupportStorageBinding));
+                }
+            }
+        }
+        public TextureClamping Clamping
+        {
+            get { return clamping; }
+            set
+            {
+                if (clamping != value)
+                {
+                    clamping = value;
+                    IsDirty = true;
+
+                    OnPropertyChanged(nameof(Clamping));
+                }
+            }
+        }
+        public TextureFiltration Filtration
+        {
+            get { return filtration; }
+            set
+            {
+                if (filtration != value)
+                {
+                    filtration = value;
+                    IsDirty = true;
+
+                    OnPropertyChanged(nameof(Filtration));
+                }
+            }
+        }
+        public TextureFormat Format
+        {
+            get { return format; }
+            set
+            {
+                if (format != value)
+                {
+                    format = value;
+                    IsDirty = true;
+
+                    OnPropertyChanged(nameof(Format));
+                }
+            }
+        }
+
+        private TextureFiltration filtration;
+        private TextureFormat format = TextureFormat.R8G8B8A8_SRGB;
+        private TextureClamping clamping;
+        private bool shouldGenerateMips;
+        private bool shouldSupportStorageBinding;
+        protected override void UpdateModel()
+        {
+            Properties["bShouldGenerateMips"] = ShouldGenerateMips.ToString();
+            Properties["bShouldSupportStorageBinding"] = ShouldSupportStorageBinding.ToString();
+            Properties["clamping"] = Clamping.ToString();
+            Properties["filtration"] = Filtration.ToString();
+            Properties["format"] = Format.ToString();
+
+            IsDirty = false;
+        }
+
+        public override bool PreloadResources(bool force)
+        {
+            if (!IsLoaded || force)
             {
                 try
                 {
@@ -92,20 +213,20 @@ namespace SailorEditor.ViewModels
                     return false;
                 }
 
+                IsDirty = false;
                 IsLoaded = true;
             }
 
             return true;
         }
     }
-
     public class ShaderLibraryFile : AssetFile
     {
         public string Code { get; set; }
 
-        public override bool PreloadResources()
+        public override bool PreloadResources(bool force)
         {
-            if (IsLoaded)
+            if (IsLoaded && !force)
                 return true;
 
             Code = File.ReadAllText(Asset.FullName);
@@ -124,9 +245,9 @@ namespace SailorEditor.ViewModels
         public string GlslFragmentShader { get; set; }
         public string GlslComputeShader { get; set; }
 
-        public override bool PreloadResources()
+        public override bool PreloadResources(bool force)
         {
-            if (IsLoaded)
+            if (IsLoaded && !force)
                 return true;
 
             try

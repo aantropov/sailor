@@ -7,6 +7,49 @@ using System.Globalization;
 
 namespace SailorEditor.Helpers
 {
+    public class DirtyNameBehavior : Behavior<Label>
+    {
+        protected override void OnAttachedTo(Label bindable)
+        {
+            base.OnAttachedTo(bindable);
+            bindable.BindingContextChanged += OnBindingContextChanged;
+        }
+        protected override void OnDetachingFrom(Label bindable)
+        {
+            base.OnDetachingFrom(bindable);
+            bindable.BindingContextChanged -= OnBindingContextChanged;
+        }
+        private void OnBindingContextChanged(object sender, EventArgs e)
+        {
+            var label = sender as Label;
+            if (label != null && label.BindingContext != null)
+            {
+                var bindingContext = label.BindingContext;
+                if (bindingContext is INotifyPropertyChanged notifyContext)
+                {
+                    notifyContext.PropertyChanged += (s, args) =>
+                    {
+                        if (args.PropertyName == "Name" || args.PropertyName == "IsDirty")
+                        {
+                            UpdateLabel(label, bindingContext);
+                        }
+                    };
+                    UpdateLabel(label, bindingContext);
+                }
+            }
+        }
+
+        private void UpdateLabel(Label label, object bindingContext)
+        {
+            var model = bindingContext as AssetFile;
+
+            if (model != null)
+            {
+                label.Text = model.IsDirty ? $"*{model.Name}*" : model.Name;
+            }
+        }
+    }
+
     public class InspectorTemplateSelector : DataTemplateSelector
     {
         public DataTemplate Default { get; private set; }
@@ -38,6 +81,9 @@ namespace SailorEditor.Helpers
 
                 var nameLabel = new Label { Text = "Name" };
                 nameLabel.SetBinding(Label.TextProperty, new Binding("Name", BindingMode.Default, null, null, "{0} (Type: ShaderLibrary)"));
+
+                var dirtyNameBehavior = new DirtyNameBehavior();
+                nameLabel.Behaviors.Add(dirtyNameBehavior);
 
                 var codeLabel = new Label { Text = "Code:" };
                 var codeEntry = TemplateBuilder.CreateReadOnlyEditor("Code");
@@ -104,6 +150,8 @@ namespace SailorEditor.Helpers
                         new RowDefinition { Height = GridLength.Auto },
                         new RowDefinition { Height = GridLength.Auto },
                         new RowDefinition { Height = GridLength.Auto },
+                        new RowDefinition { Height = GridLength.Auto },
+                        new RowDefinition { Height = GridLength.Auto },
                         new RowDefinition { Height = GridLength.Auto }
                     },
                     ColumnDefinitions =
@@ -115,6 +163,27 @@ namespace SailorEditor.Helpers
 
                 var nameLabel = new Label { Text = "Name" };
                 nameLabel.SetBinding(Label.TextProperty, new Binding("Name", BindingMode.Default, null, null, "{0} (Type: Texture)"));
+
+                var dirtyNameBehavior = new DirtyNameBehavior();
+                nameLabel.Behaviors.Add(dirtyNameBehavior);
+
+                var saveButton = new Button
+                {
+                    Text = "Save",
+                    HorizontalOptions = LayoutOptions.Start,
+                    VerticalOptions = LayoutOptions.Start
+                };
+                saveButton.SetBinding(Button.IsVisibleProperty, new Binding("IsDirty"));
+                saveButton.Clicked += (sender, e) => (saveButton.BindingContext as AssetFile).UpdateAssetFile();
+
+                var revertButton = new Button
+                {
+                    Text = "Revert",
+                    HorizontalOptions = LayoutOptions.End,
+                    VerticalOptions = LayoutOptions.Start
+                };
+                revertButton.SetBinding(Button.IsVisibleProperty, new Binding("IsDirty"));
+                revertButton.Clicked += (sender, e) => (revertButton.BindingContext as AssetFile).Revert();
 
                 var image = new Image
                 {
@@ -133,12 +202,18 @@ namespace SailorEditor.Helpers
                 var formatPicker = TemplateBuilder.CreateEnumPicker<TextureFormat>("Format");
 
                 TemplateBuilder.AddGridRow(grid, nameLabel, 0, GridLength.Auto);
-                TemplateBuilder.AddGridRow(grid, image, 1, GridLength.Auto);
-                TemplateBuilder.AddGridRowWithLabel(grid, "Generate Mips:", generateMipsCheckBox, 2);
-                TemplateBuilder.AddGridRowWithLabel(grid, "Storage Binding:", storageBindingCheckBox, 3);
-                TemplateBuilder.AddGridRowWithLabel(grid, "Filtration:", filtrationPicker, 4);
-                TemplateBuilder.AddGridRowWithLabel(grid, "Clamping:", clampingPicker, 5);
-                TemplateBuilder.AddGridRowWithLabel(grid, "Format:", formatPicker, 6);
+                TemplateBuilder.AddGridRow(grid, saveButton, 1, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, revertButton, 1, GridLength.Auto);
+
+                Grid.SetColumn(saveButton, 0);
+                Grid.SetColumn(revertButton, 1);
+
+                TemplateBuilder.AddGridRow(grid, image, 2, GridLength.Auto);
+                TemplateBuilder.AddGridRowWithLabel(grid, "Generate Mips:", generateMipsCheckBox, 3);
+                TemplateBuilder.AddGridRowWithLabel(grid, "Storage Binding:", storageBindingCheckBox, 4);
+                TemplateBuilder.AddGridRowWithLabel(grid, "Filtration:", filtrationPicker, 5);
+                TemplateBuilder.AddGridRowWithLabel(grid, "Clamping:", clampingPicker, 6);
+                TemplateBuilder.AddGridRowWithLabel(grid, "Format:", formatPicker, 7);
 
                 return grid;
             });

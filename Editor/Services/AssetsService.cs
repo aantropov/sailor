@@ -1,6 +1,8 @@
 ﻿using SailorEditor.ViewModels;
 using System.IO;
 using YamlDotNet.RepresentationModel;
+using YamlDotNet.Serialization.NamingConventions;
+using YamlDotNet.Serialization;
 
 namespace SailorEditor.Services
 {
@@ -18,7 +20,6 @@ namespace SailorEditor.Services
             Root = new ProjectRoot { Name = projectRoot, Id = 1 };
             ProcessDirectory(Root, projectRoot, -1);
         }
-
         private AssetFile ProcessAssetFile(FileInfo assetInfo, int parentFolderId)
         {
             FileInfo assetFile = new FileInfo(Path.ChangeExtension(assetInfo.FullName, null));
@@ -44,6 +45,8 @@ namespace SailorEditor.Services
             newAssetFile.AssetInfo = assetInfo;
             newAssetFile.Asset = assetFile;
 
+            newAssetFile.IsDirty = false;
+
             using (var yamlAssetInfo = new FileStream(assetInfo.FullName, FileMode.Open))
             using (var reader = new StreamReader(yamlAssetInfo))
             {
@@ -62,7 +65,6 @@ namespace SailorEditor.Services
 
             return newAssetFile;
         }
-
         private void ProcessDirectory(ProjectRoot root, string directoryPath, int parentFolderId)
         {
             foreach (var directory in Directory.GetDirectories(directoryPath))

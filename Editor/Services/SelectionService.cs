@@ -24,7 +24,7 @@ namespace SailorEditor.Services
 
         public void OnSelectAsset(AssetFile assetFile)
         {
-            assetFile.PreloadResources();
+            assetFile.PreloadResources(false);
 
             SelectedItems.Clear();
             SelectedItems.Add(assetFile);
