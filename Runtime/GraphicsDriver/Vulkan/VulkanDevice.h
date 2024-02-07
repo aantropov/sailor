@@ -62,7 +62,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(RHI::ECommandListQueue queue = RHI::ECommandListQueue::Graphics);
 
-		SAILOR_API void SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
+		SAILOR_API bool SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 			VulkanFencePtr fence = nullptr,
 			TVector<VulkanSemaphorePtr> signalSemaphores = {},
 			TVector<VulkanSemaphorePtr> waitSemaphores = {});
@@ -215,5 +215,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Stats
 		uint32_t m_numSubmittedCommandBuffersAcc = 0;
 		uint32_t m_numSubmittedCommandBuffers = 0;
+
+		bool m_bIsDeviceLost = false;
 	};
 }

@@ -1494,7 +1494,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		return;
 	}
 
-	SAILOR_LOG("Trying to update not bind uniform sampler");
+	SAILOR_LOG("Trying to update not bound uniform sampler");
 }
 
 VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader)

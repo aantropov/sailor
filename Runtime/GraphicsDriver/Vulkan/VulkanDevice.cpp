@@ -314,7 +314,7 @@ VulkanCommandBufferPtr VulkanDevice::CreateCommandBuffer(RHI::ECommandListQueue 
 	return nullptr;
 }
 
-void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
+bool VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	VulkanFencePtr fence,
 	TVector<VulkanSemaphorePtr> signalSemaphores,
 	TVector<VulkanSemaphorePtr> waitSemaphores)
@@ -348,17 +348,19 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	submitInfo.pWaitSemaphores = &waits[0];
 	submitInfo.pWaitDstStageMask = &waitStages[0];
 
+	VkResult submitResult = VK_SUCCESS;
+
 	if (commandBuffer->GetCommandPool()->GetQueueFamilyIndex() == m_queueFamilies.m_computeFamily.value_or(-1))
 	{
-		VK_CHECK(m_computeQueue->Submit(submitInfo, fence));
+		submitResult = m_computeQueue->Submit(submitInfo, fence);
 	}
 	else if (commandBuffer->GetCommandPool()->GetQueueFamilyIndex() == m_queueFamilies.m_transferFamily.value_or(-1))
 	{
-		VK_CHECK(m_transferQueue->Submit(submitInfo, fence));
+		submitResult = m_transferQueue->Submit(submitInfo, fence);
 	}
 	else
 	{
-		VK_CHECK(m_graphicsQueue->Submit(submitInfo, fence));
+		submitResult = m_graphicsQueue->Submit(submitInfo, fence);
 	}
 
 	_freea(waits);
@@ -366,6 +368,16 @@ void VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	_freea(waitStages);
 
 	m_numSubmittedCommandBuffersAcc++;
+
+	if (submitResult == VK_ERROR_DEVICE_LOST)
+	{
+		m_bIsDeviceLost = true;
+		return false;
+	}
+
+	VK_CHECK(submitResult);
+
+	return submitResult == VK_SUCCESS;
 }
 
 void VulkanDevice::CreateDefaultRenderPass()
@@ -653,7 +665,7 @@ void VulkanDevice::WaitIdle()
 
 bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
 {
-	if (IsSwapChainOutdated())
+	if (IsSwapChainOutdated() || m_bIsDeviceLost)
 	{
 		return true;
 	}
@@ -667,6 +679,7 @@ bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
 void VulkanDevice::FixLostDevice(Win32::Window* pViewport)
 {
 	RecreateSwapchain(pViewport);
+	m_bIsDeviceLost = false;
 }
 
 VulkanImageViewPtr VulkanDevice::GetBackBuffer() const
@@ -781,7 +794,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	waitSemaphores.Add(*m_imageAvailableSemaphores[m_currentFrame]);
 
 	///////////////////////////////////////////////////
-	VkResult presentResult;
+	VkResult presentResult = VK_SUCCESS;
+	VkResult submitResult = VK_SUCCESS;
 	if (commandBuffers.Num() > 0)
 	{
 		VkSubmitInfo submitInfo{};
@@ -809,7 +823,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		m_syncFences[m_currentFrame]->Reset();
 
 		//TODO: Transfer queue for transfer family command lists
-		VK_CHECK(m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]));
+		submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
+
 		m_numSubmittedCommandBuffersAcc += (uint32_t)commandBuffers.Num();
 
 		_freea(waitStages);
@@ -843,6 +858,14 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		presentResult = m_presentQueue->Present(presentInfo);
 	}
 
+	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
+	m_numSubmittedCommandBuffersAcc = 0;
+
+	if (submitResult == VK_ERROR_DEVICE_LOST)
+	{
+		m_bIsDeviceLost = true;
+	}
+
 	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR)
 	{
 		m_bIsSwapChainOutdated = true;
@@ -855,10 +878,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 
 	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
 
-	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
-	m_numSubmittedCommandBuffersAcc = 0;
-
-	return true;
+	return submitResult == VK_SUCCESS && presentResult == VK_SUCCESS;
 }
 
 void VulkanDevice::GetOccupiedVideoMemory(VkMemoryHeapFlags memFlags, size_t& outHeapBudget, size_t& outHeapUsage)

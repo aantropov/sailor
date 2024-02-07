@@ -190,7 +190,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
 	SAILOR_PROFILE_BLOCK("Wait for render thread");
 
-	if (m_bForceStop || App::GetSubmodule<Tasks::Scheduler>()->GetNumTasks(Tasks::EThreadType::Render) > MaxFramesInQueue)
+	if (m_bForceStop || 
+		m_driverInstance->ShouldFixLostDevice(m_pViewport) ||
+		App::GetSubmodule<Tasks::Scheduler>()->GetNumTasks(Tasks::EThreadType::Render) > MaxFramesInQueue)
 	{
 		return false;
 	}
