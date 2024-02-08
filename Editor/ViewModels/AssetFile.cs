@@ -15,7 +15,21 @@ namespace SailorEditor.ViewModels
         public FileInfo AssetInfo { get; set; }
         public Dictionary<string, string> Properties { get; set; } = new();
 
-        public string Name { get; set; }
+        public string DisplayName
+        {
+            get { return displayName; }
+            set
+            {
+                if (displayName != value)
+                {
+                    displayName = value;
+                    IsDirty = true;
+
+                    OnPropertyChanged(nameof(DisplayName));
+                }
+            }
+        }
+
         public int Id { get; set; }
         public int FolderId { get; set; }
         public bool IsDirty
@@ -57,11 +71,14 @@ namespace SailorEditor.ViewModels
             PreloadResources(true);
             IsDirty = false;
         }
+
         protected bool IsLoaded { get; set; }
         protected virtual void UpdateModel() { }
 
         bool isDirty = false;
+        string displayName;
     }
+
     public class TextureFile : AssetFile
     {
         public ImageSource Texture { get; protected set; }
@@ -162,7 +179,7 @@ namespace SailorEditor.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    Name = ex.Message;
+                    DisplayName = ex.Message;
                 }
 
                 try
@@ -209,7 +226,7 @@ namespace SailorEditor.ViewModels
                 }
                 catch (Exception e)
                 {
-                    Name = e.Message;
+                    DisplayName = e.Message;
                     return false;
                 }
 
@@ -290,7 +307,7 @@ namespace SailorEditor.ViewModels
             }
             catch (Exception e)
             {
-                Name = e.ToString();
+                DisplayName = e.ToString();
                 return false;
             }
 

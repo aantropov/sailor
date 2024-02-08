@@ -48,7 +48,7 @@ namespace SailorEditor.Helpers
                     var item = new TreeViewItem<AssetFile>();
                     item.Model = file;
                     item.ItemId = file.Id;
-                    item.Key = file.Name;
+                    item.Key = file.DisplayName;
 
                     itemGroup.ChildrenItems.Add(item);
                 }

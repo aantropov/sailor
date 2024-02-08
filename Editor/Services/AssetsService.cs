@@ -39,7 +39,7 @@ namespace SailorEditor.Services
             else
                 newAssetFile = new AssetFile();
 
-            newAssetFile.Name = assetFile.Name;
+            newAssetFile.DisplayName = assetFile.Name;
             newAssetFile.Id = Files.Count + 1;
             newAssetFile.FolderId = parentFolderId;
             newAssetFile.AssetInfo = assetInfo;

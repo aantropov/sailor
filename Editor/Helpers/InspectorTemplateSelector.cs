@@ -4,10 +4,11 @@ using Microsoft.Maui.Controls;
 using System.ComponentModel;
 using SailorEditor.Engine;
 using System.Globalization;
+using System.Xml;
 
 namespace SailorEditor.Helpers
 {
-    public class DirtyNameBehavior : Behavior<Label>
+    public class DisplayNameBehavior : Behavior<Label>
     {
         protected override void OnAttachedTo(Label bindable)
         {
@@ -29,7 +30,7 @@ namespace SailorEditor.Helpers
                 {
                     notifyContext.PropertyChanged += (s, args) =>
                     {
-                        if (args.PropertyName == "Name" || args.PropertyName == "IsDirty")
+                        if (args.PropertyName == "DisplayName" || args.PropertyName == "IsDirty")
                         {
                             UpdateLabel(label, bindingContext);
                         }
@@ -45,7 +46,8 @@ namespace SailorEditor.Helpers
 
             if (model != null)
             {
-                label.Text = model.IsDirty ? $"*{model.Name}*" : model.Name;
+                label.Text = model.IsDirty ? $"*{model.DisplayName}*" : $"{model.DisplayName}";
+                label.Text += $" (Type: {model.GetType().Name})";
             }
         }
     }
@@ -62,8 +64,10 @@ namespace SailorEditor.Helpers
             Default = new DataTemplate(() =>
             {
                 var label = new Label();
-                label.SetBinding(Label.TextProperty, new Binding("Name"));
+                label.SetBinding(Label.TextProperty, new Binding("DisplayName"));
+                label.Behaviors.Add(new DisplayNameBehavior());
                 label.TextColor = Color.FromRgb(255, 0, 0);
+
                 return label;
             });
 
@@ -79,11 +83,9 @@ namespace SailorEditor.Helpers
                     }
                 };
 
-                var nameLabel = new Label { Text = "Name" };
-                nameLabel.SetBinding(Label.TextProperty, new Binding("Name", BindingMode.Default, null, null, "{0} (Type: ShaderLibrary)"));
-
-                var dirtyNameBehavior = new DirtyNameBehavior();
-                nameLabel.Behaviors.Add(dirtyNameBehavior);
+                var nameLabel = new Label { Text = "DisplayName" };
+                nameLabel.SetBinding(Label.TextProperty, new Binding("DisplayName"));
+                nameLabel.Behaviors.Add(new DisplayNameBehavior());
 
                 var codeLabel = new Label { Text = "Code:" };
                 var codeEntry = TemplateBuilder.CreateReadOnlyEditor("Code");
@@ -112,8 +114,9 @@ namespace SailorEditor.Helpers
                     }
                 };
 
-                var nameLabel = new Label { Text = "Name" };
-                nameLabel.SetBinding(Label.TextProperty, new Binding("Name", BindingMode.Default, null, null, "{0} (Type: Shader)"));
+                var nameLabel = new Label { Text = "DisplayName" };
+                nameLabel.SetBinding(Label.TextProperty, new Binding("DisplayName"));
+                nameLabel.Behaviors.Add(new DisplayNameBehavior());
 
                 var includesLabel = new Label { Text = "Includes:" };
                 var includesList = TemplateBuilder.CreateReadOnlyEditor("Includes");
@@ -161,11 +164,9 @@ namespace SailorEditor.Helpers
                     }
                 };
 
-                var nameLabel = new Label { Text = "Name" };
-                nameLabel.SetBinding(Label.TextProperty, new Binding("Name", BindingMode.Default, null, null, "{0} (Type: Texture)"));
-
-                var dirtyNameBehavior = new DirtyNameBehavior();
-                nameLabel.Behaviors.Add(dirtyNameBehavior);
+                var nameLabel = new Label { Text = "DisplayName" };
+                nameLabel.SetBinding(Label.TextProperty, new Binding("DisplayName"));
+                nameLabel.Behaviors.Add(new DisplayNameBehavior());
 
                 var saveButton = new Button
                 {
