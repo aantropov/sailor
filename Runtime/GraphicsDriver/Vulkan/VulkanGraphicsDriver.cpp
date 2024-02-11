@@ -1156,9 +1156,13 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetUniformBufferAllocat
 		return (*it).m_second;
 	}
 
-	auto& uniformAllocator = m_uniformBuffers[uniformTypeId] = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 256, 1024 * 1024);
+	auto& uniformAllocator = m_uniformBuffers.At_Lock(uniformTypeId);
+
+	uniformAllocator = TSharedPtr<VulkanBufferAllocator>::Make(1024 * 1024, 256, 1024 * 1024);
 	uniformAllocator->GetGlobalAllocator().SetUsage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 	uniformAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	m_uniformBuffers.Unlock(uniformTypeId);
 
 	return uniformAllocator;
 }
@@ -2283,8 +2287,9 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 		CachedDescriptorSet cache = CachedDescriptorSet(layout, shaderBindings[i]);
 
 		// Flush lifetime
-		m_cachedDescriptorSets.At_Lock(cache).m_second = 0;
-		VulkanDescriptorSetPtr& cachedDescriptorSet = m_cachedDescriptorSets[cache].m_first;
+		auto& cachedDS = m_cachedDescriptorSets.At_Lock(cache);
+		cachedDS.m_second = 0;
+		VulkanDescriptorSetPtr& cachedDescriptorSet = cachedDS.m_first;
 
 		if (cachedDescriptorSet.IsValid())
 		{

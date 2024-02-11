@@ -229,7 +229,10 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 
 						size_t index = m_textureSamplersCurrentIndex++;
-						m_textureSamplersIndices[assetInfo->GetFileId()] = index;
+
+						m_textureSamplersIndices.At_Lock(assetInfo->GetFileId()) = index;
+						m_textureSamplersIndices.Unlock(assetInfo->GetFileId());
+
 						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
 					}
 

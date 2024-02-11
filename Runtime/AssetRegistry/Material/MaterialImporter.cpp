@@ -86,7 +86,9 @@ void Material::SetSampler(const std::string& name, TexturePtr value)
 
 	if (value)
 	{
-		m_samplers[name] = value;
+		m_samplers.At_Lock(name) = value;
+		m_samplers.Unlock(name);
+
 		m_bIsDirty = true;
 	}
 }
@@ -95,7 +97,9 @@ void Material::SetUniform(const std::string& name, float value)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_uniformsFloat[name] = value;
+	m_uniformsFloat.At_Lock(name) = value;
+	m_uniformsFloat.Unlock(name);
+
 	m_bIsDirty = true;
 }
 
@@ -103,7 +107,9 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	m_uniformsVec4[name] = value;
+	m_uniformsVec4.At_Lock(name) = value;
+	m_uniformsVec4.Unlock(name);
+
 	m_bIsDirty = true;
 }
 

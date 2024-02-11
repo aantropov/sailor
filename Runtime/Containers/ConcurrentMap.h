@@ -20,7 +20,7 @@ namespace Sailor
 		using Super = Sailor::TConcurrentSet<TPair<TKeyType, TValueType>, concurrencyLevel, TAllocator>;
 		using TElementType = Sailor::TPair<TKeyType, TValueType>;
 
-		SAILOR_API TConcurrentMap(const uint32_t desiredNumBuckets = 24, ERehashPolicy policy = ERehashPolicy::Never) : Super(desiredNumBuckets, policy) {  }
+		SAILOR_API TConcurrentMap(const uint32_t desiredNumBuckets = 24, ERehashPolicy policy = ERehashPolicy::IfNotWriting) : Super(desiredNumBuckets, policy) {  }
 		SAILOR_API TConcurrentMap(TConcurrentMap&&) = default;
 		SAILOR_API TConcurrentMap(const TConcurrentMap&) = default;
 		SAILOR_API TConcurrentMap& operator=(TConcurrentMap&&) noexcept = default;
@@ -133,13 +133,8 @@ namespace Sailor
 			Super::Unlock(hash);
 		}
 
-		SAILOR_API TValueType& operator[] (const TKeyType& key)
-		{
-			return GetOrAdd(key).m_second;
-		}
-
 		// TODO: rethink the approach for const operator []
-		SAILOR_API const TValueType& operator[] (const TKeyType& key) const
+		SAILOR_API TValueType operator[] (const TKeyType& key) const
 		{
 			TValueType const* out = nullptr;
 			Find(key, out);
@@ -284,6 +279,7 @@ namespace Sailor
 
 			return *element->GetContainer().Last();
 		}
+
 	};
 
 	SAILOR_API void RunMapBenchmark();
