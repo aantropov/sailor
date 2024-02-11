@@ -665,14 +665,16 @@ void VulkanDevice::WaitIdle()
 
 bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
 {
-	if (IsSwapChainOutdated() || m_bIsDeviceLost)
+	SAILOR_PROFILE_FUNCTION();
+
+	if (IsSwapChainOutdated() || m_bIsDeviceLost || m_swapchain == nullptr)
 	{
 		return true;
 	}
+	
+	const auto& m_swapChainSupportDetails = m_swapchain->GetSwapchainSupportDetails();
 
-	const SwapChainSupportDetails swapChainSupport = VulkanApi::QuerySwapChainSupport(GetPhysicalDevice(), m_surface);
-	const VkExtent2D swapchainExtent = VulkanApi::ChooseSwapExtent(swapChainSupport.m_capabilities, pViewport->GetWidth(), pViewport->GetHeight());
-
+	const VkExtent2D swapchainExtent = VulkanApi::ChooseSwapExtent(m_swapChainSupportDetails.m_capabilities, pViewport->GetWidth(), pViewport->GetHeight());
 	return m_swapchain && (swapchainExtent.width != m_swapchain->GetExtent().width || swapchainExtent.height != m_swapchain->GetExtent().height);
 }
 

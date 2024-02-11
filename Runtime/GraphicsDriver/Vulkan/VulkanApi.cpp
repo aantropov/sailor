@@ -351,6 +351,8 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, V
 
 SwapChainSupportDetails VulkanApi::QuerySwapChainSupport(VkPhysicalDevice device, VulkanSurfacePtr surface)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	SwapChainSupportDetails details;
 
 	VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, *surface, &details.m_capabilities));
@@ -410,6 +412,8 @@ VkPresentModeKHR VulkanApi::ÑhooseSwapPresentMode(const TVector<VkPresentModeKHR
 
 VkExtent2D VulkanApi::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	if (capabilities.currentExtent.width != UINT32_MAX)
 	{
 		return capabilities.currentExtent;

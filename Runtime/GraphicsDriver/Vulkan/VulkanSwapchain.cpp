@@ -42,17 +42,17 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 {
 	const bool bIsRecreating = oldSwapchain.IsValid();
 
-	SwapChainSupportDetails swapChainSupport = VulkanApi::QuerySwapChainSupport(device->GetPhysicalDevice(), m_surface);
+	m_swapChainSupport = VulkanApi::QuerySwapChainSupport(device->GetPhysicalDevice(), m_surface);
 
-	m_surfaceFormat = VulkanApi::ChooseSwapSurfaceFormat(swapChainSupport.m_formats);
-	m_presentMode = VulkanApi::ÑhooseSwapPresentMode(swapChainSupport.m_presentModes, bIsVSync);
-	m_swapchainExtent = VulkanApi::ChooseSwapExtent(swapChainSupport.m_capabilities, width, height);
+	m_surfaceFormat = VulkanApi::ChooseSwapSurfaceFormat(m_swapChainSupport.m_formats);
+	m_presentMode = VulkanApi::ÑhooseSwapPresentMode(m_swapChainSupport.m_presentModes, bIsVSync);
+	m_swapchainExtent = VulkanApi::ChooseSwapExtent(m_swapChainSupport.m_capabilities, width, height);
 
-	uint32_t imageCount = swapChainSupport.m_capabilities.minImageCount + 1;
+	uint32_t imageCount = m_swapChainSupport.m_capabilities.minImageCount + 1;
 
-	if (swapChainSupport.m_capabilities.maxImageCount > 0 && imageCount > swapChainSupport.m_capabilities.maxImageCount)
+	if (m_swapChainSupport.m_capabilities.maxImageCount > 0 && imageCount > m_swapChainSupport.m_capabilities.maxImageCount)
 	{
-		imageCount = swapChainSupport.m_capabilities.maxImageCount;
+		imageCount = m_swapChainSupport.m_capabilities.maxImageCount;
 	}
 
 	VkSwapchainCreateInfoKHR createSwapChainInfo{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
@@ -80,7 +80,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 		createSwapChainInfo.pQueueFamilyIndices = nullptr; // Optional
 	}
 
-	createSwapChainInfo.preTransform = swapChainSupport.m_capabilities.currentTransform;
+	createSwapChainInfo.preTransform = m_swapChainSupport.m_capabilities.currentTransform;
 	createSwapChainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	createSwapChainInfo.presentMode = m_presentMode;

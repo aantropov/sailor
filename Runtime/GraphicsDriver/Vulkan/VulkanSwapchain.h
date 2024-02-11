@@ -54,6 +54,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API VkResult AcquireNextImage(uint64_t timeout, VulkanSemaphorePtr semaphore, VulkanFencePtr fence, uint32_t& imageIndex);
 
+		SAILOR_API const SwapChainSupportDetails& GetSwapchainSupportDetails() const { return m_swapChainSupport; }
+
 	protected:
 		SAILOR_API virtual ~VulkanSwapchain();
 
@@ -67,6 +69,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		TVector<VulkanSwapchainImagePtr> m_swapchainImages;
 		TVector<VulkanImageViewPtr> m_swapchainImageViews;
+		SwapChainSupportDetails m_swapChainSupport{};
 
 		VulkanImagePtr m_depthBuffer;
 		VulkanImageViewPtr m_depthBufferView;
