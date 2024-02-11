@@ -74,7 +74,9 @@ bool FrameGraphImporter::LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& out
 	if (auto pFrameGraphAsset = LoadFrameGraphAsset(uid))
 	{
 		FrameGraphPtr pFrameGraph = BuildFrameGraph(uid, pFrameGraphAsset);
-		outFrameGraph = m_loadedFrameGraphs[uid] = pFrameGraph;
+
+		m_loadedFrameGraphs.At_Lock(uid) = outFrameGraph = pFrameGraph;
+		m_loadedFrameGraphs.Unlock(uid);
 
 		return true;
 	}

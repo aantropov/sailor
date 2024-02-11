@@ -12,7 +12,7 @@
 
 namespace Sailor
 {
-	template<typename TKeyType, typename TValueType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::DefaultGlobalAllocator>
+	template<typename TKeyType, typename TValueType, const uint32_t concurrencyLevel = 8, const ERehashPolicy policy = ERehashPolicy::IfNotWriting, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class TConcurrentMap final : public TConcurrentSet<TPair<TKeyType, TValueType>, concurrencyLevel, TAllocator>
 	{
 	public:
@@ -20,7 +20,7 @@ namespace Sailor
 		using Super = Sailor::TConcurrentSet<TPair<TKeyType, TValueType>, concurrencyLevel, TAllocator>;
 		using TElementType = Sailor::TPair<TKeyType, TValueType>;
 
-		SAILOR_API TConcurrentMap(const uint32_t desiredNumBuckets = 24, ERehashPolicy policy = ERehashPolicy::IfNotWriting) : Super(desiredNumBuckets, policy) {  }
+		SAILOR_API TConcurrentMap(const uint32_t desiredNumBuckets = 24) : Super(desiredNumBuckets, policy) {  }
 		SAILOR_API TConcurrentMap(TConcurrentMap&&) = default;
 		SAILOR_API TConcurrentMap(const TConcurrentMap&) = default;
 		SAILOR_API TConcurrentMap& operator=(TConcurrentMap&&) noexcept = default;
@@ -133,8 +133,26 @@ namespace Sailor
 			Super::Unlock(hash);
 		}
 
-		// TODO: rethink the approach for const operator []
-		SAILOR_API TValueType operator[] (const TKeyType& key) const
+		// TODO: Investigate If we don't rehash, we can directly read/write to elements due to the bucket container is not invalidated
+		template<ERehashPolicy P = policy>
+		typename std::enable_if<P == ERehashPolicy::Never, TValueType&>::type operator[] (const TKeyType& key)
+		{
+			return GetOrAdd(key).m_second;
+		}
+
+		template<ERehashPolicy P = policy>
+		typename std::enable_if<P == ERehashPolicy::Never, const TValueType&>::type operator[] (const TKeyType& key) const
+		{
+			TValueType const* out = nullptr;
+			Find(key, out);
+			return *out;
+		}
+
+		// If we can rehash, we cannot directly read/write to elements due to the bucket container could be invalidated.
+		// !But you still is able to get the values, but they are returned by VALUES!
+		// *I expect that you use At_Lock to add elements
+		template<ERehashPolicy P = policy>
+		typename std::enable_if<P != ERehashPolicy::Never, const TValueType>::type operator[] (const TKeyType& key) const
 		{
 			TValueType const* out = nullptr;
 			Find(key, out);
@@ -269,7 +287,26 @@ namespace Sailor
 
 			if (Super::ShouldRehash())
 			{
-				Super::Rehash(Super::m_buckets.Capacity() * 4);
+				uint32 exceptConcurrency = hash % concurrencyLevel;
+				switch (policy)
+				{
+				case ERehashPolicy::IfNotWriting:
+				{
+					if (Super::TryLockAll(exceptConcurrency))
+					{
+						Super::Rehash(Super::m_buckets.Capacity() * 4);
+						Super::UnlockAll();
+					}
+					break;
+				}
+				case ERehashPolicy::Always:
+				{
+					Super::LockAll(exceptConcurrency);
+					Super::Rehash(Super::m_buckets.Capacity() * 4);
+					Super::UnlockAll();
+					break;
+				}
+				};
 			}
 
 			Super::Insert_Internal(TElementType(key, std::move(defaultValue)), hash);

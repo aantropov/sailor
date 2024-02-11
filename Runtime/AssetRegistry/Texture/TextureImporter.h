@@ -64,7 +64,8 @@ namespace Sailor
 		SAILOR_API virtual void CollectGarbage() override;
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetTextureSamplersBindingSet() { return m_textureSamplersBindings; }
-		SAILOR_API size_t GetTextureIndex(FileId uid) const { return m_textureSamplersIndices[uid]; }
+		SAILOR_API size_t GetTextureIndex(FileId uid);
+
 
 	protected:
 

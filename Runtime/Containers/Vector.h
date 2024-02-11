@@ -27,7 +27,7 @@ namespace Sailor
 
 		TVectorIterator(const TVectorIterator& rhs) : m_element(rhs.m_element) {}
 
-		TVectorIterator(TVectorIterator&& rhs)
+		TVectorIterator(TVectorIterator&& rhs) noexcept
 		{
 			m_element = rhs.m_element;
 			rhs.m_element = nullptr;
@@ -43,7 +43,7 @@ namespace Sailor
 			return *this;
 		}
 
-		TVectorIterator& operator=(TVectorIterator&& rhs)
+		TVectorIterator& operator=(TVectorIterator&& rhs)  noexcept
 		{
 			m_element = rhs.m_element;
 			rhs.m_element = nullptr;

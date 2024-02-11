@@ -1572,7 +1572,10 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 	target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 	target->m_vulkan.m_imageView->Compile();
 
-	return m_cachedMsaaRenderTargets[hash] = target;
+	m_cachedMsaaRenderTargets.At_Lock(hash) = target;
+	m_cachedMsaaRenderTargets.Unlock(hash);
+
+	return target;
 }
 
 void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr)

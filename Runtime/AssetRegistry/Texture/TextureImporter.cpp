@@ -106,7 +106,9 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 
-						size_t index = m_textureSamplersIndices[assetInfo->GetFileId()];
+						size_t index = m_textureSamplersIndices.At_Lock(assetInfo->GetFileId());
+						m_textureSamplersIndices.Unlock(assetInfo->GetFileId());
+
 						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
 						return true;
 					}
@@ -254,6 +256,14 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
 	return Tasks::TaskPtr<TexturePtr>();
+}
+
+size_t TextureImporter::GetTextureIndex(FileId uid)
+{
+	size_t res = m_textureSamplersIndices.At_Lock(uid);
+	m_textureSamplersIndices.Unlock(uid);
+
+	return res;
 }
 
 void TextureImporter::CollectGarbage()

@@ -22,12 +22,12 @@ namespace Sailor
 		Always
 	};
 
-	template<typename TElementType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::DefaultGlobalAllocator>
+	template<typename TElementType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::DefaultGlobalAllocator, const size_t ReservedElements = 12>
 	class TConcurrentSet
 	{
 	public:
 
-		using TElementContainer = TVector<TElementType, TAllocator>;
+		using TElementContainer = TVector<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * ReservedElements, TAllocator>>;
 
 		class TEntry
 		{
@@ -241,7 +241,17 @@ namespace Sailor
 		{
 			if (ShouldRehash())
 			{
-				Rehash(m_buckets.Capacity() * 4);
+				if (!(m_rehashPolicy == ERehashPolicy::IfNotWriting && !TryLockAll(-1)))
+				{
+					Rehash(m_buckets.Capacity() * 4);
+					UnlockAll();
+				}
+				else if (m_rehashPolicy == ERehashPolicy::Always)
+				{
+					LockAll();
+					Rehash(m_buckets.Capacity() * 4);
+					UnlockAll();
+				}
 			}
 
 			const auto& hash = Sailor::GetHash(inElement);
@@ -401,11 +411,22 @@ namespace Sailor
 		__forceinline void Lock(size_t hash) { m_locks[hash % concurrencyLevel].Lock(); }
 		__forceinline void Unlock(size_t hash) { m_locks[hash % concurrencyLevel].Unlock(); }
 
-		__forceinline bool TryLockAll()
+		__forceinline void LockAll(uint32_t exceptConcurrencyLevel)
+		{
+			for (size_t i = 0; i < concurrencyLevel; i++)
+			{
+				if (exceptConcurrencyLevel != (uint32_t)i)
+				{
+					m_locks[i].Lock();
+				}
+			}
+		}
+
+		__forceinline bool TryLockAll(uint32_t exceptConcurrencyLevel)
 		{
 			for (uint32_t i = 0; i < concurrencyLevel; i++)
 			{
-				if (!m_locks[i].TryLock())
+				if (exceptConcurrencyLevel != i && !m_locks[i].TryLock())
 				{
 					for (uint32_t j = 0; j < i; j++)
 					{
@@ -427,15 +448,6 @@ namespace Sailor
 			if (desiredBucketsNum <= m_buckets.Num())
 			{
 				return;
-			}
-
-			if (m_rehashPolicy == ERehashPolicy::IfNotWriting && !TryLockAll())
-			{
-				return;
-			}
-			else if (m_rehashPolicy == ERehashPolicy::Always)
-			{
-				LockAll();
 			}
 
 			TVector<TConcurrentEntryPtr, TAllocator> buckets(desiredBucketsNum);
@@ -469,8 +481,6 @@ namespace Sailor
 			}
 
 			buckets.Clear();
-
-			UnlockAll();
 		}
 
 		TBucketContainer m_buckets{};
