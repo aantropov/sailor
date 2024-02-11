@@ -181,7 +181,7 @@ std::string GenerateConstantsLibrary(uint32_t version)
 
 	stream << "\n" << "// GPU Culling" << "\n";
 	stream << "#define GPU_CULLING_GROUP_SIZE " << RHI::Renderer::GPUCullingGroupSize << "\n";
-	
+
 
 	stream << "\n" << "// Shadows" << "\n";
 	stream << "#define MAX_SHADOWS_IN_VIEW " << LightingECS::MaxShadowsInView << "\n";
@@ -471,11 +471,11 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 		{
 			SAILOR_LOG_ERROR("Cannot parse YAML: %s, %s", filepath.c_str(), e.what());
 		}
-		
+
 		ShaderAsset* shader = new ShaderAsset();
 		shader->Deserialize(yamlNode);
 		shaderAsset = TSharedPtr<ShaderAsset>(shader);
-		
+
 		m_shaderAssetsCache.Unlock(uid);
 
 		return shaderAsset;
@@ -506,7 +506,8 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 						{
 							if (bRes)
 							{
-								for (auto& loadedShader : m_loadedShaders[assetInfo->GetFileId()])
+								auto& loadedShaders = m_loadedShaders.At_Lock(assetInfo->GetFileId());
+								for (auto& loadedShader : loadedShaders)
 								{
 									SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
 
@@ -515,13 +516,15 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 										loadedShader.m_second->TraceHotReload(nullptr);
 									}
 								}
+								m_loadedShaders.Unlock(assetInfo->GetFileId());
 							}
 						}, "Update Shader RHI");
 				}
 			}
 			else
 			{
-				for (auto& loadedShader : m_loadedShaders[assetInfo->GetFileId()])
+				auto& loadedShaders = m_loadedShaders.At_Lock(assetInfo->GetFileId());
+				for (auto& loadedShader : loadedShaders)
 				{
 					SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
 
@@ -530,6 +533,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 						loadedShader.m_second->TraceHotReload(nullptr);
 					}
 				}
+				m_loadedShaders.Unlock(assetInfo->GetFileId());
 			}
 		}
 		else if (extension == "glsl")
@@ -784,7 +788,9 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 			const size_t index = entry.FindIf([&](const auto& el) { return el.m_first == permutation; });
 			if (index != -1)
 			{
-				outShader = m_loadedShaders[uid][index].m_second;
+				auto& shaders = m_loadedShaders.At_Lock(uid);
+				outShader = shaders[index].m_second;
+				m_loadedShaders.Unlock(uid);
 				m_promises.Unlock(uid);
 
 				return entry[index].m_second;
@@ -802,9 +808,13 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 					return pShader;
 				});
 
-			m_loadedShaders[uid].Add({ permutation, pShader });
+			auto& shaders = m_loadedShaders.At_Lock(uid);
+			
+			shaders.Add({ permutation, pShader });
 			entry.Add({ permutation, newPromise });
-			outShader = (*(m_loadedShaders[uid].end() - 1)).m_second;
+			outShader = (*(shaders.end() - 1)).m_second;
+
+			m_loadedShaders.Unlock(uid);
 
 			App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
 			m_promises.Unlock(uid);
