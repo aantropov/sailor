@@ -203,6 +203,11 @@ namespace SailorEditor.Controls
             Render();
         }
 
+        public void Select()
+        {
+            ChildSelected(this);
+        }
+
         private void ChildSelected(TreeViewNode child)
         {
             //Um? How does this work? The method here is a private method so how are we calling it?

@@ -1,5 +1,6 @@
 ﻿using SailorEditor.ViewModels;
 using SailorEditor.Services;
+using SailorEditor.Controls;
 
 namespace SailorEditor.Helpers
 {
@@ -18,6 +19,32 @@ namespace SailorEditor.Helpers
 
                     if (search != null)
                         return search;
+                }
+            }
+
+            return null;
+        }
+        public static TreeViewNode FindFileRecursive(this TreeViewNode parent, AssetFile id)
+        {
+            var assetFile = parent.BindingContext as TreeViewItem<AssetFile>;
+
+            if (assetFile != null)
+            {
+                if (assetFile.Model.UID == id.UID)
+                {
+                    return parent;
+                }
+            }
+
+            var assetFolder = parent.BindingContext as TreeViewItemGroup<AssetFolder, AssetFile>;
+            if (assetFolder != null)
+            {
+                foreach (var el in parent.ChildrenList)
+                {
+                    var res = FindFileRecursive(el, id);
+
+                    if (res != null)
+                        return res;
                 }
             }
 

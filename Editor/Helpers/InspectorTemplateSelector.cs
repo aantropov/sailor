@@ -69,7 +69,6 @@ namespace SailorEditor.Helpers
             }
         }
     }
-
     public class InspectorTemplateSelector : DataTemplateSelector
     {
         public DataTemplate Default { get; private set; }
@@ -235,7 +234,7 @@ namespace SailorEditor.Helpers
                     }),
                     SelectionMode = SelectionMode.Single
                 };
-                
+
                 materialsCollectionView.SetBinding(ItemsView.ItemsSourceProperty, new Binding("DefaultMaterials"));
                 materialsCollectionView.SelectionChanged += (sender, e) =>
                 {

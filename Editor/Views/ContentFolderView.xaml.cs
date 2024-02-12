@@ -19,6 +19,32 @@ namespace SailorEditor.Views
             PopulateTreeView();
 
             FolderTree.SelectedItemChanged += OnSelectTreeViewNode;
+
+            var selectionViewModel = MauiProgram.GetService<SelectionService>();
+            selectionViewModel.OnSelectAssetAction += OnSelectAssetFile;
+        }
+
+        private void OnSelectAssetFile(AssetFile file)
+        {
+            var assetFile = FolderTree.SelectedItem.BindingContext as TreeViewItem<AssetFile>;
+
+            if (assetFile != null)
+            {
+                if (assetFile.Model.UID != file.UID)
+                {
+                    foreach (var el in FolderTree.RootNodes)
+                    {
+                        var res = el.FindFileRecursive(file);
+
+                        if (res != null)
+                        {
+                            res.Select();
+                            FolderTree.SelectedItem = res;
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         public static void OnSelectTreeViewNode(object sender, EventArgs args)
