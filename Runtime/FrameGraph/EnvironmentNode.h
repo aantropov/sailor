@@ -36,8 +36,8 @@ namespace Sailor::Framegraph
 		RHI::RHIShaderBindingSetPtr m_computeSpecularBindings{};
 		RHI::RHIShaderBindingSetPtr m_computeBrdfBindings{};
 
-		TConcurrentMap<SkyNode::SkyParams, RHI::RHICubemapPtr> m_envCubemaps{};
-		TConcurrentMap<SkyNode::SkyParams, RHI::RHICubemapPtr> m_irradianceCubemaps{};
+		TMap<SkyNode::SkyParams, RHI::RHICubemapPtr> m_envCubemaps{};
+		TMap<SkyNode::SkyParams, RHI::RHICubemapPtr> m_irradianceCubemaps{};
 		RHI::RHITexturePtr m_brdfSampler{};
 
 		TexturePtr m_envMapTexture;

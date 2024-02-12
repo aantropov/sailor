@@ -49,9 +49,15 @@ void Window::TrackParentWindowPosition()
 		rect.right -= 8;
 		rect.bottom -= 238;
 
-		::SetWindowPos(m_hWnd, m_parentHwnd, rect.left, rect.top,
-			rect.right - rect.left, rect.bottom - rect.top,
-			SWP_NOACTIVATE);
+		int32_t newWidth = rect.right - rect.left;
+		int32_t newHeight = rect.bottom - rect.top;
+
+		if (newWidth > 0 && newHeight > 0)
+		{
+			::SetWindowPos(m_hWnd, m_parentHwnd, rect.left, rect.top,
+				rect.right - rect.left, rect.bottom - rect.top,
+				SWP_NOACTIVATE);
+		}
 	}
 }
 

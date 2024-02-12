@@ -151,8 +151,8 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			}
 		}
 
-		auto& envCubemap = m_envCubemaps.At_Lock(skyHash);
-		auto& irradianceCubemap = m_irradianceCubemaps.At_Lock(skyHash);
+		auto& envCubemap = m_envCubemaps[skyHash];
+		auto& irradianceCubemap = m_irradianceCubemaps[skyHash];
 
 		const bool bShouldUpdateEnvCubemap = !envCubemap;
 		const bool bShouldUpdateIrradianceCubemap = !irradianceCubemap;
@@ -265,9 +265,6 @@ void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 			}
 			commands->EndDebugRegion(commandList);
 		}
-
-		m_envCubemaps.Unlock(skyHash);
-		m_irradianceCubemaps.Unlock(skyHash);
 
 		m_bIsDirty = false;
 	}

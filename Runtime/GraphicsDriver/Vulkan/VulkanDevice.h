@@ -118,7 +118,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanDeviceMemoryAllocator& GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator> GetStagingBufferAllocator() { return GetCurrentThreadContext().m_stagingBufferAllocator; }
 		SAILOR_API VulkanStateViewportPtr GetCurrentFrameViewport() const { return m_pCurrentFrameViewport; }
-		SAILOR_API const TConcurrentMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>>& GetMemoryAllocators() const { return m_memoryAllocators; }
+		SAILOR_API const auto& GetMemoryAllocators() const { return m_memoryAllocators; }
 
 		SAILOR_API void GetOccupiedVideoMemory(VkMemoryHeapFlags memFlags, size_t& outHeapBudget, size_t& outHeapUsage);
 
@@ -201,7 +201,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TConcurrentMap<DWORD, TUniquePtr<ThreadContext>> m_threadContext;
 
 		// We're sharing the same device memory between the different buffers
-		TConcurrentMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>> m_memoryAllocators;
+		TConcurrentMap<uint64_t, TUniquePtr<VulkanDeviceMemoryAllocator>, 16u, ERehashPolicy::Never> m_memoryAllocators;
 
 		// Dynamic rendering extension
 		PFN_vkCmdBeginRenderingKHR pVkCmdBeginRenderingKHR;
