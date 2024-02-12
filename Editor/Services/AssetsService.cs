@@ -3,19 +3,22 @@ using System.IO;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
+using Microsoft.Maui.Layouts;
 
 namespace SailorEditor.Services
 {
+    using AssetUID = string;
     public class AssetsService
-    {
+    { 
         public ProjectRoot Root { get; private set; }
         public List<AssetFolder> Folders { get; private set; }
-        public List<AssetFile> Files { get; private set; }
+        public Dictionary<AssetUID, AssetFile> Assets { get; private set; }
+        public List<AssetFile> Files { get { return Assets.Values.ToList(); } }
         public AssetsService() => AddProjectRoot(SailorEngine.GetEngineContentDirectory());
         public void AddProjectRoot(string projectRoot)
         {
             Folders = new List<AssetFolder>();
-            Files = new List<AssetFile>();
+            Assets = new Dictionary<AssetUID, AssetFile>();
 
             Root = new ProjectRoot { Name = projectRoot, Id = 1 };
             ProcessDirectory(Root, projectRoot, -1);
@@ -32,6 +35,10 @@ namespace SailorEditor.Services
                 extension == ".bmp" ||
                 extension == ".hdr")
                 newAssetFile = new TextureFile();
+            else if (extension == ".obj" ||
+                extension == ".fbx" ||
+                extension == ".gltf")
+                newAssetFile = new ModelFile();
             else if (extension == ".shader")
                 newAssetFile = new ShaderFile();
             else if (extension == ".glsl")
@@ -57,7 +64,7 @@ namespace SailorEditor.Services
 
                 foreach (var e in root.Children)
                 {
-                    newAssetFile.Properties[e.Key.ToString()] = e.Value.ToString();
+                    newAssetFile.Properties[e.Key.ToString()] = e.Value;
                 }
 
                 yamlAssetInfo.Close();
@@ -92,7 +99,7 @@ namespace SailorEditor.Services
                 try
                 {
                     var newAssetInfo = ProcessAssetFile(assetInfo, parentFolderId);
-                    Files.Add(newAssetInfo);
+                    Assets[newAssetInfo.UID] = newAssetInfo;
                 }
                 catch (Exception ex)
                 {

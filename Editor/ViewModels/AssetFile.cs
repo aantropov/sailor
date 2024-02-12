@@ -6,14 +6,18 @@ using System.Runtime.CompilerServices;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
+using SailorEditor.Services;
 
 namespace SailorEditor.ViewModels
 {
+    using AssetUID = string;
+
     public class AssetFile : INotifyPropertyChanged
     {
+        public AssetUID UID { get { return Properties["fileId"].ToString(); } }
         public FileInfo Asset { get; set; }
         public FileInfo AssetInfo { get; set; }
-        public Dictionary<string, string> Properties { get; set; } = new();
+        public Dictionary<string, object> Properties { get; set; } = new();
 
         public string DisplayName
         {
@@ -78,7 +82,114 @@ namespace SailorEditor.ViewModels
         bool isDirty = false;
         string displayName;
     }
+    public class ModelFile : AssetFile
+    {
+        public bool ShouldGenerateMaterials
+        {
+            get { return shouldGenerateMaterials; }
+            set
+            {
+                if (shouldGenerateMaterials != value)
+                {
+                    shouldGenerateMaterials = value;
+                    IsDirty = true;
 
+                    OnPropertyChanged(nameof(ShouldGenerateMaterials));
+                }
+            }
+        }
+        public bool ShouldBatchByMaterial
+        {
+            get { return shouldBatchByMaterial; }
+            set
+            {
+                if (shouldBatchByMaterial != value)
+                {
+                    shouldBatchByMaterial = value;
+                    IsDirty = true;
+
+                    OnPropertyChanged(nameof(ShouldBatchByMaterial));
+                }
+            }
+        }
+
+        public List<AssetUID> DefaultMaterials
+        {
+            get { return defaultMaterials; }
+            set
+            {
+                if (DefaultMaterials != value)
+                {
+                    defaultMaterials = value;
+                    IsDirty = true;
+
+                    OnPropertyChanged(nameof(DefaultMaterials));
+                }
+            }
+        }
+
+        private bool shouldGenerateMaterials;
+        private bool shouldBatchByMaterial;
+        private List<AssetUID> defaultMaterials = new();
+
+        protected override void UpdateModel()
+        {
+            Properties["bShouldGenerateMaterials"] = ShouldGenerateMaterials.ToString();
+            Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial.ToString();
+            Properties["defaultMaterials"] = defaultMaterials.ToString();
+
+            IsDirty = false;
+        }
+        public override bool PreloadResources(bool force)
+        {
+            if (!IsLoaded || force)
+            {
+                try
+                {
+                    foreach (var e in Properties)
+                    {
+                        switch (e.Key.ToString())
+                        {
+                            case "bShouldGenerateMaterials":
+                                ShouldGenerateMaterials = bool.Parse(e.Value.ToString());
+                                break;
+                            case "bShouldBatchByMaterial":
+                                ShouldBatchByMaterial = bool.Parse(e.Value.ToString());
+                                break;
+                            case "defaultMaterials":
+                                {
+                                    var parsed = new List<AssetUID>();
+                                    bool ignoreFirst = false;
+                                    foreach (var uid in (e.Value as YamlNode).AllNodes)
+                                    {
+                                        if (!ignoreFirst)
+                                        {
+                                            ignoreFirst = true;
+                                            continue;
+                                        }
+
+                                        parsed.Add((AssetUID)uid.ToString());
+                                    }
+
+                                    DefaultMaterials = parsed;
+                                }
+                                break;
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    DisplayName = e.Message;
+                    return false;
+                }
+
+                IsDirty = false;
+                IsLoaded = true;
+            }
+
+            return true;
+        }
+    }
     public class TextureFile : AssetFile
     {
         public ImageSource Texture { get; protected set; }
@@ -189,15 +300,15 @@ namespace SailorEditor.ViewModels
                         switch (e.Key.ToString())
                         {
                             case "bShouldGenerateMips":
-                                ShouldGenerateMips = bool.Parse(e.Value);
+                                ShouldGenerateMips = bool.Parse(e.Value.ToString());
                                 break;
                             case "bShouldSupportStorageBinding":
-                                ShouldSupportStorageBinding = bool.Parse(e.Value);
+                                ShouldSupportStorageBinding = bool.Parse(e.Value.ToString());
                                 break;
                             case "clamping":
                                 {
                                     TextureClamping outEnum;
-                                    if (Enum.TryParse(e.Value, out outEnum))
+                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
                                         Clamping = outEnum;
                                     else
                                         return false;
@@ -206,7 +317,7 @@ namespace SailorEditor.ViewModels
                             case "filtration":
                                 {
                                     TextureFiltration outEnum;
-                                    if (Enum.TryParse(e.Value, out outEnum))
+                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
                                         Filtration = outEnum;
                                     else
                                         return false;
@@ -215,7 +326,7 @@ namespace SailorEditor.ViewModels
                             case "format":
                                 {
                                     TextureFormat outEnum;
-                                    if (Enum.TryParse(e.Value, out outEnum))
+                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
                                         Format = outEnum;
                                     else
                                         return false;
