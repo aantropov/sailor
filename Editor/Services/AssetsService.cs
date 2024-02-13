@@ -33,6 +33,7 @@ namespace SailorEditor.Services
             if (extension == ".png" ||
                 extension == ".jpg" ||
                 extension == ".bmp" ||
+                extension == ".dds" ||
                 extension == ".hdr")
                 newAssetFile = new TextureFile();
             else if (extension == ".obj" ||

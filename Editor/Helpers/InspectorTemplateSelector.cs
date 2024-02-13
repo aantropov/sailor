@@ -300,7 +300,7 @@ namespace SailorEditor.Helpers
 
                 var image = new Image
                 {
-                    WidthRequest = 256,
+                    WidthRequest = 512,
                     HeightRequest = 256,
                     Aspect = Aspect.AspectFit,
                     HorizontalOptions = LayoutOptions.Start,
@@ -322,6 +322,8 @@ namespace SailorEditor.Helpers
                 Grid.SetColumn(revertButton, 1);
 
                 TemplateBuilder.AddGridRow(grid, image, 2, GridLength.Auto);
+                Grid.SetColumnSpan(image, 2);
+
                 TemplateBuilder.AddGridRowWithLabel(grid, "Generate Mips:", generateMipsCheckBox, 3);
                 TemplateBuilder.AddGridRowWithLabel(grid, "Storage Binding:", storageBindingCheckBox, 4);
                 TemplateBuilder.AddGridRowWithLabel(grid, "Filtration:", filtrationPicker, 5);
