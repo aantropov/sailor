@@ -76,10 +76,10 @@ namespace Sailor::RHI
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
 
 		RHIShaderBindingSetPtr m_frameBindings{};
-		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
+		RHIShaderBindingSetPtr m_rhiLightsData{};
 
 		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
-		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui{};
+		Tasks::TaskPtr<RHICommandListPtr, void> m_drawImGui{};
 	};
 
 	struct RHISceneView

@@ -440,18 +440,30 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 
 	m_bIsSwapChainOutdated = false;
 
-	SAILOR_ENQUEUE_TASK_RENDER_THREAD_CMD("RecreateSwapchain: Initialize DepthStencil RenderTarget", ([swapchain = m_swapchain](Sailor::RHI::RHICommandListPtr cmdList)
+	assert(m_swapchain);
+
+	const auto& depthView = m_swapchain->GetDepthBufferView();
+	const auto& name = "RecreateSwapchain: Initialize DepthStencil RenderTarget";
+
+	RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
+
+	Renderer::GetDriver()->SetDebugName(cmdList, name);
+	Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+
+	for (const auto& sc : m_swapchain->GetImageViews())
+	{
+		cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(sc, sc->m_format, VK_IMAGE_LAYOUT_UNDEFINED, sc->GetImage()->m_defaultLayout);
+	}
+
+	assert(depthView);
+	cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(depthView, depthView->m_format, VK_IMAGE_LAYOUT_UNDEFINED, depthView->GetImage()->m_defaultLayout);
+
+	Renderer::GetDriverCommands()->EndCommandList(cmdList);
+
+	App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(name, [cmdList = std::move(cmdList)]()
 		{
-			for (const auto& sc : swapchain->GetImageViews())
-			{
-				cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(sc, sc->m_format, VK_IMAGE_LAYOUT_UNDEFINED, sc->GetImage()->m_defaultLayout);
-			}
-
-			cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(swapchain->GetDepthBufferView(),
-				swapchain->GetDepthBufferView()->m_format, VK_IMAGE_LAYOUT_UNDEFINED,
-				swapchain->GetDepthBufferView()->GetImage()->m_defaultLayout);
-
-		}));
+			Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::RHIFencePtr::Make());
+		}, Sailor::Tasks::EThreadType::Render));
 
 	return true;
 }
@@ -671,7 +683,7 @@ bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
 	{
 		return true;
 	}
-	
+
 	const auto& m_swapChainSupportDetails = m_swapchain->GetSwapchainSupportDetails();
 
 	const VkExtent2D swapchainExtent = VulkanApi::ChooseSwapExtent(m_swapChainSupportDetails.m_capabilities, pViewport->GetWidth(), pViewport->GetHeight());
