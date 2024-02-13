@@ -13,7 +13,7 @@ namespace Sailor::Framegraph
 	public:
 		SAILOR_API static const char* GetName() { return m_name; }
 
-		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph,
+		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph,
 			RHI::RHICommandListPtr transferCommandList,
 			RHI::RHICommandListPtr commandList,
 			const RHI::RHISceneViewSnapshot& sceneView) override;
@@ -23,7 +23,7 @@ namespace Sailor::Framegraph
 	protected:
 
 		SAILOR_API void BlitRaw(RHI::RHICommandListPtr commandList,
-			RHI::RHIFrameGraph* frameGraph,
+			RHI::RHIFrameGraphPtr frameGraph,
 			const RHI::RHISceneViewSnapshot& sceneView,
 			RHI::RHITexturePtr src,
 			RHI::RHITexturePtr dst);

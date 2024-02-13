@@ -78,11 +78,12 @@ TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHIScene
 {
 	TVector<Sailor::Tasks::TaskPtr<void, void>> res;
 
+	auto frameRefPtr = this->ToRefPtr<RHIFrameGraph>();
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
 		for (auto& node : m_graph)
 		{
-			auto task = node->Prepare(this, snapshot);
+			auto task = node->Prepare(frameRefPtr, snapshot);
 			if (task.IsValid())
 			{
 				res.Emplace(std::move(task));
@@ -196,9 +197,10 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		TVector<Tasks::ITaskPtr> tasks;
 		tasks.Reserve(2);
 
+		auto frameRefPtr = this->ToRefPtr<RHIFrameGraph>();
 		for (auto& node : m_graph)
 		{
-			node->Process(this, transferCmdList, cmdList, snapshot);
+			node->Process(frameRefPtr, transferCmdList, cmdList, snapshot);
 
 			const uint32_t numRecordedCommands = transferCmdList->GetNumRecordedCommands() + cmdList->GetNumRecordedCommands();
 			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();

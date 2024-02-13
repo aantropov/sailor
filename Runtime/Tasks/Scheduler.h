@@ -32,7 +32,7 @@ namespace Sailor
 				EThreadType threadType,
 				std::condition_variable& refresh,
 				std::mutex& mutex,
-				TVector<ITaskPtr>& pJobsQueue);
+				TVector<ITaskPtr>& pTasksQueue);
 
 			SAILOR_API virtual ~WorkerThread() = default;
 
@@ -46,7 +46,7 @@ namespace Sailor
 			SAILOR_API bool IsBusy() const { return m_bIsBusy.load(); }
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
 
-			SAILOR_API void ForcelyPushJob(const ITaskPtr& pJob);
+			SAILOR_API void ForcelyPushTask(const ITaskPtr& pTask);
 
 			SAILOR_API void Process();
 			SAILOR_API void Join();
@@ -55,7 +55,7 @@ namespace Sailor
 		protected:
 
 			SAILOR_API void ProcessTask(ITaskPtr& task);
-			SAILOR_API bool TryFetchJob(ITaskPtr& pOutJob);
+			SAILOR_API bool TryFetchTask(ITaskPtr& pOutTask);
 
 			std::string m_threadName;
 			TUniquePtr<std::thread> m_pThread;
@@ -67,14 +67,14 @@ namespace Sailor
 			std::atomic<bool> m_bIsBusy;
 			std::mutex m_execMutex;
 
-			// Specific jobs for this thread
+			// Specific tasks for this thread
 			std::mutex m_queueMutex;
-			TVector<ITaskPtr> m_pJobsQueue;
+			TVector<ITaskPtr> m_pTaskQueue;
 
 			// Assigned from scheduler
 			std::condition_variable& m_refresh;
-			std::mutex& m_commonQueueMutex;
-			TVector<ITaskPtr>& m_pCommonJobsQueue;
+			std::mutex& m_sharedQueueMutex;
+			TVector<ITaskPtr>& m_pSharedTaskQueue;
 		};
 
 		class Scheduler final : public TSubmodule<Scheduler>
@@ -89,18 +89,22 @@ namespace Sailor
 
 			SAILOR_API virtual ~Scheduler() override;
 
-			// Lock thit thread until all jobs on thread type would be finished
+			// Lock this thread until all tasks on thread type would be finished
 			SAILOR_API void WaitIdle(EThreadType type);
+
+			// Lock this thread until all tasks are finished
+			// In case of Main thread, the tasks would be executed
+			SAILOR_API void WaitIdle(const TSet<EThreadType>& threads);
 
 			SAILOR_API uint32_t GetNumWorkerThreads() const;
 			SAILOR_API uint32_t GetNumTasks(EThreadType thread) const;
 			SAILOR_API uint32_t GetNumRHIThreads() const { return RHIThreadsNum; }
 
-			SAILOR_API void Run(const ITaskPtr& pJob, bool bAutoRunChainedTasks = true);
-			SAILOR_API void Run(const ITaskPtr& pJob, DWORD threadId, bool bAutoRunChainedTasks = true);
-			SAILOR_API void ProcessJobsOnMainThread();
+			SAILOR_API void Run(const ITaskPtr& pTask, bool bAutoRunChainedTasks = true);
+			SAILOR_API void Run(const ITaskPtr& pTask, DWORD threadId, bool bAutoRunChainedTasks = true);
+			SAILOR_API void ProcessTasksOnMainThread();
 
-			SAILOR_API bool TryFetchNextAvailiableJob(ITaskPtr& pOutJob, EThreadType threadType);
+			SAILOR_API bool TryFetchNextAvailiableTask(ITaskPtr& pOutTask, EThreadType threadType);
 
 			SAILOR_API void NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThreads = false);
 
@@ -113,7 +117,7 @@ namespace Sailor
 
 			SAILOR_API Scheduler() = default;
 
-			SAILOR_API void RunChainedTasks(const ITaskPtr& pJob);
+			SAILOR_API void RunChainedTasks(const ITaskPtr& pTask);
 
 			SAILOR_API TaskSyncBlock& GetTaskSyncBlock(const ITask& task) { return m_taskSyncPool[task.m_taskSyncBlockHandle]; }
 			SAILOR_API uint16_t AcquireTaskSyncBlock();
@@ -121,7 +125,7 @@ namespace Sailor
 
 		protected:
 
-			SAILOR_API void RunChainedTasks_Internal(const ITaskPtr& pJob, const ITaskPtr& pJobToIgnore);
+			SAILOR_API void RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& pTaskToIgnore);
 
 			SAILOR_API void GetThreadSyncVarsByThreadType(
 				EThreadType threadType,
@@ -131,7 +135,7 @@ namespace Sailor
 
 			std::mutex m_queueMutex[MaxThreadTypes];
 			std::condition_variable m_refreshCondVar[MaxThreadTypes];
-			TVector<ITaskPtr> m_pCommonJobsQueue[MaxThreadTypes];
+			TVector<ITaskPtr> m_pSharedTaskQueue[MaxThreadTypes];
 
 			std::atomic<uint32_t> m_numBusyThreads;
 			TVector<WorkerThread*> m_workerThreads;

@@ -142,8 +142,10 @@ void Renderer::BeginConditionalDestroy()
 {
 	m_previousRenderFrame.Clear();
 	m_frameGraph.Clear();
-	m_cachedSceneViews.Clear();
+	m_cachedSceneViews.Clear();	
 	Renderer::GetDriver()->WaitIdle();
+
+	m_driverInstance->BeginConditionalDestroy();
 }
 
 TUniquePtr<IGraphicsDriver>& Renderer::GetDriver()
@@ -235,6 +237,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	SAILOR_PROFILE_BLOCK("Push frame");
 
 	uint64_t currentFrame = world->GetCurrentFrame();
+	auto rhiFrameGraph = m_frameGraph->GetRHI();
 
 	auto renderFrame = Tasks::CreateTask("Trace command lists & Track RHI resources " + std::to_string(currentFrame),
 		[this]()
@@ -243,7 +246,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		}, Sailor::Tasks::EThreadType::Render);
 
 	auto renderFrame1 = Tasks::CreateTask("Render Frame " + std::to_string(currentFrame),
-		[this, frame, rhiSceneView]() mutable
+		[this, rhiFrameGraph = rhiFrameGraph, frame, rhiSceneView]() mutable
 		{
 			auto frameInstance = frame;
 			static Utils::Timer timer;
@@ -276,11 +279,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 				if (!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 				{
-					auto rhiFrameGraph = m_frameGraph->GetRHI();
-
 					rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
 					rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-
 					rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, chainSemaphore);
 				}
 
@@ -329,12 +329,12 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			}
 			SAILOR_PROFILE_END_BLOCK();
 
+
 			rhiSceneView->Clear();
 			GetDriver()->CollectGarbage_RenderThread();
 
 		}, Sailor::Tasks::EThreadType::Render);
 
-	auto rhiFrameGraph = m_frameGraph->GetRHI();
 	auto prepareRenderFrame = rhiFrameGraph->Prepare(rhiSceneView);
 
 	for (auto& t : prepareRenderFrame)

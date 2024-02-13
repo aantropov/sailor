@@ -17,7 +17,7 @@ using namespace Sailor::Framegraph;
 const char* DepthHighZNode::m_name = "DepthHighZ";
 #endif
 
-void DepthHighZNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 

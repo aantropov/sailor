@@ -26,7 +26,7 @@ namespace Sailor
 			RHI = 3
 		};
 
-		/* The tasks are using JobSystem::Scheduler to run the activities on other threads.
+		/* The tasks are using Tasks::Scheduler to run the activities on other threads.
 		*  The main point to use tasks is to handle/get results of long term tasks without blocking the current thread.
 		*  The chaining is implemented via linked list and there is no need to explicitely run the added(by calling ->Then) tasks.
 		*  While Join is designed as low-level kind of call, so you have to run Joined threads explicitely.
@@ -96,8 +96,8 @@ namespace Sailor
 			SAILOR_API const std::string& GetName() const { return m_name; }
 
 			// Wait other task's completion before start
-			SAILOR_API void Join(const TWeakPtr<ITask>& jobDependent);
-			SAILOR_API void Join(const TVector<TWeakPtr<ITask>>& jobsDependent);
+			SAILOR_API void Join(const TWeakPtr<ITask>& taskDependent);
+			SAILOR_API void Join(const TVector<TWeakPtr<ITask>>& tasksDependent);
 
 			// Run current task and all chained
 			SAILOR_API ITaskPtr Run();
@@ -105,7 +105,7 @@ namespace Sailor
 			SAILOR_API bool IsInQueue() const { return m_state & StateMask::IsInQueueBit; }
 			SAILOR_API void OnEnqueue() { m_state |= StateMask::IsInQueueBit; }
 
-			// Lock this thread while job is executing
+			// Lock this thread while task is executing
 			SAILOR_API void Wait();
 
 			SAILOR_API EThreadType GetThreadType() const { return m_threadType; }
@@ -117,7 +117,7 @@ namespace Sailor
 
 		protected:
 
-			SAILOR_API bool AddDependency(ITaskPtr dependentJob);
+			SAILOR_API bool AddDependency(ITaskPtr dependentTask);
 
 			SAILOR_API virtual void Complete();
 

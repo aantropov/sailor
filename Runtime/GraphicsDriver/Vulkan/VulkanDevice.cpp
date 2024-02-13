@@ -148,7 +148,7 @@ VulkanDevice::~VulkanDevice()
 	vkDestroyDevice(m_device, nullptr);
 }
 
-void VulkanDevice::Shutdown()
+void VulkanDevice::BeginConditionalDestroy()
 {
 	//Clear dependencies
 	WaitIdle();
@@ -157,8 +157,6 @@ void VulkanDevice::Shutdown()
 
 	m_oldSwapchain.Clear();
 	m_swapchain.Clear();
-
-	m_frameDeps.Clear();
 	m_commandPool.Clear();
 
 	// 1 Main, 1 Render, 2 RHI
@@ -174,16 +172,21 @@ void VulkanDevice::Shutdown()
 	m_syncImages.Clear();
 	m_syncFences.Clear();
 
+	m_frameDeps.Clear();
+
+	m_samplers.Clear();
+	m_pipelineBuilder.Clear();
+	m_surface.Clear();
+}
+
+void VulkanDevice::Shutdown()
+{
 	m_presentQueue.Clear();
 	m_graphicsQueue.Clear();
 	m_computeQueue.Clear();
 	m_transferQueue.Clear();
 
-	m_samplers.Clear();
-	m_pipelineBuilder.Clear();
-	m_surface.Clear();
 	m_threadContext.Clear();
-
 	m_memoryAllocators.Clear();
 }
 
@@ -436,6 +439,9 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 
 	CreateSwapchain(pViewport);
 	CreateDefaultRenderPass();
+
+	m_frameDeps.Clear();
+
 	CreateFrameDependencies();
 
 	m_bIsSwapChainOutdated = false;
@@ -672,6 +678,9 @@ void VulkanDevice::WaitIdlePresentQueue()
 void VulkanDevice::WaitIdle()
 {
 	m_graphicsQueue->WaitIdle();
+	m_computeQueue->WaitIdle();
+	m_transferQueue->WaitIdle();
+
 	vkDeviceWaitIdle(m_device);
 }
 
@@ -767,6 +776,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	if (m_bNeedToTransitSwapchainToPresent)
 	{
 		VulkanCommandBufferPtr transitCmd = CreateCommandBuffer(RHI::ECommandListQueue::Graphics);
+
+		SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*transitCmd, "VulkanDevice::PresentFrame::TransitSwapchainToPresent");
 
 		transitCmd->BeginCommandList();
 		for (const auto& swapchain : m_swapchain->GetImageViews())
@@ -872,6 +883,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		presentResult = m_presentQueue->Present(presentInfo);
 	}
 
+	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
+
 	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
 	m_numSubmittedCommandBuffersAcc = 0;
 
@@ -889,8 +902,6 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		SAILOR_LOG("Failed to present swap chain image!");
 		return false;
 	}
-
-	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
 
 	return submitResult == VK_SUCCESS && presentResult == VK_SUCCESS;
 }

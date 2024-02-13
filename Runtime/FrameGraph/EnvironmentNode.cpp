@@ -20,7 +20,7 @@ using namespace Sailor::Framegraph;
 const char* EnvironmentNode::m_name = "Environment";
 #endif
 
-void EnvironmentNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();

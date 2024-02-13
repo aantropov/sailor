@@ -49,6 +49,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	SAILOR_PROFILE_BLOCK("Record ImGui Update Command List");
 
 	auto transferCmdList = currentInputState.CreateCommandBuffer(1);
+	RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "ImGui Transfer CommandList");
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(transferCmdList, true);
 	App::GetSubmodule<ImGuiApi>()->PrepareFrame(transferCmdList);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(transferCmdList);
@@ -58,8 +59,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record ImGui Draw Command List",
 		[=]()
 		{
-			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
-
+			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);			
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record ImGui Draw Command List");
 			// Default swapchain format
 			RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, RHI::EFormat::B8G8R8A8_SRGB);

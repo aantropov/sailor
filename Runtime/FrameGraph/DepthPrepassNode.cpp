@@ -46,7 +46,7 @@ RHI::ESortingOrder DepthPrepassNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
-Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraph* frameGraph, const RHI::RHISceneViewSnapshot& sceneView)
+Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -54,8 +54,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraph* frameGr
 	const size_t QueueTagHash = GetHash(QueueTag);
 
 	Tasks::TaskPtr res = Tasks::CreateTask("Prepare DepthPrepassNode " + std::to_string(sceneView.m_frame),
-		[=, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
-
+		[=, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
 			syncSharedResources.Lock();
 
 			m_numMeshes = 0;
@@ -133,7 +132,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraph* frameGr
 	return res;
 }
 
-void DepthPrepassNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_syncSharedResources.Lock();

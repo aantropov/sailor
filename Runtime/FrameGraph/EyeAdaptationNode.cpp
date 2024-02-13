@@ -18,7 +18,7 @@ using namespace Sailor::Framegraph;
 const char* EyeAdaptationNode::m_name = "EyeAdaptation";
 #endif
 
-void EyeAdaptationNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 

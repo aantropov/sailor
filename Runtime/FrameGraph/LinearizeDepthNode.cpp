@@ -18,7 +18,7 @@ using namespace Sailor::Framegraph;
 const char* LinearizeDepthNode::m_name = "LinearizeDepth";
 #endif
 
-void LinearizeDepthNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 

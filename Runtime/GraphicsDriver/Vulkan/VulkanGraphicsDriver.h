@@ -25,6 +25,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API virtual ~VulkanGraphicsDriver() override;
+		SAILOR_API virtual void BeginConditionalDestroy() override;
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const;
 

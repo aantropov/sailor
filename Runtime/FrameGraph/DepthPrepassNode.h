@@ -33,8 +33,8 @@ namespace Sailor
 
 		SAILOR_API static const char* GetName() { return m_name; }
 
-		SAILOR_API Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraph* frameGraph, const RHI::RHISceneViewSnapshot& sceneView);
-		SAILOR_API virtual void Process(RHI::RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
+		SAILOR_API virtual Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView);
+		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandLists, const RHI::RHISceneViewSnapshot& sceneView) override;
 		SAILOR_API virtual void Clear() override;
 		SAILOR_API RHI::ESortingOrder GetSortingOrder() const;
 

@@ -30,7 +30,7 @@ RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
-Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraph* frameGraph, const RHI::RHISceneViewSnapshot& sceneView)
+Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -38,7 +38,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraph* frameGra
 	const size_t QueueTagHash = GetHash(QueueTag);
 
 	Tasks::TaskPtr res = Tasks::CreateTask("Prepare RenderSceneNode  " + std::to_string(sceneView.m_frame),
-		[=, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
+		[=, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
 
 			syncSharedResources.Lock();
 
@@ -105,7 +105,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraph* frameGra
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
-void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_syncSharedResources.Lock();
@@ -177,10 +177,10 @@ void RenderSceneNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr 
 
 	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
-	{
-		TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), textureSamplers });
-		return sets;
-	};
+		{
+			TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), textureSamplers });
+			return sets;
+		};
 
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
 	const size_t materialsPerThread = (m_batches.Num()) / numThreads;

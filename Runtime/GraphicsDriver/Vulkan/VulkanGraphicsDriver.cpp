@@ -75,6 +75,28 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
+	m_materialSsboAllocator.Clear();
+	m_generalSsboAllocator.Clear();
+	m_meshSsboAllocator.Clear();
+
+	m_vkInstance->GetMainDevice()->Shutdown();
+
+	// Waiting finishing releasing of rendering resources
+	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
+		{
+			Tasks::EThreadType::Render,
+			Tasks::EThreadType::RHI,
+			Tasks::EThreadType::Main,
+			Tasks::EThreadType::Worker
+		});
+
+	check(m_cachedDescriptorSets.Num() == 0);
+
+	GraphicsDriver::Vulkan::VulkanApi::Shutdown();
+}
+
+void VulkanGraphicsDriver::BeginConditionalDestroy()
+{
 	m_cachedMsaaRenderTargets.Clear();
 	m_temporaryRenderTargets.Clear();
 	m_cachedComputePipelines.Clear();
@@ -89,17 +111,8 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 
 	m_trackedFences.Clear();
 	m_uniformBuffers.Clear();
-	m_materialSsboAllocator.Clear();
-	m_generalSsboAllocator.Clear();
-	m_meshSsboAllocator.Clear();
 
-	// Waiting finishing releasing of rendering resources
-	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
-	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::RHI);
-
-	check(m_cachedDescriptorSets.Num() == 0);
-
-	GraphicsDriver::Vulkan::VulkanApi::Shutdown();
+	m_vkInstance->GetMainDevice()->BeginConditionalDestroy();
 }
 
 uint32_t VulkanGraphicsDriver::GetNumSubmittedCommandBuffers() const

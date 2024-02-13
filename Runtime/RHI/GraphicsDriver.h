@@ -59,6 +59,8 @@ namespace Sailor::RHI
 		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
 		SAILOR_API virtual ~IGraphicsDriver() = default;
 
+		SAILOR_API virtual void BeginConditionalDestroy() = 0;
+
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const = 0;
 
 		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport) = 0;

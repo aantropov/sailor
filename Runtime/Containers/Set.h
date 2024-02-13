@@ -167,7 +167,7 @@ namespace Sailor
 			return *this;
 		}
 
-		TSet(std::initializer_list<TElementType> initList)
+		TSet(std::initializer_list<TElementType> initList) : TSet((uint32_t)initList.size())
 		{
 			for (const auto& el : initList)
 			{

@@ -169,10 +169,13 @@ void App::Start()
 	consoleVars["stats.memory"] = &Sailor::RHI::Renderer::MemoryStats;
 
 #ifdef SAILOR_EDITOR
-	TWeakPtr<World> pWorld = App::GetSubmodule<EngineLoop>()->CreateWorld("WorldEditor");
+	TWeakPtr<World> pWorld = GetSubmodule<EngineLoop>()->CreateWorld("WorldEditor");
 #endif
 
 	FrameInputState systemInputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
+
+	auto scheduler = GetSubmodule<Tasks::Scheduler>();
+	auto renderer = GetSubmodule<Renderer>();
 
 	while (s_pInstance->m_pMainWindow->IsRunning())
 	{
@@ -195,9 +198,9 @@ void App::Start()
 		}
 
 		Win32::Window::ProcessWin32Msgs();
-		GetSubmodule<Renderer>()->FixLostDevice();
+		renderer->FixLostDevice();
 
-		GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
+		scheduler->ProcessTasksOnMainThread();
 
 		if (systemInputState.IsKeyPressed(VK_ESCAPE) || !s_pInstance->m_pMainWindow->IsParentWindowValid())
 		{
@@ -208,8 +211,8 @@ void App::Start()
 		if (systemInputState.IsKeyPressed(VK_F5))
 		{
 			GetSubmodule<AssetRegistry>()->ScanContentFolder();
-			GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
-			GetSubmodule<Renderer>()->RefreshFrameGraph();
+			scheduler->WaitIdle({ Tasks::EThreadType::Render, Tasks::EThreadType::RHI });
+			renderer->RefreshFrameGraph();
 		}
 
 #ifdef SAILOR_BUILD_WITH_RENDER_DOC
@@ -230,7 +233,7 @@ void App::Start()
 			bFirstFrame = false;
 		}
 
-		if (bCanCreateNewFrame = GetSubmodule<Renderer>()->PushFrame(currentFrame))
+		if (bCanCreateNewFrame = renderer->PushFrame(currentFrame))
 		{
 			lastFrame = currentFrame;
 
@@ -259,7 +262,7 @@ void App::Start()
 		{
 			SAILOR_PROFILE_BLOCK("Track FPS");
 
-			const Stats& stats = GetSubmodule<Renderer>()->GetStats();
+			const Stats& stats = renderer->GetStats();
 
 			CHAR Buff[256];
 			sprintf_s(Buff, "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u", frameCounter,
@@ -286,8 +289,6 @@ void App::Start()
 	s_pInstance->m_pMainWindow->SetActive(false);
 	s_pInstance->m_pMainWindow->SetRunning(false);
 
-	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
-	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 }
 
 void App::Stop()
@@ -297,6 +298,12 @@ void App::Stop()
 
 void App::Shutdown()
 {
+	auto scheduler = GetSubmodule<Tasks::Scheduler>();
+	auto renderer = GetSubmodule<Renderer>();
+
+	scheduler->WaitIdle({ Tasks::EThreadType::Main, Tasks::EThreadType::Worker, Tasks::EThreadType::RHI, Tasks::EThreadType::Render });
+	renderer->BeginConditionalDestroy();
+
 	SAILOR_LOG("Sailor Engine Releasing");
 
 #if defined(SAILOR_BUILD_WITH_RENDER_DOC)
@@ -317,14 +324,10 @@ void App::Shutdown()
 	RemoveSubmodule<ModelAssetInfoHandler>();
 	RemoveSubmodule<FrameGraphAssetInfoHandler>();
 
-	// We need to finish all jobs before release
+	// We need to finish all tasks before release
 	RemoveSubmodule<ImGuiApi>();
-	GetSubmodule<Tasks::Scheduler>()->ProcessJobsOnMainThread();
-	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Worker);
-	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::RHI);
-	GetSubmodule<Tasks::Scheduler>()->WaitIdle(Tasks::EThreadType::Render);
 
-	App::GetSubmodule<Renderer>()->BeginConditionalDestroy();
+	scheduler->WaitIdle({ Tasks::EThreadType::Main, Tasks::EThreadType::Worker, Tasks::EThreadType::RHI, Tasks::EThreadType::Render });
 
 	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<MaterialImporter>();

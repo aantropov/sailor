@@ -225,7 +225,6 @@ VulkanApi::~VulkanApi()
 		DestroyDebugUtilsMessengerEXT(GetVkInstance(), m_debugMessenger, nullptr);
 	}
 
-	m_device->Shutdown();
 	m_device.Clear();
 	vkDestroyInstance(GetVkInstance(), nullptr);
 }
@@ -843,6 +842,7 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 	(*stagingBufferManagedPtr).m_buffer->GetMemoryDevice()->Copy((**stagingBufferManagedPtr).m_offset, size, pData);
 
 	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
+	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::UpdateBuffer");
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer(*stagingBufferManagedPtr, dst, size, 0, 0);
 	cmdBuffer->EndCommandList();
@@ -854,6 +854,7 @@ VulkanCommandBufferPtr VulkanApi::UpdateBuffer(VulkanDevicePtr device, const Mem
 VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode)
 {
 	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
+	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateBuffer_Immediate");
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage, sharingMode);;
 	cmdBuffer->EndCommandList();
@@ -870,6 +871,7 @@ void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryP
 	auto fence = VulkanFencePtr::Make(device);
 
 	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
+	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CopyBuffer_Immediate");
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	cmdBuffer->CopyBuffer(src, dst, size, srcOffset, dstOffset);
 	cmdBuffer->EndCommandList();
@@ -1009,6 +1011,7 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 {
 
 	auto cmdBuffer = device->CreateCommandBuffer();
+	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateImage_Immediate");
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	VulkanImagePtr res = CreateImage(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout, flags, arrayLayers);
 	cmdBuffer->EndCommandList();

@@ -17,7 +17,7 @@ using namespace Sailor::Framegraph;
 const char* BlitNode::m_name = "Blit";
 #endif
 
-void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
+void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -123,7 +123,7 @@ void BlitNode::Process(RHIFrameGraph* frameGraph, RHI::RHICommandListPtr transfe
 }
 
 void BlitNode::BlitRaw(RHI::RHICommandListPtr commandList,
-	RHI::RHIFrameGraph* frameGraph,
+	RHI::RHIFrameGraphPtr frameGraph,
 	const RHI::RHISceneViewSnapshot& sceneView,
 	RHI::RHITexturePtr src,
 	RHI::RHITexturePtr dst)
