@@ -18,8 +18,8 @@ namespace Sailor::RHI
 		const uint32_t MaxRecordedCommands = 350;
 		const uint32_t MaxGpuCost = 650;
 
-		SAILOR_API RHIFrameGraph();
-		SAILOR_API ~RHIFrameGraph();
+		SAILOR_API RHIFrameGraph() = default;
+		SAILOR_API virtual ~RHIFrameGraph() = default;
 
 		SAILOR_API FrameGraphNodePtr GetGraphNode(const std::string& tag);
 		SAILOR_API TVector<FrameGraphNodePtr>& GetGraph() { return m_graph; }
@@ -46,10 +46,10 @@ namespace Sailor::RHI
 			m_values[name] = value;
 		}
 
-		SAILOR_API TVector<Sailor::Tasks::TaskPtr<void,void>> Prepare(RHI::RHISceneViewPtr rhiSceneView);
+		SAILOR_API TVector<Sailor::Tasks::TaskPtr<void, void>> Prepare(RHI::RHISceneViewPtr rhiSceneView);
 
-		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView, 
-			TVector<RHI::RHICommandListPtr>& outTransferCommandLists, 
+		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView,
+			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 			TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists,
 			RHISemaphorePtr& outWaitSemaphore);
 
