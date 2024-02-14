@@ -22,12 +22,12 @@ namespace Sailor
 		Always
 	};
 
-	template<typename TElementType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::DefaultGlobalAllocator, const size_t ReservedElements = 12>
+	template<typename TElementType, const uint32_t concurrencyLevel = 8, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class TConcurrentSet
 	{
 	public:
 
-		using TElementContainer = TVector<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * ReservedElements, TAllocator>>;
+		using TElementContainer = TVector<TElementType, TAllocator>;
 
 		class TEntry
 		{
