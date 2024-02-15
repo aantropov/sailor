@@ -29,9 +29,7 @@ namespace SailorEditor.ViewModels
                 if (renderQueue != value)
                 {
                     renderQueue = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(RenderQueue));
+                    MakeDirty(nameof(RenderQueue));
                 }
             }
         }
@@ -44,9 +42,7 @@ namespace SailorEditor.ViewModels
                 if (depthBias != value)
                 {
                     depthBias = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(DepthBias));
+                    MakeDirty(nameof(DepthBias));
                 }
             }
         }
@@ -59,9 +55,7 @@ namespace SailorEditor.ViewModels
                 if (enableDepthTest != value)
                 {
                     enableDepthTest = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(EnableDepthTest));
+                    MakeDirty(nameof(EnableDepthTest));
                 }
             }
         }
@@ -73,9 +67,7 @@ namespace SailorEditor.ViewModels
                 if (enableZWrite != value)
                 {
                     enableZWrite = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(EnableZWrite));
+                    MakeDirty(nameof(EnableZWrite));
                 }
             }
         }
@@ -87,9 +79,7 @@ namespace SailorEditor.ViewModels
                 if (customDepthShader != value)
                 {
                     customDepthShader = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(CustomDepthShader));
+                    MakeDirty(nameof(CustomDepthShader));
                 }
             }
         }
@@ -101,9 +91,7 @@ namespace SailorEditor.ViewModels
                 if (supportMultisampling != value)
                 {
                     supportMultisampling = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(SupportMultisampling));
+                    MakeDirty(nameof(SupportMultisampling));
                 }
             }
         }
@@ -115,9 +103,7 @@ namespace SailorEditor.ViewModels
                 if (uniformsFloat != value)
                 {
                     uniformsFloat = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(UniformsFloat));
+                    MakeDirty(nameof(UniformsFloat));
                 }
             }
         }
@@ -129,9 +115,7 @@ namespace SailorEditor.ViewModels
                 if (uniformsVec4 != value)
                 {
                     uniformsVec4 = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(UniformsVec4));
+                    MakeDirty(nameof(UniformsVec4));
                 }
             }
         }
@@ -143,9 +127,7 @@ namespace SailorEditor.ViewModels
                 if (samplers != value)
                 {
                     samplers = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(Samplers));
+                    MakeDirty(nameof(Samplers));
                 }
             }
         }
@@ -157,9 +139,7 @@ namespace SailorEditor.ViewModels
                 if (shader != value)
                 {
                     shader = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(Shader));
+                    MakeDirty(nameof(Shader));
                 }
             }
         }
@@ -172,9 +152,7 @@ namespace SailorEditor.ViewModels
                 if (fillMode != value)
                 {
                     fillMode = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(FillMode));
+                    MakeDirty(nameof(FillMode));
                 }
             }
         }
@@ -187,9 +165,7 @@ namespace SailorEditor.ViewModels
                 if (blendMode != value)
                 {
                     blendMode = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(BlendMode));
+                    MakeDirty(nameof(BlendMode));
                 }
             }
         }
@@ -202,9 +178,7 @@ namespace SailorEditor.ViewModels
                 if (cullMode != value)
                 {
                     cullMode = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(CullMode));
+                    MakeDirty(nameof(CullMode));
                 }
             }
         }
@@ -216,9 +190,7 @@ namespace SailorEditor.ViewModels
                 if (defines != value)
                 {
                     defines = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(Defines));
+                    MakeDirty(nameof(Defines));
                 }
             }
         }
@@ -238,7 +210,6 @@ namespace SailorEditor.ViewModels
         private Dictionary<string, float> uniformsFloat = new();
         private List<string> defines = new();
         private Dictionary<string, object> AssetProperties { get; set; } = new();
-
         protected override void UpdateModel() { }
         public override bool PreloadResources(bool force)
         {

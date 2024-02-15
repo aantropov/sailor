@@ -11,6 +11,11 @@ using System.Globalization;
 using CheckBox = Microsoft.Maui.Controls.CheckBox;
 using Grid = Microsoft.Maui.Controls.Grid;
 using SkiaSharp;
+using Microsoft.Maui.Controls.PlatformConfiguration.AndroidSpecific;
+using Entry = Microsoft.Maui.Controls.Entry;
+using System.Collections.Generic;
+using System.Collections;
+using System.Runtime.CompilerServices;
 
 namespace SailorEditor.Helpers
 {
@@ -89,7 +94,7 @@ namespace SailorEditor.Helpers
             return picker;
         }
 
-        public static View CreateEntry(string bindingPath, string labelText)
+        public static View CreateEntryWithLabel(string bindingPath, string labelText)
         {
             var label = new Label
             {
@@ -110,7 +115,6 @@ namespace SailorEditor.Helpers
 
             return stackLayout;
         }
-
         public static View CreateDictionaryEditor(string bindingPath, string labelText)
         {
             var label = new Label
@@ -123,11 +127,9 @@ namespace SailorEditor.Helpers
             var stackLayout = new VerticalStackLayout();
             stackLayout.Children.Add(label);
 
-            // Примерный механизм для ObservableCollection<KeyValuePair<string, string>>
-            // Нужно будет привязать к нему вашу коллекцию в ViewModel
-            var dictionaryEditor = new CollectionView
-            {
-                ItemTemplate = new Microsoft.Maui.Controls.DataTemplate(() =>
+            var dictionaryEditor = new CollectionView();
+
+            dictionaryEditor.ItemTemplate = new Microsoft.Maui.Controls.DataTemplate(() =>
                 {
                     var keyEntry = new Entry();
                     keyEntry.SetBinding(Entry.TextProperty, "Key");
@@ -136,7 +138,30 @@ namespace SailorEditor.Helpers
                     valueEntry.SetBinding(Entry.TextProperty, "Value");
 
                     var deleteButton = new Microsoft.Maui.Controls.Button { Text = "-" };
-                    // deleteButton.Command = /* Команда удаления элемента из коллекции */
+                    deleteButton.Clicked += (sender, e) =>
+                    {
+                        if (dictionaryEditor?.BindingContext is MaterialFile materialFile)
+                        {
+                            var dictionaryProperty = materialFile.GetType().GetProperty(bindingPath);
+                            if (dictionaryProperty != null)
+                            {
+                                var dictionary = dictionaryProperty.GetValue(materialFile) as IDictionary;
+                                if (dictionary != null)
+                                {
+                                    var keyToRemove = keyEntry.Text.ToString();
+
+                                    if (dictionary.Contains(keyToRemove))
+                                    {
+                                        dictionary.Remove(keyToRemove);
+                                        materialFile.MakeDirty(bindingPath);
+
+                                        dictionaryEditor.ItemsSource = null;
+                                        dictionaryEditor.ItemsSource = dictionary;
+                                    }
+                                }
+                            }
+                        }
+                    };
 
                     var addButton = new Microsoft.Maui.Controls.Button { Text = "+" };
                     // addButton.Command = /* Команда добавления нового элемента в коллекцию */
@@ -144,8 +169,8 @@ namespace SailorEditor.Helpers
                     var entryLayout = new HorizontalStackLayout { Children = { keyEntry, valueEntry, deleteButton, addButton } };
 
                     return entryLayout;
-                })
-            };
+                });
+
             dictionaryEditor.SetBinding(ItemsView.ItemsSourceProperty, new Binding(bindingPath));
 
             stackLayout.Children.Add(dictionaryEditor);

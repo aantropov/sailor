@@ -145,7 +145,7 @@ namespace SailorEditor.Controls
                         },
                         label
                     },
-                    Orientation = StackOrientation.Horizontal
+                    Orientation = StackOrientation.Horizontal                    
                 }
             };
 

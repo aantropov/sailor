@@ -21,9 +21,7 @@ namespace SailorEditor.ViewModels
                 if (shouldGenerateMaterials != value)
                 {
                     shouldGenerateMaterials = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(ShouldGenerateMaterials));
+                    MakeDirty(nameof(ShouldGenerateMaterials));
                 }
             }
         }
@@ -35,9 +33,7 @@ namespace SailorEditor.ViewModels
                 if (shouldBatchByMaterial != value)
                 {
                     shouldBatchByMaterial = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(ShouldBatchByMaterial));
+                    MakeDirty(nameof(ShouldBatchByMaterial));
                 }
             }
         }
@@ -50,9 +46,7 @@ namespace SailorEditor.ViewModels
                 if (DefaultMaterials != value)
                 {
                     defaultMaterials = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(DefaultMaterials));
+                    MakeDirty(nameof(DefaultMaterials));
                 }
             }
         }

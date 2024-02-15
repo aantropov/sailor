@@ -22,9 +22,7 @@ namespace SailorEditor.ViewModels
                 if (shouldGenerateMips != value)
                 {
                     shouldGenerateMips = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(ShouldGenerateMips));
+                    MakeDirty(nameof(ShouldGenerateMips));
                 }
             }
         }
@@ -36,9 +34,7 @@ namespace SailorEditor.ViewModels
                 if (shouldSupportStorageBinding != value)
                 {
                     shouldSupportStorageBinding = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(ShouldSupportStorageBinding));
+                    MakeDirty(nameof(ShouldSupportStorageBinding));
                 }
             }
         }
@@ -50,9 +46,7 @@ namespace SailorEditor.ViewModels
                 if (clamping != value)
                 {
                     clamping = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(Clamping));
+                    MakeDirty(nameof(Clamping));
                 }
             }
         }
@@ -64,9 +58,7 @@ namespace SailorEditor.ViewModels
                 if (filtration != value)
                 {
                     filtration = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(Filtration));
+                    MakeDirty(nameof(Filtration));
                 }
             }
         }
@@ -78,9 +70,7 @@ namespace SailorEditor.ViewModels
                 if (format != value)
                 {
                     format = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(Format));
+                    MakeDirty(nameof(Format));
                 }
             }
         }

@@ -17,7 +17,6 @@ namespace SailorEditor.ViewModels
         public FileInfo Asset { get; set; }
         public FileInfo AssetInfo { get; set; }
         public Dictionary<string, object> Properties { get; set; } = new();
-
         public string DisplayName
         {
             get { return displayName; }
@@ -47,6 +46,11 @@ namespace SailorEditor.ViewModels
                     OnPropertyChanged(nameof(IsDirty));
                 }
             }
+        }
+        public void MakeDirty([CallerMemberName] string propertyName = null)
+        {
+            IsDirty = true;
+            OnPropertyChanged(propertyName);
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
