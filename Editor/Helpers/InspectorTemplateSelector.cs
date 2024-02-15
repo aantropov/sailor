@@ -5,6 +5,7 @@ using System.ComponentModel;
 using SailorEditor.Engine;
 using System.Globalization;
 using System.Xml;
+using BlendMode = SailorEditor.Engine.BlendMode;
 
 namespace SailorEditor.Helpers
 {
@@ -76,6 +77,7 @@ namespace SailorEditor.Helpers
         public DataTemplate AssetFileModel { get; private set; }
         public DataTemplate AssetFileShader { get; private set; }
         public DataTemplate AssetFileShaderLibrary { get; private set; }
+        public DataTemplate AssetFileMaterial { get; private set; }
 
         public InspectorTemplateSelector()
         {
@@ -332,6 +334,60 @@ namespace SailorEditor.Helpers
 
                 return grid;
             });
+
+            AssetFileMaterial = new DataTemplate(() =>
+            {
+                var grid = new Grid
+                {
+                    RowDefinitions =
+                    {
+                    },
+                    ColumnDefinitions =
+                    {
+                        new ColumnDefinition { Width = GridLength.Auto },
+                        new ColumnDefinition { Width = GridLength.Star }
+                    }
+                };
+
+                var renderQueueEntry = TemplateBuilder.CreateEntry("RenderQueue", "Render Queue");
+                var depthBiasEntry = TemplateBuilder.CreateEntry("DepthBias", "Depth Bias");
+                
+                var enableDepthTestCheckBox = TemplateBuilder.CreateCheckBox("EnableDepthTest");
+                var enableZWriteCheckBox = TemplateBuilder.CreateCheckBox("EnableZWrite");
+                var customDepthShaderCheckBox = TemplateBuilder.CreateCheckBox("CustomDepthShader");
+                var supportMultisamplingCheckBox = TemplateBuilder.CreateCheckBox("SupportMultisampling");
+
+                var uniformsFloatEditor = TemplateBuilder.CreateDictionaryEditor("UniformsFloat", "Uniforms Float");
+                var uniformsVec4Editor = TemplateBuilder.CreateDictionaryEditor("UniformsVec4", "Uniforms Vec4");
+                var samplersEditor = TemplateBuilder.CreateDictionaryEditor("Samplers", "Samplers");
+
+                var shaderLabel = new Label();
+                shaderLabel.SetBinding(Label.TextProperty, new Binding("Shader", BindingMode.Default, new AssetUIDToFilenameConverter()));
+
+                var fillModePicker = TemplateBuilder.CreateEnumPicker<FillMode>("FillMode");
+                var blendModePicker = TemplateBuilder.CreateEnumPicker<BlendMode>("BlendMode");
+                var cullModePicker = TemplateBuilder.CreateEnumPicker<CullMode>("CullMode");
+
+                var definesEditor = TemplateBuilder.CreateListEditor("Defines", "Defines");
+
+                TemplateBuilder.AddGridRow(grid, renderQueueEntry, 0, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, depthBiasEntry, 1, GridLength.Auto);
+                TemplateBuilder.AddGridRowWithLabel(grid, "Enable DepthTest", enableDepthTestCheckBox, 2);
+                TemplateBuilder.AddGridRowWithLabel(grid, "enableDepthTestCheckBox", enableZWriteCheckBox, 3);
+                TemplateBuilder.AddGridRowWithLabel(grid, "enableDepthTestCheckBox", customDepthShaderCheckBox, 4);
+                TemplateBuilder.AddGridRowWithLabel(grid, "enableDepthTestCheckBox", supportMultisamplingCheckBox, 5);
+                TemplateBuilder.AddGridRow(grid, uniformsFloatEditor, 6, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, uniformsVec4Editor, 7, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, samplersEditor, 8, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, shaderLabel, 9, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, fillModePicker, 10, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, blendModePicker, 11, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, cullModePicker, 12, GridLength.Auto);
+                TemplateBuilder.AddGridRow(grid, definesEditor, 13, GridLength.Auto);
+
+                return grid;
+            });
+
         }
         protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
         {
@@ -346,6 +402,9 @@ namespace SailorEditor.Helpers
 
             if (item is ModelFile)
                 return AssetFileModel;
+
+            if (item is MaterialFile)
+                return AssetFileMaterial;
 
             return Default;
         }

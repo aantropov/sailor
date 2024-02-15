@@ -42,34 +42,20 @@ namespace SailorEditor.Services
                 newAssetFile = new ModelFile();
             else if (extension == ".shader")
                 newAssetFile = new ShaderFile();
+            else if (extension == ".mat")
+                newAssetFile = new MaterialFile();
             else if (extension == ".glsl")
                 newAssetFile = new ShaderLibraryFile();
             else
                 newAssetFile = new AssetFile();
 
-            newAssetFile.DisplayName = assetFile.Name;
             newAssetFile.Id = Files.Count + 1;
+            newAssetFile.DisplayName = assetFile.Name;
             newAssetFile.FolderId = parentFolderId;
             newAssetFile.AssetInfo = assetInfo;
-            newAssetFile.Asset = assetFile;
-
+            newAssetFile.Asset = assetFile;            
+            newAssetFile.Properties = ParseYaml(assetInfo.FullName);
             newAssetFile.IsDirty = false;
-
-            using (var yamlAssetInfo = new FileStream(assetInfo.FullName, FileMode.Open))
-            using (var reader = new StreamReader(yamlAssetInfo))
-            {
-                var yaml = new YamlStream();
-                yaml.Load(reader);
-
-                var root = (YamlMappingNode)yaml.Documents[0].RootNode;
-
-                foreach (var e in root.Children)
-                {
-                    newAssetFile.Properties[e.Key.ToString()] = e.Value;
-                }
-
-                yamlAssetInfo.Close();
-            }
 
             return newAssetFile;
         }
@@ -107,6 +93,27 @@ namespace SailorEditor.Services
                     Console.WriteLine(ex.ToString());
                 }
             }
+        }
+
+        public static Dictionary<string, object> ParseYaml(string filename)
+        {
+            Dictionary<string, object> res = new Dictionary<AssetUID, object>();
+            using (var yamlAssetInfo = new FileStream(filename, FileMode.Open))
+            using (var reader = new StreamReader(yamlAssetInfo))
+            {
+                var yaml = new YamlStream();
+                yaml.Load(reader);
+
+                var root = (YamlMappingNode)yaml.Documents[0].RootNode;
+
+                foreach (var e in root.Children)
+                {
+                    res[e.Key.ToString()] = e.Value;
+                }
+
+                yamlAssetInfo.Close();
+            }
+            return res;
         }
     }
 }

@@ -89,6 +89,107 @@ namespace SailorEditor.Helpers
             return picker;
         }
 
+        public static View CreateEntry(string bindingPath, string labelText)
+        {
+            var label = new Label
+            {
+                Text = labelText,
+                VerticalOptions = LayoutOptions.Center,
+                HorizontalOptions = LayoutOptions.Start
+            };
+
+            var entry = new Entry
+            {
+                FontSize = 12
+            };
+            entry.SetBinding(Entry.TextProperty, new Binding(bindingPath));
+
+            var stackLayout = new VerticalStackLayout();
+            stackLayout.Children.Add(label);
+            stackLayout.Children.Add(entry);
+
+            return stackLayout;
+        }
+
+        public static View CreateDictionaryEditor(string bindingPath, string labelText)
+        {
+            var label = new Label
+            {
+                Text = labelText,
+                VerticalOptions = LayoutOptions.Center,
+                HorizontalOptions = LayoutOptions.Start
+            };
+
+            var stackLayout = new VerticalStackLayout();
+            stackLayout.Children.Add(label);
+
+            // Примерный механизм для ObservableCollection<KeyValuePair<string, string>>
+            // Нужно будет привязать к нему вашу коллекцию в ViewModel
+            var dictionaryEditor = new CollectionView
+            {
+                ItemTemplate = new Microsoft.Maui.Controls.DataTemplate(() =>
+                {
+                    var keyEntry = new Entry();
+                    keyEntry.SetBinding(Entry.TextProperty, "Key");
+
+                    var valueEntry = new Entry();
+                    valueEntry.SetBinding(Entry.TextProperty, "Value");
+
+                    var deleteButton = new Microsoft.Maui.Controls.Button { Text = "-" };
+                    // deleteButton.Command = /* Команда удаления элемента из коллекции */
+
+                    var addButton = new Microsoft.Maui.Controls.Button { Text = "+" };
+                    // addButton.Command = /* Команда добавления нового элемента в коллекцию */
+
+                    var entryLayout = new HorizontalStackLayout { Children = { keyEntry, valueEntry, deleteButton, addButton } };
+
+                    return entryLayout;
+                })
+            };
+            dictionaryEditor.SetBinding(ItemsView.ItemsSourceProperty, new Binding(bindingPath));
+
+            stackLayout.Children.Add(dictionaryEditor);
+
+            return stackLayout;
+        }
+
+        public static View CreateListEditor(string bindingPath, string labelText)
+        {
+            var label = new Label
+            {
+                Text = labelText,
+                VerticalOptions = LayoutOptions.Center,
+                HorizontalOptions = LayoutOptions.Start
+            };
+
+            var stackLayout = new VerticalStackLayout();
+            stackLayout.Children.Add(label);
+
+            var listEditor = new CollectionView
+            {
+                ItemTemplate = new Microsoft.Maui.Controls.DataTemplate(() =>
+                {
+                    var entry = new Entry();
+                    entry.SetBinding(Entry.TextProperty, ".");
+
+                    var deleteButton = new Microsoft.Maui.Controls.Button { Text = "-" };
+                    // deleteButton.Command = /* Команда удаления элемента из списка */
+
+                    var addButton = new Microsoft.Maui.Controls.Button { Text = "+" };
+                    // addButton.Command = /* Команда добавления нового элемента в список */
+
+                    var entryLayout = new HorizontalStackLayout { Children = { entry, deleteButton, addButton } };
+
+                    return entryLayout;
+                })
+            };
+            listEditor.SetBinding(ItemsView.ItemsSourceProperty, new Binding(bindingPath));
+
+            stackLayout.Children.Add(listEditor);
+
+            return stackLayout;
+        }
+
         public class EnumToStringConverter<TEnum> : IValueConverter where TEnum : struct
         {
             public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
