@@ -18,37 +18,19 @@ namespace SailorEditor.ViewModels
             get { return shouldGenerateMaterials; }
             set
             {
-                if (shouldGenerateMaterials != value)
-                {
-                    shouldGenerateMaterials = value;
-                    MakeDirty(nameof(ShouldGenerateMaterials));
-                }
+                if (shouldGenerateMaterials != value) { shouldGenerateMaterials = value; MakeDirty(nameof(ShouldGenerateMaterials)); }
             }
         }
         public bool ShouldBatchByMaterial
         {
             get { return shouldBatchByMaterial; }
-            set
-            {
-                if (shouldBatchByMaterial != value)
-                {
-                    shouldBatchByMaterial = value;
-                    MakeDirty(nameof(ShouldBatchByMaterial));
-                }
-            }
+            set { if (shouldBatchByMaterial != value) { shouldBatchByMaterial = value; MakeDirty(nameof(ShouldBatchByMaterial)); } }
         }
 
         public List<AssetUID> DefaultMaterials
         {
             get { return defaultMaterials; }
-            set
-            {
-                if (DefaultMaterials != value)
-                {
-                    defaultMaterials = value;
-                    MakeDirty(nameof(DefaultMaterials));
-                }
-            }
+            set { if (DefaultMaterials != value) { defaultMaterials = value; MakeDirty(nameof(DefaultMaterials)); } }
         }
 
         private bool shouldGenerateMaterials;

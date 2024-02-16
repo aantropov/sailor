@@ -24,175 +24,77 @@ namespace SailorEditor.ViewModels
         public string RenderQueue
         {
             get { return renderQueue; }
-            set
-            {
-                if (renderQueue != value)
-                {
-                    renderQueue = value;
-                    MakeDirty(nameof(RenderQueue));
-                }
-            }
+            set { if (renderQueue != value) { renderQueue = value; MakeDirty(nameof(RenderQueue)); } }
         }
 
         public float DepthBias
         {
             get { return depthBias; }
-            set
-            {
-                if (depthBias != value)
-                {
-                    depthBias = value;
-                    MakeDirty(nameof(DepthBias));
-                }
-            }
+            set { if (depthBias != value) { depthBias = value; MakeDirty(nameof(DepthBias)); } }
         }
 
         public bool EnableDepthTest
         {
             get { return enableDepthTest; }
-            set
-            {
-                if (enableDepthTest != value)
-                {
-                    enableDepthTest = value;
-                    MakeDirty(nameof(EnableDepthTest));
-                }
-            }
+            set { if (enableDepthTest != value) { enableDepthTest = value; MakeDirty(nameof(EnableDepthTest)); } }
         }
         public bool EnableZWrite
         {
             get { return enableZWrite; }
-            set
-            {
-                if (enableZWrite != value)
-                {
-                    enableZWrite = value;
-                    MakeDirty(nameof(EnableZWrite));
-                }
-            }
+            set { if (enableZWrite != value) { enableZWrite = value; MakeDirty(nameof(EnableZWrite)); } }
         }
         public bool CustomDepthShader
         {
             get { return customDepthShader; }
-            set
-            {
-                if (customDepthShader != value)
-                {
-                    customDepthShader = value;
-                    MakeDirty(nameof(CustomDepthShader));
-                }
-            }
+            set { if (customDepthShader != value) { customDepthShader = value; MakeDirty(nameof(CustomDepthShader)); } }
         }
         public bool SupportMultisampling
         {
             get { return supportMultisampling; }
-            set
-            {
-                if (supportMultisampling != value)
-                {
-                    supportMultisampling = value;
-                    MakeDirty(nameof(SupportMultisampling));
-                }
-            }
+            set { if (supportMultisampling != value) { supportMultisampling = value; MakeDirty(nameof(SupportMultisampling)); } }
         }
         public Dictionary<string, float> UniformsFloat
         {
             get { return uniformsFloat; }
-            set
-            {
-                if (uniformsFloat != value)
-                {
-                    uniformsFloat = value;
-                    MakeDirty(nameof(UniformsFloat));
-                }
-            }
+            set { if (uniformsFloat != value) { uniformsFloat = value; MakeDirty(nameof(UniformsFloat)); } }
         }
         public Dictionary<string, Vector4> UniformsVec4
         {
             get { return uniformsVec4; }
-            set
-            {
-                if (uniformsVec4 != value)
-                {
-                    uniformsVec4 = value;
-                    MakeDirty(nameof(UniformsVec4));
-                }
-            }
+            set { if (uniformsVec4 != value) { uniformsVec4 = value; MakeDirty(nameof(UniformsVec4)); } }
         }
         public Dictionary<string, AssetUID> Samplers
         {
             get { return samplers; }
-            set
-            {
-                if (samplers != value)
-                {
-                    samplers = value;
-                    MakeDirty(nameof(Samplers));
-                }
-            }
+            set { if (samplers != value) { samplers = value; MakeDirty(nameof(Samplers)); } }
         }
         public AssetUID Shader
         {
             get { return shader; }
-            set
-            {
-                if (shader != value)
-                {
-                    shader = value;
-                    MakeDirty(nameof(Shader));
-                }
-            }
+            set { if (shader != value) { shader = value; MakeDirty(nameof(Shader)); } }
         }
 
         public FillMode FillMode
         {
             get { return fillMode; }
-            set
-            {
-                if (fillMode != value)
-                {
-                    fillMode = value;
-                    MakeDirty(nameof(FillMode));
-                }
-            }
+            set { if (fillMode != value) { fillMode = value; MakeDirty(nameof(FillMode)); } }
         }
 
         public BlendMode BlendMode
         {
             get { return blendMode; }
-            set
-            {
-                if (blendMode != value)
-                {
-                    blendMode = value;
-                    MakeDirty(nameof(BlendMode));
-                }
-            }
+            set { if (blendMode != value) { blendMode = value; MakeDirty(nameof(BlendMode)); } }
         }
 
         public CullMode CullMode
         {
             get { return cullMode; }
-            set
-            {
-                if (cullMode != value)
-                {
-                    cullMode = value;
-                    MakeDirty(nameof(CullMode));
-                }
-            }
+            set { if (cullMode != value) { cullMode = value; MakeDirty(nameof(CullMode)); } }
         }
         public List<string> Defines
         {
             get { return defines; }
-            set
-            {
-                if (defines != value)
-                {
-                    defines = value;
-                    MakeDirty(nameof(Defines));
-                }
-            }
+            set { if (defines != value) { defines = value; MakeDirty(nameof(Defines)); } }
         }
 
         private string renderQueue = "Opaque";

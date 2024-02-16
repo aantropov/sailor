@@ -17,62 +17,27 @@ namespace SailorEditor.ViewModels
         public bool ShouldGenerateMips
         {
             get { return shouldGenerateMips; }
-            set
-            {
-                if (shouldGenerateMips != value)
-                {
-                    shouldGenerateMips = value;
-                    MakeDirty(nameof(ShouldGenerateMips));
-                }
-            }
+            set { if (shouldGenerateMips != value) { shouldGenerateMips = value; MakeDirty(nameof(ShouldGenerateMips)); } }
         }
         public bool ShouldSupportStorageBinding
         {
             get { return shouldSupportStorageBinding; }
-            set
-            {
-                if (shouldSupportStorageBinding != value)
-                {
-                    shouldSupportStorageBinding = value;
-                    MakeDirty(nameof(ShouldSupportStorageBinding));
-                }
-            }
+            set { if (shouldSupportStorageBinding != value) { shouldSupportStorageBinding = value; MakeDirty(nameof(ShouldSupportStorageBinding)); } }
         }
         public TextureClamping Clamping
         {
             get { return clamping; }
-            set
-            {
-                if (clamping != value)
-                {
-                    clamping = value;
-                    MakeDirty(nameof(Clamping));
-                }
-            }
+            set { if (clamping != value) { clamping = value; MakeDirty(nameof(Clamping)); } }
         }
         public TextureFiltration Filtration
         {
             get { return filtration; }
-            set
-            {
-                if (filtration != value)
-                {
-                    filtration = value;
-                    MakeDirty(nameof(Filtration));
-                }
-            }
+            set { if (filtration != value) { filtration = value; MakeDirty(nameof(Filtration)); } }
         }
         public TextureFormat Format
         {
             get { return format; }
-            set
-            {
-                if (format != value)
-                {
-                    format = value;
-                    MakeDirty(nameof(Format));
-                }
-            }
+            set { if (format != value) { format = value; MakeDirty(nameof(Format)); } }
         }
 
         private TextureFiltration filtration;

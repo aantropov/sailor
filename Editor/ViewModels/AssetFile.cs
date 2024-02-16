@@ -20,16 +20,7 @@ namespace SailorEditor.ViewModels
         public string DisplayName
         {
             get { return displayName; }
-            set
-            {
-                if (displayName != value)
-                {
-                    displayName = value;
-                    IsDirty = true;
-
-                    OnPropertyChanged(nameof(DisplayName));
-                }
-            }
+            set { if (displayName != value) { displayName = value; MakeDirty(nameof(DisplayName)); } }
         }
 
         public int Id { get; set; }
@@ -37,15 +28,7 @@ namespace SailorEditor.ViewModels
         public bool IsDirty
         {
             get { return isDirty; }
-            set
-            {
-                if (isDirty != value)
-                {
-                    isDirty = value;
-
-                    OnPropertyChanged(nameof(IsDirty));
-                }
-            }
+            set { if (isDirty != value) { isDirty = value; OnPropertyChanged(nameof(IsDirty)); } }
         }
         public void MakeDirty([CallerMemberName] string propertyName = null)
         {
