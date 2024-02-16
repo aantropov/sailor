@@ -4,6 +4,7 @@ using Microsoft.Maui.Controls.Compatibility.Hosting;
 using Microsoft.Maui.Embedding;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
+using CommunityToolkit.Maui;
 
 namespace SailorEditor
 {
@@ -16,6 +17,7 @@ namespace SailorEditor
             var builder = MauiApp.CreateBuilder();
             builder
                 .UseMauiApp<App>()
+                .UseMauiCommunityToolkit()
                 .ConfigureFonts(fonts =>
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
