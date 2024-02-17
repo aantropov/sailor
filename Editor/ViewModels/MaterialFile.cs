@@ -21,6 +21,7 @@ namespace SailorEditor.ViewModels
     using BlendMode = Engine.BlendMode;
     public class MaterialFile : AssetFile
     {
+
         public string RenderQueue
         {
             get { return renderQueue; }

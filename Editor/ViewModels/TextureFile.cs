@@ -40,6 +40,8 @@ namespace SailorEditor.ViewModels
             set { if (format != value) { format = value; MakeDirty(nameof(Format)); } }
         }
 
+        public bool IsImageLoaded { get => !Texture.IsEmpty; }
+
         private TextureFiltration filtration;
         private TextureFormat format = TextureFormat.R8G8B8A8_SRGB;
         private TextureClamping clamping;

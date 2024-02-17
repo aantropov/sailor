@@ -1,49 +1,27 @@
 ﻿using SailorEditor.Helpers;
+using SailorEditor.ViewModels;
 
-public class ShaderFileTemplate : DataTemplate
+public class ShaderFileTemplate : AssetFileTemplate
 {
     public ShaderFileTemplate()
     {
         LoadTemplate = () =>
         {
-            var grid = new Grid
-            {
-                RowDefinitions =
-                    {
-                        new RowDefinition { Height = GridLength.Auto }, // Name
-                        new RowDefinition { Height = GridLength.Auto }, // Includes
-                        new RowDefinition { Height = GridLength.Auto }, // Defines
-                        new RowDefinition { Height = GridLength.Auto }, // Defines
-                        new RowDefinition { Height = GridLength.Auto }, // Common Shader
-                        new RowDefinition { Height = GridLength.Auto }, // Vertex Shader
-                        new RowDefinition { Height = GridLength.Auto }, // Fragment Shader
-                        new RowDefinition { Height = GridLength.Auto }  // Compute Shader
-                    }
-            };
+            var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto }, new ColumnDefinition { Width = GridLength.Star } } };
+            TemplateBuilder.AddGridRowWithLabel(props, "Includes", TemplateBuilder.CreateReadOnlyEditor(nameof(ShaderFile.Includes)), GridLength.Auto);
+            TemplateBuilder.AddGridRowWithLabel(props, "Defines", TemplateBuilder.CreateReadOnlyEditor(nameof(ShaderFile.Defines)), GridLength.Auto);
 
-            var nameLabel = new Label { Text = "DisplayName" };
-            nameLabel.SetBinding(Label.TextProperty, new Binding("DisplayName"));
-            nameLabel.Behaviors.Add(new DisplayNameBehavior());
 
-            var includesLabel = new Label { Text = "Includes:" };
-            var includesList = TemplateBuilder.CreateReadOnlyEditor("Includes");
-            var definesLabel = new Label { Text = "Defines:" };
-            var definesList = TemplateBuilder.CreateReadOnlyEditor("Defines");
+            var grid = new Grid();
+            TemplateBuilder.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, props, GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, new Label { Text = "Code", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
 
-            var commonShaderExpander = TemplateBuilder.CreateShaderCodeView("Common Shader", "GlslCommonShader");
-            var vertexShaderExpander = TemplateBuilder.CreateShaderCodeView("Vertex Shader", "GlslVertexShader");
-            var fragmentShaderExpander = TemplateBuilder.CreateShaderCodeView("Fragment Shader", "GlslFragmentShader");
-            var computeShaderExpander = TemplateBuilder.CreateShaderCodeView("Compute Shader", "GlslComputeShader");
-
-            TemplateBuilder.AddGridRow(grid, nameLabel, 0, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, includesLabel, 1, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, includesList, 2, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, definesLabel, 3, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, definesList, 4, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, commonShaderExpander, 5, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, vertexShaderExpander, 6, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, fragmentShaderExpander, 7, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, computeShaderExpander, 8, GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateShaderCodeView("Common Shader", nameof(ShaderFile.GlslCommonShader)), GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateShaderCodeView("Vertex Shader", nameof(ShaderFile.GlslVertexShader)), GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateShaderCodeView("Fragment Shader", nameof(ShaderFile.GlslFragmentShader)), GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateShaderCodeView("Compute Shader", nameof(ShaderFile.GlslComputeShader)), GridLength.Auto);
 
             return grid;
         };

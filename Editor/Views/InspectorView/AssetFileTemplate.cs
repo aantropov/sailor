@@ -1,4 +1,5 @@
 ﻿using SailorEditor.Helpers;
+using SailorEditor.ViewModels;
 
 public class AssetFileTemplate : DataTemplate
 {
@@ -13,5 +14,71 @@ public class AssetFileTemplate : DataTemplate
 
             return label;
         };
+    }
+    protected View CreateControlPanel()
+    {
+        var controlPanel = new Grid
+        {
+            ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto }},
+            ColumnSpacing = 10,
+            RowSpacing = 5,
+            Padding = new Thickness(5)
+        };
+
+        var nameLabel = new Label { Text = "DisplayName", VerticalOptions = LayoutOptions.Center, HorizontalTextAlignment = TextAlignment.Start, FontAttributes = FontAttributes.Bold };
+        nameLabel.SetBinding(Label.TextProperty, new Binding("DisplayName"));
+        nameLabel.Behaviors.Add(new DisplayNameBehavior());
+
+        var openButton = new Button
+        {
+            Text = "Open",
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            HeightRequest = 30,
+            WidthRequest = 80
+        };
+
+        var saveButton = new Button
+        {
+            Text = "Save",
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            HeightRequest = 30,
+            WidthRequest = 80
+        };
+
+        var revertButton = new Button
+        {
+            Text = "Revert",
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            HeightRequest = 10,
+            WidthRequest = 80
+        };
+
+        saveButton.SetBinding(Button.IsVisibleProperty, new Binding("IsDirty"));
+        revertButton.SetBinding(Button.IsVisibleProperty, new Binding("IsDirty"));
+        openButton.SetBinding(Button.IsVisibleProperty, new Binding("CanOpenAssetFile"));
+
+        openButton.Clicked += (sender, e) => (saveButton.BindingContext as AssetFile).OpenAssetFile();
+        saveButton.Clicked += (sender, e) => (saveButton.BindingContext as AssetFile).UpdateAssetFile();
+        revertButton.Clicked += (sender, e) => (revertButton.BindingContext as AssetFile).Revert();
+
+        TemplateBuilder.AddGridRow(controlPanel, nameLabel, GridLength.Auto);
+
+        var buttonsStack = new HorizontalStackLayout
+        {
+            Children = { openButton, saveButton, revertButton },
+            Spacing = 5,
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start
+        };
+
+        TemplateBuilder.AddGridRow(controlPanel, buttonsStack, GridLength.Auto);
+
+        controlPanel.HorizontalOptions = LayoutOptions.Start;
+        controlPanel.VerticalOptions = LayoutOptions.Start;
+
+        return controlPanel;
     }
 }

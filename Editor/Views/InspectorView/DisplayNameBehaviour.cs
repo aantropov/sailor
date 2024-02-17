@@ -39,7 +39,7 @@ public class DisplayNameBehavior : Behavior<Label>
 
         if (model != null)
         {
-            label.Text = model.IsDirty ? $"*{model.DisplayName}*" : $"{model.DisplayName}";
+            label.Text = model.IsDirty ? $"*{model.DisplayName}* (Modified)" : $"{model.DisplayName}";
             label.Text += $" (Type: {model.GetType().Name})";
         }
     }

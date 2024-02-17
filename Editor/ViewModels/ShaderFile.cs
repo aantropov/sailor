@@ -40,10 +40,10 @@ namespace SailorEditor.ViewModels
                         switch (e.Key.ToString())
                         {
                             case "includes":
-                                Includes += e.Value.ToString() + "\n";
+                                Includes += e.Value.ToString();
                                 break;
                             case "defines":
-                                Defines += e.Value.ToString() + "\n";
+                                Defines += e.Value.ToString();
                                 break;
                             case "glslVertex":
                                 GlslVertexShader = e.Value.ToString();

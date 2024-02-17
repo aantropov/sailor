@@ -7,6 +7,7 @@ using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using SailorEditor.Services;
+using System.Diagnostics;
 
 namespace SailorEditor.ViewModels
 {
@@ -35,6 +36,7 @@ namespace SailorEditor.ViewModels
             IsDirty = true;
             OnPropertyChanged(propertyName);
         }
+        public bool CanOpenAssetFile { get => !IsDirty; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
@@ -60,6 +62,17 @@ namespace SailorEditor.ViewModels
         {
             PreloadResources(true);
             IsDirty = false;
+        }
+        public void OpenAssetFile()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(Asset.FullName) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Cannot open file: {ex.Message}");
+            }
         }
 
         protected bool IsLoaded { get; set; }

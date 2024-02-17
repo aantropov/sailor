@@ -16,6 +16,8 @@ using Entry = Microsoft.Maui.Controls.Entry;
 using System.Collections.Generic;
 using System.Collections;
 using System.Runtime.CompilerServices;
+using DataTemplate = Microsoft.Maui.Controls.DataTemplate;
+using Button = Microsoft.Maui.Controls.Button;
 
 namespace SailorEditor.Helpers
 {
@@ -60,21 +62,20 @@ namespace SailorEditor.Helpers
             return checkBox;
         }
 
-        public static void AddGridRow(Microsoft.Maui.Controls.Grid grid, View view, int rowIndex, Microsoft.Maui.GridLength gridLength)
+        public static void AddGridRow(Microsoft.Maui.Controls.Grid grid, View view, Microsoft.Maui.GridLength gridLength)
         {
-            if (grid.RowDefinitions.Count <= rowIndex)
-            {
-                grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
-            }
+            grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
             grid.Children.Add(view);
-            Grid.SetRow(view, rowIndex);
+            Grid.SetRow(view, grid.RowDefinitions.Count - 1);
         }
-        public static void AddGridRowWithLabel(Grid grid, string labelText, View contentView, int rowIndex)
+        public static void AddGridRowWithLabel(Grid grid, string labelText, View contentView, Microsoft.Maui.GridLength gridLength)
         {
+            grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
+
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, HorizontalOptions = LayoutOptions.Start };
 
-            grid.Add(label, 0, rowIndex);
-            grid.Add(contentView, 1, rowIndex);
+            grid.Add(label, 0, grid.RowDefinitions.Count - 1);
+            grid.Add(contentView, 1, grid.RowDefinitions.Count - 1);
         }
         public static Picker CreateEnumPicker<TEnum>(string bindingPath) where TEnum : struct
         {
@@ -93,7 +94,6 @@ namespace SailorEditor.Helpers
 
             return picker;
         }
-
         public static View CreateEntryWithLabel(string bindingPath, string labelText)
         {
             var label = new Label
@@ -140,33 +140,28 @@ namespace SailorEditor.Helpers
                     var deleteButton = new Microsoft.Maui.Controls.Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>
                     {
-                        if (dictionaryEditor?.BindingContext is MaterialFile materialFile)
+                        var dictionaryProperty = (dictionaryEditor.BindingContext).GetType().GetProperty(bindingPath);
+                        if (dictionaryProperty != null)
                         {
-                            var dictionaryProperty = materialFile.GetType().GetProperty(bindingPath);
-                            if (dictionaryProperty != null)
+                            if (dictionaryProperty.GetValue(dictionaryEditor.BindingContext) is IDictionary dictionary)
                             {
-                                var dictionary = dictionaryProperty.GetValue(materialFile) as IDictionary;
-                                if (dictionary != null)
+                                var keyToRemove = keyEntry.Text.ToString();
+
+                                if (dictionary.Contains(keyToRemove))
                                 {
-                                    var keyToRemove = keyEntry.Text.ToString();
+                                    dictionary.Remove(keyToRemove);
 
-                                    if (dictionary.Contains(keyToRemove))
-                                    {
-                                        dictionary.Remove(keyToRemove);
-                                        materialFile.MakeDirty(bindingPath);
+                                    var isDirtyProp = (dictionaryEditor.BindingContext).GetType().GetProperty(nameof(AssetFile.IsDirty));
+                                    isDirtyProp?.SetValue(dictionaryEditor.BindingContext, true);
 
-                                        dictionaryEditor.ItemsSource = null;
-                                        dictionaryEditor.ItemsSource = dictionary;
-                                    }
+                                    dictionaryEditor.ItemsSource = null;
+                                    dictionaryEditor.ItemsSource = dictionary;
                                 }
                             }
                         }
                     };
 
-                    var addButton = new Microsoft.Maui.Controls.Button { Text = "+" };
-                    // addButton.Command = /* Команда добавления нового элемента в коллекцию */
-
-                    var entryLayout = new HorizontalStackLayout { Children = { keyEntry, valueEntry, deleteButton, addButton } };
+                    var entryLayout = new HorizontalStackLayout { Children = { keyEntry, valueEntry, deleteButton } };
 
                     return entryLayout;
                 });
@@ -177,39 +172,90 @@ namespace SailorEditor.Helpers
 
             return stackLayout;
         }
-
-        public static View CreateListEditor(string bindingPath, string labelText)
+        public static View CreateListEditor<T>(string bindingPath, string labelText, T defaultElement)
         {
-            var label = new Label
-            {
-                Text = labelText,
-                VerticalOptions = LayoutOptions.Center,
-                HorizontalOptions = LayoutOptions.Start
-            };
+            var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center };
 
-            var stackLayout = new VerticalStackLayout();
-            stackLayout.Children.Add(label);
-
-            var listEditor = new CollectionView
-            {
-                ItemTemplate = new Microsoft.Maui.Controls.DataTemplate(() =>
+            var listEditor = new CollectionView();
+            listEditor.ItemTemplate = new DataTemplate(() =>
                 {
                     var entry = new Entry();
                     entry.SetBinding(Entry.TextProperty, ".");
 
-                    var deleteButton = new Microsoft.Maui.Controls.Button { Text = "-" };
-                    // deleteButton.Command = /* Команда удаления элемента из списка */
+                    var deleteButton = new Button { Text = "-" };
+                    deleteButton.Clicked += (sender, e) =>
+                    {
+                        var property = (listEditor.BindingContext).GetType().GetProperty(bindingPath);
+                        if (property != null)
+                        {
+                            if (property.GetValue(listEditor.BindingContext) is IList list)
+                            {
+                                var valueToRemove = entry.Text.ToString();
 
-                    var addButton = new Microsoft.Maui.Controls.Button { Text = "+" };
-                    // addButton.Command = /* Команда добавления нового элемента в список */
+                                if (list.Contains(valueToRemove))
+                                {
+                                    list.Remove(valueToRemove);
 
-                    var entryLayout = new HorizontalStackLayout { Children = { entry, deleteButton, addButton } };
+                                    var isDirtyProp = (listEditor.BindingContext).GetType().GetProperty(nameof(AssetFile.IsDirty));
+                                    isDirtyProp?.SetValue(listEditor.BindingContext, true);
+
+                                    listEditor.ItemsSource = null;
+                                    listEditor.ItemsSource = list;
+                                }
+                            }
+                        }
+                    };
+
+                    var entryLayout = new HorizontalStackLayout { Children = { entry, deleteButton } };
 
                     return entryLayout;
-                })
-            };
+                });
+
             listEditor.SetBinding(ItemsView.ItemsSourceProperty, new Binding(bindingPath));
 
+            var addButton = new Button { Text = "+" };
+            addButton.Clicked += (sender, e) =>
+            {
+                var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
+                if (property != null)
+                {
+                    if (property.GetValue((sender as Button).BindingContext) is IList list)
+                    {
+                        list.Add(defaultElement);
+
+                        var isDirtyProp = (sender as Button).BindingContext.GetType().GetProperty(nameof(AssetFile.IsDirty));
+                        isDirtyProp?.SetValue((sender as Button).BindingContext, true);
+
+                        listEditor.ItemsSource = null;
+                        listEditor.ItemsSource = list;
+                    }
+                }
+            };
+
+            var clearButton = new Button { Text = "Clear" };
+            clearButton.Clicked += (sender, e) =>
+            {
+                var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
+                if (property != null)
+                {
+                    if (property.GetValue((sender as Button).BindingContext) is IList list)
+                    {
+                        list.Clear();
+
+                        var isDirtyProp = (sender as Button).BindingContext.GetType().GetProperty(nameof(AssetFile.IsDirty));
+                        isDirtyProp?.SetValue((sender as Button).BindingContext, true);
+
+                        listEditor.ItemsSource = null;
+                        listEditor.ItemsSource = list;
+                    }
+                }
+            };
+
+            var buttonsLayout = new HorizontalStackLayout { Children = { addButton, clearButton } };
+
+            var stackLayout = new VerticalStackLayout();
+            stackLayout.Children.Add(label);
+            stackLayout.Children.Add(buttonsLayout);
             stackLayout.Children.Add(listEditor);
 
             return stackLayout;
