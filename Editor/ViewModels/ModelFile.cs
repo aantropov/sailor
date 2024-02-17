@@ -7,41 +7,30 @@ using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using SailorEditor.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.ObjectModel;
+using CommunityToolkit.Maui.Core.Extensions;
 
 namespace SailorEditor.ViewModels
 {
     using AssetUID = string;
-    public class ModelFile : AssetFile
+    public partial class ModelFile : AssetFile
     {
-        public bool ShouldGenerateMaterials
-        {
-            get { return shouldGenerateMaterials; }
-            set
-            {
-                if (shouldGenerateMaterials != value) { shouldGenerateMaterials = value; MakeDirty(nameof(ShouldGenerateMaterials)); }
-            }
-        }
-        public bool ShouldBatchByMaterial
-        {
-            get { return shouldBatchByMaterial; }
-            set { if (shouldBatchByMaterial != value) { shouldBatchByMaterial = value; MakeDirty(nameof(ShouldBatchByMaterial)); } }
-        }
-
-        public List<AssetUID> DefaultMaterials
-        {
-            get { return defaultMaterials; }
-            set { if (DefaultMaterials != value) { defaultMaterials = value; MakeDirty(nameof(DefaultMaterials)); } }
-        }
-
+        [ObservableProperty]
         private bool shouldGenerateMaterials;
-        private bool shouldBatchByMaterial;
-        private List<AssetUID> defaultMaterials = new();
 
+        [ObservableProperty]
+        private bool shouldBatchByMaterial;
+
+        [ObservableProperty]
+        private ObservableCollection<AssetUID> defaultMaterials = new();
         protected override void UpdateModel()
         {
             Properties["bShouldGenerateMaterials"] = ShouldGenerateMaterials.ToString();
             Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial.ToString();
-            Properties["defaultMaterials"] = defaultMaterials.ToString();
+            Properties["defaultMaterials"] = DefaultMaterials.ToString();
+
+            defaultMaterials.CollectionChanged += (s, args) => { OnPropertyChanged(nameof(DefaultMaterials)); };
 
             IsDirty = false;
         }
@@ -76,7 +65,7 @@ namespace SailorEditor.ViewModels
                                         parsed.Add((AssetUID)uid.ToString());
                                     }
 
-                                    DefaultMaterials = parsed;
+                                    DefaultMaterials = parsed.ToObservableCollection();
                                 }
                                 break;
                         }

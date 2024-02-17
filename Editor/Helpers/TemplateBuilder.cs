@@ -11,6 +11,7 @@ using System.Globalization;
 using CheckBox = Microsoft.Maui.Controls.CheckBox;
 using Grid = Microsoft.Maui.Controls.Grid;
 using SkiaSharp;
+using System.Linq;
 using Microsoft.Maui.Controls.PlatformConfiguration.AndroidSpecific;
 using Entry = Microsoft.Maui.Controls.Entry;
 using System.Collections.Generic;
@@ -18,6 +19,12 @@ using System.Collections;
 using System.Runtime.CompilerServices;
 using DataTemplate = Microsoft.Maui.Controls.DataTemplate;
 using Button = Microsoft.Maui.Controls.Button;
+using System.Collections.ObjectModel;
+using Microsoft.UI.Xaml.Data;
+using BindingMode = Microsoft.Maui.Controls.BindingMode;
+using Binding = Microsoft.Maui.Controls.Binding;
+using IValueConverter = Microsoft.Maui.Controls.IValueConverter;
+using SailorEditor.Utility;
 
 namespace SailorEditor.Helpers
 {
@@ -107,7 +114,7 @@ namespace SailorEditor.Helpers
             {
                 FontSize = 12
             };
-            entry.SetBinding(Entry.TextProperty, new Binding(bindingPath));
+            entry.SetBinding(Entry.TextProperty, new Binding(bindingPath, BindingMode.TwoWay));
 
             var stackLayout = new VerticalStackLayout();
             stackLayout.Children.Add(label);
@@ -172,7 +179,7 @@ namespace SailorEditor.Helpers
 
             return stackLayout;
         }
-        public static View CreateListEditor<T>(string bindingPath, string labelText, T defaultElement)
+        public static View CreateListEditor<T>(string bindingPath, string labelText, T defaultElement = default(T), IValueConverter converter = null)
         {
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center };
 
@@ -180,7 +187,7 @@ namespace SailorEditor.Helpers
             listEditor.ItemTemplate = new DataTemplate(() =>
                 {
                     var entry = new Entry();
-                    entry.SetBinding(Entry.TextProperty, ".");
+                    entry.SetBinding(Entry.TextProperty, ".", BindingMode.TwoWay, converter);
 
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>
@@ -188,20 +195,22 @@ namespace SailorEditor.Helpers
                         var property = (listEditor.BindingContext).GetType().GetProperty(bindingPath);
                         if (property != null)
                         {
-                            if (property.GetValue(listEditor.BindingContext) is IList list)
+                            if (property.GetValue(listEditor.BindingContext) is ObservableCollection<T> list)
                             {
                                 var valueToRemove = entry.Text.ToString();
 
-                                if (list.Contains(valueToRemove))
+                                if (converter != null)
                                 {
-                                    list.Remove(valueToRemove);
-
-                                    var isDirtyProp = (listEditor.BindingContext).GetType().GetProperty(nameof(AssetFile.IsDirty));
-                                    isDirtyProp?.SetValue(listEditor.BindingContext, true);
-
-                                    listEditor.ItemsSource = null;
-                                    listEditor.ItemsSource = list;
+                                    var value = (T)converter.ConvertBack(valueToRemove, typeof(T), valueToRemove, CultureInfo.InvariantCulture);
+                                    list.Remove(value);
                                 }
+                                else
+                                {
+                                    ((IList)list).Remove(valueToRemove);
+                                }
+
+                                listEditor.ItemsSource = null;
+                                listEditor.ItemsSource = list;
                             }
                         }
                     };
@@ -211,7 +220,7 @@ namespace SailorEditor.Helpers
                     return entryLayout;
                 });
 
-            listEditor.SetBinding(ItemsView.ItemsSourceProperty, new Binding(bindingPath));
+            listEditor.SetBinding(ItemsView.ItemsSourceProperty, new Binding(bindingPath, BindingMode.TwoWay));
 
             var addButton = new Button { Text = "+" };
             addButton.Clicked += (sender, e) =>
@@ -222,9 +231,6 @@ namespace SailorEditor.Helpers
                     if (property.GetValue((sender as Button).BindingContext) is IList list)
                     {
                         list.Add(defaultElement);
-
-                        var isDirtyProp = (sender as Button).BindingContext.GetType().GetProperty(nameof(AssetFile.IsDirty));
-                        isDirtyProp?.SetValue((sender as Button).BindingContext, true);
 
                         listEditor.ItemsSource = null;
                         listEditor.ItemsSource = list;
@@ -242,9 +248,6 @@ namespace SailorEditor.Helpers
                     {
                         list.Clear();
 
-                        var isDirtyProp = (sender as Button).BindingContext.GetType().GetProperty(nameof(AssetFile.IsDirty));
-                        isDirtyProp?.SetValue((sender as Button).BindingContext, true);
-
                         listEditor.ItemsSource = null;
                         listEditor.ItemsSource = list;
                     }
@@ -259,27 +262,6 @@ namespace SailorEditor.Helpers
             stackLayout.Children.Add(listEditor);
 
             return stackLayout;
-        }
-
-        public class EnumToStringConverter<TEnum> : IValueConverter where TEnum : struct
-        {
-            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-            {
-                return value?.ToString();
-            }
-
-            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-            {
-                if (value is string stringValue)
-                {
-                    if (Enum.TryParse<TEnum>(stringValue, out var enumValue))
-                    {
-                        return enumValue;
-                    }
-                }
-
-                return default(TEnum);
-            }
         }
 
         public static ImageSource ResizeImageToThumbnail(string imagePath)

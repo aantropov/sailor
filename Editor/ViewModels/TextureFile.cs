@@ -7,46 +7,33 @@ using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using SailorEditor.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SailorEditor.ViewModels
 {
     using AssetUID = string;
-    public class TextureFile : AssetFile
+    public partial class TextureFile : AssetFile
     {
-        public ImageSource Texture { get; protected set; }
-        public bool ShouldGenerateMips
-        {
-            get { return shouldGenerateMips; }
-            set { if (shouldGenerateMips != value) { shouldGenerateMips = value; MakeDirty(nameof(ShouldGenerateMips)); } }
-        }
-        public bool ShouldSupportStorageBinding
-        {
-            get { return shouldSupportStorageBinding; }
-            set { if (shouldSupportStorageBinding != value) { shouldSupportStorageBinding = value; MakeDirty(nameof(ShouldSupportStorageBinding)); } }
-        }
-        public TextureClamping Clamping
-        {
-            get { return clamping; }
-            set { if (clamping != value) { clamping = value; MakeDirty(nameof(Clamping)); } }
-        }
-        public TextureFiltration Filtration
-        {
-            get { return filtration; }
-            set { if (filtration != value) { filtration = value; MakeDirty(nameof(Filtration)); } }
-        }
-        public TextureFormat Format
-        {
-            get { return format; }
-            set { if (format != value) { format = value; MakeDirty(nameof(Format)); } }
-        }
-
         public bool IsImageLoaded { get => !Texture.IsEmpty; }
 
+        [ObservableProperty]
         private TextureFiltration filtration;
+
+        [ObservableProperty]
         private TextureFormat format = TextureFormat.R8G8B8A8_SRGB;
+
+        [ObservableProperty]
         private TextureClamping clamping;
+
+        [ObservableProperty]
         private bool shouldGenerateMips;
+
+        [ObservableProperty]
         private bool shouldSupportStorageBinding;
+
+        [ObservableProperty]
+        private ImageSource texture;
+
         protected override void UpdateModel()
         {
             Properties["bShouldGenerateMips"] = ShouldGenerateMips.ToString();

@@ -8,38 +8,33 @@ using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using SailorEditor.Services;
 using System.Diagnostics;
+using CommunityToolkit.Maui;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace SailorEditor.ViewModels
 {
     using AssetUID = string;
-    public class AssetFile : INotifyPropertyChanged
+    public partial class AssetFile : ObservableObject
     {
+        public AssetFile()
+        {
+            PropertyChanged += (s, args) =>
+            {
+                if (args.PropertyName != "IsDirty")
+                {
+                    IsDirty = true;
+                }
+            };
+        }
+
         public AssetUID UID { get { return Properties["fileId"].ToString(); } }
         public FileInfo Asset { get; set; }
         public FileInfo AssetInfo { get; set; }
         public Dictionary<string, object> Properties { get; set; } = new();
-        public string DisplayName
-        {
-            get { return displayName; }
-            set { if (displayName != value) { displayName = value; MakeDirty(nameof(DisplayName)); } }
-        }
-
         public int Id { get; set; }
         public int FolderId { get; set; }
-        public bool IsDirty
-        {
-            get { return isDirty; }
-            set { if (isDirty != value) { isDirty = value; OnPropertyChanged(nameof(IsDirty)); } }
-        }
-        public void MakeDirty([CallerMemberName] string propertyName = null)
-        {
-            IsDirty = true;
-            OnPropertyChanged(propertyName);
-        }
         public bool CanOpenAssetFile { get => !IsDirty; }
-
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         public virtual bool PreloadResources(bool force) => true;
         public void UpdateAssetFile()
         {
@@ -74,11 +69,14 @@ namespace SailorEditor.ViewModels
                 Console.WriteLine($"Cannot open file: {ex.Message}");
             }
         }
-
+        public void MakeDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
         protected bool IsLoaded { get; set; }
         protected virtual void UpdateModel() { }
 
-        bool isDirty = false;
-        string displayName;
+        [ObservableProperty]
+        protected bool isDirty = false;
+
+        [ObservableProperty]
+        protected string displayName;
     }
 }

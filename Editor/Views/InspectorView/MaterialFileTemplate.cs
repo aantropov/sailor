@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Maui.Converters;
 using SailorEditor.Engine;
 using SailorEditor.Helpers;
+using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 
 public class MaterialFileTemplate : AssetFileTemplate
@@ -32,7 +33,7 @@ public class MaterialFileTemplate : AssetFileTemplate
             TemplateBuilder.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, props, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateListEditor<string>(nameof(MaterialFile.Defines), "Shader Defines", "NewDefine"),GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateListEditor<ObservableString>(nameof(MaterialFile.ShaderDefines), "Shader Defines", new ObservableString("NewDefine"), new ObservableStringConverter()),GridLength.Auto);
 
             TemplateBuilder.AddGridRow(grid, new Label { Text = "Uniforms & Samplers", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor(nameof(MaterialFile.Samplers), "Samplers"), GridLength.Auto);

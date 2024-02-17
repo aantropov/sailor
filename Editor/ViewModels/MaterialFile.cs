@@ -14,104 +14,69 @@ using System.Numerics;
 using System.Collections.Specialized;
 using YamlDotNet.Core.Tokens;
 using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.ObjectModel;
+using CommunityToolkit.Maui.Core.Extensions;
+using SailorEditor.Utility;
 
 namespace SailorEditor.ViewModels
 {
     using AssetUID = string;
     using BlendMode = Engine.BlendMode;
-    public class MaterialFile : AssetFile
+
+  
+    public partial class MaterialFile : AssetFile
     {
-
-        public string RenderQueue
+        public MaterialFile()
         {
-            get { return renderQueue; }
-            set { if (renderQueue != value) { renderQueue = value; MakeDirty(nameof(RenderQueue)); } }
+            ShaderDefines.CollectionChanged += (s, args) =>
+            {
+                MakeDirty(nameof(ShaderDefines));
+            };
         }
 
-        public float DepthBias
-        {
-            get { return depthBias; }
-            set { if (depthBias != value) { depthBias = value; MakeDirty(nameof(DepthBias)); } }
-        }
-
-        public bool EnableDepthTest
-        {
-            get { return enableDepthTest; }
-            set { if (enableDepthTest != value) { enableDepthTest = value; MakeDirty(nameof(EnableDepthTest)); } }
-        }
-        public bool EnableZWrite
-        {
-            get { return enableZWrite; }
-            set { if (enableZWrite != value) { enableZWrite = value; MakeDirty(nameof(EnableZWrite)); } }
-        }
-        public bool CustomDepthShader
-        {
-            get { return customDepthShader; }
-            set { if (customDepthShader != value) { customDepthShader = value; MakeDirty(nameof(CustomDepthShader)); } }
-        }
-        public bool SupportMultisampling
-        {
-            get { return supportMultisampling; }
-            set { if (supportMultisampling != value) { supportMultisampling = value; MakeDirty(nameof(SupportMultisampling)); } }
-        }
-        public Dictionary<string, float> UniformsFloat
-        {
-            get { return uniformsFloat; }
-            set { if (uniformsFloat != value) { uniformsFloat = value; MakeDirty(nameof(UniformsFloat)); } }
-        }
-        public Dictionary<string, Vector4> UniformsVec4
-        {
-            get { return uniformsVec4; }
-            set { if (uniformsVec4 != value) { uniformsVec4 = value; MakeDirty(nameof(UniformsVec4)); } }
-        }
-        public Dictionary<string, AssetUID> Samplers
-        {
-            get { return samplers; }
-            set { if (samplers != value) { samplers = value; MakeDirty(nameof(Samplers)); } }
-        }
-        public AssetUID Shader
-        {
-            get { return shader; }
-            set { if (shader != value) { shader = value; MakeDirty(nameof(Shader)); } }
-        }
-
-        public FillMode FillMode
-        {
-            get { return fillMode; }
-            set { if (fillMode != value) { fillMode = value; MakeDirty(nameof(FillMode)); } }
-        }
-
-        public BlendMode BlendMode
-        {
-            get { return blendMode; }
-            set { if (blendMode != value) { blendMode = value; MakeDirty(nameof(BlendMode)); } }
-        }
-
-        public CullMode CullMode
-        {
-            get { return cullMode; }
-            set { if (cullMode != value) { cullMode = value; MakeDirty(nameof(CullMode)); } }
-        }
-        public List<string> Defines
-        {
-            get { return defines; }
-            set { if (defines != value) { defines = value; MakeDirty(nameof(Defines)); } }
-        }
-
+        [ObservableProperty]
         private string renderQueue = "Opaque";
+
+        [ObservableProperty]
         private float depthBias = 0.0f;
+
+        [ObservableProperty]
         private bool supportMultisampling = true;
+
+        [ObservableProperty]
         private bool customDepthShader = true;
+
+        [ObservableProperty]
         private bool enableDepthTest = true;
+
+        [ObservableProperty]
         private bool enableZWrite = true;
+
+        [ObservableProperty]
         private CullMode cullMode;
+
+        [ObservableProperty]
         private BlendMode blendMode;
+
+        [ObservableProperty]
         private FillMode fillMode;
+
+        [ObservableProperty]
         private AssetUID shader;
+
+        [ObservableProperty]
         private Dictionary<string, AssetUID> samplers = new();
+
+        [ObservableProperty]
         private Dictionary<string, Vector4> uniformsVec4 = new();
+
+        [ObservableProperty]
         private Dictionary<string, float> uniformsFloat = new();
-        private List<string> defines = new();
+
+        [ObservableProperty]
+        private TrulyObservableCollection<ObservableString> shaderDefines = new();
+
         private Dictionary<string, object> AssetProperties { get; set; } = new();
         protected override void UpdateModel() { }
         public override bool PreloadResources(bool force)
@@ -159,7 +124,7 @@ namespace SailorEditor.ViewModels
                                         parsed.Add(uid.ToString());
                                     }
 
-                                    Defines = parsed;
+                                    ShaderDefines = new TrulyObservableCollection<ObservableString>(parsed.Select((el) => new ObservableString(el)));
                                 }
                                 break;
                             case "cullMode":
