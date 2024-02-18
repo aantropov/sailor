@@ -160,10 +160,10 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferMemoryPtr src, VulkanBufferMemo
 	m_gpuCost += 3;
 }
 
-void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, VkDeviceSize srcOffset)
+void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferMemoryPtr src, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, VkDeviceSize srcOffset)
 {
 	VkBufferImageCopy region{};
-	region.bufferOffset = srcOffset;
+	region.bufferOffset = srcOffset + src.m_offset;
 	region.bufferRowLength = 0;
 	region.bufferImageHeight = 0;
 
@@ -181,14 +181,49 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferPtr src, VulkanImagePtr 
 
 	vkCmdCopyBufferToImage(
 		m_commandBuffer,
-		*src,
+		*src.m_buffer,
 		*image,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		1,
 		&region
 	);
 
-	m_bufferDependencies.Add(src);
+	m_bufferDependencies.Add(src.m_buffer);
+	m_imageDependencies.Add(image);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 10;
+}
+
+void VulkanCommandBuffer::CopyImageToBuffer(VulkanBufferMemoryPtr dst, VulkanImagePtr image, uint32_t width, uint32_t height, uint32_t depth, VkDeviceSize dstOffset)
+{
+	VkBufferImageCopy region{};
+	region.bufferOffset = dstOffset + dst.m_offset;
+	region.bufferRowLength = 0;
+	region.bufferImageHeight = 0;
+
+	region.imageSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
+	region.imageSubresource.mipLevel = 0;
+	region.imageSubresource.baseArrayLayer = 0;
+	region.imageSubresource.layerCount = 1;
+
+	region.imageOffset = { 0, 0, 0 };
+	region.imageExtent = {
+		width,
+		height,
+		depth
+	};
+
+	vkCmdCopyImageToBuffer(
+		m_commandBuffer,
+		*image,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		*dst.m_buffer,
+		1,
+		&region
+	);
+
+	m_bufferDependencies.Add(dst.m_buffer);
 	m_imageDependencies.Add(image);
 
 	m_numRecordedCommands++;

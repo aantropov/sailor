@@ -6,6 +6,18 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
+void* RHIBuffer::GetPointer()
+{
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+	check(m_memoryProperty & EMemoryPropertyBit::HostVisible);
+
+	auto memoryPointer = **m_vulkan.m_buffer;
+	return (void*)(((uint8_t*)memoryPointer.m_deviceMemory->GetPointer()) + memoryPointer.m_offset);
+#else
+	return nullptr;
+#endif
+}
+
 size_t RHIBuffer::GetSize() const
 {
 #if defined(SAILOR_BUILD_WITH_VULKAN)

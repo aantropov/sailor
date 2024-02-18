@@ -19,3 +19,8 @@ EFormat RHITexture::GetFormat() const
 {
 	return (EFormat)m_vulkan.m_image->m_format;
 }
+
+size_t RHITexture::GetSize() const
+{
+	return m_vulkan.m_image->GetMemoryRequirements().size;
+}

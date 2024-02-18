@@ -22,6 +22,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API VulkanDevicePtr GetDevice() { return m_device; }
 
+		SAILOR_API void* GetPointer() { return pData; }
+
 	protected:
 
 		/// Wrapper of vkMapMemory

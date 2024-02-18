@@ -65,6 +65,15 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 
 	const bool bIsDepthFormat = RHI::IsDepthFormat(src->GetFormat()) || RHI::IsDepthFormat(dst->GetFormat());
 
+	const auto srcFormatName = magic_enum::enum_name(src->GetFormat());
+	const auto dstFormatName = magic_enum::enum_name(dst->GetFormat());
+
+	// In case of float ot uint conversion we should forcely run BlitRaw
+	const bool bForceConversion = !bIsDepthFormat &&
+		srcFormatName.substr(srcFormatName.length() - 4, 4) != dstFormatName.substr(dstFormatName.length() - 4, 4);
+	
+	check(!bForceConversion);
+
 	//glm::vec4 srcRegion = GetVec4("srcRegion");
 	//glm::vec4 dstRegion = GetVec4("dstRegion");
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
@@ -72,7 +81,6 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 
 	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), src->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
 	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), RHI::EImageLayout::TransferDstOptimal);
-
 
 	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion, bIsDepthFormat ? ETextureFiltration::Nearest : ETextureFiltration::Linear);
 

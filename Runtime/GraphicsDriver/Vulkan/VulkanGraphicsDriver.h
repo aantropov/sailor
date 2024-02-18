@@ -43,9 +43,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual RHI::RHISemaphorePtr CreateWaitSemaphore();
 		SAILOR_API virtual RHI::RHICommandListPtr CreateCommandList(bool bIsSecondary = false, RHI::ECommandListQueue queue = RHI::ECommandListQueue::Graphics);
-		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage);
-		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(RHI::RHICommandListPtr& cmdBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage);
+		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(size_t size, RHI::EBufferUsageFlags usage, RHI::EMemoryPropertyFlags properties = RHI::EMemoryPropertyBit::DeviceLocal);
+		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer(RHI::RHICommandListPtr& cmdBuffer, const void* pData, size_t size, RHI::EBufferUsageFlags usage, RHI::EMemoryPropertyFlags properties = RHI::EMemoryPropertyBit::DeviceLocal);
 		SAILOR_API virtual RHI::RHIBufferPtr CreateIndirectBuffer(size_t size);
+
 		SAILOR_API virtual RHI::RHIShaderPtr CreateShader(RHI::EShaderStage shaderStage, const RHI::ShaderByteCode& shaderSpirv);
 		SAILOR_API virtual RHI::RHITexturePtr CreateTexture(
 			const void* pData,
@@ -122,7 +123,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Begin Immediate context
 		SAILOR_API virtual RHI::RHIBufferPtr CreateBuffer_Immediate(const void* pData, size_t size, RHI::EBufferUsageFlags usage);
 		SAILOR_API virtual void CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size);
-
 		SAILOR_API virtual RHI::RHITexturePtr CreateImage_Immediate(
 			const void* pData,
 			size_t size,
@@ -222,6 +222,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, size_t size, const void* ptr);
 		SAILOR_API virtual void GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target);
 		SAILOR_API virtual void ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap);
+
+		SAILOR_API virtual void CopyBufferToImage(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr src, RHI::RHITexturePtr dst);
+		SAILOR_API virtual void CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHIBufferPtr dst);
+
 		//End IGraphicsDriverCommands
 
 		SAILOR_API virtual void CollectGarbage_RenderThread() override;

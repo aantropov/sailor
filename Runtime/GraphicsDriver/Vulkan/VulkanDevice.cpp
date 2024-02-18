@@ -504,13 +504,6 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		queueCreateInfos.Add(queueCreateInfo);
 	}
 
-	// Create device that supports VK_KHR_dynamic_rendering
-	VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature
-	{
-	.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
-	.dynamicRendering = VK_TRUE,
-	};
-
 	TVector<const char*> deviceExtensions;
 	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
@@ -518,80 +511,67 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 #ifndef _SHIPPING
 	deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
 #endif
+	
+	// Request and enable all availiable physical features
+	VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
+	physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &physicalDeviceFeatures2);
+	physicalDeviceFeatures2.features.sampleRateShading = VK_FALSE;
+	physicalDeviceFeatures2.features.multiDrawIndirect = VK_TRUE;
+
+	VkPhysicalDeviceVulkan11Features core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+	core11.shaderDrawParameters = true;
+
+	VkPhysicalDeviceVulkan12Features core12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+	core12.samplerFilterMinmax = VK_TRUE;
+	core12.descriptorBindingPartiallyBound = VK_TRUE;
+	core12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+	core12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+	core12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
+	core12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
+	core12.descriptorBindingVariableDescriptorCount = VK_TRUE;
+	core12.descriptorIndexing = VK_TRUE;
+	core12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+
+	VkPhysicalDeviceVulkan13Features core13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
+	core13.maintenance4 = true;
+	core13.dynamicRendering = true;
+	core13.synchronization2 = true;
 
 	// Create device that supports VK_EXT_shader_atomic_float (GL_EXT_shader_atomic_float)
+	// this allows to perform atomic operations on storage buffers
 	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT floatFeatures{};
 	floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
-	// this allows to perform atomic operations on storage buffers
 	floatFeatures.shaderBufferFloat32AtomicAdd = true;
-
-	dynamicRenderingFeature.pNext = &floatFeatures;
 
 	// We are using multiply blending
 	VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT blendFeatures{};
 	blendFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
 	blendFeatures.advancedBlendCoherentOperations = VK_TRUE;
 
-	floatFeatures.pNext = &blendFeatures;
-
-	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-
-	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
-	createInfo.ppEnabledExtensionNames = deviceExtensions.GetData();
-
-	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.Num());
-	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
-	createInfo.pEnabledFeatures = VK_NULL_HANDLE;
-
-	VkPhysicalDeviceVulkan12Features core12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-	core12.samplerFilterMinmax = VK_TRUE;
-
-	core12.descriptorBindingPartiallyBound = VK_TRUE;
-	core12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
-	core12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
-	core12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
-	core12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
-
-	core12.descriptorBindingVariableDescriptorCount = VK_TRUE;
-	core12.descriptorIndexing = VK_TRUE;
-	core12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-	core12.pNext = &dynamicRenderingFeature;
-
-	VkPhysicalDeviceVulkan11Features core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-	core11.shaderDrawParameters = true;
-	core11.pNext = &core12;
-
-	VkPhysicalDeviceSynchronization2Features deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES };
-	deviceFeatures2.synchronization2 = VK_TRUE;
-	deviceFeatures2.pNext = &core11;
-
-	/* TODO: Should we fully move to Vulkan 1.3?
-	VkPhysicalDeviceVulkan13Features core13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-	core13.maintenance4 = true;
-	core13.dynamicRendering = true;
-	core13.synchronization2 = true;
-	core13.pNext = &core11;
-	//core13.pNext = &dynamicRenderingFeature;
-	*/
-
-	// We need relaxed vertex->fragment output
-	VkPhysicalDeviceMaintenance4Features maintence4{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES };
-	maintence4.pNext = &deviceFeatures2;
-	maintence4.maintenance4 = VK_TRUE;
-
-	// Request and enable all availiable physical features
-	VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
-	physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &physicalDeviceFeatures2);
-	physicalDeviceFeatures2.pNext = &maintence4;
-	physicalDeviceFeatures2.features.sampleRateShading = VK_FALSE;
-
+	VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT unusedAttachments{};
+	unusedAttachments.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT;
+	unusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
+	
 #ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
 	physicalDeviceFeatures2.features.sampleRateShading = VK_TRUE;
 #endif
 
+	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
+	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
+	createInfo.ppEnabledExtensionNames = deviceExtensions.GetData();
+	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.Num());
+	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
+	createInfo.pEnabledFeatures = VK_NULL_HANDLE;
+	
 	createInfo.pNext = &physicalDeviceFeatures2;
-
+	physicalDeviceFeatures2.pNext = &core11;
+	core11.pNext = &core12;
+	core12.pNext = &core13;
+	core13.pNext = &floatFeatures;
+	floatFeatures.pNext = &blendFeatures;
+	blendFeatures.pNext = &unusedAttachments;
+	
 	// Compatibility with older Vulkan drivers
 	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 	if (VulkanApi::GetInstance()->IsEnabledValidationLayers())

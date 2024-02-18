@@ -21,6 +21,8 @@ namespace Sailor
 		SAILOR_API __forceinline StaticMeshRendererData& GetData();
 		SAILOR_API __forceinline size_t GetComponentIndex() const { return m_handle; }
 
+		void LoadModel(const std::string& path);
+
 	protected:
 
 		size_t m_handle = (size_t)(-1);

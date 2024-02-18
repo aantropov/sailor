@@ -449,6 +449,14 @@ bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 		requiredExtensions.Remove(extension.extensionName);
 	}
 
+	VkPhysicalDeviceProperties deviceProperties;
+	vkGetPhysicalDeviceProperties(device, &deviceProperties);
+	
+	for (const auto& extension : requiredExtensions)
+	{
+		SAILOR_LOG_ERROR("Physical device %s, doesn't support required device extension: %s", deviceProperties.deviceName, extension.c_str());
+	}
+
 	return requiredExtensions.IsEmpty();
 }
 
@@ -856,7 +864,7 @@ VulkanBufferPtr VulkanApi::CreateBuffer_Immediate(VulkanDevicePtr device, const 
 	auto cmdBuffer = device->CreateCommandBuffer(RHI::ECommandListQueue::Transfer);
 	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateBuffer_Immediate");
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage, sharingMode);;
+	VulkanBufferPtr resBuffer = CreateBuffer(cmdBuffer, device, pData, size, usage, sharingMode);
 	cmdBuffer->EndCommandList();
 
 	auto fence = VulkanFencePtr::Make(device);
@@ -928,7 +936,7 @@ VulkanImagePtr VulkanApi::CreateImage(
 	outImage->Bind(data);
 
 	cmdBuffer->ImageMemoryBarrier(outImage, outImage->m_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	cmdBuffer->CopyBufferToImage((*stagingBufferManagedPtr).m_buffer,
+	cmdBuffer->CopyBufferToImage((*stagingBufferManagedPtr).m_buffer->GetBufferMemoryPtr(),
 		outImage,
 		static_cast<uint32_t>(extent.width),
 		static_cast<uint32_t>(extent.height),

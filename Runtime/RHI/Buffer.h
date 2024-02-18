@@ -9,7 +9,7 @@ namespace Sailor::RHI
 	{
 	public:
 
-		RHIBuffer(EBufferUsageFlags usage) : m_usage(usage) {}
+		RHIBuffer(EBufferUsageFlags usage, EMemoryPropertyFlags memoryProperty) : m_usage(usage), m_memoryProperty(memoryProperty) {}
 		virtual ~RHIBuffer();
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -24,13 +24,16 @@ namespace Sailor::RHI
 #endif
 
 		SAILOR_API EBufferUsageFlags GetUsage() const { return m_usage; }
+		SAILOR_API EMemoryPropertyFlags GetMemoryProperty() const { return m_memoryProperty; }
+
 		SAILOR_API uint32_t GetOffset() const;
 		SAILOR_API size_t GetSize() const;
-
+		SAILOR_API void* GetPointer();
 		SAILOR_API size_t GetCompatibilityHashCode() const;
 
 	protected:
 
 		EBufferUsageFlags m_usage;
+		EMemoryPropertyFlags m_memoryProperty;
 	};
 };

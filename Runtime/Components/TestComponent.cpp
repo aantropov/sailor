@@ -12,6 +12,9 @@
 #include "imgui.h"
 #include "Core/Reflection.h"
 
+#include "RHI/Texture.h"
+#include "Framegraph/CopyTextureToRamNode.h"
+
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
@@ -23,7 +26,16 @@ void TestComponent::BeginPlay()
 	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
 	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * Math::Pi, 0)));
-	m_model = m_mainModel->AddComponent<MeshRendererComponent>()->GetModel();
+	
+	auto meshRenderer = m_mainModel->AddComponent<MeshRendererComponent>();
+	meshRenderer->LoadModel("Models/Sponza/sponza.obj");
+	m_model = meshRenderer->GetModel();
+
+	auto redBox = GetWorld()->Instantiate();
+	redBox->GetTransformComponent().SetPosition(vec3(120, 2500, 500));
+	redBox->GetTransformComponent().SetScale(vec4(100, 50, 100, 1));
+	meshRenderer = redBox->AddComponent<MeshRendererComponent>();
+	meshRenderer->LoadModel("Models/Box/Box.gltf");
 
 	for (int32_t i = -1000; i < 1000; i += 32)
 	{
@@ -113,6 +125,9 @@ void TestComponent::BeginPlay()
 void TestComponent::EndPlay()
 {
 }
+
+#include "stb/stb_image.h"
+#include "stb/stb_image_write.h"
 
 void TestComponent::Tick(float deltaTime)
 {
@@ -263,6 +278,52 @@ void TestComponent::Tick(float deltaTime)
 		auto sky = node.DynamicCast<Framegraph::SkyNode>();
 
 		SkyNode::SkyParams& skyParams = sky->GetSkyParams();
+
+		ImGui::Begin("Snapshot");
+		if (ImGui::Button("Capture"))
+		{
+			if (auto snapshotNode = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("CopyTextureToRam"))
+			{
+				auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
+				snapshot->DoOneCapture();
+			}
+		}
+		if (ImGui::Button("Save"))
+		{
+			if (auto snapshotNode = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("CopyTextureToRam"))
+			{
+				auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
+				auto cpuRam = snapshot->GetBuffer();
+				auto texture = snapshot->GetTexture();
+				if (vec4* ptr = (vec4*)cpuRam->GetPointer())
+				{
+					TVector<u8vec3> outSrgb(texture->GetExtent().x * texture->GetExtent().y);
+					
+					for (int y = 0; y < texture->GetExtent().y; y++)
+					{
+						for (int x = 0; x < texture->GetExtent().x; x++)
+						{
+							vec2 uv = vec2((float)x / texture->GetExtent().x, (float)y / texture->GetExtent().y);
+
+							uint32_t index = x + y * texture->GetExtent().x;
+							vec3 value = ptr[index];
+							value.x = powf(value.x, 1.0f / 2.2f);
+							value.y = powf(value.y, 1.0f / 2.2f);
+							value.z = powf(value.z, 1.0f / 2.2f);
+
+							outSrgb[index] = u8vec3(glm::clamp(value * 255.0f, 0.0f, 255.0f));
+						}
+					}
+
+					const uint32_t Channels = 3;
+					if (!stbi_write_png("test.png", texture->GetExtent().x, texture->GetExtent().y, Channels, outSrgb.GetData(), texture->GetExtent().x * Channels))
+					{
+						SAILOR_LOG_ERROR("Cannot write screenshot");
+					}
+				}
+			}
+		}
+		ImGui::End();
 
 		ImGui::Begin("Sky Settings");
 		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);

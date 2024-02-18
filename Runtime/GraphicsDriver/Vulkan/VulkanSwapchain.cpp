@@ -139,7 +139,8 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	m_depthBuffer->m_usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	m_depthBuffer->m_arrayLayers = 1;
 	m_depthBuffer->m_samples = VK_SAMPLE_COUNT_1_BIT;
-	m_depthBuffer->m_defaultLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+
+	m_depthBuffer->m_defaultLayout = RHI::IsDepthStencilFormat((RHI::ETextureFormat)depthFormat) ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
 	m_depthBuffer->Compile();
 

@@ -79,8 +79,8 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual RHISemaphorePtr CreateWaitSemaphore() = 0;
 		SAILOR_API virtual RHICommandListPtr CreateCommandList(bool bIsSecondary = false, RHI::ECommandListQueue queue = RHI::ECommandListQueue::Graphics) = 0;
-		SAILOR_API virtual RHIBufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage) = 0;
-		SAILOR_API virtual RHIBufferPtr CreateBuffer(RHICommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage) = 0;
+		SAILOR_API virtual RHIBufferPtr CreateBuffer(size_t size, EBufferUsageFlags usage, RHI::EMemoryPropertyFlags properties = RHI::EMemoryPropertyBit::DeviceLocal) = 0;
+		SAILOR_API virtual RHIBufferPtr CreateBuffer(RHICommandListPtr& cmdBuffer, const void* pData, size_t size, EBufferUsageFlags usage, RHI::EMemoryPropertyFlags properties = RHI::EMemoryPropertyBit::DeviceLocal) = 0;
 		SAILOR_API virtual RHIBufferPtr CreateIndirectBuffer(size_t size) = 0;
 
 		SAILOR_API virtual RHIMeshPtr CreateMesh();
@@ -308,6 +308,9 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target) = 0;
 		SAILOR_API virtual void ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap) = 0;
+
+		SAILOR_API virtual void CopyBufferToImage(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr src, RHI::RHITexturePtr dst) = 0;
+		SAILOR_API virtual void CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHIBufferPtr dst) = 0;
 
 		// Used for variables inside uniform buffer 
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable

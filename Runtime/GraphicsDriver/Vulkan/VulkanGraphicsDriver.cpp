@@ -314,22 +314,10 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateIndirectBuffer(size_t size)
 	SAILOR_PROFILE_FUNCTION();
 
 	const uint32_t usage = RHI::EBufferUsageBit::IndirectBuffer_Bit | RHI::EBufferUsageBit::StorageBuffer_Bit | RHI::EBufferUsageBit::BufferTransferDst_Bit | RHI::EBufferUsageBit::BufferTransferSrc_Bit;
+	const RHI::EMemoryPropertyFlags properties = RHI::EMemoryPropertyBit::HostCoherent | RHI::EMemoryPropertyBit::HostVisible;
 
-	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage);
-	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-	// Hack to store ordinary buffer in TMemoryPtr
-	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
-
-	return res;
-}
-
-RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage)
-{
-	SAILOR_PROFILE_FUNCTION();
-
-	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage);
-	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage, properties);
+	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, (VkMemoryPropertyFlagBits)properties);
 
 	// Hack to store ordinary buffer in TMemoryPtr
 	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
@@ -337,11 +325,24 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUs
 	return res;
 }
 
-RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::RHICommandListPtr& cmdList, const void* pData, size_t size, RHI::EBufferUsageFlags usage)
+RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(size_t size, RHI::EBufferUsageFlags usage, RHI::EMemoryPropertyFlags properties)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::RHIBufferPtr outBuffer = CreateBuffer(size, usage);
+	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage, properties);
+	auto buffer = m_vkInstance->CreateBuffer(m_vkInstance->GetMainDevice(), size, (uint16_t)usage, properties);
+
+	// Hack to store ordinary buffer in TMemoryPtr
+	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
+
+	return res;
+}
+
+RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer(RHI::RHICommandListPtr& cmdList, const void* pData, size_t size, RHI::EBufferUsageFlags usage, RHI::EMemoryPropertyFlags properties)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	RHI::RHIBufferPtr outBuffer = CreateBuffer(size, usage, properties);
 
 	auto buffer = m_vkInstance->CreateBuffer(cmdList->m_vulkan.m_commandBuffer,
 		m_vkInstance->GetMainDevice(),
@@ -368,12 +369,22 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer_Immediate(const void* pData
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage);
+	RHI::RHIBufferPtr res = RHI::RHIBufferPtr::Make(usage, RHI::EMemoryPropertyBit::DeviceLocal);
 	auto buffer = m_vkInstance->CreateBuffer_Immediate(m_vkInstance->GetMainDevice(), pData, size, (uint32_t)usage);
 
 	// Hack to store ordinary buffer in TMemoryPtr
 	res->m_vulkan.m_buffer = TMemoryPtr<VulkanBufferMemoryPtr>(0, 0, buffer->m_size, VulkanBufferMemoryPtr(buffer, 0, buffer->m_size), -1);
 	return res;
+}
+
+void VulkanGraphicsDriver::CopyBufferToImage(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr src, RHI::RHITexturePtr dst)
+{
+	cmd->m_vulkan.m_commandBuffer->CopyBufferToImage(*src->m_vulkan.m_buffer, dst->m_vulkan.m_image, dst->GetExtent().x, dst->GetExtent().y, 1, 0u);
+}
+
+void VulkanGraphicsDriver::CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHIBufferPtr dst)
+{
+	cmd->m_vulkan.m_commandBuffer->CopyImageToBuffer(*dst->m_vulkan.m_buffer, src->m_vulkan.m_image, src->GetExtent().x, src->GetExtent().y, 1, 0u);
 }
 
 void VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size)
@@ -2164,12 +2175,13 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertice
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
 
 	const RHI::EBufferUsageFlags flags = RHI::EBufferUsageBit::VertexBuffer_Bit | RHI::EBufferUsageBit::IndexBuffer_Bit;
+	const RHI::EMemoryPropertyFlags memFlags = RHI::EMemoryPropertyBit::DeviceLocal;
 
 #if defined(SAILOR_VULKAN_STORE_VERTICES_INDICES_IN_SSBO)
 	auto& ssboAllocator = GetMeshSsboAllocator();
 
-	mesh->m_vertexBuffer = RHI::RHIBufferPtr::Make(flags);
-	mesh->m_indexBuffer = RHI::RHIBufferPtr::Make(flags);
+	mesh->m_vertexBuffer = RHI::RHIBufferPtr::Make(flags, memFlags);
+	mesh->m_indexBuffer = RHI::RHIBufferPtr::Make(flags, memFlags);
 
 	mesh->m_vertexBuffer->m_vulkan.m_buffer = ssboAllocator->Allocate(bufferSize, mesh->m_vertexDescription->GetVertexStride());
 	mesh->m_vertexBuffer->m_vulkan.m_bufferAllocator = ssboAllocator;
@@ -2183,12 +2195,14 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertice
 	mesh->m_vertexBuffer = CreateBuffer(cmdList,
 		pVertices,
 		bufferSize,
-		flags);
+		flags,
+		memFlags);
 
 	mesh->m_indexBuffer = CreateBuffer(cmdList,
 		pIndices,
 		indexBufferSize,
-		flags);
+		flags,
+		memFlags);
 #endif
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);

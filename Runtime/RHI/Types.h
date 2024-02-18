@@ -83,6 +83,16 @@ namespace Sailor::RHI
 		Samples_64 = 64
 	};
 
+	enum EMemoryPropertyBit : uint16_t
+	{
+		DeviceLocal = 0x00000001,
+		HostVisible = 0x00000002,
+		HostCoherent = 0x00000004,
+		HostCached = 0x00000008,
+		LazilyAllocated = 0x00000010,
+		Protected = 0x00000020,
+	};
+
 	enum EBufferUsageBit : uint16_t
 	{
 		BufferTransferSrc_Bit = 0x00000001,
@@ -97,6 +107,7 @@ namespace Sailor::RHI
 		IndirectBuffer_Bit = 0x00000100
 	};
 
+	typedef uint16_t EMemoryPropertyFlags;
 	typedef uint16_t EBufferUsageFlags;
 
 	enum class EFormat : uint32_t

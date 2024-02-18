@@ -13,11 +13,7 @@ void MeshRendererComponent::BeginPlay()
 	GetData().SetOwner(GetOwner());
 
 	//if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/KnightArtorias/Artorias.fbx"))
-	if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/Sponza/sponza.obj"))
-	{
-		App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), GetModel());
-		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelFileId->GetFileId(), GetMaterials());
-	}
+
 }
 
 StaticMeshRendererData& MeshRendererComponent::GetData()
@@ -29,4 +25,14 @@ StaticMeshRendererData& MeshRendererComponent::GetData()
 void MeshRendererComponent::EndPlay()
 {
 	GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>()->UnregisterComponent(m_handle);
+}
+
+
+void MeshRendererComponent::LoadModel(const std::string& path)
+{
+	if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(path))
+	{
+		App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), GetModel());
+		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelFileId->GetFileId(), GetMaterials());
+	}
 }

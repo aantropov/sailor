@@ -31,7 +31,9 @@ glslVertex: |
   struct PerInstanceData
   {
       mat4 model;
+      vec4 sphereBounds;
       uint materialInstance;
+      uint isCulled;
   };
   
   struct MaterialData
@@ -61,6 +63,38 @@ glslVertex: |
       float currentTime;
       float deltaTime;
   } frame;
+  
+  layout(std430, set = 1, binding = 0) readonly buffer LightDataSSBO
+  {  
+    LightData instance[];
+  } light;
+  
+  layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
+  {
+      uint indices[];
+  } culledLights;
+  
+  layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
+  {
+      LightsGrid instance[];
+  } lightsGrid;
+  
+  layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
+  layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
+  layout(set=1, binding=5) uniform samplerCube g_envCubemap;
+
+  layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
+  {
+      mat4 instance[];
+  } lightsMatrices;
+
+  layout(std430, set = 1, binding = 7) readonly buffer ShadowIndicesSSBO
+  {
+      uint instance[];
+  } shadowIndices;
+  
+  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=9) uniform sampler2D g_aoSampler;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -72,12 +106,14 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+  
   void main() 
   {
     vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
-    gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
 
     vout.color = inColor;
@@ -88,7 +124,6 @@ glslVertex: |
   }
 
 glslFragment: |
-  
   layout(location=0)
   flat in uint materialInstance;
   
@@ -106,7 +141,9 @@ glslFragment: |
   struct PerInstanceData
   {
       mat4 model;
+      vec4 sphereBounds;
       uint materialInstance;
+      uint isCulled;
   };
   
   struct MaterialData
@@ -137,6 +174,38 @@ glslFragment: |
       float deltaTime;
   } frame;
   
+  layout(std430, set = 1, binding = 0) readonly buffer LightDataSSBO
+  {  
+    LightData instance[];
+  } light;
+  
+  layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
+  {
+      uint indices[];
+  } culledLights;
+  
+  layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
+  {
+      LightsGrid instance[];
+  } lightsGrid;
+  
+  layout(set=1, binding=3) uniform samplerCube g_irradianceCubemap;
+  layout(set=1, binding=4) uniform sampler2D   g_brdfSampler;
+  layout(set=1, binding=5) uniform samplerCube g_envCubemap;
+
+  layout(std430, set = 1, binding = 6) readonly buffer LightsMatricesSSBO
+  {
+      mat4 instance[];
+  } lightsMatrices;
+  
+  layout(std430, set = 1, binding = 7) readonly buffer ShadowIndicesSSBO
+  {
+      uint instance[];
+  } shadowIndices;
+  
+  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=9) uniform sampler2D g_aoSampler;
+  
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
       PerInstanceData instance[];
@@ -146,7 +215,7 @@ glslFragment: |
   {
       MaterialData instance[];
   } material;
-
+  
   layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
   
   MaterialData GetMaterialData()
@@ -157,7 +226,5 @@ glslFragment: |
   void main() 
   {
     MaterialData material = GetMaterialData();
-    material.albedo = material.albedo * texture(textureSamplers[material.albedoSampler], vin.texcoord) * vin.color;
-    
-    outColor.xyz = material.albedo.xyz;
+    outColor.xyz = material.emission;
   }

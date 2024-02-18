@@ -216,10 +216,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		}
 
 		auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
-		{
-			TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
-			return sets;
-		};
+			{
+				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
+				return sets;
+			};
 
 		auto fullscreenMesh = frameGraph->GetFullscreenNdcQuad();
 
@@ -238,8 +238,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 			commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 			{
+				const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
+
 				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::DepthAttachmentOptimal);
+				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), depthAttachmentLayout);
 
 				commands->BeginRenderPass(commandList,
 					TVector<RHI::RHITexturePtr>{ shadowPass.m_shadowMap },
@@ -284,7 +286,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					sizeof(glm::mat4) * shadowPass.m_lighMatrixIndex);
 
 				commands->EndRenderPass(commandList);
-				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::DepthAttachmentOptimal, depthAttachment->GetDefaultLayout());
+				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachmentLayout, depthAttachment->GetDefaultLayout());
 
 				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
