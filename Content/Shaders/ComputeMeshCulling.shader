@@ -68,7 +68,8 @@ glslCompute: |
     center.xyz /= center.w;
     center.z *= -1.0f;
     
-    float radius = sphereBounds.w;
+    float lossyScale = length(data.instance[instanceIndex].model[0].xyz);
+    float radius = sphereBounds.w * lossyScale;
     
     vec4 aabb;
     if (ProjectSphere(center.xyz, radius, frame.cameraZNearZFar.x, frame.projection[0][0], frame.projection[1][1], aabb))
@@ -99,8 +100,9 @@ glslCompute: |
     vec4 center = frame.view * (data.instance[instanceIndex].model * vec4(sphereBounds.xyz, 1.0f));
     center.xyz /= center.w;
     center.z *= -1.0f;
-    
-    float radius = sphereBounds.w;
+
+    float lossyScale = length(data.instance[instanceIndex].model[0].xyz);
+    float radius = sphereBounds.w * lossyScale;
 
     bool bIsCulled = !SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.y, frame.cameraZNearZFar.x);
   
