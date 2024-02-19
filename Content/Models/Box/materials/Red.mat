@@ -1,9 +1,9 @@
 bEnableDepthTest: true
-bEnableZWrite: true
+bEnableZWrite: false
 bSupportMultisampling: true
 bCustomDepthShader: false
 depthBias: 0
-renderQueue: Opaque
+renderQueue: Overlay
 defines: ~
 cullMode: Back
 blendMode: None

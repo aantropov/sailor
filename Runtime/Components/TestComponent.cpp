@@ -26,13 +26,13 @@ void TestComponent::BeginPlay()
 	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
 	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
 	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * Math::Pi, 0)));
-	
+
 	auto meshRenderer = m_mainModel->AddComponent<MeshRendererComponent>();
 	meshRenderer->LoadModel("Models/Sponza/sponza.obj");
 	m_model = meshRenderer->GetModel();
 
 	auto redBox = GetWorld()->Instantiate();
-	redBox->GetTransformComponent().SetPosition(vec3(120, 2500, 500));
+	redBox->GetTransformComponent().SetPosition(vec3(120, 2000, 500));
 	redBox->GetTransformComponent().SetScale(vec4(100, 50, 100, 1));
 	meshRenderer = redBox->AddComponent<MeshRendererComponent>();
 	meshRenderer->LoadModel("Models/Box/Box.gltf");
@@ -74,7 +74,7 @@ void TestComponent::BeginPlay()
 	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 3000.0f, 1000.0f));
 	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
 	lightComponent->SetLightType(ELightType::Directional);
-	
+
 	/*
 	ReflectionInfo reflection = lightComponent->GetReflectionInfo();
 	ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetOwner()->GetWorld()->GetAllocator());
@@ -195,7 +195,7 @@ void TestComponent::Tick(float deltaTime)
 
 			Math::Frustum frustum;
 			frustum.ExtractFrustumPlanes(transform.GetTransform().Matrix(), camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
-			
+
 			// Testing ortho matrix
 			//const glm::mat4 m = glm::orthoRH_NO(-100.0f, 100.0f, -100.0f, 100.0f, 0.0f, 900.0f) * glm::inverse(m_cachedFrustum);
 			//frustum.ExtractFrustumPlanes(m);
@@ -216,7 +216,7 @@ void TestComponent::Tick(float deltaTime)
 			Math::Frustum frustum;
 			frustum.ExtractFrustumPlanes(m_cachedFrustum, camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
 			GetWorld()->GetDebugContext()->DrawFrustum(frustum);
-			
+
 			//const auto& lightView = glm::inverse(m_dirLight->GetTransformComponent().GetCachedWorldMatrix());
 			//GetWorld()->GetDebugContext()->DrawLightCascades(lightView, m_cachedFrustum, camera->GetAspect(), camera->GetFov(), camera->GetZNear(), camera->GetZFar());
 
@@ -279,7 +279,7 @@ void TestComponent::Tick(float deltaTime)
 
 		SkyNode::SkyParams& skyParams = sky->GetSkyParams();
 
-		ImGui::Begin("Snapshot");
+		ImGui::Begin("Screenshot");
 		if (ImGui::Button("Capture"))
 		{
 			if (auto snapshotNode = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("CopyTextureToRam"))
@@ -287,42 +287,62 @@ void TestComponent::Tick(float deltaTime)
 				auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
 				snapshot->DoOneCapture();
 			}
-		}
-		if (ImGui::Button("Save"))
-		{
-			if (auto snapshotNode = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("CopyTextureToRam"))
+
+			if (auto snapshotNode = *App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraph().Last())
 			{
 				auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
-				auto cpuRam = snapshot->GetBuffer();
-				auto texture = snapshot->GetTexture();
-				if (vec4* ptr = (vec4*)cpuRam->GetPointer())
+				snapshot->DoOneCapture();
+			}
+		}
+
+		const bool bSaveMask = ImGui::Button("Save Mask");
+		const bool bSave = ImGui::Button("Save");
+
+		FrameGraphNodePtr snapshotNode = nullptr;
+
+		if (bSave)
+		{
+			snapshotNode = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("CopyTextureToRam");
+		}
+		else if (bSaveMask)
+		{
+			snapshotNode = *App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraph().Last();
+		}
+
+		if (bSave || bSaveMask)
+		{
+			auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
+			auto cpuRam = snapshot->GetBuffer();
+			auto texture = snapshot->GetTexture();
+			if (vec4* ptr = (vec4*)cpuRam->GetPointer())
+			{
+				TVector<u8vec3> outSrgb(texture->GetExtent().x * texture->GetExtent().y);
+
+				for (int y = 0; y < texture->GetExtent().y; y++)
 				{
-					TVector<u8vec3> outSrgb(texture->GetExtent().x * texture->GetExtent().y);
-					
-					for (int y = 0; y < texture->GetExtent().y; y++)
+					for (int x = 0; x < texture->GetExtent().x; x++)
 					{
-						for (int x = 0; x < texture->GetExtent().x; x++)
-						{
-							vec2 uv = vec2((float)x / texture->GetExtent().x, (float)y / texture->GetExtent().y);
+						vec2 uv = vec2((float)x / texture->GetExtent().x, (float)y / texture->GetExtent().y);
 
-							uint32_t index = x + y * texture->GetExtent().x;
-							vec3 value = ptr[index];
-							value.x = powf(value.x, 1.0f / 2.2f);
-							value.y = powf(value.y, 1.0f / 2.2f);
-							value.z = powf(value.z, 1.0f / 2.2f);
+						uint32_t index = x + y * texture->GetExtent().x;
+						vec3 value = ptr[index];
+						value.x = powf(value.x, 1.0f / 2.2f);
+						value.y = powf(value.y, 1.0f / 2.2f);
+						value.z = powf(value.z, 1.0f / 2.2f);
 
-							outSrgb[index] = u8vec3(glm::clamp(value * 255.0f, 0.0f, 255.0f));
-						}
+						outSrgb[index] = u8vec3(glm::clamp(value * 255.0f, 0.0f, 255.0f));
 					}
+				}
 
-					const uint32_t Channels = 3;
-					if (!stbi_write_png("test.png", texture->GetExtent().x, texture->GetExtent().y, Channels, outSrgb.GetData(), texture->GetExtent().x * Channels))
-					{
-						SAILOR_LOG_ERROR("Cannot write screenshot");
-					}
+				const uint32_t Channels = 3;
+				if (!stbi_write_png(bSave ? "screenshot.png" : "mask.png",
+					texture->GetExtent().x, texture->GetExtent().y, Channels, outSrgb.GetData(), texture->GetExtent().x * Channels))
+				{
+					SAILOR_LOG_ERROR("Cannot write screenshot");
 				}
 			}
 		}
+
 		ImGui::End();
 
 		ImGui::Begin("Sky Settings");

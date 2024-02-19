@@ -226,5 +226,5 @@ glslFragment: |
   void main() 
   {
     MaterialData material = GetMaterialData();
-    outColor.xyz = material.emission;
+    outColor.xyz = material.emission.xyz;
   }

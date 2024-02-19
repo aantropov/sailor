@@ -54,7 +54,7 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			return;
 		}
 	}
-	else if (RHI::RHITexturePtr colorAttachment = GetRHIResource("color").DynamicCast<RHITexture>())
+	else if (RHI::RHITexturePtr colorAttachment = GetRHIResource("target").DynamicCast<RHITexture>())
 	{
 		dst = colorAttachment;
 	}
