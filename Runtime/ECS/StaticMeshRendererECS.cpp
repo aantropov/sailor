@@ -16,93 +16,133 @@ void StaticMeshRendererECS::BeginPlay()
 
 Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 {
+	const uint32_t NumComponentsPerTask = 1024;
+
 	SAILOR_PROFILE_FUNCTION();
 
 	//TODO: Resolve New/Delete components
-
-	auto updateStationaryTask = Tasks::CreateTask("StaticMeshRendererECS:Update Stationary Objects",
-		[this]()
+	TVector<Tasks::TaskPtr<TVector<TPair<RHI::RHIMeshProxy, Math::AABB>>>> tasks;
+	for (uint32_t i = 0; i < (m_components.Num() / NumComponentsPerTask + 1); i++)
 	{
-		for (auto& data : m_components)
-		{
-			auto ownerGameObject = data.m_owner.StaticCast<GameObject>();
-			EMobilityType mobilityType = ownerGameObject->GetMobilityType();
-
-			if (mobilityType == EMobilityType::Stationary && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
+		auto task = Tasks::CreateTask<TVector<TPair<RHI::RHIMeshProxy, Math::AABB>>>("StaticMeshRendererECS:Update Stationary Objects",
+			[this, i]()
 			{
-				const auto& ownerTransform = ownerGameObject->GetTransformComponent();
-				Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
-				
-				// Should we update only when transform changed?
-				if (ownerTransform.GetFrameLastChange() > data.m_frameLastChange && adjustedBounds.IsValid())
+				TVector<TPair<RHI::RHIMeshProxy, Math::AABB>> temp;
+
+				for (uint32_t j = 0; j < NumComponentsPerTask; j++)
 				{
-					RHI::RHIMeshProxy proxy;
-					proxy.m_staticMeshEcs = GetComponentIndex(&data);
-					proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
-
-					adjustedBounds.Apply(proxy.m_worldMatrix);
-					m_sceneViewProxiesCache->m_stationaryOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
-
-					data.m_frameLastChange = ownerTransform.GetFrameLastChange();
-
-					if (data.m_frameLastChange != ownerGameObject->GetFrameLastChange())
+					const uint32_t index = i * NumComponentsPerTask + j;
+					if (index >= m_components.Num())
 					{
-						UpdateGameObject(ownerGameObject, GetWorld()->GetCurrentFrame());
+						break;
+					}
+
+					auto& data = m_components[index];
+					auto ownerGameObject = data.m_owner.StaticCast<GameObject>();
+					EMobilityType mobilityType = ownerGameObject->GetMobilityType();
+
+					if (mobilityType == EMobilityType::Stationary && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
+					{
+						const auto& ownerTransform = ownerGameObject->GetTransformComponent();
+						Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+
+						// Should we update only when transform changed?
+						if (ownerTransform.GetFrameLastChange() > data.m_frameLastChange && adjustedBounds.IsValid())
+						{
+							RHI::RHIMeshProxy proxy;
+							proxy.m_staticMeshEcs = GetComponentIndex(&data);
+							proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
+
+							adjustedBounds.Apply(proxy.m_worldMatrix);
+
+							temp.Emplace(TPair(std::move(proxy), std::move(adjustedBounds)));
+
+							data.m_frameLastChange = ownerTransform.GetFrameLastChange();
+
+							if (data.m_frameLastChange != ownerGameObject->GetFrameLastChange())
+							{
+								UpdateGameObject(ownerGameObject, GetWorld()->GetCurrentFrame());
+							}
+						}
 					}
 				}
+
+				return temp;
+			}, EThreadType::Worker);
+
+		if (m_components.Num() < NumComponentsPerTask)
+		{
+			task->Execute();
+			
+			for (auto& t : task->m_result)
+			{
+				m_sceneViewProxiesCache->m_stationaryOctree.Update(glm::vec4(t.m_second.GetCenter(), 1), t.m_second.GetExtents(), t.m_first);
 			}
+
+			break;
 		}
-	}, EThreadType::RHI)->Run();
+
+		task->Run();
+		tasks.Add(task);
+	}
+
+	for (auto& task : tasks)
+	{
+		task->Wait();
+		for (auto& t : task->m_result)
+		{
+			m_sceneViewProxiesCache->m_stationaryOctree.Update(glm::vec4(t.m_second.GetCenter(), 1), t.m_second.GetExtents(), t.m_first);
+		}
+	}
 
 	auto updateStaticTask = Tasks::CreateTask("StaticMeshRendererECS:Update Static Objects",
 		[this]()
-	{
-		for (auto& data : m_components)
 		{
-			auto ownerGameObject = data.m_owner.StaticCast<GameObject>();
-			EMobilityType mobilityType = ownerGameObject->GetMobilityType();
-
-			if (mobilityType == EMobilityType::Static && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
+			for (auto& data : m_components)
 			{
 				auto ownerGameObject = data.m_owner.StaticCast<GameObject>();
-				const auto& ownerTransform = ownerGameObject->GetTransformComponent();
-				Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+				EMobilityType mobilityType = ownerGameObject->GetMobilityType();
 
-				if (ownerTransform.GetFrameLastChange() > data.m_frameLastChange && adjustedBounds.IsValid())
+				if (mobilityType == EMobilityType::Static && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
 				{
-					RHI::RHISceneViewProxy proxy;
-					proxy.m_staticMeshEcs = GetComponentIndex(&data);
-					proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
-					proxy.m_meshes = data.GetModel()->GetMeshes();
-					proxy.m_worldAabb = data.GetModel()->GetBoundsAABB();
-					proxy.m_worldAabb.Apply(proxy.m_worldMatrix);
-					proxy.m_bCastShadows = data.ShouldCastShadow();
+					auto ownerGameObject = data.m_owner.StaticCast<GameObject>();
+					const auto& ownerTransform = ownerGameObject->GetTransformComponent();
+					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
 
-					proxy.m_overrideMaterials.Clear();
-					for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
+					if (ownerTransform.GetFrameLastChange() > data.m_frameLastChange && adjustedBounds.IsValid())
 					{
-						size_t materialIndex = (std::min)(i, data.GetMaterials().Num() - 1);
-						proxy.m_overrideMaterials.Add(data.GetMaterials()[materialIndex]->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
-					}
+						RHI::RHISceneViewProxy proxy;
+						proxy.m_staticMeshEcs = GetComponentIndex(&data);
+						proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
+						proxy.m_meshes = data.GetModel()->GetMeshes();
+						proxy.m_worldAabb = data.GetModel()->GetBoundsAABB();
+						proxy.m_worldAabb.Apply(proxy.m_worldMatrix);
+						proxy.m_bCastShadows = data.ShouldCastShadow();
 
-					adjustedBounds.Apply(proxy.m_worldMatrix);
-					m_sceneViewProxiesCache->m_staticOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
-					
-					data.m_frameLastChange = ownerTransform.GetFrameLastChange();
+						proxy.m_overrideMaterials.Clear();
+						for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
+						{
+							size_t materialIndex = (std::min)(i, data.GetMaterials().Num() - 1);
+							proxy.m_overrideMaterials.Add(data.GetMaterials()[materialIndex]->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
+						}
 
-					if (data.m_frameLastChange != ownerGameObject->GetFrameLastChange())
-					{
-						UpdateGameObject(ownerGameObject, GetWorld()->GetCurrentFrame());
+						adjustedBounds.Apply(proxy.m_worldMatrix);
+						m_sceneViewProxiesCache->m_staticOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
+
+						data.m_frameLastChange = ownerTransform.GetFrameLastChange();
+
+						if (data.m_frameLastChange != ownerGameObject->GetFrameLastChange())
+						{
+							UpdateGameObject(ownerGameObject, GetWorld()->GetCurrentFrame());
+						}
 					}
 				}
 			}
-		}
-	}, EThreadType::RHI)->Run();
+		}, EThreadType::RHI)->Run();
 
-	updateStaticTask->Wait();
-	updateStationaryTask->Wait();
+		updateStaticTask->Wait();
 
-	return nullptr;
+		return nullptr;
 }
 
 void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)

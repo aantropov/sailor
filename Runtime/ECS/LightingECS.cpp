@@ -343,6 +343,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			snapshot.m_cameraTransform = cameraTransform;
 			snapshot.m_lightTransform = directionalLight.m_lightTransform;
 			snapshot.m_lightMatrix = lightMatrix;
+			snapshot.m_snapshot.Reserve(cascade.m_meshList.Num());
 
 			for (const auto& m : cascade.m_meshList)
 			{

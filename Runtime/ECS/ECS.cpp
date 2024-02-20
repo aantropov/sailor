@@ -14,7 +14,7 @@ namespace Sailor::Internal
 
 void TBaseSystem::UpdateGameObject(GameObjectPtr gameObject, size_t lastFrameChanges)
 {
-	gameObject->m_frameLastChange = lastFrameChanges;
+	gameObject->m_frameLastChange = std::max(lastFrameChanges, gameObject->m_frameLastChange);
 }
 
 void ECSFactory::RegisterECS(size_t typeInfo, std::function<TBaseSystemPtr(void)> factoryMethod)

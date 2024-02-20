@@ -51,7 +51,7 @@ namespace Sailor
 		// TODO: Incapsulate & isolate
 		SAILOR_API RHI::RHIMaterialPtr& GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription);
 
-		const TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr>& GetRHIMaterials() const { return m_rhiMaterials; }
+		const auto& GetRHIMaterials() const { return m_rhiMaterials; }
 
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
 		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
@@ -73,7 +73,7 @@ namespace Sailor
 
 		RHI::RenderState m_renderState{};
 
-		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_rhiMaterials{};
+		TConcurrentMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr, 24, ERehashPolicy::Never> m_rhiMaterials{};
 		TConcurrentMap<std::string, TexturePtr> m_samplers{};
 		TConcurrentMap<std::string, glm::vec4> m_uniformsVec4{};
 		TConcurrentMap<std::string, float> m_uniformsFloat{};

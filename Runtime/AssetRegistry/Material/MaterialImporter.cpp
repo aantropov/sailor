@@ -116,10 +116,19 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription)
 {
 	SAILOR_PROFILE_FUNCTION();
+	
+	if (m_rhiMaterials.ContainsKey(vertexDescription->GetVertexAttributeBits()))
+	{
+		if (RHI::RHIMaterialPtr& material = m_rhiMaterials[vertexDescription->GetVertexAttributeBits()])
+		{
+			return material;
+		}
+	}
 
 	SAILOR_PROFILE_BLOCK("Achieve exclusive access to rhi");
+
 	// TODO: Resolve collisions of VertexAttributeBits
-	auto& material = m_rhiMaterials.At_Lock(vertexDescription->GetVertexAttributeBits());
+	RHI::RHIMaterialPtr& material = m_rhiMaterials.At_Lock(vertexDescription->GetVertexAttributeBits());
 	m_rhiMaterials.Unlock(vertexDescription->GetVertexAttributeBits());
 	SAILOR_PROFILE_END_BLOCK();
 
