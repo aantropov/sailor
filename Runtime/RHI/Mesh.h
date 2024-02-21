@@ -10,6 +10,10 @@ namespace Sailor::RHI
 	{
 	public:
 
+		SAILOR_API uint32_t GetIndexCount() const;
+		SAILOR_API uint32_t GetFirstIndex() const;
+		SAILOR_API uint32_t GetVertexOffset() const;
+
 		RHIBufferPtr m_vertexBuffer{};
 		RHIBufferPtr m_indexBuffer{};
 		RHIVertexDescriptionPtr m_vertexDescription{};

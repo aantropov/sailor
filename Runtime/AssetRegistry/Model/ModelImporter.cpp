@@ -480,13 +480,22 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 void ModelImporter::CollectGarbage()
 {
 	TVector<FileId> uidsToRemove;
-	for (auto& promise : m_promises)
+
+	m_promises.LockAll();
+	auto ids = m_promises.GetKeys();
+	m_promises.UnlockAll();
+
+	for (const auto& id : ids)
 	{
-		if (promise.m_second->IsFinished())
+		auto promise = m_promises.At_Lock(id);
+
+		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
 		{
-			FileId uid = promise.m_first;
+			FileId uid = id;
 			uidsToRemove.Emplace(uid);
 		}
+
+		m_promises.Unlock(id);
 	}
 
 	for (auto& uid : uidsToRemove)
