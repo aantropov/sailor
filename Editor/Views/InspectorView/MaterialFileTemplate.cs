@@ -16,8 +16,8 @@ public class MaterialFileTemplate : AssetFileTemplate
             var shaderLabel = new Label();
             shaderLabel.SetBinding(Label.TextProperty, new Binding(nameof(MaterialFile.Shader), BindingMode.Default, new AssetUIDToFilenameConverter()));
 
-            TemplateBuilder.AddGridRow(props, TemplateBuilder.CreateEntryWithLabel(nameof(MaterialFile.RenderQueue), "Render Queue"), GridLength.Auto);
-            TemplateBuilder.AddGridRow(props, TemplateBuilder.CreateEntryWithLabel(nameof(MaterialFile.DepthBias), "Depth Bias"), GridLength.Auto);            
+            TemplateBuilder.AddGridRowWithLabel(props, "Render Queue", TemplateBuilder.CreateEntry(nameof(MaterialFile.RenderQueue)), GridLength.Auto);
+            TemplateBuilder.AddGridRowWithLabel(props, "Depth Bias", TemplateBuilder.CreateEntry(nameof(MaterialFile.DepthBias)), GridLength.Auto);            
 
             TemplateBuilder.AddGridRowWithLabel(props, "Enable DepthTest", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.EnableDepthTest)), GridLength.Auto);
             TemplateBuilder.AddGridRowWithLabel(props, "Enable ZWrite", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.EnableZWrite)), GridLength.Auto);
@@ -35,7 +35,6 @@ public class MaterialFileTemplate : AssetFileTemplate
             TemplateBuilder.AddGridRow(grid, props, GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateListEditor<ObservableString>(nameof(MaterialFile.ShaderDefines), "Shader Defines", new ObservableString("NewDefine"), new ObservableStringConverter()),GridLength.Auto);
 
-            TemplateBuilder.AddGridRow(grid, new Label { Text = "Uniforms & Samplers", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor(nameof(MaterialFile.Samplers), "Samplers"), GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor(nameof(MaterialFile.UniformsFloat), "Uniforms Float"), GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor(nameof(MaterialFile.UniformsVec4), "Uniforms Vec4"), GridLength.Auto);

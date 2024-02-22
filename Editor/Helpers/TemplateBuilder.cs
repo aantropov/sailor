@@ -101,26 +101,15 @@ namespace SailorEditor.Helpers
 
             return picker;
         }
-        public static View CreateEntryWithLabel(string bindingPath, string labelText)
+        public static View CreateEntry(string bindingPath)
         {
-            var label = new Label
-            {
-                Text = labelText,
-                VerticalOptions = LayoutOptions.Center,
-                HorizontalOptions = LayoutOptions.Start
-            };
-
             var entry = new Entry
             {
                 FontSize = 12
             };
             entry.SetBinding(Entry.TextProperty, new Binding(bindingPath, BindingMode.TwoWay));
 
-            var stackLayout = new VerticalStackLayout();
-            stackLayout.Children.Add(label);
-            stackLayout.Children.Add(entry);
-
-            return stackLayout;
+            return entry;
         }
         public static View CreateDictionaryEditor(string bindingPath, string labelText)
         {
@@ -128,7 +117,8 @@ namespace SailorEditor.Helpers
             {
                 Text = labelText,
                 VerticalOptions = LayoutOptions.Center,
-                HorizontalOptions = LayoutOptions.Start
+                HorizontalOptions = LayoutOptions.Start,
+                FontAttributes = FontAttributes.Bold
             };
 
             var stackLayout = new VerticalStackLayout();
@@ -181,7 +171,7 @@ namespace SailorEditor.Helpers
         }
         public static View CreateListEditor<T>(string bindingPath, string labelText, T defaultElement = default(T), IValueConverter converter = null)
         {
-            var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center };
+            var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
 
             var listEditor = new CollectionView();
             listEditor.ItemTemplate = new DataTemplate(() =>
