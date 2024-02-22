@@ -957,6 +957,13 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	TVector<RHI::ShaderLayoutBinding> bindings;
 
 	// We need debug shaders to get full names from reflection
+	const bool bHasValidShaders = shader->GetDebugVertexShaderRHI() && shader->GetDebugFragmentShaderRHI();
+	if (!bHasValidShaders)
+	{
+		SAILOR_LOG_ERROR("Shader %s is not compiled or valid", shader->GetFileId().ToString().c_str());
+		return nullptr;
+	}
+
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
 

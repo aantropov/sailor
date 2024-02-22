@@ -1,9 +1,9 @@
 bEnableDepthTest: true
-bEnableZWrite: false
+bEnableZWrite: true
 bSupportMultisampling: true
 bCustomDepthShader: false
 depthBias: 0
-renderQueue: Overlay
+renderQueue: Opaque
 defines: ~
 cullMode: Back
 blendMode: None
@@ -23,8 +23,8 @@ uniformsVec4:
       - 0
   - material.emission:
       - 1
-      - 0
-      - 0
+      - 1
+      - 1
       - 0
   - material.specular:
       - 0

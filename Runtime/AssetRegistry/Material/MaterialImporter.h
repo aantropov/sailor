@@ -49,7 +49,7 @@ namespace Sailor
 		SAILOR_API void UpdateRHIResource();
 
 		// TODO: Incapsulate & isolate
-		SAILOR_API RHI::RHIMaterialPtr& GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription);
+		SAILOR_API RHI::RHIMaterialPtr GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription);
 
 		const auto& GetRHIMaterials() const { return m_rhiMaterials; }
 

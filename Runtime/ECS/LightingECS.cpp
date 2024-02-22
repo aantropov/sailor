@@ -171,13 +171,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			shaderData.m_cutOff = vec2(glm::cos(glm::radians(lightData.m_cutOff.x)), glm::cos(glm::radians(lightData.m_cutOff.y)));
 			shaderDataBatch.Emplace(std::move(shaderData));
 
-			data.m_frameLastChange = GetWorld()->GetCurrentFrame();
-
-			if (data.m_frameLastChange != owner->GetFrameLastChange())
-			{
-				UpdateGameObject(owner, GetWorld()->GetCurrentFrame());
-			}
-
+			data.m_frameLastChange = owner->GetFrameLastChange();
 			data.m_bIsDirty = false;
 		}
 		else

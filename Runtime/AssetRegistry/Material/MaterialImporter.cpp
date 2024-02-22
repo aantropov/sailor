@@ -113,10 +113,10 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 	m_bIsDirty = true;
 }
 
-RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription)
+RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription)
 {
 	SAILOR_PROFILE_FUNCTION();
-	
+
 	if (m_rhiMaterials.ContainsKey(vertexDescription->GetVertexAttributeBits()))
 	{
 		if (RHI::RHIMaterialPtr& material = m_rhiMaterials[vertexDescription->GetVertexAttributeBits()])
@@ -136,12 +136,17 @@ RHI::RHIMaterialPtr& Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDe
 	{
 		SAILOR_PROFILE_BLOCK("Create RHI material for resource");
 
-		//SAILOR_LOG("Create RHI material for resource: %s, vertex attribute bits: %llu", GetFileId().ToString().c_str(), vertexDescription->GetVertexAttributeBits());
-
 		if (!m_commonShaderBindings)
 		{
-			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader);
-			m_commonShaderBindings = material->GetBindings();
+			if (material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader))
+			{
+				m_commonShaderBindings = material->GetBindings();
+			}
+			else
+			{
+				// We cannot create RHI material
+				return nullptr;
+			}
 		}
 		else
 		{

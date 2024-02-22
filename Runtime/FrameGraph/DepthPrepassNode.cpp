@@ -67,7 +67,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 				for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 				{
 					const bool bHasMaterial = proxy.GetMaterials().Num() > i;
-					if (!bHasMaterial)
+					if (!bHasMaterial || proxy.GetMaterials()[i] == nullptr)
 					{
 						break;
 					}
