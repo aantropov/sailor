@@ -234,12 +234,18 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[index];
 
+			RHI::RHIRenderTargetPtr depthAttachment = driver->GetOrAddTemporaryRenderTarget(driver->GetDepthBuffer()->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 1);
+
 			commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 			{
+				const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
+
 				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), depthAttachmentLayout);
+
 				commands->BeginRenderPass(commandList,
 					TVector<RHI::RHITexturePtr>{ shadowPass.m_shadowMap },
-					nullptr,
+					depthAttachment,
 					glm::vec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
 					glm::ivec2(0, 0),
 					true,
@@ -280,6 +286,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					sizeof(glm::mat4) * shadowPass.m_lighMatrixIndex);
 
 				commands->EndRenderPass(commandList);
+				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachmentLayout, depthAttachment->GetDefaultLayout());
 
 				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
@@ -367,6 +374,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				{
 					commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), EImageLayout::ColorAttachmentOptimal, shadowPass.m_shadowMap->GetDefaultLayout());
 				}
+
+				driver->ReleaseTemporaryRenderTarget(depthAttachment);
 
 				SAILOR_PROFILE_END_BLOCK();
 			}
