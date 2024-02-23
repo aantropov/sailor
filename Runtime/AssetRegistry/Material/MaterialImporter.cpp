@@ -117,14 +117,6 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (m_rhiMaterials.ContainsKey(vertexDescription->GetVertexAttributeBits()))
-	{
-		if (RHI::RHIMaterialPtr& material = m_rhiMaterials[vertexDescription->GetVertexAttributeBits()])
-		{
-			return material;
-		}
-	}
-
 	SAILOR_PROFILE_BLOCK("Achieve exclusive access to rhi");
 
 	// TODO: Resolve collisions of VertexAttributeBits
@@ -714,13 +706,22 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 void MaterialImporter::CollectGarbage()
 {
 	TVector<FileId> uidsToRemove;
-	for (auto& promise : m_promises)
+
+	m_promises.LockAll();
+	auto ids = m_promises.GetKeys();
+	m_promises.UnlockAll();
+
+	for (const auto& id : ids)
 	{
-		if (promise.m_second && promise.m_second->IsFinished())
+		auto promise = m_promises.At_Lock(id);
+
+		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
 		{
-			FileId uid = promise.m_first;
+			FileId uid = id;
 			uidsToRemove.Emplace(uid);
 		}
+
+		m_promises.Unlock(id);
 	}
 
 	for (auto& uid : uidsToRemove)

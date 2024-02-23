@@ -1532,7 +1532,7 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 	SAILOR_LOG("Trying to update not bound uniform sampler");
 }
 
-VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader)
+VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader, uint32_t sizePushConstantsData)
 {
 	auto& computePipeline = m_cachedComputePipelines.At_Lock(computeShader);
 
@@ -1542,14 +1542,18 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 
 		TVector<VulkanDescriptorSetLayoutPtr> descriptorSetLayouts;
 		TVector<RHI::ShaderLayoutBinding> bindings;
+		TVector<VkPushConstantRange> pushConstants;
 
 		// We need debug shaders to get full names from reflection
 		VulkanApi::CreateDescriptorSetLayouts(device, { computeShader->m_vulkan.m_shader }, descriptorSetLayouts, bindings);
 
-		TVector<VkPushConstantRange> pushConstants;
+		// We blindly believe the passed arguments
+		check((sizePushConstantsData > 4) == (computeShader->m_vulkan.m_shader->GetPushConstants().Num() > 0));
 
-		for (const auto& pushConstant : computeShader->m_vulkan.m_shader->GetPushConstants())
+		if (const bool bRequestPushConstants = (sizePushConstantsData > 4) || (computeShader->m_vulkan.m_shader->GetPushConstants().Num() > 0))
 		{
+			check(sizePushConstantsData > 4);
+
 			VkPushConstantRange vkPushConstant;
 			vkPushConstant.offset = 0;
 			vkPushConstant.size = 256;
@@ -2240,7 +2244,7 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
 		return;
 	}
 
-	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader);
+	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader, sizePushConstantsData);
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(computePipeline->m_layout, bindings);
 
 	if (pPushConstantsData && sizePushConstantsData > 0)

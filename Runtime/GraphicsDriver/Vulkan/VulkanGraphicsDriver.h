@@ -233,7 +233,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
 		SAILOR_API RHI::RHITexturePtr GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent);
-		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader);
+		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader, uint32_t sizePushConstantsData);
 		SAILOR_API TVector<bool> IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
 		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout,
 			//const TVector<TVector<RHI::ShaderLayoutBinding>>& shaderLayoutBindings,
