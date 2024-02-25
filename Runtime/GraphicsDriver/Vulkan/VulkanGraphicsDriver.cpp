@@ -1095,21 +1095,7 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		0);
 
 	auto colorAttachments = TVector<VkFormat>(shader->GetColorAttachments());
-	if (colorAttachments.Num() == 0)
-	{
-		const auto defaultFormat = VK_FORMAT_R16G16B16A16_SFLOAT; //device->GetColorFormat(); 
-		colorAttachments.Add(defaultFormat);
-	}
-	else if (colorAttachments.Num() == 1 && colorAttachments[0] == VkFormat::VK_FORMAT_UNDEFINED)
-	{
-		colorAttachments.Clear();
-	}
-
 	auto depthStencilFormat = (VkFormat)shader->GetDepthStencilAttachment();
-	if (depthStencilFormat == VkFormat::VK_FORMAT_UNDEFINED)
-	{
-		depthStencilFormat = device->GetDepthFormat();
-	}
 
 	auto pipeline = VulkanGraphicsPipelinePtr::Make(device,
 		pipelineLayout,

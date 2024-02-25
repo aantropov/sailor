@@ -474,6 +474,25 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 	return true;
 }
 
+template<typename T>
+void AddFeature(TVector<TVector<uint8_t>>& bytes, typename TFunction<void, T&>::type init)
+{
+	T newFeature{};
+	newFeature.pNext = nullptr;
+
+	init(newFeature);
+
+	TVector<uint8_t> byteRepresentation(reinterpret_cast<uint8_t*>(&newFeature), sizeof(T));
+	bytes.Emplace(std::move(byteRepresentation));
+
+	if (bytes.Num() > 1)
+	{
+		// Link previous
+		((T*)(bytes[bytes.Num() - 2].GetData()))->pNext = bytes[bytes.Num() - 1].GetData();
+	}
+}
+
+
 void VulkanDevice::CreateFrameDependencies()
 {
 	const TVector<VulkanImageViewPtr>& swapChainImageViews = m_swapchain->GetImageViews();
@@ -511,51 +530,70 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 #ifndef _SHIPPING
 	deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
 #endif
-	
-	// Request and enable all availiable physical features
-	VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
-	physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &physicalDeviceFeatures2);
-	physicalDeviceFeatures2.features.sampleRateShading = VK_FALSE;
-	physicalDeviceFeatures2.features.multiDrawIndirect = VK_TRUE;
 
-	VkPhysicalDeviceVulkan11Features core11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-	core11.shaderDrawParameters = true;
+	TVector<TVector<uint8_t>> features;
 
-	VkPhysicalDeviceVulkan12Features core12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-	core12.samplerFilterMinmax = VK_TRUE;
-	core12.descriptorBindingPartiallyBound = VK_TRUE;
-	core12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
-	core12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
-	core12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
-	core12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
-	core12.descriptorBindingVariableDescriptorCount = VK_TRUE;
-	core12.descriptorIndexing = VK_TRUE;
-	core12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-
-	VkPhysicalDeviceVulkan13Features core13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
-	core13.maintenance4 = true;
-	core13.dynamicRendering = true;
-	core13.synchronization2 = true;
+	/*
+	AddFeature<VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT>(features, [](auto& unusedAttachments)
+		{
+			unusedAttachments.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT;
+			unusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
+		});
+	*/
+	// We are using multiply blending
+	AddFeature<VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT>(features, [](auto& features)
+		{
+			features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
+			features.advancedBlendCoherentOperations = VK_TRUE;
+		});
 
 	// Create device that supports VK_EXT_shader_atomic_float (GL_EXT_shader_atomic_float)
 	// this allows to perform atomic operations on storage buffers
-	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT floatFeatures{};
-	floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
-	floatFeatures.shaderBufferFloat32AtomicAdd = true;
+	AddFeature<VkPhysicalDeviceShaderAtomicFloatFeaturesEXT>(features, [](auto& floatFeatures)
+		{
+			floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
+			floatFeatures.shaderBufferFloat32AtomicAdd = true;
+		});
 
-	// We are using multiply blending
-	VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT blendFeatures{};
-	blendFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
-	blendFeatures.advancedBlendCoherentOperations = VK_TRUE;
+	AddFeature<VkPhysicalDeviceFeatures2 >(features, [&](auto& physicalDeviceFeatures2)
+		{
+			physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+			vkGetPhysicalDeviceFeatures2(m_physicalDevice, &physicalDeviceFeatures2);
+			physicalDeviceFeatures2.features.sampleRateShading = VK_FALSE;
+			physicalDeviceFeatures2.features.multiDrawIndirect = VK_TRUE;
 
-	VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT unusedAttachments{};
-	unusedAttachments.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT;
-	unusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
-	
 #ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
-	physicalDeviceFeatures2.features.sampleRateShading = VK_TRUE;
+			physicalDeviceFeatures2.features.sampleRateShading = VK_TRUE;
 #endif
+		});
+
+	AddFeature<VkPhysicalDeviceVulkan13Features>(features, [&](auto& core13)
+		{
+			core13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+			core13.maintenance4 = true;
+			core13.dynamicRendering = true;
+			core13.synchronization2 = true;
+		});
+
+	AddFeature<VkPhysicalDeviceVulkan11Features>(features, [&](auto& core11)
+		{
+			core11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+			core11.shaderDrawParameters = true;
+		});
+
+	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)
+		{
+			core12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+			core12.samplerFilterMinmax = VK_TRUE;
+			core12.descriptorBindingPartiallyBound = VK_TRUE;
+			core12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+			core12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+			core12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
+			core12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
+			core12.descriptorBindingVariableDescriptorCount = VK_TRUE;
+			core12.descriptorIndexing = VK_TRUE;
+			core12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+		});
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());
@@ -563,15 +601,9 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.Num());
 	createInfo.pQueueCreateInfos = queueCreateInfos.GetData();
 	createInfo.pEnabledFeatures = VK_NULL_HANDLE;
-	
-	createInfo.pNext = &physicalDeviceFeatures2;
-	physicalDeviceFeatures2.pNext = &core11;
-	core11.pNext = &core12;
-	core12.pNext = &core13;
-	core13.pNext = &floatFeatures;
-	floatFeatures.pNext = &blendFeatures;
-	blendFeatures.pNext = &unusedAttachments;
-	
+
+	createInfo.pNext = features[0].GetData();
+
 	// Compatibility with older Vulkan drivers
 	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 	if (VulkanApi::GetInstance()->IsEnabledValidationLayers())
