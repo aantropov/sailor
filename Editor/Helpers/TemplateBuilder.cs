@@ -25,6 +25,7 @@ using BindingMode = Microsoft.Maui.Controls.BindingMode;
 using Binding = Microsoft.Maui.Controls.Binding;
 using IValueConverter = Microsoft.Maui.Controls.IValueConverter;
 using SailorEditor.Utility;
+using System.ComponentModel;
 
 namespace SailorEditor.Helpers
 {
@@ -170,6 +171,7 @@ namespace SailorEditor.Helpers
             return stackLayout;
         }
         public static View CreateListEditor<T>(string bindingPath, string labelText, T defaultElement = default(T), IValueConverter converter = null)
+        where T : ICloneable, INotifyPropertyChanged
         {
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
 
@@ -177,7 +179,7 @@ namespace SailorEditor.Helpers
             listEditor.ItemTemplate = new DataTemplate(() =>
                 {
                     var entry = new Entry();
-                    entry.SetBinding(Entry.TextProperty, ".", BindingMode.TwoWay, converter);
+                    entry.SetBinding(Entry.TextProperty, "Str", BindingMode.TwoWay);
 
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>
@@ -198,9 +200,6 @@ namespace SailorEditor.Helpers
                                 {
                                     ((IList)list).Remove(valueToRemove);
                                 }
-
-                                listEditor.ItemsSource = null;
-                                listEditor.ItemsSource = list;
                             }
                         }
                     };
@@ -218,12 +217,9 @@ namespace SailorEditor.Helpers
                 var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
                 if (property != null)
                 {
-                    if (property.GetValue((sender as Button).BindingContext) is IList list)
+                    if (property.GetValue((sender as Button).BindingContext) is TrulyObservableCollection<T> list)
                     {
-                        list.Add(defaultElement);
-
-                        listEditor.ItemsSource = null;
-                        listEditor.ItemsSource = list;
+                        list.Add((T)defaultElement.Clone());
                     }
                 }
             };
@@ -237,9 +233,6 @@ namespace SailorEditor.Helpers
                     if (property.GetValue((sender as Button).BindingContext) is IList list)
                     {
                         list.Clear();
-
-                        listEditor.ItemsSource = null;
-                        listEditor.ItemsSource = list;
                     }
                 }
             };

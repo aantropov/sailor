@@ -30,8 +30,6 @@ namespace SailorEditor.ViewModels
             Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial.ToString();
             Properties["defaultMaterials"] = DefaultMaterials.ToString();
 
-            defaultMaterials.CollectionChanged += (s, args) => { OnPropertyChanged(nameof(DefaultMaterials)); };
-
             IsDirty = false;
         }
         public override bool PreloadResources(bool force)

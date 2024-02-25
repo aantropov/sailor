@@ -3,12 +3,13 @@ using System.Globalization;
 
 namespace SailorEditor.Utility
 {
-    public partial class ObservableString : ObservableObject
+    public partial class ObservableString : ObservableObject, ICloneable
     {
         public ObservableString(string v)
         {
             Str = v;
         }
+        public object Clone() => new ObservableString(Str);
         public override string ToString() => Str;
         public override bool Equals(object obj)
         {
@@ -26,7 +27,7 @@ namespace SailorEditor.Utility
         }
 
         [ObservableProperty]
-        private string _str;
+        private string str;
     }
 
     public class ObservableStringConverter : IValueConverter

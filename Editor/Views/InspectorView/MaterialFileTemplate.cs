@@ -15,6 +15,7 @@ public class MaterialFileTemplate : AssetFileTemplate
 
             var shaderLabel = new Label();
             shaderLabel.SetBinding(Label.TextProperty, new Binding(nameof(MaterialFile.Shader), BindingMode.Default, new AssetUIDToFilenameConverter()));
+            shaderLabel.Behaviors.Add(new AssetUIDClickable(nameof(MaterialFile.Shader)));
 
             TemplateBuilder.AddGridRowWithLabel(props, "Render Queue", TemplateBuilder.CreateEntry(nameof(MaterialFile.RenderQueue)), GridLength.Auto);
             TemplateBuilder.AddGridRowWithLabel(props, "Depth Bias", TemplateBuilder.CreateEntry(nameof(MaterialFile.DepthBias)), GridLength.Auto);            

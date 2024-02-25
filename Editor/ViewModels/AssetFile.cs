@@ -36,7 +36,7 @@ namespace SailorEditor.ViewModels
         public int FolderId { get; set; }
         public bool CanOpenAssetFile { get => !IsDirty; }
         public virtual bool PreloadResources(bool force) => true;
-        public void UpdateAssetFile()
+        public virtual void UpdateAssetFile()
         {
             UpdateModel();
 
@@ -69,7 +69,7 @@ namespace SailorEditor.ViewModels
                 Console.WriteLine($"Cannot open file: {ex.Message}");
             }
         }
-        public void MakeDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
+        public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
         protected bool IsLoaded { get; set; }
         protected virtual void UpdateModel() { }
 

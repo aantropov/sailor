@@ -10,8 +10,11 @@ using Windows.Foundation.Collections;
 
 namespace SailorEditor.Utility
 {
-    public sealed class TrulyObservableCollection<T> : ObservableCollection<T> where T : INotifyPropertyChanged
+    public sealed class TrulyObservableCollection<T> : ObservableCollection<T>, ICollectionItemPropertyChanged<T>
+        where T : INotifyPropertyChanged
     {
+        public event EventHandler<ItemChangedEventArgs<T>> ItemChanged;
+
         public TrulyObservableCollection()
         {
             CollectionChanged += FullObservableCollectionCollectionChanged;
@@ -20,33 +23,48 @@ namespace SailorEditor.Utility
         public TrulyObservableCollection(IEnumerable<T> pItems) : this()
         {
             foreach (var item in pItems)
-            {
                 this.Add(item);
-            }
         }
-        
+
         private void FullObservableCollectionCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
             if (e.NewItems != null)
             {
                 foreach (Object item in e.NewItems)
                 {
-                    ((INotifyPropertyChanged)item).PropertyChanged += ItemPropertyChanged;
+                    (item as INotifyPropertyChanged).PropertyChanged += ItemPropertyChanged;
                 }
             }
             if (e.OldItems != null)
             {
                 foreach (Object item in e.OldItems)
                 {
-                    ((INotifyPropertyChanged)item).PropertyChanged -= ItemPropertyChanged;
+                    (item as INotifyPropertyChanged).PropertyChanged -= ItemPropertyChanged;
                 }
             }
         }
 
         private void ItemPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            NotifyCollectionChangedEventArgs args = new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, sender, sender, IndexOf((T)sender));
-            OnCollectionChanged(args);
+            var args = new ItemChangedEventArgs<T>((T)sender, e.PropertyName);
+            this.ItemChanged?.Invoke(this, args);
+        }
+    }
+
+    internal interface ICollectionItemPropertyChanged<T>
+    {
+        event EventHandler<ItemChangedEventArgs<T>> ItemChanged;
+    }
+
+    public class ItemChangedEventArgs<T>
+    {
+        public T ChangedItem { get; }
+        public string PropertyName { get; }
+
+        public ItemChangedEventArgs(T item, string propertyName)
+        {
+            ChangedItem = item;
+            PropertyName = propertyName;
         }
     }
 }

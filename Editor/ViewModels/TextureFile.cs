@@ -44,7 +44,7 @@ namespace SailorEditor.ViewModels
 
             IsDirty = false;
         }
-
+        
         public override bool PreloadResources(bool force)
         {
             if (!IsLoaded || force)

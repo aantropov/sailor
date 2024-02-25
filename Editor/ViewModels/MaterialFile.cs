@@ -18,23 +18,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Maui.Core.Extensions;
 using SailorEditor.Utility;
+using System.Collections.Generic;
 
 namespace SailorEditor.ViewModels
 {
     using AssetUID = string;
     using BlendMode = Engine.BlendMode;
-
-  
     public partial class MaterialFile : AssetFile
     {
-        public MaterialFile()
-        {
-            ShaderDefines.CollectionChanged += (s, args) =>
-            {
-                MakeDirty(nameof(ShaderDefines));
-            };
-        }
-
         [ObservableProperty]
         private string renderQueue = "Opaque";
 
@@ -76,9 +67,60 @@ namespace SailorEditor.ViewModels
 
         [ObservableProperty]
         private TrulyObservableCollection<ObservableString> shaderDefines = new();
-
         private Dictionary<string, object> AssetProperties { get; set; } = new();
-        protected override void UpdateModel() { }
+
+        protected override void UpdateModel()
+        {
+            AssetProperties["bEnableDepthTest"] = EnableDepthTest.ToString();
+            AssetProperties["bEnableZWrite"] = EnableZWrite.ToString();
+            AssetProperties["bSupportMultisampling"] = SupportMultisampling.ToString();
+            AssetProperties["bCustomDepthShader"] = CustomDepthShader.ToString();
+            AssetProperties["depthBias"] = DepthBias.ToString();
+            AssetProperties["renderQueue"] = RenderQueue.ToString();
+            AssetProperties["cullMode"] = CullMode.ToString();
+            AssetProperties["blendMode"] = BlendMode.ToString();
+            AssetProperties["fillMode"] = FillMode.ToString();
+            AssetProperties["shaderUid"] = Shader.ToString();
+            
+            // Collections
+            AssetProperties["defines"] = ShaderDefines.Select((el) => el.Str).ToList();
+            AssetProperties["samplers"] = Samplers;
+
+            var vec4 = new List<Dictionary<string, List<float>>>();
+            foreach (var el in UniformsVec4)
+            {
+                var values = new List<float> { el.Value.X, el.Value.Y, el.Value.Z, el.Value.W };
+                vec4.Add(new Dictionary<string, List<float>> { { el.Key.ToString(), values } });
+            }
+            AssetProperties["uniformsVec4"] = vec4;
+
+            var floatUniforms = new List<Dictionary<string, float>>();
+            foreach (var el in UniformsFloat)
+            {
+                floatUniforms.Add(new Dictionary<string, float> { { el.Key.ToString(), el.Value } });
+            }
+            AssetProperties["uniformsFloat"] = floatUniforms;
+
+            IsDirty = false;
+        }
+        public override void UpdateAssetFile()
+        {
+            UpdateModel();
+
+            using (var yamlAssetInfo = new FileStream(Asset.FullName, FileMode.Create))
+            using (var writer = new StreamWriter(yamlAssetInfo))
+            {
+                var serializer = new SerializerBuilder()
+                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                    .Build();
+
+                var yaml = serializer.Serialize(AssetProperties);
+                writer.Write(yaml);
+            }
+
+            IsDirty = false;
+        }
+
         public override bool PreloadResources(bool force)
         {
             if (!IsLoaded || force)
@@ -199,6 +241,9 @@ namespace SailorEditor.ViewModels
                                 break;
                         }
                     }
+
+                    ShaderDefines.CollectionChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
+                    ShaderDefines.ItemChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
                 }
                 catch (Exception e)
                 {
