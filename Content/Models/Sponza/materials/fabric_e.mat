@@ -1,40 +1,40 @@
-bEnableDepthTest: true
-bEnableZWrite: true
-bSupportMultisampling: true
-bCustomDepthShader: false
+bEnableDepthTest: True
+bEnableZWrite: True
+bSupportMultisampling: True
+bCustomDepthShader: False
 depthBias: 0
 renderQueue: Opaque
-defines: ~
+defines: []
 cullMode: Back
 blendMode: None
 fillMode: Fill
-shaderUid: "{E42B1499-8C0C-47E3-9584-E7BB6CD821FC}"
+shaderUid: '{E42B1499-8C0C-47E3-9584-E7BB6CD821FC}'
 samplers:
-  - albedoSampler: "{CB4F0E50-4372-4651-861F-EF2A45C97BB2}"
-  - metalnessSampler: "{2D40290F-6A05-4DB8-9B85-28C29FB55E28}"
-  - normalSampler: "{6FB32C20-D72F-498B-B504-12D9D698AD65}"
-  - roughnessSampler: "{E5F5955B-1BD6-49DC-8165-C7F0FFE897D4}"
+  albedoSampler: '{CB4F0E50-4372-4651-861F-EF2A45C97BB2}'
+  metalnessSampler: '{2D40290F-6A05-4DB8-9B85-28C29FB55E28}'
+  normalSampler: '{6FB32C20-D72F-498B-B504-12D9D698AD65}'
+  roughnessSampler: '{E5F5955B-1BD6-49DC-8165-C7F0FFE897D4}'
 uniformsVec4:
-  - material.albedo:
-      - 0.588
-      - 0.588
-      - 0.588
-      - 0
-  - material.ambient:
-      - 0.588
-      - 0.588
-      - 0.588
-      - 0
-  - material.emission:
-      - 0
-      - 0
-      - 0
-      - 0
-  - material.specular:
-      - 0
-      - 0
-      - 0
-      - 0
+  material.albedo:
+  - 0.588
+  - 0.588
+  - 0.588
+  - 0
+  material.ambient:
+  - 0.588
+  - 0.588
+  - 0.588
+  - 0
+  material.emission:
+  - 0
+  - 0
+  - 0
+  - 0
+  material.specular:
+  - 0
+  - 0
+  - 0
+  - 0
 uniformsFloat:
-  - material.roughness: 1
-  - material.metallic: 1
+  material.roughness: 1
+  material.metallic: 1

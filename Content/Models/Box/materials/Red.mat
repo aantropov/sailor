@@ -11,26 +11,26 @@ fillMode: Fill
 shaderUid: "{596BC724-BAB5-4493-AB04-298FA642194D}"
 samplers: ~
 uniformsVec4:
-  - material.albedo:
-      - 0.800000012
-      - 0
-      - 0
-      - 1
-  - material.ambient:
-      - 0
-      - 0
-      - 0
-      - 0
-  - material.emission:
-      - 1
-      - 1
-      - 1
-      - 0
-  - material.specular:
-      - 0
-      - 0
-      - 0
-      - 0
+  material.albedo:
+  - 0.800000012
+  - 0
+  - 0
+  - 1
+  material.ambient:
+  - 0
+  - 0
+  - 0
+  - 0
+  material.emission:
+  - 1
+  - 1
+  - 1
+  - 0
+  material.specular:
+  - 0
+  - 0
+  - 0
+  - 0
 uniformsFloat:
-  - material.roughness: 1
-  - material.metallic: 1
+  material.roughness: 1
+  material.metallic: 1

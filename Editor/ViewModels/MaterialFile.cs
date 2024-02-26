@@ -19,6 +19,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Maui.Core.Extensions;
 using SailorEditor.Utility;
 using System.Collections.Generic;
+using WinRT;
 
 namespace SailorEditor.ViewModels
 {
@@ -81,25 +82,21 @@ namespace SailorEditor.ViewModels
             AssetProperties["blendMode"] = BlendMode.ToString();
             AssetProperties["fillMode"] = FillMode.ToString();
             AssetProperties["shaderUid"] = Shader.ToString();
-            
+
             // Collections
             AssetProperties["defines"] = ShaderDefines.Select((el) => el.Str).ToList();
             AssetProperties["samplers"] = Samplers;
 
-            var vec4 = new List<Dictionary<string, List<float>>>();
+            // We store Vec4 as List
+            var vec4 = new Dictionary<string, List<float>>();
             foreach (var el in UniformsVec4)
             {
                 var values = new List<float> { el.Value.X, el.Value.Y, el.Value.Z, el.Value.W };
-                vec4.Add(new Dictionary<string, List<float>> { { el.Key.ToString(), values } });
+                vec4[el.Key.ToString()] = values;
             }
-            AssetProperties["uniformsVec4"] = vec4;
 
-            var floatUniforms = new List<Dictionary<string, float>>();
-            foreach (var el in UniformsFloat)
-            {
-                floatUniforms.Add(new Dictionary<string, float> { { el.Key.ToString(), el.Value } });
-            }
-            AssetProperties["uniformsFloat"] = floatUniforms;
+            AssetProperties["uniformsVec4"] = vec4;
+            AssetProperties["uniformsFloat"] = UniformsFloat;
 
             IsDirty = false;
         }
@@ -202,9 +199,9 @@ namespace SailorEditor.ViewModels
                             case "samplers":
                                 {
                                     var parsed = new Dictionary<string, AssetUID>();
+
                                     foreach (var el in (e.Value as dynamic).Children)
-                                        foreach (var kv in el.Children)
-                                            parsed[kv.Key.ToString()] = kv.Value.ToString();
+                                        parsed[el.Key.ToString()] = el.Value.ToString();
 
                                     Samplers = parsed;
                                 }
@@ -213,18 +210,17 @@ namespace SailorEditor.ViewModels
                                 {
                                     var parsed = new Dictionary<string, Vector4>();
                                     foreach (var el in (e.Value as dynamic).Children)
-                                        foreach (var kv in el.Children)
-                                        {
-                                            var vec4 = kv.Value.Children;
+                                    {
+                                        var vec4 = el.Value.Children;
 
-                                            var v = new Vector4();
-                                            v.X = float.Parse(vec4[0].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-                                            v.Y = float.Parse(vec4[1].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-                                            v.Z = float.Parse(vec4[2].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-                                            v.W = float.Parse(vec4[3].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
+                                        var v = new Vector4();
+                                        v.X = float.Parse(vec4[0].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
+                                        v.Y = float.Parse(vec4[1].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
+                                        v.Z = float.Parse(vec4[2].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
+                                        v.W = float.Parse(vec4[3].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
 
-                                            parsed[kv.Key.ToString()] = v;
-                                        }
+                                        parsed[el.Key.ToString()] = v;
+                                    }
 
                                     UniformsVec4 = parsed;
                                 }
@@ -233,8 +229,7 @@ namespace SailorEditor.ViewModels
                                 {
                                     var parsed = new Dictionary<string, float>();
                                     foreach (var el in (e.Value as dynamic).Children)
-                                        foreach (var kv in el.Children)
-                                            parsed[kv.Key.ToString()] = float.Parse(kv.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
+                                        parsed[el.Key.ToString()] = float.Parse(el.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
 
                                     UniformsFloat = parsed;
                                 }

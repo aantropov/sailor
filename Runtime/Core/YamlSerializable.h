@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Core/Defines.h"
 #include "Containers/Concepts.h"
 #include "Math/Math.h"
@@ -141,9 +141,32 @@ namespace YAML
 		static bool decode(const Node& node, Sailor::TMap<TKey, TValue>& rhs)
 		{
 			rhs.Clear();
+
+			if (node.size() == 0)
+			{
+				return true;
+			}
+
+			// TODO: Should we allow parse Vector of pairs as Map?
+			/*if (node.IsSequence())
+			{
+				for (const auto& el : node)
+				{
+					auto k = el.begin()->first.as<TKey>();
+					auto v = el.begin()->second.as<TValue>();
+					rhs.Add(std::move(k), std::move(v));
+				}
+				return true;
+			}*/
+
+			if (!node.IsMap())
+				return false;
+
 			for (const auto& el : node)
 			{
-				rhs.Add(std::move(el.begin()->first.as<TKey>()), std::move(el.begin()->second.as<TValue>()));
+				auto k = el.first.as<TKey>();
+				auto v = el.second.as<TValue>();
+				rhs.Add(std::move(k), std::move(v));
 			}
 
 			return true;
