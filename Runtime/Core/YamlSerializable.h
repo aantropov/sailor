@@ -123,6 +123,33 @@ namespace YAML
 		}
 	};
 
+	template<typename TKey, typename TValue>
+	struct convert<Sailor::TMap<TKey, TValue>>
+	{
+		static Node encode(const Sailor::TMap<TKey, TValue>& rhs)
+		{
+			Node node;
+
+			for (const auto& el : rhs)
+			{
+				node[el.m_first] = *el.m_second;
+			}
+
+			return node;
+		}
+
+		static bool decode(const Node& node, Sailor::TMap<TKey, TValue>& rhs)
+		{
+			rhs.Clear();
+			for (const auto& el : node)
+			{
+				rhs.Add(std::move(el.begin()->first.as<TKey>()), std::move(el.begin()->second.as<TValue>()));
+			}
+
+			return true;
+		}
+	};
+
 	template<>
 	struct convert<glm::vec2>
 	{

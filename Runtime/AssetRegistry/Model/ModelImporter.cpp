@@ -105,39 +105,39 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 		}
 	}
 
-	data.m_uniformsVec4.Add({ "material.albedo", diffuse });
-	data.m_uniformsVec4.Add({ "material.ambient", ambient });
-	data.m_uniformsVec4.Add({ "material.emission", emission });
-	data.m_uniformsVec4.Add({ "material.specular", specular });
+	data.m_uniformsVec4.Add("material.albedo", diffuse);
+	data.m_uniformsVec4.Add("material.ambient", ambient);
+	data.m_uniformsVec4.Add("material.emission", emission);
+	data.m_uniformsVec4.Add("material.specular", specular);
 
-	data.m_uniformsFloat.Add({ "material.roughness" , 1.0f });
-	data.m_uniformsFloat.Add({ "material.metallic" , 1.0f });
+	data.m_uniformsFloat.Add("material.roughness", 1.0f);
+	data.m_uniformsFloat.Add("material.metallic", 1.0f);
 
 	// TODO: Add support for glb?
 
 	if (!diffuseMaps.IsEmpty() && diffuseMaps[0].front() != '*')
 	{
-		data.m_samplers.Add(MaterialAsset::SamplerEntry("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0])));
+		data.m_samplers.Add("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0]));
 	}
 
 	if (!ambientMaps.IsEmpty())
 	{
-		data.m_samplers.Add(MaterialAsset::SamplerEntry("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + ambientMaps[0])));
+		data.m_samplers.Add("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + ambientMaps[0]));
 	}
 
 	if (!normalMaps.IsEmpty() && normalMaps[0].front() != '*')
 	{
-		data.m_samplers.Add(MaterialAsset::SamplerEntry("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + normalMaps[0])));
+		data.m_samplers.Add("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + normalMaps[0]));
 	}
 
 	if (!specularMaps.IsEmpty() && specularMaps[0].front() != '*')
 	{
-		data.m_samplers.Add(MaterialAsset::SamplerEntry("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + specularMaps[0])));
+		data.m_samplers.Add("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + specularMaps[0]));
 	}
 
 	if (!emissionMaps.IsEmpty() && emissionMaps[0].front() != '*')
 	{
-		data.m_samplers.Add(MaterialAsset::SamplerEntry("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + emissionMaps[0])));
+		data.m_samplers.Add("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + emissionMaps[0]));
 	}
 
 	return data;

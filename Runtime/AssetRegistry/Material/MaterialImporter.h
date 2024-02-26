@@ -85,30 +85,6 @@ namespace Sailor
 	{
 	public:
 
-		class SamplerEntry final : IYamlSerializable
-		{
-		public:
-
-			SAILOR_API SamplerEntry() = default;
-			SAILOR_API SamplerEntry(std::string name, const FileId& uid) : m_name(std::move(name)), m_fileId(uid) {}
-
-			std::string m_name;
-			FileId m_fileId;
-
-			SAILOR_API virtual YAML::Node Serialize() const
-			{
-				YAML::Node outData;
-				outData[m_name] = m_fileId;
-				return outData;
-			}
-
-			SAILOR_API virtual void Deserialize(const YAML::Node& inData)
-			{
-				m_name = inData.begin()->first.as<std::string>();
-				m_fileId = inData.begin()->second.as<FileId>();
-			}
-		};
-
 		struct Data
 		{
 			std::string m_name = "Untitled";
@@ -116,9 +92,9 @@ namespace Sailor
 
 			std::string m_renderQueue = "Opaque";
 			TVector<std::string> m_shaderDefines;
-			TVector<SamplerEntry> m_samplers;
-			TVector<TPair<std::string, glm::vec4>> m_uniformsVec4;
-			TVector<TPair<std::string, float>> m_uniformsFloat;
+			TMap<std::string, FileId> m_samplers;
+			TMap<std::string, glm::vec4> m_uniformsVec4;
+			TMap<std::string, float> m_uniformsFloat;
 
 			FileId m_shader;
 		};
@@ -131,10 +107,10 @@ namespace Sailor
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_pData->m_renderState; }
 		SAILOR_API const std::string& GetRenderQueue() const { return m_pData->m_renderQueue; }
 		SAILOR_API const FileId& GetShader() const { return m_pData->m_shader; }
-		SAILOR_API const TVector<std::string>& GetShaderDefines() const { return  m_pData->m_shaderDefines; }
-		SAILOR_API const TVector<SamplerEntry>& GetSamplers() const { return m_pData->m_samplers; }
-		SAILOR_API const TVector<TPair<std::string, glm::vec4>>& GetUniformsVec4() const { return m_pData->m_uniformsVec4; }
-		SAILOR_API const TVector<TPair<std::string, float>>& GetUniformsFloat() const { return m_pData->m_uniformsFloat; }
+		SAILOR_API const auto& GetShaderDefines() const { return  m_pData->m_shaderDefines; }
+		SAILOR_API const auto& GetSamplers() const { return m_pData->m_samplers; }
+		SAILOR_API const auto& GetUniformsVec4() const { return m_pData->m_uniformsVec4; }
+		SAILOR_API const auto& GetUniformsFloat() const { return m_pData->m_uniformsFloat; }
 
 	protected:
 
