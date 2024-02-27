@@ -11,6 +11,9 @@ namespace SailorEditor.Utility
         {
             Value = v;
         }
+
+        public static implicit operator Observable<T>(T value) => new Observable<T>(value);
+        public static implicit operator T(Observable<T> observable) => observable.Value;
         public object Clone() => new Observable<T>(Value);
         public override string ToString() => Value.ToString();
         public override bool Equals(object obj)

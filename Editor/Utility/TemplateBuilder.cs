@@ -113,9 +113,8 @@ namespace SailorEditor.Helpers
 
             return entry;
         }
-        public static View CreateDictionaryEditor<K, V>(string bindingPath, string labelText, K defaultKey = default(K), V defaultValue = default(V))
-        where K : ICloneable, INotifyPropertyChanged
-        where V : ICloneable, INotifyPropertyChanged
+        public static View CreateUniformEditor<T>(string bindingPath, string labelText, string defaultKey = default(string))
+            where T : IComparable<T>
         {
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
 
@@ -134,13 +133,16 @@ namespace SailorEditor.Helpers
                         var dictionaryProperty = (dictionaryEditor.BindingContext).GetType().GetProperty(bindingPath);
                         if (dictionaryProperty != null)
                         {
-                            if (dictionaryProperty.GetValue(dictionaryEditor.BindingContext) is IDictionary dictionary)
+                            if (dictionaryProperty.GetValue(dictionaryEditor.BindingContext) is IList<Uniform<T>> dict)
                             {
                                 var keyToRemove = keyEntry.Text.ToString();
-
-                                if (dictionary.Contains(keyToRemove))
+                                for (int i = 0; i < dict.Count; i++)
                                 {
-                                    dictionary.Remove(keyToRemove);
+                                    if (dict[i].Key == keyToRemove)
+                                    {
+                                        dict.Remove(dict[i]);
+                                        i--;
+                                    }
                                 }
                             }
                         }
@@ -159,9 +161,9 @@ namespace SailorEditor.Helpers
                 var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
                 if (property != null)
                 {
-                    if (property.GetValue((sender as Button).BindingContext) is IDictionary<K, V> dict)
+                    if (property.GetValue((sender as Button).BindingContext) is IList dict)
                     {
-                        dict[(K)defaultKey.Clone()] = (V)defaultValue.Clone();
+                        dict.Add(new Uniform<T> { Key = defaultKey, Value = new Observable<T>(default(T)) });
                     }
                 }
             };
@@ -172,9 +174,9 @@ namespace SailorEditor.Helpers
                 var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
                 if (property != null)
                 {
-                    if (property.GetValue((sender as Button).BindingContext) is ICollection<KeyValuePair<K, V>> dict)
+                    if (property.GetValue((sender as Button).BindingContext) is IList list)
                     {
-                        dict.Clear();
+                        list.Clear();
                     }
                 }
             };

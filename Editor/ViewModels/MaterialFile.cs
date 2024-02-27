@@ -27,6 +27,30 @@ namespace SailorEditor.ViewModels
 {
     using AssetUID = string;
     using BlendMode = Engine.BlendMode;
+
+    public partial class Uniform<T> : ObservableObject, ICloneable
+        where T : IComparable<T>
+    {
+        public object Clone() => new Uniform<T> { Key = new Observable<string>(Key.Value), Value = new Observable<T>(Value.Value) };
+        public override bool Equals(object obj)
+        {
+            if (obj is Uniform<T> other)
+            {
+                return Key.Value.CompareTo(other.Key.Value) == 0;
+            }
+
+            return false;
+        }
+
+        public override string ToString() => $"{Key.ToString()}: {Value.ToString()}";
+
+        [ObservableProperty]
+        Observable<string> key;
+
+        [ObservableProperty]
+        Observable<T> value;
+    }
+
     public partial class MaterialFile : AssetFile
     {
         [ObservableProperty]
@@ -66,12 +90,11 @@ namespace SailorEditor.ViewModels
         private ObservableDictionary<Observable<string>, Vector4> uniformsVec4 = new();
 
         [ObservableProperty]
-        private ObservableDictionary<Observable<string>, Observable<float>> uniformsFloat = new();
+        private ObservableList<Uniform<float>> uniformsFloat = new();
 
         [ObservableProperty]
         private ObservableList<Observable<string>> shaderDefines = new();
         private Dictionary<string, object> AssetProperties { get; set; } = new();
-
         protected override void UpdateModel()
         {
             AssetProperties["bEnableDepthTest"] = EnableDepthTest.ToString();
@@ -98,7 +121,7 @@ namespace SailorEditor.ViewModels
             }
 
             AssetProperties["uniformsVec4"] = vec4;
-            AssetProperties["uniformsFloat"] = UniformsFloat.Select((a)=> new KeyValuePair<string, float>(a.Key.Value, a.Value.Value)).ToDictionary();
+            AssetProperties["uniformsFloat"] = UniformsFloat.Select((a) => new KeyValuePair<string, float>(a.Key, a.Value)).ToDictionary();
 
             IsDirty = false;
         }
@@ -233,9 +256,13 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "uniformsFloat":
                                 {
-                                    var parsed = new ObservableDictionary<Observable<string>, Observable<float>>();
+                                    var parsed = new ObservableList<Uniform<float>>();
                                     foreach (var el in (e.Value as dynamic).Children)
-                                        parsed[new Observable<string>(el.Key.ToString())] = new Observable<float>(float.Parse(el.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat));
+                                        parsed.Add(new Uniform<float>
+                                        {
+                                            Key = el.Key.ToString(),
+                                            Value = float.Parse(el.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat)
+                                        });
 
                                     UniformsFloat = parsed;
                                 }
@@ -247,6 +274,7 @@ namespace SailorEditor.ViewModels
                     ShaderDefines.ItemChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
 
                     UniformsFloat.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
+                    UniformsFloat.ItemChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
                 }
                 catch (Exception e)
                 {
