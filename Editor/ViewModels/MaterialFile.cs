@@ -20,6 +20,8 @@ using CommunityToolkit.Maui.Core.Extensions;
 using SailorEditor.Utility;
 using System.Collections.Generic;
 using WinRT;
+using Windows.Foundation.Collections;
+using System;
 
 namespace SailorEditor.ViewModels
 {
@@ -58,16 +60,16 @@ namespace SailorEditor.ViewModels
         private AssetUID shader;
 
         [ObservableProperty]
-        private Dictionary<string, AssetUID> samplers = new();
+        private ObservableDictionary<Observable<string>, Observable<AssetUID>> samplers = new();
 
         [ObservableProperty]
-        private Dictionary<string, Vector4> uniformsVec4 = new();
+        private ObservableDictionary<Observable<string>, Vector4> uniformsVec4 = new();
 
         [ObservableProperty]
-        private Dictionary<string, float> uniformsFloat = new();
+        private ObservableDictionary<Observable<string>, Observable<float>> uniformsFloat = new();
 
         [ObservableProperty]
-        private TrulyObservableCollection<ObservableString> shaderDefines = new();
+        private ObservableList<Observable<string>> shaderDefines = new();
         private Dictionary<string, object> AssetProperties { get; set; } = new();
 
         protected override void UpdateModel()
@@ -84,8 +86,8 @@ namespace SailorEditor.ViewModels
             AssetProperties["shaderUid"] = Shader.ToString();
 
             // Collections
-            AssetProperties["defines"] = ShaderDefines.Select((el) => el.Str).ToList();
-            AssetProperties["samplers"] = Samplers;
+            AssetProperties["defines"] = ShaderDefines.Select((el) => el.Value).ToList();
+            AssetProperties["samplers"] = Samplers.Select((a) => new KeyValuePair<string, string>(a.Key.Value, a.Value.Value)).ToDictionary();
 
             // We store Vec4 as List
             var vec4 = new Dictionary<string, List<float>>();
@@ -96,7 +98,7 @@ namespace SailorEditor.ViewModels
             }
 
             AssetProperties["uniformsVec4"] = vec4;
-            AssetProperties["uniformsFloat"] = UniformsFloat;
+            AssetProperties["uniformsFloat"] = UniformsFloat.Select((a)=> new KeyValuePair<string, float>(a.Key.Value, a.Value.Value)).ToDictionary();
 
             IsDirty = false;
         }
@@ -163,7 +165,7 @@ namespace SailorEditor.ViewModels
                                         parsed.Add(uid.ToString());
                                     }
 
-                                    ShaderDefines = new TrulyObservableCollection<ObservableString>(parsed.Select((el) => new ObservableString(el)));
+                                    ShaderDefines = new ObservableList<Observable<string>>(parsed.Select((el) => new Observable<string>(el)));
                                 }
                                 break;
                             case "cullMode":
@@ -198,17 +200,21 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "samplers":
                                 {
-                                    var parsed = new Dictionary<string, AssetUID>();
+                                    var parsed = new ObservableDictionary<Observable<string>, Observable<AssetUID>>();
 
                                     foreach (var el in (e.Value as dynamic).Children)
-                                        parsed[el.Key.ToString()] = el.Value.ToString();
+                                    {
+                                        var k = new Observable<string>(el.Key.ToString());
+                                        var v = new Observable<string>(el.Value.ToString());
+                                        parsed.Add(k, v);
+                                    }
 
                                     Samplers = parsed;
                                 }
                                 break;
                             case "uniformsVec4":
                                 {
-                                    var parsed = new Dictionary<string, Vector4>();
+                                    var parsed = new ObservableDictionary<Observable<string>, Vector4>();
                                     foreach (var el in (e.Value as dynamic).Children)
                                     {
                                         var vec4 = el.Value.Children;
@@ -219,7 +225,7 @@ namespace SailorEditor.ViewModels
                                         v.Z = float.Parse(vec4[2].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
                                         v.W = float.Parse(vec4[3].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
 
-                                        parsed[el.Key.ToString()] = v;
+                                        parsed[new Observable<string>(el.Key.ToString())] = v;
                                     }
 
                                     UniformsVec4 = parsed;
@@ -227,9 +233,9 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "uniformsFloat":
                                 {
-                                    var parsed = new Dictionary<string, float>();
+                                    var parsed = new ObservableDictionary<Observable<string>, Observable<float>>();
                                     foreach (var el in (e.Value as dynamic).Children)
-                                        parsed[el.Key.ToString()] = float.Parse(el.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
+                                        parsed[new Observable<string>(el.Key.ToString())] = new Observable<float>(float.Parse(el.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat));
 
                                     UniformsFloat = parsed;
                                 }
@@ -239,6 +245,8 @@ namespace SailorEditor.ViewModels
 
                     ShaderDefines.CollectionChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
                     ShaderDefines.ItemChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
+
+                    UniformsFloat.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
                 }
                 catch (Exception e)
                 {

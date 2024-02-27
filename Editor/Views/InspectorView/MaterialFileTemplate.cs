@@ -18,7 +18,7 @@ public class MaterialFileTemplate : AssetFileTemplate
             shaderLabel.Behaviors.Add(new AssetUIDClickable(nameof(MaterialFile.Shader)));
 
             TemplateBuilder.AddGridRowWithLabel(props, "Render Queue", TemplateBuilder.CreateEntry(nameof(MaterialFile.RenderQueue)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Depth Bias", TemplateBuilder.CreateEntry(nameof(MaterialFile.DepthBias)), GridLength.Auto);            
+            TemplateBuilder.AddGridRowWithLabel(props, "Depth Bias", TemplateBuilder.CreateEntry(nameof(MaterialFile.DepthBias)), GridLength.Auto);
 
             TemplateBuilder.AddGridRowWithLabel(props, "Enable DepthTest", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.EnableDepthTest)), GridLength.Auto);
             TemplateBuilder.AddGridRowWithLabel(props, "Enable ZWrite", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.EnableZWrite)), GridLength.Auto);
@@ -34,11 +34,15 @@ public class MaterialFileTemplate : AssetFileTemplate
             TemplateBuilder.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, props, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateListEditor<ObservableString>(nameof(MaterialFile.ShaderDefines), "Shader Defines", new ObservableString("NewDefine"), new ObservableStringConverter()),GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateListEditor(nameof(MaterialFile.ShaderDefines),
+                "Shader Defines",
+                new Observable<string>("NewDefine"),
+                new ObservableConverter<string>()),
+                GridLength.Auto);
 
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor(nameof(MaterialFile.Samplers), "Samplers"), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor(nameof(MaterialFile.UniformsFloat), "Uniforms Float"), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor(nameof(MaterialFile.UniformsVec4), "Uniforms Vec4"), GridLength.Auto);
+            //TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor<Observable<string>, Observable<string>>(nameof(MaterialFile.Samplers), "Samplers"), GridLength.Auto);
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor(nameof(MaterialFile.UniformsFloat), "Uniforms Float", new Observable<string>("material.newParam"), new Observable<float>(0.0f)), GridLength.Auto);
+            //TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor<Observable<string>, Observable<string>>(nameof(MaterialFile.UniformsVec4), "Uniforms Vec4"), GridLength.Auto);
 
             return grid;
         };
