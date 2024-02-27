@@ -25,11 +25,7 @@ namespace SailorEditor.Utility
 
             return false;
         }
-
-        public override int GetHashCode()
-        {
-            return Value?.GetHashCode() ?? 0;
-        }
+        public override int GetHashCode() => Value?.GetHashCode() ?? 0;
 
         [ObservableProperty]
         private T value;

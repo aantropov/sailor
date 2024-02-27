@@ -122,10 +122,10 @@ namespace SailorEditor.Helpers
             dictionaryEditor.ItemTemplate = new DataTemplate(() =>
                 {
                     var keyEntry = new Entry();
-                    keyEntry.SetBinding(Entry.TextProperty, "Key", BindingMode.TwoWay);
+                    keyEntry.SetBinding(Entry.TextProperty, "Key.Value", BindingMode.TwoWay);
 
                     var valueEntry = new Entry();
-                    valueEntry.SetBinding(Entry.TextProperty, "Value", BindingMode.TwoWay);
+                    valueEntry.SetBinding(Entry.TextProperty, "Value.Value", BindingMode.TwoWay);
 
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>

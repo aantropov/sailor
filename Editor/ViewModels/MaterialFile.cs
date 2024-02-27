@@ -44,6 +44,8 @@ namespace SailorEditor.ViewModels
 
         public override string ToString() => $"{Key.ToString()}: {Value.ToString()}";
 
+        public override int GetHashCode() => Key?.GetHashCode() ?? 0;
+
         [ObservableProperty]
         Observable<string> key;
 
