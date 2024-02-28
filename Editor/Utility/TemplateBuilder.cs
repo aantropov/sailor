@@ -13,9 +13,15 @@ using Binding = Microsoft.Maui.Controls.Binding;
 using IValueConverter = Microsoft.Maui.Controls.IValueConverter;
 using SailorEditor.Utility;
 using System.ComponentModel;
+using CommunityToolkit.Maui.Alerts;
+using CommunityToolkit.Maui.Storage;
+using System.Text;
+using System.Threading;
+using SailorEditor.Services;
 
 namespace SailorEditor.Helpers
 {
+    using AssetUID = string;
     static class TemplateBuilder
     {
         public const int ThumbnailSize = 128;
@@ -110,31 +116,60 @@ namespace SailorEditor.Helpers
                     var keyEntry = new Entry();
                     keyEntry.SetBinding(Entry.TextProperty, "Key", BindingMode.TwoWay);
 
-                    var valueEntry = new Entry();
-                    valueEntry.SetBinding(Entry.TextProperty, "Value", BindingMode.TwoWay, converter);
+                    IView valueView = null;
+
+                    if (typeof(T) == typeof(AssetUID))
+                    {
+                        var selectButton = new Button { Text = "Select" };
+                        selectButton.Clicked += async (sender, e) =>
+                        {
+                            var fileOpen = await FilePicker.Default.PickAsync();
+                            if (fileOpen != null)
+                            {
+                                var AssetService = MauiProgram.GetService<AssetsService>();
+                                var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
+
+                                if ((sender as Button).BindingContext is Uniform<T> uniform)
+                                {
+                                    if (asset.UID is T uid)
+                                        uniform.Value = uid;
+                                    else
+                                        uniform.Value = default(T);
+                                }
+                            }
+                        };
+
+                        var valueEntry = new Label();
+                        valueEntry.SetBinding(Label.TextProperty, new Binding("Value", BindingMode.Default, converter));
+                        valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
+
+                        var stackLayout = new HorizontalStackLayout();
+                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });
+
+                        valueView = stackLayout;
+                    }
+                    else
+                    {
+                        var valueEntry = new Entry();
+                        valueEntry.SetBinding(Entry.TextProperty, "Value", BindingMode.TwoWay, converter);
+
+                        valueView = valueEntry;
+                    }
 
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>
                     {
                         var dictionaryProperty = (dictionaryEditor.BindingContext).GetType().GetProperty(bindingPath);
-                        if (dictionaryProperty != null)
+                        if (dictionaryProperty.GetValue(dictionaryEditor.BindingContext) is IList<Uniform<T>> dict)
                         {
-                            if (dictionaryProperty.GetValue(dictionaryEditor.BindingContext) is IList<Uniform<T>> dict)
+                            if ((sender as Button).BindingContext is Uniform<T> uniform)
                             {
-                                var keyToRemove = keyEntry.Text.ToString();
-                                for (int i = 0; i < dict.Count; i++)
-                                {
-                                    if (dict[i].Key == keyToRemove)
-                                    {
-                                        dict.Remove(dict[i]);
-                                        i--;
-                                    }
-                                }
+                                dict.Remove(uniform);
                             }
                         }
                     };
 
-                    var entryLayout = new HorizontalStackLayout { Children = { keyEntry, valueEntry, deleteButton } };
+                    var entryLayout = new HorizontalStackLayout { Children = { keyEntry, valueView, deleteButton } };
 
                     return entryLayout;
                 });
@@ -149,7 +184,7 @@ namespace SailorEditor.Helpers
                 {
                     if (property.GetValue((sender as Button).BindingContext) is IList dict)
                     {
-                        dict.Add(new Uniform<T> { Key = defaultKey, Value = new Observable<T>(default(T)) });
+                        dict.Add(new Uniform<T> { Key = defaultKey, Value = default(T) });
                     }
                 }
             };
@@ -189,21 +224,11 @@ namespace SailorEditor.Helpers
                     deleteButton.Clicked += (sender, e) =>
                     {
                         var property = (listEditor.BindingContext).GetType().GetProperty(bindingPath);
-                        if (property != null)
+                        if (property.GetValue(listEditor.BindingContext) is ObservableCollection<T> list)
                         {
-                            if (property.GetValue(listEditor.BindingContext) is ObservableCollection<T> list)
+                            if ((sender as Button).BindingContext is T value)
                             {
-                                var valueToRemove = entry.Text.ToString();
-
-                                if (converter != null)
-                                {
-                                    var value = (T)converter.ConvertBack(valueToRemove, typeof(T), valueToRemove, CultureInfo.CurrentUICulture);
-                                    list.Remove(value);
-                                }
-                                else
-                                {
-                                    ((IList)list).Remove(valueToRemove);
-                                }
+                                list.Remove(value);
                             }
                         }
                     };

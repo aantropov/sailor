@@ -275,6 +275,9 @@ namespace SailorEditor.ViewModels
 
                     UniformsFloat.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
                     UniformsFloat.ItemChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
+
+                    Samplers.CollectionChanged += (a, e) => MarkDirty(nameof(Samplers));
+                    Samplers.ItemChanged += (a, e) => MarkDirty(nameof(Samplers));
                 }
                 catch (Exception e)
                 {

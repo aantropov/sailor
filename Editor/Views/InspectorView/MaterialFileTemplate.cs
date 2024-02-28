@@ -40,9 +40,8 @@ public class MaterialFileTemplate : AssetFileTemplate
                 new ObservableConverter<string>()),
                 GridLength.Auto);
 
-            //TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor<Observable<string>, Observable<string>>(nameof(MaterialFile.Samplers), "Samplers"), GridLength.Auto);
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<string>(nameof(MaterialFile.Samplers),
-                "Samplers", "material.newTextureSampler", new AssetUIDToFilenameConverter()),
+                "Samplers", "newTextureSampler", new AssetUIDToFilenameConverter()),
                 GridLength.Auto);
 
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<float>(nameof(MaterialFile.UniformsFloat),

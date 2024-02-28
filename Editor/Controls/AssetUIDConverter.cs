@@ -6,18 +6,27 @@ using System.Globalization;
 
 public class AssetUIDToFilenameConverter : IValueConverter
 {
+    private string uid;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         var assetUID = value as string;
         if (string.IsNullOrEmpty(assetUID))
             return null;
 
+        uid = assetUID;
+
         var AssetService = MauiProgram.GetService<AssetsService>();
+
+        if (!AssetService.Assets.ContainsKey(assetUID))
+        {
+            return uid;
+        }
+
         return AssetService.Assets[assetUID].DisplayName;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return uid;
     }
 }
