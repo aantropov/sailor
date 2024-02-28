@@ -31,12 +31,12 @@ namespace SailorEditor.ViewModels
     public partial class Uniform<T> : ObservableObject, ICloneable
         where T : IComparable<T>
     {
-        public object Clone() => new Uniform<T> { Key = new Observable<string>(Key.Value), Value = new Observable<T>(Value.Value) };
+        public object Clone() => new Uniform<T> { Key = Key, Value = Value };
         public override bool Equals(object obj)
         {
             if (obj is Uniform<T> other)
             {
-                return Key.Value.CompareTo(other.Key.Value) == 0;
+                return Key.CompareTo(other.Key) == 0;
             }
 
             return false;
@@ -47,10 +47,10 @@ namespace SailorEditor.ViewModels
         public override int GetHashCode() => Key?.GetHashCode() ?? 0;
 
         [ObservableProperty]
-        Observable<string> key;
+        string key;
 
         [ObservableProperty]
-        Observable<T> value;
+        T value;
     }
 
     public partial class MaterialFile : AssetFile
@@ -86,7 +86,7 @@ namespace SailorEditor.ViewModels
         private AssetUID shader;
 
         [ObservableProperty]
-        private ObservableDictionary<Observable<string>, Observable<AssetUID>> samplers = new();
+        private ObservableList<Uniform<AssetUID>> samplers = new();
 
         [ObservableProperty]
         private ObservableDictionary<Observable<string>, Vector4> uniformsVec4 = new();
@@ -112,7 +112,7 @@ namespace SailorEditor.ViewModels
 
             // Collections
             AssetProperties["defines"] = ShaderDefines.Select((el) => el.Value).ToList();
-            AssetProperties["samplers"] = Samplers.Select((a) => new KeyValuePair<string, string>(a.Key.Value, a.Value.Value)).ToDictionary();
+            AssetProperties["samplers"] = Samplers.Select((a) => new KeyValuePair<string, string>(a.Key, a.Value)).ToDictionary();
 
             // We store Vec4 as List
             var vec4 = new Dictionary<string, List<float>>();
@@ -225,13 +225,11 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "samplers":
                                 {
-                                    var parsed = new ObservableDictionary<Observable<string>, Observable<AssetUID>>();
+                                    var parsed = new ObservableList<Uniform<AssetUID>>();
 
                                     foreach (var el in (e.Value as dynamic).Children)
                                     {
-                                        var k = new Observable<string>(el.Key.ToString());
-                                        var v = new Observable<string>(el.Value.ToString());
-                                        parsed.Add(k, v);
+                                        parsed.Add(new Uniform<AssetUID> { Key = el.Key.ToString(), Value = el.Value.ToString() });
                                     }
 
                                     Samplers = parsed;

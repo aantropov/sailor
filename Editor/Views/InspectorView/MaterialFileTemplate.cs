@@ -41,9 +41,14 @@ public class MaterialFileTemplate : AssetFileTemplate
                 GridLength.Auto);
 
             //TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor<Observable<string>, Observable<string>>(nameof(MaterialFile.Samplers), "Samplers"), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<float>(nameof(MaterialFile.UniformsFloat),
-                "Uniforms Float", "material.newParam"),
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<string>(nameof(MaterialFile.Samplers),
+                "Samplers", "material.newTextureSampler", new AssetUIDToFilenameConverter()),
                 GridLength.Auto);
+
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<float>(nameof(MaterialFile.UniformsFloat),
+                "Uniforms Float", "material.newParam", new FloatValueConverter()),
+                GridLength.Auto);
+
             //TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor<Observable<string>, Observable<string>>(nameof(MaterialFile.UniformsVec4), "Uniforms Vec4"), GridLength.Auto);
 
             return grid;

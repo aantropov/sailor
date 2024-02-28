@@ -1,32 +1,18 @@
 ﻿using SailorEditor.ViewModels;
-using SailorEditor.Services;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml;
-using System.Runtime.InteropServices;
-using WinRT;
-using Window = Microsoft.Maui.Controls.Window;
-using Microsoft.Maui.Controls;
-using Microsoft.UI.Windowing;
 using System.Globalization;
 using CheckBox = Microsoft.Maui.Controls.CheckBox;
 using Grid = Microsoft.Maui.Controls.Grid;
 using SkiaSharp;
-using System.Linq;
-using Microsoft.Maui.Controls.PlatformConfiguration.AndroidSpecific;
 using Entry = Microsoft.Maui.Controls.Entry;
-using System.Collections.Generic;
 using System.Collections;
-using System.Runtime.CompilerServices;
 using DataTemplate = Microsoft.Maui.Controls.DataTemplate;
 using Button = Microsoft.Maui.Controls.Button;
 using System.Collections.ObjectModel;
-using Microsoft.UI.Xaml.Data;
 using BindingMode = Microsoft.Maui.Controls.BindingMode;
 using Binding = Microsoft.Maui.Controls.Binding;
 using IValueConverter = Microsoft.Maui.Controls.IValueConverter;
 using SailorEditor.Utility;
 using System.ComponentModel;
-using YamlDotNet.Core.Tokens;
 
 namespace SailorEditor.Helpers
 {
@@ -113,7 +99,7 @@ namespace SailorEditor.Helpers
 
             return entry;
         }
-        public static View CreateUniformEditor<T>(string bindingPath, string labelText, string defaultKey = default(string))
+        public static View CreateUniformEditor<T>(string bindingPath, string labelText, string defaultKey = default(string), IValueConverter converter = null)
             where T : IComparable<T>
         {
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
@@ -122,10 +108,10 @@ namespace SailorEditor.Helpers
             dictionaryEditor.ItemTemplate = new DataTemplate(() =>
                 {
                     var keyEntry = new Entry();
-                    keyEntry.SetBinding(Entry.TextProperty, "Key.Value", BindingMode.TwoWay);
+                    keyEntry.SetBinding(Entry.TextProperty, "Key", BindingMode.TwoWay);
 
                     var valueEntry = new Entry();
-                    valueEntry.SetBinding(Entry.TextProperty, "Value.Value", BindingMode.TwoWay);
+                    valueEntry.SetBinding(Entry.TextProperty, "Value", BindingMode.TwoWay, converter);
 
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>
