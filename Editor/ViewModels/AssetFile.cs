@@ -35,10 +35,10 @@ namespace SailorEditor.ViewModels
         public int Id { get; set; }
         public int FolderId { get; set; }
         public bool CanOpenAssetFile { get => !IsDirty; }
-        public virtual bool PreloadResources(bool force) => true;
-        public virtual void UpdateAssetFile()
+        public virtual async Task<bool> PreloadResources(bool force) => await Task.FromResult(true);
+        public virtual async Task UpdateAssetFile()
         {
-            UpdateModel();
+            await UpdateModel();
 
             using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
             using (var writer = new StreamWriter(yamlAssetInfo))
@@ -53,11 +53,13 @@ namespace SailorEditor.ViewModels
 
             IsDirty = false;
         }
-        public void Revert()
+        public async Task Revert()
         {
-            PreloadResources(true);
+            await PreloadResources(true);
+
             IsDirty = false;
         }
+
         public void OpenAssetFile()
         {
             try
@@ -69,9 +71,10 @@ namespace SailorEditor.ViewModels
                 Console.WriteLine($"Cannot open file: {ex.Message}");
             }
         }
+
+        protected virtual async Task UpdateModel() { }
         public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
         protected bool IsLoaded { get; set; }
-        protected virtual void UpdateModel() { }
 
         [ObservableProperty]
         protected bool isDirty = false;

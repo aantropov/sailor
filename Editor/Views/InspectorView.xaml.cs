@@ -18,7 +18,6 @@ namespace SailorEditor.Views
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
             selectionViewModel.OnSelectAssetAction += OnSelectAssetFile;
-
             this.BindingContext = selectionViewModel;
         }
 

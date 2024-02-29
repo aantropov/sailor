@@ -19,7 +19,7 @@ public class AssetFileTemplate : DataTemplate
     {
         var controlPanel = new Grid
         {
-            ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto }},
+            ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto } },
             ColumnSpacing = 10,
             RowSpacing = 5,
             Padding = new Thickness(5)
@@ -61,8 +61,8 @@ public class AssetFileTemplate : DataTemplate
         openButton.SetBinding(Button.IsVisibleProperty, new Binding("CanOpenAssetFile"));
 
         openButton.Clicked += (sender, e) => (saveButton.BindingContext as AssetFile).OpenAssetFile();
-        saveButton.Clicked += (sender, e) => (saveButton.BindingContext as AssetFile).UpdateAssetFile();
-        revertButton.Clicked += (sender, e) => (revertButton.BindingContext as AssetFile).Revert();
+        saveButton.Clicked += async (sender, e) => await (saveButton.BindingContext as AssetFile).UpdateAssetFile();
+        revertButton.Clicked += async (sender, e) => await (revertButton.BindingContext as AssetFile).Revert();
 
         TemplateBuilder.AddGridRow(controlPanel, nameLabel, GridLength.Auto);
 

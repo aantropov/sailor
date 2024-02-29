@@ -15,7 +15,7 @@ namespace SailorEditor.ViewModels
     {
         public string Code { get; set; }
 
-        public override bool PreloadResources(bool force)
+        public override async Task<bool> PreloadResources(bool force)
         {
             if (IsLoaded && !force)
                 return true;

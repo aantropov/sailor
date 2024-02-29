@@ -1,30 +1,24 @@
-﻿using SailorEditor.ViewModels;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using SailorEditor.Utility;
+using SailorEditor.ViewModels;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.IO;
 
 namespace SailorEditor.Services
 {
-    public class SelectionService
+    public partial class SelectionService : ObservableObject
     {
         public event Action<AssetFile> OnSelectAssetAction = delegate { };
 
-        public ObservableCollection<object> SelectedItems
+        [ObservableProperty]
+        private ObservableList<INotifyPropertyChanged> selectedItems = new();
+
+        public async void OnSelectAsset(AssetFile assetFile)
         {
-            get => selectedItems;
-            set
-            {
-                if (selectedItems == value)
-                    return;
-
-                selectedItems = value;
-            }
-        }
-
-        ObservableCollection<object> selectedItems = new();
-
-        public void OnSelectAsset(AssetFile assetFile)
-        {
-            assetFile.PreloadResources(false);
+            await assetFile.PreloadResources(false);
 
             SelectedItems.Clear();
             SelectedItems.Add(assetFile);

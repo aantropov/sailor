@@ -34,18 +34,18 @@ namespace SailorEditor.ViewModels
         [ObservableProperty]
         private ImageSource texture;
 
-        protected override void UpdateModel()
+        protected override async Task UpdateModel()
         {
-            Properties["bShouldGenerateMips"] = ShouldGenerateMips.ToString();
-            Properties["bShouldSupportStorageBinding"] = ShouldSupportStorageBinding.ToString();
-            Properties["clamping"] = Clamping.ToString();
-            Properties["filtration"] = Filtration.ToString();
-            Properties["format"] = Format.ToString();
+            Properties["bShouldGenerateMips"] = ShouldGenerateMips;
+            Properties["bShouldSupportStorageBinding"] = ShouldSupportStorageBinding;
+            Properties["clamping"] = Clamping;
+            Properties["filtration"] = Filtration;
+            Properties["format"] = Format;
 
             IsDirty = false;
         }
-        
-        public override bool PreloadResources(bool force)
+
+        public override async Task<bool> PreloadResources(bool force)
         {
             if (!IsLoaded || force)
             {

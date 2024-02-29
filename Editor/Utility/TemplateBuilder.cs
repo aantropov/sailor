@@ -218,7 +218,7 @@ namespace SailorEditor.Helpers
             listEditor.ItemTemplate = new DataTemplate(() =>
                 {
                     var entry = new Entry();
-                    entry.SetBinding(Entry.TextProperty, "Value", BindingMode.TwoWay);
+                    entry.SetBinding(Entry.TextProperty, "Value", BindingMode.TwoWay, converter);
 
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>

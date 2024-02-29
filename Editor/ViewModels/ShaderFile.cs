@@ -20,7 +20,7 @@ namespace SailorEditor.ViewModels
         public string GlslFragmentShader { get; set; }
         public string GlslComputeShader { get; set; }
 
-        public override bool PreloadResources(bool force)
+        public override async Task<bool> PreloadResources(bool force)
         {
             if (IsLoaded && !force)
                 return true;

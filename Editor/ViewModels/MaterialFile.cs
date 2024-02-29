@@ -97,18 +97,18 @@ namespace SailorEditor.ViewModels
         [ObservableProperty]
         private ObservableList<Observable<string>> shaderDefines = new();
         private Dictionary<string, object> AssetProperties { get; set; } = new();
-        protected override void UpdateModel()
+        protected override async Task UpdateModel()
         {
-            AssetProperties["bEnableDepthTest"] = EnableDepthTest.ToString();
-            AssetProperties["bEnableZWrite"] = EnableZWrite.ToString();
-            AssetProperties["bSupportMultisampling"] = SupportMultisampling.ToString();
-            AssetProperties["bCustomDepthShader"] = CustomDepthShader.ToString();
-            AssetProperties["depthBias"] = DepthBias.ToString();
-            AssetProperties["renderQueue"] = RenderQueue.ToString();
-            AssetProperties["cullMode"] = CullMode.ToString();
-            AssetProperties["blendMode"] = BlendMode.ToString();
-            AssetProperties["fillMode"] = FillMode.ToString();
-            AssetProperties["shaderUid"] = Shader.ToString();
+            AssetProperties["bEnableDepthTest"] = EnableDepthTest;
+            AssetProperties["bEnableZWrite"] = EnableZWrite;
+            AssetProperties["bSupportMultisampling"] = SupportMultisampling;
+            AssetProperties["bCustomDepthShader"] = CustomDepthShader;
+            AssetProperties["depthBias"] = DepthBias;
+            AssetProperties["renderQueue"] = RenderQueue;
+            AssetProperties["cullMode"] = CullMode;
+            AssetProperties["blendMode"] = BlendMode;
+            AssetProperties["fillMode"] = FillMode;
+            AssetProperties["shaderUid"] = Shader;
 
             // Collections
             AssetProperties["defines"] = ShaderDefines.Select((el) => el.Value).ToList();
@@ -127,9 +127,9 @@ namespace SailorEditor.ViewModels
 
             IsDirty = false;
         }
-        public override void UpdateAssetFile()
+        public override async Task UpdateAssetFile()
         {
-            UpdateModel();
+            await UpdateModel();
 
             using (var yamlAssetInfo = new FileStream(Asset.FullName, FileMode.Create))
             using (var writer = new StreamWriter(yamlAssetInfo))
@@ -145,7 +145,7 @@ namespace SailorEditor.ViewModels
             IsDirty = false;
         }
 
-        public override bool PreloadResources(bool force)
+        public override async Task<bool> PreloadResources(bool force)
         {
             if (!IsLoaded || force)
             {
@@ -291,5 +291,6 @@ namespace SailorEditor.ViewModels
 
             return true;
         }
+
     }
 }

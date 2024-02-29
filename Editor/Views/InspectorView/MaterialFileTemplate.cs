@@ -17,8 +17,11 @@ public class MaterialFileTemplate : AssetFileTemplate
             shaderLabel.SetBinding(Label.TextProperty, new Binding(nameof(MaterialFile.Shader), BindingMode.Default, new AssetUIDToFilenameConverter()));
             shaderLabel.Behaviors.Add(new AssetUIDClickable(nameof(MaterialFile.Shader)));
 
+            var entry = new Entry { FontSize = 12 };
+            entry.SetBinding(Entry.TextProperty, new Binding(nameof(MaterialFile.DepthBias), BindingMode.TwoWay, new FloatValueConverter()));
+
             TemplateBuilder.AddGridRowWithLabel(props, "Render Queue", TemplateBuilder.CreateEntry(nameof(MaterialFile.RenderQueue)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Depth Bias", TemplateBuilder.CreateEntry(nameof(MaterialFile.DepthBias)), GridLength.Auto);
+            TemplateBuilder.AddGridRowWithLabel(props, "Depth Bias", entry, GridLength.Auto);
 
             TemplateBuilder.AddGridRowWithLabel(props, "Enable DepthTest", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.EnableDepthTest)), GridLength.Auto);
             TemplateBuilder.AddGridRowWithLabel(props, "Enable ZWrite", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.EnableZWrite)), GridLength.Auto);

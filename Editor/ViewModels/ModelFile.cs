@@ -10,6 +10,7 @@ using SailorEditor.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Maui.Core.Extensions;
+using SailorEditor.Utility;
 
 namespace SailorEditor.ViewModels
 {
@@ -23,16 +24,18 @@ namespace SailorEditor.ViewModels
         private bool shouldBatchByMaterial;
 
         [ObservableProperty]
-        private ObservableCollection<AssetUID> defaultMaterials = new();
-        protected override void UpdateModel()
+        private ObservableList<Observable<string>> defaultMaterials = new();
+
+        protected override async Task UpdateModel()
         {
-            Properties["bShouldGenerateMaterials"] = ShouldGenerateMaterials.ToString();
-            Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial.ToString();
-            Properties["defaultMaterials"] = DefaultMaterials.ToString();
+            Properties["bShouldGenerateMaterials"] = ShouldGenerateMaterials;
+            Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial;
+            Properties["defaultMaterials"] = DefaultMaterials.Select((el) => el.Value).ToList();
 
             IsDirty = false;
         }
-        public override bool PreloadResources(bool force)
+
+        public override async Task<bool> PreloadResources(bool force)
         {
             if (!IsLoaded || force)
             {
@@ -50,7 +53,7 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "defaultMaterials":
                                 {
-                                    var parsed = new List<AssetUID>();
+                                    var parsed = new ObservableList<Observable<AssetUID>>();
                                     bool ignoreFirst = false;
                                     foreach (var uid in (e.Value as YamlNode).AllNodes)
                                     {
@@ -63,11 +66,14 @@ namespace SailorEditor.ViewModels
                                         parsed.Add((AssetUID)uid.ToString());
                                     }
 
-                                    DefaultMaterials = parsed.ToObservableCollection();
+                                    DefaultMaterials = parsed;
                                 }
                                 break;
                         }
                     }
+
+                    DefaultMaterials.CollectionChanged += (a, e) => MarkDirty(nameof(DefaultMaterials));
+                    DefaultMaterials.ItemChanged += (a, e) => MarkDirty(nameof(DefaultMaterials));
                 }
                 catch (Exception e)
                 {

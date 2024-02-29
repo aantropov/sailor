@@ -16,8 +16,8 @@ namespace SailorEditor.Utility
     {
         readonly IDictionary<TKey, TValue> dictionary;
 
-        public event NotifyCollectionChangedEventHandler? CollectionChanged;
-        public event PropertyChangedEventHandler? PropertyChanged;
+        public event NotifyCollectionChangedEventHandler CollectionChanged;
+        public event PropertyChangedEventHandler PropertyChanged;
 
         public ObservableDictionary() : this(new Dictionary<TKey, TValue>()) { }
         public ObservableDictionary(IDictionary<TKey, TValue> dictionary) { this.dictionary = dictionary; }
