@@ -46,16 +46,16 @@ namespace SailorEditor.ViewModels
         public int CompareTo(Vec4 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y) + Z.CompareTo(other.Z) + W.CompareTo(other.W);
 
         [ObservableProperty]
-        float x;
+        float x = 0.0f;
 
         [ObservableProperty]
-        float y;
+        float y = 0.0f;
 
         [ObservableProperty]
-        float z;
+        float z = 0.0f;
 
         [ObservableProperty]
-        float w;
+        float w = 0.0f;
     }
 
     public partial class Uniform<T> : ObservableObject, ICloneable

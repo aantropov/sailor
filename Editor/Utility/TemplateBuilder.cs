@@ -131,25 +131,31 @@ namespace SailorEditor.Helpers
                                 var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
 
                                 if ((sender as Button).BindingContext is Uniform<T> uniform)
-                                {
-                                    if (asset.UID is T uid)
-                                        uniform.Value = uid;
-                                    else
-                                        uniform.Value = default(T);
-                                }
+                                    uniform.Value = asset.UID is T uid ? uid : default(T);
                             }
                         };
+
+                        var image = new Image
+                        {
+                            WidthRequest = 64,
+                            HeightRequest = 64,
+                            Aspect = Aspect.AspectFit,
+                            HorizontalOptions = LayoutOptions.Start,
+                            VerticalOptions = LayoutOptions.Start
+                        };
+
+                        image.SetBinding(Image.SourceProperty, new Binding("Value", BindingMode.Default, new AssetUIDToTextureConverter()));
 
                         var valueEntry = new Label();
                         valueEntry.SetBinding(Label.TextProperty, new Binding("Value", BindingMode.Default, converter));
                         valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
 
                         var stackLayout = new HorizontalStackLayout();
-                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });
+                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { image, selectButton, valueEntry } });
 
                         valueView = stackLayout;
                     }
-                    if (typeof(T) == typeof(Vec4))
+                    else if (typeof(T) == typeof(Vec4))
                     {
                         var valueXEntry = new Entry();
                         valueXEntry.SetBinding(Entry.TextProperty, new Binding("Value.X", BindingMode.TwoWay, converter));

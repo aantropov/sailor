@@ -6,6 +6,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace SailorEditor.Services
 {
@@ -19,6 +20,28 @@ namespace SailorEditor.Services
         public async void OnSelectAsset(AssetFile assetFile)
         {
             await assetFile.PreloadResources(false);
+
+            if (assetFile is MaterialFile material)
+            {
+                var AssetService = MauiProgram.GetService<AssetsService>();
+
+                var preloadTasks = new List<Task>();
+                foreach (var tex in material.Samplers)
+                {
+                    var task = Task.Run(async () =>
+                     {
+                         var file = AssetService.Files.Find((el) => el.UID == tex.Value);
+                         if (file != null)
+                         {
+                             await file.PreloadResources(false);
+                         }
+                     });
+
+                    preloadTasks.Add(task);
+                }
+
+                await Task.WhenAll(preloadTasks);
+            }
 
             SelectedItems.Clear();
             SelectedItems.Add(assetFile);
