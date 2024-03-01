@@ -18,6 +18,7 @@ using CommunityToolkit.Maui.Storage;
 using System.Text;
 using System.Threading;
 using SailorEditor.Services;
+using System.Numerics;
 
 namespace SailorEditor.Helpers
 {
@@ -106,7 +107,7 @@ namespace SailorEditor.Helpers
             return entry;
         }
         public static View CreateUniformEditor<T>(string bindingPath, string labelText, string defaultKey = default(string), IValueConverter converter = null)
-            where T : IComparable<T>
+        where T : IComparable<T>
         {
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
 
@@ -145,6 +146,25 @@ namespace SailorEditor.Helpers
 
                         var stackLayout = new HorizontalStackLayout();
                         stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });
+
+                        valueView = stackLayout;
+                    }
+                    if (typeof(T) == typeof(Vec4))
+                    {
+                        var valueXEntry = new Entry();
+                        valueXEntry.SetBinding(Entry.TextProperty, new Binding("Value.X", BindingMode.TwoWay, converter));
+
+                        var valueYEntry = new Entry();
+                        valueYEntry.SetBinding(Entry.TextProperty, new Binding("Value.Y", BindingMode.TwoWay, converter));
+
+                        var valueZEntry = new Entry();
+                        valueZEntry.SetBinding(Entry.TextProperty, new Binding("Value.Z", BindingMode.TwoWay, converter));
+
+                        var valueWEntry = new Entry();
+                        valueWEntry.SetBinding(Entry.TextProperty, new Binding("Value.W", BindingMode.TwoWay, converter));
+
+                        var stackLayout = new HorizontalStackLayout();
+                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry, valueWEntry } });
 
                         valueView = stackLayout;
                     }

@@ -28,8 +28,38 @@ namespace SailorEditor.ViewModels
     using AssetUID = string;
     using BlendMode = Engine.BlendMode;
 
+    public partial class Vec4 : ObservableObject, ICloneable, IComparable<Vec4>
+    {
+        public Vec4() { }
+        public Vec4(Vector4 value)
+        {
+            X = value.X;
+            Y = value.Y;
+            Z = value.Z;
+            W = value.W;
+        }
+
+        public static implicit operator Vec4(Vector4 value) => new Vec4 { X = value.X, Y = value.Y, Z = value.Z, W = value.W };
+        public static implicit operator Vector4(Vec4 uniform) => new Vector4(uniform.X, uniform.Y, uniform.Z, uniform.W);
+        public object Clone() => new Vec4 { X = X, Y = Y, Z = Z, W = W };
+        public override string ToString() => $"<{x} {y} {z} {w}>";
+        public int CompareTo(Vec4 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y) + Z.CompareTo(other.Z) + W.CompareTo(other.W);
+
+        [ObservableProperty]
+        float x;
+
+        [ObservableProperty]
+        float y;
+
+        [ObservableProperty]
+        float z;
+
+        [ObservableProperty]
+        float w;
+    }
+
     public partial class Uniform<T> : ObservableObject, ICloneable
-        where T : IComparable<T>
+    where T : IComparable<T>
     {
         public object Clone() => new Uniform<T> { Key = Key, Value = Value };
         public override bool Equals(object obj)
@@ -46,11 +76,40 @@ namespace SailorEditor.ViewModels
 
         public override int GetHashCode() => Key?.GetHashCode() ?? 0;
 
+        private void Value_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            OnPropertyChanged(nameof(Value));
+        }
+
+        public T Value
+        {
+            get => _value;
+            set
+            {
+                if (!Equals(_value, value))
+                {
+                    if (_value != null)
+                    {
+                        if (_value is INotifyPropertyChanged propChanged)
+                            propChanged.PropertyChanged -= Value_PropertyChanged;
+                    }
+
+                    SetProperty(ref _value, value, nameof(Value));
+
+                    if (_value != null)
+                    {
+                        if (_value is INotifyPropertyChanged propChanged)
+                            propChanged.PropertyChanged += Value_PropertyChanged;
+                    }
+                }
+            }
+        }
+
+
         [ObservableProperty]
         string key;
 
-        [ObservableProperty]
-        T value;
+        T _value;
     }
 
     public partial class MaterialFile : AssetFile
@@ -89,7 +148,7 @@ namespace SailorEditor.ViewModels
         private ObservableList<Uniform<AssetUID>> samplers = new();
 
         [ObservableProperty]
-        private ObservableDictionary<Observable<string>, Vector4> uniformsVec4 = new();
+        private ObservableList<Uniform<Vec4>> uniformsVec4 = new();
 
         [ObservableProperty]
         private ObservableList<Uniform<float>> uniformsFloat = new();
@@ -237,7 +296,7 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "uniformsVec4":
                                 {
-                                    var parsed = new ObservableDictionary<Observable<string>, Vector4>();
+                                    var parsed = new ObservableList<Uniform<Vec4>>();
                                     foreach (var el in (e.Value as dynamic).Children)
                                     {
                                         var vec4 = el.Value.Children;
@@ -248,7 +307,7 @@ namespace SailorEditor.ViewModels
                                         v.Z = float.Parse(vec4[2].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
                                         v.W = float.Parse(vec4[3].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
 
-                                        parsed[new Observable<string>(el.Key.ToString())] = v;
+                                        parsed.Add(new Uniform<Vec4> { Key = el.Key.ToString(), Value = v });
                                     }
 
                                     UniformsVec4 = parsed;
@@ -275,6 +334,9 @@ namespace SailorEditor.ViewModels
 
                     UniformsFloat.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
                     UniformsFloat.ItemChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
+
+                    UniformsVec4.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsVec4));
+                    UniformsVec4.ItemChanged += (a, e) => MarkDirty(nameof(UniformsVec4));
 
                     Samplers.CollectionChanged += (a, e) => MarkDirty(nameof(Samplers));
                     Samplers.ItemChanged += (a, e) => MarkDirty(nameof(Samplers));

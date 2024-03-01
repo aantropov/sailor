@@ -3,6 +3,7 @@ using SailorEditor.Engine;
 using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
+using System.Numerics;
 
 public class MaterialFileTemplate : AssetFileTemplate
 {
@@ -45,6 +46,10 @@ public class MaterialFileTemplate : AssetFileTemplate
 
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<string>(nameof(MaterialFile.Samplers),
                 "Samplers", "newTextureSampler", new AssetUIDToFilenameConverter()),
+                GridLength.Auto);
+
+            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<Vec4>(nameof(MaterialFile.UniformsVec4),
+                "Uniforms Vec4", "material.newParam", new FloatValueConverter()),
                 GridLength.Auto);
 
             TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<float>(nameof(MaterialFile.UniformsFloat),
