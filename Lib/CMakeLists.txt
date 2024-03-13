@@ -24,6 +24,8 @@ target_include_directories(SailorLib PUBLIC ${SAILOR_RUNTIME_DIR} ${SAILOR_EXTER
 target_compile_features(SailorLib PUBLIC cxx_std_20)
 target_link_libraries(SailorLib yaml-cpp::yaml-cpp assimp::assimp nlohmann_json::nlohmann_json refl-cpp::refl-cpp)
 
+target_compile_definitions(SailorLib PUBLIC NOMINMAX)
+
 if(NOT ${CMAKE_BUILD_TYPE} MATCHES Release)
     target_compile_definitions(SailorLib PUBLIC SAILOR_VULKAN_ENABLE_VALIDATION_LAYER)    
 else()

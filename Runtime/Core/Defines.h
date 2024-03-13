@@ -46,14 +46,6 @@ typedef unsigned long DWORD;
 #define MAGIC_ENUM_RANGE_MAX 256
 #include "magic_enum/include/magic_enum.hpp"
 
-#ifndef min
-#define min(a,b) ((a) < (b) ? (a) : (b))
-#endif
-
-#ifndef max
-#define max(a,b) ((a) > (b) ? (a) : (b))
-#endif
-
 #define checkAtCompileTime(expr, msg) static_assert(expr, #msg);
 #define check(expr) assert(expr);
 #define ensure(expr, msg, ...) { static bool bOnce = false; if(!(expr) && !bOnce) { SAILOR_LOG(#msg, __VA_ARGS__); bOnce = true; }}
