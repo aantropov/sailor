@@ -2,8 +2,24 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+
+public class AppInterop
+{
+    [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void Initialize(string[] commandLineArgs, int num);
+
+    [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void Start();
+
+    [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void Stop();
+
+    [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void Shutdown();
+}
 
 namespace SailorEditor
 {
@@ -30,7 +46,7 @@ namespace SailorEditor
 #if WINDOWS
             IntPtr handle = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
 
-            string commandArgs = $"--hwnd {handle} --editor " + commandlineArgs;
+            string commandArgs = $"--hwnd {handle} --editor --workspace ../ " + commandlineArgs;
 
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
@@ -47,6 +63,19 @@ namespace SailorEditor
                     StartInfo = startInfo
                 };
                 process.Start();
+
+                /*
+                string workspace = (Path.GetFullPath(Path.Combine(GetEngineWorkingDirectory(), "..")) + "\\").Replace("\\", "/");
+                var args = new string[] { GetPathToEngineExec(bDebug), "--workspace", workspace }.Concat(commandArgs.Split(" ")).ToArray();
+
+                Task.Run(() =>
+                {
+                    AppInterop.Initialize(args, args.Length);
+                    AppInterop.Start();
+                    AppInterop.Stop();
+                    AppInterop.Shutdown();
+                });
+                */
             }
             catch (Exception ex)
             {

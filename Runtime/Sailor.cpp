@@ -31,6 +31,7 @@ using namespace Sailor;
 using namespace Sailor::RHI;
 
 App* App::s_pInstance = nullptr;
+std::string App::s_workspace = "../";
 
 AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 {
@@ -56,6 +57,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		else if (arg == "--waitfordebugger")
 		{
 			params.m_bWaitForDebugger = true;
+		}
+		else if (arg == "--workspace")
+		{
+			params.m_workspace = Utils::GetArgValue(args, i, num);
 		}
 	}
 
@@ -98,12 +103,26 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	s_pInstance = new App();
 
+	if (!params.m_workspace.empty())
+	{
+		s_pInstance->s_workspace = params.m_workspace;
+	}
+	
+	printf("Workspace: %s", App::GetWorkspace().c_str());
+
 #if defined(SAILOR_BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
 	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
 #endif
 
 	s_pInstance->m_pMainWindow = TUniquePtr<Win32::Window>::Make();
-	s_pInstance->m_pMainWindow->Create("Sailor Viewport", "SailorViewport", 1024, 768, false, false, params.m_editorHwnd);
+
+	std::string className = "Sailor Engine";
+	if (params.m_editorHwnd != 0)
+	{
+		className = std::format("SailorEditor PID{}", ::GetCurrentThreadId());
+	}
+
+	s_pInstance->m_pMainWindow->Create(className.c_str(), className.c_str(), 1024, 768, false, false, params.m_editorHwnd);
 
 #ifdef SAILOR_VULKAN_ENABLE_VALIDATION_LAYER
 	const bool bIsEnabledVulkanValidationLayers = true;
@@ -114,13 +133,13 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
 
 #ifdef BUILD_WITH_EASY_PROFILER
-	SAILOR_ENQUEUE_TASK("Initialize profiler", ([]() {profiler::startListen(); }));
+	SAILOR_ENQUEUE_TASK("Initialize profiler", ([]() { profiler::startListen(); }));
 	EASY_MAIN_THREAD;
 #endif
 
 	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bIsEnabledVulkanValidationLayers));
-	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 
+	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
 
 	auto textureInfoHandler = s_pInstance->AddSubmodule(TSubmodule<TextureAssetInfoHandler>::Make(assetRegistry));
@@ -237,7 +256,7 @@ void App::Start()
 		{
 			lastFrame = currentFrame;
 
-			//Frame succesfully pushed
+			//Frame successfully pushed
 			frameCounter++;
 		}
 

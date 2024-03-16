@@ -1,6 +1,7 @@
 #pragma once
 #include <chrono>
 #include <ctime>
+#include "Sailor.h"
 #include "Containers/Vector.h"
 #include "Containers/Map.h"
 #include "AssetRegistry/FileId.h"
@@ -15,15 +16,15 @@ namespace Sailor
 	{
 	public:
 
+		static std::string GetShaderCacheFilepath() { return App::GetWorkspace() + "Cache/ShaderCache.json"; }
+		static std::string GetPrecompiledShadersFolder() { return App::GetWorkspace() + "Cache/PrecompiledShaders/"; }
+		static std::string GetCompiledShadersFolder() { return App::GetWorkspace() + "Cache/CompiledShaders/"; }
+		static std::string GetCompiledShadersWithDebugFolder() { return App::GetWorkspace() + "Cache/CompiledShadersWithDebug/"; }
+
 		static constexpr const char* FragmentShaderTag = "FRAGMENT";
 		static constexpr const char* VertexShaderTag = "VERTEX";
 		static constexpr const char* ComputeShaderTag = "COMPUTE";
 
-		static constexpr const char* CacheRootFolder = "../Cache/";
-		static constexpr const char* ShaderCacheFilepath = "../Cache/ShaderCache.json";
-		static constexpr const char* PrecompiledShadersFolder = "../Cache/PrecompiledShaders/";
-		static constexpr const char* CompiledShadersFolder = "../Cache/CompiledShaders//";
-		static constexpr const char* CompiledShadersWithDebugFolder = "../Cache/CompiledShadersWithDebug/";
 		static constexpr const char* CompiledShaderFileExtension = "spirv";
 		static constexpr const char* PrecompiledShaderFileExtension = "glsl";
 
@@ -33,7 +34,7 @@ namespace Sailor
 		SAILOR_API void CachePrecompiledGlsl(const FileId& uid, uint32_t permutation, const std::string& vertexGlsl, const std::string& fragmentGlsl, const std::string& computeGlsl);
 		SAILOR_API void CacheSpirvWithDebugInfo(const FileId& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv);
 		SAILOR_API void CacheSpirv_ThreadSafe(const FileId& uid, uint32_t permutation, const TVector<uint32_t>& vertexSpirv, const TVector<uint32_t>& fragmentSpirv, const TVector<uint32_t>& computeSpirv);
-		
+
 		SAILOR_API bool GetSpirvCode(const FileId& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, TVector<uint32_t>& computeSpirv, bool bIsDebug = false);
 
 		SAILOR_API void Remove(const FileId& uid);

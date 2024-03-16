@@ -33,7 +33,7 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		[=]() -> TParseRes
 		{
 			std::string temperatures;
-	if (!AssetRegistry::ReadAllTextFile(AssetRegistry::ContentRootFolder + std::string("StarsColor.yaml"), temperatures))
+	if (!AssetRegistry::ReadAllTextFile(AssetRegistry::GetContentFolder() + std::string("StarsColor.yaml"), temperatures))
 	{
 		return TParseRes();
 	}
@@ -58,7 +58,7 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 	}
 
 	TVector<uint8_t> starCatalogueData;
-	AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::ContentRootFolder + std::string("BSC5")), starCatalogueData);
+	AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::GetContentFolder() + std::string("BSC5")), starCatalogueData);
 
 	BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
 
@@ -282,7 +282,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		bool bShouldReturn = false;
 
 		TVector<uint8_t> noiseHigh;
-		auto pathNoiseHigh = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseHigh.bin"));
+		auto pathNoiseHigh = std::filesystem::path(AssetRegistry::GetCacheFolder() + std::string("CloudsNoiseHigh.bin"));
 		if (!AssetRegistry::ReadBinaryFile(pathNoiseHigh, noiseHigh))
 		{
 			m_createNoiseHigh = Tasks::CreateTask("Generate Clouds Noise High",
@@ -296,7 +296,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		}
 
 		TVector<uint8_t> noiseLow;
-		auto pathNoiseLow = std::filesystem::path(AssetRegistry::CacheRootFolder + std::string("CloudsNoiseLow.bin"));
+		auto pathNoiseLow = std::filesystem::path(AssetRegistry::GetCacheFolder() + std::string("CloudsNoiseLow.bin"));
 		if (!AssetRegistry::ReadBinaryFile(pathNoiseLow, noiseLow))
 		{
 			m_createNoiseLow = Tasks::CreateTask("Generate Clouds Noise Low",

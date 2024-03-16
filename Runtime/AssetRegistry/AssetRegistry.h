@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <fstream>
+#include "Sailor.h"
 #include "Containers/Containers.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/Submodule.h"
@@ -19,8 +20,9 @@ namespace Sailor
 	{
 	public:
 
-		static constexpr const char* ContentRootFolder = "../Content/";
-		static constexpr const char* CacheRootFolder = "../Cache/";
+		static std::string GetContentFolder() { return App::GetWorkspace() + "Content/"; }
+		static std::string GetCacheFolder() { return App::GetWorkspace() + "Cache/"; }
+
 		static constexpr const char* MetaFileExtension = "asset";
 
 		SAILOR_API virtual ~AssetRegistry() override;

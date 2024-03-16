@@ -430,17 +430,18 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 		return FALSE;
 	}
 	case WM_SYSCOMMAND:
-	{    switch (wParam & 0xFFF0)
 	{
-	case SC_SCREENSAVE:
-	case SC_MONITORPOWER:
-		if (pWindow->IsFullscreen())
+		switch (wParam & 0xFFF0)
+		{
+		case SC_SCREENSAVE:
+		case SC_MONITORPOWER:
+			if (pWindow->IsFullscreen())
+				return FALSE;
+			break;
+		case SC_KEYMENU:
 			return FALSE;
+		}
 		break;
-	case SC_KEYMENU:
-		return FALSE;
-	}
-	break;
 	}
 	case WM_ERASEBKGND:
 		return FALSE;

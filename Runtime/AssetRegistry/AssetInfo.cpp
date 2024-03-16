@@ -91,14 +91,14 @@ std::string AssetInfo::GetMetaFilepath() const
 std::string AssetInfo::GetRelativeAssetFilepath() const
 {
 	std::string res = GetAssetFilepath();
-	Utils::Erase(res, AssetRegistry::ContentRootFolder);
+	Utils::Erase(res, AssetRegistry::GetContentFolder());
 	return res;
 }
 
 std::string AssetInfo::GetRelativeMetaFilepath() const
 {
 	std::string res = GetMetaFilepath();
-	Utils::Erase(res, AssetRegistry::ContentRootFolder);
+	Utils::Erase(res, AssetRegistry::GetContentFolder());
 	return res;
 }
 

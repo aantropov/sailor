@@ -22,7 +22,7 @@ std::filesystem::path ShaderCache::GetCachedShaderFilepath(const FileId& uid, in
 {
 	std::string res;
 	std::stringstream stream;
-	stream << CompiledShadersFolder << uid.ToString() << shaderKind << permutation << "." << CompiledShaderFileExtension;
+	stream << GetCompiledShadersFolder() << uid.ToString() << shaderKind << permutation << "." << CompiledShaderFileExtension;
 	stream >> res;
 	return res;
 }
@@ -31,7 +31,7 @@ std::filesystem::path ShaderCache::GetCachedShaderWithDebugFilepath(const FileId
 {
 	std::string res;
 	std::stringstream stream;
-	stream << CompiledShadersWithDebugFolder << uid.ToString() << shaderKind << permutation << "." << CompiledShaderFileExtension;
+	stream << GetCompiledShadersWithDebugFolder() << uid.ToString() << shaderKind << permutation << "." << CompiledShaderFileExtension;
 	stream >> res;
 	return res;
 }
@@ -104,15 +104,15 @@ void ShaderCache::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::filesystem::create_directory(CacheRootFolder);
-	std::filesystem::create_directory(CompiledShadersFolder);
-	std::filesystem::create_directory(PrecompiledShadersFolder);
-	std::filesystem::create_directory(CompiledShadersWithDebugFolder);
+	std::filesystem::create_directory(AssetRegistry::GetCacheFolder());
+	std::filesystem::create_directory(GetCompiledShadersFolder());
+	std::filesystem::create_directory(GetPrecompiledShadersFolder());
+	std::filesystem::create_directory(GetCompiledShadersWithDebugFolder());
 
-	auto shaderCacheFilePath = std::filesystem::path(ShaderCacheFilepath);
-	if (!std::filesystem::exists(ShaderCacheFilepath))
+	auto shaderCacheFilePath = std::filesystem::path(GetShaderCacheFilepath());
+	if (!std::filesystem::exists(GetShaderCacheFilepath()))
 	{
-		std::ofstream assetFile(ShaderCacheFilepath);
+		std::ofstream assetFile(GetShaderCacheFilepath());
 
 		json dataJson;
 
@@ -145,7 +145,7 @@ void ShaderCache::SaveCache(bool bForcely)
 
 	if (bForcely || m_bIsDirty)
 	{
-		std::ofstream assetFile(ShaderCacheFilepath);
+		std::ofstream assetFile(GetShaderCacheFilepath());
 
 		json cacheJson;
 		m_cache.Serialize(cacheJson);
@@ -161,7 +161,7 @@ void ShaderCache::LoadCache()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::ifstream assetFile(ShaderCacheFilepath);
+	std::ifstream assetFile(GetShaderCacheFilepath());
 
 	json dataJson;
 	assetFile >> dataJson;
@@ -176,10 +176,10 @@ void ShaderCache::ClearAll()
 {
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
-	std::filesystem::remove_all(PrecompiledShadersFolder);
+	std::filesystem::remove_all(GetPrecompiledShadersFolder());
 	std::filesystem::remove_all(CompiledShaderFileExtension);
-	std::filesystem::remove_all(CompiledShadersWithDebugFolder);
-	std::filesystem::remove(ShaderCacheFilepath);
+	std::filesystem::remove_all(GetCompiledShadersWithDebugFolder());
+	std::filesystem::remove(GetShaderCacheFilepath());
 }
 
 void ShaderCache::ClearExpired()
@@ -220,7 +220,7 @@ void ShaderCache::ClearExpired()
 		Remove(entry);
 	}
 
-	for (const auto& entry : std::filesystem::directory_iterator(CompiledShadersFolder))
+	for (const auto& entry : std::filesystem::directory_iterator(GetCompiledShadersFolder()))
 	{
 		if (entry.is_regular_file() && !whiteListSpirv.Contains(entry.path().string()))
 		{
@@ -490,7 +490,7 @@ bool ShaderCache::GetTimeStamp(const FileId& uid, time_t& outTimestamp) const
 			outTimestamp = assetInfo->GetAssetLastModificationTime();
 			for (const auto& include : shaderAsset->GetIncludes())
 			{
-				outTimestamp = std::max(outTimestamp, Sailor::Utils::GetFileModificationTime(AssetRegistry::ContentRootFolder + include));
+				outTimestamp = std::max(outTimestamp, Sailor::Utils::GetFileModificationTime(AssetRegistry::GetContentFolder() + include));
 			}
 			return true;
 		}

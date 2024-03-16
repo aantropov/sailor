@@ -319,7 +319,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 	for (const auto& material : materials)
 	{
-		std::string materialsFolder = AssetRegistry::ContentRootFolder + texturesFolder + "materials/";
+		std::string materialsFolder = AssetRegistry::GetContentFolder() + texturesFolder + "materials/";
 		std::filesystem::create_directory(materialsFolder);
 
 		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));

@@ -44,7 +44,7 @@ void AssetRegistry::ScanContentFolder()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	ScanFolder(ContentRootFolder);
+	ScanFolder(GetContentFolder());
 }
 
 bool AssetRegistry::RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler)
@@ -83,8 +83,8 @@ const FileId& AssetRegistry::GetOrLoadAsset(const std::string& assetFilepath)
 const FileId& AssetRegistry::LoadAsset(const std::string& assetFilepath)
 {
 	// Convert to absolute path
-	const std::string filepath = (!assetFilepath._Starts_with(ContentRootFolder)) ?
-		(ContentRootFolder + Utils::SanitizeFilepath(assetFilepath)) :
+	const std::string filepath = (!assetFilepath._Starts_with(GetContentFolder())) ?
+		(GetContentFolder() + Utils::SanitizeFilepath(assetFilepath)) :
 		Utils::SanitizeFilepath(assetFilepath);
 
 	const std::string extension = Utils::GetFileExtension(filepath);
@@ -173,7 +173,7 @@ AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(FileId uid) const
 
 AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFilepath) const
 {
-	auto it = m_fileIds.Find(ContentRootFolder + assetFilepath);
+	auto it = m_fileIds.Find(GetContentFolder() + assetFilepath);
 	if (it != m_fileIds.end())
 	{
 		return GetAssetInfoPtr_Internal(it.Value());

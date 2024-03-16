@@ -21,18 +21,22 @@ namespace Sailor
 		bool m_bIsEditor = false;
 		uint32_t m_editorPort = 32800;
 		HWND m_editorHwnd{};
+		std::string m_workspace;
 	};
 
-	class SAILOR_API App
+	class App
 	{
 		static constexpr size_t MaxSubmodules = 64u;
+		static std::string s_workspace;
 
 	public:
 
-		static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
-		static void Start();
-		static void Stop();
-		static void Shutdown();
+		static const std::string& GetWorkspace() { return s_workspace; }
+
+		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
+		SAILOR_API static void Start();
+		SAILOR_API static void Stop();
+		SAILOR_API static void Shutdown();
 
 		static SubmoduleBase* GetSubmodule(uint32_t index) { return s_pInstance->m_submodules[index].GetRawPtr(); }
 

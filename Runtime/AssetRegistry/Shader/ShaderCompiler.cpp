@@ -64,7 +64,7 @@ public:
 
 	static std::string ReadIncludeFile(const std::string& requestedSource)
 	{
-		const string filepath = AssetRegistry::ContentRootFolder + string(requestedSource);
+		const string filepath = AssetRegistry::GetContentFolder() + string(requestedSource);
 		string contents = "";
 		AssetRegistry::ReadAllTextFile(filepath, contents);
 		return contents;
