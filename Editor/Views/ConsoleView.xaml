@@ -3,7 +3,7 @@
              x:Name="this"
              x:Class="SailorEditor.Views.ConsoleView">
 
-    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
+    <Frame>
         <Grid RowSpacing="0" ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>

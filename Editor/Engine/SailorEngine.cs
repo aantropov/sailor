@@ -46,12 +46,12 @@ namespace SailorEditor
 #if WINDOWS
             IntPtr handle = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
 
-            string commandArgs = $"--hwnd {handle} --editor --workspace ../ " + commandlineArgs;
+            string commandArgs = $"--hwnd {handle} --editor " + commandlineArgs;
 
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = GetPathToEngineExec(bDebug),
-                Arguments = commandArgs,
+                Arguments = commandArgs + $" --workspace ../",
                 WorkingDirectory = GetEngineWorkingDirectory(),
                 UseShellExecute = false
             };
@@ -64,18 +64,16 @@ namespace SailorEditor
                 };
                 process.Start();
 
-                /*
                 string workspace = (Path.GetFullPath(Path.Combine(GetEngineWorkingDirectory(), "..")) + "\\").Replace("\\", "/");
                 var args = new string[] { GetPathToEngineExec(bDebug), "--workspace", workspace }.Concat(commandArgs.Split(" ")).ToArray();
 
-                Task.Run(() =>
+                /*Task.Run(() =>
                 {
                     AppInterop.Initialize(args, args.Length);
                     AppInterop.Start();
                     AppInterop.Stop();
                     AppInterop.Shutdown();
-                });
-                */
+                });*/
             }
             catch (Exception ex)
             {

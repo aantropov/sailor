@@ -3,7 +3,7 @@
              x:Name="this"
              x:Class="SailorEditor.Views.HierarchyView">
 
-    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
+    <Frame>
         <VerticalStackLayout>
             <Label Text="HierarchyView" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"/>
         </VerticalStackLayout>

@@ -159,8 +159,7 @@ namespace SailorEditor.Controls
         {
             var label = new Label
             {
-                VerticalOptions = LayoutOptions.Center,
-                TextColor = Colors.Black
+                VerticalOptions = LayoutOptions.Center
             };
             label.SetBinding(Label.TextProperty, "Key");
 
@@ -186,8 +185,7 @@ namespace SailorEditor.Controls
             {
                 var label = new Label
                 {
-                    VerticalOptions = LayoutOptions.Center,
-                    TextColor = Colors.Black
+                    VerticalOptions = LayoutOptions.Center
                 };
                 label.SetBinding(Label.TextProperty, "Key");
 

@@ -4,7 +4,7 @@
              x:Class="SailorEditor.Views.ContentFolderView"
              xmlns:controls="clr-namespace:SailorEditor.Controls">
 
-    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
+    <Frame>
         <Grid RowSpacing="0" ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -15,7 +15,7 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Label Text="Folder" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"  Grid.Row="0" Grid.Column="0"/>
-            <controls:TreeView BackgroundColor="White" Margin="4" x:Name="FolderTree" Grid.Row="1" Grid.Column="0"/>
+            <controls:TreeView Margin="4" x:Name="FolderTree" Grid.Row="1" Grid.Column="0"/>
         </Grid>
     </Frame>
 </ContentView>

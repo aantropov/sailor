@@ -42,7 +42,7 @@ namespace SailorEditor.ViewModels
         public static implicit operator Vec4(Vector4 value) => new Vec4 { X = value.X, Y = value.Y, Z = value.Z, W = value.W };
         public static implicit operator Vector4(Vec4 uniform) => new Vector4(uniform.X, uniform.Y, uniform.Z, uniform.W);
         public object Clone() => new Vec4 { X = X, Y = Y, Z = Z, W = W };
-        public override string ToString() => $"<{x} {y} {z} {w}>";
+        public override string ToString() => $"<{X} {Y} {Z} {W}>";
         public int CompareTo(Vec4 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y) + Z.CompareTo(other.Z) + W.CompareTo(other.W);
 
         [ObservableProperty]

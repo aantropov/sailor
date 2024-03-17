@@ -3,7 +3,7 @@
              x:Name="this"
              x:Class="SailorEditor.Views.SceneView">
 
-    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
+    <Frame>
         <ScrollView>
             <VerticalStackLayout
             Spacing="25"

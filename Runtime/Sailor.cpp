@@ -107,8 +107,6 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	{
 		s_pInstance->s_workspace = params.m_workspace;
 	}
-	
-	printf("Workspace: %s", App::GetWorkspace().c_str());
 
 #if defined(SAILOR_BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
 	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
