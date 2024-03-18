@@ -70,6 +70,7 @@ namespace SailorEditor.Helpers
             grid.Children.Add(view);
             Grid.SetRow(view, grid.RowDefinitions.Count - 1);
         }
+
         public static void AddGridRowWithLabel(Grid grid, string labelText, View contentView, Microsoft.Maui.GridLength gridLength)
         {
             grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
@@ -79,6 +80,7 @@ namespace SailorEditor.Helpers
             grid.Add(label, 0, grid.RowDefinitions.Count - 1);
             grid.Add(contentView, 1, grid.RowDefinitions.Count - 1);
         }
+
         public static Picker CreateEnumPicker<TEnum>(string bindingPath) where TEnum : struct
         {
             var picker = new Picker
@@ -106,6 +108,7 @@ namespace SailorEditor.Helpers
 
             return entry;
         }
+
         public static View CreateUniformEditor<T>(string bindingPath, string labelText, string defaultKey = default(string), IValueConverter converter = null)
         where T : IComparable<T>
         {
@@ -146,12 +149,17 @@ namespace SailorEditor.Helpers
 
                         image.SetBinding(Image.SourceProperty, new Binding("Value", BindingMode.Default, new AssetUIDToTextureConverter()));
 
-                        var valueEntry = new Label();
+                        var valueEntry = new Label
+                        {
+                            HorizontalOptions = LayoutOptions.Center,
+                            VerticalOptions = LayoutOptions.Center
+                        };
+
                         valueEntry.SetBinding(Label.TextProperty, new Binding("Value", BindingMode.Default, converter));
                         valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
 
                         var stackLayout = new HorizontalStackLayout();
-                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { image, selectButton, valueEntry } });
+                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { image, valueEntry, selectButton } });
 
                         valueView = stackLayout;
                     }

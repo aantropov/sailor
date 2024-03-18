@@ -2,7 +2,8 @@
 <?xaml-comp compile="true" ?>
 <ResourceDictionary 
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="SailorEditor.Styles.LightThemeStyle">
 
     <SolidColorBrush x:Key="Primary" Color="#333337"/>
     <SolidColorBrush x:Key="Secondary" Color="#3C3C3C"/>
@@ -146,10 +147,10 @@
         <Setter Property="HasShadow" Value="False" />
         <Setter Property="BorderColor" Value="{StaticResource Gray500}" />
         <Setter Property="CornerRadius" Value="2" />
-        <Setter Property="BackgroundColor" Value="{StaticResource Gray950}" />        
-        <Setter Property="Margin" Value="1"/>        
+        <Setter Property="BackgroundColor" Value="{StaticResource Gray950}" />
+        <Setter Property="Margin" Value="1"/>
     </Style>
-    
+
     <Style TargetType="ImageButton">
         <Setter Property="Opacity" Value="1" />
         <Setter Property="BorderColor" Value="Transparent"/>

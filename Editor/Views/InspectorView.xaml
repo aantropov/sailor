@@ -3,7 +3,9 @@
              x:Name="this"
              x:Class="SailorEditor.Views.InspectorView"
              xmlns:models="clr-namespace:SailorEditor.ViewModels"
-             xmlns:helpers="clr-namespace:SailorEditor.Helpers">
+             xmlns:helpers="clr-namespace:SailorEditor.Helpers"
+             xmlns:utility="clr-namespace:CommunityToolkit.Mvvm.ComponentModel;assembly=CommunityToolkit.Mvvm"
+             xmlns:services="clr-namespace:SailorEditor.Services">
 
     <ContentView.Resources>
         <ResourceDictionary>
@@ -17,7 +19,7 @@
         </ResourceDictionary>
     </ContentView.Resources>
 
-    <Frame BorderColor="{Binding BorderColor, FallbackValue='Black'}">
+    <Frame>
         <Grid RowSpacing="0" ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -35,7 +37,7 @@
                     VerticalOptions="Start"
                     HorizontalOptions="StartAndExpand">
                     <RefreshView>
-                        <CollectionView x:Name="InspectedItem" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource TemplateSelector}"/>
+                        <CollectionView x:Name="InspectedItem" x:DataType="services:SelectionService" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource TemplateSelector}"/>
                     </RefreshView>
                 </VerticalStackLayout>
             </ScrollView>

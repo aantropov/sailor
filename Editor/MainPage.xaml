@@ -4,7 +4,6 @@
              xmlns:local="clr-namespace:SailorEditor"
              x:Class="SailorEditor.MainPage"
              Title=""
-             BackgroundColor="Grey"
              xmlns:views="clr-namespace:SailorEditor.Views"
              xmlns:controls="clr-namespace:SailorEditor.Controls">
 
@@ -17,6 +16,10 @@
             <MenuFlyoutItem Text ="Save" ></MenuFlyoutItem>
             <MenuFlyoutSeparator/>
             <MenuFlyoutItem Text ="Exit"></MenuFlyoutItem>
+        </MenuBarItem>
+        <MenuBarItem Text="Preferences">
+            <MenuFlyoutItem Text="Light Theme" Command="{Binding ChangeThemeCommand}" CommandParameter="LightThemeStyle" />
+            <MenuFlyoutItem Text="Dark Theme" Command="{Binding ChangeThemeCommand}" CommandParameter="DarkThemeStyle" />
         </MenuBarItem>
     </ContentPage.MenuBarItems>
 

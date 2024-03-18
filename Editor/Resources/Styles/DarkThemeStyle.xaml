@@ -1,10 +1,12 @@
 ﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                    x:Class="SailorEditor.Styles.DarkThemeStyle">
 
     <Color x:Key="PrimaryColor">#007ACC</Color>
     <Color x:Key="SecondaryColor">#3C3C3C</Color>
-    <Color x:Key="BackgroundColor">#2D2D30</Color>
+    <Color x:Key="BackgroundColor">#232326</Color>
+    <Color x:Key="ContentBackgroundColor">#2D2D30</Color>
     <Color x:Key="ForegroundColor">#DCDCDC</Color>
     <Color x:Key="BorderColor">#3E3E42</Color>
     <Color x:Key="SelectedItemColor">#333337</Color>
@@ -22,7 +24,7 @@
     <Style TargetType="BoxView">
         <Setter Property="Color" Value="{StaticResource BackgroundColor}" />
     </Style>
-    
+
     <Style TargetType="Button">
         <Setter Property="TextColor" Value="{StaticResource ForegroundColor}" />
         <Setter Property="BackgroundColor" Value="{StaticResource SecondaryColor}" />
@@ -31,7 +33,7 @@
         <Setter Property="CornerRadius" Value="2"/>
         <Setter Property="Padding" Value="10,5"/>
         <Setter Property="MinimumHeightRequest" Value="36"/>
-        <Setter Property="MinimumWidthRequest" Value="36"/>        
+        <Setter Property="MinimumWidthRequest" Value="36"/>
     </Style>
 
     <Style TargetType="CheckBox">
@@ -55,7 +57,7 @@
 
     <Style TargetType="Frame">
         <Setter Property="HasShadow" Value="False" />
-        <Setter Property="BackgroundColor" Value="{StaticResource BackgroundColor}" />
+        <Setter Property="BackgroundColor" Value="{StaticResource ContentBackgroundColor}" />
         <Setter Property="BorderColor" Value="{StaticResource BorderColor}" />
         <Setter Property="CornerRadius" Value="2"/>
         <Setter Property="Margin" Value="1"/>
