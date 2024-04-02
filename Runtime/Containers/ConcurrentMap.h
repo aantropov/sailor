@@ -24,7 +24,7 @@ namespace Sailor
 		SAILOR_API TConcurrentMap(TConcurrentMap&&) = default;
 		SAILOR_API TConcurrentMap(const TConcurrentMap&) = default;
 		SAILOR_API TConcurrentMap& operator=(TConcurrentMap&&) noexcept = default;
-		SAILOR_API TConcurrentMap& operator=(const TConcurrentMap&) = default;
+		SAILOR_API TConcurrentMap& operator=(const TConcurrentMap& rhs) = default;
 
 		SAILOR_API TConcurrentMap(std::initializer_list<TElementType> initList)
 		{
@@ -185,10 +185,9 @@ namespace Sailor
 			if (element && element->LikelyContains(hash))
 			{
 				auto& container = element->GetContainer();
-				size_t index = container.FindIf([&](const TElementType& el) { return el.First() == key; });
-				if (index != -1)
+				typename Super::TElementContainer::TIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
+				if (it != container.end())
 				{
-					typename Super::TElementContainer::TIterator it = Super::TElementContainer::TIterator(container.GetData() + index);
 					return Super::TIterator(element.GetRawPtr(), it);
 				}
 			}
@@ -204,10 +203,9 @@ namespace Sailor
 			if (element && element->LikelyContains(hash))
 			{
 				auto& container = element->GetContainer();
-				size_t index = container.FindIf([&](const TElementType& el) { return el.First() == key; });
-				if (index != -1)
+				typename Super::TElementContainer::TConstIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
+				if (it != container.end())
 				{
-					typename Super::TElementContainer::TConstIterator it = Super::TElementContainer::TConstIterator(container.GetData() + index);
 					return Super::TConstIterator(element.GetRawPtr(), it);
 				}
 			}
@@ -276,16 +274,15 @@ namespace Sailor
 				{
 					auto& container = element->GetContainer();
 
-					size_t index = container.FindIf([&](const TElementType& element) { return element.First() == key; });
-
-					if (index != -1)
+					TElementType* out;
+					if (container.FindIf(out, [&](const TElementType& element) { return element.First() == key; }))
 					{
-						return *(container.GetData() + index);
+						return *out;
 					}
 				}
 			}
 
-			if (Super::ShouldRehash())
+			if (Super::ShouldRehash() && Super::m_numRehashingRequests++ == 0)
 			{
 				uint32 exceptConcurrency = hash % concurrencyLevel;
 				switch (policy)
@@ -307,6 +304,8 @@ namespace Sailor
 					break;
 				}
 				};
+
+				Super::m_numRehashingRequests--;
 			}
 
 			Super::Insert_Internal(TElementType(key, std::move(defaultValue)), hash);

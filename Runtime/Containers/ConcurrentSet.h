@@ -27,7 +27,7 @@ namespace Sailor
 	{
 	public:
 
-		using TElementContainer = TVector<TElementType, TAllocator>;
+		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 6, TAllocator>>;;
 
 		class TEntry
 		{
@@ -171,7 +171,11 @@ namespace Sailor
 		using TConcurrentEntryPtr = TUniquePtr<TEntry>;
 		using TBucketContainer = TVector<TConcurrentEntryPtr, TAllocator>;
 
-		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 16, ERehashPolicy policy = ERehashPolicy::Never) : m_rehashPolicy(policy) { m_buckets.Resize(desiredNumBuckets); }
+		SAILOR_API TConcurrentSet(const uint32_t desiredNumBuckets = 16, ERehashPolicy policy = ERehashPolicy::Never) : m_rehashPolicy(policy)
+		{
+			m_buckets.Resize(std::max(desiredNumBuckets, concurrencyLevel));
+		}
+
 		SAILOR_API TConcurrentSet(TConcurrentSet&&) = default;
 		SAILOR_API TConcurrentSet(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType> : TConcurrentSet((uint32_t)rhs.m_buckets.Num(), rhs.m_rehashPolicy)
 		{
@@ -182,6 +186,7 @@ namespace Sailor
 		}
 
 		SAILOR_API TConcurrentSet& operator=(TConcurrentSet&&) = default;
+
 		SAILOR_API TConcurrentSet& operator=(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType>
 		{
 			m_rehashPolicy = rhs.m_rehashPolicy;
@@ -239,7 +244,7 @@ namespace Sailor
 
 		void Insert(TElementType inElement)
 		{
-			if (ShouldRehash())
+			if (ShouldRehash() && m_numRehashingRequests++ == 0)
 			{
 				if (!(m_rehashPolicy == ERehashPolicy::IfNotWriting && !TryLockAll(-1)))
 				{
@@ -252,6 +257,8 @@ namespace Sailor
 					Rehash(m_buckets.Capacity() * 4);
 					UnlockAll();
 				}
+
+				m_numRehashingRequests--;
 			}
 
 			const auto& hash = Sailor::GetHash(inElement);
@@ -401,7 +408,7 @@ namespace Sailor
 				return;
 			}
 
-			element->GetContainer().Emplace(std::move(inElement));
+			element->GetContainer().EmplaceBack(std::move(inElement));
 			element->m_bloom |= hash;
 
 			m_num++;
@@ -430,7 +437,10 @@ namespace Sailor
 				{
 					for (uint32_t j = 0; j < i; j++)
 					{
-						m_locks[j].Unlock();
+						if (exceptConcurrencyLevel != j)
+						{
+							m_locks[j].Unlock();
+						}
 					}
 					return false;
 				}
@@ -482,6 +492,8 @@ namespace Sailor
 
 			buckets.Clear();
 		}
+
+		std::atomic<uint32_t> m_numRehashingRequests = 0;
 
 		TBucketContainer m_buckets{};
 		SpinLock m_locks[concurrencyLevel];
