@@ -155,7 +155,7 @@ namespace Sailor
 		{
 			Result res(typeid(TContainer).name());
 
-			const size_t count = 150000;
+			const size_t count = 300000;
 
 			TContainer container;
 			Timer tMap;
@@ -260,7 +260,7 @@ namespace Sailor
 		{
 			Result res(typeid(std::unordered_map<size_t, TValue>).name());
 
-			const size_t count = 150000;
+			const size_t count = 300000;
 
 			Timer stdMap;
 			std::unordered_map<size_t, TValue> ideal;
@@ -319,15 +319,8 @@ namespace Sailor
 
 		static Result RunTests()
 		{
-			Result r = PerformanceTests();
-			r.m_bSanityPassed = true;
-			return r;
-		}
-
-		static Result PerformanceTests()
-		{
 			const size_t numThreads = 16;
-			const size_t count = 100000;
+			const size_t count = 300000;
 			Result res(typeid(TContainer).name());
 
 			TContainer container;
@@ -353,7 +346,7 @@ namespace Sailor
 			{
 				auto task = Tasks::CreateTask("Test Concurrent Map", [&order, &container, i, count, cShift]() mutable
 					{
-						for (uint32_t k = 0; k < 5; k++)
+						for (uint32_t k = 0; k < 1; k++)
 						{
 							uint32_t start = uint32_t(i * (count / numThreads) + k * cShift);
 
@@ -382,78 +375,70 @@ namespace Sailor
 
 			res.m_operator = tMap.ResultMs();
 
+			res.m_bSanityPassed = container.Num() == count;
+			for (size_t i = 0; i < count; i++)
+			{
+				if (*((int*)container[0].m_data) != *((int*)container[i].m_data))
+				{
+					res.m_bSanityPassed = false;
+					break;
+				}
+			}
+
 			tMap.Clear();
 
 			volatile float misses = 0;
 
 			g.seed(0);
 			tMap.Start();
-			/*for (size_t i = 0; i < count; i++)
+			for (size_t i = 0; i < count; i++)
 			{
 				const size_t value = i % 2 ? g() : g() % count;
 				if (!container.ContainsKey(value))
 				{
 					misses++;
 				}
-			}*/
+			}
 			tMap.Stop();
 
 			res.m_containsKey = tMap.ResultMs();
 			res.m_misses = misses / (float)count;
 
 			tMap.Clear();
-			tMap.Start();
-			for (size_t i = 0; i < count; i++)
+
+			tasksToWait.Clear();
+			for (uint32_t i = 0; i < numThreads; i++)
 			{
-				if (i % 2)
-				{
-					container.Remove(i);
-				}
+				auto task = Tasks::CreateTask("Test Concurrent Map", [&order, &container, i, count, cShift]() mutable
+					{
+						uint32_t start = uint32_t(i * (count / numThreads));
+
+						for (uint32_t j = start; j < count + start; j++)
+						{
+							if (j % 2)
+							{
+								container.Remove(j);
+							}
+						}
+
+					});
+				tasksToWait.Add(task);
+			}
+
+			tMap.Start();
+			for (uint32_t i = 0; i < numThreads; i++)
+			{
+				tasksToWait[i]->Run();
+			}
+
+			for (uint32_t i = 0; i < numThreads; i++)
+			{
+				tasksToWait[i]->Wait();
 			}
 			tMap.Stop();
-
 			res.m_remove = tMap.ResultMs();
 
 			return res;
-		}
-
-		static bool SanityCheck()
-		{
-			const size_t count = 180;
-
-			TContainer container;
-			std::unordered_map<size_t, TValue> ideal;
-
-			for (size_t i = 0; i < count; i++)
-			{
-				ideal[i] = i * 3;
-
-				container.At_Lock(i) = i * 3;
-				container.Unlock(i);
-			}
-
-			for (size_t i = 0; i < count / 2; i++)
-			{
-				ideal.erase(i * 2);
-				container.Remove(i * 2);
-
-				for (const auto& el : ideal)
-				{
-					if (container[el.first] != el.second)
-					{
-						return false;
-					}
-				}
-
-				for (const auto& el : container)
-				{
-					if (ideal[el.m_first] != el.m_second)
-					{
-						return false;
-					}
-				}
-			}
-			return true;
 		}
 	};
 
@@ -467,10 +452,13 @@ namespace Sailor
 		TVector<Result> res;
 
 		res.Add(TestCase_MapPerfromance<TPlainData, std::unordered_map<size_t, TPlainData>>::RunTests());
-		res.Add(TestCase_MapPerfromance<TPlainData, Sailor::TMap<size_t, TPlainData>>::RunTests());
+		res.Add(TestCase_MapPerfromance<TDeepData, std::unordered_map<size_t, TDeepData>>::RunTests());
 
-		res.Add(TestCase_ConcurrentMapPerfromance<TPlainData, Sailor::TConcurrentMap<size_t, TPlainData, 16u, ERehashPolicy::Always>>::RunTests());
-		res.Add(TestCase_ConcurrentMapPerfromance<TDeepData, Sailor::TConcurrentMap<size_t, TDeepData, 16u, ERehashPolicy::Always>>::RunTests());
+		res.Add(TestCase_MapPerfromance<TPlainData, Sailor::TMap<size_t, TPlainData>>::RunTests());
+		res.Add(TestCase_MapPerfromance<TDeepData, Sailor::TMap<size_t, TDeepData>>::RunTests());
+
+		res.Add(TestCase_ConcurrentMapPerfromance<TPlainData, Sailor::TConcurrentMap<size_t, TPlainData, 32u, ERehashPolicy::Always>>::RunTests());
+		res.Add(TestCase_ConcurrentMapPerfromance<TDeepData, Sailor::TConcurrentMap<size_t, TDeepData, 32u, ERehashPolicy::Always>>::RunTests());
 
 		for (auto& r : res)
 		{

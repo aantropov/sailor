@@ -282,28 +282,31 @@ namespace Sailor
 				}
 			}
 
-			if (Super::ShouldRehash() && Super::m_numRehashingRequests++ == 0)
+			if (Super::ShouldRehash())
 			{
-				uint32 exceptConcurrency = hash % concurrencyLevel;
-				switch (policy)
+				if (Super::m_numRehashingRequests++ == 0)
 				{
-				case ERehashPolicy::IfNotWriting:
-				{
-					if (Super::TryLockAll(exceptConcurrency))
+					uint32 exceptConcurrency = hash % concurrencyLevel;
+					switch (policy)
 					{
+					case ERehashPolicy::IfNotWriting:
+					{
+						if (Super::TryLockAll(exceptConcurrency))
+						{
+							Super::Rehash(Super::m_buckets.Capacity() * 4);
+							Super::UnlockAll();
+						}
+						break;
+					}
+					case ERehashPolicy::Always:
+					{
+						Super::LockAll(exceptConcurrency);
 						Super::Rehash(Super::m_buckets.Capacity() * 4);
 						Super::UnlockAll();
+						break;
 					}
-					break;
+					};
 				}
-				case ERehashPolicy::Always:
-				{
-					Super::LockAll(exceptConcurrency);
-					Super::Rehash(Super::m_buckets.Capacity() * 4);
-					Super::UnlockAll();
-					break;
-				}
-				};
 
 				Super::m_numRehashingRequests--;
 			}

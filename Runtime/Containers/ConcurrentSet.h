@@ -27,7 +27,7 @@ namespace Sailor
 	{
 	public:
 
-		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * 6, TAllocator>>;;
+		using TElementContainer = TList<TElementType, TAllocator>;
 
 		class TEntry
 		{
@@ -220,7 +220,7 @@ namespace Sailor
 		}
 
 		__forceinline bool IsEmpty() const { return m_num == 0; }
-		__forceinline size_t Num() const { return m_num; }
+		__forceinline size_t Num() const { return m_num.load(); }
 
 		bool Contains(const TElementType& inElement) const
 		{
@@ -244,18 +244,21 @@ namespace Sailor
 
 		void Insert(TElementType inElement)
 		{
-			if (ShouldRehash() && m_numRehashingRequests++ == 0)
+			if (ShouldRehash())
 			{
-				if (!(m_rehashPolicy == ERehashPolicy::IfNotWriting && !TryLockAll(-1)))
+				if (m_numRehashingRequests++ == 0)
 				{
-					Rehash(m_buckets.Capacity() * 4);
-					UnlockAll();
-				}
-				else if (m_rehashPolicy == ERehashPolicy::Always)
-				{
-					LockAll();
-					Rehash(m_buckets.Capacity() * 4);
-					UnlockAll();
+					if (!(m_rehashPolicy == ERehashPolicy::IfNotWriting && !TryLockAll(-1)))
+					{
+						Rehash(m_buckets.Capacity() * 4);
+						UnlockAll();
+					}
+					else if (m_rehashPolicy == ERehashPolicy::Always)
+					{
+						LockAll();
+						Rehash(m_buckets.Capacity() * 4);
+						UnlockAll();
+					}
 				}
 
 				m_numRehashingRequests--;
@@ -471,8 +474,6 @@ namespace Sailor
 
 			while (current)
 			{
-				const size_t oldIndex = ((TEntry*)current)->GetHash() % m_buckets.Num();
-
 				for (auto& el : ((TEntry*)current)->GetContainer())
 				{
 					const auto& hash = Sailor::GetHash(el);
@@ -498,7 +499,7 @@ namespace Sailor
 		TBucketContainer m_buckets{};
 		SpinLock m_locks[concurrencyLevel];
 
-		size_t m_num = 0;
+		std::atomic<uint32_t> m_num = 0;
 
 		ERehashPolicy m_rehashPolicy;
 
