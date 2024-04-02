@@ -45,10 +45,7 @@ namespace Sailor::Memory
 
 		TAllocator m_allocator{};
 
-		bool Contains(void* pData) const
-		{
-			return pData < &m_stack[stackSize] && &m_stack[sizeof(uint16_t) - 1] <= pData;
-		}
+		bool Contains(void* pData) const { return pData >= &m_stack[0] && pData < &m_stack[stackSize]; }
 
 	public:
 
@@ -61,21 +58,15 @@ namespace Sailor::Memory
 
 		void* Allocate(size_t size, size_t alignment = 8)
 		{
-			// We store size of element before allocated memory
 			size_t requiredSize = size + sizeof(uint16_t);
-
-			if (stackSize - m_index - 1 < requiredSize)
+			if (stackSize - m_index < requiredSize)
 			{
 				return m_allocator.Allocate(size, alignment);
 			}
-
 			uint8_t* res = &m_stack[m_index];
-			m_index += (uint32_t)(requiredSize);
-
-			check(size < 65536);
-
-			*(uint16_t*)res = (uint16_t)size;
-
+			m_index += static_cast<uint16_t>(requiredSize);
+			assert(size < 65536);
+			*reinterpret_cast<uint16_t*>(res) = static_cast<uint16_t>(size);
 			return res + sizeof(uint16_t);
 		}
 
@@ -83,23 +74,19 @@ namespace Sailor::Memory
 		{
 			if (Contains(pData) && size < 65536)
 			{
-				uint16_t usedSpace = *((uint8_t*)pData - sizeof(uint16_t)) + sizeof(uint16_t);
-
-				// we can realloc only if we're at top of stack
-				if (&((uint8_t*)pData - sizeof(uint16_t))[usedSpace] == &m_stack[m_index])
+				uint16_t* pSize = reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(pData) - sizeof(uint16_t));
+				uint16_t usedSpace = *pSize + sizeof(uint16_t);
+				if (static_cast<uint8_t*>(pData) + usedSpace == &m_stack[m_index])
 				{
-					const uint16_t extraSpace = (uint16_t)(size - (usedSpace - sizeof(uint16_t)));
-
-					// we can reallocate
-					if (extraSpace <= (stackSize - m_index))
+					uint16_t newSize = static_cast<uint16_t>(size + sizeof(uint16_t));
+					if (newSize <= stackSize - m_index + usedSpace)
 					{
-						*(uint16_t*)((uint8_t*)pData - sizeof(uint16_t)) = (uint16_t)size;
-						m_index += extraSpace;
+						*pSize = static_cast<uint16_t>(size);
+						m_index = m_index - usedSpace + newSize;
 						return true;
 					}
 				}
 			}
-
 			return false;
 		}
 
@@ -107,10 +94,9 @@ namespace Sailor::Memory
 		{
 			if (Contains(pData))
 			{
-				uint16_t usedSpace = *((uint8_t*)pData - sizeof(uint16_t)) + sizeof(uint16_t);
-
-				// we can only remove the objects that are placed on the top of the stack
-				if (&((uint8_t*)pData - sizeof(uint16_t))[usedSpace] == &m_stack[m_index])
+				uint16_t* pSize = reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(pData) - sizeof(uint16_t));
+				uint16_t usedSpace = *pSize + sizeof(uint16_t);
+				if (static_cast<uint8_t*>(pData) + usedSpace == &m_stack[m_index])
 				{
 					m_index -= usedSpace;
 				}
