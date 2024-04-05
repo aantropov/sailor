@@ -12,7 +12,7 @@
 
 namespace Sailor
 {
-	template<typename TKeyType, typename TValueType, const uint32_t concurrencyLevel = 8, const ERehashPolicy policy = ERehashPolicy::Always, typename TAllocator = Memory::DefaultGlobalAllocator>
+	template<typename TKeyType, typename TValueType, const uint32_t concurrencyLevel = 32, const ERehashPolicy policy = ERehashPolicy::Always, typename TAllocator = Memory::DefaultGlobalAllocator>
 	class TConcurrentMap final : public TConcurrentSet<TPair<TKeyType, TValueType>, concurrencyLevel, TAllocator>
 	{
 	public:
