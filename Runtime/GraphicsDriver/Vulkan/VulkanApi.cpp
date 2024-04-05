@@ -390,7 +390,7 @@ VkSurfaceFormatKHR VulkanApi::ChooseSwapSurfaceFormat(const TVector<VkSurfaceFor
 	return availableFormats[0];
 }
 
-VkPresentModeKHR VulkanApi::ÑhooseSwapPresentMode(const TVector<VkPresentModeKHR>& availablePresentModes, bool bVSync)
+VkPresentModeKHR VulkanApi::ChooseSwapPresentMode(const TVector<VkPresentModeKHR>& availablePresentModes, bool bVSync)
 {
 	if (bVSync)
 	{
@@ -426,6 +426,24 @@ VkExtent2D VulkanApi::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilit
 	return actualExtent;
 }
 
+TSet<string> VulkanApi::GetSupportedDeviceExtensions(VkPhysicalDevice device)
+{
+	TSet<string> supportedDeviceExtensions{};
+
+	uint32_t extensionCount;
+	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+
+	TVector<VkExtensionProperties> availableExtensions(extensionCount);
+	VK_CHECK(vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.GetData()));
+
+	for (const auto& extension : availableExtensions)
+	{
+		supportedDeviceExtensions.Insert(std::string(extension.extensionName));
+	}
+
+	return supportedDeviceExtensions;
+}
+
 bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 {
 	uint32_t extensionCount;
@@ -451,7 +469,7 @@ bool VulkanApi::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 
 	VkPhysicalDeviceProperties deviceProperties;
 	vkGetPhysicalDeviceProperties(device, &deviceProperties);
-	
+
 	for (const auto& extension : requiredExtensions)
 	{
 		SAILOR_LOG_ERROR("Physical device %s, doesn't support required device extension: %s", deviceProperties.deviceName, extension.c_str());

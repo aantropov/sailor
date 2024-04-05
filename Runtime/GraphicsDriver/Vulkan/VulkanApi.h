@@ -122,7 +122,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device, VulkanSurfacePtr surface);
 
 		SAILOR_API static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const TVector<VkSurfaceFormatKHR>& availableFormats);
-		SAILOR_API static VkPresentModeKHR ÑhooseSwapPresentMode(const TVector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
+		SAILOR_API static VkPresentModeKHR ChooseSwapPresentMode(const TVector<VkPresentModeKHR>& availablePresentModes, bool bVSync);
 		SAILOR_API static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
 
 		SAILOR_API static VkPhysicalDevice PickPhysicalDevice(VulkanSurfacePtr surface);
@@ -141,9 +141,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 				VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
 				//VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME
-
-				// For some reasons on some video cards that is not supported for debug configuration (debug layer collisions?)
-				//, VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME 
 			};
 		}
 
@@ -233,6 +230,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API static VkVertexInputBindingDescription GetBindingDescription(const RHI::RHIVertexDescriptionPtr& vertexDescription);
 		SAILOR_API static TVector<VkVertexInputAttributeDescription> GetAttributeDescriptions(const RHI::RHIVertexDescriptionPtr& vertexDescription, const TSet<uint32_t>& vertexAttributeBindings = {});
+
+		SAILOR_API static TSet<string> GetSupportedDeviceExtensions(VkPhysicalDevice device);
 
 	private:
 

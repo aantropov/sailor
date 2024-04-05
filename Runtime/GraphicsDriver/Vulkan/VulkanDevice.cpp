@@ -79,8 +79,8 @@ VulkanDevice::VulkanDevice(Window* pViewport, RHI::EMsaaSamples requestMsaa)
 	// Pick & Create device
 	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
 
-	// Calculate max anisotropy
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProperties);
+
 	m_maxAllowedMsaaSamples = CalculateMaxAllowedMSAASamples(m_physicalDeviceProperties.limits.framebufferColorSampleCounts & m_physicalDeviceProperties.limits.framebufferDepthSampleCounts);
 	m_currentMsaaSamples = (VkSampleCountFlagBits)(std::min((uint8_t)requestMsaa, (uint8_t)m_maxAllowedMsaaSamples));
 	m_bSupportsMultiDrawIndirect = m_physicalDeviceProperties.limits.maxDrawIndirectCount > 1;
@@ -526,6 +526,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	TVector<const char*> deviceExtensions;
 	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
+	auto supportedDeviceExtensions = VulkanApi::GetSupportedDeviceExtensions(physicalDevice);
 
 #ifndef _SHIPPING
 	deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
@@ -540,12 +541,19 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 			unusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
 		});
 	*/
-	// We are using multiply blending
-	AddFeature<VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT>(features, [](auto& features)
-		{
-			features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
-			features.advancedBlendCoherentOperations = VK_TRUE;
-		});
+
+	// We need multiply blending for clouds shadows
+	// The extension is not supported in DEBUG configuration for some reason
+	if (supportedDeviceExtensions.Contains(std::string(VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME)))
+	{
+		AddFeature<VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT>(features, [](auto& features)
+			{
+				features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT;
+				features.advancedBlendCoherentOperations = VK_TRUE;
+			});
+
+		deviceExtensions.Add(VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME);
+	}
 
 	// Create device that supports VK_EXT_shader_atomic_float (GL_EXT_shader_atomic_float)
 	// this allows to perform atomic operations on storage buffers

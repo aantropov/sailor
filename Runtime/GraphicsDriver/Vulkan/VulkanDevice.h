@@ -153,6 +153,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void CleanupSwapChain();
 
 		VkPhysicalDeviceProperties m_physicalDeviceProperties{};
+
 		VkSampleCountFlagBits m_maxAllowedMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		bool m_bSupportsMultiDrawIndirect = false;
@@ -213,6 +214,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		PFN_vkCmdDebugMarkerBeginEXT m_pCmdDebugMarkerBegin{};
 		PFN_vkCmdDebugMarkerEndEXT m_pCmdDebugMarkerEnd{};
 		PFN_vkCmdDebugMarkerInsertEXT m_pCmdDebugMarkerInsert{};
+
+		TSet<string> supportedDeviceExtensions{};
 
 		// Stats
 		uint32_t m_numSubmittedCommandBuffersAcc = 0;

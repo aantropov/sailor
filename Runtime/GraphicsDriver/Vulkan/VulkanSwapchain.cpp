@@ -45,7 +45,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 	m_swapChainSupport = VulkanApi::QuerySwapChainSupport(device->GetPhysicalDevice(), m_surface);
 
 	m_surfaceFormat = VulkanApi::ChooseSwapSurfaceFormat(m_swapChainSupport.m_formats);
-	m_presentMode = VulkanApi::ÑhooseSwapPresentMode(m_swapChainSupport.m_presentModes, bIsVSync);
+	m_presentMode = VulkanApi::ChooseSwapPresentMode(m_swapChainSupport.m_presentModes, bIsVSync);
 	m_swapchainExtent = VulkanApi::ChooseSwapExtent(m_swapChainSupport.m_capabilities, width, height);
 
 	uint32_t imageCount = m_swapChainSupport.m_capabilities.minImageCount + 1;
