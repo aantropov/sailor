@@ -449,7 +449,7 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 	assert(m_swapchain);
 
 	const auto& depthView = m_swapchain->GetDepthBufferView();
-	const auto& name = "RecreateSwapchain: Initialize DepthStencil RenderTarget";
+	const std::string name = "RecreateSwapchain: Initialize DepthStencil RenderTarget";
 
 	RHICommandListPtr cmdList = Sailor::RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 
@@ -465,10 +465,12 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 	cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(depthView, depthView->m_format, VK_IMAGE_LAYOUT_UNDEFINED, depthView->GetImage()->m_defaultLayout);
 
 	Renderer::GetDriverCommands()->EndCommandList(cmdList);
-
-	App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(name, [cmdList = std::move(cmdList)]()
+	
+	App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(name, [name, cmdList = std::move(cmdList)]()
 		{
-			Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::RHIFencePtr::Make());
+			auto fence = RHIFencePtr::Make();
+			Renderer::GetDriver()->SetDebugName(fence, name);
+			Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
 		}, Sailor::Tasks::EThreadType::Render));
 
 	return true;

@@ -283,6 +283,8 @@ void Material::ForcelyUpdateUniforms()
 
 	// Create fences to track the state of material update
 	RHI::RHIFencePtr fence = RHI::RHIFencePtr::Make();
+	RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Forcely update uniforms"));
+
 	RHI::Renderer::GetDriver()->TrackDelayedInitialization(m_commonShaderBindings.GetRawPtr(), fence);
 
 	// Submit cmd lists

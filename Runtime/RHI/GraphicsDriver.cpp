@@ -37,6 +37,8 @@ void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, si
 
 	// Create fences to track the state of mesh creation
 	RHI::RHIFencePtr fence = RHI::RHIFencePtr::Make();
+	RHI::Renderer::GetDriver()->SetDebugName(fence, "Update Mesh");
+
 	TrackDelayedInitialization(mesh.GetRawPtr(), fence);
 
 	// Submit cmd lists
@@ -101,6 +103,8 @@ void IGraphicsDriver::TrackPendingCommandList_ThreadSafe(RHIFencePtr handle)
 void IGraphicsDriver::SubmitCommandList_Immediate(RHICommandListPtr commandList)
 {
 	RHIFencePtr fence = RHIFencePtr::Make();
+	RHI::Renderer::GetDriver()->SetDebugName(fence, "SubmitCommandList_Immediate");
+
 	SubmitCommandList(commandList, fence);
 	fence->Wait();
 }

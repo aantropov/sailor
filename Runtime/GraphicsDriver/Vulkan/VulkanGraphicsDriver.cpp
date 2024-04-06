@@ -432,6 +432,21 @@ void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std:
 			(uint64_t)(VkSampler)*sampler,
 			"Sampler " + name);
 	}
+	else if (auto semaphore = resource.DynamicCast<RHI::RHISemaphore>())
+	{
+		device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_SEMAPHORE,
+			(uint64_t)(VkSemaphore) * (semaphore->m_vulkan.m_semaphore),
+			"Semaphore " + name);
+	}
+	else if (auto fence = resource.DynamicCast<RHI::RHIFence>())
+	{
+		if (fence->m_vulkan.m_fence)
+		{
+			device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_FENCE,
+				(uint64_t)(VkFence) * (fence->m_vulkan.m_fence),
+				"Fence " + name);
+		}
+	}
 #endif
 }
 
@@ -577,6 +592,8 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 	outTexture->m_vulkan.m_image->m_defaultLayout = (VkImageLayout)(outTexture->GetDefaultLayout());
 
 	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+	RHI::Renderer::GetDriver()->SetDebugName(fenceUpdateRes, "Create Texture");
+
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
 	SubmitCommandList(cmdList, fenceUpdateRes);
 
@@ -677,6 +694,8 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+	RHI::Renderer::GetDriver()->SetDebugName(fenceUpdateRes, "Create Cubemap");
+
 	TrackDelayedInitialization(outCubemap.GetRawPtr(), fenceUpdateRes);
 	SubmitCommandList(cmdList, fenceUpdateRes);
 
@@ -710,6 +729,8 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 	RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+	RHI::Renderer::GetDriver()->SetDebugName(fenceUpdateRes, "Create Render Target");
+
 	TrackDelayedInitialization(outTexture.GetRawPtr(), fenceUpdateRes);
 	SubmitCommandList(cmdList, fenceUpdateRes);
 
@@ -872,6 +893,8 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 		RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 		RHI::RHIFencePtr fenceUpdateRes = RHI::RHIFencePtr::Make();
+		RHI::Renderer::GetDriver()->SetDebugName(fenceUpdateRes, "Create Surface");
+
 		TrackDelayedInitialization(target.GetRawPtr(), fenceUpdateRes);
 		SubmitCommandList(cmdList, fenceUpdateRes);
 	}
@@ -2206,6 +2229,8 @@ void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertice
 
 	// Create fences to track the state of mesh creation
 	RHI::RHIFencePtr fence = RHI::RHIFencePtr::Make();
+	RHI::Renderer::GetDriver()->SetDebugName(fence, "Update mesh");
+
 	TrackDelayedInitialization(mesh.GetRawPtr(), fence);
 
 	// Submit cmd lists

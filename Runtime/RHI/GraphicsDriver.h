@@ -17,7 +17,9 @@ auto submit = [lambda]() \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
-	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::RHIFencePtr::Make()); \
+	auto fence = Sailor::RHI::RHIFencePtr::Make(); \
+	Sailor::RHI::Renderer::GetDriver()->SetDebugName(fence, Name); \
+	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence); \
 }; \
 Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Render)); \
 }\
@@ -32,7 +34,9 @@ auto submit = [lambda]() \
 	Sailor::RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true); \
 	lambda(cmdList); \
 	Sailor::RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList); \
-	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, Sailor::RHI::RHIFencePtr::Make()); \
+	auto fence = Sailor::RHI::RHIFencePtr::Make(); \
+	Sailor::RHI::Renderer::GetDriver()->SetDebugName(fence, Name); \
+	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence); \
 }; \
 Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Render)); \
 }\

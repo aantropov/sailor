@@ -218,13 +218,16 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 				{
 					SAILOR_PROFILE_BLOCK("Create RHI submit cmd lists tasks");
 					RHI::RHISemaphorePtr newChainSemaphore = driver->CreateWaitSemaphore();
+					driver->SetDebugName(newChainSemaphore, "FrameGraph: newChainSemaphore");
 
 					tasks.RemoveAll([](const auto& task) { return task == nullptr || task->IsFinished(); });
 
 					auto submitCmdList1 = Tasks::CreateTask("Submit chaining cmd lists",
 						[=]()
 						{
-							RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, RHIFencePtr::Make(), newChainSemaphore, chainSemaphore);
+							auto fence = RHIFencePtr::Make();
+							RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Submit chaining cmd lists"));
+							RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, fence, newChainSemaphore, chainSemaphore);
 						}, Tasks::EThreadType::RHI);
 
 					if (tasks.Num() > 0)
@@ -235,11 +238,14 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					submitCmdList1->Run();
 
 					chainSemaphore = driver->CreateWaitSemaphore();
+					driver->SetDebugName(chainSemaphore, "FrameGraph: chainSemaphore");
 
 					auto submitCmdList2 = Tasks::CreateTask("Submit chaining cmd lists",
 						[=]()
 						{
-							RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), chainSemaphore, newChainSemaphore);
+							auto fence = RHIFencePtr::Make();
+							RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Submit chaining cmd lists"));
+							RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence, chainSemaphore, newChainSemaphore);
 						}, Tasks::EThreadType::RHI);
 
 					submitCmdList2->Join(submitCmdList1);

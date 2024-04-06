@@ -142,7 +142,7 @@ void Renderer::BeginConditionalDestroy()
 {
 	m_previousRenderFrame.Clear();
 	m_frameGraph.Clear();
-	m_cachedSceneViews.Clear();	
+	m_cachedSceneViews.Clear();
 	Renderer::GetDriver()->WaitIdle();
 
 	m_driverInstance->BeginConditionalDestroy();
@@ -192,7 +192,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
 	SAILOR_PROFILE_BLOCK("Wait for render thread");
 
-	if (m_bForceStop || 
+	if (m_bForceStop ||
 		m_driverInstance->ShouldFixLostDevice(m_pViewport) ||
 		App::GetSubmodule<Tasks::Scheduler>()->GetNumTasks(Tasks::EThreadType::Render) > MaxFramesInQueue)
 	{
@@ -265,7 +265,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					{
 						if (auto pCommandList = frameInstance.GetCommandBuffer(i))
 						{
-							waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+							auto newWaitSemaphore = GetDriver()->CreateWaitSemaphore();
+							GetDriver()->SetDebugName(newWaitSemaphore, std::format("frameInstance CommandBuffer {}", i));
+
+							waitFrameUpdate.Add(newWaitSemaphore);
 							GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
 						}
 					}
@@ -288,9 +291,13 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				{
 					updateFrameRHI();
 
+					uint32_t i = 0;
 					for (auto& cmdList : transferCommandLists)
 					{
-						waitFrameUpdate.Add(GetDriver()->CreateWaitSemaphore());
+						auto newWaitSemaphore = GetDriver()->CreateWaitSemaphore();
+						GetDriver()->SetDebugName(newWaitSemaphore, std::format("rhiFrameGraph TransferCommandList {}", i++));
+
+						waitFrameUpdate.Add(newWaitSemaphore);
 						GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1), chainSemaphore);
 					}
 				}
@@ -347,7 +354,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		}
 
 		renderFrame1->Join(t);
-		
+
 	}
 	renderFrame1->Join(renderFrame);
 
