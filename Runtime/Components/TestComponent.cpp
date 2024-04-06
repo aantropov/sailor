@@ -55,18 +55,20 @@ void TestComponent::BeginPlay()
 	}
 
 	/*
-	for(int k = 0; k < 4; k++)
-	for (int i = 0; i < 10; i++)
-		for (int j = 0; j < 10; j++)
-		{
-			auto gameObject2 = GetWorld()->Instantiate();
-			gameObject2->SetMobilityType(EMobilityType::Stationary);
-			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, k * 3000, i * 2500));
-			gameObject2->GetTransformComponent().SetScale(vec4(1, 1, 1, 0));
-			gameObject2->AddComponent<MeshRendererComponent>();
+	for (int k = 0; k < 4; k++)
+		for (int i = 0; i < 4; i++)
+			for (int j = 0; j < 4; j++)
+			{
+				auto gameObject2 = GetWorld()->Instantiate();
+				gameObject2->SetMobilityType(EMobilityType::Stationary);
+				gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, k * 3000, i * 2500));
+				gameObject2->GetTransformComponent().SetScale(vec4(1, 1, 1, 0));
 
-			m_objects.Add(gameObject2);
-		}
+				auto meshRenderer = gameObject2->AddComponent<MeshRendererComponent>();
+				meshRenderer->LoadModel("Models/Sponza/sponza.obj");
+
+				m_objects.Add(gameObject2);
+			}
 	/**/
 
 	m_dirLight = GetWorld()->Instantiate();
@@ -175,8 +177,8 @@ void TestComponent::Tick(float deltaTime)
 
 	if (GetWorld()->GetInput().IsKeyDown(VK_LBUTTON))
 	{
-		const float smoothFactor = 100.0f;
-		const float speed = 20.0f;
+		const float smoothFactor = 20;
+		const float speed = 100.0f;
 		const float smoothDeltaTime = GetWorld()->GetSmoothDeltaTime();
 
 		vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
@@ -187,8 +189,8 @@ void TestComponent::Tick(float deltaTime)
 		float targetYaw = m_yaw + adjustedYawSpeed;
 		float targetPitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
 
-		m_yaw = glm::mix(m_yaw, targetYaw, smoothFactor * smoothDeltaTime);
-		m_pitch = glm::mix(m_pitch, targetPitch, smoothFactor * smoothDeltaTime);
+		m_yaw = glm::mix(m_yaw, targetYaw, std::min(1.0f, smoothFactor * smoothDeltaTime));
+		m_pitch = glm::mix(m_pitch, targetPitch, std::min(1.0f, smoothFactor * smoothDeltaTime));
 
 		glm::quat hRotation = glm::angleAxis(glm::radians(-m_yaw), glm::vec3(0, 1, 0));
 		glm::quat vRotation = glm::angleAxis(glm::radians(m_pitch), glm::vec3(1, 0, 0));
