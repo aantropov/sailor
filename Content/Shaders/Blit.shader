@@ -33,6 +33,18 @@ glslFragment: |
       float deltaTime;
   } frame;
   
+  layout(set = 0, binding = 1) uniform PreviousFrameData
+  {
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;
+  } previousFrame;
+  
   layout(set=1, binding=0) uniform sampler2D colorSampler;
   
   layout(location=0) in vec2 fragTexcoord;

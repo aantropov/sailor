@@ -21,6 +21,18 @@ glslVertex: |
       float deltaTime;
   } frame;
   
+  layout(set = 0, binding = 1) uniform PreviousFrameData
+  {
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;
+  } previousFrame;
+  
   struct PerInstanceData
   {
       mat4 model;

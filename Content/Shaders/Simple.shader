@@ -34,15 +34,27 @@ glslVertex: |
   
   layout(set = 0, binding = 0) uniform FrameData
   {
-  	mat4 view;
-  	mat4 projection;
-  	mat4 invProjection;
-  	vec4 cameraPosition;
-  	ivec2 viewportSize;
-    vec2 cameraZNearZFar;
-  	float currentTime;
-  	float deltaTime;
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;
   } frame;
+  
+  layout(set = 0, binding = 1) uniform PreviousFrameData
+  {
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;
+  } previousFrame;
   
   layout(std140, set = 1, binding = 0) readonly buffer LightDataSSBO
   {	

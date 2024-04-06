@@ -12,15 +12,27 @@ glslCommon: |
 glslVertex: |
   layout(set = 0, binding = 0) uniform FrameData
   {
-  	mat4 view;
-  	mat4 projection;
-  	mat4 invProjection;
-  	vec4 cameraPosition;
-  	ivec2 viewportSize;
-    vec2 cameraZNearZFar;
-  	float currentTime;
-  	float deltaTime;
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;
   } frame;
+  
+  layout(set = 0, binding = 1) uniform PreviousFrameData
+  {
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;
+  } previousFrame;
   
   layout(push_constant) uniform Constants
   {
@@ -53,16 +65,29 @@ glslFragment: |
   
   layout(location=0) out vec4 outColor;
   
-  layout(set=0, binding=0) uniform FrameData
+  layout(set = 0, binding = 0) uniform FrameData
   {
-  	mat4 view;
-  	mat4 projection;
-  	mat4 invProjection;
-  	vec4 cameraPosition;
-  	ivec2 viewportSize;
-  	float currentTime;
-  	float deltaTime;
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;      
   } frame;
+  
+  layout(set = 0, binding = 1) uniform PreviousFrameData
+  {
+      mat4 view;
+      mat4 projection;
+      mat4 invProjection;
+      vec4 cameraPosition;
+      ivec2 viewportSize;
+      vec2 cameraZNearZFar;
+      float currentTime;
+      float deltaTime;
+  } previousFrame;
   
   layout(set=1, binding=0) uniform PostProcessDataUBO
   {
