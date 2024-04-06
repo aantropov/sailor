@@ -175,16 +175,24 @@ void TestComponent::Tick(float deltaTime)
 
 	if (GetWorld()->GetInput().IsKeyDown(VK_LBUTTON))
 	{
-		const float speed = 1.0f;
-		const vec2 shift = vec2(GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos) * speed;
+		const float smoothFactor = 100.0f;
+		const float speed = 20.0f;
 
-		m_yaw += -shift.x;
-		m_pitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
+		vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
+		vec2 shift = deltaCursorPos * speed * deltaTime;
 
-		glm::quat hRotation = angleAxis(glm::radians(m_yaw), Math::vec3_Up);
-		glm::quat vRotation = angleAxis(glm::radians(m_pitch), hRotation * Math::vec3_Right);
+		float adjustedYawSpeed = shift.x / (cos(glm::radians(m_pitch)) + 0.1f);
 
-		transform.SetRotation(vRotation * hRotation);
+		float targetYaw = m_yaw + adjustedYawSpeed;
+		float targetPitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
+
+		m_yaw = glm::mix(m_yaw, targetYaw, smoothFactor * deltaTime);
+		m_pitch = glm::mix(m_pitch, targetPitch, smoothFactor * deltaTime);
+
+		glm::quat hRotation = glm::angleAxis(glm::radians(-m_yaw), glm::vec3(0, 1, 0));
+		glm::quat vRotation = glm::angleAxis(glm::radians(m_pitch), glm::vec3(1, 0, 0));
+
+		transform.SetRotation(hRotation * vRotation);
 	}
 
 	if (GetWorld()->GetInput().IsKeyPressed('F'))
