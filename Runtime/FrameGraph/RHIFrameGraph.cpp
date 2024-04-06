@@ -46,7 +46,7 @@ void RHIFrameGraph::SetSurface(const std::string& name, RHI::RHISurfacePtr surfa
 	m_surfaces[name] = surface;
 }
 
-void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const
+RHI::UboFrameData RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -54,13 +54,7 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 
 	snapshot.m_frameBindings = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 	Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(snapshot.m_frameBindings, "frameData", sizeof(RHI::UboFrameData), 0, RHI::EShaderBindingType::UniformBuffer);
-
-	/* TODO: Add that for post processes only
-	for (auto& sampler : m_samplers)
-	{
-		// TODO: Bind sampler by name
-		Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(snapshot.m_frameBindings, sampler.m_first, sampler.m_second->GetRHI(), 1);
-	}*/
+	Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(snapshot.m_frameBindings, "previousFrameData", sizeof(RHI::UboFrameData), 1, RHI::EShaderBindingType::UniformBuffer);
 
 	frameData.m_cameraPosition = snapshot.m_cameraTransform.m_position;
 	frameData.m_projection = snapshot.m_camera->GetProjectionMatrix();
@@ -72,6 +66,9 @@ void RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::R
 	frameData.m_viewportSize = glm::ivec2(App::GetMainWindow()->GetRenderArea().x, App::GetMainWindow()->GetRenderArea().y);
 
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
+	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("previousFrameData"), &previousFrame, sizeof(previousFrame));
+
+	return frameData;
 }
 
 TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHISceneViewPtr rhiSceneView)
@@ -188,7 +185,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 		driverCommands->BeginDebugRegion(transferCmdList, "Fill Frame Data", DebugContext::Color_CmdTransfer);
 		{
-			FillFrameData(transferCmdList, snapshot, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
+			m_prevFrameData = FillFrameData(transferCmdList, snapshot, m_prevFrameData, rhiSceneView->m_deltaTime, rhiSceneView->m_currentTime);
 		}
 		driverCommands->EndDebugRegion(transferCmdList);
 

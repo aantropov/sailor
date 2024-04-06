@@ -57,7 +57,7 @@ namespace Sailor::RHI
 
 	protected:
 
-		void FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, float deltaTime, float worldTime) const;
+		RHI::UboFrameData FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime) const;
 
 		TMap<std::string, RHI::RHITexturePtr> m_samplers;
 		TMap<std::string, RHI::RHIRenderTargetPtr> m_renderTargets;
@@ -66,6 +66,10 @@ namespace Sailor::RHI
 		TVector<Framegraph::FrameGraphNodePtr> m_graph;
 
 		RHI::RHIMeshPtr m_postEffectPlane;
+
+		// TODO: Store/Handle that per snapshot
+		RHI::UboFrameData m_frameData;
+		RHI::UboFrameData m_prevFrameData;
 	};
 
 	using RHIFrameGraphPtr = TRefPtr<RHIFrameGraph>;

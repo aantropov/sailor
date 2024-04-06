@@ -311,7 +311,21 @@ frame:
   - colorSampler: Main
   - depthStencil: DepthBuffer
 
- 
+  ############################
+- name: PostProcess
+############################
+  string:
+  - shader: Shaders/MotionBlur.shader
+  - defines: ~
+  float:
+  - data.intensity: 1
+  - data.samples: 10
+  - data.maxSpeed: 50
+  renderTargets:
+  - color: Main
+  - depthSampler: DepthBuffer
+  - colorSampler: Secondary
+  
 #############################
 #- name: Blit
 #############################
@@ -328,7 +342,7 @@ frame:
   vec4: ~
   renderTargets:
   - color: BackBuffer
-  - ldrSceneSampler: Secondary
+  - ldrSceneSampler: Main
   - linearDepthSampler: LinearDepth
 
 #############################
