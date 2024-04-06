@@ -16,6 +16,27 @@
 using namespace Sailor;
 using namespace nlohmann;
 
+AssetRegistry::AssetRegistry()
+{
+	m_assetCache.Initialize();
+}
+
+void AssetRegistry::CacheAssetTime(const FileId& id, const time_t& assetTimestamp)
+{
+	m_assetCache.Update(id, assetTimestamp);
+	m_assetCache.SaveCache();
+}
+
+bool AssetRegistry::GetAssetCachedTime(const FileId& id, time_t& outAssetTimestamp) const
+{
+	return m_assetCache.GetTimeStamp(id, outAssetTimestamp);
+}
+
+bool AssetRegistry::IsAssetExpired(const AssetInfoPtr info) const
+{
+	return m_assetCache.IsExpired(info);
+}
+
 bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& text)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -184,8 +205,10 @@ AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFil
 
 AssetRegistry::~AssetRegistry()
 {
+	m_assetCache.Shutdown();
+
 	for (const auto& assetIt : m_loadedAssetInfo)
 	{
-		delete *assetIt.m_second;
+		delete* assetIt.m_second;
 	}
 }

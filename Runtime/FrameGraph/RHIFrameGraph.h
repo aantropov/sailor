@@ -68,8 +68,8 @@ namespace Sailor::RHI
 		RHI::RHIMeshPtr m_postEffectPlane;
 
 		// TODO: Store/Handle that per snapshot
-		RHI::UboFrameData m_frameData;
-		RHI::UboFrameData m_prevFrameData;
+		RHI::UboFrameData m_frameData{};
+		RHI::UboFrameData m_prevFrameData{};
 	};
 
 	using RHIFrameGraphPtr = TRefPtr<RHIFrameGraph>;

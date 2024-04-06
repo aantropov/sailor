@@ -8,6 +8,7 @@
 #include "AssetRegistry/AssetInfo.h"
 #include "Core/Singleton.hpp"
 #include "nlohmann_json/include/nlohmann/json.hpp"
+#include "AssetRegistry/AssetCache.h"
 
 namespace Sailor
 {
@@ -25,6 +26,7 @@ namespace Sailor
 
 		static constexpr const char* MetaFileExtension = "asset";
 
+		SAILOR_API AssetRegistry();
 		SAILOR_API virtual ~AssetRegistry() override;
 
 		template<typename TBinaryType, typename TFilepath>
@@ -97,6 +99,10 @@ namespace Sailor
 		SAILOR_API bool RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions, class IAssetInfoHandler* pAssetInfoHandler);
 		SAILOR_API static std::string GetMetaFilePath(const std::string& assetFilePath);
 
+		SAILOR_API bool IsAssetExpired(const AssetInfoPtr info) const;
+		SAILOR_API bool GetAssetCachedTime(const FileId& id, time_t& outAssetTimestamp) const;
+		SAILOR_API void CacheAssetTime(const FileId& id, const time_t& assetTimestamp);
+
 	protected:
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
@@ -105,5 +111,7 @@ namespace Sailor
 		TMap<FileId, AssetInfoPtr> m_loadedAssetInfo;
 		TMap<std::string, FileId> m_fileIds;
 		TMap<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
+
+		AssetCache m_assetCache;
 	};
 }

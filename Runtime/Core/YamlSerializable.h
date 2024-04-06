@@ -173,6 +173,44 @@ namespace YAML
 		}
 	};
 
+	template<typename TKey, typename TValue>
+	struct convert<Sailor::TConcurrentMap<TKey, TValue>>
+	{
+		static Node encode(const Sailor::TConcurrentMap<TKey, TValue>& rhs)
+		{
+			Node node;
+
+			for (const auto& el : rhs)
+			{
+				node[el.m_first] = el.m_second;
+			}
+
+			return node;
+		}
+
+		static bool decode(const Node& node, Sailor::TConcurrentMap<TKey, TValue>& rhs)
+		{
+			rhs.Clear();
+
+			if (node.size() == 0)
+			{
+				return true;
+			}
+
+			if (!node.IsMap())
+				return false;
+
+			for (const auto& el : node)
+			{
+				auto k = el.first.as<TKey>();
+				auto v = el.second.as<TValue>();
+				rhs.Insert(std::move(k), std::move(v));
+			}
+
+			return true;
+		}
+	};
+
 	template<>
 	struct convert<glm::vec2>
 	{

@@ -15,7 +15,6 @@ YAML::Node AssetInfo::Serialize() const
 
 	outData["fileId"] = m_fileId;
 	outData["filename"] = filename;
-	outData["assetImportTime"] = m_assetImportTime;
 	return outData;
 }
 
@@ -23,7 +22,6 @@ void AssetInfo::Deserialize(const YAML::Node& inData)
 {
 	m_fileId = inData["fileId"].as<FileId>();
 	m_assetFilename = inData["filename"].as<std::string>();
-	m_assetImportTime = inData["assetImportTime"].as<std::time_t>();
 }
 
 void AssetInfo::SaveMetaFile()
@@ -111,9 +109,11 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) co
 	YAML::Node newMeta;
 	GetDefaultMeta(newMeta);
 
-	newMeta["fileId"] = FileId::CreateNewFileId().Serialize();
+	auto fileId = FileId::CreateNewFileId();
+	newMeta["fileId"] = fileId.Serialize();
 	newMeta["filename"] = std::filesystem::path(assetFilepath).filename().string();
-	newMeta["assetImportTime"] = std::time(nullptr);
+
+	App::GetSubmodule<AssetRegistry>()->CacheAssetTime(fileId, std::time(nullptr));
 
 	assetFile << newMeta;
 	assetFile.close();
@@ -155,10 +155,12 @@ void IAssetInfoHandler::ReloadAssetInfo(AssetInfoPtr assetInfo) const
 	assetInfo->Deserialize(meta);
 	assetInfo->m_metaLoadTime = std::time(nullptr);
 
+	App::GetSubmodule<AssetRegistry>()->GetAssetCachedTime(assetInfo->GetFileId(), assetInfo->m_assetImportTime);
+
 	const bool bWasAssetExpired = assetInfo->IsAssetExpired();
 
 	assetInfo->m_assetImportTime = assetInfo->GetAssetLastModificationTime();
-
+	App::GetSubmodule<AssetRegistry>()->CacheAssetTime(assetInfo->GetFileId(), assetInfo->m_assetImportTime);
 
 	for (IAssetInfoHandlerListener* listener : m_listeners)
 	{
