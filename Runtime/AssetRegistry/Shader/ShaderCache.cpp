@@ -36,68 +36,35 @@ std::filesystem::path ShaderCache::GetCachedShaderWithDebugFilepath(const FileId
 	return res;
 }
 
-void ShaderCache::ShaderCacheEntry::Serialize(nlohmann::json& outData) const
+YAML::Node ShaderCache::ShaderCacheData::Entry::Serialize() const
 {
-	m_fileId.Serialize(outData["fileId"]);
+	YAML::Node res;
 
-	outData["timestamp"] = m_timestamp;
-	outData["permutation"] = m_permutation;
+	res["fileId"] = m_fileId;
+	res["timestamp"] = m_timestamp;
+	res["permutation"] = m_permutation;
+
+	return res;
 }
 
-void ShaderCache::ShaderCacheEntry::Deserialize(const nlohmann::json& inData)
+void ShaderCache::ShaderCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
-	m_fileId.Deserialize(inData["fileId"]);
-
-	m_timestamp = inData["timestamp"].get<std::time_t>();
-	m_permutation = inData["permutation"].get<uint32_t>(); ;
+	m_fileId = inData["fileId"].as<FileId>();
+	m_timestamp = inData["timestamp"].as<std::time_t>();
+	m_permutation = inData["permutation"].as<uint32_t>();
 }
 
-void ShaderCache::ShaderCacheData::Serialize(nlohmann::json& outData) const
+YAML::Node ShaderCache::ShaderCacheData::Serialize() const
 {
-	TVector<json> data;
+	YAML::Node res;
+	res["entries"] = m_data;
 
-	for (const auto& entry : m_data)
-	{
-		json temp;
-
-		entry.m_first.Serialize(temp["fileId"]);
-
-		std::vector<json> entriesJson;
-
-		for (const auto& permutation : *entry.m_second)
-		{
-			json temp;
-			permutation->Serialize(temp);
-			entriesJson.push_back(temp);
-
-		}
-		temp["entries"] = entriesJson;
-
-		data.Add(temp);
-	}
-
-	outData["fileIds"] = data;
+	return res;
 }
 
-void ShaderCache::ShaderCacheData::Deserialize(const nlohmann::json& inData)
+void ShaderCache::ShaderCacheData::Deserialize(const YAML::Node& inData)
 {
-	TVector<json> data;
-	data = inData["fileIds"].get<TVector<json>>();
-
-	for (const auto& entryJson : data)
-	{
-		FileId uid;
-		uid.Deserialize(entryJson["fileId"]);
-		TVector<json> entriesJson = entryJson["entries"].get<TVector<json>>();
-
-		for (const auto& permutation : entriesJson)
-		{
-			ShaderCacheEntry* entry = new ShaderCacheEntry();
-			entry->Deserialize(permutation);
-
-			m_data[uid].Add(entry);
-		}
-	}
+	m_data = inData["entries"].as<TMap<FileId, TVector<ShaderCacheData::Entry>>>();
 }
 
 void ShaderCache::Initialize()
@@ -112,13 +79,11 @@ void ShaderCache::Initialize()
 	auto shaderCacheFilePath = std::filesystem::path(GetShaderCacheFilepath());
 	if (!std::filesystem::exists(GetShaderCacheFilepath()))
 	{
+		YAML::Node outData;
+		outData["shaderCache"] = m_cache.Serialize();
+
 		std::ofstream assetFile(GetShaderCacheFilepath());
-
-		json dataJson;
-
-		m_cache.Serialize(dataJson);
-
-		assetFile << dataJson.dump(Sailor::JsonDumpIndent);
+		assetFile << outData;
 		assetFile.close();
 	}
 
@@ -129,14 +94,6 @@ void ShaderCache::Shutdown()
 {
 	ClearExpired();
 	SaveCache();
-
-	for (const auto& entries : m_cache.m_data)
-	{
-		for (const auto& entry : *entries.m_second)
-		{
-			delete entry;
-		}
-	}
 }
 
 void ShaderCache::SaveCache(bool bForcely)
@@ -145,12 +102,11 @@ void ShaderCache::SaveCache(bool bForcely)
 
 	if (bForcely || m_bIsDirty)
 	{
+		YAML::Node outData;
+		outData["shaderCache"] = m_cache.Serialize();
+
 		std::ofstream assetFile(GetShaderCacheFilepath());
-
-		json cacheJson;
-		m_cache.Serialize(cacheJson);
-
-		assetFile << cacheJson.dump(Sailor::JsonDumpIndent);
+		assetFile << outData;
 		assetFile.close();
 
 		m_bIsDirty = false;
@@ -161,13 +117,10 @@ void ShaderCache::LoadCache()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::ifstream assetFile(GetShaderCacheFilepath());
-
-	json dataJson;
-	assetFile >> dataJson;
-	assetFile.close();
-
-	m_cache.Deserialize(dataJson);
+	std::string yaml;
+	AssetRegistry::ReadAllTextFile(GetShaderCacheFilepath(), yaml);
+	YAML::Node yamlNode = YAML::Load(yaml);
+	m_cache.Deserialize(yamlNode["shaderCache"]);
 
 	m_bIsDirty = false;
 }
@@ -188,7 +141,7 @@ void ShaderCache::ClearExpired()
 
 	TVector<FileId> expiredShaders;
 	TSet<std::string> whiteListSpirv;
-	TVector<ShaderCacheEntry*> blackListEntry;
+	TVector<ShaderCacheData::Entry> blackListEntry;
 
 	for (const auto& entries : m_cache.m_data)
 	{
@@ -196,12 +149,12 @@ void ShaderCache::ClearExpired()
 		{
 			for (const auto& entry : *entries.m_second)
 			{
-				if (!IsExpired(entry->m_fileId, entry->m_permutation))
+				if (!IsExpired(entry.m_fileId, entry.m_permutation))
 				{
 					//Convert to the same path format
-					auto vertexFilepath = GetCachedShaderFilepath(entry->m_fileId, entry->m_permutation, ShaderCache::VertexShaderTag);
-					auto fragmentFilepath = GetCachedShaderFilepath(entry->m_fileId, entry->m_permutation, ShaderCache::FragmentShaderTag);
-					auto computeFilepath = GetCachedShaderFilepath(entry->m_fileId, entry->m_permutation, ShaderCache::ComputeShaderTag);
+					auto vertexFilepath = GetCachedShaderFilepath(entry.m_fileId, entry.m_permutation, ShaderCache::VertexShaderTag);
+					auto fragmentFilepath = GetCachedShaderFilepath(entry.m_fileId, entry.m_permutation, ShaderCache::FragmentShaderTag);
+					auto computeFilepath = GetCachedShaderFilepath(entry.m_fileId, entry.m_permutation, ShaderCache::ComputeShaderTag);
 
 					whiteListSpirv.Insert(vertexFilepath.string());
 					whiteListSpirv.Insert(fragmentFilepath.string());
@@ -231,32 +184,31 @@ void ShaderCache::ClearExpired()
 	SaveCache();
 }
 
-void ShaderCache::Remove(ShaderCacheEntry* pEntry)
+void ShaderCache::Remove(ShaderCacheData::Entry pEntry)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto it = m_cache.m_data.Find(pEntry->m_fileId);
+	auto it = m_cache.m_data.Find(pEntry.m_fileId);
 	if (it != m_cache.m_data.end())
 	{
-		FileId uid = pEntry->m_fileId;
+		FileId uid = pEntry.m_fileId;
 
-		std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::VertexShaderTag));
-		std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
-		std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
+		std::filesystem::remove(GetCachedShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::VertexShaderTag));
+		std::filesystem::remove(GetCachedShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::FragmentShaderTag));
+		std::filesystem::remove(GetCachedShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::ComputeShaderTag));
 
-		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::VertexShaderTag));
-		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
-		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
+		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::VertexShaderTag));
+		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::FragmentShaderTag));
+		std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::ComputeShaderTag));
 
-		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::VertexShaderTag));
-		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
-		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
+		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::VertexShaderTag));
+		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::FragmentShaderTag));
+		std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::ComputeShaderTag));
 
-		auto& entries = m_cache.m_data[pEntry->m_fileId];
+		auto& entries = m_cache.m_data[pEntry.m_fileId];
 
 		entries.Remove(pEntry);
 
-		delete pEntry;
 		m_bIsDirty = true;
 
 		if (entries.Num() == 0)
@@ -279,19 +231,17 @@ void ShaderCache::Remove(const FileId& uid)
 
 		for (const auto& pEntry : *entries.m_second)
 		{
-			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::VertexShaderTag));
-			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
-			std::filesystem::remove(GetCachedShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::VertexShaderTag));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::FragmentShaderTag));
+			std::filesystem::remove(GetCachedShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::ComputeShaderTag));
 
-			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::VertexShaderTag));
-			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
-			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
+			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::VertexShaderTag));
+			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::FragmentShaderTag));
+			std::filesystem::remove(GetCachedShaderWithDebugFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::ComputeShaderTag));
 
-			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::VertexShaderTag));
-			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::FragmentShaderTag));
-			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry->m_fileId, pEntry->m_permutation, ShaderCache::ComputeShaderTag));
-
-			delete pEntry;
+			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::VertexShaderTag));
+			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::FragmentShaderTag));
+			std::filesystem::remove(GetPrecompiledShaderFilepath(pEntry.m_fileId, pEntry.m_permutation, ShaderCache::ComputeShaderTag));
 		}
 
 		m_bIsDirty = true;
@@ -374,35 +324,35 @@ void ShaderCache::CacheSpirv_ThreadSafe(const FileId& uid, uint32_t permutation,
 	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
 
 	auto it = std::find_if(std::begin(m_cache.m_data[uid]), std::end(m_cache.m_data[uid]),
-		[permutation](const ShaderCacheEntry* arg) { return arg->m_permutation == permutation; });
+		[permutation](const ShaderCacheData::Entry arg) { return arg.m_permutation == permutation; });
 
 	const bool bAlreadyContains = it != std::end(m_cache.m_data[uid]);
 
 	time_t timeStamp = 0;
 	const bool hasAsset = GetTimeStamp(uid, timeStamp);
 
-	ShaderCacheEntry* newEntry = bAlreadyContains ? *it : new ShaderCacheEntry();
-	newEntry->m_permutation = permutation;
-	newEntry->m_fileId = uid;
-	newEntry->m_timestamp = timeStamp;
+	ShaderCacheData::Entry newEntry = bAlreadyContains ? *it : ShaderCacheData::Entry();
+	newEntry.m_permutation = permutation;
+	newEntry.m_fileId = uid;
+	newEntry.m_timestamp = timeStamp;
 
 	if (vertexSpirv.Num() > 0)
 	{
-		std::ofstream vertexCompiled(GetCachedShaderFilepath(newEntry->m_fileId, newEntry->m_permutation, ShaderCache::VertexShaderTag), std::ofstream::binary);
+		std::ofstream vertexCompiled(GetCachedShaderFilepath(newEntry.m_fileId, newEntry.m_permutation, ShaderCache::VertexShaderTag), std::ofstream::binary);
 		vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.Num() * sizeof(uint32_t));
 		vertexCompiled.close();
 	}
 
 	if (fragmentSpirv.Num() > 0)
 	{
-		std::ofstream fragmentCompiled(GetCachedShaderFilepath(newEntry->m_fileId, newEntry->m_permutation, ShaderCache::FragmentShaderTag), std::ofstream::binary);
+		std::ofstream fragmentCompiled(GetCachedShaderFilepath(newEntry.m_fileId, newEntry.m_permutation, ShaderCache::FragmentShaderTag), std::ofstream::binary);
 		fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.Num() * sizeof(uint32_t));
 		fragmentCompiled.close();
 	}
 
 	if (computeSpirv.Num() > 0)
 	{
-		std::ofstream computeCompiled(GetCachedShaderFilepath(newEntry->m_fileId, newEntry->m_permutation, ShaderCache::ComputeShaderTag), std::ofstream::binary);
+		std::ofstream computeCompiled(GetCachedShaderFilepath(newEntry.m_fileId, newEntry.m_permutation, ShaderCache::ComputeShaderTag), std::ofstream::binary);
 		computeCompiled.write(reinterpret_cast<const char*>(&computeSpirv[0]), computeSpirv.Num() * sizeof(uint32_t));
 		computeCompiled.close();
 	}
@@ -428,19 +378,19 @@ bool ShaderCache::GetSpirvCode(const FileId& uid, uint32_t permutation, TVector<
 
 	const auto& entries = m_cache.m_data[uid];
 	const auto it = std::find_if(std::cbegin(entries), std::cend(entries),
-		[permutation](const ShaderCacheEntry* arg) { return arg->m_permutation == permutation; });
+		[permutation](const ShaderCacheData::Entry arg) { return arg.m_permutation == permutation; });
 
 	std::filesystem::path vertexFilepath = bIsDebug ?
-		GetCachedShaderWithDebugFilepath((*it)->m_fileId, (*it)->m_permutation, ShaderCache::VertexShaderTag) :
-		GetCachedShaderFilepath((*it)->m_fileId, (*it)->m_permutation, ShaderCache::VertexShaderTag);
+		GetCachedShaderWithDebugFilepath((*it).m_fileId, (*it).m_permutation, ShaderCache::VertexShaderTag) :
+		GetCachedShaderFilepath((*it).m_fileId, (*it).m_permutation, ShaderCache::VertexShaderTag);
 
 	std::filesystem::path fragmentFilepath = bIsDebug ?
-		GetCachedShaderWithDebugFilepath((*it)->m_fileId, (*it)->m_permutation, ShaderCache::FragmentShaderTag) :
-		GetCachedShaderFilepath((*it)->m_fileId, (*it)->m_permutation, ShaderCache::FragmentShaderTag);
+		GetCachedShaderWithDebugFilepath((*it).m_fileId, (*it).m_permutation, ShaderCache::FragmentShaderTag) :
+		GetCachedShaderFilepath((*it).m_fileId, (*it).m_permutation, ShaderCache::FragmentShaderTag);
 
 	std::filesystem::path computeFilepath = bIsDebug ?
-		GetCachedShaderWithDebugFilepath((*it)->m_fileId, (*it)->m_permutation, ShaderCache::ComputeShaderTag) :
-		GetCachedShaderFilepath((*it)->m_fileId, (*it)->m_permutation, ShaderCache::ComputeShaderTag);
+		GetCachedShaderWithDebugFilepath((*it).m_fileId, (*it).m_permutation, ShaderCache::ComputeShaderTag) :
+		GetCachedShaderFilepath((*it).m_fileId, (*it).m_permutation, ShaderCache::ComputeShaderTag);
 
 	AssetRegistry::ReadBinaryFile(vertexFilepath, vertexSpirv);
 	AssetRegistry::ReadBinaryFile(fragmentFilepath, fragmentSpirv);
@@ -457,7 +407,7 @@ bool ShaderCache::IsExpired(const FileId& uid, uint32_t permutation) const
 	}
 
 	const auto& entries = m_cache.m_data[uid];
-	size_t index = entries.FindIf([permutation](const ShaderCacheEntry* arg) { return arg->m_permutation == permutation; });
+	size_t index = entries.FindIf([permutation](const ShaderCacheData::Entry arg) { return arg.m_permutation == permutation; });
 
 	const bool bAlreadyContains = index != -1;
 
@@ -478,7 +428,7 @@ bool ShaderCache::IsExpired(const FileId& uid, uint32_t permutation) const
 	time_t timeStamp = 0;
 	const bool hasAsset = GetTimeStamp(uid, timeStamp);
 
-	return hasAsset ? entries[index]->m_timestamp < timeStamp : true;
+	return hasAsset ? entries[index].m_timestamp < timeStamp : true;
 }
 
 bool ShaderCache::GetTimeStamp(const FileId& uid, time_t& outTimestamp) const

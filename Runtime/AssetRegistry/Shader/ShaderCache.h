@@ -6,7 +6,7 @@
 #include "Containers/Map.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/Singleton.hpp"
-#include <nlohmann_json/include/nlohmann/json.hpp>
+#include "Core/YamlSerializable.h"
 #include <mutex>
 #include <filesystem>
 
@@ -16,7 +16,7 @@ namespace Sailor
 	{
 	public:
 
-		static std::string GetShaderCacheFilepath() { return App::GetWorkspace() + "Cache/ShaderCache.json"; }
+		static std::string GetShaderCacheFilepath() { return App::GetWorkspace() + "Cache/ShaderCache.yaml"; }
 		static std::string GetPrecompiledShadersFolder() { return App::GetWorkspace() + "Cache/PrecompiledShaders/"; }
 		static std::string GetCompiledShadersFolder() { return App::GetWorkspace() + "Cache/CompiledShaders/"; }
 		static std::string GetCompiledShadersWithDebugFolder() { return App::GetWorkspace() + "Cache/CompiledShadersWithDebug/"; }
@@ -56,32 +56,35 @@ namespace Sailor
 
 		bool GetTimeStamp(const FileId& uid, time_t& outTimestamp) const;
 
-		class ShaderCacheEntry final : IJsonSerializable
+		class ShaderCacheData final : IYamlSerializable
 		{
 		public:
 
-			FileId m_fileId;
+			class Entry final : IYamlSerializable
+			{
+			public:
 
-			// Last time shader changed
-			std::time_t m_timestamp;
-			uint32_t m_permutation;
+				FileId m_fileId;
 
-			SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
-			SAILOR_API virtual void Deserialize(const nlohmann::json& inData);
-		};
+				// Last time shader changed
+				std::time_t m_timestamp;
+				uint32_t m_permutation;
 
-		class ShaderCacheData final : IJsonSerializable
-		{
-		public:
-			TMap<FileId, TVector<ShaderCache::ShaderCacheEntry*>> m_data;
+				SAILOR_API bool operator==(const Entry& rhs) const { return m_fileId == rhs.m_fileId && m_permutation == rhs.m_permutation; }
 
-			SAILOR_API virtual void Serialize(nlohmann::json& outData) const;
-			SAILOR_API virtual void Deserialize(const nlohmann::json& inData);
+				SAILOR_API virtual YAML::Node Serialize() const override;
+				SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+			};
+
+			TMap<FileId, TVector<ShaderCacheData::Entry>> m_data;
+
+			SAILOR_API virtual YAML::Node Serialize() const override;
+			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 		};
 
 		std::mutex m_saveToCacheMutex;
 
-		SAILOR_API void Remove(ShaderCache::ShaderCacheEntry* entry);
+		SAILOR_API void Remove(ShaderCacheData::Entry entry);
 
 	private:
 

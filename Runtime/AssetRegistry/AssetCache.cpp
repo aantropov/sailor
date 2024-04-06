@@ -9,7 +9,7 @@
 
 using namespace Sailor;
 
-YAML::Node AssetCache::Entry::Serialize() const
+YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 {
 	YAML::Node res;
 	res["fileId"] = m_fileId;
@@ -18,7 +18,7 @@ YAML::Node AssetCache::Entry::Serialize() const
 	return res;
 }
 
-void AssetCache::Entry::Deserialize(const YAML::Node& inData)
+void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
 	m_fileId = inData["fileId"].as<FileId>();
 	m_assetImportTime = inData["assetImportTime"].as<std::time_t>();
@@ -33,7 +33,7 @@ YAML::Node AssetCache::AssetCacheData::Serialize() const
 
 void AssetCache::AssetCacheData::Deserialize(const YAML::Node& inData)
 {
-	m_data = inData["assets"].as<TConcurrentMap<FileId, AssetCache::Entry>>();
+	m_data = inData["assets"].as<TConcurrentMap<FileId, AssetCache::AssetCacheData::Entry>>();
 }
 
 void AssetCache::Initialize()

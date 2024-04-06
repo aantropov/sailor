@@ -32,23 +32,24 @@ namespace Sailor
 
 	protected:
 
-		class Entry final : IYamlSerializable
-		{
-		public:
-
-			FileId m_fileId{};
-			std::time_t m_assetImportTime{};
-
-			SAILOR_API bool operator==(const Entry& rhs) const { return m_fileId == rhs.m_fileId; }
-
-			SAILOR_API virtual YAML::Node Serialize() const override;
-			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
-		};
-
 		class AssetCacheData final : IYamlSerializable
 		{
 		public:
-			TConcurrentMap<FileId, AssetCache::Entry> m_data{};
+
+			class Entry final : IYamlSerializable
+			{
+			public:
+
+				FileId m_fileId{};
+				std::time_t m_assetImportTime{};
+
+				SAILOR_API bool operator==(const Entry& rhs) const { return m_fileId == rhs.m_fileId; }
+
+				SAILOR_API virtual YAML::Node Serialize() const override;
+				SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+			};
+
+			TConcurrentMap<FileId, AssetCache::AssetCacheData::Entry> m_data{};
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
