@@ -47,7 +47,11 @@ void World::Tick(FrameState& frameState)
 	m_frameInput = frameState.GetInputState();
 	m_commandList = frameState.CreateCommandBuffer(0);
 
-	m_time += frameState.GetDeltaTime();
+	const float c_smoothFactor = 0.1f;
+	const float deltaTime = frameState.GetDeltaTime();
+	m_smoothDeltaTime += (deltaTime - m_smoothDeltaTime) * c_smoothFactor;
+
+	m_time += deltaTime;
 
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList, true);
 
@@ -60,13 +64,13 @@ void World::Tick(FrameState& frameState)
 		}
 		else
 		{
-			el->Tick(frameState.GetDeltaTime());
+			el->Tick(deltaTime);
 		}
 	}
 
 	for (auto& ecs : m_sortedEcs)
 	{
-		m_ecs[ecs]->Tick(frameState.GetDeltaTime());
+		m_ecs[ecs]->Tick(deltaTime);
 	}
 
 	for (auto& ecs : m_sortedEcs)
@@ -88,7 +92,7 @@ void World::Tick(FrameState& frameState)
 
 	m_pendingDestroyObjects.Clear();
 
-	GetDebugContext()->Tick(m_commandList, frameState.GetDeltaTime());
+	GetDebugContext()->Tick(m_commandList, deltaTime);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 }
 

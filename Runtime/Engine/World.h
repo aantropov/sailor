@@ -50,6 +50,7 @@ namespace Sailor
 
 		SAILOR_API void Clear();
 		SAILOR_API size_t GetCurrentFrame() const { return m_currentFrame; }
+		SAILOR_API float GetSmoothDeltaTime() const { return m_smoothDeltaTime; }
 
 	protected:
 
@@ -62,6 +63,8 @@ namespace Sailor
 
 		FrameInputState m_frameInput;
 		float m_time{};
+		float m_smoothDeltaTime = 0.016f;
+
 		RHI::RHICommandListPtr m_commandList;
 		TUniquePtr<RHI::DebugContext> m_pDebugContext;
 
