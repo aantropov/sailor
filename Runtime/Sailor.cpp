@@ -305,7 +305,6 @@ void App::Start()
 
 	s_pInstance->m_pMainWindow->SetActive(false);
 	s_pInstance->m_pMainWindow->SetRunning(false);
-
 }
 
 void App::Stop()

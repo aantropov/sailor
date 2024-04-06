@@ -77,6 +77,13 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	totalFramesCount++;
 
+	const float TargetCpuTime = (1000.0f / MaxCpuFrames);
+
+	if (timer.ResultMs() < TargetCpuTime)
+	{
+		Sleep((DWORD)std::max(1ull, (uint64_t)(TargetCpuTime - timer.ResultMs())));
+	}
+	
 	if (timer.ResultAccumulatedMs() > 1000)
 	{
 		m_cpuFps = totalFramesCount;

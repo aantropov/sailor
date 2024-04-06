@@ -12,6 +12,7 @@ namespace Sailor
 	class EngineLoop : public TSubmodule<EngineLoop>
 	{
 	public:
+		const float MaxCpuFrames = 120.0f;
 
 		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
 		SAILOR_API uint32_t GetCpuFps() const { return m_cpuFps; }
