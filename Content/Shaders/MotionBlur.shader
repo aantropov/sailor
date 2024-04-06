@@ -84,7 +84,7 @@ glslFragment: |
       vec3 color = texture(colorSampler, fragTexcoord).xyz;
       vec2 texCoord = fragTexcoord;
       
-      if(length(velocity) <= 0.001)
+      if(length(velocity) <= 0.0001)
       {
           outColor = vec4(color, 1.0f);
           return;
