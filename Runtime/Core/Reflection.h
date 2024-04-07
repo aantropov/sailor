@@ -143,7 +143,7 @@ namespace Sailor
 		// TODO: Rethink the approach with raw pointer
 		const TypeInfo* m_typeInfo{};
 
-		// We store all properties already serialized to YAML to simplify the cooding
+		// We store all properties already serialized to YAML to simplify the coding
 		// Ideally we need to introduce Proxies, that store the properties, without 
 		// binding to specific serialization format
 		TMap<std::string, YAML::Node> m_properties{};
