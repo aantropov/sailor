@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Concepts.h"
 #include "Core/Defines.h"
 #include "refl-cpp/include/refl.hpp"
 #include "Engine/Types.h"
@@ -77,12 +78,15 @@
 		{ \
 			if (!s_bRegistered) \
 			{ \
-				auto placementNew = [](void* ptr) mutable \
+				if constexpr (IsDefaultConstructible<__CLASSNAME__>) \
 				{ \
-					return new (ptr) __CLASSNAME__(); \
-				}; \
-				Reflection::RegisterFactoryMethod(type, placementNew); \
-				Reflection::RegisterType(type.Name(), &type); \
+					auto placementNew = [](void* ptr) mutable \
+					{ \
+						return new (ptr) __CLASSNAME__(); \
+					}; \
+					Reflection::RegisterFactoryMethod(type, placementNew); \
+					Reflection::RegisterType(type.Name(), &type); \
+				} \
 				s_bRegistered = true; \
 			} \
 		} \

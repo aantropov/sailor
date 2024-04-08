@@ -26,9 +26,19 @@ namespace Sailor
 	{
 	public:
 
-		SAILOR_API Prefab(FileId uid, ReflectionInfo reflection = {}) :
-			Object(std::move(uid)),
-			m_reflectionInfo(std::move(reflection)) {}
+		struct GameObjectData
+		{
+			glm::vec4 m_position{};
+			glm::quat m_orientation{};
+			glm::vec3 m_scale{};
+
+			// We store indices
+			uint32_t m_parent;
+			TVector<uint32_t> m_components;
+		};
+
+		SAILOR_API Prefab(FileId uid) :
+			Object(std::move(uid)) {}
 
 		SAILOR_API virtual bool IsReady() const override { return m_bIsReady; }
 		SAILOR_API virtual ~Prefab() = default;
@@ -36,7 +46,11 @@ namespace Sailor
 	protected:
 
 		std::atomic<bool> m_bIsReady{};
-		ReflectionInfo m_reflectionInfo{};
+
+		TVector<ReflectionInfo> m_components{};
+		TVector<GameObjectData> m_gameObjects{};
+
+		GameObjectData m_root;
 
 		friend class PrefabImporter;
 	};
