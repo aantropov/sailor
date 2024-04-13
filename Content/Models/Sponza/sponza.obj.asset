@@ -3,7 +3,7 @@ filename: sponza.obj
 assetImportTime: 1664665086
 bShouldGenerateMaterials: true
 bShouldBatchByMaterial: true
-defaultMaterials:
+materials:
   - "{CF968C20-7CD1-47A9-911F-2621ABE060A9}"
   - "{17736393-A66B-48BB-9F86-7B0432278A60}"
   - "{B5D44B07-03A4-4391-8FB2-C951893AE259}"

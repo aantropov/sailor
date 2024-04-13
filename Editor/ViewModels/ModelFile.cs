@@ -30,7 +30,7 @@ namespace SailorEditor.ViewModels
         {
             Properties["bShouldGenerateMaterials"] = ShouldGenerateMaterials;
             Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial;
-            Properties["defaultMaterials"] = DefaultMaterials.Select((el) => el.Value).ToList();
+            Properties["materials"] = DefaultMaterials.Select((el) => el.Value).ToList();
 
             IsDirty = false;
         }
@@ -51,7 +51,7 @@ namespace SailorEditor.ViewModels
                             case "bShouldBatchByMaterial":
                                 ShouldBatchByMaterial = bool.Parse(e.Value.ToString());
                                 break;
-                            case "defaultMaterials":
+                            case "materials":
                                 {
                                     var parsed = new ObservableList<Observable<AssetUID>>();
                                     bool ignoreFirst = false;

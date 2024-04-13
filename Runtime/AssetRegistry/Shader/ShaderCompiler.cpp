@@ -79,50 +79,14 @@ bool ShaderSet::IsReady() const
 
 void ShaderAsset::Deserialize(const YAML::Node& inData)
 {
-	if (inData["glslVertex"])
-	{
-		m_glslVertex = inData["glslVertex"].as<std::string>();
-	}
-
-	if (inData["glslFragment"])
-	{
-		m_glslFragment = inData["glslFragment"].as<std::string>();
-	}
-
-	if (inData["glslCompute"])
-	{
-		m_glslCompute = inData["glslCompute"].as<std::string>();
-	}
-
-	if (inData["glslCommon"])
-	{
-		m_glslCommon = inData["glslCommon"].as<std::string>();
-	}
-
-	if (inData["defines"])
-	{
-		m_defines = inData["defines"].as<TVector<std::string>>();
-	}
-
-	if (inData["includes"])
-	{
-		m_includes = inData["includes"].as<TVector<std::string>>();
-	}
-
-	if (inData["colorAttachments"])
-	{
-		for (const auto& str : inData["colorAttachments"])
-		{
-			RHI::EFormat format;
-			DeserializeEnum<RHI::EFormat>(str, format);
-			m_colorAttachments.Add(format);
-		}
-	}
-
-	if (inData["depthStencilAttachment"])
-	{
-		DeserializeEnum<RHI::EFormat>(inData["depthStencilAttachment"], m_depthStencilAttachment);
-	}
+	DESERIALIZE_PROPERTY(inData, m_glslVertex);
+	DESERIALIZE_PROPERTY(inData, m_glslFragment);
+	DESERIALIZE_PROPERTY(inData, m_glslCompute);
+	DESERIALIZE_PROPERTY(inData, m_glslCommon);
+	DESERIALIZE_PROPERTY(inData, m_defines);
+	DESERIALIZE_PROPERTY(inData, m_includes);
+	DESERIALIZE_PROPERTY(inData, m_colorAttachments);
+	DESERIALIZE_PROPERTY(inData, m_depthStencilAttachment);
 }
 
 ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
@@ -809,7 +773,7 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 				});
 
 			auto& shaders = m_loadedShaders.At_Lock(uid);
-			
+
 			shaders.Add({ permutation, pShader });
 			entry.Add({ permutation, newPromise });
 			outShader = (*(shaders.end() - 1)).m_second;

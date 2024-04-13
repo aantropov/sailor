@@ -12,6 +12,48 @@
 
 using namespace Sailor;
 
+YAML::Node Prefab::ReflectionData::Serialize() const
+{
+	YAML::Node outData;
+
+	SERIALIZE_PROPERTY(outData, m_name);
+	SERIALIZE_PROPERTY(outData, m_position);
+	SERIALIZE_PROPERTY(outData, m_orientation);
+	SERIALIZE_PROPERTY(outData, m_scale);
+	SERIALIZE_PROPERTY(outData, m_parentIndex);
+	SERIALIZE_PROPERTY(outData, m_components);
+
+	return outData;
+}
+
+void Prefab::ReflectionData::Deserialize(const YAML::Node& inData)
+{
+	DESERIALIZE_PROPERTY(inData, m_name);
+	DESERIALIZE_PROPERTY(inData, m_position);
+	DESERIALIZE_PROPERTY(inData, m_orientation);
+	DESERIALIZE_PROPERTY(inData, m_scale);
+	DESERIALIZE_PROPERTY(inData, m_parentIndex);
+	DESERIALIZE_PROPERTY(inData, m_components);
+}
+
+YAML::Node Prefab::Serialize() const
+{
+	YAML::Node outData;
+
+	SERIALIZE_PROPERTY(outData, m_root);
+	SERIALIZE_PROPERTY(outData, m_components);
+	SERIALIZE_PROPERTY(outData, m_gameObjects);
+
+	return outData;
+}
+
+void Prefab::Deserialize(const YAML::Node& inData)
+{
+	DESERIALIZE_PROPERTY(inData, m_root);
+	DESERIALIZE_PROPERTY(inData, m_components);
+	DESERIALIZE_PROPERTY(inData, m_gameObjects);
+}
+
 PrefabImporter::PrefabImporter(PrefabAssetInfoHandler* infoHandler)
 {
 	SAILOR_PROFILE_FUNCTION();

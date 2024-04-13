@@ -22,19 +22,26 @@ namespace Sailor
 {
 	using PrefabPtr = TObjectPtr<class Prefab>;
 
-	class Prefab : public Object
+	class Prefab : public Object, public IYamlSerializable
 	{
 	public:
 
-		struct GameObjectData
+		class ReflectionData : public IYamlSerializable
 		{
+		public:
+
+			std::string m_name{};
+
 			glm::vec4 m_position{};
 			glm::quat m_orientation{};
-			glm::vec3 m_scale{};
+			glm::vec4 m_scale{};
 
 			// We store indices
-			uint32_t m_parent;
+			uint32_t m_parentIndex;
 			TVector<uint32_t> m_components;
+
+			SAILOR_API virtual YAML::Node Serialize() const override;
+			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 		};
 
 		SAILOR_API Prefab(FileId uid) :
@@ -43,14 +50,17 @@ namespace Sailor
 		SAILOR_API virtual bool IsReady() const override { return m_bIsReady; }
 		SAILOR_API virtual ~Prefab() = default;
 
+		SAILOR_API virtual YAML::Node Serialize() const override;
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+
 	protected:
 
 		std::atomic<bool> m_bIsReady{};
 
-		TVector<ReflectionInfo> m_components{};
-		TVector<GameObjectData> m_gameObjects{};
+		ReflectionData m_root;
 
-		GameObjectData m_root;
+		TVector<ReflectionInfo> m_components{};
+		TVector<ReflectionData> m_gameObjects{};
 
 		friend class PrefabImporter;
 	};

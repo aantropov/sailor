@@ -298,23 +298,21 @@ void Material::ForcelyUpdateUniforms()
 YAML::Node MaterialAsset::Serialize() const
 {
 	YAML::Node outData;
-	outData["bEnableDepthTest"] = m_pData->m_renderState.IsDepthTestEnabled();
-	outData["bEnableZWrite"] = m_pData->m_renderState.IsEnabledZWrite();
-	outData["bSupportMultisampling"] = m_pData->m_renderState.SupportMultisampling();
-	outData["bCustomDepthShader"] = m_pData->m_renderState.IsRequiredCustomDepthShader();
 
-	outData["depthBias"] = m_pData->m_renderState.GetDepthBias();
-	outData["renderQueue"] = GetRenderQueue();
-	outData["defines"] = m_pData->m_shaderDefines;
-
-	outData["cullMode"] = SerializeEnum<RHI::ECullMode>(m_pData->m_renderState.GetCullMode());
-	outData["blendMode"] = SerializeEnum<RHI::EBlendMode>(m_pData->m_renderState.GetBlendMode());
-	outData["fillMode"] = SerializeEnum<RHI::EFillMode>(m_pData->m_renderState.GetFillMode());
-
-	outData["shaderUid"] = m_pData->m_shader;
-	outData["samplers"] = m_pData->m_samplers;
-	outData["uniformsVec4"] = m_pData->m_uniformsVec4;
-	outData["uniformsFloat"] = m_pData->m_uniformsFloat;
+	::Serialize(outData, "bEnableDepthTest", m_pData->m_renderState.IsDepthTestEnabled());
+	::Serialize(outData, "bEnableZWrite", m_pData->m_renderState.IsEnabledZWrite());
+	::Serialize(outData, "bSupportMultisampling", m_pData->m_renderState.SupportMultisampling());
+	::Serialize(outData, "bCustomDepthShader", m_pData->m_renderState.IsRequiredCustomDepthShader());
+	::Serialize(outData, "depthBias", m_pData->m_renderState.GetDepthBias());
+	::Serialize(outData, "cullMode", m_pData->m_renderState.GetCullMode());
+	::Serialize(outData, "fillMode", m_pData->m_renderState.GetFillMode());
+	::Serialize(outData, "blendMode", m_pData->m_renderState.GetBlendMode());
+	::Serialize(outData, "defines", m_pData->m_shaderDefines);
+	::Serialize(outData, "samplers", m_pData->m_samplers);
+	::Serialize(outData, "uniformsVec4", m_pData->m_uniformsVec4);
+	::Serialize(outData, "uniformsFloat", m_pData->m_uniformsFloat);
+	::Serialize(outData, "shaderUid", m_pData->m_shader);
+	::Serialize(outData, "renderQueue", GetRenderQueue());
 
 	return outData;
 }
@@ -337,75 +335,20 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 	m_pData->m_uniformsVec4.Clear();
 	m_pData->m_uniformsFloat.Clear();
 
-	if (outData["bEnableDepthTest"])
-	{
-		bEnableDepthTest = outData["bEnableDepthTest"].as<bool>();
-	}
-
-	if (outData["bEnableZWrite"])
-	{
-		bEnableZWrite = outData["bEnableZWrite"].as<bool>();
-	}
-
-	if (outData["bCustomDepthShader"])
-	{
-		bCustomDepthShader = outData["bCustomDepthShader"].as<bool>();
-	}
-
-	if (outData["bSupportMultisampling"])
-	{
-		bSupportMultisampling = outData["bSupportMultisampling"].as<bool>();
-	}
-
-	if (outData["depthBias"])
-	{
-		depthBias = outData["depthBias"].as<float>();
-	}
-
-	if (outData["cullMode"])
-	{
-		DeserializeEnum<RHI::ECullMode>(outData["cullMode"], cullMode);
-	}
-
-	if (outData["fillMode"])
-	{
-		DeserializeEnum<RHI::EFillMode>(outData["fillMode"], fillMode);
-	}
-
-	if (outData["renderQueue"])
-	{
-		renderQueue = outData["renderQueue"].as<std::string>();
-	}
-
-	if (outData["blendMode"])
-	{
-		DeserializeEnum<RHI::EBlendMode>(outData["blendMode"], blendMode);
-	}
-
-	if (outData["defines"])
-	{
-		m_pData->m_shaderDefines = outData["defines"].as<TVector<std::string>>();
-	}
-
-	if (outData["samplers"])
-	{
-		m_pData->m_samplers = outData["samplers"].as<TMap<std::string, FileId>>();
-	}
-
-	if (outData["uniformsVec4"])
-	{
-		m_pData->m_uniformsVec4 = outData["uniformsVec4"].as<TMap<std::string, glm::vec4>>();
-	}
-
-	if (outData["uniformsFloat"])
-	{
-		m_pData->m_uniformsFloat = outData["uniformsFloat"].as<TMap<std::string, float>>();
-	}
-
-	if (outData["shaderUid"])
-	{
-		m_pData->m_shader = outData["shaderUid"].as<FileId>();
-	}
+	::Deserialize(outData, "bEnableDepthTest", bEnableDepthTest);
+	::Deserialize(outData, "bEnableZWrite", bEnableZWrite);
+	::Deserialize(outData, "bCustomDepthShader", bCustomDepthShader);
+	::Deserialize(outData, "bSupportMultisampling", bSupportMultisampling);
+	::Deserialize(outData, "depthBias", depthBias);
+	::Deserialize(outData, "cullMode", cullMode);
+	::Deserialize(outData, "fillMode", fillMode);
+	::Deserialize(outData, "blendMode", blendMode);
+	::Deserialize(outData, "defines", m_pData->m_shaderDefines);
+	::Deserialize(outData, "samplers", m_pData->m_samplers);
+	::Deserialize(outData, "uniformsVec4", m_pData->m_uniformsVec4);
+	::Deserialize(outData, "uniformsFloat", m_pData->m_uniformsFloat);
+	::Deserialize(outData, "shaderUid", m_pData->m_shader);
+	::Deserialize(outData, "renderQueue", renderQueue);
 
 	const size_t tag = GetHash(renderQueue);
 	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, bCustomDepthShader, cullMode, blendMode, fillMode, tag, bSupportMultisampling);

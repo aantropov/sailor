@@ -16,7 +16,7 @@ namespace Sailor
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 		SAILOR_API bool ShouldGenerateMaterials() const { return m_bShouldGenerateMaterials; }
-		SAILOR_API bool ShouldBatchByMaterial() const { return m_bShouldBatchByMaterials; }
+		SAILOR_API bool ShouldBatchByMaterial() const { return m_bShouldBatchByMaterial; }
 
 		SAILOR_API const TVector<FileId>& GetDefaultMaterials() const { return m_materials; }
 		SAILOR_API TVector<FileId>& GetDefaultMaterials() { return m_materials; }
@@ -25,7 +25,7 @@ namespace Sailor
 
 		TVector<FileId> m_materials;
 		bool m_bShouldGenerateMaterials = true;
-		bool m_bShouldBatchByMaterials = true;
+		bool m_bShouldBatchByMaterial = true;
 	};
 
 	using ModelAssetInfoPtr = ModelAssetInfo*;

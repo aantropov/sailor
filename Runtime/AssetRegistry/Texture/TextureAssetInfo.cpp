@@ -12,12 +12,13 @@ YAML::Node TextureAssetInfo::Serialize() const
 	YAML::Node outData;
 
 	outData = AssetInfo::Serialize();
-	outData["bShouldGenerateMips"] = m_bShouldGenerateMips;
-	outData["bShouldSupportStorageBinding"] = m_bShouldSupportStorageBinding;
-	outData["clamping"] = SerializeEnum<RHI::ETextureClamping>(m_clamping);
-	outData["filtration"] = SerializeEnum<RHI::ETextureFiltration>(m_filtration);
-	outData["reduction"] = SerializeEnum<RHI::ESamplerReductionMode>(m_reduction);
-	outData["format"] = SerializeEnum<RHI::ETextureFormat>(m_format);
+
+	SERIALIZE_PROPERTY(outData, m_clamping);
+	SERIALIZE_PROPERTY(outData, m_reduction);
+	SERIALIZE_PROPERTY(outData, m_filtration);
+	SERIALIZE_PROPERTY(outData, m_bShouldGenerateMips);
+	SERIALIZE_PROPERTY(outData, m_bShouldSupportStorageBinding);
+	SERIALIZE_PROPERTY(outData, m_format);
 
 	return outData;
 }
@@ -25,35 +26,13 @@ YAML::Node TextureAssetInfo::Serialize() const
 void TextureAssetInfo::Deserialize(const YAML::Node& outData)
 {
 	AssetInfo::Deserialize(outData);
-	if (outData["clamping"])
-	{
-		DeserializeEnum<RHI::ETextureClamping>(outData["clamping"], m_clamping);
-	}
 
-	if (outData["filtration"])
-	{
-		DeserializeEnum<RHI::ETextureFiltration>(outData["filtration"], m_filtration);
-	}
-
-	if (outData["reduction"])
-	{
-		DeserializeEnum<RHI::ESamplerReductionMode>(outData["reduction"], m_reduction);
-	}
-
-	if (outData["bShouldGenerateMips"])
-	{
-		m_bShouldGenerateMips = outData["bShouldGenerateMips"].as<bool>();
-	}
-
-	if (outData["bShouldSupportStorageBinding"])
-	{
-		m_bShouldSupportStorageBinding = outData["bShouldSupportStorageBinding"].as<bool>();
-	}
-
-	if (outData["format"])
-	{
-		DeserializeEnum<RHI::ETextureFormat>(outData["format"], m_format);
-	}
+	DESERIALIZE_PROPERTY(outData, m_clamping);
+	DESERIALIZE_PROPERTY(outData, m_reduction);
+	DESERIALIZE_PROPERTY(outData, m_filtration);
+	DESERIALIZE_PROPERTY(outData, m_bShouldGenerateMips);
+	DESERIALIZE_PROPERTY(outData, m_bShouldSupportStorageBinding);
+	DESERIALIZE_PROPERTY(outData, m_format);
 }
 
 TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)

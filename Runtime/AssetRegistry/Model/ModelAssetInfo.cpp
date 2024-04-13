@@ -11,9 +11,11 @@ YAML::Node ModelAssetInfo::Serialize() const
 {
 	YAML::Node outData;
 	outData = AssetInfo::Serialize();
-	outData["bShouldGenerateMaterials"] = m_bShouldGenerateMaterials;
-	outData["bShouldBatchByMaterial"] = m_bShouldBatchByMaterials;
-	outData["defaultMaterials"] = m_materials;
+
+	SERIALIZE_PROPERTY(outData, m_bShouldGenerateMaterials);
+	SERIALIZE_PROPERTY(outData, m_bShouldBatchByMaterial);
+	SERIALIZE_PROPERTY(outData, m_materials);
+
 	return outData;
 }
 
@@ -21,20 +23,9 @@ void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 {
 	AssetInfo::Deserialize(outData);
 
-	if (outData["bShouldGenerateMaterials"])
-	{
-		m_bShouldGenerateMaterials = outData["bShouldGenerateMaterials"].as<bool>();;
-	}
-
-	if (outData["bShouldBatchByMaterial"])
-	{
-		m_bShouldBatchByMaterials = outData["bShouldBatchByMaterial"].as<bool>();;
-	}
-
-	if (outData["defaultMaterials"])
-	{
-		m_materials = outData["defaultMaterials"].as<TVector<FileId>>();
-	}
+	DESERIALIZE_PROPERTY(outData, m_bShouldGenerateMaterials);
+	DESERIALIZE_PROPERTY(outData, m_bShouldBatchByMaterial);
+	DESERIALIZE_PROPERTY(outData, m_materials);
 }
 
 ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)

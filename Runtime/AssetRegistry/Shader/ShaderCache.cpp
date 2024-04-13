@@ -57,14 +57,14 @@ void ShaderCache::ShaderCacheData::Entry::Deserialize(const YAML::Node& inData)
 YAML::Node ShaderCache::ShaderCacheData::Serialize() const
 {
 	YAML::Node res;
-	res["entries"] = m_data;
+	::Serialize(res, "entries", m_data);
 
 	return res;
 }
 
 void ShaderCache::ShaderCacheData::Deserialize(const YAML::Node& inData)
 {
-	m_data = inData["entries"].as<TMap<FileId, TVector<ShaderCacheData::Entry>>>();
+	::Deserialize(inData, "entries", m_data);
 }
 
 void ShaderCache::Initialize()
@@ -221,7 +221,7 @@ void ShaderCache::Remove(ShaderCacheData::Entry pEntry)
 void ShaderCache::Remove(const FileId& uid)
 {
 	SAILOR_PROFILE_FUNCTION();
-	
+
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
 	auto it = m_cache.m_data.Find(uid);
@@ -368,7 +368,7 @@ void ShaderCache::CacheSpirv_ThreadSafe(const FileId& uid, uint32_t permutation,
 bool ShaderCache::GetSpirvCode(const FileId& uid, uint32_t permutation, TVector<uint32_t>& vertexSpirv, TVector<uint32_t>& fragmentSpirv, TVector<uint32_t>& computeSpirv, bool bIsDebug)
 {
 	SAILOR_PROFILE_FUNCTION();
-	
+
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
 	if (IsExpired(uid, permutation))

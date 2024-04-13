@@ -6,6 +6,9 @@
 
 #include "yaml-cpp/include/yaml-cpp/yaml.h"
 
+#define SERIALIZE_PROPERTY(yamlNode, variable) { char const* name = #variable; Sailor::Serialize(yamlNode, name + 2, variable); }
+#define DESERIALIZE_PROPERTY(yamlNode, variable) { char const* name = #variable; Sailor::Deserialize(yamlNode, name + 2, variable); }
+
 namespace Sailor
 {
 	class SAILOR_API IYamlSerializable
@@ -31,6 +34,39 @@ namespace Sailor
 		auto value = magic_enum::enum_cast<T>(j.as<std::string>());
 		check(value.has_value());
 		outEnumeration = value.value();
+	}
+
+	template<typename T>
+	__forceinline void Serialize(YAML::Node& node, const std::string& name, const T& variable)
+	{
+		if constexpr (IsEnum<T>)
+		{
+			node[name] = SerializeEnum<T>(variable);
+		}
+		else
+		{
+			node[name] = variable;
+		}
+	}
+
+	template<typename T>
+	__forceinline bool Deserialize(const YAML::Node& node, const std::string& name, T& variable)
+	{
+		if (node[name])
+		{
+			if constexpr (IsEnum<T>)
+			{
+				DeserializeEnum<T>(node[name], variable);
+			}
+			else
+			{
+				variable = node[name].as<typename std::decay<decltype(variable)>::type>();
+			}
+
+			return true;
+		}
+
+		return false;
 	}
 }
 
@@ -310,7 +346,7 @@ namespace YAML
 			}
 			else if constexpr (Sailor::IsEnum<T>)
 			{
-				node = SerializeEnum(rhs);
+				node = Sailor::SerializeEnum<T>(rhs);
 			}
 			else
 			{
@@ -329,7 +365,7 @@ namespace YAML
 			}
 			else if constexpr (Sailor::IsEnum<T>)
 			{
-				DeserializeEnum(node, rhs);
+				Sailor::DeserializeEnum<T>(node, rhs);
 				return true;
 			}
 			return false;
