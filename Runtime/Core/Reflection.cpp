@@ -56,21 +56,19 @@ YAML::Node ReflectionInfo::Serialize() const
 	assert(m_typeInfo);
 
 	YAML::Node res{};
-	res["typename"] = m_typeInfo->Name();
-	res["properties"] = m_properties.ToVector();
+
+	::Serialize(res, "typename", m_typeInfo->Name());
+	::Serialize(res, "properties", m_properties);
 
 	return res;
 };
 
 void ReflectionInfo::Deserialize(const YAML::Node& inData)
 {
-	std::string typeName = inData["typename"].as<std::string>();
+	std::string typeName;
+
+	::Deserialize(inData, "typename", typeName);
+	::Deserialize(inData, "properties", m_properties);
+
 	m_typeInfo = &(Reflection::GetTypeByName(typeName));
-
-	auto properties = inData["properties"].as<TVector<TPair<std::string, YAML::Node>>>();
-
-	for (const auto& prop : properties)
-	{
-		m_properties[prop.First()] = prop.Second();
-	}
 }

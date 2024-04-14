@@ -13,10 +13,15 @@ void MeshRendererComponent::BeginPlay()
 	GetData().SetOwner(GetOwner());
 
 	//if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/KnightArtorias/Artorias.fbx"))
-
 }
 
 StaticMeshRendererData& MeshRendererComponent::GetData()
+{
+	auto ecs = GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>();
+	return ecs->GetComponentData(m_handle);
+}
+
+const StaticMeshRendererData& MeshRendererComponent::GetData() const 
 {
 	auto ecs = GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>();
 	return ecs->GetComponentData(m_handle);
@@ -27,12 +32,15 @@ void MeshRendererComponent::EndPlay()
 	GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>()->UnregisterComponent(m_handle);
 }
 
-
 void MeshRendererComponent::LoadModel(const std::string& path)
 {
 	if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(path))
 	{
-		App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), GetModel());
+		ModelPtr model;
+
+		App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), model);
 		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelFileId->GetFileId(), GetMaterials());
+
+		SetModel(model);
 	}
 }

@@ -32,18 +32,17 @@ namespace Sailor
 			check(m_pWorld);
 			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward<TArgs>(args) ...);
 
+			newObject->m_instanceId = InstanceId::CreateNewInstanceId();
 			newObject->m_owner = m_self;
 
 			if (m_bBeginPlayCalled)
 			{
 				newObject->BeginPlay();
 				newObject->m_bBeginPlayCalled = true;
-				m_componentsToAdd.Add(newObject);
+				m_componentsToAdd++;
 			}
-			else
-			{
-				m_components.Add(newObject);
-			}
+
+			m_components.Add(newObject);
 
 			return newObject;
 		}
@@ -54,18 +53,17 @@ namespace Sailor
 			check(!component->m_bBeginPlayCalled);
 			check(!component->GetOwner().IsValid());
 
+			component->m_instanceId = InstanceId::CreateNewInstanceId();
 			component->m_owner = m_self;
-			
+
 			if (m_bBeginPlayCalled)
 			{
 				component->BeginPlay();
 				component->m_bBeginPlayCalled = true;
-				m_componentsToAdd.Add(component);
+				m_componentsToAdd++;
 			}
-			else
-			{
-				m_components.Add(component);
-			}
+
+			m_components.Add(component);
 
 			return component;
 		}
@@ -81,18 +79,15 @@ namespace Sailor
 				}
 			}
 
-			for (auto& el : m_componentsToAdd)
-			{
-				if (auto res = el.DynamicCast<TComponent>())
-				{
-					return res;
-				}
-			}
 			return TObjectPtr<TComponent>();
 		}
 
 		SAILOR_API bool RemoveComponent(ComponentPtr component);
 		SAILOR_API void RemoveAllComponents();
+
+		SAILOR_API const TVector<GameObjectPtr>& GetChildren() const { return m_children; }
+		SAILOR_API const GameObjectPtr& GetParent() const { return m_parent; }
+		SAILOR_API void SetParent(GameObjectPtr parent);
 
 		SAILOR_API __forceinline class TransformComponent& GetTransformComponent();
 
@@ -100,6 +95,8 @@ namespace Sailor
 		SAILOR_API __forceinline void SetMobilityType(EMobilityType type) { m_type = type; }
 
 		SAILOR_API size_t GetFrameLastChange() const { return m_frameLastChange; }
+
+		SAILOR_API const TVector<ComponentPtr>& GetComponents() const { return m_components; }
 
 	protected:
 
@@ -117,8 +114,12 @@ namespace Sailor
 		WorldPtr m_pWorld;
 		GameObjectPtr m_self;
 
+		// Synced with TransformComponent
+		TVector<GameObjectPtr> m_children;
+		GameObjectPtr m_parent;
+
 		TVector<ComponentPtr> m_components;
-		TVector<ComponentPtr> m_componentsToAdd;
+		uint32_t m_componentsToAdd = 0;
 
 		size_t m_frameLastChange = 0;
 

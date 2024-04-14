@@ -13,13 +13,16 @@ namespace Sailor
 {
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
-	
+
 	class StaticMeshRendererData : public ECS::TComponent
 	{
 	public:
 
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return m_materials; }
-		SAILOR_API __forceinline ModelPtr& GetModel() { return m_model; }
+
+		SAILOR_API __forceinline const ModelPtr& GetModel() const { return m_model; }
+		SAILOR_API __forceinline void SetModel(const ModelPtr& model) { m_model = model; }
+
 		SAILOR_API __forceinline bool ShouldCastShadow() const { return true; }
 
 	protected:

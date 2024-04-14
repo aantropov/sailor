@@ -5,6 +5,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
+#include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "Platform/Win32/ConsoleWindow.h"
 #include "Platform/Win32/Input.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
@@ -145,6 +146,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	auto modelInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ModelAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
 	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
+	auto prefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));
 
 	s_pInstance->AddSubmodule(TSubmodule<TextureImporter>::Make(textureInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
@@ -153,6 +155,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
+	s_pInstance->AddSubmodule(TSubmodule<PrefabImporter>::Make(prefabInfoHandler));
 
 	GetSubmodule<AssetRegistry>()->ScanContentFolder();
 
@@ -350,6 +353,7 @@ void App::Shutdown()
 	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<ShaderCompiler>();
 	RemoveSubmodule<TextureImporter>();
+	RemoveSubmodule<PrefabImporter>();
 
 	RemoveSubmodule<AssetRegistry>();
 

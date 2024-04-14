@@ -64,6 +64,14 @@ namespace Sailor
 			file.close();
 		}
 
+		template<typename TStringType, typename TFilepath>
+		static void WriteTextFile(const TFilepath& filename, const TStringType& text)
+		{
+			std::ofstream file(filename);
+			file << text;
+			file.close();
+		}
+
 		SAILOR_API static bool ReadAllTextFile(const std::string& filename, std::string& text);
 
 		SAILOR_API void ScanContentFolder();

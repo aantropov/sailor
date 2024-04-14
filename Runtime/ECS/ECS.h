@@ -28,9 +28,9 @@ namespace Sailor::ECS
 		SAILOR_API __forceinline const size_t& GetFrameLastChange() const { return m_frameLastChange; }
 
 	protected:
-		
+
 		ObjectPtr m_owner{};
-		
+
 		size_t m_frameLastChange = 0;
 		bool m_bIsActive : 1 = true;
 		bool m_bIsDirty : 1 = false;
@@ -116,8 +116,13 @@ namespace Sailor::ECS
 		virtual size_t GetComponentType() const override { return TSystem::GetComponentStaticType(); }
 		static size_t GetComponentStaticType() { return std::type_index(typeid(TData)).hash_code(); }
 
-		__forceinline size_t GetComponentIndex(TData* rawPtr) const
+		__forceinline size_t GetComponentIndex(const TData* rawPtr) const
 		{
+			if (rawPtr == nullptr)
+			{
+				return ECS::InvalidIndex;
+			}
+
 			const auto lhs = (size_t)(rawPtr);
 			const auto rhs = (size_t)(&(m_components[0]));
 

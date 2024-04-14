@@ -16,11 +16,15 @@ namespace Sailor
 
 	class TestComponent : public Component
 	{
+		SAILOR_REFLECTABLE(TestComponent)
+
 	public:
 
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
+
+		MeshRendererComponentPtr m_meshRenderer;
 
 	protected:
 
@@ -49,3 +53,8 @@ namespace Sailor
 		size_t m_skyHash = 0;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::TestComponent, bases<Sailor::Component>),
+	field(m_meshRenderer)
+)

@@ -7,6 +7,7 @@
 #include "Components/LightComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
+#include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "ECS/TransformECS.h"
 #include "glm/glm/gtc/random.hpp"
 #include "imgui.h"
@@ -31,11 +32,14 @@ void TestComponent::BeginPlay()
 	meshRenderer->LoadModel("Models/Sponza/sponza.obj");
 	m_model = meshRenderer->GetModel();
 
+	m_meshRenderer = meshRenderer;
+
 	auto redBox = GetWorld()->Instantiate();
 	redBox->GetTransformComponent().SetPosition(vec3(120, 2000, 500));
 	redBox->GetTransformComponent().SetScale(vec4(100, 50, 100, 1));
 	meshRenderer = redBox->AddComponent<MeshRendererComponent>();
 	meshRenderer->LoadModel("Models/Box/Box.gltf");
+	redBox->SetMobilityType(EMobilityType::Stationary);
 
 	for (int32_t i = -1000; i < 1000; i += 32)
 	{
@@ -86,7 +90,7 @@ void TestComponent::BeginPlay()
 
 	//Reflection::ApplyReflection(data3.GetRawPtr(), data1);
 
-	/*auto spotLight = GetWorld()->Instantiate();
+	auto spotLight = GetWorld()->Instantiate();
 	lightComponent = spotLight->AddComponent<LightComponent>();
 	spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
 	spotLight->GetTransformComponent().SetRotation(quat(vec3(-45, 0.0f, 0.0f)));
@@ -94,7 +98,7 @@ void TestComponent::BeginPlay()
 	lightComponent->SetBounds(vec3(300.0f, 300.0f, 300.0f));
 	lightComponent->SetIntensity(vec3(260.0f, 260.0f, 200.0f));
 	lightComponent->SetLightType(ELightType::Spot);
-	/**/
+
 	/*
 	for (int32_t i = -1000; i < 1000; i += 250)
 	{
@@ -122,6 +126,11 @@ void TestComponent::BeginPlay()
 	auto& transform = GetOwner()->GetTransformComponent();
 	transform.SetPosition(glm::vec4(0.0f, 150.0f, 0.0f, 0.0f));
 	//transform.SetRotation(quat(vec3(-45, 12.5f, 0)));
+
+	redBox->SetParent(GetOwner());
+
+	auto prefab = Prefab::FromGameObject(GetOwner());
+	prefab->SaveToFile("test.serdeser");
 }
 
 void TestComponent::EndPlay()

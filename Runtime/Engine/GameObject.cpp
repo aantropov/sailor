@@ -21,11 +21,31 @@ TransformComponent& GameObject::GetTransformComponent()
 	return m_pWorld->GetECS<TransformECS>()->GetComponentData(m_transformHandle);
 }
 
+void GameObject::SetParent(GameObjectPtr parent)
+{
+	if (m_parent.IsValid())
+	{
+		m_parent->m_children.RemoveFirst(m_self);
+	}
+
+	m_parent = parent;
+
+	if (m_parent.IsValid())
+	{
+		m_parent->m_children.Add(m_self);
+		GetTransformComponent().SetNewParent(&parent->GetTransformComponent());
+	}
+	else
+	{
+		GetTransformComponent().SetNewParent(nullptr);
+	}
+}
+
 bool GameObject::RemoveComponent(ComponentPtr component)
 {
 	check(component);
 
-	if (m_components.RemoveFirst(component) || m_componentsToAdd.RemoveFirst(component))
+	if (m_components.RemoveFirst(component))
 	{
 		component->EndPlay();
 		component.DestroyObject(m_pWorld->GetAllocator());
@@ -43,12 +63,6 @@ void GameObject::RemoveAllComponents()
 		el.DestroyObject(m_pWorld->GetAllocator());
 	}
 
-	for (auto& el : m_componentsToAdd)
-	{
-		el->EndPlay();
-		el.DestroyObject(m_pWorld->GetAllocator());
-	}
-	
 	m_components.Clear(true);
 }
 
@@ -59,8 +73,11 @@ void GameObject::EndPlay()
 
 void GameObject::Tick(float deltaTime)
 {
-	for (auto& el : m_components)
+	check(m_componentsToAdd <= m_components.Num());
+
+	for (uint32_t i = 0; i < m_components.Num() - m_componentsToAdd; i++)
 	{
+		auto& el = m_components[i];
 		if (el->m_bBeginPlayCalled)
 		{
 			el->Tick(deltaTime);
@@ -76,6 +93,5 @@ void GameObject::Tick(float deltaTime)
 #endif
 	}
 
-	m_components.AddRange(m_componentsToAdd);
-	m_componentsToAdd.Clear();
+	m_componentsToAdd = 0;
 }

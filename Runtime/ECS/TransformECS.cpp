@@ -14,6 +14,12 @@ void TransformComponent::SetPosition(const glm::vec4& position)
 	}
 }*/
 
+void TransformComponent::SetNewParent(const TransformComponent* parent)
+{
+	MarkDirty();
+	m_newParent = parent;
+}
+
 void TransformComponent::SetPosition(const glm::vec3& position)
 {
 	if (position != vec3(m_transform.m_position))
@@ -84,6 +90,26 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 		{
 			auto& data = m_components[i];
 
+			size_t parentId = GetComponentIndex(data.m_newParent);
+
+			// First resolve relations
+			if (parentId != data.m_parent)
+			{
+				if (data.m_parent != ECS::InvalidIndex)
+				{
+					auto& parentData = m_components[data.m_parent];
+					parentData.m_children.RemoveFirst(i);
+				}
+
+				data.m_parent = parentId;
+
+				if (data.m_parent != ECS::InvalidIndex)
+				{
+					auto& parentData = m_components[data.m_parent];
+					parentData.m_children.Add(i);
+				}
+			}
+
 			if (data.m_bIsActive)
 			{
 				data.m_cachedRelativeMatrix = data.m_transform.Matrix();
@@ -117,11 +143,35 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 	}
 	else
 	{
-		for (auto& data : m_components)
+		for (size_t i = 0; i < m_components.Num(); i++)
 		{
-			if (data.m_bIsDirty && data.m_bIsActive)
+			auto& data = m_components[i];
+			if (data.m_bIsDirty)
 			{
-				data.m_cachedRelativeMatrix = data.m_transform.Matrix();
+				size_t parentId = GetComponentIndex(data.m_newParent);
+
+				// First resolve relations
+				if (parentId != data.m_parent)
+				{
+					if (data.m_parent != ECS::InvalidIndex)
+					{
+						auto& parentData = m_components[data.m_parent];
+						parentData.m_children.RemoveFirst(i);
+					}
+
+					data.m_parent = parentId;
+
+					if (data.m_parent != ECS::InvalidIndex)
+					{
+						auto& parentData = m_components[data.m_parent];
+						parentData.m_children.Add(i);
+					}
+				}
+
+				if (data.m_bIsActive)
+				{
+					data.m_cachedRelativeMatrix = data.m_transform.Matrix();
+				}
 			}
 		}
 

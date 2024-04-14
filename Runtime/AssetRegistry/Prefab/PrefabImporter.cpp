@@ -9,6 +9,8 @@
 #include <iostream>
 #include "Memory/ObjectAllocator.hpp"
 #include "Tasks/Scheduler.h"
+#include "Engine/GameObject.h"
+#include "ECS/TransformECS.h"
 
 using namespace Sailor;
 
@@ -18,7 +20,7 @@ YAML::Node Prefab::ReflectionData::Serialize() const
 
 	SERIALIZE_PROPERTY(outData, m_name);
 	SERIALIZE_PROPERTY(outData, m_position);
-	SERIALIZE_PROPERTY(outData, m_orientation);
+	SERIALIZE_PROPERTY(outData, m_rotation);
 	SERIALIZE_PROPERTY(outData, m_scale);
 	SERIALIZE_PROPERTY(outData, m_parentIndex);
 	SERIALIZE_PROPERTY(outData, m_components);
@@ -30,7 +32,7 @@ void Prefab::ReflectionData::Deserialize(const YAML::Node& inData)
 {
 	DESERIALIZE_PROPERTY(inData, m_name);
 	DESERIALIZE_PROPERTY(inData, m_position);
-	DESERIALIZE_PROPERTY(inData, m_orientation);
+	DESERIALIZE_PROPERTY(inData, m_rotation);
 	DESERIALIZE_PROPERTY(inData, m_scale);
 	DESERIALIZE_PROPERTY(inData, m_parentIndex);
 	DESERIALIZE_PROPERTY(inData, m_components);
@@ -40,7 +42,6 @@ YAML::Node Prefab::Serialize() const
 {
 	YAML::Node outData;
 
-	SERIALIZE_PROPERTY(outData, m_root);
 	SERIALIZE_PROPERTY(outData, m_components);
 	SERIALIZE_PROPERTY(outData, m_gameObjects);
 
@@ -49,9 +50,52 @@ YAML::Node Prefab::Serialize() const
 
 void Prefab::Deserialize(const YAML::Node& inData)
 {
-	DESERIALIZE_PROPERTY(inData, m_root);
 	DESERIALIZE_PROPERTY(inData, m_components);
 	DESERIALIZE_PROPERTY(inData, m_gameObjects);
+}
+
+bool Prefab::SaveToFile(const std::string& path) const
+{
+	AssetRegistry::WriteTextFile(path, Serialize());
+	return true;
+}
+
+void Prefab::SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVector<ReflectionInfo>& components, TVector<Prefab::ReflectionData>& gameObjects)
+{
+	Prefab::ReflectionData rootData{};
+
+	auto& transform = root->GetTransformComponent();
+	rootData.m_position = transform.GetPosition();
+	rootData.m_rotation = transform.GetRotation();
+	rootData.m_scale = transform.GetScale();
+
+	rootData.m_name = root->GetName();
+	rootData.m_parentIndex = parentIndex;
+
+	for (auto& component : root->GetComponents())
+	{
+		auto reflection = component->GetReflectionInfo();
+
+		rootData.m_components.Add((uint32_t)components.Num());
+		components.Add(reflection);
+	}
+
+	parentIndex = (uint32_t)gameObjects.Num();
+	gameObjects.Add(rootData);
+
+	for (auto& child : root->GetChildren())
+	{
+		SerializeGameObject(child, parentIndex, components, gameObjects);
+	}
+}
+
+PrefabPtr Prefab::FromGameObject(GameObjectPtr root)
+{
+	PrefabPtr res = App::GetSubmodule<PrefabImporter>()->Create();
+
+	SerializeGameObject(root, -1, res->m_components, res->m_gameObjects);
+
+	return res;
 }
 
 PrefabImporter::PrefabImporter(PrefabAssetInfoHandler* infoHandler)
@@ -67,6 +111,11 @@ PrefabImporter::~PrefabImporter()
 	{
 		model.m_second.DestroyObject(m_allocator);
 	}
+}
+
+PrefabPtr PrefabImporter::Create()
+{
+	return PrefabPtr::Make(m_allocator, FileId());
 }
 
 void PrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
@@ -110,20 +159,20 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 	// There is no promise, we need to load prefab
 	if (PrefabAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<PrefabAssetInfoPtr>(uid))
 	{
-		PrefabPtr model = PrefabPtr::Make(m_allocator, uid);
+		PrefabPtr prefab = PrefabPtr::Make(m_allocator, uid);
 
 		struct Data {};
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load prefab",
-			[model, assetInfo, this]()
+			[prefab, assetInfo, this]()
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
 				return res;
-			})->Then<PrefabPtr>([model](TSharedPtr<Data> data) mutable
+			})->Then<PrefabPtr>([prefab](TSharedPtr<Data> data) mutable
 				{
-					return model;
+					return prefab;
 				}, "Update Prefab", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
-				outPrefab = loadedPrefab = model;
+				outPrefab = loadedPrefab = prefab;
 				promise->Run();
 
 				m_loadedPrefabs.Unlock(uid);

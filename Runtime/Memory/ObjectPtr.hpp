@@ -4,6 +4,7 @@
 #include "Core/Defines.h"
 #include "SharedPtr.hpp"
 #include "ObjectAllocator.hpp"
+#include "Core/YamlSerializable.h"
 
 namespace Sailor
 {
@@ -20,14 +21,31 @@ namespace Sailor
 	// and all TObjectPtr pointers to destroyed objects aren't become dangling
 
 	template<typename T>
-	class TObjectPtr final
+	class TObjectPtr final : public IYamlSerializable
 	{
 		//static_assert(std::is_base_of<Object, T>::value, "T must inherit from Object");
 
 	public:
 
+		virtual YAML::Node Serialize() const override
+		{
+			YAML::Node res;
+			if (m_pRawPtr)
+			{
+				::Serialize(res, "fileId", m_pRawPtr->GetFileId());
+				::Serialize(res, "instanceId", m_pRawPtr->GetInstanceId());
+			}
+
+			return res;
+		}
+
+		virtual void Deserialize(const YAML::Node& inData) override
+		{
+			check(0);
+		}
+
 		template<typename... TArgs>
-		SAILOR_API static TObjectPtr<T> Make(Memory::ObjectAllocatorPtr pAllocator, TArgs&&... args) noexcept
+		static TObjectPtr<T> Make(Memory::ObjectAllocatorPtr pAllocator, TArgs&&... args) noexcept
 		{
 			void* ptr = pAllocator->Allocate(sizeof(T));
 			auto pRes = TObjectPtr<T>(new (ptr) T(std::forward<TArgs>(args)...), pAllocator);
@@ -88,20 +106,20 @@ namespace Sailor
 		}
 
 		template<typename R>
-		SAILOR_API TObjectPtr(const TObjectPtr<R>& pDerivedPtr) noexcept requires IsBaseOf<T, R>
+		TObjectPtr(const TObjectPtr<R>& pDerivedPtr) noexcept requires IsBaseOf<T, R>
 		{
 			m_pAllocator = pDerivedPtr.m_pAllocator;
 			AssignRawPtr(static_cast<T*>(pDerivedPtr.m_pRawPtr), pDerivedPtr.m_pControlBlock);
 		}
 
 		template<typename R>
-		SAILOR_API TObjectPtr(TObjectPtr<R>&& pDerivedPtr) noexcept requires IsBaseOf<T, R>
+		TObjectPtr(TObjectPtr<R>&& pDerivedPtr) noexcept requires IsBaseOf<T, R>
 		{
 			Swap(std::move(pDerivedPtr));
 		}
 
 		template<typename R>
-		SAILOR_API TObjectPtr& operator=(TObjectPtr<R> pDerivedPtr) noexcept  requires IsBaseOf<T, R>
+		TObjectPtr& operator=(TObjectPtr<R> pDerivedPtr) noexcept  requires IsBaseOf<T, R>
 		{
 			Swap(std::move(pDerivedPtr));
 			return *this;
@@ -282,7 +300,7 @@ namespace Sailor
 		}
 
 		template<typename R>
-		SAILOR_API void Swap(TObjectPtr<R>&& pPtr) requires IsBaseOf<T, R> || IsSame<T, R>
+		void Swap(TObjectPtr<R>&& pPtr) requires IsBaseOf<T, R> || IsSame<T, R>
 		{
 			// We are sure that all the types are safe
 			if ((void*)m_pRawPtr == (void*)pPtr.m_pRawPtr)

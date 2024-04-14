@@ -31,9 +31,10 @@ namespace Sailor
 		public:
 
 			std::string m_name{};
+			EMobilityType m_mobilityType{};
 
 			glm::vec4 m_position{};
-			glm::quat m_orientation{};
+			glm::quat m_rotation{};
 			glm::vec4 m_scale{};
 
 			// We store indices
@@ -53,11 +54,15 @@ namespace Sailor
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
+		SAILOR_API bool SaveToFile(const std::string& path) const;
+
+		static PrefabPtr FromGameObject(GameObjectPtr go);
+
 	protected:
 
-		std::atomic<bool> m_bIsReady{};
+		static void SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVector<ReflectionInfo>& components, TVector<Prefab::ReflectionData>& gameObjects);
 
-		ReflectionData m_root;
+		std::atomic<bool> m_bIsReady{};
 
 		TVector<ReflectionInfo> m_components{};
 		TVector<ReflectionData> m_gameObjects{};
@@ -79,6 +84,8 @@ namespace Sailor
 		SAILOR_API bool LoadPrefab_Immediate(FileId uid, PrefabPtr& outModel);
 
 		SAILOR_API virtual void CollectGarbage() override;
+
+		SAILOR_API PrefabPtr Create();
 
 	protected:
 
