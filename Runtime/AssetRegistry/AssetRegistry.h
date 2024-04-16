@@ -56,6 +56,27 @@ namespace Sailor
 			return true;
 		}
 
+		template<typename TTextType, typename TFilepath>
+		static bool ReadTextFile(const TFilepath& filename, TTextType& outText)
+		{
+			std::ifstream file(filename, std::ios::in | std::ios::ate);
+			if (!file.is_open())
+			{
+				return false;
+			}
+
+			std::streamsize size = file.tellg();
+			file.seekg(0, std::ios::beg);
+
+			std::stringstream buffer;
+			buffer << file.rdbuf();
+			outText = buffer.str();
+
+			file.close();
+
+			return true;
+		}
+
 		template<typename TBinaryType, typename TFilepath>
 		static void WriteBinaryFile(const TFilepath& filename, const TVector<TBinaryType>& buffer)
 		{

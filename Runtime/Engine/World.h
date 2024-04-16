@@ -24,6 +24,7 @@ namespace Sailor
 		SAILOR_API World(World&&) = default;
 		SAILOR_API World& operator=(World&&) = default;
 
+		SAILOR_API GameObjectPtr Instantiate(PrefabPtr prefab, const glm::vec3& worldPosition = glm::vec3(0, 0, 0), const std::string& name = "Untitled");
 		SAILOR_API GameObjectPtr Instantiate(const glm::vec3& worldPosition = glm::vec3(0, 0, 0), const std::string& name = "Untitled");
 		SAILOR_API void Destroy(GameObjectPtr object);
 

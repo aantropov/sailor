@@ -10,12 +10,13 @@ namespace Sailor
 	using TexturePtr = TObjectPtr<class Texture>;
 	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 	using FrameGraphPtr = TObjectPtr<class FrameGraph>;
+	using PrefabPtr = TObjectPtr<class Prefab>;
 
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using WorldPtr = class World*;
 	using ObjectPtr = TObjectPtr<class Object>;
 	using FrameGraphPtr = TObjectPtr<class FrameGraph>;
-	
+
 	using ComponentPtr = TObjectPtr<class Component>;
 	using CameraComponentPtr = TObjectPtr<class CameraComponent>;
 	using MeshRendererComponentPtr = TObjectPtr<class MeshRendererComponent>;

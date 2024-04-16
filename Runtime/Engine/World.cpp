@@ -1,6 +1,7 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
+#include "AssetRegistry/Prefab/PrefabImporter.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
 
@@ -94,6 +95,47 @@ void World::Tick(FrameState& frameState)
 
 	GetDebugContext()->Tick(m_commandList, deltaTime);
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
+}
+
+GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPosition, const std::string& name)
+{
+	check(prefab->m_gameObjects.Num() > 0);
+
+	TVector<GameObjectPtr> gameObjects;
+
+	for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
+	{		
+		GameObjectPtr gameObject = Instantiate(worldPosition, prefab->m_gameObjects[j].m_name);
+
+		for (uint32_t i = 0; i < prefab->m_gameObjects[j].m_components.Num(); i++)
+		{
+			ReflectionInfo& reflection = prefab->m_components[i];
+			ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
+			gameObject->AddComponentRaw(newComponent);
+			newComponent->ApplyReflection(reflection);
+		}
+
+		gameObjects.Add(gameObject);
+	}
+
+	GameObjectPtr root;
+
+	for (uint32_t i = 0; i < gameObjects.Num(); i++)
+	{
+		auto& go = gameObjects[i];
+		uint32_t parentIndex = prefab->m_gameObjects[i].m_parentIndex;
+
+		if (parentIndex != -1)
+		{
+			go->SetParent(gameObjects[parentIndex]);
+		}
+		else
+		{
+			root = go;
+		}
+	}
+
+	return root;
 }
 
 GameObjectPtr World::Instantiate(const glm::vec3& worldPosition, const std::string& name)

@@ -18,6 +18,7 @@
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
 #include "Math/Bounds.h"
+#include "Core/YamlSerializable.h"
 
 namespace Sailor::RHI
 {
@@ -28,7 +29,7 @@ namespace Sailor
 {
 	using ModelPtr = TObjectPtr<class Model>;
 
-	class Model : public Object
+	class Model : public Object, public IYamlSerializable
 	{
 	public:
 
@@ -47,6 +48,9 @@ namespace Sailor
 
 		SAILOR_API const Math::AABB& GetBoundsAABB() const { return m_boundsAabb; }
 		SAILOR_API const Math::Sphere& GetBoundsSphere() const { return m_boundsSphere; }
+
+		SAILOR_API virtual YAML::Node Serialize() const override;
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 	protected:
 

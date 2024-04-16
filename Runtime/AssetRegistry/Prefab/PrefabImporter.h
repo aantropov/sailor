@@ -68,6 +68,9 @@ namespace Sailor
 		TVector<ReflectionData> m_gameObjects{};
 
 		friend class PrefabImporter;
+
+		// We need that for object instantiation
+		friend class World;
 	};
 
 	class PrefabImporter final : public TSubmodule<PrefabImporter>, public IAssetInfoHandlerListener

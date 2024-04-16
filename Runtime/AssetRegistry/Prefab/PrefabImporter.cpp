@@ -163,14 +163,22 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 
 		struct Data {};
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load prefab",
-			[prefab, assetInfo, this]()
+			[prefab, assetInfo, this]() mutable
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
+
+				std::string text;
+				AssetRegistry::ReadTextFile(assetInfo->GetAssetFilepath(), text);
+
+				YAML::Node node = YAML::Load(text);
+				prefab->Deserialize(node);
+
 				return res;
+
 			})->Then<PrefabPtr>([prefab](TSharedPtr<Data> data) mutable
 				{
 					return prefab;
-				}, "Update Prefab", Tasks::EThreadType::RHI)->ToTaskWithResult();
+				}, "Preload resources", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
 				outPrefab = loadedPrefab = prefab;
 				promise->Run();

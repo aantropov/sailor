@@ -242,6 +242,18 @@ void ProcessNode_Assimp(TVector<ModelImporter::MeshContext>& outParsedMeshes, ai
 }
 //////////////////////////
 
+YAML::Node Model::Serialize() const
+{
+	YAML::Node res;
+	SERIALIZE_PROPERTY(res, m_fileId);
+	return res;
+}
+
+void Model::Deserialize(const YAML::Node& inData)
+{
+	DESERIALIZE_PROPERTY(inData, m_fileId);
+}
+
 void Model::Flush()
 {
 	if (m_meshes.Num() == 0)
