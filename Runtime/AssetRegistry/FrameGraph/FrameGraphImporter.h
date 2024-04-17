@@ -45,7 +45,6 @@ namespace Sailor
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		SAILOR_API FrameGraphAssetPtr LoadFrameGraphAsset(FileId uid);
-
 		SAILOR_API bool LoadFrameGraph_Immediate(FileId uid, FrameGraphPtr& outFrameGraph);
 		SAILOR_API bool Instantiate_Immediate(FileId uid, FrameGraphPtr& outFrameGraph);
 

@@ -12,8 +12,6 @@
 
 namespace Sailor
 {
-	class AssetRegistry;
-
 	struct AppArgs
 	{
 		bool m_bWaitForDebugger = false;

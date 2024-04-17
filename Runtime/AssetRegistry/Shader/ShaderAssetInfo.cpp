@@ -1,9 +1,11 @@
 #include "ShaderAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"
 #include <iostream>
+#include "ShaderCompiler.h"
 
 using namespace Sailor;
 
@@ -23,4 +25,9 @@ void ShaderAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 AssetInfoPtr ShaderAssetInfoHandler::CreateAssetInfo() const
 {
 	return new ShaderAssetInfo();
+}
+
+IAssetFactory* ShaderAssetInfoHandler::GetFactory()
+{
+	return App::GetSubmodule<ShaderCompiler>();
 }

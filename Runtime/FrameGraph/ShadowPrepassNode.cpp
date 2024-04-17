@@ -7,7 +7,7 @@
 #include "RHI/RenderTarget.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
-
+#include "AssetRegistry/AssetRegistry.h"
 #include "ECS/LightingECS.h"
 
 using namespace Sailor;

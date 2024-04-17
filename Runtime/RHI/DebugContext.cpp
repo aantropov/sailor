@@ -5,6 +5,7 @@
 #include "VertexDescription.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "ECS/LightingECS.h"
+#include "AssetRegistry/AssetRegistry.h"
 
 #ifdef SAILOR_BUILD_WITH_VULKAN
 #include "GraphicsDriver/Vulkan/VulkanPipeline.h"

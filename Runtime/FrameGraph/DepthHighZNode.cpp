@@ -8,6 +8,7 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;

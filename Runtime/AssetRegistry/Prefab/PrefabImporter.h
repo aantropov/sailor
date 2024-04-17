@@ -7,7 +7,8 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "Engine/Types.h"
-#include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/Prefab/PrefabAssetInfo.h"
+#include "AssetRegistry/AssetFactory.h"
 #include "PrefabAssetInfo.h"
 #include "Tasks/Scheduler.h"
 #include "PrefabAssetInfo.h"
@@ -73,7 +74,7 @@ namespace Sailor
 		friend class World;
 	};
 
-	class PrefabImporter final : public TSubmodule<PrefabImporter>, public IAssetInfoHandlerListener
+	class PrefabImporter final : public TSubmodule<PrefabImporter>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 	public:
 
@@ -83,6 +84,7 @@ namespace Sailor
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 
+		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API Tasks::TaskPtr<PrefabPtr> LoadPrefab(FileId uid, PrefabPtr& outModel);
 		SAILOR_API bool LoadPrefab_Immediate(FileId uid, PrefabPtr& outModel);
 

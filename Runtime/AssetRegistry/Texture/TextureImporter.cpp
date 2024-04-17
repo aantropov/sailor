@@ -266,6 +266,14 @@ size_t TextureImporter::GetTextureIndex(FileId uid)
 	return res;
 }
 
+bool TextureImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
+{
+	TexturePtr outAsset;
+	bool bRes = LoadTexture_Immediate(uid, outAsset);
+	out = outAsset;
+	return bRes;
+}
+
 void TextureImporter::CollectGarbage()
 {
 	TVector<FileId> uidsToRemove;

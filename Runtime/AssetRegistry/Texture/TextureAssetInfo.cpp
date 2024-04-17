@@ -1,9 +1,11 @@
 #include "TextureAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"
 #include <iostream>
+#include "TextureImporter.h"
 
 using namespace Sailor;
 
@@ -58,4 +60,9 @@ void TextureAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 AssetInfoPtr TextureAssetInfoHandler::CreateAssetInfo() const
 {
 	return new TextureAssetInfo();
+}
+
+IAssetFactory* TextureAssetInfoHandler::GetFactory()
+{
+	return App::GetSubmodule<TextureImporter>();
 }

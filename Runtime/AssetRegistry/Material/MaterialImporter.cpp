@@ -1,5 +1,5 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
-
+#include "Memory/ObjectPtr.hpp"
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
@@ -503,7 +503,7 @@ const FileId& MaterialImporter::CreateMaterialAsset(const std::string& assetFile
 	assetFile << newMaterial;
 	assetFile.close();
 
-	return App::GetSubmodule<AssetRegistry>()->LoadAsset(assetFilepath);
+	return App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(assetFilepath);
 }
 
 bool MaterialImporter::LoadMaterial_Immediate(FileId uid, MaterialPtr& outMaterial)
@@ -646,6 +646,14 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 
 	SAILOR_LOG("Cannot find material with uid: %s", uid.ToString().c_str());
 	return Tasks::TaskPtr<MaterialPtr>();
+}
+
+bool MaterialImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
+{
+	MaterialPtr outAsset;
+	bool bRes = LoadMaterial_Immediate(uid, outAsset);
+	out = outAsset;
+	return bRes;
 }
 
 void MaterialImporter::CollectGarbage()

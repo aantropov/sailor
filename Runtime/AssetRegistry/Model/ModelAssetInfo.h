@@ -1,5 +1,6 @@
 #pragma once
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetFactory.h"
 #include "RHI/Types.h"
 #include "Core/Singleton.hpp"
 
@@ -20,7 +21,7 @@ namespace Sailor
 
 		SAILOR_API const TVector<FileId>& GetDefaultMaterials() const { return m_materials; }
 		SAILOR_API TVector<FileId>& GetDefaultMaterials() { return m_materials; }
-
+		
 	private:
 
 		TVector<FileId> m_materials;
@@ -36,6 +37,8 @@ namespace Sailor
 	public:
 
 		ModelAssetInfoHandler(AssetRegistry* assetRegistry);
+
+		IAssetFactory* GetFactory() override;
 
 		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
 		AssetInfoPtr CreateAssetInfo() const;

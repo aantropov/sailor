@@ -9,6 +9,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetFactory.h"
 #include "TextureAssetInfo.h"
 #include "RHI/Types.h"
 #include "Engine/Object.h"
@@ -37,7 +38,7 @@ namespace Sailor
 
 	using TexturePtr = TObjectPtr<Texture>;
 
-	class TextureImporter final : public TSubmodule<TextureImporter>, public IAssetInfoHandlerListener
+	class TextureImporter final : public TSubmodule<TextureImporter>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 	public:
 
@@ -56,6 +57,7 @@ namespace Sailor
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
+		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadTexture_Immediate(FileId uid, TexturePtr& outTexture);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> LoadTexture(FileId uid, TexturePtr& outTexture);
 
@@ -65,7 +67,6 @@ namespace Sailor
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetTextureSamplersBindingSet() { return m_textureSamplersBindings; }
 		SAILOR_API size_t GetTextureIndex(FileId uid);
-
 
 	protected:
 

@@ -47,7 +47,7 @@ namespace Sailor
 		};
 
 		template<typename TResult = void, typename TArgs = void>
-		SAILOR_API TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
+		TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
 			task->m_self = task;
@@ -56,13 +56,13 @@ namespace Sailor
 		}
 
 		template<typename TArgs>
-		SAILOR_API TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, typename TFunction<void, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
+		TaskPtr<void, TArgs> CreateTaskWithArgs(const std::string& name, typename TFunction<void, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			return CreateTask<void, TArgs>(name, lambda, thread);
 		}
 
 		template<typename TResult>
-		SAILOR_API TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, typename TFunction<TResult, void>::type lambda, EThreadType thread = EThreadType::Worker)
+		TaskPtr<TResult, void> CreateTaskWithResult(const std::string& name, typename TFunction<TResult, void>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			return CreateTask<TResult, void>(name, lambda, thread);
 		}
@@ -244,20 +244,20 @@ namespace Sailor
 			}
 
 			template<typename TResult1>
-			SAILOR_API Task(TResult1 result) requires NotVoid<TResult1>&& NotVoid<TResult>
+			Task(TResult1 result) requires NotVoid<TResult1>&& NotVoid<TResult>
 				: ITask("TaskResult", EThreadType::Worker)
 			{
 				ResultBase::m_result = std::move(result);
 				ITask::m_state |= StateMask::IsFinishedBit;
 			}
 
-			SAILOR_API Task(const std::string& name, Function function, EThreadType thread) : ITask(name, thread)
+			Task(const std::string& name, Function function, EThreadType thread) : ITask(name, thread)
 			{
 				m_function = std::move(function);
 			}
 
 			template<typename TContinuationResult = void>
-			SAILOR_API TaskPtr<TContinuationResult, TResult> Then(
+			TaskPtr<TContinuationResult, TResult> Then(
 				typename TFunction<TContinuationResult, TResult>::type function,
 				std::string name = "ChainedTask",
 				EThreadType thread = EThreadType::Worker)

@@ -40,6 +40,8 @@ namespace Sailor
 
 	public:
 
+		IAssetFactory* GetFactory() override;
+
 		SAILOR_API TextureAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		SAILOR_API void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;

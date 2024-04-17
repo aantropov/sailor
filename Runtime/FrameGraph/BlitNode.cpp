@@ -8,6 +8,7 @@
 #include "RHI/VertexDescription.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
+#include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;

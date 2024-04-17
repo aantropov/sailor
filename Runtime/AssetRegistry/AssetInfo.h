@@ -1,7 +1,6 @@
 #pragma once
 #include <string>
 #include <ctime>
-#include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/Singleton.hpp"
 #include "Containers/Vector.h"
@@ -24,7 +23,7 @@ namespace Sailor
 
 		// That includes "../Content/" in the beginning
 		SAILOR_API std::string GetAssetFilepath() const { return m_folder + m_assetFilename; }
-		
+
 		// That includes "../Content/" in the beginning
 		SAILOR_API std::string GetMetaFilepath() const;
 
@@ -80,6 +79,8 @@ namespace Sailor
 
 		virtual ~IAssetInfoHandler() = default;
 
+		virtual class IAssetFactory* GetFactory() { return nullptr; }
+
 	protected:
 
 		virtual AssetInfoPtr CreateAssetInfo() const = 0;
@@ -93,7 +94,7 @@ namespace Sailor
 
 	public:
 
-		DefaultAssetInfoHandler(AssetRegistry* assetRegistry);
+		DefaultAssetInfoHandler(class AssetRegistry* assetRegistry);
 
 		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
 		virtual AssetInfoPtr CreateAssetInfo() const override;

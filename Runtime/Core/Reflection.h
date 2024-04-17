@@ -5,6 +5,34 @@
 #include "Engine/Types.h"
 #include "Memory/ObjectPtr.hpp"
 #include "YamlSerializable.h"
+#include "AssetRegistry/AssetRegistry.h"
+
+namespace Sailor
+{
+	template<typename T>
+	struct IsObjectPtr_type : std::false_type {};
+
+	template<typename R>
+	struct IsObjectPtr_type<TObjectPtr<R>> : std::true_type { using base_type = R; };
+
+	template<typename T>
+	inline constexpr bool IsObjectPtr = IsObjectPtr_type<T>::value;
+
+	template<typename T>
+	class TObjectPtr;
+
+	template<typename T>
+	struct TemplateParameter;
+
+	template<typename T>
+	struct TemplateParameter<TObjectPtr<T>>
+	{
+		using type = T;
+	};
+
+	template<typename T>
+	using TemplateParameter_t = typename TemplateParameter<T>::type;
+}
 
 #define SAILOR_REFLECTABLE(__CLASSNAME__) \
 	public: \
@@ -47,6 +75,9 @@
 							{ \
 								DeserializeEnum<PropertyType>(node, member(*ptr)); \
 							} \
+							else if (Sailor::IsObjectPtr<PropertyType>) \
+							{ \
+							} \
 							else \
 							{ \
 								member(*ptr) = node.as<PropertyType>(); \
@@ -59,12 +90,26 @@
 							if constexpr (Sailor::IsEnum<PropertyType>) \
 							{ \
 								DeserializeEnum<PropertyType>(node, v); \
+								member(*ptr, v); \
+							} \
+							else if constexpr (!Sailor::IsObjectPtr<PropertyType>) \
+							{ \
+								v = node.as<PropertyType>(); \
+								member(*ptr, v); \
 							} \
 							else \
 							{ \
-								v = node.as<PropertyType>(); \
+								if (node["fileId"]) \
+								{ \
+									FileId fileId = node["fileId"].as<FileId>(); \
+									if (fileId != FileId::Invalid) \
+									{ \
+										using ElementType = TemplateParameter_t<PropertyType>; \
+										v = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<ElementType>(fileId); \
+										member(*ptr, v); \
+									} \
+								} \
 							} \
-							member(*ptr, v); \
 						} \
 					} \
 				} \
@@ -206,6 +251,15 @@ namespace Sailor
 						{
 							reflection.m_properties[displayName] = SerializeEnum<PropertyType>(member(*ptr));
 						}
+						//else if constexpr (IsObjectPtr_v<PropertyType>)
+						//{
+						//	check(0);
+						//	//if constexpr (Sailor::IsSame<TObjectPtr<base_type_t<PropertyType>>, PropertyType>)
+						//	//{
+						//	//	check(0); // Additional handling if necessary
+						//	//	// Possibly serialize or do something with TObjectPtr
+						//	//}
+						//}
 						else
 						{
 							reflection.m_properties[displayName] = member(*ptr);

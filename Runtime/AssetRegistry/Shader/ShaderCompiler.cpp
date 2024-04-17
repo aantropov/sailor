@@ -871,6 +871,14 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 	return true;
 }
 
+bool ShaderCompiler::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
+{
+	ShaderSetPtr outAsset;
+	bool bRes = LoadShader_Immediate(uid, outAsset);
+	out = outAsset;
+	return bRes;
+}
+
 void ShaderCompiler::CollectGarbage()
 {
 	TVector<FileId> uidsToRemove;

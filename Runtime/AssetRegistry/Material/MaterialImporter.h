@@ -13,6 +13,7 @@
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
+#include "AssetRegistry/AssetFactory.h"
 #include "Engine/Types.h"
 #include "RHI/Types.h"
 #include "Engine/Object.h"
@@ -118,7 +119,7 @@ namespace Sailor
 		friend class MaterialImporter;
 	};
 
-	class MaterialImporter final : public TSubmodule<MaterialImporter>, public IAssetInfoHandlerListener
+	class MaterialImporter final : public TSubmodule<MaterialImporter>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 	public:
 
@@ -130,6 +131,7 @@ namespace Sailor
 
 		SAILOR_API TSharedPtr<MaterialAsset> LoadMaterialAsset(FileId uid);
 
+		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadMaterial_Immediate(FileId uid, MaterialPtr& outMaterial);
 		SAILOR_API Tasks::TaskPtr<MaterialPtr> LoadMaterial(FileId uid, MaterialPtr& outMaterial);
 

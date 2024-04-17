@@ -27,6 +27,7 @@
 #include "RHI/Shader.h"
 #include "Submodules/RenderDocApi.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "RHI/Renderer.h"
 
 using namespace Sailor;

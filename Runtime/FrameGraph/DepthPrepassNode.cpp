@@ -7,6 +7,7 @@
 #include "RHI/Batch.hpp"
 #include "RHI/VertexDescription.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;

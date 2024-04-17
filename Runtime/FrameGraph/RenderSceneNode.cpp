@@ -9,6 +9,7 @@
 #include "RHI/VertexDescription.h"
 #include "RHI/CommandList.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;

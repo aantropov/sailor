@@ -92,16 +92,16 @@ std::string AssetRegistry::GetMetaFilePath(const std::string& assetFilepath)
 	return assetFilepath + "." + MetaFileExtension;
 }
 
-const FileId& AssetRegistry::GetOrLoadAsset(const std::string& assetFilepath)
+const FileId& AssetRegistry::GetOrLoadFile(const std::string& assetFilepath)
 {
 	if (auto assetInfo = GetAssetInfoPtr(assetFilepath))
 	{
 		return assetInfo->GetFileId();
 	}
-	return LoadAsset(assetFilepath);
+	return LoadFile(assetFilepath);
 }
 
-const FileId& AssetRegistry::LoadAsset(const std::string& assetFilepath)
+const FileId& AssetRegistry::LoadFile(const std::string& assetFilepath)
 {
 	// Convert to absolute path
 	const std::string filepath = (!assetFilepath._Starts_with(GetContentFolder())) ?
@@ -175,7 +175,7 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 		}
 		else if (entry.is_regular_file())
 		{
-			LoadAsset(entry.path().string());
+			GetOrLoadFile(entry.path().string());
 		}
 	}
 }

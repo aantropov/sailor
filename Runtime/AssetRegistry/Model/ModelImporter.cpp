@@ -69,7 +69,7 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 	const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(material, aiTextureType_NORMALS);
 	const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(material, aiTextureType_EMISSIVE);
 
-	data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset("Shaders/Standard.shader");
+	data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard.shader");
 
 	glm::vec4 diffuse{};
 	glm::vec4 ambient{};
@@ -117,27 +117,27 @@ MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, c
 
 	if (!diffuseMaps.IsEmpty() && diffuseMaps[0].front() != '*')
 	{
-		data.m_samplers.Add("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + diffuseMaps[0]));
+		data.m_samplers.Add("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + diffuseMaps[0]));
 	}
 
 	if (!ambientMaps.IsEmpty())
 	{
-		data.m_samplers.Add("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + ambientMaps[0]));
+		data.m_samplers.Add("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + ambientMaps[0]));
 	}
 
 	if (!normalMaps.IsEmpty() && normalMaps[0].front() != '*')
 	{
-		data.m_samplers.Add("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + normalMaps[0]));
+		data.m_samplers.Add("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + normalMaps[0]));
 	}
 
 	if (!specularMaps.IsEmpty() && specularMaps[0].front() != '*')
 	{
-		data.m_samplers.Add("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + specularMaps[0]));
+		data.m_samplers.Add("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + specularMaps[0]));
 	}
 
 	if (!emissionMaps.IsEmpty() && emissionMaps[0].front() != '*')
 	{
-		data.m_samplers.Add("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadAsset(texturesFolder + emissionMaps[0]));
+		data.m_samplers.Add("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + emissionMaps[0]));
 	}
 
 	return data;
@@ -487,6 +487,14 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 	}
 
 	return Tasks::TaskPtr<bool>::Make(false);
+}
+
+bool ModelImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
+{
+	ModelPtr outModel;
+	bool bRes = LoadModel_Immediate(uid, outModel);
+	out = outModel;
+	return bRes;
 }
 
 void ModelImporter::CollectGarbage()

@@ -13,6 +13,7 @@
 #include "Math/Noise.h"
 #include "glm/glm/gtx/quaternion.hpp"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "EnvironmentNode.h"
 
 using namespace Sailor;

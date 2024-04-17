@@ -1,5 +1,7 @@
 #include "ModelAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/Model/ModelImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"
@@ -47,4 +49,9 @@ void ModelAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 AssetInfoPtr ModelAssetInfoHandler::CreateAssetInfo() const
 {
 	return new ModelAssetInfo();
+}
+
+IAssetFactory* ModelAssetInfoHandler::GetFactory() 
+{
+	return App::GetSubmodule<ModelImporter>(); 
 }

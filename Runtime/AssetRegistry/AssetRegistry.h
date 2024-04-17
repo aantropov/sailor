@@ -7,6 +7,7 @@
 #include "Core/Submodule.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "Core/Singleton.hpp"
+#include "Engine/Object.h"
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "AssetRegistry/AssetCache.h"
 
@@ -96,9 +97,8 @@ namespace Sailor
 		SAILOR_API static bool ReadAllTextFile(const std::string& filename, std::string& text);
 
 		SAILOR_API void ScanContentFolder();
-		SAILOR_API void ScanFolder(const std::string& folderPath);
-		SAILOR_API const FileId& LoadAsset(const std::string& filepath);
-		SAILOR_API const FileId& GetOrLoadAsset(const std::string& filepath);
+		SAILOR_API void ScanFolder(const std::string& folderPath);		
+		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
 		TAssetInfoPtr GetAssetInfoPtr(FileId uid) const
@@ -132,7 +132,29 @@ namespace Sailor
 		SAILOR_API bool GetAssetCachedTime(const FileId& id, time_t& outAssetTimestamp) const;
 		SAILOR_API void CacheAssetTime(const FileId& id, const time_t& assetTimestamp);
 
+		template<typename T>
+		TObjectPtr<T> LoadAssetFromFile(const FileId& id)
+		{
+			TObjectPtr<Object> out;
+			if (const auto& info = GetAssetInfoPtr(id))
+			{
+				const std::string extension = Utils::GetFileExtension(info->GetAssetFilepath());
+
+				auto assetInfoHandlerIt = m_assetInfoHandlers.Find(extension);
+				if (assetInfoHandlerIt != m_assetInfoHandlers.end())
+				{
+					auto assetInfoHandler = *(*assetInfoHandlerIt).m_second;
+
+					assetInfoHandler->GetFactory()->LoadAsset(id, out);
+				}
+			}
+
+			return out.DynamicCast<T>();
+		}
+
 	protected:
+
+		SAILOR_API const FileId& LoadFile(const std::string& filepath);
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;

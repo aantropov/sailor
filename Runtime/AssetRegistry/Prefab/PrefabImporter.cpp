@@ -196,6 +196,14 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 	return Tasks::TaskPtr<PrefabPtr>();
 }
 
+bool PrefabImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
+{
+	PrefabPtr outAsset;
+	bool bRes = LoadPrefab_Immediate(uid, outAsset);
+	out = outAsset;
+	return bRes;
+}
+
 void PrefabImporter::CollectGarbage()
 {
 	TVector<FileId> uidsToRemove;

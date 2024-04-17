@@ -9,6 +9,7 @@
 #include "Memory/WeakPtr.hpp"
 #include "Engine/Types.h"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetFactory.h"
 #include "ModelAssetInfo.h"
 #include "Tasks/Scheduler.h"
 #include "ModelAssetInfo.h"
@@ -19,6 +20,7 @@
 #include "RHI/Material.h"
 #include "Math/Bounds.h"
 #include "Core/YamlSerializable.h"
+#include "Core/Reflection.h"
 
 namespace Sailor::RHI
 {
@@ -63,7 +65,7 @@ namespace Sailor
 		friend class ModelImporter;
 	};
 
-	class ModelImporter final : public TSubmodule<ModelImporter>, public IAssetInfoHandlerListener
+	class ModelImporter final : public TSubmodule<ModelImporter>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 	public:
 
@@ -81,6 +83,7 @@ namespace Sailor
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 
+		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API Tasks::TaskPtr<ModelPtr> LoadModel(FileId uid, ModelPtr& outModel);
 		SAILOR_API bool LoadModel_Immediate(FileId uid, ModelPtr& outModel);
 

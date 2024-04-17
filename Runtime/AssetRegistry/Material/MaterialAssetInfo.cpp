@@ -4,6 +4,8 @@
 #include <fstream>
 #include "Core/Utils.h"
 #include <iostream>
+#include "MaterialImporter.h"
+#include "AssetRegistry/AssetRegistry.h"
 
 using namespace Sailor;
 
@@ -22,4 +24,9 @@ void MaterialAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 AssetInfoPtr MaterialAssetInfoHandler::CreateAssetInfo() const
 {
 	return new MaterialAssetInfo();
+}
+
+IAssetFactory* MaterialAssetInfoHandler::GetFactory()
+{
+	return App::GetSubmodule<MaterialImporter>();
 }

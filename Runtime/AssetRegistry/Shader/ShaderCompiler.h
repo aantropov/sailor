@@ -9,6 +9,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetFactory.h"
 #include "ShaderAssetInfo.h"
 #include "RHI/Types.h"
 #include "ShaderCache.h"
@@ -106,7 +107,7 @@ namespace Sailor
 		TVector<std::string> m_defines;
 	};
 
-	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener
+	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 		const bool bShouldAutoCompileAllPermutations = false;
 		
@@ -125,6 +126,7 @@ namespace Sailor
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
+		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadShader_Immediate(FileId uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
 		SAILOR_API Tasks::TaskPtr<ShaderSetPtr> LoadShader(FileId uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
 

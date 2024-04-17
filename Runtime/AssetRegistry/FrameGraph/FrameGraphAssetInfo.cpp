@@ -1,5 +1,6 @@
 #include "FrameGraphAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"

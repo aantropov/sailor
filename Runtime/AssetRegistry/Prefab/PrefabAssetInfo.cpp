@@ -1,8 +1,10 @@
 #include "PrefabAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"
+#include "PrefabImporter.h"
 #include <iostream>
 
 using namespace Sailor;
@@ -34,4 +36,9 @@ void PrefabAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 AssetInfoPtr PrefabAssetInfoHandler::CreateAssetInfo() const
 {
 	return new PrefabAssetInfo();
+}
+
+IAssetFactory* PrefabAssetInfoHandler::GetFactory()
+{
+	return App::GetSubmodule<PrefabImporter>();
 }
