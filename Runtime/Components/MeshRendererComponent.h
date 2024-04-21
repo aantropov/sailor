@@ -6,6 +6,7 @@
 #include "Components/Component.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "ECS/StaticMeshRendererECS.h"
+#include "AssetRegistry/AssetRegistry.h"
 
 namespace Sailor
 {

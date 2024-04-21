@@ -9,6 +9,7 @@
 #include "Containers/Octree.h"
 #include "Framegraph/SkyNode.h"
 #include "Math/Math.h"
+#include "Components/MeshRendererComponent.h"
 
 namespace Sailor
 {

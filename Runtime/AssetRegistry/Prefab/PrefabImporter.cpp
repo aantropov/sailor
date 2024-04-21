@@ -23,6 +23,7 @@ YAML::Node Prefab::ReflectionData::Serialize() const
 	SERIALIZE_PROPERTY(outData, m_rotation);
 	SERIALIZE_PROPERTY(outData, m_scale);
 	SERIALIZE_PROPERTY(outData, m_parentIndex);
+	SERIALIZE_PROPERTY(outData, m_instanceId);
 	SERIALIZE_PROPERTY(outData, m_components);
 
 	return outData;
@@ -35,6 +36,7 @@ void Prefab::ReflectionData::Deserialize(const YAML::Node& inData)
 	DESERIALIZE_PROPERTY(inData, m_rotation);
 	DESERIALIZE_PROPERTY(inData, m_scale);
 	DESERIALIZE_PROPERTY(inData, m_parentIndex);
+	DESERIALIZE_PROPERTY(inData, m_instanceId);
 	DESERIALIZE_PROPERTY(inData, m_components);
 }
 

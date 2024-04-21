@@ -102,20 +102,36 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 	check(prefab->m_gameObjects.Num() > 0);
 
 	TVector<GameObjectPtr> gameObjects;
+	TMap<InstanceId, ObjectPtr> resolveContext;
 
 	for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
-	{		
+	{
 		GameObjectPtr gameObject = Instantiate(worldPosition, prefab->m_gameObjects[j].m_name);
 
 		for (uint32_t i = 0; i < prefab->m_gameObjects[j].m_components.Num(); i++)
 		{
-			ReflectionInfo& reflection = prefab->m_components[i];
+			const ReflectionInfo& reflection = prefab->m_components[i];
+
 			ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
 			gameObject->AddComponentRaw(newComponent);
 			newComponent->ApplyReflection(reflection);
+
+			resolveContext[newComponent->GetInstanceId()] = newComponent;
 		}
 
+		resolveContext[gameObject->GetInstanceId()] = gameObject;
 		gameObjects.Add(gameObject);
+	}
+
+	for (auto& go : gameObjects)
+	{
+		for (uint32_t i = 0; i < go->m_components.Num(); i++)
+		{
+			auto& newComp = go->m_components[i];
+			const ReflectionInfo& reflection = prefab->m_components[i];
+
+			newComp->ResolveRefs(reflection, resolveContext);
+		}
 	}
 
 	GameObjectPtr root;
@@ -152,6 +168,7 @@ GameObjectPtr World::Instantiate(const glm::vec3& worldPosition, const std::stri
 
 	newObject->GetTransformComponent().SetOwner(newObject);
 	newObject->GetTransformComponent().SetPosition(worldPosition);
+	newObject->m_instanceId = InstanceId::CreateNewInstanceId();
 
 	m_objects.Add(newObject);
 

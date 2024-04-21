@@ -54,68 +54,11 @@ namespace Sailor
 	{ \
 		__CLASSNAME__::ApplyReflection_Impl<__CLASSNAME__>(this, reflection); \
 	} \
-	protected: \
-	template<typename T> \
-	static void ApplyReflection_Impl(T* ptr, const ReflectionInfo& reflection) \
+	virtual void ResolveRefs(const ReflectionInfo& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext) override \
 	{ \
-		for_each(refl::reflect<T>().members, [&](auto member) \
-		{ \
-			if constexpr (is_writable(member)) \
-			{ \
-				const std::string displayName = get_display_name(member); \
-				if (reflection.GetProperties().ContainsKey(displayName)) \
-				{ \
-					const YAML::Node& node = reflection.GetProperties()[displayName]; \
-					if(node.IsDefined()) \
-					{ \
-						if constexpr (is_field(member)) \
-						{ \
-							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>; \
-							if constexpr (Sailor::IsEnum<PropertyType>) \
-							{ \
-								DeserializeEnum<PropertyType>(node, member(*ptr)); \
-							} \
-							else if (Sailor::IsObjectPtr<PropertyType>) \
-							{ \
-							} \
-							else \
-							{ \
-								member(*ptr) = node.as<PropertyType>(); \
-							} \
-						} \
-						else if constexpr (refl::descriptor::is_function(member)) \
-						{ \
-							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>; \
-							PropertyType v{}; \
-							if constexpr (Sailor::IsEnum<PropertyType>) \
-							{ \
-								DeserializeEnum<PropertyType>(node, v); \
-								member(*ptr, v); \
-							} \
-							else if constexpr (!Sailor::IsObjectPtr<PropertyType>) \
-							{ \
-								v = node.as<PropertyType>(); \
-								member(*ptr, v); \
-							} \
-							else \
-							{ \
-								if (node["fileId"]) \
-								{ \
-									FileId fileId = node["fileId"].as<FileId>(); \
-									if (fileId != FileId::Invalid) \
-									{ \
-										using ElementType = TemplateParameter_t<PropertyType>; \
-										v = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<ElementType>(fileId); \
-										member(*ptr, v); \
-									} \
-								} \
-							} \
-						} \
-					} \
-				} \
-			} \
-		}); \
+		__CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext); \
 	} \
+	protected: \
 	class SAILOR_API RegistrationFactoryMethod \
 	{ \
 	public: \
@@ -206,6 +149,112 @@ namespace Sailor
 		virtual const TypeInfo& GetTypeInfo() const = 0;
 		virtual ReflectionInfo GetReflectionInfo() const = 0;
 		virtual void ApplyReflection(const ReflectionInfo& reflection) = 0;
+		virtual void ResolveRefs(const ReflectionInfo& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext) {}
+
+	protected:
+
+		template<typename TPropertyType>
+		__forceinline static TPropertyType ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext)
+		{
+			using ElementType = TemplateParameter_t<TPropertyType>;
+
+			TPropertyType v{};
+			if (node["fileId"])
+			{
+				FileId fileId = node["fileId"].as<FileId>();
+
+				if (fileId != FileId::Invalid)
+				{
+					v = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<ElementType>(fileId);
+				}
+			}
+			else if (node["instanceId"])
+			{
+				InstanceId instanceId = node["instanceId"].as<InstanceId>();
+
+				if (instanceId != InstanceId::Invalid && resolveContext.ContainsKey(instanceId))
+				{
+					if (auto objPtr = resolveContext[instanceId])
+					{
+						v = objPtr.DynamicCast<ElementType>();
+					}
+				}
+			}
+
+			return v;
+		}
+
+		template<typename T>
+		static void ResolveRefs_Impl(T* ptr, const ReflectionInfo& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext)
+		{
+			for_each(refl::reflect<T>().members, [&](auto member)
+				{
+					if constexpr (is_writable(member))
+					{
+						const std::string displayName = get_display_name(member);
+						if (reflection.GetProperties().ContainsKey(displayName))
+						{
+							const YAML::Node& node = reflection.GetProperties()[displayName];
+							if (node.IsDefined())
+							{
+								if constexpr (is_field(member))
+								{
+									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
+									if constexpr (Sailor::IsObjectPtr<PropertyType>)
+									{
+										member(*ptr) = ResolveObject<PropertyType>(node, resolveContext);
+									}
+								}
+								else if constexpr (refl::descriptor::is_function(member))
+								{
+									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
+									if constexpr (Sailor::IsObjectPtr<PropertyType>)
+									{
+										member(*ptr, ResolveObject<PropertyType>(node, resolveContext));
+									}
+								}
+							}
+						}
+					}
+				});
+		}
+
+		template<typename T>
+		static void ApplyReflection_Impl(T* ptr, const ReflectionInfo& reflection)
+		{
+			for_each(refl::reflect<T>().members, [&](auto member)
+				{
+					if constexpr (is_writable(member))
+					{
+						const std::string displayName = get_display_name(member);
+						if (reflection.GetProperties().ContainsKey(displayName))
+						{
+							const YAML::Node& node = reflection.GetProperties()[displayName];
+							if (node.IsDefined())
+							{
+								if constexpr (is_field(member))
+								{
+									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
+									if constexpr (!Sailor::IsObjectPtr<PropertyType>)
+									{
+										/* ObjectPtrs are resolved in ResolveObjects function */
+										member(*ptr) = node.as<PropertyType>();
+									}
+								}
+								else if constexpr (refl::descriptor::is_function(member))
+								{
+									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
+									if constexpr (!Sailor::IsObjectPtr<PropertyType>)
+									{
+										/* ObjectPtrs are resolved in ResolveObjects function */
+										member(*ptr, node.as<PropertyType>());
+									}
+								}
+							}
+						}
+					}
+				});
+		}
 	};
 
 	namespace Internal

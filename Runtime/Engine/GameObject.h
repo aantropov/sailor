@@ -97,6 +97,7 @@ namespace Sailor
 		SAILOR_API size_t GetFrameLastChange() const { return m_frameLastChange; }
 
 		SAILOR_API const TVector<ComponentPtr>& GetComponents() const { return m_components; }
+		SAILOR_API ComponentPtr GetComponent(uint32_t index) { return m_components[index]; }
 
 	protected:
 

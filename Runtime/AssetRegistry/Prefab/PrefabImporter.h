@@ -41,6 +41,7 @@ namespace Sailor
 			// We store indices
 			uint32_t m_parentIndex;
 			TVector<uint32_t> m_components;
+			InstanceId m_instanceId;
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
