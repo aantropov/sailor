@@ -12,29 +12,24 @@ namespace Sailor::Internal
 	Memory::ObjectAllocatorPtr g_cdoAllocator;
 }
 
-void Reflection::RegisterCDO(const TypeInfo& pType)
+ComponentPtr Reflection::CreateCDO(const TypeInfo& pType)
 {
-	//std::string typeName = pType.Name();
+	std::string typeName = pType.Name();
 
-	//static std::once_flag s_once{};
+	static std::once_flag s_once{};
 
-	//std::call_once(s_once, [&]() {
-	//	if (!Internal::g_pCdos)
-	//	{
-	//		Internal::g_pCdos = TUniquePtr<TConcurrentMap<std::string, ReflectionInfo, 32u, ERehashPolicy::Never>>::Make(128);
-	//		Internal::g_cdoAllocator = Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
-	//	}});
+	std::call_once(s_once, [&]() {
+		if (!Internal::g_pCdos)
+		{
+			Internal::g_pCdos = TUniquePtr<TConcurrentMap<std::string, ReflectionInfo, 32u, ERehashPolicy::Never>>::Make(128);
+			Internal::g_cdoAllocator = Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		}});
 
-	//check(Internal::g_pCdos && !Internal::g_pCdos->ContainsKey(typeName));
+	check(Internal::g_pCdos && !Internal::g_pCdos->ContainsKey(typeName));
 
-	//auto& cdoInfo = Internal::g_pCdos->At_Lock(typeName);
+	auto cdo = CreateObject<Component>(pType, Internal::g_cdoAllocator);
 
-	//auto cdo = CreateObject<Component>(pType, Internal::g_cdoAllocator);
-	//cdoInfo = cdo->GetReflectionInfo();
-	//Internal::g_pCdos->Unlock(typeName);
-
-	//// We don't store CDOs
-	//cdo.ForcelyDestroyObject();
+	return cdo;
 }
 
 void Reflection::RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew)

@@ -42,21 +42,23 @@ namespace Sailor
 	};
 }
 
+using namespace Sailor;
+
 REFL_AUTO(
 	type(Sailor::LightComponent, bases<Sailor::Component>),
 
-	func(GetIntensity, property("intensity")),
-	func(SetIntensity, property("intensity")),
+	func(GetIntensity, property("intensity"), SkipCDO()),
+	func(SetIntensity, property("intensity"), SkipCDO()),
 
-	func(GetAttenuation, property("attenuation")),
-	func(SetAttenuation, property("attenuation")),
+	func(GetAttenuation, property("attenuation"), SkipCDO()),
+	func(SetAttenuation, property("attenuation"), SkipCDO()),
 
-	func(GetBounds, property("bounds")),
-	func(SetBounds, property("bounds")),
+	func(GetBounds, property("bounds"), SkipCDO()),
+	func(SetBounds, property("bounds"), SkipCDO()),
 
-	func(GetCutOff, property("cutOff")),
-	func(SetCutOff, property("cutOff")),
+	func(GetCutOff, property("cutOff"), SkipCDO()),
+	func(SetCutOff, property("cutOff"), SkipCDO()),
 
-	func(GetLightType, property("lightType")),
-	func(SetLightType, property("lightType"))
+	func(GetLightType, property("lightType"), SkipCDO()),
+	func(SetLightType, property("lightType"), SkipCDO())
 )

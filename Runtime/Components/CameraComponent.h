@@ -43,15 +43,17 @@ namespace Sailor
 	};
 }
 
+using namespace Sailor;
+
 REFL_AUTO(
-	type(Sailor::CameraComponent, bases<Sailor::Component>),
+	type(Sailor::CameraComponent, bases<Component>),
 
-	func(GetFov, property("fov")),
-	func(SetFov, property("fov")),
+	func(GetFov, property("fov"), SkipCDO()),
+	func(SetFov, property("fov"), SkipCDO()),
 
-	func(GetZNear, property("zNear")),
-	func(SetZNear, property("zNear")),
+	func(GetZNear, property("zNear"), SkipCDO()),
+	func(SetZNear, property("zNear"), SkipCDO()),
 
-	func(GetZFar, property("zFar")),
-	func(SetZFar, property("zFar"))
+	func(GetZFar, property("zFar"), SkipCDO()),
+	func(SetZFar, property("zFar"), SkipCDO())
 )

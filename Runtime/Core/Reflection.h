@@ -74,7 +74,7 @@ namespace Sailor
 					}; \
 					Reflection::RegisterFactoryMethod(type, placementNew); \
 					Reflection::RegisterType(type.Name(), &type); \
-					Reflection::RegisterCDO(type); \
+					Reflection::RegisterCDO<__CLASSNAME__>(type); \
 				} \
 				s_bRegistered = true; \
 			} \
@@ -270,6 +270,7 @@ namespace Sailor
 	}
 
 	struct Transient : refl::attr::usage::field, refl::attr::usage::function { };
+	struct SkipCDO : refl::attr::usage::field, refl::attr::usage::function { };
 
 	class SAILOR_API Reflection
 	{
@@ -278,18 +279,28 @@ namespace Sailor
 
 		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
 		static void RegisterType(const std::string& typeName, const TypeInfo* pType);
-		static void RegisterCDO(const TypeInfo& pType);
+
+		template<typename T>
+		static void RegisterCDO(const TypeInfo& pType)
+		{
+			std::string typeName = pType.Name();
+
+			auto cdo = CreateCDO(pType);
+
+			auto& cdoInfo = Internal::g_pCdos->At_Lock(typeName);
+			cdoInfo = Reflection::ReflectCDO<T>(cdo.DynamicCast<T>().GetRawPtr());
+			Internal::g_pCdos->Unlock(typeName);
+
+			//// We don't store CDOs
+			cdo.ForcelyDestroyObject();
+		}
+
+		static const TypeInfo& GetTypeByName(const std::string& typeName);
 
 		template<typename T = Object>
-		static const ReflectionInfo& GetCDO(TObjectPtr<T> objPtr) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T>
-		{
-			return GetCDO(objPtr->GetTypeInfo().Name());
-		}
+		static const ReflectionInfo& GetCDO(TObjectPtr<T> objPtr) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T> { return GetCDO(objPtr->GetTypeInfo().Name()); }
 
-		static const ReflectionInfo& GetCDO(const std::string& typeName)
-		{
-			return (*Internal::g_pCdos)[typeName];
-		}
+		static const ReflectionInfo& GetCDO(const std::string& typeName) { return (*Internal::g_pCdos)[typeName]; }
 
 		template<typename T = Object>
 		static TObjectPtr<T> CreateObject(const TypeInfo& type, Memory::ObjectAllocatorPtr pAllocator) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T>
@@ -301,8 +312,6 @@ namespace Sailor
 			TObjectPtr<T> pRes(reinterpret_cast<T*>(ptr), pAllocator);
 			return pRes;
 		}
-
-		static const TypeInfo& GetTypeByName(const std::string& typeName);
 
 		template<typename T>
 		static ReflectionInfo ReflectStatic(const T* ptr) requires IsBaseOf<IReflectable, T>
@@ -335,6 +344,27 @@ namespace Sailor
 		}
 
 	private:
+
+		static ComponentPtr CreateCDO(const TypeInfo& pType);
+
+		template<typename T>
+		static ReflectionInfo ReflectCDO(const T* ptr) requires IsBaseOf<IReflectable, T>
+		{
+			ReflectionInfo reflection;
+			reflection.m_typeInfo = &ptr->GetTypeInfo();
+
+			for_each(refl::reflect(*ptr).members, [&](auto member)
+				{
+					if constexpr (is_readable(member) && !refl::descriptor::has_attribute<Transient>(member) && !refl::descriptor::has_attribute<SkipCDO>(member))
+					{
+						using PropertyType = decltype(member(*ptr));
+						const std::string displayName = get_display_name(member);
+						reflection.m_properties[displayName] = member(*ptr);
+					}
+				});
+
+			return reflection;
+		}
 	};
 }
 

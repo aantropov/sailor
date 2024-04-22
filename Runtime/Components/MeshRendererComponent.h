@@ -38,6 +38,6 @@ namespace Sailor
 REFL_AUTO(
 	type(Sailor::MeshRendererComponent, bases<Sailor::Component>),
 
-	func(GetModel, property("model")),
-	func(SetModel, property("model"))
+	func(GetModel, property("model"), SkipCDO()),
+	func(SetModel, property("model"), SkipCDO())
 )
