@@ -74,6 +74,7 @@ namespace Sailor
 					}; \
 					Reflection::RegisterFactoryMethod(type, placementNew); \
 					Reflection::RegisterType(type.Name(), &type); \
+					Reflection::RegisterCDO(type); \
 				} \
 				s_bRegistered = true; \
 			} \
@@ -129,6 +130,9 @@ namespace Sailor
 
 		const TypeInfo& GetTypeInfo() const { return *m_typeInfo; }
 		const TMap<std::string, YAML::Node>& GetProperties() const { return m_properties; }
+		TMap<std::string, YAML::Node> GetOverrideProperties() const;
+
+		bool operator==(const ReflectionInfo& rhs) const;
 
 	private:
 
@@ -259,9 +263,13 @@ namespace Sailor
 
 	namespace Internal
 	{
+		extern TUniquePtr<TConcurrentMap<std::string, ReflectionInfo, 32u, ERehashPolicy::Never>> g_pCdos;
 		extern TUniquePtr<TConcurrentMap<std::string, std::function<IReflectable* (void*)>>> g_pPlacementFactoryMethods;
 		extern TUniquePtr<TConcurrentMap<std::string, const TypeInfo*>> g_pReflectionTypes;
+		extern Memory::ObjectAllocatorPtr g_cdoAllocator;
 	}
+
+	struct Transient : refl::attr::usage::field, refl::attr::usage::function { };
 
 	class SAILOR_API Reflection
 	{
@@ -270,6 +278,18 @@ namespace Sailor
 
 		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
 		static void RegisterType(const std::string& typeName, const TypeInfo* pType);
+		static void RegisterCDO(const TypeInfo& pType);
+
+		template<typename T = Object>
+		static const ReflectionInfo& GetCDO(TObjectPtr<T> objPtr) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T>
+		{
+			return GetCDO(objPtr->GetTypeInfo().Name());
+		}
+
+		static const ReflectionInfo& GetCDO(const std::string& typeName)
+		{
+			return (*Internal::g_pCdos)[typeName];
+		}
 
 		template<typename T = Object>
 		static TObjectPtr<T> CreateObject(const TypeInfo& type, Memory::ObjectAllocatorPtr pAllocator) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T>
@@ -292,27 +312,11 @@ namespace Sailor
 
 			for_each(refl::reflect(*ptr).members, [&](auto member)
 				{
-					if constexpr (is_readable(member))// && refl::descriptor::has_attribute<serializable>(member))
+					if constexpr (is_readable(member) && !refl::descriptor::has_attribute<Transient>(member))
 					{
 						using PropertyType = decltype(member(*ptr));
 						const std::string displayName = get_display_name(member);
-						if constexpr (Sailor::IsEnum<PropertyType>)
-						{
-							reflection.m_properties[displayName] = SerializeEnum<PropertyType>(member(*ptr));
-						}
-						//else if constexpr (IsObjectPtr_v<PropertyType>)
-						//{
-						//	check(0);
-						//	//if constexpr (Sailor::IsSame<TObjectPtr<base_type_t<PropertyType>>, PropertyType>)
-						//	//{
-						//	//	check(0); // Additional handling if necessary
-						//	//	// Possibly serialize or do something with TObjectPtr
-						//	//}
-						//}
-						else
-						{
-							reflection.m_properties[displayName] = member(*ptr);
-						}
+						reflection.m_properties[displayName] = member(*ptr);
 					}
 				});
 
