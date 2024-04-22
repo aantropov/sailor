@@ -21,7 +21,7 @@ StaticMeshRendererData& MeshRendererComponent::GetData()
 	return ecs->GetComponentData(m_handle);
 }
 
-const StaticMeshRendererData& MeshRendererComponent::GetData() const 
+const StaticMeshRendererData& MeshRendererComponent::GetData() const
 {
 	auto ecs = GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>();
 	return ecs->GetComponentData(m_handle);
@@ -39,8 +39,17 @@ void MeshRendererComponent::LoadModel(const std::string& path)
 		ModelPtr model;
 
 		App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), model);
-		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(modelFileId->GetFileId(), GetMaterials());
 
 		SetModel(model);
+	}
+}
+
+void MeshRendererComponent::SetModel(const ModelPtr& model)
+{
+	GetData().SetModel(model);
+
+	if (model->GetFileId() != FileId::Invalid)
+	{
+		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(model->GetFileId(), GetMaterials());
 	}
 }

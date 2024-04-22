@@ -151,6 +151,7 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 		}
 	}
 
+	root->m_name = name;
 	return root;
 }
 
