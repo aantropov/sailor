@@ -87,6 +87,12 @@ namespace Sailor
 
 namespace Sailor
 {
+	namespace Attributes
+	{
+		struct Transient : refl::attr::usage::field, refl::attr::usage::function { };
+		struct SkipCDO : refl::attr::usage::field, refl::attr::usage::function { };
+	}
+
 	class TypeInfo
 	{
 	public:
@@ -269,12 +275,10 @@ namespace Sailor
 		extern Memory::ObjectAllocatorPtr g_cdoAllocator;
 	}
 
-	struct Transient : refl::attr::usage::field, refl::attr::usage::function { };
-	struct SkipCDO : refl::attr::usage::field, refl::attr::usage::function { };
-
 	class SAILOR_API Reflection
 	{
 	public:
+
 		using TPlacementFactoryMethod = std::function<IReflectable* (void*)>;
 
 		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
@@ -321,7 +325,7 @@ namespace Sailor
 
 			for_each(refl::reflect(*ptr).members, [&](auto member)
 				{
-					if constexpr (is_readable(member) && !refl::descriptor::has_attribute<Transient>(member))
+					if constexpr (is_readable(member) && !refl::descriptor::has_attribute<Attributes::Transient>(member))
 					{
 						using PropertyType = decltype(member(*ptr));
 						const std::string displayName = get_display_name(member);
@@ -355,7 +359,9 @@ namespace Sailor
 
 			for_each(refl::reflect(*ptr).members, [&](auto member)
 				{
-					if constexpr (is_readable(member) && !refl::descriptor::has_attribute<Transient>(member) && !refl::descriptor::has_attribute<SkipCDO>(member))
+					if constexpr (is_readable(member) && 
+						!refl::descriptor::has_attribute<Attributes::Transient>(member) && 
+						!refl::descriptor::has_attribute<Attributes::SkipCDO>(member))
 					{
 						using PropertyType = decltype(member(*ptr));
 						const std::string displayName = get_display_name(member);

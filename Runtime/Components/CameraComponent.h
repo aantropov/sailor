@@ -48,12 +48,12 @@ using namespace Sailor;
 REFL_AUTO(
 	type(Sailor::CameraComponent, bases<Component>),
 
-	func(GetFov, property("fov"), SkipCDO()),
-	func(SetFov, property("fov"), SkipCDO()),
+	func(GetFov, property("fov"), Attributes::SkipCDO()),
+	func(SetFov, property("fov"), Attributes::SkipCDO()),
 
-	func(GetZNear, property("zNear"), SkipCDO()),
-	func(SetZNear, property("zNear"), SkipCDO()),
+	func(GetZNear, property("zNear"), Attributes::SkipCDO()),
+	func(SetZNear, property("zNear"), Attributes::SkipCDO()),
 
-	func(GetZFar, property("zFar"), SkipCDO()),
-	func(SetZFar, property("zFar"), SkipCDO())
+	func(GetZFar, property("zFar"), Attributes::SkipCDO()),
+	func(SetZFar, property("zFar"), Attributes::SkipCDO())
 )

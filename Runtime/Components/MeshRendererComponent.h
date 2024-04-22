@@ -35,6 +35,8 @@ namespace Sailor
 	};
 }
 
+using namespace Sailor::Attributes;
+
 REFL_AUTO(
 	type(Sailor::MeshRendererComponent, bases<Sailor::Component>),
 

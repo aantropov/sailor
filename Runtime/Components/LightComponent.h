@@ -42,7 +42,7 @@ namespace Sailor
 	};
 }
 
-using namespace Sailor;
+using namespace Sailor::Attributes;
 
 REFL_AUTO(
 	type(Sailor::LightComponent, bases<Sailor::Component>),
