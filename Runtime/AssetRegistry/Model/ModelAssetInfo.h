@@ -16,6 +16,7 @@ namespace Sailor
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
+		SAILOR_API float GetUnitScale() const { return m_unitScale; }
 		SAILOR_API bool ShouldGenerateMaterials() const { return m_bShouldGenerateMaterials; }
 		SAILOR_API bool ShouldBatchByMaterial() const { return m_bShouldBatchByMaterial; }
 
@@ -25,6 +26,7 @@ namespace Sailor
 	private:
 
 		TVector<FileId> m_materials;
+		float m_unitScale = 1.0f;
 		bool m_bShouldGenerateMaterials = true;
 		bool m_bShouldBatchByMaterial = true;
 	};

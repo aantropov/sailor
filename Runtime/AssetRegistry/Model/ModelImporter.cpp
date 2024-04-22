@@ -157,14 +157,14 @@ void ProcessNodeMaterials_Assimp(TVector<MaterialAsset::Data>& outMaterials, aiN
 	}
 }
 
-ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene)
+ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene, float unitScale)
 {
 	assert(mesh->HasPositions());
 	assert(mesh->HasNormals());
 
 	Sailor::ModelImporter::MeshContext meshContext;
-	meshContext.bounds.m_min = *(vec3*)(&mesh->mAABB.mMin);
-	meshContext.bounds.m_max = *(vec3*)(&mesh->mAABB.mMax);
+	meshContext.bounds.m_min = *(vec3*)(&mesh->mAABB.mMin) * unitScale;
+	meshContext.bounds.m_max = *(vec3*)(&mesh->mAABB.mMax) * unitScale;
 
 	for (uint32_t i = 0; i < mesh->mNumVertices; i++)
 	{
@@ -172,9 +172,9 @@ ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene
 
 		vertex.m_position =
 		{
-			mesh->mVertices[i].x,
-			mesh->mVertices[i].y,
-			mesh->mVertices[i].z
+			mesh->mVertices[i].x * unitScale,
+			mesh->mVertices[i].y * unitScale,
+			mesh->mVertices[i].z * unitScale
 		};
 
 		if (mesh->HasTextureCoords(0))
@@ -227,17 +227,17 @@ ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene
 	return meshContext;
 }
 
-void ProcessNode_Assimp(TVector<ModelImporter::MeshContext>& outParsedMeshes, aiNode* node, const aiScene* scene)
+void ProcessNode_Assimp(TVector<ModelImporter::MeshContext>& outParsedMeshes, aiNode* node, const aiScene* scene, float unitScale)
 {
 	for (uint32_t i = 0; i < node->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		outParsedMeshes.Add(std::move(ProcessMesh_Assimp(mesh, scene)));
+		outParsedMeshes.Add(std::move(ProcessMesh_Assimp(mesh, scene, unitScale)));
 	}
 
 	for (uint32_t i = 0; i < node->mNumChildren; i++)
 	{
-		ProcessNode_Assimp(outParsedMeshes, node->mChildren[i], scene);
+		ProcessNode_Assimp(outParsedMeshes, node->mChildren[i], scene, unitScale);
 	}
 }
 //////////////////////////
@@ -442,7 +442,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		return false;
 	}
 
-	ProcessNode_Assimp(outParsedMeshes, scene->mRootNode, scene);
+	ProcessNode_Assimp(outParsedMeshes, scene->mRootNode, scene, assetInfo->GetUnitScale());
 
 	for (const auto& mesh : outParsedMeshes)
 	{
