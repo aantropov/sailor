@@ -17,7 +17,7 @@ void TransformComponent::SetPosition(const glm::vec4& position)
 void TransformComponent::SetNewParent(const TransformComponent* parent)
 {
 	MarkDirty();
-	m_newParent = parent;
+	m_newParent = GetOwner().StaticCast<GameObject>()->GetWorld()->GetECS<TransformECS>()->GetComponentIndex(parent);
 }
 
 void TransformComponent::SetPosition(const glm::vec3& position)
@@ -90,7 +90,7 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 		{
 			auto& data = m_components[i];
 
-			size_t parentId = GetComponentIndex(data.m_newParent);
+			size_t parentId = data.m_newParent;
 
 			// First resolve relations
 			if (parentId != data.m_parent)
@@ -148,7 +148,7 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 			auto& data = m_components[i];
 			if (data.m_bIsDirty)
 			{
-				size_t parentId = GetComponentIndex(data.m_newParent);
+				size_t parentId = data.m_newParent;
 
 				// First resolve relations
 				if (parentId != data.m_parent)
@@ -189,12 +189,12 @@ Tasks::ITaskPtr TransformECS::Tick(float deltaTime)
 
 void TransformECS::CalculateMatrices(TransformComponent& parent)
 {
-	const glm::mat4x4& parentMatrix = parent.GetCachedRelativeMatrix();
-
 	if (parent.m_parent == ECS::InvalidIndex)
 	{
 		parent.m_cachedWorldMatrix = parent.m_cachedRelativeMatrix;
 	}
+
+	const glm::mat4x4& parentMatrix = parent.GetCachedWorldMatrix();
 
 	for (auto& child : parent.GetChildren())
 	{

@@ -123,10 +123,13 @@ namespace Sailor::ECS
 				return ECS::InvalidIndex;
 			}
 
-			const auto lhs = (size_t)(rawPtr);
-			const auto rhs = (size_t)(&(m_components[0]));
+			const intptr_t lhs = (intptr_t)(rawPtr);
+			const intptr_t rhs = (intptr_t)(&(m_components[0]));
+			const auto index = (lhs - rhs) / sizeof(TData);
 
-			return (lhs - rhs) / sizeof(TData);
+			check(index < m_components.Num());
+
+			return index;
 		}
 
 		virtual void EndPlay() override

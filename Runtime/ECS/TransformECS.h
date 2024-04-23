@@ -47,7 +47,7 @@ namespace Sailor
 
 		Math::Transform m_transform;
 		size_t m_parent = ECS::InvalidIndex;
-		const TransformComponent* m_newParent = nullptr;
+		size_t m_newParent = ECS::InvalidIndex;
 		TVector<size_t, Memory::TInlineAllocator<4 * sizeof(size_t)>> m_children;
 
 		friend class TransformECS;
