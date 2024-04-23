@@ -140,6 +140,8 @@ namespace Sailor
 
 		bool operator==(const ReflectionInfo& rhs) const;
 
+		ReflectionInfo DiffTo(const ReflectionInfo& rhs) const;
+
 	private:
 
 		// TODO: Rethink the approach with raw pointer

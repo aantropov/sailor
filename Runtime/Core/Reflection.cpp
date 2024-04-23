@@ -102,15 +102,23 @@ bool ReflectionInfo::operator==(const ReflectionInfo& rhs) const
 
 TMap<std::string, YAML::Node> ReflectionInfo::GetOverrideProperties() const
 {
-	TMap<std::string, YAML::Node> res;
 	const auto& cdo = Reflection::GetCDO(m_typeInfo->Name());
-	const auto& defaultValues = cdo.GetProperties();
+	return DiffTo(cdo).m_properties;
+}
+
+ReflectionInfo ReflectionInfo::DiffTo(const ReflectionInfo& rhs) const
+{
+	ReflectionInfo res;
+
+	check(rhs.GetTypeInfo() == GetTypeInfo()); 
+
+	res.m_typeInfo = &rhs.GetTypeInfo();
 
 	for (const auto& prop : GetProperties())
 	{
-		if (defaultValues[prop.m_first] != *prop.m_second)
+		if (*prop.m_second != rhs.m_properties[prop.m_first])
 		{
-			res[prop.m_first] = prop.m_second;
+			res.m_properties[prop.m_first] = prop.m_second;
 		}
 	}
 
