@@ -24,12 +24,16 @@ namespace SailorEditor.ViewModels
         private bool shouldBatchByMaterial;
 
         [ObservableProperty]
+        private float unitScale;
+
+        [ObservableProperty]
         private ObservableList<Observable<string>> defaultMaterials = new();
 
         protected override async Task UpdateModel()
         {
             Properties["bShouldGenerateMaterials"] = ShouldGenerateMaterials;
             Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial;
+            Properties["unitScale"] = UnitScale;
             Properties["materials"] = DefaultMaterials.Select((el) => el.Value).ToList();
 
             IsDirty = false;
@@ -50,6 +54,9 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "bShouldBatchByMaterial":
                                 ShouldBatchByMaterial = bool.Parse(e.Value.ToString());
+                                break;
+                            case "unitScale":
+                                UnitScale = float.Parse(e.Value.ToString());
                                 break;
                             case "materials":
                                 {

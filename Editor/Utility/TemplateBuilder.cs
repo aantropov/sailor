@@ -98,13 +98,13 @@ namespace SailorEditor.Helpers
 
             return picker;
         }
-        public static View CreateEntry(string bindingPath)
+        public static View CreateEntry(string bindingPath, IValueConverter converter = null)
         {
             var entry = new Entry
             {
                 FontSize = 12
             };
-            entry.SetBinding(Entry.TextProperty, new Binding(bindingPath, BindingMode.TwoWay));
+            entry.SetBinding(Entry.TextProperty, new Binding(bindingPath, BindingMode.TwoWay, converter));
 
             return entry;
         }
