@@ -363,6 +363,7 @@ void App::Shutdown()
 	Win32::ConsoleWindow::Shutdown();
 
 	delete s_pInstance;
+	s_pInstance = nullptr;
 }
 
 TUniquePtr<Win32::Window>& App::GetMainWindow()
