@@ -26,6 +26,7 @@ using YamlDotNet.Core.Tokens;
 using System;
 using Windows.Gaming.Input;
 using System.Runtime.CompilerServices;
+using System.Collections.Generic;
 
 namespace SailorEditor.Helpers
 {
@@ -124,17 +125,28 @@ namespace SailorEditor.Helpers
             grid.Add(contentView, 1, grid.RowDefinitions.Count - 1);
         }
 
-        public static View CreateUniformEditor<T>(string bindingPath, string labelText, string defaultKey = default(string), IValueConverter converter = null)
+        public static View CreateUniformEditor<TBindingContext, TSource, T>(
+            Expression<Func<TBindingContext, ObservableList<TSource>>> getter,
+            Action<TBindingContext, ObservableList<TSource>> setter,
+            string labelText,
+            string defaultKey = default(string),
+            IValueConverter converter = null)
+        where TBindingContext : ICloneable, INotifyPropertyChanged
+        where TSource : Uniform<T>
         where T : IComparable<T>
         {
+            Func<TBindingContext, ObservableCollection<TSource>> dictGetter = getter.Compile();
+
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
 
-            var dictionaryEditor = new CollectionView();
-            dictionaryEditor.ItemTemplate = new DataTemplate(() =>
+            var dictEditor = new CollectionView();
+            dictEditor.ItemTemplate = new DataTemplate(() =>
                 {
-
                     var keyEntry = new Entry();
-                    keyEntry.SetBinding(Entry.TextProperty, "Key", BindingMode.TwoWay);
+                    keyEntry.Bind(Entry.TextProperty,
+                        getter: static (Uniform<T> vm) => vm.Key,
+                        setter: static (Uniform<T> vm, string value) => vm.Key = value,
+                        mode: BindingMode.TwoWay);
 
                     IView valueView = null;
 
@@ -149,8 +161,10 @@ namespace SailorEditor.Helpers
                                 var AssetService = MauiProgram.GetService<AssetsService>();
                                 var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
 
-                                if ((sender as Button).BindingContext is Uniform<T> uniform)
-                                    uniform.Value = asset.UID is T uid ? uid : default(T);
+                                if ((sender as Button).BindingContext is Uniform<AssetUID> uniform)
+                                {
+                                    uniform.Value = asset.UID is AssetUID uid ? uid : default(AssetUID);
+                                }
                             }
                         };
 
@@ -163,7 +177,7 @@ namespace SailorEditor.Helpers
                             VerticalOptions = LayoutOptions.Start
                         };
 
-                        image.SetBinding(Image.SourceProperty, new Binding("Value", BindingMode.Default, new AssetUIDToTextureConverter()));
+                        image.Bind<Image, Uniform<AssetUID>, AssetUID, Image>(Image.SourceProperty, mode: BindingMode.Default, converter: new AssetUIDToTextureConverter(), getter: static (Uniform<AssetUID> vm) => vm.Value);
 
                         var valueEntry = new Label
                         {
@@ -171,7 +185,7 @@ namespace SailorEditor.Helpers
                             VerticalOptions = LayoutOptions.Center
                         };
 
-                        valueEntry.SetBinding(Label.TextProperty, new Binding("Value", BindingMode.Default, converter));
+                        valueEntry.Bind<Label, Uniform<AssetUID>, AssetUID, string>(Label.TextProperty, mode: BindingMode.Default, converter: converter, getter: static (Uniform<AssetUID> vm) => vm.Value);
                         valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
 
                         var stackLayout = new HorizontalStackLayout();
@@ -182,16 +196,32 @@ namespace SailorEditor.Helpers
                     else if (typeof(T) == typeof(Vec4))
                     {
                         var valueXEntry = new Entry();
-                        valueXEntry.SetBinding(Entry.TextProperty, new Binding("Value.X", BindingMode.TwoWay, converter));
+                        valueXEntry.Bind<Entry, Uniform<Vec4>, float, string>(Entry.TextProperty,
+                            getter: static (Uniform<Vec4> vm) => vm.Value.X,
+                            setter: static (Uniform<Vec4> vm, float value) => vm.Value.X = value,
+                            mode: BindingMode.TwoWay,
+                            converter: converter);
 
                         var valueYEntry = new Entry();
-                        valueYEntry.SetBinding(Entry.TextProperty, new Binding("Value.Y", BindingMode.TwoWay, converter));
+                        valueXEntry.Bind<Entry, Uniform<Vec4>, float, string>(Entry.TextProperty,
+                            getter: static (Uniform<Vec4> vm) => vm.Value.Y,
+                            setter: static (Uniform<Vec4> vm, float value) => vm.Value.Y = value,
+                            mode: BindingMode.TwoWay,
+                            converter: converter);
 
                         var valueZEntry = new Entry();
-                        valueZEntry.SetBinding(Entry.TextProperty, new Binding("Value.Z", BindingMode.TwoWay, converter));
+                        valueXEntry.Bind<Entry, Uniform<Vec4>, float, string>(Entry.TextProperty,
+                            getter: static (Uniform<Vec4> vm) => vm.Value.Z,
+                            setter: static (Uniform<Vec4> vm, float value) => vm.Value.Z = value,
+                            mode: BindingMode.TwoWay,
+                            converter: converter);
 
                         var valueWEntry = new Entry();
-                        valueWEntry.SetBinding(Entry.TextProperty, new Binding("Value.W", BindingMode.TwoWay, converter));
+                        valueXEntry.Bind<Entry, Uniform<Vec4>, float, string>(Entry.TextProperty,
+                            getter: static (Uniform<Vec4> vm) => vm.Value.W,
+                            setter: static (Uniform<Vec4> vm, float value) => vm.Value.W = value,
+                            mode: BindingMode.TwoWay,
+                            converter: converter);
 
                         var stackLayout = new HorizontalStackLayout();
                         stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry, valueWEntry } });
@@ -201,7 +231,11 @@ namespace SailorEditor.Helpers
                     else
                     {
                         var valueEntry = new Entry();
-                        valueEntry.SetBinding(Entry.TextProperty, "Value", BindingMode.TwoWay, converter);
+                        valueEntry.Bind<Entry, Uniform<T>, T, string>(Entry.TextProperty,
+                           getter: static (Uniform<T> vm) => vm.Value,
+                           setter: static (Uniform<T> vm, T value) => vm.Value = value,
+                           mode: BindingMode.TwoWay,
+                           converter: converter);
 
                         valueView = valueEntry;
                     }
@@ -209,13 +243,11 @@ namespace SailorEditor.Helpers
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>
                     {
-                        var dictionaryProperty = (dictionaryEditor.BindingContext).GetType().GetProperty(bindingPath);
-                        if (dictionaryProperty.GetValue(dictionaryEditor.BindingContext) is IList<Uniform<T>> dict)
+                        var dict = dictGetter((TBindingContext)dictEditor.BindingContext);
+
+                        if ((sender as Button).BindingContext is TSource value)
                         {
-                            if ((sender as Button).BindingContext is Uniform<T> uniform)
-                            {
-                                dict.Remove(uniform);
-                            }
+                            dict.Remove(value);
                         }
                     };
 
@@ -224,38 +256,33 @@ namespace SailorEditor.Helpers
                     return entryLayout;
                 });
 
-            dictionaryEditor.SetBinding(ItemsView.ItemsSourceProperty, new Binding(bindingPath, BindingMode.TwoWay));
+            dictEditor.Bind(ItemsView.ItemsSourceProperty, getter: getter, setter: setter, mode: BindingMode.TwoWay);
 
             var addButton = new Button { Text = "+" };
             addButton.Clicked += (sender, e) =>
             {
-                var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
-                if (property != null)
+                var dict = dictGetter((TBindingContext)dictEditor.BindingContext);
+                if (dict != null)
                 {
-                    if (property.GetValue((sender as Button).BindingContext) is IList dict)
-                    {
-                        dict.Add(new Uniform<T> { Key = defaultKey, Value = default(T) });
-                    }
+                    TSource v = (TSource)new Uniform<T> { Key = defaultKey, Value = default(T) };
+                    dict.Add(v);
                 }
             };
 
             var clearButton = new Button { Text = "Clear" };
             clearButton.Clicked += (sender, e) =>
             {
-                var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
-                if (property != null)
+                var dict = dictGetter((TBindingContext)dictEditor.BindingContext);
+                if (dict != null)
                 {
-                    if (property.GetValue((sender as Button).BindingContext) is IList list)
-                    {
-                        list.Clear();
-                    }
+                    dict.Clear();
                 }
             };
 
             var stackLayout = new VerticalStackLayout();
             stackLayout.Children.Add(label);
             stackLayout.Children.Add(new HorizontalStackLayout { Children = { addButton, clearButton } });
-            stackLayout.Children.Add(dictionaryEditor);
+            stackLayout.Children.Add(dictEditor);
 
             return stackLayout;
         }

@@ -43,15 +43,21 @@ public class MaterialFileTemplate : AssetFileTemplate
                 converter: new ObservableConverter<string>()),
                 GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.CreateUniformEditor<AssetUID>(nameof(MaterialFile.Samplers),
+            Templates.AddGridRow(grid, Templates.CreateUniformEditor<MaterialFile, Uniform<AssetUID>, AssetUID>(
+                static (MaterialFile vm) => vm.Samplers,
+                static (MaterialFile vm, ObservableList<Uniform<AssetUID>> value) => vm.Samplers = value,
                 "Samplers", "newTextureSampler", new AssetUIDToFilenameConverter()),
                 GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.CreateUniformEditor<Vec4>(nameof(MaterialFile.UniformsVec4),
+            Templates.AddGridRow(grid, Templates.CreateUniformEditor<MaterialFile, Uniform<Vec4>, Vec4>(
+                static (MaterialFile vm) => vm.UniformsVec4,
+                static (MaterialFile vm, ObservableList<Uniform<Vec4>> value) => vm.UniformsVec4 = value,
                 "Uniforms Vec4", "material.newParam", new FloatValueConverter()),
                 GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.CreateUniformEditor<float>(nameof(MaterialFile.UniformsFloat),
+            Templates.AddGridRow(grid, Templates.CreateUniformEditor<MaterialFile, Uniform<float>, float>(
+                static (MaterialFile vm) => vm.UniformsFloat,
+                static (MaterialFile vm, ObservableList<Uniform<float>> value) => vm.UniformsFloat = value,
                 "Uniforms Float", "material.newParam", new FloatValueConverter()),
                 GridLength.Auto);
 
