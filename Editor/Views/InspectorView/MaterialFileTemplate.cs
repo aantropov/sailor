@@ -1,9 +1,11 @@
 ﻿using CommunityToolkit.Maui.Converters;
+using CommunityToolkit.Maui.Markup;
 using SailorEditor.Engine;
 using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using System.Numerics;
+using BlendMode = SailorEditor.Engine.BlendMode;
 
 public class MaterialFileTemplate : AssetFileTemplate
 {
@@ -14,45 +16,42 @@ public class MaterialFileTemplate : AssetFileTemplate
             var grid = new Grid();
             var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto }, new ColumnDefinition { Width = GridLength.Star } } };
 
-            var shaderLabel = new Label();
-            shaderLabel.SetBinding(Label.TextProperty, new Binding(nameof(MaterialFile.Shader), BindingMode.Default, new AssetUIDToFilenameConverter()));
-            shaderLabel.Behaviors.Add(new AssetUIDClickable(nameof(MaterialFile.Shader)));
+            Templates.AddGridRowWithLabel(props, "Render Queue", Templates.EntryField(static (MaterialFile vm) => vm.RenderQueue,
+                static (MaterialFile vm, string value) => vm.RenderQueue = value, null), GridLength.Auto);
 
-            var entry = new Entry { FontSize = 12 };
-            entry.SetBinding(Entry.TextProperty, new Binding(nameof(MaterialFile.DepthBias), BindingMode.TwoWay, new FloatValueConverter()));
+            Templates.AddGridRowWithLabel(props, "Depth Bias", Templates.EntryField(static (MaterialFile vm) => vm.DepthBias,
+                static (MaterialFile vm, float value) => vm.DepthBias = value, new FloatValueConverter()), GridLength.Auto);
 
-            TemplateBuilder.AddGridRowWithLabel(props, "Render Queue", TemplateBuilder.CreateEntry(nameof(MaterialFile.RenderQueue)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Depth Bias", entry, GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Enable DepthTest", Templates.CheckBox(static (MaterialFile vm) => vm.EnableDepthTest, static (MaterialFile vm, bool value) => vm.EnableDepthTest = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Enable ZWrite", Templates.CheckBox(static (MaterialFile vm) => vm.EnableZWrite, static (MaterialFile vm, bool value) => vm.EnableZWrite = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Custom Depth", Templates.CheckBox(static (MaterialFile vm) => vm.CustomDepthShader, static (MaterialFile vm, bool value) => vm.CustomDepthShader = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Support Multisampling", Templates.CheckBox(static (MaterialFile vm) => vm.SupportMultisampling, static (MaterialFile vm, bool value) => vm.SupportMultisampling = value), GridLength.Auto);
 
-            TemplateBuilder.AddGridRowWithLabel(props, "Enable DepthTest", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.EnableDepthTest)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Enable ZWrite", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.EnableZWrite)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Custom Depth", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.CustomDepthShader)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Support Multisampling", TemplateBuilder.CreateCheckBox(nameof(MaterialFile.SupportMultisampling)), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Blend mode", Templates.EnumPicker(static (MaterialFile vm) => vm.BlendMode, static (MaterialFile vm, BlendMode value) => vm.BlendMode = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Cull mode", Templates.EnumPicker(static (MaterialFile vm) => vm.CullMode, static (MaterialFile vm, CullMode value) => vm.CullMode = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Fill mode", Templates.EnumPicker(static (MaterialFile vm) => vm.FillMode, static (MaterialFile vm, FillMode value) => vm.FillMode = value), GridLength.Auto);
 
-            TemplateBuilder.AddGridRowWithLabel(props, "Blend mode", TemplateBuilder.CreateEnumPicker<SailorEditor.Engine.BlendMode>(nameof(MaterialFile.BlendMode)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Cull mode", TemplateBuilder.CreateEnumPicker<CullMode>(nameof(MaterialFile.CullMode)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Fill mode", TemplateBuilder.CreateEnumPicker<FillMode>(nameof(MaterialFile.FillMode)), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Shader", Templates.AssetUIDLabel(nameof(MaterialFile.Shader), static (MaterialFile vm) => vm.Shader, static (MaterialFile vm, AssetUID value) => vm.Shader = value), GridLength.Auto);
 
-            TemplateBuilder.AddGridRowWithLabel(props, "Shader", shaderLabel, GridLength.Auto);
-
-            TemplateBuilder.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, props, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateListEditor(nameof(MaterialFile.ShaderDefines),
+            Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
+            Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
+            Templates.AddGridRow(grid, props, GridLength.Auto);
+            Templates.AddGridRow(grid, Templates.CreateListEditor(static (MaterialFile vm) => vm.ShaderDefines,
+                static (MaterialFile vm, ObservableList<Observable<string>> value) => vm.ShaderDefines = value,
                 "Shader Defines",
-                new Observable<string>("NewDefine"),
-                new ObservableConverter<string>()),
+                "NewDefine",
+                converter: new ObservableConverter<string>()),
                 GridLength.Auto);
 
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<string>(nameof(MaterialFile.Samplers),
+            Templates.AddGridRow(grid, Templates.CreateUniformEditor<AssetUID>(nameof(MaterialFile.Samplers),
                 "Samplers", "newTextureSampler", new AssetUIDToFilenameConverter()),
                 GridLength.Auto);
 
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<Vec4>(nameof(MaterialFile.UniformsVec4),
+            Templates.AddGridRow(grid, Templates.CreateUniformEditor<Vec4>(nameof(MaterialFile.UniformsVec4),
                 "Uniforms Vec4", "material.newParam", new FloatValueConverter()),
                 GridLength.Auto);
 
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateUniformEditor<float>(nameof(MaterialFile.UniformsFloat),
+            Templates.AddGridRow(grid, Templates.CreateUniformEditor<float>(nameof(MaterialFile.UniformsFloat),
                 "Uniforms Float", "material.newParam", new FloatValueConverter()),
                 GridLength.Auto);
 

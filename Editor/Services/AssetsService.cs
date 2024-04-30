@@ -7,7 +7,6 @@ using Microsoft.Maui.Layouts;
 
 namespace SailorEditor.Services
 {
-    using AssetUID = string;
     public class AssetsService
     { 
         public ProjectRoot Root { get; private set; }
@@ -97,7 +96,7 @@ namespace SailorEditor.Services
 
         public static Dictionary<string, object> ParseYaml(string filename)
         {
-            Dictionary<string, object> res = new Dictionary<AssetUID, object>();
+            Dictionary<string, object> res = new Dictionary<string, object>();
             using (var yamlAssetInfo = new FileStream(filename, FileMode.Open))
             using (var reader = new StreamReader(yamlAssetInfo))
             {

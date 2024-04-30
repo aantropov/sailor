@@ -9,12 +9,6 @@
 
     <ContentView.Resources>
         <ResourceDictionary>
-            <!--<DataTemplate x:Key="AssetFileTemplate" x:DataType="models:AssetFile">
-                <VerticalStackLayout>
-                    <Label Text="Asset File"/>
-                    <Label Text="{Binding Name}"/>
-                </VerticalStackLayout>
-            </DataTemplate>-->
             <helpers:InspectorTemplateSelector x:Key="TemplateSelector"/>
         </ResourceDictionary>
     </ContentView.Resources>

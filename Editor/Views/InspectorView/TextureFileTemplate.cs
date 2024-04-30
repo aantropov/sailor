@@ -27,16 +27,16 @@ public class TextureFileTemplate : AssetFileTemplate
 
             var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto }, new ColumnDefinition { Width = GridLength.Star } } };
 
-            TemplateBuilder.AddGridRowWithLabel(props, "Generate Mips", TemplateBuilder.CreateCheckBox(nameof(TextureFile.ShouldGenerateMips)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Storage Binding", TemplateBuilder.CreateCheckBox(nameof(TextureFile.ShouldSupportStorageBinding)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Filtration", TemplateBuilder.CreateEnumPicker<TextureFiltration>(nameof(TextureFile.Filtration)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Clamping", TemplateBuilder.CreateEnumPicker<TextureClamping>(nameof(TextureFile.Clamping)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Format", TemplateBuilder.CreateEnumPicker<TextureFormat>(nameof(TextureFile.Format)), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Generate Mips", Templates.CheckBox(static (TextureFile vm) => vm.ShouldGenerateMips, static (TextureFile vm, bool value) => vm.ShouldGenerateMips = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Storage Binding", Templates.CheckBox(static (TextureFile vm) => vm.ShouldSupportStorageBinding, static (TextureFile vm, bool value) => vm.ShouldSupportStorageBinding = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Filtration", Templates.EnumPicker(static (TextureFile vm) => vm.Filtration, static (TextureFile vm, TextureFiltration value) => vm.Filtration = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Clamping", Templates.EnumPicker(static (TextureFile vm) => vm.Clamping, static (TextureFile vm, TextureClamping value) => vm.Clamping = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Format", Templates.EnumPicker(static (TextureFile vm) => vm.Format, static (TextureFile vm, TextureFormat value) => vm.Format = value), GridLength.Auto);
 
-            TemplateBuilder.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, image, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, props, GridLength.Auto);
+            Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
+            Templates.AddGridRow(grid, image, GridLength.Auto);
+            Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
+            Templates.AddGridRow(grid, props, GridLength.Auto);
 
             return grid;
         };

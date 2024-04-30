@@ -11,11 +11,49 @@ using System.Diagnostics;
 using CommunityToolkit.Maui;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SailorEditor.Utility;
+using YamlDotNet.Core.Tokens;
 
 namespace SailorEditor.ViewModels
 {
-    using AssetUID = string;
-    public partial class AssetFile : ObservableObject
+    public class AssetUID : IComparable<AssetUID>, IComparable<string>, ICloneable
+    {
+        public AssetUID() { }
+        public AssetUID(string v) { Value = v; }
+
+        public string Value = "";
+
+        public object Clone() => new AssetUID() { Value = Value };
+        public int CompareTo(AssetUID other) => Value.CompareTo(other.Value);
+        public int CompareTo(string other) => Value.CompareTo(other);
+
+        public override bool Equals(object obj)
+        {
+            if (obj is AssetUID other)
+            {
+                return Value.CompareTo(other.Value) == 0;
+            }
+            else if (obj is string str)
+            {
+                return Value.CompareTo(str) == 0;
+            }
+
+            return false;
+        }
+
+        public override int GetHashCode() => Value?.GetHashCode() ?? 0;
+
+        public static implicit operator string(AssetUID ts)
+        {
+            return ((ts == null) ? null : ts.Value);
+        }
+        public static implicit operator AssetUID(string val)
+        {
+            return new AssetUID { Value = val };
+        }
+    }
+
+    public partial class AssetFile : ObservableObject, ICloneable
     {
         public AssetFile()
         {
@@ -74,6 +112,9 @@ namespace SailorEditor.ViewModels
 
         protected virtual async Task UpdateModel() { }
         public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
+
+        public object Clone() => new AssetFile();
+
         protected bool IsLoaded { get; set; }
 
         [ObservableProperty]

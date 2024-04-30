@@ -8,20 +8,20 @@ public class ShaderFileTemplate : AssetFileTemplate
         LoadTemplate = () =>
         {
             var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto }, new ColumnDefinition { Width = GridLength.Star } } };
-            TemplateBuilder.AddGridRowWithLabel(props, "Includes", TemplateBuilder.CreateReadOnlyEditor(nameof(ShaderFile.Includes)), GridLength.Auto);
-            TemplateBuilder.AddGridRowWithLabel(props, "Defines", TemplateBuilder.CreateReadOnlyEditor(nameof(ShaderFile.Defines)), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Includes", Templates.ReadOnlyTextView(static (ShaderFile vm) => vm.Includes), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Defines", Templates.ReadOnlyTextView(static (ShaderFile vm) => vm.Defines), GridLength.Auto);
 
 
             var grid = new Grid();
-            TemplateBuilder.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, props, GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, new Label { Text = "Code", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
+            Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
+            Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
+            Templates.AddGridRow(grid, props, GridLength.Auto);
+            Templates.AddGridRow(grid, new Label { Text = "Code", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
 
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateShaderCodeView("Common Shader", nameof(ShaderFile.GlslCommonShader)), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateShaderCodeView("Vertex Shader", nameof(ShaderFile.GlslVertexShader)), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateShaderCodeView("Fragment Shader", nameof(ShaderFile.GlslFragmentShader)), GridLength.Auto);
-            TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateShaderCodeView("Compute Shader", nameof(ShaderFile.GlslComputeShader)), GridLength.Auto);
+            Templates.AddGridRow(grid, Templates.ShaderCodeView("Common Shader", static (ShaderFile vm) => vm.GlslCommonShader), GridLength.Auto);
+            Templates.AddGridRow(grid, Templates.ShaderCodeView("Vertex Shader", static (ShaderFile vm) => vm.GlslVertexShader), GridLength.Auto);
+            Templates.AddGridRow(grid, Templates.ShaderCodeView("Fragment Shader", static (ShaderFile vm) => vm.GlslFragmentShader), GridLength.Auto);
+            Templates.AddGridRow(grid, Templates.ShaderCodeView("Compute Shader", static (ShaderFile vm) => vm.GlslComputeShader), GridLength.Auto);
 
             return grid;
         };

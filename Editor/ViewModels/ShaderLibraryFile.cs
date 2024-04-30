@@ -10,7 +10,6 @@ using SailorEditor.Services;
 
 namespace SailorEditor.ViewModels
 {
-    using AssetUID = string;
     public class ShaderLibraryFile : AssetFile
     {
         public string Code { get; set; }

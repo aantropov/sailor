@@ -30,7 +30,7 @@ namespace SailorEditor.Services
                 {
                     var task = Task.Run(async () =>
                      {
-                         var file = AssetService.Files.Find((el) => el.UID == tex.Value);
+                         var file = AssetService.Files.Find((el) => el.UID == tex.Value.Value);
                          if (file != null)
                          {
                              await file.PreloadResources(false);

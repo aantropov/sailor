@@ -11,10 +11,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Maui.Core.Extensions;
 using SailorEditor.Utility;
+using System.Globalization;
 
 namespace SailorEditor.ViewModels
 {
-    using AssetUID = string;
     public partial class ModelFile : AssetFile
     {
         [ObservableProperty]
@@ -27,14 +27,14 @@ namespace SailorEditor.ViewModels
         private float unitScale;
 
         [ObservableProperty]
-        private ObservableList<Observable<string>> defaultMaterials = new();
+        private ObservableList<Observable<AssetUID>> defaultMaterials = new();
 
         protected override async Task UpdateModel()
         {
             Properties["bShouldGenerateMaterials"] = ShouldGenerateMaterials;
             Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial;
             Properties["unitScale"] = UnitScale;
-            Properties["materials"] = DefaultMaterials.Select((el) => el.Value).ToList();
+            Properties["materials"] = DefaultMaterials.Select((el) => (string)el.Value).ToList();
 
             IsDirty = false;
         }
@@ -56,7 +56,7 @@ namespace SailorEditor.ViewModels
                                 ShouldBatchByMaterial = bool.Parse(e.Value.ToString());
                                 break;
                             case "unitScale":
-                                UnitScale = float.Parse(e.Value.ToString());
+                                UnitScale = float.Parse(e.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
                                 break;
                             case "materials":
                                 {

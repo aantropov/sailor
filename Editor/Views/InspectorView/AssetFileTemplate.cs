@@ -64,7 +64,7 @@ public class AssetFileTemplate : DataTemplate
         saveButton.Clicked += async (sender, e) => await (saveButton.BindingContext as AssetFile).UpdateAssetFile();
         revertButton.Clicked += async (sender, e) => await (revertButton.BindingContext as AssetFile).Revert();
 
-        TemplateBuilder.AddGridRow(controlPanel, nameLabel, GridLength.Auto);
+        Templates.AddGridRow(controlPanel, nameLabel, GridLength.Auto);
 
         var buttonsStack = new HorizontalStackLayout
         {
@@ -74,7 +74,7 @@ public class AssetFileTemplate : DataTemplate
             VerticalOptions = LayoutOptions.Start
         };
 
-        TemplateBuilder.AddGridRow(controlPanel, buttonsStack, GridLength.Auto);
+        Templates.AddGridRow(controlPanel, buttonsStack, GridLength.Auto);
 
         controlPanel.HorizontalOptions = LayoutOptions.Start;
         controlPanel.VerticalOptions = LayoutOptions.Start;

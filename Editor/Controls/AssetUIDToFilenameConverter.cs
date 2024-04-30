@@ -6,10 +6,10 @@ using System.Globalization;
 
 public class AssetUIDToFilenameConverter : IValueConverter
 {
-    private string uid;
+    private AssetUID uid;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var assetUID = value as string;
+        var assetUID = value as AssetUID;
         if (string.IsNullOrEmpty(assetUID))
             return null;
 

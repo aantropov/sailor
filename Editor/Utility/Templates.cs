@@ -19,15 +19,21 @@ using System.Text;
 using System.Threading;
 using SailorEditor.Services;
 using System.Numerics;
+using CommunityToolkit.Maui.Markup;
+using System.Linq.Expressions;
+using Microsoft.Maui.Controls;
+using YamlDotNet.Core.Tokens;
+using System;
+using Windows.Gaming.Input;
+using System.Runtime.CompilerServices;
 
 namespace SailorEditor.Helpers
 {
-    using AssetUID = string;
-    static class TemplateBuilder
+    static class Templates
     {
         public const int ThumbnailSize = 128;
 
-        public static Editor CreateReadOnlyEditor(string bindingPath)
+        public static Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
         {
             var editor = new Editor
             {
@@ -36,11 +42,11 @@ namespace SailorEditor.Helpers
                 AutoSize = EditorAutoSizeOption.TextChanges
             };
 
-            editor.SetBinding(Editor.TextProperty, new Binding(bindingPath));
+            editor.Bind(Editor.TextProperty, getter: prop);
             return editor;
         }
 
-        public static View CreateShaderCodeView(string title, string bindingPath)
+        public static View ShaderCodeView(string title, Expression<Func<ShaderFile, string>> prop)
         {
             var titleLabel = new Label
             {
@@ -48,7 +54,7 @@ namespace SailorEditor.Helpers
                 VerticalOptions = LayoutOptions.Center
             };
 
-            var codeView = CreateReadOnlyEditor(bindingPath);
+            var codeView = ReadOnlyTextView(prop);
 
             var stackLayout = new VerticalStackLayout();
             stackLayout.Children.Add(titleLabel);
@@ -57,11 +63,48 @@ namespace SailorEditor.Helpers
             return stackLayout;
         }
 
-        public static CheckBox CreateCheckBox(string bindingPath)
+        public static CheckBox CheckBox<T>(Expression<Func<T, bool>> getter, Action<T, bool> setter)
         {
             var checkBox = new Microsoft.Maui.Controls.CheckBox();
-            checkBox.SetBinding(CheckBox.IsCheckedProperty, new Binding(bindingPath));
+            checkBox.Bind(Microsoft.Maui.Controls.CheckBox.IsCheckedProperty, getter: getter, setter: setter);
             return checkBox;
+        }
+
+        public static Picker EnumPicker<TBinding, TEnum>(Expression<Func<TBinding, TEnum>> getter, Action<TBinding, TEnum> setter) where TEnum : struct
+        {
+            var picker = new Picker
+            {
+                FontSize = 12
+            };
+
+            var enumValues = Enum.GetValues(typeof(TEnum)).Cast<TEnum>();
+            foreach (var value in enumValues)
+            {
+                picker.Items.Add(value.ToString());
+            }
+
+            picker.Bind<Picker, TBinding, TEnum, string>(Picker.SelectedItemProperty, getter: getter, setter: setter, BindingMode.TwoWay, new EnumToStringConverter<TEnum>());
+            return picker;
+        }
+
+        public static View EntryField<TBindingContext, TSource>(Expression<Func<TBindingContext, TSource>> getter, Action<TBindingContext, TSource> setter, IValueConverter valueConverter = null)
+        {
+            var entry = new Entry { FontSize = 12 };
+            entry.Bind<Entry, TBindingContext, TSource, string>(Entry.TextProperty, getter: getter, setter: setter, mode: BindingMode.TwoWay, converter: valueConverter);
+            return entry;
+        }
+
+        public static View AssetUIDLabel<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, AssetUID>> getter, Action<TBindingContext, AssetUID> setter)
+        {
+            var label = new Label();
+            label.Behaviors.Add(new AssetUIDClickable(bindingPath));
+            label.Bind<Label, TBindingContext, AssetUID, string>(Label.TextProperty,
+                getter: getter,
+                setter: setter,
+                mode: BindingMode.Default,
+                converter: new AssetUIDToFilenameConverter());
+
+            return label;
         }
 
         public static void AddGridRow(Microsoft.Maui.Controls.Grid grid, View view, Microsoft.Maui.GridLength gridLength)
@@ -81,34 +124,6 @@ namespace SailorEditor.Helpers
             grid.Add(contentView, 1, grid.RowDefinitions.Count - 1);
         }
 
-        public static Picker CreateEnumPicker<TEnum>(string bindingPath) where TEnum : struct
-        {
-            var picker = new Picker
-            {
-                FontSize = 12
-            };
-
-            var enumValues = Enum.GetValues(typeof(TEnum)).Cast<TEnum>();
-            foreach (var value in enumValues)
-            {
-                picker.Items.Add(value.ToString());
-            }
-
-            picker.SetBinding(Picker.SelectedItemProperty, new Binding(bindingPath, BindingMode.TwoWay, new EnumToStringConverter<TEnum>(), null));
-
-            return picker;
-        }
-        public static View CreateEntry(string bindingPath, IValueConverter converter = null)
-        {
-            var entry = new Entry
-            {
-                FontSize = 12
-            };
-            entry.SetBinding(Entry.TextProperty, new Binding(bindingPath, BindingMode.TwoWay, converter));
-
-            return entry;
-        }
-
         public static View CreateUniformEditor<T>(string bindingPath, string labelText, string defaultKey = default(string), IValueConverter converter = null)
         where T : IComparable<T>
         {
@@ -117,6 +132,7 @@ namespace SailorEditor.Helpers
             var dictionaryEditor = new CollectionView();
             dictionaryEditor.ItemTemplate = new DataTemplate(() =>
                 {
+
                     var keyEntry = new Entry();
                     keyEntry.SetBinding(Entry.TextProperty, "Key", BindingMode.TwoWay);
 
@@ -243,60 +259,88 @@ namespace SailorEditor.Helpers
 
             return stackLayout;
         }
-        public static View CreateListEditor<T>(string bindingPath, string labelText, T defaultElement = default(T), IValueConverter converter = null)
-        where T : ICloneable, INotifyPropertyChanged
+
+        public static View CreateListEditor<TBindingContext, TSource>(Expression<Func<TBindingContext, ObservableList<TSource>>> getter, Action<TBindingContext, ObservableList<TSource>> setter, string labelText, TSource defaultElement = default(TSource), IValueConverter converter = null)
+        where TBindingContext : ICloneable, INotifyPropertyChanged
+        where TSource : INotifyPropertyChanged, ICloneable
         {
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
+
+            Func<TBindingContext, ObservableCollection<TSource>> listGetter = getter.Compile();
 
             var listEditor = new CollectionView();
             listEditor.ItemTemplate = new DataTemplate(() =>
                 {
-                    var entry = new Entry();
-                    entry.SetBinding(Entry.TextProperty, "Value", BindingMode.TwoWay, converter);
-
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>
                     {
-                        var property = (listEditor.BindingContext).GetType().GetProperty(bindingPath);
-                        if (property.GetValue(listEditor.BindingContext) is ObservableCollection<T> list)
+                        var list = listGetter((TBindingContext)listEditor.BindingContext);
+                        if ((sender as Button).BindingContext is TSource value)
                         {
-                            if ((sender as Button).BindingContext is T value)
-                            {
-                                list.Remove(value);
-                            }
+                            list.Remove(value);
                         }
                     };
 
-                    var entryLayout = new HorizontalStackLayout { Children = { entry, deleteButton } };
+                    var entryLayout = new HorizontalStackLayout();
+
+                    if (typeof(TSource) == typeof(Observable<AssetUID>))
+                    {
+                        entryLayout.Children.Add(AssetUIDLabel("Value",
+                            static (Observable<AssetUID> vm) => vm.Value,
+                            static (Observable<AssetUID> vm, AssetUID value) => vm.Value = value));
+                    }
+                    else if (typeof(TSource) == typeof(Observable<string>))
+                    {
+                        entryLayout.Children.Add(EntryField(
+                            static (Observable<string> vm) => vm.Value,
+                            static (Observable<string> vm, string value) => vm.Value = value));
+                    }
+
+                    if (typeof(TSource) == typeof(Observable<AssetUID>))
+                    {
+                        var selectButton = new Button { Text = "Select" };
+                        selectButton.Clicked += async (sender, e) =>
+                        {
+                            var fileOpen = await FilePicker.Default.PickAsync();
+                            if (fileOpen != null)
+                            {
+                                var AssetService = MauiProgram.GetService<AssetsService>();
+                                var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
+
+                                if ((sender as Button).BindingContext is Observable<AssetUID> value)
+                                {
+                                    value.Value = asset.UID is AssetUID uid ? uid : default(AssetUID);
+                                }
+                            }
+                        };
+
+                        entryLayout.Children.Add(selectButton);
+                    }
+
+                    entryLayout.Children.Add(deleteButton);
 
                     return entryLayout;
                 });
 
-            listEditor.SetBinding(ItemsView.ItemsSourceProperty, new Binding(bindingPath, BindingMode.TwoWay));
+            listEditor.Bind(ItemsView.ItemsSourceProperty, getter: getter, setter: setter, mode: BindingMode.TwoWay);
 
             var addButton = new Button { Text = "+" };
             addButton.Clicked += (sender, e) =>
             {
-                var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
-                if (property != null)
+                var list = listGetter((TBindingContext)listEditor.BindingContext);
+                if (list != null)
                 {
-                    if (property.GetValue((sender as Button).BindingContext) is ObservableList<T> list)
-                    {
-                        list.Add((T)defaultElement.Clone());
-                    }
+                    list.Add((TSource)defaultElement.Clone());
                 }
             };
 
             var clearButton = new Button { Text = "Clear" };
             clearButton.Clicked += (sender, e) =>
             {
-                var property = (sender as Button).BindingContext.GetType().GetProperty(bindingPath);
-                if (property != null)
+                var list = listGetter((TBindingContext)listEditor.BindingContext);
+                if (list != null)
                 {
-                    if (property.GetValue((sender as Button).BindingContext) is IList list)
-                    {
-                        list.Clear();
-                    }
+                    list.Clear();
                 }
             };
 

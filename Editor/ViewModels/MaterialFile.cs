@@ -22,10 +22,10 @@ using System.Collections.Generic;
 using WinRT;
 using Windows.Foundation.Collections;
 using System;
+using Microsoft.Extensions.Primitives;
 
 namespace SailorEditor.ViewModels
 {
-    using AssetUID = string;
     using BlendMode = Engine.BlendMode;
 
     public partial class Vec4 : ObservableObject, ICloneable, IComparable<Vec4>
@@ -167,7 +167,7 @@ namespace SailorEditor.ViewModels
             AssetProperties["cullMode"] = CullMode;
             AssetProperties["blendMode"] = BlendMode;
             AssetProperties["fillMode"] = FillMode;
-            AssetProperties["shaderUid"] = Shader;
+            AssetProperties["shaderUid"] = Shader.Value;
 
             // Collections
             AssetProperties["defines"] = ShaderDefines.Select((el) => el.Value).ToList();
@@ -229,7 +229,7 @@ namespace SailorEditor.ViewModels
                                 CustomDepthShader = bool.Parse(e.Value.ToString());
                                 break;
                             case "depthBias":
-                                DepthBias = float.Parse(e.Value.ToString());
+                                DepthBias = float.Parse(e.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
                                 break;
                             case "renderQueue":
                                 RenderQueue = e.Value.ToString();

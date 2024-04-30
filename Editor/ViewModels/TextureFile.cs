@@ -11,7 +11,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SailorEditor.ViewModels
 {
-    using AssetUID = string;
     public partial class TextureFile : AssetFile
     {
         public bool IsImageLoaded { get => !Texture.IsEmpty; }

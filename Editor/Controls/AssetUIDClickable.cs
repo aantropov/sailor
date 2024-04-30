@@ -12,6 +12,7 @@ public class AssetUIDClickable : Behavior<Label>
     {
         bindingPath = property;
     }
+
     protected override void OnAttachedTo(Label bindable)
     {
         base.OnAttachedTo(bindable);
@@ -37,7 +38,7 @@ public class AssetUIDClickable : Behavior<Label>
         {
             var uid = property.GetValue((sender as Label).BindingContext);
 
-            MauiProgram.GetService<SelectionService>().OnSelectAsset(MauiProgram.GetService<AssetsService>().Assets[uid.ToString()]);
+            MauiProgram.GetService<SelectionService>().OnSelectAsset(MauiProgram.GetService<AssetsService>().Assets[uid as AssetUID]);
         }
     }
 }
