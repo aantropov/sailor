@@ -175,7 +175,7 @@ namespace SailorEditor.Helpers
                         valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
 
                         var stackLayout = new HorizontalStackLayout();
-                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { image, valueEntry, selectButton } });
+                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, image, valueEntry } });
 
                         valueView = stackLayout;
                     }
@@ -219,7 +219,7 @@ namespace SailorEditor.Helpers
                         }
                     };
 
-                    var entryLayout = new HorizontalStackLayout { Children = { keyEntry, valueView, deleteButton } };
+                    var entryLayout = new HorizontalStackLayout { Children = { deleteButton, valueView, keyEntry } };
 
                     return entryLayout;
                 });
@@ -282,19 +282,7 @@ namespace SailorEditor.Helpers
                     };
 
                     var entryLayout = new HorizontalStackLayout();
-
-                    if (typeof(TSource) == typeof(Observable<AssetUID>))
-                    {
-                        entryLayout.Children.Add(AssetUIDLabel("Value",
-                            static (Observable<AssetUID> vm) => vm.Value,
-                            static (Observable<AssetUID> vm, AssetUID value) => vm.Value = value));
-                    }
-                    else if (typeof(TSource) == typeof(Observable<string>))
-                    {
-                        entryLayout.Children.Add(EntryField(
-                            static (Observable<string> vm) => vm.Value,
-                            static (Observable<string> vm, string value) => vm.Value = value));
-                    }
+                    entryLayout.Children.Add(deleteButton);
 
                     if (typeof(TSource) == typeof(Observable<AssetUID>))
                     {
@@ -317,7 +305,18 @@ namespace SailorEditor.Helpers
                         entryLayout.Children.Add(selectButton);
                     }
 
-                    entryLayout.Children.Add(deleteButton);
+                    if (typeof(TSource) == typeof(Observable<AssetUID>))
+                    {
+                        entryLayout.Children.Add(AssetUIDLabel("Value",
+                            static (Observable<AssetUID> vm) => vm.Value,
+                            static (Observable<AssetUID> vm, AssetUID value) => vm.Value = value));
+                    }
+                    else if (typeof(TSource) == typeof(Observable<string>))
+                    {
+                        entryLayout.Children.Add(EntryField(
+                            static (Observable<string> vm) => vm.Value,
+                            static (Observable<string> vm, string value) => vm.Value = value));
+                    }
 
                     return entryLayout;
                 });
