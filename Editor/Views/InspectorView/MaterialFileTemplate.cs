@@ -36,8 +36,11 @@ public class MaterialFileTemplate : AssetFileTemplate
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
             Templates.AddGridRow(grid, props, GridLength.Auto);
-            Templates.AddGridRow(grid, Templates.ListEditor(static (MaterialFile vm) => vm.ShaderDefines,
+            Templates.AddGridRow(grid, Templates.ListEditor(
+                static (MaterialFile vm) => vm.ShaderDefines,
                 static (MaterialFile vm, ObservableList<Observable<string>> value) => vm.ShaderDefines = value,
+                () => Templates.EntryField(static (Observable<string> vm) => vm.Value,
+                static (Observable<string> vm, string value) => vm.Value = value),
                 "Shader Defines",
                 "NewDefine",
                 converter: new ObservableConverter<string>()),
@@ -46,22 +49,23 @@ public class MaterialFileTemplate : AssetFileTemplate
             Templates.AddGridRow(grid, Templates.UniformEditor(
                 static (MaterialFile vm) => vm.Samplers,
                 static (MaterialFile vm, ObservableList<Uniform<AssetUID>> value) => vm.Samplers = value,
+                () => Templates.TextureEditor(static (Uniform<AssetUID> vm) => vm.Value, static (Uniform<AssetUID> vm, AssetUID value) => vm.Value = value),
                 "Samplers", "newTextureSampler"),
                 GridLength.Auto);
 
             Templates.AddGridRow(grid, Templates.UniformEditor(
                 static (MaterialFile vm) => vm.UniformsVec4,
                 static (MaterialFile vm, ObservableList<Uniform<Vec4>> value) => vm.UniformsVec4 = value,
-                "Uniforms Vec4", "material.newVec4Param"),
+                () => Templates.Vec4Editor(static (Uniform<Vec4> vm) => vm.Value),
+                "Uniforms Vec4", "material.newVec4Param", new Vec4()),
                 GridLength.Auto);
 
             Templates.AddGridRow(grid, Templates.UniformEditor(
                 static (MaterialFile vm) => vm.UniformsFloat,
                 static (MaterialFile vm, ObservableList<Uniform<float>> value) => vm.UniformsFloat = value,
+                () => Templates.FloatEditor(static (Uniform<float> vm) => vm.Value, static (Uniform<float> vm, float value) => vm.Value = value),
                 "Uniforms Float", "material.newFloatParam"),
                 GridLength.Auto);
-
-            //TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor<Observable<string>, Observable<string>>(nameof(MaterialFile.UniformsVec4), "Uniforms Vec4"), GridLength.Auto);
 
             return grid;
         };

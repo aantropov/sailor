@@ -61,7 +61,18 @@ namespace SailorEditor.ViewModels
     public partial class Uniform<T> : ObservableObject, ICloneable
     where T : IComparable<T>
     {
-        public object Clone() => new Uniform<T> { Key = Key, Value = Value };
+        public object Clone()
+        {
+            var res = new Uniform<T> { Key = Key };
+
+            if (Value is ICloneable cloneable)
+                res.Value = (T)cloneable.Clone();
+            else
+                res.Value = Value;
+
+            return res;
+        }
+
         public override bool Equals(object obj)
         {
             if (obj is Uniform<T> other)

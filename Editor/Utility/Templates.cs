@@ -27,6 +27,7 @@ using System;
 using Windows.Gaming.Input;
 using System.Runtime.CompilerServices;
 using System.Collections.Generic;
+using Microsoft.UI.Xaml.Data;
 
 namespace SailorEditor.Helpers
 {
@@ -155,6 +156,39 @@ namespace SailorEditor.Helpers
             return stackLayout;
         }
 
+        public static View AssetUIDEditor<TBindingContext>(Expression<Func<TBindingContext, AssetUID>> getter, Action<TBindingContext, AssetUID> setter)
+        {
+            var selectButton = new Button { Text = "Select" };
+            selectButton.Clicked += async (sender, e) =>
+            {
+                var fileOpen = await FilePicker.Default.PickAsync();
+                if (fileOpen != null)
+                {
+                    var AssetService = MauiProgram.GetService<AssetsService>();
+                    var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
+                    setter((TBindingContext)(sender as Button).BindingContext, asset.UID is AssetUID uid ? uid : default(AssetUID));
+                }
+            };
+
+            var valueEntry = new Label
+            {
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center
+            };
+
+            valueEntry.Bind<Label, TBindingContext, AssetUID, string>(Label.TextProperty,
+                mode: BindingMode.Default,
+                converter: new AssetUIDToFilenameConverter(),
+                getter: getter);
+
+            valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
+
+            var stackLayout = new HorizontalStackLayout();
+            stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });
+
+            return stackLayout;
+        }
+
         public static View Vec4Editor<TBindingContext>(Func<TBindingContext, Vec4> convert)
         {
             var valueXEntry = new Entry();
@@ -206,8 +240,10 @@ namespace SailorEditor.Helpers
         public static View UniformEditor<TBindingContext, T>(
             Expression<Func<TBindingContext, ObservableList<Uniform<T>>>> getter,
             Action<TBindingContext, ObservableList<Uniform<T>>> setter,
+            Func<IView> valueEditor,
             string labelText,
-            string defaultKey = default(string))
+            string defaultKey = default,
+            T defaultValue = default)
         where TBindingContext : ICloneable, INotifyPropertyChanged
         where T : IComparable<T>
         {
@@ -224,22 +260,6 @@ namespace SailorEditor.Helpers
                         setter: static (Uniform<T> vm, string value) => vm.Key = value,
                         mode: BindingMode.TwoWay);
 
-                    IView valueView = null;
-
-                    // TODO: Solve
-                    if (typeof(T) == typeof(AssetUID))
-                    {
-                        valueView = TextureEditor(static (Uniform<AssetUID> vm) => vm.Value, static (Uniform<AssetUID> vm, AssetUID value) => vm.Value = value);
-                    }
-                    else if (typeof(T) == typeof(Vec4))
-                    {
-                        valueView = Vec4Editor(static (Uniform<Vec4> vm) => vm.Value);
-                    }
-                    else if (typeof(T) == typeof(float))
-                    {
-                        valueView = FloatEditor(static (Uniform<float> vm) => vm.Value, static (Uniform<float> vm, float value) => vm.Value = value);
-                    }
-
                     var deleteButton = new Button { Text = "-" };
                     deleteButton.Clicked += (sender, e) =>
                     {
@@ -251,7 +271,7 @@ namespace SailorEditor.Helpers
                         }
                     };
 
-                    var entryLayout = new HorizontalStackLayout { Children = { deleteButton, valueView, keyEntry } };
+                    var entryLayout = new HorizontalStackLayout { Children = { deleteButton, valueEditor(), keyEntry } };
 
                     return entryLayout;
                 });
@@ -264,7 +284,11 @@ namespace SailorEditor.Helpers
                 var dict = dictGetter((TBindingContext)dictEditor.BindingContext);
                 if (dict != null)
                 {
-                    Uniform<T> v = new Uniform<T> { Key = defaultKey, Value = default(T) };
+                    Uniform<T> v = new Uniform<T> { Key = defaultKey, Value = defaultValue };
+
+                    if (defaultValue is ICloneable cloneable)
+                        v.Value = (T)cloneable.Clone();
+
                     dict.Add(v);
                 }
             };
@@ -287,7 +311,13 @@ namespace SailorEditor.Helpers
             return stackLayout;
         }
 
-        public static View ListEditor<TBindingContext, T>(Expression<Func<TBindingContext, ObservableList<Observable<T>>>> getter, Action<TBindingContext, ObservableList<Observable<T>>> setter, string labelText, T defaultElement = default(T), IValueConverter converter = null)
+        public static View ListEditor<TBindingContext, T>(
+            Expression<Func<TBindingContext, ObservableList<Observable<T>>>> getter,
+            Action<TBindingContext, ObservableList<Observable<T>>> setter,
+            Func<IView> valueEditor,
+            string labelText,
+            T defaultElement = default(T),
+            IValueConverter converter = null)
         where TBindingContext : ICloneable, INotifyPropertyChanged
         where T : ICloneable, IComparable<T>
         {
@@ -308,44 +338,7 @@ namespace SailorEditor.Helpers
                         }
                     };
 
-                    var entryLayout = new HorizontalStackLayout();
-                    entryLayout.Children.Add(deleteButton);
-
-                    // TODO: Solve
-                    if (typeof(T) == typeof(AssetUID))
-                    {
-                        var selectButton = new Button { Text = "Select" };
-                        selectButton.Clicked += async (sender, e) =>
-                        {
-                            var fileOpen = await FilePicker.Default.PickAsync();
-                            if (fileOpen != null)
-                            {
-                                var AssetService = MauiProgram.GetService<AssetsService>();
-                                var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-
-                                if ((sender as Button).BindingContext is Observable<AssetUID> value)
-                                {
-                                    value.Value = asset.UID is AssetUID uid ? uid : default(AssetUID);
-                                }
-                            }
-                        };
-
-                        entryLayout.Children.Add(selectButton);
-                    }
-
-                    if (typeof(T) == typeof(AssetUID))
-                    {
-                        entryLayout.Children.Add(AssetUIDLabel("Value",
-                            static (Observable<AssetUID> vm) => vm.Value,
-                            static (Observable<AssetUID> vm, AssetUID value) => vm.Value = value));
-                    }
-                    else if (typeof(T) == typeof(string))
-                    {
-                        entryLayout.Children.Add(EntryField(
-                            static (Observable<string> vm) => vm.Value,
-                            static (Observable<string> vm, string value) => vm.Value = value));
-                    }
-
+                    var entryLayout = new HorizontalStackLayout { Children = { deleteButton, valueEditor() } };
                     return entryLayout;
                 });
 

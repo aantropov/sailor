@@ -25,6 +25,9 @@ public class ModelFileTemplate : AssetFileTemplate
             Templates.AddGridRow(grid, Templates.ListEditor(
                  static (ModelFile vm) => vm.DefaultMaterials,
                  static (ModelFile vm, ObservableList<Observable<AssetUID>> value) => vm.DefaultMaterials = value,
+                 () => Templates.AssetUIDEditor(
+                            static (Observable<AssetUID> vm) => vm.Value,
+                            static (Observable<AssetUID> vm, AssetUID value) => vm.Value = value),
                 "Default Materials",
                 new AssetUID(),
                 converter: new AssetUIDToFilenameConverter()), GridLength.Auto);
