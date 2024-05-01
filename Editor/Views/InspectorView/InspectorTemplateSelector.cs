@@ -17,20 +17,23 @@ namespace SailorEditor.Helpers
 
         protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
         {
-            if (item is TextureFile)
-                return TextureFileTemplate;
+            switch (item)
+            {
+                case TextureFile _:
+                    return TextureFileTemplate;
 
-            if (item is ShaderFile)
-                return ShaderFileTemplate;
+                case ShaderFile _:
+                    return ShaderFileTemplate;
 
-            if (item is ShaderLibraryFile)
-                return ShaderLibraryFileTemplate;
+                case ShaderLibraryFile _:
+                    return ShaderLibraryFileTemplate;
 
-            if (item is ModelFile)
-                return ModelFileTemplate;
+                case ModelFile _:
+                    return ModelFileTemplate;
 
-            if (item is MaterialFile)
-                return MaterialFileTemplate;
+                case MaterialFile _:
+                    return MaterialFileTemplate;
+            };
 
             return AssetFileTemplate;
         }
