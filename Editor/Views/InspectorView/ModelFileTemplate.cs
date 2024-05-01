@@ -22,7 +22,7 @@ public class ModelFileTemplate : AssetFileTemplate
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
             Templates.AddGridRow(grid, props, GridLength.Auto);
-            Templates.AddGridRow(grid, Templates.CreateListEditor(
+            Templates.AddGridRow(grid, Templates.ListEditor(
                  static (ModelFile vm) => vm.DefaultMaterials,
                  static (ModelFile vm, ObservableList<Observable<AssetUID>> value) => vm.DefaultMaterials = value,
                 "Default Materials",

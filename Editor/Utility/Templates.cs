@@ -108,34 +108,110 @@ namespace SailorEditor.Helpers
             return label;
         }
 
-        public static void AddGridRow(Microsoft.Maui.Controls.Grid grid, View view, Microsoft.Maui.GridLength gridLength)
+        public static View TextureEditor<TBindingContext>(Expression<Func<TBindingContext, AssetUID>> getter, Action<TBindingContext, AssetUID> setter)
         {
-            grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
-            grid.Children.Add(view);
-            Grid.SetRow(view, grid.RowDefinitions.Count - 1);
+            var selectButton = new Button { Text = "Select" };
+            selectButton.Clicked += async (sender, e) =>
+            {
+                var fileOpen = await FilePicker.Default.PickAsync();
+                if (fileOpen != null)
+                {
+                    var AssetService = MauiProgram.GetService<AssetsService>();
+                    var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
+                    setter((TBindingContext)(sender as Button).BindingContext, asset.UID is AssetUID uid ? uid : default(AssetUID));
+                }
+            };
+
+            var image = new Image
+            {
+                WidthRequest = 64,
+                HeightRequest = 64,
+                Aspect = Aspect.AspectFit,
+                HorizontalOptions = LayoutOptions.Start,
+                VerticalOptions = LayoutOptions.Start
+            };
+
+            image.Bind<Image, Uniform<AssetUID>, AssetUID, Image>(Image.SourceProperty,
+                mode: BindingMode.Default,
+                converter: new AssetUIDToTextureConverter(),
+                getter: static (Uniform<AssetUID> vm) => vm.Value);
+
+            var valueEntry = new Label
+            {
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center
+            };
+
+            valueEntry.Bind<Label, Uniform<AssetUID>, AssetUID, string>(Label.TextProperty,
+                mode: BindingMode.Default,
+                converter: new AssetUIDToFilenameConverter(),
+                getter: static (Uniform<AssetUID> vm) => vm.Value);
+
+            valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
+
+            var stackLayout = new HorizontalStackLayout();
+            stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, image, valueEntry } });
+
+            return stackLayout;
         }
 
-        public static void AddGridRowWithLabel(Grid grid, string labelText, View contentView, Microsoft.Maui.GridLength gridLength)
+        public static View Vec4Editor<TBindingContext>(Func<TBindingContext, Vec4> convert)
         {
-            grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
+            var valueXEntry = new Entry();
+            valueXEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).X,
+                setter: (TBindingContext vm, float value) => convert(vm).X = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
 
-            var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, HorizontalOptions = LayoutOptions.Start };
+            var valueYEntry = new Entry();
+            valueYEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).Y,
+                setter: (TBindingContext vm, float value) => convert(vm).Y = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
 
-            grid.Add(label, 0, grid.RowDefinitions.Count - 1);
-            grid.Add(contentView, 1, grid.RowDefinitions.Count - 1);
+            var valueZEntry = new Entry();
+            valueZEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).Z,
+                setter: (TBindingContext vm, float value) => convert(vm).Z = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
+
+            var valueWEntry = new Entry();
+            valueWEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).W,
+                setter: (TBindingContext vm, float value) => convert(vm).W = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
+
+            var stackLayout = new HorizontalStackLayout();
+            stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry, valueWEntry } });
+
+            return stackLayout;
         }
 
-        public static View CreateUniformEditor<TBindingContext, TSource, T>(
-            Expression<Func<TBindingContext, ObservableList<TSource>>> getter,
-            Action<TBindingContext, ObservableList<TSource>> setter,
+        public static View FloatEditor<TBindingContext>(Expression<Func<TBindingContext, float>> getter, Action<TBindingContext, float> setter)
+        {
+            var value = new Entry();
+            value.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: getter,
+                setter: setter,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
+
+            return value;
+        }
+
+        public static View UniformEditor<TBindingContext, T>(
+            Expression<Func<TBindingContext, ObservableList<Uniform<T>>>> getter,
+            Action<TBindingContext, ObservableList<Uniform<T>>> setter,
             string labelText,
-            string defaultKey = default(string),
-            IValueConverter converter = null)
+            string defaultKey = default(string))
         where TBindingContext : ICloneable, INotifyPropertyChanged
-        where TSource : Uniform<T>
         where T : IComparable<T>
         {
-            Func<TBindingContext, ObservableCollection<TSource>> dictGetter = getter.Compile();
+            Func<TBindingContext, ObservableCollection<Uniform<T>>> dictGetter = getter.Compile();
 
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
 
@@ -150,94 +226,18 @@ namespace SailorEditor.Helpers
 
                     IView valueView = null;
 
+                    // TODO: Solve
                     if (typeof(T) == typeof(AssetUID))
                     {
-                        var selectButton = new Button { Text = "Select" };
-                        selectButton.Clicked += async (sender, e) =>
-                        {
-                            var fileOpen = await FilePicker.Default.PickAsync();
-                            if (fileOpen != null)
-                            {
-                                var AssetService = MauiProgram.GetService<AssetsService>();
-                                var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-
-                                if ((sender as Button).BindingContext is Uniform<AssetUID> uniform)
-                                {
-                                    uniform.Value = asset.UID is AssetUID uid ? uid : default(AssetUID);
-                                }
-                            }
-                        };
-
-                        var image = new Image
-                        {
-                            WidthRequest = 64,
-                            HeightRequest = 64,
-                            Aspect = Aspect.AspectFit,
-                            HorizontalOptions = LayoutOptions.Start,
-                            VerticalOptions = LayoutOptions.Start
-                        };
-
-                        image.Bind<Image, Uniform<AssetUID>, AssetUID, Image>(Image.SourceProperty, mode: BindingMode.Default, converter: new AssetUIDToTextureConverter(), getter: static (Uniform<AssetUID> vm) => vm.Value);
-
-                        var valueEntry = new Label
-                        {
-                            HorizontalOptions = LayoutOptions.Center,
-                            VerticalOptions = LayoutOptions.Center
-                        };
-
-                        valueEntry.Bind<Label, Uniform<AssetUID>, AssetUID, string>(Label.TextProperty, mode: BindingMode.Default, converter: converter, getter: static (Uniform<AssetUID> vm) => vm.Value);
-                        valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
-
-                        var stackLayout = new HorizontalStackLayout();
-                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, image, valueEntry } });
-
-                        valueView = stackLayout;
+                        valueView = TextureEditor(static (Uniform<AssetUID> vm) => vm.Value, static (Uniform<AssetUID> vm, AssetUID value) => vm.Value = value);
                     }
                     else if (typeof(T) == typeof(Vec4))
                     {
-                        var valueXEntry = new Entry();
-                        valueXEntry.Bind<Entry, Uniform<Vec4>, float, string>(Entry.TextProperty,
-                            getter: static (Uniform<Vec4> vm) => vm.Value.X,
-                            setter: static (Uniform<Vec4> vm, float value) => vm.Value.X = value,
-                            mode: BindingMode.TwoWay,
-                            converter: converter);
-
-                        var valueYEntry = new Entry();
-                        valueXEntry.Bind<Entry, Uniform<Vec4>, float, string>(Entry.TextProperty,
-                            getter: static (Uniform<Vec4> vm) => vm.Value.Y,
-                            setter: static (Uniform<Vec4> vm, float value) => vm.Value.Y = value,
-                            mode: BindingMode.TwoWay,
-                            converter: converter);
-
-                        var valueZEntry = new Entry();
-                        valueXEntry.Bind<Entry, Uniform<Vec4>, float, string>(Entry.TextProperty,
-                            getter: static (Uniform<Vec4> vm) => vm.Value.Z,
-                            setter: static (Uniform<Vec4> vm, float value) => vm.Value.Z = value,
-                            mode: BindingMode.TwoWay,
-                            converter: converter);
-
-                        var valueWEntry = new Entry();
-                        valueXEntry.Bind<Entry, Uniform<Vec4>, float, string>(Entry.TextProperty,
-                            getter: static (Uniform<Vec4> vm) => vm.Value.W,
-                            setter: static (Uniform<Vec4> vm, float value) => vm.Value.W = value,
-                            mode: BindingMode.TwoWay,
-                            converter: converter);
-
-                        var stackLayout = new HorizontalStackLayout();
-                        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry, valueWEntry } });
-
-                        valueView = stackLayout;
+                        valueView = Vec4Editor(static (Uniform<Vec4> vm) => vm.Value);
                     }
-                    else
+                    else if (typeof(T) == typeof(float))
                     {
-                        var valueEntry = new Entry();
-                        valueEntry.Bind<Entry, Uniform<T>, T, string>(Entry.TextProperty,
-                           getter: static (Uniform<T> vm) => vm.Value,
-                           setter: static (Uniform<T> vm, T value) => vm.Value = value,
-                           mode: BindingMode.TwoWay,
-                           converter: converter);
-
-                        valueView = valueEntry;
+                        valueView = FloatEditor(static (Uniform<float> vm) => vm.Value, static (Uniform<float> vm, float value) => vm.Value = value);
                     }
 
                     var deleteButton = new Button { Text = "-" };
@@ -245,7 +245,7 @@ namespace SailorEditor.Helpers
                     {
                         var dict = dictGetter((TBindingContext)dictEditor.BindingContext);
 
-                        if ((sender as Button).BindingContext is TSource value)
+                        if ((sender as Button).BindingContext is Uniform<T> value)
                         {
                             dict.Remove(value);
                         }
@@ -264,7 +264,7 @@ namespace SailorEditor.Helpers
                 var dict = dictGetter((TBindingContext)dictEditor.BindingContext);
                 if (dict != null)
                 {
-                    TSource v = (TSource)new Uniform<T> { Key = defaultKey, Value = default(T) };
+                    Uniform<T> v = new Uniform<T> { Key = defaultKey, Value = default(T) };
                     dict.Add(v);
                 }
             };
@@ -287,13 +287,13 @@ namespace SailorEditor.Helpers
             return stackLayout;
         }
 
-        public static View CreateListEditor<TBindingContext, TSource>(Expression<Func<TBindingContext, ObservableList<TSource>>> getter, Action<TBindingContext, ObservableList<TSource>> setter, string labelText, TSource defaultElement = default(TSource), IValueConverter converter = null)
+        public static View ListEditor<TBindingContext, T>(Expression<Func<TBindingContext, ObservableList<Observable<T>>>> getter, Action<TBindingContext, ObservableList<Observable<T>>> setter, string labelText, T defaultElement = default(T), IValueConverter converter = null)
         where TBindingContext : ICloneable, INotifyPropertyChanged
-        where TSource : INotifyPropertyChanged, ICloneable
+        where T : ICloneable, IComparable<T>
         {
             var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };
 
-            Func<TBindingContext, ObservableCollection<TSource>> listGetter = getter.Compile();
+            Func<TBindingContext, ObservableCollection<Observable<T>>> listGetter = getter.Compile();
 
             var listEditor = new CollectionView();
             listEditor.ItemTemplate = new DataTemplate(() =>
@@ -302,7 +302,7 @@ namespace SailorEditor.Helpers
                     deleteButton.Clicked += (sender, e) =>
                     {
                         var list = listGetter((TBindingContext)listEditor.BindingContext);
-                        if ((sender as Button).BindingContext is TSource value)
+                        if ((sender as Button).BindingContext is Observable<T> value)
                         {
                             list.Remove(value);
                         }
@@ -311,7 +311,8 @@ namespace SailorEditor.Helpers
                     var entryLayout = new HorizontalStackLayout();
                     entryLayout.Children.Add(deleteButton);
 
-                    if (typeof(TSource) == typeof(Observable<AssetUID>))
+                    // TODO: Solve
+                    if (typeof(T) == typeof(AssetUID))
                     {
                         var selectButton = new Button { Text = "Select" };
                         selectButton.Clicked += async (sender, e) =>
@@ -332,13 +333,13 @@ namespace SailorEditor.Helpers
                         entryLayout.Children.Add(selectButton);
                     }
 
-                    if (typeof(TSource) == typeof(Observable<AssetUID>))
+                    if (typeof(T) == typeof(AssetUID))
                     {
                         entryLayout.Children.Add(AssetUIDLabel("Value",
                             static (Observable<AssetUID> vm) => vm.Value,
                             static (Observable<AssetUID> vm, AssetUID value) => vm.Value = value));
                     }
-                    else if (typeof(TSource) == typeof(Observable<string>))
+                    else if (typeof(T) == typeof(string))
                     {
                         entryLayout.Children.Add(EntryField(
                             static (Observable<string> vm) => vm.Value,
@@ -356,7 +357,7 @@ namespace SailorEditor.Helpers
                 var list = listGetter((TBindingContext)listEditor.BindingContext);
                 if (list != null)
                 {
-                    list.Add((TSource)defaultElement.Clone());
+                    list.Add(new Observable<T>(defaultElement));
                 }
             };
 
@@ -415,6 +416,23 @@ namespace SailorEditor.Helpers
                     }
                 }
             }
+        }
+
+        public static void AddGridRow(Microsoft.Maui.Controls.Grid grid, View view, Microsoft.Maui.GridLength gridLength)
+        {
+            grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
+            grid.Children.Add(view);
+            Grid.SetRow(view, grid.RowDefinitions.Count - 1);
+        }
+
+        public static void AddGridRowWithLabel(Grid grid, string labelText, View contentView, Microsoft.Maui.GridLength gridLength)
+        {
+            grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
+
+            var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, HorizontalOptions = LayoutOptions.Start };
+
+            grid.Add(label, 0, grid.RowDefinitions.Count - 1);
+            grid.Add(contentView, 1, grid.RowDefinitions.Count - 1);
         }
     };
 }

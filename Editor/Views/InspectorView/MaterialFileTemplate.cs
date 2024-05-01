@@ -36,29 +36,29 @@ public class MaterialFileTemplate : AssetFileTemplate
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
             Templates.AddGridRow(grid, props, GridLength.Auto);
-            Templates.AddGridRow(grid, Templates.CreateListEditor(static (MaterialFile vm) => vm.ShaderDefines,
+            Templates.AddGridRow(grid, Templates.ListEditor(static (MaterialFile vm) => vm.ShaderDefines,
                 static (MaterialFile vm, ObservableList<Observable<string>> value) => vm.ShaderDefines = value,
                 "Shader Defines",
                 "NewDefine",
                 converter: new ObservableConverter<string>()),
                 GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.CreateUniformEditor<MaterialFile, Uniform<AssetUID>, AssetUID>(
+            Templates.AddGridRow(grid, Templates.UniformEditor(
                 static (MaterialFile vm) => vm.Samplers,
                 static (MaterialFile vm, ObservableList<Uniform<AssetUID>> value) => vm.Samplers = value,
-                "Samplers", "newTextureSampler", new AssetUIDToFilenameConverter()),
+                "Samplers", "newTextureSampler"),
                 GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.CreateUniformEditor<MaterialFile, Uniform<Vec4>, Vec4>(
+            Templates.AddGridRow(grid, Templates.UniformEditor(
                 static (MaterialFile vm) => vm.UniformsVec4,
                 static (MaterialFile vm, ObservableList<Uniform<Vec4>> value) => vm.UniformsVec4 = value,
-                "Uniforms Vec4", "material.newParam", new FloatValueConverter()),
+                "Uniforms Vec4", "material.newVec4Param"),
                 GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.CreateUniformEditor<MaterialFile, Uniform<float>, float>(
+            Templates.AddGridRow(grid, Templates.UniformEditor(
                 static (MaterialFile vm) => vm.UniformsFloat,
                 static (MaterialFile vm, ObservableList<Uniform<float>> value) => vm.UniformsFloat = value,
-                "Uniforms Float", "material.newParam", new FloatValueConverter()),
+                "Uniforms Float", "material.newFloatParam"),
                 GridLength.Auto);
 
             //TemplateBuilder.AddGridRow(grid, TemplateBuilder.CreateDictionaryEditor<Observable<string>, Observable<string>>(nameof(MaterialFile.UniformsVec4), "Uniforms Vec4"), GridLength.Auto);
