@@ -184,7 +184,7 @@ void ShaderCache::ClearExpired()
 	SaveCache();
 }
 
-void ShaderCache::Remove(ShaderCacheData::Entry pEntry)
+void ShaderCache::Remove(const ShaderCacheData::Entry& pEntry)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -324,42 +324,49 @@ void ShaderCache::CacheSpirv_ThreadSafe(const FileId& uid, uint32_t permutation,
 	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
 
 	auto it = std::find_if(std::begin(m_cache.m_data[uid]), std::end(m_cache.m_data[uid]),
-		[permutation](const ShaderCacheData::Entry arg) { return arg.m_permutation == permutation; });
+		[permutation](const ShaderCacheData::Entry& arg) { return arg.m_permutation == permutation; });
 
 	const bool bAlreadyContains = it != std::end(m_cache.m_data[uid]);
 
 	time_t timeStamp = 0;
 	const bool hasAsset = GetTimeStamp(uid, timeStamp);
 
-	ShaderCacheData::Entry newEntry = bAlreadyContains ? *it : ShaderCacheData::Entry();
-	newEntry.m_permutation = permutation;
-	newEntry.m_fileId = uid;
-	newEntry.m_timestamp = timeStamp;
+	ShaderCacheData::Entry newEntry = ShaderCacheData::Entry();
+	ShaderCacheData::Entry* entry = &newEntry;
+
+	if (bAlreadyContains)
+	{
+		entry = &(*it);
+	}
+
+	entry->m_permutation = permutation;
+	entry->m_fileId = uid;
+	entry->m_timestamp = timeStamp;
 
 	if (vertexSpirv.Num() > 0)
 	{
-		std::ofstream vertexCompiled(GetCachedShaderFilepath(newEntry.m_fileId, newEntry.m_permutation, ShaderCache::VertexShaderTag), std::ofstream::binary);
+		std::ofstream vertexCompiled(GetCachedShaderFilepath(entry->m_fileId, entry->m_permutation, ShaderCache::VertexShaderTag), std::ofstream::binary);
 		vertexCompiled.write(reinterpret_cast<const char*>(&vertexSpirv[0]), vertexSpirv.Num() * sizeof(uint32_t));
 		vertexCompiled.close();
 	}
 
 	if (fragmentSpirv.Num() > 0)
 	{
-		std::ofstream fragmentCompiled(GetCachedShaderFilepath(newEntry.m_fileId, newEntry.m_permutation, ShaderCache::FragmentShaderTag), std::ofstream::binary);
+		std::ofstream fragmentCompiled(GetCachedShaderFilepath(entry->m_fileId, entry->m_permutation, ShaderCache::FragmentShaderTag), std::ofstream::binary);
 		fragmentCompiled.write(reinterpret_cast<const char*>(&fragmentSpirv[0]), fragmentSpirv.Num() * sizeof(uint32_t));
 		fragmentCompiled.close();
 	}
 
 	if (computeSpirv.Num() > 0)
 	{
-		std::ofstream computeCompiled(GetCachedShaderFilepath(newEntry.m_fileId, newEntry.m_permutation, ShaderCache::ComputeShaderTag), std::ofstream::binary);
+		std::ofstream computeCompiled(GetCachedShaderFilepath(entry->m_fileId, entry->m_permutation, ShaderCache::ComputeShaderTag), std::ofstream::binary);
 		computeCompiled.write(reinterpret_cast<const char*>(&computeSpirv[0]), computeSpirv.Num() * sizeof(uint32_t));
 		computeCompiled.close();
 	}
 
 	if (!bAlreadyContains)
 	{
-		m_cache.m_data[uid].Add(newEntry);
+		m_cache.m_data[uid].Add(*entry);
 	}
 
 	m_bIsDirty = true;
@@ -378,7 +385,7 @@ bool ShaderCache::GetSpirvCode(const FileId& uid, uint32_t permutation, TVector<
 
 	const auto& entries = m_cache.m_data[uid];
 	const auto it = std::find_if(std::cbegin(entries), std::cend(entries),
-		[permutation](const ShaderCacheData::Entry arg) { return arg.m_permutation == permutation; });
+		[permutation](const ShaderCacheData::Entry& arg) { return arg.m_permutation == permutation; });
 
 	std::filesystem::path vertexFilepath = bIsDebug ?
 		GetCachedShaderWithDebugFilepath((*it).m_fileId, (*it).m_permutation, ShaderCache::VertexShaderTag) :
@@ -407,7 +414,7 @@ bool ShaderCache::IsExpired(const FileId& uid, uint32_t permutation) const
 	}
 
 	const auto& entries = m_cache.m_data[uid];
-	size_t index = entries.FindIf([permutation](const ShaderCacheData::Entry arg) { return arg.m_permutation == permutation; });
+	size_t index = entries.FindIf([permutation](const ShaderCacheData::Entry& arg) { return arg.m_permutation == permutation; });
 
 	const bool bAlreadyContains = index != -1;
 
