@@ -136,7 +136,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	EASY_MAIN_THREAD;
 #endif
 
-	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bIsEnabledVulkanValidationLayers));
+	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_2, bIsEnabledVulkanValidationLayers));
 
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
@@ -321,6 +321,10 @@ void App::Shutdown()
 	auto renderer = GetSubmodule<Renderer>();
 
 	scheduler->WaitIdle({ Tasks::EThreadType::Main, Tasks::EThreadType::Worker, Tasks::EThreadType::RHI, Tasks::EThreadType::Render });
+
+	// TODO: Redo. We have 2 frames in flight.
+	scheduler->WaitIdle({ Tasks::EThreadType::Render });
+
 	renderer->BeginConditionalDestroy();
 
 	SAILOR_LOG("Sailor Engine Releasing");

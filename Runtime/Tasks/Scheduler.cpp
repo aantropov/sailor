@@ -421,20 +421,9 @@ void Scheduler::WaitIdle(const TSet<EThreadType>& threads)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	TSet<EThreadType> tasks;
-	do
+	for (const auto& thread : threads)
 	{
-		tasks.Clear();
-
-		for (const auto& thread : threads)
-		{
-			if (GetNumTasks(thread) > 0)
-			{
-				tasks.Insert(thread);
-			}
-		}
-
-		for (const auto& thread : tasks)
+		if (GetNumTasks(thread) > 0)
 		{
 			if (thread == EThreadType::Main && IsMainThread())
 			{
@@ -445,8 +434,7 @@ void Scheduler::WaitIdle(const TSet<EThreadType>& threads)
 				WaitIdle(thread);
 			}
 		}
-
-	} while (tasks.Num() != 0);
+	}
 }
 
 void Scheduler::WaitIdle(EThreadType type)
