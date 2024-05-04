@@ -3,40 +3,29 @@
 #include <combaseapi.h>
 
 using namespace Sailor;
-using namespace nlohmann;
 
 const InstanceId InstanceId::Invalid = InstanceId();
 
 YAML::Node InstanceId::Serialize() const
 {
 	YAML::Node outData;
-	outData = m_InstanceId;
+	outData = m_instanceId.ToString();
 	return outData;
 }
 
 void InstanceId::Deserialize(const YAML::Node& inData)
 {
-	m_InstanceId = inData.as<std::string>();
-}
-
-void InstanceId::Serialize(nlohmann::json& outData) const
-{
-	outData = json{ {"InstanceId", m_InstanceId} };
-}
-
-void InstanceId::Deserialize(const nlohmann::json& inData)
-{
-	inData.at("InstanceId").get_to<std::string>(m_InstanceId);
+	m_instanceId = StringHash::Runtime(inData.as<std::string>());
 }
 
 const std::string& InstanceId::ToString() const
 {
-	return m_InstanceId;
+	return m_instanceId.ToString();
 }
 
 bool InstanceId::operator==(const InstanceId& rhs) const
 {
-	return m_InstanceId == rhs.m_InstanceId;
+	return m_instanceId == rhs.m_instanceId;
 }
 
 InstanceId InstanceId::CreateNewInstanceId()
@@ -52,6 +41,7 @@ InstanceId InstanceId::CreateNewInstanceId()
 		win32.Data4[0], win32.Data4[1], win32.Data4[2], win32.Data4[3],
 		win32.Data4[4], win32.Data4[5], win32.Data4[6], win32.Data4[7]);
 
-	newInstanceId.m_InstanceId = std::string(buffer);
+	newInstanceId.m_instanceId = StringHash::Runtime(std::string(buffer));;
+
 	return newInstanceId;
 }

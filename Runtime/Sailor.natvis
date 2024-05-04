@@ -71,14 +71,15 @@
 	<!-- FileId visualizer -->
 	<Type Name="Sailor::FileId">
     <DisplayString>m_fileId={ToString()}</DisplayString>
-		<DisplayString Condition="m_fileId.empty()">Invalid</DisplayString>
-		<DisplayString Condition="!m_fileId.empty()">m_fileId</DisplayString>
+		<DisplayString Condition="m_fileId.IsEmpty()">Invalid</DisplayString>
+		<DisplayString Condition="!m_fileId.IsEmpty()">m_fileId</DisplayString>
 	</Type>
 
 	<!-- UID visualizer -->
-	<Type Name="Sailor::UID">
-		<DisplayString Condition="m_UID.empty()">Invalid</DisplayString>
-		<DisplayString Condition="!m_UID.empty()">m_UID</DisplayString>
+	<Type Name="Sailor::InstanceId">
+    <DisplayString>m_instanceId={ToString()}</DisplayString>
+		<DisplayString Condition="m_instanceId.IsEmpty()">Invalid</DisplayString>
+		<DisplayString Condition="!m_instanceId.IsEmpty()">m_instanceId</DisplayString>
 	</Type>
 
 </AutoVisualizer>
