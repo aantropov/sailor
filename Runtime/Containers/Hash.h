@@ -29,27 +29,16 @@ namespace Sailor
 			return p(instance);
 		}
 	}
-}
 
-// TODO: Should we implement the basic class?
-/*
-class IHashable
-{
-public:
-
-	virtual ~IHashable() = default;
-	virtual size_t GetHash() const = 0;
-};
-
-namespace std
-{
-	template<>
-	struct std::hash<Sailor::IHashable>
+	static constexpr std::uint64_t fnv1a(const char* str, size_t num)
 	{
-		SAILOR_API std::size_t operator()(const Sailor::IHashable& p) const
-		{
-			return p.GetHash();
+		std::uint64_t hash = 0xcbf29ce484222325; // FNV offset basis
+		constexpr std::uint64_t prime = 0x100000001b3; // FNV prime
+
+		for (size_t i = 0; i < num; ++i) {
+			hash ^= static_cast<std::uint8_t>(str[i]);
+			hash *= prime;
 		}
-	};
+		return hash;
+	}
 }
-*/
