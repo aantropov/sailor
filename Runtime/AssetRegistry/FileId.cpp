@@ -10,28 +10,18 @@ const FileId FileId::Invalid = FileId();
 YAML::Node FileId::Serialize() const
 {
 	YAML::Node outData;
-	outData = m_fileId;
+	outData = m_fileId.ToString();
 	return outData;
 }
 
 void FileId::Deserialize(const YAML::Node& inData)
 {
-	m_fileId = inData.as<std::string>();
-}
-
-void FileId::Serialize(nlohmann::json& outData) const
-{
-	outData = json{ {"fileId", m_fileId} };
-}
-
-void FileId::Deserialize(const nlohmann::json& inData)
-{
-	inData.at("fileId").get_to<std::string>(m_fileId);
+	m_fileId = StringHash::Runtime(inData.as<std::string>());
 }
 
 const std::string& FileId::ToString() const
 {
-	return m_fileId;
+	return m_fileId.ToString();
 }
 
 bool FileId::operator==(const FileId& rhs) const
@@ -52,6 +42,6 @@ FileId FileId::CreateNewFileId()
 		win32.Data4[0], win32.Data4[1], win32.Data4[2], win32.Data4[3],
 		win32.Data4[4], win32.Data4[5], win32.Data4[6], win32.Data4[7]);
 
-	newuid.m_fileId = std::string(buffer);
+	newuid.m_fileId = StringHash::Runtime(std::string(buffer));
 	return newuid;
 }

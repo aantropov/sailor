@@ -70,6 +70,7 @@
 
 	<!-- FileId visualizer -->
 	<Type Name="Sailor::FileId">
+    <DisplayString>m_fileId={ToString()}</DisplayString>
 		<DisplayString Condition="m_fileId.empty()">Invalid</DisplayString>
 		<DisplayString Condition="!m_fileId.empty()">m_fileId</DisplayString>
 	</Type>

@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <string_view>
+#include "Containers/Hash.h"
 
 namespace Sailor
 {
@@ -19,9 +20,13 @@ namespace Sailor
 		// constructor that forces runtime evaluation to put string into hashed strings table
 		static StringHash Runtime(std::string_view str);
 
-		[[nodiscard]] std::string_view ToString() const;
+		[[nodiscard]] const std::string& ToString() const;
 
-		[[nodiscard]] __forceinline constexpr bool IsEmpty() const { return m_hash == 0; /* || m_hash == EmptyHash;*/ }
+		[[nodiscard]] __forceinline constexpr bool IsEmpty() const
+		{
+			constexpr size_t s_emptyHash = Sailor::fnv1a("", 0);
+			return m_hash == 0 || m_hash == s_emptyHash;
+		}
 
 		__forceinline constexpr bool operator==(StringHash Other) const { return m_hash == Other.m_hash; }
 
@@ -30,7 +35,7 @@ namespace Sailor
 		[[nodiscard]] __forceinline constexpr uint64_t GetHash() const { return m_hash; }
 
 		static void AddToHashedStringsTable(StringHash Hash, std::string_view str);
-		static std::string_view GetStrFromHashedStringsTable(StringHash Hash);
+		static const std::string& GetStrFromHashedStringsTable(StringHash Hash);
 	};
 
 	[[nodiscard]] __forceinline constexpr StringHash operator""_h(const char* str, std::size_t size) { return StringHash{ std::string_view(str, size) }; }

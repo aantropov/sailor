@@ -1,12 +1,11 @@
 #include "StringHash.h"
-#include "Containers/Hash.h"
 #include "Memory/Memory.h"
 #include "Memory/UniquePtr.hpp"
 #include "Containers/ConcurrentMap.h"
 #include <type_traits>
 
 using namespace Sailor;
-using HashedStringsContainer = TConcurrentMap<StringHash, std::string_view, 32, ERehashPolicy::Never, Memory::MallocAllocator>;
+using HashedStringsContainer = TConcurrentMap<StringHash, std::string, 32, ERehashPolicy::Never, Memory::MallocAllocator>;
 
 namespace Sailor::Internal
 {
@@ -33,14 +32,15 @@ constexpr StringHash::StringHash(std::string_view str)
 	}
 }
 
-std::string_view StringHash::ToString() const
+const std::string& StringHash::ToString() const
 {
 	if (!std::is_constant_evaluated())
 	{
 		return GetStrFromHashedStringsTable(*this);
 	}
 
-	static const std::string s_notFound = "String not found in HashedStringsContainer!";
+	check(false);
+	static const std::string s_notFound = "";
 	return s_notFound;
 }
 
@@ -54,25 +54,19 @@ void StringHash::AddToHashedStringsTable(StringHash hash, std::string_view str)
 	auto& HashedStrings = GetHashedStrings();
 
 	auto it = HashedStrings.Find(hash);
-
-	if (it != HashedStrings.end())
+	if (it == HashedStrings.end())
 	{
-		check(it->m_second == str);
+		auto& value = HashedStrings.At_Lock(hash, std::string(str));
+		check(str == value);
+		HashedStrings.Unlock(hash);
 	}
 	else
 	{
-		HashedStrings[hash] = str;
+		check(it->Second() == str);
 	}
 }
 
-std::string_view StringHash::GetStrFromHashedStringsTable(StringHash hash)
+const std::string& StringHash::GetStrFromHashedStringsTable(StringHash hash)
 {
-	auto& HashedStrings = GetHashedStrings();
-	if (HashedStrings.ContainsKey(hash))
-	{
-		return HashedStrings[hash];
-	}
-
-	static const std::string_view s_notFound = "String not found in HashedStringsContainer!";
-	return s_notFound;
+	return GetHashedStrings()[hash];
 }
