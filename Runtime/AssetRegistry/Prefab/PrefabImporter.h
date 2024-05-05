@@ -27,7 +27,7 @@ namespace Sailor
 	{
 	public:
 
-		class ReflectionGameObject : public IYamlSerializable
+		class ReflectedGameObject : public IYamlSerializable
 		{
 		public:
 
@@ -62,12 +62,12 @@ namespace Sailor
 
 	protected:
 
-		static void SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVector<ReflectionInfo>& components, TVector<Prefab::ReflectionGameObject>& gameObjects);
+		static void SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVector<ReflectedData>& components, TVector<Prefab::ReflectedGameObject>& gameObjects);
 
 		std::atomic<bool> m_bIsReady{};
 
-		TVector<ReflectionInfo> m_components{};
-		TVector<ReflectionGameObject> m_gameObjects{};
+		TVector<ReflectedData> m_components{};
+		TVector<ReflectedGameObject> m_gameObjects{};
 
 		friend class PrefabImporter;
 

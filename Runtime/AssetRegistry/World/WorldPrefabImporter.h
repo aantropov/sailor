@@ -7,6 +7,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "Engine/Types.h"
+#include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "AssetRegistry/AssetFactory.h"
 #include "WorldPrefabAssetInfo.h"
@@ -42,6 +43,9 @@ namespace Sailor
 
 		std::atomic<bool> m_bIsReady{};
 
+		std::string m_name{};
+		TVector<PrefabPtr> m_gameObjects;
+
 		friend class WorldImporter;
 		friend class World;
 	};
@@ -57,7 +61,7 @@ namespace Sailor
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
-		
+
 		SAILOR_API Tasks::TaskPtr<WorldPrefabPtr> LoadWorld(FileId uid, WorldPrefabPtr& outModel);
 		SAILOR_API bool LoadWorld_Immediate(FileId uid, WorldPrefabPtr& outModel);
 

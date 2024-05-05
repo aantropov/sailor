@@ -6,7 +6,7 @@ using namespace Sailor;
 
 namespace Sailor::Internal
 {
-	TUniquePtr<TConcurrentMap<std::string, ReflectionInfo, 32u, ERehashPolicy::Never>> g_pCdos;
+	TUniquePtr<TConcurrentMap<std::string, ReflectedData, 32u, ERehashPolicy::Never>> g_pCdos;
 	TUniquePtr<TConcurrentMap<std::string, Reflection::TPlacementFactoryMethod>> g_pPlacementFactoryMethods;
 	TUniquePtr<TConcurrentMap<std::string, const TypeInfo*>> g_pReflectionTypes;
 	Memory::ObjectAllocatorPtr g_cdoAllocator;
@@ -21,7 +21,7 @@ ComponentPtr Reflection::CreateCDO(const TypeInfo& pType)
 	std::call_once(s_once, [&]() {
 		if (!Internal::g_pCdos)
 		{
-			Internal::g_pCdos = TUniquePtr<TConcurrentMap<std::string, ReflectionInfo, 32u, ERehashPolicy::Never>>::Make(128);
+			Internal::g_pCdos = TUniquePtr<TConcurrentMap<std::string, ReflectedData, 32u, ERehashPolicy::Never>>::Make(128);
 			Internal::g_cdoAllocator = Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
 		}});
 
@@ -89,7 +89,7 @@ void TypeInfo::Deserialize(const YAML::Node& inData)
 	::Deserialize(inData, "properties", m_props);
 }
 
-YAML::Node ReflectionInfo::Serialize() const
+YAML::Node ReflectedData::Serialize() const
 {
 	assert(m_typeInfo);
 
@@ -101,7 +101,7 @@ YAML::Node ReflectionInfo::Serialize() const
 	return res;
 };
 
-void ReflectionInfo::Deserialize(const YAML::Node& inData)
+void ReflectedData::Deserialize(const YAML::Node& inData)
 {
 	std::string typeName;
 
@@ -111,20 +111,20 @@ void ReflectionInfo::Deserialize(const YAML::Node& inData)
 	m_typeInfo = &(Reflection::GetTypeByName(typeName));
 }
 
-bool ReflectionInfo::operator==(const ReflectionInfo& rhs) const
+bool ReflectedData::operator==(const ReflectedData& rhs) const
 {
 	return m_typeInfo == rhs.m_typeInfo && m_properties == rhs.m_properties;
 }
 
-TMap<std::string, YAML::Node> ReflectionInfo::GetOverrideProperties() const
+TMap<std::string, YAML::Node> ReflectedData::GetOverrideProperties() const
 {
 	const auto& cdo = Reflection::GetCDO(m_typeInfo->Name());
 	return DiffTo(cdo).m_properties;
 }
 
-ReflectionInfo ReflectionInfo::DiffTo(const ReflectionInfo& rhs) const
+ReflectedData ReflectedData::DiffTo(const ReflectedData& rhs) const
 {
-	ReflectionInfo res;
+	ReflectedData res;
 
 	check(rhs.GetTypeInfo() == GetTypeInfo());
 

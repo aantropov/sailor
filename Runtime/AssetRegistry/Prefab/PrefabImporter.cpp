@@ -14,7 +14,7 @@
 
 using namespace Sailor;
 
-YAML::Node Prefab::ReflectionGameObject::Serialize() const
+YAML::Node Prefab::ReflectedGameObject::Serialize() const
 {
 	YAML::Node outData;
 
@@ -29,7 +29,7 @@ YAML::Node Prefab::ReflectionGameObject::Serialize() const
 	return outData;
 }
 
-void Prefab::ReflectionGameObject::Deserialize(const YAML::Node& inData)
+void Prefab::ReflectedGameObject::Deserialize(const YAML::Node& inData)
 {
 	DESERIALIZE_PROPERTY(inData, m_name);
 	DESERIALIZE_PROPERTY(inData, m_position);
@@ -62,9 +62,9 @@ bool Prefab::SaveToFile(const std::string& path) const
 	return true;
 }
 
-void Prefab::SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVector<ReflectionInfo>& components, TVector<Prefab::ReflectionGameObject>& gameObjects)
+void Prefab::SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVector<ReflectedData>& components, TVector<Prefab::ReflectedGameObject>& gameObjects)
 {
-	Prefab::ReflectionGameObject rootData{};
+	Prefab::ReflectedGameObject rootData{};
 
 	auto& transform = root->GetTransformComponent();
 	rootData.m_position = transform.GetPosition();
@@ -76,7 +76,7 @@ void Prefab::SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVect
 
 	for (auto& component : root->GetComponents())
 	{
-		auto reflection = component->GetReflectionInfo();
+		auto reflection = component->GetReflectedData();
 
 		rootData.m_components.Add((uint32_t)components.Num());
 		components.Add(reflection);
@@ -94,7 +94,8 @@ void Prefab::SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVect
 PrefabPtr Prefab::FromGameObject(GameObjectPtr root)
 {
 	PrefabPtr res = App::GetSubmodule<PrefabImporter>()->Create();
-
+	res->m_fileId = root->GetFileId();
+	
 	SerializeGameObject(root, -1, res->m_components, res->m_gameObjects);
 
 	return res;

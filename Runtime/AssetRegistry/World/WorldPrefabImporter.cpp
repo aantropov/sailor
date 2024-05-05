@@ -17,12 +17,15 @@ using namespace Sailor;
 YAML::Node WorldPrefab::Serialize() const
 {
 	YAML::Node outData;
-
+	::Serialize(outData, "name", m_name);
+	::Serialize(outData, "gameObjects", m_gameObjects);
 	return outData;
 }
 
 void WorldPrefab::Deserialize(const YAML::Node& inData)
 {
+	::Deserialize(inData, "name", m_name);
+	::Deserialize(inData, "gameObjects", m_gameObjects);
 }
 
 bool WorldPrefab::SaveToFile(const std::string& path) const

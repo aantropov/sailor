@@ -110,7 +110,7 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 
 		for (uint32_t i = 0; i < prefab->m_gameObjects[j].m_components.Num(); i++)
 		{
-			const ReflectionInfo& reflection = prefab->m_components[i];
+			const ReflectedData& reflection = prefab->m_components[i];
 
 			ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
 			gameObject->AddComponentRaw(newComponent);
@@ -128,7 +128,7 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 		for (uint32_t i = 0; i < go->m_components.Num(); i++)
 		{
 			auto& newComp = go->m_components[i];
-			const ReflectionInfo& reflection = prefab->m_components[i];
+			const ReflectedData& reflection = prefab->m_components[i];
 
 			newComp->ResolveRefs(reflection, resolveContext);
 		}
@@ -148,6 +148,7 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 		else
 		{
 			root = go;
+			root->m_fileId = prefab->GetFileId();
 		}
 	}
 

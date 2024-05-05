@@ -47,17 +47,17 @@ namespace Sailor
 	{ \
 		return TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
 	} \
-	virtual ReflectionInfo GetReflectionInfo() const override \
+	virtual ReflectedData GetReflectedData() const override \
 	{ \
 		TypeInfo typeInfo = TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		ReflectionInfo res = Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
+		ReflectedData res = Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 		return res; \
 	} \
-	virtual void ApplyReflection(const ReflectionInfo& reflection) override \
+	virtual void ApplyReflection(const ReflectedData& reflection) override \
 	{ \
 		__CLASSNAME__::ApplyReflection_Impl<__CLASSNAME__>(this, reflection); \
 	} \
-	virtual void ResolveRefs(const ReflectionInfo& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext) override \
+	virtual void ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext) override \
 	{ \
 		__CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext); \
 	} \
@@ -146,10 +146,10 @@ namespace Sailor
 				});
 		}
 
-		friend class ReflectionInfo;
+		friend class ReflectedData;
 	};
 
-	class ReflectionInfo : public IYamlSerializable
+	class ReflectedData : public IYamlSerializable
 	{
 	public:
 
@@ -160,9 +160,9 @@ namespace Sailor
 		const TMap<std::string, YAML::Node>& GetProperties() const { return m_properties; }
 		TMap<std::string, YAML::Node> GetOverrideProperties() const;
 
-		bool operator==(const ReflectionInfo& rhs) const;
+		bool operator==(const ReflectedData& rhs) const;
 
-		ReflectionInfo DiffTo(const ReflectionInfo& rhs) const;
+		ReflectedData DiffTo(const ReflectedData& rhs) const;
 
 	private:
 
@@ -181,9 +181,9 @@ namespace Sailor
 	{
 	public:
 		virtual const TypeInfo& GetTypeInfo() const = 0;
-		virtual ReflectionInfo GetReflectionInfo() const = 0;
-		virtual void ApplyReflection(const ReflectionInfo& reflection) = 0;
-		virtual void ResolveRefs(const ReflectionInfo& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext) {}
+		virtual ReflectedData GetReflectedData() const = 0;
+		virtual void ApplyReflection(const ReflectedData& reflection) = 0;
+		virtual void ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext) {}
 
 	protected:
 
@@ -219,7 +219,7 @@ namespace Sailor
 		}
 
 		template<typename T>
-		static void ResolveRefs_Impl(T* ptr, const ReflectionInfo& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext)
+		static void ResolveRefs_Impl(T* ptr, const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext)
 		{
 			for_each(refl::reflect<T>().members, [&](auto member)
 				{
@@ -254,7 +254,7 @@ namespace Sailor
 		}
 
 		template<typename T>
-		static void ApplyReflection_Impl(T* ptr, const ReflectionInfo& reflection)
+		static void ApplyReflection_Impl(T* ptr, const ReflectedData& reflection)
 		{
 			for_each(refl::reflect<T>().members, [&](auto member)
 				{
@@ -293,7 +293,7 @@ namespace Sailor
 
 	namespace Internal
 	{
-		extern TUniquePtr<TConcurrentMap<std::string, ReflectionInfo, 32u, ERehashPolicy::Never>> g_pCdos;
+		extern TUniquePtr<TConcurrentMap<std::string, ReflectedData, 32u, ERehashPolicy::Never>> g_pCdos;
 		extern TUniquePtr<TConcurrentMap<std::string, std::function<IReflectable* (void*)>>> g_pPlacementFactoryMethods;
 		extern TUniquePtr<TConcurrentMap<std::string, const TypeInfo*>> g_pReflectionTypes;
 		extern Memory::ObjectAllocatorPtr g_cdoAllocator;
@@ -328,9 +328,9 @@ namespace Sailor
 		static const TypeInfo& GetTypeByName(const std::string& typeName);
 
 		template<typename T = Object>
-		static const ReflectionInfo& GetCDO(TObjectPtr<T> objPtr) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T> { return GetCDO(objPtr->GetTypeInfo().Name()); }
+		static const ReflectedData& GetCDO(TObjectPtr<T> objPtr) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T> { return GetCDO(objPtr->GetTypeInfo().Name()); }
 
-		static const ReflectionInfo& GetCDO(const std::string& typeName) { return (*Internal::g_pCdos)[typeName]; }
+		static const ReflectedData& GetCDO(const std::string& typeName) { return (*Internal::g_pCdos)[typeName]; }
 
 		template<typename T = Object>
 		static TObjectPtr<T> CreateObject(const TypeInfo& type, Memory::ObjectAllocatorPtr pAllocator) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T>
@@ -344,9 +344,9 @@ namespace Sailor
 		}
 
 		template<typename T>
-		static ReflectionInfo ReflectStatic(const T* ptr) requires IsBaseOf<IReflectable, T>
+		static ReflectedData ReflectStatic(const T* ptr) requires IsBaseOf<IReflectable, T>
 		{
-			ReflectionInfo reflection;
+			ReflectedData reflection;
 			reflection.m_typeInfo = &ptr->GetTypeInfo();
 
 			for_each(refl::reflect(*ptr).members, [&](auto member)
@@ -362,7 +362,7 @@ namespace Sailor
 			return reflection;
 		}
 
-		static bool ApplyReflection(IReflectable* ptr, const ReflectionInfo& reflection)
+		static bool ApplyReflection(IReflectable* ptr, const ReflectedData& reflection)
 		{
 			if (ptr->GetTypeInfo() != reflection.GetTypeInfo())
 			{
@@ -378,9 +378,9 @@ namespace Sailor
 		static ComponentPtr CreateCDO(const TypeInfo& pType);
 
 		template<typename T>
-		static ReflectionInfo ReflectCDO(const T* ptr) requires IsBaseOf<IReflectable, T>
+		static ReflectedData ReflectCDO(const T* ptr) requires IsBaseOf<IReflectable, T>
 		{
-			ReflectionInfo reflection;
+			ReflectedData reflection;
 			reflection.m_typeInfo = &ptr->GetTypeInfo();
 
 			for_each(refl::reflect(*ptr).members, [&](auto member)

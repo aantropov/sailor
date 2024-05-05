@@ -82,7 +82,7 @@ void TestComponent::BeginPlay()
 	lightComponent->SetLightType(ELightType::Directional);
 
 	/*
-	ReflectionInfo reflection = lightComponent->GetReflectionInfo();
+	ReflectedData reflection = lightComponent->GetReflectedData();
 	ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetOwner()->GetWorld()->GetAllocator());
 	GetOwner()->AddComponentRaw(newComponent);
 	newComponent->ApplyReflection(reflection);
