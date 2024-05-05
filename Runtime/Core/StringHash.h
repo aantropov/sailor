@@ -5,7 +5,7 @@
 
 namespace Sailor
 {
-	struct StringHash
+	struct SAILOR_API StringHash
 	{
 		uint64_t m_hash{ 0 };
 
@@ -15,7 +15,7 @@ namespace Sailor
 
 		__forceinline constexpr StringHash& operator=(const StringHash& OtherId) = default;
 
-		__forceinline constexpr explicit StringHash(std::string_view str);
+		[[nodiscard]] __forceinline constexpr explicit StringHash(std::string_view str);
 
 		// constructor that forces runtime evaluation to put string into hashed strings table
 		static StringHash Runtime(std::string_view str);
@@ -38,5 +38,5 @@ namespace Sailor
 		static const std::string& GetStrFromHashedStringsTable(StringHash Hash);
 	};
 
-	[[nodiscard]] __forceinline constexpr StringHash operator""_h(const char* str, std::size_t size) { return StringHash{ std::string_view(str, size) }; }
+	SAILOR_API [[nodiscard]] __forceinline constexpr StringHash operator""_h(const char* str, std::size_t size) { return StringHash{ std::string_view(str, size) }; }
 };
