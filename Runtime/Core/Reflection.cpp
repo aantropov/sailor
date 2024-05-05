@@ -80,6 +80,7 @@ YAML::Node ReflectionInfo::Serialize() const
 	YAML::Node res{};
 
 	::Serialize(res, "typename", m_typeInfo->Name());
+	::Serialize(res, "properties", m_typeInfo->Properties());
 	::Serialize(res, "overrideProperties", m_properties);
 
 	return res;

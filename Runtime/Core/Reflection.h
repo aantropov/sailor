@@ -7,6 +7,9 @@
 #include "YamlSerializable.h"
 #include "AssetRegistry/AssetRegistry.h"
 
+using refl::reflect;
+using refl::descriptor::type_descriptor;
+
 namespace Sailor
 {
 	template<typename T>
@@ -106,6 +109,8 @@ namespace Sailor
 		}
 
 		const std::string& Name() const { return m_name; }
+		const TMap<std::string, std::string>& Properties() const { return m_props; }
+
 		size_t Size() const { return m_size; }
 		size_t GetHash() const { std::hash<std::string> h; return h(m_name); }
 
@@ -116,6 +121,7 @@ namespace Sailor
 
 		std::string m_name;
 		size_t m_size;
+		TMap<std::string, std::string> m_props;
 
 		// given a type_descriptor, we construct a TypeInfo
 		// with all the metadata we care about (currently only name)
@@ -124,7 +130,21 @@ namespace Sailor
 			: m_name(td.name)
 		{
 			m_size = sizeof(T);
+
+			for_each(td.members, [&](auto member)
+				{
+					if constexpr (is_writable(member))
+					{
+						const std::string displayName = get_display_name(member);
+						using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*reinterpret_cast<T*>(nullptr)))>;
+
+						std::string typeName = typeid(PropertyType).name();
+						m_props[displayName] = std::string(typeName);
+					}
+				});
 		}
+
+		friend class ReflectionInfo;
 	};
 
 	class ReflectionInfo : public IYamlSerializable
@@ -361,8 +381,8 @@ namespace Sailor
 
 			for_each(refl::reflect(*ptr).members, [&](auto member)
 				{
-					if constexpr (is_readable(member) && 
-						!refl::descriptor::has_attribute<Attributes::Transient>(member) && 
+					if constexpr (is_readable(member) &&
+						!refl::descriptor::has_attribute<Attributes::Transient>(member) &&
 						!refl::descriptor::has_attribute<Attributes::SkipCDO>(member))
 					{
 						using PropertyType = decltype(member(*ptr));
