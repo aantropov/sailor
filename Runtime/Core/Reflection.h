@@ -138,8 +138,7 @@ namespace Sailor
 						const std::string displayName = get_display_name(member);
 						using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*reinterpret_cast<T*>(nullptr)))>;
 
-						std::string typeName = typeid(PropertyType).name();
-						m_props[displayName] = std::string(typeName);
+						m_props[displayName] = typeid(PropertyType).name();
 					}
 				});
 		}
