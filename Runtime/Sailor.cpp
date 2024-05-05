@@ -162,6 +162,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
 	s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
 
+	Reflection::ExportReflectionData();
+
 	SAILOR_LOG("Sailor Engine initialized");
 }
 

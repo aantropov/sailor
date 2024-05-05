@@ -96,9 +96,12 @@ namespace Sailor
 		struct SkipCDO : refl::attr::usage::field, refl::attr::usage::function { };
 	}
 
-	class TypeInfo
+	class TypeInfo : public IYamlSerializable
 	{
 	public:
+
+		virtual YAML::Node Serialize() const;
+		virtual void Deserialize(const YAML::Node& inData);
 
 		// instances can be obtained only through calls to Get()
 		template <typename T>
@@ -301,6 +304,8 @@ namespace Sailor
 	public:
 
 		using TPlacementFactoryMethod = std::function<IReflectable* (void*)>;
+
+		static void ExportReflectionData();
 
 		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
 		static void RegisterType(const std::string& typeName, const TypeInfo* pType);

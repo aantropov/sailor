@@ -73,6 +73,22 @@ const TypeInfo& Reflection::GetTypeByName(const std::string& typeName)
 	return *(*Internal::g_pReflectionTypes)[typeName];
 }
 
+YAML::Node TypeInfo::Serialize() const
+{
+	YAML::Node res{};
+
+	::Serialize(res, "typename", m_name);
+	::Serialize(res, "properties", m_props);
+
+	return res;
+};
+
+void TypeInfo::Deserialize(const YAML::Node& inData)
+{
+	::Deserialize(inData, "typename", m_name);
+	::Deserialize(inData, "properties", m_props);
+}
+
 YAML::Node ReflectionInfo::Serialize() const
 {
 	assert(m_typeInfo);
@@ -80,7 +96,6 @@ YAML::Node ReflectionInfo::Serialize() const
 	YAML::Node res{};
 
 	::Serialize(res, "typename", m_typeInfo->Name());
-	::Serialize(res, "properties", m_typeInfo->Properties());
 	::Serialize(res, "overrideProperties", m_properties);
 
 	return res;
@@ -111,7 +126,7 @@ ReflectionInfo ReflectionInfo::DiffTo(const ReflectionInfo& rhs) const
 {
 	ReflectionInfo res;
 
-	check(rhs.GetTypeInfo() == GetTypeInfo()); 
+	check(rhs.GetTypeInfo() == GetTypeInfo());
 
 	res.m_typeInfo = &rhs.GetTypeInfo();
 
@@ -124,4 +139,37 @@ ReflectionInfo ReflectionInfo::DiffTo(const ReflectionInfo& rhs) const
 	}
 
 	return res;
+}
+
+void Reflection::ExportReflectionData()
+{
+	// Write types
+	auto types = Internal::g_pReflectionTypes->GetValues();
+
+	YAML::Node yamlTypes;
+	yamlTypes["timeStamp"] = std::time(nullptr);
+
+	TVector<YAML::Node> nodes;
+	for (auto& type : types)
+	{
+		nodes.Add(type->Serialize());
+	}
+
+	yamlTypes["engineTypes"] = nodes;
+
+	nodes.Clear();
+	for (auto& cdo : Internal::g_pCdos->GetValues())
+	{
+		YAML::Node yamlCdo;
+		yamlCdo["typename"] = cdo.m_typeInfo->Name();
+		yamlCdo["defaultValues"] = cdo.GetProperties();
+
+		nodes.Add(yamlCdo);
+	}
+
+	yamlTypes["cdos"] = nodes;
+
+	std::ofstream file(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml");
+	file << yamlTypes;
+	file.close();
 }
