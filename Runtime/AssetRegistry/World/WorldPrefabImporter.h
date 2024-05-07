@@ -37,7 +37,7 @@ namespace Sailor
 
 		SAILOR_API bool SaveToFile(const std::string& path) const;
 
-		static WorldPrefabPtr FromWorld(WorldPtr go);
+		static WorldPrefabPtr FromWorld(WorldPtr world);
 
 	protected:
 

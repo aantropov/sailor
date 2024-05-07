@@ -53,6 +53,8 @@ namespace Sailor
 		SAILOR_API size_t GetCurrentFrame() const { return m_currentFrame; }
 		SAILOR_API float GetSmoothDeltaTime() const { return m_smoothDeltaTime; }
 
+		SAILOR_API const std::string& GetName() const { return m_name; }
+
 	protected:
 
 		size_t m_currentFrame;

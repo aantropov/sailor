@@ -10,6 +10,7 @@
 #include "Memory/ObjectAllocator.hpp"
 #include "Tasks/Scheduler.h"
 #include "Engine/GameObject.h"
+#include "Engine/World.h"
 #include "ECS/TransformECS.h"
 
 using namespace Sailor;
@@ -18,7 +19,15 @@ YAML::Node WorldPrefab::Serialize() const
 {
 	YAML::Node outData;
 	::Serialize(outData, "name", m_name);
-	::Serialize(outData, "gameObjects", m_gameObjects);
+
+	TVector<YAML::Node> nodes;
+	for (auto& go : m_gameObjects)
+	{
+		nodes.Add(go->Serialize());
+	}
+
+	outData["gameObjects"] = nodes;
+
 	return outData;
 }
 
@@ -34,9 +43,37 @@ bool WorldPrefab::SaveToFile(const std::string& path) const
 	return true;
 }
 
-WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr go)
+WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 {
-	return WorldPrefabPtr();
+	auto res = App::GetSubmodule<WorldPrefabImporter>()->Create();
+	res->m_name = world->GetName();
+
+	auto gameObjects = world->GetGameObjects();
+
+	for (auto& go : gameObjects)
+	{
+		auto prefab = Prefab::FromGameObject(go);
+		if (!go->GetFileId())
+		{
+			res->m_gameObjects.Add(prefab);
+		}
+		else
+		{
+			PrefabPtr basePrefab;
+			App::GetSubmodule<PrefabImporter>()->LoadPrefab_Immediate(go->GetFileId(), basePrefab);
+
+			PrefabPtr overridePrefab;
+			if (prefab->GetOverridePrefab(basePrefab, overridePrefab))
+			{
+				res->m_gameObjects.Add(overridePrefab);
+			}
+			else
+			{
+				res->m_gameObjects.Add(prefab);
+			}
+		}
+	}
+	return res;
 }
 
 WorldPrefabImporter::WorldPrefabImporter(WorldPrefabAssetInfoHandler* infoHandler)

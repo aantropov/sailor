@@ -8,6 +8,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "ECS/TransformECS.h"
 #include "glm/glm/gtc/random.hpp"
 #include "imgui.h"
@@ -172,6 +173,12 @@ void TestComponent::Tick(float deltaTime)
 
 	if (GetWorld()->GetInput().IsKeyDown('Z'))
 		delta += vec3(0, 0, 1);
+
+	if (GetWorld()->GetInput().IsKeyDown('U'))
+	{
+		auto world = WorldPrefab::FromWorld(GetWorld());
+		world->SaveToFile("test.world");
+	}
 
 	const float boost = (GetWorld()->GetInput().IsKeyDown(VK_SHIFT) ? 100.0f : 1.0f) * (GetWorld()->GetInput().IsKeyDown(VK_CONTROL) ? 100.0f : 1.0f);
 

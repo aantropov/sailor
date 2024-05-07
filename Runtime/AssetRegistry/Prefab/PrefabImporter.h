@@ -60,6 +60,8 @@ namespace Sailor
 
 		static PrefabPtr FromGameObject(GameObjectPtr go);
 
+		SAILOR_API bool GetOverridePrefab(const PrefabPtr base, PrefabPtr outOverride) const;
+
 	protected:
 
 		static void SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVector<ReflectedData>& components, TVector<Prefab::ReflectedGameObject>& gameObjects);
@@ -86,8 +88,8 @@ namespace Sailor
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
-		SAILOR_API Tasks::TaskPtr<PrefabPtr> LoadPrefab(FileId uid, PrefabPtr& outModel);
-		SAILOR_API bool LoadPrefab_Immediate(FileId uid, PrefabPtr& outModel);
+		SAILOR_API Tasks::TaskPtr<PrefabPtr> LoadPrefab(FileId uid, PrefabPtr& outPrefab);
+		SAILOR_API bool LoadPrefab_Immediate(FileId uid, PrefabPtr& outPrefab);
 
 		SAILOR_API virtual void CollectGarbage() override;
 

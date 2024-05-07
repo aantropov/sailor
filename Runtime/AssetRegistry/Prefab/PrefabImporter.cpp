@@ -91,11 +91,36 @@ void Prefab::SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVect
 	}
 }
 
+bool Prefab::GetOverridePrefab(const PrefabPtr base, PrefabPtr outOverride) const
+{
+	if (base->GetFileId() != GetFileId())
+	{
+		return false;
+	}
+
+	if (base->m_gameObjects.Num() != m_gameObjects.Num() ||
+		base->m_components.Num() != m_components.Num())
+	{
+		return false;
+	}
+
+	PrefabPtr res = App::GetSubmodule<PrefabImporter>()->Create();
+
+	res->m_components.Reserve(m_components.Num());
+	res->m_gameObjects = m_gameObjects;
+
+	for (uint32_t i = 0; i < m_components.Num(); i++)
+	{
+		res->m_components.Add(m_components[i].DiffTo(base->m_components[i]));
+	}
+
+	return true;
+}
+
 PrefabPtr Prefab::FromGameObject(GameObjectPtr root)
 {
 	PrefabPtr res = App::GetSubmodule<PrefabImporter>()->Create();
-	res->m_fileId = root->GetFileId();
-	
+
 	SerializeGameObject(root, -1, res->m_components, res->m_gameObjects);
 
 	return res;
