@@ -70,7 +70,7 @@ namespace Sailor::RHI
 		class Win32::Window* m_pViewport;
 
 		FrameGraphPtr m_frameGraph{};
-		TConcurrentMap<WorldPtr, RHISceneViewPtr> m_cachedSceneViews{};
+		TConcurrentMap<WorldPtr, TList<TPair<RHISceneViewPtr,bool>>, 4, ERehashPolicy::Never> m_cachedSceneViews{};
 		TUniquePtr<IGraphicsDriver> m_driverInstance{};
 		Tasks::ITaskPtr m_previousRenderFrame{};
 	};

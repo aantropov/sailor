@@ -397,6 +397,36 @@ namespace Sailor
 		TIterator Last() { return TIterator(m_pLast); }
 		TConstIterator Last() const { return TConstIterator(m_pLast); }
 
+		template<typename TAllocator1>
+		__forceinline bool operator==(const TList<TElementType, TAllocator1>& rhs) const
+		{
+			if (m_num != rhs.m_num)
+			{
+				return false;
+			}
+
+			TNode* current = m_pFirst;
+			TNode* rhsCurrent = rhs.m_pFirst;
+
+			while (current && rhsCurrent)
+			{
+				TNode* next = current->m_pNext;
+				TNode* rhsNext = rhsCurrent->m_pNext;
+
+				if (rhsCurrent->m_data != current->m_data)
+				{
+					return false;
+				}
+
+				current = next;
+				rhsCurrent = rhsNext;
+			}
+
+			check(rhsCurrent == current);
+
+			return true;
+		}
+
 	protected:
 
 		__forceinline void AddRange(const TElementType* first, size_t num) requires IsCopyConstructible<TElementType>

@@ -173,11 +173,23 @@ void Renderer::FixLostDevice()
 
 RHISceneViewPtr Renderer::GetOrAddSceneView(WorldPtr worldPtr)
 {
-	auto& res = m_cachedSceneViews.At_Lock(worldPtr);
-	if (!res)
+	RHISceneViewPtr res;
+	auto& list = m_cachedSceneViews.At_Lock(worldPtr);
+	auto it = list.FindIf([](const auto& el) { return el.m_second == true; });
+	if (it != list.end())
 	{
-		res = RHISceneViewPtr::Make();
+		res = (*it).m_first;
+		(*it).m_second = false;
+
+		m_cachedSceneViews.Unlock(worldPtr);
+
+		return res;
 	}
+
+	auto newEl = TPair(RHISceneViewPtr::Make(), false);
+	list.EmplaceBack(newEl);
+	res = newEl.m_first;
+
 	m_cachedSceneViews.Unlock(worldPtr);
 
 	return res;
@@ -218,8 +230,13 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	}
 
 	SAILOR_PROFILE_BLOCK("Copy scene view to render thread");
+
 	auto world = frame.GetWorld();
-	auto rhiSceneView = RHISceneViewPtr::Make();
+
+	SAILOR_PROFILE_BLOCK("RingBuffer Aquire RHISceneViewPtr");
+	auto rhiSceneView = GetOrAddSceneView(world);
+	SAILOR_PROFILE_END_BLOCK();
+
 	rhiSceneView->m_world = world;
 	world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
@@ -336,8 +353,21 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			}
 			SAILOR_PROFILE_END_BLOCK();
 
-
 			rhiSceneView->Clear();
+
+			auto& list = m_cachedSceneViews.At_Lock(rhiSceneView->m_world);
+			auto it = list.FindIf([&](const auto& el) { return el.m_first == rhiSceneView; });
+			if (it != list.end())
+			{
+				(*it).m_second = true;
+			}
+			else
+			{
+				check(false);
+			}
+
+			m_cachedSceneViews.Unlock(rhiSceneView->m_world);
+
 			GetDriver()->CollectGarbage_RenderThread();
 
 		}, Sailor::Tasks::EThreadType::Render);

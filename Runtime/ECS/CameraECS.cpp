@@ -46,6 +46,8 @@ glm::mat4 CameraData::GetInvViewProjection() const
 
 void CameraECS::CopyCameraData(RHI::RHISceneViewPtr& outCameras)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	outCameras->m_cameras.Clear(false);
 	outCameras->m_cameraTransforms.Clear(false);
 
