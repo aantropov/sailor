@@ -56,7 +56,7 @@ void CameraComponent::Tick(float deltaTime)
 	if (GetAspect() != aspect)
 	{
 		GetData().SetAspect(aspect);
-		GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(90.0f), aspect, GetZNear(), GetZFar()));
+		GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), aspect, GetZNear(), GetZFar()));
 	}
 }
 
