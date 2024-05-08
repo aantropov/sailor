@@ -7,7 +7,7 @@
 
 using namespace Sailor;
 
-World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false), m_currentFrame(0)
+World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false), m_currentFrame(1)
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make(EAllocationPolicy::LocalMemory_SingleThread);
 
@@ -107,10 +107,11 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 	for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
 	{
 		GameObjectPtr gameObject = Instantiate(worldPosition, prefab->m_gameObjects[j].m_name);
-
+		
 		for (uint32_t i = 0; i < prefab->m_gameObjects[j].m_components.Num(); i++)
 		{
-			const ReflectedData& reflection = prefab->m_components[i];
+			const uint32_t componentIndex = prefab->m_gameObjects[j].m_components[i];
+			const ReflectedData& reflection = prefab->m_components[componentIndex];
 
 			ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
 			gameObject->AddComponentRaw(newComponent);
@@ -130,7 +131,7 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 			auto& newComp = go->m_components[i];
 			const ReflectedData& reflection = prefab->m_components[i];
 
-			newComp->ResolveRefs(reflection, resolveContext);
+			newComp->ResolveRefs(reflection, resolveContext, false);
 		}
 	}
 
@@ -161,6 +162,8 @@ GameObjectPtr World::Instantiate(const glm::vec3& worldPosition, const std::stri
 	auto newObject = GameObjectPtr::Make(m_allocator, this, name);
 	check(newObject);
 	newObject->m_self = newObject;
+
+	newObject->Initialize();
 
 	if (m_bIsBeginPlayCalled)
 	{

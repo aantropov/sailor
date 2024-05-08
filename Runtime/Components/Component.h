@@ -16,6 +16,7 @@ namespace Sailor
 
 	public:
 
+		SAILOR_API virtual void Initialize() {}
 		SAILOR_API virtual void BeginPlay() {}
 		SAILOR_API virtual void EndPlay() {}
 		SAILOR_API virtual void OnGizmo() {}

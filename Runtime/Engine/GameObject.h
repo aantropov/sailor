@@ -15,6 +15,7 @@ namespace Sailor
 	{
 	public:
 
+		SAILOR_API void Initialize();
 		SAILOR_API void BeginPlay();
 		SAILOR_API void EndPlay();
 		SAILOR_API void Tick(float deltaTime);
@@ -34,6 +35,7 @@ namespace Sailor
 
 			newObject->m_instanceId = InstanceId::CreateNewInstanceId();
 			newObject->m_owner = m_self;
+			newObject->Initialize();
 
 			if (m_bBeginPlayCalled)
 			{
@@ -55,6 +57,7 @@ namespace Sailor
 
 			component->m_instanceId = InstanceId::CreateNewInstanceId();
 			component->m_owner = m_self;
+			component->Initialize();
 
 			if (m_bBeginPlayCalled)
 			{
@@ -80,6 +83,20 @@ namespace Sailor
 			}
 
 			return TObjectPtr<TComponent>();
+		}
+
+		template<typename TComponent>
+		SAILOR_API TObjectPtr<const TComponent> GetComponent() const
+		{
+			for (const auto& el : m_components)
+			{
+				if (TObjectPtr<const TComponent> res = el.DynamicCast<TComponent>())
+				{
+					return res;
+				}
+			}
+
+			return TObjectPtr<const TComponent>();
 		}
 
 		SAILOR_API bool RemoveComponent(ComponentPtr component);

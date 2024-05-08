@@ -269,9 +269,18 @@ size_t TextureImporter::GetTextureIndex(FileId uid)
 bool TextureImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
 {
 	TexturePtr outAsset;
-	bool bRes = LoadTexture_Immediate(uid, outAsset);
+	if (bImmediate)
+	{
+		bool bRes = LoadTexture_Immediate(uid, outAsset);
+		out = outAsset;
+		return bRes;
+	}
+
+
+	LoadTexture(uid, outAsset);
 	out = outAsset;
-	return bRes;
+
+	return true;
 }
 
 void TextureImporter::CollectGarbage()

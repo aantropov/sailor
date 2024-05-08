@@ -6,6 +6,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Frame.h"
+#include "AssetRegistry/World/WorldPrefabImporter.h"
 
 namespace Sailor
 {
@@ -21,6 +22,7 @@ namespace Sailor
 		SAILOR_API ~EngineLoop() override;
 
 		SAILOR_API TSharedPtr<World> CreateWorld(std::string name);
+		SAILOR_API TSharedPtr<World> CreateWorld(WorldPrefabPtr worldPrefab);
 
 	protected:
 

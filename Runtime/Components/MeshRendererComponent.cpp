@@ -5,13 +5,16 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-void MeshRendererComponent::BeginPlay()
+void MeshRendererComponent::Initialize()
 {
 	auto ecs = GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>();
 	m_handle = ecs->RegisterComponent();
 
 	GetData().SetOwner(GetOwner());
+}
 
+void MeshRendererComponent::BeginPlay()
+{
 	//if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>("Models/KnightArtorias/Artorias.fbx"))
 }
 

@@ -651,9 +651,16 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 bool MaterialImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
 {
 	MaterialPtr outAsset;
-	bool bRes = LoadMaterial_Immediate(uid, outAsset);
+	if (bImmediate)
+	{
+		bool bRes = LoadMaterial_Immediate(uid, outAsset);
+		out = outAsset;
+		return bRes;
+	}
+
+	LoadMaterial(uid, outAsset);
 	out = outAsset;
-	return bRes;
+	return true;
 }
 
 void MaterialImporter::CollectGarbage()

@@ -11,9 +11,14 @@ GameObject::GameObject(WorldPtr world, const std::string& name) : m_name(name), 
 	m_transformHandle = m_pWorld->GetECS<TransformECS>()->RegisterComponent();
 }
 
-void GameObject::BeginPlay()
+void GameObject::Initialize()
 {
 	GetTransformComponent().SetOwner(m_self);
+}
+
+void GameObject::BeginPlay()
+{
+
 }
 
 TransformComponent& GameObject::GetTransformComponent()

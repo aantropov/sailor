@@ -14,7 +14,7 @@ float CameraComponent::CalculateAspect()
 	return (height + width) > 0 ? width / (float)height : 1.0f;
 }
 
-void CameraComponent::BeginPlay()
+void CameraComponent::Initialize()
 {
 	auto ecs = GetOwner()->GetWorld()->GetECS<CameraECS>();
 	m_handle = ecs->RegisterComponent();
@@ -28,6 +28,12 @@ void CameraComponent::BeginPlay()
 	ecsData.SetZNear(0.1f);
 	ecsData.SetZFar(50000.0f);
 
+	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), GetAspect(), GetZNear(), GetZFar()));
+}
+
+void CameraComponent::BeginPlay()
+{
+	auto& ecsData = GetData();
 	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), GetAspect(), GetZNear(), GetZFar()));
 }
 

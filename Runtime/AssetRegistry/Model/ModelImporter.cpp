@@ -492,9 +492,16 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 bool ModelImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
 {
 	ModelPtr outModel;
-	bool bRes = LoadModel_Immediate(uid, outModel);
+	if (bImmediate)
+	{
+		bool bRes = LoadModel_Immediate(uid, outModel);
+		out = outModel;
+		return bRes;
+	}
+
+	LoadModel(uid, outModel);
 	out = outModel;
-	return bRes;
+	return true;
 }
 
 void ModelImporter::CollectGarbage()

@@ -146,7 +146,7 @@ namespace Sailor
 		}
 
 		template<typename R>
-		SAILOR_API __forceinline TObjectPtr<R> DynamicCast()
+		SAILOR_API __forceinline TObjectPtr<R> DynamicCast() requires IsBaseOf<Object, R>
 		{
 			if (R* pRes = dynamic_cast<R*>(m_pRawPtr))
 			{
@@ -157,6 +157,20 @@ namespace Sailor
 				return ptr;
 			}
 			return TObjectPtr<R>();
+		}
+
+		template<typename R>
+		SAILOR_API __forceinline TObjectPtr<const R> DynamicCast() const requires IsBaseOf<Object, R>
+		{
+			if (const R* pRes = dynamic_cast<const R*>(m_pRawPtr))
+			{
+				TObjectPtr<const R> ptr;
+				ptr.m_pAllocator = m_pAllocator;
+				ptr.AssignRawPtr(const_cast<R*>(pRes), const_cast<TSmartPtrControlBlock*>(m_pControlBlock));
+
+				return ptr;
+			}
+			return TObjectPtr<const R>();
 		}
 
 		SAILOR_API T* operator->()  noexcept

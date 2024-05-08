@@ -44,16 +44,16 @@ YAML::Node Prefab::Serialize() const
 {
 	YAML::Node outData;
 
-	SERIALIZE_PROPERTY(outData, m_components);
 	SERIALIZE_PROPERTY(outData, m_gameObjects);
+	SERIALIZE_PROPERTY(outData, m_components);
 
 	return outData;
 }
 
 void Prefab::Deserialize(const YAML::Node& inData)
 {
-	DESERIALIZE_PROPERTY(inData, m_components);
 	DESERIALIZE_PROPERTY(inData, m_gameObjects);
+	DESERIALIZE_PROPERTY(inData, m_components);
 }
 
 bool Prefab::SaveToFile(const std::string& path) const
@@ -227,9 +227,16 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 bool PrefabImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
 {
 	PrefabPtr outAsset;
-	bool bRes = LoadPrefab_Immediate(uid, outAsset);
+	if (bImmediate)
+	{
+		bool bRes = LoadPrefab_Immediate(uid, outAsset);
+		out = outAsset;
+		return bRes;
+	}
+
+	LoadPrefab(uid, outAsset);
 	out = outAsset;
-	return bRes;
+	return true;
 }
 
 void PrefabImporter::CollectGarbage()

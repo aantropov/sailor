@@ -16,6 +16,7 @@ namespace Sailor
 
 	public:
 
+		SAILOR_API virtual void Initialize() override;
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;

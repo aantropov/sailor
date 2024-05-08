@@ -37,6 +37,9 @@ namespace Sailor
 
 		SAILOR_API bool SaveToFile(const std::string& path) const;
 
+		SAILOR_API const std::string& GetName() const { return m_name; }
+		SAILOR_API const TVector<PrefabPtr>& GetGameObjects() const { return m_gameObjects; }
+
 		static WorldPrefabPtr FromWorld(WorldPtr world);
 
 	protected:
@@ -46,7 +49,7 @@ namespace Sailor
 		std::string m_name{};
 		TVector<PrefabPtr> m_gameObjects;
 
-		friend class WorldImporter;
+		friend class WorldPrefabImporter;
 		friend class World;
 	};
 

@@ -24,81 +24,81 @@ void TestComponent::BeginPlay()
 {
 	GetWorld()->GetDebugContext()->DrawOrigin(glm::vec4(600, 2, 0, 0), glm::mat4(1), 20.0f, 3000.0f);
 
-	m_mainModel = GetWorld()->Instantiate();
-	m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
-	m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
-	m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * Math::Pi, 0)));
+	//m_mainModel = GetWorld()->Instantiate();
+	//m_mainModel->GetTransformComponent().SetPosition(vec3(0, 0, 0));
+	//m_mainModel->GetTransformComponent().SetScale(vec4(1, 1, 1, 1));
+	//m_mainModel->GetTransformComponent().SetRotation(glm::quat(vec3(0, 0.5f * Math::Pi, 0)));
 
-	auto meshRenderer = m_mainModel->AddComponent<MeshRendererComponent>();
-	meshRenderer->LoadModel("Models/Sponza/sponza.obj");
-	m_model = meshRenderer->GetModel();
+	//auto meshRenderer = m_mainModel->AddComponent<MeshRendererComponent>();
+	//meshRenderer->LoadModel("Models/Sponza/sponza.obj");
+	//m_model = meshRenderer->GetModel();
 
-	m_meshRenderer = meshRenderer;
+	//m_meshRenderer = meshRenderer;
 
-	auto redBox = GetWorld()->Instantiate();
-	redBox->GetTransformComponent().SetPosition(vec3(120, 2000, 500));
-	redBox->GetTransformComponent().SetScale(vec4(100, 50, 100, 1));
-	meshRenderer = redBox->AddComponent<MeshRendererComponent>();
-	meshRenderer->LoadModel("Models/Box/Box.gltf");
-	redBox->SetMobilityType(EMobilityType::Stationary);
+	//auto redBox = GetWorld()->Instantiate();
+	//redBox->GetTransformComponent().SetPosition(vec3(120, 2000, 500));
+	//redBox->GetTransformComponent().SetScale(vec4(100, 50, 100, 1));
+	//meshRenderer = redBox->AddComponent<MeshRendererComponent>();
+	//meshRenderer->LoadModel("Models/Box/Box.gltf");
+	//redBox->SetMobilityType(EMobilityType::Stationary);
 
-	for (int32_t i = -1000; i < 1000; i += 32)
-	{
-		for (int32_t j = -1000; j < 1000; j += 32)
-		{
-			int k = 10;
-			//for (int32_t k = -1000; k < 1000; k += 32) 
-			{
-				m_boxes.Add(Math::AABB(glm::vec3(i, k, j), glm::vec3(1.0f, 1.0f, 1.0f)));
-				const auto& aabb = m_boxes[m_boxes.Num() - 1];
+	//for (int32_t i = -1000; i < 1000; i += 32)
+	//{
+	//	for (int32_t j = -1000; j < 1000; j += 32)
+	//	{
+	//		int k = 10;
+	//		//for (int32_t k = -1000; k < 1000; k += 32) 
+	//		{
+	//			m_boxes.Add(Math::AABB(glm::vec3(i, k, j), glm::vec3(1.0f, 1.0f, 1.0f)));
+	//			const auto& aabb = m_boxes[m_boxes.Num() - 1];
 
-				//GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
+	//			//GetWorld()->GetDebugContext()->DrawAABB(aabb, glm::vec4(0.2f, 0.8f, 0.2f, 1.0f), 5.0f);
 
-				m_octree.Insert(aabb.GetCenter(), aabb.GetExtents(), aabb);
-			}
-		}
-	}
+	//			m_octree.Insert(aabb.GetCenter(), aabb.GetExtents(), aabb);
+	//		}
+	//	}
+	//}
 
-	/*
-	for (int k = 0; k < 4; k++)
-		for (int i = 0; i < 4; i++)
-			for (int j = 0; j < 4; j++)
-			{
-				auto gameObject2 = GetWorld()->Instantiate();
-				gameObject2->SetMobilityType(EMobilityType::Stationary);
-				gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, k * 3000, i * 2500));
-				gameObject2->GetTransformComponent().SetScale(vec4(1, 1, 1, 0));
+	///*
+	//for (int k = 0; k < 4; k++)
+	//	for (int i = 0; i < 4; i++)
+	//		for (int j = 0; j < 4; j++)
+	//		{
+	//			auto gameObject2 = GetWorld()->Instantiate();
+	//			gameObject2->SetMobilityType(EMobilityType::Stationary);
+	//			gameObject2->GetTransformComponent().SetPosition(vec3(j * 3000, k * 3000, i * 2500));
+	//			gameObject2->GetTransformComponent().SetScale(vec4(1, 1, 1, 0));
 
-				auto meshRenderer = gameObject2->AddComponent<MeshRendererComponent>();
-				meshRenderer->LoadModel("Models/Sponza/sponza.obj");
+	//			auto meshRenderer = gameObject2->AddComponent<MeshRendererComponent>();
+	//			meshRenderer->LoadModel("Models/Sponza/sponza.obj");
 
-				m_objects.Add(gameObject2);
-			}
-	/**/
+	//			m_objects.Add(gameObject2);
+	//		}
+	///**/
 
-	m_dirLight = GetWorld()->Instantiate();
-	auto lightComponent = m_dirLight->AddComponent<LightComponent>();
-	m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 3000.0f, 1000.0f));
-	m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
-	lightComponent->SetLightType(ELightType::Directional);
+	//m_dirLight = GetWorld()->Instantiate();
+	//auto lightComponent = m_dirLight->AddComponent<LightComponent>();
+	//m_dirLight->GetTransformComponent().SetPosition(vec3(0.0f, 3000.0f, 1000.0f));
+	//m_dirLight->GetTransformComponent().SetRotation(quat(vec3(-45, 12.5f, 0)));
+	//lightComponent->SetLightType(ELightType::Directional);
 
-	/*
-	ReflectedData reflection = lightComponent->GetReflectedData();
-	ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetOwner()->GetWorld()->GetAllocator());
-	GetOwner()->AddComponentRaw(newComponent);
-	newComponent->ApplyReflection(reflection);
-	*/
+	///*
+	//ReflectedData reflection = lightComponent->GetReflectedData();
+	//ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetOwner()->GetWorld()->GetAllocator());
+	//GetOwner()->AddComponentRaw(newComponent);
+	//newComponent->ApplyReflection(reflection);
+	//*/
 
-	//Reflection::ApplyReflection(data3.GetRawPtr(), data1);
+	////Reflection::ApplyReflection(data3.GetRawPtr(), data1);
 
-	auto spotLight = GetWorld()->Instantiate();
-	lightComponent = spotLight->AddComponent<LightComponent>();
-	spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
-	spotLight->GetTransformComponent().SetRotation(quat(vec3(-45, 0.0f, 0.0f)));
+	//auto spotLight = GetWorld()->Instantiate();
+	//lightComponent = spotLight->AddComponent<LightComponent>();
+	//spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
+	//spotLight->GetTransformComponent().SetRotation(quat(vec3(-45, 0.0f, 0.0f)));
 
-	lightComponent->SetBounds(vec3(300.0f, 300.0f, 300.0f));
-	lightComponent->SetIntensity(vec3(260.0f, 260.0f, 200.0f));
-	lightComponent->SetLightType(ELightType::Spot);
+	//lightComponent->SetBounds(vec3(300.0f, 300.0f, 300.0f));
+	//lightComponent->SetIntensity(vec3(260.0f, 260.0f, 200.0f));
+	//lightComponent->SetLightType(ELightType::Spot);
 
 	/*
 	for (int32_t i = -1000; i < 1000; i += 250)
@@ -128,7 +128,7 @@ void TestComponent::BeginPlay()
 	transform.SetPosition(glm::vec4(0.0f, 150.0f, 0.0f, 0.0f));
 	//transform.SetRotation(quat(vec3(-45, 12.5f, 0)));
 
-	redBox->SetParent(GetOwner());
+	//redBox->SetParent(GetOwner());
 
 	auto prefab = Prefab::FromGameObject(GetOwner());
 	prefab->SaveToFile("test.serdeser");
@@ -402,8 +402,21 @@ void TestComponent::Tick(float deltaTime)
 		glm::vec4 lightPosition = (-skyParams.m_lightDirection) * 9000.0f;
 
 		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
-		m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
-		m_dirLight->GetTransformComponent().SetPosition(lightPosition);
-		m_dirLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
+
+		if (m_dirLight)
+		{
+			m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
+			m_dirLight->GetTransformComponent().SetPosition(lightPosition);
+			m_dirLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
+		}
+		else
+		{
+			auto index = GetWorld()->GetGameObjects().FindIf([](const GameObjectPtr& el) mutable { return el->GetComponent<LightComponent>().IsValid(); });
+
+			if (index != -1)
+			{
+				m_dirLight = GetWorld()->GetGameObjects()[index];
+			}
+		}
 	}
 }

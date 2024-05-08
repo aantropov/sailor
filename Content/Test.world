@@ -15,15 +15,8 @@ gameObjects:
             instanceId: BAD35A5BC8EC4853849E3F6D535C4704
           fileId: NullFileId
           instanceId: 2BC0359C17504863A5C3010E0C451F7D
-      - typename: Sailor::MeshRendererComponent
-        overrideProperties:
-          model:
-            fileId: "{2387902B-538E-4191-93D6-53503B5571B2}"
-            instanceId: NullInstanceId
-          fileId: NullFileId
-          instanceId: F44C5E53CAAA40598DFB9D043DEADBE7
     gameObjects:
-      - name: Untitled
+      - name: Camera
         position:
           - 0
           - 150
@@ -44,26 +37,6 @@ gameObjects:
         components:
           - 0
           - 1
-      - name: Untitled
-        position:
-          - 120
-          - 2000
-          - 500
-          - 1
-        rotation:
-          - 0
-          - 0
-          - 0
-          - 1
-        scale:
-          - 100
-          - 50
-          - 100
-          - 1
-        parentIndex: 0
-        instanceId: NullInstanceId
-        components:
-          - 2
   - components:
       - typename: Sailor::MeshRendererComponent
         overrideProperties:
@@ -73,7 +46,7 @@ gameObjects:
           fileId: NullFileId
           instanceId: BAD35A5BC8EC4853849E3F6D535C4704
     gameObjects:
-      - name: Untitled
+      - name: Box
         position:
           - 0
           - 0
@@ -102,7 +75,7 @@ gameObjects:
           fileId: NullFileId
           instanceId: F44C5E53CAAA40598DFB9D043DEADBE7
     gameObjects:
-      - name: Untitled
+      - name: Sponza
         position:
           - 120
           - 2000
@@ -144,7 +117,7 @@ gameObjects:
           fileId: NullFileId
           instanceId: FFF4417DA65649588B6B279D47D0EC3E
     gameObjects:
-      - name: Untitled
+      - name: Light
         position:
           - -1765.04504
           - 7642.86914
@@ -155,48 +128,6 @@ gameObjects:
           - 0.858316064
           - 0.477002949
           - -0.165296569
-        scale:
-          - 1
-          - 1
-          - 1
-          - 1
-        parentIndex: 4294967295
-        instanceId: NullInstanceId
-        components:
-          - 0
-  - components:
-      - typename: Sailor::LightComponent
-        overrideProperties:
-          intensity:
-            - 260
-            - 260
-            - 200
-          attenuation:
-            - 1
-            - 0.0219999999
-            - 0.00190000003
-          lightType: Spot
-          bounds:
-            - 300
-            - 300
-            - 300
-          cutOff:
-            - 30
-            - 45
-          fileId: NullFileId
-          instanceId: 117D38BFB76448B3BA7E170B715B7AC2
-    gameObjects:
-      - name: Untitled
-        position:
-          - 200
-          - 40
-          - 0
-          - 1
-        rotation:
-          - 0.487174511
-          - 0
-          - -0
-          - -0.873304665
         scale:
           - 1
           - 1

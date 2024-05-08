@@ -7,7 +7,7 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
-void LightComponent::BeginPlay()
+void LightComponent::Initialize()
 {
 	auto ecs = GetOwner()->GetWorld()->GetECS<LightingECS>();
 	m_handle = ecs->RegisterComponent();
@@ -15,6 +15,10 @@ void LightComponent::BeginPlay()
 	auto& ecsData = GetData();
 
 	ecsData.SetOwner(GetOwner());
+}
+
+void LightComponent::BeginPlay()
+{
 }
 
 LightData& LightComponent::GetData()

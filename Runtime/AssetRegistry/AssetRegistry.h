@@ -133,7 +133,7 @@ namespace Sailor
 		SAILOR_API void CacheAssetTime(const FileId& id, const time_t& assetTimestamp);
 
 		template<typename T>
-		TObjectPtr<T> LoadAssetFromFile(const FileId& id)
+		TObjectPtr<T> LoadAssetFromFile(const FileId& id, bool bImmediate = true)
 		{
 			TObjectPtr<Object> out;
 			if (const auto& info = GetAssetInfoPtr(id))
@@ -145,7 +145,7 @@ namespace Sailor
 				{
 					auto assetInfoHandler = *(*assetInfoHandlerIt).m_second;
 
-					assetInfoHandler->GetFactory()->LoadAsset(id, out);
+					assetInfoHandler->GetFactory()->LoadAsset(id, out, bImmediate);
 				}
 			}
 

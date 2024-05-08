@@ -34,7 +34,18 @@ YAML::Node WorldPrefab::Serialize() const
 void WorldPrefab::Deserialize(const YAML::Node& inData)
 {
 	::Deserialize(inData, "name", m_name);
-	::Deserialize(inData, "gameObjects", m_gameObjects);
+
+	check(inData["gameObjects"].IsSequence());
+
+	size_t numGameObjects = inData["gameObjects"].size();
+	m_gameObjects.Reserve(numGameObjects);
+
+	for (uint32_t i = 0; i < numGameObjects; i++)
+	{
+		auto newPrefab = App::GetSubmodule<PrefabImporter>()->Create();
+		newPrefab->Deserialize(inData["gameObjects"][i]);
+		m_gameObjects.Add(newPrefab);
+	}
 }
 
 bool WorldPrefab::SaveToFile(const std::string& path) const
@@ -137,11 +148,11 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 	// There is no promise, we need to load WorldPrefab
 	if (WorldPrefabAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<WorldPrefabAssetInfoPtr>(uid))
 	{
-		WorldPrefabPtr WorldPrefab = WorldPrefabPtr::Make(m_allocator, uid);
+		WorldPrefabPtr pWorldPrefab = WorldPrefabPtr::Make(m_allocator, uid);
 
 		struct Data {};
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load WorldPrefab",
-			[WorldPrefab, assetInfo, this]() mutable
+			[pWorldPrefab, assetInfo, this]() mutable
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
 
@@ -149,16 +160,17 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 				AssetRegistry::ReadTextFile(assetInfo->GetAssetFilepath(), text);
 
 				YAML::Node node = YAML::Load(text);
-				WorldPrefab->Deserialize(node);
+				pWorldPrefab->Deserialize(node);
+				pWorldPrefab->m_bIsReady = true;
 
 				return res;
 
-			})->Then<WorldPrefabPtr>([WorldPrefab](TSharedPtr<Data> data) mutable
+			})->Then<WorldPrefabPtr>([pWorldPrefab](TSharedPtr<Data> data) mutable
 				{
-					return WorldPrefab;
+					return pWorldPrefab;
 				}, "Preload resources", Tasks::EThreadType::RHI)->ToTaskWithResult();
 
-				outWorldPrefab = loadedWorldPrefab = WorldPrefab;
+				outWorldPrefab = loadedWorldPrefab = pWorldPrefab;
 				promise->Run();
 
 				m_loadedWorldPrefabs.Unlock(uid);
@@ -177,9 +189,16 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 bool WorldPrefabImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate)
 {
 	WorldPrefabPtr outAsset;
-	bool bRes = LoadWorld_Immediate(uid, outAsset);
+	if (bImmediate)
+	{
+		bool bRes = LoadWorld_Immediate(uid, outAsset);
+		out = outAsset;
+		return bRes;
+	}
+
+	LoadWorld(uid, outAsset);
 	out = outAsset;
-	return bRes;
+	return true;
 }
 
 void WorldPrefabImporter::CollectGarbage()

@@ -28,6 +28,22 @@ TSharedPtr<World> EngineLoop::CreateWorld(std::string name)
 	return m_worlds[m_worlds.Num() - 1];
 }
 
+TSharedPtr<World> EngineLoop::CreateWorld(WorldPrefabPtr worldPrefab)
+{
+	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(worldPrefab->GetName());
+
+	check(worldPrefab && worldPrefab->IsReady());
+
+	for (const auto& prefab : worldPrefab->GetGameObjects())
+	{
+		newWorld->Instantiate(prefab);
+	}
+
+	m_worlds.Emplace(newWorld);
+
+	return newWorld;
+}
+
 void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -59,7 +75,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record ImGui Draw Command List",
 		[=]()
 		{
-			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);			
+			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record ImGui Draw Command List");
 			// Default swapchain format
 			RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, RHI::EFormat::B8G8R8A8_SRGB);
@@ -83,7 +99,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	{
 		Sleep((DWORD)std::max(1ull, (uint64_t)(TargetCpuTime - timer.ResultMs())));
 	}
-	
+
 	if (timer.ResultAccumulatedMs() > 1000)
 	{
 		m_cpuFps = totalFramesCount;

@@ -57,9 +57,9 @@ namespace Sailor
 	{ \
 		__CLASSNAME__::ApplyReflection_Impl<__CLASSNAME__>(this, reflection); \
 	} \
-	virtual void ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext) override \
+	virtual void ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true) override \
 	{ \
-		__CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext); \
+		__CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext, bImmediate); \
 	} \
 	protected: \
 	class SAILOR_API RegistrationFactoryMethod \
@@ -183,30 +183,28 @@ namespace Sailor
 		virtual const TypeInfo& GetTypeInfo() const = 0;
 		virtual ReflectedData GetReflectedData() const = 0;
 		virtual void ApplyReflection(const ReflectedData& reflection) = 0;
-		virtual void ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext) {}
+		virtual void ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true) {}
 
 	protected:
 
 		template<typename TPropertyType>
-		__forceinline static TPropertyType ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext)
+		__forceinline static TPropertyType ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate)
 		{
 			using ElementType = TemplateParameter_t<TPropertyType>;
 
 			TPropertyType v{};
 			if (node["fileId"])
 			{
-				FileId fileId = node["fileId"].as<FileId>();
-
-				if (fileId != FileId::Invalid)
+				if (FileId fileId = node["fileId"].as<FileId>())
 				{
-					v = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<ElementType>(fileId);
+					v = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<ElementType>(fileId, bImmediate);
 				}
 			}
 			else if (node["instanceId"])
 			{
 				InstanceId instanceId = node["instanceId"].as<InstanceId>();
 
-				if (instanceId != InstanceId::Invalid && resolveContext.ContainsKey(instanceId))
+				if (instanceId && resolveContext.ContainsKey(instanceId))
 				{
 					if (auto objPtr = resolveContext[instanceId])
 					{
@@ -219,7 +217,7 @@ namespace Sailor
 		}
 
 		template<typename T>
-		static void ResolveRefs_Impl(T* ptr, const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext)
+		static void ResolveRefs_Impl(T* ptr, const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true)
 		{
 			for_each(refl::reflect<T>().members, [&](auto member)
 				{
@@ -236,7 +234,7 @@ namespace Sailor
 									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
 									if constexpr (Sailor::IsObjectPtr<PropertyType>)
 									{
-										member(*ptr) = ResolveObject<PropertyType>(node, resolveContext);
+										member(*ptr) = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
 									}
 								}
 								else if constexpr (refl::descriptor::is_function(member))
@@ -244,7 +242,7 @@ namespace Sailor
 									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
 									if constexpr (Sailor::IsObjectPtr<PropertyType>)
 									{
-										member(*ptr, ResolveObject<PropertyType>(node, resolveContext));
+										member(*ptr, ResolveObject<PropertyType>(node, resolveContext, bImmediate));
 									}
 								}
 							}
