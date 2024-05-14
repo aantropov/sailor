@@ -215,7 +215,6 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
 
 	commands->EndDebugRegion(commandList);
-	SAILOR_PROFILE_END_BLOCK("Image barriers"_h);
 }
 
 void PostProcessNode::Clear()

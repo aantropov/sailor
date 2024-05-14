@@ -87,8 +87,6 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	task->Run();
 
-	SAILOR_PROFILE_END_BLOCK("Record ImGui Update Command List"_h);
-
 	timer.Stop();
 
 	totalFramesCount++;
@@ -97,7 +95,9 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	if (timer.ResultMs() < TargetCpuTime)
 	{
-		Sleep((DWORD)std::max(1ull, (uint64_t)(TargetCpuTime - timer.ResultMs())));
+		SAILOR_PROFILE_SCOPE("Sleep Main Thread to cap FPS (~120fps)");
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(std::max(1ull, (uint64_t)(TargetCpuTime - timer.ResultMs()))));
 	}
 
 	if (timer.ResultAccumulatedMs() > 1000)
