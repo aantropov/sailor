@@ -52,7 +52,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	static Utils::Timer timer;
 
 	timer.Start();
-	SAILOR_PROFILE_BLOCK("CPU Frame");
+
 	App::GetSubmodule<ImGuiApi>()->NewFrame();
 
 	for (auto& world : m_worlds)
@@ -62,15 +62,15 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	auto& task = currentInputState.GetDrawImGuiTask();
 
-	SAILOR_PROFILE_BLOCK("Record ImGui Update Command List");
+	{
+		SAILOR_PROFILE_SCOPE("Record ImGui Update Command List");
 
-	auto transferCmdList = currentInputState.CreateCommandBuffer(1);
-	RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "ImGui Transfer CommandList");
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(transferCmdList, true);
-	App::GetSubmodule<ImGuiApi>()->PrepareFrame(transferCmdList);
-	RHI::Renderer::GetDriverCommands()->EndCommandList(transferCmdList);
-
-	SAILOR_PROFILE_END_BLOCK();
+		auto transferCmdList = currentInputState.CreateCommandBuffer(1);
+		RHI::Renderer::GetDriver()->SetDebugName(transferCmdList, "ImGui Transfer CommandList");
+		RHI::Renderer::GetDriverCommands()->BeginCommandList(transferCmdList, true);
+		App::GetSubmodule<ImGuiApi>()->PrepareFrame(transferCmdList);
+		RHI::Renderer::GetDriverCommands()->EndCommandList(transferCmdList);
+	}
 
 	task = Tasks::CreateTaskWithResult<RHI::RHICommandListPtr>("Record ImGui Draw Command List",
 		[=]()
@@ -87,7 +87,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	task->Run();
 
-	SAILOR_PROFILE_END_BLOCK();
+	SAILOR_PROFILE_END_BLOCK("Record ImGui Update Command List"_h);
 
 	timer.Stop();
 

@@ -5,7 +5,7 @@ project(Sailor VERSION 0.1)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 option(SAILOR_CONSOLE "Enable console" ON)
-option(SAILOR_BUILD_WITH_EASY_PROFILER "Build with easy profile" ON)
+option(SAILOR_BUILD_WITH_TRACY_PROFILER "Build with tracy profile" ON)
 option(SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT "Use LockFreeHeapAllocator as default" ON)
 option(SAILOR_MEMORY_HEAP_DISABLE_FREE "Custom allocator disable free memory" OFF)
 option(SAILOR_BUILD_WITH_RENDER_DOC "Build with RenderDoc" ON)
@@ -21,7 +21,7 @@ set(SAILOR_BINARIES_DIR "${PROJECT_SOURCE_DIR}/Binaries/")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${SAILOR_BINARIES_DIR}")
 
 if (NOT CMAKE_BUILD_TYPE)
-	SET(CMAKE_BUILD_TYPE Release)
+	SET(CMAKE_BUILD_TYPE Release) 
 endif()
 
 set(BUILD_SHARED_LIBS OFF)
@@ -44,9 +44,13 @@ add_subdirectory(${SAILOR_EXTERNAL_DIR}/refl-cpp)
 
 add_subdirectory(${SAILOR_EXTERNAL_DIR}/nlohmann_json)
 
-if(SAILOR_BUILD_WITH_EASY_PROFILER)
-	add_subdirectory(${SAILOR_EXTERNAL_DIR}/easy_profiler)
-endif(SAILOR_BUILD_WITH_EASY_PROFILER)
+option( TRACY_ENABLE "" ON)
+option( TRACY_ON_DEMAND "" ON)
+
+if(SAILOR_BUILD_WITH_TRACY_PROFILER)
+    add_subdirectory(${SAILOR_EXTERNAL_DIR}/tracy TracyClient)
+    #add_library(tracy STATIC ${SAILOR_EXTERNAL_DIR}/tracy/public/TracyClient.cpp)
+endif(SAILOR_BUILD_WITH_TRACY_PROFILER)
 
 message ("cxx Flags:" ${CMAKE_CXX_FLAGS})
 

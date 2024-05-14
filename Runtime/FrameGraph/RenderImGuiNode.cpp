@@ -41,9 +41,10 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	if (!colorAttachment || !depthAttachment)
 		return;
 
-	SAILOR_PROFILE_BLOCK("Wait for ImGui");
-	while (!sceneView.m_drawImGui->IsFinished());
-	SAILOR_PROFILE_END_BLOCK();
+	{
+		SAILOR_PROFILE_SCOPE("Wait for ImGui");
+		while (!sceneView.m_drawImGui->IsFinished());
+	}
 
 	commands->RenderSecondaryCommandBuffers(commandList,
 		{ sceneView.m_drawImGui->GetResult() },

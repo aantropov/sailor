@@ -65,12 +65,11 @@ if(SAILOR_BUILD_WITH_RENDER_DOC)
 	add_compile_definitions(SAILOR_BUILD_WITH_RENDER_DOC)
 endif(SAILOR_BUILD_WITH_RENDER_DOC)
 
-if(SAILOR_BUILD_WITH_EASY_PROFILER)
+if(SAILOR_BUILD_WITH_TRACY_PROFILER)
     target_compile_definitions(SailorLib PUBLIC SAILOR_PROFILING_ENABLE)
-    target_compile_definitions(SailorLib PUBLIC BUILD_WITH_EASY_PROFILER)
-
-    target_link_libraries(SailorLib easy_profiler)
-endif(SAILOR_BUILD_WITH_EASY_PROFILER)
+    target_compile_definitions(SailorLib PUBLIC BUILD_WITH_TRACY_PROFILER)
+    target_link_libraries(SailorLib TracyClient)
+endif(SAILOR_BUILD_WITH_TRACY_PROFILER)
 
 if(SAILOR_BUILD_WITH_VULKAN)
     target_compile_definitions(SailorLib PUBLIC SAILOR_BUILD_WITH_VULKAN)

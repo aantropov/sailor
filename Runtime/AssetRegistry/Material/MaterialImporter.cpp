@@ -117,16 +117,15 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	SAILOR_PROFILE_BLOCK("Achieve exclusive access to rhi");
-
+	SAILOR_PROFILE_BLOCK("Achieve exclusive access to rhi"_h);
 	// TODO: Resolve collisions of VertexAttributeBits
 	RHI::RHIMaterialPtr& material = m_rhiMaterials.At_Lock(vertexDescription->GetVertexAttributeBits());
 	m_rhiMaterials.Unlock(vertexDescription->GetVertexAttributeBits());
-	SAILOR_PROFILE_END_BLOCK();
+	SAILOR_PROFILE_END_BLOCK("Achieve exclusive access to rhi"_h);
 
 	if (!material)
 	{
-		SAILOR_PROFILE_BLOCK("Create RHI material for resource");
+		SAILOR_PROFILE_SCOPE("Create RHI material for resource");
 
 		if (!m_commonShaderBindings)
 		{
@@ -145,8 +144,6 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader, m_commonShaderBindings);
 		}
 
-		SAILOR_PROFILE_END_BLOCK();
-
 		m_commonShaderBindings->RecalculateCompatibility();
 	}
 
@@ -155,6 +152,8 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 
 void Material::UpdateRHIResource()
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	//SAILOR_LOG("Update material RHI resource: %s", GetFileId().ToString().c_str());
 
 	// All RHI materials are outdated now
@@ -164,57 +163,58 @@ void Material::UpdateRHIResource()
 	// Create base material
 	GetOrAddRHI(RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>());
 
-	SAILOR_PROFILE_BLOCK("Update samplers");
-	for (auto& sampler : m_samplers)
 	{
-		// The sampler could be bound directly to 'sampler2D' by its name
-		if (m_commonShaderBindings->HasBinding(sampler.m_first))
+		SAILOR_PROFILE_SCOPE("Update samplers");
+		for (auto& sampler : m_samplers)
 		{
-			RHI::Renderer::GetDriver()->UpdateShaderBinding(m_commonShaderBindings, sampler.m_first, sampler.m_second->GetRHI());
-		}
+			// The sampler could be bound directly to 'sampler2D' by its name
+			if (m_commonShaderBindings->HasBinding(sampler.m_first))
+			{
+				RHI::Renderer::GetDriver()->UpdateShaderBinding(m_commonShaderBindings, sampler.m_first, sampler.m_second->GetRHI());
+			}
 
-		const std::string parameterName = "material." + sampler.m_first;
+			const std::string parameterName = "material." + sampler.m_first;
 
-		// Also the sampler could be bound by texture array, by its name
-		if (m_commonShaderBindings->HasParameter(parameterName))
-		{
-			std::string outBinding;
-			std::string outVariable;
+			// Also the sampler could be bound by texture array, by its name
+			if (m_commonShaderBindings->HasParameter(parameterName))
+			{
+				std::string outBinding;
+				std::string outVariable;
 
-			RHI::RHIShaderBindingSet::ParseParameter(parameterName, outBinding, outVariable);
-			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
-		}
-	}
-	SAILOR_PROFILE_END_BLOCK();
-
-	SAILOR_PROFILE_BLOCK("Update shader bindings");
-	// Create all bindings first
-
-	// TODO: Remove boilerplate
-	for (auto& uniform : m_uniformsVec4)
-	{
-		if (m_commonShaderBindings->HasParameter(uniform.m_first))
-		{
-			std::string outBinding;
-			std::string outVariable;
-
-			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+				RHI::RHIShaderBindingSet::ParseParameter(parameterName, outBinding, outVariable);
+				RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+			}
 		}
 	}
 
-	for (auto& uniform : m_uniformsFloat)
 	{
-		if (m_commonShaderBindings->HasParameter(uniform.m_first))
+		SAILOR_PROFILE_SCOPE("Update shader bindings");
+		// Create all bindings first
+		// TODO: Remove boilerplate
+		for (auto& uniform : m_uniformsVec4)
 		{
-			std::string outBinding;
-			std::string outVariable;
+			if (m_commonShaderBindings->HasParameter(uniform.m_first))
+			{
+				std::string outBinding;
+				std::string outVariable;
 
-			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+				RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
+				RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+			}
+		}
+
+		for (auto& uniform : m_uniformsFloat)
+		{
+			if (m_commonShaderBindings->HasParameter(uniform.m_first))
+			{
+				std::string outBinding;
+				std::string outVariable;
+
+				RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
+				RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+			}
 		}
 	}
-	SAILOR_PROFILE_END_BLOCK();
 
 	m_commonShaderBindings->RecalculateCompatibility();
 	m_bIsDirty = false;
@@ -273,13 +273,16 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 
 void Material::ForcelyUpdateUniforms()
 {
-	SAILOR_PROFILE_BLOCK("Create command list");
-	RHI::RHICommandListPtr cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Transfer);
-	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Forcely Update Uniforms");
-	RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
-	UpdateUniforms(cmdList);
-	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
-	SAILOR_PROFILE_END_BLOCK();
+	RHI::RHICommandListPtr cmdList;
+	{
+		SAILOR_PROFILE_SCOPE("Create command list");
+
+		cmdList = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Transfer);
+		RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Forcely Update Uniforms");
+		RHI::Renderer::GetDriverCommands()->BeginCommandList(cmdList, true);
+		UpdateUniforms(cmdList);
+		RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
+	}
 
 	// Create fences to track the state of material update
 	RHI::RHIFencePtr fence = RHI::RHIFencePtr::Make();

@@ -10,8 +10,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 
 #include <cassert>
 
-#if defined(BUILD_WITH_EASY_PROFILER)
-#include "easy_profiler/easy_profiler_core/include/easy/profiler.h"
+#if defined(BUILD_WITH_TRACY_PROFILER)
+#include "tracy/public/tracy/Tracy.hpp"
 #endif
 
 #define GLM_FORCE_RADIANS
@@ -31,10 +31,18 @@ typedef unsigned long DWORD;
 #endif
 
 #ifdef SAILOR_PROFILING_ENABLE
-#define SAILOR_PROFILE_FUNCTION() EASY_FUNCTION()
-#define SAILOR_PROFILE_BLOCK(Msg, ...) EASY_BLOCK(Msg, __VA_ARGS__)
-#define SAILOR_PROFILE_END_BLOCK() EASY_END_BLOCK
-#else
+#define SAILOR_PROFILE_FUNCTION() ZoneScoped;
+
+//ZoneTransientN( ___tracy_scoped_zone, Msg, true )
+#define SAILOR_PROFILE_SCOPE(Msg) ZoneScopedN(Msg)
+
+#define SAILOR_PROFILE_TEXT(Msg) ZoneText(Msg, strlen(Msg))
+
+#define SAILOR_PROFILE_BLOCK(HashMsg) //SAILOR_PROFILE_BLOCK_STR(HashMsg.ToString().c_str())
+#define SAILOR_PROFILE_END_BLOCK(HashMsg) //SAILOR_PROFILE_END_BLOCK_STR(HashMsg.ToString().c_str())
+
+#define SAILOR_PROFILE_THREAD_NAME(ThreadName) tracy::SetThreadName(ThreadName)
+#else 
 #define SAILOR_PROFILE_FUNCTION()
 #define SAILOR_PROFILE_BLOCK(Msg, ...)
 #define SAILOR_PROFILE_END_BLOCK()

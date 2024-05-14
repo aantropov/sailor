@@ -173,6 +173,8 @@ void Renderer::FixLostDevice()
 
 RHISceneViewPtr Renderer::GetOrAddSceneView(WorldPtr worldPtr)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	RHISceneViewPtr res;
 	auto& list = m_cachedSceneViews.At_Lock(worldPtr);
 	auto it = list.FindIf([](const auto& el) { return el.m_second == true; });
@@ -202,7 +204,7 @@ void Renderer::RemoveSceneView(WorldPtr worldPtr)
 
 bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
-	SAILOR_PROFILE_BLOCK("Wait for render thread");
+	SAILOR_PROFILE_FUNCTION();
 
 	if (m_bForceStop ||
 		m_driverInstance->ShouldFixLostDevice(m_pViewport) ||
@@ -216,7 +218,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		m_previousRenderFrame.Clear();
 	}
 
-	SAILOR_PROFILE_END_BLOCK();
 	if ((!m_frameGraph || m_bFrameGraphOutdated) && !m_pViewport->IsIconic())
 	{
 		m_frameGraph.Clear();
@@ -229,174 +230,173 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		m_bFrameGraphOutdated = false;
 	}
 
-	SAILOR_PROFILE_BLOCK("Copy scene view to render thread");
 
-	auto world = frame.GetWorld();
+	WorldPtr world = frame.GetWorld();
+	RHISceneViewPtr rhiSceneView;
 
-	SAILOR_PROFILE_BLOCK("RingBuffer Aquire RHISceneViewPtr");
-	auto rhiSceneView = GetOrAddSceneView(world);
-	SAILOR_PROFILE_END_BLOCK();
+	{
+		SAILOR_PROFILE_SCOPE("Copy scene view to render thread");
 
-	rhiSceneView->m_world = world;
-	world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
-	world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
-	world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
+		rhiSceneView = GetOrAddSceneView(world);
 
-	rhiSceneView->m_deltaTime = frame.GetDeltaTime();
-	rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
+		rhiSceneView->m_world = world;
+		world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
+		world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
+		world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
 
-	rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
-	rhiSceneView->PrepareDebugDrawCommandLists(world);
-	rhiSceneView->PrepareSnapshots();
+		rhiSceneView->m_deltaTime = frame.GetDeltaTime();
+		rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
 
-	SAILOR_PROFILE_END_BLOCK();
+		rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
+		rhiSceneView->PrepareDebugDrawCommandLists(world);
+		rhiSceneView->PrepareSnapshots();
+	}
 
-	SAILOR_PROFILE_BLOCK("Push frame");
+	{
+		SAILOR_PROFILE_SCOPE("Push frame");
 
-	uint64_t currentFrame = world->GetCurrentFrame();
-	auto rhiFrameGraph = m_frameGraph->GetRHI();
+		uint64_t currentFrame = world->GetCurrentFrame();
+		auto rhiFrameGraph = m_frameGraph->GetRHI();
 
-	auto renderFrame = Tasks::CreateTask("Trace command lists & Track RHI resources " + std::to_string(currentFrame),
-		[this]()
-		{
-			this->GetDriver()->TrackResources_ThreadSafe();
-		}, Sailor::Tasks::EThreadType::Render);
+		auto renderFrame = Tasks::CreateTask("Trace command lists & Track RHI resources " + std::to_string(currentFrame),
+			[this]() { this->GetDriver()->TrackResources_ThreadSafe(); }, Sailor::Tasks::EThreadType::Render);
 
-	auto renderFrame1 = Tasks::CreateTask("Render Frame " + std::to_string(currentFrame),
-		[this, rhiFrameGraph = rhiFrameGraph, frame, rhiSceneView]() mutable
-		{
-			auto frameInstance = frame;
-			static Utils::Timer timer;
-			timer.Start();
+		auto renderFrame1 = Tasks::CreateTask("Render Frame " + std::to_string(currentFrame),
+			[this, rhiFrameGraph = rhiFrameGraph, frame, rhiSceneView]() mutable
+			{
+				SAILOR_PROFILE_SCOPE("Render Frame");
 
-			TVector<RHI::RHICommandListPtr> primaryCommandLists;
-			TVector<RHI::RHICommandListPtr> transferCommandLists;
-			TVector<RHISemaphorePtr> waitFrameUpdate;
+				auto frameInstance = frame;
+				static Utils::Timer timer;
+				timer.Start();
 
-			static uint32_t totalFramesCount = 0U;
+				TVector<RHI::RHICommandListPtr> primaryCommandLists;
+				TVector<RHI::RHICommandListPtr> transferCommandLists;
+				TVector<RHISemaphorePtr> waitFrameUpdate;
 
-			auto updateFrameRHI = [&frameInstance = frameInstance, &waitFrameUpdate = waitFrameUpdate]()
-				{
-					SAILOR_PROFILE_BLOCK("Submit & Wait frame command lists");
-					for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
+				static uint32_t totalFramesCount = 0U;
+
+				auto updateFrameRHI = [&frameInstance = frameInstance, &waitFrameUpdate = waitFrameUpdate]()
 					{
-						if (auto pCommandList = frameInstance.GetCommandBuffer(i))
+						SAILOR_PROFILE_SCOPE("Submit & Wait frame command lists");
+						for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
+						{
+							if (auto pCommandList = frameInstance.GetCommandBuffer(i))
+							{
+								auto newWaitSemaphore = GetDriver()->CreateWaitSemaphore();
+								GetDriver()->SetDebugName(newWaitSemaphore, std::format("frameInstance CommandBuffer {}", i));
+
+								waitFrameUpdate.Add(newWaitSemaphore);
+								GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
+							}
+						}
+					};
+
+				if (m_driverInstance->AcquireNextImage())
+				{
+					RHISemaphorePtr chainSemaphore{};
+
+					if (!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+					{
+						rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
+						rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
+						rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, chainSemaphore);
+					}
+
+					{
+						SAILOR_PROFILE_SCOPE("Submit transfer command lists");
+						updateFrameRHI();
+
+						uint32_t i = 0;
+						for (auto& cmdList : transferCommandLists)
 						{
 							auto newWaitSemaphore = GetDriver()->CreateWaitSemaphore();
-							GetDriver()->SetDebugName(newWaitSemaphore, std::format("frameInstance CommandBuffer {}", i));
+							GetDriver()->SetDebugName(newWaitSemaphore, std::format("rhiFrameGraph TransferCommandList {}", i++));
 
 							waitFrameUpdate.Add(newWaitSemaphore);
-							GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
+							GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1), chainSemaphore);
 						}
 					}
-					SAILOR_PROFILE_END_BLOCK();
-				};
 
-			SAILOR_PROFILE_BLOCK("Present Frame");
-			if (m_driverInstance->AcquireNextImage())
-			{
-				RHISemaphorePtr chainSemaphore{};
-
-				if (!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
-				{
-					rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
-					rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-					rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, chainSemaphore);
-				}
-
-				SAILOR_PROFILE_BLOCK("Submit transfer command lists");
-				{
-					updateFrameRHI();
-
-					uint32_t i = 0;
-					for (auto& cmdList : transferCommandLists)
+					if (m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
 					{
-						auto newWaitSemaphore = GetDriver()->CreateWaitSemaphore();
-						GetDriver()->SetDebugName(newWaitSemaphore, std::format("rhiFrameGraph TransferCommandList {}", i++));
+						totalFramesCount++;
+						timer.Stop();
 
-						waitFrameUpdate.Add(newWaitSemaphore);
-						GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1), chainSemaphore);
-					}
-				}
-				SAILOR_PROFILE_END_BLOCK();
-
-				if (m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
-				{
-					totalFramesCount++;
-					timer.Stop();
-
-					if (timer.ResultAccumulatedMs() > 1000)
-					{
-						m_stats.m_gpuFps = totalFramesCount;
-						totalFramesCount = 0;
-						timer.Clear();
+						if (timer.ResultAccumulatedMs() > 1000)
+						{
+							m_stats.m_gpuFps = totalFramesCount;
+							totalFramesCount = 0;
+							timer.Clear();
 #if defined(SAILOR_BUILD_WITH_VULKAN)
-						size_t heapUsage = 0;
-						size_t heapBudget = 0;
+							size_t heapUsage = 0;
+							size_t heapBudget = 0;
 
-						VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
+							VulkanApi::GetInstance()->GetMainDevice()->GetOccupiedVideoMemory(VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, heapBudget, heapUsage);
 
-						m_stats.m_gpuHeapUsage = heapUsage;
-						m_stats.m_gpuHeapBudget = heapBudget;
-						m_stats.m_numSubmittedCommandBuffers = m_driverInstance->GetNumSubmittedCommandBuffers();
+							m_stats.m_gpuHeapUsage = heapUsage;
+							m_stats.m_gpuHeapBudget = heapBudget;
+							m_stats.m_numSubmittedCommandBuffers = m_driverInstance->GetNumSubmittedCommandBuffers();
 #endif // SAILOR_BUILD_WITH_VULKAN
+						}
+					}
+					else
+					{
+						m_stats.m_gpuFps = 0;
 					}
 				}
 				else
 				{
-					m_stats.m_gpuFps = 0;
+					updateFrameRHI();
 				}
-			}
-			else
-			{
-				updateFrameRHI();
-			}
-			SAILOR_PROFILE_END_BLOCK();
 
-			rhiSceneView->Clear();
+				{
+					SAILOR_PROFILE_SCOPE("Clear after Present");
 
-			auto& list = m_cachedSceneViews.At_Lock(rhiSceneView->m_world);
-			auto it = list.FindIf([&](const auto& el) { return el.m_first == rhiSceneView; });
-			if (it != list.end())
-			{
-				(*it).m_second = true;
-			}
-			else
-			{
-				check(false);
-			}
+					rhiSceneView->Clear();
 
-			m_cachedSceneViews.Unlock(rhiSceneView->m_world);
+					auto& list = m_cachedSceneViews.At_Lock(rhiSceneView->m_world);
+					auto it = list.FindIf([&](const auto& el) { return el.m_first == rhiSceneView; });
+					if (it != list.end())
+					{
+						(*it).m_second = true;
+					}
+					else
+					{
+						check(false);
+					}
 
-			GetDriver()->CollectGarbage_RenderThread();
+					m_cachedSceneViews.Unlock(rhiSceneView->m_world);
 
-		}, Sailor::Tasks::EThreadType::Render);
+					GetDriver()->CollectGarbage_RenderThread();
+				}
+			}, Sailor::Tasks::EThreadType::Render);
 
-	auto prepareRenderFrame = rhiFrameGraph->Prepare(rhiSceneView);
+		auto prepareRenderFrame = rhiFrameGraph->Prepare(rhiSceneView);
 
-	for (auto& t : prepareRenderFrame)
-	{
-		t->Join(renderFrame);
-
-		if (m_previousRenderFrame.IsValid())
+		for (auto& t : prepareRenderFrame)
 		{
-			renderFrame->Join(m_previousRenderFrame);
+			t->Join(renderFrame);
+
+			if (m_previousRenderFrame.IsValid())
+			{
+				renderFrame->Join(m_previousRenderFrame);
+			}
+
+			renderFrame1->Join(t);
+
+		}
+		renderFrame1->Join(renderFrame);
+
+		renderFrame1->Run();
+		renderFrame->Run();
+		for (auto& t : prepareRenderFrame)
+		{
+			t->Run();
 		}
 
-		renderFrame1->Join(t);
-
+		m_previousRenderFrame = renderFrame1;
 	}
-	renderFrame1->Join(renderFrame);
-
-	renderFrame1->Run();
-	renderFrame->Run();
-	for (auto& t : prepareRenderFrame)
-	{
-		t->Run();
-	}
-
-	m_previousRenderFrame = renderFrame1;
-	SAILOR_PROFILE_END_BLOCK();
 
 	return true;
 }

@@ -47,7 +47,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			m_drawCalls.Clear();
 			m_batches.Clear();
 
-			SAILOR_PROFILE_BLOCK("Filter sceneView by tag");
+			SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
+
 			for (auto& proxy : sceneViewSnapshot.m_proxies)
 			{
 				for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
@@ -95,7 +96,6 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 					}
 				}
 			}
-			SAILOR_PROFILE_END_BLOCK();
 
 			syncSharedResources.Unlock();
 		}, Tasks::EThreadType::RHI);
@@ -145,237 +145,239 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		return;
 	}
 
-	SAILOR_PROFILE_BLOCK("Create storage for matrices");
 	if (!m_perInstanceData || m_sizePerInstanceData < sizeof(RenderSceneNode::PerInstanceData) * m_numMeshes)
 	{
+		SAILOR_PROFILE_SCOPE("Create storage for matrices");
+
 		m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 		Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(RenderSceneNode::PerInstanceData), m_numMeshes, 0);
 		m_sizePerInstanceData = sizeof(RenderSceneNode::PerInstanceData) * m_numMeshes;
 	}
 
 	RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
-	SAILOR_PROFILE_END_BLOCK();
 
-	SAILOR_PROFILE_BLOCK("Prepare command list");
-	TVector<PerInstanceData> gpuMatricesData;
-	gpuMatricesData.AddDefault(m_numMeshes);
-
-	RHI::RHISurfacePtr colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
-	RHI::RHITexturePtr depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
-	if (!depthAttachment)
 	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
-	}
+		SAILOR_PROFILE_SCOPE("Prepare command list");
+		TVector<PerInstanceData> gpuMatricesData;
+		gpuMatricesData.AddDefault(m_numMeshes);
 
-	if (!colorAttachment)
-	{
-		m_syncSharedResources.Unlock();
-		return;
-	}
-
-	const auto viewport = glm::ivec4(0, colorAttachment->GetTarget()->GetExtent().y, colorAttachment->GetTarget()->GetExtent().x, -colorAttachment->GetTarget()->GetExtent().y);
-	const auto scissor = glm::uvec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y);
-
-	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
+		RHI::RHISurfacePtr colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
+		RHI::RHITexturePtr depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
+		if (!depthAttachment)
 		{
-			TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), textureSamplers });
-			return sets;
-		};
-
-	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
-	const size_t materialsPerThread = (m_batches.Num()) / numThreads;
-
-	if (m_indirectBuffers.Num() < numThreads)
-	{
-		m_indirectBuffers.Resize(numThreads);
-		m_cullingIndirectBufferBinding.Resize(numThreads);
-
-		for (uint32_t i = 0; i < numThreads; i++)
-		{
-			m_cullingIndirectBufferBinding[i] = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+			depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 		}
-	}
 
-	TVector<RHICommandListPtr> secondaryCommandLists(m_batches.Num() > numThreads ? (numThreads - 1) : 0);
-	TVector<Tasks::ITaskPtr> tasks;
-
-	auto vecBatches = m_batches.ToVector();
-
-	SAILOR_PROFILE_BLOCK("Calculate SSBO offsets");
-	size_t ssboIndex = 0;
-	TVector<uint32_t> storageIndex(vecBatches.Num());
-	for (uint32_t j = 0; j < vecBatches.Num(); j++)
-	{
-		bool bIsInited = false;
-		for (const auto& instancedDrawCall : m_drawCalls[vecBatches[j]])
+		if (!colorAttachment)
 		{
-			auto& mesh = instancedDrawCall.First();
-			auto& matrices = *instancedDrawCall.Second();
+			m_syncSharedResources.Unlock();
+			return;
+		}
 
-			memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(PerInstanceData) * matrices.Num());
+		const auto viewport = glm::ivec4(0, colorAttachment->GetTarget()->GetExtent().y, colorAttachment->GetTarget()->GetExtent().x, -colorAttachment->GetTarget()->GetExtent().y);
+		const auto scissor = glm::uvec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y);
 
-			if (!bIsInited)
+		auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+		auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
 			{
-				storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
-				bIsInited = true;
+				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), textureSamplers });
+				return sets;
+			};
+
+		const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
+		const size_t materialsPerThread = (m_batches.Num()) / numThreads;
+
+		if (m_indirectBuffers.Num() < numThreads)
+		{
+			m_indirectBuffers.Resize(numThreads);
+			m_cullingIndirectBufferBinding.Resize(numThreads);
+
+			for (uint32_t i = 0; i < numThreads; i++)
+			{
+				m_cullingIndirectBufferBinding[i] = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 			}
-			ssboIndex += matrices.Num();
 		}
-	}
-	SAILOR_PROFILE_END_BLOCK();
 
-	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
+		TVector<RHICommandListPtr> secondaryCommandLists(m_batches.Num() > numThreads ? (numThreads - 1) : 0);
+		TVector<Tasks::ITaskPtr> tasks;
 
-	SAILOR_PROFILE_BLOCK("Create secondary command lists");
-	for (uint32_t i = 0; i < secondaryCommandLists.Num(); i++)
-	{
-		const uint32_t start = (uint32_t)materialsPerThread * i;
-		const uint32_t end = (uint32_t)materialsPerThread * (i + 1);
+		auto vecBatches = m_batches.ToVector();
+		TVector<uint32_t> storageIndex(vecBatches.Num());
 
-		auto task = Tasks::CreateTask("Record draw calls in secondary command list",
-			[&, i = i, start = start, end = end, transferCommandList = transferCommandList]()
+		{
+			SAILOR_PROFILE_SCOPE("Calculate SSBO offsets");
+
+			size_t ssboIndex = 0;
+			for (uint32_t j = 0; j < vecBatches.Num(); j++)
 			{
-				RHICommandListPtr cmdList = driver->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
-				RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
-				commands->BeginSecondaryCommandList(cmdList, true, true);
-
-				if (bGpuCullingEnabled)
+				bool bIsInited = false;
+				for (const auto& instancedDrawCall : m_drawCalls[vecBatches[j]])
 				{
-					auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
+					auto& mesh = instancedDrawCall.First();
+					auto& matrices = *instancedDrawCall.Second();
 
-#ifdef _DEBUG
-					cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
-#endif
-					RHIRecordDrawCallGPUCulling(start,
-						end,
-						vecBatches,
-						cmdList, transferCommandList,
-						shaderBindingsByMaterial,
-						m_drawCalls,
-						storageIndex,
-						m_indirectBuffers[i + 1],
-						viewport,
-						scissor,
-						glm::vec2(0.0f, 1.0f),
-						cullingComputeShader, m_cullingIndirectBufferBinding[i + 1],
-						{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[i + 1], sceneView.m_frameBindings });
+					memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(PerInstanceData) * matrices.Num());
+
+					if (!bIsInited)
+					{
+						storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
+						bIsInited = true;
+					}
+					ssboIndex += matrices.Num();
 				}
-				else
-				{
-					RHIRecordDrawCall(start,
-						end,
-						vecBatches,
-						cmdList, transferCommandList,
-						shaderBindingsByMaterial,
-						m_drawCalls,
-						storageIndex,
-						m_indirectBuffers[i + 1],
-						viewport,
-						scissor);
-				}
-
-				commands->EndCommandList(cmdList);
-				secondaryCommandLists[i] = std::move(cmdList);
-			}, Tasks::EThreadType::RHI);
-
-		task->Run();
-		tasks.Add(task);
-	}
-	SAILOR_PROFILE_END_BLOCK();
-
-	SAILOR_PROFILE_BLOCK("Fill transfer command list with matrices data");
-	if (gpuMatricesData.Num() > 0)
-	{
-		commands->UpdateShaderBinding(transferCommandList, storageBinding,
-			gpuMatricesData.GetData(),
-			sizeof(PerInstanceData) * gpuMatricesData.Num(),
-			0);
-	}
-	SAILOR_PROFILE_END_BLOCK();
-
-	commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), colorAttachment->GetTarget()->GetFormat(), colorAttachment->GetTarget()->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-
-	if (m_batches.Num() > 0)
-	{
-		SAILOR_PROFILE_BLOCK("Record draw calls in primary command list");
-		commands->BeginRenderPass(commandList,
-			TVector<RHI::RHISurfacePtr>{ colorAttachment },
-			depthAttachment,
-			glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
-			glm::ivec2(0, 0),
-			false,
-			glm::vec4(0.0f),
-			0.0f,
-			true);
-
-		if (bGpuCullingEnabled)
-		{
-			auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
-
-#ifdef _DEBUG
-			cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
-#endif
-			RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
-				(uint32_t)vecBatches.Num(),
-				vecBatches,
-				commandList, transferCommandList,
-				shaderBindingsByMaterial,
-				m_drawCalls,
-				storageIndex,
-				m_indirectBuffers[0],
-				viewport,
-				scissor,
-				glm::vec2(0.0f, 1.0f),
-				cullingComputeShader, m_cullingIndirectBufferBinding[0],
-				{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings });
-		}
-		else
-		{
-			RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
-				(uint32_t)vecBatches.Num(),
-				vecBatches,
-				commandList, transferCommandList,
-				shaderBindingsByMaterial,
-				m_drawCalls,
-				storageIndex,
-				m_indirectBuffers[0],
-				viewport,
-				scissor);
+			}
 		}
 
-		commands->EndRenderPass(commandList);
-		SAILOR_PROFILE_END_BLOCK();
+		commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
+
+		for (uint32_t i = 0; i < secondaryCommandLists.Num(); i++)
+		{
+			SAILOR_PROFILE_SCOPE("Create secondary command list");
+
+			const uint32_t start = (uint32_t)materialsPerThread * i;
+			const uint32_t end = (uint32_t)materialsPerThread * (i + 1);
+
+			auto task = Tasks::CreateTask("Record draw calls in secondary command list",
+				[&, i = i, start = start, end = end, transferCommandList = transferCommandList]()
+				{
+					RHICommandListPtr cmdList = driver->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
+					RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
+					commands->BeginSecondaryCommandList(cmdList, true, true);
+
+					if (bGpuCullingEnabled)
+					{
+						auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
+
+#ifdef _DEBUG
+						cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
+#endif
+						RHIRecordDrawCallGPUCulling(start,
+							end,
+							vecBatches,
+							cmdList, transferCommandList,
+							shaderBindingsByMaterial,
+							m_drawCalls,
+							storageIndex,
+							m_indirectBuffers[i + 1],
+							viewport,
+							scissor,
+							glm::vec2(0.0f, 1.0f),
+							cullingComputeShader, m_cullingIndirectBufferBinding[i + 1],
+							{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[i + 1], sceneView.m_frameBindings });
+					}
+					else
+					{
+						RHIRecordDrawCall(start,
+							end,
+							vecBatches,
+							cmdList, transferCommandList,
+							shaderBindingsByMaterial,
+							m_drawCalls,
+							storageIndex,
+							m_indirectBuffers[i + 1],
+							viewport,
+							scissor);
+					}
+
+					commands->EndCommandList(cmdList);
+					secondaryCommandLists[i] = std::move(cmdList);
+				}, Tasks::EThreadType::RHI);
+
+			task->Run();
+			tasks.Add(task);
+		}
+
+		if (gpuMatricesData.Num() > 0)
+		{
+			SAILOR_PROFILE_SCOPE("Fill transfer command list with matrices data");
+			commands->UpdateShaderBinding(transferCommandList, storageBinding,
+				gpuMatricesData.GetData(),
+				sizeof(PerInstanceData) * gpuMatricesData.Num(),
+				0);
+		}
+
+		commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), colorAttachment->GetTarget()->GetFormat(), colorAttachment->GetTarget()->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+
+		if (m_batches.Num() > 0)
+		{
+			SAILOR_PROFILE_SCOPE("Record draw calls in primary command list");
+			commands->BeginRenderPass(commandList,
+				TVector<RHI::RHISurfacePtr>{ colorAttachment },
+				depthAttachment,
+				glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
+				glm::ivec2(0, 0),
+				false,
+				glm::vec4(0.0f),
+				0.0f,
+				true);
+
+			if (bGpuCullingEnabled)
+			{
+				auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
+
+#ifdef _DEBUG
+				cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
+#endif
+				RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+					(uint32_t)vecBatches.Num(),
+					vecBatches,
+					commandList, transferCommandList,
+					shaderBindingsByMaterial,
+					m_drawCalls,
+					storageIndex,
+					m_indirectBuffers[0],
+					viewport,
+					scissor,
+					glm::vec2(0.0f, 1.0f),
+					cullingComputeShader, m_cullingIndirectBufferBinding[0],
+					{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings });
+			}
+			else
+			{
+				RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+					(uint32_t)vecBatches.Num(),
+					vecBatches,
+					commandList, transferCommandList,
+					shaderBindingsByMaterial,
+					m_drawCalls,
+					storageIndex,
+					m_indirectBuffers[0],
+					viewport,
+					scissor);
+			}
+
+			commands->EndRenderPass(commandList);
+		}
+
+		{
+			SAILOR_PROFILE_SCOPE("Wait for secondary command lists");
+			for (auto& task : tasks)
+			{
+				task->Wait();
+			}
+		}
+
+		if (secondaryCommandLists.Num() > 0)
+		{
+			commands->RenderSecondaryCommandBuffers(commandList,
+				secondaryCommandLists,
+				TVector<RHI::RHISurfacePtr>{ colorAttachment },
+				depthAttachment,
+				glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
+				glm::ivec2(0, 0),
+				false,
+				glm::vec4(0.0f),
+				0.0f,
+				true);
+		}
+
+		commands->ImageMemoryBarrier(commandList,
+			colorAttachment->GetTarget(),
+			colorAttachment->GetTarget()->GetFormat(),
+			EImageLayout::ColorAttachmentOptimal,
+			colorAttachment->GetTarget()->GetDefaultLayout());
+
 	}
-
-	SAILOR_PROFILE_BLOCK("Wait for secondary command lists");
-	for (auto& task : tasks)
-	{
-		task->Wait();
-	}
-	SAILOR_PROFILE_END_BLOCK();
-
-	if (secondaryCommandLists.Num() > 0)
-	{
-		commands->RenderSecondaryCommandBuffers(commandList,
-			secondaryCommandLists,
-			TVector<RHI::RHISurfacePtr>{ colorAttachment },
-			depthAttachment,
-			glm::vec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y),
-			glm::ivec2(0, 0),
-			false,
-			glm::vec4(0.0f),
-			0.0f,
-			true);
-	}
-
-	commands->ImageMemoryBarrier(commandList,
-		colorAttachment->GetTarget(),
-		colorAttachment->GetTarget()->GetFormat(),
-		EImageLayout::ColorAttachmentOptimal,
-		colorAttachment->GetTarget()->GetDefaultLayout());
-
-	SAILOR_PROFILE_END_BLOCK();
 
 	commands->EndDebugRegion(commandList);
 

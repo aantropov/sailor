@@ -99,7 +99,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 		uint32_t numMeshes = 0;
 
-		SAILOR_PROFILE_BLOCK("Filter sceneView by tag");
+		SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
 
 		for (uint32_t passIndex = 0; passIndex < sceneView.m_shadowMapsToUpdate.Num(); passIndex++)
 		{
@@ -138,74 +138,69 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			}
 		}
 
-		SAILOR_PROFILE_END_BLOCK();
-
 		if (numMeshes == 0)
 		{
 			return;
 		}
 
-		SAILOR_PROFILE_BLOCK("Create storage for matrices");
-
 		if (!m_perInstanceData || m_sizePerInstanceData < sizeof(ShadowPrepassNode::PerInstanceData) * numMeshes)
 		{
+			SAILOR_PROFILE_SCOPE("Create storage for matrices");
 			m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 			Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(ShadowPrepassNode::PerInstanceData), numMeshes, 0);
 			m_sizePerInstanceData = sizeof(ShadowPrepassNode::PerInstanceData) * numMeshes;
 		}
 
 		RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
-		SAILOR_PROFILE_END_BLOCK();
 
 		TVector<ShadowPrepassNode::PerInstanceData> gpuMatricesData(numMeshes);
-
-		SAILOR_PROFILE_BLOCK("Calculate SSBO offsets");
-		size_t ssboIndex = 0;
 		TVector<TVector<RHIBatch>> passes(NumShadowPasses);
 		TVector<TVector<uint32_t>> passIndices(NumShadowPasses);
 
-		for (uint32_t i = 0; i < NumShadowPasses; i++)
 		{
-			auto vecBatches = batches[i].ToVector();
-			if (vecBatches.Num() == 0)
+			SAILOR_PROFILE_SCOPE("Calculate SSBO offsets");
+			size_t ssboIndex = 0;
+			for (uint32_t i = 0; i < NumShadowPasses; i++)
 			{
-				continue;
-			}
-
-			TVector<uint32_t> storageIndex(vecBatches.Num());
-			for (uint32_t j = 0; j < vecBatches.Num(); j++)
-			{
-				bool bIsInited = false;
-				for (const auto& instancedDrawCall : drawCalls[i][vecBatches[j]])
+				auto vecBatches = batches[i].ToVector();
+				if (vecBatches.Num() == 0)
 				{
-					auto& mesh = instancedDrawCall.First();
-					auto& matrices = *instancedDrawCall.Second();
-
-					memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(ShadowPrepassNode::PerInstanceData) * matrices.Num());
-
-					if (!bIsInited)
-					{
-						storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
-						bIsInited = true;
-					}
-					ssboIndex += matrices.Num();
+					continue;
 				}
+
+				TVector<uint32_t> storageIndex(vecBatches.Num());
+				for (uint32_t j = 0; j < vecBatches.Num(); j++)
+				{
+					bool bIsInited = false;
+					for (const auto& instancedDrawCall : drawCalls[i][vecBatches[j]])
+					{
+						auto& mesh = instancedDrawCall.First();
+						auto& matrices = *instancedDrawCall.Second();
+
+						memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(ShadowPrepassNode::PerInstanceData) * matrices.Num());
+
+						if (!bIsInited)
+						{
+							storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
+							bIsInited = true;
+						}
+						ssboIndex += matrices.Num();
+					}
+				}
+
+				passIndices[i] = std::move(storageIndex);
+				passes[i] = std::move(vecBatches);
 			}
-
-			passIndices[i] = std::move(storageIndex);
-			passes[i] = std::move(vecBatches);
 		}
-		SAILOR_PROFILE_END_BLOCK();
 
-		SAILOR_PROFILE_BLOCK("Fill transfer command list with matrices data");
 		if (gpuMatricesData.Num() > 0)
 		{
+			SAILOR_PROFILE_SCOPE("Fill transfer command list with matrices data");
 			commands->UpdateShaderBinding(transferCommandList, storageBinding,
 				gpuMatricesData.GetData(),
 				sizeof(ShadowPrepassNode::PerInstanceData) * gpuMatricesData.Num(),
 				0);
 		}
-		SAILOR_PROFILE_END_BLOCK();
 
 		const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
 		const size_t materialsPerThread = (batches.Num()) / numThreads;
@@ -230,7 +225,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		{
 			char debugMarker[64];
 			sprintf_s(debugMarker, "Record Shadow Map Pass %d", index);
-			SAILOR_PROFILE_BLOCK(debugMarker);
+			SAILOR_PROFILE_SCOPE("Record Shadow Map Pass");
 
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[index];
 
@@ -377,7 +372,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 				driver->ReleaseTemporaryRenderTarget(depthAttachment);
 
-				SAILOR_PROFILE_END_BLOCK();
 			}
 			commands->EndDebugRegion(commandList);
 

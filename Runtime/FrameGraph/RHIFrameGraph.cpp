@@ -169,7 +169,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 	for (auto& snapshot : rhiSceneView->m_snapshots)
 	{
-		SAILOR_PROFILE_BLOCK("FrameGraph");
+		SAILOR_PROFILE_SCOPE("Process snapshot");
 
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Compute);
@@ -203,7 +203,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();
 			if (gpuCost > MaxGpuCost || numRecordedCommands > MaxRecordedCommands)
 			{
-				SAILOR_PROFILE_BLOCK("Chaining command lists");
+				SAILOR_PROFILE_SCOPE("Chaining command lists");
 
 				driverCommands->EndDebugRegion(cmdList);
 				driverCommands->EndCommandList(cmdList);
@@ -213,7 +213,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 				// Create tasks
 				{
-					SAILOR_PROFILE_BLOCK("Create RHI submit cmd lists tasks");
+					SAILOR_PROFILE_SCOPE("Create RHI submit cmd lists tasks");
 					RHI::RHISemaphorePtr newChainSemaphore = driver->CreateWaitSemaphore();
 					driver->SetDebugName(newChainSemaphore, "FrameGraph: newChainSemaphore");
 
@@ -249,12 +249,11 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					submitCmdList2->Run();
 
 					tasks.AddRange({ submitCmdList1, submitCmdList2 });
-					SAILOR_PROFILE_END_BLOCK();
 				}
 
 				// New command lists
 				{
-					SAILOR_PROFILE_BLOCK("Create new command lists");
+					SAILOR_PROFILE_SCOPE("Create new command lists");
 
 					cmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 					transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Compute);
@@ -267,10 +266,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 					driverCommands->BeginCommandList(transferCmdList, true);
 					driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
-
-					SAILOR_PROFILE_END_BLOCK();
 				}
-				SAILOR_PROFILE_END_BLOCK();
 			}
 			//TODO: Submit Transfer command lists
 		}
@@ -280,14 +276,14 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 		driverCommands->EndDebugRegion(transferCmdList);
 		driverCommands->EndCommandList(transferCmdList);
-		SAILOR_PROFILE_END_BLOCK();
 
-		SAILOR_PROFILE_BLOCK("Wait for submitting of chaining command lists");
-		for (auto& task : tasks)
 		{
-			task->Wait();
+			SAILOR_PROFILE_SCOPE("Wait for submitting of chaining command lists");
+			for (auto& task : tasks)
+			{
+				task->Wait();
+			}
 		}
-		SAILOR_PROFILE_END_BLOCK();
 
 		outWaitSemaphore = chainSemaphore;
 		outCommandLists.Emplace(std::move(cmdList));

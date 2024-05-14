@@ -149,46 +149,47 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		driver->UpdateShaderBinding(m_shaderBindings, "averageLuminanceSampler", m_averageLuminance);
 	}
 
-	SAILOR_PROFILE_BLOCK("Image barriers");
-
-	const float minLogLuminance = -8.0f;
-	const float maxLogLuminance = 4.0f;
-	const float eyeReaction = 3.6f;
-
-	const float logLuminanceRange = maxLogLuminance - minLogLuminance;
-
-	float pushConstantsHistogramm[] = { minLogLuminance, 1.0f / logLuminanceRange };
-
-	float timeCoeff = std::clamp(1.0f - exp2(-sceneView.m_deltaTime * eyeReaction), 0.0f, 1.0f);
-
-	float pushConstantsAverage[] =
 	{
-		minLogLuminance,
-		logLuminanceRange,
-		(float)quarterResolution->GetExtent().x * quarterResolution->GetExtent().y,
-		timeCoeff
-	};
+		SAILOR_PROFILE_SCOPE("Image barriers");
 
-	commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), quarterResolution->GetDefaultLayout(), EImageLayout::ComputeRead);
-	commands->Dispatch(commandList, m_pComputeHistogramShader->GetComputeShaderRHI(),
-		quarterResolution->GetExtent().x / 16, quarterResolution->GetExtent().y / 16, 1,
-		{ m_computeHistogramShaderBindings },
-		&pushConstantsHistogramm, sizeof(float) * 2);
-	commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), EImageLayout::ComputeRead, quarterResolution->GetDefaultLayout());
+		const float minLogLuminance = -8.0f;
+		const float maxLogLuminance = 4.0f;
+		const float eyeReaction = 3.6f;
 
-	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::ComputeWrite);
-	commands->Dispatch(commandList, m_pComputeAverageShader->GetComputeShaderRHI(),
-		1, 1, 1,
-		{ m_computeAverageShaderBindings },
-		&pushConstantsAverage, sizeof(float) * 4);
-	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
+		const float logLuminanceRange = maxLogLuminance - minLogLuminance;
 
-	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+		float pushConstantsHistogramm[] = { minLogLuminance, 1.0f / logLuminanceRange };
+
+		float timeCoeff = std::clamp(1.0f - exp2(-sceneView.m_deltaTime * eyeReaction), 0.0f, 1.0f);
+
+		float pushConstantsAverage[] =
+		{
+			minLogLuminance,
+			logLuminanceRange,
+			(float)quarterResolution->GetExtent().x * quarterResolution->GetExtent().y,
+			timeCoeff
+		};
+
+		commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), quarterResolution->GetDefaultLayout(), EImageLayout::ComputeRead);
+		commands->Dispatch(commandList, m_pComputeHistogramShader->GetComputeShaderRHI(),
+			quarterResolution->GetExtent().x / 16, quarterResolution->GetExtent().y / 16, 1,
+			{ m_computeHistogramShaderBindings },
+			&pushConstantsHistogramm, sizeof(float) * 2);
+		commands->ImageMemoryBarrier(commandList, quarterResolution, quarterResolution->GetFormat(), EImageLayout::ComputeRead, quarterResolution->GetDefaultLayout());
+
+		commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), m_averageLuminance->GetDefaultLayout(), EImageLayout::ComputeWrite);
+		commands->Dispatch(commandList, m_pComputeAverageShader->GetComputeShaderRHI(),
+			1, 1, 1,
+			{ m_computeAverageShaderBindings },
+			&pushConstantsAverage, sizeof(float) * 4);
+		commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ComputeWrite, EImageLayout::ShaderReadOnlyOptimal);
+
+		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+	}
 
 	auto fullResolutionBinding = m_shaderBindings->GetOrAddShaderBinding("colorSampler")->GetTextureBinding();
 	commands->ImageMemoryBarrier(commandList, fullResolutionBinding, fullResolutionBinding->GetFormat(), fullResolutionBinding->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
 
-	SAILOR_PROFILE_END_BLOCK();
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
@@ -220,13 +221,13 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 	commands->EndRenderPass(commandList);
 
-	SAILOR_PROFILE_BLOCK("Image barriers");
+	{
+		SAILOR_PROFILE_SCOPE("Image barriers");
 
-	commands->ImageMemoryBarrier(commandList, fullResolutionBinding, fullResolutionBinding->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, fullResolutionBinding->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_averageLuminance->GetDefaultLayout());
-
-	SAILOR_PROFILE_END_BLOCK();
+		commands->ImageMemoryBarrier(commandList, fullResolutionBinding, fullResolutionBinding->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, fullResolutionBinding->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, m_averageLuminance, m_averageLuminance->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_averageLuminance->GetDefaultLayout());
+	}
 
 	commands->EndDebugRegion(commandList);
 }

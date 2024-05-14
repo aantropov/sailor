@@ -5,6 +5,7 @@
 #include "glm/glm/glm.hpp"
 #include "Math/Math.h"
 #include "Math/Bounds.h"
+#include "Core/StringHash.h"
 #include "glm/glm/gtc/random.hpp"
 #include "glm/glm/gtx/matrix_transform_2d.hpp"
 
@@ -74,8 +75,6 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 void PathTracer::Run(const PathTracer::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	//EASY_PROFILER_ENABLE
 
 	Utils::Timer raytracingTimer;
 	raytracingTimer.Start();
@@ -415,8 +414,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 	BVH bvh((uint32_t)m_triangles.Num());
 	bvh.BuildBVH(m_triangles);
 
-	SAILOR_PROFILE_BLOCK("Viewport Calcs");
-
 	CombinedSampler2D outputTex;
 	outputTex.Initialize<vec3>(width, height);
 
@@ -435,10 +432,9 @@ void PathTracer::Run(const PathTracer::Params& params)
 	const vec3 _pixelDeltaV = ViewportV / (float)height;
 	const vec3 _pixel00Dir = ViewportPivot + 0.5f * (_pixelDeltaU + _pixelDeltaV) - cameraPos;
 
-	SAILOR_PROFILE_END_BLOCK();
 	// Raytracing
 	{
-		SAILOR_PROFILE_BLOCK("Prepare raytracing tasks");
+		SAILOR_PROFILE_SCOPE("Prepare raytracing tasks");
 
 		TVector<Tasks::ITaskPtr> tasks;
 		TVector<Tasks::ITaskPtr> tasksThisThread;
@@ -478,7 +474,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 							const float tv = (y + v) / (float)height;
 							for (uint32_t u = 0; u < GroupSize && (u + x) < width; u++)
 							{
-								SAILOR_PROFILE_BLOCK("Raycasting");
+								SAILOR_PROFILE_SCOPE("Raycasting");
 
 								const uint32_t index = (height - (y + v) - 1) * width + (x + u);
 								const float tu = (x + u) / (float)width;
@@ -501,14 +497,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 								vec3 res = accumulator / (float)params.m_msaa;
 								outputTex.SetPixel(x + u, height - (y + v) - 1, res);
-
-								SAILOR_PROFILE_END_BLOCK();
+								}
 							}
-						}
 
 						finishedTasks++;
 
-			}, Tasks::EThreadType::Worker);
+					}, Tasks::EThreadType::Worker);
 
 				if (((x + y) / GroupSize) % 32 == 0)
 				{
@@ -519,56 +513,58 @@ void PathTracer::Run(const PathTracer::Params& params)
 					task->Run();
 					tasks.Emplace(std::move(task));
 				}
-		}
-	}
-		SAILOR_PROFILE_END_BLOCK();
-
-		SAILOR_PROFILE_BLOCK("Calcs on Main thread");
-		float lastPrg = 0.0f;
-		float eta = 0.0f;
-		for (auto& task : tasksThisThread)
-		{
-			task->Execute();
-
-			const float progress = finishedTasks.load() / (float)numTasks;
-
-			if (progress - lastPrg > 0.05f)
-			{
-				if (eta == 0.0f)
-				{
-					eta = raytracingTimer.ResultAccumulatedMs() * 20.0f * 0.001f * 1.5f;
-					SAILOR_LOG("PathTracer ETA: ~%.2fsec (%.2fmin)", eta, round(eta / 60.0f));
-				}
-
-				SAILOR_LOG("PathTracer Progress: %.2f", progress);
-				lastPrg = progress;
 			}
 		}
-		SAILOR_PROFILE_END_BLOCK();
 
-		SAILOR_PROFILE_BLOCK("Wait all calcs");
-		for (auto& task : tasks)
+		float lastPrg = 0.0f;
 		{
-			if (!task->IsFinished())
+			SAILOR_PROFILE_SCOPE("Calcs on Main thread");
+			float eta = 0.0f;
+			for (auto& task : tasksThisThread)
 			{
-				task->Wait();
+				task->Execute();
 
 				const float progress = finishedTasks.load() / (float)numTasks;
+
 				if (progress - lastPrg > 0.05f)
 				{
+					if (eta == 0.0f)
+					{
+						eta = raytracingTimer.ResultAccumulatedMs() * 20.0f * 0.001f * 1.5f;
+						SAILOR_LOG("PathTracer ETA: ~%.2fsec (%.2fmin)", eta, round(eta / 60.0f));
+					}
+
 					SAILOR_LOG("PathTracer Progress: %.2f", progress);
 					lastPrg = progress;
 				}
 			}
 		}
-		SAILOR_PROFILE_END_BLOCK();
-}
+
+		{
+			SAILOR_PROFILE_SCOPE("Wait all calcs");
+			for (auto& task : tasks)
+			{
+				if (!task->IsFinished())
+				{
+					task->Wait();
+
+					const float progress = finishedTasks.load() / (float)numTasks;
+					if (progress - lastPrg > 0.05f)
+					{
+						SAILOR_LOG("PathTracer Progress: %.2f", progress);
+						lastPrg = progress;
+					}
+				}
+			}
+		}
+	}
 
 	raytracingTimer.Stop();
-	//profiler::dumpBlocksToFile("test_profile.prof");
+	//profiler::dumpBlocksToFile("test_profile.prof"_h);
 
-	SAILOR_PROFILE_BLOCK("Write Image");
 	{
+		SAILOR_PROFILE_SCOPE("Write Image");
+
 		TVector<u8vec3> outSrgb(width * height);
 		const float aberrationAmount = (0.5f / width);
 
@@ -597,7 +593,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 			SAILOR_LOG("Raytracing WriteImage error");
 		}
 	}
-	SAILOR_PROFILE_END_BLOCK();
 
 	char msg[2048];
 	if (raytracingTimer.ResultMs() > 10000.0f)
@@ -666,7 +661,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 	if (bvh.IntersectBVH(ray, hit, 0, std::numeric_limits<float>().max(), ignoreTriangle))
 	{
-		SAILOR_PROFILE_BLOCK("Sampling");
+		SAILOR_PROFILE_SCOPE("Sampling");
 
 		const bool bIsFirstIntersection = bounceLimit == params.m_maxBounces;
 		const bool bIsFirstOrSecondIntersection = (params.m_maxBounces - bounceLimit) <= 1;
@@ -706,8 +701,6 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
 		const bool bThickVolume = bHasTransmission && material.m_thicknessFactor > 0.0f;
 
-		SAILOR_PROFILE_END_BLOCK();
-
 		if (!bIsOppositeRay && bThickVolume)
 		{
 			const vec3 newDirection = LightingModel::CalculateRefraction(ray.GetDirection(), worldNormal, environmentIor, 1.0f);
@@ -727,10 +720,11 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 		// Direct lighting
 		{
+			SAILOR_PROFILE_SCOPE("Direct lighting");
+
 			RaycastHit hitLight{};
 			for (uint32_t i = 0; i < m_directionalLights.Num(); i++)
 			{
-				SAILOR_PROFILE_BLOCK("Direct lighting");
 				const vec3 toLight = -m_directionalLights[i].m_direction;
 				Ray rayToLight(hit.m_point + offset, toLight);
 				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
@@ -738,13 +732,14 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					const float angle = max(0.0f, glm::dot(toLight, worldNormal));
 					res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * m_directionalLights[i].m_intensity * angle;
 				}
-				SAILOR_PROFILE_END_BLOCK();
 			}
 		}
 
 		// Ambient lighting
 		if (params.m_ambient.x + params.m_ambient.y + params.m_ambient.z > 0.0f)
 		{
+			SAILOR_PROFILE_SCOPE("Ambient lighting");
+
 			// Random ray
 			vec3 ambient1 = vec3(0, 0, 0);
 			const float pdfHemisphere = 1.0f / (Pi * 2.0f);

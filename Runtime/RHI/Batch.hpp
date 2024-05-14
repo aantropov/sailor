@@ -66,7 +66,7 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr& indirectCommandBufferBinding,
 		const TVector<RHIShaderBindingSetPtr>& cullingDistpatchBindings)
 	{
-		SAILOR_PROFILE_BLOCK("Record draw calls");
+		SAILOR_PROFILE_FUNCTION();
 
 		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -204,7 +204,7 @@ namespace Sailor::RHI
 		glm::uvec4 scissors,
 		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f))
 	{
-		SAILOR_PROFILE_BLOCK("Record draw calls");
+		SAILOR_PROFILE_FUNCTION();
 
 		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -304,7 +304,7 @@ namespace Sailor::RHI
 		glm::uvec4 scissors,
 		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f))
 	{
-		SAILOR_PROFILE_BLOCK("Play draw calls");
+		SAILOR_PROFILE_FUNCTION();
 
 		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();

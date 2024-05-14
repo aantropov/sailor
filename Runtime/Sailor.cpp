@@ -131,12 +131,6 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 #endif
 
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
-
-#ifdef BUILD_WITH_EASY_PROFILER
-	SAILOR_ENQUEUE_TASK("Initialize profiler", ([]() { profiler::startListen(); }));
-	EASY_MAIN_THREAD;
-#endif
-
 	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_16, bIsEnabledVulkanValidationLayers));
 
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
@@ -287,7 +281,7 @@ void App::Start()
 
 		if (timer.ResultAccumulatedMs() > 1000)
 		{
-			SAILOR_PROFILE_BLOCK("Track FPS");
+			SAILOR_PROFILE_SCOPE("Track FPS");
 
 			const Stats& stats = renderer->GetStats();
 
@@ -304,13 +298,15 @@ void App::Start()
 
 			frameCounter = 0U;
 			timer.Clear();
-
-			SAILOR_PROFILE_END_BLOCK();
 		}
 
 		auto oldInputState = systemInputState;
 		systemInputState = GlobalInput::GetInputState();
 		systemInputState.TrackForChanges(oldInputState);
+
+#if defined(BUILD_WITH_TRACY_PROFILER)
+		FrameMark;
+#endif
 	}
 
 	s_pInstance->m_pMainWindow->SetActive(false);

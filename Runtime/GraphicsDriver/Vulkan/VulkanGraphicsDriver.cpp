@@ -134,12 +134,11 @@ bool VulkanGraphicsDriver::FixLostDevice(Win32::Window* pViewport)
 	{
 		auto fixLostDevice_RenderThread = [this, pViewport = pViewport]() mutable
 			{
-				SAILOR_PROFILE_BLOCK("Fix lost device");
+				SAILOR_PROFILE_SCOPE("Fix lost device");
 				m_vkInstance->WaitIdle();
 				m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
 				m_cachedMsaaRenderTargets.Clear();
 				m_temporaryRenderTargets.Clear();
-				SAILOR_PROFILE_END_BLOCK();
 			};
 
 		auto task = Tasks::CreateTask("Fix lost device", fixLostDevice_RenderThread, Tasks::EThreadType::Render);
@@ -213,6 +212,8 @@ bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
 	const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
 	const TVector<VulkanSemaphorePtr> vkWaitSemaphores = waitSemaphores.Select<VulkanSemaphorePtr>([](const auto& lhs) { return lhs->m_vulkan.m_semaphore; });
 
@@ -230,48 +231,43 @@ void VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList,
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	SAILOR_PROFILE_BLOCK("Check fence");
-
 	//if we have fence and that is null we should create device resource
 	if (fence && !fence->m_vulkan.m_fence)
 	{
+		SAILOR_PROFILE_SCOPE("Create fence");
 		fence->m_vulkan.m_fence = VulkanFencePtr::Make(m_vkInstance->GetMainDevice());
 	}
-
-	SAILOR_PROFILE_END_BLOCK();
 
 	TVector<VulkanSemaphorePtr> signal;
 	TVector<VulkanSemaphorePtr> wait;
 
-	SAILOR_PROFILE_BLOCK("Add semaphore dependencies");
-
-	if (signalSemaphore)
 	{
-		commandList->m_vulkan.m_commandBuffer->AddDependency(signalSemaphore->m_vulkan.m_semaphore);
-		signal.Add(signalSemaphore->m_vulkan.m_semaphore);
-	}
+		SAILOR_PROFILE_SCOPE("Add semaphore dependencies");
 
-	if (waitSemaphore)
-	{
-		commandList->m_vulkan.m_commandBuffer->AddDependency(waitSemaphore->m_vulkan.m_semaphore);
-		wait.Add(waitSemaphore->m_vulkan.m_semaphore);
-	}
+		if (signalSemaphore)
+		{
+			commandList->m_vulkan.m_commandBuffer->AddDependency(signalSemaphore->m_vulkan.m_semaphore);
+			signal.Add(signalSemaphore->m_vulkan.m_semaphore);
+		}
 
-	SAILOR_PROFILE_END_BLOCK();
+		if (waitSemaphore)
+		{
+			commandList->m_vulkan.m_commandBuffer->AddDependency(waitSemaphore->m_vulkan.m_semaphore);
+			wait.Add(waitSemaphore->m_vulkan.m_semaphore);
+		}
+	}
 
 	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence ? fence->m_vulkan.m_fence : nullptr, signal, wait);
 
 	if (fence)
 	{
-		SAILOR_PROFILE_BLOCK("Add fence dependencies");
+		SAILOR_PROFILE_SCOPE("Add fence dependencies");
 
 		// Fence should hold command list during execution
 		fence->AddDependency(commandList);
 
 		// We should remove fence after execution
 		TrackPendingCommandList_ThreadSafe(fence);
-
-		SAILOR_PROFILE_END_BLOCK();
 	}
 }
 
@@ -991,57 +987,60 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
 
-	SAILOR_PROFILE_BLOCK("Create and update shader bindings");
-	// TODO: move initialization to external code
 	auto shaderBindings = CreateShaderBindings();
-	for (uint32_t i = 0; i < bindings.Num(); i++)
+
 	{
-		auto& layoutBinding = bindings[i];
-		if (layoutBinding.m_set == 0 || layoutBinding.m_set == 1 || layoutBinding.m_set == 2)
+		SAILOR_PROFILE_SCOPE("Create and update shader bindings");
+
+		// TODO: move initialization to external code
+		for (uint32_t i = 0; i < bindings.Num(); i++)
 		{
-			// We skip 0 layout, it is frameData and would be binded in a different way
-			// Also we skip 1 layout, that is per instance data and would be binded in a different way
-			continue;
-		}
-		const auto& layoutBindings = descriptorSetLayouts[layoutBinding.m_set]->m_descriptorSetLayoutBindings;
+			auto& layoutBinding = bindings[i];
+			if (layoutBinding.m_set == 0 || layoutBinding.m_set == 1 || layoutBinding.m_set == 2)
+			{
+				// We skip 0 layout, it is frameData and would be binded in a different way
+				// Also we skip 1 layout, that is per instance data and would be binded in a different way
+				continue;
+			}
+			const auto& layoutBindings = descriptorSetLayouts[layoutBinding.m_set]->m_descriptorSetLayoutBindings;
 
-		auto it = layoutBindings.FindIf([&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_binding; });
-		if (it == -1)
-		{
-			continue;
-		}
+			auto it = layoutBindings.FindIf([&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_binding; });
+			if (it == -1)
+			{
+				continue;
+			}
 
-		auto& vkLayoutBinding = layoutBindings[it];
-		auto& binding = shaderBindings->GetOrAddShaderBinding(layoutBinding.m_name);
+			auto& vkLayoutBinding = layoutBindings[it];
+			auto& binding = shaderBindings->GetOrAddShaderBinding(layoutBinding.m_name);
 
-		if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
-		{
-			auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
-			binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
-				uniformAllocator->Allocate(layoutBinding.m_size, device->GetMinUboOffsetAlignment()),
-				uniformAllocator);
+			if (layoutBinding.m_type == RHI::EShaderBindingType::UniformBuffer)
+			{
+				auto& uniformAllocator = GetUniformBufferAllocator(layoutBinding.m_name);
+				binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+					uniformAllocator->Allocate(layoutBinding.m_size, device->GetMinUboOffsetAlignment()),
+					uniformAllocator);
 
-			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
-			binding->SetLayout(layoutBinding);
-		}
-		else if (layoutBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
-		{
-			auto& storageAllocator = GetMaterialSsboAllocator();
+				binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
+				binding->SetLayout(layoutBinding);
+			}
+			else if (layoutBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
+			{
+				auto& storageAllocator = GetMaterialSsboAllocator();
 
-			// We're storing different material's data with its different size in one SSBO, we need to allign properly
+				// We're storing different material's data with its different size in one SSBO, we need to allign properly
 
-			const uint32_t paddedSize = layoutBinding.m_paddedSize;
-			binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(storageAllocator->Allocate(paddedSize, paddedSize), storageAllocator);
-			binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
+				const uint32_t paddedSize = layoutBinding.m_paddedSize;
+				binding->m_vulkan.m_valueBinding = TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(storageAllocator->Allocate(paddedSize, paddedSize), storageAllocator);
+				binding->m_vulkan.m_descriptorSetLayout = vkLayoutBinding;
 
-			check(((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % paddedSize) == 0);
-			uint32_t instanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / paddedSize);
+				check(((*(binding->m_vulkan.m_valueBinding->Get())).m_offset % paddedSize) == 0);
+				uint32_t instanceIndex = (uint32_t)((*(binding->m_vulkan.m_valueBinding->Get())).m_offset / paddedSize);
 
-			binding->m_vulkan.m_storageInstanceIndex = instanceIndex;
-			binding->SetLayout(layoutBinding);
+				binding->m_vulkan.m_storageInstanceIndex = instanceIndex;
+				binding->SetLayout(layoutBinding);
+			}
 		}
 	}
-	SAILOR_PROFILE_END_BLOCK();
 
 	shaderBindings->SetLayoutShaderBindings(bindings);
 	UpdateDescriptorSet(shaderBindings);
@@ -2098,9 +2097,13 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	size_t m_memoryOffset;
 
 #if defined(SAILOR_VULKAN_COMBINE_STAGING_BUFFERS)
-	SAILOR_PROFILE_BLOCK("Allocate space in staging buffer allocator");
-	auto stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
-	SAILOR_PROFILE_END_BLOCK();
+
+	TMemoryPtr<VulkanBufferMemoryPtr> stagingBufferManagedPtr;
+	{
+		SAILOR_PROFILE_SCOPE("Allocate space in staging buffer allocator");
+		stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
+	}
+
 	m_bufferOffset = (*stagingBufferManagedPtr).m_offset;
 	m_memoryOffset = (**stagingBufferManagedPtr).m_offset;
 	stagingBuffer = (*stagingBufferManagedPtr).m_buffer;
@@ -2109,32 +2112,32 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 
 	auto& stagingMemoryAllocator = device->GetMemoryAllocator((VkMemoryPropertyFlags)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT), requirements);
 
-	SAILOR_PROFILE_BLOCK("Allocate staging memory");
-	auto data = stagingMemoryAllocator.Allocate(size, requirements.alignment);
-	SAILOR_PROFILE_END_BLOCK();
+	SAILOR_PROFILE_BLOCK("Allocate staging memory"_h);
+	auto pData = stagingMemoryAllocator.Allocate(size, requirements.alignment);
+	SAILOR_PROFILE_END_BLOCK("Allocate staging memory"_h);
 
-	SAILOR_PROFILE_BLOCK("Create staging buffer");
+	SAILOR_PROFILE_BLOCK("Create staging buffer"_h);
 	stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
-	VK_CHECK(stagingBuffer->Bind(data));
-	SAILOR_PROFILE_END_BLOCK();
+	VK_CHECK(stagingBuffer->Bind(pData));
+	SAILOR_PROFILE_END_BLOCK("Create staging buffer"_h);
 
 	m_bufferOffset = 0;
-	m_memoryOffset = (*data).m_offset;
+	m_memoryOffset = (*pData).m_offset;
 #else
 
-	SAILOR_PROFILE_BLOCK("Allocate staging device memory");
+	SAILOR_PROFILE_BLOCK("Allocate staging device memory"_h);
 	auto memReq = device->GetMemoryRequirements_StagingBuffer();
 	memReq.size = std::max(memReq.size, size);
 
 	auto deviceMemoryPtr = VulkanDeviceMemoryPtr::Make(device, memReq, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	SAILOR_PROFILE_END_BLOCK();
+	SAILOR_PROFILE_END_BLOCK("Allocate staging device memory"_h);
 
-	SAILOR_PROFILE_BLOCK("Create staging buffer");
+	SAILOR_PROFILE_BLOCK("Create staging buffer"_h);
 	stagingBuffer = VulkanBufferPtr::Make(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_CONCURRENT);
 	stagingBuffer->Compile();
 	VK_CHECK(stagingBuffer->Bind(deviceMemoryPtr, 0));
-	SAILOR_PROFILE_END_BLOCK();
+	SAILOR_PROFILE_END_BLOCK("Create staging buffer"_h);
 
 	m_bufferOffset = 0;
 	m_memoryOffset = 0;
@@ -2144,13 +2147,15 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	// stagingBuffer->GetBufferMemoryPtr()
 #endif
 
-	SAILOR_PROFILE_BLOCK("Copy data to staging buffer");
-	stagingBuffer->GetMemoryDevice()->Copy(m_memoryOffset, size, data);
-	SAILOR_PROFILE_END_BLOCK();
+	{
+		SAILOR_PROFILE_SCOPE("Copy data to staging buffer");
+		stagingBuffer->GetMemoryDevice()->Copy(m_memoryOffset, size, data);
+	}
 
-	SAILOR_PROFILE_BLOCK("Copy from staging to video ram command");
-	cmd->m_vulkan.m_commandBuffer->CopyBuffer(*stagingBufferManagedPtr, bufferPtr, size, 0, offset);
-	SAILOR_PROFILE_END_BLOCK();
+	{
+		SAILOR_PROFILE_SCOPE("Copy from staging to video ram command");
+		cmd->m_vulkan.m_commandBuffer->CopyBuffer(*stagingBufferManagedPtr, bufferPtr, size, 0, offset);
+	}
 }
 
 void VulkanGraphicsDriver::SetMaterialParameter(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& binding, const std::string& variable, const void* value, size_t size)
@@ -2351,131 +2356,133 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 			continue;
 		}
 
-		SAILOR_PROFILE_BLOCK("Track changes: remove extra bindings");
 		TVector<VulkanDescriptorPtr> descriptors;
 		TVector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
-
 		size_t numDescriptors = 0;
-		for (const auto& binding : shaderBindings[i]->GetShaderBindings())
+
 		{
-			if (binding.m_second->IsBind())
+			SAILOR_PROFILE_SCOPE("Track changes: remove extra bindings");
+			for (const auto& binding : shaderBindings[i]->GetShaderBindings())
 			{
-				if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
-					[&](const auto& lhs)
-					{
-						auto& layout = binding.m_second->GetLayout();
-						const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
-						return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
-					)
+				if (binding.m_second->IsBind())
 				{
-					// We don't add extra bindings 
-					continue;
-				}
-
-				if (binding.m_second->GetTextureBindings().Num() > 0)
-				{
-					uint32_t index = 0;
-					for (auto& texture : binding.m_second->GetTextureBindings())
-					{
-						if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
+					if (!materialLayout->m_descriptorSetLayoutBindings.ContainsIf(
+						[&](const auto& lhs)
 						{
-							auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index,
-								device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps(), texture->GetSamplerReduction()),
-								texture->m_vulkan.m_imageView);
-							descriptors.Add(descr);
-						}
-						else if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::StorageImage)
+							auto& layout = binding.m_second->GetLayout();
+							const bool bIsImage = (VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER == lhs.descriptorType) || (VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE == lhs.descriptorType);
+							return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
+						)
+					{
+						// We don't add extra bindings 
+						continue;
+					}
+
+					if (binding.m_second->GetTextureBindings().Num() > 0)
+					{
+						uint32_t index = 0;
+						for (auto& texture : binding.m_second->GetTextureBindings())
 						{
-							auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index, texture->m_vulkan.m_imageView);
-							descriptors.Add(descr);
+							if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::CombinedImageSampler)
+							{
+								auto descr = VulkanDescriptorCombinedImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index,
+									device->GetSamplers()->GetSampler(texture->GetFiltration(), texture->GetClamping(), texture->HasMipMaps(), texture->GetSamplerReduction()),
+									texture->m_vulkan.m_imageView);
+								descriptors.Add(descr);
+							}
+							else if (binding.m_second->GetLayout().m_type == RHI::EShaderBindingType::StorageImage)
+							{
+								auto descr = VulkanDescriptorStorageImagePtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding, index, texture->m_vulkan.m_imageView);
+								descriptors.Add(descr);
+							}
+							index++;
 						}
-						index++;
+						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
+
+						numDescriptors++;
 					}
-					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
-
-					numDescriptors++;
-				}
-				else if (binding.m_second->m_vulkan.m_valueBinding)
-				{
-					const auto type = binding.m_second->GetLayout().m_type;
-					const bool bBindWithoutOffset = (type == RHI::EShaderBindingType::StorageBuffer && !binding.m_second->m_vulkan.m_bBindSsboWithOffset);
-
-					auto& valueBinding = *(binding.m_second->m_vulkan.m_valueBinding->Get());
-					auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding,
-						0,
-						valueBinding.m_buffer,
-						bBindWithoutOffset ? 0 : valueBinding.m_offset,
-						valueBinding.m_size,
-						binding.m_second->GetLayout().m_type);
-
-					descriptors.Add(descr);
-					descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
-
-					numDescriptors++;
-				}
-			}
-		}
-
-		SAILOR_PROFILE_END_BLOCK();
-
-		SAILOR_PROFILE_BLOCK("Track changes: add missing combined sampler and storage images");
-
-		TVector<RHI::RHIShaderBindingPtr> bindings = shaderBindings[i]->GetShaderBindings().GetValues();
-
-		if (materialLayout->m_descriptorSetLayoutBindings.Num() > numDescriptors)
-		{
-			for (uint32_t j = 0; j < materialLayout->m_descriptorSetLayoutBindings.Num(); j++)
-			{
-				const auto& descrSetLayoutBinding = materialLayout->m_descriptorSetLayoutBindings[j];
-
-				if (!(descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler ||
-					descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage))
-				{
-					continue;
-				}
-
-				if (!bindings.ContainsIf([&](const auto& lhs)
+					else if (binding.m_second->m_vulkan.m_valueBinding)
 					{
-						auto& layout = lhs->GetLayout();
-						return descrSetLayoutBinding.binding == layout.m_binding;
-					}))
-				{
-					// Check that bound map is Cubemap
-					size_t index = layout->GetShaderLayout().FindIf([&](const auto& lhs) {return i == lhs.m_set && descrSetLayoutBinding.binding == lhs.m_binding; });
-					const bool bIsCubemap = index != -1 ? layout->GetShaderLayout()[index].IsCubemap() : false;
+						const auto type = binding.m_second->GetLayout().m_type;
+						const bool bBindWithoutOffset = (type == RHI::EShaderBindingType::StorageBuffer && !binding.m_second->m_vulkan.m_bBindSsboWithOffset);
 
-					if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler)
-					{
-						auto descr = VulkanDescriptorCombinedImagePtr::Make(descrSetLayoutBinding.binding, 0,
-							device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::ESamplerReductionMode::Average),
-							bIsCubemap ? m_vkDefaultCubemap : m_vkDefaultTexture);
+						auto& valueBinding = *(binding.m_second->m_vulkan.m_valueBinding->Get());
+						auto descr = VulkanDescriptorBufferPtr::Make(binding.m_second->m_vulkan.m_descriptorSetLayout.binding,
+							0,
+							valueBinding.m_buffer,
+							bBindWithoutOffset ? 0 : valueBinding.m_offset,
+							valueBinding.m_size,
+							binding.m_second->GetLayout().m_type);
+
 						descriptors.Add(descr);
-					}
-					else if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage)
-					{
-						auto descr = VulkanDescriptorStorageImagePtr::Make(descrSetLayoutBinding.binding, 0, bIsCubemap ? m_vkDefaultCubemap : m_vkDefaultTexture);
-						descriptors.Add(descr);
-					}
+						descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 
-					descriptionSetLayouts.Add(descrSetLayoutBinding);
-
-					if (materialLayout->m_descriptorSetLayoutBindings.Num() == descriptors.Num())
-					{
-						break;
+						numDescriptors++;
 					}
 				}
 			}
 		}
 
-		SAILOR_PROFILE_END_BLOCK();
+		{
+			SAILOR_PROFILE_SCOPE("Track changes: add missing combined sampler and storage images");
 
-		SAILOR_PROFILE_BLOCK("Create new descriptor sets");
-		auto descriptorSet = VulkanDescriptorSetPtr::Make(device,
-			device->GetCurrentThreadContext().m_descriptorPool,
-			VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
-			descriptors);
-		SAILOR_PROFILE_END_BLOCK();
+			TVector<RHI::RHIShaderBindingPtr> bindings = shaderBindings[i]->GetShaderBindings().GetValues();
 
+			if (materialLayout->m_descriptorSetLayoutBindings.Num() > numDescriptors)
+			{
+				for (uint32_t j = 0; j < materialLayout->m_descriptorSetLayoutBindings.Num(); j++)
+				{
+					const auto& descrSetLayoutBinding = materialLayout->m_descriptorSetLayoutBindings[j];
+
+					if (!(descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler ||
+						descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage))
+					{
+						continue;
+					}
+
+					if (!bindings.ContainsIf([&](const auto& lhs)
+						{
+							auto& layout = lhs->GetLayout();
+							return descrSetLayoutBinding.binding == layout.m_binding;
+						}))
+					{
+						// Check that bound map is Cubemap
+						size_t index = layout->GetShaderLayout().FindIf([&](const auto& lhs) {return i == lhs.m_set && descrSetLayoutBinding.binding == lhs.m_binding; });
+						const bool bIsCubemap = index != -1 ? layout->GetShaderLayout()[index].IsCubemap() : false;
+
+						if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::CombinedImageSampler)
+						{
+							auto descr = VulkanDescriptorCombinedImagePtr::Make(descrSetLayoutBinding.binding, 0,
+								device->GetSamplers()->GetSampler(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::ESamplerReductionMode::Average),
+								bIsCubemap ? m_vkDefaultCubemap : m_vkDefaultTexture);
+							descriptors.Add(descr);
+						}
+						else if (descrSetLayoutBinding.descriptorType == (VkDescriptorType)RHI::EShaderBindingType::StorageImage)
+						{
+							auto descr = VulkanDescriptorStorageImagePtr::Make(descrSetLayoutBinding.binding, 0, bIsCubemap ? m_vkDefaultCubemap : m_vkDefaultTexture);
+							descriptors.Add(descr);
+						}
+
+						descriptionSetLayouts.Add(descrSetLayoutBinding);
+
+						if (materialLayout->m_descriptorSetLayoutBindings.Num() == descriptors.Num())
+						{
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		VulkanDescriptorSetPtr descriptorSet;
+		{
+			SAILOR_PROFILE_SCOPE("Create new descriptor sets");
+
+			descriptorSet = VulkanDescriptorSetPtr::Make(device,
+				device->GetCurrentThreadContext().m_descriptorPool,
+				VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
+				descriptors);
+		}
 #ifndef _SHIPPING
 		if (VkDescriptorSet handleSet = *descriptorSet)
 		{
@@ -2483,13 +2490,14 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 		}
 #endif
 
-		SAILOR_PROFILE_BLOCK("Compile new descriptor sets");
-		descriptorSet->Compile();
-		descriptorSets.Add(descriptorSet);
+		{
+			SAILOR_PROFILE_SCOPE("Compile new descriptor sets");
+			descriptorSet->Compile();
+			descriptorSets.Add(descriptorSet);
 
-		cachedDescriptorSet = descriptorSets[i];
-		m_cachedDescriptorSets.Unlock(cache);
-		SAILOR_PROFILE_END_BLOCK();
+			cachedDescriptorSet = descriptorSets[i];
+			m_cachedDescriptorSets.Unlock(cache);
+		}
 	}
 
 	return descriptorSets;

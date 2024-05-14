@@ -6,6 +6,7 @@
 #include "glm/glm/glm.hpp"
 #include "Math/Math.h"
 #include "Math/Bounds.h"
+#include "Core/StringHash.h"
 
 using namespace Sailor;
 using namespace Sailor::Math;
@@ -294,41 +295,45 @@ void BVH::BuildBVH(const TVector<Math::Triangle>& tris)
 	UpdateNodeBounds(m_rootNodeIdx, tris);
 	Subdivide(m_rootNodeIdx, tris);
 
-	SAILOR_PROFILE_BLOCK("Copy/Locality triangle data");
-	// Cache locality
-	m_triangles.Reserve(tris.Num());
-	m_triIdxMapping.AddDefault(tris.Num());
-
-	// TODO: Parallelize
-	for (uint32_t i = 0; i < m_nodes.Num(); i++)
 	{
-		if (m_nodes[i].IsLeaf())
+		SAILOR_PROFILE_SCOPE("Copy/Locality triangle data");
+		// Cache locality
+		m_triangles.Reserve(tris.Num());
+		m_triIdxMapping.AddDefault(tris.Num());
+
+		// TODO: Parallelize
+		for (uint32_t i = 0; i < m_nodes.Num(); i++)
 		{
-			const uint32_t triIndex = m_nodes[i].m_leftFirst;
-			m_nodes[i].m_leftFirst = (int32_t)m_triangles.Num();
-
-			SAILOR_PROFILE_BLOCK("Sort Triangles by area");
-			TVector<uint32_t> sorted(m_nodes[i].m_triCount);
-			for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
+			if (m_nodes[i].IsLeaf())
 			{
-				sorted[j] = m_triIdx[triIndex + j];
-			}
+				const uint32_t triIndex = m_nodes[i].m_leftFirst;
+				m_nodes[i].m_leftFirst = (int32_t)m_triangles.Num();
 
-			sorted.Sort([&](const auto& lhs, const auto& rhs)
+				TVector<uint32_t> sorted(m_nodes[i].m_triCount);
+
 				{
-					return tris[lhs].SquareArea() > tris[rhs].SquareArea();
-				});
-			SAILOR_PROFILE_END_BLOCK();
+					SAILOR_PROFILE_SCOPE("Sort Triangles by area");
+					for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
+					{
+						sorted[j] = m_triIdx[triIndex + j];
+					}
 
-			SAILOR_PROFILE_BLOCK("Copy data");
-			for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
-			{
-				const uint32_t triId = sorted[j];// m_triIdx[triIndex + j];
-				m_triIdxMapping[m_triangles.Num()] = triId;
-				m_triangles.Add(tris[triId]);
+					sorted.Sort([&](const auto& lhs, const auto& rhs)
+						{
+							return tris[lhs].SquareArea() > tris[rhs].SquareArea();
+						});
+				}
+
+				{
+					SAILOR_PROFILE_SCOPE("Copy data");
+					for (uint32_t j = 0; j < m_nodes[i].m_triCount; j++)
+					{
+						const uint32_t triId = sorted[j];// m_triIdx[triIndex + j];
+						m_triIdxMapping[m_triangles.Num()] = triId;
+						m_triangles.Add(tris[triId]);
+					}
+				}
 			}
-			SAILOR_PROFILE_END_BLOCK();
 		}
 	}
-	SAILOR_PROFILE_END_BLOCK();
 }

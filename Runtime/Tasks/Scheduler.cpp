@@ -7,6 +7,7 @@
 #include <set>
 #include <string>
 #include "Core/Utils.h"
+#include "Core/StringHash.h"
 
 using namespace std;
 using namespace Sailor;
@@ -71,16 +72,17 @@ bool WorkerThread::TryFetchTask(ITaskPtr& pOutTask)
 
 void WorkerThread::ProcessTask(ITaskPtr& task)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	if (task)
 	{
-		SAILOR_PROFILE_BLOCK(task->GetName());
-		m_bIsBusy = true;
+		SAILOR_PROFILE_SCOPE("Task Execution");
+		SAILOR_PROFILE_TEXT(task->GetName().c_str());
 
+		m_bIsBusy = true;
 		task->Execute();
 		task.Clear();
-
 		m_bIsBusy = false;
-		SAILOR_PROFILE_END_BLOCK();
 	}
 }
 
@@ -94,9 +96,7 @@ void WorkerThread::Process()
 {
 	Sailor::Utils::SetThreadName(m_threadName);
 
-#if defined(BUILD_WITH_EASY_PROFILER)
-	EASY_THREAD_SCOPE(m_threadName.c_str());
-#endif
+	SAILOR_PROFILE_THREAD_NAME(m_threadName.c_str());
 
 	m_threadId = GetCurrentThreadId();
 
@@ -219,12 +219,11 @@ void Scheduler::ProcessTasksOnMainThread()
 	{
 		if (pCurrentTask)
 		{
-			SAILOR_PROFILE_BLOCK(pCurrentTask->GetName());
+			SAILOR_PROFILE_SCOPE("Task Execution");
+			SAILOR_PROFILE_TEXT(pCurrentTask->GetName().c_str());
 
 			pCurrentTask->Execute();
 			pCurrentTask.Clear();
-
-			SAILOR_PROFILE_END_BLOCK();
 		}
 	}
 }
