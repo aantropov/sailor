@@ -44,6 +44,8 @@ FrameGraphAssetPtr FrameGraphImporter::LoadFrameGraphAsset(FileId uid)
 
 	if (FrameGraphAssetInfoPtr assetInfo = dynamic_cast<FrameGraphAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 		const std::string& filepath = assetInfo->GetAssetFilepath();
 
 		std::string text;

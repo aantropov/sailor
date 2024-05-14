@@ -304,9 +304,7 @@ void App::Start()
 		systemInputState = GlobalInput::GetInputState();
 		systemInputState.TrackForChanges(oldInputState);
 
-#if defined(BUILD_WITH_TRACY_PROFILER)
-		FrameMark;
-#endif
+		SAILOR_PROFILE_END_FRAME();
 	}
 
 	s_pInstance->m_pMainWindow->SetActive(false);

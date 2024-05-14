@@ -109,6 +109,9 @@ WorldPrefabPtr WorldPrefabImporter::Create()
 
 void WorldPrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
+	SAILOR_PROFILE_FUNCTION();
+	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 	if (WorldPrefabAssetInfoPtr modelAssetInfo = dynamic_cast<WorldPrefabAssetInfoPtr>(assetInfo))
 	{
 	}
@@ -148,6 +151,8 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 	// There is no promise, we need to load WorldPrefab
 	if (WorldPrefabAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<WorldPrefabAssetInfoPtr>(uid))
 	{
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 		WorldPrefabPtr pWorldPrefab = WorldPrefabPtr::Make(m_allocator, uid);
 
 		struct Data {};

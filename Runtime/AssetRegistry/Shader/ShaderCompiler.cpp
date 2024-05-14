@@ -451,6 +451,9 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 
 void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
+	SAILOR_PROFILE_FUNCTION();
+	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 	if (bWasExpired)
 	{
 		const std::string extension = Utils::GetFileExtension(assetInfo->GetAssetFilepath());
@@ -763,6 +766,8 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 
 		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
 		{
+			SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 			auto pShader = ShaderSetPtr::Make(m_allocator, uid, defines);
 
 			newPromise = Tasks::CreateTaskWithResult<ShaderSetPtr>("Load shader",

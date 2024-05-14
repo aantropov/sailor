@@ -187,6 +187,8 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 	// There is no promise, we need to load prefab
 	if (PrefabAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<PrefabAssetInfoPtr>(uid))
 	{
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 		PrefabPtr prefab = PrefabPtr::Make(m_allocator, uid);
 
 		struct Data {};

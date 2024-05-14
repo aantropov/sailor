@@ -30,22 +30,28 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 typedef unsigned long DWORD;
 #endif
 
-#ifdef SAILOR_PROFILING_ENABLE
-#define SAILOR_PROFILE_FUNCTION() ZoneScoped;
+#if defined(SAILOR_PROFILING_ENABLE) && defined(BUILD_WITH_TRACY_PROFILER)
+#define SAILOR_PROFILE_FUNCTION() ZoneScoped
 
-//ZoneTransientN( ___tracy_scoped_zone, Msg, true )
 #define SAILOR_PROFILE_SCOPE(Msg) ZoneScopedN(Msg)
+/* Should we use instead? ZoneTransientN(___tracy_scoped_zone, Msg, true) */
 
 #define SAILOR_PROFILE_TEXT(Msg) ZoneText(Msg, strlen(Msg))
-
 #define SAILOR_PROFILE_BLOCK(HashMsg) //SAILOR_PROFILE_BLOCK_STR(HashMsg.ToString().c_str())
 #define SAILOR_PROFILE_END_BLOCK(HashMsg) //SAILOR_PROFILE_END_BLOCK_STR(HashMsg.ToString().c_str())
-
+#define SAILOR_PROFILE_END_FRAME() FrameMark
 #define SAILOR_PROFILE_THREAD_NAME(ThreadName) tracy::SetThreadName(ThreadName)
+#define SAILOR_PROFILE_ALLOC(ptr, size) TracyAlloc(ptr, size)
+#define SAILOR_PROFILE_FREE(ptr) TracyFree(ptr)
+
 #else 
 #define SAILOR_PROFILE_FUNCTION()
-#define SAILOR_PROFILE_BLOCK(Msg, ...)
-#define SAILOR_PROFILE_END_BLOCK()
+#define SAILOR_PROFILE_SCOPE(Msg)
+#define SAILOR_PROFILE_TEXT(Msg)
+#define SAILOR_PROFILE_BLOCK(HashMsg)
+#define SAILOR_PROFILE_END_BLOCK(HashMsg)
+#define SAILOR_PROFILE_END_FRAME()
+#define SAILOR_PROFILE_THREAD_NAME(ThreadName)
 #endif
 
 #define SAILOR_EDITOR

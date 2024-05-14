@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <cassert>
 #include <algorithm>
-
+#include "Core/Defines.h"
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -30,6 +30,8 @@ bool PoolAllocator::RequestPage(Page& page, size_t size, size_t pageIndex) const
 	page.m_first = 0;
 	page.m_bIsInFreeList = true;
 
+	SAILOR_PROFILE_ALLOC(page.m_pData, size);
+
 	if (!page.m_pData)
 	{
 		return false;
@@ -50,6 +52,8 @@ bool PoolAllocator::RequestPage(Page& page, size_t size, size_t pageIndex) const
 
 void Page::Clear()
 {
+	SAILOR_PROFILE_FREE(m_pData);
+
 	std::free(m_pData);
 	m_pData = nullptr;
 	m_totalSize = m_occupiedSpace = 0;
@@ -490,6 +494,8 @@ bool SmallPoolAllocator::RequestPage(SmallPage& page, uint8_t blockSize, uint16_
 	page = SmallPage(blockSize, pageIndex);
 	if (page.m_pData = std::malloc(page.m_size))
 	{
+		SAILOR_PROFILE_ALLOC(page.m_pData, page.m_size);
+
 		return true;
 	}
 
@@ -540,6 +546,8 @@ void SmallPoolAllocator::SmallPage::Free(void* ptr)
 
 void SmallPoolAllocator::SmallPage::Clear()
 {
+	SAILOR_PROFILE_FREE(m_pData);
+
 	std::free(m_pData);
 	m_pData = nullptr;
 }

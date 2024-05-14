@@ -296,6 +296,9 @@ ModelImporter::~ModelImporter()
 
 void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
+	SAILOR_PROFILE_FUNCTION();
+	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
 		if (modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
@@ -371,6 +374,8 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 	// There is no promise, we need to load model
 	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 		ModelPtr model = ModelPtr::Make(m_allocator, uid);
 
 		// The way to drop qualifiers inside lambda

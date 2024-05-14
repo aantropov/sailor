@@ -378,6 +378,9 @@ void MaterialImporter::OnImportAsset(AssetInfoPtr assetInfo)
 
 void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
+	SAILOR_PROFILE_FUNCTION();
+	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 	MaterialPtr material = GetLoadedMaterial(assetInfo->GetFileId());
 	if (bWasExpired && material)
 	{
@@ -475,6 +478,8 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(FileId uid)
 
 	if (MaterialAssetInfoPtr materialAssetInfo = dynamic_cast<MaterialAssetInfoPtr>(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)))
 	{
+		SAILOR_PROFILE_TEXT(materialAssetInfo->GetAssetFilepath().c_str());
+
 		const std::string& filepath = materialAssetInfo->GetAssetFilepath();
 
 		std::string materialYaml;

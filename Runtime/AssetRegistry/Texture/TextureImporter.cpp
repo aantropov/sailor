@@ -83,6 +83,9 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(FileId uid)
 
 void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpired)
 {
+	SAILOR_PROFILE_FUNCTION();
+	SAILOR_PROFILE_TEXT(inAssetInfo->GetAssetFilepath().c_str());
+
 	TexturePtr pTexture = GetLoadedTexture(inAssetInfo->GetFileId());
 	if (bWasExpired && pTexture)
 	{
@@ -195,6 +198,8 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
+		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+
 		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
 
 		struct Data

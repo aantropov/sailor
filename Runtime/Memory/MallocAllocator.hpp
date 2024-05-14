@@ -28,7 +28,9 @@ namespace Sailor::Memory
 		// Used for smart ptrs
 		static void* allocate(size_t size, size_t alignment = 8)
 		{
-			return std::malloc(size);
+			auto ptr = std::malloc(size);
+			SAILOR_PROFILE_ALLOC(ptr, size);
+			return ptr;
 		}
 
 		static bool reallocate(void* ptr, size_t size, size_t alignment = 8)
@@ -38,6 +40,7 @@ namespace Sailor::Memory
 
 		static void free(void* ptr, size_t size = 0)
 		{
+			SAILOR_PROFILE_FREE(ptr);
 			std::free(ptr);
 		}
 	};
