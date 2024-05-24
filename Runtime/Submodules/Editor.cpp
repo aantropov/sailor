@@ -5,6 +5,9 @@
 
 using namespace Sailor;
 
-Editor::Editor()
+Editor::Editor(HWND editorHwnd, uint32_t editorPort) :
+	m_editorHwnd(editorHwnd),
+	m_editorPort(editorPort)
 {
+
 }

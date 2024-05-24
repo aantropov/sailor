@@ -7,9 +7,11 @@ namespace Sailor
 	{
 	public:
 
-		Editor();
+		Editor(HWND editorHwnd, uint32_t editorPort);
 
 	protected:
 
+		uint32_t m_editorPort;
+		HWND m_editorHwnd;
 	};
 }

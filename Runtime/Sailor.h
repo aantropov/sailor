@@ -26,7 +26,7 @@ namespace Sailor
 
 	class App
 	{
-		static constexpr size_t MaxSubmodules = 64u;
+		static constexpr size_t MaxSubmodules = 128u;
 		static std::string s_workspace;
 
 	public:

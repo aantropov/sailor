@@ -28,6 +28,7 @@
 #include "timeApi.h"
 #include "Submodules/ImGuiApi.h"
 #include "Raytracing/PathTracer.h"
+#include "Submodules/Editor.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -94,6 +95,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		}
 	}
 
+	s_pInstance = new App();
+
 	Win32::ConsoleWindow::Initialize(false);
 
 	if (params.m_bRunConsole)
@@ -101,11 +104,14 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
 	}
 
-	s_pInstance = new App();
-
 	if (!params.m_workspace.empty())
 	{
 		s_pInstance->s_workspace = params.m_workspace;
+	}
+
+	if (params.m_bIsEditor)
+	{
+		s_pInstance->AddSubmodule(TSubmodule<Editor>::Make(params.m_editorHwnd, params.m_editorPort));
 	}
 
 #if defined(SAILOR_BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
@@ -120,7 +126,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	s_pInstance->m_pMainWindow = TUniquePtr<Win32::Window>::Make();
 
-	std::string className = "Sailor Engine";
+	std::string className = "SailorEngine";
 	if (params.m_editorHwnd != 0)
 	{
 		className = std::format("SailorEditor PID{}", ::GetCurrentThreadId());
@@ -367,6 +373,15 @@ void App::Shutdown()
 	RemoveSubmodule<Tasks::Scheduler>();
 
 	Win32::ConsoleWindow::Shutdown();
+
+	// Remove all existing submodules
+	for (auto& pSubmodule : s_pInstance->m_submodules)
+	{
+		if (pSubmodule)
+		{
+			pSubmodule.Clear();
+		}
+	}
 
 	delete s_pInstance;
 	s_pInstance = nullptr;
