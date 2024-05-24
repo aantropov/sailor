@@ -2,11 +2,16 @@
 #include <string>
 #include <iostream>
 #include <windows.h>
+#include "Submodules/Editor.h"
 
 #define SAILOR_LOG(Format, ...) \
 { \
 	char buffer[4096]; \
 	sprintf_s(buffer, Format, __VA_ARGS__); \
+	if(auto editor = App::GetSubmodule<Editor>()) \
+	{ \
+		editor->PushMessage(std::string(buffer)); \
+	} \
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>(); \
 	if (scheduler && !scheduler->IsMainThread()) \
 	{ \
@@ -34,6 +39,10 @@
 { \
 	char buffer[4096]; \
 	sprintf_s(buffer, Format, __VA_ARGS__); \
+	if(auto editor = App::GetSubmodule<Editor>()) \
+	{ \
+		editor->PushMessage(std::string(buffer)); \
+	} \
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>(); \
 	if (scheduler && !scheduler->IsMainThread()) \
 	{ \
