@@ -17,6 +17,8 @@ namespace Sailor
 		bool m_bWaitForDebugger = false;
 		bool m_bRunConsole = true;
 		bool m_bIsEditor = false;
+		bool m_bEnableRenderValidationLayers = true;
+
 		uint32_t m_editorPort = 32800;
 		HWND m_editorHwnd{};
 		std::string m_workspace;

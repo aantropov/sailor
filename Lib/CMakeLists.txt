@@ -26,12 +26,9 @@ target_link_libraries(SailorLib yaml-cpp::yaml-cpp assimp::assimp nlohmann_json:
 
 target_compile_definitions(SailorLib PUBLIC NOMINMAX)
 
-if(NOT ${CMAKE_BUILD_TYPE} MATCHES Release)
-    target_compile_definitions(SailorLib PUBLIC SAILOR_VULKAN_ENABLE_VALIDATION_LAYER)    
-else()
+if(${CMAKE_BUILD_TYPE} MATCHES Release)
     target_compile_definitions(SailorLib PUBLIC _SHIPPING)
 endif()
-
 if(MSVC)
     target_compile_options(SailorLib PUBLIC /permissive-)
     target_compile_options(SailorLib PUBLIC $<$<NOT:$<CONFIG:DEBUG>>:/Oi>)
@@ -48,10 +45,6 @@ if(WIN32)
     target_compile_definitions(SailorLib PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(SailorLib Winmm.lib)
 endif()
-
-if(SAILOR_CONSOLE)
-    target_compile_definitions(SailorLib PUBLIC SAILOR_WITH_CONSOLE)
-endif(SAILOR_CONSOLE)
 
 if(SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT)
     target_compile_definitions(SailorLib PUBLIC SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT)

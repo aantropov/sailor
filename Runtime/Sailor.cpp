@@ -96,12 +96,10 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	Win32::ConsoleWindow::Initialize(false);
 
-#ifdef SAILOR_WITH_CONSOLE
 	if (params.m_bRunConsole)
 	{
 		Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
 	}
-#endif
 
 	s_pInstance = new App();
 
@@ -114,6 +112,12 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
 #endif
 
+	bool bEnableRenderValidationLayers = params.m_bEnableRenderValidationLayers;
+#if defined(_SHIPPING)
+	// We don't enable Debug validation layers for Shipping (Release) configuration
+	bEnableRenderValidationLayers = false;
+#endif
+
 	s_pInstance->m_pMainWindow = TUniquePtr<Win32::Window>::Make();
 
 	std::string className = "Sailor Engine";
@@ -124,14 +128,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	s_pInstance->m_pMainWindow->Create(className.c_str(), className.c_str(), 1024, 768, false, false, params.m_editorHwnd);
 
-#ifdef SAILOR_VULKAN_ENABLE_VALIDATION_LAYER
-	const bool bIsEnabledVulkanValidationLayers = true;
-#else
-	const bool bIsEnabledVulkanValidationLayers = false;
-#endif
-
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
-	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_16, bIsEnabledVulkanValidationLayers));
+	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_16, bEnableRenderValidationLayers));
 
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
@@ -166,14 +164,16 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 void App::Start()
 {
-	s_pInstance->m_pMainWindow->SetActive(true);
-	s_pInstance->m_pMainWindow->SetRunning(true);
+	auto& pMainWindow = s_pInstance->m_pMainWindow;
+
+	pMainWindow->SetActive(true);
+	pMainWindow->SetRunning(true);
 
 	uint32_t frameCounter = 0U;
-	Utils::Timer timer;
-	Utils::Timer trackEditor;
-	FrameState currentFrame;
-	FrameState lastFrame;
+	Utils::Timer timer{};
+	Utils::Timer trackEditor{};
+	FrameState currentFrame{};
+	FrameState lastFrame{};
 	bool bCanCreateNewFrame = true;
 	bool bFirstFrame = true;
 
@@ -198,7 +198,7 @@ void App::Start()
 	auto scheduler = GetSubmodule<Tasks::Scheduler>();
 	auto renderer = GetSubmodule<Renderer>();
 
-	while (s_pInstance->m_pMainWindow->IsRunning())
+	while (pMainWindow->IsRunning())
 	{
 		timer.Start();
 		trackEditor.Start();
@@ -223,7 +223,7 @@ void App::Start()
 
 		scheduler->ProcessTasksOnMainThread();
 
-		if (systemInputState.IsKeyPressed(VK_ESCAPE) || !s_pInstance->m_pMainWindow->IsParentWindowValid())
+		if (systemInputState.IsKeyPressed(VK_ESCAPE) || !pMainWindow->IsParentWindowValid())
 		{
 			Stop();
 			break;
@@ -249,7 +249,7 @@ void App::Start()
 		if (bCanCreateNewFrame)
 		{
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, s_pInstance->m_pMainWindow->GetCenterPointClient(), bFirstFrame ? nullptr : &lastFrame);
+			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, pMainWindow->GetCenterPointClient(), bFirstFrame ? nullptr : &lastFrame);
 			App::GetSubmodule<EngineLoop>()->ProcessCpuFrame(currentFrame);
 			bFirstFrame = false;
 		}
@@ -275,7 +275,7 @@ void App::Start()
 
 		if (trackEditor.ResultAccumulatedMs() > 1)
 		{
-			s_pInstance->m_pMainWindow->TrackParentWindowPosition();
+			pMainWindow->TrackParentWindowPosition();
 			trackEditor.Clear();
 		}
 
@@ -294,7 +294,7 @@ void App::Start()
 				stats.m_numSubmittedCommandBuffers
 			);
 
-			s_pInstance->m_pMainWindow->SetWindowTitle(Buff);
+			pMainWindow->SetWindowTitle(Buff);
 
 			frameCounter = 0U;
 			timer.Clear();
@@ -307,8 +307,8 @@ void App::Start()
 		SAILOR_PROFILE_END_FRAME();
 	}
 
-	s_pInstance->m_pMainWindow->SetActive(false);
-	s_pInstance->m_pMainWindow->SetRunning(false);
+	pMainWindow->SetActive(false);
+	pMainWindow->SetRunning(false);
 }
 
 void App::Stop()

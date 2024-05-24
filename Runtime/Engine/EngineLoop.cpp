@@ -91,7 +91,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	totalFramesCount++;
 
-	const float TargetCpuTime = (1000.0f / MaxCpuFrames);
+	const float TargetCpuTime = (1000.0f / 400);
 
 	if (timer.ResultMs() < TargetCpuTime)
 	{

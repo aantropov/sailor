@@ -4,7 +4,6 @@ project(Sailor VERSION 0.1)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-option(SAILOR_CONSOLE "Enable console" ON)
 option(SAILOR_BUILD_WITH_TRACY_PROFILER "Build with tracy profile" ON)
 option(SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT "Use LockFreeHeapAllocator as default" ON)
 option(SAILOR_MEMORY_HEAP_DISABLE_FREE "Custom allocator disable free memory" OFF)
