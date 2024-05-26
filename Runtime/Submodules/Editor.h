@@ -13,11 +13,11 @@ namespace Sailor
 
 		void PushMessage(const std::string& msg);
 		bool PullMessage(std::string& msg);
-		__forceinline size_t NumMessages() const { return m_messages.unsafe_size(); }
+		__forceinline size_t NumMessages() const { return m_messagesQueue.unsafe_size(); }
 
 	protected:
 
-		concurrency::concurrent_queue<std::string> m_messages;
+		concurrency::concurrent_queue<std::string> m_messagesQueue;
 
 		uint32_t m_editorPort;
 		HWND m_editorHwnd;

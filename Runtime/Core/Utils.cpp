@@ -486,16 +486,23 @@ std::string Utils::GetArgValue(const char** args, int32_t& i, int32_t num)
 	return value;
 }
 
-RECT Utils::GetWindowSizeAndPosition(HWND hwnd)
+WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
 {
-	RECT rect{};
-	if (GetWindowRect(hwnd, &rect))
+	WindowSizeAndPosition result = {};
+
+	if (GetWindowRect(hwnd, &result.m_windowRect))
 	{
-		int width = rect.right - rect.left;
-		int height = rect.bottom - rect.top;
-		int xPos = rect.left;
-		int yPos = rect.top;
+		result.m_width = result.m_windowRect.right - result.m_windowRect.left;
+		result.m_height = result.m_windowRect.bottom - result.m_windowRect.top;
+		result.m_xPos = result.m_windowRect.left;
+		result.m_yPos = result.m_windowRect.top;
 	}
 
-	return rect;
+	if (GetClientRect(hwnd, &result.m_clientRect))
+	{
+		result.m_clientWidth = result.m_clientRect.right - result.m_clientRect.left;
+		result.m_clientHeight = result.m_clientRect.bottom - result.m_clientRect.top;
+	}
+
+	return result;
 }

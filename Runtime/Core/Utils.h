@@ -9,6 +9,18 @@ namespace Sailor
 {
 	namespace Utils
 	{
+		struct WindowSizeAndPosition
+		{
+			RECT m_windowRect; // Includes title bar, borders, etc.
+			RECT m_clientRect; // Only the client area
+			int32_t m_width;
+			int32_t m_height;
+			int32_t m_clientWidth;
+			int32_t m_clientHeight;
+			int32_t m_xPos;
+			int32_t m_yPos;
+		};
+
 		SAILOR_API std::string wchar_to_UTF8(const wchar_t* in);
 		SAILOR_API std::wstring UTF8_to_wchar(const char* in);
 
@@ -47,7 +59,7 @@ namespace Sailor
 		SAILOR_API int64_t GetCurrentTimeMicro();
 		SAILOR_API int64_t GetCurrentTimeNano();
 
-		SAILOR_API RECT GetWindowSizeAndPosition(HWND hwnd);
+		SAILOR_API WindowSizeAndPosition GetWindowSizeAndPosition(HWND hwnd);
 
 		std::string GetArgValue(const char** args, int32_t& i, int32_t num);
 

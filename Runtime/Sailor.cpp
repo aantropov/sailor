@@ -65,6 +65,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		{
 			params.m_workspace = Utils::GetArgValue(args, i, num);
 		}
+		else if (arg == "--noconsole")
+		{
+			params.m_bRunConsole = false;
+		}
 	}
 
 	return params;
@@ -166,7 +170,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	Reflection::ExportReflectionData();
 
 	SAILOR_LOG("Sailor Engine initialized");
-}
+	}
 
 void App::Start()
 {

@@ -39,23 +39,25 @@ void Window::TrackParentWindowPosition()
 		return;
 	}
 
-	RECT rect = Utils::GetWindowSizeAndPosition(m_parentHwnd);
+	Utils::WindowSizeAndPosition wnd = Utils::GetWindowSizeAndPosition(m_parentHwnd);
 
-	if (rect.left != rect.right && rect.bottom != rect.top)
+	if (wnd.m_windowRect.left != wnd.m_windowRect.right && wnd.m_windowRect.bottom != wnd.m_windowRect.top)
 	{
 		// TODO: Wait for networking integration
-		rect.top += 79;
-		rect.left += 608;
-		rect.right -= 8;
-		rect.bottom -= 238;
+		int32_t gapWidth = 0; // (wnd.m_width - wnd.m_clientWidth) / 2 + 1;
+		int32_t gapHeight = 0; // (wnd.m_height - wnd.m_clientHeight) / 2 + 1;
 
-		int32_t newWidth = rect.right - rect.left;
-		int32_t newHeight = rect.bottom - rect.top;
+		int32_t newX = wnd.m_xPos + gapWidth + 916;
+		int32_t newY = wnd.m_yPos + gapHeight + 128;
+
+		int32_t newWidth = wnd.m_clientWidth - gapWidth * 2 - 906;
+		int32_t newHeight = wnd.m_clientHeight - gapHeight * 2 - 494;
 
 		if (newWidth > 0 && newHeight > 0)
 		{
-			::SetWindowPos(m_hWnd, m_parentHwnd, rect.left, rect.top,
-				rect.right - rect.left, rect.bottom - rect.top,
+			::SetWindowPos(m_hWnd, m_parentHwnd,
+				newX, newY,
+				newWidth, newHeight,
 				SWP_NOACTIVATE);
 		}
 	}

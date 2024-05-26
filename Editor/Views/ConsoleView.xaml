@@ -4,33 +4,37 @@
              x:Class="SailorEditor.Views.ConsoleView">
 
     <Frame>
-        <Grid RowSpacing="0" ColumnSpacing="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
+        <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="25"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <Label Text="Console" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"  Grid.Row="0" Grid.Column="0"/>
-            <ScrollView Grid.Row="1" Grid.Column="0">
+
+            <Label Text="Console" 
+               HorizontalOptions="StartAndExpand" 
+               VerticalOptions="Start" 
+               HeightRequest="25"  
+               Grid.Row="0" 
+               Grid.Column="0"/>
+
+            <ScrollView x:Name="ScrollView" Grid.Row="1" Grid.Column="0">
                 <VerticalStackLayout
-                    Spacing="5"
-                    VerticalOptions="Start"
-                    HorizontalOptions="StartAndExpand">
-                    <Label Text="Some text1"/>
-                    <Label Text="Some text2"/>
-                    <Label Text="Some text3"/>
-                    <Label Text="Some text4"/>
-                    <Label Text="Some text5"/>
-                    <Label Text="Some text6"/>
-                    <Label Text="Some text7"/>
-                    <Label Text="Some text8"/>
-                    <Label Text="Some text9"/>
-                    <Label Text="Some text0"/>
-                    <Label Text="Some text3"/>
-                    <Label Text="Some text4"/>
+                x:Name="MessagesStack"
+                Spacing="5"
+                VerticalOptions="Start"
+                HorizontalOptions="StartAndExpand"
+                BindableLayout.ItemsSource="{Binding MessageQueue}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate>
+                            <Label Text="{Binding .}" 
+                               VerticalOptions="Start"
+                               HorizontalOptions="StartAndExpand">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnLabelTapped" />
+                                </Label.GestureRecognizers>
+                            </Label>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
                 </VerticalStackLayout>
             </ScrollView>
         </Grid>
