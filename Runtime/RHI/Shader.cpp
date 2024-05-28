@@ -20,14 +20,20 @@ bool RHIShaderBinding::IsBind() const
 size_t RHIShaderBinding::GetCompatibilityHash() const
 {
 	static std::hash<RHIResourcePtr> p;
+	static std::hash<size_t> pSize;
 
 	size_t hash = 0;
 	if (m_textureBinding.Num() > 0)
 	{
-		for (const auto& binding : m_textureBinding)
+		// For arrays of textures we handle only the first texture and the size of array
+		// TODO: Should we handle 4-12 textures instead? 
+		// That should cover all VFX programmer's needs
+		HashCombine(hash, p(m_textureBinding[0]), pSize(m_textureBinding.Num()));
+
+		/*for (const auto& binding : m_textureBinding)
 		{
 			HashCombine(hash, p(binding));
-		}
+		}*/
 	}
 	else if (m_vulkan.m_valueBinding)
 	{
