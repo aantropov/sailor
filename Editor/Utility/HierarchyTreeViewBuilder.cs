@@ -27,8 +27,20 @@ namespace SailorEditor.Helpers
         public static TreeViewItemGroup<GameObject, Component> PopulateWorld(WorldService service)
         {
             var world = service.Current;
-            var gameObjects= service.GameObjects.OrderBy(x => x.ParentGameObjectId);
-            var components = service.Components;
+            //var gameObjects = service.GameObjects.OrderBy(x => x.ParentGameObjectId);
+            //var components = service.Components;
+
+            var gameObjects = new List<GameObject>
+            {
+                new GameObject { ParentGameObjectId = -1, Id = 0, WorldId = 0, Name = "Untitled 1" },
+                new GameObject { ParentGameObjectId = 0, Id = 1, WorldId = 0, Name = "Untitled 2" }
+            };
+
+            var components = new List<Component>
+            {
+                new Component { GameObjectId = 0, Id = 0, DisplayName = "Component 1" },
+                new Component { GameObjectId = 0, Id = 1, DisplayName = "Component 2" }
+            };
 
             var worldGroup = new TreeViewItemGroup<GameObject, Component>();
             worldGroup.Key = world.Name;

@@ -58,7 +58,7 @@ namespace SailorEditor.Views
         private void PopulateTreeView()
         {
             var foldersModel = FolderTreeViewBuilder.PopulateDirectory(service);
-            var rootNodes = Controls.TreeView.PopulateGroup(foldersModel);
+            var rootNodes = Controls.TreeView.PopulateGroup(foldersModel, new TreeViewPopulateArgs());
             FolderTree.RootNodes = rootNodes;
         }
     }

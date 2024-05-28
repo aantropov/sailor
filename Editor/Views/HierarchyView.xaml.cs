@@ -36,7 +36,7 @@ namespace SailorEditor.Views
         private void PopulateHierarchyView()
         {
             var foldersModel = HierarchyTreeViewBuilder.PopulateWorld(service);
-            var rootNodes = Controls.TreeView.PopulateGroup(foldersModel);
+            var rootNodes = Controls.TreeView.PopulateGroup(foldersModel, new TreeViewPopulateArgs() { ItemImage = "blue_document_attribute_c.png", GroupImage = "blue_document.png" });
             HierarchyTree.RootNodes = rootNodes;
         }
     }

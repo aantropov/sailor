@@ -4,6 +4,14 @@ using System.Collections.Specialized;
 
 namespace SailorEditor.Controls
 {
+    public struct TreeViewPopulateArgs
+    {
+        public TreeViewPopulateArgs() { }
+
+        public string ItemImage { get; set; } = "blueprint.png";
+        public string GroupImage { get; set; } = "folder.png";
+    };
+
     public class TreeView : ScrollView
     {
         public class OnSelectItemEventArgs : EventArgs
@@ -124,9 +132,9 @@ namespace SailorEditor.Controls
                 AddItems(e.NewItems.Cast<TreeViewNode>(), parent, parentTreeViewItem);
             }
         }
-
+        
         // Main code: 
-        private static TreeViewNode CreateTreeViewNode(object bindingContext, Label label, bool isItem)
+        private static TreeViewNode CreateTreeViewNode(object bindingContext, Label label, bool isItem, TreeViewPopulateArgs args)
         {
             var node = new TreeViewNode
             {
@@ -137,7 +145,7 @@ namespace SailorEditor.Controls
                     {
                         new ResourceImage
                         {
-                            Resource = isItem? "blueprint.png" : "folder.png",
+                            Resource = isItem ? args.ItemImage : args.GroupImage,
                             HeightRequest= 16,
                             WidthRequest = 16
                         },
@@ -153,7 +161,7 @@ namespace SailorEditor.Controls
             return node;
         }
 
-        private static void PopulateItem(IList<TreeViewNode> children, TreeViewItemBase itemModel)
+        private static void PopulateItem(IList<TreeViewNode> children, TreeViewItemBase itemModel, TreeViewPopulateArgs args)
         {
             var label = new Label
             {
@@ -161,7 +169,7 @@ namespace SailorEditor.Controls
             };
             label.SetBinding(Label.TextProperty, "Key");
 
-            var xamlItemTreeViewNode = TreeView.CreateTreeViewNode(itemModel, label, true);
+            var xamlItemTreeViewNode = TreeView.CreateTreeViewNode(itemModel, label, true, args);
             children.Add(xamlItemTreeViewNode);
         }
 
@@ -175,7 +183,7 @@ namespace SailorEditor.Controls
                     node.ChildrenList = children;
                 }
         */
-        public static ObservableCollection<TreeViewNode> PopulateGroup(TreeViewItemGroupBase groupModel)
+        public static ObservableCollection<TreeViewNode> PopulateGroup(TreeViewItemGroupBase groupModel, TreeViewPopulateArgs args)
         {
             var rootNodes = new ObservableCollection<TreeViewNode>();
 
@@ -187,15 +195,15 @@ namespace SailorEditor.Controls
                 };
                 label.SetBinding(Label.TextProperty, "Key");
 
-                var groupTreeViewNode = TreeView.CreateTreeViewNode(itemGroup, label, false);
+                var groupTreeViewNode = TreeView.CreateTreeViewNode(itemGroup, label, false, args);
 
                 rootNodes.Add(groupTreeViewNode);
 
-                groupTreeViewNode.ChildrenList = TreeView.PopulateGroup(itemGroup);
+                groupTreeViewNode.ChildrenList = TreeView.PopulateGroup(itemGroup, args);
 
                 foreach (var item in itemGroup.ChildrenItemsBase)
                 {
-                    TreeView.PopulateItem(groupTreeViewNode.ChildrenList, item);
+                    TreeView.PopulateItem(groupTreeViewNode.ChildrenList, item, args);
                 }
             }
 
