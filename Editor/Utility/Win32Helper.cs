@@ -1,12 +1,5 @@
-﻿using SailorEditor.ViewModels;
-using SailorEditor.Services;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml;
-using System.Runtime.InteropServices;
-using WinRT;
+﻿using Microsoft.UI.Windowing;
 using Window = Microsoft.Maui.Controls.Window;
-using Microsoft.Maui.Controls;
-using Microsoft.UI.Windowing;
 
 namespace SailorEditor.Helpers
 {

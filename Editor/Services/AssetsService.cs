@@ -1,19 +1,16 @@
 ﻿using SailorEditor.ViewModels;
-using System.IO;
 using YamlDotNet.RepresentationModel;
-using YamlDotNet.Serialization.NamingConventions;
-using YamlDotNet.Serialization;
-using Microsoft.Maui.Layouts;
 
 namespace SailorEditor.Services
 {
     public class AssetsService
-    { 
+    {
         public ProjectRoot Root { get; private set; }
         public List<AssetFolder> Folders { get; private set; }
         public Dictionary<AssetUID, AssetFile> Assets { get; private set; }
         public List<AssetFile> Files { get { return Assets.Values.ToList(); } }
-        public AssetsService() => AddProjectRoot(SailorEngine.GetEngineContentDirectory());
+        public AssetsService() => AddProjectRoot(EngineService.GetEngineContentDirectory());
+
         public void AddProjectRoot(string projectRoot)
         {
             Folders = new List<AssetFolder>();
@@ -22,6 +19,7 @@ namespace SailorEditor.Services
             Root = new ProjectRoot { Name = projectRoot, Id = 1 };
             ProcessDirectory(Root, projectRoot, -1);
         }
+
         private AssetFile ProcessAssetFile(FileInfo assetInfo, int parentFolderId)
         {
             FileInfo assetFile = new FileInfo(Path.ChangeExtension(assetInfo.FullName, null));
@@ -52,12 +50,13 @@ namespace SailorEditor.Services
             newAssetFile.DisplayName = assetFile.Name;
             newAssetFile.FolderId = parentFolderId;
             newAssetFile.AssetInfo = assetInfo;
-            newAssetFile.Asset = assetFile;            
+            newAssetFile.Asset = assetFile;
             newAssetFile.Properties = ParseYaml(assetInfo.FullName);
             newAssetFile.IsDirty = false;
 
             return newAssetFile;
         }
+
         private void ProcessDirectory(ProjectRoot root, string directoryPath, int parentFolderId)
         {
             foreach (var directory in Directory.GetDirectories(directoryPath))

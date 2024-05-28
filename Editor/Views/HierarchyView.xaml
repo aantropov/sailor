@@ -1,11 +1,21 @@
 ﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Name="this"
-             x:Class="SailorEditor.Views.HierarchyView">
+             x:Class="SailorEditor.Views.HierarchyView"
+             xmlns:controls="clr-namespace:SailorEditor.Controls">
 
     <Frame>
-        <VerticalStackLayout>
-            <Label Text="HierarchyView" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"/>
-        </VerticalStackLayout>
+        <Grid RowSpacing="0" ColumnSpacing="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="25"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Label Text="Hierarchy" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"  Grid.Row="0" Grid.Column="0"/>
+            <controls:TreeView Margin="4" x:Name="HierarchyTree" Grid.Row="1" Grid.Column="0"/>
+        </Grid>
     </Frame>
 </ContentView>

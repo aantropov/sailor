@@ -1,6 +1,5 @@
 ﻿using SailorEditor.Helpers;
 using SailorEditor.ViewModels;
-using System.Speech.Synthesis;
 
 public class ShaderLibraryFileTemplate : AssetFileTemplate
 {

@@ -1,8 +1,6 @@
-﻿//6
-using SailorEditor.ViewModels;
+﻿using SailorEditor.ViewModels;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.Security.Cryptography.X509Certificates;
 
 namespace SailorEditor.Controls
 {

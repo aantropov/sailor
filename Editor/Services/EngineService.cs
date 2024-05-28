@@ -1,11 +1,4 @@
-﻿using SailorEditor.ViewModels;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Runtime.InteropServices;
 
 public class AppInterop
 {
@@ -22,12 +15,12 @@ public class AppInterop
     public static extern void Shutdown();
 
     [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-    public static extern uint GetMessages(IntPtr[] messages, uint num);
+    public static extern uint GetMessages(nint[] messages, uint num);
 }
 
-namespace SailorEditor
+namespace SailorEditor.Services
 {
-    internal class SailorEngine
+    internal class EngineService
     {
         public static string GetEngineContentDirectory()
         {
@@ -48,8 +41,8 @@ namespace SailorEditor
 
         static void PullMessages()
         {
-            uint numMessages = 2;
-            IntPtr[] messagesPtrs = new IntPtr[numMessages];
+            uint numMessages = 64;
+            nint[] messagesPtrs = new nint[numMessages];
 
             uint actualNumMessages = AppInterop.GetMessages(messagesPtrs, numMessages);
 
@@ -69,7 +62,7 @@ namespace SailorEditor
         internal static void RunProcess(bool bDebug, string commandlineArgs)
         {
 #if WINDOWS
-            IntPtr handle = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+            nint handle = ((MauiWinUIWindow)Application.Current.Windows[0].Handler.PlatformView).WindowHandle;
 
             string commandArgs = $"--noconsole --hwnd {handle} --editor " + commandlineArgs;
             string workspace = (Path.GetFullPath(Path.Combine(GetEngineWorkingDirectory(), "..")) + "\\").Replace("\\", "/");

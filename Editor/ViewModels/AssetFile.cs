@@ -1,18 +1,8 @@
-﻿using Microsoft.Maui.Controls.Compatibility;
-using SailorEditor.Engine;
-using SailorEditor.Helpers;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
-using YamlDotNet.RepresentationModel;
+﻿using System.Runtime.CompilerServices;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
-using SailorEditor.Services;
 using System.Diagnostics;
-using CommunityToolkit.Maui;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using SailorEditor.Utility;
-using YamlDotNet.Core.Tokens;
 
 namespace SailorEditor.ViewModels
 {

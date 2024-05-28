@@ -1,21 +1,28 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
-using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.ComponentModel;
-using System.IO;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace SailorEditor.Services
 {
     public partial class SelectionService : ObservableObject
     {
         public event Action<AssetFile> OnSelectAssetAction = delegate { };
+        public event Action<ObservableObject> OnSelectObjectAction = delegate { };
 
         [ObservableProperty]
         private ObservableList<INotifyPropertyChanged> selectedItems = new();
+
+        public async void OnSelect(ObservableObject obj)
+        {
+            if (obj != null)
+            {
+                SelectedItems.Clear();
+                SelectedItems.Add(obj);
+
+                OnSelectObjectAction?.Invoke(obj);
+            }
+        }
 
         public async void OnSelectAsset(AssetFile assetFile)
         {

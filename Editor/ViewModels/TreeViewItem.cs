@@ -1,4 +1,5 @@
-﻿namespace SailorEditor.ViewModels
+﻿
+namespace SailorEditor.ViewModels
 {
     [Serializable]
     public abstract class TreeViewItemBase

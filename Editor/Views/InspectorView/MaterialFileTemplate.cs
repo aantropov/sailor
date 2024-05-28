@@ -1,10 +1,7 @@
-﻿using CommunityToolkit.Maui.Converters;
-using CommunityToolkit.Maui.Markup;
-using SailorEditor.Engine;
-using SailorEditor.Helpers;
+﻿using SailorEditor.Helpers;
 using SailorEditor.Utility;
+using SailorEditor.Engine;
 using SailorEditor.ViewModels;
-using System.Numerics;
 using BlendMode = SailorEditor.Engine.BlendMode;
 
 public class MaterialFileTemplate : AssetFileTemplate

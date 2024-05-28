@@ -1,10 +1,6 @@
 ﻿using SailorEditor.Helpers;
 using SailorEditor.ViewModels;
 using SailorEditor.Services;
-using System.Collections.ObjectModel;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using Microsoft.Maui.Controls;
 
 namespace SailorEditor.Views
 {

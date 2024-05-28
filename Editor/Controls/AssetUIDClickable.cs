@@ -1,8 +1,6 @@
 ﻿using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using SailorEditor;
-using System.ComponentModel;
-using System.Globalization;
 
 public class AssetUIDClickable : Behavior<Label>
 {

@@ -1,15 +1,5 @@
-﻿using Microsoft.Maui.Controls.Compatibility;
-using SailorEditor.Engine;
-using SailorEditor.Helpers;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
-using YamlDotNet.RepresentationModel;
-using YamlDotNet.Serialization.NamingConventions;
-using YamlDotNet.Serialization;
-using SailorEditor.Services;
+﻿using YamlDotNet.RepresentationModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using System.Collections.ObjectModel;
-using CommunityToolkit.Maui.Core.Extensions;
 using SailorEditor.Utility;
 using System.Globalization;
 

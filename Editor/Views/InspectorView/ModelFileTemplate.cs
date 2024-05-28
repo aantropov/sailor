@@ -1,10 +1,6 @@
-﻿using Microsoft.UI.Xaml.Documents;
-using SailorEditor;
-using SailorEditor.Helpers;
-using SailorEditor.Services;
+﻿using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
-using YamlDotNet.Core.Tokens;
 
 public class ModelFileTemplate : AssetFileTemplate
 {

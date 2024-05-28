@@ -1,8 +1,5 @@
-﻿using SailorEditor.Utility;
-using SailorEditor.ViewModels;
-using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
+﻿using SailorEditor.Services;
+using SailorEditor.Utility;
 
 namespace SailorEditor.Views
 {
@@ -15,7 +12,7 @@ namespace SailorEditor.Views
             InitializeComponent();
             BindingContext = this;
 
-            SailorEngine.OnPullMessagesAction += OnUpdateMessageQueue;
+            EngineService.OnPullMessagesAction += OnUpdateMessageQueue;
         }
 
         public void OnUpdateMessageQueue(string[] messages)

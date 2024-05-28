@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
-using SailorEditor.Controls;
+﻿using SailorEditor.Controls;
 using SailorEditor.Helpers;
 using SailorEditor.ViewModels;
 using SailorEditor.Services;
@@ -56,6 +54,7 @@ namespace SailorEditor.Views
                 MauiProgram.GetService<SelectionService>().OnSelectAsset(assetFile.Model);
             }
         }
+
         private void PopulateTreeView()
         {
             var foldersModel = FolderTreeViewBuilder.PopulateDirectory(service);

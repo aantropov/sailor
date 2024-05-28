@@ -1,33 +1,18 @@
 ﻿using SailorEditor.ViewModels;
-using System.Globalization;
 using CheckBox = Microsoft.Maui.Controls.CheckBox;
 using Grid = Microsoft.Maui.Controls.Grid;
 using SkiaSharp;
 using Entry = Microsoft.Maui.Controls.Entry;
-using System.Collections;
 using DataTemplate = Microsoft.Maui.Controls.DataTemplate;
 using Button = Microsoft.Maui.Controls.Button;
 using System.Collections.ObjectModel;
 using BindingMode = Microsoft.Maui.Controls.BindingMode;
-using Binding = Microsoft.Maui.Controls.Binding;
 using IValueConverter = Microsoft.Maui.Controls.IValueConverter;
 using SailorEditor.Utility;
 using System.ComponentModel;
-using CommunityToolkit.Maui.Alerts;
-using CommunityToolkit.Maui.Storage;
-using System.Text;
-using System.Threading;
 using SailorEditor.Services;
-using System.Numerics;
 using CommunityToolkit.Maui.Markup;
 using System.Linq.Expressions;
-using Microsoft.Maui.Controls;
-using YamlDotNet.Core.Tokens;
-using System;
-using Windows.Gaming.Input;
-using System.Runtime.CompilerServices;
-using System.Collections.Generic;
-using Microsoft.UI.Xaml.Data;
 
 namespace SailorEditor.Helpers
 {

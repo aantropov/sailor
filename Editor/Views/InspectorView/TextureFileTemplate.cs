@@ -1,8 +1,6 @@
-﻿using Microsoft.Maui.Controls.Compatibility;
+﻿using SailorEditor.Helpers;
 using SailorEditor.Engine;
-using SailorEditor.Helpers;
 using SailorEditor.ViewModels;
-using System.Speech.Synthesis;
 using Grid = Microsoft.Maui.Controls.Grid;
 
 public class TextureFileTemplate : AssetFileTemplate

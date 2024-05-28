@@ -1,8 +1,4 @@
 ﻿using SailorEditor.ViewModels;
-using SailorEditor.Services;
-using System.ComponentModel;
-using System.Globalization;
-using BlendMode = SailorEditor.Engine.BlendMode;
 
 namespace SailorEditor.Helpers
 {
