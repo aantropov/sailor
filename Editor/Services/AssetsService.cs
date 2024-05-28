@@ -9,9 +9,10 @@ namespace SailorEditor.Services
         public List<AssetFolder> Folders { get; private set; }
         public Dictionary<AssetUID, AssetFile> Assets { get; private set; }
         public List<AssetFile> Files { get { return Assets.Values.ToList(); } }
+
         public AssetsService()
         {
-            AddProjectRoot(MauiProgram.GetService<EngineService>().GetEngineContentDirectory());
+            AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
         }
 
         public void AddProjectRoot(string projectRoot)
