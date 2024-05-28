@@ -12,7 +12,7 @@ namespace SailorEditor.Views
             InitializeComponent();
             BindingContext = this;
 
-            EngineService.OnPullMessagesAction += OnUpdateMessageQueue;
+            MauiProgram.GetService<EngineService>().OnPullMessagesAction += OnUpdateMessageQueue;
         }
 
         public void OnUpdateMessageQueue(string[] messages)

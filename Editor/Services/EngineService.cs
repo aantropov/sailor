@@ -22,24 +22,24 @@ namespace SailorEditor.Services
 {
     internal class EngineService
     {
-        public static string GetEngineContentDirectory()
+        public string GetEngineContentDirectory()
         {
             return Path.Combine(GetEngineWorkingDirectory(), "..", "Content");
         }
-        public static string GetEngineWorkingDirectory()
+        public string GetEngineWorkingDirectory()
         {
             string currentDirectory = AppContext.BaseDirectory;
             string directoryFiveLevelsUp = Path.GetFullPath(Path.Combine(currentDirectory, "..", "..", "..", "..", ".."));
             return directoryFiveLevelsUp + "\\";
         }
-        public static string GetPathToEngineExec(bool bIsDebug)
+        public string GetPathToEngineExec(bool bIsDebug)
         {
             return GetEngineWorkingDirectory() + (bIsDebug ? "SailorEngine-Debug.exe" : "SailorEngine-Release.exe");
         }
 
-        public static event Action<string[]> OnPullMessagesAction = delegate { };
+        public event Action<string[]> OnPullMessagesAction = delegate { };
 
-        static void PullMessages()
+        void PullMessages()
         {
             uint numMessages = 64;
             nint[] messagesPtrs = new nint[numMessages];
@@ -59,7 +59,7 @@ namespace SailorEditor.Services
             MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
         }
 
-        internal static void RunProcess(bool bDebug, string commandlineArgs)
+        internal void RunProcess(bool bDebug, string commandlineArgs)
         {
 #if WINDOWS
             nint handle = ((MauiWinUIWindow)Application.Current.Windows[0].Handler.PlatformView).WindowHandle;
