@@ -1,8 +1,8 @@
 ﻿using SailorEditor.Helpers;
 using SailorEditor.Utility;
-using SailorEditor.Engine;
+using SailorEngine;
 using SailorEditor.ViewModels;
-using BlendMode = SailorEditor.Engine.BlendMode;
+using BlendMode = SailorEngine.BlendMode;
 
 public class MaterialFileTemplate : AssetFileTemplate
 {
@@ -52,9 +52,9 @@ public class MaterialFileTemplate : AssetFileTemplate
 
             Templates.AddGridRow(grid, Templates.UniformEditor(
                 static (MaterialFile vm) => vm.UniformsVec4,
-                static (MaterialFile vm, ObservableList<Uniform<Vec4>> value) => vm.UniformsVec4 = value,
-                () => Templates.Vec4Editor(static (Uniform<Vec4> vm) => vm.Value),
-                "Uniforms Vec4", "material.newVec4Param", new Vec4()),
+                static (MaterialFile vm, ObservableList<Uniform<SailorEditor.Vec4>> value) => vm.UniformsVec4 = value,
+                () => Templates.Vec4Editor(static (Uniform<SailorEditor.Vec4> vm) => vm.Value),
+                "Uniforms Vec4", "material.newVec4Param", new SailorEditor.Vec4()),
                 GridLength.Auto);
 
             Templates.AddGridRow(grid, Templates.UniformEditor(

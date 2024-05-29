@@ -1,6 +1,110 @@
 ﻿
-namespace SailorEditor.Engine
+using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.ViewModels;
+using System.Numerics;
+using YamlDotNet.RepresentationModel;
+
+namespace SailorEngine
 {
+    public class PropertyBase
+    {
+        public string Typename { get; set; }
+    }
+
+    public class Property<T> : PropertyBase
+    {
+        public Property() { Typename = typeof(T).Name; }
+        public T DefaultValue { get; set; } = default;
+    };
+
+    public class FloatProperty : Property<float> { }
+    public class Vec4Property : Property<SailorEditor.Vec4> { }
+    public class Vec3Property : Property<SailorEditor.Vec3> { }
+    public class Vec2Property : Property<SailorEditor.Vec2> { }
+    public class FileIdProperty : Property<AssetUID> { }
+    public class InstanceIdProperty : Property<string> { }
+
+    public class ComponentType
+    {
+        public string Name { get; set; }
+        public Dictionary<string, PropertyBase> Properties { get; set; } = new();
+    };
+
+    class Helper
+    {
+        public static Dictionary<string, ComponentType> ReadEngineTypes(string filePath)
+        {
+            var parsed = new Dictionary<string, Dictionary<string, string>>();
+            var componentTypes = new Dictionary<string, ComponentType>();
+
+            using (var yamlAssetInfo = new FileStream(filePath, FileMode.Open))
+            using (var reader = new StreamReader(yamlAssetInfo))
+            {
+                var yaml = new YamlStream();
+                yaml.Load(reader);
+
+                var root = (YamlMappingNode)yaml.Documents[0].RootNode;
+                var engineTypesNode = (YamlSequenceNode)root.Children[new YamlScalarNode("engineTypes")];
+
+                foreach (YamlMappingNode typeNode in engineTypesNode.Children)
+                {
+                    var typeName = typeNode.Children[new YamlScalarNode("typename")].ToString();
+                    var propertiesNode = (YamlMappingNode)typeNode.Children[new YamlScalarNode("properties")];
+
+                    var properties = new Dictionary<string, string>();
+                    foreach (var property in propertiesNode.Children)
+                    {
+                        properties[property.Key.ToString()] = property.Value.ToString();
+                    }
+
+                    parsed[typeName] = properties;
+                }
+            }
+
+            foreach (var component in parsed)
+            {
+                var newComponent = new ComponentType();
+                newComponent.Name = component.Key;
+
+                foreach (var property in component.Value)
+                {
+                    PropertyBase newProperty = null;
+
+                    if (property.Value == "struct glm::vec<2,float,0>")
+                    {
+                        newProperty = new Vec2Property();
+                    }
+                    else if (property.Value == "struct glm::vec<3,float,0>")
+                    {
+                        newProperty = new Vec3Property();
+                    }
+                    else if (property.Value == "struct glm::vec<4,float,0>")
+                    {
+                        newProperty = new Vec4Property();
+                    }
+                    else if (property.Value == "float")
+                    {
+                        newProperty = new FloatProperty();
+                    }
+                    else if (property.Value == "class Sailor::TObjectPtr<class Sailor::Model>")
+                    {
+                        newProperty = new FileIdProperty();
+                    }
+                    else if (property.Value.Contains("TObjectPtr"))
+                    {
+                        newProperty = new InstanceIdProperty();
+                    }
+
+                    newComponent.Properties[property.Key] = newProperty;
+                }
+
+                componentTypes[component.Key] = newComponent;
+            }
+
+            return componentTypes;
+        }
+    }
+
     public enum FillMode
     {
         Fill = 0,
@@ -30,11 +134,13 @@ namespace SailorEditor.Engine
         Linear,
         Bicubic
     };
+
     public enum TextureClamping
     {
         Clamp = 0,
         Repeat
     };
+
     public enum TextureFormat
     {
         UNDEFINED = 0,
@@ -224,3 +330,84 @@ namespace SailorEditor.Engine
         ASTC_12x12_SRGB_BLOCK = 184
     };
 }
+
+namespace SailorEditor
+{
+    public partial class Vec4 : ObservableObject, ICloneable, IComparable<Vec4>
+    {
+        public Vec4() { }
+        public Vec4(Vector4 value)
+        {
+            X = value.X;
+            Y = value.Y;
+            Z = value.Z;
+            W = value.W;
+        }
+
+        public static implicit operator Vec4(Vector4 value) => new Vec4 { X = value.X, Y = value.Y, Z = value.Z, W = value.W };
+        public static implicit operator Vector4(Vec4 uniform) => new Vector4(uniform.X, uniform.Y, uniform.Z, uniform.W);
+        public object Clone() => new Vec4 { X = X, Y = Y, Z = Z, W = W };
+        public override string ToString() => $"<{X} {Y} {Z} {W}>";
+        public int CompareTo(Vec4 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y) + Z.CompareTo(other.Z) + W.CompareTo(other.W);
+
+        [ObservableProperty]
+        float x = 0.0f;
+
+        [ObservableProperty]
+        float y = 0.0f;
+
+        [ObservableProperty]
+        float z = 0.0f;
+
+        [ObservableProperty]
+        float w = 0.0f;
+    }
+
+    public partial class Vec3 : ObservableObject, ICloneable, IComparable<Vec3>
+    {
+        public Vec3() { }
+        public Vec3(Vector3 value)
+        {
+            X = value.X;
+            Y = value.Y;
+            Z = value.Z;
+        }
+
+        public static implicit operator Vec3(Vector3 value) => new Vec3 { X = value.X, Y = value.Y, Z = value.Z };
+        public static implicit operator Vector3(Vec3 uniform) => new Vector3(uniform.X, uniform.Y, uniform.Z);
+        public object Clone() => new Vec3 { X = X, Y = Y, Z = Z };
+        public override string ToString() => $"<{X} {Y} {Z}>";
+        public int CompareTo(Vec3 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y) + Z.CompareTo(other.Z);
+
+        [ObservableProperty]
+        float x = 0.0f;
+
+        [ObservableProperty]
+        float y = 0.0f;
+
+        [ObservableProperty]
+        float z = 0.0f;
+    }
+
+    public partial class Vec2 : ObservableObject, ICloneable, IComparable<Vec2>
+    {
+        public Vec2() { }
+        public Vec2(Vector3 value)
+        {
+            X = value.X;
+            Y = value.Y;
+        }
+
+        public static implicit operator Vec2(Vector2 value) => new Vec2 { X = value.X, Y = value.Y };
+        public static implicit operator Vector2(Vec2 uniform) => new Vector2(uniform.X, uniform.Y);
+        public object Clone() => new Vec2 { X = X, Y = Y };
+        public override string ToString() => $"<{X} {Y}>";
+        public int CompareTo(Vec2 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y);
+
+        [ObservableProperty]
+        float x = 0.0f;
+
+        [ObservableProperty]
+        float y = 0.0f;
+    }
+};

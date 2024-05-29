@@ -6,42 +6,12 @@ using SailorEditor.Services;
 using System.Numerics;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
-using SailorEditor.Engine;
+using SailorEngine;
 using SailorEditor.Utility;
 
 namespace SailorEditor.ViewModels
 {
-    using BlendMode = Engine.BlendMode;
-
-    public partial class Vec4 : ObservableObject, ICloneable, IComparable<Vec4>
-    {
-        public Vec4() { }
-        public Vec4(Vector4 value)
-        {
-            X = value.X;
-            Y = value.Y;
-            Z = value.Z;
-            W = value.W;
-        }
-
-        public static implicit operator Vec4(Vector4 value) => new Vec4 { X = value.X, Y = value.Y, Z = value.Z, W = value.W };
-        public static implicit operator Vector4(Vec4 uniform) => new Vector4(uniform.X, uniform.Y, uniform.Z, uniform.W);
-        public object Clone() => new Vec4 { X = X, Y = Y, Z = Z, W = W };
-        public override string ToString() => $"<{X} {Y} {Z} {W}>";
-        public int CompareTo(Vec4 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y) + Z.CompareTo(other.Z) + W.CompareTo(other.W);
-
-        [ObservableProperty]
-        float x = 0.0f;
-
-        [ObservableProperty]
-        float y = 0.0f;
-
-        [ObservableProperty]
-        float z = 0.0f;
-
-        [ObservableProperty]
-        float w = 0.0f;
-    }
+    using BlendMode = SailorEngine.BlendMode;
 
     public partial class Uniform<T> : ObservableObject, ICloneable
     where T : IComparable<T>

@@ -1,5 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using SailorEditor.Engine;
+using SailorEngine;
 
 namespace SailorEditor.ViewModels
 {
