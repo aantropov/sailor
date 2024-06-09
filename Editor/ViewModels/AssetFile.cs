@@ -63,7 +63,9 @@ namespace SailorEditor.ViewModels
         public int Id { get; set; }
         public int FolderId { get; set; }
         public bool CanOpenAssetFile { get => !IsDirty; }
+
         public virtual async Task<bool> PreloadResources(bool force) => await Task.FromResult(true);
+
         public virtual async Task UpdateAssetFile()
         {
             await UpdateModel();
@@ -81,6 +83,7 @@ namespace SailorEditor.ViewModels
 
             IsDirty = false;
         }
+
         public async Task Revert()
         {
             await PreloadResources(true);
@@ -101,6 +104,7 @@ namespace SailorEditor.ViewModels
         }
 
         protected virtual async Task UpdateModel() { }
+
         public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
 
         public object Clone() => new AssetFile();
