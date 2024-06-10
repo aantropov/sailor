@@ -18,6 +18,15 @@ float saturate(float value)
   return clamp(value, 0.0, 1.0);
 }
 
+vec3 snap(vec3 originalPosition, float step) 
+{
+    return vec3(
+        round(originalPosition.x / step) * step,
+        round(originalPosition.y / step) * step,
+        round(originalPosition.z / step) * step
+    );
+}
+
 vec4 QuatAxisAngle(vec3 axis, float angleRad)
 {
   const float halfAngle = angleRad / 2.0f;

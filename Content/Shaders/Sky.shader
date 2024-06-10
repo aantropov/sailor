@@ -460,8 +460,7 @@ glslFragment: |
     const float shiftCloudsStart = cloudsStartIntersections.x < 0 ? max(0, cloudsStartIntersections.y) : cloudsStartIntersections.x;
     const float shiftCloudsEnd = min(maxTraceDistance, cloudsEndIntersections.x < 0 ? max(0, cloudsEndIntersections.y) : cloudsEndIntersections.x);
     
-    // Start is far than end
-    if(shiftCloudsStart > shiftCloudsEnd)
+    if(shiftCloudsStart > shiftCloudsEnd && cloudsEndIntersections.x < 0)
     {
         return vec4(0.0f);
     }
