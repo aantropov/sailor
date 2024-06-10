@@ -170,7 +170,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	Reflection::ExportReflectionData();
 
 	SAILOR_LOG("Sailor Engine initialized");
-	}
+}
 
 void App::Start()
 {
@@ -201,6 +201,11 @@ void App::Start()
 	auto worldAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Test.world");
 	auto worldPrefab = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<WorldPrefab>(worldAssetInfo->GetFileId());
 	TWeakPtr<World> pWorld = GetSubmodule<EngineLoop>()->CreateWorld(worldPrefab);
+
+	if (auto editor = App::GetSubmodule<Editor>())
+	{
+		editor->SetWorld(pWorld.Lock().GetRawPtr());
+	}
 #endif
 
 	FrameInputState systemInputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
@@ -351,13 +356,6 @@ void App::Shutdown()
 	RemoveSubmodule<ECS::ECSFactory>();
 	RemoveSubmodule<FrameGraphBuilder>();
 
-	// Release all resources before renderer
-	RemoveSubmodule<DefaultAssetInfoHandler>();
-	RemoveSubmodule<ShaderAssetInfoHandler>();
-	RemoveSubmodule<TextureAssetInfoHandler>();
-	RemoveSubmodule<ModelAssetInfoHandler>();
-	RemoveSubmodule<FrameGraphAssetInfoHandler>();
-
 	// We need to finish all tasks before release
 	RemoveSubmodule<ImGuiApi>();
 
@@ -378,7 +376,7 @@ void App::Shutdown()
 
 	Win32::ConsoleWindow::Shutdown();
 
-	// Remove all existing submodules
+	// Remove all left submodules
 	for (auto& pSubmodule : s_pInstance->m_submodules)
 	{
 		if (pSubmodule)

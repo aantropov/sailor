@@ -43,6 +43,7 @@ extern "C"
 					// Handle allocation failure
 					return i;
 				}
+
 				std::copy(msg.begin(), msg.end(), messages[i]);
 				messages[i][msg.size()] = '\0';
 			}
@@ -53,6 +54,28 @@ extern "C"
 		}
 
 		return numMsg;
+	}
+
+	SAILOR_API uint32_t Editor_SerializeWorld(char** yamlNode)
+	{
+		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
+		auto node = editor->SerializeWorld();
+
+		if (!node.IsNull())
+		{
+			std::string serializedNode = node.as<std::string>();
+			size_t length = serializedNode.length();
+
+			*yamlNode = new char[length + 1];
+			strcpy_s(*yamlNode, length + 1, serializedNode.c_str());
+
+			return static_cast<uint32_t>(length);
+		}
+		else
+		{
+			*yamlNode = nullptr;
+			return 0;
+		}
 	}
 }
 

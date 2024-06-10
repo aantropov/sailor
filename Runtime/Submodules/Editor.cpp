@@ -1,6 +1,8 @@
 #include "Core/LogMacros.h"
 #include "Tasks/Scheduler.h"
+#include "Engine/Types.h"
 #include "Editor.h"
+#include "AssetRegistry/World/WorldPrefabImporter.h"
 #include <libloaderapi.h>
 #include <queue>
 #include <string>
@@ -47,4 +49,15 @@ bool Editor::PullMessage(std::string& msg)
 	}
 
 	return false;
+}
+
+YAML::Node Editor::SerializeWorld() const
+{
+	auto prefab = WorldPrefab::FromWorld(m_world);
+	auto node = prefab->Serialize();
+	return node;
+}
+
+void Editor::ApplyChanges(const std::string& yamlNode)
+{
 }

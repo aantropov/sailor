@@ -24,6 +24,7 @@ namespace SailorEditor.Helpers
 
             return null;
         }
+
         public static TreeViewNode FindFileRecursive(this TreeViewNode parent, AssetFile id)
         {
             var assetFile = parent.BindingContext as TreeViewItem<AssetFile>;
