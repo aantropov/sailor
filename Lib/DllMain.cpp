@@ -63,17 +63,18 @@ extern "C"
 
 		if (!node.IsNull())
 		{
-			std::string serializedNode = node.as<std::string>();
+			std::string serializedNode = YAML::Dump(node);
 			size_t length = serializedNode.length();
 
-			*yamlNode = new char[length + 1];
-			strcpy_s(*yamlNode, length + 1, serializedNode.c_str());
+			yamlNode[0] = new char[length + 1];
+			strcpy_s(yamlNode[0], length + 1, serializedNode.c_str());
+			yamlNode[0][length] = '\0';
 
 			return static_cast<uint32_t>(length);
 		}
 		else
 		{
-			*yamlNode = nullptr;
+			yamlNode[0] = nullptr;
 			return 0;
 		}
 	}

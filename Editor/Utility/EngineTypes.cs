@@ -2,7 +2,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.ViewModels;
 using System.Numerics;
+using YamlDotNet.Core.Events;
+using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
+using YamlDotNet.Serialization;
 
 namespace SailorEngine
 {
@@ -409,5 +412,95 @@ namespace SailorEditor
 
         [ObservableProperty]
         float y = 0.0f;
+    }
+
+    public class Vec2Converter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(Vec2);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var list = new List<float>();
+            parser.MoveNext();
+            while (parser.Current is SequenceEnd == false)
+            {
+                if (parser.Current is Scalar scalar)
+                {
+                    list.Add(float.Parse(scalar.Value));
+                }
+                parser.MoveNext();
+            }
+            return new Vec2 { X = list[0], Y = list[1] };
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var vec = (Vec2)value;
+            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+            emitter.Emit(new Scalar(null, vec.X.ToString()));
+            emitter.Emit(new Scalar(null, vec.Y.ToString()));
+            emitter.Emit(new SequenceEnd());
+        }
+    }
+
+    public class Vec3Converter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(Vec3);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var list = new List<float>();
+            parser.MoveNext();
+            while (parser.Current is SequenceEnd == false)
+            {
+                if (parser.Current is Scalar scalar)
+                {
+                    list.Add(float.Parse(scalar.Value));
+                }
+                parser.MoveNext();
+            }
+            return new Vec3 { X = list[0], Y = list[1], Z = list[2] };
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var vec = (Vec3)value;
+            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+            emitter.Emit(new Scalar(null, vec.X.ToString()));
+            emitter.Emit(new Scalar(null, vec.Y.ToString()));
+            emitter.Emit(new Scalar(null, vec.Z.ToString()));
+            emitter.Emit(new SequenceEnd());
+        }
+    }
+
+    public class Vec4Converter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(Vec4);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var list = new List<float>();
+            parser.MoveNext();
+            while (parser.Current is SequenceEnd == false)
+            {
+                if (parser.Current is Scalar scalar)
+                {
+                    list.Add(float.Parse(scalar.Value));
+                }
+                parser.MoveNext();
+            }
+            return new Vec4 { X = list[0], Y = list[1], Z = list[2], W = list[3] };
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var vec = (Vec4)value;
+            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+            emitter.Emit(new Scalar(null, vec.X.ToString()));
+            emitter.Emit(new Scalar(null, vec.Y.ToString()));
+            emitter.Emit(new Scalar(null, vec.Z.ToString()));
+            emitter.Emit(new Scalar(null, vec.W.ToString()));
+            emitter.Emit(new SequenceEnd());
+        }
     }
 };

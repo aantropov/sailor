@@ -1,20 +1,20 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
+using YamlDotNet.Serialization;
 
 namespace SailorEditor.ViewModels
 {
-    public partial class World : ObservableObject//, ICloneable
+    public partial class World : ObservableObject, ICloneable
     {
-        public int Id { get; set; } = 1;
-        public string Name { get; set; }
+        public object Clone() => new World() { Name = Name/*, Prefabs = new ObservableList<Prefab>(Prefabs) */};
 
         [ObservableProperty]
-        ObservableList<GameObject> gameObjects = new();
+        [YamlMember(Alias = "name")]
+        public string name = string.Empty;
 
         [ObservableProperty]
-        ObservableList<Component> components = new();
-
-        //public object Clone() => new World() { Id = Id, Name = Name, GameObjects = new List<GameObject>(GameObjects), Components = new List<Component>(Components);};
+        [YamlMember(Alias = "prefabs")]
+        public ObservableList<Prefab> prefabs = new();
 
         [ObservableProperty]
         protected bool isDirty = false;

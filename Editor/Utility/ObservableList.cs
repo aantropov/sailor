@@ -1,6 +1,10 @@
 ﻿using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using YamlDotNet.Core.Events;
+using YamlDotNet.Core;
+using YamlDotNet.Serialization.NamingConventions;
+using YamlDotNet.Serialization;
 
 namespace SailorEditor.Utility
 {
@@ -49,6 +53,7 @@ namespace SailorEditor.Utility
     {
         event EventHandler<ItemChangedEventArgs<T>> ItemChanged;
     }
+
     public class ItemChangedEventArgs<T>
     {
         public T ChangedItem { get; }
@@ -59,5 +64,68 @@ namespace SailorEditor.Utility
             ChangedItem = item;
             PropertyName = propertyName;
         }
+    }
+
+    public class ObservableListConverter<T> : IYamlTypeConverter
+        where T : INotifyPropertyChanged
+    {
+        public ObservableListConverter(IYamlTypeConverter ValueConverter = null)
+        {
+            valueConverter = ValueConverter;
+        }
+
+        public bool Accepts(Type type) => type == typeof(ObservableList<T>);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var deserializerBuilder = new DeserializerBuilder()
+                .WithNamingConvention(NullNamingConvention.Instance);
+
+            if (valueConverter != null)
+            {
+                deserializerBuilder.WithTypeConverter(valueConverter);
+            }
+
+            var deserializer = deserializerBuilder.Build();
+
+            parser.MoveNext();
+
+            var list = new ObservableList<T>();
+            while (parser.Current is not SequenceEnd)
+            {
+                var item = deserializer.Deserialize<T>(parser);
+                list.Add(item);
+                parser.MoveNext();
+            }
+            
+            parser.MoveNext();
+
+            return list;
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var list = (ObservableList<T>)value;
+            var serializerBuilder = new SerializerBuilder()
+                .WithNamingConvention(NullNamingConvention.Instance);
+
+            if (valueConverter != null)
+            {
+                serializerBuilder.WithTypeConverter(valueConverter);
+            }
+
+            var serializer = serializerBuilder.Build();
+
+            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+
+            foreach (var item in list)
+            {
+                serializer.Serialize(emitter, item);
+            }
+
+            emitter.Emit(new SequenceEnd());
+        }
+
+        IYamlTypeConverter valueConverter = null;
     }
 }

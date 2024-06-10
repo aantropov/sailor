@@ -1,5 +1,5 @@
 name: WorldEditor
-gameObjects:
+prefabs:
   - components:
       - typename: Sailor::CameraComponent
         overrideProperties:

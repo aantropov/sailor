@@ -99,9 +99,13 @@ namespace SailorEditor.Services
 
         public static Dictionary<string, object> ParseYaml(string filename)
         {
+            return ParseYamlNode(File.ReadAllText(filename));
+        }
+
+        public static Dictionary<string, object> ParseYamlNode(string yamlnode)
+        {
             Dictionary<string, object> res = new Dictionary<string, object>();
-            using (var yamlAssetInfo = new FileStream(filename, FileMode.Open))
-            using (var reader = new StreamReader(yamlAssetInfo))
+            using (var reader = new StringReader(yamlnode))
             {
                 var yaml = new YamlStream();
                 yaml.Load(reader);
@@ -112,8 +116,6 @@ namespace SailorEditor.Services
                 {
                     res[e.Key.ToString()] = e.Value;
                 }
-
-                yamlAssetInfo.Close();
             }
             return res;
         }

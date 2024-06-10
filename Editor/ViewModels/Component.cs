@@ -1,4 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Utility;
+using SailorEngine;
 
 namespace SailorEditor.ViewModels
 {
@@ -17,7 +19,7 @@ namespace SailorEditor.ViewModels
 
         public int Id { get; set; }
         public int GameObjectId { get; set; }
-        
+
         public object Clone() => new Component();
 
         [ObservableProperty]
@@ -25,5 +27,10 @@ namespace SailorEditor.ViewModels
 
         [ObservableProperty]
         protected string displayName;
+
+        /*public ComponentType Typename = null;
+
+        [ObservableProperty]
+        ObservableDictionary<string, object> overrideProperties = new();*/
     }
 }

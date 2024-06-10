@@ -152,6 +152,7 @@ namespace SailorEditor.ViewModels
 
             IsDirty = false;
         }
+
         public override async Task UpdateAssetFile()
         {
             await UpdateModel();

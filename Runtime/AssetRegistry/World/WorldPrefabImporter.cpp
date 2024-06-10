@@ -26,7 +26,7 @@ YAML::Node WorldPrefab::Serialize() const
 		nodes.Add(go->Serialize());
 	}
 
-	outData["gameObjects"] = nodes;
+	outData["prefabs"] = nodes;
 
 	return outData;
 }
@@ -35,15 +35,15 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 {
 	::Deserialize(inData, "name", m_name);
 
-	check(inData["gameObjects"].IsSequence());
+	check(inData["prefabs"].IsSequence());
 
-	size_t numGameObjects = inData["gameObjects"].size();
+	size_t numGameObjects = inData["prefabs"].size();
 	m_gameObjects.Reserve(numGameObjects);
 
 	for (uint32_t i = 0; i < numGameObjects; i++)
 	{
 		auto newPrefab = App::GetSubmodule<PrefabImporter>()->Create();
-		newPrefab->Deserialize(inData["gameObjects"][i]);
+		newPrefab->Deserialize(inData["prefabs"][i]);
 		m_gameObjects.Add(newPrefab);
 	}
 }

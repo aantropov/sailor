@@ -45,6 +45,7 @@ namespace SailorEditor.Services
         public string PathToEngineExec { get { return EngineWorkingDirectory + "SailorEngine-Release.exe"; } }
 
         public event Action<string[]> OnPullMessagesAction = delegate { };
+        public event Action<string> OnUpdateCurrentWorldAction = delegate { };
 
         public Dictionary<string, ComponentType> ComponentTypes { get; private set; } = new Dictionary<string, ComponentType>();
 
@@ -54,7 +55,6 @@ namespace SailorEditor.Services
             ComponentTypes = Helper.ReadEngineTypes(engineTypesYaml);
 
 #if WINDOWS
-
             nint handle = ((MauiWinUIWindow)Application.Current.Windows[0].Handler.PlatformView).WindowHandle;
 
             string commandArgs = $"--noconsole --hwnd {handle} --editor " + commandlineArgs;
@@ -83,7 +83,13 @@ namespace SailorEditor.Services
                     {
                         while (!cts.Token.IsCancellationRequested)
                         {
-                            PullMessages();
+                            var messages = PullMessages();
+
+                            if (messages != null)
+                            {
+                                MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
+                            }
+
                             try
                             {
                                 await Task.Delay(500);
@@ -102,7 +108,7 @@ namespace SailorEditor.Services
                         {
                             try
                             {
-                                await Task.Delay(5000);
+                                await Task.Delay(1000);
                             }
                             catch (TaskCanceledException)
                             {
@@ -110,6 +116,10 @@ namespace SailorEditor.Services
                             }
 
                             serializedWorld = SerializeWorld();
+                            if (serializedWorld != string.Empty)
+                            {
+                                MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+                            }
                         }
                     });
 
@@ -129,7 +139,7 @@ namespace SailorEditor.Services
 #endif
         }
 
-        void PullMessages()
+        string[] PullMessages()
         {
             uint numMessages = 64;
             nint[] messagesPtrs = new nint[numMessages];
@@ -137,7 +147,7 @@ namespace SailorEditor.Services
             uint actualNumMessages = EngineAppInterop.GetMessages(messagesPtrs, numMessages);
 
             if (actualNumMessages == 0)
-                return;
+                return null;
 
             string[] messages = new string[actualNumMessages];
             for (int i = 0; i < actualNumMessages; i++)
@@ -146,13 +156,12 @@ namespace SailorEditor.Services
                 Marshal.FreeHGlobal(messagesPtrs[i]);
             }
 
-            MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
+            return messages;
         }
 
         string SerializeWorld()
         {
             nint[] yamlNodeChar = new nint[1];
-
             uint numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
 
             if (numChars == 0)
