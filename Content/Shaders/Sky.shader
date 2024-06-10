@@ -27,7 +27,7 @@ glslVertex: |
   #if defined(CLOUDS)
   layout(push_constant) uniform Constants
   {
-  	uint ditherPattern;
+    uint ditherPattern;
   } PushConstants;
   #endif
   
@@ -97,7 +97,7 @@ glslFragment: |
   #if defined(CLOUDS)
   layout(push_constant) uniform Constants
   {
-  	uint ditherPattern;
+    uint ditherPattern;
   } PushConstants;
   #endif
   
@@ -445,9 +445,9 @@ glslFragment: |
     }
     
     return sumDensity;
-  }
+  } 
   
-  vec4 CloudsMarching(vec3 origin, vec3 viewDir, vec3 dirToSun)
+  vec4 CloudsMarching(vec3 origin, vec3 viewDir, vec3 dirToSun, float maxTraceDistance)
   {
     vec3 traceStart;
     vec3 traceEnd;
@@ -458,8 +458,14 @@ glslFragment: |
     vec2 cloudsEndIntersections = RaySphereIntersect(origin, viewDir, vec3(0), CloudsEndR);
     
     const float shiftCloudsStart = cloudsStartIntersections.x < 0 ? max(0, cloudsStartIntersections.y) : cloudsStartIntersections.x;
-    const float shiftCloudsEnd = cloudsEndIntersections.x < 0 ? max(0, cloudsEndIntersections.y) : cloudsEndIntersections.x;
+    const float shiftCloudsEnd = min(maxTraceDistance, cloudsEndIntersections.x < 0 ? max(0, cloudsEndIntersections.y) : cloudsEndIntersections.x);
     
+    // Start is far than end
+    if(shiftCloudsStart > shiftCloudsEnd)
+    {
+        return vec4(0.0f);
+    }
+
     if(originHeight < CloudsStartR)
     {
         traceStart = origin + viewDir * shiftCloudsStart;
@@ -571,7 +577,10 @@ glslFragment: |
         position += viewDir * avrStep;
         const float height = length(position);
         
-        if(transmittanceLow < 0.05 || height > CloudsEndR || height < CloudsStartR)
+        if(transmittanceLow < 0.05 || 
+            height > CloudsEndR || 
+            height < CloudsStartR ||
+            length(position - traceStart) > maxTraceDistance)
         {
             break;
         }
@@ -645,14 +654,13 @@ glslFragment: |
        }
       #endif
       
+      float linearDepth = abs(texture(linearDepth, fragTexcoord.xy).r);
       #if defined(DISCARD_BY_DEPTH)
-       float linearDepth = abs(texture(linearDepth, fragTexcoord.xy).r);
        if(linearDepth < 20000.0f)
        {
           discard;
        }
       #endif
-
 
        vec2 uv = fragTexcoord.xy;
        uv.y = 1 - uv.y;
@@ -675,7 +683,10 @@ glslFragment: |
        horizon += 1 - clamp((CloudsStartR - length(origin)) / 500, 0, 1);
        horizon = clamp(horizon, 0, 1);
        
-       vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun) + vec4(sky.xyz, 0.0f) * data.ambient;
+       const float BigDistance = 600000.0f;
+       float maxTraceDistance = abs(linearDepth - frame.cameraZNearZFar.y) < 1.0f ? BigDistance : linearDepth;
+
+       vec4 rawClouds = CloudsMarching(origin, viewDir, dirToSun, maxTraceDistance) + vec4(sky.xyz, 0.0f) * data.ambient;
        vec3 tunedClouds = mix(outColor.xyz, rawClouds.xyz, horizon);
        
        outColor.xyz = tunedClouds;
