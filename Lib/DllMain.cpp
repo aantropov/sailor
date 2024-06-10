@@ -56,7 +56,7 @@ extern "C"
 		return numMsg;
 	}
 
-	SAILOR_API uint32_t Editor_SerializeWorld(char** yamlNode)
+	SAILOR_API uint32_t SerializeCurrentWorld(char** yamlNode)
 	{
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 		auto node = editor->SerializeWorld();

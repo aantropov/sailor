@@ -8,7 +8,7 @@ using YamlDotNet.Serialization.NodeTypeResolvers;
 
 namespace SailorEngine
 {
-    public class AppInterop
+    public class EngineAppInterop
     {
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Initialize(string[] commandLineArgs, int num);
@@ -24,6 +24,9 @@ namespace SailorEngine
 
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern uint GetMessages(nint[] messages, uint num);
+
+        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern uint SerializeCurrentWorld(nint[] yamlNode);
     }
 }
 
@@ -74,7 +77,7 @@ namespace SailorEditor.Services
 
                 Task.Run(() =>
                 {
-                    AppInterop.Initialize(args, args.Length);
+                    EngineAppInterop.Initialize(args, args.Length);
 
                     Task.Run(async () =>
                     {
@@ -92,12 +95,30 @@ namespace SailorEditor.Services
                         }
                     });
 
-                    AppInterop.Start();
-                    AppInterop.Stop();
+                    Task.Run(async () =>
+                    {
+                        string serializedWorld = string.Empty;
+                        while (!cts.Token.IsCancellationRequested && serializedWorld == string.Empty)
+                        {
+                            try
+                            {
+                                await Task.Delay(5000);
+                            }
+                            catch (TaskCanceledException)
+                            {
+                                break;
+                            }
+
+                            serializedWorld = SerializeWorld();
+                        }
+                    });
+
+                    EngineAppInterop.Start();
+                    EngineAppInterop.Stop();
 
                     cts.Cancel();
 
-                    AppInterop.Shutdown();
+                    EngineAppInterop.Shutdown();
                 });
 
             }
@@ -113,7 +134,7 @@ namespace SailorEditor.Services
             uint numMessages = 64;
             nint[] messagesPtrs = new nint[numMessages];
 
-            uint actualNumMessages = AppInterop.GetMessages(messagesPtrs, numMessages);
+            uint actualNumMessages = EngineAppInterop.GetMessages(messagesPtrs, numMessages);
 
             if (actualNumMessages == 0)
                 return;
@@ -126,6 +147,21 @@ namespace SailorEditor.Services
             }
 
             MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
+        }
+
+        string SerializeWorld()
+        {
+            nint[] yamlNodeChar = new nint[1];
+
+            uint numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
+
+            if (numChars == 0)
+                return string.Empty;
+
+            string yamlNode = Marshal.PtrToStringAnsi(yamlNodeChar[0]);
+            Marshal.FreeHGlobal(yamlNodeChar[0]);
+
+            return yamlNode;
         }
     }
 }
