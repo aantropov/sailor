@@ -1,6 +1,7 @@
 #include "Reflection.h"
 #include "Components/Component.h"
 #include "Containers/ConcurrentMap.h"
+#include "RHI/Types.h"
 
 using namespace Sailor;
 
@@ -168,6 +169,19 @@ void Reflection::ExportReflectionData()
 	}
 
 	yamlTypes["cdos"] = nodes;
+
+	nodes.Clear();
+	nodes.Add(ReflectEnumValues<EMobilityType>());
+	nodes.Add(ReflectEnumValues<ELightType>());
+	nodes.Add(ReflectEnumValues<RHI::EFormat>());
+	nodes.Add(ReflectEnumValues<RHI::ETextureFiltration>());
+	nodes.Add(ReflectEnumValues<RHI::ETextureClamping>());
+	nodes.Add(ReflectEnumValues<RHI::EFillMode>());
+	nodes.Add(ReflectEnumValues<RHI::ECullMode>());
+	nodes.Add(ReflectEnumValues<RHI::EBlendMode>());
+	nodes.Add(ReflectEnumValues<RHI::EDepthCompare>());
+
+	yamlTypes["enums"] = nodes;
 
 	std::ofstream file(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml");
 	file << yamlTypes;

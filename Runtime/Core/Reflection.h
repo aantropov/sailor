@@ -373,6 +373,24 @@ namespace Sailor
 
 	private:
 
+		template<typename TEnum>
+		static YAML::Node ReflectEnumValues()
+		{
+			YAML::Node res;
+			TVector<std::string> values;
+			constexpr auto enumValues = magic_enum::enum_names<TEnum>();
+
+			for (const auto& value : enumValues)
+			{
+				values.Add(std::string(value));
+			}
+
+			std::string enumName = typeid(TEnum).name();
+			res[enumName] = values;
+
+			return res;
+		}
+
 		static ComponentPtr CreateCDO(const TypeInfo& pType);
 
 		template<typename T>
