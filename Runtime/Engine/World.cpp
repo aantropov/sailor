@@ -107,7 +107,12 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 	for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
 	{
 		GameObjectPtr gameObject = Instantiate(worldPosition, prefab->m_gameObjects[j].m_name);
-		
+
+		auto& transform = gameObject->GetTransformComponent();
+		transform.SetPosition(prefab->m_gameObjects[j].m_position);
+		transform.SetRotation(prefab->m_gameObjects[j].m_rotation);
+		transform.SetScale(prefab->m_gameObjects[j].m_scale);
+
 		for (uint32_t i = 0; i < prefab->m_gameObjects[j].m_components.Num(); i++)
 		{
 			const uint32_t componentIndex = prefab->m_gameObjects[j].m_components[i];
@@ -152,6 +157,8 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 			root->m_fileId = prefab->GetFileId();
 		}
 	}
+
+	root->GetTransformComponent().SetPosition(worldPosition);
 
 	return root;
 }

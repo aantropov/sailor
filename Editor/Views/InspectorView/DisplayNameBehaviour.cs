@@ -23,7 +23,7 @@ public class DisplayNameBehavior : Behavior<Label>
             {
                 notifyContext.PropertyChanged += (s, args) =>
                 {
-                    if (args.PropertyName == "DisplayName" || args.PropertyName == "IsDirty")
+                    if (args.PropertyName == "Name" || args.PropertyName == "DisplayName" || args.PropertyName == "IsDirty")
                     {
                         UpdateLabel(label, bindingContext);
                     }

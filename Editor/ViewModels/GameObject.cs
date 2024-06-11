@@ -5,11 +5,14 @@ using YamlDotNet.Core.Events;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using System.Runtime.CompilerServices;
 
 namespace SailorEditor.ViewModels
 {
     public partial class GameObject : ObservableObject, ICloneable
     {
+        public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
+
         public List<int> Components = new();
 
         public object Clone() => new GameObject()
@@ -40,5 +43,8 @@ namespace SailorEditor.ViewModels
 
         [ObservableProperty]
         string instanceId = "NullInstanceId";
+
+        [ObservableProperty]
+        protected bool isDirty = false;
     }
 }

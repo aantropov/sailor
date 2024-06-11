@@ -10,7 +10,8 @@ namespace SailorEditor.Helpers
         public DataTemplate ShaderFileTemplate { get; private set; } = new ShaderFileTemplate();
         public DataTemplate ShaderLibraryFileTemplate { get; private set; } = new ShaderLibraryFileTemplate();
         public DataTemplate MaterialFileTemplate { get; private set; } = new MaterialFileTemplate();
-
+        public DataTemplate GameObjectTemplate { get; private set; } = new GameObjectTemplate();
+        
         protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
         {
             switch (item)
@@ -29,6 +30,9 @@ namespace SailorEditor.Helpers
 
                 case MaterialFile _:
                     return MaterialFileTemplate;
+
+                case GameObject _:
+                    return GameObjectTemplate;
             };
 
             return AssetFileTemplate;
