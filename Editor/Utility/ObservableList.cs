@@ -69,9 +69,9 @@ namespace SailorEditor.Utility
     public class ObservableListConverter<T> : IYamlTypeConverter
         where T : INotifyPropertyChanged
     {
-        public ObservableListConverter(IYamlTypeConverter ValueConverter = null)
+        public ObservableListConverter(IYamlTypeConverter[] ValueConverters = null)
         {
-            valueConverter = ValueConverter;
+            valueConverters = [.. ValueConverters];
         }
 
         public bool Accepts(Type type) => type == typeof(ObservableList<T>);
@@ -79,9 +79,11 @@ namespace SailorEditor.Utility
         public object ReadYaml(IParser parser, Type type)
         {
             var deserializerBuilder = new DeserializerBuilder()
-                .WithNamingConvention(NullNamingConvention.Instance);
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .IgnoreUnmatchedProperties()
+                .IncludeNonPublicProperties();
 
-            if (valueConverter != null)
+            foreach (var valueConverter in valueConverters)
             {
                 deserializerBuilder.WithTypeConverter(valueConverter);
             }
@@ -95,9 +97,8 @@ namespace SailorEditor.Utility
             {
                 var item = deserializer.Deserialize<T>(parser);
                 list.Add(item);
-                parser.MoveNext();
             }
-            
+
             parser.MoveNext();
 
             return list;
@@ -107,9 +108,9 @@ namespace SailorEditor.Utility
         {
             var list = (ObservableList<T>)value;
             var serializerBuilder = new SerializerBuilder()
-                .WithNamingConvention(NullNamingConvention.Instance);
+                .WithNamingConvention(CamelCaseNamingConvention.Instance);
 
-            if (valueConverter != null)
+            foreach (var valueConverter in valueConverters)
             {
                 serializerBuilder.WithTypeConverter(valueConverter);
             }
@@ -126,6 +127,6 @@ namespace SailorEditor.Utility
             emitter.Emit(new SequenceEnd());
         }
 
-        IYamlTypeConverter valueConverter = null;
+        List<IYamlTypeConverter> valueConverters = new();
     }
 }

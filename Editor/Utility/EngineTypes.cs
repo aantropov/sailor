@@ -6,6 +6,9 @@ using YamlDotNet.Core.Events;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
+using SailorEditor.Services;
+using SailorEditor;
+using System.Globalization;
 
 namespace SailorEngine
 {
@@ -26,6 +29,34 @@ namespace SailorEngine
     public class Vec2Property : Property<SailorEditor.Vec2> { }
     public class FileIdProperty : Property<AssetUID> { }
     public class InstanceIdProperty : Property<string> { }
+    public class ObjectPtrProperty : PropertyBase { }
+
+    // TODO: Store enum data in engine types
+    public class EnumProperty : Property<string> { }
+
+    public partial class ObjectPtr : ObservableObject, ICloneable, IComparable<ObjectPtr>
+    {
+        [ObservableProperty]
+        AssetUID fileId;
+
+        [ObservableProperty]
+        string instanceId;
+
+        public object Clone() => new ObjectPtr() { FileId = FileId, InstanceId = InstanceId };
+
+        public int CompareTo(ObjectPtr other)
+        {
+            if (other == null) return 1;
+
+            int fileIdComparison = FileId.CompareTo(other.FileId);
+            if (fileIdComparison != 0)
+            {
+                return fileIdComparison;
+            }
+
+            return string.Compare(InstanceId, other.InstanceId, StringComparison.Ordinal);
+        }
+    }
 
     public class ComponentType
     {
@@ -71,35 +102,24 @@ namespace SailorEngine
 
                 foreach (var property in component.Value)
                 {
-                    PropertyBase newProperty = null;
-
-                    if (property.Value == "struct glm::vec<2,float,0>")
+                    PropertyBase newProperty = property.Value switch
                     {
-                        newProperty = new Vec2Property();
-                    }
-                    else if (property.Value == "struct glm::vec<3,float,0>")
-                    {
-                        newProperty = new Vec3Property();
-                    }
-                    else if (property.Value == "struct glm::vec<4,float,0>")
-                    {
-                        newProperty = new Vec4Property();
-                    }
-                    else if (property.Value == "float")
-                    {
-                        newProperty = new FloatProperty();
-                    }
-                    else if (property.Value == "class Sailor::TObjectPtr<class Sailor::Model>")
-                    {
-                        newProperty = new FileIdProperty();
-                    }
-                    else if (property.Value.Contains("TObjectPtr"))
-                    {
-                        newProperty = new InstanceIdProperty();
-                    }
+                        "struct glm::vec<2,float,0>" => new Vec2Property(),
+                        "struct glm::vec<3,float,0>" => new Vec3Property(),
+                        "struct glm::vec<4,float,0>" => new Vec4Property(),
+                        "float" => new FloatProperty(),
+                        var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty(),
+                        var value when value.Contains("TObjectPtr") => new InstanceIdProperty(),
+                        var value when value.StartsWith("enum") => new EnumProperty(),
+                        _ => throw new InvalidOperationException($"Unexpected property type: {property.Value}")
+                    };
 
                     newComponent.Properties[property.Key] = newProperty;
                 }
+
+                // We should store internal props also
+                newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = "NullFileId" };
+                newComponent.Properties["instanceId"] = new InstanceIdProperty();
 
                 componentTypes[component.Key] = newComponent;
             }
@@ -351,7 +371,22 @@ namespace SailorEditor
         public static implicit operator Vector4(Vec4 uniform) => new Vector4(uniform.X, uniform.Y, uniform.Z, uniform.W);
         public object Clone() => new Vec4 { X = X, Y = Y, Z = Z, W = W };
         public override string ToString() => $"<{X} {Y} {Z} {W}>";
-        public int CompareTo(Vec4 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y) + Z.CompareTo(other.Z) + W.CompareTo(other.W);
+
+        public int CompareTo(Vec4 other)
+        {
+            if (other == null) return 1;
+
+            int result = X.CompareTo(other.X);
+            if (result != 0) return result;
+
+            result = Y.CompareTo(other.Y);
+            if (result != 0) return result;
+
+            result = Z.CompareTo(other.Z);
+            if (result != 0) return result;
+
+            return W.CompareTo(other.W);
+        }
 
         [ObservableProperty]
         float x = 0.0f;
@@ -380,7 +415,23 @@ namespace SailorEditor
         public static implicit operator Vector3(Vec3 uniform) => new Vector3(uniform.X, uniform.Y, uniform.Z);
         public object Clone() => new Vec3 { X = X, Y = Y, Z = Z };
         public override string ToString() => $"<{X} {Y} {Z}>";
-        public int CompareTo(Vec3 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y) + Z.CompareTo(other.Z);
+
+        public int CompareTo(Vec3 other)
+        {
+            if (other == null)
+                return 1;
+
+            int result = X.CompareTo(other.X);
+            if (result != 0)
+                return result;
+
+            result = Y.CompareTo(other.Y);
+            if (result != 0)
+                return result;
+
+            result = Z.CompareTo(other.Z);
+            return result;
+        }
 
         [ObservableProperty]
         float x = 0.0f;
@@ -405,7 +456,20 @@ namespace SailorEditor
         public static implicit operator Vector2(Vec2 uniform) => new Vector2(uniform.X, uniform.Y);
         public object Clone() => new Vec2 { X = X, Y = Y };
         public override string ToString() => $"<{X} {Y}>";
-        public int CompareTo(Vec2 other) => X.CompareTo(other.X) + Y.CompareTo(other.Y);
+
+        public int CompareTo(Vec2 other)
+        {
+            if (other == null)
+                return 1;
+
+            int result = X.CompareTo(other.X);
+            if (result != 0)
+                return result;
+
+            result = Y.CompareTo(other.Y);
+
+            return result;
+        }
 
         [ObservableProperty]
         float x = 0.0f;
@@ -421,15 +485,16 @@ namespace SailorEditor
         public object ReadYaml(IParser parser, Type type)
         {
             var list = new List<float>();
-            parser.MoveNext();
+            parser.Consume<SequenceStart>();
             while (parser.Current is SequenceEnd == false)
             {
                 if (parser.Current is Scalar scalar)
                 {
-                    list.Add(float.Parse(scalar.Value));
+                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
                 }
                 parser.MoveNext();
             }
+            parser.Consume<SequenceEnd>();
             return new Vec2 { X = list[0], Y = list[1] };
         }
 
@@ -450,15 +515,16 @@ namespace SailorEditor
         public object ReadYaml(IParser parser, Type type)
         {
             var list = new List<float>();
-            parser.MoveNext();
+            parser.Consume<SequenceStart>();
             while (parser.Current is SequenceEnd == false)
             {
                 if (parser.Current is Scalar scalar)
                 {
-                    list.Add(float.Parse(scalar.Value));
+                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
                 }
                 parser.MoveNext();
             }
+            parser.Consume<SequenceEnd>();
             return new Vec3 { X = list[0], Y = list[1], Z = list[2] };
         }
 
@@ -480,15 +546,17 @@ namespace SailorEditor
         public object ReadYaml(IParser parser, Type type)
         {
             var list = new List<float>();
-            parser.MoveNext();
+            parser.Consume<SequenceStart>();
             while (parser.Current is SequenceEnd == false)
             {
                 if (parser.Current is Scalar scalar)
                 {
-                    list.Add(float.Parse(scalar.Value));
+                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
                 }
                 parser.MoveNext();
             }
+            parser.Consume<SequenceEnd>();
+
             return new Vec4 { X = list[0], Y = list[1], Z = list[2], W = list[3] };
         }
 
@@ -501,6 +569,31 @@ namespace SailorEditor
             emitter.Emit(new Scalar(null, vec.Z.ToString()));
             emitter.Emit(new Scalar(null, vec.W.ToString()));
             emitter.Emit(new SequenceEnd());
+        }
+    }
+
+    public class ComponentTypeConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(SailorEngine.ComponentType);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            string name = string.Empty;
+
+            if (parser.Current is Scalar scalar)
+            {
+                name = scalar.Value;
+            }
+
+            parser.MoveNext();
+
+            return MauiProgram.GetService<EngineService>().ComponentTypes[name];
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var component = (SailorEngine.ComponentType)value;
+            emitter.Emit(new Scalar(null, component.Name));
         }
     }
 };

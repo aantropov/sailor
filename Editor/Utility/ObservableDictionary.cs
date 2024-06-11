@@ -2,6 +2,10 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
+using YamlDotNet.Core.Events;
+using YamlDotNet.Core;
+using YamlDotNet.Serialization.NamingConventions;
+using YamlDotNet.Serialization;
 
 namespace SailorEditor.Utility
 {
@@ -36,7 +40,7 @@ namespace SailorEditor.Utility
             {
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove,
                     new KeyValuePair<TKey, TValue>(key, value)));
-                               
+
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Count"));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Keys"));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Values"));
@@ -164,5 +168,74 @@ namespace SailorEditor.Utility
         IEnumerator IEnumerable.GetEnumerator() => dictionary.GetEnumerator();
 
         #endregion
+    }
+
+    public class ObservableDictionaryConverter<TKey, TValue> : IYamlTypeConverter
+    {
+        public ObservableDictionaryConverter(IYamlTypeConverter KeyConverter = null, IYamlTypeConverter ValueConverter = null)
+        {
+            keyConverter = KeyConverter;
+            valueConverter = ValueConverter;
+        }
+
+        public bool Accepts(Type type) => type == typeof(ObservableDictionaryConverter<TKey, TValue>);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var deserializerBuilder = new DeserializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .IgnoreUnmatchedProperties()
+                .IncludeNonPublicProperties();
+
+            if (valueConverter != null)
+                deserializerBuilder.WithTypeConverter(valueConverter);
+
+            if (keyConverter != null)
+                deserializerBuilder.WithTypeConverter(keyConverter);
+
+            var deserializer = deserializerBuilder.Build();
+            var dict = new ObservableDictionary<TKey, TValue>();
+
+            parser.Consume<MappingStart>();
+
+            while (parser.TryConsume<MappingEnd>(out var _))
+            {
+                var key = deserializer.Deserialize<TKey>(parser);
+                parser.Consume<Scalar>();
+                var value = deserializer.Deserialize<TValue>(parser);
+
+                dict.Add(key, value);
+            }
+
+            return dict;
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var dict = (ObservableDictionary<TKey, TValue>)value;
+            var serializerBuilder = new SerializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance);
+
+            if (valueConverter != null)
+                serializerBuilder.WithTypeConverter(valueConverter);
+
+            if (keyConverter != null)
+                serializerBuilder.WithTypeConverter(keyConverter);
+
+            var serializer = serializerBuilder.Build();
+
+            emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+            foreach (var kvp in dict)
+            {
+                serializer.Serialize(emitter, kvp.Key);
+                serializer.Serialize(emitter, kvp.Value);
+            }
+
+            emitter.Emit(new MappingEnd());
+        }
+
+        IYamlTypeConverter valueConverter = null;
+        IYamlTypeConverter keyConverter = null;
     }
 }

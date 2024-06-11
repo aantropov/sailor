@@ -3,6 +3,8 @@ using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
+using YamlDotNet.Core;
+using YamlDotNet.Core.Events;
 
 namespace SailorEditor.ViewModels
 {
@@ -41,6 +43,13 @@ namespace SailorEditor.ViewModels
         {
             return new AssetUID { Value = val };
         }
+    }
+
+    public class AssetUIDConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(AssetUID);
+        public object ReadYaml(IParser parser, Type type) => new AssetUID(parser.Consume<Scalar>().Value);
+        public void WriteYaml(IEmitter emitter, object value, Type type) => emitter.Emit(new Scalar(((AssetUID)value).Value));
     }
 
     public partial class AssetFile : ObservableObject, ICloneable

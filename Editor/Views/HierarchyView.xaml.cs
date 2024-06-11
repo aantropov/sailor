@@ -8,14 +8,14 @@ namespace SailorEditor.Views
     public partial class HierarchyView : ContentView
     {
         WorldService service;
+
         public HierarchyView()
         {
             InitializeComponent();
 
             this.service = MauiProgram.GetService<WorldService>();
 
-            PopulateHierarchyView();
-
+            service.OnUpdateWorldAction += PopulateHierarchyView;
             HierarchyTree.SelectedItemChanged += OnSelectTreeViewNode;
         }
 
@@ -33,10 +33,10 @@ namespace SailorEditor.Views
             }
         }
 
-        private void PopulateHierarchyView()
+        private void PopulateHierarchyView(World world)
         {
-            var foldersModel = HierarchyTreeViewBuilder.PopulateWorld(service);
-            var rootNodes = Controls.TreeView.PopulateGroup(foldersModel, new TreeViewPopulateArgs() { ItemImage = "blue_document_attribute_c.png", GroupImage = "blue_document.png" });
+            var gameObjectsModel = HierarchyTreeViewBuilder.PopulateWorld(service);
+            var rootNodes = Controls.TreeView.PopulateGroup(gameObjectsModel, new TreeViewPopulateArgs() { ItemImage = "blue_document_attribute_c.png", GroupImage = "blue_document.png" });
             HierarchyTree.RootNodes = rootNodes;
         }
     }

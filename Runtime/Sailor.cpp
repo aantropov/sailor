@@ -198,7 +198,7 @@ void App::Start()
 	consoleVars["stats.memory"] = &Sailor::RHI::Renderer::MemoryStats;
 
 #ifdef SAILOR_EDITOR
-	auto worldAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Test.world");
+	auto worldAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Editor.world");
 	auto worldPrefab = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<WorldPrefab>(worldAssetInfo->GetFileId());
 	TWeakPtr<World> pWorld = GetSubmodule<EngineLoop>()->CreateWorld(worldPrefab);
 

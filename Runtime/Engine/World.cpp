@@ -97,7 +97,7 @@ void World::Tick(FrameState& frameState)
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 }
 
-GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPosition, const std::string& name)
+GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPosition)
 {
 	check(prefab->m_gameObjects.Num() > 0);
 
@@ -153,7 +153,6 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 		}
 	}
 
-	root->m_name = name;
 	return root;
 }
 

@@ -319,7 +319,7 @@ namespace Sailor
 			cdoInfo = Reflection::ReflectCDO<T>(cdo.DynamicCast<T>().GetRawPtr());
 			Internal::g_pCdos->Unlock(typeName);
 
-			//// We don't store CDOs
+			// We don't store CDOs
 			cdo.ForcelyDestroyObject();
 		}
 
