@@ -13,11 +13,11 @@ namespace SailorEditor.Views
             InitializeComponent();
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
-            selectionViewModel.OnSelectAssetAction += OnSelectAssetFile;
+            selectionViewModel.OnSelectObjectAction += RefreshInspector;
             this.BindingContext = selectionViewModel;
         }
 
-        private void OnSelectAssetFile(AssetFile file)
+        private void RefreshInspector(object file)
         {
             // If we don't do that then TemplateSelector is not called
             var refresh = InspectedItem.ItemsSource;

@@ -22,14 +22,20 @@ namespace SailorEditor.Views
         public static void OnSelectTreeViewNode(object sender, EventArgs args)
         {
             var selectionChanged = args as TreeView.OnSelectItemEventArgs;
-            if (selectionChanged.Model is TreeViewItem<Component> component)
+            if (selectionChanged != null)
             {
-                MauiProgram.GetService<SelectionService>().OnSelect(component.Model);
-            }
+                var selectionService = MauiProgram.GetService<SelectionService>();
 
-            if (selectionChanged.Model is TreeViewItem<Component> gameObject)
-            {
-                MauiProgram.GetService<SelectionService>().OnSelect(gameObject.Model);
+                switch (selectionChanged.Model)
+                {
+                    case TreeViewItem<Component> component:
+                        selectionService.SelectObject(component.Model);
+                        break;
+
+                    case TreeViewItemGroup<GameObject, Component> gameObject:
+                        selectionService.SelectObject(gameObject.Model);
+                        break;
+                }
             }
         }
 

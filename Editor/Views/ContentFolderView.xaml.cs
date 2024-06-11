@@ -2,6 +2,7 @@
 using SailorEditor.Helpers;
 using SailorEditor.ViewModels;
 using SailorEditor.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SailorEditor.Views
 {
@@ -19,26 +20,29 @@ namespace SailorEditor.Views
             FolderTree.SelectedItemChanged += OnSelectTreeViewNode;
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
-            selectionViewModel.OnSelectAssetAction += OnSelectAssetFile;
+            selectionViewModel.OnSelectObjectAction += SelectAssetFile;
         }
 
-        private void OnSelectAssetFile(AssetFile file)
+        private void SelectAssetFile(ObservableObject obj)
         {
-            var assetFile = FolderTree.SelectedItem.BindingContext as TreeViewItem<AssetFile>;
-
-            if (assetFile != null)
+            if (obj is AssetFile file)
             {
-                if (assetFile.Model.UID != file.UID)
-                {
-                    foreach (var el in FolderTree.RootNodes)
-                    {
-                        var res = el.FindFileRecursive(file);
+                var assetFile = FolderTree.SelectedItem.BindingContext as TreeViewItem<AssetFile>;
 
-                        if (res != null)
+                if (assetFile != null)
+                {
+                    if (assetFile.Model.UID != file.UID)
+                    {
+                        foreach (var el in FolderTree.RootNodes)
                         {
-                            res.Select();
-                            FolderTree.SelectedItem = res;
-                            break;
+                            var res = el.FindFileRecursive(file);
+
+                            if (res != null)
+                            {
+                                res.Select();
+                                FolderTree.SelectedItem = res;
+                                break;
+                            }
                         }
                     }
                 }
@@ -51,7 +55,7 @@ namespace SailorEditor.Views
             var assetFile = selectionChanged.Model as TreeViewItem<AssetFile>;
             if (assetFile != null)
             {
-                MauiProgram.GetService<SelectionService>().OnSelectAsset(assetFile.Model);
+                MauiProgram.GetService<SelectionService>().SelectObject(assetFile.Model);
             }
         }
 

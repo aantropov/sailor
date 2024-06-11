@@ -36,7 +36,7 @@ public class AssetUIDClickable : Behavior<Label>
         {
             var uid = property.GetValue((sender as Label).BindingContext);
 
-            MauiProgram.GetService<SelectionService>().OnSelectAsset(MauiProgram.GetService<AssetsService>().Assets[uid as AssetUID]);
+            MauiProgram.GetService<SelectionService>().SelectObject(MauiProgram.GetService<AssetsService>().Assets[uid as AssetUID]);
         }
     }
 }
