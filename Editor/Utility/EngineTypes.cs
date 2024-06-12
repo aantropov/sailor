@@ -83,6 +83,7 @@ namespace SailorEngine
 
         public static implicit operator FileId(string val) => new FileId { Value = val };
     }
+
     public class ComponentType
     {
         public string Name { get; set; }

@@ -1,6 +1,7 @@
 ﻿using SailorEditor.ViewModels;
 using SailorEditor.Services;
 using SailorEditor.Controls;
+using CommunityToolkit.Maui.Core.Primitives;
 
 namespace SailorEditor.Helpers
 {
@@ -101,6 +102,17 @@ namespace SailorEditor.Helpers
                         }
                     }
                 }
+            }
+
+            var assetsInRootFolder = assets.Where(x => x.FolderId == -1);
+            foreach (var file in assetsInRootFolder)
+            {
+                var item = new TreeViewItem<AssetFile>();
+                item.Model = file;
+                item.ItemId = file.Id;
+                item.Key = file.DisplayName;
+
+                projectRootGroup.ChildrenItems.Add(item);
             }
 
             return projectRootGroup;

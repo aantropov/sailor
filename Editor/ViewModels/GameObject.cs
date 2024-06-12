@@ -6,14 +6,20 @@ using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using System.Runtime.CompilerServices;
+using SailorEditor.Services;
 
 namespace SailorEditor.ViewModels
 {
     public partial class GameObject : ObservableObject, ICloneable
     {
+        public int PrefabIndex = -1;
+
         public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
 
-        public List<int> Components = new();
+        public List<Component> Components { get { return MauiProgram.GetService<WorldService>().GetComponents(this); } }
+
+        [YamlMember(Alias = "components")]
+        public List<int> ComponentIndices { get; set; } = new List<int>();
 
         public object Clone() => new GameObject()
         {
@@ -23,7 +29,7 @@ namespace SailorEditor.ViewModels
             Scale = new Vec4(Scale),
             ParentIndex = ParentIndex,
             InstanceId = InstanceId,
-            Components = new List<int>(Components)
+            ComponentIndices = new List<int>(ComponentIndices)
         };
 
         [ObservableProperty]
@@ -46,5 +52,6 @@ namespace SailorEditor.ViewModels
 
         [ObservableProperty]
         protected bool isDirty = false;
+
     }
 }

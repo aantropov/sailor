@@ -132,7 +132,7 @@ namespace SailorEditor.Controls
                 AddItems(e.NewItems.Cast<TreeViewNode>(), parent, parentTreeViewItem);
             }
         }
-        
+
         // Main code: 
         private static TreeViewNode CreateTreeViewNode(object bindingContext, Label label, bool isItem, TreeViewPopulateArgs args)
         {
@@ -151,7 +151,7 @@ namespace SailorEditor.Controls
                         },
                         label
                     },
-                    Orientation = StackOrientation.Horizontal                    
+                    Orientation = StackOrientation.Horizontal
                 }
             };
 
@@ -173,17 +173,21 @@ namespace SailorEditor.Controls
             children.Add(xamlItemTreeViewNode);
         }
 
-        /*        private static void ProcessXamlItems(TreeViewNode node, XamlItemGroup xamlItemGroup)
-                {
-                    var children = new ObservableCollection<TreeViewNode>();
-                    foreach (var xamlItem in xamlItemGroup.XamlItems.OrderBy(xi => xi.Key))
-                    {
-                        CreateXamlItem(children, xamlItem);
-                    }
-                    node.ChildrenList = children;
-                }
-        */
         public static ObservableCollection<TreeViewNode> PopulateGroup(TreeViewItemGroupBase groupModel, TreeViewPopulateArgs args)
+        {
+            var res = PopulateGroup_Recursive(groupModel, args);
+
+            ObservableCollection<TreeViewNode> items = new ();
+
+            foreach (var item in groupModel.ChildrenItemsBase)
+            {
+                TreeView.PopulateItem(res, item, args);
+            }
+
+            return res;
+        }
+
+        static ObservableCollection<TreeViewNode> PopulateGroup_Recursive(TreeViewItemGroupBase groupModel, TreeViewPopulateArgs args)
         {
             var rootNodes = new ObservableCollection<TreeViewNode>();
 
@@ -199,7 +203,7 @@ namespace SailorEditor.Controls
 
                 rootNodes.Add(groupTreeViewNode);
 
-                groupTreeViewNode.ChildrenList = TreeView.PopulateGroup(itemGroup, args);
+                groupTreeViewNode.ChildrenList = TreeView.PopulateGroup_Recursive(itemGroup, args);
 
                 foreach (var item in itemGroup.ChildrenItemsBase)
                 {

@@ -37,7 +37,7 @@ public class MaterialFileTemplate : AssetFileTemplate
                 Templates.EnumPicker(engineTypes.Enums["enum Sailor::RHI::EFillMode"], static (MaterialFile vm) => vm.FillMode, static (MaterialFile vm, string value) => vm.FillMode = value), GridLength.Auto);
 
             Templates.AddGridRowWithLabel(props, "Shader", 
-                Templates.AssetUIDLabel(nameof(MaterialFile.Shader), static (MaterialFile vm) => vm.Shader, static (MaterialFile vm, FileId value) => vm.Shader = value), GridLength.Auto);
+                Templates.FileIdLabel(nameof(MaterialFile.Shader), static (MaterialFile vm) => vm.Shader, static (MaterialFile vm, FileId value) => vm.Shader = value), GridLength.Auto);
 
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);

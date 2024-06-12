@@ -20,6 +20,17 @@ namespace SailorEditor.Services
             MauiProgram.GetService<EngineService>().OnUpdateCurrentWorldAction += ParseWorld;
         }
 
+        public List<Component> GetComponents(GameObject gameObject)
+        {
+            List<Component> res = new();
+            foreach (var componentIndex in gameObject.ComponentIndices)
+            {
+                res.Add(Current.Prefabs[gameObject.PrefabIndex].Components[componentIndex]);
+            }
+
+            return res;
+        }
+
         public async void ParseWorld(string yaml)
         {
             var deserializer = new DeserializerBuilder()
@@ -40,9 +51,18 @@ namespace SailorEditor.Services
             Current = newWorld;
 
             GameObjects.Clear();
+
+            int prefabIndex = 0;
             foreach (var prefab in Current.Prefabs)
             {
+                foreach (var go in prefab.GameObjects)
+                {
+                    go.PrefabIndex = prefabIndex;
+                }
+
                 GameObjects.Add([.. prefab.GameObjects]);
+
+                prefabIndex++;
             }
 
             OnUpdateWorldAction?.Invoke(Current);

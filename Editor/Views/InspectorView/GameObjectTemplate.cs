@@ -1,7 +1,10 @@
-﻿using SailorEditor.Helpers;
+﻿using SailorEditor;
+using SailorEditor.Helpers;
+using SailorEditor.Services;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
+
 
 public class GameObjectTemplate : DataTemplate
 {
@@ -14,17 +17,32 @@ public class GameObjectTemplate : DataTemplate
 
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, new Label { Text = "Transform", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
+            
+            Templates.AddGridRowWithLabel(props, "Position", Templates.Vec4Editor(static (GameObject vm) => vm.Position), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Rotation", Templates.Vec4Editor(static (GameObject vm) => vm.Rotation), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Scale", Templates.Vec4Editor(static (GameObject vm) => vm.Scale), GridLength.Auto);
+
             Templates.AddGridRow(grid, props, GridLength.Auto);
-
-            Templates.AddGridRowWithLabel(grid, "Position", Templates.Vec4Editor(static (GameObject vm) => vm.Position), GridLength.Auto);
-            Templates.AddGridRowWithLabel(grid, "Rotation", Templates.Vec4Editor(static (GameObject vm) => vm.Rotation), GridLength.Auto);
-            Templates.AddGridRowWithLabel(grid, "Scale", Templates.Vec4Editor(static (GameObject vm) => vm.Scale), GridLength.Auto);
-
             Templates.AddGridRow(grid, new Label { Text = "Components", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
+
+            var componentsStack = new VerticalStackLayout();
+            componentsStack.SetBinding(BindableLayout.ItemsSourceProperty, new Binding("Components"));
+
+            BindableLayout.SetItemTemplate(componentsStack, new DataTemplate(() =>
+            {
+                var componentEditor = new ContentView();
+                componentEditor.SetBinding(ContentView.BindingContextProperty, new Binding("."));
+                componentEditor.Content = Templates.ComponentEditor();
+
+                return componentEditor;
+            }));
+
+            Templates.AddGridRow(grid, componentsStack, GridLength.Star);
 
             return grid;
         };
     }
+
     protected View CreateControlPanel()
     {
         var controlPanel = new Grid

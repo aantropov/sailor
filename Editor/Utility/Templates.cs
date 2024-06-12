@@ -14,6 +14,7 @@ using SailorEditor.Services;
 using CommunityToolkit.Maui.Markup;
 using System.Linq.Expressions;
 using SailorEngine;
+using Component = SailorEditor.ViewModels.Component;
 
 namespace SailorEditor.Helpers
 {
@@ -98,7 +99,7 @@ namespace SailorEditor.Helpers
             return entry;
         }
 
-        public static View AssetUIDLabel<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
+        public static View FileIdLabel<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
         {
             var label = new Label();
             label.Behaviors.Add(new FileIdClickable(bindingPath));
@@ -158,7 +159,7 @@ namespace SailorEditor.Helpers
             return stackLayout;
         }
 
-        public static View AssetUIDEditor<TBindingContext>(Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
+        public static View FileIdEditor<TBindingContext>(Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
         {
             var selectButton = new Button { Text = "Select" };
             selectButton.Clicked += async (sender, e) =>
@@ -187,6 +188,57 @@ namespace SailorEditor.Helpers
 
             var stackLayout = new HorizontalStackLayout();
             stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });
+
+            return stackLayout;
+        }
+
+        public static View Vec2Editor<TBindingContext>(Func<TBindingContext, Vec2> convert)
+        {
+            var valueXEntry = new Entry();
+            valueXEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).X,
+                setter: (TBindingContext vm, float value) => convert(vm).X = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
+
+            var valueYEntry = new Entry();
+            valueYEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).Y,
+                setter: (TBindingContext vm, float value) => convert(vm).Y = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
+
+            var stackLayout = new HorizontalStackLayout();
+            stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry } });
+
+            return stackLayout;
+        }
+
+        public static View Vec3Editor<TBindingContext>(Func<TBindingContext, Vec3> convert)
+        {
+            var valueXEntry = new Entry();
+            valueXEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).X,
+                setter: (TBindingContext vm, float value) => convert(vm).X = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
+
+            var valueYEntry = new Entry();
+            valueYEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).Y,
+                setter: (TBindingContext vm, float value) => convert(vm).Y = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
+
+            var valueZEntry = new Entry();
+            valueZEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+                getter: (TBindingContext vm) => convert(vm).Z,
+                setter: (TBindingContext vm, float value) => convert(vm).Z = value,
+                mode: BindingMode.TwoWay,
+                converter: new FloatValueConverter());
+
+            var stackLayout = new HorizontalStackLayout();
+            stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry } });
 
             return stackLayout;
         }
@@ -237,6 +289,58 @@ namespace SailorEditor.Helpers
                 converter: new FloatValueConverter());
 
             return value;
+        }
+
+        public static View ComponentEditor()
+        {
+            var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto } } };
+
+            props.BindingContextChanged += (sender, args) =>
+            {
+                var component = (Component)((Grid)sender).BindingContext;
+                props.Children.Clear();
+
+                var nameLabel = new Label { Text = "DisplayName", VerticalOptions = LayoutOptions.Center, HorizontalTextAlignment = TextAlignment.Start, FontAttributes = FontAttributes.Bold };
+                nameLabel.Behaviors.Add(new DisplayNameBehavior());
+                nameLabel.Text = component.Typename.Name;
+
+                Templates.AddGridRow(props, nameLabel, GridLength.Auto);
+
+                var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+
+                foreach (var property in component.OverrideProperties)
+                {
+                    // Internal info
+                    if (property.Key == "fileId" || property.Key == "instanceId")
+                        continue;
+
+                    View propertyEditor = null;
+
+                    if (component.Typename.Properties[property.Key] is EnumProperty enumProp)
+                    {
+                        var observableString = property.Value as Observable<string>;
+                        propertyEditor = Templates.EnumPicker(engineTypes.Enums[enumProp.Typename],
+                            (Component vm) => observableString.Value, (vm, value) => observableString.Value = value);
+                    }
+                    else
+                    {
+                        propertyEditor = property.Value switch
+                        {
+                            Observable<float> observableFloat => Templates.FloatEditor((Component vm) => observableFloat.Value, (vm, value) => observableFloat.Value = value),
+                            Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
+                            Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
+                            Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
+                            Observable<FileId> observableFileId => Templates.FileIdEditor((Component vm) => observableFileId.Value, (vm, value) => observableFileId.Value = value),
+                            ObjectPtr ptr => Templates.FileIdEditor((Component vm) => ptr.FileId, (vm, value) => ptr.FileId = value),
+                            _ => new Label { Text = "Unsupported property type" }
+                        };
+                    }
+
+                    Templates.AddGridRowWithLabel(props, property.Key, propertyEditor, GridLength.Auto);
+                }
+            };
+
+            return props;
         }
 
         public static View UniformEditor<TBindingContext, T>(
