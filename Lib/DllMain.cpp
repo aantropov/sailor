@@ -4,6 +4,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <windows.h>
 #include "Sailor.h"
 #include "Submodules/Editor.h"
+#include "Core/Reflection.h"
 
 extern "C"
 {
@@ -60,6 +61,28 @@ extern "C"
 	{
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 		auto node = editor->SerializeWorld();
+
+		if (!node.IsNull())
+		{
+			std::string serializedNode = YAML::Dump(node);
+			size_t length = serializedNode.length();
+
+			yamlNode[0] = new char[length + 1];
+			strcpy_s(yamlNode[0], length + 1, serializedNode.c_str());
+			yamlNode[0][length] = '\0';
+
+			return static_cast<uint32_t>(length);
+		}
+		else
+		{
+			yamlNode[0] = nullptr;
+			return 0;
+		}
+	}
+
+	SAILOR_API uint32_t SerializeEngineTypes(char** yamlNode)
+	{
+		auto node = Sailor::Reflection::ExportEngineTypes();
 
 		if (!node.IsNull())
 		{

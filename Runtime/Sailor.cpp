@@ -167,7 +167,9 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
 	s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
 
-	Reflection::ExportReflectionData();
+#ifdef SAILOR_EDITOR
+	AssetRegistry::WriteTextFile(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml", Reflection::ExportEngineTypes());
+#endif
 
 	SAILOR_LOG("Sailor Engine initialized");
 }

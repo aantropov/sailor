@@ -2,6 +2,8 @@
 using SailorEngine;
 using SailorEditor.ViewModels;
 using Grid = Microsoft.Maui.Controls.Grid;
+using SailorEditor.Services;
+using SailorEditor;
 
 public class TextureFileTemplate : AssetFileTemplate
 {
@@ -9,6 +11,8 @@ public class TextureFileTemplate : AssetFileTemplate
     {
         LoadTemplate = () =>
         {
+            var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+
             var grid = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto } } };
 
             var image = new Image
@@ -27,9 +31,16 @@ public class TextureFileTemplate : AssetFileTemplate
 
             Templates.AddGridRowWithLabel(props, "Generate Mips", Templates.CheckBox(static (TextureFile vm) => vm.ShouldGenerateMips, static (TextureFile vm, bool value) => vm.ShouldGenerateMips = value), GridLength.Auto);
             Templates.AddGridRowWithLabel(props, "Storage Binding", Templates.CheckBox(static (TextureFile vm) => vm.ShouldSupportStorageBinding, static (TextureFile vm, bool value) => vm.ShouldSupportStorageBinding = value), GridLength.Auto);
-            Templates.AddGridRowWithLabel(props, "Filtration", Templates.EnumPicker(static (TextureFile vm) => vm.Filtration, static (TextureFile vm, TextureFiltration value) => vm.Filtration = value), GridLength.Auto);
-            Templates.AddGridRowWithLabel(props, "Clamping", Templates.EnumPicker(static (TextureFile vm) => vm.Clamping, static (TextureFile vm, TextureClamping value) => vm.Clamping = value), GridLength.Auto);
-            Templates.AddGridRowWithLabel(props, "Format", Templates.EnumPicker(static (TextureFile vm) => vm.Format, static (TextureFile vm, TextureFormat value) => vm.Format = value), GridLength.Auto);
+
+            Templates.AddGridRowWithLabel(props, "Filtration",
+                Templates.EnumPicker(engineTypes.Enums["enum Sailor::RHI::ETextureFiltration"], static (TextureFile vm) => vm.Filtration, static (TextureFile vm, string value) => vm.Filtration = value), GridLength.Auto);
+
+            Templates.AddGridRowWithLabel(props, "Clamping",
+                Templates.EnumPicker(engineTypes.Enums["enum Sailor::RHI::ETextureClamping"], static (TextureFile vm) => vm.Clamping, static (TextureFile vm, string value) => vm.Clamping = value), GridLength.Auto);
+
+
+            Templates.AddGridRowWithLabel(props, "Format",
+                Templates.EnumPicker(engineTypes.Enums["enum Sailor::RHI::EFormat"], static (TextureFile vm) => vm.Format, static (TextureFile vm, string value) => vm.Format = value), GridLength.Auto);
 
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, image, GridLength.Auto);

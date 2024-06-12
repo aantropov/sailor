@@ -142,7 +142,7 @@ ReflectedData ReflectedData::DiffTo(const ReflectedData& rhs) const
 	return res;
 }
 
-void Reflection::ExportReflectionData()
+YAML::Node Reflection::ExportEngineTypes()
 {
 	// Write types
 	auto types = Internal::g_pReflectionTypes->GetValues();
@@ -183,7 +183,5 @@ void Reflection::ExportReflectionData()
 
 	yamlTypes["enums"] = nodes;
 
-	std::ofstream file(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml");
-	file << yamlTypes;
-	file.close();
+	return yamlTypes;
 }

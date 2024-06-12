@@ -75,6 +75,22 @@ namespace SailorEditor.Helpers
             return picker;
         }
 
+        public static Picker EnumPicker<TBinding>(List<string> enumValues, Expression<Func<TBinding, string>> getter, Action<TBinding, string> setter)
+        {
+            var picker = new Picker
+            {
+                FontSize = 12
+            };
+
+            foreach (var value in enumValues)
+            {
+                picker.Items.Add(value.ToString());
+            }
+
+            picker.Bind(Picker.SelectedItemProperty, getter: getter, setter: setter, BindingMode.TwoWay);
+            return picker;
+        }
+
         public static View EntryField<TBindingContext, TSource>(Expression<Func<TBindingContext, TSource>> getter, Action<TBindingContext, TSource> setter, IValueConverter valueConverter = null)
         {
             var entry = new Entry { FontSize = 12 };

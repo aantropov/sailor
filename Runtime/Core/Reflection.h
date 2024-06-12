@@ -303,7 +303,7 @@ namespace Sailor
 
 		using TPlacementFactoryMethod = std::function<IReflectable* (void*)>;
 
-		static void ExportReflectionData();
+		static YAML::Node ExportEngineTypes();
 
 		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
 		static void RegisterType(const std::string& typeName, const TypeInfo* pType);

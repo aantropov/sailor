@@ -32,8 +32,8 @@ namespace Sailor
 			YAML::Node res;
 			if (m_pRawPtr)
 			{
-				::Serialize(res, "fileId", m_pRawPtr->GetFileId());
-				::Serialize(res, "instanceId", m_pRawPtr->GetInstanceId());
+				Sailor::Serialize(res, "fileId", m_pRawPtr->GetFileId());
+				Sailor::Serialize(res, "instanceId", m_pRawPtr->GetInstanceId());
 			}
 
 			return res;

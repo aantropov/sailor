@@ -27,6 +27,9 @@ namespace SailorEngine
 
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern uint SerializeCurrentWorld(nint[] yamlNode);
+
+        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern uint SerializeEngineTypes(nint[] yamlNode);
     }
 }
 
@@ -51,9 +54,6 @@ namespace SailorEditor.Services
 
         public void RunProcess(bool bDebug, string commandlineArgs)
         {
-            var engineTypesYaml = EngineCacheDirectory + "\\EngineTypes.yaml";
-            EngineTypes = EngineTypes.FromFile(engineTypesYaml);
-
 #if WINDOWS
             nint handle = ((MauiWinUIWindow)Application.Current.Windows[0].Handler.PlatformView).WindowHandle;
 
@@ -63,6 +63,9 @@ namespace SailorEditor.Services
 
             try
             {
+                //var engineTypesYaml = EngineCacheDirectory + "\\EngineTypes.yaml";
+                //EngineTypes = EngineTypes.FromFile(engineTypesYaml);
+
                 //ProcessStartInfo startInfo = new ProcessStartInfo
                 //{
                 //    FileName = GetPathToEngineExec(bDebug),
@@ -104,6 +107,7 @@ namespace SailorEditor.Services
                     Task.Run(async () =>
                     {
                         string serializedWorld = string.Empty;
+                        string serializedEngineTypes = string.Empty;
                         while (!cts.Token.IsCancellationRequested && serializedWorld == string.Empty)
                         {
                             try
@@ -116,10 +120,10 @@ namespace SailorEditor.Services
                             }
 
                             serializedWorld = SerializeWorld();
-                            if (serializedWorld != string.Empty)
-                            {
-                                MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
-                            }
+                            serializedEngineTypes = SerializeEngineTypes();
+
+                            MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+                            EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
                         }
                     });
 
@@ -163,6 +167,20 @@ namespace SailorEditor.Services
         {
             nint[] yamlNodeChar = new nint[1];
             uint numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
+
+            if (numChars == 0)
+                return string.Empty;
+
+            string yamlNode = Marshal.PtrToStringAnsi(yamlNodeChar[0]);
+            Marshal.FreeHGlobal(yamlNodeChar[0]);
+
+            return yamlNode;
+        }
+
+        string SerializeEngineTypes()
+        {
+            nint[] yamlNodeChar = new nint[1];
+            uint numChars = EngineAppInterop.SerializeEngineTypes(yamlNodeChar);
 
             if (numChars == 0)
                 return string.Empty;

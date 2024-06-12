@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Utility;
 using SailorEngine;
 
 namespace SailorEditor.ViewModels
@@ -8,13 +9,13 @@ namespace SailorEditor.ViewModels
         public bool IsImageLoaded { get => !Texture.IsEmpty; }
 
         [ObservableProperty]
-        private TextureFiltration filtration;
+        private string filtration;
 
         [ObservableProperty]
-        private TextureFormat format = TextureFormat.R8G8B8A8_SRGB;
+        private string format = "R8G8B8A8_SRGB";
 
         [ObservableProperty]
-        private TextureClamping clamping;
+        private string clamping;
 
         [ObservableProperty]
         private bool shouldGenerateMips;
@@ -62,32 +63,14 @@ namespace SailorEditor.ViewModels
                                 ShouldSupportStorageBinding = bool.Parse(e.Value.ToString());
                                 break;
                             case "clamping":
-                                {
-                                    TextureClamping outEnum;
-                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
-                                        Clamping = outEnum;
-                                    else
-                                        return false;
-                                    break;
-                                }
+                                Clamping = e.Value.ToString();
+                                break;
                             case "filtration":
-                                {
-                                    TextureFiltration outEnum;
-                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
-                                        Filtration = outEnum;
-                                    else
-                                        return false;
-                                    break;
-                                }
+                                Filtration = e.Value.ToString();
+                                break;
                             case "format":
-                                {
-                                    TextureFormat outEnum;
-                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
-                                        Format = outEnum;
-                                    else
-                                        return false;
-                                    break;
-                                }
+                                Format = e.Value.ToString();
+                                break;
                         }
                     }
                 }

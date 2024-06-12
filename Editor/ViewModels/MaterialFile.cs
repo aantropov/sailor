@@ -11,8 +11,6 @@ using SailorEditor.Utility;
 
 namespace SailorEditor.ViewModels
 {
-    using BlendMode = SailorEngine.BlendMode;
-
     public partial class Uniform<T> : ObservableObject, ICloneable
     where T : IComparable<T>
     {
@@ -99,13 +97,13 @@ namespace SailorEditor.ViewModels
         private bool enableZWrite = true;
 
         [ObservableProperty]
-        private CullMode cullMode;
+        private string cullMode;
 
         [ObservableProperty]
-        private BlendMode blendMode;
+        private string blendMode;
 
         [ObservableProperty]
-        private FillMode fillMode;
+        private string fillMode;
 
         [ObservableProperty]
         private FileId shader;
@@ -220,31 +218,13 @@ namespace SailorEditor.ViewModels
                                 }
                                 break;
                             case "cullMode":
-                                {
-                                    CullMode outEnum;
-                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
-                                        CullMode = outEnum;
-                                    else
-                                        return false;
-                                }
+                                CullMode = e.Value.ToString();
                                 break;
                             case "blendMode":
-                                {
-                                    BlendMode outEnum;
-                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
-                                        BlendMode = outEnum;
-                                    else
-                                        return false;
-                                }
+                                BlendMode = e.Value.ToString();
                                 break;
                             case "fillMode":
-                                {
-                                    FillMode outEnum;
-                                    if (Enum.TryParse(e.Value.ToString(), out outEnum))
-                                        FillMode = outEnum;
-                                    else
-                                        return false;
-                                }
+                                FillMode = e.Value.ToString();
                                 break;
                             case "shaderUid":
                                 Shader = e.Value.ToString();

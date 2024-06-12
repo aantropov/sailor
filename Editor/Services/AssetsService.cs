@@ -15,7 +15,6 @@ namespace SailorEditor.Services
         {
             AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
         }
-
         public void AddProjectRoot(string projectRoot)
         {
             Folders = new List<AssetFolder>();

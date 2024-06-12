@@ -2,7 +2,8 @@
 using SailorEditor.Utility;
 using SailorEngine;
 using SailorEditor.ViewModels;
-using BlendMode = SailorEngine.BlendMode;
+using SailorEditor.Services;
+using SailorEditor;
 
 public class MaterialFileTemplate : AssetFileTemplate
 {
@@ -10,6 +11,8 @@ public class MaterialFileTemplate : AssetFileTemplate
     {
         LoadTemplate = () =>
         {
+            var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+
             var grid = new Grid();
             var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto }, new ColumnDefinition { Width = GridLength.Star } } };
 
@@ -24,11 +27,17 @@ public class MaterialFileTemplate : AssetFileTemplate
             Templates.AddGridRowWithLabel(props, "Custom Depth", Templates.CheckBox(static (MaterialFile vm) => vm.CustomDepthShader, static (MaterialFile vm, bool value) => vm.CustomDepthShader = value), GridLength.Auto);
             Templates.AddGridRowWithLabel(props, "Support Multisampling", Templates.CheckBox(static (MaterialFile vm) => vm.SupportMultisampling, static (MaterialFile vm, bool value) => vm.SupportMultisampling = value), GridLength.Auto);
 
-            Templates.AddGridRowWithLabel(props, "Blend mode", Templates.EnumPicker(static (MaterialFile vm) => vm.BlendMode, static (MaterialFile vm, BlendMode value) => vm.BlendMode = value), GridLength.Auto);
-            Templates.AddGridRowWithLabel(props, "Cull mode", Templates.EnumPicker(static (MaterialFile vm) => vm.CullMode, static (MaterialFile vm, CullMode value) => vm.CullMode = value), GridLength.Auto);
-            Templates.AddGridRowWithLabel(props, "Fill mode", Templates.EnumPicker(static (MaterialFile vm) => vm.FillMode, static (MaterialFile vm, FillMode value) => vm.FillMode = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Blend mode", 
+                Templates.EnumPicker(engineTypes.Enums["enum Sailor::RHI::EBlendMode"], static (MaterialFile vm) => vm.BlendMode, static (MaterialFile vm, string value) => vm.BlendMode = value), GridLength.Auto);
+            
+            Templates.AddGridRowWithLabel(props, "Cull mode", 
+                Templates.EnumPicker(engineTypes.Enums["enum Sailor::RHI::ECullMode"], static (MaterialFile vm) => vm.CullMode, static (MaterialFile vm, string value) => vm.CullMode = value), GridLength.Auto);
+            
+            Templates.AddGridRowWithLabel(props, "Fill mode", 
+                Templates.EnumPicker(engineTypes.Enums["enum Sailor::RHI::EFillMode"], static (MaterialFile vm) => vm.FillMode, static (MaterialFile vm, string value) => vm.FillMode = value), GridLength.Auto);
 
-            Templates.AddGridRowWithLabel(props, "Shader", Templates.AssetUIDLabel(nameof(MaterialFile.Shader), static (MaterialFile vm) => vm.Shader, static (MaterialFile vm, FileId value) => vm.Shader = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Shader", 
+                Templates.AssetUIDLabel(nameof(MaterialFile.Shader), static (MaterialFile vm) => vm.Shader, static (MaterialFile vm, FileId value) => vm.Shader = value), GridLength.Auto);
 
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
