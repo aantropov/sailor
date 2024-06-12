@@ -47,12 +47,12 @@ namespace SailorEditor.Services
         public event Action<string[]> OnPullMessagesAction = delegate { };
         public event Action<string> OnUpdateCurrentWorldAction = delegate { };
 
-        public Dictionary<string, ComponentType> ComponentTypes { get; private set; } = new Dictionary<string, ComponentType>();
+        public EngineTypes EngineTypes { get; private set; } = new();
 
         public void RunProcess(bool bDebug, string commandlineArgs)
         {
             var engineTypesYaml = EngineCacheDirectory + "\\EngineTypes.yaml";
-            ComponentTypes = Helper.ReadEngineTypes(engineTypesYaml);
+            EngineTypes = EngineTypes.FromFile(engineTypesYaml);
 
 #if WINDOWS
             nint handle = ((MauiWinUIWindow)Application.Current.Windows[0].Handler.PlatformView).WindowHandle;

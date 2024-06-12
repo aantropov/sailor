@@ -1,4 +1,5 @@
 ﻿using SailorEditor.ViewModels;
+using SailorEngine;
 using YamlDotNet.RepresentationModel;
 
 namespace SailorEditor.Services
@@ -7,7 +8,7 @@ namespace SailorEditor.Services
     {
         public ProjectRoot Root { get; private set; }
         public List<AssetFolder> Folders { get; private set; }
-        public Dictionary<AssetUID, AssetFile> Assets { get; private set; }
+        public Dictionary<FileId, AssetFile> Assets { get; private set; }
         public List<AssetFile> Files { get { return Assets.Values.ToList(); } }
 
         public AssetsService()
@@ -18,7 +19,7 @@ namespace SailorEditor.Services
         public void AddProjectRoot(string projectRoot)
         {
             Folders = new List<AssetFolder>();
-            Assets = new Dictionary<AssetUID, AssetFile>();
+            Assets = new Dictionary<FileId, AssetFile>();
 
             Root = new ProjectRoot { Name = projectRoot, Id = 1 };
             ProcessDirectory(Root, projectRoot, -1);

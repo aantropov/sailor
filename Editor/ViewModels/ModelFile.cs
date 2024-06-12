@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
 using System.Globalization;
+using SailorEngine;
 
 namespace SailorEditor.ViewModels
 {
@@ -17,7 +18,7 @@ namespace SailorEditor.ViewModels
         private float unitScale;
 
         [ObservableProperty]
-        private ObservableList<Observable<AssetUID>> defaultMaterials = new();
+        private ObservableList<Observable<FileId>> defaultMaterials = new();
 
         protected override async Task UpdateModel()
         {
@@ -50,7 +51,7 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "materials":
                                 {
-                                    var parsed = new ObservableList<Observable<AssetUID>>();
+                                    var parsed = new ObservableList<Observable<FileId>>();
                                     bool ignoreFirst = false;
                                     foreach (var uid in (e.Value as YamlNode).AllNodes)
                                     {
@@ -60,7 +61,7 @@ namespace SailorEditor.ViewModels
                                             continue;
                                         }
 
-                                        parsed.Add((AssetUID)uid.ToString());
+                                        parsed.Add((FileId)uid.ToString());
                                     }
 
                                     DefaultMaterials = parsed;

@@ -13,6 +13,7 @@ using System.ComponentModel;
 using SailorEditor.Services;
 using CommunityToolkit.Maui.Markup;
 using System.Linq.Expressions;
+using SailorEngine;
 
 namespace SailorEditor.Helpers
 {
@@ -81,20 +82,20 @@ namespace SailorEditor.Helpers
             return entry;
         }
 
-        public static View AssetUIDLabel<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, AssetUID>> getter, Action<TBindingContext, AssetUID> setter)
+        public static View AssetUIDLabel<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
         {
             var label = new Label();
-            label.Behaviors.Add(new AssetUIDClickable(bindingPath));
-            label.Bind<Label, TBindingContext, AssetUID, string>(Label.TextProperty,
+            label.Behaviors.Add(new FileIdClickable(bindingPath));
+            label.Bind<Label, TBindingContext, FileId, string>(Label.TextProperty,
                 getter: getter,
                 setter: setter,
                 mode: BindingMode.Default,
-                converter: new AssetUIDToFilenameConverter());
+                converter: new FileIdToFilenameConverter());
 
             return label;
         }
 
-        public static View TextureEditor<TBindingContext>(Expression<Func<TBindingContext, AssetUID>> getter, Action<TBindingContext, AssetUID> setter)
+        public static View TextureEditor<TBindingContext>(Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
         {
             var selectButton = new Button { Text = "Select" };
             selectButton.Clicked += async (sender, e) =>
@@ -104,7 +105,7 @@ namespace SailorEditor.Helpers
                 {
                     var AssetService = MauiProgram.GetService<AssetsService>();
                     var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                    setter((TBindingContext)(sender as Button).BindingContext, asset.UID is AssetUID uid ? uid : default(AssetUID));
+                    setter((TBindingContext)(sender as Button).BindingContext, asset.UID is FileId uid ? uid : default(FileId));
                 }
             };
 
@@ -117,10 +118,10 @@ namespace SailorEditor.Helpers
                 VerticalOptions = LayoutOptions.Start
             };
 
-            image.Bind<Image, Uniform<AssetUID>, AssetUID, Image>(Image.SourceProperty,
+            image.Bind<Image, Uniform<FileId>, FileId, Image>(Image.SourceProperty,
                 mode: BindingMode.Default,
-                converter: new AssetUIDToTextureConverter(),
-                getter: static (Uniform<AssetUID> vm) => vm.Value);
+                converter: new FileIdToTextureConverter(),
+                getter: static (Uniform<FileId> vm) => vm.Value);
 
             var valueEntry = new Label
             {
@@ -128,12 +129,12 @@ namespace SailorEditor.Helpers
                 VerticalOptions = LayoutOptions.Center
             };
 
-            valueEntry.Bind<Label, Uniform<AssetUID>, AssetUID, string>(Label.TextProperty,
+            valueEntry.Bind<Label, Uniform<FileId>, FileId, string>(Label.TextProperty,
                 mode: BindingMode.Default,
-                converter: new AssetUIDToFilenameConverter(),
-                getter: static (Uniform<AssetUID> vm) => vm.Value);
+                converter: new FileIdToFilenameConverter(),
+                getter: static (Uniform<FileId> vm) => vm.Value);
 
-            valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
+            valueEntry.Behaviors.Add(new FileIdClickable("Value"));
 
             var stackLayout = new HorizontalStackLayout();
             stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, image, valueEntry } });
@@ -141,7 +142,7 @@ namespace SailorEditor.Helpers
             return stackLayout;
         }
 
-        public static View AssetUIDEditor<TBindingContext>(Expression<Func<TBindingContext, AssetUID>> getter, Action<TBindingContext, AssetUID> setter)
+        public static View AssetUIDEditor<TBindingContext>(Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
         {
             var selectButton = new Button { Text = "Select" };
             selectButton.Clicked += async (sender, e) =>
@@ -151,7 +152,7 @@ namespace SailorEditor.Helpers
                 {
                     var AssetService = MauiProgram.GetService<AssetsService>();
                     var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                    setter((TBindingContext)(sender as Button).BindingContext, asset.UID is AssetUID uid ? uid : default(AssetUID));
+                    setter((TBindingContext)(sender as Button).BindingContext, asset.UID is FileId uid ? uid : default(FileId));
                 }
             };
 
@@ -161,12 +162,12 @@ namespace SailorEditor.Helpers
                 VerticalOptions = LayoutOptions.Center
             };
 
-            valueEntry.Bind<Label, TBindingContext, AssetUID, string>(Label.TextProperty,
+            valueEntry.Bind<Label, TBindingContext, FileId, string>(Label.TextProperty,
                 mode: BindingMode.Default,
-                converter: new AssetUIDToFilenameConverter(),
+                converter: new FileIdToFilenameConverter(),
                 getter: getter);
 
-            valueEntry.Behaviors.Add(new AssetUIDClickable("Value"));
+            valueEntry.Behaviors.Add(new FileIdClickable("Value"));
 
             var stackLayout = new HorizontalStackLayout();
             stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });

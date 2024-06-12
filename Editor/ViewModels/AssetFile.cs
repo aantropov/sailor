@@ -5,53 +5,10 @@ using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
+using SailorEngine;
 
 namespace SailorEditor.ViewModels
 {
-    public class AssetUID : IComparable<AssetUID>, IComparable<string>, ICloneable
-    {
-        public AssetUID() { }
-        public AssetUID(string v) { Value = v; }
-
-        public string Value = "";
-
-        public object Clone() => new AssetUID() { Value = Value };
-        public int CompareTo(AssetUID other) => Value.CompareTo(other.Value);
-        public int CompareTo(string other) => Value.CompareTo(other);
-
-        public override bool Equals(object obj)
-        {
-            if (obj is AssetUID other)
-            {
-                return Value.CompareTo(other.Value) == 0;
-            }
-            else if (obj is string str)
-            {
-                return Value.CompareTo(str) == 0;
-            }
-
-            return false;
-        }
-
-        public override int GetHashCode() => Value?.GetHashCode() ?? 0;
-
-        public static implicit operator string(AssetUID ts)
-        {
-            return ((ts == null) ? null : ts.Value);
-        }
-        public static implicit operator AssetUID(string val)
-        {
-            return new AssetUID { Value = val };
-        }
-    }
-
-    public class AssetUIDConverter : IYamlTypeConverter
-    {
-        public bool Accepts(Type type) => type == typeof(AssetUID);
-        public object ReadYaml(IParser parser, Type type) => new AssetUID(parser.Consume<Scalar>().Value);
-        public void WriteYaml(IEmitter emitter, object value, Type type) => emitter.Emit(new Scalar(((AssetUID)value).Value));
-    }
-
     public partial class AssetFile : ObservableObject, ICloneable
     {
         public AssetFile()
@@ -65,7 +22,7 @@ namespace SailorEditor.ViewModels
             };
         }
 
-        public AssetUID UID { get { return Properties["fileId"].ToString(); } }
+        public FileId UID { get { return Properties["fileId"].ToString(); } }
         public FileInfo Asset { get; set; }
         public FileInfo AssetInfo { get; set; }
         public Dictionary<string, object> Properties { get; set; } = new();

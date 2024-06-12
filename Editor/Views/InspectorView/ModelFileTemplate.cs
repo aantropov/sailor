@@ -1,6 +1,7 @@
 ﻿using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
+using SailorEngine;
 
 public class ModelFileTemplate : AssetFileTemplate
 {
@@ -20,13 +21,13 @@ public class ModelFileTemplate : AssetFileTemplate
             Templates.AddGridRow(grid, props, GridLength.Auto);
             Templates.AddGridRow(grid, Templates.ListEditor(
                  static (ModelFile vm) => vm.DefaultMaterials,
-                 static (ModelFile vm, ObservableList<Observable<AssetUID>> value) => vm.DefaultMaterials = value,
+                 static (ModelFile vm, ObservableList<Observable<FileId>> value) => vm.DefaultMaterials = value,
                  () => Templates.AssetUIDEditor(
-                            static (Observable<AssetUID> vm) => vm.Value,
-                            static (Observable<AssetUID> vm, AssetUID value) => vm.Value = value),
+                            static (Observable<FileId> vm) => vm.Value,
+                            static (Observable<FileId> vm, FileId value) => vm.Value = value),
                 "Default Materials",
-                new AssetUID(),
-                converter: new AssetUIDToFilenameConverter()), GridLength.Auto);
+                new FileId(),
+                converter: new FileIdToFilenameConverter()), GridLength.Auto);
 
             return grid;
         };

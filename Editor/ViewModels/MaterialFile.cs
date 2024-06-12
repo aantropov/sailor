@@ -108,10 +108,10 @@ namespace SailorEditor.ViewModels
         private FillMode fillMode;
 
         [ObservableProperty]
-        private AssetUID shader;
+        private FileId shader;
 
         [ObservableProperty]
-        private ObservableList<Uniform<AssetUID>> samplers = new();
+        private ObservableList<Uniform<FileId>> samplers = new();
 
         [ObservableProperty]
         private ObservableList<Uniform<Vec4>> uniformsVec4 = new();
@@ -251,11 +251,11 @@ namespace SailorEditor.ViewModels
                                 break;
                             case "samplers":
                                 {
-                                    var parsed = new ObservableList<Uniform<AssetUID>>();
+                                    var parsed = new ObservableList<Uniform<FileId>>();
 
                                     foreach (var el in (e.Value as dynamic).Children)
                                     {
-                                        parsed.Add(new Uniform<AssetUID> { Key = el.Key.ToString(), Value = el.Value.ToString() });
+                                        parsed.Add(new Uniform<FileId> { Key = el.Key.ToString(), Value = el.Value.ToString() });
                                     }
 
                                     Samplers = parsed;

@@ -9,13 +9,12 @@ using YamlDotNet.Serialization;
 using SailorEditor.Services;
 using SailorEditor;
 using System.Globalization;
+using YamlDotNet.Serialization.NamingConventions;
+using SailorEngine;
 
 namespace SailorEngine
 {
-    public class PropertyBase
-    {
-        public string Typename { get; set; }
-    }
+    public class PropertyBase { public string Typename { get; set; } }
 
     public class Property<T> : PropertyBase
     {
@@ -27,17 +26,14 @@ namespace SailorEngine
     public class Vec4Property : Property<SailorEditor.Vec4> { }
     public class Vec3Property : Property<SailorEditor.Vec3> { }
     public class Vec2Property : Property<SailorEditor.Vec2> { }
-    public class FileIdProperty : Property<AssetUID> { }
+    public class FileIdProperty : Property<FileId> { }
     public class InstanceIdProperty : Property<string> { }
     public class ObjectPtrProperty : PropertyBase { }
-
-    // TODO: Store enum data in engine types
     public class EnumProperty : Property<string> { }
-
     public partial class ObjectPtr : ObservableObject, ICloneable, IComparable<ObjectPtr>
     {
         [ObservableProperty]
-        AssetUID fileId;
+        FileId fileId;
 
         [ObservableProperty]
         string instanceId;
@@ -57,50 +53,65 @@ namespace SailorEngine
             return string.Compare(InstanceId, other.InstanceId, StringComparison.Ordinal);
         }
     }
+    public class FileId : IComparable<FileId>, IComparable<string>, ICloneable
+    {
+        public FileId() { }
+        public FileId(string v) { Value = v; }
 
+        public string Value = "";
+
+        public object Clone() => new FileId() { Value = Value };
+        public int CompareTo(FileId other) => Value.CompareTo(other.Value);
+        public int CompareTo(string other) => Value.CompareTo(other);
+
+        public override bool Equals(object obj)
+        {
+            if (obj is FileId other)
+            {
+                return Value.CompareTo(other.Value) == 0;
+            }
+            else if (obj is string str)
+            {
+                return Value.CompareTo(str) == 0;
+            }
+
+            return false;
+        }
+
+        public override int GetHashCode() => Value?.GetHashCode() ?? 0;
+
+        public static implicit operator string(FileId ts) => (ts == null) ? null : ts.Value;
+
+        public static implicit operator FileId(string val) => new FileId { Value = val };
+    }
     public class ComponentType
     {
         public string Name { get; set; }
         public Dictionary<string, PropertyBase> Properties { get; set; } = new();
     };
 
-    class Helper
+    class EngineTypes
     {
-        public static Dictionary<string, ComponentType> ReadEngineTypes(string filePath)
+        public Dictionary<string, ComponentType> Components { get; private set; } = new();
+        public Dictionary<string, List<string>> Enums { get; private set; } = new();
+
+        public static EngineTypes FromFile(string yamlFilePath)
         {
-            var parsed = new Dictionary<string, Dictionary<string, string>>();
-            var componentTypes = new Dictionary<string, ComponentType>();
+            var deserializer = new DeserializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .Build();
 
-            using (var yamlAssetInfo = new FileStream(filePath, FileMode.Open))
-            using (var reader = new StreamReader(yamlAssetInfo))
-            {
-                var yaml = new YamlStream();
-                yaml.Load(reader);
+            var yamlContent = System.IO.File.ReadAllText(yamlFilePath);
+            var rootNode = deserializer.Deserialize<RootNode>(yamlContent);
 
-                var root = (YamlMappingNode)yaml.Documents[0].RootNode;
-                var engineTypesNode = (YamlSequenceNode)root.Children[new YamlScalarNode("engineTypes")];
+            EngineTypes res = new EngineTypes();
 
-                foreach (YamlMappingNode typeNode in engineTypesNode.Children)
-                {
-                    var typeName = typeNode.Children[new YamlScalarNode("typename")].ToString();
-                    var propertiesNode = (YamlMappingNode)typeNode.Children[new YamlScalarNode("properties")];
-
-                    var properties = new Dictionary<string, string>();
-                    foreach (var property in propertiesNode.Children)
-                    {
-                        properties[property.Key.ToString()] = property.Value.ToString();
-                    }
-
-                    parsed[typeName] = properties;
-                }
-            }
-
-            foreach (var component in parsed)
+            foreach (var component in rootNode.EngineTypes)
             {
                 var newComponent = new ComponentType();
-                newComponent.Name = component.Key;
+                newComponent.Name = component.Typename;
 
-                foreach (var property in component.Value)
+                foreach (var property in component.Properties)
                 {
                     PropertyBase newProperty = property.Value switch
                     {
@@ -110,23 +121,66 @@ namespace SailorEngine
                         "float" => new FloatProperty(),
                         var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty(),
                         var value when value.Contains("TObjectPtr") => new InstanceIdProperty(),
-                        var value when value.StartsWith("enum") => new EnumProperty(),
+                        var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
                         _ => throw new InvalidOperationException($"Unexpected property type: {property.Value}")
                     };
 
                     newComponent.Properties[property.Key] = newProperty;
                 }
 
-                // We should store internal props also
                 newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = "NullFileId" };
                 newComponent.Properties["instanceId"] = new InstanceIdProperty();
 
-                componentTypes[component.Key] = newComponent;
+                res.Components[component.Typename] = newComponent;
             }
 
-            return componentTypes;
+            foreach (var enumType in rootNode.Enums)
+            {
+                res.Enums[enumType.EnumName] = enumType.Values;
+            }
+
+            return res;
         }
-    }
+
+        public class RootNode
+        {
+            [YamlMember(Alias = "engineTypes")]
+            public List<EngineTypeNode> EngineTypes { get; set; }
+
+            [YamlMember(Alias = "cdos")]
+            public List<ComponentDefaultValuesNode> Cdos { get; set; }
+
+            [YamlMember(Alias = "enums")]
+            public List<EnumNode> Enums { get; set; }
+        }
+
+        public class EngineTypeNode
+        {
+            [YamlMember(Alias = "typename")]
+            public string Typename { get; set; }
+
+            [YamlMember(Alias = "properties")]
+            public Dictionary<string, string> Properties { get; set; }
+        }
+
+        public class ComponentDefaultValuesNode
+        {
+            [YamlMember(Alias = "typename")]
+            public string Typename { get; set; }
+
+            [YamlMember(Alias = "defaultValues")]
+            public Dictionary<string, string> DefaultValues { get; set; }
+        }
+
+        public class EnumNode
+        {
+            [YamlMember(Alias = "enumName")]
+            public string EnumName { get; set; }
+
+            [YamlMember(Alias = "values")]
+            public List<string> Values { get; set; }
+        }
+    };
 
     public enum FillMode
     {
@@ -587,7 +641,7 @@ namespace SailorEditor
 
             parser.MoveNext();
 
-            return MauiProgram.GetService<EngineService>().ComponentTypes[name];
+            return MauiProgram.GetService<EngineService>().EngineTypes.Components[name];
         }
 
         public void WriteYaml(IEmitter emitter, object value, Type type)
@@ -595,5 +649,12 @@ namespace SailorEditor
             var component = (SailorEngine.ComponentType)value;
             emitter.Emit(new Scalar(null, component.Name));
         }
+    }
+
+    public class FileIdConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(FileId);
+        public object ReadYaml(IParser parser, Type type) => new FileId(parser.Consume<Scalar>().Value);
+        public void WriteYaml(IEmitter emitter, object value, Type type) => emitter.Emit(new Scalar(((FileId)value).Value));
     }
 };

@@ -1,12 +1,13 @@
 ﻿using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using SailorEditor;
+using SailorEngine;
 
-public class AssetUIDClickable : Behavior<Label>
+public class FileIdClickable : Behavior<Label>
 {
     string bindingPath;
 
-    public AssetUIDClickable(string property)
+    public FileIdClickable(string property)
     {
         bindingPath = property;
     }
@@ -36,7 +37,7 @@ public class AssetUIDClickable : Behavior<Label>
         {
             var uid = property.GetValue((sender as Label).BindingContext);
 
-            MauiProgram.GetService<SelectionService>().SelectObject(MauiProgram.GetService<AssetsService>().Assets[uid as AssetUID]);
+            MauiProgram.GetService<SelectionService>().SelectObject(MauiProgram.GetService<AssetsService>().Assets[uid as FileId]);
         }
     }
 }

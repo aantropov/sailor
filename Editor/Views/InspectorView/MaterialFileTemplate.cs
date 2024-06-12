@@ -28,7 +28,7 @@ public class MaterialFileTemplate : AssetFileTemplate
             Templates.AddGridRowWithLabel(props, "Cull mode", Templates.EnumPicker(static (MaterialFile vm) => vm.CullMode, static (MaterialFile vm, CullMode value) => vm.CullMode = value), GridLength.Auto);
             Templates.AddGridRowWithLabel(props, "Fill mode", Templates.EnumPicker(static (MaterialFile vm) => vm.FillMode, static (MaterialFile vm, FillMode value) => vm.FillMode = value), GridLength.Auto);
 
-            Templates.AddGridRowWithLabel(props, "Shader", Templates.AssetUIDLabel(nameof(MaterialFile.Shader), static (MaterialFile vm) => vm.Shader, static (MaterialFile vm, AssetUID value) => vm.Shader = value), GridLength.Auto);
+            Templates.AddGridRowWithLabel(props, "Shader", Templates.AssetUIDLabel(nameof(MaterialFile.Shader), static (MaterialFile vm) => vm.Shader, static (MaterialFile vm, FileId value) => vm.Shader = value), GridLength.Auto);
 
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
@@ -45,8 +45,8 @@ public class MaterialFileTemplate : AssetFileTemplate
 
             Templates.AddGridRow(grid, Templates.UniformEditor(
                 static (MaterialFile vm) => vm.Samplers,
-                static (MaterialFile vm, ObservableList<Uniform<AssetUID>> value) => vm.Samplers = value,
-                () => Templates.TextureEditor(static (Uniform<AssetUID> vm) => vm.Value, static (Uniform<AssetUID> vm, AssetUID value) => vm.Value = value),
+                static (MaterialFile vm, ObservableList<Uniform<FileId>> value) => vm.Samplers = value,
+                () => Templates.TextureEditor(static (Uniform<FileId> vm) => vm.Value, static (Uniform<FileId> vm, FileId value) => vm.Value = value),
                 "Samplers", "newTextureSampler"),
                 GridLength.Auto);
 

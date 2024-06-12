@@ -2,13 +2,14 @@
 using SailorEditor.ViewModels;
 using SailorEditor;
 using System.Globalization;
+using SailorEngine;
 
-public class AssetUIDToTextureConverter : IValueConverter
+public class FileIdToFilenameConverter : IValueConverter
 {
-    private AssetUID uid;
+    private FileId uid;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var assetUID = value as AssetUID;
+        var assetUID = value as FileId;
         if (string.IsNullOrEmpty(assetUID))
             return null;
 
@@ -18,15 +19,10 @@ public class AssetUIDToTextureConverter : IValueConverter
 
         if (!AssetService.Assets.ContainsKey(assetUID))
         {
-            return null;
+            return uid;
         }
 
-        if (AssetService.Assets[assetUID] is TextureFile texture)
-        {
-            return texture.Texture;
-        }
-
-        return null;
+        return AssetService.Assets[assetUID].DisplayName;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

@@ -48,7 +48,7 @@ namespace SailorEditor.ViewModels
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
                 .WithTypeConverter(new ComponentTypeConverter())
-                .WithTypeConverter(new AssetUIDConverter())
+                .WithTypeConverter(new FileIdConverter())
                 .WithTypeConverter(new Vec4Converter())
                 .WithTypeConverter(new Vec3Converter())
                 .WithTypeConverter(new Vec2Converter())
@@ -85,7 +85,7 @@ namespace SailorEditor.ViewModels
                                         Vec4Property => deserializer.Deserialize<Vec4>(parser),
                                         Vec3Property => deserializer.Deserialize<Vec3>(parser),
                                         Vec2Property => deserializer.Deserialize<Vec2>(parser),
-                                        FileIdProperty => new Observable<AssetUID>(deserializer.Deserialize<string>(parser)),
+                                        FileIdProperty => new Observable<FileId>(deserializer.Deserialize<string>(parser)),
                                         InstanceIdProperty => new Observable<string>(deserializer.Deserialize<string>(parser)),
                                         FloatProperty => new Observable<float>(deserializer.Deserialize<float>(parser)),
                                         ObjectPtrProperty => new Observable<ObjectPtr>(deserializer.Deserialize<ObjectPtr>(parser)),
@@ -115,7 +115,7 @@ namespace SailorEditor.ViewModels
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
                 .WithTypeConverter(new ComponentTypeConverter())
-                .WithTypeConverter(new AssetUIDConverter())
+                .WithTypeConverter(new FileIdConverter())
                 .WithTypeConverter(new Vec4Converter())
                 .WithTypeConverter(new Vec3Converter())
                 .WithTypeConverter(new Vec2Converter())
@@ -143,7 +143,7 @@ namespace SailorEditor.ViewModels
                     case Observable<Vec2> vec2:
                         serializer.Serialize(emitter, vec2.Value);
                         break;
-                    case Observable<AssetUID> assetUid:
+                    case Observable<FileId> assetUid:
                         serializer.Serialize(emitter, assetUid.Value);
                         break;
                     case Observable<string> str:
