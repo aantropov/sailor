@@ -56,8 +56,9 @@ void World::Tick(FrameState& frameState)
 
 	RHI::Renderer::GetDriverCommands()->BeginCommandList(m_commandList, true);
 
-	for (auto& el : m_objects)
+	for (uint32_t i = 0; i < m_objects.Num(); i++)
 	{
+		auto& el = m_objects[i];
 		if (!el->m_bBeginPlayCalled)
 		{
 			el->m_bBeginPlayCalled = true;
