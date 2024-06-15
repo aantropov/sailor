@@ -193,8 +193,8 @@ void TestComponent::Tick(float deltaTime)
 
 	if (GetWorld()->GetInput().IsKeyDown(VK_LBUTTON))
 	{
-		const float smoothFactor = 20;
-		const float speed = 100.0f;
+		const float smoothFactor = 0.9f;
+		const float speed = 50.0f;
 		const float smoothDeltaTime = GetWorld()->GetSmoothDeltaTime();
 
 		vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
@@ -205,8 +205,8 @@ void TestComponent::Tick(float deltaTime)
 		float targetYaw = m_yaw + adjustedYawSpeed;
 		float targetPitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
 
-		m_yaw = glm::mix(m_yaw, targetYaw, std::min(1.0f, smoothFactor));
-		m_pitch = glm::mix(m_pitch, targetPitch, std::min(1.0f, smoothFactor));
+		m_yaw = glm::mix(m_yaw, targetYaw, smoothFactor);
+		m_pitch = glm::mix(m_pitch, targetPitch, smoothFactor);
 
 		glm::quat hRotation = glm::angleAxis(glm::radians(-m_yaw), glm::vec3(0, 1, 0));
 		glm::quat vRotation = glm::angleAxis(glm::radians(m_pitch), glm::vec3(1, 0, 0));
