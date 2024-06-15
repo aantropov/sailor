@@ -32,7 +32,7 @@ namespace SailorEditor.Helpers
 
             if (assetFile != null)
             {
-                if (assetFile.Model.UID == id.UID)
+                if (assetFile.Model.FileId == id.FileId)
                 {
                     return parent;
                 }

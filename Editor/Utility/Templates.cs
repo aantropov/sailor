@@ -122,7 +122,7 @@ namespace SailorEditor.Helpers
                 {
                     var AssetService = MauiProgram.GetService<AssetsService>();
                     var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                    setter((TBindingContext)(sender as Button).BindingContext, asset.UID is FileId uid ? uid : default(FileId));
+                    setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId uid ? uid : default(FileId));
                 }
             };
 
@@ -169,7 +169,7 @@ namespace SailorEditor.Helpers
                 {
                     var AssetService = MauiProgram.GetService<AssetsService>();
                     var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                    setter((TBindingContext)(sender as Button).BindingContext, asset.UID is FileId uid ? uid : default(FileId));
+                    setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId uid ? uid : default(FileId));
                 }
             };
 

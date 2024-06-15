@@ -1,19 +1,29 @@
-﻿using YamlDotNet.RepresentationModel;
+﻿using SailorEngine;
+using YamlDotNet.Core.Events;
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace SailorEditor.ViewModels
 {
     public class ShaderFile : AssetFile
     {
         public string Includes { get; set; }
+
         public string Defines { get; set; }
+
         public string GlslCommonShader { get; set; }
+
         public string GlslVertexShader { get; set; }
+
         public string GlslFragmentShader { get; set; }
+
         public string GlslComputeShader { get; set; }
 
-        public override async Task<bool> PreloadResources(bool force)
+        public override async Task<bool> LoadDependentResources()
         {
-            if (IsLoaded && !force)
+            if (IsLoaded)
                 return true;
 
             try
@@ -63,6 +73,73 @@ namespace SailorEditor.ViewModels
             IsLoaded = true;
 
             return true;
+        }
+    }
+
+    public class ShaderFileYamlConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(ShaderFile);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var deserializer = new DeserializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .WithTypeConverter(new FileIdConverter())
+                .IgnoreUnmatchedProperties()
+                .Build();
+
+            var assetFile = new ShaderFile();
+
+            parser.Consume<MappingStart>();
+
+            while (parser.Current is not MappingEnd)
+            {
+                if (parser.Current is Scalar scalar)
+                {
+                    var propertyName = scalar.Value;
+                    parser.MoveNext(); // Move to the value
+
+                    switch (propertyName)
+                    {
+                        case "fileId":
+                            assetFile.FileId = deserializer.Deserialize<FileId>(parser);
+                            break;
+                        case "filename":
+                            assetFile.Filename = deserializer.Deserialize<string>(parser);
+                            break;
+                        default:
+                            deserializer.Deserialize<object>(parser);
+                            break;
+                    }
+                }
+                else
+                {
+                    parser.MoveNext();
+                }
+            }
+
+            parser.Consume<MappingEnd>();
+
+            return assetFile;
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var assetFile = (ShaderFile)value;
+            var serializer = new SerializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .WithTypeConverter(new FileIdConverter())
+                .Build();
+
+            emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+            emitter.Emit(new Scalar(null, "fileId"));
+            emitter.Emit(new Scalar(null, assetFile.FileId));
+
+            emitter.Emit(new Scalar(null, "filename"));
+            emitter.Emit(new Scalar(null, assetFile.Filename));
+
+            emitter.Emit(new MappingEnd());
         }
     }
 }

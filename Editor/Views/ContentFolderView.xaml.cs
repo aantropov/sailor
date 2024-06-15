@@ -31,7 +31,7 @@ namespace SailorEditor.Views
 
                 if (assetFile != null)
                 {
-                    if (assetFile.Model.UID != file.UID)
+                    if (assetFile.Model.FileId != file.FileId)
                     {
                         foreach (var el in FolderTree.RootNodes)
                         {

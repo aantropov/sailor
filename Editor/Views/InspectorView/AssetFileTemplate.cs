@@ -1,4 +1,6 @@
-﻿using SailorEditor.Helpers;
+﻿using SailorEditor;
+using SailorEditor.Helpers;
+using SailorEditor.Services;
 using SailorEditor.ViewModels;
 
 public class AssetFileTemplate : DataTemplate
@@ -60,8 +62,12 @@ public class AssetFileTemplate : DataTemplate
         revertButton.SetBinding(Button.IsVisibleProperty, new Binding("IsDirty"));
         openButton.SetBinding(Button.IsVisibleProperty, new Binding("CanOpenAssetFile"));
 
-        openButton.Clicked += (sender, e) => (saveButton.BindingContext as AssetFile).OpenAssetFile();
-        saveButton.Clicked += async (sender, e) => await (saveButton.BindingContext as AssetFile).UpdateAssetFile();
+        openButton.Clicked += (sender, e) => (saveButton.BindingContext as AssetFile).Open();
+        saveButton.Clicked += async (sender, e) =>
+        {
+            _ = (saveButton.BindingContext as AssetFile).Save();
+        };
+
         revertButton.Clicked += async (sender, e) => await (revertButton.BindingContext as AssetFile).Revert();
 
         Templates.AddGridRow(controlPanel, nameLabel, GridLength.Auto);

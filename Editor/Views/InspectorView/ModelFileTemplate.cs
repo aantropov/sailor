@@ -20,12 +20,12 @@ public class ModelFileTemplate : AssetFileTemplate
             Templates.AddGridRow(grid, new Label { Text = "Properties", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
             Templates.AddGridRow(grid, props, GridLength.Auto);
             Templates.AddGridRow(grid, Templates.ListEditor(
-                 static (ModelFile vm) => vm.DefaultMaterials,
-                 static (ModelFile vm, ObservableList<Observable<FileId>> value) => vm.DefaultMaterials = value,
+                 static (ModelFile vm) => vm.Materials,
+                 static (ModelFile vm, ObservableList<Observable<FileId>> value) => vm.Materials = value,
                  () => Templates.FileIdEditor(
                             static (Observable<FileId> vm) => vm.Value,
                             static (Observable<FileId> vm, FileId value) => vm.Value = value),
-                "Default Materials",
+                "Materials",
                 new FileId(),
                 converter: new FileIdToFilenameConverter()), GridLength.Auto);
 

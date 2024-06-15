@@ -8,6 +8,9 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEngine;
 using SailorEditor.Utility;
+using YamlDotNet.Core;
+using YamlDotNet.Core.Events;
+using YamlDotNet.Core.Tokens;
 
 namespace SailorEditor.ViewModels
 {
@@ -69,13 +72,64 @@ namespace SailorEditor.ViewModels
             }
         }
 
-
         [ObservableProperty]
         string key;
 
         T _value;
     }
 
+    public class UniformYamlConverter<T> : IYamlTypeConverter where T : IComparable<T>
+    {
+        public UniformYamlConverter(IYamlTypeConverter[] ValueConverters = null)
+        {
+            if (ValueConverters != null)
+                valueConverters = [.. ValueConverters];
+        }
+
+        public bool Accepts(Type type) => type == typeof(Uniform<T>);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var deserializerBuilder = new DeserializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .IgnoreUnmatchedProperties()
+                .IncludeNonPublicProperties();
+
+            foreach (var valueConverter in valueConverters)
+            {
+                deserializerBuilder.WithTypeConverter(valueConverter);
+            }
+
+            var deserializer = deserializerBuilder.Build();
+
+            var key = parser.Consume<YamlDotNet.Core.Events.Scalar>().Value;
+            var value = deserializer.Deserialize<T>(parser);
+            var uniform = new Uniform<T> { Key = key, Value = value };
+
+            return uniform;
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var uniform = (Uniform<T>)value;
+            var serializerBuilder = new SerializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance);
+
+            foreach (var valueConverter in valueConverters)
+            {
+                serializerBuilder.WithTypeConverter(valueConverter);
+            }
+
+            var serializer = serializerBuilder.Build();
+
+            emitter.Emit(new YamlDotNet.Core.Events.Scalar(null, uniform.Key));
+            serializer.Serialize(emitter, uniform.Value);
+        }
+
+        List<IYamlTypeConverter> valueConverters = new();
+    }
+
+    //TODO: Implement Yaml serialization
     public partial class MaterialFile : AssetFile
     {
         [ObservableProperty]
@@ -119,162 +173,14 @@ namespace SailorEditor.ViewModels
 
         [ObservableProperty]
         private ObservableList<Observable<string>> shaderDefines = new();
-        private Dictionary<string, object> AssetProperties { get; set; } = new();
-        protected override async Task UpdateModel()
+
+        public override async Task<bool> LoadDependentResources()
         {
-            AssetProperties["bEnableDepthTest"] = EnableDepthTest;
-            AssetProperties["bEnableZWrite"] = EnableZWrite;
-            AssetProperties["bSupportMultisampling"] = SupportMultisampling;
-            AssetProperties["bCustomDepthShader"] = CustomDepthShader;
-            AssetProperties["depthBias"] = DepthBias;
-            AssetProperties["renderQueue"] = RenderQueue;
-            AssetProperties["cullMode"] = CullMode;
-            AssetProperties["blendMode"] = BlendMode;
-            AssetProperties["fillMode"] = FillMode;
-            AssetProperties["shaderUid"] = Shader.Value;
-
-            // Collections
-            AssetProperties["defines"] = ShaderDefines.Select((el) => el.Value).ToList();
-            AssetProperties["samplers"] = Samplers.Select((a) => new KeyValuePair<string, string>(a.Key, a.Value)).ToDictionary();
-
-            // We store Vec4 as List
-            var vec4 = new Dictionary<string, List<float>>();
-            foreach (var el in UniformsVec4)
-            {
-                var values = new List<float> { el.Value.X, el.Value.Y, el.Value.Z, el.Value.W };
-                vec4[el.Key.ToString()] = values;
-            }
-
-            AssetProperties["uniformsVec4"] = vec4;
-            AssetProperties["uniformsFloat"] = UniformsFloat.Select((a) => new KeyValuePair<string, float>(a.Key, a.Value)).ToDictionary();
-
-            IsDirty = false;
-        }
-
-        public override async Task UpdateAssetFile()
-        {
-            await UpdateModel();
-
-            using (var yamlAssetInfo = new FileStream(Asset.FullName, FileMode.Create))
-            using (var writer = new StreamWriter(yamlAssetInfo))
-            {
-                var serializer = new SerializerBuilder()
-                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                    .Build();
-
-                var yaml = serializer.Serialize(AssetProperties);
-                writer.Write(yaml);
-            }
-
-            IsDirty = false;
-        }
-
-        public override async Task<bool> PreloadResources(bool force)
-        {
-            if (!IsLoaded || force)
+            if (!IsLoaded)
             {
                 try
                 {
-                    AssetProperties = AssetsService.ParseYaml(Asset.FullName);
-
-                    foreach (var e in AssetProperties)
-                    {
-                        switch (e.Key.ToString())
-                        {
-                            case "bEnableDepthTest":
-                                EnableDepthTest = bool.Parse(e.Value.ToString());
-                                break;
-                            case "bEnableZWrite":
-                                EnableZWrite = bool.Parse(e.Value.ToString());
-                                break;
-                            case "bSupportMultisampling":
-                                SupportMultisampling = bool.Parse(e.Value.ToString());
-                                break;
-                            case "bCustomDepthShader":
-                                CustomDepthShader = bool.Parse(e.Value.ToString());
-                                break;
-                            case "depthBias":
-                                DepthBias = float.Parse(e.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-                                break;
-                            case "renderQueue":
-                                RenderQueue = e.Value.ToString();
-                                break;
-                            case "defines":
-                                {
-                                    var parsed = new List<string>();
-                                    bool ignoreFirst = false;
-                                    foreach (var uid in (e.Value as YamlNode).AllNodes)
-                                    {
-                                        if (!ignoreFirst)
-                                        {
-                                            ignoreFirst = true;
-                                            continue;
-                                        }
-
-                                        parsed.Add(uid.ToString());
-                                    }
-
-                                    ShaderDefines = new ObservableList<Observable<string>>(parsed.Select((el) => new Observable<string>(el)));
-                                }
-                                break;
-                            case "cullMode":
-                                CullMode = e.Value.ToString();
-                                break;
-                            case "blendMode":
-                                BlendMode = e.Value.ToString();
-                                break;
-                            case "fillMode":
-                                FillMode = e.Value.ToString();
-                                break;
-                            case "shaderUid":
-                                Shader = e.Value.ToString();
-                                break;
-                            case "samplers":
-                                {
-                                    var parsed = new ObservableList<Uniform<FileId>>();
-
-                                    foreach (var el in (e.Value as dynamic).Children)
-                                    {
-                                        parsed.Add(new Uniform<FileId> { Key = el.Key.ToString(), Value = el.Value.ToString() });
-                                    }
-
-                                    Samplers = parsed;
-                                }
-                                break;
-                            case "uniformsVec4":
-                                {
-                                    var parsed = new ObservableList<Uniform<Vec4>>();
-                                    foreach (var el in (e.Value as dynamic).Children)
-                                    {
-                                        var vec4 = el.Value.Children;
-
-                                        var v = new Vector4();
-                                        v.X = float.Parse(vec4[0].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-                                        v.Y = float.Parse(vec4[1].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-                                        v.Z = float.Parse(vec4[2].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-                                        v.W = float.Parse(vec4[3].Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-
-                                        parsed.Add(new Uniform<Vec4> { Key = el.Key.ToString(), Value = v });
-                                    }
-
-                                    UniformsVec4 = parsed;
-                                }
-                                break;
-                            case "uniformsFloat":
-                                {
-                                    var parsed = new ObservableList<Uniform<float>>();
-                                    foreach (var el in (e.Value as dynamic).Children)
-                                        parsed.Add(new Uniform<float>
-                                        {
-                                            Key = el.Key.ToString(),
-                                            Value = float.Parse(el.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat)
-                                        });
-
-                                    UniformsFloat = parsed;
-                                }
-                                break;
-                        }
-                    }
+                    IsDirty = false;
 
                     ShaderDefines.CollectionChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
                     ShaderDefines.ItemChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
@@ -300,6 +206,5 @@ namespace SailorEditor.ViewModels
 
             return true;
         }
-
     }
 }

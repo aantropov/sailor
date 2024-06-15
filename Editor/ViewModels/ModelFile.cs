@@ -3,6 +3,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
 using System.Globalization;
 using SailorEngine;
+using YamlDotNet.Serialization;
+using YamlDotNet.Core.Events;
+using YamlDotNet.Core;
+using YamlDotNet.Serialization.NamingConventions;
+using Microsoft.Maui.Controls.Compatibility;
 
 namespace SailorEditor.ViewModels
 {
@@ -18,72 +23,154 @@ namespace SailorEditor.ViewModels
         private float unitScale;
 
         [ObservableProperty]
-        private ObservableList<Observable<FileId>> defaultMaterials = new();
+        private ObservableList<Observable<FileId>> materials = new();
 
-        protected override async Task UpdateModel()
+        public override async Task Save()
         {
-            Properties["bShouldGenerateMaterials"] = ShouldGenerateMaterials;
-            Properties["bShouldBatchByMaterial"] = ShouldBatchByMaterial;
-            Properties["unitScale"] = UnitScale;
-            Properties["materials"] = DefaultMaterials.Select((el) => (string)el.Value).ToList();
+            using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
+            using (var writer = new StreamWriter(yamlAssetInfo))
+            {
+                var serializer = new SerializerBuilder()
+                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                    .WithTypeConverter(new ModelFileYamlConverter())
+                    .Build();
+
+                var yaml = serializer.Serialize(this);
+                writer.Write(yaml);
+            }
 
             IsDirty = false;
         }
 
-        public override async Task<bool> PreloadResources(bool force)
+        public override async Task Revert()
         {
-            if (!IsLoaded || force)
+            try
             {
-                try
-                {
-                    foreach (var e in Properties)
-                    {
-                        switch (e.Key.ToString())
-                        {
-                            case "bShouldGenerateMaterials":
-                                ShouldGenerateMaterials = bool.Parse(e.Value.ToString());
-                                break;
-                            case "bShouldBatchByMaterial":
-                                ShouldBatchByMaterial = bool.Parse(e.Value.ToString());
-                                break;
-                            case "unitScale":
-                                UnitScale = float.Parse(e.Value.ToString(), CultureInfo.InvariantCulture.NumberFormat);
-                                break;
-                            case "materials":
-                                {
-                                    var parsed = new ObservableList<Observable<FileId>>();
-                                    bool ignoreFirst = false;
-                                    foreach (var uid in (e.Value as YamlNode).AllNodes)
-                                    {
-                                        if (!ignoreFirst)
-                                        {
-                                            ignoreFirst = true;
-                                            continue;
-                                        }
+                var yaml = File.ReadAllText(AssetInfo.FullName);
+                var deserializer = new DeserializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .WithTypeConverter(new ModelFileYamlConverter())
+                .IgnoreUnmatchedProperties()
+                .Build();
 
-                                        parsed.Add((FileId)uid.ToString());
-                                    }
+                var intermediateObject = deserializer.Deserialize<ModelFile>(yaml);
 
-                                    DefaultMaterials = parsed;
-                                }
-                                break;
-                        }
-                    }
+                FileId = intermediateObject.FileId;
+                Filename = intermediateObject.Filename;
+                ShouldGenerateMaterials = intermediateObject.ShouldGenerateMaterials;
+                ShouldBatchByMaterial = intermediateObject.ShouldBatchByMaterial;
+                UnitScale = intermediateObject.UnitScale;
+                Materials = intermediateObject.Materials;
 
-                    DefaultMaterials.CollectionChanged += (a, e) => MarkDirty(nameof(DefaultMaterials));
-                    DefaultMaterials.ItemChanged += (a, e) => MarkDirty(nameof(DefaultMaterials));
-                }
-                catch (Exception e)
-                {
-                    DisplayName = e.Message;
-                    return false;
-                }
+                DisplayName = Asset.Name;
 
-                IsDirty = false;
-                IsLoaded = true;
+                Materials.CollectionChanged += (a, e) => MarkDirty(nameof(Materials));
+                Materials.ItemChanged += (a, e) => MarkDirty(nameof(Materials));
+
+                IsLoaded = false;
+            }
+            catch (Exception ex)
+            {
+                DisplayName = ex.Message;
             }
 
-            return true;
+            IsDirty = false;
+        }
+    }
+
+    public class ModelFileYamlConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(ModelFile);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var deserializer = new DeserializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .WithTypeConverter(new ObservableListConverter<Observable<FileId>>(
+                     [
+                         new FileIdConverter(),
+                         new ObservableObjectYamlConverter<FileId>(),
+                     ]))
+                .IgnoreUnmatchedProperties()
+                .Build();
+
+            var assetFile = new ModelFile();
+
+            parser.Consume<MappingStart>();
+
+            while (parser.Current is not MappingEnd)
+            {
+                if (parser.Current is Scalar scalar)
+                {
+                    var propertyName = scalar.Value;
+                    parser.MoveNext(); // Move to the value
+
+                    switch (propertyName)
+                    {
+                        case "fileId":
+                            assetFile.FileId = deserializer.Deserialize<FileId>(parser);
+                            break;
+                        case "filename":
+                            assetFile.Filename = deserializer.Deserialize<string>(parser);
+                            break;
+                        case "shouldGenerateMaterials":
+                            assetFile.ShouldGenerateMaterials = deserializer.Deserialize<bool>(parser);
+                            break;
+                        case "shouldBatchByMaterial":
+                            assetFile.ShouldBatchByMaterial = deserializer.Deserialize<bool>(parser);
+                            break;
+                        case "unitScale":
+                            assetFile.UnitScale = deserializer.Deserialize<float>(parser);
+                            break;
+                        case "materials":
+                            assetFile.Materials = deserializer.Deserialize<ObservableList<Observable<FileId>>>(parser);
+                            break;
+                        default:
+                            deserializer.Deserialize<object>(parser);
+                            break;
+                    }
+                }
+                else
+                {
+                    parser.MoveNext();
+                }
+            }
+
+            parser.Consume<MappingEnd>();
+
+            return assetFile;
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var assetFile = (ModelFile)value;
+
+            emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+            // Serialize inherited fields
+            emitter.Emit(new Scalar(null, "fileId"));
+            emitter.Emit(new Scalar(null, assetFile.FileId.Value));
+
+            // Serialize ModelFile specific fields
+            emitter.Emit(new Scalar(null, "filename"));
+            emitter.Emit(new Scalar(null, assetFile.Filename));
+
+            emitter.Emit(new Scalar(null, "shouldGenerateMaterials"));
+            emitter.Emit(new Scalar(null, assetFile.ShouldGenerateMaterials.ToString().ToLower()));
+
+            emitter.Emit(new Scalar(null, "shouldBatchByMaterial"));
+            emitter.Emit(new Scalar(null, assetFile.ShouldBatchByMaterial.ToString().ToLower()));
+
+            emitter.Emit(new Scalar(null, "unitScale"));
+            emitter.Emit(new Scalar(null, assetFile.UnitScale.ToString(CultureInfo.InvariantCulture)));
+
+            emitter.Emit(new Scalar(null, "materials"));
+            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+            foreach (var material in assetFile.Materials)
+                emitter.Emit(new Scalar(null, material.Value?.Value));
+            emitter.Emit(new SequenceEnd());
+
+            emitter.Emit(new MappingEnd());
         }
     }
 }

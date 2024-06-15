@@ -71,7 +71,8 @@ namespace SailorEditor.Utility
     {
         public ObservableListConverter(IYamlTypeConverter[] ValueConverters = null)
         {
-            valueConverters = [.. ValueConverters];
+            if (ValueConverters != null)
+                valueConverters = [.. ValueConverters];
         }
 
         public bool Accepts(Type type) => type == typeof(ObservableList<T>);

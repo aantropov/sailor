@@ -1,6 +1,9 @@
-﻿using SailorEditor.ViewModels;
+﻿using SailorEditor.Utility;
+using SailorEditor.ViewModels;
 using SailorEngine;
 using YamlDotNet.RepresentationModel;
+using YamlDotNet.Serialization.NamingConventions;
+using YamlDotNet.Serialization;
 
 namespace SailorEditor.Services
 {
@@ -11,57 +14,46 @@ namespace SailorEditor.Services
         public Dictionary<FileId, AssetFile> Assets { get; private set; }
         public List<AssetFile> Files { get { return Assets.Values.ToList(); } }
 
-        public AssetsService()
-        {
-            AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
-        }
+        public AssetsService() => AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+
         public void AddProjectRoot(string projectRoot)
         {
             Folders = new List<AssetFolder>();
             Assets = new Dictionary<FileId, AssetFile>();
 
             Root = new ProjectRoot { Name = projectRoot, Id = 1 };
-            ProcessDirectory(Root, projectRoot, -1);
+            ReadDirectory(Root, projectRoot, -1);
         }
 
-        private AssetFile ProcessAssetFile(FileInfo assetInfo, int parentFolderId)
+        private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId)
         {
             FileInfo assetFile = new FileInfo(Path.ChangeExtension(assetInfo.FullName, null));
 
-            AssetFile newAssetFile;
-
             var extension = Path.GetExtension(assetFile.FullName);
-            if (extension == ".png" ||
-                extension == ".jpg" ||
-                extension == ".bmp" ||
-                extension == ".dds" ||
-                extension == ".hdr")
-                newAssetFile = new TextureFile();
-            else if (extension == ".obj" ||
-                extension == ".fbx" ||
-                extension == ".gltf")
-                newAssetFile = new ModelFile();
-            else if (extension == ".shader")
-                newAssetFile = new ShaderFile();
-            else if (extension == ".mat")
-                newAssetFile = new MaterialFile();
-            else if (extension == ".glsl")
-                newAssetFile = new ShaderLibraryFile();
-            else
-                newAssetFile = new AssetFile();
+
+            AssetFile newAssetFile = extension switch
+            {
+                ".png" or ".jpg" or ".tga" or ".bmp" or ".dds" or ".hdr" => new TextureFile(),
+                ".obj" or ".fbx" or ".gltf" => new ModelFile(),
+                ".shader" => new ShaderFile(),
+                ".mat" => new MaterialFile(),
+                ".glsl" => new ShaderLibraryFile(),
+                _ => new AssetFile()
+            };
 
             newAssetFile.Id = Files.Count + 1;
             newAssetFile.DisplayName = assetFile.Name;
             newAssetFile.FolderId = parentFolderId;
             newAssetFile.AssetInfo = assetInfo;
             newAssetFile.Asset = assetFile;
-            newAssetFile.Properties = ParseYaml(assetInfo.FullName);
             newAssetFile.IsDirty = false;
+
+            _ = newAssetFile.Revert();
 
             return newAssetFile;
         }
 
-        private void ProcessDirectory(ProjectRoot root, string directoryPath, int parentFolderId)
+        private void ReadDirectory(ProjectRoot root, string directoryPath, int parentFolderId)
         {
             foreach (var directory in Directory.GetDirectories(directoryPath))
             {
@@ -76,7 +68,7 @@ namespace SailorEditor.Services
 
                 Folders.Add(folder);
 
-                ProcessDirectory(root, directory, folder.Id);
+                ReadDirectory(root, directory, folder.Id);
             }
 
             foreach (var file in Directory.GetFiles(directoryPath))
@@ -87,37 +79,14 @@ namespace SailorEditor.Services
 
                 try
                 {
-                    var newAssetInfo = ProcessAssetFile(assetInfo, parentFolderId);
-                    Assets[newAssetInfo.UID] = newAssetInfo;
+                    var newAssetInfo = ReadAssetFile(assetInfo, parentFolderId);
+                    Assets[newAssetInfo.FileId] = newAssetInfo;
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex.ToString());
                 }
             }
-        }
-
-        public static Dictionary<string, object> ParseYaml(string filename)
-        {
-            return ParseYamlNode(File.ReadAllText(filename));
-        }
-
-        public static Dictionary<string, object> ParseYamlNode(string yamlnode)
-        {
-            Dictionary<string, object> res = new Dictionary<string, object>();
-            using (var reader = new StringReader(yamlnode))
-            {
-                var yaml = new YamlStream();
-                yaml.Load(reader);
-
-                var root = (YamlMappingNode)yaml.Documents[0].RootNode;
-
-                foreach (var e in root.Children)
-                {
-                    res[e.Key.ToString()] = e.Value;
-                }
-            }
-            return res;
         }
     }
 }

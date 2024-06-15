@@ -15,7 +15,7 @@ namespace SailorEditor.Services
             {
                 if (obj is AssetFile assetFile)
                 {
-                    await assetFile.PreloadResources(false);
+                    await assetFile.LoadDependentResources();
 
                     if (assetFile is MaterialFile material)
                     {
@@ -26,10 +26,10 @@ namespace SailorEditor.Services
                         {
                             var task = Task.Run(async () =>
                             {
-                                var file = AssetService.Files.Find((el) => el.UID == tex.Value.Value);
+                                var file = AssetService.Files.Find((el) => el.FileId == tex.Value.Value);
                                 if (file != null)
                                 {
-                                    await file.PreloadResources(false);
+                                    await file.LoadDependentResources();
                                 }
                             });
 

@@ -17,7 +17,7 @@ public class GameObjectTemplate : DataTemplate
 
             Templates.AddGridRow(grid, CreateControlPanel(), GridLength.Auto);
             Templates.AddGridRow(grid, new Label { Text = "Transform", FontAttributes = FontAttributes.Bold }, GridLength.Auto);
-            
+
             Templates.AddGridRowWithLabel(props, "Position", Templates.Vec4Editor(static (GameObject vm) => vm.Position), GridLength.Auto);
             Templates.AddGridRowWithLabel(props, "Rotation", Templates.Vec4Editor(static (GameObject vm) => vm.Rotation), GridLength.Auto);
             Templates.AddGridRowWithLabel(props, "Scale", Templates.Vec4Editor(static (GameObject vm) => vm.Scale), GridLength.Auto);
@@ -78,7 +78,11 @@ public class GameObjectTemplate : DataTemplate
         saveButton.SetBinding(Button.IsVisibleProperty, new Binding("IsDirty"));
         revertButton.SetBinding(Button.IsVisibleProperty, new Binding("IsDirty"));
 
-        saveButton.Clicked += async (sender, e) => await (saveButton.BindingContext as AssetFile).UpdateAssetFile();
+        saveButton.Clicked += async (sender, e) =>
+        {
+            _ = (saveButton.BindingContext as AssetFile).Save();
+        };
+
         revertButton.Clicked += async (sender, e) => await (revertButton.BindingContext as AssetFile).Revert();
 
         Templates.AddGridRow(controlPanel, nameLabel, GridLength.Auto);

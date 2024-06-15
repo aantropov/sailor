@@ -108,7 +108,8 @@ namespace SailorEditor.Services
                     {
                         string serializedWorld = string.Empty;
                         string serializedEngineTypes = string.Empty;
-                        while (!cts.Token.IsCancellationRequested && serializedWorld == string.Empty)
+
+                        while (!cts.Token.IsCancellationRequested && (serializedWorld == string.Empty || serializedEngineTypes == string.Empty))
                         {
                             try
                             {
@@ -119,11 +120,12 @@ namespace SailorEditor.Services
                                 break;
                             }
 
-                            serializedWorld = SerializeWorld();
                             serializedEngineTypes = SerializeEngineTypes();
-
-                            MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
                             EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
+
+                            serializedWorld = SerializeWorld();
+                            MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+                            
                         }
                     });
 

@@ -1,6 +1,12 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEngine;
 using System;
+using System.ComponentModel;
 using System.Globalization;
+using YamlDotNet.Core;
+using YamlDotNet.Core.Events;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace SailorEditor.Utility
 {
@@ -47,6 +53,31 @@ namespace SailorEditor.Utility
             }
 
             return default(Observable<T>);
+        }
+    }
+
+    public class ObservableObjectYamlConverter<T> : IYamlTypeConverter
+        where T : IComparable<T>
+    {
+        public bool Accepts(Type type) => type == typeof(Observable<T>);
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var deserializer = new DeserializerBuilder()
+            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            .Build();
+
+            var t = deserializer.Deserialize<T>(parser);
+            return new Observable<T>(t);
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var observableValue = (Observable<T>)value;
+            var serializer = new SerializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .Build();
+
+            serializer.Serialize(emitter, observableValue.Value);
         }
     }
 }
