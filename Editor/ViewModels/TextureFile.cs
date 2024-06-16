@@ -13,39 +13,24 @@ namespace SailorEditor.ViewModels
         public bool IsImageLoaded { get => !Texture.IsEmpty; }
 
         [ObservableProperty]
-        private string filtration;
+        string filtration;
 
         [ObservableProperty]
-        private string format = "R8G8B8A8_SRGB";
+        string format = "R8G8B8A8_SRGB";
 
         [ObservableProperty]
-        private string clamping;
+        string clamping;
 
         [ObservableProperty]
-        private bool shouldGenerateMips;
+        bool shouldGenerateMips;
 
         [ObservableProperty]
-        private bool shouldSupportStorageBinding;
+        bool shouldSupportStorageBinding;
 
         [ObservableProperty]
-        private ImageSource texture;
+        ImageSource texture;
 
-        public override async Task Save()
-        {
-            using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
-            using (var writer = new StreamWriter(yamlAssetInfo))
-            {
-                var serializer = new SerializerBuilder()
-                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                    .WithTypeConverter(new TextureFileYamlConverter())
-                    .Build();
-
-                var yaml = serializer.Serialize(this);
-                writer.Write(yaml);
-            }
-
-            IsDirty = false;
-        }
+        public override async Task Save() => await Save(new TextureFileYamlConverter());
 
         public override async Task<bool> LoadDependentResources()
         {
@@ -60,7 +45,6 @@ namespace SailorEditor.ViewModels
                     DisplayName = ex.Message;
                 }
 
-                IsDirty = false;
                 IsLoaded = true;
             }
 
@@ -109,7 +93,7 @@ namespace SailorEditor.ViewModels
         {
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new FileIdConverter())
+                .WithTypeConverter(new FileIdYamlConverter())
                 .IgnoreUnmatchedProperties()
                 .Build();
 

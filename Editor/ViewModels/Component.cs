@@ -47,11 +47,11 @@ namespace SailorEditor.ViewModels
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
-                .WithTypeConverter(new ComponentTypeConverter())
-                .WithTypeConverter(new FileIdConverter())
-                .WithTypeConverter(new Vec4Converter())
-                .WithTypeConverter(new Vec3Converter())
-                .WithTypeConverter(new Vec2Converter())
+                .WithTypeConverter(new ComponentTypeYamlConverter())
+                .WithTypeConverter(new FileIdYamlConverter())
+                .WithTypeConverter(new Vec4YamlConverter())
+                .WithTypeConverter(new Vec3YamlConverter())
+                .WithTypeConverter(new Vec2YamlConverter())
                 .Build();
 
             var component = new Component();
@@ -114,11 +114,11 @@ namespace SailorEditor.ViewModels
             var serializer = new SerializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
-                .WithTypeConverter(new ComponentTypeConverter())
-                .WithTypeConverter(new FileIdConverter())
-                .WithTypeConverter(new Vec4Converter())
-                .WithTypeConverter(new Vec3Converter())
-                .WithTypeConverter(new Vec2Converter())
+                .WithTypeConverter(new ComponentTypeYamlConverter())
+                .WithTypeConverter(new FileIdYamlConverter())
+                .WithTypeConverter(new Vec4YamlConverter())
+                .WithTypeConverter(new Vec3YamlConverter())
+                .WithTypeConverter(new Vec2YamlConverter())
                 .Build();
 
             emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));

@@ -52,6 +52,7 @@ namespace SailorEngine
             return string.Compare(InstanceId, other.InstanceId, StringComparison.Ordinal);
         }
     }
+
     public class FileId : IComparable<FileId>, IComparable<string>, ICloneable
     {
         public FileId() { }
@@ -290,7 +291,7 @@ namespace SailorEditor
         float y = 0.0f;
     }
 
-    public class Vec2Converter : IYamlTypeConverter
+    public class Vec2YamlConverter : IYamlTypeConverter
     {
         public bool Accepts(Type type) => type == typeof(Vec2);
 
@@ -320,7 +321,7 @@ namespace SailorEditor
         }
     }
 
-    public class Vec3Converter : IYamlTypeConverter
+    public class Vec3YamlConverter : IYamlTypeConverter
     {
         public bool Accepts(Type type) => type == typeof(Vec3);
 
@@ -351,7 +352,7 @@ namespace SailorEditor
         }
     }
 
-    public class Vec4Converter : IYamlTypeConverter
+    public class Vec4YamlConverter : IYamlTypeConverter
     {
         public bool Accepts(Type type) => type == typeof(Vec4);
 
@@ -384,7 +385,7 @@ namespace SailorEditor
         }
     }
 
-    public class ComponentTypeConverter : IYamlTypeConverter
+    public class ComponentTypeYamlConverter : IYamlTypeConverter
     {
         public bool Accepts(Type type) => type == typeof(SailorEngine.ComponentType);
 
@@ -409,7 +410,7 @@ namespace SailorEditor
         }
     }
 
-    public class FileIdConverter : IYamlTypeConverter
+    public class FileIdYamlConverter : IYamlTypeConverter
     {
         public bool Accepts(Type type) => type == typeof(FileId);
         public object ReadYaml(IParser parser, Type type) => new FileId(parser.Consume<Scalar>().Value);

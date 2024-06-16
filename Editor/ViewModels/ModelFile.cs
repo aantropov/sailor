@@ -14,33 +14,18 @@ namespace SailorEditor.ViewModels
     public partial class ModelFile : AssetFile
     {
         [ObservableProperty]
-        private bool shouldGenerateMaterials;
+        bool shouldGenerateMaterials;
 
         [ObservableProperty]
-        private bool shouldBatchByMaterial;
+        bool shouldBatchByMaterial;
 
         [ObservableProperty]
-        private float unitScale;
+        float unitScale;
 
         [ObservableProperty]
-        private ObservableList<Observable<FileId>> materials = new();
+        ObservableList<Observable<FileId>> materials = new();
 
-        public override async Task Save()
-        {
-            using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
-            using (var writer = new StreamWriter(yamlAssetInfo))
-            {
-                var serializer = new SerializerBuilder()
-                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                    .WithTypeConverter(new ModelFileYamlConverter())
-                    .Build();
-
-                var yaml = serializer.Serialize(this);
-                writer.Write(yaml);
-            }
-
-            IsDirty = false;
-        }
+        public override async Task Save() => await Save(new ModelFileYamlConverter());
 
         public override async Task Revert()
         {
@@ -88,7 +73,7 @@ namespace SailorEditor.ViewModels
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .WithTypeConverter(new ObservableListConverter<Observable<FileId>>(
                      [
-                         new FileIdConverter(),
+                         new FileIdYamlConverter(),
                          new ObservableObjectYamlConverter<FileId>(),
                      ]))
                 .IgnoreUnmatchedProperties()
@@ -113,10 +98,10 @@ namespace SailorEditor.ViewModels
                         case "filename":
                             assetFile.Filename = deserializer.Deserialize<string>(parser);
                             break;
-                        case "shouldGenerateMaterials":
+                        case "bShouldGenerateMaterials":
                             assetFile.ShouldGenerateMaterials = deserializer.Deserialize<bool>(parser);
                             break;
-                        case "shouldBatchByMaterial":
+                        case "bShouldBatchByMaterial":
                             assetFile.ShouldBatchByMaterial = deserializer.Deserialize<bool>(parser);
                             break;
                         case "unitScale":
@@ -155,10 +140,10 @@ namespace SailorEditor.ViewModels
             emitter.Emit(new Scalar(null, "filename"));
             emitter.Emit(new Scalar(null, assetFile.Filename));
 
-            emitter.Emit(new Scalar(null, "shouldGenerateMaterials"));
+            emitter.Emit(new Scalar(null, "bShouldGenerateMaterials"));
             emitter.Emit(new Scalar(null, assetFile.ShouldGenerateMaterials.ToString().ToLower()));
 
-            emitter.Emit(new Scalar(null, "shouldBatchByMaterial"));
+            emitter.Emit(new Scalar(null, "bShouldBatchByMaterial"));
             emitter.Emit(new Scalar(null, assetFile.ShouldBatchByMaterial.ToString().ToLower()));
 
             emitter.Emit(new Scalar(null, "unitScale"));

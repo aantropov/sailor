@@ -91,16 +91,21 @@ namespace SailorEditor.Utility
 
             var deserializer = deserializerBuilder.Build();
 
-            parser.MoveNext();
-
             var list = new ObservableList<T>();
-            while (parser.Current is not SequenceEnd)
+            if (parser.Current is SequenceStart)
             {
-                var item = deserializer.Deserialize<T>(parser);
-                list.Add(item);
+                parser.MoveNext();
+                while (parser.Current is not SequenceEnd)
+                {
+                    var item = deserializer.Deserialize<T>(parser);
+                    list.Add(item);
+                }
+                parser.MoveNext();
             }
-
-            parser.MoveNext();
+            else
+            {
+                parser.MoveNext();
+            }
 
             return list;
         }

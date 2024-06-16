@@ -31,7 +31,7 @@ namespace SailorEditor.ViewModels
         {
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new FileIdConverter())
+                .WithTypeConverter(new FileIdYamlConverter())
                 .IgnoreUnmatchedProperties()
                 .Build();
 
@@ -75,7 +75,7 @@ namespace SailorEditor.ViewModels
             var assetFile = (ShaderLibraryFile)value;
             var serializer = new SerializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new FileIdConverter())
+                .WithTypeConverter(new FileIdYamlConverter())
                 .Build();
 
             emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));

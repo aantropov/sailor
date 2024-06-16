@@ -33,22 +33,7 @@ namespace SailorEditor.ViewModels
 
         public virtual async Task<bool> LoadDependentResources() => await Task.FromResult(true);
 
-        public virtual async Task Save()
-        {
-            using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
-            using (var writer = new StreamWriter(yamlAssetInfo))
-            {
-                var serializer = new SerializerBuilder()
-                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                    .WithTypeConverter(new AssetFileYamlConverter())
-                    .Build();
-
-                var yaml = serializer.Serialize(this);
-                writer.Write(yaml);
-            }
-
-            IsDirty = false;
-        }
+        public virtual async Task Save() => await Save(new AssetFileYamlConverter());
 
         public virtual async Task Revert()
         {
@@ -97,6 +82,23 @@ namespace SailorEditor.ViewModels
 
         [ObservableProperty]
         FileId filename;
+
+        protected async Task Save(IYamlTypeConverter converter)
+        {
+            using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
+            using (var writer = new StreamWriter(yamlAssetInfo))
+            {
+                var serializer = new SerializerBuilder()
+                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                    .WithTypeConverter(converter)
+                    .Build();
+
+                var yaml = serializer.Serialize(this);
+                writer.Write(yaml);
+            }
+
+            IsDirty = false;
+        }
     }
 
     public class AssetFileYamlConverter : IYamlTypeConverter
@@ -107,7 +109,7 @@ namespace SailorEditor.ViewModels
         {
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new FileIdConverter())
+                .WithTypeConverter(new FileIdYamlConverter())
                 .IgnoreUnmatchedProperties()
                 .Build();
 
@@ -154,7 +156,7 @@ namespace SailorEditor.ViewModels
             var assetFile = (AssetFile)value;
             var serializer = new SerializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new FileIdConverter())
+                .WithTypeConverter(new FileIdYamlConverter())
                 .Build();
 
             emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));

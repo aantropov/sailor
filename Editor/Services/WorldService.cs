@@ -38,10 +38,10 @@ namespace SailorEditor.Services
             .WithTypeConverter(new ObservableListConverter<Prefab>(
                 new IYamlTypeConverter[]
                 {
-                    new Vec4Converter(),
-                    new Vec3Converter(),
-                    new Vec2Converter(),
-                    new ComponentTypeConverter(),
+                    new Vec4YamlConverter(),
+                    new Vec3YamlConverter(),
+                    new Vec2YamlConverter(),
+                    new ComponentTypeYamlConverter(),
                     new ViewModels.ComponentConverter()
                 }))
             .IncludeNonPublicProperties()
