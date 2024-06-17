@@ -31,9 +31,9 @@ namespace SailorEditor.ViewModels
             return res;
         }
 
-        public override bool Equals(object obj) => obj is Uniform<T> other ? Key.CompareTo(other.Key) == 0 : false;
+        public override bool Equals(object obj) => obj is Uniform<T> other && Key.CompareTo(other.Key) == 0;
 
-        public override string ToString() => $"{Key.ToString()}: {Value.ToString()}";
+        public override string ToString() => $"{Key}: {Value}";
 
         public override int GetHashCode() => Key?.GetHashCode() ?? 0;
 
@@ -344,15 +344,15 @@ namespace SailorEditor.ViewModels
                             assetFile.Shader = deserializer.Deserialize<FileId>(parser);
                             break;
                         case "samplers":
-                            var samplers = deserializer.Deserialize<Dictionary<string, FileId>>(parser) ?? new();
+                            var samplers = deserializer.Deserialize<Dictionary<string, FileId>>(parser) ?? [];
                             assetFile.Samplers = new ObservableList<Uniform<FileId>>(samplers.Select(s => new Uniform<FileId> { Key = s.Key, Value = s.Value }).ToList());
                             break;
                         case "uniformsVec4":
-                            var uniformsVec4 = deserializer.Deserialize<Dictionary<string, Vec4>>(parser) ?? new();
+                            var uniformsVec4 = deserializer.Deserialize<Dictionary<string, Vec4>>(parser) ?? [];
                             assetFile.UniformsVec4 = new ObservableList<Uniform<Vec4>>(uniformsVec4.Select(s => new Uniform<Vec4> { Key = s.Key, Value = s.Value }).ToList());
                             break;
                         case "uniformsFloat":
-                            var uniformsFloat = deserializer.Deserialize<Dictionary<string, float>>(parser) ?? new();
+                            var uniformsFloat = deserializer.Deserialize<Dictionary<string, float>>(parser) ?? [];
                             assetFile.UniformsFloat = new ObservableList<Uniform<float>>(uniformsFloat.Select(s => new Uniform<float> { Key = s.Key, Value = s.Value }).ToList());
                             break;
                         case "defines":

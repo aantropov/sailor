@@ -21,7 +21,7 @@ namespace SailorEditor.Helpers;
 static class Templates
 {
     public const int ThumbnailSize = 128;
-      
+
     public static Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
     {
         var editor = new Editor
@@ -122,7 +122,7 @@ static class Templates
             {
                 var AssetService = MauiProgram.GetService<AssetsService>();
                 var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId uid ? uid : default(FileId));
+                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId uid ? uid : default);
             }
         };
 
@@ -169,7 +169,7 @@ static class Templates
             {
                 var AssetService = MauiProgram.GetService<AssetsService>();
                 var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId uid ? uid : default(FileId));
+                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId uid ? uid : default);
             }
         };
 
@@ -390,7 +390,7 @@ static class Templates
             var dict = dictGetter((TBindingContext)dictEditor.BindingContext);
             if (dict != null)
             {
-                Uniform<T> v = new Uniform<T> { Key = defaultKey, Value = defaultValue };
+                Uniform<T> v = new() { Key = defaultKey, Value = defaultValue };
 
                 if (defaultValue is ICloneable cloneable)
                     v.Value = (T)cloneable.Clone();
@@ -403,10 +403,7 @@ static class Templates
         clearButton.Clicked += (sender, e) =>
         {
             var dict = dictGetter((TBindingContext)dictEditor.BindingContext);
-            if (dict != null)
-            {
-                dict.Clear();
-            }
+            dict?.Clear();
         };
 
         var stackLayout = new VerticalStackLayout();
@@ -422,7 +419,7 @@ static class Templates
         Action<TBindingContext, ObservableList<Observable<T>>> setter,
         Func<IView> valueEditor,
         string labelText,
-        T defaultElement = default(T),
+        T defaultElement = default,
         IValueConverter converter = null)
     where TBindingContext : ICloneable, INotifyPropertyChanged
     where T : ICloneable, IComparable<T>
@@ -454,10 +451,7 @@ static class Templates
         addButton.Clicked += (sender, e) =>
         {
             var list = listGetter((TBindingContext)listEditor.BindingContext);
-            if (list != null)
-            {
-                list.Add(new Observable<T>(defaultElement));
-            }
+            list?.Add(new Observable<T>(defaultElement));
         };
 
         var clearButton = new Button { Text = "Clear" };
@@ -477,39 +471,37 @@ static class Templates
 
     public static ImageSource ResizeImageToThumbnail(string imagePath)
     {
-        using (var original = SKBitmap.Decode(imagePath))
+        using var original = SKBitmap.Decode(imagePath);
+        if (original == null)
         {
-            if (original == null)
-            {
-                return null;
-            }
-
-            int width = ThumbnailSize;
-            int height = ThumbnailSize;
-
-            float aspectRatio = original.Width / (float)original.Height;
-            if (original.Width > original.Height)
-            {
-                height = (int)(width / aspectRatio);
-            }
-            else
-            {
-                width = (int)(height * aspectRatio);
-            }
-
-            using var resizedImage = original.Resize(new SKImageInfo(width, height), SKFilterQuality.High);
-
-            if (resizedImage == null) return null;
-
-            using var image = SKImage.FromBitmap(resizedImage);
-            using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-
-            var stream = new MemoryStream();
-            data.SaveTo(stream);
-            stream.Seek(0, SeekOrigin.Begin);
-
-            return ImageSource.FromStream(() => stream);
+            return null;
         }
+
+        int width = ThumbnailSize;
+        int height = ThumbnailSize;
+
+        float aspectRatio = original.Width / (float)original.Height;
+        if (original.Width > original.Height)
+        {
+            height = (int)(width / aspectRatio);
+        }
+        else
+        {
+            width = (int)(height * aspectRatio);
+        }
+
+        using var resizedImage = original.Resize(new SKImageInfo(width, height), SKFilterQuality.High);
+
+        if (resizedImage == null) return null;
+
+        using var image = SKImage.FromBitmap(resizedImage);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+
+        var stream = new MemoryStream();
+        data.SaveTo(stream);
+        stream.Seek(0, SeekOrigin.Begin);
+
+        return ImageSource.FromStream(() => stream);
     }
 
     public static void AddGridRow(Microsoft.Maui.Controls.Grid grid, View view, Microsoft.Maui.GridLength gridLength)

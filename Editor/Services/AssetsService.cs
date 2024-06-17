@@ -12,14 +12,14 @@ namespace SailorEditor.Services
         public ProjectRoot Root { get; private set; }
         public List<AssetFolder> Folders { get; private set; }
         public Dictionary<FileId, AssetFile> Assets { get; private set; }
-        public List<AssetFile> Files { get { return Assets.Values.ToList(); } }
+        public List<AssetFile> Files { get { return [.. Assets.Values]; } }
 
         public AssetsService() => AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
 
         public void AddProjectRoot(string projectRoot)
         {
-            Folders = new List<AssetFolder>();
-            Assets = new Dictionary<FileId, AssetFile>();
+            Folders = [];
+            Assets = [];
 
             Root = new ProjectRoot { Name = projectRoot, Id = 1 };
             ReadDirectory(Root, projectRoot, -1);
@@ -27,7 +27,7 @@ namespace SailorEditor.Services
 
         private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId)
         {
-            FileInfo assetFile = new FileInfo(Path.ChangeExtension(assetInfo.FullName, null));
+            FileInfo assetFile = new(Path.ChangeExtension(assetInfo.FullName, null));
 
             var extension = Path.GetExtension(assetFile.FullName);
 

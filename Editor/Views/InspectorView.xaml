@@ -6,12 +6,13 @@
              xmlns:models="clr-namespace:SailorEditor.ViewModels"
              xmlns:local="clr-namespace:SailorEditor"
              xmlns:helpers="clr-namespace:SailorEditor.Helpers"
-             xmlns:utility="clr-namespace:CommunityToolkit.Mvvm.ComponentModel;assembly=CommunityToolkit.Mvvm"
              xmlns:services="clr-namespace:SailorEditor.Services"
+             xmlns:utility="clr-namespace:SailorEditor.Utility"
              x:DataType="services:SelectionService">
 
     <ContentView.Resources>
         <ResourceDictionary>
+
             <local:AssetFileTemplate x:Key="AssetFileTemplate" />
             <local:TextureFileTemplate x:Key="TextureFileTemplate" />
             <local:ShaderFileTemplate x:Key="ShaderFileTemplate" />

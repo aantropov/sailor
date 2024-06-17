@@ -68,7 +68,7 @@ namespace SailorEditor.ViewModels
 
         public object Clone() => new AssetFile();
 
-        protected bool IsLoaded { get; set; }
+        public bool IsLoaded { get; set; }
 
         [ObservableProperty]
         protected bool isDirty = false;
@@ -153,10 +153,6 @@ namespace SailorEditor.ViewModels
         public void WriteYaml(IEmitter emitter, object value, Type type)
         {
             var assetFile = (AssetFile)value;
-            var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new FileIdYamlConverter())
-                .Build();
 
             emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
 

@@ -80,21 +80,21 @@ namespace SailorEngine
 
         public override int GetHashCode() => Value?.GetHashCode() ?? 0;
 
-        public static implicit operator string(FileId ts) => (ts == null) ? null : ts.Value;
+        public static implicit operator string(FileId ts) => ts?.Value;
 
-        public static implicit operator FileId(string val) => new FileId { Value = val };
+        public static implicit operator FileId(string val) => new() { Value = val };
     }
 
     public class ComponentType
     {
         public string Name { get; set; }
-        public Dictionary<string, PropertyBase> Properties { get; set; } = new();
+        public Dictionary<string, PropertyBase> Properties { get; set; } = [];
     };
 
     class EngineTypes
     {
-        public Dictionary<string, ComponentType> Components { get; private set; } = new();
-        public Dictionary<string, List<string>> Enums { get; private set; } = new();
+        public Dictionary<string, ComponentType> Components { get; private set; } = [];
+        public Dictionary<string, List<string>> Enums { get; private set; } = [];
 
         public static EngineTypes FromYaml(string yamlContent)
         {
@@ -105,12 +105,14 @@ namespace SailorEngine
 
             var rootNode = deserializer.Deserialize<RootNode>(yamlContent);
 
-            EngineTypes res = new EngineTypes();
+            var res = new EngineTypes();
 
             foreach (var component in rootNode.EngineTypes)
             {
-                var newComponent = new ComponentType();
-                newComponent.Name = component.Typename;
+                var newComponent = new ComponentType
+                {
+                    Name = component.Typename
+                };
 
                 foreach (var property in component.Properties)
                 {
@@ -180,8 +182,8 @@ namespace SailorEditor
             W = value.W;
         }
 
-        public static implicit operator Vec4(Vector4 value) => new Vec4 { X = value.X, Y = value.Y, Z = value.Z, W = value.W };
-        public static implicit operator Vector4(Vec4 uniform) => new Vector4(uniform.X, uniform.Y, uniform.Z, uniform.W);
+        public static implicit operator Vec4(Vector4 value) => new() { X = value.X, Y = value.Y, Z = value.Z, W = value.W };
+        public static implicit operator Vector4(Vec4 uniform) => new(uniform.X, uniform.Y, uniform.Z, uniform.W);
         public object Clone() => new Vec4 { X = X, Y = Y, Z = Z, W = W };
         public override string ToString() => $"<{X} {Y} {Z} {W}>";
 
@@ -224,8 +226,8 @@ namespace SailorEditor
             Z = value.Z;
         }
 
-        public static implicit operator Vec3(Vector3 value) => new Vec3 { X = value.X, Y = value.Y, Z = value.Z };
-        public static implicit operator Vector3(Vec3 uniform) => new Vector3(uniform.X, uniform.Y, uniform.Z);
+        public static implicit operator Vec3(Vector3 value) => new() { X = value.X, Y = value.Y, Z = value.Z };
+        public static implicit operator Vector3(Vec3 uniform) => new(uniform.X, uniform.Y, uniform.Z);
         public object Clone() => new Vec3 { X = X, Y = Y, Z = Z };
         public override string ToString() => $"<{X} {Y} {Z}>";
 
@@ -265,8 +267,8 @@ namespace SailorEditor
             Y = value.Y;
         }
 
-        public static implicit operator Vec2(Vector2 value) => new Vec2 { X = value.X, Y = value.Y };
-        public static implicit operator Vector2(Vec2 uniform) => new Vector2(uniform.X, uniform.Y);
+        public static implicit operator Vec2(Vector2 value) => new() { X = value.X, Y = value.Y };
+        public static implicit operator Vector2(Vec2 uniform) => new(uniform.X, uniform.Y);
         public object Clone() => new Vec2 { X = X, Y = Y };
         public override string ToString() => $"<{X} {Y}>";
 

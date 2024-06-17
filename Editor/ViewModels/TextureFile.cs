@@ -5,12 +5,19 @@ using YamlDotNet.Core.Events;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using SailorEditor.Services;
+using YamlDotNet.Core.Tokens;
+using Scalar = YamlDotNet.Core.Events.Scalar;
 
 namespace SailorEditor.ViewModels
 {
     public partial class TextureFile : AssetFile
     {
         public bool IsImageLoaded { get => !Texture.IsEmpty; }
+
+        public List<string> TextureFiltrationType { get; set; } = [];
+        public List<string> TextureClampingType { get; set; } = [];
+        public List<string> TextureFormatType { get; set; } = [];
 
         [ObservableProperty]
         string filtration;
@@ -27,8 +34,7 @@ namespace SailorEditor.ViewModels
         [ObservableProperty]
         bool shouldSupportStorageBinding;
 
-        [ObservableProperty]
-        ImageSource texture;
+        public ImageSource Texture { get; private set; } = null;
 
         public override async Task Save() => await Save(new TextureFileYamlConverter());
 
@@ -38,6 +44,12 @@ namespace SailorEditor.ViewModels
             {
                 try
                 {
+                    var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+
+                    TextureFiltrationType = engineTypes.Enums["enum Sailor::RHI::ETextureFiltration"];
+                    TextureClampingType = engineTypes.Enums["enum Sailor::RHI::ETextureClamping"];
+                    TextureFormatType = engineTypes.Enums["enum Sailor::RHI::EFormat"];
+
                     Texture = ImageSource.FromFile(Asset.FullName);
                 }
                 catch (Exception ex)

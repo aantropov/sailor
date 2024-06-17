@@ -21,8 +21,7 @@ public partial class ControlPanelView : ContentView
 
     private async void OnSaveButtonClicked(object sender, EventArgs e)
     {
-        var assetFile = (sender as Button)?.BindingContext as AssetFile;
-        if (assetFile != null)
+        if (sender is Button { BindingContext: AssetFile assetFile })
         {
             await assetFile.Save();
         }
@@ -30,8 +29,7 @@ public partial class ControlPanelView : ContentView
 
     private async void OnRevertButtonClicked(object sender, EventArgs e)
     {
-        var assetFile = (sender as Button)?.BindingContext as AssetFile;
-        if (assetFile != null)
+        if (sender is Button { BindingContext: AssetFile assetFile })
         {
             await assetFile.Revert();
         }

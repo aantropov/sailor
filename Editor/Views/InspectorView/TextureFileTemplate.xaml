@@ -1,10 +1,79 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <DataTemplate xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:models="clr-namespace:SailorEditor.ViewModels"
-             x:DataType="models:TextureFile"
-             x:Class="SailorEditor.TextureFileTemplate">
+              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+              xmlns:helpers="clr-namespace:SailorEditor.Helpers"
+              xmlns:views="clr-namespace:SailorEditor.Views"
+              xmlns:utility="clr-namespace:SailorEditor.Utility"
+              xmlns:models="clr-namespace:SailorEditor.ViewModels"
+              xmlns:services="clr-namespace:SailorEditor.Services"
+              xmlns:local="clr-namespace:SailorEditor"
+              x:DataType="models:TextureFile"
+              x:Class="SailorEditor.TextureFileTemplate">
     <Grid>
-        <Label Text="TextureFileDataTemplate" />
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Control Panel -->
+        <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
+
+        <!-- Image -->
+        <Image Source="{Binding Texture}" 
+               WidthRequest="512" 
+               HeightRequest="256" 
+               Aspect="AspectFit" 
+               HorizontalOptions="Start" 
+               VerticalOptions="Start" 
+               Grid.Row="1" Grid.ColumnSpan="2"
+               IsVisible = "{Binding IsLoaded}"/>
+
+        <!-- Properties Label -->
+        <Label Text="Properties" FontAttributes="Bold" Grid.Row="2" Grid.ColumnSpan="2" />
+
+        <!-- Properties Grid -->
+        <Grid Grid.Row="3" Grid.ColumnSpan="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Generate Mips -->
+            <Label Text="Generate Mips" Grid.Row="0" Grid.Column="0" VerticalOptions="Center" />
+            <CheckBox IsChecked="{Binding ShouldGenerateMips}" Grid.Row="0" Grid.Column="1" />
+
+            <!-- Storage Binding -->
+            <Label Text="Storage Binding" Grid.Row="1" Grid.Column="0" VerticalOptions="Center" />
+            <CheckBox IsChecked="{Binding ShouldSupportStorageBinding}" Grid.Row="1" Grid.Column="1" />
+
+            <!-- Filtration -->
+            <Label Text="Filtration" Grid.Row="2" Grid.Column="0" VerticalOptions="Center" />
+            <Picker ItemsSource="{Binding TextureFiltrationType}" SelectedItem="{Binding Filtration}" Grid.Row="2" Grid.Column="1" />
+
+            <!-- Clamping -->
+            <Label Text="Clamping" Grid.Row="3" Grid.Column="0" VerticalOptions="Center" />
+            <Picker ItemsSource="{Binding TextureClampingType}" SelectedItem="{Binding Clamping}" Grid.Row="3" Grid.Column="1" />
+
+            <!-- Format -->
+            <Label Text="Format" Grid.Row="4" Grid.Column="0" VerticalOptions="Center" />
+            <Picker ItemsSource="{Binding TextureFormatType}" SelectedItem="{Binding Format}" Grid.Row="4" Grid.Column="1" />
+        </Grid>
     </Grid>
 </DataTemplate>
