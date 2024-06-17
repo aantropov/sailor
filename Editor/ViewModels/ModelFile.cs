@@ -23,7 +23,7 @@ namespace SailorEditor.ViewModels
         float unitScale;
 
         [ObservableProperty]
-        ObservableList<Observable<FileId>> materials = new();
+        ObservableList<Observable<FileId>> materials = [];
 
         public override async Task Save() => await Save(new ModelFileYamlConverter());
 

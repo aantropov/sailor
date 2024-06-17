@@ -5,9 +5,9 @@ using SailorEditor.ViewModels;
 using SailorEditor.Services;
 using SailorEditor;
 
-public class MaterialFileTemplate : AssetFileTemplate
+public class MaterialFileTemplateDeprecated : AssetFileTemplateDeprecated
 {
-    public MaterialFileTemplate()
+    public MaterialFileTemplateDeprecated()
     {
         LoadTemplate = () =>
         {

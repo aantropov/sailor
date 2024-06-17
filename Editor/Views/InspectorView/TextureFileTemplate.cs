@@ -5,9 +5,9 @@ using Grid = Microsoft.Maui.Controls.Grid;
 using SailorEditor.Services;
 using SailorEditor;
 
-public class TextureFileTemplate : AssetFileTemplate
+public class TextureFileTemplateDeprecated : AssetFileTemplateDeprecated
 {
-    public TextureFileTemplate()
+    public TextureFileTemplateDeprecated()
     {
         LoadTemplate = () =>
         {

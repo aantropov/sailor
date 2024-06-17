@@ -2,10 +2,11 @@
 using SailorEditor.Helpers;
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
+using SailorEditor.Views;
 
-public class AssetFileTemplate : DataTemplate
+public class AssetFileTemplateDeprecated : DataTemplate
 {
-    public AssetFileTemplate()
+    public AssetFileTemplateDeprecated()
     {
         LoadTemplate = () =>
         {

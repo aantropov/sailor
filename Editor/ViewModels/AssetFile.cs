@@ -53,14 +53,13 @@ namespace SailorEditor.ViewModels
 
                 DisplayName = Filename;
 
+                IsDirty = false;
                 IsLoaded = false;
             }
             catch (Exception ex)
             {
                 DisplayName = ex.Message;
             }
-
-            IsDirty = false;
         }
 
         public void Open() => Process.Start(new ProcessStartInfo(Asset.FullName) { UseShellExecute = true });

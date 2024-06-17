@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:views="clr-namespace:SailorEditor.Views"
+             xmlns:models="clr-namespace:SailorEditor.ViewModels"
+             x:DataType="models:AssetFile"
+             x:Class="SailorEditor.Views.ControlPanelView">
+
+    <VerticalStackLayout Spacing="5" Padding="10">
+        <!-- Display Name Label -->
+        <Label Text="{Binding DisplayName}" 
+               VerticalOptions="Center" 
+               HorizontalTextAlignment="Start" 
+               FontAttributes="Bold">
+            <Label.Behaviors>
+                <views:DisplayNameBehavior />
+            </Label.Behaviors>
+        </Label>
+
+        <!-- Buttons -->
+        <HorizontalStackLayout Spacing="10"
+                               HorizontalOptions="Start"
+                               VerticalOptions="Start">
+            <Button Text="Open" HeightRequest="30" WidthRequest="80" 
+                    IsVisible="{Binding CanOpenAssetFile}"
+                    Clicked="OnOpenButtonClicked" />
+
+            <Button Text="Save" HeightRequest="30" WidthRequest="80" 
+                    IsVisible="{Binding IsDirty}"
+                    Clicked="OnSaveButtonClicked" />
+
+            <Button Text="Revert" HeightRequest="30" WidthRequest="80" 
+                    IsVisible="{Binding IsDirty}"
+                    Clicked="OnRevertButtonClicked" />
+        </HorizontalStackLayout>
+    </VerticalStackLayout>
+</ContentView>

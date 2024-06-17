@@ -4,10 +4,7 @@ namespace SailorEditor.Utility
 {
     public class EnumToStringConverter<TEnum> : IValueConverter where TEnum : struct
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            return value?.ToString();
-        }
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value?.ToString();
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {

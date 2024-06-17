@@ -107,6 +107,18 @@
 	  <Compile Update="Views\ConsoleView.xaml.cs">
 	    <DependentUpon>ConsoleView.xaml</DependentUpon>
 	  </Compile>
+	  <Compile Update="Views\InspectorView\ShaderFileTemplate .xaml.cs">
+	    <DependentUpon>ShaderFileTemplate .xaml</DependentUpon>
+	  </Compile>
+	  <Compile Update="Views\InspectorView\ShaderLibraryFileTemplate.xaml.cs">
+	    <DependentUpon>ShaderLibraryFileTemplate.xaml</DependentUpon>
+	  </Compile>
+	  <Compile Update="Views\InspectorView\AssetFileTemplate.xaml.cs">
+	    <DependentUpon>AssetFileTemplate.xaml</DependentUpon>
+	  </Compile>
+	  <Compile Update="Views\InspectorView\TextureFileTemplate.xaml.cs">
+	    <DependentUpon>TextureFileTemplate.xaml</DependentUpon>
+	  </Compile>
 	  <Compile Update="Views\SceneView.xaml.cs">
 	    <DependentUpon>SceneView.xaml</DependentUpon>
 	  </Compile>
@@ -132,6 +144,21 @@
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\ConsoleView.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\InspectorView\ControlPanelView.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\InspectorView\ShaderFileTemplate .xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\InspectorView\ShaderLibraryFileTemplate.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\InspectorView\TextureFileTemplate.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\InspectorView\AssetFileTemplate.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\SceneView.xaml">

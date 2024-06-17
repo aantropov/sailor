@@ -165,7 +165,7 @@ namespace SailorEditor.Services
             return messages;
         }
 
-        string SerializeWorld()
+        static string SerializeWorld()
         {
             nint[] yamlNodeChar = new nint[1];
             uint numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
@@ -179,7 +179,7 @@ namespace SailorEditor.Services
             return yamlNode;
         }
 
-        string SerializeEngineTypes()
+        static string SerializeEngineTypes()
         {
             nint[] yamlNodeChar = new nint[1];
             uint numChars = EngineAppInterop.SerializeEngineTypes(yamlNodeChar);

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<DataTemplate xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+              xmlns:views="clr-namespace:SailorEditor.Views"
+              xmlns:models="clr-namespace:SailorEditor.ViewModels"
+              x:DataType="models:ShaderFile"
+              x:Class="SailorEditor.ShaderFileTemplate">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
+        
+        <!-- Properties Label -->
+        <Label Text="Properties" FontAttributes="Bold" Grid.Row="1" Grid.ColumnSpan="2" />
+
+        <!-- Properties Grid -->
+        <Grid Grid.Row="2" Grid.ColumnSpan="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Label Text="Includes" Grid.Row="0" Grid.Column="0" VerticalOptions="Center" />
+            <Editor Text="{Binding Includes}" Grid.Row="0" Grid.Column="1" FontSize="12" IsReadOnly="True" AutoSize="TextChanges" />
+
+            <Label Text="Defines" Grid.Row="1" Grid.Column="0" VerticalOptions="Center" />
+            <Editor Text="{Binding Defines}" Grid.Row="1" Grid.Column="1" FontSize="12" IsReadOnly="True" AutoSize="TextChanges" />
+        </Grid>
+
+        <!-- Code Label -->
+        <Label Text="Code" FontAttributes="Bold" Grid.Row="3" Grid.ColumnSpan="2" />
+
+        <!-- Shader Code Views -->
+        <Grid Grid.Row="4" Grid.ColumnSpan="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Label Text="Common Shader" Grid.Row="0" />
+            <Editor Text="{Binding GlslCommonShader}" FontSize="12" IsReadOnly="True" AutoSize="Disabled" Grid.Row="1" />
+
+            <Label Text="Vertex Shader" Grid.Row="2" />
+            <Editor Text="{Binding GlslVertexShader}" FontSize="12" IsReadOnly="True" AutoSize="Disabled" Grid.Row="3" />
+
+            <Label Text="Fragment Shader" Grid.Row="4" />
+            <Editor Text="{Binding GlslFragmentShader}" FontSize="12" IsReadOnly="True" AutoSize="Disabled" Grid.Row="5" />
+
+            <Label Text="Compute Shader" Grid.Row="6" />
+            <Editor Text="{Binding GlslComputeShader}" FontSize="12" IsReadOnly="True" AutoSize="Disabled" Grid.Row="7" />
+        </Grid>
+    </Grid>
+</DataTemplate>

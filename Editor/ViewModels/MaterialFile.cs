@@ -115,7 +115,7 @@ namespace SailorEditor.ViewModels
             serializer.Serialize(emitter, uniform.Value);
         }
 
-        List<IYamlTypeConverter> valueConverters = new();
+        List<IYamlTypeConverter> valueConverters = [];
     }
 
     public partial class MaterialFile : AssetFile
@@ -151,16 +151,51 @@ namespace SailorEditor.ViewModels
         FileId shader;
 
         [ObservableProperty]
-        ObservableList<Uniform<FileId>> samplers = new();
+        ObservableList<Uniform<FileId>> samplers = [];
 
         [ObservableProperty]
-        ObservableList<Uniform<Vec4>> uniformsVec4 = new();
+        ObservableList<Uniform<Vec4>> uniformsVec4 = [];
 
         [ObservableProperty]
-        ObservableList<Uniform<float>> uniformsFloat = new();
+        ObservableList<Uniform<float>> uniformsFloat = [];
 
         [ObservableProperty]
-        ObservableList<Observable<string>> shaderDefines = new();
+        ObservableList<Observable<string>> shaderDefines = [];
+
+        public override async Task<bool> LoadDependentResources()
+        {
+            if (!IsLoaded)
+            {
+                try
+                {
+                    var AssetService = MauiProgram.GetService<AssetsService>();
+                    var preloadTasks = new List<Task>();
+                    foreach (var tex in Samplers)
+                    {
+                        var task = Task.Run(async () =>
+                        {
+                            var file = AssetService.Files.Find((el) => el.FileId == tex.Value.Value);
+                            if (file != null)
+                            {
+                                await file.LoadDependentResources();
+                            }
+                        });
+
+                        preloadTasks.Add(task);
+                    }
+
+                    await Task.WhenAll(preloadTasks);
+                }
+                catch (Exception ex)
+                {
+                    DisplayName = ex.Message;
+                }
+
+                IsLoaded = true;
+            }
+
+            return true;
+        }
 
         public override async Task Save()
         {
@@ -257,34 +292,11 @@ namespace SailorEditor.ViewModels
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .WithTypeConverter(new FileIdYamlConverter())
                 .WithTypeConverter(new Vec4YamlConverter())
-                .WithTypeConverter(new ObservableListConverter<Observable<FileId>>(
-                     new IYamlTypeConverter[]
-                     {
-                     new FileIdYamlConverter(),
-                     new ObservableObjectYamlConverter<FileId>(),
-                     }))
-                .WithTypeConverter(new ObservableListConverter<Uniform<FileId>>(
-                     new IYamlTypeConverter[]
-                     {
-                     new FileIdYamlConverter(),
-                     new UniformYamlConverter<FileId>(),
-                     }))
-                .WithTypeConverter(new ObservableListConverter<Uniform<Vec4>>(
-                     new IYamlTypeConverter[]
-                     {
-                     new Vec4YamlConverter(),
-                     new UniformYamlConverter<Vec4>(),
-                     }))
-                .WithTypeConverter(new ObservableListConverter<Uniform<float>>(
-                     new IYamlTypeConverter[]
-                     {
-                     new UniformYamlConverter<float>(),
-                     }))
-                .WithTypeConverter(new ObservableListConverter<Observable<string>>(
-                     new IYamlTypeConverter[]
-                     {
-                     new ObservableObjectYamlConverter<string>(),
-                     }))
+                .WithTypeConverter(new ObservableListConverter<Observable<FileId>>([new FileIdYamlConverter(), new ObservableObjectYamlConverter<FileId>()]))
+                .WithTypeConverter(new ObservableListConverter<Uniform<FileId>>([new FileIdYamlConverter(), new UniformYamlConverter<FileId>()]))
+                .WithTypeConverter(new ObservableListConverter<Uniform<Vec4>>([new Vec4YamlConverter(), new UniformYamlConverter<Vec4>()]))
+                .WithTypeConverter(new ObservableListConverter<Uniform<float>>([new UniformYamlConverter<float>()]))
+                .WithTypeConverter(new ObservableListConverter<Observable<string>>([new ObservableObjectYamlConverter<string>()]))
                 .IgnoreUnmatchedProperties()
                 .Build();
 

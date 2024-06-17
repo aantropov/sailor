@@ -3,9 +3,9 @@ using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
 
-public class ModelFileTemplate : AssetFileTemplate
+public class ModelFileTemplateDeprecated : AssetFileTemplateDeprecated
 {
-    public ModelFileTemplate()
+    public ModelFileTemplateDeprecated()
     {
         LoadTemplate = () =>
         {

@@ -16,28 +16,6 @@ namespace SailorEditor.Services
                 if (obj is AssetFile assetFile)
                 {
                     await assetFile.LoadDependentResources();
-
-                    if (assetFile is MaterialFile material)
-                    {
-                        var AssetService = MauiProgram.GetService<AssetsService>();
-
-                        var preloadTasks = new List<Task>();
-                        foreach (var tex in material.Samplers)
-                        {
-                            var task = Task.Run(async () =>
-                            {
-                                var file = AssetService.Files.Find((el) => el.FileId == tex.Value.Value);
-                                if (file != null)
-                                {
-                                    await file.LoadDependentResources();
-                                }
-                            });
-
-                            preloadTasks.Add(task);
-                        }
-
-                        await Task.WhenAll(preloadTasks);
-                    }
                 }
 
                 SelectedItems.Clear();

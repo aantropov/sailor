@@ -2,14 +2,26 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Name="this"
              x:Class="SailorEditor.Views.InspectorView"
+             xmlns:views="clr-namespace:SailorEditor.Views"
              xmlns:models="clr-namespace:SailorEditor.ViewModels"
+             xmlns:local="clr-namespace:SailorEditor"
              xmlns:helpers="clr-namespace:SailorEditor.Helpers"
              xmlns:utility="clr-namespace:CommunityToolkit.Mvvm.ComponentModel;assembly=CommunityToolkit.Mvvm"
-             xmlns:services="clr-namespace:SailorEditor.Services">
+             xmlns:services="clr-namespace:SailorEditor.Services"
+             x:DataType="services:SelectionService">
 
     <ContentView.Resources>
         <ResourceDictionary>
-            <helpers:InspectorTemplateSelector x:Key="TemplateSelector"/>
+            <local:AssetFileTemplate x:Key="AssetFileTemplate" />
+            <local:TextureFileTemplate x:Key="TextureFileTemplate" />
+            <local:ShaderFileTemplate x:Key="ShaderFileTemplate" />
+            <local:ShaderLibraryFileTemplate x:Key="ShaderLibraryFileTemplate" />
+
+            <local:InspectorTemplateSelector x:Key="InspectorTemplateSelector"
+                                          AssetFileTemplate="{StaticResource AssetFileTemplate}"
+                                          TextureFileTemplate="{StaticResource TextureFileTemplate}"
+                                          ShaderFileTemplate="{StaticResource ShaderFileTemplate}"
+                                          ShaderLibraryFileTemplate="{StaticResource ShaderLibraryFileTemplate}"/>
         </ResourceDictionary>
     </ContentView.Resources>
 
@@ -30,8 +42,8 @@
                     Spacing="5"
                     VerticalOptions="Start"
                     HorizontalOptions="StartAndExpand">
-                    <RefreshView>
-                        <CollectionView x:Name="InspectedItem" x:DataType="services:SelectionService" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource TemplateSelector}"/>
+                    <RefreshView x:DataType="services:SelectionService">
+                        <CollectionView x:Name="InspectedItem" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource InspectorTemplateSelector}" />
                     </RefreshView>
                 </VerticalStackLayout>
             </ScrollView>

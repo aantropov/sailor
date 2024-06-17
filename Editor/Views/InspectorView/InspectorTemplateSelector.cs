@@ -1,41 +1,26 @@
 ﻿using SailorEditor.ViewModels;
 
-namespace SailorEditor.Helpers
+namespace SailorEditor;
+public class InspectorTemplateSelector : DataTemplateSelector
 {
-    public class InspectorTemplateSelector : DataTemplateSelector
+    public DataTemplate TextureFileTemplate { get; set; }
+    public DataTemplate AssetFileTemplate { get; set; }
+    public DataTemplate ModelFileTemplate { get; set; }
+    public DataTemplate ShaderFileTemplate { get; set; }
+    public DataTemplate ShaderLibraryFileTemplate { get; set; }
+    public DataTemplate MaterialFileTemplate { get; set; }
+    public DataTemplate GameObjectTemplate { get; set; }
+
+    protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
     {
-        public DataTemplate AssetFileTemplate { get; private set; } = new AssetFileTemplate();
-        public DataTemplate TextureFileTemplate { get; private set; } = new TextureFileTemplate();
-        public DataTemplate ModelFileTemplate { get; private set; } = new ModelFileTemplate();
-        public DataTemplate ShaderFileTemplate { get; private set; } = new ShaderFileTemplate();
-        public DataTemplate ShaderLibraryFileTemplate { get; private set; } = new ShaderLibraryFileTemplate();
-        public DataTemplate MaterialFileTemplate { get; private set; } = new MaterialFileTemplate();
-        public DataTemplate GameObjectTemplate { get; private set; } = new GameObjectTemplate();
-        
-        protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
+        DataTemplate template = item switch
         {
-            switch (item)
-            {
-                case TextureFile _:
-                    return TextureFileTemplate;
+            TextureFile => TextureFileTemplate,
+            ShaderFile => ShaderFileTemplate,
+            ShaderLibraryFile => ShaderLibraryFileTemplate,
+            _ => AssetFileTemplate
+        };
 
-                case ShaderFile _:
-                    return ShaderFileTemplate;
-
-                case ShaderLibraryFile _:
-                    return ShaderLibraryFileTemplate;
-
-                case ModelFile _:
-                    return ModelFileTemplate;
-
-                case MaterialFile _:
-                    return MaterialFileTemplate;
-
-                case GameObject _:
-                    return GameObjectTemplate;
-            };
-
-            return AssetFileTemplate;
-        }
+        return template;
     }
 }

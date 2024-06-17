@@ -4,13 +4,12 @@ using YamlDotNet.Core.Events;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SailorEditor.ViewModels
 {
-    public class ShaderLibraryFile : AssetFile
+    public partial class ShaderLibraryFile : AssetFile
     {
-        public string Code { get; set; }
-
         public override async Task<bool> LoadDependentResources()
         {
             if (IsLoaded)
@@ -21,6 +20,8 @@ namespace SailorEditor.ViewModels
             IsLoaded = true;
             return true;
         }
+
+        public string Code { get; set; }
     }
 
     public class ShaderLibraryFileYamlConverter : IYamlTypeConverter

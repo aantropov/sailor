@@ -1,6 +1,7 @@
 ﻿using SailorEditor.ViewModels;
 using System.ComponentModel;
 
+namespace SailorEditor.Views;
 public class DisplayNameBehavior : Behavior<Label>
 {
     protected override void OnAttachedTo(Label bindable)

@@ -1,4 +1,5 @@
-﻿namespace SailorEditor
+﻿[assembly: XamlCompilation(XamlCompilationOptions.Compile)]
+namespace SailorEditor
 {
     public partial class App : Application
     {

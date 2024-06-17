@@ -3,12 +3,13 @@ using SailorEditor.Helpers;
 using SailorEditor.Services;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
+using SailorEditor.Views;
 using SailorEngine;
 
 
-public class GameObjectTemplate : DataTemplate
+public class GameObjectTemplateDeprecated : DataTemplate
 {
-    public GameObjectTemplate()
+    public GameObjectTemplateDeprecated()
     {
         LoadTemplate = () =>
         {
