@@ -8,161 +8,160 @@ using YamlDotNet.Serialization;
 using YamlDotNet.Core.Tokens;
 using Scalar = YamlDotNet.Core.Events.Scalar;
 
-namespace SailorEditor.ViewModels
+namespace SailorEditor.ViewModels;
+
+public partial class Component : ObservableObject, ICloneable
 {
-    public partial class Component : ObservableObject, ICloneable
+    public Component()
     {
-        public Component()
+        PropertyChanged += (s, args) =>
         {
-            PropertyChanged += (s, args) =>
+            if (args.PropertyName != "IsDirty")
             {
-                if (args.PropertyName != "IsDirty")
-                {
-                    IsDirty = true;
-                }
-            };
-        }
-
-        public object Clone() => new Component();
-
-        [ObservableProperty]
-        protected bool isDirty = false;
-
-        [ObservableProperty]
-        protected string displayName;
-
-        [ObservableProperty]
-        ComponentType typename;
-
-        [ObservableProperty]
-        ObservableDictionary<string, ObservableObject> overrideProperties = new();
+                IsDirty = true;
+            }
+        };
     }
 
-    public class ComponentConverter : IYamlTypeConverter
+    public object Clone() => new Component();
+
+    [ObservableProperty]
+    protected bool isDirty = false;
+
+    [ObservableProperty]
+    protected string displayName;
+
+    [ObservableProperty]
+    ComponentType typename;
+
+    [ObservableProperty]
+    ObservableDictionary<string, ObservableObject> overrideProperties = [];
+}
+
+public class ComponentConverter : IYamlTypeConverter
+{
+    public bool Accepts(Type type) => type == typeof(Component);
+
+    public object ReadYaml(IParser parser, Type type)
     {
-        public bool Accepts(Type type) => type == typeof(Component);
+        var deserializer = new DeserializerBuilder()
+            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
+            .WithTypeConverter(new ComponentTypeYamlConverter())
+            .WithTypeConverter(new FileIdYamlConverter())
+            .WithTypeConverter(new Vec4YamlConverter())
+            .WithTypeConverter(new Vec3YamlConverter())
+            .WithTypeConverter(new Vec2YamlConverter())
+            .Build();
 
-        public object ReadYaml(IParser parser, Type type)
+        var component = new Component();
+
+        parser.Consume<MappingStart>();
+
+        while (!parser.TryConsume<MappingEnd>(out var _))
         {
-            var deserializer = new DeserializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
-                .WithTypeConverter(new ComponentTypeYamlConverter())
-                .WithTypeConverter(new FileIdYamlConverter())
-                .WithTypeConverter(new Vec4YamlConverter())
-                .WithTypeConverter(new Vec3YamlConverter())
-                .WithTypeConverter(new Vec2YamlConverter())
-                .Build();
+            var propertyName = parser.Consume<Scalar>().Value;
 
-            var component = new Component();
-
-            parser.Consume<MappingStart>();
-
-            while (!parser.TryConsume<MappingEnd>(out var _))
+            switch (propertyName)
             {
-                var propertyName = parser.Consume<Scalar>().Value;
+                case "typename":
+                    component.Typename = deserializer.Deserialize<ComponentType>(parser);
+                    break;
+                case "overrideProperties":
+                    {
+                        parser.Consume<MappingStart>();
 
-                switch (propertyName)
-                {
-                    case "typename":
-                        component.Typename = deserializer.Deserialize<ComponentType>(parser);
-                        break;
-                    case "overrideProperties":
+                        while (!parser.TryConsume<MappingEnd>(out var _))
                         {
-                            parser.Consume<MappingStart>();
-
-                            while (!parser.TryConsume<MappingEnd>(out var _))
+                            if (parser.Current is Scalar scalar)
                             {
-                                if (parser.Current is Scalar scalar)
+                                string key = scalar.Value;
+                                var propType = component.Typename.Properties[key];
+
+                                parser.MoveNext();
+
+                                ObservableObject value = propType switch
                                 {
-                                    string key = scalar.Value;
-                                    var propType = component.Typename.Properties[key];
+                                    Vec4Property => deserializer.Deserialize<Vec4>(parser),
+                                    Vec3Property => deserializer.Deserialize<Vec3>(parser),
+                                    Vec2Property => deserializer.Deserialize<Vec2>(parser),
+                                    FileIdProperty => new Observable<FileId>(deserializer.Deserialize<string>(parser)),
+                                    InstanceIdProperty => new Observable<string>(deserializer.Deserialize<string>(parser)),
+                                    FloatProperty => new Observable<float>(deserializer.Deserialize<float>(parser)),
+                                    ObjectPtrProperty => new Observable<ObjectPtr>(deserializer.Deserialize<ObjectPtr>(parser)),
+                                    EnumProperty => new Observable<string>(deserializer.Deserialize<string>(parser)),
+                                    _ => throw new InvalidOperationException($"Unexpected property type: {propType.GetType().Name}")
+                                };
 
-                                    parser.MoveNext();
-
-                                    ObservableObject value = propType switch
-                                    {
-                                        Vec4Property => deserializer.Deserialize<Vec4>(parser),
-                                        Vec3Property => deserializer.Deserialize<Vec3>(parser),
-                                        Vec2Property => deserializer.Deserialize<Vec2>(parser),
-                                        FileIdProperty => new Observable<FileId>(deserializer.Deserialize<string>(parser)),
-                                        InstanceIdProperty => new Observable<string>(deserializer.Deserialize<string>(parser)),
-                                        FloatProperty => new Observable<float>(deserializer.Deserialize<float>(parser)),
-                                        ObjectPtrProperty => new Observable<ObjectPtr>(deserializer.Deserialize<ObjectPtr>(parser)),
-                                        EnumProperty => new Observable<string>(deserializer.Deserialize<string>(parser)),
-                                        _ => throw new InvalidOperationException($"Unexpected property type: {propType.GetType().Name}")
-                                    };
-
-                                    component.OverrideProperties[key] = value;
-                                }
+                                component.OverrideProperties[key] = value;
                             }
-
                         }
-                        break;
-                    default:
-                        deserializer.Deserialize<object>(parser);
-                        break;
-                }
-            }
 
-            return component;
+                    }
+                    break;
+                default:
+                    deserializer.Deserialize<object>(parser);
+                    break;
+            }
         }
 
-        public void WriteYaml(IEmitter emitter, object value, Type type)
+        return component;
+    }
+
+    public void WriteYaml(IEmitter emitter, object value, Type type)
+    {
+        var component = (Component)value;
+        var serializer = new SerializerBuilder()
+            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
+            .WithTypeConverter(new ComponentTypeYamlConverter())
+            .WithTypeConverter(new FileIdYamlConverter())
+            .WithTypeConverter(new Vec4YamlConverter())
+            .WithTypeConverter(new Vec3YamlConverter())
+            .WithTypeConverter(new Vec2YamlConverter())
+            .Build();
+
+        emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+        emitter.Emit(new Scalar(null, "typename"));
+        serializer.Serialize(emitter, component.Typename);
+
+        emitter.Emit(new Scalar(null, "overrideProperties"));
+        emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+        foreach (var kvp in component.OverrideProperties)
         {
-            var component = (Component)value;
-            var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
-                .WithTypeConverter(new ComponentTypeYamlConverter())
-                .WithTypeConverter(new FileIdYamlConverter())
-                .WithTypeConverter(new Vec4YamlConverter())
-                .WithTypeConverter(new Vec3YamlConverter())
-                .WithTypeConverter(new Vec2YamlConverter())
-                .Build();
-
-            emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
-
-            emitter.Emit(new Scalar(null, "typename"));
-            serializer.Serialize(emitter, component.Typename);
-
-            emitter.Emit(new Scalar(null, "overrideProperties"));
-            emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
-
-            foreach (var kvp in component.OverrideProperties)
+            emitter.Emit(new Scalar(null, kvp.Key));
+            switch (kvp.Value)
             {
-                emitter.Emit(new Scalar(null, kvp.Key));
-                switch (kvp.Value)
-                {
-                    case Observable<Vec4> vec4:
-                        serializer.Serialize(emitter, vec4.Value);
-                        break;
-                    case Observable<Vec3> vec3:
-                        serializer.Serialize(emitter, vec3.Value);
-                        break;
-                    case Observable<Vec2> vec2:
-                        serializer.Serialize(emitter, vec2.Value);
-                        break;
-                    case Observable<FileId> assetUid:
-                        serializer.Serialize(emitter, assetUid.Value);
-                        break;
-                    case Observable<string> str:
-                        serializer.Serialize(emitter, str.Value);
-                        break;
-                    case Observable<float> floatVal:
-                        serializer.Serialize(emitter, floatVal.Value);
-                        break;
-                    case Observable<ObjectPtr> objPtr:
-                        serializer.Serialize(emitter, objPtr.Value);
-                        break;
-                    default:
-                        throw new InvalidOperationException($"Unexpected property type: {kvp.Value.GetType().Name}");
-                }
+                case Observable<Vec4> vec4:
+                    serializer.Serialize(emitter, vec4.Value);
+                    break;
+                case Observable<Vec3> vec3:
+                    serializer.Serialize(emitter, vec3.Value);
+                    break;
+                case Observable<Vec2> vec2:
+                    serializer.Serialize(emitter, vec2.Value);
+                    break;
+                case Observable<FileId> assetUid:
+                    serializer.Serialize(emitter, assetUid.Value);
+                    break;
+                case Observable<string> str:
+                    serializer.Serialize(emitter, str.Value);
+                    break;
+                case Observable<float> floatVal:
+                    serializer.Serialize(emitter, floatVal.Value);
+                    break;
+                case Observable<ObjectPtr> objPtr:
+                    serializer.Serialize(emitter, objPtr.Value);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unexpected property type: {kvp.Value.GetType().Name}");
             }
-
-            emitter.Emit(new MappingEnd());
-
-            emitter.Emit(new MappingEnd());
         }
+
+        emitter.Emit(new MappingEnd());
+
+        emitter.Emit(new MappingEnd());
     }
 }

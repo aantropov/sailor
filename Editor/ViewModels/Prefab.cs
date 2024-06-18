@@ -7,20 +7,19 @@ using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using System.ComponentModel;
 
-namespace SailorEditor.ViewModels
+namespace SailorEditor.ViewModels;
+
+public partial class Prefab : ObservableObject, ICloneable
 {
-    public partial class Prefab : ObservableObject, ICloneable
+    public object Clone() => new Prefab()
     {
-        public object Clone() => new Prefab()
-        {
-            GameObjects = new ObservableList<GameObject>(GameObjects),
-            Components = new ObservableList<Component>(Components)
-        };
+        GameObjects = new ObservableList<GameObject>(GameObjects),
+        Components = new ObservableList<Component>(Components)
+    };
 
-        [ObservableProperty]
-        ObservableList<GameObject> gameObjects = new();
+    [ObservableProperty]
+    ObservableList<GameObject> gameObjects = [];
 
-        [ObservableProperty]
-        ObservableList<Component> components = new();
-    }
+    [ObservableProperty]
+    ObservableList<Component> components = [];
 }

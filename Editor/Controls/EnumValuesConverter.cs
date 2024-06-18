@@ -5,7 +5,7 @@ using System.Linq;
 using Microsoft.Maui.Controls;
 using SailorEditor.Services;
 
-namespace SailorEditor.Utility;
+namespace SailorEditor.Controls;
 
 public class EnumValuesConverter : IValueConverter
 {

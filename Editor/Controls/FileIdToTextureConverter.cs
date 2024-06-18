@@ -4,6 +4,8 @@ using SailorEditor;
 using System.Globalization;
 using SailorEngine;
 
+namespace SailorEngine.Controls;
+
 public class FileIdToTextureConverter : IValueConverter
 {
     private FileId uid;
@@ -17,12 +19,12 @@ public class FileIdToTextureConverter : IValueConverter
 
         var AssetService = MauiProgram.GetService<AssetsService>();
 
-        if (!AssetService.Assets.ContainsKey(assetUID))
+        if (!AssetService.Assets.TryGetValue(uid, out AssetFile outAsset))
         {
             return null;
         }
 
-        if (AssetService.Assets[assetUID] is TextureFile texture)
+        if (outAsset is TextureFile texture)
         {
             return texture.Texture;
         }

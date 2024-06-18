@@ -16,6 +16,7 @@ using System.Linq.Expressions;
 using SailorEngine;
 using Component = SailorEditor.ViewModels.Component;
 using SailorEditor.Views;
+using SailorEditor.Controls;
 
 namespace SailorEditor.Helpers;
 static class Templates

@@ -28,15 +28,18 @@
         <!-- Control Panel -->
         <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
 
-        <!-- Image -->
-        <Image Source="{Binding Texture}" 
-               WidthRequest="512" 
-               HeightRequest="256" 
-               Aspect="AspectFit" 
-               HorizontalOptions="Start" 
-               VerticalOptions="Start" 
-               Grid.Row="1" Grid.ColumnSpan="2"
-               IsVisible = "{Binding IsLoaded}"/>
+        <Grid Grid.Row="1" Grid.ColumnSpan="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Image Source="{Binding Texture}" 
+                   WidthRequest="512" 
+                   HeightRequest="256" 
+                   Aspect="AspectFit" 
+                   HorizontalOptions="Start" 
+                   VerticalOptions="Start" 
+                   IsVisible="{Binding IsLoaded}"/>
+        </Grid>
 
         <!-- Properties Label -->
         <Label Text="Properties" FontAttributes="Bold" Grid.Row="2" Grid.ColumnSpan="2" />

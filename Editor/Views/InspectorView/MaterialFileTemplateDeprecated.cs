@@ -4,6 +4,7 @@ using SailorEngine;
 using SailorEditor.ViewModels;
 using SailorEditor.Services;
 using SailorEditor;
+using SailorEditor.Controls;
 
 public class MaterialFileTemplateDeprecated : AssetFileTemplateDeprecated
 {
@@ -52,26 +53,26 @@ public class MaterialFileTemplateDeprecated : AssetFileTemplateDeprecated
                 converter: new ObservableConverter<string>()),
                 GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.UniformEditor(
-                static (MaterialFile vm) => vm.Samplers,
-                static (MaterialFile vm, ObservableList<Uniform<FileId>> value) => vm.Samplers = value,
-                () => Templates.TextureEditor(static (Uniform<FileId> vm) => vm.Value, static (Uniform<FileId> vm, FileId value) => vm.Value = value),
-                "Samplers", "newTextureSampler"),
-                GridLength.Auto);
+            //Templates.AddGridRow(grid, Templates.UniformEditor(
+            //    static (MaterialFile vm) => vm.Samplers,
+            //    static (MaterialFile vm, ObservableList<Uniform<FileId>> value) => vm.Samplers = value,
+            //    () => Templates.TextureEditor(static (Uniform<FileId> vm) => vm.Value, static (Uniform<FileId> vm, FileId value) => vm.Value = value),
+            //    "Samplers", "newTextureSampler"),
+            //    GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.UniformEditor(
-                static (MaterialFile vm) => vm.UniformsVec4,
-                static (MaterialFile vm, ObservableList<Uniform<SailorEditor.Vec4>> value) => vm.UniformsVec4 = value,
-                () => Templates.Vec4Editor(static (Uniform<SailorEditor.Vec4> vm) => vm.Value),
-                "Uniforms Vec4", "material.newVec4Param", new SailorEditor.Vec4()),
-                GridLength.Auto);
+            //Templates.AddGridRow(grid, Templates.UniformEditor(
+            //    static (MaterialFile vm) => vm.UniformsVec4,
+            //    static (MaterialFile vm, ObservableList<Uniform<SailorEditor.Vec4>> value) => vm.UniformsVec4 = value,
+            //    () => Templates.Vec4Editor(static (Uniform<SailorEditor.Vec4> vm) => vm.Value),
+            //    "Uniforms Vec4", "material.newVec4Param", new SailorEditor.Vec4()),
+            //    GridLength.Auto);
 
-            Templates.AddGridRow(grid, Templates.UniformEditor(
-                static (MaterialFile vm) => vm.UniformsFloat,
-                static (MaterialFile vm, ObservableList<Uniform<float>> value) => vm.UniformsFloat = value,
-                () => Templates.FloatEditor(static (Uniform<float> vm) => vm.Value, static (Uniform<float> vm, float value) => vm.Value = value),
-                "Uniforms Float", "material.newFloatParam"),
-                GridLength.Auto);
+            //Templates.AddGridRow(grid, Templates.UniformEditor(
+            //    static (MaterialFile vm) => vm.UniformsFloat,
+            //    static (MaterialFile vm, ObservableList<Uniform<float>> value) => vm.UniformsFloat = value,
+            //    () => Templates.FloatEditor(static (Uniform<float> vm) => vm.Value, static (Uniform<float> vm, float value) => vm.Value = value),
+            //    "Uniforms Float", "material.newFloatParam"),
+            //    GridLength.Auto);
 
             return grid;
         };

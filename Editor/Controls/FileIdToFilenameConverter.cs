@@ -4,6 +4,8 @@ using SailorEditor;
 using System.Globalization;
 using SailorEngine;
 
+namespace SailorEditor.Controls;
+
 public class FileIdToFilenameConverter : IValueConverter
 {
     private FileId uid;

@@ -8,50 +8,49 @@ using YamlDotNet.Serialization.NamingConventions;
 using System.Runtime.CompilerServices;
 using SailorEditor.Services;
 
-namespace SailorEditor.ViewModels
+namespace SailorEditor.ViewModels;
+
+public partial class GameObject : ObservableObject, ICloneable
 {
-    public partial class GameObject : ObservableObject, ICloneable
+    public int PrefabIndex = -1;
+
+    public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
+
+    public List<Component> Components { get { return MauiProgram.GetService<WorldService>().GetComponents(this); } }
+
+    [YamlMember(Alias = "components")]
+    public List<int> ComponentIndices { get; set; } = [];
+
+    public object Clone() => new GameObject()
     {
-        public int PrefabIndex = -1;
+        Name = Name + "(Clone)",
+        Position = new Vec4(Position),
+        Rotation = new Vec4(Rotation),
+        Scale = new Vec4(Scale),
+        ParentIndex = ParentIndex,
+        InstanceId = InstanceId,
+        ComponentIndices = new List<int>(ComponentIndices)
+    };
 
-        public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
+    [ObservableProperty]
+    string name = string.Empty;
 
-        public List<Component> Components { get { return MauiProgram.GetService<WorldService>().GetComponents(this); } }
+    [ObservableProperty]
+    Vec4 position = new();
 
-        [YamlMember(Alias = "components")]
-        public List<int> ComponentIndices { get; set; } = new List<int>();
+    [ObservableProperty]
+    Vec4 rotation = new();
 
-        public object Clone() => new GameObject()
-        {
-            Name = Name + "(Clone)",
-            Position = new Vec4(Position),
-            Rotation = new Vec4(Rotation),
-            Scale = new Vec4(Scale),
-            ParentIndex = ParentIndex,
-            InstanceId = InstanceId,
-            ComponentIndices = new List<int>(ComponentIndices)
-        };
+    [ObservableProperty]
+    Vec4 scale = new();
 
-        [ObservableProperty]
-        string name = string.Empty;
+    [ObservableProperty]
+    uint parentIndex = uint.MaxValue;
 
-        [ObservableProperty]
-        Vec4 position = new Vec4();
+    [ObservableProperty]
+    string instanceId = "NullInstanceId";
 
-        [ObservableProperty]
-        Vec4 rotation = new Vec4();
+    [ObservableProperty]
+    protected bool isDirty = false;
 
-        [ObservableProperty]
-        Vec4 scale = new Vec4();
-
-        [ObservableProperty]
-        uint parentIndex = uint.MaxValue;
-
-        [ObservableProperty]
-        string instanceId = "NullInstanceId";
-
-        [ObservableProperty]
-        protected bool isDirty = false;
-
-    }
 }

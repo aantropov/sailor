@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<DataTemplate xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+              xmlns:views="clr-namespace:SailorEditor.Views"
+              xmlns:vm="clr-namespace:SailorEditor.ViewModels"
+              x:DataType="vm:MaterialFile"
+              x:Class="SailorEditor.MaterialFileTemplate">
+    <Grid Padding="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
+
+        <Label Text="Render Queue" VerticalOptions="Center" Grid.Row="1" Grid.Column="0"/>
+        <Entry Text="{Binding RenderQueue}" Grid.Row="1" Grid.Column="1"/>
+
+        <Label Text="Depth Bias" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
+        <Entry Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" Grid.Row="2" Grid.Column="1"/>
+
+        <Label Text="Support Multisampling" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding SupportMultisampling}" Grid.Row="3" Grid.Column="1"/>
+
+        <Label Text="Custom Depth Shader" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding CustomDepthShader}" Grid.Row="4" Grid.Column="1"/>
+
+        <Label Text="Enable Depth Test" VerticalOptions="Center" Grid.Row="5" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding EnableDepthTest}" Grid.Row="5" Grid.Column="1"/>
+
+        <Label Text="Enable ZWrite" VerticalOptions="Center" Grid.Row="6" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding EnableZWrite}" Grid.Row="6" Grid.Column="1"/>
+
+        <Label Text="Cull Mode" VerticalOptions="Center" Grid.Row="7" Grid.Column="0"/>
+        <Entry Text="{Binding CullMode}" Grid.Row="7" Grid.Column="1"/>
+
+        <Label Text="Blend Mode" VerticalOptions="Center" Grid.Row="8" Grid.Column="0"/>
+        <Entry Text="{Binding BlendMode}" Grid.Row="8" Grid.Column="1"/>
+
+        <Label Text="Fill Mode" VerticalOptions="Center" Grid.Row="9" Grid.Column="0"/>
+        <Entry Text="{Binding FillMode}" Grid.Row="9" Grid.Column="1"/>
+
+        <Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
+        <Entry Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" Grid.Row="10" Grid.Column="1"/>
+
+        <CollectionView Grid.Row="11" Grid.ColumnSpan="2" ItemsSource="{Binding Samplers}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:UniformFileId">
+                    <HorizontalStackLayout>
+                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
+                        <Label Text="{Binding Key}" VerticalOptions="Center"/>
+                        <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Button Text="Add Sampler" Command="{Binding AddSamplerCommand}" Grid.Row="12" Grid.ColumnSpan="2" />
+        <Button Text="Clear Samplers" Command="{Binding ClearSamplersCommand}" Grid.Row="13" Grid.ColumnSpan="2" />
+
+        <CollectionView Grid.Row="14" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsVec4}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:UniformVec4">
+                    <HorizontalStackLayout>
+                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveUniformVec4Command, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
+                        <Label Text="{Binding Key}" VerticalOptions="Center"/>
+                        <Label Text="{Binding Value}" VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Button Text="Add Uniform Vec4" Command="{Binding AddUniformVec4Command}" Grid.Row="15" Grid.ColumnSpan="2" />
+        <Button Text="Clear Uniforms Vec4" Command="{Binding ClearUniformsVec4Command}" Grid.Row="16" Grid.ColumnSpan="2" />
+
+        <!--<CollectionView Grid.Row="17" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:UniformFloat">
+                    <HorizontalStackLayout>
+                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveUniformFloatCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
+                        <Label Text="{Binding Key}" VerticalOptions="Center"/>
+                        <Label Text="{Binding Value, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Button Text="Add Uniform Float" Command="{Binding AddUniformFloatCommand}" Grid.Row="18" Grid.ColumnSpan="2" />
+        <Button Text="Clear Uniforms Float" Command="{Binding ClearUniformsFloatCommand}" Grid.Row="19" Grid.ColumnSpan="2" />
+
+        <CollectionView Grid.Row="20" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <HorizontalStackLayout>
+                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveShaderDefineCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
+                        <Label Text="{Binding .}" VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Button Text="Add Shader Define" Command="{Binding AddShaderDefineCommand}" Grid.Row="21" Grid.ColumnSpan="2" />
+        <Button Text="Clear Shader Defines" Command="{Binding ClearShaderDefinesCommand}" Grid.Row="22" Grid.ColumnSpan="2" />-->
+
+    </Grid>
+</DataTemplate>

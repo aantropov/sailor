@@ -18,6 +18,8 @@ public class InspectorTemplateSelector : DataTemplateSelector
             TextureFile => TextureFileTemplate,
             ShaderFile => ShaderFileTemplate,
             ShaderLibraryFile => ShaderLibraryFileTemplate,
+            ModelFile => ModelFileTemplate,
+            MaterialFile => MaterialFileTemplate,
             _ => AssetFileTemplate
         };
 

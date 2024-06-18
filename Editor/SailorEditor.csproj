@@ -107,6 +107,12 @@
 	  <Compile Update="Views\ConsoleView.xaml.cs">
 	    <DependentUpon>ConsoleView.xaml</DependentUpon>
 	  </Compile>
+	  <Compile Update="Views\InspectorView\MaterialFileTemplate.xaml.cs">
+	    <DependentUpon>MaterialFileTemplate.xaml</DependentUpon>
+	  </Compile>
+	  <Compile Update="Views\InspectorView\ModelFileTemplate.xaml.cs">
+	    <DependentUpon>ModelFileTemplate.xaml</DependentUpon>
+	  </Compile>
 	  <Compile Update="Views\InspectorView\ShaderFileTemplate .xaml.cs">
 	    <DependentUpon>ShaderFileTemplate .xaml</DependentUpon>
 	  </Compile>
@@ -147,6 +153,12 @@
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\InspectorView\ControlPanelView.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\InspectorView\MaterialFileTemplate.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\InspectorView\ModelFileTemplate.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\InspectorView\ShaderFileTemplate .xaml">

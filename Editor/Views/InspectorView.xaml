@@ -7,21 +7,27 @@
              xmlns:local="clr-namespace:SailorEditor"
              xmlns:helpers="clr-namespace:SailorEditor.Helpers"
              xmlns:services="clr-namespace:SailorEditor.Services"
-             xmlns:utility="clr-namespace:SailorEditor.Utility"
+             xmlns:controls="clr-namespace:SailorEditor.Controls"
              x:DataType="services:SelectionService">
 
     <ContentView.Resources>
         <ResourceDictionary>
+            <controls:FloatValueConverter x:Key="FloatValueConverter"/>
+            <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
 
             <local:AssetFileTemplate x:Key="AssetFileTemplate" />
             <local:TextureFileTemplate x:Key="TextureFileTemplate" />
             <local:ShaderFileTemplate x:Key="ShaderFileTemplate" />
             <local:ShaderLibraryFileTemplate x:Key="ShaderLibraryFileTemplate" />
-
+            <local:MaterialFileTemplate x:Key="MaterialFileTemplate" />
+            <local:ModelFileTemplate x:Key="ModelFileTemplate" />
+            
             <local:InspectorTemplateSelector x:Key="InspectorTemplateSelector"
                                           AssetFileTemplate="{StaticResource AssetFileTemplate}"
                                           TextureFileTemplate="{StaticResource TextureFileTemplate}"
-                                          ShaderFileTemplate="{StaticResource ShaderFileTemplate}"
+                                          ShaderFileTemplate="{StaticResource ShaderFileTemplate}"                                          
+                                          MaterialFileTemplate ="{StaticResource MaterialFileTemplate}"
+                                          ModelFileTemplate ="{StaticResource ModelFileTemplate}"
                                           ShaderLibraryFileTemplate="{StaticResource ShaderLibraryFileTemplate}"/>
         </ResourceDictionary>
     </ContentView.Resources>
