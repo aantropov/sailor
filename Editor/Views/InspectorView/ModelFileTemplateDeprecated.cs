@@ -3,7 +3,6 @@ using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
-using SailorEngine.Controls;
 
 public class ModelFileTemplateDeprecated : AssetFileTemplateDeprecated
 {

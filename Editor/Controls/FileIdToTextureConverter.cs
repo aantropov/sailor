@@ -4,7 +4,7 @@ using SailorEditor;
 using System.Globalization;
 using SailorEngine;
 
-namespace SailorEngine.Controls;
+namespace SailorEditor.Controls;
 
 public class FileIdToTextureConverter : IValueConverter
 {

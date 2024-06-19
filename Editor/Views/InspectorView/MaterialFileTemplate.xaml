@@ -39,8 +39,8 @@
         <Label Text="Render Queue" VerticalOptions="Center" Grid.Row="1" Grid.Column="0"/>
         <Entry Text="{Binding RenderQueue}" Grid.Row="1" Grid.Column="1"/>
 
-        <Label Text="Depth Bias" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <Entry Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" Grid.Row="2" Grid.Column="1"/>
+        <!--<Label Text="Depth Bias" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
+        <Entry Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" Grid.Row="2" Grid.Column="1"/>-->
 
         <Label Text="Support Multisampling" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
         <CheckBox IsChecked="{Binding SupportMultisampling}" Grid.Row="3" Grid.Column="1"/>
@@ -55,16 +55,16 @@
         <CheckBox IsChecked="{Binding EnableZWrite}" Grid.Row="6" Grid.Column="1"/>
 
         <Label Text="Cull Mode" VerticalOptions="Center" Grid.Row="7" Grid.Column="0"/>
-        <Entry Text="{Binding CullMode}" Grid.Row="7" Grid.Column="1"/>
+        <Picker ItemsSource="{Binding CullModeEnumValues}" SelectedItem="{Binding CullMode}" Grid.Row="7" Grid.Column="1"/>
 
         <Label Text="Blend Mode" VerticalOptions="Center" Grid.Row="8" Grid.Column="0"/>
-        <Entry Text="{Binding BlendMode}" Grid.Row="8" Grid.Column="1"/>
+        <Picker ItemsSource="{Binding BlendModeEnumValues}" SelectedItem="{Binding BlendMode}" Grid.Row="8" Grid.Column="1"/>
 
         <Label Text="Fill Mode" VerticalOptions="Center" Grid.Row="9" Grid.Column="0"/>
-        <Entry Text="{Binding FillMode}" Grid.Row="9" Grid.Column="1"/>
+        <Picker ItemsSource="{Binding FillModeEnumValues}" SelectedItem="{Binding FillMode}" Grid.Row="9" Grid.Column="1"/>
 
-        <Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
-        <Entry Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" Grid.Row="10" Grid.Column="1"/>
+        <!--<Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
+        <Entry Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" Grid.Row="10" Grid.Column="1"/>-->
 
         <CollectionView Grid.Row="11" Grid.ColumnSpan="2" ItemsSource="{Binding Samplers}">
             <CollectionView.ItemTemplate>
@@ -96,7 +96,7 @@
         <Button Text="Add Uniform Vec4" Command="{Binding AddUniformVec4Command}" Grid.Row="15" Grid.ColumnSpan="2" />
         <Button Text="Clear Uniforms Vec4" Command="{Binding ClearUniformsVec4Command}" Grid.Row="16" Grid.ColumnSpan="2" />
 
-        <!--<CollectionView Grid.Row="17" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
+        <CollectionView Grid.Row="17" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformFloat">
                     <HorizontalStackLayout>
@@ -123,7 +123,7 @@
         </CollectionView>
 
         <Button Text="Add Shader Define" Command="{Binding AddShaderDefineCommand}" Grid.Row="21" Grid.ColumnSpan="2" />
-        <Button Text="Clear Shader Defines" Command="{Binding ClearShaderDefinesCommand}" Grid.Row="22" Grid.ColumnSpan="2" />-->
+        <Button Text="Clear Shader Defines" Command="{Binding ClearShaderDefinesCommand}" Grid.Row="22" Grid.ColumnSpan="2" />
 
     </Grid>
 </DataTemplate>

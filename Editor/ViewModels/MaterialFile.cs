@@ -183,12 +183,22 @@ public partial class MaterialFile : AssetFile
     [ObservableProperty]
     ObservableList<Observable<string>> shaderDefines = [];
 
+    public List<string> FillModeEnumValues { get; set; } = [];
+    public List<string> CullModeEnumValues { get; set; } = [];
+    public List<string> BlendModeEnumValues { get; set; } = [];
+
     public override async Task<bool> LoadDependentResources()
     {
         if (!IsLoaded)
         {
             try
             {
+                var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+
+                FillModeEnumValues = engineTypes.Enums["enum Sailor::RHI::EFillMode"];
+                CullModeEnumValues = engineTypes.Enums["enum Sailor::RHI::ECullMode"];
+                BlendModeEnumValues = engineTypes.Enums["enum Sailor::RHI::EBlendMode"];
+
                 var AssetService = MauiProgram.GetService<AssetsService>();
                 var preloadTasks = new List<Task>();
                 foreach (var tex in Samplers)
@@ -198,7 +208,7 @@ public partial class MaterialFile : AssetFile
                         var file = AssetService.Files.Find((el) => el.FileId == tex.Value.Value);
                         if (file != null)
                         {
-                            await file.LoadDependentResources();
+                            _ = file.LoadDependentResources();
                         }
                     });
 
@@ -315,13 +325,13 @@ public partial class MaterialFile : AssetFile
     public ICommand RemoveShaderDefineCommand { get; }
     public ICommand ClearShaderDefinesCommand { get; }
 
-    private void OnAddSampler() => Samplers.Add(new UniformFileId());
+    private void OnAddSampler() => Samplers.Add(new UniformFileId { Key = "material.newSampler" });
     private void OnRemoveSampler(UniformFileId sampler) => Samplers.Remove(sampler);
     private void OnClearSamplers() => Samplers.Clear();
-    private void OnAddUniformVec4() => UniformsVec4.Add(new UniformVec4());
+    private void OnAddUniformVec4() => UniformsVec4.Add(new UniformVec4 { Key = "material.newVec4Variable" });
     private void OnRemoveUniformVec4(UniformVec4 uniform) => UniformsVec4.Remove(uniform);
     private void OnClearUniformsVec4() => UniformsVec4.Clear();
-    private void OnAddUniformFloat() => UniformsFloat.Add(new UniformFloat());
+    private void OnAddUniformFloat() => UniformsFloat.Add(new UniformFloat { Key = "material.newFloatVariable" });
     private void OnRemoveUniformFloat(UniformFloat uniform) => UniformsFloat.Remove(uniform);
     private void OnClearUniformsFloat() => UniformsFloat.Clear();
     private void OnAddShaderDefine() => ShaderDefines.Add(new Observable<string>("New Define"));
@@ -432,7 +442,7 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
         emitter.Emit(new Scalar(null, assetFile.RenderQueue));
 
         emitter.Emit(new Scalar(null, "depthBias"));
-        emitter.Emit(new Scalar(null, assetFile.DepthBias.ToString()));
+        emitter.Emit(new Scalar(null, assetFile.DepthBias.ToString(CultureInfo.InvariantCulture)));
 
         emitter.Emit(new Scalar(null, "bSupportMultisampling"));
         emitter.Emit(new Scalar(null, assetFile.SupportMultisampling.ToString().ToLower()));
@@ -473,10 +483,10 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
         {
             emitter.Emit(new Scalar(null, uniform.Key));
             emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, uniform.Value.X.ToString()));
-            emitter.Emit(new Scalar(null, uniform.Value.Y.ToString()));
-            emitter.Emit(new Scalar(null, uniform.Value.Z.ToString()));
-            emitter.Emit(new Scalar(null, uniform.Value.W.ToString()));
+            emitter.Emit(new Scalar(null, uniform.Value.X.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, uniform.Value.Y.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, uniform.Value.Z.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, uniform.Value.W.ToString(CultureInfo.InvariantCulture)));
             emitter.Emit(new SequenceEnd());
         }
         emitter.Emit(new MappingEnd());
@@ -486,7 +496,7 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
         foreach (var uniform in assetFile.UniformsFloat)
         {
             emitter.Emit(new Scalar(null, uniform.Key));
-            emitter.Emit(new Scalar(null, uniform.Value.ToString()));
+            emitter.Emit(new Scalar(null, uniform.Value.ToString(CultureInfo.InvariantCulture)));
         }
         emitter.Emit(new MappingEnd());
 
