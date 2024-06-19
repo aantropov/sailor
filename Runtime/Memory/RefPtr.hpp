@@ -36,6 +36,11 @@ namespace Sailor
 			return p(m_pRawPtr);
 		}
 
+		bool operator==(const TRefPtrBase& pRhs) const
+		{
+			return m_pRawPtr == pRhs.m_pRawPtr;
+		}
+
 	protected:
 
 		TRefPtrBase() = default;

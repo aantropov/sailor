@@ -27,7 +27,7 @@ void CopyTextureToRamNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandL
 
 	if (m_texture = GetResolvedAttachment("src"))
 	{
-		commands->ImageMemoryBarrier(commandList, m_texture, m_texture->GetFormat(), m_texture->GetDefaultLayout(), EImageLayout::TransferSrcOptimal);
+		commands->ImageMemoryBarrier(commandList, m_texture, EImageLayout::TransferSrcOptimal);
 		if (!m_cpuBuffer || m_cpuBuffer->GetSize() < m_texture->GetSize())
 		{
 			m_cpuBuffer = driver->CreateBuffer(m_texture->GetSize() + 512u, RHI::EBufferUsageBit::BufferTransferDst_Bit,
@@ -37,7 +37,6 @@ void CopyTextureToRamNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandL
 		commands->BeginDebugRegion(commandList, GetName(), glm::vec4(1.0f));
 		commands->CopyImageToBuffer(commandList, m_texture, m_cpuBuffer);
 		commands->EndDebugRegion(commandList);
-		commands->ImageMemoryBarrier(commandList, m_texture, m_texture->GetFormat(), EImageLayout::TransferSrcOptimal, m_texture->GetDefaultLayout());
 	}
 
 	m_captureThisFrame = false;

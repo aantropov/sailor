@@ -40,8 +40,8 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 
 	const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 
-	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), depthAttachmentLayout);
+	commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
 	{
 		SAILOR_PROFILE_SCOPE("Wait for DebugContext");
@@ -74,8 +74,6 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			0.0f,
 			false);
 	}
-	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachmentLayout, depthAttachment->GetDefaultLayout());
 
 	commands->EndDebugRegion(commandList);
 }

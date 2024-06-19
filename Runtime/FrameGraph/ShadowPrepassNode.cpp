@@ -235,8 +235,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			{
 				const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 
-				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), shadowPass.m_shadowMap->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), depthAttachmentLayout);
+				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ColorAttachmentOptimal);
+				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
 				commands->BeginRenderPass(commandList,
 					TVector<RHI::RHITexturePtr>{ shadowPass.m_shadowMap },
@@ -281,7 +281,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					sizeof(glm::mat4) * shadowPass.m_lighMatrixIndex);
 
 				commands->EndRenderPass(commandList);
-				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachmentLayout, depthAttachment->GetDefaultLayout());
+				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
 
 				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);
@@ -298,8 +298,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						RHIShaderBindingPtr blurSampler = driver->AddSamplerToShaderBindings(m_pBlurShaderBindings, "colorSampler", { sm }, 1);
 						m_pBlurShaderBindings->RecalculateCompatibility();
 
-						commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), EImageLayout::ColorAttachmentOptimal, EImageLayout::ShaderReadOnlyOptimal);
-						commands->ImageMemoryBarrier(commandList, blurAttachment, blurAttachment->GetFormat(), blurAttachment->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+						commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ShaderReadOnlyOptimal);
+						commands->ImageMemoryBarrier(commandList, blurAttachment, EImageLayout::ColorAttachmentOptimal);
 
 						commands->BeginRenderPass(commandList,
 							TVector<RHI::RHITexturePtr>{blurAttachment},
@@ -324,8 +324,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 						commands->EndRenderPass(commandList);
 
-						commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, EImageLayout::ColorAttachmentOptimal);
-						commands->ImageMemoryBarrier(commandList, blurAttachment, blurAttachment->GetFormat(), EImageLayout::ColorAttachmentOptimal, EImageLayout::ShaderReadOnlyOptimal);
+						commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ColorAttachmentOptimal);
+						commands->ImageMemoryBarrier(commandList, blurAttachment, EImageLayout::ShaderReadOnlyOptimal);
 					}
 					commands->EndDebugRegion(commandList);
 
@@ -357,17 +357,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 						commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 						commands->EndRenderPass(commandList);
-
-						commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), EImageLayout::ColorAttachmentOptimal, shadowPass.m_shadowMap->GetDefaultLayout());
-						commands->ImageMemoryBarrier(commandList, blurAttachment, blurAttachment->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, blurAttachment->GetDefaultLayout());
 					}
 					commands->EndDebugRegion(commandList);
 
 					driver->ReleaseTemporaryRenderTarget(blurAttachment);
-				}
-				else
-				{
-					commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, shadowPass.m_shadowMap->GetFormat(), EImageLayout::ColorAttachmentOptimal, shadowPass.m_shadowMap->GetDefaultLayout());
 				}
 
 				driver->ReleaseTemporaryRenderTarget(depthAttachment);

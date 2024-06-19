@@ -70,12 +70,11 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			Sailor::RHI::Renderer::GetDriver()->AddShaderBinding(shaderBindingSet, lightsGridSSBO, "lightsGrid", 2);
 		}
 
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), RHI::EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, depthAttachment, RHI::EImageLayout::ShaderReadOnlyOptimal);
 		commands->Dispatch(commandList, computeShader,
 			pushConstants.m_numTiles.x, pushConstants.m_numTiles.y, 1,
 			{ sceneView.m_rhiLightsData, m_culledLights, sceneView.m_frameBindings },
 			&pushConstants, sizeof(PushConstants));
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), RHI::EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 	}
 
 	commands->EndDebugRegion(commandList);

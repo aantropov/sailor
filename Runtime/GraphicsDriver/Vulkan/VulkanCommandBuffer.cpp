@@ -48,8 +48,8 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 	auto pReleaseResource = Tasks::CreateTask("Release command buffer",
 		[
 			duplicatedCommandBuffer = m_commandBuffer,
-			duplicatedCommandPool = m_commandPool,
-			duplicatedDevice = m_device
+				duplicatedCommandPool = m_commandPool,
+				duplicatedDevice = m_device
 		]()
 		{
 			if (duplicatedCommandBuffer)
@@ -141,7 +141,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPa
 
 	VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo));
 
-	m_renderPass = renderPass;
+	m_rhiDependecies.Insert(renderPass);
 }
 
 void VulkanCommandBuffer::CopyBuffer(VulkanBufferMemoryPtr src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset)
@@ -153,8 +153,8 @@ void VulkanCommandBuffer::CopyBuffer(VulkanBufferMemoryPtr src, VulkanBufferMemo
 
 	vkCmdCopyBuffer(m_commandBuffer, *src.m_buffer, *dst.m_buffer, 1, &copyRegion);
 
-	m_bufferDependencies.Add(src.m_buffer);
-	m_bufferDependencies.Add(dst.m_buffer);
+	m_rhiDependecies.Insert(src.m_buffer);
+	m_rhiDependecies.Insert(dst.m_buffer);
 
 	m_numRecordedCommands++;
 	m_gpuCost += 3;
@@ -188,8 +188,8 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBufferMemoryPtr src, VulkanIma
 		&region
 	);
 
-	m_bufferDependencies.Add(src.m_buffer);
-	m_imageDependencies.Add(image);
+	m_rhiDependecies.Insert(src.m_buffer);
+	m_rhiDependecies.Insert(image);
 
 	m_numRecordedCommands++;
 	m_gpuCost += 10;
@@ -223,8 +223,8 @@ void VulkanCommandBuffer::CopyImageToBuffer(VulkanBufferMemoryPtr dst, VulkanIma
 		&region
 	);
 
-	m_bufferDependencies.Add(dst.m_buffer);
-	m_imageDependencies.Add(image);
+	m_rhiDependecies.Insert(dst.m_buffer);
+	m_rhiDependecies.Insert(image);
 
 	m_numRecordedCommands++;
 	m_gpuCost += 10;
@@ -264,7 +264,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 	{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = bHasStencil ? *depthStencilAttachment : VK_NULL_HANDLE,
-		.imageLayout =  bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+		.imageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
 		.loadOp = bClearRenderTargets ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 		.clearValue = clearColor,
@@ -305,7 +305,7 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 		stencilAttachmentInfo.resolveImageView = bHasStencil ? *depthStencilAttachmentResolve : VK_NULL_HANDLE;
 		stencilAttachmentInfo.resolveImageLayout = bHasStencil ? VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
 
-		m_colorAttachmentDependencies.Add(depthStencilAttachmentResolve->GetImage());
+		m_rhiDependecies.Insert(depthStencilAttachmentResolve->GetImage());
 	}
 
 	const VkRenderingInfoKHR renderInfo
@@ -323,17 +323,17 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	for (auto& attachment : colorAttachments)
 	{
-		m_colorAttachmentDependencies.Add(attachment->GetImage());
+		m_rhiDependecies.Insert(attachment->GetImage());
 	}
 
 	for (auto& attachment : colorAttachmentResolves)
 	{
-		m_colorAttachmentDependencies.Add(attachment->GetImage());
+		m_rhiDependecies.Insert(attachment->GetImage());
 	}
 
 	if (depthStencilAttachment)
 	{
-		m_depthStencilAttachmentDependency = depthStencilAttachment->GetImage();
+		m_rhiDependecies.Insert(depthStencilAttachment->GetImage());
 	}
 
 	m_device->vkCmdBeginRenderingKHR(m_commandBuffer, &renderInfo);
@@ -410,7 +410,7 @@ void VulkanCommandBuffer::EndRenderPassEx()
 
 void VulkanCommandBuffer::BeginRenderPass(VulkanRenderPassPtr renderPass, VulkanFramebufferPtr frameBuffer, VkExtent2D extent, VkSubpassContents content, VkOffset2D offset, VkClearValue clearColor)
 {
-	m_renderPass = renderPass;
+	m_rhiDependecies.Insert(renderPass);
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -447,7 +447,7 @@ void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferMemoryPtr>
 	{
 		vertexBuffers[i] = *(buffers[i].m_buffer);
 		offsets[i] += buffers[i].m_offset;
-		m_bufferDependencies.Add(buffers[i].m_buffer);
+		m_rhiDependecies.Insert(buffers[i].m_buffer);
 	}
 
 	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
@@ -460,7 +460,7 @@ void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferMemoryPtr>
 
 void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferMemoryPtr indexBuffer)
 {
-	m_bufferDependencies.Add(indexBuffer.m_buffer);
+	m_rhiDependecies.Insert(indexBuffer.m_buffer);
 	vkCmdBindIndexBuffer(m_commandBuffer, *(indexBuffer.m_buffer), indexBuffer.m_offset, VK_INDEX_TYPE_UINT32);
 
 	m_numRecordedCommands++;
@@ -476,7 +476,12 @@ void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferPtr>& buff
 		vertexBuffers[i] = *buffers[i];
 	}
 	vkCmdBindVertexBuffers(m_commandBuffer, firstBinding, bindingCount, &vertexBuffers[0], &offsets[0]);
-	m_bufferDependencies.AddRange(buffers);
+
+	for (const auto& buffer : buffers)
+	{
+		m_rhiDependecies.Insert(buffer);
+	}
+
 	_freea(vertexBuffers);
 
 	m_numRecordedCommands++;
@@ -485,7 +490,7 @@ void VulkanCommandBuffer::BindVertexBuffers(const TVector<VulkanBufferPtr>& buff
 
 void VulkanCommandBuffer::BindIndexBuffer(VulkanBufferPtr indexBuffer, uint32_t offset, bool bUint16InsteadOfUint32)
 {
-	m_bufferDependencies.Add(indexBuffer);
+	m_rhiDependecies.Insert(indexBuffer);
 	vkCmdBindIndexBuffer(m_commandBuffer, *indexBuffer, offset, bUint16InsteadOfUint32 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 
 	m_numRecordedCommands++;
@@ -499,7 +504,7 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 	VkDescriptorSet set{};
 
 	set = *descriptorSet;
-	m_descriptorSetDependencies.Add(descriptorSet);
+	m_rhiDependecies.Insert(descriptorSet);
 
 	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, *pipelineLayout, binding, 1, &set, 0, nullptr);
 
@@ -516,7 +521,7 @@ void VulkanCommandBuffer::BindDescriptorSet(VulkanPipelineLayoutPtr pipelineLayo
 	for (int i = 0; i < descriptorSet.Num(); i++)
 	{
 		sets[i] = *descriptorSet[i];
-		m_descriptorSetDependencies.Add(descriptorSet[i]);
+		m_rhiDependecies.Insert(descriptorSet[i]);
 
 	}
 	vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, *pipelineLayout, 0, (uint32_t)descriptorSet.Num(), &sets[0], 0, nullptr);
@@ -531,7 +536,8 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 	m_numRecordedCommands++;
 	m_gpuCost += 24;
 
-	m_rhiDependecies.AddRange({ dst, src });
+	m_rhiDependecies.Insert(dst);
+	m_rhiDependecies.Insert(src);
 
 	if (src->m_format == dst->m_format && std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0)
 	{
@@ -652,7 +658,7 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 
 void VulkanCommandBuffer::ClearDepthStencil(VulkanImageViewPtr dst, float depth, uint32_t stencil)
 {
-	m_rhiDependecies.Add(dst);
+	m_rhiDependecies.Insert(dst);
 
 	const VkClearDepthStencilValue clearValue{ depth, stencil };
 
@@ -664,7 +670,7 @@ void VulkanCommandBuffer::ClearDepthStencil(VulkanImageViewPtr dst, float depth,
 
 void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor)
 {
-	m_rhiDependecies.Add(dst);
+	m_rhiDependecies.Insert(dst);
 
 	const VkClearColorValue clearColorValue{ clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 
@@ -684,7 +690,7 @@ void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, 
 
 void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
 {
-	m_pipelineDependencies.Add(pipeline);
+	m_rhiDependecies.Insert(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
 
 	m_numRecordedCommands++;
@@ -693,7 +699,7 @@ void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
 
 void VulkanCommandBuffer::BindPipeline(VulkanComputePipelinePtr pipeline)
 {
-	m_rhiDependecies.Add(pipeline);
+	m_rhiDependecies.Insert(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, *pipeline);
 
 	m_numRecordedCommands++;
@@ -710,7 +716,7 @@ void VulkanCommandBuffer::Dispatch(uint32_t groupX, uint32_t groupY, uint32_t gr
 
 void VulkanCommandBuffer::DrawIndexedIndirect(VulkanBufferMemoryPtr buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride)
 {
-	m_bufferDependencies.Add(buffer.m_buffer);
+	m_rhiDependecies.Insert(buffer.m_buffer);
 	vkCmdDrawIndexedIndirect(m_commandBuffer, *buffer.m_buffer, buffer.m_offset + offset, drawCount, stride);
 
 	m_numRecordedCommands++;
@@ -741,36 +747,18 @@ void VulkanCommandBuffer::Reset()
 
 void VulkanCommandBuffer::AddDependency(RHI::RHIResourcePtr resource)
 {
-	m_rhiDependecies.Add(resource);
-}
-
-void VulkanCommandBuffer::AddDependency(VulkanCommandBufferPtr commandBuffer)
-{
-	m_commandBufferDependencies.Add(commandBuffer);
+	m_rhiDependecies.Insert(resource);
 }
 
 void VulkanCommandBuffer::AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator)
 {
-	m_memoryPtrs.Add(TPair(ptr, allocator));
-}
-
-void VulkanCommandBuffer::AddDependency(VulkanSemaphorePtr semaphore)
-{
-	m_semaphoreDependencies.Add(semaphore);
+	m_memoryPtrs.Insert(TPair(ptr, allocator));
 }
 
 void VulkanCommandBuffer::ClearDependencies()
 {
 	m_rhiDependecies.Clear();
-	m_bufferDependencies.Clear();
-	m_imageDependencies.Clear();
-	m_descriptorSetDependencies.Clear();
-	m_pipelineDependencies.Clear();
-	m_semaphoreDependencies.Clear();
-	m_commandBufferDependencies.Clear();
-	m_renderPass.Clear();
-	m_colorAttachmentDependencies.Clear();
-	m_depthStencilAttachmentDependency.Clear();
+	m_imageBarriers.Clear();
 
 	for (auto& managedPtr : m_memoryPtrs)
 	{
@@ -788,7 +776,7 @@ void VulkanCommandBuffer::Execute(VulkanCommandBufferPtr secondaryCommandBuffer)
 	check(secondaryCommandBuffer->IsRecorded());
 
 	vkCmdExecuteCommands(m_commandBuffer, 1, secondaryCommandBuffer->GetHandle());
-	m_commandBufferDependencies.Add(secondaryCommandBuffer);
+	m_rhiDependecies.Insert(secondaryCommandBuffer);
 
 	m_numRecordedCommands++;
 	m_gpuCost += secondaryCommandBuffer->GetGPUCost();
@@ -966,15 +954,7 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 
 void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess)
 {
-	VkMemoryBarrier memoryBarrier{};
-	memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-	memoryBarrier.pNext = VK_NULL_HANDLE;
-	memoryBarrier.srcAccessMask = srcAccess;
-	memoryBarrier.dstAccessMask = dstAccess;
-	//vkCmdPipelineBarrier
-
-	m_numRecordedCommands++;
-	m_gpuCost += 1;
+	//TODO:
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
@@ -986,7 +966,6 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 	VkPipelineStageFlags srcStage,
 	VkPipelineStageFlags dstStage)
 {
-
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.oldLayout = oldLayout;
@@ -1010,7 +989,7 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 		1, &barrier
 	);
 
-	m_rhiDependecies.Add(image);
+	m_rhiDependecies.Insert(image);
 
 	m_numRecordedCommands++;
 	m_gpuCost += 1;
@@ -1023,36 +1002,9 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat 
 		return;
 	}
 
-	VkImageMemoryBarrier barrier{};
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.oldLayout = oldLayout;
-	barrier.newLayout = newLayout;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = *image->GetImage();
+	m_rhiDependecies.Insert(image);
 
-	barrier.subresourceRange = image->m_subresourceRange;
-	barrier.subresourceRange.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(image->m_format);
-
-	VkPipelineStageFlags sourceStage = GetPipelineStage(oldLayout);
-	VkPipelineStageFlags destinationStage = GetPipelineStage(newLayout);
-
-	barrier.srcAccessMask = GetAccessFlags(oldLayout);
-	barrier.dstAccessMask = GetAccessFlags(newLayout);
-
-	vkCmdPipelineBarrier(
-		m_commandBuffer,
-		sourceStage, destinationStage,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	m_rhiDependecies.Add(image);
-
-	m_numRecordedCommands++;
-	m_gpuCost += 1;
+	return ImageMemoryBarrier(image->GetImage(), format, oldLayout, newLayout);
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
@@ -1091,7 +1043,7 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 		1, &barrier
 	);
 
-	m_imageDependencies.Add(image);
+	m_rhiDependecies.Insert(image);
 
 	m_numRecordedCommands++;
 	m_gpuCost += 1;

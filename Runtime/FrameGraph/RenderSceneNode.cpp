@@ -296,7 +296,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				0);
 		}
 
-		commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), colorAttachment->GetTarget()->GetFormat(), colorAttachment->GetTarget()->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+		commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), EImageLayout::ColorAttachmentOptimal);
+		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
 
 		if (m_batches.Num() > 0)
 		{
@@ -370,13 +371,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				0.0f,
 				true);
 		}
-
-		commands->ImageMemoryBarrier(commandList,
-			colorAttachment->GetTarget(),
-			colorAttachment->GetTarget()->GetFormat(),
-			EImageLayout::ColorAttachmentOptimal,
-			colorAttachment->GetTarget()->GetDefaultLayout());
-
 	}
 
 	commands->EndDebugRegion(commandList);

@@ -25,10 +25,10 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	RHI::RHITexturePtr depthAttachment = GetRHIResource("src").DynamicCast<RHI::RHIRenderTarget>()->GetDepthAspect();
+	RHI::RHIRenderTargetPtr depthAttachment = GetRHIResource("src").DynamicCast<RHI::RHIRenderTarget>();
 	if (!depthAttachment)
 	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer")->GetDepthAspect();
+		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
 	RHI::RHIRenderTargetPtr highZRenderTarget = GetResolvedAttachment("dst").DynamicCast<RHIRenderTarget>();
@@ -63,13 +63,13 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 		}
 
 		m_computePrepassDepthHighZBindings = driver->CreateShaderBindings();
-		driver->AddSamplerToShaderBindings(m_computePrepassDepthHighZBindings, "inputDepth", depthAttachment, 0);
+		driver->AddSamplerToShaderBindings(m_computePrepassDepthHighZBindings, "inputDepth", depthAttachment->GetDepthAspect(), 0);
 		driver->AddStorageImageToShaderBindings(m_computePrepassDepthHighZBindings, "outputDepth", highZRenderTarget->GetMipLayer(0), 1);
 	}
 
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 	{
-		commands->ImageMemoryBarrier(commandList, highZRenderTarget, highZRenderTarget->GetFormat(), highZRenderTarget->GetDefaultLayout(), EImageLayout::General);
+		commands->ImageMemoryBarrier(commandList, highZRenderTarget, EImageLayout::General);
 
 		//Depth Downscale
 		for (int32_t i = -1; i < (int32_t)highZRenderTarget->GetMipLevels() - 1; ++i)
@@ -84,8 +84,8 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 			PushConstantsDownscale params{};
 			params.m_outputSize = glm::vec2(mipSize.x, mipSize.y);
 
-			commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), readMipLevel->GetDefaultLayout(), EImageLayout::ComputeRead);
-			commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), writeMipLevel->GetDefaultLayout(), EImageLayout::ComputeWrite);
+			commands->ImageMemoryBarrier(commandList, readMipLevel, EImageLayout::ComputeRead);
+			commands->ImageMemoryBarrier(commandList, writeMipLevel, EImageLayout::ComputeWrite);
 
 			commands->Dispatch(commandList, m_pComputeDepthHighZShader->GetComputeShaderRHI(),
 				(uint32_t)glm::ceil(float(mipSize.x) / 8),
@@ -93,12 +93,7 @@ void DepthHighZNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr
 				1u,
 				{ bFirst ? m_computePrepassDepthHighZBindings : m_computeDepthHighZBindings[i] },
 				&params, sizeof(PushConstantsDownscale));
-
-			commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), EImageLayout::ComputeRead, readMipLevel->GetDefaultLayout());
-			commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), EImageLayout::ComputeWrite, writeMipLevel->GetDefaultLayout());
 		}
-
-		commands->ImageMemoryBarrier(commandList, highZRenderTarget, highZRenderTarget->GetFormat(), EImageLayout::General, highZRenderTarget->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
 }

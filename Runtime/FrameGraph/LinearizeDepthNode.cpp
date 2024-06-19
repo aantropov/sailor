@@ -76,8 +76,8 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 	// ReverseZ projection matrix
 	//constants.m_cameraParams = glm::vec4(sceneView.m_camera->GetZFar(), sceneView.m_camera->GetZNear(), 0, 0);
 
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
-	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+	commands->ImageMemoryBarrier(commandList, depthAttachment, EImageLayout::ShaderReadOnlyOptimal);
+	commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
@@ -104,9 +104,6 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 	commands->EndRenderPass(commandList);
-
-	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, depthAttachment->GetDefaultLayout());
 
 	commands->EndDebugRegion(commandList);
 }

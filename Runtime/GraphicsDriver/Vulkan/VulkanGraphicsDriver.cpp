@@ -389,6 +389,18 @@ void VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIB
 	m_vkInstance->CopyBuffer_Immediate(m_vkInstance->GetMainDevice(), *src->m_vulkan.m_buffer, *dst->m_vulkan.m_buffer, size);
 }
 
+void VulkanGraphicsDriver::RestoreImageBarriers(RHI::RHICommandListPtr cmd)
+{
+	for (const auto& barrier : cmd->m_vulkan.m_commandBuffer->GetImageBarriers())
+	{
+		RHI::RHITexturePtr tex = (*barrier.Second()).First();
+
+		ImageMemoryBarrier(cmd, tex, tex->GetDefaultLayout());
+	}
+
+	cmd->m_vulkan.m_commandBuffer->GetImageBarriers().Clear();
+}
+
 void VulkanGraphicsDriver::SetDebugName(RHI::RHIResourcePtr resource, const std::string& name)
 {
 #ifdef _DEBUG
@@ -1629,7 +1641,22 @@ void VulkanGraphicsDriver::PushConstants(RHI::RHICommandListPtr cmd, RHI::RHIMat
 
 void VulkanGraphicsDriver::GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr target)
 {
+	VkImage vkHandle = *target->m_vulkan.m_image;
+
+	const bool bShouldOptimizeBarriers = cmd->m_vulkan.m_commandBuffer->GetImageBarriers().ContainsKey(vkHandle);
+	if (bShouldOptimizeBarriers)
+	{
+		ImageMemoryBarrier(cmd, target, RHI::EImageLayout::TransferDstOptimal);
+	}
+
 	cmd->m_vulkan.m_commandBuffer->GenerateMipMaps(target->m_vulkan.m_image);
+
+	if (bShouldOptimizeBarriers)
+	{
+		// Hack to fit the internal layout
+		cmd->m_vulkan.m_commandBuffer->GetImageBarriers()[vkHandle] = TPair(target, (RHI::EImageLayout)target->m_vulkan.m_image->m_defaultLayout);
+		//ImageMemoryBarrier(cmd, target, target->GetDefaultLayout());
+	}
 }
 
 void VulkanGraphicsDriver::ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap)
@@ -1696,6 +1723,34 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 	);
 
 	cmd->m_vulkan.m_commandBuffer->AddDependency(image);
+}
+
+void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EImageLayout newLayout)
+{
+	// We don't support barrier optimization for compute dispatches
+	//check(newLayout != RHI::EImageLayout::ComputeRead && newLayout != RHI::EImageLayout::ComputeWrite);
+
+	auto& imageBarriers = cmd->m_vulkan.m_commandBuffer->GetImageBarriers();
+
+	VkImage vkHandle = *image->m_vulkan.m_image;
+	if (!imageBarriers.ContainsKey(vkHandle))
+	{
+		imageBarriers[vkHandle] = TPair(image, image->GetDefaultLayout());
+	}
+
+	RHI::EImageLayout oldLayout = imageBarriers[vkHandle].Second();
+
+	const bool bCompute = newLayout == RHI::EImageLayout::ComputeRead || newLayout != RHI::EImageLayout::ComputeWrite ||
+		oldLayout == RHI::EImageLayout::ComputeRead || oldLayout != RHI::EImageLayout::ComputeWrite;
+
+	if (!bCompute && (oldLayout == newLayout))
+	{
+		return;
+	}
+
+	ImageMemoryBarrier(cmd, image, image->GetFormat(), oldLayout, newLayout);
+
+	imageBarriers[vkHandle] = TPair(image, newLayout);
 }
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout)
@@ -2052,6 +2107,8 @@ void VulkanGraphicsDriver::BeginCommandList(RHI::RHICommandListPtr cmd, bool bOn
 
 void VulkanGraphicsDriver::EndCommandList(RHI::RHICommandListPtr cmd)
 {
+	RestoreImageBarriers(cmd);
+
 	cmd->m_vulkan.m_commandBuffer->EndCommandList();
 }
 

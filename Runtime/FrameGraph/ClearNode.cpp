@@ -28,7 +28,7 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	{
 		RHITexturePtr dst2 = surfaceAttachment->GetTarget();
 
-		commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), dst2->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+		commands->ImageMemoryBarrier(commandList, dst2, EImageLayout::TransferDstOptimal);
 		if (RHI::IsDepthFormat(dst2->GetFormat()))
 		{
 			float clearDepth = GetFloat("clearDepth");
@@ -45,7 +45,6 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			commands->ClearImage(commandList, dst2, clearColor);
 			commands->EndDebugRegion(commandList);
 		}
-		commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), EImageLayout::TransferDstOptimal, dst2->GetDefaultLayout());
 
 		dst = surfaceAttachment->GetResolved();
 
@@ -70,7 +69,7 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 		}
 	}
 
-	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+	commands->ImageMemoryBarrier(commandList, dst, EImageLayout::TransferDstOptimal);
 	if (RHI::IsDepthFormat(dst->GetFormat()))
 	{
 		float clearDepth = GetFloat("clearDepth");
@@ -87,7 +86,6 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 		commands->ClearImage(commandList, dst, clearColor);
 		commands->EndDebugRegion(commandList);
 	}
-	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
 }
 
 void ClearNode::Clear()

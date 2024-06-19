@@ -6,14 +6,6 @@ namespace Sailor
 {
 	inline void HashCombine(std::size_t& seed) { }
 
-	template <typename T, typename... Rest>
-	inline void HashCombine(std::size_t& seed, const T& v, Rest... rest)
-	{
-		std::hash<T> hasher;
-		seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-		HashCombine(seed, rest...);
-	}
-
 	template<typename Type>
 	size_t GetHash(const Type& instance)
 	{
@@ -28,6 +20,15 @@ namespace Sailor
 			static std::hash<Type> p;
 			return p(instance);
 		}
+	}
+
+	template <typename T, typename... Rest>
+	inline void HashCombine(std::size_t& seed, const T& v, Rest... rest)
+	{
+		size_t hashV = GetHash(v);
+
+		seed ^= hashV + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+		HashCombine(seed, rest...);
 	}
 
 	static constexpr std::uint64_t fnv1a(const char* str, size_t num)

@@ -114,8 +114,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void Reset();
 
 		SAILOR_API void AddDependency(RHI::RHIResourcePtr resource);
-		SAILOR_API void AddDependency(VulkanSemaphorePtr semaphore);
-		SAILOR_API void AddDependency(VulkanCommandBufferPtr commandBuffer);
 		SAILOR_API void AddDependency(TMemoryPtr<VulkanBufferMemoryPtr> ptr, TWeakPtr<VulkanBufferAllocator> allocator);
 
 		SAILOR_API bool BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr dst, VkRect2D srcRegion, VkRect2D dstRegion, VkFilter filtration = VkFilter::VK_FILTER_LINEAR);
@@ -135,26 +133,22 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const TVector<VkFormat>& GetCurrentColorAttachments() const { return m_currentAttachments; }
 		SAILOR_API VkFormat GetCurrentDepthAttachment() const { return m_currentDepthAttachment; }
 
+		SAILOR_API TMap<VkImage, TPair<RHI::RHITexturePtr, RHI::EImageLayout>>& GetImageBarriers() { return m_imageBarriers; }
+
 	protected:
 
 		TVector<VkFormat> m_currentAttachments;
 		VkFormat m_currentDepthAttachment = VkFormat::VK_FORMAT_UNDEFINED;
 
-		TVector<VulkanImagePtr> m_colorAttachmentDependencies;
-		VulkanImagePtr m_depthStencilAttachmentDependency;
+		TSet<RHI::RHIResourcePtr> m_rhiDependecies;
+		TSet<TPair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
 
-		TVector<RHI::RHIResourcePtr> m_rhiDependecies;
-		TVector<VulkanBufferPtr> m_bufferDependencies;
-		TVector<VulkanImagePtr> m_imageDependencies;
-		TVector<VulkanDescriptorSetPtr> m_descriptorSetDependencies;
-		TVector<VulkanGraphicsPipelinePtr> m_pipelineDependencies;
-		TVector<VulkanCommandBufferPtr> m_commandBufferDependencies;
-		TVector<VulkanSemaphorePtr> m_semaphoreDependencies;
-		TVector<TPair<TMemoryPtr<VulkanBufferMemoryPtr>, TWeakPtr<VulkanBufferAllocator>>> m_memoryPtrs;
+		// That is used for image barrier optimization
+		// TODO: Store VkImage + Sub resource (level + layer) to fit better
+		TMap<VkImage, TPair<RHI::RHITexturePtr, RHI::EImageLayout>> m_imageBarriers;
 
 		VulkanDevicePtr m_device;
 		VulkanCommandPoolPtr m_commandPool;
-		VulkanRenderPassPtr m_renderPass;
 		VkCommandBuffer m_commandBuffer;
 		VkCommandBufferLevel m_level;
 

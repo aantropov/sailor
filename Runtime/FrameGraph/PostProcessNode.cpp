@@ -143,12 +143,12 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				if (shaderBinding->IsBind())
 				{
 					auto pTexture = shaderBinding->GetTextureBinding();
-					commands->ImageMemoryBarrier(commandList, pTexture, pTexture->GetFormat(), pTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+					commands->ImageMemoryBarrier(commandList, pTexture, EImageLayout::ShaderReadOnlyOptimal);
 				}
 			}
 		}
 
-		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+		commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
 	}
 
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
@@ -195,24 +195,6 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 	commands->EndRenderPass(commandList);
-
-	{
-		SAILOR_PROFILE_SCOPE("Image barriers");
-
-		for (const auto& binding : layout)
-		{
-			if (binding.m_type == RHI::EShaderBindingType::CombinedImageSampler)
-			{
-				auto& shaderBinding = m_shaderBindings->GetOrAddShaderBinding(binding.m_name);
-				if (shaderBinding->IsBind())
-				{
-					auto pTexture = shaderBinding->GetTextureBinding();
-					commands->ImageMemoryBarrier(commandList, pTexture, pTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, pTexture->GetDefaultLayout());
-				}
-			}
-		}
-	}
-	commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
 
 	commands->EndDebugRegion(commandList);
 }

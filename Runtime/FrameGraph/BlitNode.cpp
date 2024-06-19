@@ -80,13 +80,10 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
 	glm::ivec4 dstRegion(0, 0, dst->GetExtent().x, dst->GetExtent().y);
 
-	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), src->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
-	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), dst->GetDefaultLayout(), RHI::EImageLayout::TransferDstOptimal);
+	commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::TransferSrcOptimal);
+	commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::TransferDstOptimal);
 
 	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion, bIsDepthFormat ? ETextureFiltration::Nearest : ETextureFiltration::Linear);
-
-	commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src->GetDefaultLayout());
-	commands->ImageMemoryBarrier(commandList, dst, dst->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst->GetDefaultLayout());
 
 	// Blit to MSAA targets
 	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
@@ -102,13 +99,10 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 
 			if (srcSurface->NeedsResolve())
 			{
-				commands->ImageMemoryBarrier(commandList, src2, src2->GetFormat(), src2->GetDefaultLayout(), RHI::EImageLayout::TransferSrcOptimal);
-				commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), dst2->GetDefaultLayout(), RHI::EImageLayout::TransferDstOptimal);
+				commands->ImageMemoryBarrier(commandList, src2, RHI::EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(commandList, dst2, RHI::EImageLayout::TransferDstOptimal);
 
 				bBlitIsSuccesful = commands->BlitImage(commandList, src2, dst2, srcRegion, dstRegion);
-
-				commands->ImageMemoryBarrier(commandList, src2, src2->GetFormat(), RHI::EImageLayout::TransferSrcOptimal, src2->GetDefaultLayout());
-				commands->ImageMemoryBarrier(commandList, dst2, dst2->GetFormat(), RHI::EImageLayout::TransferDstOptimal, dst2->GetDefaultLayout());
 			}
 		}
 
@@ -118,16 +112,12 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 			auto target = dstSurface->GetTarget();
 
 			// Should resolve MSAA
-			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-			commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), src->GetDefaultLayout(), RHI::EImageLayout::ShaderReadOnlyOptimal);
+			commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::ShaderReadOnlyOptimal);
 
 			BlitRaw(commandList, frameGraph, sceneView, src, dstSurface->GetTarget());
-
-			commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-			commands->ImageMemoryBarrier(commandList, src, src->GetFormat(), RHI::EImageLayout::ShaderReadOnlyOptimal, src->GetDefaultLayout());
 		}
 	}
-
 	commands->EndDebugRegion(commandList);
 }
 

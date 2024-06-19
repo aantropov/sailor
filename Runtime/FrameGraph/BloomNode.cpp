@@ -93,7 +93,7 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 	PushConstantsDownscale downscaleParams{};
 	downscaleParams.m_threshold = glm::vec4(threshold.x, threshold.x - knee.x, 2.0f * knee.x, 0.25f * knee.x);
 
-	commands->ImageMemoryBarrier(commandList, bloomRenderTarget, bloomRenderTarget->GetFormat(), bloomRenderTarget->GetDefaultLayout(), EImageLayout::General);
+	commands->ImageMemoryBarrier(commandList, bloomRenderTarget, EImageLayout::General);
 
 	// Bloom Downscale
 	for (uint32_t i = 0; i < bloomRenderTarget->GetMipLevels() - 1; ++i)
@@ -105,8 +105,8 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 
 		const glm::uvec2 mipSize = glm::uvec2(writeMipLevel->GetExtent().x, writeMipLevel->GetExtent().y);
 
-		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), readMipLevel->GetDefaultLayout(), EImageLayout::ComputeRead);
-		commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), writeMipLevel->GetDefaultLayout(), EImageLayout::ComputeWrite);
+		commands->ImageMemoryBarrier(commandList, readMipLevel, EImageLayout::ComputeRead);
+		commands->ImageMemoryBarrier(commandList, writeMipLevel,EImageLayout::ComputeWrite);
 
 		commands->Dispatch(commandList, m_pComputeDownscaleShader->GetComputeShaderRHI(),
 			(uint32_t)glm::ceil(float(mipSize.x) / 8),
@@ -114,9 +114,6 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			1u,
 			{ m_computeDownscaleBindings[i] },
 			&downscaleParams, sizeof(PushConstantsDownscale));
-
-		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), EImageLayout::ComputeRead, readMipLevel->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), EImageLayout::ComputeWrite, writeMipLevel->GetDefaultLayout());
 	}
 
 	PushConstantsUpscale upscaleParams{};
@@ -133,8 +130,8 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 
 		upscaleParams.m_mipLevel = i;
 
-		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), readMipLevel->GetDefaultLayout(), EImageLayout::ComputeRead);
-		commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), writeMipLevel->GetDefaultLayout(), EImageLayout::ComputeWrite);
+		commands->ImageMemoryBarrier(commandList, readMipLevel, EImageLayout::ComputeRead);
+		commands->ImageMemoryBarrier(commandList, writeMipLevel, EImageLayout::ComputeWrite);
 
 		commands->Dispatch(commandList, m_pComputeUpscaleShader->GetComputeShaderRHI(),
 			(uint32_t)(glm::ceil(float(mipSize.x) / 8)),
@@ -142,12 +139,7 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			1u,
 			{ m_computeUpscaleBindings[i] },
 			&upscaleParams, sizeof(PushConstantsUpscale));
-
-		commands->ImageMemoryBarrier(commandList, readMipLevel, readMipLevel->GetFormat(), EImageLayout::ComputeRead, readMipLevel->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, writeMipLevel, writeMipLevel->GetFormat(), EImageLayout::ComputeWrite, writeMipLevel->GetDefaultLayout());
 	}
-
-	commands->ImageMemoryBarrier(commandList, bloomRenderTarget, bloomRenderTarget->GetFormat(), EImageLayout::General, bloomRenderTarget->GetDefaultLayout());
 
 	commands->EndDebugRegion(commandList);
 }

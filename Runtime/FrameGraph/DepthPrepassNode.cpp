@@ -258,6 +258,8 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		};
 
 	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
+	
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
 
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{},

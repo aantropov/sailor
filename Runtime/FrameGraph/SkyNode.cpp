@@ -34,77 +34,77 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		[=]() -> TParseRes
 		{
 			std::string temperatures;
-	if (!AssetRegistry::ReadAllTextFile(AssetRegistry::GetContentFolder() + std::string("StarsColor.yaml"), temperatures))
-	{
-		return TParseRes();
-	}
+			if (!AssetRegistry::ReadAllTextFile(AssetRegistry::GetContentFolder() + std::string("StarsColor.yaml"), temperatures))
+			{
+				return TParseRes();
+			}
 
-	YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
-	if (temperaturesNode["colors"])
-	{
-		TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
+			YAML::Node temperaturesNode = YAML::Load(temperatures.c_str());
+			if (temperaturesNode["colors"])
+			{
+				TVector<TVector<float>> temperaturesData = temperaturesNode["colors"].as<TVector<TVector<float>>>();
 
-		for (const auto& line : temperaturesData)
-		{
-			const auto temperatureK = line[0];
+				for (const auto& line : temperaturesData)
+				{
+					const auto temperatureK = line[0];
 
-			uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
-			index = glm::clamp(index, 0u, s_maxRgbTemperatures);
+					uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
+					index = glm::clamp(index, 0u, s_maxRgbTemperatures);
 
-			// Should we inverse gamma correction?
-			const vec3 color = vec3(line[5], line[6], line[7]);
+					// Should we inverse gamma correction?
+					const vec3 color = vec3(line[5], line[6], line[7]);
 
-			s_rgbTemperatures[index] = color;
-		}
-	}
+					s_rgbTemperatures[index] = color;
+				}
+			}
 
-	TVector<uint8_t> starCatalogueData;
-	AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::GetContentFolder() + std::string("BSC5")), starCatalogueData);
+			TVector<uint8_t> starCatalogueData;
+			AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::GetContentFolder() + std::string("BSC5")), starCatalogueData);
 
-	BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
+			BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
 
-	const size_t starCount = abs(header->m_starCount);
-	BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
+			const size_t starCount = abs(header->m_starCount);
+			BrighStarCatalogue_Entry* starCatalogue = (BrighStarCatalogue_Entry*)(starCatalogueData.GetData() + sizeof(BrighStarCatalogue_Header));
 
-	TVector<VertexP3C4> vertices(starCount);
-	TVector<uint32_t> indices(starCount);
+			TVector<VertexP3C4> vertices(starCount);
+			TVector<uint32_t> indices(starCount);
 
-	for (uint32_t i = 0; i < starCount; i++)
-	{
-		const BrighStarCatalogue_Entry& entry = starCatalogue[i];
+			for (uint32_t i = 0; i < starCount; i++)
+			{
+				const BrighStarCatalogue_Entry& entry = starCatalogue[i];
 
-		vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
-		vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
+				vertices[i].m_position = Utils::ConvertToEuclidean((float)entry.m_SRA0, (float)entry.m_SDEC0, 1.0f);
+				vertices[i].m_position /= (entry.m_mag / 100.0f) + 0.4f;
 
-		vertices[i].m_position.x *= 5000.0f;
-		vertices[i].m_position.y *= 5000.0f;
-		vertices[i].m_position.z *= 5000.0f;
+				vertices[i].m_position.x *= 5000.0f;
+				vertices[i].m_position.y *= 5000.0f;
+				vertices[i].m_position.z *= 5000.0f;
 
-		vec4 color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
+				vec4 color = glm::vec4(MorganKeenanToColor(entry.m_IS[0], entry.m_IS[1]), 1.0f);
 
-		vertices[i].m_color.x = pow(color.x, 1 / 2.2f);
-		vertices[i].m_color.y = pow(color.y, 1 / 2.2f);
-		vertices[i].m_color.z = pow(color.z, 1 / 2.2f);
-		vertices[i].m_color.w = pow(color.w, 1 / 2.2f);
+				vertices[i].m_color.x = pow(color.x, 1 / 2.2f);
+				vertices[i].m_color.y = pow(color.y, 1 / 2.2f);
+				vertices[i].m_color.z = pow(color.z, 1 / 2.2f);
+				vertices[i].m_color.w = pow(color.w, 1 / 2.2f);
 
-		indices[i] = i;
-	}
+				indices[i] = i;
+			}
 
-	return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
+			return TPair<TVector<VertexP3C4>, TVector<uint32_t>>(std::move(vertices), std::move(indices));
 		})->Then<RHI::RHIMeshPtr>([](const TParseRes& res) mutable
 			{
 				const VkDeviceSize bufferSize = sizeof(res.m_first[0]) * res.m_first.Num();
-		const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
+				const VkDeviceSize indexBufferSize = sizeof(res.m_second[0]) * res.m_second.Num();
 
-		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+				auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 
-		RHI::RHIMeshPtr mesh = driver->CreateMesh();
+				RHI::RHIMeshPtr mesh = driver->CreateMesh();
 
-		mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
-		mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
-		driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
+				mesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3C4>();
+				mesh->m_bounds = Math::AABB(vec3(0), vec3(1000, 1000, 1000));
+				driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
 
-		return mesh;
+				return mesh;
 			}, "Create Stars Mesh", Tasks::EThreadType::RHI);
 
 		task->Run();
@@ -262,10 +262,10 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 				App::GetSubmodule<TextureImporter>()->LoadTexture(info->GetFileId(), m_clouds);
 			}
 		}
-		
+
 		m_pCloudsMapTexture = m_clouds->GetRHI();
 
-		if(!m_pCloudsMapTexture)
+		if (!m_pCloudsMapTexture)
 		{
 			return;
 		}
@@ -535,7 +535,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 	commands->BeginDebugRegion(commandList, "Sky", DebugContext::Color_CmdPostProcess);
 	{
-		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), m_pSkyTexture->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, EImageLayout::ColorAttachmentOptimal);
 
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{m_pSkyTexture},
@@ -559,8 +559,6 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 		commands->EndRenderPass(commandList);
-
-		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), EImageLayout::ColorAttachmentOptimal, m_pSkyTexture->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
 
@@ -571,8 +569,8 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 			commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
-			commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), m_pSkyTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
-			commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+			commands->ImageMemoryBarrier(commandList, m_pSkyTexture, EImageLayout::ShaderReadOnlyOptimal);
+			commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, EImageLayout::ColorAttachmentOptimal);
 
 			commands->SetViewport(commandList,
 				0, 0,
@@ -598,22 +596,22 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 			commands->EndRenderPass(commandList);
 
-			commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pSkyTexture->GetDefaultLayout());
-			commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::ColorAttachmentOptimal, m_pCloudsTexture->GetDefaultLayout());
+			commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetDefaultLayout());
+			commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetDefaultLayout());
 		}
 		commands->EndDebugRegion(commandList);
 	}
 	else
 	{
-		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, EImageLayout::TransferDstOptimal);
 		commands->ClearImage(commandList, m_pCloudsTexture, glm::vec4(0, 0, 0, 0));
-		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::TransferDstOptimal, m_pCloudsTexture->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetDefaultLayout());
 	}
 
 	commands->BeginDebugRegion(commandList, "Sun", DebugContext::Color_CmdPostProcess);
 	{
-		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetFormat(), m_pSunTexture->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, m_pSunTexture, EImageLayout::ColorAttachmentOptimal);
+		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, EImageLayout::ShaderReadOnlyOptimal);
 
 		commands->SetViewport(commandList,
 			0, 0,
@@ -633,13 +631,13 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			false);
 
 		commands->BindMaterial(commandList, m_pSunMaterial);
-		commands->BindShaderBindings(commandList, m_pSunMaterial, { sceneView.m_frameBindings, m_pShaderBindings });		
+		commands->BindShaderBindings(commandList, m_pSunMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
 
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 		commands->EndRenderPass(commandList);
 
-		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pCloudsTexture->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetFormat(), EImageLayout::ColorAttachmentOptimal, m_pSunTexture->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
 
@@ -648,9 +646,9 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 		commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 
-		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), m_pSkyTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
-		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetFormat(), m_pSunTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
+		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, m_pSunTexture, EImageLayout::ShaderReadOnlyOptimal);
 
 		commands->SetViewport(commandList,
 			0, 0,
@@ -675,9 +673,9 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 		commands->EndRenderPass(commandList);
 
-		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pSkyTexture->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pSunTexture->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, m_pSunTexture, m_pSunTexture->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, target, target->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
 
@@ -699,9 +697,9 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		PushConstants pushConstants{};
 		pushConstants.m_starsModelView = glm::translate(glm::mat4(1), glm::vec3(sceneView.m_cameraTransform.m_position)) * m_starsModelView;
 
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachment->GetDefaultLayout(), depthAttachmentLayout);
-		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), target->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
-		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), m_pCloudsTexture->GetDefaultLayout(), EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
+		commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
+		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, EImageLayout::ShaderReadOnlyOptimal);
 
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHITexturePtr>{target},
@@ -718,7 +716,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		commands->PushConstants(commandList, m_pStarsMaterial, sizeof(PushConstants), &pushConstants);
 
 		commands->SetDefaultViewport(commandList);
-		
+
 		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
 
 		commands->BeginDebugRegion(commandList, "Blit Clouds", DebugContext::Color_CmdPostProcess);
@@ -742,9 +740,9 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 		commands->EndRenderPass(commandList);
 
-		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetFormat(), EImageLayout::ShaderReadOnlyOptimal, m_pCloudsTexture->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, target, target->GetFormat(), EImageLayout::ColorAttachmentOptimal, target->GetDefaultLayout());
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetFormat(), depthAttachmentLayout, depthAttachment->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, target, target->GetDefaultLayout());
+		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
 	}
 	commands->EndDebugRegion(commandList);
 
@@ -756,6 +754,9 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		{
 			cubemap = RHI::Renderer::GetDriver()->CreateCubemap(glm::ivec2(EnvCubemapSize, EnvCubemapSize), 8, RHI::EFormat::R16G16B16A16_SFLOAT);
 			RHI::Renderer::GetDriver()->SetDebugName(cubemap, "g_skyCubemap");
+
+			commands->ImageMemoryBarrier(commandList, cubemap, EImageLayout::ShaderReadOnlyOptimal);
+			cubemap->ForceSetDefaultLayout(EImageLayout::ShaderReadOnlyOptimal);
 
 			frameGraph->SetSampler("g_skyCubemap", cubemap);
 		}
@@ -769,7 +770,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			{
 				RHITexturePtr targetFace = cubemap->GetFace(face, 0);
 
-				commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), targetFace->GetDefaultLayout(), EImageLayout::ColorAttachmentOptimal);
+				commands->ImageMemoryBarrier(commandList, targetFace, EImageLayout::ColorAttachmentOptimal);
 
 				commands->BeginRenderPass(commandList,
 					TVector<RHI::RHITexturePtr>{targetFace},
@@ -793,12 +794,10 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 				commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
 				commands->EndRenderPass(commandList);
-
-				commands->ImageMemoryBarrier(commandList, targetFace, targetFace->GetFormat(), EImageLayout::ColorAttachmentOptimal, targetFace->GetDefaultLayout());
 			}
 			else
 			{
-				commands->ImageMemoryBarrier(commandList, cubemap, cubemap->GetFormat(), cubemap->GetDefaultLayout(), EImageLayout::TransferDstOptimal);
+				commands->ImageMemoryBarrier(commandList, cubemap, EImageLayout::TransferDstOptimal);
 				commands->GenerateMipMaps(commandList, cubemap);
 			}
 

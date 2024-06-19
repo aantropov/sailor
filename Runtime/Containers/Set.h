@@ -20,7 +20,7 @@ namespace Sailor
 	{
 	public:
 
-		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType) * ReservedElements, TAllocator>>;
+		using TElementContainer = TList<TElementType, Memory::TInlineAllocator<sizeof(TElementType)* ReservedElements, TAllocator>>;
 
 		class SAILOR_API TEntry
 		{
@@ -169,10 +169,7 @@ namespace Sailor
 
 		TSet(std::initializer_list<TElementType> initList) : TSet((uint32_t)initList.size())
 		{
-			for (const auto& el : initList)
-			{
-				Insert(el);
-			}
+			InsertRange(initList);
 		}
 
 		// TODO: Rethink the approach of base class for iterators
@@ -214,6 +211,14 @@ namespace Sailor
 			}
 
 			return res;
+		}
+
+		void InsertRange(std::initializer_list<TElementType> initList)
+		{
+			for (const auto& el : initList)
+			{
+				Insert(el);
+			}
 		}
 
 		void Insert(TElementType inElement)

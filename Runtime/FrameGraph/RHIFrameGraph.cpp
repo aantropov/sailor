@@ -199,6 +199,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		{
 			node->Process(frameRefPtr, transferCmdList, cmdList, snapshot);
 
+
 			const uint32_t numRecordedCommands = transferCmdList->GetNumRecordedCommands() + cmdList->GetNumRecordedCommands();
 			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();
 			if (gpuCost > MaxGpuCost || numRecordedCommands > MaxRecordedCommands)
