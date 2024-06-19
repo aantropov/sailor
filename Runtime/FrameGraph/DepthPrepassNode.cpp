@@ -259,7 +259,8 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 
 	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 	
-	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
+	const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
+	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
 	commands->BeginRenderPass(commandList,
 		TVector<RHI::RHITexturePtr>{},

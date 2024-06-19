@@ -37,6 +37,8 @@ namespace Sailor::RHI
 		SAILOR_API EFormat GetFormat() const;
 		SAILOR_API glm::ivec2 GetExtent() const;
 		SAILOR_API EImageLayout GetDefaultLayout() const { return m_defaultLayout; }
+
+		// The render resource must already be in the specified layout.
 		SAILOR_API void ForceSetDefaultLayout(EImageLayout newLayout) { m_defaultLayout = newLayout; }
 		SAILOR_API size_t GetSize() const;
 

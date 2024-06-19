@@ -4,6 +4,7 @@
 #include "RHI/GraphicsDriver.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/Cubemap.h"
 #include "RHI/CommandList.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Tasks/Tasks.h"
@@ -195,10 +196,60 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		tasks.Reserve(2);
 
 		auto frameRefPtr = this->ToRefPtr<RHIFrameGraph>();
+
+		// Self balancing barriers
+		{
+			SAILOR_PROFILE_SCOPE("Change default image layout to decrease barriers count");
+
+			driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Decrease barriers count", glm::vec4(1.0f, 0.75f, 0.75f, 0.1f));
+
+			for (const auto& stat : m_lastFrameGpuStats.m_barriers)
+			{
+				RHITexturePtr texture = stat.m_first;
+
+				// We don't pay attention to depth stencil targets 
+				// since they must be in the DepthStencilAttachmentStencil in the end of frame
+				if (RHI::IsDepthFormat(texture->GetFormat()))
+					continue;
+
+				EImageLayout bestLayout = stat.m_first->GetDefaultLayout();
+
+				uint max = 1;
+				if (auto cubemap = texture.DynamicCast<RHICubemap>())
+				{
+					max = 6 * std::max(1u, cubemap->GetMipLevels());
+				}
+				else if (auto renderTarget = texture.DynamicCast<RHIRenderTarget>())
+				{
+					max = std::max(1u, renderTarget->GetMipLevels());
+				}
+
+				for (const auto& layout : *stat.Second())
+				{
+					if (*layout.Second() > max)
+					{
+						bestLayout = layout.m_first;
+						max = *layout.Second();
+					}
+				}
+
+				if (texture->GetDefaultLayout() != bestLayout)
+				{
+					driverCommands->ImageMemoryBarrier(cmdList, texture, bestLayout);
+					texture->ForceSetDefaultLayout(bestLayout);
+				}
+			}
+
+			driverCommands->EndDebugRegion(cmdList);
+
+			m_lastFrameGpuStats.m_barriers.Clear();
+		}
+
+		driver->StartGpuTracking();
+
 		for (auto& node : m_graph)
 		{
 			node->Process(frameRefPtr, transferCmdList, cmdList, snapshot);
-
 
 			const uint32_t numRecordedCommands = transferCmdList->GetNumRecordedCommands() + cmdList->GetNumRecordedCommands();
 			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();
@@ -285,6 +336,8 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 				task->Wait();
 			}
 		}
+
+		m_lastFrameGpuStats = driver->FinishGpuTracking();
 
 		outWaitSemaphore = chainSemaphore;
 		outCommandLists.Emplace(std::move(cmdList));

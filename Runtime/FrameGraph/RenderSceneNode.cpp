@@ -297,7 +297,9 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 
 		commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), EImageLayout::ColorAttachmentOptimal);
-		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
+
+		const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
+		commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
 		if (m_batches.Num() > 0)
 		{

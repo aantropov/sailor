@@ -1727,8 +1727,10 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 
 void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EImageLayout newLayout)
 {
-	// We don't support barrier optimization for compute dispatches
-	//check(newLayout != RHI::EImageLayout::ComputeRead && newLayout != RHI::EImageLayout::ComputeWrite);
+	if (m_bIsTrackingGpu)
+	{
+		m_lastFrameGpuStats.m_barriers[image][newLayout]++;
+	}
 
 	auto& imageBarriers = cmd->m_vulkan.m_commandBuffer->GetImageBarriers();
 
@@ -1740,8 +1742,8 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 
 	RHI::EImageLayout oldLayout = imageBarriers[vkHandle].Second();
 
-	const bool bCompute = newLayout == RHI::EImageLayout::ComputeRead || newLayout != RHI::EImageLayout::ComputeWrite ||
-		oldLayout == RHI::EImageLayout::ComputeRead || oldLayout != RHI::EImageLayout::ComputeWrite;
+	const bool bCompute = newLayout == RHI::EImageLayout::ComputeRead || newLayout == RHI::EImageLayout::ComputeWrite ||
+		oldLayout == RHI::EImageLayout::ComputeRead || oldLayout == RHI::EImageLayout::ComputeWrite;
 
 	if (!bCompute && (oldLayout == newLayout))
 	{
@@ -2665,4 +2667,16 @@ void VulkanGraphicsDriver::CollectGarbage_RenderThread()
 		m_cachedDescriptorSets.ForcelyRemove(remove);
 	}
 	m_cachedDescriptorSets.UnlockAll();
+}
+
+void VulkanGraphicsDriver::StartGpuTracking()
+{
+	m_lastFrameGpuStats.m_barriers.Clear();
+	m_bIsTrackingGpu = true;
+}
+
+RHI::GpuStats VulkanGraphicsDriver::FinishGpuTracking()
+{
+	m_bIsTrackingGpu = false;
+	return std::move(m_lastFrameGpuStats);
 }

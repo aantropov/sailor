@@ -30,14 +30,6 @@ namespace Sailor::RHI
 	using RHIFrameGraphPtr = TRefPtr<class RHIFrameGraph>;
 	struct RHISceneViewSnapshot;
 
-	struct Stats
-	{
-		uint32_t m_gpuFps;
-		size_t m_gpuHeapBudget;
-		size_t m_gpuHeapUsage;
-		uint32_t m_numSubmittedCommandBuffers;
-	};
-
 	enum class ESortingOrder : uint8_t
 	{
 		FrontToBack = 0,
@@ -771,6 +763,19 @@ namespace Sailor::RHI
 	struct UboTransform
 	{
 		alignas(16) glm::mat4 m_model;
+	};
+
+	struct GpuStats
+	{
+		TMap<RHI::RHITexturePtr, TMap<RHI::EImageLayout, uint32_t>> m_barriers;
+	};
+
+	struct Stats
+	{
+		uint32_t m_gpuFps;
+		size_t m_gpuHeapBudget;
+		size_t m_gpuHeapUsage;
+		uint32_t m_numSubmittedCommandBuffers;
 	};
 
 	class RHIResource : public TRefBase

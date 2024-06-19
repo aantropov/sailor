@@ -27,6 +27,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual ~VulkanGraphicsDriver() override;
 		SAILOR_API virtual void BeginConditionalDestroy() override;
 
+		SAILOR_API virtual void StartGpuTracking() override;
+		SAILOR_API virtual RHI::GpuStats FinishGpuTracking() override;
+
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const;
 
 		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport);
@@ -228,7 +231,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual void CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHIBufferPtr dst);
 		SAILOR_API virtual void RestoreImageBarriers(RHI::RHICommandListPtr cmd);
 		//End IGraphicsDriverCommands
-		
+
 		SAILOR_API virtual void CollectGarbage_RenderThread() override;
 
 		// Vulkan specific
@@ -245,8 +248,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
 		SAILOR_API const TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
-
-
 
 	protected:
 
@@ -298,6 +299,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		RHI::RHIRenderTargetPtr m_backBuffer;
 		RHI::RHIRenderTargetPtr m_depthStencilBuffer;
 		ShaderSetPtr m_pEquirect2Cubemap;
+
+		bool m_bIsTrackingGpu = false;
+		RHI::GpuStats m_lastFrameGpuStats{};
 	};
 };
 

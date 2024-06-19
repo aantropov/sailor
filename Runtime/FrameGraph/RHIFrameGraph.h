@@ -70,6 +70,8 @@ namespace Sailor::RHI
 		// TODO: Store/Handle that per snapshot
 		RHI::UboFrameData m_frameData{};
 		RHI::UboFrameData m_prevFrameData{};
+
+		GpuStats m_lastFrameGpuStats{};
 	};
 
 	using RHIFrameGraphPtr = TRefPtr<RHIFrameGraph>;

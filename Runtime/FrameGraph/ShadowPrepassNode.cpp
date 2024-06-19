@@ -281,7 +281,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					sizeof(glm::mat4) * shadowPass.m_lighMatrixIndex);
 
 				commands->EndRenderPass(commandList);
-				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachment->GetDefaultLayout());
 
 				commands->BindVertexBuffer(commandList, fullscreenMesh->m_vertexBuffer, 0);
 				commands->BindIndexBuffer(commandList, fullscreenMesh->m_indexBuffer, 0);

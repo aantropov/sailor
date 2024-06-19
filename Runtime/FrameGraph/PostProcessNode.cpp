@@ -155,6 +155,8 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	if (bShouldUseMsaaTarget)
 	{
+		commands->ImageMemoryBarrier(commandList, targetMsaa->GetTarget(), EImageLayout::ColorAttachmentOptimal);
+
 		commands->BeginRenderPass(commandList,
 			TVector<RHI::RHISurfacePtr>{targetMsaa},
 			nullptr,
