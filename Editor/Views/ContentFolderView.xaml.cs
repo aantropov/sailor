@@ -27,9 +27,7 @@ namespace SailorEditor.Views
         {
             if (obj is AssetFile file)
             {
-                var assetFile = FolderTree.SelectedItem.BindingContext as TreeViewItem<AssetFile>;
-
-                if (assetFile != null)
+                if (FolderTree.SelectedItem.BindingContext is TreeViewItem<AssetFile> assetFile)
                 {
                     if (assetFile.Model.FileId != file.FileId)
                     {
@@ -52,8 +50,7 @@ namespace SailorEditor.Views
         public static void OnSelectTreeViewNode(object sender, EventArgs args)
         {
             var selectionChanged = args as TreeView.OnSelectItemEventArgs;
-            var assetFile = selectionChanged.Model as TreeViewItem<AssetFile>;
-            if (assetFile != null)
+            if (selectionChanged.Model is TreeViewItem<AssetFile> assetFile)
             {
                 MauiProgram.GetService<SelectionService>().SelectObject(assetFile.Model);
             }

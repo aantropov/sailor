@@ -15,6 +15,7 @@
             <controls:FloatValueConverter x:Key="FloatValueConverter"/>
             <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
             <controls:FileIdToPreviewTextureConverter x:Key="FileIdToPreviewTextureConverter"/>
+            <controls:ObservableConverter x:Key="ObservableConverter"/>
 
             <local:AssetFileTemplate x:Key="AssetFileTemplate" />
             <local:TextureFileTemplate x:Key="TextureFileTemplate" />

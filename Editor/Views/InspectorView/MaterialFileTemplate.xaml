@@ -3,6 +3,7 @@
               xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
               xmlns:views="clr-namespace:SailorEditor.Views"
               xmlns:vm="clr-namespace:SailorEditor.ViewModels"
+              xmlns:utility="clr-namespace:SailorEditor.Utility"
               x:DataType="vm:MaterialFile"
               x:Class="SailorEditor.MaterialFileTemplate">
     <Grid Padding="10">
@@ -12,6 +13,10 @@
         </Grid.ColumnDefinitions>
 
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -68,12 +73,18 @@
         <!--<views:FileIdEditor FileId="{Binding Shader, Source={RelativeSource AncestorType={x:Type Grid}}}" Grid.Row="10" Grid.Column="1"/>-->
 
         <Label Text="Samplers" FontAttributes="Bold" Grid.Row="11" Grid.ColumnSpan="2" />
-        <CollectionView Grid.Row="12" Grid.ColumnSpan="2" ItemsSource="{Binding Samplers}">
+        <HorizontalStackLayout Grid.Row="12">
+            <Button Text="+" Command="{Binding AddSamplerCommand}"  />
+            <Button Text="Clear" Command="{Binding ClearSamplersCommand}"/>
+        </HorizontalStackLayout>
+
+        <CollectionView Grid.Row="13" Grid.ColumnSpan="2" ItemsSource="{Binding Samplers}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformFileId">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Editor Text="{Binding Key}" WidthRequest="160" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Button Text="Select" Command="{Binding Path=BindingContext.SelectSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
                         <Image Source="{Binding Value, Converter={StaticResource FileIdToPreviewTextureConverter}}"
                                 WidthRequest="40"
                                 HeightRequest="40"
@@ -89,52 +100,64 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Button Text="Add Sampler" Command="{Binding AddSamplerCommand}" Grid.Row="13" Grid.ColumnSpan="2" />
-        <Button Text="Clear Samplers" Command="{Binding ClearSamplersCommand}" Grid.Row="14" Grid.ColumnSpan="2" />
+        <Label Text="Uniforms Vec4" FontAttributes="Bold" Grid.Row="14" Grid.ColumnSpan="2" />
 
-        <CollectionView Grid.Row="15" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsVec4}">
+        <HorizontalStackLayout Grid.Row="15">
+            <Button Text="+" Command="{Binding AddUniformVec4Command}"  />
+            <Button Text="Clear" Command="{Binding ClearUniformsVec4Command}"/>
+        </HorizontalStackLayout>
+        
+        <CollectionView Grid.Row="16" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsVec4}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformVec4">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveUniformVec4Command, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
-                        <Label Text="{Binding Key}" VerticalOptions="Center"/>
-                        <Label Text="{Binding Value}" VerticalOptions="Center"/>
+                        <Editor Text="{Binding Key}"  WidthRequest="200" VerticalOptions="Center"/>
+                        <Editor Text="{Binding Value.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Editor Text="{Binding Value.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Editor Text="{Binding Value.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Editor Text="{Binding Value.W, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Button Text="Add Uniform Vec4" Command="{Binding AddUniformVec4Command}" Grid.Row="16" Grid.ColumnSpan="2" />
-        <Button Text="Clear Uniforms Vec4" Command="{Binding ClearUniformsVec4Command}" Grid.Row="17" Grid.ColumnSpan="2" />
-
-        <CollectionView Grid.Row="18" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
+        <Label Text="Uniforms Float" FontAttributes="Bold" Grid.Row="17" Grid.ColumnSpan="2" />
+        
+        <HorizontalStackLayout Grid.Row="18">
+            <Button Text="+" Command="{Binding AddUniformFloatCommand}"  />
+            <Button Text="Clear" Command="{Binding ClearUniformsFloatCommand}"/>
+        </HorizontalStackLayout>
+        
+        <CollectionView Grid.Row="19" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformFloat">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveUniformFloatCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
-                        <Label Text="{Binding Key}" VerticalOptions="Center"/>
-                        <Label Text="{Binding Value, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center"/>
+                        <Editor Text="{Binding Key}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Editor Text="{Binding Value, Converter={StaticResource FloatValueConverter}}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Button Text="Add Uniform Float" Command="{Binding AddUniformFloatCommand}" Grid.Row="19" Grid.ColumnSpan="2" />
-        <Button Text="Clear Uniforms Float" Command="{Binding ClearUniformsFloatCommand}" Grid.Row="20" Grid.ColumnSpan="2" />
-
-        <CollectionView Grid.Row="21" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
+        <Label Text="Shader Defines" FontAttributes="Bold" Grid.Row="20" Grid.ColumnSpan="2" />
+        
+        <HorizontalStackLayout Grid.Row="21">
+            <Button Text="+" Command="{Binding AddShaderDefineCommand}"  />
+            <Button Text="Clear" Command="{Binding ClearShaderDefinesCommand}"/>
+        </HorizontalStackLayout>
+        
+        <CollectionView Grid.Row="22" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
             <CollectionView.ItemTemplate>
                 <DataTemplate>
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveShaderDefineCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
-                        <Label Text="{Binding .}" VerticalOptions="Center"/>
+                        <Editor Text="{Binding ., Converter={StaticResource ObservableConverter}}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
-
-        <Button Text="Add Shader Define" Command="{Binding AddShaderDefineCommand}" Grid.Row="22" Grid.ColumnSpan="2" />
-        <Button Text="Clear Shader Defines" Command="{Binding ClearShaderDefinesCommand}" Grid.Row="23" Grid.ColumnSpan="2" />
 
     </Grid>
 </DataTemplate>

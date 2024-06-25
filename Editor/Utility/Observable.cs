@@ -8,76 +8,77 @@ using YamlDotNet.Core.Events;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
-namespace SailorEditor.Utility
+namespace SailorEditor.Utility;
+
+
+public partial class Observable<T> : ObservableObject, ICloneable
+    where T : IComparable<T>
 {
-    public partial class Observable<T> : ObservableObject, ICloneable
-        where T : IComparable<T>
+    public Observable(T v)
     {
-        public Observable(T v)
-        {
-            Value = v;
-        }
-
-        public static implicit operator Observable<T>(T value) => new Observable<T>(value);
-        public static implicit operator T(Observable<T> observable) => observable.Value;
-        public object Clone() => new Observable<T>(Value);
-        public override string ToString() => Value.ToString();
-        public override bool Equals(object obj)
-        {
-            if (obj is Observable<T> other)
-            {
-                return Value.CompareTo(other.Value) == 0;
-            }
-
-            return false;
-        }
-        public override int GetHashCode() => Value?.GetHashCode() ?? 0;
-
-        [ObservableProperty]
-        private T value;
+        Value = v;
     }
 
-    public class ObservableConverter<T> : IValueConverter
-        where T : IComparable<T>
+    public static implicit operator Observable<T>(T value) => new Observable<T>(value);
+    public static implicit operator T(Observable<T> observable) => observable.Value;
+    public object Clone() => new Observable<T>(Value);
+    public override string ToString() => Value.ToString();
+    public override bool Equals(object obj)
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        if (obj is Observable<T> other)
         {
-            return ((T)value).ToString();
+            return Value.CompareTo(other.Value) == 0;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            if (value is T tValue)
-            {
-                return new Observable<T>(tValue);
-            }
+        return false;
+    }
+    public override int GetHashCode() => Value?.GetHashCode() ?? 0;
 
-            return default(Observable<T>);
-        }
+    [ObservableProperty]
+    private T value;
+}
+
+
+public class ObservableConverter<T> : IValueConverter
+    where T : IComparable<T>
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return ((T)value).ToString();
     }
 
-    public class ObservableObjectYamlConverter<T> : IYamlTypeConverter
-        where T : IComparable<T>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        public bool Accepts(Type type) => type == typeof(Observable<T>);
-        public object ReadYaml(IParser parser, Type type)
+        if (value is T tValue)
         {
-            var deserializer = new DeserializerBuilder()
+            return new Observable<T>(tValue);
+        }
+
+        return default(Observable<T>);
+    }
+}
+
+public class ObservableObjectYamlConverter<T> : IYamlTypeConverter
+    where T : IComparable<T>
+{
+    public bool Accepts(Type type) => type == typeof(Observable<T>);
+    public object ReadYaml(IParser parser, Type type)
+    {
+        var deserializer = new DeserializerBuilder()
+        .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        .Build();
+
+        var t = deserializer.Deserialize<T>(parser);
+        return new Observable<T>(t);
+    }
+
+    public void WriteYaml(IEmitter emitter, object value, Type type)
+    {
+        var observableValue = (Observable<T>)value;
+        var serializer = new SerializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
             .Build();
 
-            var t = deserializer.Deserialize<T>(parser);
-            return new Observable<T>(t);
-        }
-
-        public void WriteYaml(IEmitter emitter, object value, Type type)
-        {
-            var observableValue = (Observable<T>)value;
-            var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .Build();
-
-            serializer.Serialize(emitter, observableValue.Value);
-        }
+        serializer.Serialize(emitter, observableValue.Value);
     }
 }

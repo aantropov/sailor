@@ -26,6 +26,6 @@ namespace SailorEditor.Services
         }
 
         [ObservableProperty]
-        private ObservableList<INotifyPropertyChanged> selectedItems = new();
+        private ObservableList<INotifyPropertyChanged> selectedItems = [];
     }
 }

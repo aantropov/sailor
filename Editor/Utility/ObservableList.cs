@@ -133,6 +133,6 @@ namespace SailorEditor.Utility
             emitter.Emit(new SequenceEnd());
         }
 
-        List<IYamlTypeConverter> valueConverters = new();
+        List<IYamlTypeConverter> valueConverters = [];
     }
 }
