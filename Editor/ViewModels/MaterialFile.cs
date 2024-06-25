@@ -14,6 +14,7 @@ using YamlDotNet.Core.Tokens;
 using Scalar = YamlDotNet.Core.Events.Scalar;
 using System;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 
 namespace SailorEditor.ViewModels;
 
@@ -139,6 +140,7 @@ public partial class MaterialFile : AssetFile
         AddShaderDefineCommand = new Command(OnAddShaderDefine);
         RemoveShaderDefineCommand = new Command<Observable<string>>(OnRemoveShaderDefine);
         ClearShaderDefinesCommand = new Command(OnClearShaderDefines);
+        SelectSamplerCommand = new AsyncRelayCommand<string>(OnSelectSampler);
     }
 
     [ObservableProperty]
@@ -324,6 +326,7 @@ public partial class MaterialFile : AssetFile
     public ICommand AddShaderDefineCommand { get; }
     public ICommand RemoveShaderDefineCommand { get; }
     public ICommand ClearShaderDefinesCommand { get; }
+    public IAsyncRelayCommand SelectSamplerCommand { get; }
 
     private void OnAddSampler() => Samplers.Add(new UniformFileId { Key = "material.newSampler" });
     private void OnRemoveSampler(UniformFileId sampler) => Samplers.Remove(sampler);
@@ -337,6 +340,26 @@ public partial class MaterialFile : AssetFile
     private void OnAddShaderDefine() => ShaderDefines.Add(new Observable<string>("New Define"));
     private void OnRemoveShaderDefine(Observable<string> shaderDefine) => ShaderDefines.Remove(shaderDefine);
     private void OnClearShaderDefines() => ShaderDefines.Clear();
+    private async Task OnSelectSampler(string key)
+    {
+        var fileOpen = await FilePicker.Default.PickAsync();
+        if (fileOpen != null)
+        {
+            var assetService = MauiProgram.GetService<AssetsService>();
+            var asset = assetService.Files.Find(el => el.Asset.FullName == fileOpen.FullPath);
+
+            foreach(var uniform in Samplers)
+            {
+                if (uniform.Key == key)
+                {
+                    uniform.Value = asset?.FileId ?? default;
+                    break;
+                }
+            }
+
+            _ = asset.LoadDependentResources();
+        }
+    }
 }
 
 public class MaterialFileYamlConverter : IYamlTypeConverter

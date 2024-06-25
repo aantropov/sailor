@@ -138,7 +138,7 @@ static class Templates
 
         image.Bind<Image, Uniform<FileId>, FileId, Image>(Image.SourceProperty,
             mode: BindingMode.Default,
-            converter: new FileIdToTextureConverter(),
+            converter: new FileIdToPreviewTextureConverter(),
             getter: static (Uniform<FileId> vm) => vm.Value);
 
         var valueEntry = new Label

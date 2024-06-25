@@ -6,7 +6,7 @@ using SailorEngine;
 
 namespace SailorEditor.Controls;
 
-public class FileIdToTextureConverter : IValueConverter
+public class FileIdToPreviewTextureConverter : IValueConverter
 {
     private FileId uid;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

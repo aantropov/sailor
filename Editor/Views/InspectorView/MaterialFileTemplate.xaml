@@ -63,25 +63,36 @@
         <Label Text="Fill Mode" VerticalOptions="Center" Grid.Row="9" Grid.Column="0"/>
         <Picker ItemsSource="{Binding FillModeEnumValues}" SelectedItem="{Binding FillMode}" Grid.Row="9" Grid.Column="1"/>
 
-        <!--<Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
-        <Entry Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" Grid.Row="10" Grid.Column="1"/>-->
+        <Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
+        <Label Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" Grid.Row="10" Grid.Column="1"/>
+        <!--<views:FileIdEditor FileId="{Binding Shader, Source={RelativeSource AncestorType={x:Type Grid}}}" Grid.Row="10" Grid.Column="1"/>-->
 
-        <CollectionView Grid.Row="11" Grid.ColumnSpan="2" ItemsSource="{Binding Samplers}">
+        <Label Text="Samplers" FontAttributes="Bold" Grid.Row="11" Grid.ColumnSpan="2" />
+        <CollectionView Grid.Row="12" Grid.ColumnSpan="2" ItemsSource="{Binding Samplers}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformFileId">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
-                        <Label Text="{Binding Key}" VerticalOptions="Center"/>
+                        <Editor Text="{Binding Key}" WidthRequest="160" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Image Source="{Binding Value, Converter={StaticResource FileIdToPreviewTextureConverter}}"
+                                WidthRequest="40"
+                                HeightRequest="40"
+                                Aspect="AspectFit"
+                                VerticalOptions="Center">
+                            <Image.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Path=BindingContext.SelectSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
+                            </Image.GestureRecognizers>
+                        </Image>
                         <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Button Text="Add Sampler" Command="{Binding AddSamplerCommand}" Grid.Row="12" Grid.ColumnSpan="2" />
-        <Button Text="Clear Samplers" Command="{Binding ClearSamplersCommand}" Grid.Row="13" Grid.ColumnSpan="2" />
+        <Button Text="Add Sampler" Command="{Binding AddSamplerCommand}" Grid.Row="13" Grid.ColumnSpan="2" />
+        <Button Text="Clear Samplers" Command="{Binding ClearSamplersCommand}" Grid.Row="14" Grid.ColumnSpan="2" />
 
-        <CollectionView Grid.Row="14" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsVec4}">
+        <CollectionView Grid.Row="15" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsVec4}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformVec4">
                     <HorizontalStackLayout>
@@ -93,10 +104,10 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Button Text="Add Uniform Vec4" Command="{Binding AddUniformVec4Command}" Grid.Row="15" Grid.ColumnSpan="2" />
-        <Button Text="Clear Uniforms Vec4" Command="{Binding ClearUniformsVec4Command}" Grid.Row="16" Grid.ColumnSpan="2" />
+        <Button Text="Add Uniform Vec4" Command="{Binding AddUniformVec4Command}" Grid.Row="16" Grid.ColumnSpan="2" />
+        <Button Text="Clear Uniforms Vec4" Command="{Binding ClearUniformsVec4Command}" Grid.Row="17" Grid.ColumnSpan="2" />
 
-        <CollectionView Grid.Row="17" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
+        <CollectionView Grid.Row="18" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformFloat">
                     <HorizontalStackLayout>
@@ -108,10 +119,10 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Button Text="Add Uniform Float" Command="{Binding AddUniformFloatCommand}" Grid.Row="18" Grid.ColumnSpan="2" />
-        <Button Text="Clear Uniforms Float" Command="{Binding ClearUniformsFloatCommand}" Grid.Row="19" Grid.ColumnSpan="2" />
+        <Button Text="Add Uniform Float" Command="{Binding AddUniformFloatCommand}" Grid.Row="19" Grid.ColumnSpan="2" />
+        <Button Text="Clear Uniforms Float" Command="{Binding ClearUniformsFloatCommand}" Grid.Row="20" Grid.ColumnSpan="2" />
 
-        <CollectionView Grid.Row="20" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
+        <CollectionView Grid.Row="21" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
             <CollectionView.ItemTemplate>
                 <DataTemplate>
                     <HorizontalStackLayout>
@@ -122,8 +133,8 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Button Text="Add Shader Define" Command="{Binding AddShaderDefineCommand}" Grid.Row="21" Grid.ColumnSpan="2" />
-        <Button Text="Clear Shader Defines" Command="{Binding ClearShaderDefinesCommand}" Grid.Row="22" Grid.ColumnSpan="2" />
+        <Button Text="Add Shader Define" Command="{Binding AddShaderDefineCommand}" Grid.Row="22" Grid.ColumnSpan="2" />
+        <Button Text="Clear Shader Defines" Command="{Binding ClearShaderDefinesCommand}" Grid.Row="23" Grid.ColumnSpan="2" />
 
     </Grid>
 </DataTemplate>

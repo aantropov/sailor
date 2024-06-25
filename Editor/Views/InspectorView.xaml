@@ -14,6 +14,7 @@
         <ResourceDictionary>
             <controls:FloatValueConverter x:Key="FloatValueConverter"/>
             <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
+            <controls:FileIdToPreviewTextureConverter x:Key="FileIdToPreviewTextureConverter"/>
 
             <local:AssetFileTemplate x:Key="AssetFileTemplate" />
             <local:TextureFileTemplate x:Key="TextureFileTemplate" />

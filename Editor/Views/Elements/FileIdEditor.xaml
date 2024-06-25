@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:SailorEditor.ViewModels"
+             xmlns:controls="clr-namespace:SailorEditor.Controls"
+             x:Class="SailorEditor.Views.FileIdEditor"
+             xmlns:views="clr-namespace:SailorEditor.Views"
+             x:DataType="views:FileIdEditorViewModel">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
+            <controls:FileIdToPreviewTextureConverter x:Key="FileIdToPreviewTextureConverter"/>
+        </ResourceDictionary>
+    </ContentView.Resources>
+    
+    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" RowDefinitions="Auto" ColumnSpacing="10">
+        
+        <Button Text="Select" Command="{Binding SelectFileCommand}" WidthRequest="80" HeightRequest="40" Grid.Column="0"/>
+        <Button Text="Clear" Command="{Binding ClearFileCommand}" WidthRequest="80" HeightRequest="40" Grid.Column="1"/>
+
+        <Image Source="{Binding Source={x:Reference FileIdEditorControl}, Path=FileId, Converter={StaticResource FileIdToPreviewTextureConverter}}"
+        WidthRequest="40"
+        HeightRequest="40"
+        Aspect="AspectFit"
+        HorizontalOptions="Start"
+        VerticalOptions="Center"
+        Grid.Column="2"/>
+
+        <Label Text="{Binding Source={x:Reference FileIdEditorControl}, Path=FileId, Converter={StaticResource FileIdToFilenameConverter}}"
+        VerticalOptions="Center"
+        HorizontalOptions="Start"
+        Margin="10,0,0,0"
+        Grid.Column="3"/>
+    </Grid>
+    
+</ContentView>

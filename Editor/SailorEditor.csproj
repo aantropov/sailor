@@ -140,6 +140,9 @@
 	  <MauiXaml Update="Resources\Styles\LightThemeStyle.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
+	  <MauiXaml Update="Views\Elements\FileIdEditor.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
 	  <MauiXaml Update="Views\HierarchyView.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
