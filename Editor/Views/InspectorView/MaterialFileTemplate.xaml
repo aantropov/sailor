@@ -112,7 +112,7 @@
                 <DataTemplate x:DataType="vm:UniformVec4">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveUniformVec4Command, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
-                        <Editor Text="{Binding Key}"  WidthRequest="200" VerticalOptions="Center"/>
+                        <Editor Text="{Binding Key}"  WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
                         <Editor Text="{Binding Value.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
                         <Editor Text="{Binding Value.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
                         <Editor Text="{Binding Value.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
@@ -153,11 +153,10 @@
                 <DataTemplate>
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveShaderDefineCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
-                        <Editor Text="{Binding ., Converter={StaticResource ObservableConverter}}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Editor Text="{Binding ., Converter={StaticResource ObservableConverter}, Mode=TwoWay}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
-
     </Grid>
 </DataTemplate>
