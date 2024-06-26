@@ -9,9 +9,10 @@ namespace SailorEditor.Controls;
 
 public class ObservableConverter : IValueConverter
 {
+    Observable<string> obj;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var obj = value as Observable<string>;
+        obj = value as Observable<string>;
         if (obj == null)
             return null;
 
@@ -20,6 +21,7 @@ public class ObservableConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
+        obj.Value = value.ToString();
         return value;
     }
 }

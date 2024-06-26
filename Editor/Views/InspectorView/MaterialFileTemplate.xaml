@@ -6,7 +6,7 @@
               xmlns:utility="clr-namespace:SailorEditor.Utility"
               x:DataType="vm:MaterialFile"
               x:Class="SailorEditor.MaterialFileTemplate">
-    <Grid Padding="10">
+    <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
@@ -36,16 +36,15 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
+        
         <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
 
         <Label Text="Render Queue" VerticalOptions="Center" Grid.Row="1" Grid.Column="0"/>
         <Entry Text="{Binding RenderQueue}" Grid.Row="1" Grid.Column="1"/>
 
-        <!--<Label Text="Depth Bias" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <Entry Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" Grid.Row="2" Grid.Column="1"/>-->
+        <Label Text="Depth Bias" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
+        <Entry Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" Grid.Row="2" Grid.Column="1"/>
 
         <Label Text="Support Multisampling" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
         <CheckBox IsChecked="{Binding SupportMultisampling}" Grid.Row="3" Grid.Column="1"/>
@@ -70,7 +69,6 @@
 
         <Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
         <Label Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" Grid.Row="10" Grid.Column="1"/>
-        <!--<views:FileIdEditor FileId="{Binding Shader, Source={RelativeSource AncestorType={x:Type Grid}}}" Grid.Row="10" Grid.Column="1"/>-->
 
         <Label Text="Samplers" FontAttributes="Bold" Grid.Row="11" Grid.ColumnSpan="2" />
         <HorizontalStackLayout Grid.Row="12">
@@ -150,10 +148,10 @@
         
         <CollectionView Grid.Row="22" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
             <CollectionView.ItemTemplate>
-                <DataTemplate>
+                <DataTemplate x:DataType="utility:ObservableString">
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveShaderDefineCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
-                        <Editor Text="{Binding ., Converter={StaticResource ObservableConverter}, Mode=TwoWay}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Editor Text="{Binding Value}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>

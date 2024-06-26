@@ -10,7 +10,6 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace SailorEditor.Utility;
 
-
 public partial class Observable<T> : ObservableObject, ICloneable
     where T : IComparable<T>
 {
@@ -39,24 +38,22 @@ public partial class Observable<T> : ObservableObject, ICloneable
 }
 
 
-public class ObservableConverter<T> : IValueConverter
-    where T : IComparable<T>
+// MAUI XAML doesn't work as intendent with compiled bindings along with generic types
+// TODO: MS should fix that in MAUI .net9
+public sealed class ObservableString : Observable<string>
 {
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    public ObservableString(string v) : base(v)
     {
-        return ((T)value).ToString();
-    }
-
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        if (value is T tValue)
-        {
-            return new Observable<T>(tValue);
-        }
-
-        return default(Observable<T>);
     }
 }
+
+public sealed class ObservableFileId : Observable<FileId>
+{
+    public ObservableFileId(FileId v) : base(v)
+    {
+    }
+}
+
 
 public class ObservableObjectYamlConverter<T> : IYamlTypeConverter
     where T : IComparable<T>

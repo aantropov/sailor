@@ -9,6 +9,8 @@ using YamlDotNet.Core;
 using YamlDotNet.Serialization.NamingConventions;
 using Microsoft.Maui.Controls.Compatibility;
 using SailorEditor.Services;
+using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 
 namespace SailorEditor.ViewModels;
 
@@ -25,6 +27,36 @@ public partial class ModelFile : AssetFile
 
     [ObservableProperty]
     ObservableList<Observable<FileId>> materials = [];
+
+    public ModelFile()
+    {
+        AddMaterialCommand = new AsyncRelayCommand(OnAddMaterial);
+        RemoveMaterialCommand = new Command<Observable<FileId>>(OnRemoveMaterial);
+        ClearMaterialsCommand = new Command(OnClearMaterials);
+    }
+
+    public IAsyncRelayCommand AddMaterialCommand { get; }
+    public ICommand RemoveMaterialCommand { get; }
+    public ICommand ClearMaterialsCommand { get; }
+
+    private async Task OnAddMaterial()
+    {
+        var fileOpen = await FilePicker.Default.PickAsync();
+        if (fileOpen != null)
+        {
+            var assetService = MauiProgram.GetService<AssetsService>();
+            var asset = assetService.Files.Find(el => el.Asset.FullName == fileOpen.FullPath);
+
+            if (asset != null)
+            {
+                _ = asset.LoadDependentResources();
+                Materials.Add(asset.FileId);
+            }
+        }
+    }
+
+    private void OnRemoveMaterial(Observable<FileId> material) => Materials.Remove(material);
+    private void OnClearMaterials() => Materials.Clear();
 
     public override async Task Save() => await Save(new ModelFileYamlConverter());
 
