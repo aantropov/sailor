@@ -41,10 +41,10 @@
         <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
 
         <Label Text="Render Queue" VerticalOptions="Center" Grid.Row="1" Grid.Column="0"/>
-        <Entry Text="{Binding RenderQueue}" Grid.Row="1" Grid.Column="1"/>
+        <Editor Text="{Binding RenderQueue}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="1" Grid.Column="1"/>
 
         <Label Text="Depth Bias" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <Entry Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" Grid.Row="2" Grid.Column="1"/>
+        <Editor Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="2" Grid.Column="1" />
 
         <Label Text="Support Multisampling" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
         <CheckBox IsChecked="{Binding SupportMultisampling}" Grid.Row="3" Grid.Column="1"/>

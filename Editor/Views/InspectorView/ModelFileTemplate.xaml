@@ -4,7 +4,7 @@
               xmlns:views="clr-namespace:SailorEditor.Views"
               xmlns:utility="clr-namespace:SailorEditor.Utility"
               xmlns:vm="clr-namespace:SailorEditor.ViewModels"
-
+              x:DataType="vm:ModelFile"
               x:Class="SailorEditor.ModelFileTemplate">
 
     <Grid>
@@ -13,6 +13,7 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -34,16 +35,16 @@
         <CheckBox IsChecked="{Binding ShouldBatchByMaterial}" Grid.Row="3" Grid.Column="1"/>
 
         <Label Text="Unit Scale" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
-        <Entry Text="{Binding UnitScale, Converter={StaticResource FloatValueConverter}}" Grid.Row="4" Grid.Column="1"/>
+        <Editor Text="{Binding UnitScale}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="4" Grid.Column="1"/>
 
         <Label Text="Default Materials" FontAttributes="Bold" Grid.Row="5" Grid.ColumnSpan="2" />
 
-        <HorizontalStackLayout Grid.Row="6">
+        <HorizontalStackLayout Grid.Row="6" Grid.ColumnSpan="2">
             <Button Text="+" Command="{Binding AddMaterialCommand}"  />
             <Button Text="Clear" Command="{Binding ClearMaterialsCommand}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="7" Grid.ColumnSpan="4" ItemsSource="{Binding Materials}">
+        <CollectionView Grid.Row="7" Grid.ColumnSpan="2" ItemsSource="{Binding Materials}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="utility:ObservableFileId">
                     <HorizontalStackLayout>
@@ -53,6 +54,5 @@
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
-
     </Grid>
 </DataTemplate>
