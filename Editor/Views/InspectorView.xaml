@@ -12,18 +12,13 @@
 
     <ContentView.Resources>
         <ResourceDictionary>
-            <controls:FloatValueConverter x:Key="FloatValueConverter"/>
-            <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
-            <controls:FileIdToPreviewTextureConverter x:Key="FileIdToPreviewTextureConverter"/>
-            <controls:ObservableConverter x:Key="ObservableConverter"/>
-
             <local:AssetFileTemplate x:Key="AssetFileTemplate" />
             <local:TextureFileTemplate x:Key="TextureFileTemplate" />
             <local:ShaderFileTemplate x:Key="ShaderFileTemplate" />
             <local:ShaderLibraryFileTemplate x:Key="ShaderLibraryFileTemplate" />
             <local:MaterialFileTemplate x:Key="MaterialFileTemplate" />
             <local:ModelFileTemplate x:Key="ModelFileTemplate" />
-            
+
             <local:InspectorTemplateSelector x:Key="InspectorTemplateSelector"
                                           AssetFileTemplate="{StaticResource AssetFileTemplate}"
                                           TextureFileTemplate="{StaticResource TextureFileTemplate}"
@@ -51,9 +46,7 @@
                     Spacing="5"
                     VerticalOptions="Start"
                     HorizontalOptions="StartAndExpand">
-                    <RefreshView x:DataType="services:SelectionService">
-                        <CollectionView x:Name="InspectedItem" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource InspectorTemplateSelector}" />
-                    </RefreshView>
+                    <CollectionView x:Name="InspectedItem" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource InspectorTemplateSelector}" />
                 </VerticalStackLayout>
             </ScrollView>
         </Grid>

@@ -120,9 +120,9 @@ public class UniformYamlConverter<T> : IYamlTypeConverter where T : IComparable<
     List<IYamlTypeConverter> valueConverters = [];
 }
 
-public class UniformFloat : Uniform<float> { }
-public class UniformVec4 : Uniform<Vec4> { }
-public class UniformFileId : Uniform<FileId> { }
+public sealed class UniformFloat : Uniform<float> { }
+public sealed class UniformVec4 : Uniform<Vec4> { }
+public sealed class UniformFileId : Uniform<FileId> { }
 
 public partial class MaterialFile : AssetFile
 {
@@ -140,7 +140,9 @@ public partial class MaterialFile : AssetFile
         AddShaderDefineCommand = new Command(OnAddShaderDefine);
         RemoveShaderDefineCommand = new Command<Observable<string>>(OnRemoveShaderDefine);
         ClearShaderDefinesCommand = new Command(OnClearShaderDefines);
-        SelectSamplerCommand = new AsyncRelayCommand<string>(OnSelectSampler);
+        SelectSamplerCommand = new Command<string>(OnSelectSampler);
+        AssignSamplerCommand = new AsyncRelayCommand<string>(OnAssignSampler);
+        AssignShaderCommand = new AsyncRelayCommand(OnSelectShader);
     }
 
     [ObservableProperty]
@@ -326,7 +328,9 @@ public partial class MaterialFile : AssetFile
     public ICommand AddShaderDefineCommand { get; }
     public ICommand RemoveShaderDefineCommand { get; }
     public ICommand ClearShaderDefinesCommand { get; }
-    public IAsyncRelayCommand SelectSamplerCommand { get; }
+    public ICommand SelectSamplerCommand { get; }    
+    public IAsyncRelayCommand AssignSamplerCommand { get; }
+    public IAsyncRelayCommand AssignShaderCommand { get; }
 
     private void OnAddSampler() => Samplers.Add(new UniformFileId { Key = "material.newSampler" });
     private void OnRemoveSampler(UniformFileId sampler) => Samplers.Remove(sampler);
@@ -340,7 +344,26 @@ public partial class MaterialFile : AssetFile
     private void OnAddShaderDefine() => ShaderDefines.Add(new Observable<string>("New Define"));
     private void OnRemoveShaderDefine(Observable<string> shaderDefine) => ShaderDefines.Remove(shaderDefine);
     private void OnClearShaderDefines() => ShaderDefines.Clear();
-    private async Task OnSelectSampler(string key)
+    private void OnSelectSampler(string key)
+    {
+        var assetService = MauiProgram.GetService<AssetsService>();
+
+        foreach (var uniform in Samplers)
+        {
+            if (uniform.Key == key)
+            {
+                var asset = assetService.Assets[uniform.Value];
+                if (asset != null)
+                {
+                    var selecitonService = MauiProgram.GetService<SelectionService>();
+                    selecitonService.SelectObject(asset);
+                }
+                break;
+            }
+        }
+    }
+
+    private async Task OnAssignSampler(string key)
     {
         var fileOpen = await FilePicker.Default.PickAsync();
         if (fileOpen != null)
@@ -348,7 +371,7 @@ public partial class MaterialFile : AssetFile
             var assetService = MauiProgram.GetService<AssetsService>();
             var asset = assetService.Files.Find(el => el.Asset.FullName == fileOpen.FullPath);
 
-            foreach(var uniform in Samplers)
+            foreach (var uniform in Samplers)
             {
                 if (uniform.Key == key)
                 {
@@ -357,6 +380,20 @@ public partial class MaterialFile : AssetFile
                 }
             }
 
+            _ = asset.LoadDependentResources();
+        }
+    }
+
+    private async Task OnSelectShader()
+    {
+        var fileOpen = await FilePicker.Default.PickAsync();
+        if (fileOpen != null)
+        {
+            var assetService = MauiProgram.GetService<AssetsService>();
+            var asset = assetService.Files.Find(el => el.Asset.FullName == fileOpen.FullPath);
+
+            Shader = asset.FileId;
+            
             _ = asset.LoadDependentResources();
         }
     }

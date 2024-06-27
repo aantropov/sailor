@@ -3,6 +3,7 @@ using SailorEditor.ViewModels;
 using SailorEditor;
 using System.Globalization;
 using SailorEngine;
+using SailorEditor.Utility;
 
 namespace SailorEditor.Controls;
 
@@ -11,20 +12,20 @@ public class FileIdToFilenameConverter : IValueConverter
     private FileId uid;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var assetUID = value as FileId;
-        if (string.IsNullOrEmpty(assetUID))
+        var fileId = value as FileId;
+        if (string.IsNullOrEmpty(fileId))
             return null;
 
-        uid = assetUID;
+        uid = fileId;
 
         var AssetService = MauiProgram.GetService<AssetsService>();
 
-        if (!AssetService.Assets.ContainsKey(assetUID))
+        if (!AssetService.Assets.ContainsKey(fileId))
         {
             return uid;
         }
 
-        return AssetService.Assets[assetUID].DisplayName;
+        return AssetService.Assets[fileId].DisplayName;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

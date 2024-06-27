@@ -7,10 +7,6 @@
              xmlns:views="clr-namespace:SailorEditor.Views"
              xmlns:controls="clr-namespace:SailorEditor.Controls">
 
-    <!--<ContentPage.BindingContext>
-        <views:ContentFolderView/>
-    </ContentPage.BindingContext>-->
-
     <ContentPage.MenuBarItems>
         <MenuBarItem Text = "File">
             <MenuFlyoutItem Text ="Save" ></MenuFlyoutItem>

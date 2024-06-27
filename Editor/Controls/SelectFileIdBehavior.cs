@@ -3,11 +3,13 @@ using SailorEditor.ViewModels;
 using SailorEditor;
 using SailorEngine;
 
-public class FileIdClickable : Behavior<Label>
+namespace SailorEditor.Controls;
+
+public class SelectFileIdBehavior : Behavior<Label>
 {
     string bindingPath;
 
-    public FileIdClickable(string property)
+    public SelectFileIdBehavior(string property)
     {
         bindingPath = property;
     }

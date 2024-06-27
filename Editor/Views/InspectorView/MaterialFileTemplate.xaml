@@ -4,9 +4,18 @@
               xmlns:views="clr-namespace:SailorEditor.Views"
               xmlns:vm="clr-namespace:SailorEditor.ViewModels"
               xmlns:utility="clr-namespace:SailorEditor.Utility"
+              xmlns:controls="clr-namespace:SailorEditor.Controls"
               x:DataType="vm:MaterialFile"
               x:Class="SailorEditor.MaterialFileTemplate">
     <Grid>
+        <Grid.Resources>
+            <ResourceDictionary>
+                <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
+                <controls:FileIdToPreviewTextureConverter x:Key="FileIdToPreviewTextureConverter"/>
+                <controls:FloatValueConverter x:Key="FloatValueConverter"/>
+            </ResourceDictionary>
+        </Grid.Resources>
+
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
@@ -37,14 +46,14 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        
+
         <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
 
         <Label Text="Render Queue" VerticalOptions="Center" Grid.Row="1" Grid.Column="0"/>
         <Editor Text="{Binding RenderQueue}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="1" Grid.Column="1"/>
 
         <Label Text="Depth Bias" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <Editor Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="2" Grid.Column="1" />
+        <Editor Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="2" Grid.Column="1"/>
 
         <Label Text="Support Multisampling" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
         <CheckBox IsChecked="{Binding SupportMultisampling}" Grid.Row="3" Grid.Column="1"/>
@@ -68,7 +77,10 @@
         <Picker ItemsSource="{Binding FillModeEnumValues}" SelectedItem="{Binding FillMode}" Grid.Row="9" Grid.Column="1"/>
 
         <Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
-        <Label Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" Grid.Row="10" Grid.Column="1"/>
+        <HorizontalStackLayout Grid.Row="10" Grid.Column="1">
+            <Button Text="Select" Command="{Binding AssignShaderCommand}"/>
+            <Label Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center"/>
+        </HorizontalStackLayout>
 
         <Label Text="Samplers" FontAttributes="Bold" Grid.Row="11" Grid.ColumnSpan="2" />
         <HorizontalStackLayout Grid.Row="12">
@@ -82,7 +94,7 @@
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Editor Text="{Binding Key}" WidthRequest="160" VerticalOptions="Center" AutoSize="TextChanges"/>
-                        <Button Text="Select" Command="{Binding Path=BindingContext.SelectSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
+                        <Button Text="Select" Command="{Binding Path=BindingContext.AssignSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
                         <Image Source="{Binding Value, Converter={StaticResource FileIdToPreviewTextureConverter}}"
                                 WidthRequest="40"
                                 HeightRequest="40"
@@ -104,7 +116,7 @@
             <Button Text="+" Command="{Binding AddUniformVec4Command}"  />
             <Button Text="Clear" Command="{Binding ClearUniformsVec4Command}"/>
         </HorizontalStackLayout>
-        
+
         <CollectionView Grid.Row="16" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsVec4}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformVec4">
@@ -121,12 +133,12 @@
         </CollectionView>
 
         <Label Text="Uniforms Float" FontAttributes="Bold" Grid.Row="17" Grid.ColumnSpan="2" />
-        
+
         <HorizontalStackLayout Grid.Row="18">
             <Button Text="+" Command="{Binding AddUniformFloatCommand}"  />
             <Button Text="Clear" Command="{Binding ClearUniformsFloatCommand}"/>
         </HorizontalStackLayout>
-        
+
         <CollectionView Grid.Row="19" Grid.ColumnSpan="2" ItemsSource="{Binding UniformsFloat}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:UniformFloat">
@@ -140,12 +152,12 @@
         </CollectionView>
 
         <Label Text="Shader Defines" FontAttributes="Bold" Grid.Row="20" Grid.ColumnSpan="2" />
-        
+
         <HorizontalStackLayout Grid.Row="21">
             <Button Text="+" Command="{Binding AddShaderDefineCommand}"  />
             <Button Text="Clear" Command="{Binding ClearShaderDefinesCommand}"/>
         </HorizontalStackLayout>
-        
+
         <CollectionView Grid.Row="22" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="utility:ObservableString">

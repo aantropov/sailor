@@ -4,10 +4,17 @@
               xmlns:views="clr-namespace:SailorEditor.Views"
               xmlns:utility="clr-namespace:SailorEditor.Utility"
               xmlns:vm="clr-namespace:SailorEditor.ViewModels"
+              xmlns:controls="clr-namespace:SailorEditor.Controls"
               x:DataType="vm:ModelFile"
               x:Class="SailorEditor.ModelFileTemplate">
 
     <Grid>
+        <Grid.Resources>
+            <ResourceDictionary>
+                <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
+                <controls:FloatValueConverter x:Key="FloatValueConverter"/>
+            </ResourceDictionary>
+        </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
@@ -35,13 +42,13 @@
         <CheckBox IsChecked="{Binding ShouldBatchByMaterial}" Grid.Row="3" Grid.Column="1"/>
 
         <Label Text="Unit Scale" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
-        <Editor Text="{Binding UnitScale}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="4" Grid.Column="1"/>
+        <Editor Text="{Binding UnitScale, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="4" Grid.Column="1"/>
 
         <Label Text="Default Materials" FontAttributes="Bold" Grid.Row="5" Grid.ColumnSpan="2" />
 
         <HorizontalStackLayout Grid.Row="6" Grid.ColumnSpan="2">
-            <Button Text="+" Command="{Binding AddMaterialCommand}"  />
-            <Button Text="Clear" Command="{Binding ClearMaterialsCommand}"/>
+            <Button Text="+" Command="{Binding AddMaterialCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"  />
+            <Button Text="Clear" Command="{Binding ClearMaterialsCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"/>
         </HorizontalStackLayout>
 
         <CollectionView Grid.Row="7" Grid.ColumnSpan="2" ItemsSource="{Binding Materials}">
