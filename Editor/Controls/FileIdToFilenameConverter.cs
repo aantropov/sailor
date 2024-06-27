@@ -12,7 +12,7 @@ public class FileIdToFilenameConverter : IValueConverter
     private FileId uid;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var fileId = value as FileId;
+        var fileId = value as FileId ?? (value as Observable<FileId>)?.Value;
         if (string.IsNullOrEmpty(fileId))
             return null;
 
