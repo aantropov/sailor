@@ -1,6 +1,6 @@
 namespace SailorEditor;
 
-[XamlCompilation(XamlCompilationOptions.Compile)]
+[XamlCompilation(XamlCompilationOptions.Skip)]
 public partial class MaterialFileTemplate : DataTemplate
 {
     public MaterialFileTemplate()

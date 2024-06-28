@@ -11,8 +11,8 @@
     <Grid>
         <Grid.Resources>
             <ResourceDictionary>
-                <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
                 <controls:FloatValueConverter x:Key="FloatValueConverter"/>
+                <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
             </ResourceDictionary>
         </Grid.Resources>
         <Grid.ColumnDefinitions>
@@ -53,7 +53,7 @@
 
         <CollectionView Grid.Row="7" Grid.ColumnSpan="2" ItemsSource="{Binding Materials}">
             <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="utility:ObservableFileId">
+                <DataTemplate>
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveMaterialCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Editor Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>

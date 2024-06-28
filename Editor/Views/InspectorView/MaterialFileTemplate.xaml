@@ -160,7 +160,7 @@
 
         <CollectionView Grid.Row="22" Grid.ColumnSpan="2" ItemsSource="{Binding ShaderDefines}">
             <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="utility:ObservableString">
+                <DataTemplate>
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveShaderDefineCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Editor Text="{Binding Value}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>

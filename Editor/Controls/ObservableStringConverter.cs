@@ -7,7 +7,7 @@ using SailorEditor.Utility;
 
 namespace SailorEditor.Controls;
 
-public class ObservableConverter : IValueConverter
+public class ObservableStringConverter : IValueConverter
 {
     Observable<string> obj;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
