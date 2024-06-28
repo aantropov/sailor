@@ -92,6 +92,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <Compile Update="Controls\GridSplitterControl.xaml.cs">
+	    <DependentUpon>GridSplitterControl.xaml</DependentUpon>
+	  </Compile>
 	  <Compile Update="Resources\Styles\LightThemeStyle.xaml.cs">
 	    <DependentUpon>LightThemeStyle.xaml</DependentUpon>
 	  </Compile>
@@ -131,6 +134,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <MauiXaml Update="Controls\GridSplitterControl.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
 	  <MauiXaml Update="MainPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
