@@ -32,7 +32,7 @@ void Window::SetWindowPos(const RECT& rect)
 		SWP_NOACTIVATE);
 }
 
-void Window::TrackParentWindowPosition()
+void Window::TrackParentWindowPosition(const RECT& viewport)
 {
 	if (!m_parentHwnd)
 	{
@@ -44,20 +44,25 @@ void Window::TrackParentWindowPosition()
 	if (wnd.m_windowRect.left != wnd.m_windowRect.right && wnd.m_windowRect.bottom != wnd.m_windowRect.top)
 	{
 		// TODO: Wait for networking integration
-		int32_t gapWidth = 0; // (wnd.m_width - wnd.m_clientWidth) / 2 + 1;
-		int32_t gapHeight = 0; // (wnd.m_height - wnd.m_clientHeight) / 2 + 1;
+		int32_t gapWidth = (wnd.m_width - wnd.m_clientWidth) / 2 + 1;
+		int32_t gapHeight = (wnd.m_height - wnd.m_clientHeight) / 2 + 1;
 
-		int32_t newX = wnd.m_xPos + gapWidth + 916;
-		int32_t newY = wnd.m_yPos + gapHeight + 128;
+		int32_t newX = wnd.m_xPos + gapWidth + viewport.left;
+		int32_t newY = wnd.m_yPos + gapHeight;
 
-		int32_t newWidth = wnd.m_clientWidth - gapWidth * 2 - 906;
-		int32_t newHeight = wnd.m_clientHeight - gapHeight * 2 - 494;
+		int32_t newWidth = viewport.right - viewport.left;
+		int32_t newHeight = abs(viewport.bottom - viewport.top);
 
 		if (newWidth > 0 && newHeight > 0)
 		{
-			::SetWindowPos(m_hWnd, m_parentHwnd,
+			/*::SetWindowPos(m_hWnd, m_parentHwnd,
 				newX, newY,
 				newWidth, newHeight,
+				SWP_NOACTIVATE);*/
+
+			::SetWindowPos(m_hWnd, m_parentHwnd,
+				newX, newY,
+				wnd.m_width, wnd.m_height,
 				SWP_NOACTIVATE);
 		}
 	}

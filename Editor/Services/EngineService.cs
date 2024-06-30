@@ -32,7 +32,7 @@ namespace SailorEngine
         public static extern uint SerializeEngineTypes(nint[] yamlNode);
 
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetWindowPosition(uint posX, uint posY, uint width, uint height);
+        public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
     }
 }
 
@@ -50,7 +50,7 @@ namespace SailorEditor.Services
 
         public string PathToEngineExec { get { return EngineWorkingDirectory + "SailorEngine-Release.exe"; } }
 
-        public void SetWindowPosition(uint posX, uint posY, uint width, uint height) => EngineAppInterop.SetWindowPosition(posX, posY, width, height);
+        public void SetViewport(uint posX, uint posY, uint width, uint height) => EngineAppInterop.SetViewport(posX, posY, width, height);
 
         public event Action<string[]> OnPullMessagesAction = delegate { };
         public event Action<string> OnUpdateCurrentWorldAction = delegate { };

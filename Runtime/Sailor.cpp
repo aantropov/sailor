@@ -295,8 +295,8 @@ void App::Start()
 #ifdef SAILOR_EDITOR
 			if (auto editor = App::GetSubmodule<Editor>())
 			{
-				auto rect = editor->GetWindowRect();
-				pMainWindow->SetWindowPos(rect);
+				auto rect = editor->GetViewport();
+				pMainWindow->TrackParentWindowPosition(rect);
 			}
 #endif	
 			trackEditor.Clear();

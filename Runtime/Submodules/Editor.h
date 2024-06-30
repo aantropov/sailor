@@ -22,8 +22,8 @@ namespace Sailor
 		YAML::Node SerializeWorld() const;
 		void ApplyChanges(const std::string& yamlNode);
 
-		void SetWindowRect(RECT window) { m_windowRect = window; }
-		RECT GetWindowRect() const { return m_windowRect; }
+		void SetViewport(RECT window) { m_windowRect = window; }
+		RECT GetViewport() const { return m_windowRect; }
 
 	protected:
 

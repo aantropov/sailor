@@ -62,7 +62,7 @@ namespace Sailor::Win32
 		SAILOR_API void SetRenderArea(const glm::ivec2& renderArea) { m_renderArea = renderArea; }
 
 		SAILOR_API bool IsParentWindowValid() const;
-		SAILOR_API void TrackParentWindowPosition();
+		SAILOR_API void TrackParentWindowPosition(const RECT& viewport);
 
 		// Window size
 		SAILOR_API glm::ivec2 GetCenterPointScreen() const;
