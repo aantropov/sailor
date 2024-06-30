@@ -17,7 +17,7 @@ namespace SailorEditor.Helpers
             return presenter;
         }
 
-        public static Point GetAbsolutePositionWin(this VisualElement visualElement)
+        public static Rect GetAbsolutePositionWin(this VisualElement visualElement)
         {
 #if WINDOWS
             //Microsoft.Maui.Platform.MauiButton
@@ -27,7 +27,10 @@ namespace SailorEditor.Helpers
             var platformview = visualElement.Handler.PlatformView as Microsoft.UI.Xaml.FrameworkElement;
             var mPoint = platformview.TransformToVisual(window.Content).TransformPoint(new Windows.Foundation.Point(0, 0));
 
-            return new Point(mPoint.X, mPoint.Y);
+            double width = platformview.ActualWidth;
+            double height = platformview.ActualHeight;
+
+            return new Rect(mPoint.X, mPoint.Y, width, height);
 #else
             return new Point();
 #endif

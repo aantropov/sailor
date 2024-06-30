@@ -22,21 +22,34 @@
     <Grid RowSpacing="0" ColumnSpacing="0">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="300"/>
+            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="300"/>
+            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="400"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="200"/>
-            <RowDefinition Height="250"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <views:SceneView x:Name="SceneView" Grid.Column="2" Grid.RowSpan="2"/>
-        <views:ConsoleView Grid.Row="2" Grid.Column="2" />
-        <views:InspectorView Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"  Grid.RowSpan="2"/>
-        <views:HierarchyView Grid.Row="0" Grid.Column="1" Grid.RowSpan="1"/>
         <views:ContentFolderView Grid.Row="0" Grid.Column="0" Grid.RowSpan="1"/>
+        <views:HierarchyView Grid.Row="0" Grid.Column="2" Grid.RowSpan="1"/>
+
+        <controls:HorizontalGridSplitterControl Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"/>
+
+        <views:InspectorView Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="3"/>
+
+        <controls:VerticalGridSplitterControl Grid.Row="0" Grid.Column="1"/>
+        <controls:VerticalGridSplitterControl Grid.Row="0" Grid.Column="3" Grid.RowSpan="5"/>
+
+        <views:SceneView x:Name="SceneView" Grid.Column="4" Grid.RowSpan="3"/>
+        <views:ConsoleView Grid.Row="5" Grid.Column="4"/>
+        <controls:HorizontalGridSplitterControl Grid.Row="3" Grid.Column="4"/>
+
     </Grid>
 
 </ContentPage>

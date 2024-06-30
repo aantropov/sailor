@@ -29,7 +29,7 @@ void Window::SetWindowPos(const RECT& rect)
 {
 	::SetWindowPos(m_hWnd, HWND_TOP, rect.left, rect.top,
 		rect.right - rect.left, rect.bottom - rect.top,
-		SWP_FRAMECHANGED);
+		SWP_NOACTIVATE);
 }
 
 void Window::TrackParentWindowPosition()

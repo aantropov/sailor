@@ -22,10 +22,14 @@ namespace Sailor
 		YAML::Node SerializeWorld() const;
 		void ApplyChanges(const std::string& yamlNode);
 
+		void SetWindowRect(RECT window) { m_windowRect = window; }
+		RECT GetWindowRect() const { return m_windowRect; }
+
 	protected:
 
 		concurrency::concurrent_queue<std::string> m_messagesQueue;
 
+		RECT m_windowRect{};
 		uint32_t m_editorPort;
 		HWND m_editorHwnd;
 

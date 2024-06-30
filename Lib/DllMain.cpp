@@ -28,6 +28,20 @@ extern "C"
 		Sailor::App::Shutdown();
 	}
 
+	SAILOR_API void SetWindowPosition(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
+	{
+		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
+
+		RECT rect{};
+		rect.left = windowPosX;
+		rect.right = windowPosX + width;
+
+		rect.bottom = windowPosY;
+		rect.top = windowPosY + height;
+
+		editor->SetWindowRect(rect);
+	}
+
 	SAILOR_API uint32_t GetMessages(char** messages, uint32_t num)
 	{
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();

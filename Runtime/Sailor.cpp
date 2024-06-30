@@ -292,7 +292,13 @@ void App::Start()
 
 		if (trackEditor.ResultAccumulatedMs() > 1)
 		{
-			pMainWindow->TrackParentWindowPosition();
+#ifdef SAILOR_EDITOR
+			if (auto editor = App::GetSubmodule<Editor>())
+			{
+				auto rect = editor->GetWindowRect();
+				pMainWindow->SetWindowPos(rect);
+			}
+#endif	
 			trackEditor.Clear();
 		}
 
