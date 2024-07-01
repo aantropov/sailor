@@ -50,7 +50,7 @@ namespace SailorEditor.Services
 
         public string PathToEngineExec { get { return EngineWorkingDirectory + "SailorEngine-Release.exe"; } }
 
-        public void SetViewport(uint posX, uint posY, uint width, uint height) => EngineAppInterop.SetViewport(posX, posY, width, height);
+        public Rect Viewport { get; set; } = new Rect(0, 0, 1024, 768);
 
         public event Action<string[]> OnPullMessagesAction = delegate { };
         public event Action<string> OnUpdateCurrentWorldAction = delegate { };
@@ -87,52 +87,25 @@ namespace SailorEditor.Services
                 {
                     EngineAppInterop.Initialize(args, args.Length);
 
-                    Task.Run(async () =>
+                    StartPeriodicTask(async () => EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height), 0, 100, cts.Token);
+
+                    StartPeriodicTask(async () =>
                     {
-                        while (!cts.Token.IsCancellationRequested)
+                        var messages = PullMessages();
+                        if (messages != null)
                         {
-                            var messages = PullMessages();
-
-                            if (messages != null)
-                            {
-                                MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
-                            }
-
-                            try
-                            {
-                                await Task.Delay(500);
-                            }
-                            catch (TaskCanceledException)
-                            {
-                                break;
-                            }
+                            MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
                         }
-                    });
+                    }, 300, 500, cts.Token);
 
-                    Task.Run(async () =>
+                    StartPeriodicTask(async () =>
                     {
-                        string serializedWorld = string.Empty;
-                        string serializedEngineTypes = string.Empty;
+                        string serializedWorld = SerializeWorld();
+                        string serializedEngineTypes = SerializeEngineTypes();
+                        EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
 
-                        while (!cts.Token.IsCancellationRequested && (serializedWorld == string.Empty || serializedEngineTypes == string.Empty))
-                        {
-                            try
-                            {
-                                await Task.Delay(1000);
-                            }
-                            catch (TaskCanceledException)
-                            {
-                                break;
-                            }
-
-                            serializedEngineTypes = SerializeEngineTypes();
-                            EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
-
-                            serializedWorld = SerializeWorld();
-                            MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
-
-                        }
-                    });
+                        MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+                    }, 1000, 0, cts.Token);
 
                     EngineAppInterop.Start();
                     EngineAppInterop.Stop();
@@ -148,6 +121,40 @@ namespace SailorEditor.Services
                 Console.WriteLine($"Cannot run SailorEngine process: {ex.Message}");
             }
 #endif
+        }
+
+        public void StartPeriodicTask(Func<Task> action, int initialDelay, int periodMs, CancellationToken token)
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(initialDelay, token);
+                }
+                catch (TaskCanceledException)
+                {
+                    return;
+                }
+
+                while (!token.IsCancellationRequested)
+                {
+                    await action();
+
+                    if (periodMs == 0)
+                    {
+                        break;
+                    }
+
+                    try
+                    {
+                        await Task.Delay(periodMs, token);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        break;
+                    }
+                }
+            }, token);
         }
 
         string[] PullMessages()

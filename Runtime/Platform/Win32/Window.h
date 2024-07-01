@@ -75,6 +75,8 @@ namespace Sailor::Win32
 
 	private:
 
+		RECT m_viewport{};
+
 		SAILOR_API void SetIsIconic(bool value) { m_bIsIconic = value; }
 
 		static TVector<Window*> g_windows;
