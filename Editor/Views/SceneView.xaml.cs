@@ -12,21 +12,8 @@ namespace SailorEditor.Views
 
             SizeChanged += (sender, args) => UpdateEngineViewport();
             Loaded += (sender, args) => UpdateEngineViewport();
-
-#if WINDOWS
-            var window = Microsoft.Maui.Controls.Application.Current.Windows[0].Handler.PlatformView as Microsoft.UI.Xaml.Window;
-            if (window != null)
-            {
-                window.SizeChanged += (sender, args) => UpdateEngineViewport();
-                window.Activated += (object sender, Microsoft.UI.Xaml.WindowActivatedEventArgs e) =>
-                {
-                    if (e.WindowActivationState == Microsoft.UI.Xaml.WindowActivationState.CodeActivated ||
-                        e.WindowActivationState == Microsoft.UI.Xaml.WindowActivationState.PointerActivated)
-                        UpdateEngineViewport();
-                };
-#endif
-            }
         }
+
         void UpdateEngineViewport()
         {
             var engineService = MauiProgram.GetService<EngineService>();

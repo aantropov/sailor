@@ -56,7 +56,8 @@
                 <DataTemplate>
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveMaterialCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
-                        <Editor Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Button Text="Select" Command="{Binding Path=BindingContext.SelectMaterialCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}"/>
+                        <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" WidthRequest="200" VerticalOptions="Center"/>
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>

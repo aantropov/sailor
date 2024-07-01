@@ -23,16 +23,23 @@ namespace SailorEditor.Helpers
             //Microsoft.Maui.Platform.MauiButton
             //Control: FrameworkElement, IControlOverrides, ICustomQueryInterface, IWinRTObject, IDynamicInterfaceCastable, IEquatable<Control>
 
-            Microsoft.UI.Xaml.Window window = (Microsoft.UI.Xaml.Window)App.Current.Windows.First<Window>().Handler.PlatformView;
-            var platformview = visualElement.Handler.PlatformView as Microsoft.UI.Xaml.FrameworkElement;
-            var mPoint = platformview.TransformToVisual(window.Content).TransformPoint(new Windows.Foundation.Point(0, 0));
+            if (visualElement != null)
+            {
+                Microsoft.UI.Xaml.Window window = (Microsoft.UI.Xaml.Window)App.Current.Windows.First<Window>().Handler.PlatformView;
+                if (visualElement.Handler.PlatformView is Microsoft.UI.Xaml.FrameworkElement platformview)
+                {
+                    var mPoint = platformview.TransformToVisual(window.Content).TransformPoint(new Windows.Foundation.Point(0, 0));
 
-            double width = platformview.ActualWidth;
-            double height = platformview.ActualHeight;
+                    double width = platformview.ActualWidth;
+                    double height = platformview.ActualHeight;
 
-            return new Rect(mPoint.X, mPoint.Y, width, height);
+                    return new Rect(mPoint.X, mPoint.Y, width, height);
+                }
+            }
+
+            return new Rect();
 #else
-            return new Point();
+            return new Rect();
 #endif
         }
 
