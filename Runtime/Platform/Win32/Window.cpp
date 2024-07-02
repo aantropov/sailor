@@ -51,14 +51,17 @@ void Window::TrackParentWindowPosition(const RECT& viewport)
 		//int32_t gapWidth = (wnd.m_width - wnd.m_clientWidth) / 2 + 1;
 		//int32_t gapHeight = (wnd.m_height - wnd.m_clientHeight) / 2 + 1;
 
-		int32_t gapWidth = 10;
-		int32_t gapHeight = 2;
+		const int32_t gapWidth = 10;
+		const int32_t gapHeight = 2;
 
-		int32_t newX = wnd.m_xPos + gapWidth + viewport.left;
-		int32_t newY = wnd.m_yPos + gapHeight + viewport.top;
+		const int32_t newX = wnd.m_xPos + gapWidth + viewport.left;
+		const int32_t newY = wnd.m_yPos + gapHeight + viewport.top;
 
 		int32_t newWidth = viewport.right - viewport.left - gapWidth / 2;
 		int32_t newHeight = viewport.bottom - viewport.top - gapHeight * 2;
+
+		newWidth = std::min(newWidth, wnd.m_clientWidth - (int32_t)viewport.left);
+		newHeight = std::min(newHeight, wnd.m_clientHeight - (int32_t)viewport.top);
 
 		if (newWidth > 0 && newHeight > 0)
 		{

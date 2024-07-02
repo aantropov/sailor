@@ -23,9 +23,9 @@ namespace SailorEditor.Helpers
             //Microsoft.Maui.Platform.MauiButton
             //Control: FrameworkElement, IControlOverrides, ICustomQueryInterface, IWinRTObject, IDynamicInterfaceCastable, IEquatable<Control>
 
-            if (visualElement != null)
+            if (visualElement != null && visualElement.Handler != null)
             {
-                Microsoft.UI.Xaml.Window window = (Microsoft.UI.Xaml.Window)App.Current.Windows.First<Window>().Handler.PlatformView;
+                Microsoft.UI.Xaml.Window window = (Microsoft.UI.Xaml.Window)App.Current.Windows.First<Window>()?.Handler?.PlatformView;
                 if (visualElement.Handler.PlatformView is Microsoft.UI.Xaml.FrameworkElement platformView)
                 {
                     var mPoint = platformView.TransformToVisual(window.Content).TransformPoint(new Windows.Foundation.Point(0, 0));

@@ -10,8 +10,20 @@ namespace SailorEditor.Views
             InitializeComponent();
             MauiProgram.GetService<EngineService>().RunProcess(RunDebugConfigurationCheckBox.IsChecked, "");
 
-            SizeChanged += (sender, args) => UpdateEngineViewport();
-            Loaded += (sender, args) => UpdateEngineViewport();
+            Loaded += (sender, args) =>
+            {
+                isRunning = true;
+
+                Dispatcher.StartTimer(TimeSpan.FromMilliseconds(500), () =>
+                {
+                    if (isRunning)
+                        UpdateEngineViewport();
+
+                    return isRunning;
+                });
+            };
+
+            Unloaded += (sender, args) => isRunning = false;
         }
 
         void UpdateEngineViewport()
@@ -30,5 +42,7 @@ namespace SailorEditor.Views
             string commandLineArgs = WaitForDebuggerAttachedCheckBox.IsChecked ? "--waitfordebugger" : "";
             MauiProgram.GetService<EngineService>().RunProcess(RunDebugConfigurationCheckBox.IsChecked, commandLineArgs);
         }
+
+        bool isRunning = false;
     }
 }
