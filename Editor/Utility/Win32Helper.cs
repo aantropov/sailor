@@ -26,14 +26,16 @@ namespace SailorEditor.Helpers
             if (visualElement != null)
             {
                 Microsoft.UI.Xaml.Window window = (Microsoft.UI.Xaml.Window)App.Current.Windows.First<Window>().Handler.PlatformView;
-                if (visualElement.Handler.PlatformView is Microsoft.UI.Xaml.FrameworkElement platformview)
+                if (visualElement.Handler.PlatformView is Microsoft.UI.Xaml.FrameworkElement platformView)
                 {
-                    var mPoint = platformview.TransformToVisual(window.Content).TransformPoint(new Windows.Foundation.Point(0, 0));
+                    var mPoint = platformView.TransformToVisual(window.Content).TransformPoint(new Windows.Foundation.Point(0, 0));
 
-                    double width = platformview.ActualWidth;
-                    double height = platformview.ActualHeight;
+                    var dpi = DeviceDisplay.Current.MainDisplayInfo.Density;
 
-                    return new Rect(mPoint.X, mPoint.Y, width, height);
+                    double width = platformView.ActualWidth * dpi;
+                    double height = platformView.ActualHeight * dpi;
+
+                    return new Rect(mPoint.X * dpi, mPoint.Y * dpi, width, height);
                 }
             }
 
