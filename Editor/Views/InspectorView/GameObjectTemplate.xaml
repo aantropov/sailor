@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<DataTemplate xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+              xmlns:views="clr-namespace:SailorEditor.Views"
+              xmlns:utility="clr-namespace:SailorEditor.Utility"
+              xmlns:vm="clr-namespace:SailorEditor.ViewModels"
+              xmlns:controls="clr-namespace:SailorEditor.Controls"
+              x:DataType="vm:ModelFile"
+              x:Class="SailorEditor.GameObjectTemplate">
+
+    <Grid>
+        <Grid.Resources>
+            <ResourceDictionary>
+                <controls:FloatValueConverter x:Key="FloatValueConverter"/>
+                <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
+            </ResourceDictionary>
+        </Grid.Resources>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
+
+        <!-- Properties Label -->
+        <Label Text="Transform" FontAttributes="Bold" Grid.Row="1" Grid.ColumnSpan="2" />
+
+        <Label Text="Position" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
+        <HorizontalStackLayout  Grid.Row="2" Grid.Column="1" >
+            <Editor Text="{Binding Position.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Position.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Position.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+        </HorizontalStackLayout>
+
+        <Label Text="Rotation" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
+        <HorizontalStackLayout  Grid.Row="3" Grid.Column="1" >
+            <Editor Text="{Binding Rotation.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Rotation.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Rotation.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+        </HorizontalStackLayout>
+
+        <Label Text="Scale" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
+        <HorizontalStackLayout  Grid.Row="4" Grid.Column="1" >
+            <Editor Text="{Binding Scale.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Scale.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Scale.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+        </HorizontalStackLayout>
+
+        <Label Text="Components" FontAttributes="Bold" Grid.Row="5" Grid.ColumnSpan="2" />
+
+        <!--<HorizontalStackLayout Grid.Row="6" Grid.ColumnSpan="2">
+            <Button Text="+" Command="{Binding AddComponent, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"  />
+            <Button Text="Clear" Width ="40" Command="{Binding ClearComponentsCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"/>
+        </HorizontalStackLayout>-->
+
+        <!--<CollectionView Grid.Row="7" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />-->
+
+    </Grid>
+</DataTemplate>

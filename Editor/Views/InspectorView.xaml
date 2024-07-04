@@ -12,12 +12,18 @@
 
     <ContentView.Resources>
         <ResourceDictionary>
+
+            <local:ComponentTemplate x:Key="ComponentTemplate"/>
             <local:AssetFileTemplate x:Key="AssetFileTemplate" />
+
+            <local:ComponentTemplateSelector x:Key="ComponentTemplateSelector" ComponentTemplate="{StaticResource ComponentTemplate}"/>
+
             <local:TextureFileTemplate x:Key="TextureFileTemplate" />
             <local:ShaderFileTemplate x:Key="ShaderFileTemplate" />
             <local:ShaderLibraryFileTemplate x:Key="ShaderLibraryFileTemplate" />
             <local:MaterialFileTemplate x:Key="MaterialFileTemplate" />
             <local:ModelFileTemplate x:Key="ModelFileTemplate" />
+            <local:GameObjectTemplate x:Key="GameObjectTemplate" />
 
             <local:InspectorTemplateSelector x:Key="InspectorTemplateSelector"
                                           AssetFileTemplate="{StaticResource AssetFileTemplate}"
@@ -25,7 +31,8 @@
                                           ShaderFileTemplate="{StaticResource ShaderFileTemplate}"                                          
                                           MaterialFileTemplate ="{StaticResource MaterialFileTemplate}"
                                           ModelFileTemplate ="{StaticResource ModelFileTemplate}"
-                                          ShaderLibraryFileTemplate="{StaticResource ShaderLibraryFileTemplate}"/>
+                                          ShaderLibraryFileTemplate="{StaticResource ShaderLibraryFileTemplate}"
+                                          GameObjectTemplate ="{StaticResource GameObjectTemplate}"/>
         </ResourceDictionary>
     </ContentView.Resources>
 

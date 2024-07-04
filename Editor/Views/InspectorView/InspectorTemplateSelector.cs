@@ -20,9 +20,20 @@ public class InspectorTemplateSelector : DataTemplateSelector
             ShaderLibraryFile => ShaderLibraryFileTemplate,
             ModelFile => ModelFileTemplate,
             MaterialFile => MaterialFileTemplate,
+            GameObject => GameObjectTemplate,
             _ => AssetFileTemplate
         };
 
         return template;
+    }
+}
+
+public class ComponentTemplateSelector : DataTemplateSelector
+{
+    public DataTemplate ComponentTemplate { get; set; }
+
+    protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
+    {
+        return ComponentTemplate;
     }
 }

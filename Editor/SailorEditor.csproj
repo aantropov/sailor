@@ -116,6 +116,9 @@
 	  <Compile Update="Views\InspectorView\MaterialFileTemplate.xaml.cs">
 	    <DependentUpon>MaterialFileTemplate.xaml</DependentUpon>
 	  </Compile>
+	  <Compile Update="Views\InspectorView\GameObjectTemplate.xaml.cs">
+	    <DependentUpon>GameObjectTemplate.xaml</DependentUpon>
+	  </Compile>
 	  <Compile Update="Views\InspectorView\ModelFileTemplate.xaml.cs">
 	    <DependentUpon>ModelFileTemplate.xaml</DependentUpon>
 	  </Compile>
@@ -171,6 +174,9 @@
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\InspectorView\MaterialFileTemplate.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\InspectorView\GameObjectTemplate.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\InspectorView\ModelFileTemplate.xaml">

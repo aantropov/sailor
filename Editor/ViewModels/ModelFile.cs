@@ -41,7 +41,6 @@ public partial class ModelFile : AssetFile
     public ICommand ClearMaterialsCommand { get; }
     public IAsyncRelayCommand SelectMaterialCommand { get; }
 
-
     private async Task OnAddMaterial()
     {
         var fileOpen = await FilePicker.Default.PickAsync();

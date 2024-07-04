@@ -12,6 +12,8 @@ namespace SailorEditor.ViewModels;
 
 public partial class GameObject : ObservableObject, ICloneable
 {
+    public string DisplayName { get { return Name; } }
+
     public int PrefabIndex = -1;
 
     public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
