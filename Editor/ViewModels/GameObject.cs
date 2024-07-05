@@ -7,11 +7,18 @@ using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using System.Runtime.CompilerServices;
 using SailorEditor.Services;
+using System.Windows.Input;
 
 namespace SailorEditor.ViewModels;
 
 public partial class GameObject : ObservableObject, ICloneable
 {
+    public GameObject()
+    {
+        AddNewComponent = new Command(OnAddNewComponent);
+        ClearComponentsCommand = new Command(OnClearComponents);
+    }
+
     public string DisplayName { get { return Name; } }
 
     public int PrefabIndex = -1;
@@ -33,6 +40,12 @@ public partial class GameObject : ObservableObject, ICloneable
         InstanceId = InstanceId,
         ComponentIndices = new List<int>(ComponentIndices)
     };
+
+    public ICommand AddNewComponent { get; }
+    public ICommand ClearComponentsCommand { get; }
+
+    void OnAddNewComponent() { }
+    void OnClearComponents() { }
 
     [ObservableProperty]
     string name = string.Empty;
