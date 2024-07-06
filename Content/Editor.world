@@ -1,21 +1,6 @@
 name: WorldEditor
 prefabs:
-  - components:
-      - typename: Sailor::CameraComponent
-        overrideProperties:
-          fov: 90
-          zNear: 0.100000001
-          zFar: 50000
-          fileId: NullFileId
-          instanceId: 70D60C2A2FF54D2BAE58E0B41C6BE43E
-      - typename: Sailor::TestComponent
-        overrideProperties:
-          m_meshRenderer:
-            fileId: NullFileId
-            instanceId: BAD35A5BC8EC4853849E3F6D535C4704
-          fileId: NullFileId
-          instanceId: 2BC0359C17504863A5C3010E0C451F7D
-    gameObjects:
+  - gameObjects:
       - name: Camera
         position:
           - 0
@@ -26,26 +11,31 @@ prefabs:
           - 0
           - 0
           - 0
-          - 1
+          - 0
         scale:
           - 1
           - 1
           - 1
           - 1
         parentIndex: 4294967295
-        instanceId: NullInstanceId
+        instanceId: 15011215773109224062
         components:
           - 0
           - 1
-  - components:
-      - typename: Sailor::MeshRendererComponent
+    components:
+      - typename: Sailor::CameraComponent
         overrideProperties:
-          model:
-            fileId: "{12191642-EE18-4046-BD44-5A4E6004B846}"
-            instanceId: NullInstanceId
+          fov: 90
+          zNear: 0.100000001
+          zFar: 50000
           fileId: NullFileId
-          instanceId: BAD35A5BC8EC4853849E3F6D535C4704
-    gameObjects:
+          instanceId: 70D60C2A2FF54D2BAE58E0B41C6BE43E_15011215773109224062
+      - typename: Sailor::TestComponent
+        overrideProperties:
+          m_meshRenderer: ~
+          fileId: NullFileId
+          instanceId: 2BC0359C17504863A5C3010E0C451F7D_15011215773109224062
+  - gameObjects:
       - name: Sponza
         position:
           - 0
@@ -56,46 +46,75 @@ prefabs:
           - 0
           - 0
           - 0
-          - 1
+          - 0
         scale:
           - 1
           - 1
           - 1
           - 1
         parentIndex: 4294967295
-        instanceId: NullInstanceId
+        instanceId: 12501075873428063186
         components:
           - 0
-  - components:
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{12191642-EE18-4046-BD44-5A4E6004B846}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: BAD35A5BC8EC4853849E3F6D535C4704_12501075873428063186
+  - gameObjects:
+      - name: Box
+        position:
+          - 0
+          - 0
+          - 0
+          - 0
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 0
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 17189606890707967961
+        components:
+          - 0
+    components:
       - typename: Sailor::MeshRendererComponent
         overrideProperties:
           model:
             fileId: "{2387902B-538E-4191-93D6-53503B5571B2}"
             instanceId: NullInstanceId
           fileId: NullFileId
-          instanceId: F44C5E53CAAA40598DFB9D043DEADBE7
-    gameObjects:
-      - name: Box
+          instanceId: F44C5E53CAAA40598DFB9D043DEADBE7_17189606890707967961
+  - gameObjects:
+      - name: Light
         position:
-          - 200
-          - 200
           - 0
-          - 1
+          - 0
+          - 0
+          - 0
         rotation:
-          - 0
-          - 0
-          - 0
-          - 1
+          - 0.0918623805
+          - 0.858316064
+          - 0.477002949
+          - 0.477002949
         scale:
           - 1
           - 1
           - 1
           - 1
         parentIndex: 4294967295
-        instanceId: NullInstanceId
+        instanceId: 4835008624012338468
         components:
           - 0
-  - components:
+    components:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
@@ -115,25 +134,4 @@ prefabs:
             - 30
             - 45
           fileId: NullFileId
-          instanceId: FFF4417DA65649588B6B279D47D0EC3E
-    gameObjects:
-      - name: Light
-        position:
-          - -1765.04504
-          - 7642.86914
-          - -4412.6123
-          - 1
-        rotation:
-          - 0.0918623805
-          - 0.858316064
-          - 0.477002949
-          - -0.165296569
-        scale:
-          - 1
-          - 1
-          - 1
-          - 1
-        parentIndex: 4294967295
-        instanceId: NullInstanceId
-        components:
-          - 0
+          instanceId: FFF4417DA65649588B6B279D47D0EC3E_4835008624012338468

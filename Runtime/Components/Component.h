@@ -39,6 +39,7 @@ namespace Sailor
 
 		friend class TObjectPtr<Component>;
 		friend class GameObject;
+		friend class World;
 	};
 }
 

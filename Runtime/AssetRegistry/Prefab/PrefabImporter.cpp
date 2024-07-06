@@ -73,6 +73,7 @@ void Prefab::SerializeGameObject(GameObjectPtr root, uint32_t parentIndex, TVect
 
 	rootData.m_name = root->GetName();
 	rootData.m_parentIndex = parentIndex;
+	rootData.m_instanceId = root->GetInstanceId();
 
 	for (auto& component : root->GetComponents())
 	{

@@ -33,7 +33,7 @@ namespace Sailor
 			check(m_pWorld);
 			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward<TArgs>(args) ...);
 
-			newObject->m_instanceId = InstanceId::CreateNewInstanceId();
+			newObject->m_instanceId = InstanceId::GenerateNewComponentId(m_instanceId);
 			newObject->m_owner = m_self;
 			newObject->Initialize();
 
@@ -55,7 +55,7 @@ namespace Sailor
 			check(!component->m_bBeginPlayCalled);
 			check(!component->GetOwner().IsValid());
 
-			component->m_instanceId = InstanceId::CreateNewInstanceId();
+			component->m_instanceId = InstanceId::GenerateNewComponentId(m_instanceId);
 			component->m_owner = m_self;
 			component->Initialize();
 

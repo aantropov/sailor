@@ -93,6 +93,13 @@ renderTargets:
 frame:
 ############################
 
+- name: Clear
+  float:
+  - clearDepth: 0
+  - clearStencil: 0
+  renderTargets:
+  - target: DepthBuffer
+
 - name: DepthPrepass
   string:
   - Tag: Opaque

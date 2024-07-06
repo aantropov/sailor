@@ -14,12 +14,15 @@ namespace Sailor
 
 		static const InstanceId Invalid;
 
-		SAILOR_API static InstanceId CreateNewInstanceId();
+		SAILOR_API static InstanceId GenerateNewInstanceId();
+		SAILOR_API static InstanceId GenerateNewComponentId(const InstanceId& parentGameObjectId);
+
 		SAILOR_API const std::string& ToString() const;
 
 		SAILOR_API InstanceId() = default;
 		SAILOR_API InstanceId(const InstanceId& inInstanceId) = default;
 		SAILOR_API InstanceId(InstanceId&& inInstanceId) = default;
+		SAILOR_API InstanceId(const InstanceId& inComponentId, const InstanceId& inGameObjectId);
 
 		SAILOR_API InstanceId& operator=(const InstanceId& inInstanceId) = default;
 		SAILOR_API InstanceId& operator=(InstanceId&& inInstanceId) = default;
@@ -35,6 +38,9 @@ namespace Sailor
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 		SAILOR_API size_t GetHash() const { return m_instanceId.GetHash(); }
+
+		SAILOR_API InstanceId GameObjectId() const;
+		SAILOR_API InstanceId ComponentId() const;
 
 	protected:
 

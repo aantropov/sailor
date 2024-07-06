@@ -109,6 +109,11 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 	{
 		GameObjectPtr gameObject = Instantiate(worldPosition, prefab->m_gameObjects[j].m_name);
 
+		if (prefab->m_gameObjects[j].m_instanceId)
+		{
+			gameObject->m_instanceId = prefab->m_gameObjects[j].m_instanceId;
+		}
+
 		auto& transform = gameObject->GetTransformComponent();
 		transform.SetPosition(prefab->m_gameObjects[j].m_position);
 		transform.SetRotation(prefab->m_gameObjects[j].m_rotation);
@@ -118,12 +123,14 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 		{
 			const uint32_t componentIndex = prefab->m_gameObjects[j].m_components[i];
 			const ReflectedData& reflection = prefab->m_components[componentIndex];
+			const InstanceId oldInstanceId = reflection.GetProperties()["instanceId"].as<InstanceId>();
 
 			ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
 			gameObject->AddComponentRaw(newComponent);
 			newComponent->ApplyReflection(reflection);
+			newComponent->m_instanceId = InstanceId(oldInstanceId.ComponentId(), gameObject->GetInstanceId());
 
-			resolveContext[newComponent->GetInstanceId()] = newComponent;
+			resolveContext[oldInstanceId] = newComponent;
 		}
 
 		resolveContext[gameObject->GetInstanceId()] = gameObject;
@@ -180,7 +187,7 @@ GameObjectPtr World::Instantiate(const glm::vec3& worldPosition, const std::stri
 
 	newObject->GetTransformComponent().SetOwner(newObject);
 	newObject->GetTransformComponent().SetPosition(worldPosition);
-	newObject->m_instanceId = InstanceId::CreateNewInstanceId();
+	newObject->m_instanceId = InstanceId::GenerateNewInstanceId();
 
 	m_objects.Add(newObject);
 
