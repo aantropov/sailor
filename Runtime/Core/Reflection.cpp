@@ -2,6 +2,7 @@
 #include "Components/Component.h"
 #include "Containers/ConcurrentMap.h"
 #include "RHI/Types.h"
+#include "Engine/GameObject.h"
 
 using namespace Sailor;
 
@@ -26,11 +27,11 @@ ComponentPtr Reflection::CreateCDO(const TypeInfo& pType)
 			Internal::g_cdoAllocator = Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
 		}});
 
-	check(Internal::g_pCdos && !Internal::g_pCdos->ContainsKey(typeName));
+		check(Internal::g_pCdos && !Internal::g_pCdos->ContainsKey(typeName));
 
-	auto cdo = CreateObject<Component>(pType, Internal::g_cdoAllocator);
+		auto cdo = CreateObject<Component>(pType, Internal::g_cdoAllocator);
 
-	return cdo;
+		return cdo;
 }
 
 void Reflection::RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew)
@@ -43,11 +44,11 @@ void Reflection::RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMe
 			Internal::g_pPlacementFactoryMethods = TUniquePtr<TConcurrentMap<std::string, Reflection::TPlacementFactoryMethod>>::Make();
 		}});
 
-	check(Internal::g_pPlacementFactoryMethods && !Internal::g_pPlacementFactoryMethods->ContainsKey(type.Name()));
+		check(Internal::g_pPlacementFactoryMethods && !Internal::g_pPlacementFactoryMethods->ContainsKey(type.Name()));
 
-	auto& method = Internal::g_pPlacementFactoryMethods->At_Lock(type.Name());
-	method = placementNew;
-	Internal::g_pPlacementFactoryMethods->Unlock(type.Name());
+		auto& method = Internal::g_pPlacementFactoryMethods->At_Lock(type.Name());
+		method = placementNew;
+		Internal::g_pPlacementFactoryMethods->Unlock(type.Name());
 }
 
 void Reflection::RegisterType(const std::string& typeName, const TypeInfo* pType)
@@ -60,11 +61,11 @@ void Reflection::RegisterType(const std::string& typeName, const TypeInfo* pType
 			Internal::g_pReflectionTypes = TUniquePtr<TConcurrentMap<std::string, const TypeInfo*>>::Make();
 		}});
 
-	check(Internal::g_pReflectionTypes && !Internal::g_pReflectionTypes->ContainsKey(typeName));
+		check(Internal::g_pReflectionTypes && !Internal::g_pReflectionTypes->ContainsKey(typeName));
 
-	auto& type = Internal::g_pReflectionTypes->At_Lock(typeName);
-	type = pType;
-	Internal::g_pReflectionTypes->Unlock(typeName);
+		auto& type = Internal::g_pReflectionTypes->At_Lock(typeName);
+		type = pType;
+		Internal::g_pReflectionTypes->Unlock(typeName);
 }
 
 const TypeInfo& Reflection::GetTypeByName(const std::string& typeName)
@@ -184,4 +185,23 @@ YAML::Node Reflection::ExportEngineTypes()
 	yamlTypes["enums"] = nodes;
 
 	return yamlTypes;
+}
+
+ObjectPtr IReflectable::ResolveExternalDependency(const InstanceId& componentInstanceId, const TMap<InstanceId, ObjectPtr>& resolveContext)
+{
+	if (auto goInstanceId = componentInstanceId.GameObjectId())
+	{
+		if (resolveContext.ContainsKey(goInstanceId))
+		{
+			auto go = resolveContext[goInstanceId].DynamicCast<GameObject>();
+
+			const size_t index = go->GetComponents().FindIf([&](const auto& comp) { return comp->GetInstanceId().ComponentId() == componentInstanceId.ComponentId(); });
+			if (index != -1)
+			{
+				return go->GetComponents()[index];
+			}
+		}
+	}
+
+	return ObjectPtr();
 }

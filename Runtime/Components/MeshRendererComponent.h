@@ -3,6 +3,7 @@
 #include "Tasks/Scheduler.h"
 #include "Engine/Types.h"
 #include "Engine/Object.h"
+#include "Engine/Types.h"
 #include "Components/Component.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "ECS/StaticMeshRendererECS.h"

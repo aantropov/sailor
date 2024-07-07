@@ -39,6 +39,8 @@ TSharedPtr<World> EngineLoop::CreateWorld(WorldPrefabPtr worldPrefab)
 		newWorld->Instantiate(prefab);
 	}
 
+	newWorld->ResolveExternalDependencies();
+
 	m_worlds.Emplace(newWorld);
 
 	return newWorld;

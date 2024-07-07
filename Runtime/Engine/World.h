@@ -24,8 +24,8 @@ namespace Sailor
 		SAILOR_API World(World&&) = default;
 		SAILOR_API World& operator=(World&&) = default;
 
-		SAILOR_API GameObjectPtr Instantiate(PrefabPtr prefab, const glm::vec3& worldPosition = glm::vec3(0, 0, 0));
-		SAILOR_API GameObjectPtr Instantiate(const glm::vec3& worldPosition = glm::vec3(0, 0, 0), const std::string& name = "Untitled");
+		SAILOR_API GameObjectPtr Instantiate(PrefabPtr prefab);
+		SAILOR_API GameObjectPtr Instantiate(const std::string& name = "Untitled");
 		SAILOR_API void Destroy(GameObjectPtr object);
 
 		SAILOR_API void Tick(class FrameState& frameState);
@@ -55,23 +55,34 @@ namespace Sailor
 
 		SAILOR_API const std::string& GetName() const { return m_name; }
 
+		SAILOR_API void ResolveExternalDependencies();
+
 	protected:
+
+		SAILOR_API GameObjectPtr NewGameObject(const std::string& name, const InstanceId& instanceId);
+
+		float m_time{};
+		float m_smoothDeltaTime = 0.016f;
 
 		size_t m_currentFrame;
 		std::string m_name;
+
 		TVector<GameObjectPtr> m_objects;
-		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
-		TMap<size_t, Sailor::ECS::TBaseSystemPtr> m_ecs;
+		TMap<InstanceId, ObjectPtr> m_objectsMap;
+
 		TVector<size_t> m_sortedEcs;
+		TMap<size_t, Sailor::ECS::TBaseSystemPtr> m_ecs;
 
 		FrameInputState m_frameInput;
-		float m_time{};
-		float m_smoothDeltaTime = 0.016f;
 
 		RHI::RHICommandListPtr m_commandList;
 		TUniquePtr<RHI::DebugContext> m_pDebugContext;
 
 		Memory::ObjectAllocatorPtr m_allocator;
 		bool m_bIsBeginPlayCalled;
+
+		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
+
+		TVector<TPair<ComponentPtr, ReflectedData>> ComponentsToResolveDependencies;
 	};
 }

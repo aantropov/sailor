@@ -57,9 +57,9 @@ namespace Sailor
 	{ \
 		__CLASSNAME__::ApplyReflection_Impl<__CLASSNAME__>(this, reflection); \
 	} \
-	virtual void ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true) override \
+	virtual bool ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true) override \
 	{ \
-		__CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext, bImmediate); \
+		return __CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext, bImmediate); \
 	} \
 	protected: \
 	class SAILOR_API RegistrationFactoryMethod \
@@ -180,12 +180,15 @@ namespace Sailor
 	class SAILOR_API IReflectable
 	{
 	public:
+
 		virtual const TypeInfo& GetTypeInfo() const = 0;
 		virtual ReflectedData GetReflectedData() const = 0;
 		virtual void ApplyReflection(const ReflectedData& reflection) = 0;
-		virtual void ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true) {}
+		virtual bool ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true) { return true; }
 
 	protected:
+
+		static ObjectPtr ResolveExternalDependency(const InstanceId& componentInstanceId, const TMap<InstanceId, ObjectPtr>& resolveContext);
 
 		template<typename TPropertyType>
 		__forceinline static TPropertyType ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate)
@@ -200,13 +203,26 @@ namespace Sailor
 					v = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<ElementType>(fileId, bImmediate);
 				}
 			}
-			else if (node["instanceId"])
+
+			if (node["instanceId"])
 			{
 				InstanceId instanceId = node["instanceId"].as<InstanceId>();
 
-				if (instanceId && resolveContext.ContainsKey(instanceId))
+				if (instanceId)
 				{
-					if (auto objPtr = resolveContext[instanceId])
+					// We expect only one of instanceId and fileId is filled
+					check(!v);
+
+					// Resolve internal dependencies
+					if (resolveContext.ContainsKey(instanceId))
+					{
+						if (auto objPtr = resolveContext[instanceId])
+						{
+							v = objPtr.DynamicCast<ElementType>();
+						}
+					}
+					// Resolve external dependencies
+					else if (auto objPtr = ResolveExternalDependency(instanceId, resolveContext))
 					{
 						v = objPtr.DynamicCast<ElementType>();
 					}
@@ -217,8 +233,9 @@ namespace Sailor
 		}
 
 		template<typename T>
-		static void ResolveRefs_Impl(T* ptr, const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true)
+		static bool ResolveRefs_Impl(T* ptr, const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true)
 		{
+			bool bResolved = true;
 			for_each(refl::reflect<T>().members, [&](auto member)
 				{
 					if constexpr (is_writable(member))
@@ -227,14 +244,20 @@ namespace Sailor
 						if (reflection.GetProperties().ContainsKey(displayName))
 						{
 							const YAML::Node& node = reflection.GetProperties()[displayName];
-							if (node.IsDefined())
+							if (node.IsDefined() && !node.IsNull())
 							{
 								if constexpr (is_field(member))
 								{
 									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
 									if constexpr (Sailor::IsObjectPtr<PropertyType>)
 									{
-										member(*ptr) = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
+										if (!member(*ptr))
+										{
+											auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
+											bResolved &= (bool)resolved;
+
+											member(*ptr) = resolved;
+										}
 									}
 								}
 								else if constexpr (refl::descriptor::is_function(member))
@@ -242,13 +265,21 @@ namespace Sailor
 									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
 									if constexpr (Sailor::IsObjectPtr<PropertyType>)
 									{
-										member(*ptr, ResolveObject<PropertyType>(node, resolveContext, bImmediate));
+										if (!get_reader(member)(*ptr))
+										{
+											auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
+											bResolved &= (bool)resolved;
+
+											member(*ptr, resolved);
+										}
 									}
 								}
 							}
 						}
 					}
 				});
+
+			return bResolved;
 		}
 
 		template<typename T>

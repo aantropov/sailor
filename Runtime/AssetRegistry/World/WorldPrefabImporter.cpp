@@ -216,7 +216,7 @@ void WorldPrefabImporter::CollectGarbage()
 
 	for (const auto& id : ids)
 	{
-		auto promise = m_promises.At_Lock(id);
+		auto& promise = m_promises.At_Lock(id);
 
 		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
 		{

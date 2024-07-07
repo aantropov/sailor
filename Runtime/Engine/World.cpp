@@ -7,7 +7,7 @@
 
 using namespace Sailor;
 
-World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false), m_currentFrame(1)
+World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false), m_currentFrame(1), m_frameInput()
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make(EAllocationPolicy::LocalMemory_SingleThread);
 
@@ -82,14 +82,32 @@ void World::Tick(FrameState& frameState)
 
 	for (auto& el : m_pendingDestroyObjects)
 	{
+		if (!el)
+			continue;
+
 		check(el->m_bPendingDestroy);
 
-		el->EndPlay();
-		el->RemoveAllComponents();
-		el->m_self = nullptr;
-		el.DestroyObject(m_allocator);
+		TVector<GameObjectPtr> destroyingObjects;
+		destroyingObjects.Reserve(el->GetChildren().Num() + 1);
 
-		m_objects.RemoveFirst(el);
+		destroyingObjects.Add(el);
+		while (destroyingObjects.Num() > 0)
+		{
+			auto go = destroyingObjects[0];
+			destroyingObjects.RemoveAt(0);
+
+			ComponentsToResolveDependencies.RemoveAll([&](const auto& el) { return el.m_first->m_instanceId.GameObjectId() == go->GetInstanceId(); });
+
+			go->RemoveAllComponents();
+
+			go->EndPlay();
+			destroyingObjects.AddRange(go->GetChildren());
+
+			m_objectsMap.Remove(go->m_instanceId);
+			m_objects.RemoveFirst(go);
+
+			go.DestroyObject(m_allocator);
+		}
 	}
 
 	m_pendingDestroyObjects.Clear();
@@ -98,21 +116,20 @@ void World::Tick(FrameState& frameState)
 	RHI::Renderer::GetDriverCommands()->EndCommandList(m_commandList);
 }
 
-GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPosition)
+GameObjectPtr World::Instantiate(PrefabPtr prefab)
 {
 	check(prefab->m_gameObjects.Num() > 0);
 
 	TVector<GameObjectPtr> gameObjects;
-	TMap<InstanceId, ObjectPtr> resolveContext;
+	TMap<InstanceId, ObjectPtr> internalDependencies;
 
 	for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
 	{
-		GameObjectPtr gameObject = Instantiate(worldPosition, prefab->m_gameObjects[j].m_name);
+		// We generate new instance id for game objects if the same is already in use
+		const bool bShouldGenerateNewId = !prefab->m_gameObjects[j].m_instanceId || m_objectsMap.ContainsKey(prefab->m_gameObjects[j].m_instanceId);
+		const InstanceId gameObjectId = bShouldGenerateNewId ? InstanceId::GenerateNewInstanceId() : prefab->m_gameObjects[j].m_instanceId;
 
-		if (prefab->m_gameObjects[j].m_instanceId)
-		{
-			gameObject->m_instanceId = prefab->m_gameObjects[j].m_instanceId;
-		}
+		GameObjectPtr gameObject = NewGameObject(prefab->m_gameObjects[j].m_name, gameObjectId);
 
 		auto& transform = gameObject->GetTransformComponent();
 		transform.SetPosition(prefab->m_gameObjects[j].m_position);
@@ -130,10 +147,13 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 			newComponent->ApplyReflection(reflection);
 			newComponent->m_instanceId = InstanceId(oldInstanceId.ComponentId(), gameObject->GetInstanceId());
 
-			resolveContext[oldInstanceId] = newComponent;
+			// We store the old ids for internal dependencies during resolve
+			internalDependencies[oldInstanceId] = newComponent;
 		}
 
-		resolveContext[gameObject->GetInstanceId()] = gameObject;
+		// We store the old ids for internal dependencies during resolve
+		internalDependencies[prefab->m_gameObjects[j].m_instanceId] = gameObject;
+
 		gameObjects.Add(gameObject);
 	}
 
@@ -144,7 +164,19 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 			auto& newComp = go->m_components[i];
 			const ReflectedData& reflection = prefab->m_components[i];
 
-			newComp->ResolveRefs(reflection, resolveContext, false);
+			// Resolve internal dependencies first
+			bool bResolved = newComp->ResolveRefs(reflection, internalDependencies, false);
+
+			// Resolve external dependencies
+			if (!bResolved)
+			{
+				bResolved = newComp->ResolveRefs(reflection, m_objectsMap, false);
+			}
+
+			if (!bResolved)
+			{
+				ComponentsToResolveDependencies.Add(TPair(newComp, reflection));
+			}
 		}
 	}
 
@@ -166,16 +198,34 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, const glm::vec3& worldPositio
 		}
 	}
 
-	root->GetTransformComponent().SetPosition(worldPosition);
+	// Should we try to resolve the previous open dependencies?
+	// ResolveExternalDependencies();
 
 	return root;
 }
 
-GameObjectPtr World::Instantiate(const glm::vec3& worldPosition, const std::string& name)
+void World::ResolveExternalDependencies()
+{
+	for (uint32_t i = 0; i < ComponentsToResolveDependencies.Num(); i++)
+	{
+		auto& el = ComponentsToResolveDependencies[i];
+		if (const bool bResolved = el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
+		{
+			ComponentsToResolveDependencies.RemoveAt(i);
+			i--;
+		}
+	}
+}
+
+GameObjectPtr World::NewGameObject(const std::string& name, const InstanceId& instanceId)
 {
 	auto newObject = GameObjectPtr::Make(m_allocator, this, name);
+
 	check(newObject);
+	check(instanceId);
+
 	newObject->m_self = newObject;
+	newObject->m_instanceId = instanceId;
 
 	newObject->Initialize();
 
@@ -186,10 +236,16 @@ GameObjectPtr World::Instantiate(const glm::vec3& worldPosition, const std::stri
 	}
 
 	newObject->GetTransformComponent().SetOwner(newObject);
-	newObject->GetTransformComponent().SetPosition(worldPosition);
-	newObject->m_instanceId = InstanceId::GenerateNewInstanceId();
 
 	m_objects.Add(newObject);
+	m_objectsMap[newObject->m_instanceId] = newObject;
+
+	return newObject;
+}
+
+GameObjectPtr World::Instantiate(const std::string& name)
+{
+	auto newObject = NewGameObject(name, InstanceId::GenerateNewInstanceId());
 
 	return newObject;
 }
@@ -205,12 +261,30 @@ void World::Destroy(GameObjectPtr object)
 
 void World::Clear()
 {
+	ComponentsToResolveDependencies.Clear();
+
 	for (auto& el : m_objects)
 	{
-		el->EndPlay();
-		el->RemoveAllComponents();
-		el->m_self = nullptr;
-		el.DestroyObject(m_allocator);
+		if (!el)
+			continue;
+
+		TVector<GameObjectPtr> destroyingObjects;
+		destroyingObjects.Reserve(el->GetChildren().Num() + 1);
+
+		destroyingObjects.Add(el);
+		while (destroyingObjects.Num() > 0)
+		{
+			auto go = destroyingObjects[0];
+			destroyingObjects.RemoveAtSwap(0);
+
+			go->RemoveAllComponents();
+
+			go->EndPlay();
+			destroyingObjects.AddRange(go->GetChildren());
+
+			m_objectsMap.Remove(go->m_instanceId);
+			go.DestroyObject(m_allocator);
+		}
 	}
 
 	m_objects.Clear();
@@ -221,4 +295,6 @@ void World::Clear()
 	{
 		(*ecs.m_second)->EndPlay();
 	}
+
+	check(m_objectsMap.Num() == 0);
 }
