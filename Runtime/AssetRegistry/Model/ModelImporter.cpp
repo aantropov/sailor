@@ -13,17 +13,21 @@
 #include "RHI/Renderer.h"
 #include "Memory/ObjectAllocator.hpp"
 
-//Assimp
-#include "assimp/scene.h"
-#include "assimp/postprocess.h"
-#include "assimp/Importer.hpp"
-#include "assimp/DefaultLogger.hpp"
-#include "assimp/LogStream.hpp"
-
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "Tasks/Scheduler.h"
 
+////Assimp
+//#include "assimp/scene.h"
+//#include "assimp/postprocess.h"
+//#include "assimp/Importer.hpp"
+//#include "assimp/DefaultLogger.hpp"
+//#include "assimp/LogStream.hpp"
+
 using namespace Sailor;
+
+/*
+//////////////////////////
+// Assimp Helper Functions
 
 namespace {
 	const unsigned int DefaultImportFlags_Assimp =
@@ -41,8 +45,6 @@ namespace {
 		aiProcess_ValidateDataStructure;
 }
 
-//////////////////////////
-// Assimp Helper Functions
 TVector<std::string> TraceUsedTextures_Assimp(aiMaterial* mat, aiTextureType type)
 {
 	TVector<std::string> textures;
@@ -241,6 +243,7 @@ void ProcessNode_Assimp(TVector<ModelImporter::MeshContext>& outParsedMeshes, ai
 	}
 }
 //////////////////////////
+*/
 
 YAML::Node Model::Serialize() const
 {
@@ -317,29 +320,29 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	Assimp::Importer importer;
-	const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? aiProcess_OptimizeMeshes : 0);
-	const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
+	//Assimp::Importer importer;
+	//const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? aiProcess_OptimizeMeshes : 0);
+	//const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
 
-	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-	{
-		SAILOR_LOG("%s", importer.GetErrorString());
-		return;
-	}
+	//if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+	//{
+	//	SAILOR_LOG("%s", importer.GetErrorString());
+	//	return;
+	//}
 
-	const std::string texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
+	//const std::string texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 
-	TVector<MaterialAsset::Data> materials;
-	ProcessNodeMaterials_Assimp(materials, scene->mRootNode, scene, texturesFolder);
+	//TVector<MaterialAsset::Data> materials;
+	//ProcessNodeMaterials_Assimp(materials, scene->mRootNode, scene, texturesFolder);
 
-	for (const auto& material : materials)
-	{
-		std::string materialsFolder = AssetRegistry::GetContentFolder() + texturesFolder + "materials/";
-		std::filesystem::create_directory(materialsFolder);
+	//for (const auto& material : materials)
+	//{
+	//	std::string materialsFolder = AssetRegistry::GetContentFolder() + texturesFolder + "materials/";
+	//	std::filesystem::create_directory(materialsFolder);
 
-		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));
-		assetInfo->GetDefaultMaterials().Add(materialFileId);
-	}
+	//	FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));
+	//	assetInfo->GetDefaultMaterials().Add(materialFileId);
+	//}
 }
 
 bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
@@ -389,7 +392,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		};
 
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
-			[model, assetInfo, this, &boundsAabb, &boundsSphere]()
+			[model, assetInfo, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
 				res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
@@ -413,15 +416,15 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 						model->Flush();
 					}
 					return model;
-				}, "Update RHI Meshes", Tasks::EThreadType::RHI)->ToTaskWithResult();
+				}, "Update RHI Meshes", EThreadType::RHI)->ToTaskWithResult();
 
-				outModel = loadedModel = model;
-				promise->Run();
+			outModel = loadedModel = model;
+			promise->Run();
 
-				m_loadedModels.Unlock(uid);
-				m_promises.Unlock(uid);
+			m_loadedModels.Unlock(uid);
+			m_promises.Unlock(uid);
 
-				return promise;
+			return promise;
 	}
 
 	outModel = nullptr;
@@ -433,29 +436,29 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
-	Assimp::Importer importer;
+	//Assimp::Importer importer;
 
-	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
-	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
+	//outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
+	//outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
 
-	const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? (aiProcess_OptimizeMeshes | aiProcess_ImproveCacheLocality) : 0);
-	const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
+	//const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? (aiProcess_OptimizeMeshes | aiProcess_ImproveCacheLocality) : 0);
+	//const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
 
-	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-	{
-		SAILOR_LOG("%s", importer.GetErrorString());
-		return false;
-	}
+	//if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+	//{
+	//	SAILOR_LOG("%s", importer.GetErrorString());
+	//	return false;
+	//}
 
-	ProcessNode_Assimp(outParsedMeshes, scene->mRootNode, scene, assetInfo->GetUnitScale());
+	//ProcessNode_Assimp(outParsedMeshes, scene->mRootNode, scene, assetInfo->GetUnitScale());
 
-	for (const auto& mesh : outParsedMeshes)
-	{
-		outBoundsAabb.Extend(mesh.bounds);
-	}
+	//for (const auto& mesh : outParsedMeshes)
+	//{
+	//	outBoundsAabb.Extend(mesh.bounds);
+	//}
 
-	outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);
-	outBoundsSphere.m_radius = glm::distance(outBoundsAabb.m_max, outBoundsSphere.m_center);
+	//outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);
+	//outBoundsSphere.m_radius = glm::distance(outBoundsAabb.m_max, outBoundsSphere.m_center);
 
 	return true;
 }

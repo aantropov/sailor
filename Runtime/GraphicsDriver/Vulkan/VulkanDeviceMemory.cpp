@@ -60,7 +60,6 @@ void VulkanDeviceMemory::Copy(VkDeviceSize offset, VkDeviceSize size, const void
 
 	//Map(offset, size, 0, &buffer_data);
 
-	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	const uint32_t mbToUseThreads = 4 * 1024 * 1024;
 
 	// That's not tested

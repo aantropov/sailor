@@ -14,7 +14,7 @@ namespace Sailor
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 
-	class StaticMeshRendererData : public ECS::TComponent
+	class StaticMeshRendererData final : public ECS::TComponent
 	{
 	public:
 
@@ -50,5 +50,5 @@ namespace Sailor
 		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
 	};
 
-	template ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>;
+	template class ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>;
 }

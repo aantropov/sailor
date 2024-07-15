@@ -38,8 +38,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 	const std::string QueueTag = GetString("Tag");
 	const size_t QueueTagHash = GetHash(QueueTag);
 
-	Tasks::TaskPtr res = Tasks::CreateTask("Prepare RenderSceneNode  " + std::to_string(sceneView.m_frame),
-		[=, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
+	auto res = Tasks::CreateTask("Prepare RenderSceneNode  " + std::to_string(sceneView.m_frame),
+		[=, this, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
 
 			syncSharedResources.Lock();
 
@@ -98,7 +98,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			}
 
 			syncSharedResources.Unlock();
-		}, Tasks::EThreadType::RHI);
+		}, EThreadType::RHI);
 
 	return res;
 }
@@ -213,7 +213,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				bool bIsInited = false;
 				for (const auto& instancedDrawCall : m_drawCalls[vecBatches[j]])
 				{
-					auto& mesh = instancedDrawCall.First();
 					auto& matrices = *instancedDrawCall.Second();
 
 					memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(PerInstanceData) * matrices.Num());
@@ -281,7 +280,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 					commands->EndCommandList(cmdList);
 					secondaryCommandLists[i] = std::move(cmdList);
-				}, Tasks::EThreadType::RHI);
+				}, EThreadType::RHI);
 
 			task->Run();
 			tasks.Add(task);

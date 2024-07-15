@@ -16,6 +16,7 @@
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
 #include "Core/Reflection.h"
+#include "Tasks/Tasks.h"
 
 using namespace Sailor::Memory;
 

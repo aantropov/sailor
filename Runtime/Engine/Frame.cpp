@@ -1,8 +1,6 @@
-#pragma once
 #include "Frame.h"
 #include "Core/Defines.h"
 #include "Platform/Win32/Input.h"
-#include "Math.h"
 #include "Core/Utils.h"
 #include "RHI/Renderer.h"
 #include "RHI/Mesh.h"
@@ -14,13 +12,14 @@
 
 using namespace Sailor;
 
-FrameState::FrameState() noexcept
+
+Sailor::FrameState::FrameState() noexcept
 {
 	m_pData = TUniquePtr<FrameData>::Make();
 }
 
-FrameState::FrameState(WorldPtr world, int64_t timeMs, const FrameInputState& currentInputState, const ivec2& centerPointViewport, const FrameState* previousFrame) noexcept
-	: FrameState()
+Sailor::FrameState::FrameState(WorldPtr world, int64_t timeMs, const FrameInputState& currentInputState, const ivec2& centerPointViewport, const Sailor::FrameState* previousFrame) noexcept
+	: Sailor::FrameState()
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -41,24 +40,24 @@ FrameState::FrameState(WorldPtr world, int64_t timeMs, const FrameInputState& cu
 	m_pData->m_drawImGui = nullptr;
 }
 
-FrameState::FrameState(const FrameState& frameState) noexcept :
-	FrameState()
+Sailor::FrameState::FrameState(const Sailor::FrameState& frameState) noexcept :
+	Sailor::FrameState()
 {
 	m_pData = TUniquePtr<FrameData>::Make(*frameState.m_pData);
 }
 
-FrameState::FrameState(FrameState&& frameState) noexcept
+Sailor::FrameState::FrameState(Sailor::FrameState&& frameState) noexcept
 {
 	std::swap(m_pData, frameState.m_pData);
 }
 
-FrameState& FrameState::operator=(FrameState frameState)
+Sailor::FrameState& Sailor::FrameState::operator=(Sailor::FrameState frameState)
 {
 	std::swap(m_pData, frameState.m_pData);
 	return *this;
 }
 
-RHI::RHICommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
+RHI::RHICommandListPtr Sailor::FrameState::CreateCommandBuffer(uint32_t index)
 {
 	auto cmdList = m_pData->m_updateResourcesCommandBuffers[index] = RHI::Renderer::GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Transfer);
 	RHI::Renderer::GetDriver()->SetDebugName(cmdList, "World");
@@ -66,7 +65,7 @@ RHI::RHICommandListPtr FrameState::CreateCommandBuffer(uint32_t index)
 	return cmdList;
 }
 
-WorldPtr FrameState::GetWorld() const
+WorldPtr Sailor::FrameState::GetWorld() const
 {
 	return m_pData->m_world;
 }

@@ -1,5 +1,5 @@
 #include "Core/LogMacros.h"
-#include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 #include "RenderDocApi.h"
 #include <libloaderapi.h>
 

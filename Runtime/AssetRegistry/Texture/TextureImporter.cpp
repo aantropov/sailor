@@ -116,7 +116,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 						return true;
 					}
 					return false;
-				}, Tasks::EThreadType::RHI)->Run();
+				}, EThreadType::RHI)->Run();
 
 				pTexture->TraceHotReload(newPromise);
 		}
@@ -212,7 +212,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 		};
 
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
-			[pTexture, assetInfo, this]() mutable
+			[pTexture, assetInfo]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
 				pData->bIsImported = ImportTexture(assetInfo->GetFileId(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
@@ -244,7 +244,7 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 					}
 
 					return pTexture;
-				}, "Create RHI texture", Tasks::EThreadType::RHI)->ToTaskWithResult();
+				}, "Create RHI texture", EThreadType::RHI)->ToTaskWithResult();
 
 				outTexture = loadedTexture = pTexture;
 				promise->Run();

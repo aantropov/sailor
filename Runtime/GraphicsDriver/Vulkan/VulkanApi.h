@@ -16,7 +16,11 @@
 
 namespace Sailor
 {
-	class Win32::Window;
+	namespace Win32
+	{
+		class Window;
+	}
+
 	class FrameState;
 	namespace Memory
 	{
@@ -71,7 +75,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 	typedef TRefPtr<class VulkanStateDynamicState> VulkanStateDynamicPtr;
 	typedef TRefPtr<class VulkanStateDynamicRendering> VulkanStateDynamicRenderingPtr;
 
+#ifdef _DEBUG
 #define VK_CHECK(call) 	do { VkResult result_ = call; check(result_ == VK_SUCCESS); } while (0)
+#else
+#define VK_CHECK(call) call
+#endif
 
 #define NUM_ELEMENTS(array) (sizeof(array) / sizeof(array[0]))
 
@@ -103,7 +111,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Reverse Z, 0.0f is the farest
 		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 0.0f, 0 };
-		static constexpr VkClearValue DefaultClearColor{ {0.0f,0.0f,0.0f,0.0f} };
+		static constexpr VkClearValue DefaultClearColor{ {{0.0f,0.0f,0.0f,0.0f}} };
 
 		SAILOR_API static void Initialize(Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API virtual ~VulkanApi() override;

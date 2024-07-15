@@ -25,7 +25,7 @@ void CopyTextureToRamNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandL
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
-	if (m_texture = GetResolvedAttachment("src"))
+	if ((m_texture = GetResolvedAttachment("src")))
 	{
 		commands->ImageMemoryBarrier(commandList, m_texture, EImageLayout::TransferSrcOptimal);
 		if (!m_cpuBuffer || m_cpuBuffer->GetSize() < m_texture->GetSize())

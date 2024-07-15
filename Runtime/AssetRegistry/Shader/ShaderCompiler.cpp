@@ -33,7 +33,7 @@ using namespace Sailor;
 
 class ShaderIncluder : public shaderc::CompileOptions::IncluderInterface
 {
-	shaderc_include_result* GetInclude(const char* requestedSource, shaderc_include_type type, const char* requestingSource, size_t includeDepth)
+	shaderc_include_result* GetInclude(const char* requestedSource, shaderc_include_type type, const char* requestingSource, size_t includeDepth) override
 	{
 		string contents = ReadIncludeFile(requestedSource);
 
@@ -180,8 +180,6 @@ void ShaderCompiler::UpdateConstantsLibrary()
 
 		return;
 	}
-
-	bool bShouldUpdate = true;
 
 	std::string data;
 
@@ -371,7 +369,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
-		Tasks::TaskPtr<bool> saveCacheJob = Tasks::CreateTaskWithResult<bool>("Save Shader Cache", [=]()
+		Tasks::TaskPtr<bool> saveCacheJob = Tasks::CreateTaskWithResult<bool>("Save Shader Cache", [=, this]()
 			{
 				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
 				m_shaderCache.SaveCache();
@@ -469,7 +467,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 				auto compileTask = CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
 				if (compileTask)
 				{
-					compileTask->Then([=](bool bRes)
+					compileTask->Then([=, this](bool bRes)
 						{
 							if (bRes)
 							{
@@ -588,8 +586,8 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
 	{
-		const size_t numErrors = module.GetNumErrors();
-		const size_t numWarnings = module.GetNumWarnings();
+		//const size_t numErrors = module.GetNumErrors();
+		//const size_t numWarnings = module.GetNumWarnings();
 		const std::string fullError = module.GetErrorMessage();
 
 		uint32_t start = 0;
@@ -771,7 +769,7 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 			auto pShader = ShaderSetPtr::Make(m_allocator, uid, defines);
 
 			newPromise = Tasks::CreateTaskWithResult<ShaderSetPtr>("Load shader",
-				[pShader, assetInfo, this, permutation]()
+				[pShader, this, permutation]()
 				{
 					UpdateRHIResource(pShader, permutation);
 					return pShader;

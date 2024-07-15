@@ -10,7 +10,7 @@
 
 namespace Sailor
 {
-	class CameraData : public ECS::TComponent
+	class CameraData final : public ECS::TComponent
 	{
 	public:
 
@@ -21,7 +21,7 @@ namespace Sailor
 		SAILOR_API __forceinline glm::mat4 GetInvViewMatrix() const;
 		SAILOR_API __forceinline glm::mat4 GetInvViewProjection() const;
 		SAILOR_API __forceinline glm::mat4 GetInvProjection() const;
-		
+
 		SAILOR_API float GetFov() const { return m_fovDegrees; }
 		SAILOR_API float GetAspect() const { return m_aspect; }
 		SAILOR_API float GetZNear() const { return m_zNear; }
@@ -46,7 +46,7 @@ namespace Sailor
 		friend class CameraECS;
 	};
 
-	class SAILOR_API CameraECS : public ECS::TSystem<CameraECS, CameraData>
+	class SAILOR_API CameraECS final : public ECS::TSystem<CameraECS, CameraData>
 	{
 	public:
 
@@ -60,4 +60,6 @@ namespace Sailor
 		TVector<CameraData> m_rhiCameras;
 		TVector<Math::Transform> m_rhiCameraTransforms;
 	};
+
+	template class ECS::TSystem<CameraECS, CameraData>;
 }

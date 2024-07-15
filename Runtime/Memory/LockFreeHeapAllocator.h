@@ -1,11 +1,12 @@
 #pragma once
 #include <cassert>
 #include "Core/Defines.h"
+#include "BaseAllocator.hpp"
 
 namespace Sailor::Memory
 {
 	// Global allocator
-	class SAILOR_API LockFreeHeapAllocator
+	class SAILOR_API LockFreeHeapAllocator : public IBaseAllocator
 	{
 	public:
 

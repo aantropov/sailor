@@ -6,7 +6,7 @@
 namespace Sailor::Memory
 {
 	template<typename TGlobalAllocator, typename TPtr>
-	class TBlockAllocator
+	class TBlockAllocator : public IBaseAllocator
 	{
 	public:
 
@@ -17,15 +17,15 @@ namespace Sailor::Memory
 			MemoryBlock(size_t size, TBlockAllocator* owner) :
 				m_blockSize(size),
 				m_emptySpace(size),
-				m_layout({ {0, size} }),
 				m_blockIndex(InvalidIndexUINT32),
-				m_owner(owner)
+				m_owner(owner),
+				m_layout({ {0, size} })
 			{
 				//std::cout << "Allocate Block " << (int32_t)size << std::endl;
 				m_ptr = Sailor::Memory::Allocate<TMemoryPtr<TPtr>, TPtr, TGlobalAllocator>(size, &m_owner->m_dataAllocator);
 
 				const uint32_t bestFit = 32;
-				m_layout.Reserve(32);
+				m_layout.Reserve(bestFit);
 			}
 
 			~MemoryBlock()
@@ -115,7 +115,6 @@ namespace Sailor::Memory
 				if (lower != m_layout.end())
 				{
 					const size_t i = lower - m_layout.begin();
-					bool bMerged = false;
 
 					const bool leftMerged = i > 0 && m_layout[i - 1].m_first + m_layout[i - 1].m_second == ptr.m_offset;
 					const bool rightMerged = ptr.m_offset + ptr.m_size + ptr.m_alignmentOffset == m_layout[i].m_first;

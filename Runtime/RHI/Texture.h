@@ -23,11 +23,11 @@ namespace Sailor::RHI
 #endif
 
 		SAILOR_API RHITexture(ETextureFiltration filtration, ETextureClamping clamping, bool bShouldGenerateMips, EImageLayout defaultLayout = EImageLayout::ShaderReadOnlyOptimal, ESamplerReductionMode reduction = ESamplerReductionMode::Average) :
+			m_reduction(reduction),
 			m_filtration(filtration),
 			m_clamping(clamping),
-			m_bHasMipMaps(bShouldGenerateMips),
 			m_defaultLayout(defaultLayout),
-			m_reduction(reduction)
+			m_bHasMipMaps(bShouldGenerateMips)
 		{}
 
 		SAILOR_API ESamplerReductionMode GetSamplerReduction() const { return m_reduction; }

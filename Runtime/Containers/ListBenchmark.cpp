@@ -126,8 +126,6 @@ public:
 		stdList.Start();
 		for (size_t i = 0; i < countToDelete; i++)
 		{
-			const int32_t value = rand();
-
 			if (i % 2)
 			{
 				ideal.pop_front();
@@ -143,8 +141,6 @@ public:
 		tList.Start();
 		for (size_t i = 0; i < countToDelete; i++)
 		{
-			const int32_t value = rand();
-
 			if (i % 2)
 			{
 				container.PopBack();

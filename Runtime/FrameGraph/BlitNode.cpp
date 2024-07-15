@@ -66,14 +66,16 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 
 	const bool bIsDepthFormat = RHI::IsDepthFormat(src->GetFormat()) || RHI::IsDepthFormat(dst->GetFormat());
 
+#ifdef _DEBUG
 	const auto srcFormatName = magic_enum::enum_name(src->GetFormat());
 	const auto dstFormatName = magic_enum::enum_name(dst->GetFormat());
 
 	// In case of float ot uint conversion we should forcely run BlitRaw
 	const bool bForceConversion = !bIsDepthFormat &&
 		srcFormatName.substr(srcFormatName.length() - 4, 4) != dstFormatName.substr(dstFormatName.length() - 4, 4);
-	
+
 	check(!bForceConversion);
+#endif
 
 	//glm::vec4 srcRegion = GetVec4("srcRegion");
 	//glm::vec4 dstRegion = GetVec4("dstRegion");

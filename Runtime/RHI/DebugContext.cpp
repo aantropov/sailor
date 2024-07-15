@@ -387,7 +387,6 @@ void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, co
 	}
 
 	auto commands = RHI::Renderer::GetDriverCommands();
-	auto& renderer = App::GetSubmodule<Renderer>()->GetDriver();
 
 	commands->BindMaterial(secondaryDrawCmdList, m_material);
 	commands->SetDefaultViewport(secondaryDrawCmdList);

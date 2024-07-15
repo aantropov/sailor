@@ -7,7 +7,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "ECS/StaticMeshRendererECS.h"
 #include "Containers/Octree.h"
-#include "Framegraph/SkyNode.h"
+#include "FrameGraph/SkyNode.h"
 #include "Math/Math.h"
 #include "Components/MeshRendererComponent.h"
 

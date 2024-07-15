@@ -1,4 +1,3 @@
-#pragma once
 #include "LockFreeHeapAllocator.h"
 #include <windows.h>
 #include <mutex>

@@ -69,6 +69,8 @@ namespace Sailor::ECS
 
 		void UpdateGameObject(GameObjectPtr gameObject, size_t lastFrameChanges);
 
+		virtual ~TBaseSystem() = default;
+
 	private:
 
 		WorldPtr m_world{};
@@ -84,7 +86,8 @@ namespace Sailor::ECS
 
 		TSystem()
 		{
-			TSystem::s_registrationFactoryMethod;
+			auto res = TSystem::s_registrationFactoryMethod;
+			res.DoWork();
 		}
 
 		virtual size_t RegisterComponent() override
@@ -156,12 +159,14 @@ namespace Sailor::ECS
 				}
 			}
 
+			void DoWork() {}
+
 		protected:
 
 			static bool s_bRegistered;
 		};
 
-		static volatile RegistrationFactoryMethod s_registrationFactoryMethod;
+		static RegistrationFactoryMethod s_registrationFactoryMethod;
 	};
 
 	template<typename T, typename R>
@@ -169,9 +174,10 @@ namespace Sailor::ECS
 
 #ifndef _SAILOR_IMPORT_
 	template<typename T, typename R>
-	TSystem<T, R>::RegistrationFactoryMethod volatile TSystem<T, R>::s_registrationFactoryMethod;
+	typename TSystem<T, R>::RegistrationFactoryMethod TSystem<T, R>::s_registrationFactoryMethod;
 
 	template<typename T, typename R>
 	bool TSystem<T, R>::RegistrationFactoryMethod::s_bRegistered = false;
 #endif
+
 }

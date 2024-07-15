@@ -83,7 +83,7 @@ vec3 LightingModel::CalculateBTDF(const vec3& viewDirection, const vec3& worldNo
 	// Flip light direction
 	const vec3 lightDirection = lDirection + 2.0f * worldNormal * dot(-lDirection, worldNormal);
 
-	const float ambientOcclusion = sample.m_orm.x;
+	//const float ambientOcclusion = sample.m_orm.x;
 	const float roughness = sample.m_orm.y;
 	const float metallic = sample.m_orm.z;
 	const float transmission = sample.m_transmission;
@@ -122,7 +122,7 @@ vec3 LightingModel::CalculateBTDF(const vec3& viewDirection, const vec3& worldNo
 
 vec3 LightingModel::CalculateBRDF(const vec3& viewDirection, const vec3& worldNormal, const vec3& lightDirection, const LightingModel::SampledData& sample)
 {
-	const float ambientOcclusion = sample.m_orm.x;
+	//const float ambientOcclusion = sample.m_orm.x;
 	const float roughness = sample.m_orm.y;
 	const float metallic = sample.m_orm.z;
 

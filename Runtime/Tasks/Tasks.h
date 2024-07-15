@@ -7,6 +7,7 @@
 #include "Sailor.h"
 #include "Memory/UniquePtr.hpp"
 #include "Memory/SharedPtr.hpp"
+#include "Scheduler.h"
 
 namespace Sailor
 {
@@ -14,44 +15,25 @@ namespace Sailor
 	{
 		class Scheduler;
 
-		enum class EThreadType : uint8_t
-		{
-			Render = 0,
-			Worker = 1,
-			Main = 2,
-
-			// RHI Threads are used for creating RHI resources 
-			// to decrease the num of RHIThreadContext that could lead to
-			// cache misses and extra consumed memory (ram and vram)
-			RHI = 3
-		};
-
 		/* The tasks are using Tasks::Scheduler to run the activities on other threads.
 		*  The main point to use tasks is to handle/get results of long term tasks without blocking the current thread.
 		*  The chaining is implemented via linked list and there is no need to explicitely run the added(by calling ->Then) tasks.
 		*  While Join is designed as low-level kind of call, so you have to run Joined threads explicitely.
 		*  Api is designed to always pass the name of Task to it.
 		*/
+
 		template<typename T, typename R>
 		class Task;
 
 		template<typename TResult = void, typename TArgs = void>
 		using TaskPtr = TSharedPtr<Task<TResult, TArgs>>;
-		using ITaskPtr = TSharedPtr <class ITask>;
-
-		struct TaskSyncBlock
-		{
-			std::condition_variable m_onComplete{};
-			std::mutex m_mutex{};
-			bool m_bCompletionFlag = false;
-		};
 
 		template<typename TResult = void, typename TArgs = void>
 		TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread = EThreadType::Worker)
 		{
 			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
 			task->m_self = task;
-			task->m_taskSyncBlockHandle = App::GetSubmodule<Scheduler>()->AcquireTaskSyncBlock();
+			task->m_taskSyncBlockHandle = App::GetSubmodule<Tasks::Scheduler>()->AcquireTaskSyncBlock();
 			return task;
 		}
 
@@ -121,7 +103,7 @@ namespace Sailor
 
 			SAILOR_API virtual void Complete();
 
-			SAILOR_API ITask(const std::string& name, EThreadType thread) : m_numBlockers(0), m_name(name), m_threadType(thread)
+			SAILOR_API ITask(const std::string& name, EThreadType thread) : m_threadType(thread), m_numBlockers(0), m_name(name)
 			{
 			}
 
@@ -277,9 +259,9 @@ namespace Sailor
 			SAILOR_API TaskPtr<TResult, void> ToTaskWithResult()
 			{
 				auto resultTask = Tasks::CreateTaskWithResult<TResult>("Get result task",
-					std::move([=]()
+					std::move([=, this]()
 						{
-							return ITask::m_self.Lock().DynamicCast<ITaskWithResult<TResult>>()->GetResult();
+							return ITask::m_self.Lock(). template DynamicCast<ITaskWithResult<TResult>>()->GetResult();
 						}), ITask::m_threadType);
 
 				ChainTasks(resultTask);

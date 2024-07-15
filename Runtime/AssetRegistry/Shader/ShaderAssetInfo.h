@@ -24,7 +24,7 @@ namespace Sailor
 		SAILOR_API ShaderAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		SAILOR_API void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
-		SAILOR_API AssetInfoPtr CreateAssetInfo() const;
+		SAILOR_API AssetInfoPtr CreateAssetInfo() const override;
 
 		SAILOR_API ~ShaderAssetInfoHandler() override = default;
 	};

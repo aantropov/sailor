@@ -33,7 +33,7 @@ size_t GetTotalUsedVirtualMemory()
 	MEMORYSTATUSEX memInfo;
 	memInfo.dwLength = sizeof(MEMORYSTATUSEX);
 	GlobalMemoryStatusEx(&memInfo);
-	DWORDLONG virtualMemUsed = memInfo.ullTotalVirtual - memInfo.ullAvailVirtual;
+	//DWORDLONG virtualMemUsed = memInfo.ullTotalVirtual - memInfo.ullAvailVirtual;
 
 	return (size_t)virtualMemUsedByMe;
 }
@@ -53,12 +53,7 @@ struct Result
 
 	void CalculateScore()
 	{
-		for (auto& strategy : m_results)
-		{
-			for (auto& test : strategy.second)
-			{
-			}
-		}
+		/*Was used for contest*/
 	}
 };
 
@@ -385,7 +380,7 @@ public:
 				}
 			}
 		}
-		
+
 		return true;
 	}
 
@@ -486,7 +481,6 @@ public:
 			size_t memoryAllocated = 0;
 			uint32_t seed = 13;
 			size_t curMaxSize = 512 << 20;
-			size_t curGeneration = 0;
 
 			PtrGuard* grandHeap = (PtrGuard*)malloc(POINTERS_COUNT * sizeof(PtrGuard));
 			for (size_t i = 0; i < POINTERS_COUNT; ++i)
@@ -496,14 +490,10 @@ public:
 
 			while (curMaxSize > 0)
 			{
-				unsigned long long allocations = 0;
-				unsigned long long deallocations = 0;
 				unsigned long long minAlloc = 0llu - 1llu;
 				unsigned long long maxAlloc = 0;
 				unsigned long long sumAlloc = 0;
-				unsigned long long countAlloc = 0;
 
-				size_t before = memoryAllocated;
 				size_t limit = min(curMaxSize * (POINTERS_COUNT >> 2), heapSize);
 				while (memoryAllocated < limit)
 				{
@@ -520,7 +510,6 @@ public:
 						memoryLeft += guard.size;
 						memoryAllocated -= guard.size;
 						allocator.Free(guard.ptr);
-						++deallocations;
 					}
 
 					unsigned long long int s = _util::random(seed) % curMaxSize;
@@ -533,8 +522,6 @@ public:
 					minAlloc = min(minAlloc, guard.size);
 					maxAlloc = max(maxAlloc, guard.size);
 					sumAlloc += guard.size;
-					++countAlloc;
-					++allocations;
 
 					if (!guard.ptr)
 					{
@@ -555,7 +542,6 @@ public:
 					  printf("mean: %s\n", _util::sizeToString(sumAlloc / countAlloc).c_str());
 					  printf("heap: %s -> %s\n", _util::sizeToString(before).c_str(), _util::sizeToString(memoryAllocated).c_str());
 					  */
-				++curGeneration;
 				curMaxSize >>= 1;
 				limit = memoryAllocated >> 2;
 				while (1)

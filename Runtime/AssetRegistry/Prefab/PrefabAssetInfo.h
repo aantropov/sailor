@@ -30,7 +30,7 @@ namespace Sailor
 		PrefabAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
-		AssetInfoPtr CreateAssetInfo() const;
+		AssetInfoPtr CreateAssetInfo() const override;
 
 		virtual ~PrefabAssetInfoHandler() = default;
 	};

@@ -40,8 +40,6 @@ void VulkanShaderStage::Compile()
 
 void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code)
 {
-	const bool bIsComputeShader = m_stage & VK_SHADER_STAGE_COMPUTE_BIT;
-
 	SAILOR_PROFILE_FUNCTION();
 
 	SpvReflectShaderModule module;
@@ -50,8 +48,13 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	check(result == SPV_REFLECT_RESULT_SUCCESS);
 	check(module.entry_point_count > 0);
 
+	if (result != SPV_REFLECT_RESULT_SUCCESS)
+	{
+		return;
+	}
+
 	const uint32_t numBoundVertexAttributes = module.entry_points[0].input_variable_count;
-	for(uint32_t i = 0; i < numBoundVertexAttributes; i++)
+	for (uint32_t i = 0; i < numBoundVertexAttributes; i++)
 	{
 		m_vertexAttributeBindings.Insert(module.entry_points[0].input_variables[i]->location);
 	}
@@ -111,7 +114,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			if (rhiBinding.m_type == RHI::EShaderBindingType::StorageBuffer)
 			{
 				blockContent = reflBinding.block.members[0].members;
-				blockCount = reflBinding.block.members[0].member_count;				
+				blockCount = reflBinding.block.members[0].member_count;
 			}
 
 			for (uint32_t i = 0; i < blockCount; i++)
@@ -205,7 +208,7 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 	}
 }
 
-VulkanShaderModule::VulkanShaderModule(VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv) : m_pDevice(pDevice), m_byteCode(spirv) {}
+VulkanShaderModule::VulkanShaderModule(VulkanDevicePtr pDevice, const RHI::ShaderByteCode& spirv) : m_byteCode(spirv), m_pDevice(pDevice) {}
 
 VulkanShaderModule::~VulkanShaderModule()
 {

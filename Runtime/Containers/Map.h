@@ -38,7 +38,7 @@ namespace Sailor
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(const TMap* map, Super::TEntry* bucket, TElementIterator it) : m_map(const_cast<TMap*>(map)), m_it(std::move(it)), m_currentBucket(bucket) {}
+			TBaseIterator(const TMap* map, Super::TEntry* bucket, TElementIterator it) : m_currentBucket(bucket), m_it(std::move(it)), m_map(const_cast<TMap*>(map)) {}
 
 			operator TBaseIterator<const TDataType, TElementIterator>() { return TBaseIterator<const TDataType, TElementIterator>(m_map, m_currentBucket, m_it); }
 
@@ -431,8 +431,8 @@ namespace Sailor
 			return *element->GetContainer().Last();
 		}
 
-		friend class TIterator;
-		friend class TConstIterator;
+		friend TIterator;
+		friend TConstIterator;
 	};
 
 	SAILOR_API void RunMapBenchmark();

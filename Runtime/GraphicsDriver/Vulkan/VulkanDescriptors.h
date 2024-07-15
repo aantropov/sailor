@@ -14,7 +14,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	public:
 		SAILOR_API VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings);
 
-		SAILOR_API VulkanDescriptorSetLayout() = default;
+		VulkanDescriptorSetLayout() = delete;
+
 		SAILOR_API virtual ~VulkanDescriptorSetLayout() override;
 
 		/// VkDescriptorSetLayoutCreateInfo settings
@@ -129,7 +130,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDescriptorSet : public RHI::RHIResource, public RHI::IExplicitInitialization
 	{
 	public:
-		SAILOR_API VulkanDescriptorSet() = default;
+		VulkanDescriptorSet() = delete;
+
 		SAILOR_API VulkanDescriptorSet(VulkanDevicePtr pDevice,
 			VulkanDescriptorPoolPtr pool,
 			VulkanDescriptorSetLayoutPtr descriptorSetLayout,

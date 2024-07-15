@@ -15,7 +15,7 @@
 #include "Core/Reflection.h"
 
 #include "RHI/Texture.h"
-#include "Framegraph/CopyTextureToRamNode.h"
+#include "FrameGraph/CopyTextureToRamNode.h"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -121,7 +121,7 @@ void TestComponent::BeginPlay()
 			}
 		}
 	}
-	/**/
+	*/
 	//m_octree.DrawOctree(*GetWorld()->GetDebugContext(), 10);
 
 	auto& transform = GetOwner()->GetTransformComponent();
@@ -132,6 +132,9 @@ void TestComponent::BeginPlay()
 
 	auto prefab = Prefab::FromGameObject(GetOwner());
 	prefab->SaveToFile("test.serdeser");
+
+	auto worldPrefab = WorldPrefab::FromWorld(GetWorld());
+	worldPrefab->SaveToFile("test.world");
 }
 
 void TestComponent::EndPlay()

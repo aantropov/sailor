@@ -32,7 +32,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;
-			}, Tasks::EThreadType::RHI);
+			}, EThreadType::RHI);
 
 		task->Run();
 
@@ -68,7 +68,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 	for (uint32_t i = 0; i < meshProxies.Num() / NumProxiesPerTask + 1; i++)
 	{
 		Tasks::TaskPtr<TVector<RHISceneViewProxy>> task = Tasks::CreateTaskWithResult<TVector<RHISceneViewProxy>>("Create list of scene view proxies",
-			[&res, NumProxiesPerTask, i, &meshProxies, &m_world = m_world, bSkipMaterials]()
+			[i, &meshProxies, &m_world = m_world, bSkipMaterials]()
 			{
 				TVector<RHISceneViewProxy> temp;
 				temp.Reserve(NumProxiesPerTask);
@@ -167,7 +167,7 @@ void RHISceneView::PrepareSnapshots()
 		res.m_rhiLightsData = m_rhiLightsData;
 		res.m_drawImGui = m_drawImGui;
 		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);
-		res.m_proxies = std::move(TraceScene(frustum, false));
+		res.m_proxies = TraceScene(frustum, false);
 
 		res.m_debugDrawSecondaryCmdList = m_debugDraw[i];
 		m_snapshots.Emplace(std::move(res));

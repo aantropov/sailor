@@ -33,7 +33,6 @@ void CameraComponent::Initialize()
 
 void CameraComponent::BeginPlay()
 {
-	auto& ecsData = GetData();
 	GetData().SetProjectionMatrix(Math::PerspectiveRH(glm::radians(GetFov()), GetAspect(), GetZNear(), GetZFar()));
 }
 

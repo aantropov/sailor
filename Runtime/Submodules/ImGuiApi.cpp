@@ -7,7 +7,7 @@
 #include "Tasks/Scheduler.h"
 #include "AssetRegistry/AssetRegistry.h"
 
-#include "Memory/MemoryBLockAllocator.hpp"
+#include "Memory/MemoryBlockAllocator.hpp"
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
 #include "RHI/CommandList.h"
@@ -82,7 +82,6 @@ void ImGuiApi::CreateOrResizeBuffer(RHI::RHIBufferPtr& buffer, size_t newSize)
 	SAILOR_PROFILE_FUNCTION();
 
 	Data* bd = ImGui_GetBackendData();
-	InitInfo* v = &bd->InitInfo;
 	const size_t vertex_buffer_size_aligned = ((newSize - 1) / bd->BufferMemoryAlignment + 1) * bd->BufferMemoryAlignment;
 
 	auto& renderer = App::GetSubmodule<RHI::Renderer>()->GetDriver();
@@ -203,7 +202,6 @@ void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 		return;
 
 	Data* bd = ImGui_GetBackendData();
-	InitInfo* v = &bd->InitInfo;
 	WindowRenderBuffers* wrb = &bd->MainWindowRenderBuffers;
 	const FrameRenderBuffers* rb = &wrb->FrameRenderBuffers[wrb->Index];
 
@@ -294,8 +292,6 @@ bool ImGuiApi::ImGui_Init(InitInfo* info)
 	bd->InitInfo = *info;
 	bd->Subpass = info->Subpass;
 
-	InitInfo* v = &bd->InitInfo;
-
 	unsigned char* pixels;
 	int width, height;
 	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
@@ -343,7 +339,6 @@ void ImGuiApi::ImGui_Shutdown()
 	Data* bd = ImGui_GetBackendData();
 	IM_ASSERT(bd != nullptr && "No renderer backend to shutdown, or already shutdown?");
 	ImGuiIO& io = ImGui::GetIO();
-	InitInfo* v = &bd->InitInfo;
 
 	DestroyWindowRenderBuffers(&bd->MainWindowRenderBuffers);
 
@@ -364,7 +359,6 @@ void ImGuiApi::ImGui_SetMinImageCount(uint32_t min_image_count)
 	if (bd->InitInfo.MinImageCount == min_image_count)
 		return;
 
-	InitInfo* v = &bd->InitInfo;
 	RHI::Renderer::GetDriver()->WaitIdle();
 	DestroyWindowRenderBuffers(&bd->MainWindowRenderBuffers);
 	bd->InitInfo.MinImageCount = min_image_count;

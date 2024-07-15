@@ -407,8 +407,11 @@ namespace Sailor
 
 					for (const auto& el : elements)
 					{
-						const bool bWasPlaced = Insert_Internal(node, el.m_second->m_position, el.m_second->m_extents, el.m_first);
-						check(bWasPlaced);
+						//Check all was placed;
+						const bool bInserted = Insert_Internal(node, el.m_second->m_position, el.m_second->m_extents, el.m_first);
+
+						if (!bInserted) continue;
+						check(bInserted);
 					}
 
 					return true;

@@ -10,7 +10,7 @@ namespace Sailor
 	public:
 
 		SAILOR_API TPair() noexcept requires IsDefaultConstructible<TKeyType> && IsDefaultConstructible<TValueType> : m_first(), m_second() {}
-		SAILOR_API TPair(const TPair&) noexcept requires Sailor::IsCopyConstructible<TKeyType>&& Sailor::IsCopyConstructible<TValueType> = default;
+		TPair(const TPair&) noexcept requires Sailor::IsCopyConstructible<TKeyType>&& Sailor::IsCopyConstructible<TValueType> = default;
 
 		SAILOR_API TPair(TPair&& rhs) noexcept requires 
 			(Sailor::IsMoveConstructible<TKeyType> || Sailor::IsCopyConstructible<TKeyType>) &&
@@ -50,7 +50,7 @@ namespace Sailor
 		SAILOR_API TPair(TKeyType&& first, TValueType&& second) noexcept requires Sailor::IsMoveConstructible<TKeyType>&& Sailor::IsMoveConstructible<TValueType> :
 			m_first(std::move(first)), m_second(std::move(second)) {}
 
-		SAILOR_API TPair& operator=(const TPair&) requires Sailor::IsCopyConstructible<TKeyType>&& Sailor::IsCopyConstructible<TValueType> = default;
+		TPair& operator=(const TPair&) requires Sailor::IsCopyConstructible<TKeyType>&& Sailor::IsCopyConstructible<TValueType> = default;
 
 		SAILOR_API TPair& operator=(TPair&& rhs) noexcept requires Sailor::IsMoveConstructible<TKeyType> || Sailor::IsMoveConstructible<TValueType>
 		{

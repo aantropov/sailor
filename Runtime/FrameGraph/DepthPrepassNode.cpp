@@ -54,8 +54,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 	const std::string QueueTag = GetString("Tag");
 	const size_t QueueTagHash = GetHash(QueueTag);
 
-	Tasks::TaskPtr res = Tasks::CreateTask("Prepare DepthPrepassNode " + std::to_string(sceneView.m_frame),
-		[=, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
+	auto res = Tasks::CreateTask("Prepare DepthPrepassNode " + std::to_string(sceneView.m_frame),
+		[=, this, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
 			syncSharedResources.Lock();
 
 			SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
@@ -128,7 +128,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 			}
 
 			syncSharedResources.Unlock();
-		}, Tasks::EThreadType::RHI);
+		}, EThreadType::RHI);
 
 	return res;
 }
@@ -138,6 +138,8 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	SAILOR_PROFILE_FUNCTION();
 	m_syncSharedResources.Lock();
 
+	const std::string QueueTag = GetString("Tag");
+
 	std::string temp;
 	TryGetString("ClearDepth", temp);
 	const bool bShouldClearDepth = temp == "true";
@@ -145,9 +147,6 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	temp.clear();
 	TryGetString("GPUCulling", temp);
 	const bool bGpuCullingEnabled = temp == "true";
-
-	const std::string QueueTag = GetString("Tag");
-	const size_t QueueTagHash = GetHash(QueueTag);
 
 	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
@@ -207,7 +206,6 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			bool bIsInited = false;
 			for (const auto& instancedDrawCall : m_drawCalls[vecBatches[j]])
 			{
-				auto& mesh = instancedDrawCall.First();
 				auto& matrices = *instancedDrawCall.Second();
 
 				memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(DepthPrepassNode::PerInstanceData) * matrices.Num());
@@ -232,7 +230,6 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	}
 
 	const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
-	const size_t materialsPerThread = (m_batches.Num()) / numThreads;
 
 	if (m_indirectBuffers.Num() < numThreads)
 	{

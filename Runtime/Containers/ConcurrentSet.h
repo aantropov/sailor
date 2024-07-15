@@ -108,7 +108,7 @@ namespace Sailor
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(TEntry* bucket, TElementIterator it) : m_it(std::move(it)), m_currentBucket(bucket) {}
+			TBaseIterator(TEntry* bucket, TElementIterator it) : m_currentBucket(bucket), m_it(std::move(it)){}
 
 			operator TBaseIterator<const TDataType, TElementIterator>() { return TBaseIterator<const TDataType, TElementIterator>(m_currentBucket, m_it); }
 
@@ -176,7 +176,8 @@ namespace Sailor
 			m_buckets.Resize(std::max(desiredNumBuckets, concurrencyLevel));
 		}
 
-		SAILOR_API TConcurrentSet(TConcurrentSet&&) = default;
+		TConcurrentSet(TConcurrentSet&&) = default;
+		
 		SAILOR_API TConcurrentSet(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType> : TConcurrentSet((uint32_t)rhs.m_buckets.Num(), rhs.m_rehashPolicy)
 		{
 			for (const auto& el : rhs)
@@ -185,7 +186,7 @@ namespace Sailor
 			}
 		}
 
-		SAILOR_API TConcurrentSet& operator=(TConcurrentSet&&) = default;
+		TConcurrentSet& operator=(TConcurrentSet&&) = default;
 
 		SAILOR_API TConcurrentSet& operator=(const TConcurrentSet& rhs) requires IsCopyConstructible<TElementType>
 		{

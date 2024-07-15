@@ -1,4 +1,6 @@
 #include "Engine/Object.h"
+#include "Tasks/Tasks.h"
+#include "Memory/SharedPtr.hpp"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -23,7 +25,7 @@ void Object::TraceHotReload(ITaskPtr previousTask)
 
 		App::GetSubmodule<Scheduler>()->Run(hotReload);
 	}
-		
+
 	for (auto& ptr : m_hotReloadDeps)
 	{
 		ptr->TraceHotReload(hotReload != nullptr ? hotReload : previousTask);

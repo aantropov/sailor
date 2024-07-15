@@ -277,7 +277,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 							auto fence = RHIFencePtr::Make();
 							RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Submit chaining cmd lists"));
 							RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, fence, newChainSemaphore, chainSemaphore);
-						}, Tasks::EThreadType::RHI);
+						}, EThreadType::RHI);
 
 					if (tasks.Num() > 0)
 					{
@@ -295,7 +295,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 							auto fence = RHIFencePtr::Make();
 							RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Submit chaining cmd lists"));
 							RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence, chainSemaphore, newChainSemaphore);
-						}, Tasks::EThreadType::RHI);
+						}, EThreadType::RHI);
 
 					submitCmdList2->Join(submitCmdList1);
 					submitCmdList2->Run();

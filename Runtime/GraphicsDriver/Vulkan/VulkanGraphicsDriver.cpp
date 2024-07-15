@@ -85,10 +85,10 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	// Waiting finishing releasing of rendering resources
 	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
 		{
-			Tasks::EThreadType::Render,
-			Tasks::EThreadType::RHI,
-			Tasks::EThreadType::Main,
-			Tasks::EThreadType::Worker
+			EThreadType::Render,
+			EThreadType::RHI,
+			EThreadType::Main,
+			EThreadType::Worker
 		});
 
 	check(m_cachedDescriptorSets.Num() == 0);
@@ -141,7 +141,7 @@ bool VulkanGraphicsDriver::FixLostDevice(Win32::Window* pViewport)
 				m_temporaryRenderTargets.Clear();
 			};
 
-		auto task = Tasks::CreateTask("Fix lost device", fixLostDevice_RenderThread, Tasks::EThreadType::Render);
+		auto task = Tasks::CreateTask("Fix lost device", fixLostDevice_RenderThread, EThreadType::Render);
 		task->Run();
 		task->Wait();
 
@@ -1112,7 +1112,8 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 
 	TVector<VkPushConstantRange> pushConstants;
 
-	for (const auto& pushConstant : shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader->GetPushConstants())
+	//for (const auto& pushConstant : shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader->GetPushConstants())
+	for (uint32_t i = 0; i < shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader->GetPushConstants().Num(); i++)
 	{
 		VkPushConstantRange vkPushConstant;
 		vkPushConstant.offset = 0;
@@ -1229,7 +1230,6 @@ void VulkanGraphicsDriver::UpdateShaderBinding_Immediate(RHI::RHIShaderBindingSe
 	commandList->m_vulkan.m_commandBuffer = Vulkan::VulkanCommandBufferPtr::Make(device, device->GetCurrentThreadContext().m_transferCommandPool, VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 
 	auto& shaderBinding = bindings->GetOrAddShaderBinding(parameter);
-	bool bShouldUpdateDescriptorSet = false;
 
 	// All uniform buffers should be bound
 	check(shaderBinding->IsBind());
@@ -1777,9 +1777,9 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 	{
 		cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(image->m_vulkan.m_imageView,
 			(VkFormat)format,
-			defaultComputeLayout, (VkImageLayout)newLayout),
+			defaultComputeLayout, (VkImageLayout)newLayout,
 			oldComputeAccess, VulkanCommandBuffer::GetAccessFlags((VkImageLayout)newLayout),
-			computeStage, VulkanCommandBuffer::GetPipelineStage((VkImageLayout)newLayout);
+			computeStage, VulkanCommandBuffer::GetPipelineStage((VkImageLayout)newLayout));
 	}
 	else if (!bComputeOld && bComputeNew)
 	{
@@ -1878,7 +1878,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 		rect.offset.y = renderArea.y;
 
 		VkClearValue clearValue;
-		clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+		clearValue.color = { {clearColor.x, clearColor.y, clearColor.z, clearColor.w } };
 		clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
 
 		auto vulkanRenderer = App::GetSubmodule<RHI::Renderer>()->GetDriver().DynamicCast<VulkanGraphicsDriver>();
@@ -1932,7 +1932,7 @@ void VulkanGraphicsDriver::RenderSecondaryCommandBuffers(RHI::RHICommandListPtr 
 	rect.offset.y = renderArea.y;
 
 	VkClearValue clearValue;
-	clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+	clearValue.color = { {clearColor.x, clearColor.y, clearColor.z, clearColor.w} };
 	clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
@@ -1978,7 +1978,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 	rect.offset.y = renderArea.y;
 
 	VkClearValue clearValue;
-	clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+	clearValue.color = { {clearColor.x, clearColor.y, clearColor.z, clearColor.w} };
 	clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
 
 	cmd->m_vulkan.m_commandBuffer->BeginRenderPassEx(attachments,
@@ -2036,7 +2036,7 @@ void VulkanGraphicsDriver::BeginRenderPass(RHI::RHICommandListPtr cmd,
 		rect.offset.y = renderArea.y;
 
 		VkClearValue clearValue;
-		clearValue.color = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+		clearValue.color = { {clearColor.x, clearColor.y, clearColor.z, clearColor.w} };
 		clearValue.depthStencil = { clearDepth, 0 };// VulkanApi::DefaultClearDepthStencilValue;
 
 		VulkanImageViewPtr msaaDepthStencilTarget{};
@@ -2152,7 +2152,6 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	const auto& requirements = dstBuffer->GetMemoryRequirements();
 
 	VulkanBufferPtr stagingBuffer;
-	size_t m_bufferOffset;
 	size_t m_memoryOffset;
 
 #if defined(SAILOR_VULKAN_COMBINE_STAGING_BUFFERS)
@@ -2163,7 +2162,6 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 		stagingBufferManagedPtr = device->GetStagingBufferAllocator()->Allocate(size, requirements.alignment);
 	}
 
-	m_bufferOffset = (*stagingBufferManagedPtr).m_offset;
 	m_memoryOffset = (**stagingBufferManagedPtr).m_offset;
 	stagingBuffer = (*stagingBufferManagedPtr).m_buffer;
 	cmd->m_vulkan.m_commandBuffer->AddDependency(stagingBufferManagedPtr, device->GetStagingBufferAllocator());
@@ -2181,7 +2179,6 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	VK_CHECK(stagingBuffer->Bind(pData));
 	SAILOR_PROFILE_END_BLOCK("Create staging buffer"_h);
 
-	m_bufferOffset = 0;
 	m_memoryOffset = (*pData).m_offset;
 #else
 
@@ -2198,7 +2195,6 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	VK_CHECK(stagingBuffer->Bind(deviceMemoryPtr, 0));
 	SAILOR_PROFILE_END_BLOCK("Create staging buffer"_h);
 
-	m_bufferOffset = 0;
 	m_memoryOffset = 0;
 
 	cmd->m_vulkan.m_commandBuffer->AddDependency(stagingBuffer);
@@ -2209,7 +2205,7 @@ void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemory
 	{
 		SAILOR_PROFILE_SCOPE("Copy data to staging buffer");
 		stagingBuffer->GetMemoryDevice()->Copy(m_memoryOffset, size, data);
-	}
+}
 
 	{
 		SAILOR_PROFILE_SCOPE("Copy from staging to video ram command");

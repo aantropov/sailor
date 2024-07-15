@@ -2,6 +2,7 @@
 #include <memory>
 #include "Core/Defines.h"
 #include "Containers/Vector.h"
+#include "Memory/BaseAllocator.hpp"
 #include "Memory/MallocAllocator.hpp"
 #include "Memory/UniquePtr.hpp"
 
@@ -130,7 +131,7 @@ namespace Sailor::Memory
 	}
 
 	// Single threaded heap allocator that significantly 'faster' than std's default allocator
-	class SAILOR_API HeapAllocator
+	class SAILOR_API HeapAllocator : public IBaseAllocator
 	{
 	public:
 

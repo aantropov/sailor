@@ -7,21 +7,42 @@
 #include "Sailor.h"
 #include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
-#include "Tasks/Tasks.h"
 
 // TODO: Implement ConcurrentList
 #include <concurrent_queue.h>
 
 #define SAILOR_ENQUEUE_TASK(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda))
-#define SAILOR_ENQUEUE_TASK_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::Render))
-#define SAILOR_ENQUEUE_TASK_RHI_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::Tasks::EThreadType::RHI))
+#define SAILOR_ENQUEUE_TASK_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::EThreadType::Render))
+#define SAILOR_ENQUEUE_TASK_RHI_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::EThreadType::RHI))
 
 namespace Sailor
 {
+	enum class EThreadType : uint8_t
+	{
+		Render = 0,
+		Worker = 1,
+		Main = 2,
+
+		// RHI Threads are used for creating RHI resources 
+		// to decrease the num of RHIThreadContext that could lead to
+		// cache misses and extra consumed memory (ram and vram)
+		RHI = 3
+	};
+
 	namespace Tasks
 	{
 		class WorkerThread;
 		class Scheduler;
+
+		class ITask;
+		using ITaskPtr = TSharedPtr <ITask>;
+
+		struct TaskSyncBlock
+		{
+			std::condition_variable m_onComplete{};
+			std::mutex m_mutex{};
+			bool m_bCompletionFlag = false;
+		};
 
 		class WorkerThread
 		{
@@ -34,11 +55,11 @@ namespace Sailor
 				std::mutex& mutex,
 				TVector<ITaskPtr>& pTasksQueue);
 
-			SAILOR_API virtual ~WorkerThread() = default;
+			SAILOR_API virtual ~WorkerThread();
 
-			SAILOR_API WorkerThread(WorkerThread&& move) = delete;
-			SAILOR_API WorkerThread(WorkerThread& copy) = delete;
-			SAILOR_API WorkerThread& operator =(WorkerThread& rhs) = delete;
+			WorkerThread(WorkerThread&& move) = delete;
+			WorkerThread(WorkerThread& copy) = delete;
+			WorkerThread& operator =(WorkerThread& rhs) = delete;
 
 			SAILOR_API void SetExecFlag();
 			SAILOR_API std::mutex& GetExecMutex() { return m_execMutex; }
@@ -115,11 +136,11 @@ namespace Sailor
 			SAILOR_API DWORD GetRendererThreadId() const { return m_renderingThreadId; }
 			SAILOR_API EThreadType GetCurrentThreadType() const;
 
-			SAILOR_API Scheduler() = default;
+			SAILOR_API Scheduler();
 
 			SAILOR_API void RunChainedTasks(const ITaskPtr& pTask);
 
-			SAILOR_API TaskSyncBlock& GetTaskSyncBlock(const ITask& task) { return m_taskSyncPool[task.m_taskSyncBlockHandle]; }
+			SAILOR_API TaskSyncBlock& GetTaskSyncBlock(const ITask& task);
 			SAILOR_API uint16_t AcquireTaskSyncBlock();
 			SAILOR_API void ReleaseTaskSyncBlock(const ITask& task);
 
@@ -150,9 +171,6 @@ namespace Sailor
 			TMap<DWORD, EThreadType> m_threadTypes{};
 
 			friend class WorkerThread;
-
-			template<typename TResult, typename TArgs>
-			friend TaskPtr<TResult, TArgs> CreateTask(const std::string& name, typename TFunction<TResult, TArgs>::type lambda, EThreadType thread);
 		};
 	}
 }

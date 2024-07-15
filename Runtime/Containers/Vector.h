@@ -86,12 +86,12 @@ namespace Sailor
 			return (difference_type)(m_element - other.m_element);
 		}
 
-		static friend TVectorIterator<TDataType> operator-(const difference_type& offset, TVectorIterator<TDataType>& other)
+		friend TVectorIterator<TDataType> operator-(const difference_type& offset, TVectorIterator<TDataType>& other)
 		{
 			return other - offset;
 		}
 
-		static friend TVectorIterator<TDataType> operator+(const difference_type& offset, TVectorIterator<TDataType>& other)
+		friend TVectorIterator<TDataType> operator+(const difference_type& offset, TVectorIterator<TDataType>& other)
 		{
 			return other + offset;
 		}
@@ -148,7 +148,7 @@ namespace Sailor
 			ConstructElements(0, rawPtr[0], count);
 		}
 
-		TVector(TElementType* rawPtr, size_t count) requires IsMoveConstructible<TElementType> && !IsCopyConstructible<TElementType>
+		TVector(TElementType* rawPtr, size_t count) requires IsMoveConstructible<TElementType> && (!IsCopyConstructible<TElementType>)
 		{
 			ResizeIfNeeded(count);
 
@@ -712,7 +712,7 @@ namespace Sailor
 			}
 		}
 
-		__forceinline void DestructElements(size_t index, size_t count = 1) requires !IsTriviallyDestructible<TElementType>
+		__forceinline void DestructElements(size_t index, size_t count = 1) requires (!IsTriviallyDestructible<TElementType>)
 		{
 			for (size_t i = 0; i < count; i++)
 			{

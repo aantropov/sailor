@@ -12,9 +12,14 @@
 #include "VulkanPipileneStates.h"
 
 using namespace Sailor;
+class FrameState;
+
+namespace Win32
+{
+	class Window;
+}
+
 using namespace Sailor::Memory;
-class Sailor::FrameState;
-class Sailor::Win32::Window;
 
 namespace Sailor::GraphicsDriver::Vulkan
 {

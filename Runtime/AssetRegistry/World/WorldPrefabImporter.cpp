@@ -157,7 +157,7 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 
 		struct Data {};
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load WorldPrefab",
-			[pWorldPrefab, assetInfo, this]() mutable
+			[pWorldPrefab, assetInfo]() mutable
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
 
@@ -173,15 +173,15 @@ Tasks::TaskPtr<WorldPrefabPtr> WorldPrefabImporter::LoadWorld(FileId uid, WorldP
 			})->Then<WorldPrefabPtr>([pWorldPrefab](TSharedPtr<Data> data) mutable
 				{
 					return pWorldPrefab;
-				}, "Preload resources", Tasks::EThreadType::RHI)->ToTaskWithResult();
+				}, "Preload resources", EThreadType::RHI)->ToTaskWithResult();
 
-				outWorldPrefab = loadedWorldPrefab = pWorldPrefab;
-				promise->Run();
+			outWorldPrefab = loadedWorldPrefab = pWorldPrefab;
+			promise->Run();
 
-				m_loadedWorldPrefabs.Unlock(uid);
-				m_promises.Unlock(uid);
+			m_loadedWorldPrefabs.Unlock(uid);
+			m_promises.Unlock(uid);
 
-				return promise;
+			return promise;
 	}
 
 	outWorldPrefab = nullptr;

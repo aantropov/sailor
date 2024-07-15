@@ -58,5 +58,8 @@ namespace Sailor
 		static const char* m_name;
 	};
 
-	template class TFrameGraphNode<ShadowPrepassNode>;
+	namespace Framegraph
+	{
+		template class TFrameGraphNode<ShadowPrepassNode>;
+	}
 };

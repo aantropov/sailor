@@ -105,7 +105,7 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 				driver->UpdateMesh(mesh, &res.m_first[0], bufferSize, &res.m_second[0], indexBufferSize);
 
 				return mesh;
-			}, "Create Stars Mesh", Tasks::EThreadType::RHI);
+			}, "Create Stars Mesh", EThreadType::RHI);
 
 		task->Run();
 
@@ -127,7 +127,7 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow() const
 
 	for (uint32_t z = 0; z < CloudsNoiseLowResolution; z++)
 	{
-		auto pTask = Tasks::CreateTask("Generate Clouds Noise Low", [=, &res]()
+		auto pTask = Tasks::CreateTask("Generate Clouds Noise Low", [=, this, &res]()
 			{
 				for (uint32_t y = 0; y < CloudsNoiseLowResolution; y++)
 				{
@@ -152,7 +152,7 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseLow() const
 
 			})->Run();
 
-			tasks.Add(pTask);
+		tasks.Add(pTask);
 	}
 
 	for (uint32_t i = 0; i < tasks.Num(); i++)
@@ -194,16 +194,16 @@ TVector<uint8_t> SkyNode::GenerateCloudsNoiseHigh() const
 
 void SkyNode::SetLocation(float latitudeDegrees, float longitudeDegrees)
 {
-	float latitudeRad = glm::radians(latitudeDegrees);
-	float longitudeRad = glm::radians(longitudeDegrees);
+	//float latitudeRad = glm::radians(latitudeDegrees);
+	//float longitudeRad = glm::radians(longitudeDegrees);
 
-	const double jdn2022 = Utils::CalculateJulianDate(2022, 12, 29, 12, 0, 0);
+	//const double jdn2022 = Utils::CalculateJulianDate(2022, 12, 29, 12, 0, 0);
 
 	// Calculate rotation matrix based on time, latitude and longitude
-	double localMeanSiderealTime = 4.894961f + 230121.675315f * jdn2022 + longitudeRad;
+	//double localMeanSiderealTime = 4.894961f + 230121.675315f * jdn2022 + longitudeRad;
 
 	// Exploration of different rotations
-	glm::quat rotation = angleAxis(-(float)localMeanSiderealTime, Math::vec3_Backward) * angleAxis(latitudeRad - pi<float>() * 0.5f, Math::vec3_Up);
+	//glm::quat rotation = angleAxis(-(float)localMeanSiderealTime, Math::vec3_Backward) * angleAxis(latitudeRad - pi<float>() * 0.5f, Math::vec3_Up);
 
 	glm::quat precessionRotationZ = angleAxis(0.01118f, Math::vec3_Backward);
 	glm::quat precession = (precessionRotationZ * angleAxis(-0.00972f, Math::vec3_Right)) * precessionRotationZ;
@@ -271,8 +271,8 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		}
 	}
 
-	if (m_createNoiseLow && !m_createNoiseLow->IsFinished() ||
-		m_createNoiseHigh && !m_createNoiseHigh->IsFinished())
+	if ((m_createNoiseLow && !m_createNoiseLow->IsFinished()) ||
+		(m_createNoiseHigh && !m_createNoiseHigh->IsFinished()))
 	{
 		commands->EndDebugRegion(commandList);
 		return;
@@ -287,13 +287,13 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		if (!AssetRegistry::ReadBinaryFile(pathNoiseHigh, noiseHigh))
 		{
 			m_createNoiseHigh = Tasks::CreateTask("Generate Clouds Noise High",
-				[=]()
+				[=, this]()
 				{
 					auto cache = GenerateCloudsNoiseHigh();
 					AssetRegistry::WriteBinaryFile(pathNoiseHigh, cache);
 				})->Run();
 
-				bShouldReturn = true;
+			bShouldReturn = true;
 		}
 
 		TVector<uint8_t> noiseLow;
@@ -301,13 +301,13 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		if (!AssetRegistry::ReadBinaryFile(pathNoiseLow, noiseLow))
 		{
 			m_createNoiseLow = Tasks::CreateTask("Generate Clouds Noise Low",
-				[=]()
+				[=, this]()
 				{
 					auto cache = GenerateCloudsNoiseLow();
 					AssetRegistry::WriteBinaryFile(pathNoiseLow, cache);
 				})->Run();
 
-				bShouldReturn = true;
+			bShouldReturn = true;
 		}
 
 		if (bShouldReturn)
@@ -474,7 +474,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		driver->FillShadersLayout(m_pBlitCloudsBindings, { m_pBlitShader->GetDebugVertexShaderRHI(), m_pBlitShader->GetDebugFragmentShaderRHI() }, 1);
 
 		// That should be enough to handle all the uniforms 
-		const size_t uniformsSize = std::max(sizeof(SkyParams), m_vectorParams.Num() * sizeof(glm::vec4));
+		//const size_t uniformsSize = std::max(sizeof(SkyParams), m_vectorParams.Num() * sizeof(glm::vec4));
 		driver->AddSamplerToShaderBindings(m_pBlitCloudsBindings, "colorSampler", m_pCloudsTexture, 0);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();

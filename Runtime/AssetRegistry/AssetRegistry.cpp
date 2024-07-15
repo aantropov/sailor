@@ -180,6 +180,13 @@ void AssetRegistry::ScanFolder(const std::string& folderPath)
 	}
 }
 
+TObjectPtr<Object> AssetRegistry::LoadAsset(IAssetInfoHandler* assetInfoHandler, const FileId& id, bool bImmediate)
+{
+	TObjectPtr<Object> out;
+	assetInfoHandler->GetFactory()->LoadAsset(id, out, bImmediate);
+	return out;
+}
+
 AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(FileId uid) const
 {
 	SAILOR_PROFILE_FUNCTION();

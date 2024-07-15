@@ -6,15 +6,15 @@
 #include "RHI/Types.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/YamlSerializable.h"
-#include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 
 namespace Sailor
 {
-	class FrameGraphAsset : public IYamlSerializable
+	class FrameGraphAsset final : public IYamlSerializable
 	{
 	public:
 
-		class Resource : public IYamlSerializable
+		class Resource final : public IYamlSerializable
 		{
 		public:
 			std::string m_name;
@@ -36,9 +36,9 @@ namespace Sailor
 		public:
 
 			Value() = default;
-			Value(float value) : m_bIsFloat(true), m_float(value) {}
-			Value(const glm::vec4& value) : m_bIsVec4(true), m_vec4(value) {}
-			Value(const std::string& value) : m_bIsString(true), m_string(value) {}
+			Value(float value) : m_float(value), m_bIsFloat(true) {}
+			Value(const glm::vec4& value) : m_vec4(value), m_bIsVec4(true) {}
+			Value(const std::string& value) : m_string(value), m_bIsString(true) {}
 
 			bool operator==(const Value& rhs) const { return m_name == rhs.m_name; }
 
@@ -62,7 +62,7 @@ namespace Sailor
 			bool m_bIsString = false;
 		};
 
-		class RenderTarget : public IYamlSerializable
+		class RenderTarget final : public IYamlSerializable
 		{
 		public:
 
@@ -163,7 +163,7 @@ namespace Sailor
 			}
 		};
 
-		class Node : public IYamlSerializable
+		class Node final : public IYamlSerializable
 		{
 		public:
 

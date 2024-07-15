@@ -12,7 +12,7 @@ namespace Sailor
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 
-	class TransformComponent : public ECS::TComponent
+	class TransformComponent final : public ECS::TComponent
 	{
 	public:
 
@@ -69,4 +69,6 @@ namespace Sailor
 
 		TVector<size_t> m_dirtyComponents;
 	};
+
+	template class ECS::TSystem<TransformECS, TransformComponent>;
 }

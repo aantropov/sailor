@@ -83,7 +83,7 @@ namespace Sailor
 
 			~TBaseIterator() = default;
 
-			TBaseIterator(TEntry* bucket, TElementIterator it) : m_it(std::move(it)), m_currentBucket(bucket) {}
+			TBaseIterator(TEntry* bucket, TElementIterator it) : m_currentBucket(bucket), m_it(std::move(it)) {}
 
 			operator TBaseIterator<const TDataType, TElementIterator>() { return TBaseIterator<const TDataType, TElementIterator>(m_currentBucket, m_it); }
 
@@ -409,8 +409,6 @@ namespace Sailor
 
 			while (current)
 			{
-				const size_t oldIndex = current->GetHash() % m_buckets.Num();
-
 				for (auto& el : current->GetContainer())
 				{
 					if constexpr (IsMoveConstructible<TElementType>)

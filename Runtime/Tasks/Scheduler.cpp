@@ -9,6 +9,9 @@
 #include "Core/Utils.h"
 #include "Core/StringHash.h"
 
+#include "Tasks/Tasks.h"
+#include "Memory/SharedPtr.hpp"
+
 using namespace std;
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -28,6 +31,10 @@ WorkerThread::WorkerThread(
 	m_pThread = TUniquePtr<std::thread>::Make(&WorkerThread::Process, this);
 	HANDLE threadHandle = m_pThread->native_handle();
 	m_threadId = ::GetThreadId(threadHandle);
+}
+
+WorkerThread::~WorkerThread()
+{
 }
 
 void WorkerThread::Join()
@@ -112,7 +119,7 @@ void WorkerThread::Process()
 	{
 		{
 			std::unique_lock<std::mutex> lk(m_execMutex);
-			m_refresh.wait(lk, [=, &pCurrentTask]()
+			m_refresh.wait(lk, [=, this, &pCurrentTask]()
 				{
 					const bool res = ((m_bExecFlag > 0) && (TryFetchTask(pCurrentTask) ||
 						scheduler->TryFetchNextAvailiableTask(pCurrentTask, m_threadType))) ||
@@ -183,6 +190,11 @@ void Scheduler::Initialize()
 	SAILOR_LOG("Initialize Tasks::Scheduler. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
 }
 
+Scheduler::Scheduler()
+{
+
+}
+
 Scheduler::~Scheduler()
 {
 	m_bIsTerminating = true;
@@ -233,7 +245,7 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& 
 	for (auto& chainedTasksNext : pTask->GetChainedTasksNext())
 	{
 		ITaskPtr pCurrentChainedTask;
-		if (pCurrentChainedTask = chainedTasksNext.TryLock())
+		if ((pCurrentChainedTask = chainedTasksNext.TryLock()))
 		{
 			if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted())
 			{
@@ -250,7 +262,7 @@ void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& 
 	}
 
 	ITaskPtr pCurrentChainedTask;
-	if (pCurrentChainedTask = pTask->GetChainedTaskPrev())
+	if ((pCurrentChainedTask = pTask->GetChainedTaskPrev()))
 	{
 		if (pCurrentChainedTask->IsInQueue() || pCurrentChainedTask->IsStarted() || pCurrentChainedTask == pTaskToIgnore)
 		{
@@ -497,6 +509,11 @@ uint16_t Scheduler::AcquireTaskSyncBlock()
 	ensure(false, "Increase the pool size of task block primitives! Scheduler::MaxTasksInPool");
 
 	return 0;
+}
+
+TaskSyncBlock& Scheduler::GetTaskSyncBlock(const ITask& task)
+{
+	return m_taskSyncPool[task.m_taskSyncBlockHandle];
 }
 
 void Scheduler::ReleaseTaskSyncBlock(const ITask& task)

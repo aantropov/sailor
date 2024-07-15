@@ -26,7 +26,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanQueue.h"
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
-#include "VulkanFrameBuffer.h"
+#include "VulkanFramebuffer.h"
 #include "VulkanDeviceMemory.h"
 #include "VulkanBuffer.h"
 #include "VulkanShaderModule.h"
@@ -49,7 +49,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
-#include "Engine/Gameobject.h"
+#include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "Engine/EngineLoop.h"
 
@@ -378,7 +378,7 @@ bool VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 		return false;
 	}
 
-	VK_CHECK(submitResult);
+	check(submitResult == VK_SUCCESS);
 
 	return submitResult == VK_SUCCESS;
 }
@@ -465,13 +465,13 @@ bool VulkanDevice::RecreateSwapchain(Window* pViewport)
 	cmdList->m_vulkan.m_commandBuffer->ImageMemoryBarrier(depthView, depthView->m_format, VK_IMAGE_LAYOUT_UNDEFINED, depthView->GetImage()->m_defaultLayout);
 
 	Renderer::GetDriverCommands()->EndCommandList(cmdList);
-	
+
 	App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(name, [name, cmdList = std::move(cmdList)]()
 		{
 			auto fence = RHIFencePtr::Make();
 			Renderer::GetDriver()->SetDebugName(fence, name);
 			Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
-		}, Sailor::Tasks::EThreadType::Render));
+		}, Sailor::EThreadType::Render));
 
 	return true;
 }
@@ -777,8 +777,8 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 {
 	//////////////////////////////////////////////////
 	if (!m_pCurrentFrameViewport &&
-		m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
-		abs(m_pCurrentFrameViewport->GetViewport().height) != m_swapchain->GetExtent().height)
+		(m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
+			abs(m_pCurrentFrameViewport->GetViewport().height) != m_swapchain->GetExtent().height))
 	{
 		const float width = (float)m_swapchain->GetExtent().width;
 		const float height = (float)m_swapchain->GetExtent().height;

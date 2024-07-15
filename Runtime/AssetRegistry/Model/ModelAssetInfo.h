@@ -43,7 +43,7 @@ namespace Sailor
 		IAssetFactory* GetFactory() override;
 
 		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
-		AssetInfoPtr CreateAssetInfo() const;
+		AssetInfoPtr CreateAssetInfo() const override;
 
 		virtual ~ModelAssetInfoHandler() = default;
 	};

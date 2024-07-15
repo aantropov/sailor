@@ -68,7 +68,7 @@ namespace Sailor
 
 	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 
-	class ShaderAsset : IYamlSerializable
+	class ShaderAsset final : IYamlSerializable
 	{
 	public:
 

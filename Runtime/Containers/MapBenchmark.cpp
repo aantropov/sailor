@@ -173,7 +173,7 @@ namespace Sailor
 			std::random_device rd;
 			std::mt19937 g(rd());
 
-			volatile float misses = 0;
+			std::atomic<uint32_t> misses = 0;
 
 			g.seed(0);
 			tMap.Start();
@@ -188,7 +188,7 @@ namespace Sailor
 			tMap.Stop();
 
 			res.m_containsKey = tMap.ResultMs();
-			res.m_misses = misses / (float)count;
+			res.m_misses = misses.load() / (float)count;
 
 			tMap.Clear();
 			tMap.Start();
@@ -279,7 +279,7 @@ namespace Sailor
 			std::random_device rd;
 			std::mt19937 g(rd());
 
-			volatile float misses = 0;
+			std::atomic<uint32_t> misses = 0;
 
 			misses = 0;
 			g.seed(0);
@@ -294,7 +294,7 @@ namespace Sailor
 			}
 			stdMap.Stop();
 			res.m_containsKey = stdMap.ResultMs();
-			res.m_misses = misses / (float)count;
+			res.m_misses = misses.load() / (float)count;
 
 			stdMap.Clear();
 			stdMap.Start();
@@ -344,7 +344,7 @@ namespace Sailor
 
 			for (uint32_t i = 0; i < numThreads; i++)
 			{
-				auto task = Tasks::CreateTask("Test Concurrent Map", [&order, &container, i, count, cShift]() mutable
+				auto task = Tasks::CreateTask("Test Concurrent Map", [&container, i, cShift]() mutable
 					{
 						for (uint32_t k = 0; k < 1; k++)
 						{
@@ -352,8 +352,7 @@ namespace Sailor
 
 							for (uint32_t j = start; j < count + start; j++)
 							{
-								auto& value = container.At_Lock(j % count);
-								//value++;
+								container.At_Lock(j % count);
 								container.Unlock(j % count);
 							}
 						}
@@ -387,7 +386,7 @@ namespace Sailor
 
 			tMap.Clear();
 
-			volatile float misses = 0;
+			std::atomic<uint32_t> misses = 0;
 
 			g.seed(0);
 			tMap.Start();
@@ -402,14 +401,14 @@ namespace Sailor
 			tMap.Stop();
 
 			res.m_containsKey = tMap.ResultMs();
-			res.m_misses = misses / (float)count;
+			res.m_misses = misses.load() / (float)count;
 
 			tMap.Clear();
 
 			tasksToWait.Clear();
 			for (uint32_t i = 0; i < numThreads; i++)
 			{
-				auto task = Tasks::CreateTask("Test Concurrent Map", [&order, &container, i, count, cShift]() mutable
+				auto task = Tasks::CreateTask("Test Concurrent Map", [&container, i]() mutable
 					{
 						uint32_t start = uint32_t(i * (count / numThreads));
 
@@ -442,7 +441,7 @@ namespace Sailor
 		}
 	};
 
-	void Sailor::RunMapBenchmark()
+	void RunMapBenchmark()
 	{
 		using TDeepData = TDeepData<1024>;
 		using TPlainData = TPlainData<1024>;

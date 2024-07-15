@@ -22,7 +22,6 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
 

@@ -7,7 +7,7 @@
 
 using namespace Sailor;
 
-World::World(std::string name) : m_name(std::move(name)), m_bIsBeginPlayCalled(false), m_currentFrame(1), m_frameInput()
+World::World(std::string name) : m_currentFrame(1), m_name(std::move(name)), m_frameInput(), m_bIsBeginPlayCalled(false)
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make(EAllocationPolicy::LocalMemory_SingleThread);
 

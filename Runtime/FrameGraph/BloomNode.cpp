@@ -88,7 +88,6 @@ void BloomNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 
 	const glm::vec4 threshold = GetVec4("threshold");
 	const glm::vec4 knee = GetVec4("knee");
-	const auto& bloomTextureSize = bloomRenderTarget->GetExtent();
 
 	PushConstantsDownscale downscaleParams{};
 	downscaleParams.m_threshold = glm::vec4(threshold.x, threshold.x - knee.x, 2.0f * knee.x, 0.25f * knee.x);

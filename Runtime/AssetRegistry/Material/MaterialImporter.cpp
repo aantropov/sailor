@@ -54,11 +54,11 @@ Tasks::ITaskPtr Material::OnHotReload()
 {
 	m_bIsDirty = true;
 
-	auto updateRHI = Tasks::CreateTask("Update material RHI resource", [=]
+	auto updateRHI = Tasks::CreateTask("Update material RHI resource", [=, this]
 		{
 			UpdateRHIResource();
 			ForcelyUpdateUniforms();
-		}, Tasks::EThreadType::Render);
+		}, EThreadType::Render);
 
 	return updateRHI;
 }
@@ -129,7 +129,7 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 
 		if (!m_commonShaderBindings)
 		{
-			if (material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader))
+			if ((material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, m_renderState, m_shader)))
 			{
 				m_commonShaderBindings = material->GetBindings();
 			}
@@ -182,7 +182,7 @@ void Material::UpdateRHIResource()
 				std::string outVariable;
 
 				RHI::RHIShaderBindingSet::ParseParameter(parameterName, outBinding, outVariable);
-				RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+				m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 			}
 		}
 	}
@@ -199,7 +199,7 @@ void Material::UpdateRHIResource()
 				std::string outVariable;
 
 				RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-				RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+				m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 			}
 		}
 
@@ -211,7 +211,7 @@ void Material::UpdateRHIResource()
 				std::string outVariable;
 
 				RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-				RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
+				m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
 			}
 		}
 	}
@@ -292,7 +292,7 @@ void Material::ForcelyUpdateUniforms()
 
 	// Submit cmd lists
 	SAILOR_ENQUEUE_TASK_RENDER_THREAD("Update shader bindings set rhi",
-		([this, cmdList, fence]()
+		([cmdList, fence]()
 			{
 				RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence);
 			}));
@@ -421,7 +421,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 									RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
 								}
 							}
-						}, Tasks::EThreadType::Render);
+						}, EThreadType::Render);
 
 					// Preload textures
 					for (const auto& sampler : pMaterialAsset->GetSamplers())
@@ -438,7 +438,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 										pMaterial->SetSampler(sampler.m_first, texture);
 										pTexture->AddHotReloadDependentObject(material);
 									}
-								}, "Set material texture binding", Tasks::EThreadType::Render);
+								}, "Set material texture binding", EThreadType::Render);
 
 							updateRHI->Join(updateSampler);
 						}
@@ -599,7 +599,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 							}
 						}
 
-					}, Tasks::EThreadType::RHI);
+					}, EThreadType::RHI);
 
 				// Preload textures
 				for (const auto& sampler : pMaterialAsset->GetSamplers())
@@ -616,7 +616,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 									pMaterial->SetSampler(sampler.m_first, texture);
 									texture->AddHotReloadDependentObject(pMaterial);
 								}
-							}, "Set material texture binding", Tasks::EThreadType::Render);
+							}, "Set material texture binding", EThreadType::Render);
 
 						updateRHI->Join(updateSampler);
 					}

@@ -208,7 +208,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	if (m_bForceStop ||
 		m_driverInstance->ShouldFixLostDevice(m_pViewport) ||
-		App::GetSubmodule<Tasks::Scheduler>()->GetNumTasks(Tasks::EThreadType::Render) > MaxFramesInQueue)
+		App::GetSubmodule<Tasks::Scheduler>()->GetNumTasks(EThreadType::Render) > MaxFramesInQueue)
 	{
 		return false;
 	}
@@ -259,7 +259,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		auto rhiFrameGraph = m_frameGraph->GetRHI();
 
 		auto renderFrame = Tasks::CreateTask("Trace command lists & Track RHI resources " + std::to_string(currentFrame),
-			[this]() { this->GetDriver()->TrackResources_ThreadSafe(); }, Sailor::Tasks::EThreadType::Render);
+			[this]() { this->GetDriver()->TrackResources_ThreadSafe(); }, Sailor::EThreadType::Render);
 
 		auto renderFrame1 = Tasks::CreateTask("Render Frame " + std::to_string(currentFrame),
 			[this, rhiFrameGraph = rhiFrameGraph, frame, rhiSceneView]() mutable
@@ -370,7 +370,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 					GetDriver()->CollectGarbage_RenderThread();
 				}
-			}, Sailor::Tasks::EThreadType::Render);
+			}, Sailor::EThreadType::Render);
 
 		auto prepareRenderFrame = rhiFrameGraph->Prepare(rhiSceneView);
 

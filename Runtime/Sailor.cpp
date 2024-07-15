@@ -249,7 +249,7 @@ void App::Start()
 		if (systemInputState.IsKeyPressed(VK_F5))
 		{
 			GetSubmodule<AssetRegistry>()->ScanContentFolder();
-			scheduler->WaitIdle({ Tasks::EThreadType::Render, Tasks::EThreadType::RHI });
+			scheduler->WaitIdle({ EThreadType::Render, EThreadType::RHI });
 			renderer->RefreshFrameGraph();
 		}
 
@@ -271,7 +271,7 @@ void App::Start()
 			bFirstFrame = false;
 		}
 
-		if (bCanCreateNewFrame = renderer->PushFrame(currentFrame))
+		if ((bCanCreateNewFrame = renderer->PushFrame(currentFrame)))
 		{
 			lastFrame = currentFrame;
 
@@ -344,10 +344,10 @@ void App::Shutdown()
 	auto scheduler = GetSubmodule<Tasks::Scheduler>();
 	auto renderer = GetSubmodule<Renderer>();
 
-	scheduler->WaitIdle({ Tasks::EThreadType::Main, Tasks::EThreadType::Worker, Tasks::EThreadType::RHI, Tasks::EThreadType::Render });
+	scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 
 	// TODO: Redo. We have 2 frames in flight.
-	scheduler->WaitIdle({ Tasks::EThreadType::Render });
+	scheduler->WaitIdle(EThreadType::Render);
 
 	renderer->BeginConditionalDestroy();
 
@@ -367,7 +367,7 @@ void App::Shutdown()
 	// We need to finish all tasks before release
 	RemoveSubmodule<ImGuiApi>();
 
-	scheduler->WaitIdle({ Tasks::EThreadType::Main, Tasks::EThreadType::Worker, Tasks::EThreadType::RHI, Tasks::EThreadType::Render });
+	scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 
 	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<MaterialImporter>();
@@ -397,7 +397,7 @@ void App::Shutdown()
 	s_pInstance = nullptr;
 }
 
-TUniquePtr<Win32::Window>& App::GetMainWindow()
+TUniquePtr<Sailor::Win32::Window>& App::GetMainWindow()
 {
 	return s_pInstance->m_pMainWindow;
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Containers/Concepts.h"
 #include <atomic>
 #include <type_traits>
 
@@ -13,12 +14,32 @@ namespace Sailor
 
 	class TRefBase
 	{
+	protected:
+
+		TRefBase() = default;
+
 	public:
 
 		SAILOR_API virtual ~TRefBase() = default;
 
 		template<typename T> requires IsBaseOf<TRefBase, T>
 		SAILOR_API TRefPtr<T> ToRefPtr();
+
+		SAILOR_API TRefBase(TRefBase&& copy) noexcept
+			: m_refCounter(copy.m_refCounter.exchange(0))
+		{
+
+		}
+
+		SAILOR_API TRefBase& operator =(TRefBase&& rhs) noexcept
+		{
+			if (this != &rhs)
+			{
+				m_refCounter.store(rhs.m_refCounter.exchange(0));
+			}
+
+			return *this;
+		}
 
 	protected:
 
@@ -168,7 +189,8 @@ namespace Sailor
 				DecrementRefCounter();
 			}
 
-			if (m_pRawPtr = pRawPtr)
+			m_pRawPtr = pRawPtr;
+			if (m_pRawPtr)
 			{
 				IncrementRefCounter();
 			}
@@ -204,6 +226,8 @@ namespace Sailor
 			m_pRawPtr = pRefPtr.m_pRawPtr;
 			pRefPtr.m_pRawPtr = nullptr;
 		}
+		
+		template<typename>
 		friend class TRefPtr;
 	};
 

@@ -18,8 +18,8 @@ namespace Sailor::Memory
 
 		TMemoryPtr(size_t offset, size_t alignmentOffset, size_t size, TPtr ptr, uint32_t blockIndex) :
 			m_offset(offset),
-			m_size(size),
 			m_alignmentOffset(alignmentOffset),
+			m_size(size),
 			m_blockIndex(blockIndex),
 			m_ptr(ptr)
 		{}

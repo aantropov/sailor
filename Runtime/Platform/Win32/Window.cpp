@@ -60,8 +60,8 @@ void Window::TrackParentWindowPosition(const RECT& viewport)
 		int32_t newWidth = viewport.right - viewport.left - gapWidth / 2;
 		int32_t newHeight = viewport.bottom - viewport.top - gapHeight * 2;
 
-		newWidth = std::min(newWidth, wnd.m_clientWidth - (int32_t)viewport.left);
-		newHeight = std::min(newHeight, wnd.m_clientHeight - (int32_t)viewport.top);
+		newWidth = std::min(newWidth, wnd.m_width - (int32_t)viewport.left);
+		newHeight = std::min(newHeight, wnd.m_height - (int32_t)viewport.top);
 
 		if (newWidth > 0 && newHeight > 0)
 		{

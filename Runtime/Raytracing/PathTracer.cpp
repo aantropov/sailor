@@ -17,11 +17,11 @@
 #include "stb/stb_image_write.h"
 #endif 
 
-#include "assimp/scene.h"
-#include "assimp/postprocess.h"
-#include "assimp/Importer.hpp"
-#include "assimp/DefaultLogger.hpp"
-#include "assimp/LogStream.hpp"
+//#include "assimp/scene.h"
+//#include "assimp/postprocess.h"
+//#include "assimp/Importer.hpp"
+//#include "assimp/DefaultLogger.hpp"
+//#include "assimp/LogStream.hpp"
 
 using namespace Sailor;
 using namespace Sailor::Math;
@@ -75,7 +75,7 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 void PathTracer::Run(const PathTracer::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
-
+	/*
 	Utils::Timer raytracingTimer;
 	raytracingTimer.Start();
 
@@ -87,25 +87,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 		aiProcess_FlipUVs |
 		aiProcess_GenNormals |
 		aiProcess_GenUVCoords |
-
-		//We don't need that since we are generating the missing tangents/bitangents with our own
-		//aiProcess_CalcTangentSpace |
-
-		//We only support gltf, which by specification contains only triangles
-		//aiProcess_Triangulate |
-		//aiProcess_SortByPType |
-
-		// Assimp wrongly applies the matrix transform on camera pos, that's why we apply the matrix calcs with our own
-		//aiProcess_PreTransformVertices |
-
-		// We expect only valid gltfs
-		//aiProcess_Debone |
-		//aiProcess_ValidateDataStructure |
-		//aiProcess_FixInfacingNormals |
-		//aiProcess_FindInvalidData |
-		//aiProcess_FindDegenerates |
-		//aiProcess_ImproveCacheLocality |
-		//aiProcess_FlipWindingOrder |
 		0;
 
 	const auto scene = importer.ReadFile(params.m_pathToModel.string().c_str(), DefaultImportFlags_Assimp);
@@ -120,12 +101,9 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	// Camera
 	auto cameraPos = vec3(0, 0.75f, 5.0f);
-	//auto cameraPos = vec3(-1.0f, 0.7f, -1.0f) * 0.5f;
-	//auto cameraPos = glm::vec3(-2.8f, 2.7f, 5.5f) * 100.0f;
 
 	auto cameraUp = normalize(vec3(0, 1, 0));
 	auto cameraForward = normalize(-cameraPos);
-	//auto cameraForward = glm::normalize(glm::vec3(0.0f, -0.0f, -1.0f));
 
 	auto axis = normalize(cross(cameraForward, cameraUp));
 	cameraUp = normalize(cross(axis, cameraForward));
@@ -401,15 +379,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 			}
 		}
 	}
-	/*
-	else
-	{
-		DirectionalLight defaultLight;
-		defaultLight.m_direction = normalize(vec3(1, 1, -1));
-		defaultLight.m_intensity = vec3(3.0f, 3.0f, 3.0f);
-
-		m_directionalLights.Add(defaultLight);
-	}*/
+	
 
 	BVH bvh((uint32_t)m_triangles.Num());
 	bvh.BuildBVH(m_triangles);
@@ -420,7 +390,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	float h = tan(vFov / 2);
 	const float ViewportHeight = 2.0f * h;
 	const float ViewportWidth = aspectRatio * ViewportHeight;
-
+	
 	vec3 _u = normalize(cross(cameraUp, -cameraForward));
 	vec3 _v = cross(-cameraForward, _u);
 
@@ -502,7 +472,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 						finishedTasks++;
 
-					}, Tasks::EThreadType::Worker);
+					}, EThreadType::Worker);
 
 				if (((x + y) / GroupSize) % 32 == 0)
 				{
@@ -601,7 +571,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		MessageBoxA(0, msg, msg, 0);
 	}
 
-	::system(params.m_output.string().c_str());
+	::system(params.m_output.string().c_str());*/
 }
 
 vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const PathTracer::Params& params, float currentIor, uint32_t ignoreTriangle) const
@@ -664,7 +634,6 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		SAILOR_PROFILE_SCOPE("Sampling");
 
 		const bool bIsFirstIntersection = bounceLimit == params.m_maxBounces;
-		const bool bIsFirstOrSecondIntersection = (params.m_maxBounces - bounceLimit) <= 1;
 
 		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
 

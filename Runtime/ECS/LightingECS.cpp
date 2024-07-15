@@ -318,7 +318,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 					}
 
 					// Don't duplicate data for higher cascades
-					const uint32_t removed = (uint32_t)cascade.m_meshList.RemoveAll([z, &frustums, bCascadeAdded](const auto& m)
+					const uint32_t removed = (uint32_t)cascade.m_meshList.RemoveAll([z, &frustums](const auto& m)
 						{
 							return frustums[z].OverlapsAABB(m.m_worldAabb);
 						});

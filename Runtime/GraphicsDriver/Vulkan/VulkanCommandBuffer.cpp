@@ -27,8 +27,8 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevicePtr device, VulkanCommandPoolPtr commandPool, VkCommandBufferLevel level) :
 	m_device(device),
-	m_level(level),
-	m_commandPool(commandPool)
+	m_commandPool(commandPool),
+	m_level(level)
 {
 	VkCommandBufferAllocateInfo allocateInfo = {};
 	allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -58,16 +58,16 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 			}
 		});
 
-	if (m_currentThreadId == currentThreadId)
-	{
-		pReleaseResource->Execute();
-		m_device.Clear();
-	}
-	else
-	{
-		App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
-	}
-	ClearDependencies();
+			if (m_currentThreadId == currentThreadId)
+			{
+				pReleaseResource->Execute();
+				m_device.Clear();
+			}
+			else
+			{
+				App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
+			}
+			ClearDependencies();
 }
 
 VulkanCommandPoolPtr VulkanCommandBuffer::GetCommandPool() const
@@ -286,8 +286,6 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	if (colorAttachmentResolves.Num() > 0)
 	{
-		const auto extents = glm::ivec2(colorAttachmentResolves[0]->GetImage()->m_extent.width, colorAttachmentResolves[0]->GetImage()->m_extent.height);
-
 		colorAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
 		colorAttachmentInfo.resolveImageView = *(colorAttachmentResolves[0]);
 		colorAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -295,8 +293,6 @@ void VulkanCommandBuffer::BeginRenderPassEx(const TVector<VulkanImageViewPtr>& c
 
 	if (depthStencilAttachmentResolve)
 	{
-		const auto depthExtents = glm::ivec2(depthStencilAttachmentResolve->GetImage()->m_extent.width, depthStencilAttachmentResolve->GetImage()->m_extent.height);
-
 		depthAttachmentInfo.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
 		depthAttachmentInfo.resolveImageView = *depthStencilAttachmentResolve;
 		depthAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
@@ -672,7 +668,7 @@ void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& cl
 {
 	m_rhiDependecies.Insert(dst);
 
-	const VkClearColorValue clearColorValue{ clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+	const VkClearColorValue clearColorValue{ {clearColor.x, clearColor.y, clearColor.z, clearColor.w} };
 
 	VkImageSubresourceRange range = dst->m_subresourceRange;
 	vkCmdClearColorImage(m_commandBuffer, *dst->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColorValue, 1, &range);

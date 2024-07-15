@@ -16,6 +16,7 @@
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
 #include "Core/Reflection.h"
+#include "Tasks/Tasks.h"
 
 using namespace Sailor::Memory;
 
@@ -27,7 +28,7 @@ namespace Sailor
 	{
 	public:
 
-		class ReflectedGameObject : public IYamlSerializable
+		class ReflectedGameObject final : public IYamlSerializable
 		{
 		public:
 

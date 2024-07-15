@@ -492,7 +492,7 @@ PoolAllocator::~PoolAllocator()
 bool SmallPoolAllocator::RequestPage(SmallPage& page, uint8_t blockSize, uint16_t pageIndex) const
 {
 	page = SmallPage(blockSize, pageIndex);
-	if (page.m_pData = std::malloc(page.m_size))
+	if ((page.m_pData = std::malloc(page.m_size)))
 	{
 		SAILOR_PROFILE_ALLOC(page.m_pData, page.m_size);
 
@@ -705,8 +705,6 @@ void* HeapAllocator::Allocate(size_t size, size_t alignment)
 bool HeapAllocator::Reallocate(void* ptr, size_t size, size_t alignment)
 {
 	check(ptr);
-
-	size_t oldSize = 0;
 
 	// Quick look to get allocator type
 	if (((SmallPoolAllocator::SmallHeader*)ShiftPtr(ptr, -(int32_t)sizeof(SmallPoolAllocator::SmallHeader)))->m_meta == 1)

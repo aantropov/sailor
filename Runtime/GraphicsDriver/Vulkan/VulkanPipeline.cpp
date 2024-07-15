@@ -24,10 +24,10 @@ VulkanPipelineLayout::VulkanPipelineLayout(
 	VkPipelineLayoutCreateFlags flags) :
 	m_flags(flags),
 	m_descriptionSetLayouts(std::move(descriptorsSet)),
-	m_shaderBindings(std::move(shaderBindings)),
 	m_pushConstantRanges(std::move(pushConstantRanges)),
 	m_pDevice(std::move(pDevice)),
-	m_pipelineLayout(nullptr)
+	m_pipelineLayout(nullptr),
+	m_shaderBindings(std::move(shaderBindings))
 {
 }
 
@@ -149,7 +149,8 @@ void VulkanGraphicsPipeline::Compile()
 }
 
 void VulkanGraphicsPipeline::ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const
-{	for (auto pipelineState : m_pipelineStates)
+{
+	for (auto pipelineState : m_pipelineStates)
 	{
 		pipelineState->Apply(pipelineInfo);
 	}

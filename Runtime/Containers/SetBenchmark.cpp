@@ -64,6 +64,7 @@ public:
 		{
 			const size_t value = count + g();
 			auto res = ideal.find(value);
+			if (res == ideal.end()) continue;
 		}
 		stdSet.Stop();
 
@@ -86,6 +87,9 @@ public:
 		{
 			const size_t value = g() % count;
 			auto res = ideal.find(value);
+
+			if (res == ideal.end()) 
+				continue;
 		}
 		stdSet.Stop();
 

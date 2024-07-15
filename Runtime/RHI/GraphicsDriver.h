@@ -21,7 +21,7 @@ auto submit = [lambda]() \
 	Sailor::RHI::Renderer::GetDriver()->SetDebugName(fence, Name); \
 	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence); \
 }; \
-Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Render)); \
+Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, submit, Sailor::EThreadType::Render)); \
 }\
 
 #define SAILOR_ENQUEUE_TASK_RENDER_THREAD_TRANSFER_CMD(Name, Lambda) \
@@ -38,7 +38,7 @@ auto submit = [lambda]() \
 	Sailor::RHI::Renderer::GetDriver()->SetDebugName(fence, Name); \
 	Sailor::RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence); \
 }; \
-Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, submit, Sailor::Tasks::EThreadType::Render)); \
+Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, submit, Sailor::EThreadType::Render)); \
 }\
 
 namespace Sailor
@@ -223,6 +223,11 @@ namespace Sailor::RHI
 
 	class IGraphicsDriverCommands
 	{
+	protected:
+
+		// Copy from RHIShaderBindingSet::ParseParameter to increase compile time
+		SAILOR_API void ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable);
+
 	public:
 
 		SAILOR_API virtual bool FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth) = 0;
@@ -330,7 +335,7 @@ namespace Sailor::RHI
 			std::string outBinding;
 			std::string outVariable;
 
-			RHIShaderBindingSet::ParseParameter(parameter, outBinding, outVariable);
+			ParseParameter(parameter, outBinding, outVariable);
 			SetMaterialParameter(cmd, bindings, outBinding, outVariable, &value, sizeof(value));
 		}
 

@@ -8,6 +8,8 @@
 
 namespace Sailor
 {
+	class IAssetFactory;
+
 	class AssetInfo : IYamlSerializable
 	{
 
@@ -79,7 +81,7 @@ namespace Sailor
 
 		virtual ~IAssetInfoHandler() = default;
 
-		virtual class IAssetFactory* GetFactory() { return nullptr; }
+		virtual IAssetFactory* GetFactory() { return nullptr; }
 
 	protected:
 

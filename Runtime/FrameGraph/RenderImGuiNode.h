@@ -13,8 +13,8 @@ namespace Sailor::Framegraph
 	public:
 		SAILOR_API static const char* GetName() { return m_name; }
 
-		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;		
-		SAILOR_API virtual void Clear() {}
+		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) override;
+		SAILOR_API virtual void Clear() override {}
 
 	protected:
 

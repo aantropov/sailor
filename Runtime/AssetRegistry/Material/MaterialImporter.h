@@ -19,6 +19,7 @@
 #include "Engine/Object.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
+#include "Tasks/Tasks.h"
 
 namespace Sailor
 {

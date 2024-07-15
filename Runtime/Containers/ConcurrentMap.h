@@ -21,10 +21,11 @@ namespace Sailor
 		using TElementType = Sailor::TPair<TKeyType, TValueType>;
 
 		SAILOR_API TConcurrentMap(const uint32_t desiredNumBuckets = 24) : Super(desiredNumBuckets, policy) {  }
-		SAILOR_API TConcurrentMap(TConcurrentMap&&) = default;
-		SAILOR_API TConcurrentMap(const TConcurrentMap&) = default;
-		SAILOR_API TConcurrentMap& operator=(TConcurrentMap&&) noexcept = default;
-		SAILOR_API TConcurrentMap& operator=(const TConcurrentMap& rhs) = default;
+		TConcurrentMap(const TConcurrentMap&) = default;
+		TConcurrentMap& operator=(const TConcurrentMap& rhs) = default;
+
+		TConcurrentMap(TConcurrentMap&&) noexcept = default;
+		TConcurrentMap& operator=(TConcurrentMap&&) noexcept = default;
 
 		SAILOR_API TConcurrentMap(std::initializer_list<TElementType> initList)
 		{
@@ -188,7 +189,7 @@ namespace Sailor
 				typename Super::TElementContainer::TIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
 				if (it != container.end())
 				{
-					return Super::TIterator(element.GetRawPtr(), it);
+					return typename Super::TIterator(element.GetRawPtr(), it);
 				}
 			}
 
@@ -206,7 +207,7 @@ namespace Sailor
 				typename Super::TElementContainer::TConstIterator it = container.FindIf([&](const TElementType& el) { return el.First() == key; });
 				if (it != container.end())
 				{
-					return Super::TConstIterator(element.GetRawPtr(), it);
+					return typename Super::TConstIterator(element.GetRawPtr(), it);
 				}
 			}
 
@@ -305,6 +306,10 @@ namespace Sailor
 						Super::UnlockAll();
 						break;
 					}
+					case ERehashPolicy::Never:
+					{
+						check(0);
+					}break;
 					};
 				}
 

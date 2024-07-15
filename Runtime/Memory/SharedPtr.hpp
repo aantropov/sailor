@@ -152,9 +152,9 @@ namespace Sailor
 			}
 
 			m_pControlBlock = nullptr;
-			m_pRawPtr = nullptr;
+			m_pRawPtr = pRawPtr;
 
-			if (m_pRawPtr = pRawPtr)
+			if (m_pRawPtr)
 			{
 				if (!pControlBlock)
 				{
@@ -213,6 +213,7 @@ namespace Sailor
 			pSharedPtr.m_pControlBlock = nullptr;
 		}
 
+		template<typename, typename>
 		friend class TSharedPtr;
 
 		template<typename, typename>

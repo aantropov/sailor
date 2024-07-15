@@ -138,10 +138,20 @@ namespace Sailor
 				{
 					if constexpr (is_writable(member))
 					{
-						const std::string displayName = get_display_name(member);
-						using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*reinterpret_cast<T*>(nullptr)))>;
+						if constexpr (is_field(member))
+						{
+							const std::string displayName = get_display_name(member);
+							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member)>;
 
-						m_props[displayName] = typeid(PropertyType).name();
+							m_props[displayName] = typeid(PropertyType).name();
+						}
+						else if constexpr (refl::descriptor::is_function(member))
+						{
+							const std::string displayName = get_display_name(member);
+							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member))>;
+
+							m_props[displayName] = typeid(PropertyType).name();
+						}
 					}
 				});
 		}
@@ -149,7 +159,7 @@ namespace Sailor
 		friend class ReflectedData;
 	};
 
-	class ReflectedData : public IYamlSerializable
+	class ReflectedData final : public IYamlSerializable
 	{
 	public:
 
@@ -367,7 +377,7 @@ namespace Sailor
 			check(Internal::g_pPlacementFactoryMethods->ContainsKey(type.Name()));
 
 			auto ptr = pAllocator->Allocate(type.Size());
-			IReflectable* pRawPtr = (*Internal::g_pPlacementFactoryMethods)[type.Name()](ptr);
+			(*Internal::g_pPlacementFactoryMethods)[type.Name()](ptr);
 			TObjectPtr<T> pRes(reinterpret_cast<T*>(ptr), pAllocator);
 			return pRes;
 		}
@@ -382,7 +392,7 @@ namespace Sailor
 				{
 					if constexpr (is_readable(member) && !refl::descriptor::has_attribute<Attributes::Transient>(member))
 					{
-						using PropertyType = decltype(member(*ptr));
+						//using PropertyType = decltype(member(*ptr));
 						const std::string displayName = get_display_name(member);
 						reflection.m_properties[displayName] = member(*ptr);
 					}
@@ -436,7 +446,7 @@ namespace Sailor
 						!refl::descriptor::has_attribute<Attributes::Transient>(member) &&
 						!refl::descriptor::has_attribute<Attributes::SkipCDO>(member))
 					{
-						using PropertyType = decltype(member(*ptr));
+						//using PropertyType = decltype(member(*ptr));
 						const std::string displayName = get_display_name(member);
 						reflection.m_properties[displayName] = member(*ptr);
 					}

@@ -22,7 +22,7 @@ namespace Sailor
 		FrameGraphAssetInfoHandler(AssetRegistry* assetRegistry);
 
 		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
-		AssetInfoPtr CreateAssetInfo() const;
+		AssetInfoPtr CreateAssetInfo() const override;
 
 		virtual ~FrameGraphAssetInfoHandler() = default;
 	};

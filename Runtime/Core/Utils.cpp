@@ -67,7 +67,7 @@ std::string Utils::wchar_to_UTF8(const wchar_t* in)
 {
 	std::string out;
 	uint32_t codepoint = 0;
-	for (in; *in != 0; ++in)
+	for (; *in != 0; ++in)
 	{
 		if (*in >= 0xd800 && *in <= 0xdbff)
 			codepoint = ((*in - 0xd800) << 10) + 0x10000;

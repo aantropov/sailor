@@ -273,7 +273,7 @@ newPromise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
 		{
 			...
 			return pTexture;
-		}, "Create RHI texture", Tasks::EThreadType::RHI)->ToTaskWithResult()->Run();
+		}, "Create RHI texture", EThreadType::RHI)->ToTaskWithResult()->Run();
 ```
 #### <a name="TasksBenefits"></a> Benefits of Using Tasks
 Using tasks in the `Sailor` Engine offers several benefits:

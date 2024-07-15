@@ -45,7 +45,7 @@ namespace Sailor
 		bool Equals(const CSMLightState& rhs) const;
 	};
 
-	class LightingECS : public ECS::TSystem<LightingECS, LightData>
+	class LightingECS final : public ECS::TSystem<LightingECS, LightData>
 	{
 	public:
 
@@ -70,14 +70,14 @@ namespace Sailor
 		// TODO: Tightly pack
 		struct LightShaderData
 		{
-			 uint32_t m_type;
-			 uint32_t m_shadowType;
-			 alignas(16) glm::vec3 m_worldPosition;
-			 alignas(16) glm::vec3 m_direction;
-			 alignas(16) glm::vec3 m_intensity;
-			 alignas(16) glm::vec3 m_attenuation;
-			 alignas(16) glm::vec2 m_cutOff;
-			 alignas(16) glm::vec3 m_bounds;
+			uint32_t m_type;
+			uint32_t m_shadowType;
+			alignas(16) glm::vec3 m_worldPosition;
+			alignas(16) glm::vec3 m_direction;
+			alignas(16) glm::vec3 m_intensity;
+			alignas(16) glm::vec3 m_attenuation;
+			alignas(16) glm::vec2 m_cutOff;
+			alignas(16) glm::vec3 m_bounds;
 		};
 
 		SAILOR_API virtual void BeginPlay() override;
@@ -86,20 +86,20 @@ namespace Sailor
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
-		
+
 		float GetShadowsOccupiedMemoryMb() const { return m_shadowMapsMb; }
 
 	protected:
-		
+
 		SAILOR_API TVector<RHI::RHIUpdateShadowMapCommand> PrepareCSMPasses(
 			const RHI::RHISceneViewPtr& sceneView,
 			const Math::Transform& cameraTransform,
-			const CameraData& cameraData, 
+			const CameraData& cameraData,
 			const TVector<RHI::RHILightProxy>& directionalLights);
-		
+
 		SAILOR_API void GetLightsInFrustum(const Math::Frustum& frustum,
 			const Math::Transform& cameraTransform,
-			TVector<RHI::RHILightProxy>& outDirectionalLights, 
+			TVector<RHI::RHILightProxy>& outDirectionalLights,
 			TVector<RHI::RHILightProxy>& outSortedPointLights,
 			TVector<RHI::RHILightProxy>& outSortedSpotLights);
 
@@ -121,5 +121,5 @@ namespace Sailor
 		float m_shadowMapsMb = 0;
 	};
 
-	template ECS::TSystem<LightingECS, LightData>;
+	template class ECS::TSystem<LightingECS, LightData>;
 }

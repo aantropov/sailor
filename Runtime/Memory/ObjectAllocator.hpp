@@ -6,6 +6,7 @@
 #include "HeapAllocator.h"
 #include "MallocAllocator.hpp"
 #include "SharedPtr.hpp"
+#include "BaseAllocator.hpp"
 
 namespace Sailor::Memory
 {
@@ -19,7 +20,7 @@ namespace Sailor::Memory
 
 	// Allocator that is used only for managed memory (Objects)
 	// A bit clumsy, but functional
-	class ObjectAllocator final
+	class ObjectAllocator final : public IBaseAllocator
 	{
 	public:
 
@@ -85,11 +86,11 @@ namespace Sailor::Memory
 
 		SAILOR_API ObjectAllocator() = default;
 
-		SAILOR_API ObjectAllocator(const ObjectAllocator&) = delete;
-		SAILOR_API ObjectAllocator(ObjectAllocator&&) = delete;
+		ObjectAllocator(const ObjectAllocator&) = delete;
+		ObjectAllocator(ObjectAllocator&&) = delete;
 
-		SAILOR_API ObjectAllocator& operator=(const ObjectAllocator&) = delete;
-		SAILOR_API ObjectAllocator& operator=(ObjectAllocator&&) = delete;
+		ObjectAllocator& operator=(const ObjectAllocator&) = delete;
+		ObjectAllocator& operator=(ObjectAllocator&&) = delete;
 
 		~ObjectAllocator()
 		{
@@ -102,6 +103,6 @@ namespace Sailor::Memory
 		__forceinline TAllocator* GetAllocator() { return reinterpret_cast<TAllocator*>(m_globalAllocator); }
 
 		EAllocationPolicy m_policy;
-		void* m_globalAllocator;
+		IBaseAllocator* m_globalAllocator;
 	};
 }

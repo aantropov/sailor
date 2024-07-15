@@ -538,14 +538,14 @@ namespace Sailor::RHI
 
 			m_bEnableDepthTest(bEnableDepthTest),
 			m_bEnableZWrite(bEnableZWrite),
-			m_depthBias(depthBias),
 			m_bCustomDepthShader(bCustomDepthShader),
+			m_depthBias(depthBias),
 			m_cullMode(cullMode),
 			m_blendMode(blendMode),
 			m_fillMode(fillMode),
+			m_depthCompare(depthCompare),
 			m_tag(tag),
-			m_bSupportMultisampling(bSupportMultisampling),
-			m_depthCompare(depthCompare)
+			m_bSupportMultisampling(bSupportMultisampling)
 		{}
 
 		bool IsDepthTestEnabled() const { return m_bEnableDepthTest; }
@@ -784,16 +784,16 @@ namespace Sailor::RHI
 
 	protected:
 
-		SAILOR_API RHIResource() = default;
-		SAILOR_API virtual ~RHIResource() = default;
+		RHIResource() = default;
+		virtual ~RHIResource() = default;
 
 	private:
 
-		SAILOR_API RHIResource(RHIResource& copy) = delete;
-		SAILOR_API RHIResource& operator =(RHIResource& rhs) = delete;
+		RHIResource(RHIResource& copy) = delete;
+		RHIResource& operator =(RHIResource& rhs) = delete;
 
-		SAILOR_API RHIResource(RHIResource&& copy) = default;
-		SAILOR_API RHIResource& operator =(RHIResource&& rhs) = default;
+		SAILOR_API RHIResource(RHIResource&& copy) noexcept = default;
+		SAILOR_API RHIResource& operator =(RHIResource&& rhs) noexcept = default;
 	};
 
 	typedef TRefPtr<class RHIResource> RHIResourcePtr;

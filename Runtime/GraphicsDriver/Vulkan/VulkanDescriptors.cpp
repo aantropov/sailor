@@ -108,10 +108,10 @@ VulkanDescriptorSet::VulkanDescriptorSet(VulkanDevicePtr pDevice,
 	VulkanDescriptorPoolPtr pool,
 	VulkanDescriptorSetLayoutPtr descriptorSetLayout,
 	TVector<VulkanDescriptorPtr> descriptors) :
-	m_device(pDevice),
+	m_descriptors(std::move(descriptors)),
+	m_device(pDevice),	
 	m_descriptorPool(pool),
-	m_descriptorSetLayout(descriptorSetLayout),
-	m_descriptors(std::move(descriptors))
+	m_descriptorSetLayout(descriptorSetLayout)
 {
 	RecalculateCompatibility();
 }
@@ -192,8 +192,8 @@ void VulkanDescriptorSet::Release()
 		auto pReleaseResource = Tasks::CreateTask("Release descriptor set",
 			[
 				duplicatedPool = std::move(m_descriptorPool),
-				duplicatedSet = std::move(m_descriptorSet),
-				duplicatedDevice = std::move(m_device)
+					duplicatedSet = std::move(m_descriptorSet),
+					duplicatedDevice = std::move(m_device)
 			]() mutable
 			{
 				if (duplicatedSet && duplicatedDevice && duplicatedPool)
@@ -202,7 +202,7 @@ void VulkanDescriptorSet::Release()
 				}
 			});
 
-		App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
+				App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
 	}
 }
 
@@ -233,10 +233,10 @@ VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
 	VkDeviceSize offset,
 	VkDeviceSize range,
 	RHI::EShaderBindingType bufferType) :
+	VulkanDescriptor(dstBinding, dstArrayElement, (VkDescriptorType)bufferType),
 	m_buffer(buffer),
 	m_offset(offset),
-	m_range(range),
-	VulkanDescriptor(dstBinding, dstArrayElement, (VkDescriptorType)bufferType)
+	m_range(range)
 {
 	// If we're using storage buffer then we can operate with the whole range
 	if (const bool bIsStorageBuffer = bufferType == RHI::EShaderBindingType::StorageBuffer)
@@ -264,10 +264,10 @@ VulkanDescriptorCombinedImage::VulkanDescriptorCombinedImage(uint32_t dstBinding
 	VulkanSamplerPtr sampler,
 	VulkanImageViewPtr imageView,
 	VkImageLayout imageLayout) :
+	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
 	m_sampler(sampler),
 	m_imageView(imageView),
-	m_imageLayout(imageLayout),
-	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+	m_imageLayout(imageLayout)
 {
 	m_imageInfo.imageLayout = m_imageLayout;
 	m_imageInfo.imageView = *m_imageView;
@@ -291,9 +291,9 @@ VulkanDescriptorStorageImage::VulkanDescriptorStorageImage(uint32_t dstBinding,
 	uint32_t dstArrayElement,
 	VulkanImageViewPtr imageView,
 	VkImageLayout imageLayout) :
+	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
 	m_imageView(imageView),
-	m_imageLayout(imageLayout),
-	VulkanDescriptor(dstBinding, dstArrayElement, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+	m_imageLayout(imageLayout)
 {
 	m_imageInfo.imageLayout = m_imageLayout;
 	m_imageInfo.imageView = *m_imageView;

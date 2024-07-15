@@ -17,8 +17,8 @@ ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
 	: m_stdout_file(0)
 	, m_stderr_file(0)
 	, m_stdin_file(0)
-	, m_bufferSize(0)
 	, m_bShouldAttach(bInShouldAttach)
+	, m_bufferSize(0)
 {
 	if (bInShouldAttach)
 	{
@@ -84,22 +84,20 @@ void ConsoleWindow::Free()
 	FreeConsole();
 }
 
-bool ConsoleWindow::IsExitRequested()
-{
-	return _exit != nullptr;
-}
-
 void ConsoleWindow::OpenWindow(const wchar_t* Title)
 {
 	Free();
 	BOOL result = AllocConsole();
-	SetConsoleCtrlHandler(ConsoleHandler, TRUE);
+	if (result)
+	{
+		SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 
-	SetConsoleTitleW(Title);
+		SetConsoleTitleW(Title);
 
-	freopen_s(&m_stdout_file, "CONOUT$", "wb", stdout);
-	freopen_s(&m_stderr_file, "CONOUT$", "wb", stderr);
-	freopen_s(&m_stdin_file, "CONIN$", "rb", stdin);
+		freopen_s(&m_stdout_file, "CONOUT$", "wb", stdout);
+		freopen_s(&m_stderr_file, "CONOUT$", "wb", stderr);
+		freopen_s(&m_stdin_file, "CONIN$", "rb", stdin);
+	}
 }
 
 void ConsoleWindow::CloseWindow()
@@ -154,13 +152,13 @@ void ConsoleWindow::Update()
 			if (!result)
 				continue;
 
-			if (info.dwCursorPosition.X == 0) 
+			if (info.dwCursorPosition.X == 0)
 			{
 				info.dwCursorPosition.X = info.dwSize.X - 1;
 				if (info.dwCursorPosition.Y > 0)
 					--info.dwCursorPosition.Y;
 			}
-			else 
+			else
 			{
 				--info.dwCursorPosition.X;
 			}
@@ -179,7 +177,7 @@ void ConsoleWindow::Update()
 		if (m_bufferSize == LINE_BUFFER_SIZE)
 			continue;
 
-		if (c == 13) 
+		if (c == 13)
 		{
 			Write(13);
 			Write(10);
@@ -196,7 +194,7 @@ uint32_t ConsoleWindow::Read(char* OutBuffer, uint32_t BufferSize)
 	// find EOL
 	static const uint32_t NO_POS = 0xffffffff;
 	unsigned eol_pos = NO_POS;
-	for (uint32_t i = 0; i < BufferSize; ++i) 
+	for (uint32_t i = 0; i < BufferSize; ++i)
 	{
 		if (m_buffer[i] == 13) {
 			eol_pos = i;

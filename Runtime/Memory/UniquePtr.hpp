@@ -135,6 +135,7 @@ namespace Sailor
 			}
 		}
 
+		template<typename>
 		friend class TUniquePtr;
 	};
 }

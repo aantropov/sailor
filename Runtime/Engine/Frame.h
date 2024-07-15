@@ -11,7 +11,7 @@
 
 namespace Sailor
 {
-	using FrameInputState = Sailor::Win32::InputState;
+	using FrameInputState = Win32::InputState;
 
 	class FrameState
 	{

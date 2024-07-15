@@ -1,53 +1,56 @@
 #pragma once
 #include "Sailor.h"
 
-namespace Sailor::Win32
+namespace Sailor
 {
-	LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-	enum class KeyState : uint8_t
+	namespace Win32
 	{
-		Up = 0,
-		Down,
-		Pressed
-	};
+		LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-	struct InputState
-	{
-		SAILOR_API bool IsKeyDown(uint32_t key) const;
-		SAILOR_API bool IsKeyPressed(uint32_t key) const;
-		SAILOR_API bool IsButtonDown(uint32_t button) const;
-		SAILOR_API bool IsButtonClick(uint32_t button) const;
+		enum class KeyState : uint8_t
+		{
+			Up = 0,
+			Down,
+			Pressed
+		};
 
-		SAILOR_API glm::ivec2 GetCursorPos() const;
+		struct InputState
+		{
+			SAILOR_API bool IsKeyDown(uint32_t key) const;
+			SAILOR_API bool IsKeyPressed(uint32_t key) const;
+			SAILOR_API bool IsButtonDown(uint32_t button) const;
+			SAILOR_API bool IsButtonClick(uint32_t button) const;
 
-		SAILOR_API void TrackForChanges(const InputState& previousState);
+			SAILOR_API glm::ivec2 GetCursorPos() const;
 
-	protected:
+			SAILOR_API void TrackForChanges(const InputState& previousState);
 
-		KeyState m_keyboard[256];
-		KeyState m_mouse[3];
-		int32_t m_cursorPosition[2];
+		protected:
 
-		friend LRESULT Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-		friend class GlobalInput;
-	};
+			KeyState m_keyboard[256];
+			KeyState m_mouse[3];
+			int32_t m_cursorPosition[2];
 
-	class GlobalInput
-	{
-	public:
+			friend LRESULT Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+			friend class GlobalInput;
+		};
 
-		SAILOR_API GlobalInput();
+		class GlobalInput
+		{
+		public:
 
-		static SAILOR_API void SetCursorPos(int32_t x, int32_t y);
-		static SAILOR_API void ShowCursor(bool bIsVisible);
+			SAILOR_API GlobalInput();
 
-		static SAILOR_API const InputState& GetInputState() { return m_rawState; }
+			static SAILOR_API void SetCursorPos(int32_t x, int32_t y);
+			static SAILOR_API void ShowCursor(bool bIsVisible);
 
-	protected:
+			static SAILOR_API const InputState& GetInputState() { return m_rawState; }
 
-		static InputState m_rawState;
+		protected:
 
-		friend LRESULT Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-	};
+			static InputState m_rawState;
+
+			friend LRESULT Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+		};
+	}
 }

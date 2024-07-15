@@ -18,8 +18,6 @@ namespace Sailor::Win32
 
 		SAILOR_API void Update();
 
-		bool IsExitRequested();
-
 		SAILOR_API virtual ~ConsoleWindow() override;
 
 	private:

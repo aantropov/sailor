@@ -24,7 +24,11 @@ namespace Sailor::Framegraph
 	{
 	public:
 
-		SAILOR_API TFrameGraphNode() { TFrameGraphNode::s_registrationFactoryMethod; }
+		SAILOR_API TFrameGraphNode() 
+		{ 
+			auto res = TFrameGraphNode::s_registrationFactoryMethod; 
+			res.DoWork();
+		}
 		SAILOR_API static const char* GetName() { return TRenderNode::GetName(); }
 		SAILOR_API virtual std::string GetDebugName() const { return TRenderNode::GetName(); }
 
@@ -43,18 +47,21 @@ namespace Sailor::Framegraph
 				}
 			}
 
+			// We meed that to supress warning and hint compiler not to omit the code
+			void DoWork() {}
+
 		protected:
 
 			static bool s_bRegistered;
 		};
 
-		static volatile RegistrationFactoryMethod s_registrationFactoryMethod;
+		static RegistrationFactoryMethod s_registrationFactoryMethod;
 	};
 
 
 #ifndef _SAILOR_IMPORT_
 	template<typename T>
-	TFrameGraphNode<T>::RegistrationFactoryMethod volatile TFrameGraphNode<T>::s_registrationFactoryMethod;
+	typename TFrameGraphNode<T>::RegistrationFactoryMethod TFrameGraphNode<T>::s_registrationFactoryMethod;
 
 	template<typename T>
 	bool TFrameGraphNode<T>::RegistrationFactoryMethod::s_bRegistered = false;

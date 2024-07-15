@@ -20,29 +20,35 @@ namespace Sailor
 	// from the proper ownership, like World destroys GameObject, GameObject destroy Component
 	// and all TObjectPtr pointers to destroyed objects aren't become dangling
 
-	template<typename T>
-	class TObjectPtr final : public IYamlSerializable
+	class TObjectPtrBase : public IYamlSerializable
 	{
-		//static_assert(std::is_base_of<Object, T>::value, "T must inherit from Object");
+	protected:
+
+		Object* m_pRawPtr = nullptr;
+		TSmartPtrControlBlock* m_pControlBlock = nullptr;
+		Memory::ObjectAllocatorPtr m_pAllocator = nullptr;
 
 	public:
 
-		virtual YAML::Node Serialize() const override
-		{
-			YAML::Node res;
-			if (m_pRawPtr)
-			{
-				Sailor::Serialize(res, "fileId", m_pRawPtr->GetFileId());
-				Sailor::Serialize(res, "instanceId", m_pRawPtr->GetInstanceId());
-			}
-
-			return res;
-		}
+		virtual YAML::Node Serialize() const override;
 
 		virtual void Deserialize(const YAML::Node& inData) override
 		{
 			check(0);
 		}
+
+		SAILOR_API bool IsValid() const noexcept;
+
+		// Only if you know what you're doing
+		SAILOR_API void ForcelyDestroyObject();
+	};
+
+	template<typename T>
+	class TObjectPtr final : public TObjectPtrBase
+	{
+		//static_assert(std::is_base_of<Object, T>::value, "T must inherit from Object");
+
+	public:
 
 		template<typename... TArgs>
 		static TObjectPtr<T> Make(Memory::ObjectAllocatorPtr pAllocator, TArgs&&... args) noexcept
@@ -197,8 +203,6 @@ namespace Sailor
 			return *static_cast<T*>(m_pRawPtr);
 		}
 
-		SAILOR_API bool IsValid() const noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0 && static_cast<Object*>(m_pRawPtr)->IsValid(); }
-
 		SAILOR_API explicit operator bool() const noexcept
 		{
 			//Object ptr is not valid if object is not valid
@@ -245,27 +249,9 @@ namespace Sailor
 			}
 		}
 
-		// Only if you know what you're doing
-		SAILOR_API void ForcelyDestroyObject()
-		{
-			check(m_pRawPtr && m_pControlBlock);
-			check(m_pControlBlock->m_sharedPtrCounter > 0);
-
-			if (--m_pControlBlock->m_sharedPtrCounter == 0)
-			{
-				m_pRawPtr->~Object();
-				m_pAllocator->Free(m_pRawPtr);
-				m_pRawPtr = nullptr;
-			}
-		}
-
 	protected:
 
 	private:
-
-		Object* m_pRawPtr = nullptr;
-		TSmartPtrControlBlock* m_pControlBlock = nullptr;
-		Memory::ObjectAllocatorPtr m_pAllocator = nullptr;
 
 		SAILOR_API void AssignRawPtr(Object* pRawPtr, TSmartPtrControlBlock* pControlBlock)
 		{

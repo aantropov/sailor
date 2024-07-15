@@ -194,7 +194,7 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 
 		struct Data {};
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load prefab",
-			[prefab, assetInfo, this]() mutable
+			[prefab, assetInfo]() mutable
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
 
@@ -206,10 +206,10 @@ Tasks::TaskPtr<PrefabPtr> PrefabImporter::LoadPrefab(FileId uid, PrefabPtr& outP
 
 				return res;
 
-			})->Then<PrefabPtr>([prefab](TSharedPtr<Data> data) mutable
+			}, EThreadType::Worker)->Then<PrefabPtr>([prefab](TSharedPtr<Data> data) mutable
 				{
 					return prefab;
-				}, "Preload resources", Tasks::EThreadType::RHI)->ToTaskWithResult();
+				}, "Preload resources", EThreadType::RHI)->ToTaskWithResult();
 
 				outPrefab = loadedPrefab = prefab;
 				promise->Run();

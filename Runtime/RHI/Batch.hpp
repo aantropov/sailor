@@ -306,7 +306,6 @@ namespace Sailor::RHI
 	{
 		SAILOR_PROFILE_FUNCTION();
 
-		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 		RHIMaterialPtr prevMaterial = nullptr;

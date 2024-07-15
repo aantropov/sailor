@@ -16,18 +16,18 @@
 	if (scheduler && !scheduler->IsMainThread()) \
 	{ \
 		const bool bIsRendererThread = scheduler->IsRendererThread(); \
-		const uint64_t currentThread = (uint64_t)GetCurrentThread(); \
 		Tasks::CreateTask("Log", [=]() \
 		{ \
 			if(!bIsRendererThread) \
 			{ \
+				/*const uint64_t currentThread = (uint64_t)GetCurrentThread();*/ \
 				std::cout << /* "Worker(" << currentThread << ") thread: " <<*/ (buffer) << std::endl; \
 			} \
 			else \
 			{ \
 				std::cout << "Renderer thread: " << (buffer) << std::endl; \
 			} \
-		}, Tasks::EThreadType::Main)->Run(); \
+		}, EThreadType::Main)->Run(); \
 	} \
 	else \
 	{ \
@@ -47,13 +47,13 @@
 	if (scheduler && !scheduler->IsMainThread()) \
 	{ \
 		const bool bIsRendererThread = scheduler->IsRendererThread(); \
-		const uint64_t currentThread = (uint64_t)GetCurrentThread(); \
 		Tasks::CreateTask("LogError", [=]() \
 		{ \
 			auto hConsole = GetStdHandle(STD_OUTPUT_HANDLE); \
 			SetConsoleTextAttribute(hConsole, 4); \
 			if(!bIsRendererThread) \
 			{ \
+				/*const uint64_t currentThread = (uint64_t)GetCurrentThread();*/ \
 				std::cerr << /* "Worker(" << currentThread << ") thread: " <<*/ (buffer) << std::endl; \
 			} \
 			else \
@@ -61,7 +61,7 @@
 				std::cerr << "Renderer thread: " << (buffer) << std::endl; \
 			} \
 			SetConsoleTextAttribute(hConsole, 7); \
-		}, Tasks::EThreadType::Main)->Run(); \
+		}, EThreadType::Main)->Run(); \
 	} \
 	else \
 	{ \

@@ -266,7 +266,6 @@ void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults)
 	float* pAabbData = reinterpret_cast<float*>(&aabb[0]);
 	int32_t* cullingResSse = &outResults[0];
 
-	__m128 zero_v = _mm_setzero_ps();
 	__m128 planesX[6];
 	__m128 planesY[6];
 	__m128 planesZ[6];
@@ -330,7 +329,6 @@ void Frustum::ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outR
 	float* pSpheres = reinterpret_cast<float*>(&spheres[0]);
 	int* cullingResults = &outResults[0];
 
-	__m128 zero_v = _mm_setzero_ps();
 	__m128 planesX[6];
 	__m128 planesY[6];
 	__m128 planesZ[6];

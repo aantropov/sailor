@@ -21,10 +21,10 @@ namespace Sailor
 
 		SAILOR_API FileId() = default;
 		SAILOR_API FileId(const FileId& inFileId) = default;
-		SAILOR_API FileId(FileId&& inFileId) = default;
+		SAILOR_API FileId(FileId&& inFileId) noexcept = default;
 
 		SAILOR_API FileId& operator=(const FileId& inFileId) = default;
-		SAILOR_API FileId& operator=(FileId&& inFileId) = default;
+		SAILOR_API FileId& operator=(FileId&& inFileId) noexcept = default;
 
 		SAILOR_API __forceinline bool operator==(const FileId& rhs) const;
 		SAILOR_API __forceinline bool operator!=(const FileId& rhs) const { return !(rhs == *this); }

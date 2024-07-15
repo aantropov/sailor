@@ -48,7 +48,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
@@ -174,7 +173,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					bool bIsInited = false;
 					for (const auto& instancedDrawCall : drawCalls[i][vecBatches[j]])
 					{
-						auto& mesh = instancedDrawCall.First();
 						auto& matrices = *instancedDrawCall.Second();
 
 						memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(ShadowPrepassNode::PerInstanceData) * matrices.Num());
@@ -201,9 +199,6 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				sizeof(ShadowPrepassNode::PerInstanceData) * gpuMatricesData.Num(),
 				0);
 		}
-
-		const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
-		const size_t materialsPerThread = (batches.Num()) / numThreads;
 
 		if (m_indirectBuffers.Num() < NumShadowPasses)
 		{

@@ -169,6 +169,13 @@ void IGraphicsDriver::ReleaseTemporaryRenderTarget(RHI::RHIRenderTargetPtr rende
 	m_temporaryRenderTargets.Unlock(hash);
 }
 
+void IGraphicsDriverCommands::ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable)
+{
+	TVector<std::string> splittedString = Utils::SplitString(parameter, ".");
+	outBinding = splittedString[0];
+	outVariable = splittedString[1];
+}
+
 void IGraphicsDriverCommands::UpdateShaderBindingVariable(RHI::RHICommandListPtr cmd, RHI::RHIShaderBindingPtr shaderBinding, const std::string& variable, const void* value, size_t size, uint32_t indexInArray)
 {
 	SAILOR_PROFILE_FUNCTION();

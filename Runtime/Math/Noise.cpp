@@ -328,7 +328,6 @@ float Math::fBmPerlin(vec3 st, uint32_t octaves)
 {
 	float value = 0.0;
 	float amplitude = .5;
-	float frequency = 0.;
 
 	for (uint32_t i = 0; i < octaves; i++)
 	{
@@ -344,7 +343,6 @@ float Math::fBmVoronoi(vec3 st, uint32_t octaves)
 {
 	float value = 0.0;
 	float amplitude = .5;
-	float frequency = 0.;
 
 	for (uint32_t i = 0; i < octaves; i++)
 	{

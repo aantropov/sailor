@@ -291,8 +291,6 @@ void ShaderCache::CacheSpirvWithDebugInfo(const FileId& uid, uint32_t permutatio
 
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
-	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
-
 	if (vertexSpirv.Num() > 0)
 	{
 		std::ofstream vertexCompiled(GetCachedShaderWithDebugFilepath(uid, permutation, ShaderCache::VertexShaderTag), std::ofstream::binary);
@@ -321,16 +319,13 @@ void ShaderCache::CacheSpirv_ThreadSafe(const FileId& uid, uint32_t permutation,
 
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
-	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid);
-
 	auto it = std::find_if(std::begin(m_cache.m_data[uid]), std::end(m_cache.m_data[uid]),
 		[permutation](const ShaderCacheData::Entry& arg) { return arg.m_permutation == permutation; });
 
 	const bool bAlreadyContains = it != std::end(m_cache.m_data[uid]);
 
 	time_t timeStamp = 0;
-	const bool hasAsset = GetTimeStamp(uid, timeStamp);
-
+	
 	ShaderCacheData::Entry newEntry = ShaderCacheData::Entry();
 	ShaderCacheData::Entry* entry = &newEntry;
 

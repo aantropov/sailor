@@ -18,8 +18,8 @@ namespace Sailor
 
 		SAILOR_API virtual ~World() = default;
 
-		SAILOR_API World(const World&) = delete;
-		SAILOR_API World& operator=(const World&) = delete;
+		World(const World&) = delete;
+		World& operator=(const World&) = delete;
 
 		SAILOR_API World(World&&) = default;
 		SAILOR_API World& operator=(World&&) = default;

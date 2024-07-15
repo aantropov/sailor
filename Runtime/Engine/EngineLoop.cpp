@@ -1,4 +1,3 @@
-#pragma once
 #include "EngineLoop.h"
 #include "Core/Defines.h"
 
@@ -85,7 +84,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 			RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
 			return cmdList;
-		}, Tasks::EThreadType::RHI);
+		}, EThreadType::RHI);
 
 	task->Run();
 

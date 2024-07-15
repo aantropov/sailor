@@ -56,8 +56,13 @@ void StringHash::AddToHashedStringsTable(StringHash hash, std::string_view str)
 	auto it = HashedStrings.Find(hash);
 	if (it == HashedStrings.end())
 	{
+#ifdef _DEBUG
 		auto& value = HashedStrings.At_Lock(hash, std::string(str));
 		check(str == value);
+#else
+		HashedStrings.At_Lock(hash, std::string(str));
+#endif
+
 		HashedStrings.Unlock(hash);
 	}
 	else

@@ -66,7 +66,6 @@ namespace Sailor
 				return false;
 			}
 
-			std::streamsize size = file.tellg();
 			file.seekg(0, std::ios::beg);
 
 			std::stringstream buffer;
@@ -144,8 +143,7 @@ namespace Sailor
 				if (assetInfoHandlerIt != m_assetInfoHandlers.end())
 				{
 					auto assetInfoHandler = *(*assetInfoHandlerIt).m_second;
-
-					assetInfoHandler->GetFactory()->LoadAsset(id, out, bImmediate);
+					out = LoadAsset(assetInfoHandler, id, bImmediate);
 				}
 			}
 
@@ -153,6 +151,8 @@ namespace Sailor
 		}
 
 	protected:
+
+		SAILOR_API TObjectPtr<Object> LoadAsset(IAssetInfoHandler* assetInfoHandler, const FileId& id, bool bImmediate);
 
 		SAILOR_API const FileId& LoadFile(const std::string& filepath);
 

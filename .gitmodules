@@ -22,9 +22,6 @@
 [submodule "External/imgui"]
 	path = External/imgui
 	url = https://github.com/ocornut/imgui.git
-[submodule "External/assimp"]
-	path = External/assimp
-	url = https://github.com/assimp/assimp.git
 [submodule "External/refl-cpp"]
 	path = External/refl-cpp
 	url = https://github.com/veselink1/refl-cpp.git
@@ -32,3 +29,6 @@
 	path = External/tracy
 	url = https://github.com/wolfpld/tracy.git
 
+[submodule "External/tinygltf"]
+	path = External/tinygltf
+	url = https://github.com/syoyo/tinygltf.git

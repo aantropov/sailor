@@ -38,5 +38,5 @@ namespace Sailor
 		static const std::string& GetStrFromHashedStringsTable(StringHash Hash);
 	};
 
-	SAILOR_API [[nodiscard]] __forceinline constexpr StringHash operator""_h(const char* str, std::size_t size) { return StringHash{ std::string_view(str, size) }; }
+	SAILOR_API /*[[nodiscard]]*/ __forceinline constexpr StringHash operator""_h(const char* str, std::size_t size) { return StringHash{std::string_view(str, size)}; }
 };
