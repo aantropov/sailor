@@ -33,7 +33,7 @@ set(YAML_CPP_BUILD_TESTS OFF)
 add_subdirectory(${SAILOR_EXTERNAL_DIR}/yaml-cpp)
 
 # tinygltf
-set(TINYGLTF_BUILD_LOADER_EXAMPLES OFF CACHE BOOL "Disable examples" FORCE)
+set(TINYGLTF_BUILD_LOADER_EXAMPLE OFF CACHE BOOL "Disable examples" FORCE)
 set(TINYGLTF_BUILD_EXAMPLES OFF CACHE BOOL "Disable examples" FORCE)
 set(TINYGLTF_INSTALL OFF CACHE BOOL "Disable install" FORCE)
 add_subdirectory(${SAILOR_EXTERNAL_DIR}/tinygltf)
