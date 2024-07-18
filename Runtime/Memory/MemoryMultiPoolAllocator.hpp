@@ -6,7 +6,7 @@
 namespace Sailor::Memory
 {
 	template<typename TGlobalAllocator, typename TPtr>
-	class TMultiPoolAllocator
+	class TMultiPoolAllocator : public IBaseAllocator
 	{
 	public:
 

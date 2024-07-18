@@ -2,11 +2,12 @@
 #include <cassert>
 #include <memory>
 #include "Core/Defines.h"
+#include "BaseAllocator.hpp"
 
 namespace Sailor::Memory
 {
 	// Global allocator
-	class SAILOR_API MallocAllocator
+	class SAILOR_API MallocAllocator : public IBaseAllocator
 	{
 	public:
 

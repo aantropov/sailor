@@ -1,3 +1,8 @@
+#include <filesystem>
+#include <fstream>
+#include <algorithm>
+#include <iostream>
+
 #include "ModelImporter.h"
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -5,245 +10,17 @@
 #include "ModelAssetInfo.h"
 #include "Core/Utils.h"
 #include "RHI/VertexDescription.h"
-#include <filesystem>
-#include <fstream>
-#include <algorithm>
-#include <iostream>
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
 #include "Memory/ObjectAllocator.hpp"
 
 #include "nlohmann_json/include/nlohmann/json.hpp"
-#include "Tasks/Scheduler.h"
+#include "glm/glm/gtc/type_ptr.hpp"
 
-////Assimp
-//#include "assimp/scene.h"
-//#include "assimp/postprocess.h"
-//#include "assimp/Importer.hpp"
-//#include "assimp/DefaultLogger.hpp"
-//#include "assimp/LogStream.hpp"
+#define TINYGLTF_IMPLEMENTATION
+#include "tinygltf/tiny_gltf.h"
 
 using namespace Sailor;
-
-/*
-//////////////////////////
-// Assimp Helper Functions
-
-namespace {
-	const unsigned int DefaultImportFlags_Assimp =
-		aiProcess_CalcTangentSpace |
-		aiProcess_Triangulate |
-		aiProcess_FlipUVs |
-		aiProcess_SortByPType |
-		aiProcess_PreTransformVertices |
-		aiProcess_GenNormals |
-		aiProcess_GenUVCoords |
-		aiProcess_Debone |
-		aiProcess_RemoveRedundantMaterials |
-		aiProcess_FindDegenerates |
-		aiProcess_GenBoundingBoxes |
-		aiProcess_ValidateDataStructure;
-}
-
-TVector<std::string> TraceUsedTextures_Assimp(aiMaterial* mat, aiTextureType type)
-{
-	TVector<std::string> textures;
-	for (uint32_t i = 0; i < mat->GetTextureCount(type); i++)
-	{
-		aiString str;
-		mat->GetTexture(type, i, &str);
-		textures.Add(str.C_Str());
-	}
-	return textures;
-}
-
-MaterialAsset::Data ProcessMaterial_Assimp(aiMesh* mesh, const aiScene* scene, const std::string& texturesFolder)
-{
-	MaterialAsset::Data data;
-
-	aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-
-	data.m_name = material->GetName().C_Str();
-
-	const TVector<std::string> diffuseMaps = TraceUsedTextures_Assimp(material, aiTextureType_DIFFUSE);
-	const TVector<std::string> specularMaps = TraceUsedTextures_Assimp(material, aiTextureType_SPECULAR);
-	const TVector<std::string> ambientMaps = TraceUsedTextures_Assimp(material, aiTextureType_AMBIENT);
-	const TVector<std::string> normalMaps = TraceUsedTextures_Assimp(material, aiTextureType_NORMALS);
-	const TVector<std::string> emissionMaps = TraceUsedTextures_Assimp(material, aiTextureType_EMISSIVE);
-
-	data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard.shader");
-
-	glm::vec4 diffuse{};
-	glm::vec4 ambient{};
-	glm::vec4 emission{};
-	glm::vec4 specular{};
-
-	auto FillData = [](const aiMaterialProperty* property, const std::string& name, glm::vec4* ptr)
-		{
-			const string key = property->mKey.C_Str();
-			TVector<size_t> locations;
-			Utils::FindAllOccurances(key, name, locations, 0);
-			if (locations.Num() > 0)
-			{
-				memcpy(ptr, property->mData, property->mDataLength);
-				return true;
-			}
-
-			return false;
-		};
-
-	for (uint32_t i = 0; i < material->mNumProperties; i++)
-	{
-		const auto property = material->mProperties[i];
-		if (property->mType == aiPTI_Float && property->mDataLength >= sizeof(float) * 3)
-		{
-			if (FillData(property, std::string("diffuse"), &diffuse) ||
-				FillData(property, std::string("ambient"), &ambient) ||
-				FillData(property, std::string("emission"), &emission) ||
-				FillData(property, std::string("specular"), &specular))
-			{
-				continue;
-			}
-		}
-	}
-
-	data.m_uniformsVec4.Add("material.albedo", diffuse);
-	data.m_uniformsVec4.Add("material.ambient", ambient);
-	data.m_uniformsVec4.Add("material.emission", emission);
-	data.m_uniformsVec4.Add("material.specular", specular);
-
-	data.m_uniformsFloat.Add("material.roughness", 1.0f);
-	data.m_uniformsFloat.Add("material.metallic", 1.0f);
-
-	// TODO: Add support for glb?
-
-	if (!diffuseMaps.IsEmpty() && diffuseMaps[0].front() != '*')
-	{
-		data.m_samplers.Add("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + diffuseMaps[0]));
-	}
-
-	if (!ambientMaps.IsEmpty())
-	{
-		data.m_samplers.Add("ambientSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + ambientMaps[0]));
-	}
-
-	if (!normalMaps.IsEmpty() && normalMaps[0].front() != '*')
-	{
-		data.m_samplers.Add("normalSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + normalMaps[0]));
-	}
-
-	if (!specularMaps.IsEmpty() && specularMaps[0].front() != '*')
-	{
-		data.m_samplers.Add("specularSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + specularMaps[0]));
-	}
-
-	if (!emissionMaps.IsEmpty() && emissionMaps[0].front() != '*')
-	{
-		data.m_samplers.Add("emissionSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + emissionMaps[0]));
-	}
-
-	return data;
-}
-
-void ProcessNodeMaterials_Assimp(TVector<MaterialAsset::Data>& outMaterials, aiNode* node, const aiScene* scene, const std::string& texturesFolder)
-{
-	for (uint32_t i = 0; i < node->mNumMeshes; i++)
-	{
-		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		outMaterials.Add(std::move(ProcessMaterial_Assimp(mesh, scene, texturesFolder)));
-	}
-
-	for (uint32_t i = 0; i < node->mNumChildren; i++)
-	{
-		ProcessNodeMaterials_Assimp(outMaterials, node->mChildren[i], scene, texturesFolder);
-	}
-}
-
-ModelImporter::MeshContext ProcessMesh_Assimp(aiMesh* mesh, const aiScene* scene, float unitScale)
-{
-	assert(mesh->HasPositions());
-	assert(mesh->HasNormals());
-
-	Sailor::ModelImporter::MeshContext meshContext;
-	meshContext.bounds.m_min = *(vec3*)(&mesh->mAABB.mMin) * unitScale;
-	meshContext.bounds.m_max = *(vec3*)(&mesh->mAABB.mMax) * unitScale;
-
-	for (uint32_t i = 0; i < mesh->mNumVertices; i++)
-	{
-		RHI::VertexP3N3T3B3UV2C4 vertex{};
-
-		vertex.m_position =
-		{
-			mesh->mVertices[i].x * unitScale,
-			mesh->mVertices[i].y * unitScale,
-			mesh->mVertices[i].z * unitScale
-		};
-
-		if (mesh->HasTextureCoords(0))
-		{
-			vertex.m_texcoord =
-			{
-				mesh->mTextureCoords[0][i].x,
-				mesh->mTextureCoords[0][i].y
-			};
-		}
-
-		vertex.m_color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-		vertex.m_normal =
-		{
-			mesh->mNormals[i].x,
-			mesh->mNormals[i].y,
-			mesh->mNormals[i].z
-		};
-
-		if (mesh->HasTangentsAndBitangents())
-		{
-			vertex.m_tangent =
-			{
-				mesh->mTangents[i].x,
-				mesh->mTangents[i].y,
-				mesh->mTangents[i].z
-			};
-
-			vertex.m_bitangent =
-			{
-				mesh->mBitangents[i].x,
-				mesh->mBitangents[i].y,
-				mesh->mBitangents[i].z
-			};
-		}
-
-		meshContext.outVertices.Add(std::move(vertex));
-	}
-
-	for (uint32_t i = 0; i < mesh->mNumFaces; i++)
-	{
-		aiFace face = mesh->mFaces[i];
-		for (uint32_t j = 0; j < face.mNumIndices; j++)
-		{
-			meshContext.outIndices.Add(face.mIndices[j]);
-		}
-	}
-
-	return meshContext;
-}
-
-void ProcessNode_Assimp(TVector<ModelImporter::MeshContext>& outParsedMeshes, aiNode* node, const aiScene* scene, float unitScale)
-{
-	for (uint32_t i = 0; i < node->mNumMeshes; i++)
-	{
-		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		outParsedMeshes.Add(std::move(ProcessMesh_Assimp(mesh, scene, unitScale)));
-	}
-
-	for (uint32_t i = 0; i < node->mNumChildren; i++)
-	{
-		ProcessNode_Assimp(outParsedMeshes, node->mChildren[i], scene, unitScale);
-	}
-}
-//////////////////////////
-*/
 
 YAML::Node Model::Serialize() const
 {
@@ -267,7 +44,7 @@ void Model::Flush()
 
 	for (const auto& mesh : m_meshes)
 	{
-		if (!mesh)// || !mesh->IsReady())
+		if (!mesh) // || !mesh->IsReady())
 		{
 			m_bIsReady = false;
 			return;
@@ -320,38 +97,47 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	//Assimp::Importer importer;
-	//const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? aiProcess_OptimizeMeshes : 0);
-	//const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
+	tinygltf::Model gltfModel;
+	tinygltf::TinyGLTF loader;
+	std::string err;
+	std::string warn;
 
-	//if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-	//{
-	//	SAILOR_LOG("%s", importer.GetErrorString());
-	//	return;
-	//}
+	bool res = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
 
-	//const std::string texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
+	if (!res)
+	{
+		SAILOR_LOG("%s", err.c_str());
+		return;
+	}
 
-	//TVector<MaterialAsset::Data> materials;
-	//ProcessNodeMaterials_Assimp(materials, scene->mRootNode, scene, texturesFolder);
+	const std::string texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 
-	//for (const auto& material : materials)
-	//{
-	//	std::string materialsFolder = AssetRegistry::GetContentFolder() + texturesFolder + "materials/";
-	//	std::filesystem::create_directory(materialsFolder);
+	TVector<MaterialAsset::Data> materials;
 
-	//	FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));
-	//	assetInfo->GetDefaultMaterials().Add(materialFileId);
-	//}
-}
+	for (const auto& material : gltfModel.materials)
+	{
+		MaterialAsset::Data data;
+		data.m_name = material.name;
 
-bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
-{
-	SAILOR_PROFILE_FUNCTION();
+		if (material.values.find("baseColorTexture") != material.values.end())
+		{
+			//const auto& baseColorTexture = material.values.at("baseColorTexture").TextureIndex();
+			//data.m_samplers.Add("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + gltfModel.textures[baseColorTexture].source));
+		}
 
-	auto task = LoadModel(uid, outModel);
-	task->Wait();
-	return task->GetResult().IsValid();
+		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard.shader");
+
+		materials.Add(std::move(data));
+	}
+
+	for (const auto& material : materials)
+	{
+		std::string materialsFolder = AssetRegistry::GetContentFolder() + texturesFolder + "materials/";
+		std::filesystem::create_directory(materialsFolder);
+
+		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));
+		assetInfo->GetDefaultMaterials().Add(materialFileId);
+	}
 }
 
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
@@ -434,31 +220,136 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 	return Tasks::TaskPtr<ModelPtr>();
 }
 
+bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto task = LoadModel(uid, outModel);
+	task->Wait();
+	return task->GetResult().IsValid();
+}
+
 bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
-	//Assimp::Importer importer;
+	tinygltf::Model gltfModel;
+	tinygltf::TinyGLTF loader;
+	std::string err;
+	std::string warn;
 
-	//outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
-	//outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
+	bool res = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
 
-	//const auto ImportFlags = DefaultImportFlags_Assimp | (assetInfo->ShouldBatchByMaterial() ? (aiProcess_OptimizeMeshes | aiProcess_ImproveCacheLocality) : 0);
-	//const auto scene = importer.ReadFile(assetInfo->GetAssetFilepath().c_str(), ImportFlags);
+	if (!res)
+	{
+		SAILOR_LOG("%s", err.c_str());
+		return false;
+	}
 
-	//if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-	//{
-	//	SAILOR_LOG("%s", importer.GetErrorString());
-	//	return false;
-	//}
+	float unitScale = assetInfo->GetUnitScale();
 
-	//ProcessNode_Assimp(outParsedMeshes, scene->mRootNode, scene, assetInfo->GetUnitScale());
+	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
+	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
 
-	//for (const auto& mesh : outParsedMeshes)
-	//{
-	//	outBoundsAabb.Extend(mesh.bounds);
-	//}
+	for (const auto& mesh : gltfModel.meshes)
+	{
+		for (const auto& primitive : mesh.primitives)
+		{
+			MeshContext meshContext;
+			const tinygltf::Accessor& posAccessor = gltfModel.accessors[primitive.attributes.find("POSITION")->second];
+			const tinygltf::BufferView& posView = gltfModel.bufferViews[posAccessor.bufferView];
+			const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAccessor.byteOffset]);
 
-	//outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);
-	//outBoundsSphere.m_radius = glm::distance(outBoundsAabb.m_max, outBoundsSphere.m_center);
+			const tinygltf::Accessor& normAccessor = gltfModel.accessors[primitive.attributes.find("NORMAL")->second];
+			const tinygltf::BufferView& normView = gltfModel.bufferViews[normAccessor.bufferView];
+			const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAccessor.byteOffset]);
+
+			const tinygltf::Accessor* texAccessor = nullptr;
+			const tinygltf::BufferView* texView = nullptr;
+			const float* texData = nullptr;
+
+			if (primitive.attributes.find("TEXCOORD_0") != primitive.attributes.end())
+			{
+				texAccessor = &gltfModel.accessors[primitive.attributes.find("TEXCOORD_0")->second];
+				texView = &gltfModel.bufferViews[texAccessor->bufferView];
+				texData = reinterpret_cast<const float*>(&gltfModel.buffers[texView->buffer].data[texView->byteOffset + texAccessor->byteOffset]);
+			}
+
+			const tinygltf::Accessor* tanAccessor = nullptr;
+			const tinygltf::BufferView* tanView = nullptr;
+			const float* tanData = nullptr;
+
+			if (primitive.attributes.find("TANGENT") != primitive.attributes.end())
+			{
+				tanAccessor = &gltfModel.accessors[primitive.attributes.find("TANGENT")->second];
+				tanView = &gltfModel.bufferViews[tanAccessor->bufferView];
+				tanData = reinterpret_cast<const float*>(&gltfModel.buffers[tanView->buffer].data[tanView->byteOffset + tanAccessor->byteOffset]);
+			}
+
+			for (size_t i = 0; i < posAccessor.count; ++i)
+			{
+				Sailor::RHI::VertexP3N3T3B3UV2C4 vertex{};
+				vertex.m_position = glm::make_vec3(posData + i * 3) * unitScale;
+				vertex.m_normal = glm::make_vec3(normData + i * 3);
+
+				if (texData)
+				{
+					vertex.m_texcoord = glm::make_vec2(texData + i * 2);
+				}
+
+				if (tanData)
+				{
+					vertex.m_tangent = glm::make_vec3(tanData + i * 3);
+				}
+
+				vertex.m_color = glm::vec4(1.0f);
+
+				auto it = meshContext.uniqueVertices.find(vertex);
+				if (it == meshContext.uniqueVertices.end())
+				{
+					uint32_t index = static_cast<uint32_t>(meshContext.outVertices.Num());
+					meshContext.uniqueVertices[vertex] = index;
+					meshContext.outVertices.Add(vertex);
+					meshContext.outIndices.Add(index);
+				}
+				else
+				{
+					meshContext.outIndices.Add(it->second);
+				}
+
+				outBoundsAabb.Extend(vertex.m_position);
+			}
+
+			if (primitive.indices >= 0)
+			{
+				const tinygltf::Accessor& indexAccessor = gltfModel.accessors[primitive.indices];
+				const tinygltf::BufferView& indexView = gltfModel.bufferViews[indexAccessor.bufferView];
+
+				if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
+				{
+					const uint16_t* indexData = reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset]);
+
+					for (size_t i = 0; i < indexAccessor.count; ++i)
+					{
+						meshContext.outIndices.Add(indexData[i]);
+					}
+				}
+				else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT)
+				{
+					const uint32_t* indexData = reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset]);
+
+					for (size_t i = 0; i < indexAccessor.count; ++i)
+					{
+						meshContext.outIndices.Add(indexData[i]);
+					}
+				}
+			}
+
+			meshContext.bounds = Math::AABB(outBoundsAabb.m_min, outBoundsAabb.m_max);
+			outParsedMeshes.Emplace(meshContext);
+		}
+	}
+
+	outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);
+	outBoundsSphere.m_radius = glm::distance(outBoundsAabb.m_max, outBoundsSphere.m_center);
 
 	return true;
 }
