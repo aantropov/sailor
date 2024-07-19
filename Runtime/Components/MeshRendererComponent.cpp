@@ -51,7 +51,7 @@ void MeshRendererComponent::SetModel(const ModelPtr& model)
 {
 	GetData().SetModel(model);
 
-	if (model->GetFileId())
+	if (model && model->GetFileId())
 	{
 		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(model->GetFileId(), GetMaterials());
 	}

@@ -155,8 +155,6 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		if (material.values.find("baseColorTexture") != material.values.end())
 		{
 			const auto& textureIndex = material.values.at("baseColorTexture").TextureIndex();
-			const uint32_t samplerIndex = gltfModel.textures[textureIndex].sampler;
-			const uint32_t imageIndex = gltfModel.textures[textureIndex].source;
 
 			FileId albedo = CreateTextureAsset(AssetRegistry::GetContentFolder() + texturesFolder + assetInfo->GetAssetFilename() + "_" + material.name + "_baseColorTexture.asset",
 				assetInfo->GetAssetFilename(),
@@ -165,7 +163,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				RHI::ETextureClamping::Repeat,
 				RHI::ETextureFiltration::Linear);
 
-			data.m_samplers.Add("material.albedo", albedo);
+			data.m_samplers.Add("albedoSampler", albedo);
 		}
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard.shader");

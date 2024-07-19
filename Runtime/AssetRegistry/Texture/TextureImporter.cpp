@@ -335,7 +335,6 @@ bool TextureImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmed
 		return bRes;
 	}
 
-
 	LoadTexture(uid, outAsset);
 	out = outAsset;
 
