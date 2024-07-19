@@ -159,6 +159,32 @@ const FileId& AssetRegistry::LoadFile(const std::string& assetFilepath)
 
 		return assetInfo->GetFileId();
 	}
+	else
+	{
+		const bool bAssetFilenameDiffers = !std::filesystem::exists(Utils::RemoveFileExtension(filepath));
+		if (bAssetFilenameDiffers)
+		{
+			auto defaultAssetInfoHandler = App::GetSubmodule<DefaultAssetInfoHandler>();
+			auto defaultAssetInfo = defaultAssetInfoHandler->LoadAssetInfo(filepath);;
+
+			const bool bMissingAssetFile = !std::filesystem::exists(defaultAssetInfo->GetAssetFilepath());
+			const bool bAlreadyLoadedSomehow = m_loadedAssetInfo.ContainsKey(defaultAssetInfo->GetFileId());
+
+			if (!bMissingAssetFile && !bAlreadyLoadedSomehow)
+			{
+				// One assetfile could be bound to many of asset infos (glb container)
+				// Now that is used only for textures and glb
+				auto assetInfoHandler = App::GetSubmodule<TextureAssetInfoHandler>();
+				auto assetInfo = assetInfoHandler->LoadAssetInfo(filepath);;
+
+				m_loadedAssetInfo[assetInfo->GetFileId()] = assetInfo;
+			}
+			else if (bMissingAssetFile)
+			{
+				SAILOR_LOG("AssetInfo %s lacks AssetFile!", filepath.c_str());
+			}
+		}
+	}
 
 	return FileId::Invalid;
 }

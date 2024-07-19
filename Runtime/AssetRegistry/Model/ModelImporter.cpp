@@ -17,8 +17,10 @@
 #include "nlohmann_json/include/nlohmann/json.hpp"
 #include "glm/glm/gtc/type_ptr.hpp"
 
+#ifndef TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_IMPLEMENTATION
 #include "tinygltf/tiny_gltf.h"
+#endif
 
 using namespace Sailor;
 
@@ -93,6 +95,25 @@ void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
 
+FileId CreateTextureAsset(const std::string& filepath, const std::string& glbFilename, uint32_t glbTextureIndex, bool bShouldGenerateMips, RHI::ETextureClamping clamping, RHI::ETextureFiltration filtration)
+{
+	FileId newFileId = FileId::CreateNewFileId();
+
+	YAML::Node newTexture;
+	newTexture["fileId"] = newFileId;
+	newTexture["filename"] = glbFilename;
+	newTexture["glbTextureIndex"] = glbTextureIndex;
+	newTexture["bShouldGenerateMips"] = bShouldGenerateMips;
+	newTexture["clamping"] = clamping;
+	newTexture["filtration"] = filtration;
+
+	std::ofstream assetFile(filepath);
+	assetFile << newTexture;
+	assetFile.close();
+
+	return newFileId;
+}
+
 void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -102,11 +123,23 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	std::string err;
 	std::string warn;
 
-	bool res = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
+	const bool bIsGlb = Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb";
+	const bool bGltfParsed = bIsGlb ?
+		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str())
+		: loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
 
-	if (!res)
+	if (!err.empty())
 	{
-		SAILOR_LOG("%s", err.c_str());
+		SAILOR_LOG_ERROR("Parsing gltf %s error: %s", assetInfo->GetAssetFilepath().c_str(), err.c_str());
+	}
+
+	if (!warn.empty())
+	{
+		SAILOR_LOG("Parsing gltf %s warning: %s", assetInfo->GetAssetFilepath().c_str(), warn.c_str());
+	}
+
+	if (!bGltfParsed)
+	{
 		return;
 	}
 
@@ -121,11 +154,39 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 		if (material.values.find("baseColorTexture") != material.values.end())
 		{
-			//const auto& baseColorTexture = material.values.at("baseColorTexture").TextureIndex();
-			//data.m_samplers.Add("albedoSampler", App::GetSubmodule<AssetRegistry>()->GetOrLoadFile(texturesFolder + gltfModel.textures[baseColorTexture].source));
+			const auto& textureIndex = material.values.at("baseColorTexture").TextureIndex();
+			const uint32_t samplerIndex = gltfModel.textures[textureIndex].sampler;
+			const uint32_t imageIndex = gltfModel.textures[textureIndex].source;
+
+			FileId albedo = CreateTextureAsset(AssetRegistry::GetContentFolder() + texturesFolder + assetInfo->GetAssetFilename() + "_" + material.name + "_baseColorTexture.asset",
+				assetInfo->GetAssetFilename(),
+				textureIndex,
+				true,
+				RHI::ETextureClamping::Repeat,
+				RHI::ETextureFiltration::Linear);
+
+			data.m_samplers.Add("material.albedo", albedo);
 		}
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard.shader");
+
+		/*data.m_uniformsVec4.Add("material.albedo", diffuse);
+		data.m_uniformsVec4.Add("material.ambient", ambient);
+		data.m_uniformsVec4.Add("material.emission", emission);
+		data.m_uniformsVec4.Add("material.specular", specular);*/
+
+		data.m_uniformsFloat.Add("material.roughness", (float)material.pbrMetallicRoughness.roughnessFactor);
+		data.m_uniformsFloat.Add("material.metallic", (float)material.pbrMetallicRoughness.metallicFactor);
+		data.m_renderQueue = material.alphaMode == "BLEND" ? "Transparent" : "Opaque";
+
+		if (material.alphaMode == "MASK")
+		{
+			data.m_shaderDefines.Add("ALPHA_CUTOUT");
+		}
+
+		const vec4 emission = vec4((float)material.emissiveFactor[0], (float)material.emissiveFactor[1], (float)material.emissiveFactor[2], 0.0f);
+
+		data.m_uniformsVec4.Add("material.emission", emission);
 
 		materials.Add(std::move(data));
 	}
@@ -135,7 +196,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		std::string materialsFolder = AssetRegistry::GetContentFolder() + texturesFolder + "materials/";
 		std::filesystem::create_directory(materialsFolder);
 
-		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", std::move(material));
+		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", material);
 		assetInfo->GetDefaultMaterials().Add(materialFileId);
 	}
 }
@@ -236,15 +297,26 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 	std::string err;
 	std::string warn;
 
-	bool res = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
+	const bool bGltfParsed = (Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb") ?
+		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str())
+		: loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
 
-	if (!res)
+	if (!err.empty())
 	{
-		SAILOR_LOG("%s", err.c_str());
+		SAILOR_LOG_ERROR("Parsing gltf %s error: %s", assetInfo->GetAssetFilepath().c_str(), err.c_str());
+	}
+
+	if (!warn.empty())
+	{
+		SAILOR_LOG("Parsing gltf %s warning: %s", assetInfo->GetAssetFilepath().c_str(), warn.c_str());
+	}
+
+	if (!bGltfParsed)
+	{
 		return false;
 	}
 
-	float unitScale = assetInfo->GetUnitScale();
+	const float unitScale = assetInfo->GetUnitScale();
 
 	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
 	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
@@ -330,10 +402,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 					vertex.m_tangent = vertex.m_bitangent = vec3(0, 0, 0);
 				}
 
-				//uint32_t index = static_cast<uint32_t>(meshContext.outVertices.Num());
 				meshContext.outVertices.Add(vertex);
-				//meshContext.outIndices.Add(index);
-
 				outBoundsAabb.Extend(vertex.m_position);
 			}
 

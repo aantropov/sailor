@@ -26,6 +26,8 @@ namespace Sailor
 		// That includes "../Content/" in the beginning
 		SAILOR_API std::string GetAssetFilepath() const { return m_folder + m_assetFilename; }
 
+		SAILOR_API const std::string& GetAssetFilename() const { return m_assetFilename; }
+
 		// That includes "../Content/" in the beginning
 		SAILOR_API std::string GetMetaFilepath() const;
 

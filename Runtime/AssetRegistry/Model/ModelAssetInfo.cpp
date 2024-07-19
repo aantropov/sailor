@@ -35,8 +35,6 @@ void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
 {
 	// TODO: Add more formats
-	m_supportedExtensions.Emplace("obj");
-	m_supportedExtensions.Emplace("fbx");
 	m_supportedExtensions.Emplace("glb");
 	m_supportedExtensions.Emplace("gltf");
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);

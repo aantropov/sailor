@@ -13,13 +13,16 @@
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 
-#ifndef STB_IMAGE_IMPLEMENTATION
+#include "nlohmann_json/include/nlohmann/json.hpp"
+#include "glm/glm/gtc/type_ptr.hpp"
 
+#include "tinygltf/tiny_gltf.h"
+
+#ifndef STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image.h"
-
 #endif
 
 using namespace Sailor;
@@ -118,7 +121,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 					return false;
 				}, EThreadType::RHI)->Run();
 
-				pTexture->TraceHotReload(newPromise);
+			pTexture->TraceHotReload(newPromise);
 		}
 	}
 }
@@ -138,14 +141,75 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
-		int32_t texChannels = 0;
-		const std::string filepath = assetInfo->GetAssetFilepath();
-
-		if (stbi_is_hdr(filepath.c_str()))
+		if (assetInfo->StoredInGlb())
 		{
-			if (float* pixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			tinygltf::Model gltfModel;
+			tinygltf::TinyGLTF loader;
+			std::string err;
+			std::string warn;
+
+			const bool bIsGlb = Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb";
+
+			if (!bIsGlb)
 			{
-				const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
+				return false;
+			}
+
+			const bool bGltfParsed = loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
+
+			if (!err.empty())
+			{
+				SAILOR_LOG_ERROR("Parsing gltf %s error: %s", assetInfo->GetAssetFilepath().c_str(), err.c_str());
+			}
+
+			if (!warn.empty())
+			{
+				SAILOR_LOG("Parsing gltf %s warning: %s", assetInfo->GetAssetFilepath().c_str(), warn.c_str());
+			}
+
+			if (!bGltfParsed)
+			{
+				return false;
+			}
+
+			if (-1 != assetInfo->GetGlbTextureIndex())
+			{
+				const auto& texture = gltfModel.textures[assetInfo->GetGlbTextureIndex()];
+				const auto& image = gltfModel.images[texture.source];
+
+				width = image.width;
+				height = image.height;
+				mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+
+				decodedData.Resize(image.image.size());
+				memcpy(decodedData.GetData(), &image.image[0], image.image.size());
+
+				return true;
+			}
+
+			return false;
+		}
+		else
+		{
+			int32_t texChannels = 0;
+			const std::string filepath = assetInfo->GetAssetFilepath();
+
+			if (stbi_is_hdr(filepath.c_str()))
+			{
+				if (float* pixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+				{
+					const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
+					decodedData.Resize(imageSize);
+					memcpy(decodedData.GetData(), pixels, imageSize);
+
+					mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+					stbi_image_free(pixels);
+					return true;
+				}
+			}
+			else if (stbi_uc* pixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			{
+				const uint32_t imageSize = (uint32_t)width * height * 4;
 				decodedData.Resize(imageSize);
 				memcpy(decodedData.GetData(), pixels, imageSize);
 
@@ -153,16 +217,6 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 				stbi_image_free(pixels);
 				return true;
 			}
-		}
-		else if (stbi_uc* pixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
-		{
-			const uint32_t imageSize = (uint32_t)width * height * 4;
-			decodedData.Resize(imageSize);
-			memcpy(decodedData.GetData(), pixels, imageSize);
-
-			mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-			stbi_image_free(pixels);
-			return true;
 		}
 	}
 
@@ -246,13 +300,13 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 					return pTexture;
 				}, "Create RHI texture", EThreadType::RHI)->ToTaskWithResult();
 
-				outTexture = loadedTexture = pTexture;
-				promise->Run();
+			outTexture = loadedTexture = pTexture;
+			promise->Run();
 
-				m_promises.Unlock(uid);
-				m_loadedTextures.Unlock(uid);
+			m_promises.Unlock(uid);
+			m_loadedTextures.Unlock(uid);
 
-				return promise;
+			return promise;
 	}
 
 	outTexture = nullptr;

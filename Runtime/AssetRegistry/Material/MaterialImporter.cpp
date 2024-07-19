@@ -500,11 +500,10 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(FileId uid)
 
 const FileId& MaterialImporter::CreateMaterialAsset(const std::string& assetFilepath, MaterialAsset::Data data)
 {
-	YAML::Node newMaterial;
-
 	MaterialAsset asset;
 	asset.m_pData = TUniquePtr<MaterialAsset::Data>::Make(std::move(data));
-	newMaterial = asset.Serialize();
+
+	YAML::Node newMaterial = asset.Serialize();
 
 	std::ofstream assetFile(assetFilepath);
 
