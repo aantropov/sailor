@@ -255,11 +255,11 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		{
 			MeshContext meshContext;
 			const tinygltf::Accessor& posAccessor = gltfModel.accessors[primitive.attributes.find("POSITION")->second];
-			const tinygltf::BufferView& posView = gltfModel.bufferViews[posAccessor.bufferView];
+			const tinygltf::BufferView& posView = gltfModel.bufferViews[std::max(0, posAccessor.bufferView)];
 			const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAccessor.byteOffset]);
 
 			const tinygltf::Accessor& normAccessor = gltfModel.accessors[primitive.attributes.find("NORMAL")->second];
-			const tinygltf::BufferView& normView = gltfModel.bufferViews[normAccessor.bufferView];
+			const tinygltf::BufferView& normView = gltfModel.bufferViews[std::max(0, normAccessor.bufferView)];
 			const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAccessor.byteOffset]);
 
 			const tinygltf::Accessor* texAccessor = nullptr;
@@ -269,7 +269,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			if (primitive.attributes.find("TEXCOORD_0") != primitive.attributes.end())
 			{
 				texAccessor = &gltfModel.accessors[primitive.attributes.find("TEXCOORD_0")->second];
-				texView = &gltfModel.bufferViews[texAccessor->bufferView];
+				texView = &gltfModel.bufferViews[std::max(0, texAccessor->bufferView)];
 				texData = reinterpret_cast<const float*>(&gltfModel.buffers[texView->buffer].data[texView->byteOffset + texAccessor->byteOffset]);
 			}
 
@@ -280,7 +280,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			if (primitive.attributes.find("TANGENT") != primitive.attributes.end())
 			{
 				tanAccessor = &gltfModel.accessors[primitive.attributes.find("TANGENT")->second];
-				tanView = &gltfModel.bufferViews[tanAccessor->bufferView];
+				tanView = &gltfModel.bufferViews[std::max(0, tanAccessor->bufferView)];
 				tanData = reinterpret_cast<const float*>(&gltfModel.buffers[tanView->buffer].data[tanView->byteOffset + tanAccessor->byteOffset]);
 			}
 
@@ -291,7 +291,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			if (primitive.attributes.find("COLOR_0") != primitive.attributes.end())
 			{
 				colAccessor = &gltfModel.accessors[primitive.attributes.find("COLOR_0")->second];
-				colView = &gltfModel.bufferViews[colAccessor->bufferView];
+				colView = &gltfModel.bufferViews[std::max(0, colAccessor->bufferView)];
 				colData = reinterpret_cast<const float*>(&gltfModel.buffers[colView->buffer].data[colView->byteOffset + colAccessor->byteOffset]);
 			}
 
@@ -330,18 +330,9 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 					vertex.m_tangent = vertex.m_bitangent = vec3(0, 0, 0);
 				}
 
-				auto it = meshContext.uniqueVertices.find(vertex);
-				if (it == meshContext.uniqueVertices.end())
-				{
-					uint32_t index = static_cast<uint32_t>(meshContext.outVertices.Num());
-					meshContext.uniqueVertices[vertex] = index;
-					meshContext.outVertices.Add(vertex);
-					meshContext.outIndices.Add(index);
-				}
-				else
-				{
-					meshContext.outIndices.Add(it->second);
-				}
+				//uint32_t index = static_cast<uint32_t>(meshContext.outVertices.Num());
+				meshContext.outVertices.Add(vertex);
+				//meshContext.outIndices.Add(index);
 
 				outBoundsAabb.Extend(vertex.m_position);
 			}
@@ -349,7 +340,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			if (primitive.indices >= 0)
 			{
 				const tinygltf::Accessor& indexAccessor = gltfModel.accessors[primitive.indices];
-				const tinygltf::BufferView& indexView = gltfModel.bufferViews[indexAccessor.bufferView];
+				const tinygltf::BufferView& indexView = gltfModel.bufferViews[std::max(0, indexAccessor.bufferView)];
 
 				for (size_t i = 0; i < indexAccessor.count; ++i)
 				{

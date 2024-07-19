@@ -134,7 +134,7 @@ namespace Sailor
 		{
 			m_size = sizeof(T);
 
-			T* empty = reinterpret_cast<T*>(_malloca(m_size));
+			T* empty = nullptr;// reinterpret_cast<T*>(_malloca(m_size));
 
 			for_each(td.members, [&](auto member)
 				{
@@ -151,7 +151,7 @@ namespace Sailor
 					}
 				});
 
-			_freea(empty);
+			//_freea(empty);
 		}
 
 		friend class ReflectedData;
