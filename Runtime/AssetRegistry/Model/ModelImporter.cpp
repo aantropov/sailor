@@ -284,11 +284,36 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				tanData = reinterpret_cast<const float*>(&gltfModel.buffers[tanView->buffer].data[tanView->byteOffset + tanAccessor->byteOffset]);
 			}
 
+			const tinygltf::Accessor* colAccessor = nullptr;
+			const tinygltf::BufferView* colView = nullptr;
+			const float* colData = nullptr;
+
+			if (primitive.attributes.find("COLOR_0") != primitive.attributes.end())
+			{
+				colAccessor = &gltfModel.accessors[primitive.attributes.find("COLOR_0")->second];
+				colView = &gltfModel.bufferViews[colAccessor->bufferView];
+				colData = reinterpret_cast<const float*>(&gltfModel.buffers[colView->buffer].data[colView->byteOffset + colAccessor->byteOffset]);
+			}
+
+			const uint32_t colSize = (colAccessor && colAccessor->type == TINYGLTF_PARAMETER_TYPE_FLOAT_VEC3) ? 3 : 4;
+
 			for (size_t i = 0; i < posAccessor.count; ++i)
 			{
 				Sailor::RHI::VertexP3N3T3B3UV2C4 vertex{};
 				vertex.m_position = glm::make_vec3(posData + i * 3) * unitScale;
 				vertex.m_normal = glm::make_vec3(normData + i * 3);
+
+				if (colData)
+				{
+					vertex.m_color.x = colData[i * colSize];
+					vertex.m_color.y = colData[i * colSize + 1];
+					vertex.m_color.z = colData[i * colSize + 2];
+					vertex.m_color.w = colSize == 4 ? colData[i * 3 + 3] : 1.0f;
+				}
+				else
+				{
+					vertex.m_color = glm::vec4(1.0f);
+				}
 
 				if (texData)
 				{
@@ -298,9 +323,12 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				if (tanData)
 				{
 					vertex.m_tangent = glm::make_vec3(tanData + i * 3);
+					vertex.m_bitangent = glm::cross(vertex.m_normal, vertex.m_bitangent);
 				}
-
-				vertex.m_color = glm::vec4(1.0f);
+				else
+				{
+					vertex.m_tangent = vertex.m_bitangent = vec3(0, 0, 0);
+				}
 
 				auto it = meshContext.uniqueVertices.find(vertex);
 				if (it == meshContext.uniqueVertices.end())
@@ -323,23 +351,13 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				const tinygltf::Accessor& indexAccessor = gltfModel.accessors[primitive.indices];
 				const tinygltf::BufferView& indexView = gltfModel.bufferViews[indexAccessor.bufferView];
 
-				if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
+				for (size_t i = 0; i < indexAccessor.count; ++i)
 				{
-					const uint16_t* indexData = reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset]);
+					uint32_t index = indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT ?
+						(uint32_t)(reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset])[i])
+						: reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset])[i];
 
-					for (size_t i = 0; i < indexAccessor.count; ++i)
-					{
-						meshContext.outIndices.Add(indexData[i]);
-					}
-				}
-				else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT)
-				{
-					const uint32_t* indexData = reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset]);
-
-					for (size_t i = 0; i < indexAccessor.count; ++i)
-					{
-						meshContext.outIndices.Add(indexData[i]);
-					}
+					meshContext.outIndices.Add(index);
 				}
 			}
 

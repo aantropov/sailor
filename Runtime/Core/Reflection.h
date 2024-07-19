@@ -134,26 +134,24 @@ namespace Sailor
 		{
 			m_size = sizeof(T);
 
+			T* empty = reinterpret_cast<T*>(_malloca(m_size));
+
 			for_each(td.members, [&](auto member)
 				{
-					if constexpr (is_writable(member))
+					if constexpr (is_writable(member) /* && is_readable(member)*/)
 					{
-						if constexpr (is_field(member))
-						{
-							const std::string displayName = get_display_name(member);
-							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member)>;
+						const std::string displayName = get_display_name(member);
 
-							m_props[displayName] = typeid(PropertyType).name();
-						}
-						else if constexpr (refl::descriptor::is_function(member))
+						if constexpr (is_field(member) || refl::descriptor::is_function(member))
 						{
-							const std::string displayName = get_display_name(member);
-							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member))>;
+							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*empty))>;
 
 							m_props[displayName] = typeid(PropertyType).name();
 						}
 					}
 				});
+
+			_freea(empty);
 		}
 
 		friend class ReflectedData;
