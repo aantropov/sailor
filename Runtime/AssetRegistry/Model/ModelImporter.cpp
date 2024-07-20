@@ -228,7 +228,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			RHI::EBlendMode::None,
 			RHI::EFillMode::Fill);
 
-		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/StandardGltfPbr.shader");
+		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard_glTF.shader");
 	}
 
 	TVector<FileId> materialFiles;

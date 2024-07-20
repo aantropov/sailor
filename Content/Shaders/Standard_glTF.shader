@@ -440,5 +440,5 @@ glslFragment: |
         outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
     }
 
-    outColor.a = material.baseColorFactor.a;
+    outColor.a = material.baseColorFactor.a;    
   }
