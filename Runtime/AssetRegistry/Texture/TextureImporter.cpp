@@ -27,6 +27,84 @@
 
 using namespace Sailor;
 
+bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sailor::TextureImporter::ByteCode& outTexture)
+{
+	struct GLBHeader
+	{
+		uint32_t magic;
+		uint32_t version;
+		uint32_t length;
+	};
+
+	struct GLBChunkHeader
+	{
+		uint32_t chunkLength;
+		uint32_t chunkType;
+	};
+
+	std::ifstream file(filePath, std::ios::binary);
+	if (!file.is_open())
+	{
+		SAILOR_LOG_ERROR("Failed to open file");
+		return false;
+	}
+
+	GLBHeader header;
+	file.read(reinterpret_cast<char*>(&header), sizeof(GLBHeader));
+	if (header.magic != 0x46546C67)
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid GLB magic");
+		return false;
+	}
+
+	GLBChunkHeader jsonChunkHeader;
+	file.read(reinterpret_cast<char*>(&jsonChunkHeader), sizeof(GLBChunkHeader));
+	if (jsonChunkHeader.chunkType != 0x4E4F534A)
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid JSON chunk");
+		return false;
+	}
+
+	std::vector<char> jsonChunk(jsonChunkHeader.chunkLength);
+	file.read(jsonChunk.data(), jsonChunkHeader.chunkLength);
+	nlohmann::json gltfJson = nlohmann::json::parse(jsonChunk);
+
+	if (textureIndex < 0 || textureIndex >= gltfJson["textures"].size())
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid texture index");
+		return false;
+	}
+
+	int32_t imageIndex = gltfJson["textures"][textureIndex]["source"];
+	int32_t bufferViewIndex = gltfJson["images"][imageIndex]["bufferView"];
+	const auto& bufferView = gltfJson["bufferViews"][bufferViewIndex];
+	//int32_t bufferIndex = bufferView["buffer"];
+	int32_t byteOffset = bufferView["byteOffset"];
+	int32_t byteLength = bufferView["byteLength"];
+
+	file.seekg(sizeof(GLBHeader) + sizeof(GLBChunkHeader) + jsonChunkHeader.chunkLength, std::ios::beg);
+
+	GLBChunkHeader binChunkHeader;
+	file.read(reinterpret_cast<char*>(&binChunkHeader), sizeof(GLBChunkHeader));
+	if (binChunkHeader.chunkType != 0x004E4942)
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid BIN chunk");
+		return false;
+	}
+
+	if (byteOffset + byteLength > binChunkHeader.chunkLength)
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid buffer view");
+		return false;
+	}
+
+	file.seekg(byteOffset, std::ios::cur);
+	outTexture.Resize(byteLength);
+	file.read(reinterpret_cast<char*>(&outTexture[0]), byteLength);
+
+	return true;
+}
+
 bool Texture::IsReady() const
 {
 	return m_rhiTexture && m_rhiTexture->IsReady();
@@ -143,48 +221,49 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 	{
 		if (assetInfo->StoredInGlb())
 		{
-			tinygltf::Model gltfModel;
-			tinygltf::TinyGLTF loader;
-			std::string err;
-			std::string warn;
-
 			const bool bIsGlb = Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb";
 
-			if (!bIsGlb)
+			if (!bIsGlb || (assetInfo->GetGlbTextureIndex() == -1))
 			{
 				return false;
 			}
 
-			const bool bGltfParsed = loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
+			ByteCode rawBuffer;
+			const bool bExtracted = ExtractTextureFromGLB(assetInfo->GetAssetFilepath().c_str(), assetInfo->GetGlbTextureIndex(), rawBuffer);
 
-			if (!err.empty())
+			if (bExtracted)
 			{
-				SAILOR_LOG_ERROR("Parsing gltf %s error: %s", assetInfo->GetAssetFilepath().c_str(), err.c_str());
+				int32_t texChannels = 0;
+				const std::string filepath = assetInfo->GetAssetFilepath();
+
+				if (stbi_is_hdr_from_memory(&rawBuffer[0], rawBuffer.Num()))
+				{
+					if (float* pixels = stbi_loadf_from_memory(&rawBuffer[0], rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
+					{
+						const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
+						decodedData.Resize(imageSize);
+						memcpy(decodedData.GetData(), pixels, imageSize);
+
+						mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+						stbi_image_free(pixels);
+						return true;
+					}
+				}
+				else if (stbi_uc* pixels = stbi_load_from_memory(&rawBuffer[0], rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
+				{
+					const uint32_t imageSize = (uint32_t)width * height * 4;
+					decodedData.Resize(imageSize);
+					memcpy(decodedData.GetData(), pixels, imageSize);
+
+					mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
+					stbi_image_free(pixels);
+					return true;
+				}
 			}
-
-			if (!warn.empty())
+			else
 			{
-				SAILOR_LOG("Parsing gltf %s warning: %s", assetInfo->GetAssetFilepath().c_str(), warn.c_str());
-			}
-
-			if (!bGltfParsed)
-			{
-				return false;
-			}
-
-			if (-1 != assetInfo->GetGlbTextureIndex())
-			{
-				const auto& texture = gltfModel.textures[assetInfo->GetGlbTextureIndex()];
-				const auto& image = gltfModel.images[texture.source];
-
-				width = image.width;
-				height = image.height;
-				mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-
-				decodedData.Resize(image.image.size());
-				memcpy(decodedData.GetData(), &image.image[0], image.image.size());
-
-				return true;
+				const auto msg = "Cannot extract texture from glb! " + uid.ToString();
+				SAILOR_LOG_ERROR(msg.c_str());
 			}
 
 			return false;

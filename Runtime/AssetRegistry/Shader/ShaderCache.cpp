@@ -325,7 +325,8 @@ void ShaderCache::CacheSpirv_ThreadSafe(const FileId& uid, uint32_t permutation,
 	const bool bAlreadyContains = it != std::end(m_cache.m_data[uid]);
 
 	time_t timeStamp = 0;
-	
+	GetTimeStamp(uid, timeStamp);
+
 	ShaderCacheData::Entry newEntry = ShaderCacheData::Entry();
 	ShaderCacheData::Entry* entry = &newEntry;
 

@@ -21,8 +21,8 @@ namespace Sailor
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void EndPlay() override;
 
-		SAILOR_API __forceinline const ModelPtr& GetModel() const { return GetData().GetModel(); }
-		SAILOR_API __forceinline void SetModel(const ModelPtr& model);
+		SAILOR_API const ModelPtr& GetModel() const { return GetData().GetModel(); }
+		SAILOR_API void SetModel(const ModelPtr& model);
 
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return GetData().GetMaterials(); }
 		SAILOR_API __forceinline StaticMeshRendererData& GetData();

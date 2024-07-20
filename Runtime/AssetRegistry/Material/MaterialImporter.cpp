@@ -580,7 +580,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 		const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
 
 		promise = Tasks::CreateTaskWithResult<MaterialPtr>("Load material",
-			[pMaterial, pMaterialAsset, assetFilename = assetFilename]() mutable
+			[pLoadShader, pMaterial, pMaterialAsset, assetFilename = assetFilename]() mutable
 			{
 				// We're updating rhi on worker thread during load since we have no deps
 				auto updateRHI = Tasks::CreateTask("Update material RHI resource", [=]() mutable
@@ -631,6 +631,7 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 					pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
 				}
 
+				updateRHI->Join(pLoadShader);
 				updateRHI->Run();
 
 				return pMaterial;
@@ -638,7 +639,6 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 
 		outMaterial = loadedMaterial = pMaterial;
 
-		promise->Join(pLoadShader);
 		promise->Run();
 
 		m_promises.Unlock(uid);

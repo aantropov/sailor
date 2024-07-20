@@ -2,6 +2,7 @@
 #include <fstream>
 #include <algorithm>
 #include <iostream>
+#include <string>
 
 #include "ModelImporter.h"
 #include "AssetRegistry/FileId.h"
@@ -95,7 +96,12 @@ void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
 }
 
-FileId CreateTextureAsset(const std::string& filepath, const std::string& glbFilename, uint32_t glbTextureIndex, bool bShouldGenerateMips, RHI::ETextureClamping clamping, RHI::ETextureFiltration filtration)
+FileId CreateTextureAsset(const std::string& filepath,
+	const std::string& glbFilename,
+	uint32_t glbTextureIndex,
+	bool bShouldGenerateMips = true,
+	RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
+	RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear)
 {
 	FileId newFileId = FileId::CreateNewFileId();
 
@@ -145,49 +151,85 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 	const std::string texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 
-	TVector<MaterialAsset::Data> materials;
+	TVector<MaterialAsset::Data> materials(gltfModel.materials.size());
 
-	for (const auto& material : gltfModel.materials)
+	for (size_t i = 0; i < gltfModel.materials.size(); ++i)
 	{
-		MaterialAsset::Data data;
-		data.m_name = material.name;
+		const auto& material = gltfModel.materials[i];
 
-		if (material.values.find("baseColorTexture") != material.values.end())
+		MaterialAsset::Data& data = materials[i];
+		data.m_name = !material.name.empty() ? material.name : ("material" + std::to_string(i));
+
+		const std::string materialName = AssetRegistry::GetContentFolder() + texturesFolder + assetInfo->GetAssetFilename() + "_" + data.m_name;
+
+		if (material.pbrMetallicRoughness.baseColorTexture.index != -1)
 		{
-			const auto& textureIndex = material.values.at("baseColorTexture").TextureIndex();
-
-			FileId albedo = CreateTextureAsset(AssetRegistry::GetContentFolder() + texturesFolder + assetInfo->GetAssetFilename() + "_" + material.name + "_baseColorTexture.asset",
-				assetInfo->GetAssetFilename(),
-				textureIndex,
-				true,
-				RHI::ETextureClamping::Repeat,
-				RHI::ETextureFiltration::Linear);
-
-			data.m_samplers.Add("albedoSampler", albedo);
+			data.m_samplers.Add("baseColorSampler",
+				CreateTextureAsset(materialName + "_baseColorTexture.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.baseColorTexture.index));
 		}
 
-		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard.shader");
-
-		/*data.m_uniformsVec4.Add("material.albedo", diffuse);
-		data.m_uniformsVec4.Add("material.ambient", ambient);
-		data.m_uniformsVec4.Add("material.emission", emission);
-		data.m_uniformsVec4.Add("material.specular", specular);*/
-
-		data.m_uniformsFloat.Add("material.roughness", (float)material.pbrMetallicRoughness.roughnessFactor);
-		data.m_uniformsFloat.Add("material.metallic", (float)material.pbrMetallicRoughness.metallicFactor);
-		data.m_renderQueue = material.alphaMode == "BLEND" ? "Transparent" : "Opaque";
-
-		if (material.alphaMode == "MASK")
+		if (material.normalTexture.index != -1)
 		{
+			data.m_samplers.Add("normalSampler",
+				CreateTextureAsset(materialName + "_normalTexture.asset", assetInfo->GetAssetFilename(), material.normalTexture.index));
+		}
+
+		if (material.emissiveTexture.index != -1)
+		{
+			data.m_samplers.Add("emissiveSampler",
+				CreateTextureAsset(materialName + "_emissionTexture.asset", assetInfo->GetAssetFilename(), material.emissiveTexture.index));
+		}
+
+		if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
+		{
+			data.m_samplers.Add("ormSampler",
+				CreateTextureAsset(materialName + "_ormTexture.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index));
+		}
+
+		if (material.occlusionTexture.index != -1)
+		{
+			data.m_samplers.Add("occlusionSampler",
+				CreateTextureAsset(materialName + "_occlusionTexture.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index));
+		}
+
+		const vec4 baseColor = vec4((float)material.pbrMetallicRoughness.baseColorFactor[0],
+			(float)material.pbrMetallicRoughness.baseColorFactor[1],
+			(float)material.pbrMetallicRoughness.baseColorFactor[2],
+			(float)material.pbrMetallicRoughness.baseColorFactor[3]);
+
+		const vec4 emissiveFactor = vec4((float)material.emissiveFactor[0], (float)material.emissiveFactor[1], (float)material.emissiveFactor[2], 0.0f);
+
+		data.m_uniformsVec4.Add("material.baseColorFactor", baseColor);
+		data.m_uniformsVec4.Add("material.emissiveFactor", emissiveFactor);
+
+		data.m_uniformsFloat.Add("material.roughnessFactor", (float)material.pbrMetallicRoughness.roughnessFactor);
+		data.m_uniformsFloat.Add("material.metallicFactor", (float)material.pbrMetallicRoughness.metallicFactor);
+		data.m_uniformsFloat.Add("material.normalScale", (float)material.normalTexture.scale);
+		data.m_uniformsFloat.Add("material.alphaCutoff", (float)material.alphaCutoff);
+		data.m_uniformsFloat.Add("material.occlusionStrength", (float)material.occlusionTexture.strength);
+
+		const bool bIsTransparent = material.alphaMode == "BLEND";
+		const bool bIsMasked = material.alphaMode == "MASK";
+
+		data.m_renderQueue = bIsTransparent ? "Transparent" : "Opaque";
+
+		if (bIsMasked)
+		{
+			data.m_renderQueue = "Masked";
 			data.m_shaderDefines.Add("ALPHA_CUTOUT");
 		}
 
-		const vec4 emission = vec4((float)material.emissiveFactor[0], (float)material.emissiveFactor[1], (float)material.emissiveFactor[2], 0.0f);
+		data.m_renderState = RHI::RenderState(true,
+			!bIsTransparent,
+			0.0f, bIsMasked,
+			material.doubleSided ? RHI::ECullMode::None : RHI::ECullMode::Back,
+			RHI::EBlendMode::None,
+			RHI::EFillMode::Fill);
 
-		data.m_uniformsVec4.Add("material.emission", emission);
-
-		materials.Add(std::move(data));
+		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/StandardGltfPbr.shader");
 	}
+
+	TVector<FileId> materialFiles;
 
 	for (const auto& material : materials)
 	{
@@ -195,7 +237,25 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		std::filesystem::create_directory(materialsFolder);
 
 		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", material);
-		assetInfo->GetDefaultMaterials().Add(materialFileId);
+		materialFiles.Add(materialFileId);
+	}
+
+	if (assetInfo->ShouldBatchByMaterial())
+	{
+		for (const auto& materialFileId : materialFiles)
+		{
+			assetInfo->GetDefaultMaterials().Add(materialFileId);
+		}
+	}
+	else
+	{
+		for (const auto& mesh : gltfModel.meshes)
+		{
+			for (const auto& primitive : mesh.primitives)
+			{
+				assetInfo->GetDefaultMaterials().Add(materialFiles[primitive.material]);
+			}
+		}
 	}
 }
 
@@ -319,11 +379,26 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
 	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
 
+	TVector<MeshContext> batchedMeshContexts(gltfModel.materials.size());
+
 	for (const auto& mesh : gltfModel.meshes)
 	{
 		for (const auto& primitive : mesh.primitives)
 		{
-			MeshContext meshContext;
+			MeshContext* pMeshContext = nullptr;
+			uint32_t startIndex = 0;
+
+			if (assetInfo->ShouldBatchByMaterial())
+			{
+				pMeshContext = &batchedMeshContexts[primitive.material];
+				startIndex = pMeshContext->outVertices.Num();
+			}
+			else
+			{
+				outParsedMeshes.Add(MeshContext());
+				pMeshContext = &(*outParsedMeshes.Last());
+			}
+
 			const tinygltf::Accessor& posAccessor = gltfModel.accessors[primitive.attributes.find("POSITION")->second];
 			const tinygltf::BufferView& posView = gltfModel.bufferViews[std::max(0, posAccessor.bufferView)];
 			const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAccessor.byteOffset]);
@@ -393,15 +468,16 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				if (tanData)
 				{
 					vertex.m_tangent = glm::make_vec3(tanData + i * 3);
-					vertex.m_bitangent = glm::cross(vertex.m_normal, vertex.m_bitangent);
+					vertex.m_bitangent = glm::cross(vertex.m_normal, vertex.m_tangent);
 				}
 				else
 				{
 					vertex.m_tangent = vertex.m_bitangent = vec3(0, 0, 0);
 				}
 
-				meshContext.outVertices.Add(vertex);
+				pMeshContext->outVertices.Add(vertex);
 				outBoundsAabb.Extend(vertex.m_position);
+				pMeshContext->bounds.Extend(vertex.m_position);
 			}
 
 			if (primitive.indices >= 0)
@@ -415,11 +491,16 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 						(uint32_t)(reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset])[i])
 						: reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset])[i];
 
-					meshContext.outIndices.Add(index);
+					pMeshContext->outIndices.Add(index + startIndex);
 				}
 			}
+		}
+	}
 
-			meshContext.bounds = Math::AABB(outBoundsAabb.m_min, outBoundsAabb.m_max);
+	if (assetInfo->ShouldBatchByMaterial())
+	{
+		for (auto& meshContext : batchedMeshContexts)
+		{
 			outParsedMeshes.Emplace(meshContext);
 		}
 	}
