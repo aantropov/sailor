@@ -92,7 +92,7 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 		return false;
 	}
 
-	if (byteOffset + byteLength > binChunkHeader.chunkLength)
+	if (byteOffset + byteLength > (int32_t)binChunkHeader.chunkLength)
 	{
 		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid buffer view");
 		return false;
@@ -236,9 +236,9 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 				int32_t texChannels = 0;
 				const std::string filepath = assetInfo->GetAssetFilepath();
 
-				if (stbi_is_hdr_from_memory(&rawBuffer[0], rawBuffer.Num()))
+				if (stbi_is_hdr_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num()))
 				{
-					if (float* pixels = stbi_loadf_from_memory(&rawBuffer[0], rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
+					if (float* pixels = stbi_loadf_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
 					{
 						const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
 						decodedData.Resize(imageSize);
@@ -249,7 +249,7 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 						return true;
 					}
 				}
-				else if (stbi_uc* pixels = stbi_load_from_memory(&rawBuffer[0], rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
+				else if (stbi_uc* pixels = stbi_load_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
 				{
 					const uint32_t imageSize = (uint32_t)width * height * 4;
 					decodedData.Resize(imageSize);

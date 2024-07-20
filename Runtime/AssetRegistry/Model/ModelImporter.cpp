@@ -100,6 +100,7 @@ FileId CreateTextureAsset(const std::string& filepath,
 	const std::string& glbFilename,
 	uint32_t glbTextureIndex,
 	bool bShouldGenerateMips = true,
+	RHI::EFormat format = RHI::EFormat::R8G8B8A8_SRGB,
 	RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
 	RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear)
 {
@@ -112,6 +113,7 @@ FileId CreateTextureAsset(const std::string& filepath,
 	newTexture["bShouldGenerateMips"] = bShouldGenerateMips;
 	newTexture["clamping"] = clamping;
 	newTexture["filtration"] = filtration;
+	newTexture["format"] = format;
 
 	std::ofstream assetFile(filepath);
 	assetFile << newTexture;
@@ -171,7 +173,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		if (material.normalTexture.index != -1)
 		{
 			data.m_samplers.Add("normalSampler",
-				CreateTextureAsset(materialName + "_normalTexture.asset", assetInfo->GetAssetFilename(), material.normalTexture.index));
+				CreateTextureAsset(materialName + "_normalTexture.asset", assetInfo->GetAssetFilename(), material.normalTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM));
 		}
 
 		if (material.emissiveTexture.index != -1)
@@ -348,6 +350,33 @@ bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 	return task->GetResult().IsValid();
 }
 
+void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv)
+{
+	vec3 edge1 = vert[1] - vert[0];
+	vec3 edge2 = vert[2] - vert[0];
+
+	vec2 deltaUV1 = uv[1] - uv[0];
+	vec2 deltaUV2 = uv[2] - uv[0];
+
+	float denominator = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
+	if (abs(denominator) < 1e-6f)
+	{
+		return;
+	}
+
+	float f = 1.0f / denominator;
+
+	outTangent = vec3(
+		f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x),
+		f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y),
+		f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z)
+	);
+
+	vec3 normal = cross(edge1, edge2);
+	outBitangent = normalize(cross(normal, outTangent));
+	outTangent = normalize(outTangent);
+}
+
 bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
 {
 	tinygltf::Model gltfModel;
@@ -391,7 +420,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			if (assetInfo->ShouldBatchByMaterial())
 			{
 				pMeshContext = &batchedMeshContexts[primitive.material];
-				startIndex = pMeshContext->outVertices.Num();
+				startIndex = (uint32_t)pMeshContext->outVertices.Num();
 			}
 			else
 			{
@@ -472,7 +501,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				}
 				else
 				{
-					vertex.m_tangent = vertex.m_bitangent = vec3(0, 0, 0);
+					GenerateTangentBitangent(vertex.m_tangent, vertex.m_bitangent, &vertex.m_position, &vertex.m_texcoord);
 				}
 
 				pMeshContext->outVertices.Add(vertex);
