@@ -167,31 +167,31 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		if (material.pbrMetallicRoughness.baseColorTexture.index != -1)
 		{
 			data.m_samplers.Add("baseColorSampler",
-				CreateTextureAsset(materialName + "_baseColorTexture.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.baseColorTexture.index));
+				CreateTextureAsset(materialName + "_baseColorTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.baseColorTexture.index));
 		}
 
 		if (material.normalTexture.index != -1)
 		{
 			data.m_samplers.Add("normalSampler",
-				CreateTextureAsset(materialName + "_normalTexture.asset", assetInfo->GetAssetFilename(), material.normalTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM));
+				CreateTextureAsset(materialName + "_normalTexture.png.asset", assetInfo->GetAssetFilename(), material.normalTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM));
 		}
 
 		if (material.emissiveTexture.index != -1)
 		{
 			data.m_samplers.Add("emissiveSampler",
-				CreateTextureAsset(materialName + "_emissionTexture.asset", assetInfo->GetAssetFilename(), material.emissiveTexture.index));
+				CreateTextureAsset(materialName + "_emissionTexture.png.asset", assetInfo->GetAssetFilename(), material.emissiveTexture.index));
 		}
 
 		if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
 		{
 			data.m_samplers.Add("ormSampler",
-				CreateTextureAsset(materialName + "_ormTexture.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index));
+				CreateTextureAsset(materialName + "_ormTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index));
 		}
 
 		if (material.occlusionTexture.index != -1)
 		{
 			data.m_samplers.Add("occlusionSampler",
-				CreateTextureAsset(materialName + "_occlusionTexture.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index));
+				CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index));
 		}
 
 		const vec4 baseColor = vec4((float)material.pbrMetallicRoughness.baseColorFactor[0],

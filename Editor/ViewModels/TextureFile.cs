@@ -34,6 +34,9 @@ public partial class TextureFile : AssetFile
     [ObservableProperty]
     bool shouldSupportStorageBinding;
 
+    [ObservableProperty]
+    int glbTextureIndex = -1;
+
     public ImageSource Texture { get; private set; } = null;
 
     public override async Task Save() => await Save(new TextureFileYamlConverter());
@@ -50,7 +53,14 @@ public partial class TextureFile : AssetFile
                 TextureClampingType = engineTypes.Enums["enum Sailor::RHI::ETextureClamping"];
                 TextureFormatType = engineTypes.Enums["enum Sailor::RHI::EFormat"];
 
-                Texture = ImageSource.FromFile(Asset.FullName);
+                if (GlbTextureIndex != -1)
+                {
+                    MemoryStream textureStream = null;
+                    GlbExtractor.ExtractTextureFromGLB(Asset.FullName, GlbTextureIndex, out textureStream);
+                    Texture = ImageSource.FromStream(() => textureStream);
+                }
+                else
+                    Texture = ImageSource.FromFile(Asset.FullName);
             }
             catch (Exception ex)
             {
@@ -83,8 +93,9 @@ public partial class TextureFile : AssetFile
             Clamping = intermediateObject.Clamping;
             ShouldGenerateMips = intermediateObject.ShouldGenerateMips;
             ShouldSupportStorageBinding = intermediateObject.ShouldSupportStorageBinding;
+            GlbTextureIndex = intermediateObject.GlbTextureIndex;
 
-            DisplayName = Asset.Name;
+            DisplayName = GlbTextureIndex == -1 ? AssetInfo.Name : $"{AssetInfo.Name} (Texture {GlbTextureIndex})";
 
             IsLoaded = false;
         }
@@ -144,6 +155,9 @@ public class TextureFileYamlConverter : IYamlTypeConverter
                     case "bShouldSupportStorageBinding":
                         textureFile.ShouldSupportStorageBinding = deserializer.Deserialize<bool>(parser);
                         break;
+                    case "glbTextureIndex":
+                        textureFile.GlbTextureIndex = deserializer.Deserialize<int>(parser);
+                        break;
                     default:
                         deserializer.Deserialize<object>(parser);
                         break;
@@ -191,6 +205,9 @@ public class TextureFileYamlConverter : IYamlTypeConverter
 
             emitter.Emit(new Scalar(null, "bShouldSupportStorageBinding"));
             emitter.Emit(new Scalar(null, textureFile.ShouldSupportStorageBinding.ToString().ToLower()));
+
+            emitter.Emit(new Scalar(null, "glbTextureIndex"));
+            emitter.Emit(new Scalar(null, textureFile.GlbTextureIndex.ToString().ToLower()));
 
             emitter.Emit(new MappingEnd());
         }

@@ -4,6 +4,7 @@ using SailorEngine;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
+using System.Collections.Generic;
 
 namespace SailorEditor.Services
 {
@@ -12,7 +13,7 @@ namespace SailorEditor.Services
         public ProjectRoot Root { get; private set; }
         public List<AssetFolder> Folders { get; private set; }
         public Dictionary<FileId, AssetFile> Assets { get; private set; }
-        public List<AssetFile> Files { get { return [.. Assets.Values]; } }
+        public List<AssetFile> Files { get; private set; } = new();
 
         public AssetsService() => AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
 
@@ -23,6 +24,8 @@ namespace SailorEditor.Services
 
             Root = new ProjectRoot { Name = projectRoot, Id = 1 };
             ReadDirectory(Root, projectRoot, -1);
+
+            Files = new HashSet<AssetFile>([.. Assets.Values]).ToList();
         }
 
         private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId)
@@ -34,7 +37,7 @@ namespace SailorEditor.Services
             AssetFile newAssetFile = extension switch
             {
                 ".png" or ".jpg" or ".tga" or ".bmp" or ".dds" or ".hdr" => new TextureFile(),
-                ".obj" or ".fbx" or ".gltf" => new ModelFile(),
+                ".obj" or ".gltf" or ".glb" => new ModelFile(),
                 ".shader" => new ShaderFile(),
                 ".mat" => new MaterialFile(),
                 ".glsl" => new ShaderLibraryFile(),
@@ -49,6 +52,12 @@ namespace SailorEditor.Services
             newAssetFile.IsDirty = false;
 
             _ = newAssetFile.Revert();
+
+            // Resolve glb
+            if (newAssetFile is TextureFile)
+            {
+                newAssetFile.Asset = new(assetInfo.Directory + $"/{(newAssetFile as TextureFile).Filename.Value.ToString()}");
+            }
 
             return newAssetFile;
         }
