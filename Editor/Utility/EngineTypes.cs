@@ -252,7 +252,7 @@ namespace SailorEditor
         public static implicit operator Quat(Rotation uniform) => new(uniform.Quat);
         public object Clone() => new Rotation { Quat = Quat };
 
-        public override string ToString() => $"<Yaw: {X}, Pitch: {Y}, Roll: {Z}>";
+        public override string ToString() => $"<Yaw: {Yaw}, Pitch: {Pitch}, Roll: {Roll}>";
 
         public int CompareTo(Rotation other) => Quat.CompareTo(other.Quat);
 
