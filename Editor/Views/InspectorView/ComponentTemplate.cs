@@ -47,6 +47,7 @@ public class ComponentTemplate : DataTemplate
                         propertyEditor = property.Value switch
                         {
                             Observable<float> observableFloat => Templates.FloatEditor((Component vm) => observableFloat.Value, (vm, value) => observableFloat.Value = value),
+                            Rotation quat => Templates.RotationEditor((Component vm) => quat),
                             Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
                             Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
                             Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),

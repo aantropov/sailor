@@ -26,6 +26,7 @@ namespace Sailor
 		SAILOR_API virtual void EndPlay() override;
 
 		MeshRendererComponentPtr m_meshRenderer;
+		glm::quat m_testQuat;
 
 	protected:
 
@@ -57,5 +58,6 @@ namespace Sailor
 
 REFL_AUTO(
 	type(Sailor::TestComponent, bases<Sailor::Component>),
+	field(m_testQuat),
 	field(m_meshRenderer)
 )

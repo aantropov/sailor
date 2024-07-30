@@ -34,7 +34,7 @@ public partial class GameObject : ObservableObject, ICloneable
     {
         Name = Name + "(Clone)",
         Position = new Vec4(Position),
-        Rotation = new Vec4(Rotation),
+        Rotation = new Rotation(Rotation),
         Scale = new Vec4(Scale),
         ParentIndex = ParentIndex,
         InstanceId = InstanceId,
@@ -54,7 +54,7 @@ public partial class GameObject : ObservableObject, ICloneable
     Vec4 position = new();
 
     [ObservableProperty]
-    Vec4 rotation = new();
+    Rotation rotation = new();
 
     [ObservableProperty]
     Vec4 scale = new();

@@ -10,6 +10,7 @@ using SailorEditor;
 using System.Globalization;
 using YamlDotNet.Serialization.NamingConventions;
 using SailorEngine;
+using System.Xml.Linq;
 
 namespace SailorEngine
 {
@@ -22,6 +23,11 @@ namespace SailorEngine
     };
 
     public class FloatProperty : Property<float> { }
+    public class RotationProperty : Property<SailorEditor.Rotation>
+    {
+        public RotationProperty(Quat defaultValue) => DefaultValue = new Rotation(defaultValue);
+    }
+
     public class Vec4Property : Property<SailorEditor.Vec4> { }
     public class Vec3Property : Property<SailorEditor.Vec3> { }
     public class Vec2Property : Property<SailorEditor.Vec2> { }
@@ -103,48 +109,57 @@ namespace SailorEngine
                 .IgnoreUnmatchedProperties()
                 .Build();
 
-            var rootNode = deserializer.Deserialize<RootNode>(yamlContent);
-
             var res = new EngineTypes();
 
-            foreach (var component in rootNode.EngineTypes)
+            try
             {
-                var newComponent = new ComponentType
-                {
-                    Name = component.Typename
-                };
+                var rootNode = deserializer.Deserialize<RootNode>(yamlContent);
 
-                foreach (var property in component.Properties)
+                foreach (var component in rootNode.EngineTypes)
                 {
-                    PropertyBase newProperty = property.Value switch
+                    var newComponent = new ComponentType
                     {
-                        "struct glm::vec<2,float,0>" => new Vec2Property(),
-                        "struct glm::vec<3,float,0>" => new Vec3Property(),
-                        "struct glm::vec<4,float,0>" => new Vec4Property(),
-                        "float" => new FloatProperty(),
-                        var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty(),
-                        var value when value.Contains("TObjectPtr") => new InstanceIdProperty(),
-                        var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
-                        _ => throw new InvalidOperationException($"Unexpected property type: {property.Value}")
+                        Name = component.Typename
                     };
 
-                    newComponent.Properties[property.Key] = newProperty;
+                    foreach (var property in component.Properties)
+                    {
+                        PropertyBase newProperty = property.Value switch
+                        {
+                            "struct glm::qua<float,0>" => new RotationProperty(rootNode.Cdos.Find((a) => a.Typename == component.Typename).DefaultValues[property.Key] as Quat ?? default),
+                            "struct glm::vec<2,float,0>" => new Vec2Property(),
+                            "struct glm::vec<3,float,0>" => new Vec3Property(),
+                            "struct glm::vec<4,float,0>" => new Vec4Property(),
+                            "float" => new FloatProperty(),
+                            var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty(),
+                            var value when value.Contains("TObjectPtr") => new InstanceIdProperty(),
+                            var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
+                            _ => throw new InvalidOperationException($"Unexpected property type: {property.Value}")
+                        };
+
+
+                        newComponent.Properties[property.Key] = newProperty;
+                    }
+
+                    newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = "NullFileId" };
+                    newComponent.Properties["instanceId"] = new InstanceIdProperty();
+
+                    res.Components[component.Typename] = newComponent;
                 }
 
-                newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = "NullFileId" };
-                newComponent.Properties["instanceId"] = new InstanceIdProperty();
-
-                res.Components[component.Typename] = newComponent;
-            }
-
-            foreach (var enumNode in rootNode.Enums)
-            {
-                foreach (var enumEntry in enumNode)
+                foreach (var enumNode in rootNode.Enums)
                 {
-                    res.Enums[enumEntry.Key] = enumEntry.Value;
+                    foreach (var enumEntry in enumNode)
+                    {
+                        res.Enums[enumEntry.Key] = enumEntry.Value;
+                    }
                 }
-            }
 
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
             return res;
         }
 
@@ -164,13 +179,195 @@ namespace SailorEngine
         public class ComponentDefaultValuesNode
         {
             public string Typename { get; set; }
-            public Dictionary<string, string> DefaultValues { get; set; }
+            public Dictionary<string, object> DefaultValues { get; set; }
         }
     };
 }
 
 namespace SailorEditor
 {
+    public partial class Rotation : ObservableObject, ICloneable, IComparable<Rotation>
+    {
+        public Rotation() { }
+        public Rotation(Quat value) => Quat = value;
+
+        public Quat Quat
+        {
+            get => quat;
+            set
+            {
+                if (quat != value && SetProperty(ref quat, value))
+                {
+                    UpdateYawPitchRoll();
+                    OnPropertyChanged(nameof(Yaw));
+                    OnPropertyChanged(nameof(Pitch));
+                    OnPropertyChanged(nameof(Roll));
+                }
+            }
+        }
+
+        public float Yaw
+        {
+            get => yaw;
+            set
+            {
+                if (yaw != value)
+                {
+                    yaw = value;
+                    UpdateQuat();
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public float Pitch
+        {
+            get => pitch;
+            set
+            {
+                if (pitch != value)
+                {
+                    pitch = value;
+                    UpdateQuat();
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public float Roll
+        {
+            get => roll;
+            set
+            {
+                if (roll != value)
+                {
+                    roll = value;
+                    UpdateQuat();
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public static implicit operator Rotation(Quat value) => new() { Quat = value };
+        public static implicit operator Quat(Rotation uniform) => new(uniform.Quat);
+        public object Clone() => new Rotation { Quat = Quat };
+
+        public override string ToString() => $"<Yaw: {X}, Pitch: {Y}, Roll: {Z}>";
+
+        public int CompareTo(Rotation other) => Quat.CompareTo(other.Quat);
+
+        private void UpdateQuat() => quat = Quat.FromYawPitchRoll(yaw, pitch, roll);
+        private void UpdateYawPitchRoll() => (yaw, pitch, roll) = quat.ToYawPitchRoll();
+
+        float yaw = 0.0f;
+        float pitch = 0.0f;
+        float roll = 0.0f;
+
+        Quat quat;
+    }
+
+    public partial class Quat : ObservableObject, ICloneable, IComparable<Quat>
+    {
+        public Quat() { }
+        public Quat(Quaternion value)
+        {
+            X = value.X;
+            Y = value.Y;
+            Z = value.Z;
+            W = value.W;
+        }
+
+        public Quat(float x, float y, float z, float w)
+        {
+            X = x;
+            Y = y;
+            Z = z;
+            W = w;
+        }
+
+        public static implicit operator Quat(Quaternion value) => new() { X = value.X, Y = value.Y, Z = value.Z, W = value.W };
+        public static implicit operator Quaternion(Quat uniform) => new(uniform.X, uniform.Y, uniform.Z, uniform.W);
+        public object Clone() => new Quat { X = X, Y = Y, Z = Z, W = W };
+        public override string ToString() => $"<{X} {Y} {Z} {W}>";
+
+        public int CompareTo(Quat other)
+        {
+            if (other == null) return 1;
+
+            int result = X.CompareTo(other.X);
+            if (result != 0) return result;
+
+            result = Y.CompareTo(other.Y);
+            if (result != 0) return result;
+
+            result = Z.CompareTo(other.Z);
+            if (result != 0) return result;
+
+            return W.CompareTo(other.W);
+        }
+
+        public (float yaw, float pitch, float roll) ToYawPitchRoll()
+        {
+            // Convert quaternion to yaw, pitch, roll
+            float ysqr = Y * Y;
+
+            // Roll (x-axis rotation)
+            float t0 = +2.0f * (W * X + Y * Z);
+            float t1 = +1.0f - 2.0f * (X * X + ysqr);
+            float roll = MathF.Atan2(t0, t1);
+
+            // Pitch (y-axis rotation)
+            float t2 = +2.0f * (W * Y - Z * X);
+            t2 = t2 > 1.0f ? 1.0f : t2;
+            t2 = t2 < -1.0f ? -1.0f : t2;
+            float pitch = MathF.Asin(t2);
+
+            // Yaw (z-axis rotation)
+            float t3 = +2.0f * (W * Z + X * Y);
+            float t4 = +1.0f - 2.0f * (ysqr + Z * Z);
+            float yaw = MathF.Atan2(t3, t4);
+
+            // Convert from radians to degrees
+            return (Sailor.Mathf.ToDegrees(yaw), Sailor.Mathf.ToDegrees(pitch), Sailor.Mathf.ToDegrees(roll));
+        }
+
+        public static Quat FromYawPitchRoll(float yaw, float pitch, float roll)
+        {
+            float yawRad = Sailor.Mathf.ToRadians(yaw);
+            float pitchRad = Sailor.Mathf.ToRadians(pitch);
+            float rollRad = Sailor.Mathf.ToRadians(roll);
+
+            float cy = Sailor.Mathf.Cos(yawRad * 0.5f);
+            float sy = Sailor.Mathf.Sin(yawRad * 0.5f);
+            float cp = Sailor.Mathf.Cos(pitchRad * 0.5f);
+            float sp = Sailor.Mathf.Sin(pitchRad * 0.5f);
+            float cr = Sailor.Mathf.Cos(rollRad * 0.5f);
+            float sr = Sailor.Mathf.Sin(rollRad * 0.5f);
+
+            Quat quat = new Quat
+            {
+                W = cr * cp * cy + sr * sp * sy,
+                X = sr * cp * cy - cr * sp * sy,
+                Y = cr * sp * cy + sr * cp * sy,
+                Z = cr * cp * sy - sr * sp * cy
+            };
+
+            return quat;
+        }
+
+        [ObservableProperty]
+        float x = 0.0f;
+
+        [ObservableProperty]
+        float y = 0.0f;
+
+        [ObservableProperty]
+        float z = 0.0f;
+
+        [ObservableProperty]
+        float w = 0.0f;
+    }
+
     public partial class Vec4 : ObservableObject, ICloneable, IComparable<Vec4>
     {
         public Vec4() { }
@@ -383,6 +580,72 @@ namespace SailorEditor
             emitter.Emit(new Scalar(null, vec.Y.ToString()));
             emitter.Emit(new Scalar(null, vec.Z.ToString()));
             emitter.Emit(new Scalar(null, vec.W.ToString()));
+            emitter.Emit(new SequenceEnd());
+        }
+    }
+
+    public class QuatYamlConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(Quat);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var list = new List<float>();
+            parser.Consume<SequenceStart>();
+            while (parser.Current is SequenceEnd == false)
+            {
+                if (parser.Current is Scalar scalar)
+                {
+                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
+                }
+                parser.MoveNext();
+            }
+            parser.Consume<SequenceEnd>();
+
+            return new Quat { X = list[0], Y = list[1], Z = list[2], W = list[3] };
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var vec = (Quat)value;
+            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+            emitter.Emit(new Scalar(null, vec.X.ToString()));
+            emitter.Emit(new Scalar(null, vec.Y.ToString()));
+            emitter.Emit(new Scalar(null, vec.Z.ToString()));
+            emitter.Emit(new Scalar(null, vec.W.ToString()));
+            emitter.Emit(new SequenceEnd());
+        }
+    }
+
+    public class RotationYamlConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(Rotation);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var list = new List<float>();
+            parser.Consume<SequenceStart>();
+            while (parser.Current is SequenceEnd == false)
+            {
+                if (parser.Current is Scalar scalar)
+                {
+                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
+                }
+                parser.MoveNext();
+            }
+            parser.Consume<SequenceEnd>();
+
+            return new Rotation(new Quat { X = list[0], Y = list[1], Z = list[2], W = list[3] });
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var quat = ((Rotation)value).Quat;
+            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+            emitter.Emit(new Scalar(null, quat.X.ToString()));
+            emitter.Emit(new Scalar(null, quat.Y.ToString()));
+            emitter.Emit(new Scalar(null, quat.Z.ToString()));
+            emitter.Emit(new Scalar(null, quat.W.ToString()));
             emitter.Emit(new SequenceEnd());
         }
     }

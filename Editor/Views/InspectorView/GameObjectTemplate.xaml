@@ -48,9 +48,9 @@
 
         <Label Text="Rotation" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
         <HorizontalStackLayout  Grid.Row="3" Grid.Column="1" >
-            <Editor Text="{Binding Rotation.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
-            <Editor Text="{Binding Rotation.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
-            <Editor Text="{Binding Rotation.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Rotation.Yaw, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Rotation.Pitch, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+            <Editor Text="{Binding Rotation.Roll, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
         </HorizontalStackLayout>
 
         <Label Text="Scale" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>

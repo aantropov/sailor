@@ -38,6 +38,7 @@ namespace SailorEditor.Services
             .WithTypeConverter(new ObservableListConverter<Prefab>(
                 new IYamlTypeConverter[]
                 {
+                    new RotationYamlConverter(),
                     new Vec4YamlConverter(),
                     new Vec3YamlConverter(),
                     new Vec2YamlConverter(),

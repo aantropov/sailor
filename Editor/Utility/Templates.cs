@@ -244,6 +244,35 @@ static class Templates
         return stackLayout;
     }
 
+    public static View RotationEditor<TBindingContext>(Func<TBindingContext, Rotation> convert)
+    {
+        var valueXEntry = new Entry();
+        valueXEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+            getter: (TBindingContext vm) => convert(vm).Yaw,
+            setter: (TBindingContext vm, float value) => convert(vm).Yaw = value,
+            mode: BindingMode.TwoWay,
+            converter: new FloatValueConverter());
+
+        var valueYEntry = new Entry();
+        valueYEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+            getter: (TBindingContext vm) => convert(vm).Pitch,
+            setter: (TBindingContext vm, float value) => convert(vm).Pitch = value,
+            mode: BindingMode.TwoWay,
+            converter: new FloatValueConverter());
+
+        var valueZEntry = new Entry();
+        valueZEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
+            getter: (TBindingContext vm) => convert(vm).Roll,
+            setter: (TBindingContext vm, float value) => convert(vm).Roll = value,
+            mode: BindingMode.TwoWay,
+            converter: new FloatValueConverter());
+
+        var stackLayout = new HorizontalStackLayout();
+        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry } });
+
+        return stackLayout;
+    }
+
     public static View Vec4Editor<TBindingContext>(Func<TBindingContext, Vec4> convert)
     {
         var valueXEntry = new Entry();

@@ -49,6 +49,7 @@ public class ComponentConverter : IYamlTypeConverter
             .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
             .WithTypeConverter(new ComponentTypeYamlConverter())
             .WithTypeConverter(new FileIdYamlConverter())
+            .WithTypeConverter(new RotationYamlConverter())
             .WithTypeConverter(new Vec4YamlConverter())
             .WithTypeConverter(new Vec3YamlConverter())
             .WithTypeConverter(new Vec2YamlConverter())
@@ -82,6 +83,7 @@ public class ComponentConverter : IYamlTypeConverter
 
                                 ObservableObject value = propType switch
                                 {
+                                    RotationProperty => deserializer.Deserialize<Rotation>(parser),
                                     Vec4Property => deserializer.Deserialize<Vec4>(parser),
                                     Vec3Property => deserializer.Deserialize<Vec3>(parser),
                                     Vec2Property => deserializer.Deserialize<Vec2>(parser),
@@ -116,6 +118,7 @@ public class ComponentConverter : IYamlTypeConverter
             .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
             .WithTypeConverter(new ComponentTypeYamlConverter())
             .WithTypeConverter(new FileIdYamlConverter())
+            .WithTypeConverter(new RotationYamlConverter())
             .WithTypeConverter(new Vec4YamlConverter())
             .WithTypeConverter(new Vec3YamlConverter())
             .WithTypeConverter(new Vec2YamlConverter())
