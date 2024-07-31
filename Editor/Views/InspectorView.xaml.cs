@@ -11,7 +11,7 @@ namespace SailorEditor.Views
             InitializeComponent();
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
-            selectionViewModel.OnSelectObjectAction += RefreshInspector;
+            selectionViewModel.OnSelectAssetAction += RefreshInspector;
             this.BindingContext = selectionViewModel;
         }
 

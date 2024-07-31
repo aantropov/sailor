@@ -1,7 +1,9 @@
-﻿using SailorEditor.Controls;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Controls;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
+using SailorEngine;
 
 namespace SailorEditor.Views
 {
@@ -17,6 +19,33 @@ namespace SailorEditor.Views
 
             service.OnUpdateWorldAction += PopulateHierarchyView;
             HierarchyTree.SelectedItemChanged += OnSelectTreeViewNode;
+
+            var selectionViewModel = MauiProgram.GetService<SelectionService>();
+            selectionViewModel.OnSelectInstanceAction += SelectInstance;
+        }
+
+        private void SelectInstance(InstanceId id)
+        {
+            if (!id.IsEmpty())
+            {
+                if (HierarchyTree.SelectedItem.BindingContext is TreeViewItem<Component> component)
+                {
+                    if (component.Model.InstanceId != id)
+                    {
+                        foreach (var el in HierarchyTree.RootNodes)
+                        {
+                            var res = el.FindItemRecursive(id);
+
+                            if (res != null)
+                            {
+                                res.Select();
+                                HierarchyTree.SelectedItem = res;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         public static void OnSelectTreeViewNode(object sender, EventArgs args)
@@ -29,11 +58,11 @@ namespace SailorEditor.Views
                 switch (selectionChanged.Model)
                 {
                     case TreeViewItem<Component> component:
-                        selectionService.SelectObject(component.Model);
+                        selectionService.SelectAsset(component.Model);
                         break;
 
                     case TreeViewItemGroup<GameObject, Component> gameObject:
-                        selectionService.SelectObject(gameObject.Model);
+                        selectionService.SelectAsset(gameObject.Model);
                         break;
                 }
             }

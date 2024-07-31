@@ -9,20 +9,20 @@ namespace SailorEditor.Controls;
 
 public class FileIdToFilenameConverter : IValueConverter
 {
-    private FileId uid;
+    private FileId id;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         var fileId = value as FileId ?? (value as Observable<FileId>)?.Value;
         if (string.IsNullOrEmpty(fileId))
             return null;
 
-        uid = fileId;
+        id = fileId;
 
         var AssetService = MauiProgram.GetService<AssetsService>();
 
         if (!AssetService.Assets.ContainsKey(fileId))
         {
-            return uid;
+            return id;
         }
 
         return AssetService.Assets[fileId].DisplayName;
@@ -30,6 +30,6 @@ public class FileIdToFilenameConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        return uid;
+        return id;
     }
 }

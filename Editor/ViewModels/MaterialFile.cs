@@ -356,7 +356,7 @@ public partial class MaterialFile : AssetFile
                 if (asset != null)
                 {
                     var selecitonService = MauiProgram.GetService<SelectionService>();
-                    selecitonService.SelectObject(asset);
+                    selecitonService.SelectAsset(asset);
                 }
                 break;
             }

@@ -1,15 +1,25 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
+using SailorEngine;
 using System.ComponentModel;
 
 namespace SailorEditor.Services
 {
     public partial class SelectionService : ObservableObject
     {
-        public event Action<ObservableObject> OnSelectObjectAction = delegate { };
+        public event Action<InstanceId> OnSelectInstanceAction = delegate { };
+        public event Action<ObservableObject> OnSelectAssetAction = delegate { };
 
-        public async void SelectObject(ObservableObject obj)
+        public async void SelectInstance(InstanceId instanceId)
+        {
+            if (!instanceId.IsEmpty())
+            {
+                OnSelectInstanceAction?.Invoke(instanceId);
+            }
+        }
+
+        public async void SelectAsset(ObservableObject obj)
         {
             if (obj != null)
             {
@@ -21,7 +31,7 @@ namespace SailorEditor.Services
                 SelectedItems.Clear();
                 SelectedItems.Add(obj);
 
-                OnSelectObjectAction?.Invoke(obj);
+                OnSelectAssetAction?.Invoke(obj);
             }
         }
 

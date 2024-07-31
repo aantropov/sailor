@@ -51,16 +51,20 @@ public class ComponentTemplate : DataTemplate
                             Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
                             Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
                             Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
-                            Observable<FileId> observableFileId => Templates.FileIdEditor((Component vm) => observableFileId.Value, (vm, value) => observableFileId.Value = value),
+                            Observable<FileId> observableFileId => Templates.FileIdEditor(nameof(Observable<FileId>.Value), (Component vm) => observableFileId.Value, (vm, value) => observableFileId.Value = value),
                             _ => new Label { Text = "Unsupported property type" }
                         };
 
                         if (property.Value is ObjectPtr ptr)
                         {
                             if (!ptr.FileId.IsEmpty())
-                                propertyEditor = Templates.FileIdEditor((Component vm) => ptr.FileId, (vm, value) => ptr.FileId = value);
+                            {
+                                propertyEditor = Templates.FileIdEditor(nameof(ObjectPtr.FileId), (Component vm) => ptr.FileId, (vm, value) => ptr.FileId = value);
+                            }
                             else if (!ptr.InstanceId.IsEmpty())
-                                propertyEditor = Templates.InstanceIdEditor((Component vm) => ptr.InstanceId, (vm, value) => ptr.InstanceId = value);
+                            {
+                                propertyEditor = Templates.InstanceIdEditor(nameof(ObjectPtr.InstanceId), (Component vm) => ptr.InstanceId, (vm, value) => ptr.InstanceId = value);
+                            }
                         }
                     }
 

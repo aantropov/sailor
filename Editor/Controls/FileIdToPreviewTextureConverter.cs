@@ -8,18 +8,18 @@ namespace SailorEditor.Controls;
 
 public class FileIdToPreviewTextureConverter : IValueConverter
 {
-    private FileId uid;
+    private FileId id;
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var assetUID = value as FileId;
-        if (string.IsNullOrEmpty(assetUID))
+        var fileId = value as FileId;
+        if (string.IsNullOrEmpty(fileId))
             return null;
 
-        uid = assetUID;
+        id = fileId;
 
         var AssetService = MauiProgram.GetService<AssetsService>();
 
-        if (!AssetService.Assets.TryGetValue(uid, out AssetFile outAsset))
+        if (!AssetService.Assets.TryGetValue(id, out AssetFile outAsset))
         {
             return null;
         }
@@ -34,6 +34,6 @@ public class FileIdToPreviewTextureConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        return uid;
+        return id;
     }
 }

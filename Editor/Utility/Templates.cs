@@ -17,6 +17,7 @@ using SailorEngine;
 using Component = SailorEditor.ViewModels.Component;
 using SailorEditor.Views;
 using SailorEditor.Controls;
+using System;
 
 namespace SailorEditor.Helpers;
 static class Templates
@@ -123,7 +124,7 @@ static class Templates
             {
                 var AssetService = MauiProgram.GetService<AssetsService>();
                 var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId uid ? uid : default);
+                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId id ? id : default);
             }
         };
 
@@ -160,7 +161,7 @@ static class Templates
         return stackLayout;
     }
 
-    public static View FileIdEditor<TBindingContext>(Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
+    public static View FileIdEditor<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
     {
         var selectButton = new Button { Text = "Select" };
         selectButton.Clicked += async (sender, e) =>
@@ -170,7 +171,7 @@ static class Templates
             {
                 var AssetService = MauiProgram.GetService<AssetsService>();
                 var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId uid ? uid : default);
+                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId id ? id : default);
             }
         };
 
@@ -185,7 +186,7 @@ static class Templates
             converter: new FileIdToFilenameConverter(),
             getter: getter);
 
-        valueEntry.Behaviors.Add(new SelectFileIdBehavior("Value"));
+        valueEntry.Behaviors.Add(new SelectFileIdBehavior(bindingPath));
 
         var stackLayout = new HorizontalStackLayout();
         stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });
@@ -193,7 +194,7 @@ static class Templates
         return stackLayout;
     }
 
-    public static View InstanceIdEditor<TBindingContext>(Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter)
+    public static View InstanceIdEditor<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter)
     {
         var valueEntry = new Label
         {
@@ -205,6 +206,8 @@ static class Templates
             mode: BindingMode.Default,
             converter: new InstanceIdToDisplayNameConverter(),
             getter: getter);
+
+        valueEntry.Behaviors.Add(new SelectInstanceIdBehavior(bindingPath));
 
         var stackLayout = new HorizontalStackLayout();
         stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueEntry } });

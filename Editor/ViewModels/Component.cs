@@ -148,8 +148,8 @@ public class ComponentConverter : IYamlTypeConverter
                 case Observable<Vec2> vec2:
                     serializer.Serialize(emitter, vec2.Value);
                     break;
-                case Observable<FileId> assetUid:
-                    serializer.Serialize(emitter, assetUid.Value);
+                case Observable<FileId> assetId:
+                    serializer.Serialize(emitter, assetId.Value);
                     break;
                 case Observable<string> str:
                     serializer.Serialize(emitter, str.Value);

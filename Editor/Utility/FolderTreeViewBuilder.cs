@@ -26,6 +26,34 @@ namespace SailorEditor.Helpers
             return null;
         }
 
+        public static TreeViewNode FindItemRecursive<T>(this TreeViewNode parent, T id)
+            where T : IComparable<T>
+        {
+            var item = parent.BindingContext as TreeViewItem<T>;
+
+            if (item != null)
+            {
+                if (item.Model.Equals(id))
+                {
+                    return parent;
+                }
+            }
+
+            var group = parent.BindingContext as TreeViewItemGroup<AssetFolder, AssetFile>;
+            if (group != null)
+            {
+                foreach (var el in parent.ChildrenList)
+                {
+                    var res = FindItemRecursive<T>(el, id);
+
+                    if (res != null)
+                        return res;
+                }
+            }
+
+            return null;
+        }
+
         public static TreeViewNode FindFileRecursive(this TreeViewNode parent, AssetFile id)
         {
             var assetFile = parent.BindingContext as TreeViewItem<AssetFile>;

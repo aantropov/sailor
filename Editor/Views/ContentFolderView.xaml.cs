@@ -20,7 +20,7 @@ namespace SailorEditor.Views
             FolderTree.SelectedItemChanged += OnSelectTreeViewNode;
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
-            selectionViewModel.OnSelectObjectAction += SelectAssetFile;
+            selectionViewModel.OnSelectAssetAction += SelectAssetFile;
         }
 
         private void SelectAssetFile(ObservableObject obj)
@@ -52,7 +52,7 @@ namespace SailorEditor.Views
             var selectionChanged = args as TreeView.OnSelectItemEventArgs;
             if (selectionChanged.Model is TreeViewItem<AssetFile> assetFile)
             {
-                MauiProgram.GetService<SelectionService>().SelectObject(assetFile.Model);
+                MauiProgram.GetService<SelectionService>().SelectAsset(assetFile.Model);
             }
         }
 

@@ -5,11 +5,11 @@ using SailorEngine;
 
 namespace SailorEditor.Controls;
 
-public class SelectFileIdBehavior : Behavior<Label>
+public class SelectInstanceIdBehavior : Behavior<Label>
 {
     string bindingPath;
 
-    public SelectFileIdBehavior(string property)
+    public SelectInstanceIdBehavior(string property)
     {
         bindingPath = property;
     }
@@ -39,7 +39,7 @@ public class SelectFileIdBehavior : Behavior<Label>
         {
             var id = property.GetValue((sender as Label).BindingContext);
 
-            MauiProgram.GetService<SelectionService>().SelectAsset(MauiProgram.GetService<AssetsService>().Assets[id as FileId]);
+            MauiProgram.GetService<SelectionService>().SelectInstance(id as InstanceId);
         }
     }
 }
