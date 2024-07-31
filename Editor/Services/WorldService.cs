@@ -3,6 +3,7 @@ using SailorEditor.ViewModels;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using SailorEditor.Utility;
+using SailorEngine;
 
 namespace SailorEditor.Services
 {
@@ -19,6 +20,9 @@ namespace SailorEditor.Services
         {
             MauiProgram.GetService<EngineService>().OnUpdateCurrentWorldAction += ParseWorld;
         }
+
+        public Component GetComponent(InstanceId instanceId) => componentsDict[instanceId];
+        public GameObject GetGameObject(InstanceId instanceId) => gameObjectsDict[instanceId];
 
         public List<Component> GetComponents(GameObject gameObject)
         {
@@ -59,6 +63,15 @@ namespace SailorEditor.Services
                 foreach (var go in prefab.GameObjects)
                 {
                     go.PrefabIndex = prefabIndex;
+
+                    gameObjectsDict[go.InstanceId] = go;
+
+                    foreach (var i in go.ComponentIndices)
+                    {
+                        var component = prefab.Components[i];
+                        componentsDict[component.InstanceId] = component;
+                        component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
+                    }
                 }
 
                 GameObjects.Add([.. prefab.GameObjects]);
@@ -68,5 +81,8 @@ namespace SailorEditor.Services
 
             OnUpdateWorldAction?.Invoke(Current);
         }
+
+        Dictionary<InstanceId, Component> componentsDict = new();
+        Dictionary<InstanceId, GameObject> gameObjectsDict = new();
     }
 }

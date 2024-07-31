@@ -40,25 +40,26 @@
         <Label Text="Transform" FontAttributes="Bold" Grid.Row="1" Grid.ColumnSpan="2" />
 
         <Label Text="Position" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <HorizontalStackLayout  Grid.Row="2" Grid.Column="1" >
-            <Editor Text="{Binding Position.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
-            <Editor Text="{Binding Position.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
-            <Editor Text="{Binding Position.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+        <HorizontalStackLayout Grid.Row="2" Grid.Column="1">
+            <Entry Text="{Binding Position.X, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+            <Entry Text="{Binding Position.Y, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+            <Entry Text="{Binding Position.Z, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
         </HorizontalStackLayout>
 
         <Label Text="Rotation" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
-        <HorizontalStackLayout  Grid.Row="3" Grid.Column="1" >
-            <Editor Text="{Binding Rotation.Yaw, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
-            <Editor Text="{Binding Rotation.Pitch, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
-            <Editor Text="{Binding Rotation.Roll, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+        <HorizontalStackLayout Grid.Row="3" Grid.Column="1">
+            <Entry Text="{Binding Rotation.Yaw, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+            <Entry Text="{Binding Rotation.Pitch, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+            <Entry Text="{Binding Rotation.Roll, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
         </HorizontalStackLayout>
 
         <Label Text="Scale" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
-        <HorizontalStackLayout  Grid.Row="4" Grid.Column="1" >
-            <Editor Text="{Binding Scale.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
-            <Editor Text="{Binding Scale.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
-            <Editor Text="{Binding Scale.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="80" VerticalOptions="Center" AutoSize="TextChanges"/>
+        <HorizontalStackLayout Grid.Row="4" Grid.Column="1">
+            <Entry Text="{Binding Scale.X, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+            <Entry Text="{Binding Scale.Y, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+            <Entry Text="{Binding Scale.Z, Converter={StaticResource FloatValueConverter}}" WidthRequest="80" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
         </HorizontalStackLayout>
+
 
         <Label Text="Components" FontAttributes="Bold" Grid.Row="5" Grid.ColumnSpan="2" />
 

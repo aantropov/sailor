@@ -25,6 +25,8 @@ public partial class Component : ObservableObject, ICloneable
 
     public object Clone() => new Component();
 
+    public InstanceId InstanceId { get => OverrideProperties["instanceId"] as Observable<InstanceId>; }
+
     [ObservableProperty]
     protected bool isDirty = false;
 
@@ -88,9 +90,9 @@ public class ComponentConverter : IYamlTypeConverter
                                     Vec3Property => deserializer.Deserialize<Vec3>(parser),
                                     Vec2Property => deserializer.Deserialize<Vec2>(parser),
                                     FileIdProperty => new Observable<FileId>(deserializer.Deserialize<string>(parser)),
-                                    InstanceIdProperty => new Observable<string>(deserializer.Deserialize<string>(parser)),
+                                    InstanceIdProperty => new Observable<InstanceId>(deserializer.Deserialize<string>(parser)),
                                     FloatProperty => new Observable<float>(deserializer.Deserialize<float>(parser)),
-                                    ObjectPtrProperty => new Observable<ObjectPtr>(deserializer.Deserialize<ObjectPtr>(parser)),
+                                    ObjectPtrProperty => deserializer.Deserialize<ObjectPtr>(parser),
                                     EnumProperty => new Observable<string>(deserializer.Deserialize<string>(parser)),
                                     _ => throw new InvalidOperationException($"Unexpected property type: {propType.GetType().Name}")
                                 };

@@ -42,7 +42,7 @@
         <CheckBox IsChecked="{Binding ShouldBatchByMaterial}" Grid.Row="3" Grid.Column="1"/>
 
         <Label Text="Unit Scale" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
-        <Editor Text="{Binding UnitScale, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="4" Grid.Column="1"/>
+        <Entry Text="{Binding UnitScale, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" Grid.Row="4" Grid.Column="1" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
 
         <Label Text="Default Materials" FontAttributes="Bold" Grid.Row="5" Grid.ColumnSpan="2" />
 

@@ -10,6 +10,7 @@ public class FloatValueConverter : IValueConverter
         {
             return floatValue.ToString(CultureInfo.InvariantCulture);
         }
+
         return value.ToString();
     }
 
@@ -19,6 +20,7 @@ public class FloatValueConverter : IValueConverter
         {
             return result;
         }
+
         return 0;
     }
 }

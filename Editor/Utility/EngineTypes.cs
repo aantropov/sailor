@@ -32,7 +32,7 @@ namespace SailorEngine
     public class Vec3Property : Property<SailorEditor.Vec3> { }
     public class Vec2Property : Property<SailorEditor.Vec2> { }
     public class FileIdProperty : Property<FileId> { }
-    public class InstanceIdProperty : Property<string> { }
+    public class InstanceIdProperty : Property<InstanceId> { }
     public class ObjectPtrProperty : PropertyBase { }
     public class EnumProperty : Property<string> { }
     public partial class ObjectPtr : ObservableObject, ICloneable, IComparable<ObjectPtr>
@@ -41,7 +41,7 @@ namespace SailorEngine
         FileId fileId;
 
         [ObservableProperty]
-        string instanceId;
+        InstanceId instanceId;
 
         public object Clone() => new ObjectPtr() { FileId = FileId, InstanceId = InstanceId };
 
@@ -59,12 +59,48 @@ namespace SailorEngine
         }
     }
 
+    public class InstanceId : IComparable<InstanceId>, IComparable<string>, ICloneable
+    {
+        public InstanceId() { }
+        public InstanceId(string v) { Value = v; }
+
+        public string Value = "NullInstanceId";
+
+        public bool IsEmpty() => Value == "NullInstanceId" || Value == "";
+
+        public object Clone() => new InstanceId() { Value = Value };
+        public int CompareTo(InstanceId other) => Value.CompareTo(other.Value);
+        public int CompareTo(string other) => Value.CompareTo(other);
+
+        public override bool Equals(object obj)
+        {
+            if (obj is InstanceId other)
+            {
+                return Value.CompareTo(other.Value) == 0;
+            }
+            else if (obj is string str)
+            {
+                return Value.CompareTo(str) == 0;
+            }
+
+            return false;
+        }
+
+        public override int GetHashCode() => Value?.GetHashCode() ?? 0;
+
+        public static implicit operator string(InstanceId ts) => ts?.Value;
+
+        public static implicit operator InstanceId(string val) => new() { Value = val };
+    }
+
     public class FileId : IComparable<FileId>, IComparable<string>, ICloneable
     {
         public FileId() { }
         public FileId(string v) { Value = v; }
 
-        public string Value = "";
+        public string Value = "NullFileId";
+
+        public bool IsEmpty() => Value == "NullFileId" || Value == "";
 
         public object Clone() => new FileId() { Value = Value };
         public int CompareTo(FileId other) => Value.CompareTo(other.Value);
@@ -142,7 +178,7 @@ namespace SailorEngine
                     }
 
                     newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = "NullFileId" };
-                    newComponent.Properties["instanceId"] = new InstanceIdProperty();
+                    newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = "NullInstanceId" };
 
                     res.Components[component.Typename] = newComponent;
                 }
@@ -680,5 +716,12 @@ namespace SailorEditor
         public bool Accepts(Type type) => type == typeof(FileId);
         public object ReadYaml(IParser parser, Type type) => new FileId(parser.Consume<Scalar>().Value);
         public void WriteYaml(IEmitter emitter, object value, Type type) => emitter.Emit(new Scalar(((FileId)value).Value));
+    }
+
+    public class InstanceIdYamlConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(InstanceId);
+        public object ReadYaml(IParser parser, Type type) => new InstanceId(parser.Consume<Scalar>().Value);
+        public void WriteYaml(IEmitter emitter, object value, Type type) => emitter.Emit(new Scalar(((InstanceId)value).Value));
     }
 };

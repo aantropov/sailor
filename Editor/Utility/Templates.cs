@@ -193,125 +193,100 @@ static class Templates
         return stackLayout;
     }
 
-    public static View Vec2Editor<TBindingContext>(Func<TBindingContext, Vec2> convert)
+    public static View InstanceIdEditor<TBindingContext>(Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter)
     {
-        var valueXEntry = new Entry();
-        valueXEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).X,
-            setter: (TBindingContext vm, float value) => convert(vm).X = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
+        var valueEntry = new Label
+        {
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center
+        };
 
-        var valueYEntry = new Entry();
-        valueYEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).Y,
-            setter: (TBindingContext vm, float value) => convert(vm).Y = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
+        valueEntry.Bind<Label, TBindingContext, InstanceId, string>(Label.TextProperty,
+            mode: BindingMode.Default,
+            converter: new InstanceIdToDisplayNameConverter(),
+            getter: getter);
 
         var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry } });
+        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueEntry } });
+
+        return stackLayout;
+    }
+
+    public static View Vec2Editor<TBindingContext>(Func<TBindingContext, Vec2> convert)
+    {
+        var stackLayout = new HorizontalStackLayout();
+        stackLayout.Children.Add(new HorizontalStackLayout
+        {
+            Children =
+            {
+                FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
+                FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value)
+            }
+        });
 
         return stackLayout;
     }
 
     public static View Vec3Editor<TBindingContext>(Func<TBindingContext, Vec3> convert)
     {
-        var valueXEntry = new Entry();
-        valueXEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).X,
-            setter: (TBindingContext vm, float value) => convert(vm).X = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
-        var valueYEntry = new Entry();
-        valueYEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).Y,
-            setter: (TBindingContext vm, float value) => convert(vm).Y = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
-        var valueZEntry = new Entry();
-        valueZEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).Z,
-            setter: (TBindingContext vm, float value) => convert(vm).Z = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
         var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry } });
+        stackLayout.Children.Add(new HorizontalStackLayout
+        {
+            Children =
+            {
+                FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
+                FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value),
+                FloatEditor((TBindingContext vm) => convert(vm).Z, (TBindingContext vm, float value) => convert(vm).Z = value)
+            }
+        });
 
         return stackLayout;
     }
 
     public static View RotationEditor<TBindingContext>(Func<TBindingContext, Rotation> convert)
     {
-        var valueXEntry = new Entry();
-        valueXEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).Yaw,
-            setter: (TBindingContext vm, float value) => convert(vm).Yaw = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
-        var valueYEntry = new Entry();
-        valueYEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).Pitch,
-            setter: (TBindingContext vm, float value) => convert(vm).Pitch = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
-        var valueZEntry = new Entry();
-        valueZEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).Roll,
-            setter: (TBindingContext vm, float value) => convert(vm).Roll = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
         var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry } });
+        stackLayout.Children.Add(new HorizontalStackLayout
+        {
+            Children =
+            {
+                FloatEditor((TBindingContext vm) => convert(vm).Yaw, (TBindingContext vm, float value) => convert(vm).Yaw = value),
+                FloatEditor((TBindingContext vm) => convert(vm).Pitch, (TBindingContext vm, float value) => convert(vm).Pitch = value),
+                FloatEditor((TBindingContext vm) => convert(vm).Roll, (TBindingContext vm, float value) => convert(vm).Roll = value)
+            }
+        });
 
         return stackLayout;
     }
 
     public static View Vec4Editor<TBindingContext>(Func<TBindingContext, Vec4> convert)
     {
-        var valueXEntry = new Entry();
-        valueXEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).X,
-            setter: (TBindingContext vm, float value) => convert(vm).X = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
-        var valueYEntry = new Entry();
-        valueYEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).Y,
-            setter: (TBindingContext vm, float value) => convert(vm).Y = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
-        var valueZEntry = new Entry();
-        valueZEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).Z,
-            setter: (TBindingContext vm, float value) => convert(vm).Z = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
-        var valueWEntry = new Entry();
-        valueWEntry.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
-            getter: (TBindingContext vm) => convert(vm).W,
-            setter: (TBindingContext vm, float value) => convert(vm).W = value,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
-
         var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueXEntry, valueYEntry, valueZEntry, valueWEntry } });
+        stackLayout.Children.Add(new HorizontalStackLayout
+        {
+            Children =
+            {
+                FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
+                FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value),
+                FloatEditor((TBindingContext vm) => convert(vm).Z, (TBindingContext vm, float value) => convert(vm).Z = value),
+                FloatEditor((TBindingContext vm) => convert(vm).W, (TBindingContext vm, float value) => convert(vm).W = value)
+            }
+        });
 
         return stackLayout;
     }
 
     public static View FloatEditor<TBindingContext>(Expression<Func<TBindingContext, float>> getter, Action<TBindingContext, float> setter)
     {
-        var value = new Entry();
+        var value = new Entry
+        {
+            Keyboard = Keyboard.Numeric,
+            ReturnType = ReturnType.Done,
+            IsTextPredictionEnabled = false,
+        };
+
+        value.Completed += (sender, args) => { ((Entry)sender).Unfocus(); };
+
         value.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
             getter: getter,
             setter: setter,

@@ -53,7 +53,7 @@
         <Editor Text="{Binding RenderQueue}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="1" Grid.Column="1"/>
 
         <Label Text="Depth Bias" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <Editor Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" AutoSize="TextChanges" Grid.Row="2" Grid.Column="1"/>
+        <Entry Text="{Binding DepthBias, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" Grid.Row="2" Grid.Column="1" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
 
         <Label Text="Support Multisampling" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
         <CheckBox IsChecked="{Binding SupportMultisampling}" Grid.Row="3" Grid.Column="1"/>
@@ -123,10 +123,11 @@
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveUniformVec4Command, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Editor Text="{Binding Key}"  WidthRequest="200" VerticalOptions="Center" AutoSize="TextChanges"/>
-                        <Editor Text="{Binding Value.X, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
-                        <Editor Text="{Binding Value.Y, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
-                        <Editor Text="{Binding Value.Z, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
-                        <Editor Text="{Binding Value.W, Converter={StaticResource FloatValueConverter}}"  WidthRequest="40" VerticalOptions="Center" AutoSize="TextChanges"/>
+                        <Entry Text="{Binding Value.X, Converter={StaticResource FloatValueConverter}}" WidthRequest="40" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+                        <Entry Text="{Binding Value.Y, Converter={StaticResource FloatValueConverter}}" WidthRequest="40" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+                        <Entry Text="{Binding Value.Z, Converter={StaticResource FloatValueConverter}}" WidthRequest="40" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+                        <Entry Text="{Binding Value.W, Converter={StaticResource FloatValueConverter}}" WidthRequest="40" VerticalOptions="Center" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>

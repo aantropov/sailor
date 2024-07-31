@@ -52,9 +52,16 @@ public class ComponentTemplate : DataTemplate
                             Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
                             Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
                             Observable<FileId> observableFileId => Templates.FileIdEditor((Component vm) => observableFileId.Value, (vm, value) => observableFileId.Value = value),
-                            ObjectPtr ptr => Templates.FileIdEditor((Component vm) => ptr.FileId, (vm, value) => ptr.FileId = value),
                             _ => new Label { Text = "Unsupported property type" }
                         };
+
+                        if (property.Value is ObjectPtr ptr)
+                        {
+                            if (!ptr.FileId.IsEmpty())
+                                propertyEditor = Templates.FileIdEditor((Component vm) => ptr.FileId, (vm, value) => ptr.FileId = value);
+                            else if (!ptr.InstanceId.IsEmpty())
+                                propertyEditor = Templates.InstanceIdEditor((Component vm) => ptr.InstanceId, (vm, value) => ptr.InstanceId = value);
+                        }
                     }
 
                     Templates.AddGridRowWithLabel(props, property.Key, propertyEditor, GridLength.Auto);

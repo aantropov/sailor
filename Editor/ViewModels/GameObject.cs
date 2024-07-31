@@ -8,6 +8,7 @@ using YamlDotNet.Serialization.NamingConventions;
 using System.Runtime.CompilerServices;
 using SailorEditor.Services;
 using System.Windows.Input;
+using SailorEngine;
 
 namespace SailorEditor.ViewModels;
 
@@ -63,7 +64,7 @@ public partial class GameObject : ObservableObject, ICloneable
     uint parentIndex = uint.MaxValue;
 
     [ObservableProperty]
-    string instanceId = "NullInstanceId";
+    InstanceId instanceId = "NullInstanceId";
 
     [ObservableProperty]
     protected bool isDirty = false;

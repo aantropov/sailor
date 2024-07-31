@@ -7,4 +7,6 @@ public partial class GameObjectTemplate : DataTemplate
     {
         InitializeComponent();
     }
+
+    void OnEntryCompleted(object sender, EventArgs e) => ((Entry)sender).Unfocus();
 }
