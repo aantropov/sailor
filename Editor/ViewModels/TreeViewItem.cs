@@ -6,12 +6,24 @@ public abstract class TreeViewItemBase
 {
     public string Key { get; set; }
     public int ItemId { get; set; }
+
+    public abstract TModel GetModel<TModel>();
 }
 
 [Serializable]
 public class TreeViewItem<TModel> : TreeViewItemBase
 {
     public TModel Model { get; set; }
+
+    public override TModel1 GetModel<TModel1>()
+    {
+        if (Model is TModel1 model)
+        {
+            return model;
+        }
+
+        throw new InvalidCastException($"Model is not of type {typeof(TModel1)}");
+    }
 }
 
 [Serializable]

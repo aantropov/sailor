@@ -79,7 +79,11 @@
         <Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
         <HorizontalStackLayout Grid.Row="10" Grid.Column="1">
             <Button Text="Select" Command="{Binding AssignShaderCommand}"/>
-            <Label Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center"/>
+            <Label Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center">
+                <Label.Behaviors>
+                    <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Shader}"/>
+                </Label.Behaviors>
+            </Label>
         </HorizontalStackLayout>
 
         <Label Text="Samplers" FontAttributes="Bold" Grid.Row="11" Grid.ColumnSpan="2" />
@@ -104,7 +108,11 @@
                                 <TapGestureRecognizer Command="{Binding Path=BindingContext.SelectSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
                             </Image.GestureRecognizers>
                         </Image>
-                        <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center"/>
+                        <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center">
+                            <Label.Behaviors>
+                                <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Value}"/>
+                            </Label.Behaviors>
+                        </Label>
                     </HorizontalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>

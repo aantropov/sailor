@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+﻿using SailorEditor.ViewModels;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 
 namespace SailorEditor.Controls
@@ -36,6 +37,8 @@ namespace SailorEditor.Controls
         private readonly TapGestureRecognizer _TapGestureRecognizer = new();
         private readonly TapGestureRecognizer _ExpandButtonGestureRecognizer = new();
         private readonly TapGestureRecognizer _DoubleClickGestureRecognizer = new();
+        private readonly DragGestureRecognizer _DragGestureRecognizer = new();
+        private readonly DropGestureRecognizer _DropGestureRecognizer = new();
 
         internal readonly BoxView SelectionBoxView = new() { Color = Colors.Blue, Opacity = .5, IsVisible = false };
 
@@ -54,7 +57,7 @@ namespace SailorEditor.Controls
         /// Occurs when the user double clicks on the node
         /// </summary>
         public event EventHandler DoubleClicked;
-        
+
         protected override void OnParentSet()
         {
             base.OnParentSet();
@@ -189,6 +192,12 @@ namespace SailorEditor.Controls
             _DoubleClickGestureRecognizer.Tapped += DoubleClick;
             _ContentView.GestureRecognizers.Add(_DoubleClickGestureRecognizer);
 
+            _DragGestureRecognizer.DragStarting += OnDragStarting;
+            _ContentView.GestureRecognizers.Add(_DragGestureRecognizer);
+
+            _DropGestureRecognizer.Drop += OnDrop;
+            _ContentView.GestureRecognizers.Add(_DropGestureRecognizer);
+
             _MainGrid.SetRow((IView)_ChildrenStackLayout, 1);
             _MainGrid.SetColumn((IView)_ChildrenStackLayout, 0);
 
@@ -201,6 +210,28 @@ namespace SailorEditor.Controls
             VerticalOptions = LayoutOptions.Start;
 
             Render();
+        }
+
+        private void OnDragStarting(object sender, DragStartingEventArgs e)
+        {
+            if (BindingContext is TreeViewItemBase item)
+            {
+                e.Data.Properties["DragItem"] = item.GetModel<object>();
+            }
+            else if (BindingContext is TreeViewItemGroupBase group)
+            {
+                // TODO
+                e.Cancel = true;
+            }
+            else
+            {
+                e.Cancel = true;
+            }
+        }
+
+        private void OnDrop(object sender, DropEventArgs e)
+        {
+        // TODO
         }
 
         public void Select()
