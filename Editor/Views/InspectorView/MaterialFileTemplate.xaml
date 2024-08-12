@@ -81,7 +81,7 @@
             <Button Text="Select" Command="{Binding AssignShaderCommand}"/>
             <Label Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center">
                 <Label.Behaviors>
-                    <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Shader}"/>
+                    <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Shader}" SupportedType="{x:Type vm:ShaderFile}"/>
                 </Label.Behaviors>
             </Label>
         </HorizontalStackLayout>
@@ -110,7 +110,7 @@
                         </Image>
                         <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center">
                             <Label.Behaviors>
-                                <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Value}"/>
+                                <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Value}" SupportedType="{x:Type vm:TextureFile}"/>
                             </Label.Behaviors>
                         </Label>
                     </HorizontalStackLayout>

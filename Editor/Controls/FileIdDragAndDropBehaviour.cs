@@ -24,16 +24,14 @@ public class FileIdDragAndDropBehaviour : Behavior<Label>
         set => SetValue(BoundPropertyProperty, value);
     }
 
-    //public static readonly BindableProperty SupportedTypesProperty =
-    //    BindableProperty.Create(nameof(SupportedTypes), typeof(IList<string>), typeof(FileIdDragAndDropBehaviour), new List<string>());
+    public static readonly BindableProperty SupportedTypeProperty =
+        BindableProperty.Create(nameof(SupportedType), typeof(Type), typeof(FileIdDragAndDropBehaviour), null);
 
-    //public IList<string> SupportedTypes
-    //{
-    //    get => (IList<string>)GetValue(SupportedTypesProperty);
-    //    set => SetValue(SupportedTypesProperty, value);
-    //}
-
-    //private List<Type> _supportedTypeList;
+    public Type SupportedType
+    {
+        get => (Type)GetValue(SupportedTypeProperty);
+        set => SetValue(SupportedTypeProperty, value);
+    }
 
     protected override void OnAttachedTo(Label bindable)
     {
@@ -41,8 +39,6 @@ public class FileIdDragAndDropBehaviour : Behavior<Label>
 
         _associatedLabel = bindable;
         _associatedLabel.BindingContextChanged += OnBindingContextChanged;
-
-        //_supportedTypeList = SupportedTypes.Select(typeName => Type.GetType(typeName)).ToList();
 
         BindingContext = _associatedLabel.BindingContext;
 
@@ -89,7 +85,7 @@ public class FileIdDragAndDropBehaviour : Behavior<Label>
 
                 if (assetService.Assets.TryGetValue(fileId, out var asset))
                 {
-                    //     if (_supportedTypeList.Any(type => type.IsInstanceOfType(asset)))
+                    if (SupportedType == null || SupportedType.IsInstanceOfType(asset))
                     {
                         BoundProperty = fileId;
                     }

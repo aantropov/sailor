@@ -59,7 +59,7 @@
                         <Button Text="Select" WidthRequest ="60" Command="{Binding Path=BindingContext.SelectMaterialCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}"/>
                         <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" WidthRequest="200" VerticalOptions="Center">
                             <Label.Behaviors>
-                                <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Value}"/>
+                                <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Value}" SupportedType="{x:Type vm:MaterialFile}"/>
                             </Label.Behaviors>
                         </Label>
                     </HorizontalStackLayout>
