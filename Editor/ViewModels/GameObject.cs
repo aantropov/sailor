@@ -64,7 +64,7 @@ public partial class GameObject : ObservableObject, ICloneable
     uint parentIndex = uint.MaxValue;
 
     [ObservableProperty]
-    InstanceId instanceId = "NullInstanceId";
+    InstanceId instanceId = InstanceId.NullInstanceId;
 
     [ObservableProperty]
     protected bool isDirty = false;

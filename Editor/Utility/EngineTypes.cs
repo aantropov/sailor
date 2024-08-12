@@ -61,12 +61,14 @@ namespace SailorEngine
 
     public class InstanceId : IComparable<InstanceId>, IComparable<string>, ICloneable
     {
+        public const string NullInstanceId = "NullInstanceId";
+
         public InstanceId() { }
         public InstanceId(string v) { Value = v; }
 
-        public string Value = "NullInstanceId";
+        public string Value = NullInstanceId;
 
-        public bool IsEmpty() => Value == "NullInstanceId" || Value == "";
+        public bool IsEmpty() => Value == NullInstanceId || Value == "";
 
         public object Clone() => new InstanceId() { Value = Value };
         public int CompareTo(InstanceId other) => Value.CompareTo(other.Value);
@@ -95,12 +97,14 @@ namespace SailorEngine
 
     public class FileId : IComparable<FileId>, IComparable<string>, ICloneable
     {
+        public const string NullFileId = "NullFileId";
+
         public FileId() { }
         public FileId(string v) { Value = v; }
 
-        public string Value = "NullFileId";
+        public string Value = NullFileId;
 
-        public bool IsEmpty() => Value == "NullFileId" || Value == "";
+        public bool IsEmpty() => Value == NullFileId || Value == "";
 
         public object Clone() => new FileId() { Value = Value };
         public int CompareTo(FileId other) => Value.CompareTo(other.Value);
@@ -177,8 +181,8 @@ namespace SailorEngine
                         newComponent.Properties[property.Key] = newProperty;
                     }
 
-                    newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = "NullFileId" };
-                    newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = "NullInstanceId" };
+                    newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = FileId.NullFileId };
+                    newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = InstanceId.NullInstanceId };
 
                     res.Components[component.Typename] = newComponent;
                 }

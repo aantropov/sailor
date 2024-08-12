@@ -13,7 +13,7 @@ public class FileIdToPreviewTextureConverter : IValueConverter
     {
         var fileId = value as FileId;
         if (string.IsNullOrEmpty(fileId))
-            return null;
+            return FileId.NullFileId;
 
         id = fileId;
 
@@ -21,7 +21,7 @@ public class FileIdToPreviewTextureConverter : IValueConverter
 
         if (!AssetService.Assets.TryGetValue(id, out AssetFile outAsset))
         {
-            return null;
+            return FileId.NullFileId;
         }
 
         if (outAsset is TextureFile texture)
@@ -29,7 +29,7 @@ public class FileIdToPreviewTextureConverter : IValueConverter
             return texture.Texture;
         }
 
-        return null;
+        return FileId.NullFileId;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

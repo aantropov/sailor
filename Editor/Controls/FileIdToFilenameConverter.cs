@@ -14,7 +14,7 @@ public class FileIdToFilenameConverter : IValueConverter
     {
         var fileId = value as FileId ?? (value as Observable<FileId>)?.Value;
         if (string.IsNullOrEmpty(fileId))
-            return null;
+            return FileId.NullFileId;
 
         id = fileId;
 
