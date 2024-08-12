@@ -104,7 +104,7 @@ static class Templates
     public static View FileIdLabel<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
     {
         var label = new Label();
-        label.Behaviors.Add(new SelectFileIdBehavior(bindingPath));
+        label.Behaviors.Add(new FileIdSelectBehavior());
         label.Bind<Label, TBindingContext, FileId, string>(Label.TextProperty,
             getter: getter,
             setter: setter,
@@ -153,7 +153,7 @@ static class Templates
             converter: new FileIdToFilenameConverter(),
             getter: static (Uniform<FileId> vm) => vm.Value);
 
-        valueEntry.Behaviors.Add(new SelectFileIdBehavior("Value"));
+        valueEntry.Behaviors.Add(new FileIdSelectBehavior());
 
         var stackLayout = new HorizontalStackLayout();
         stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, image, valueEntry } });
@@ -186,7 +186,7 @@ static class Templates
             converter: new FileIdToFilenameConverter(),
             getter: getter);
 
-        valueEntry.Behaviors.Add(new SelectFileIdBehavior(bindingPath));
+        valueEntry.Behaviors.Add(new FileIdSelectBehavior() { BoundProperty = bindingPath });
 
         var stackLayout = new HorizontalStackLayout();
         stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });

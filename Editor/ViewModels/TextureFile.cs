@@ -95,7 +95,7 @@ public partial class TextureFile : AssetFile
             ShouldSupportStorageBinding = intermediateObject.ShouldSupportStorageBinding;
             GlbTextureIndex = intermediateObject.GlbTextureIndex;
 
-            DisplayName = GlbTextureIndex == -1 ? AssetInfo.Name : $"{AssetInfo.Name} (Texture {GlbTextureIndex})";
+            DisplayName = GlbTextureIndex == -1 ? Asset.Name : $"{AssetInfo.Name} (Texture {GlbTextureIndex})";
 
             IsLoaded = false;
         }

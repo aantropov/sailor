@@ -58,11 +58,11 @@ namespace SailorEditor.Views
                 switch (selectionChanged.Model)
                 {
                     case TreeViewItem<Component> component:
-                        selectionService.SelectAsset(component.Model);
+                        selectionService.SelectObject(component.Model);
                         break;
 
                     case TreeViewItemGroup<GameObject, Component> gameObject:
-                        selectionService.SelectAsset(gameObject.Model);
+                        selectionService.SelectObject(gameObject.Model);
                         break;
                 }
             }

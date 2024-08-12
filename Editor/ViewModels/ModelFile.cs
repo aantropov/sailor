@@ -31,7 +31,7 @@ public partial class ModelFile : AssetFile
     public ModelFile()
     {
         AddMaterialCommand = new AsyncRelayCommand(OnAddMaterial);
-        SelectMaterialCommand = new AsyncRelayCommand<Observable<FileId>>(OnSelectMaterial);
+        ClearMaterialCommand = new AsyncRelayCommand<Observable<FileId>>(OnClearMaterial);
         RemoveMaterialCommand = new Command<Observable<FileId>>(OnRemoveMaterial);
         ClearMaterialsCommand = new Command(OnClearMaterials);
     }
@@ -39,24 +39,10 @@ public partial class ModelFile : AssetFile
     public IAsyncRelayCommand AddMaterialCommand { get; }
     public ICommand RemoveMaterialCommand { get; }
     public ICommand ClearMaterialsCommand { get; }
-    public IAsyncRelayCommand SelectMaterialCommand { get; }
+    public IAsyncRelayCommand ClearMaterialCommand { get; }
 
     private async Task OnAddMaterial() => Materials.Add(new Observable<FileId>(default));
-    private async Task OnSelectMaterial(Observable<FileId> observable)
-    {
-        var fileOpen = await FilePicker.Default.PickAsync();
-        if (fileOpen != null)
-        {
-            var assetService = MauiProgram.GetService<AssetsService>();
-            var asset = assetService.Files.Find(el => el.Asset.FullName == fileOpen.FullPath);
-
-            if (asset != null)
-            {
-                _ = asset.LoadDependentResources();
-                observable.Value = asset.FileId;
-            }
-        }
-    }
+    private async Task OnClearMaterial(Observable<FileId> observable) => observable.Value = FileId.NullFileId;
 
     private void OnRemoveMaterial(Observable<FileId> material) => Materials.Remove(material);
     private void OnClearMaterials() => Materials.Clear();

@@ -52,7 +52,7 @@ namespace SailorEditor.Views
             var selectionChanged = args as TreeView.OnSelectItemEventArgs;
             if (selectionChanged.Model is TreeViewItem<AssetFile> assetFile)
             {
-                MauiProgram.GetService<SelectionService>().SelectAsset(assetFile.Model);
+                MauiProgram.GetService<SelectionService>().SelectObject(assetFile.Model);
             }
         }
 

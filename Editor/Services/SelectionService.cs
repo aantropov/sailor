@@ -19,7 +19,7 @@ namespace SailorEditor.Services
             }
         }
 
-        public async void SelectAsset(ObservableObject obj)
+        public async void SelectObject(ObservableObject obj)
         {
             if (obj != null)
             {

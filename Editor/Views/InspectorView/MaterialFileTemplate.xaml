@@ -78,10 +78,11 @@
 
         <Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
         <HorizontalStackLayout Grid.Row="10" Grid.Column="1">
-            <Button Text="Select" Command="{Binding AssignShaderCommand}"/>
+            <Button Text="Clear" Command="{Binding ClearShaderCommand}"/>
             <Label Text="{Binding Shader, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center">
                 <Label.Behaviors>
                     <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Shader}" SupportedType="{x:Type vm:ShaderFile}"/>
+                    <controls:FileIdSelectBehavior BoundProperty="{Binding Shader}"/>
                 </Label.Behaviors>
             </Label>
         </HorizontalStackLayout>
@@ -98,7 +99,7 @@
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Editor Text="{Binding Key}" WidthRequest="160" VerticalOptions="Center" AutoSize="TextChanges"/>
-                        <Button Text="Select" Command="{Binding Path=BindingContext.AssignSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
+                        <Button Text="Clear" Command="{Binding Path=BindingContext.ClearSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
                         <Image Source="{Binding Value, Converter={StaticResource FileIdToPreviewTextureConverter}}"
                                 WidthRequest="40"
                                 HeightRequest="40"
@@ -111,6 +112,7 @@
                         <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center">
                             <Label.Behaviors>
                                 <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Value}" SupportedType="{x:Type vm:TextureFile}"/>
+                                <controls:FileIdSelectBehavior BoundProperty="{Binding Value}"/>
                             </Label.Behaviors>
                         </Label>
                     </HorizontalStackLayout>

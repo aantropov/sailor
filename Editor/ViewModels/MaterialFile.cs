@@ -141,8 +141,8 @@ public partial class MaterialFile : AssetFile
         RemoveShaderDefineCommand = new Command<Observable<string>>(OnRemoveShaderDefine);
         ClearShaderDefinesCommand = new Command(OnClearShaderDefines);
         SelectSamplerCommand = new Command<string>(OnSelectSampler);
-        AssignSamplerCommand = new AsyncRelayCommand<string>(OnAssignSampler);
-        AssignShaderCommand = new AsyncRelayCommand(OnSelectShader);
+        ClearSamplerCommand = new AsyncRelayCommand<string>(OnClearSampler);
+        ClearShaderCommand = new AsyncRelayCommand(OnClearShader);
     }
 
     [ObservableProperty]
@@ -328,9 +328,9 @@ public partial class MaterialFile : AssetFile
     public ICommand AddShaderDefineCommand { get; }
     public ICommand RemoveShaderDefineCommand { get; }
     public ICommand ClearShaderDefinesCommand { get; }
-    public ICommand SelectSamplerCommand { get; }    
-    public IAsyncRelayCommand AssignSamplerCommand { get; }
-    public IAsyncRelayCommand AssignShaderCommand { get; }
+    public ICommand SelectSamplerCommand { get; }
+    public IAsyncRelayCommand ClearSamplerCommand { get; }
+    public IAsyncRelayCommand ClearShaderCommand { get; }
 
     private void OnAddSampler() => Samplers.Add(new UniformFileId { Key = "material.newSampler" });
     private void OnRemoveSampler(UniformFileId sampler) => Samplers.Remove(sampler);
@@ -356,47 +356,26 @@ public partial class MaterialFile : AssetFile
                 if (asset != null)
                 {
                     var selecitonService = MauiProgram.GetService<SelectionService>();
-                    selecitonService.SelectAsset(asset);
+                    selecitonService.SelectObject(asset);
                 }
                 break;
             }
         }
     }
 
-    private async Task OnAssignSampler(string key)
+    private async Task OnClearSampler(string key)
     {
-        var fileOpen = await FilePicker.Default.PickAsync();
-        if (fileOpen != null)
+        foreach (var uniform in Samplers)
         {
-            var assetService = MauiProgram.GetService<AssetsService>();
-            var asset = assetService.Files.Find(el => el.Asset.FullName == fileOpen.FullPath);
-
-            foreach (var uniform in Samplers)
+            if (uniform.Key == key)
             {
-                if (uniform.Key == key)
-                {
-                    uniform.Value = asset?.FileId ?? default;
-                    break;
-                }
+                uniform.Value = default;
+                break;
             }
-
-            _ = asset.LoadDependentResources();
         }
     }
 
-    private async Task OnSelectShader()
-    {
-        var fileOpen = await FilePicker.Default.PickAsync();
-        if (fileOpen != null)
-        {
-            var assetService = MauiProgram.GetService<AssetsService>();
-            var asset = assetService.Files.Find(el => el.Asset.FullName == fileOpen.FullPath);
-
-            Shader = asset.FileId;
-            
-            _ = asset.LoadDependentResources();
-        }
-    }
+    private async Task OnClearShader() => Shader = FileId.NullFileId;
 }
 
 public class MaterialFileYamlConverter : IYamlTypeConverter
