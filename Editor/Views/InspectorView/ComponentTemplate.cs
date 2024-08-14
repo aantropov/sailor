@@ -51,7 +51,7 @@ public class ComponentTemplate : DataTemplate
                             Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
                             Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
                             Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
-                            Observable<FileId> observableFileId => Templates.FileIdEditor(nameof(Observable<FileId>.Value), (Component vm) => observableFileId.Value, (vm, value) => observableFileId.Value = value),
+                            Observable<FileId> observableFileId => Templates.FileIdEditor(component.OverrideProperties[property.Key], nameof(Observable<FileId>.Value), (Observable<FileId> vm) => vm.Value, (vm, value) => vm.Value = value),
                             _ => new Label { Text = "Unsupported property type" }
                         };
 
@@ -59,11 +59,13 @@ public class ComponentTemplate : DataTemplate
                         {
                             if (!ptr.FileId.IsEmpty())
                             {
-                                propertyEditor = Templates.FileIdEditor(nameof(ObjectPtr.FileId), (Component vm) => ptr.FileId, (vm, value) => ptr.FileId = value);
+                                propertyEditor = Templates.FileIdEditor(ptr,
+                                    nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value);
                             }
                             else if (!ptr.InstanceId.IsEmpty())
                             {
-                                propertyEditor = Templates.InstanceIdEditor(nameof(ObjectPtr.InstanceId), (Component vm) => ptr.InstanceId, (vm, value) => ptr.InstanceId = value);
+                                propertyEditor = Templates.InstanceIdEditor(ptr,
+                                    nameof(ObjectPtr.InstanceId), (ObjectPtr vm) => ptr.InstanceId, (p, value) => p.InstanceId = value);
                             }
                         }
                     }

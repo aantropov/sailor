@@ -161,19 +161,10 @@ static class Templates
         return stackLayout;
     }
 
-    public static View FileIdEditor<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
+    public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
     {
-        var selectButton = new Button { Text = "Select" };
-        selectButton.Clicked += async (sender, e) =>
-        {
-            var fileOpen = await FilePicker.Default.PickAsync();
-            if (fileOpen != null)
-            {
-                var AssetService = MauiProgram.GetService<AssetsService>();
-                var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId id ? id : default);
-            }
-        };
+        var clearButton = new Button { Text = "Clear" };
+        clearButton.Clicked += async (sender, e) => setter((TBindingContext)bindingContext, new FileId());
 
         var valueEntry = new Label
         {
@@ -181,20 +172,30 @@ static class Templates
             VerticalOptions = LayoutOptions.Center
         };
 
-        valueEntry.Bind<Label, TBindingContext, FileId, string>(Label.TextProperty,
-            mode: BindingMode.Default,
-            converter: new FileIdToFilenameConverter(),
-            getter: getter);
+        valueEntry.BindingContext = bindingContext;
 
-        valueEntry.Behaviors.Add(new FileIdSelectBehavior() { BoundProperty = bindingPath });
+        valueEntry.Bind<Label, TBindingContext, FileId, string>(Label.TextProperty,
+            mode: BindingMode.TwoWay,
+            converter: new FileIdToFilenameConverter(),
+            getter: getter,
+            setter: setter);
+
+        var dragAndDropBehaviour = new FileIdDragAndDropBehaviour();
+        dragAndDropBehaviour.SetBinding(FileIdDragAndDropBehaviour.BoundPropertyProperty, new Binding(bindingPath));
+
+        var selectBehavior = new FileIdSelectBehavior();
+        selectBehavior.SetBinding(FileIdSelectBehavior.BoundPropertyProperty, new Binding(bindingPath));
+
+        valueEntry.Behaviors.Add(dragAndDropBehaviour);
+        valueEntry.Behaviors.Add(selectBehavior);
 
         var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, valueEntry } });
+        stackLayout.Children.Add(new HorizontalStackLayout { Children = { clearButton, valueEntry } });
 
         return stackLayout;
     }
 
-    public static View InstanceIdEditor<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter)
+    public static View InstanceIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter)
     {
         var valueEntry = new Label
         {
@@ -202,12 +203,18 @@ static class Templates
             VerticalOptions = LayoutOptions.Center
         };
 
-        valueEntry.Bind<Label, TBindingContext, InstanceId, string>(Label.TextProperty,
-            mode: BindingMode.Default,
-            converter: new InstanceIdToDisplayNameConverter(),
-            getter: getter);
+        valueEntry.BindingContext = bindingContext;
 
-        valueEntry.Behaviors.Add(new SelectInstanceIdBehavior(bindingPath));
+        valueEntry.Bind<Label, TBindingContext, InstanceId, string>(Label.TextProperty,
+            mode: BindingMode.TwoWay,
+            converter: new InstanceIdToDisplayNameConverter(),
+            getter: getter,
+            setter: setter);
+
+        var selectBehavior = new InstanceIdSelectBehavior();
+        selectBehavior.SetBinding(InstanceIdSelectBehavior.BoundPropertyProperty, new Binding(bindingPath));
+
+        valueEntry.Behaviors.Add(selectBehavior);
 
         var stackLayout = new HorizontalStackLayout();
         stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueEntry } });

@@ -14,7 +14,7 @@ public class InstanceIdToDisplayNameConverter : IValueConverter
     {
         var instanceId = value as InstanceId ?? (value as Observable<InstanceId>)?.Value;
         if (string.IsNullOrEmpty(instanceId))
-            return null;
+            return InstanceId.NullInstanceId;
 
         id = instanceId;
 
