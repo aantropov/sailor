@@ -161,7 +161,7 @@ static class Templates
         return stackLayout;
     }
 
-    public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
+    public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter, Type supportedType = null)
     {
         var clearButton = new Button { Text = "Clear" };
         clearButton.Clicked += async (sender, e) => setter((TBindingContext)bindingContext, new FileId());
@@ -182,6 +182,7 @@ static class Templates
 
         var dragAndDropBehaviour = new FileIdDragAndDropBehaviour();
         dragAndDropBehaviour.SetBinding(FileIdDragAndDropBehaviour.BoundPropertyProperty, new Binding(bindingPath));
+        dragAndDropBehaviour.SupportedType = supportedType;
 
         var selectBehavior = new FileIdSelectBehavior();
         selectBehavior.SetBinding(FileIdSelectBehavior.BoundPropertyProperty, new Binding(bindingPath));

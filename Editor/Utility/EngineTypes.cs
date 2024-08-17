@@ -11,6 +11,10 @@ using System.Globalization;
 using YamlDotNet.Serialization.NamingConventions;
 using SailorEngine;
 using System.Xml.Linq;
+using System.Text.RegularExpressions;
+using SailorEditor.Helpers;
+using SailorEditor.Utility;
+using System.ComponentModel;
 
 namespace SailorEngine
 {
@@ -33,7 +37,11 @@ namespace SailorEngine
     public class Vec2Property : Property<SailorEditor.Vec2> { }
     public class FileIdProperty : Property<FileId> { }
     public class InstanceIdProperty : Property<InstanceId> { }
-    public class ObjectPtrProperty : PropertyBase { }
+    public class ObjectPtrProperty : PropertyBase
+    {
+        public string ElementTypename { get; set; } = "";
+    }
+
     public class EnumProperty : Property<string> { }
     public partial class ObjectPtr : ObservableObject, ICloneable, IComparable<ObjectPtr>
     {
@@ -142,6 +150,20 @@ namespace SailorEngine
         public Dictionary<string, ComponentType> Components { get; private set; } = [];
         public Dictionary<string, List<string>> Enums { get; private set; } = [];
 
+        public static string GetEditorType(string engineType)
+        {
+            string editorType = engineType switch
+            {
+                "class Sailor::Model" => typeof(ModelFile).FullName,
+                "class Sailor::Texture" => typeof(TextureFile).FullName,
+                "class Sailor::Material" => typeof(MaterialFile).FullName,
+                "class Sailor::Shader" => typeof(ShaderFile).FullName,
+                _ => engineType
+            };
+
+            return editorType;
+        }
+
         public static EngineTypes FromYaml(string yamlContent)
         {
             var deserializer = new DeserializerBuilder()
@@ -171,7 +193,7 @@ namespace SailorEngine
                             "struct glm::vec<3,float,0>" => new Vec3Property(),
                             "struct glm::vec<4,float,0>" => new Vec4Property(),
                             "float" => new FloatProperty(),
-                            var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty(),
+                            var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty() { ElementTypename = GetEditorType(Regex.Match(value, @"<(.+?)>").Groups[1].Value) },
                             var value when value.Contains("TObjectPtr") => new InstanceIdProperty(),
                             var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
                             _ => throw new InvalidOperationException($"Unexpected property type: {property.Value}")

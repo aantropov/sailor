@@ -5,6 +5,8 @@ using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Views;
 using SailorEngine;
+using Windows.Foundation.Collections;
+using YamlDotNet.Core.Tokens;
 
 namespace SailorEditor;
 public class ComponentTemplate : DataTemplate
@@ -44,30 +46,35 @@ public class ComponentTemplate : DataTemplate
                     }
                     else
                     {
-                        propertyEditor = property.Value switch
+                        if (component.Typename.Properties[property.Key] is ObjectPtrProperty objectPtr)
                         {
-                            Observable<float> observableFloat => Templates.FloatEditor((Component vm) => observableFloat.Value, (vm, value) => observableFloat.Value = value),
-                            Rotation quat => Templates.RotationEditor((Component vm) => quat),
-                            Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
-                            Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
-                            Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
-                            Observable<FileId> observableFileId => Templates.FileIdEditor(component.OverrideProperties[property.Key], nameof(Observable<FileId>.Value), (Observable<FileId> vm) => vm.Value, (vm, value) => vm.Value = value),
-                            _ => new Label { Text = "Unsupported property type" }
-                        };
+                            if (property.Value is ObjectPtr ptr)
+                            {
+                                if (!ptr.FileId.IsEmpty())
+                                {
+                                    Type type = Type.GetType(objectPtr.ElementTypename);
 
-                        if (property.Value is ObjectPtr ptr)
-                        {
-                            if (!ptr.FileId.IsEmpty())
-                            {
-                                propertyEditor = Templates.FileIdEditor(ptr,
-                                    nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value);
-                            }
-                            else if (!ptr.InstanceId.IsEmpty())
-                            {
-                                propertyEditor = Templates.InstanceIdEditor(ptr,
-                                    nameof(ObjectPtr.InstanceId), (ObjectPtr vm) => ptr.InstanceId, (p, value) => p.InstanceId = value);
+                                    propertyEditor = Templates.FileIdEditor(ptr,
+                                        nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, type);
+                                }
+                                else if (!ptr.InstanceId.IsEmpty())
+                                {
+                                    propertyEditor = Templates.InstanceIdEditor(ptr,
+                                        nameof(ObjectPtr.InstanceId), (ObjectPtr vm) => ptr.InstanceId, (p, value) => p.InstanceId = value);
+                                }
                             }
                         }
+                        else
+                            propertyEditor = property.Value switch
+                            {
+                                Observable<float> observableFloat => Templates.FloatEditor((Component vm) => observableFloat.Value, (vm, value) => observableFloat.Value = value),
+                                Rotation quat => Templates.RotationEditor((Component vm) => quat),
+                                Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
+                                Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
+                                Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
+                                Observable<FileId> observableFileId => Templates.FileIdEditor(component.OverrideProperties[property.Key], nameof(Observable<FileId>.Value), (Observable<FileId> vm) => vm.Value, (vm, value) => vm.Value = value),
+                                _ => new Label { Text = "Unsupported property type" }
+                            };
                     }
 
                     Templates.AddGridRowWithLabel(props, property.Key, propertyEditor, GridLength.Auto);
