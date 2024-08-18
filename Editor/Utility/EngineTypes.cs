@@ -14,7 +14,6 @@ using System.Xml.Linq;
 using System.Text.RegularExpressions;
 using SailorEditor.Helpers;
 using SailorEditor.Utility;
-using System.ComponentModel;
 
 namespace SailorEngine
 {
@@ -39,7 +38,8 @@ namespace SailorEngine
     public class InstanceIdProperty : Property<InstanceId> { }
     public class ObjectPtrProperty : PropertyBase
     {
-        public string ElementTypename { get; set; } = "";
+        public Type GenericType { get; set; } = null;
+        public string GenericTypename { get; set; } = "";
     }
 
     public class EnumProperty : Property<string> { }
@@ -150,15 +150,15 @@ namespace SailorEngine
         public Dictionary<string, ComponentType> Components { get; private set; } = [];
         public Dictionary<string, List<string>> Enums { get; private set; } = [];
 
-        public static string GetEditorType(string engineType)
+        public static Type GetEditorType(string engineType)
         {
-            string editorType = engineType switch
+            Type editorType = engineType switch
             {
-                "class Sailor::Model" => typeof(ModelFile).FullName,
-                "class Sailor::Texture" => typeof(TextureFile).FullName,
-                "class Sailor::Material" => typeof(MaterialFile).FullName,
-                "class Sailor::Shader" => typeof(ShaderFile).FullName,
-                _ => engineType
+                "class Sailor::Model" => typeof(ModelFile),
+                "class Sailor::Texture" => typeof(TextureFile),
+                "class Sailor::Material" => typeof(MaterialFile),
+                "class Sailor::Shader" => typeof(ShaderFile),
+                _ => null
             };
 
             return editorType;
@@ -186,6 +186,9 @@ namespace SailorEngine
 
                     foreach (var property in component.Properties)
                     {
+                        var genericMatch = Regex.Match(property.Value, @"<(.+?)>");
+                        string genericType = genericMatch.Success ? genericType = genericMatch.Groups[1].Value : "";
+
                         PropertyBase newProperty = property.Value switch
                         {
                             "struct glm::qua<float,0>" => new RotationProperty(rootNode.Cdos.Find((a) => a.Typename == component.Typename).DefaultValues[property.Key] as Quat ?? default),
@@ -193,7 +196,11 @@ namespace SailorEngine
                             "struct glm::vec<3,float,0>" => new Vec3Property(),
                             "struct glm::vec<4,float,0>" => new Vec4Property(),
                             "float" => new FloatProperty(),
-                            var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty() { ElementTypename = GetEditorType(Regex.Match(value, @"<(.+?)>").Groups[1].Value) },
+                            var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty()
+                            {
+                                GenericTypename = genericType,
+                                GenericType = GetEditorType(genericType)
+                            },
                             var value when value.Contains("TObjectPtr") => new InstanceIdProperty(),
                             var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
                             _ => throw new InvalidOperationException($"Unexpected property type: {property.Value}")

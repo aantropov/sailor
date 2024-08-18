@@ -52,10 +52,8 @@ public class ComponentTemplate : DataTemplate
                             {
                                 if (!ptr.FileId.IsEmpty())
                                 {
-                                    Type type = Type.GetType(objectPtr.ElementTypename);
-
                                     propertyEditor = Templates.FileIdEditor(ptr,
-                                        nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, type);
+                                        nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, objectPtr.GenericType);
                                 }
                                 else if (!ptr.InstanceId.IsEmpty())
                                 {
