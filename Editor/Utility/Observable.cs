@@ -24,10 +24,11 @@ public partial class Observable<T> : ObservableObject, ICloneable
     public override string ToString() => Value.ToString();
     public override bool Equals(object obj)
     {
+        if (obj == this)
+            return true;
+
         if (obj is Observable<T> other)
-        {
-            return Value.CompareTo(other.Value) == 0;
-        }
+            return other.Value != null ? Value.CompareTo(other.Value) == 0 : Value == null;
 
         return false;
     }
