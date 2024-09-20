@@ -120,6 +120,9 @@ namespace SailorEngine
 
         public override bool Equals(object obj)
         {
+            if (this == obj)
+                return true;
+
             if (obj is FileId other)
             {
                 return Value.CompareTo(other.Value) == 0;

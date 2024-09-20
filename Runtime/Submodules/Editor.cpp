@@ -1,6 +1,7 @@
 #include "Core/LogMacros.h"
 #include "Tasks/Scheduler.h"
 #include "Engine/Types.h"
+#include "Engine/World.h"
 #include "Editor.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include <libloaderapi.h>
@@ -17,6 +18,31 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort) :
 	m_editorHwnd(editorHwnd)
 {
 
+}
+
+bool Editor::UpdateObject(const std::string& strInstanceId, const std::string& strYamlNode)
+{
+	Sailor::InstanceId instanceId;
+	ReflectedData overrideData;
+
+	YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
+	YAML::Node objectYaml = YAML::Load(strYamlNode);
+
+	instanceId.Deserialize(instanceIdYaml);
+	overrideData.Deserialize(objectYaml);
+
+	auto objPtr = m_world->GetObjectByInstanceId(instanceId);
+
+	if (instanceId.ComponentId() != Sailor::InstanceId::Invalid)
+	{
+		objPtr.DynamicCast<Component>()->ApplyReflection(overrideData);
+	}
+	else if (instanceId.GameObjectId() != Sailor::InstanceId::Invalid)
+	{
+		// TODO
+	}
+
+	return true;
 }
 
 void Editor::PushMessage(const std::string& msg)
@@ -56,8 +82,4 @@ YAML::Node Editor::SerializeWorld() const
 	auto prefab = WorldPrefab::FromWorld(m_world);
 	auto node = prefab->Serialize();
 	return node;
-}
-
-void Editor::ApplyChanges(const std::string& yamlNode)
-{
 }

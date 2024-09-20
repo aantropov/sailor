@@ -31,6 +31,16 @@ World::World(std::string name) : m_currentFrame(1), m_name(std::move(name)), m_f
 	m_pDebugContext = TUniquePtr<RHI::DebugContext>::Make();
 }
 
+ObjectPtr World::GetObjectByInstanceId(const InstanceId& instanceId) const
+{
+	if (m_objectsMap.ContainsKey(instanceId))
+	{
+		return m_objectsMap[instanceId];
+	}
+
+	return ObjectPtr();
+}
+
 void World::Tick(FrameState& frameState)
 {
 	m_currentFrame++;

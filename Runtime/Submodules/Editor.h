@@ -25,6 +25,8 @@ namespace Sailor
 		void SetViewport(RECT window) { m_windowRect = window; }
 		RECT GetViewport() const { return m_windowRect; }
 
+		bool UpdateObject(const std::string& strInstanceId, const std::string& strYamlNode);
+
 	protected:
 
 		concurrency::concurrent_queue<std::string> m_messagesQueue;

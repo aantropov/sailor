@@ -57,6 +57,8 @@ namespace Sailor
 
 		SAILOR_API void ResolveExternalDependencies();
 
+		SAILOR_API ObjectPtr GetObjectByInstanceId(const InstanceId& instanceId) const;
+
 	protected:
 
 		SAILOR_API GameObjectPtr NewGameObject(const std::string& name, const InstanceId& instanceId);

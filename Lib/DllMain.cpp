@@ -115,6 +115,15 @@ extern "C"
 			return 0;
 		}
 	}
+
+	SAILOR_API bool UpdateObject(char* strInstanceId, char* strYamlNode)
+	{
+		Sailor::InstanceId instanceId;
+		YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
+		instanceId.Deserialize(instanceIdYaml);
+
+		return true;
+	}
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule,

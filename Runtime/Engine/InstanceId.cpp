@@ -110,5 +110,5 @@ InstanceId InstanceId::ComponentId() const
 		return id;
 	}
 
-	return *this;
+	return InstanceId::Invalid;
 }
