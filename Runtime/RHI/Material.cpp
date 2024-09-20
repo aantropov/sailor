@@ -26,20 +26,20 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 				{
 					return p;
 				}
-				
+
 				break;
 			}
 
 			stateIndex++;
 		}
 	}
-	
+
 	auto device = VulkanApi::GetInstance()->GetMainDevice();
 
 	TVector<VulkanPipelineStatePtr> states = m_pipelines[0]->m_pipelineStates;
 
 	const VkFormat stencilAttachmentFormat = (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment) & VK_IMAGE_ASPECT_STENCIL_BIT) ? depthStencilAttachment : VK_FORMAT_UNDEFINED;
-	
+
 	states[stateIndex] = GraphicsDriver::Vulkan::VulkanStateDynamicRenderingPtr::Make(colorAttachments, depthStencilAttachment, stencilAttachmentFormat);
 
 	GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr pipeline = VulkanGraphicsPipelinePtr::Make(device,
@@ -163,4 +163,9 @@ bool RHIShaderBindingSet::HasParameter(const std::string& parameter) const
 	}
 
 	return false;
+}
+
+SAILOR_API bool RHIMaterial::IsReady() const
+{
+	return m_vertexShader.IsValid() && m_fragmentShader.IsValid() && m_bindings.IsValid() && m_bindings->IsReady();
 }

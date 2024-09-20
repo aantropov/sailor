@@ -24,7 +24,7 @@ namespace Sailor::RHI
 		SAILOR_API RHI::RHIShaderBindingPtr& GetOrAddShaderBinding(const std::string& binding);
 
 		SAILOR_API void RemoveShaderBinding(const std::string& binding);
-		SAILOR_API const TConcurrentMap<std::string, RHI::RHIShaderBindingPtr>& GetShaderBindings() const { return m_shaderBindings; }
+		SAILOR_API const auto& GetShaderBindings() const { return m_shaderBindings; }
 
 		static SAILOR_API void ParseParameter(const std::string& parameter, std::string& outBinding, std::string& outVariable);
 
@@ -63,6 +63,8 @@ namespace Sailor::RHI
 			m_vertexShader(vertexShader),
 			m_fragmentShader(fragmentShader)
 		{}
+
+		SAILOR_API bool IsReady() const;
 
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_renderState; }
 
