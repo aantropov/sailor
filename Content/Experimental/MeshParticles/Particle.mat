@@ -1,0 +1,21 @@
+bEnableDepthTest: true
+bEnableZWrite: true
+bSupportMultisampling: true
+bCustomDepthShader: false
+depthBias: 0
+renderQueue: Opaque
+defines: ~
+cullMode: Back
+blendMode: None
+fillMode: Fill
+shaderUid: "{50665AA4-A932-4AAC-9159-8EB67137B062}"
+samplers: ~
+uniformsVec4:
+  material.emission:
+  - 1
+  - 0
+  - 0
+  - 0
+uniformsFloat:
+  material.roughness: 1
+  material.metallic: 1

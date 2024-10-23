@@ -1,0 +1,15 @@
+bEnableDepthTest: true
+bEnableZWrite: true
+bSupportMultisampling: true
+bCustomDepthShader: false
+depthBias: 0
+renderQueue: Opaque
+cullMode: Back
+blendMode: None
+fillMode: Fill
+shaderUid: "{50665AA4-A932-4AAC-9159-8EB67137B062}"
+samplers: ~
+uniformsVec4: ~
+uniformsFloat: ~
+defines:
+- SHADOW_CASTER

@@ -5,7 +5,7 @@ includes:
 - Shaders/Lighting.glsl
 
 defines:
-- SHADOW
+- SHADOW_CASTER
 
 glslCommon: |
   #version 460
@@ -34,25 +34,15 @@ glslVertex: |
   struct PerInstanceData
   {
       mat4 model;
-      vec4 sphereBounds;
+      vec4 color;
+      vec4 colorOld;
       uint materialInstance;
       uint isCulled;
   };
   
   struct MaterialData
   {
-    vec4 albedo;
-    vec4 ambient;
     vec4 emission;
-    
-    float metallic;
-    float roughness;
-    float ao;
-    
-    uint albedoSampler;
-    uint metalnessSampler;
-    uint normalSampler;
-    uint roughnessSampler;
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -121,8 +111,9 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
-  
+  layout(set=4, binding=0) uniform sampler2D shadowMapSampler;
+  layout(set=5, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+    
   void main() 
   {
     vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
@@ -130,13 +121,14 @@ glslVertex: |
 
     gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
     
-    #if defined(SHADOW)
+    #if defined(SHADOW_CASTER)
         gl_Position = lightsMatrices.instance[0] * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     #endif
-
+    
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
 
-    vout.color = inColor;
+    vout.color = mix(data.instance[gl_InstanceIndex].color, data.instance[gl_InstanceIndex].colorOld, (inPosition.z + 1) / 2);
+
     vout.normal = normalize(worldNormal.xyz);
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[gl_InstanceIndex].materialInstance;
@@ -156,34 +148,20 @@ glslFragment: |
     mat3 tangentBasis;
   } vin;
   
-  #if defined(SHADOW)
-    layout(location=0) out float outDepth;
-  #else
-    layout(location=0) out vec4 outColor;
-  #endif
+  layout(location=0) out vec4 outColor;
   
   struct PerInstanceData
   {
       mat4 model;
-      vec4 sphereBounds;
+      vec4 color;
+      vec4 colorOld;
       uint materialInstance;
       uint isCulled;
   };
   
   struct MaterialData
   {
-    vec4 albedo;
-    vec4 ambient;
     vec4 emission;
-    
-    float metallic;
-    float roughness;
-    float ao;
-    
-    uint albedoSampler;
-    uint metalnessSampler;
-    uint normalSampler;
-    uint roughnessSampler;
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -195,7 +173,7 @@ glslFragment: |
       ivec2 viewportSize;
       vec2 cameraZNearZFar;
       float currentTime;
-      float deltaTime;      
+      float deltaTime;
   } frame;
   
   layout(set = 0, binding = 1) uniform PreviousFrameData
@@ -209,7 +187,7 @@ glslFragment: |
       float currentTime;
       float deltaTime;
   } previousFrame;
-  
+
   layout(std430, set = 1, binding = 0) readonly buffer LightDataSSBO
   {  
     LightData instance[];
@@ -252,7 +230,8 @@ glslFragment: |
       MaterialData instance[];
   } material;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+  layout(set=4, binding=0) uniform sampler2D shadowMapSampler;
+  layout(set=5, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
   
   MaterialData GetMaterialData()
   {
@@ -261,10 +240,15 @@ glslFragment: |
   
   void main() 
   {
-    #if defined(SHADOW)
-        outDepth = gl_FragCoord.z;
-    #else
+    #if defined(SHADOW_CASTER)
+        outColor.x = gl_FragCoord.z;
+    #else   
         MaterialData material = GetMaterialData();
-        outColor.xyz = material.emission.xyz;
+        outColor = vin.color;        
+        
+        vec3 normal = normalize(vin.tangentBasis * vec3(0,0,1));
+        float lighting = max(0, dot(-light.instance[0].direction, normal));
+        float shadow = ShadowCalculation_Pcf(shadowMapSampler, lightsMatrices.instance[0] * vec4(vin.worldPosition, 1.0f), 0.00001, 0);
+        outColor.xyz *= max(0.05, min(lighting, shadow));
     #endif
   }

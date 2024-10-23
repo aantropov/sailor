@@ -20,7 +20,8 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+	auto renderer = App::GetSubmodule<RHI::Renderer>();
+	auto commands = renderer->GetDriverCommands();
 
 	RHITexturePtr dst{};
 
@@ -64,6 +65,25 @@ void ClearNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr tran
 			if (r.First() == "target")
 			{
 				dst = frameGraph->GetRenderTarget(*r.Second());
+
+				// Hack: MSAA render targets are resolved inside the VulkanDriver
+				// We need to clear internal msaa depth target
+				if (*r.Second() == "DepthBuffer" && renderer->GetMsaaSamples() != EMsaaSamples::Samples_1)
+				{
+					auto msaaDepthTarget = renderer->GetDriver()->GetOrAddMsaaFramebufferRenderTarget(dst->GetFormat(), dst->GetExtent());
+					check(msaaDepthTarget && msaaDepthTarget.IsValid() && RHI::IsDepthFormat(dst->GetFormat()));
+
+					float clearDepth = GetFloat("clearDepth");
+					float clearStencil = GetFloat("clearStencil");
+
+					commands->ImageMemoryBarrier(commandList, msaaDepthTarget, RHI::EImageLayout::TransferDstOptimal);
+					commands->BeginDebugRegion(commandList, "Clear internal MSAA depth render target", glm::vec4(1.0f));
+					commands->ClearDepthStencil(commandList, msaaDepthTarget, clearDepth, (uint32_t)clearStencil);
+					commands->EndDebugRegion(commandList);
+
+					commands->ImageMemoryBarrier(commandList, msaaDepthTarget, RHI::EImageLayout::General);
+				}
+
 				break;
 			}
 		}

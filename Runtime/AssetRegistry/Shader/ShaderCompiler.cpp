@@ -431,7 +431,14 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 		}
 		catch (const std::exception& e)
 		{
-			SAILOR_LOG_ERROR("Cannot parse YAML: %s, %s", filepath.c_str(), e.what());
+			/*std::string error = e.what();
+
+			if (error.find("illegal tab") < error.length())
+			{
+
+			}
+			*/
+;			SAILOR_LOG_ERROR("Cannot parse YAML: %s, %s", filepath.c_str(), e.what());			
 		}
 
 		ShaderAsset* shader = new ShaderAsset();

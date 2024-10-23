@@ -4,10 +4,6 @@ samplers:
   fileId: ''
   path: Textures/VulkanLogo.png
 
-- name: g_lensDirtSampler
-  fileId: ''
-  path: Textures/Bokeh__Lens_Dirt_9.jpg 
-
 - name: g_ditherPatternSampler
   fileId: ''
   path: Textures/DitherPattern.png
@@ -34,17 +30,14 @@ renderTargets:
   format: R16G16B16A16_SFLOAT
   width: ViewportWidth
   height: ViewportHeight
-  
-- name: Snapshot
-  format: R32G32B32A32_SFLOAT
-  width: ViewportWidth
-  height: ViewportHeight
+  bIsSurface: false
 
 - name: Sky
   format: R16G16B16A16_SFLOAT
   width: ViewportWidth
   height: ViewportHeight
   clamping: Clamp
+  bIsSurface: false
 
 - name: HalfDepth
   format: D32_SFLOAT_S8_UINT
@@ -83,48 +76,45 @@ renderTargets:
   format: R16G16B16A16_SFLOAT
   width: 512
   height: 512
+  bIsSurface: false
   
 - name: LinearDepth
   format: R32_SFLOAT
   filtration: Nearest
   width: ViewportWidth
   height: ViewportHeight
+  bIsSurface: false
 
 ############################
 frame:
 ############################
 
-- name: DepthPrepass
-  string:
-  - Tag: Opaque
-  - ClearDepth: true
-  - GPUCulling: true
+- name: Clear
+  float:
+  - clearDepth: 0
+  - clearStencil: 0
   renderTargets:
-  - depthStencil: DepthBuffer
-  - depthHighZ: DepthHighZ
+  - target: DepthBuffer
 
-- name: DepthPrepass
-  string:
-  - Tag: Masked
-  - GPUCulling: true
+- name: Clear
+  vec4:
+  - clearColor: [0, 0, 0, 0]
   renderTargets:
-  - depthStencil: DepthBuffer
-  - depthHighZ: DepthHighZ
+  - target: Main
  
 - name: LinearizeDepth
   renderTargets:
   - depthStencil: DepthBuffer
   - target: LinearDepth
-  
+
+- name: DebugDraw
+  renderTargets:
+  - color: Main
+  - depthStencil: DepthBuffer
+
 - name: LightCulling
   renderTargets:
   - depthStencil: LinearDepth
-
-- name: Clear
-  vec4:
-  - clearColor: [1.502, 2.08, 2.61, 2.5]
-  renderTargets:
-  - target: Main
 
 - name: ShadowPrepass
 
@@ -132,109 +122,15 @@ frame:
   renderTargets:
   - color: Sky
   - linearDepth: LinearDepth
-
-- name: Environment
- 
-- name: Blit
-  renderTargets:
-  - src: Sky
-  - dst: Main
   
-- name: Blit
-  renderTargets:
-  - src: DepthBuffer
-  - dst: HalfDepth
-
-- name: DepthHighZ
-  renderTargets:
-  - src: HalfDepth
-  - dst: DepthHighZ
-  
-- name: PostProcess
-  string:
-  - shader: Shaders/HBAO.shader
-  - defines: ~
-  float:
-  - data.occlusionRadius: 700
-  - data.occlusionPower: 1.5
-  - data.occlusionAttenuation: 0.1
-  - data.occlusionBias: 0.05
-  - data.noiseScale: 25
-  renderTargets:
-  - color: AO
-  - depthSampler: HalfDepth
-  - noiseSampler: g_noiseSampler
-
-- name: PostProcess
-  string:
-  - shader: Shaders/HBAO_Blur.shader
-  - defines: VERTICAL
-  float:
-  - data.sharpness: 0.5
-  - data.distanceScale: 2
-  - data.radius: 5
-  renderTargets:
-  - color: TemporaryR8
-  - aoSampler: AO
-  - depthSampler: DepthBuffer
-
-- name: PostProcess
-  string:
-  - shader: Shaders/HBAO_Blur.shader
-  - defines: HORIZONTAL
-  float:
-  - data.sharpness: 0.5
-  - data.distanceScale: 2
-  - data.radius: 5
-  renderTargets:
-  - color: g_AO
-  - aoSampler: TemporaryR8
-  - depthSampler: DepthBuffer
-
-- name: RenderScene
-  string:
-  - Tag: Opaque
-  - GPUCulling: true
+- name: ExperimentalParticles
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
-  - depthHighZ: DepthHighZ
-  
-- name: RenderScene
   string:
-  - Tag: Masked
-  - GPUCulling: true
-  renderTargets:
-  - color: Main
-  - depthStencil: DepthBuffer
-  - depthHighZ: DepthHighZ
-
-- name: DebugDraw
-  renderTargets:
-  - color: Main
-  - depthStencil: DepthBuffer
-  
-- name: Bloom
-  vec4:
-  - bloomIntensity: [1.3, 0, 0, 0]
-  - dirtIntensity: [5.0, 0, 0, 0]
-  - threshold: [3.0, 0, 0, 0]
-  - knee: [0.2, 0, 0, 0]
-  renderTargets:
-  - bloom: Main
-
-- name: EyeAdaptation
-  string:
-  - toneMappingShader: Shaders/Tonemapping.shader
-  - toneMappingDefines: UNCHARTED2 LUMINANCE
-  vec4:
-  - data.exposure: [1.0, 0, 0, 0]
-  - data.whitePoint: [1.4, 1.5, 1.4, 0]
-  renderTargets:
-  - color: Secondary
-  - hdrColor: Main
-  - colorSampler: Main
-  - depthStencil: DepthBuffer
+  - particlesData: Experimental/MeshParticles/Particle_2.yaml
+  - particleModel: Experimental/MeshParticles/Particle.gltf
+  - particleShadowMaterial: Experimental/MeshParticles/ParticleShadow.mat
 
 - name: PostProcess
   string:
@@ -243,43 +139,10 @@ frame:
   vec4: ~
   renderTargets:
   - color: BackBuffer
-  - ldrSceneSampler: Secondary
+  - ldrSceneSampler: Main
   - linearDepthSampler: LinearDepth
 
-# Screenshots
-- name: Blit
-  renderTargets:
-  - src: Secondary
-  - dst: Snapshot
-  
-- name: CopyTextureToRam
-  renderTargets:
-  - src: Snapshot
-
-- name: Clear
-  vec4:
-  - clearColor: [0.0, 0.0, 0.0, 0.0]
-  renderTargets:
-  - target: Main
-
-- name: RenderScene
-  string:
-  - Tag: Overlay
-  - GPUCulling: false
-  renderTargets:
-  - color: Main
-  - depthStencil: DepthBuffer
-  
-- name: Blit
-  renderTargets:
-  - src: Main
-  - dst: Snapshot
-  
 - name: RenderImGui
   renderTargets:
   - color: BackBuffer
   - depthStencil: DepthBuffer
-  
-- name: CopyTextureToRam
-  renderTargets:
-  - src: Snapshot

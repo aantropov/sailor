@@ -208,6 +208,8 @@ namespace Sailor::RHI
 		SAILOR_API void TrackResources_ThreadSafe();
 		SAILOR_API void TrackDelayedInitialization(IDelayedInitialization* pResource, RHIFencePtr handle);
 
+		SAILOR_API virtual RHI::RHITexturePtr GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent) = 0;
+
 	protected:
 
 		RHI::RHITexturePtr m_defaultTexture{};
