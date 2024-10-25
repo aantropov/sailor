@@ -1,0 +1,7 @@
+fileId: "{14A75BF9-09AC-49EE-A0DF-2945F4B452A6}"
+filename: Duck.glb
+bShouldGenerateMaterials: true
+bShouldBatchByMaterial: true
+unitScale: 10
+materials:
+  - "{C429133C-58B0-4E46-8105-F1FFD481A0F2}"

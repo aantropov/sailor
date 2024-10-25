@@ -1,0 +1,30 @@
+renderQueue: Opaque
+depthBias: 0
+bSupportMultisampling: true
+bCustomDepthShader: false
+bEnableDepthTest: true
+bEnableZWrite: true
+cullMode: Back
+blendMode: None
+fillMode: Fill
+shaderUid: '{1A4BA353-FDA4-4F65-941F-D9FFEE4630A0}'
+samplers:
+  baseColorSampler: '{5CD868D5-825C-4E52-AB19-267849E28BEA}'
+uniformsVec4:
+  material.baseColorFactor:
+  - 0.15
+  - 0.15
+  - 0.15
+  - 1
+  material.emissiveFactor:
+  - 0
+  - 0
+  - 0
+  - 0
+uniformsFloat:
+  material.roughnessFactor: 1
+  material.metallicFactor: 0
+  material.normalScale: 1
+  material.alphaCutoff: 0.5
+  material.occlusionStrength: 1
+defines: []
