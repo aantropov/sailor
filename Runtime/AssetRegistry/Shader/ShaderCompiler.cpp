@@ -431,14 +431,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 		}
 		catch (const std::exception& e)
 		{
-			/*std::string error = e.what();
-
-			if (error.find("illegal tab") < error.length())
-			{
-
-			}
-			*/
-;			SAILOR_LOG_ERROR("Cannot parse YAML: %s, %s", filepath.c_str(), e.what());			
+			SAILOR_LOG_ERROR("Cannot parse YAML: %s, %s", filepath.c_str(), e.what());
 		}
 
 		ShaderAsset* shader = new ShaderAsset();
@@ -463,8 +456,11 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 	{
 		const std::string extension = Utils::GetFileExtension(assetInfo->GetAssetFilepath());
 
+		ReplaceTabsWithSpaces(assetInfo);
+
 		if (extension == "shader")
-		{
+		{			
+
 			SAILOR_LOG("Updated shader info: %s", assetInfo->GetAssetFilepath().c_str());
 
 			m_shaderAssetsCache.Remove(assetInfo->GetFileId());
@@ -529,12 +525,45 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 	}
 }
 
+void ShaderCompiler::ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const
+{
+	const std::string& filepath = assetInfo->GetAssetFilepath();
+
+	std::string shaderText;
+	AssetRegistry::ReadAllTextFile(filepath, shaderText);
+
+	YAML::Node yamlNode;
+
+	try
+	{
+		yamlNode = YAML::Load(shaderText);
+	}
+	catch (const std::exception& e)
+	{
+		std::string error = e.what();
+
+		if (error.find("illegal tab") < error.length())
+		{
+			static const std::string tab = "\t";
+			static const std::string space = "    ";
+
+			Utils::ReplaceAll(shaderText, tab, space);
+
+			std::ofstream assetFile(filepath);
+			assetFile << shaderText;
+			assetFile.close();
+		}
+	}
+}
+
 void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
 {
 	if (bShouldAutoCompileAllPermutations)
 	{
 		CompileAllPermutations(assetInfo->GetFileId());
 	}
+
+	ReplaceTabsWithSpaces(assetInfo);
 }
 
 bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::string& source, RHI::EShaderStage shaderStage, RHI::ShaderByteCode& outByteCode, bool bIsDebug)

@@ -157,6 +157,8 @@ namespace Sailor
 
 		SAILOR_API bool UpdateRHIResource(ShaderSetPtr shader, uint32_t permutation);
 
+		SAILOR_API void ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const;
+
 		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(ShaderAssetInfoPtr shaderAssetInfo);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(ShaderAssetInfoPtr shaderAssetInfo);
 	};
