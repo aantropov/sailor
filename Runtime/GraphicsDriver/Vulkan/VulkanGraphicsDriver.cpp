@@ -1612,7 +1612,7 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 
 	const bool bIsDepthFormat = textureFormat == RHI::EFormat::D16_UNORM || textureFormat == RHI::EFormat::D32_SFLOAT || textureFormat == RHI::EFormat::X8_D24_UNORM_PACK32 ||
 		textureFormat == RHI::EFormat::D32_SFLOAT_S8_UINT;
-	const auto usage = (uint32_t)(VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+	const auto usage = (uint32_t)(VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 		(!bIsDepthFormat ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT));
 
 	target->m_vulkan.m_image = m_vkInstance->CreateImage(m_vkInstance->GetMainDevice(),
