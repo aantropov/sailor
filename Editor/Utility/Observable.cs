@@ -28,7 +28,7 @@ public partial class Observable<T> : ObservableObject, ICloneable
             return true;
 
         if (obj is Observable<T> other)
-            return other.Value != null ? Value.CompareTo(other.Value) == 0 : Value == null;
+            return other.Value != null ? Value?.CompareTo(other.Value) == 0 : (Value == null && other.Value == null);
 
         return false;
     }

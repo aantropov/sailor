@@ -27,21 +27,25 @@ namespace SailorEditor.Views
         {
             if (obj is AssetFile file)
             {
-                if (FolderTree.SelectedItem.BindingContext is TreeViewItem<AssetFile> assetFile)
+                if (FolderTree.SelectedItem != null)
                 {
-                    if (assetFile.Model.FileId != file.FileId)
-                    {
-                        foreach (var el in FolderTree.RootNodes)
-                        {
-                            var res = el.FindFileRecursive(file);
+                    var assetFile = FolderTree.SelectedItem.BindingContext as TreeViewItem<AssetFile>;
 
-                            if (res != null)
-                            {
-                                res.Select();
-                                FolderTree.SelectedItem = res;
-                                break;
-                            }
-                        }
+                    if (assetFile.Model.FileId == file.FileId)
+                    {
+                        return;
+                    }
+                }
+
+                foreach (var el in FolderTree.RootNodes)
+                {
+                    var res = el.FindFileRecursive(file);
+
+                    if (res != null)
+                    {
+                        res.Select();
+                        FolderTree.SelectedItem = res;
+                        break;
                     }
                 }
             }
