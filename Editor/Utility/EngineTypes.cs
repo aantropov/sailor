@@ -40,16 +40,17 @@ namespace SailorEngine
     {
         public Type GenericType { get; set; } = null;
         public string GenericTypename { get; set; } = "";
+        public bool CouldBeInstantiated { get => GenericType == null; }
     }
 
     public class EnumProperty : Property<string> { }
     public partial class ObjectPtr : ObservableObject, ICloneable, IComparable<ObjectPtr>
     {
         [ObservableProperty]
-        FileId fileId;
+        FileId fileId = new();
 
         [ObservableProperty]
-        InstanceId instanceId;
+        InstanceId instanceId = new();
 
         public object Clone() => new ObjectPtr() { FileId = FileId, InstanceId = InstanceId };
 
@@ -208,7 +209,6 @@ namespace SailorEngine
                             var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
                             _ => throw new InvalidOperationException($"Unexpected property type: {property.Value}")
                         };
-
 
                         newComponent.Properties[property.Key] = newProperty;
                     }

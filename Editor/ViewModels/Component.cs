@@ -97,6 +97,11 @@ public class ComponentConverter : IYamlTypeConverter
                                     _ => throw new InvalidOperationException($"Unexpected property type: {propType.GetType().Name}")
                                 };
 
+                                if (propType is ObjectPtrProperty && value == null)
+                                {
+                                    value = new ObjectPtr();
+                                }
+
                                 component.OverrideProperties[key] = value;
                             }
                         }
