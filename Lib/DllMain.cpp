@@ -46,7 +46,7 @@ extern "C"
 	{
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 		uint32_t numMsg = std::min((uint32_t)editor->NumMessages(), num);
-
+		 
 		for (uint32_t i = 0; i < numMsg; i++)
 		{
 			std::string msg;
@@ -121,6 +121,10 @@ extern "C"
 		Sailor::InstanceId instanceId;
 		YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
 		instanceId.Deserialize(instanceIdYaml);
+
+		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
+
+		editor->UpdateObject(instanceId, strYamlNode);
 
 		return true;
 	}

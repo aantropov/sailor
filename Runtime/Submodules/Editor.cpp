@@ -20,15 +20,11 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort) :
 
 }
 
-bool Editor::UpdateObject(const std::string& strInstanceId, const std::string& strYamlNode)
+bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYamlNode)
 {
-	Sailor::InstanceId instanceId;
 	ReflectedData overrideData;
 
-	YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
 	YAML::Node objectYaml = YAML::Load(strYamlNode);
-
-	instanceId.Deserialize(instanceIdYaml);
 	overrideData.Deserialize(objectYaml);
 
 	auto objPtr = m_world->GetObjectByInstanceId(instanceId);
@@ -39,7 +35,16 @@ bool Editor::UpdateObject(const std::string& strInstanceId, const std::string& s
 	}
 	else if (instanceId.GameObjectId() != Sailor::InstanceId::Invalid)
 	{
-		// TODO
+		auto objPtr = m_world->GetObjectByInstanceId(instanceId);
+
+		if (!objPtr.IsValid())
+		{
+			// TODO: Create new gameobject
+		}
+		else
+		{
+			//TODO: Handle delta, add/remove components and recreate the gameobject
+		}
 	}
 
 	return true;

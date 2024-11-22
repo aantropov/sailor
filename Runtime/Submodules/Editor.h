@@ -20,12 +20,11 @@ namespace Sailor
 		__forceinline size_t NumMessages() const { return m_messagesQueue.unsafe_size(); }
 
 		YAML::Node SerializeWorld() const;
-		void ApplyChanges(const std::string& yamlNode);
 
 		void SetViewport(RECT window) { m_windowRect = window; }
 		RECT GetViewport() const { return m_windowRect; }
 
-		bool UpdateObject(const std::string& strInstanceId, const std::string& strYamlNode);
+		bool UpdateObject(const class InstanceId& instanceId, const std::string& strYamlNode);
 
 	protected:
 
