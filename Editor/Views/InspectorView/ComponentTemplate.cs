@@ -55,15 +55,10 @@ public class ComponentTemplate : DataTemplate
                                     propertyEditor = Templates.FileIdEditor(ptr,
                                         nameof(ObjectPtr.FileId), (ObjectPtr p) => p.FileId, (p, value) => p.FileId = value, objectPtr.GenericType);
                                 }
-                                else if (!ptr.InstanceId.IsEmpty())
+                                else if (!ptr.InstanceId.IsEmpty() || objectPtr.CouldBeInstantiated)
                                 {
                                     propertyEditor = Templates.InstanceIdEditor(ptr,
                                         nameof(ObjectPtr.InstanceId), (ObjectPtr vm) => ptr.InstanceId, (p, value) => p.InstanceId = value);
-                                }
-                                else if (objectPtr.CouldBeInstantiated)
-                                {
-                                    propertyEditor = Templates.InstanceIdEditor(ptr,
-                                       nameof(ObjectPtr.InstanceId), (ObjectPtr vm) => ptr.InstanceId, (p, value) => p.InstanceId = value);
                                 }
                                 else
                                 {
