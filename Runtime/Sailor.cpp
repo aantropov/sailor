@@ -119,7 +119,10 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 #if defined(SAILOR_BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
-	s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
+	if (!params.m_bIsEditor)
+	{
+		s_pInstance->AddSubmodule(TSubmodule<RenderDocApi>::Make());
+	}
 #endif
 
 	bool bEnableRenderValidationLayers = params.m_bEnableRenderValidationLayers;
@@ -139,7 +142,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->m_pMainWindow->Create(className.c_str(), className.c_str(), 1024, 768, false, false, params.m_editorHwnd);
 
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
-	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_16, bEnableRenderValidationLayers));
+	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_8, bEnableRenderValidationLayers));
 
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));

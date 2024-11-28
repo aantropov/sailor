@@ -5,11 +5,37 @@ using System.Runtime.InteropServices;
 using WinRT;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NodeTypeResolvers;
+using YamlDotNet.Core.Tokens;
 
 namespace SailorEngine
 {
     public class EngineAppInterop
     {
+#if DEBUG
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void Initialize(string[] commandLineArgs, int num);
+
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void Start();
+
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void Stop();
+
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void Shutdown();
+
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern uint GetMessages(nint[] messages, uint num);
+
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern uint SerializeCurrentWorld(nint[] yamlNode);
+
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern uint SerializeEngineTypes(nint[] yamlNode);
+
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
+#else 
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Initialize(string[] commandLineArgs, int num);
 
@@ -33,6 +59,7 @@ namespace SailorEngine
 
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
+#endif
     }
 }
 
@@ -100,11 +127,18 @@ namespace SailorEditor.Services
 
                     StartPeriodicTask(async () =>
                     {
-                        string serializedWorld = SerializeWorld();
                         string serializedEngineTypes = SerializeEngineTypes();
                         EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
 
+                        string serializedWorld;
+                        do
+                        {
+                            serializedWorld = SerializeWorld();
+                            await Task.Delay(500, cts.Token);
+                        } while (serializedWorld == string.Empty && !cts.Token.IsCancellationRequested);
+
                         MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+
                     }, 1000, 0, cts.Token);
 
                     EngineAppInterop.Start();

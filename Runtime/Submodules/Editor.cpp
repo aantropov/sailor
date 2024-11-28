@@ -84,6 +84,11 @@ bool Editor::PullMessage(std::string& msg)
 
 YAML::Node Editor::SerializeWorld() const
 {
+	if (m_world == nullptr)
+	{
+		return YAML::Node();
+	}
+
 	auto prefab = WorldPrefab::FromWorld(m_world);
 	auto node = prefab->Serialize();
 	return node;
