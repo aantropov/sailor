@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using SailorEditor.Services;
 using System.Windows.Input;
 using SailorEngine;
+using Windows.ApplicationModel.VoiceCommands;
 
 namespace SailorEditor.ViewModels;
 
@@ -18,6 +19,34 @@ public partial class GameObject : ObservableObject, ICloneable
     {
         AddNewComponent = new Command(OnAddNewComponent);
         ClearComponentsCommand = new Command(OnClearComponents);
+
+        PropertyChanged += (s, args) =>
+        {
+            if (args.PropertyName != nameof(IsDirty))
+                IsDirty = true;
+        };
+    }
+
+    public void CommitChanges()
+    {
+        if (!IsDirty)
+            return;
+
+        // TODO: Pass transform
+
+        IsDirty = false;
+    }
+
+    public void Refresh()
+    {
+        Scale.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Scale));
+        Position.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Position));
+        Rotation.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Rotation));
+
+        //foreach (var component in Components)
+        //    component.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Components));
+
+        IsDirty = false;
     }
 
     public string DisplayName { get { return Name; } }
@@ -39,7 +68,8 @@ public partial class GameObject : ObservableObject, ICloneable
         Scale = new Vec4(Scale),
         ParentIndex = ParentIndex,
         InstanceId = InstanceId,
-        ComponentIndices = new List<int>(ComponentIndices)
+        ComponentIndices = new List<int>(ComponentIndices),
+        IsDirty = false
     };
 
     public ICommand AddNewComponent { get; }

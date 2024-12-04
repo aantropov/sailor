@@ -14,10 +14,16 @@ using System.Xml.Linq;
 using System.Text.RegularExpressions;
 using SailorEditor.Helpers;
 using SailorEditor.Utility;
+using System.ComponentModel;
 
 namespace SailorEngine
 {
-    public class PropertyBase { public string Typename { get; set; } }
+    public class PropertyBase : INotifyPropertyChanged 
+    { 
+        public string Typename { get; set; }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+    }
 
     public class Property<T> : PropertyBase
     {
@@ -586,8 +592,8 @@ namespace SailorEditor
         {
             var vec = (Vec2)value;
             emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, vec.X.ToString()));
-            emitter.Emit(new Scalar(null, vec.Y.ToString()));
+            emitter.Emit(new Scalar(null, vec.X.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.Y.ToString(CultureInfo.InvariantCulture)));
             emitter.Emit(new SequenceEnd());
         }
     }
@@ -616,9 +622,9 @@ namespace SailorEditor
         {
             var vec = (Vec3)value;
             emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, vec.X.ToString()));
-            emitter.Emit(new Scalar(null, vec.Y.ToString()));
-            emitter.Emit(new Scalar(null, vec.Z.ToString()));
+            emitter.Emit(new Scalar(null, vec.X.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.Y.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.Z.ToString(CultureInfo.InvariantCulture)));
             emitter.Emit(new SequenceEnd());
         }
     }
@@ -648,10 +654,10 @@ namespace SailorEditor
         {
             var vec = (Vec4)value;
             emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, vec.X.ToString()));
-            emitter.Emit(new Scalar(null, vec.Y.ToString()));
-            emitter.Emit(new Scalar(null, vec.Z.ToString()));
-            emitter.Emit(new Scalar(null, vec.W.ToString()));
+            emitter.Emit(new Scalar(null, vec.X.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.Y.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.Z.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.W.ToString(CultureInfo.InvariantCulture)));
             emitter.Emit(new SequenceEnd());
         }
     }
@@ -681,10 +687,10 @@ namespace SailorEditor
         {
             var vec = (Quat)value;
             emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, vec.X.ToString()));
-            emitter.Emit(new Scalar(null, vec.Y.ToString()));
-            emitter.Emit(new Scalar(null, vec.Z.ToString()));
-            emitter.Emit(new Scalar(null, vec.W.ToString()));
+            emitter.Emit(new Scalar(null, vec.X.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.Y.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.Z.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, vec.W.ToString(CultureInfo.InvariantCulture)));
             emitter.Emit(new SequenceEnd());
         }
     }
@@ -714,10 +720,10 @@ namespace SailorEditor
         {
             var quat = ((Rotation)value).Quat;
             emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, quat.X.ToString()));
-            emitter.Emit(new Scalar(null, quat.Y.ToString()));
-            emitter.Emit(new Scalar(null, quat.Z.ToString()));
-            emitter.Emit(new Scalar(null, quat.W.ToString()));
+            emitter.Emit(new Scalar(null, quat.X.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, quat.Y.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, quat.Z.ToString(CultureInfo.InvariantCulture)));
+            emitter.Emit(new Scalar(null, quat.W.ToString(CultureInfo.InvariantCulture)));
             emitter.Emit(new SequenceEnd());
         }
     }

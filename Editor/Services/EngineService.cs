@@ -35,7 +35,11 @@ namespace SailorEngine
 
         [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
-#else 
+
+        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
+
+#else
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Initialize(string[] commandLineArgs, int num);
 
@@ -59,6 +63,9 @@ namespace SailorEngine
 
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
+
+        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
 #endif
     }
 }
@@ -237,6 +244,12 @@ namespace SailorEditor.Services
             Marshal.FreeHGlobal(yamlNodeChar[0]);
 
             return yamlNode;
+        }
+
+        public bool CommitChanges(InstanceId id, string yamlChanges)
+        {
+            var stringId = id.Value.ToString();
+            return EngineAppInterop.UpdateObject(stringId, yamlChanges);
         }
     }
 }

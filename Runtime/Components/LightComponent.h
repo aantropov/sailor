@@ -29,11 +29,11 @@ namespace Sailor
 		SAILOR_API __forceinline const glm::vec2& GetCutOff() const { return GetData().m_cutOff; }
 		SAILOR_API __forceinline ELightType GetLightType() const { return (ELightType)GetData().m_type; }
 
-		SAILOR_API __forceinline void SetCutOff(const glm::vec2& innerOuterDegrees);
-		SAILOR_API __forceinline void SetIntensity(const glm::vec3& value);
-		SAILOR_API __forceinline void SetAttenuation(const glm::vec3& value);
-		SAILOR_API __forceinline void SetBounds(const glm::vec3& value);
-		SAILOR_API __forceinline void SetLightType(ELightType value);
+		SAILOR_API void SetCutOff(const glm::vec2& innerOuterDegrees);
+		SAILOR_API void SetIntensity(const glm::vec3& value);
+		SAILOR_API void SetAttenuation(const glm::vec3& value);
+		SAILOR_API void SetBounds(const glm::vec3& value);
+		SAILOR_API void SetLightType(ELightType value);
 
 	protected:
 

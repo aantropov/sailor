@@ -6,24 +6,36 @@ using YamlDotNet.Core.Events;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SailorEditor.Utility
 {
     [DebuggerDisplay("Count={Count}")]
     public class ObservableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, INotifyCollectionChanged, INotifyPropertyChanged
+        where TValue : INotifyPropertyChanged
     {
         readonly IDictionary<TKey, TValue> dictionary;
 
         public event NotifyCollectionChangedEventHandler CollectionChanged;
         public event PropertyChangedEventHandler PropertyChanged;
 
+        public event EventHandler<ItemChangedEventArgs<TValue>> ValueChanged;
+
         public ObservableDictionary() : this(new Dictionary<TKey, TValue>()) { }
         public ObservableDictionary(IDictionary<TKey, TValue> dictionary) { this.dictionary = dictionary; }
+
+        private void ValuePropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            var args = new ItemChangedEventArgs<TValue>((TValue)sender, e.PropertyName);
+            this.ValueChanged?.Invoke(this, args);
+        }
 
         void AddWithNotification(KeyValuePair<TKey, TValue> item) { AddWithNotification(item.Key, item.Value); }
         void AddWithNotification(TKey key, TValue value)
         {
             dictionary.Add(key, value);
+
+            (value as INotifyPropertyChanged).PropertyChanged += ValuePropertyChanged;
 
             CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add,
                 new KeyValuePair<TKey, TValue>(key, value)));
@@ -41,6 +53,8 @@ namespace SailorEditor.Utility
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove,
                     new KeyValuePair<TKey, TValue>(key, value)));
 
+                value.PropertyChanged -= ValuePropertyChanged;
+
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Count"));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Keys"));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Values"));
@@ -57,6 +71,9 @@ namespace SailorEditor.Utility
             if (dictionary.TryGetValue(key, out existing))
             {
                 dictionary[key] = value;
+
+                existing.PropertyChanged -= ValuePropertyChanged;
+                value.PropertyChanged += ValuePropertyChanged;
 
                 CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace,
                     new KeyValuePair<TKey, TValue>(key, value),
@@ -122,6 +139,11 @@ namespace SailorEditor.Utility
 
         void ICollection<KeyValuePair<TKey, TValue>>.Clear()
         {
+            foreach (var el in dictionary)
+            {
+                el.Value.PropertyChanged -= ValuePropertyChanged;
+            }
+
             ((ICollection<KeyValuePair<TKey, TValue>>)dictionary).Clear();
 
             CollectionChanged(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
@@ -171,6 +193,7 @@ namespace SailorEditor.Utility
     }
 
     public class ObservableDictionaryConverter<TKey, TValue> : IYamlTypeConverter
+        where TValue : INotifyPropertyChanged
     {
         public ObservableDictionaryConverter(IYamlTypeConverter KeyConverter = null, IYamlTypeConverter ValueConverter = null)
         {

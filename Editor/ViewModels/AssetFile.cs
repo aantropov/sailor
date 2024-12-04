@@ -18,7 +18,7 @@ public partial class AssetFile : ObservableObject, ICloneable
     {
         PropertyChanged += (s, args) =>
         {
-            if (args.PropertyName != "IsDirty")
+            if (args.PropertyName != nameof(IsDirty))
             {
                 IsDirty = true;
             }

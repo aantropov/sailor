@@ -7,6 +7,10 @@ using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Core.Tokens;
 using Scalar = YamlDotNet.Core.Events.Scalar;
+using System.Runtime.CompilerServices;
+using SailorEditor.Services;
+using System.Globalization;
+using System;
 
 namespace SailorEditor.ViewModels;
 
@@ -16,11 +20,46 @@ public partial class Component : ObservableObject, ICloneable
     {
         PropertyChanged += (s, args) =>
         {
-            if (args.PropertyName != "IsDirty")
-            {
+            if (args.PropertyName != nameof(IsDirty))
                 IsDirty = true;
-            }
+
+            if (args.PropertyName == nameof(OverrideProperties))
+                CommitChanges();
         };
+    }
+
+    void CommitChanges()
+    {
+        if (!IsDirty)
+            return;
+
+        string yamlComponent = string.Empty;
+
+        using (var writer = new StringWriter())
+        {
+            var serializer = new SerializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .WithTypeConverter(new ComponentYamlConverter())
+                .Build();
+
+            var yaml = serializer.Serialize(this);
+            writer.Write(yaml);
+
+            yamlComponent = writer.ToString();
+        }
+
+
+        MauiProgram.GetService<EngineService>().CommitChanges(InstanceId, yamlComponent);
+        IsDirty = false;
+    }
+
+    public void Refresh()
+    {
+        OverrideProperties.CollectionChanged += (a, e) => OnPropertyChanged(nameof(OverrideProperties));
+        OverrideProperties.PropertyChanged += (s, args) => OnPropertyChanged(nameof(OverrideProperties));
+        OverrideProperties.ValueChanged += (s, args) => OnPropertyChanged(nameof(OverrideProperties));
+
+        IsDirty = false;
     }
 
     public object Clone() => new Component();
@@ -40,7 +79,7 @@ public partial class Component : ObservableObject, ICloneable
     ObservableDictionary<string, ObservableObject> overrideProperties = [];
 }
 
-public class ComponentConverter : IYamlTypeConverter
+public class ComponentYamlConverter : IYamlTypeConverter
 {
     public bool Accepts(Type type) => type == typeof(Component);
 
@@ -119,51 +158,67 @@ public class ComponentConverter : IYamlTypeConverter
 
     public void WriteYaml(IEmitter emitter, object value, Type type)
     {
-        var component = (Component)value;
         var serializer = new SerializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
-            .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
-            .WithTypeConverter(new ComponentTypeYamlConverter())
-            .WithTypeConverter(new FileIdYamlConverter())
-            .WithTypeConverter(new RotationYamlConverter())
-            .WithTypeConverter(new Vec4YamlConverter())
             .WithTypeConverter(new Vec3YamlConverter())
-            .WithTypeConverter(new Vec2YamlConverter())
+            .WithTypeConverter(new Vec4YamlConverter())
+            .WithTypeConverter(new FileIdYamlConverter())
+            .WithTypeConverter(new InstanceIdYamlConverter())
+            .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
             .Build();
+        var component = (Component)value;
 
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
 
         emitter.Emit(new Scalar(null, "typename"));
-        serializer.Serialize(emitter, component.Typename);
+        emitter.Emit(new Scalar(null, component.Typename.Name));
 
         emitter.Emit(new Scalar(null, "overrideProperties"));
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
 
+        var vec3Converter = new Vec3YamlConverter();
+        var vec4Converter = new Vec4YamlConverter();
+        var vec2Converter = new Vec2YamlConverter();
+        var quatConverter = new QuatYamlConverter();
+        var rotationConverter = new RotationYamlConverter();
+        var fileIdConverter = new FileIdYamlConverter();
+        var instanceIdConverter = new InstanceIdYamlConverter();
+
         foreach (var kvp in component.OverrideProperties)
         {
             emitter.Emit(new Scalar(null, kvp.Key));
+
             switch (kvp.Value)
             {
-                case Observable<Vec4> vec4:
-                    serializer.Serialize(emitter, vec4.Value);
+                case Quat quat:
+                    quatConverter.WriteYaml(emitter, quat, typeof(Quat));
                     break;
-                case Observable<Vec3> vec3:
-                    serializer.Serialize(emitter, vec3.Value);
+                case Rotation rot:
+                    rotationConverter.WriteYaml(emitter, rot, typeof(Rotation));
                     break;
-                case Observable<Vec2> vec2:
-                    serializer.Serialize(emitter, vec2.Value);
+                case Vec3 vec3:
+                    vec3Converter.WriteYaml(emitter, vec3, typeof(Vec3));
+                    break;
+                case Vec4 vec4:
+                    vec4Converter.WriteYaml(emitter, vec4, typeof(Vec4));
+                    break;
+                case Vec2 vec2:
+                    vec2Converter.WriteYaml(emitter, vec2, typeof(Vec2));
                     break;
                 case Observable<FileId> assetId:
-                    serializer.Serialize(emitter, assetId.Value);
+                    fileIdConverter.WriteYaml(emitter, assetId.Value, typeof(FileId));
+                    break;
+                case Observable<InstanceId> id:
+                    instanceIdConverter.WriteYaml(emitter, id.Value, typeof(InstanceId));
                     break;
                 case Observable<string> str:
-                    serializer.Serialize(emitter, str.Value);
+                    emitter.Emit(new Scalar(null, str.Value));
                     break;
                 case Observable<float> floatVal:
-                    serializer.Serialize(emitter, floatVal.Value);
+                    emitter.Emit(new Scalar(null, floatVal.Value.ToString()));
                     break;
-                case Observable<ObjectPtr> objPtr:
-                    serializer.Serialize(emitter, objPtr.Value);
+                case ObjectPtr objPtr:
+                    serializer.Serialize(emitter, objPtr);
                     break;
                 default:
                     throw new InvalidOperationException($"Unexpected property type: {kvp.Value.GetType().Name}");
@@ -171,7 +226,6 @@ public class ComponentConverter : IYamlTypeConverter
         }
 
         emitter.Emit(new MappingEnd());
-
         emitter.Emit(new MappingEnd());
     }
 }

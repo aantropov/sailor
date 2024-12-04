@@ -2,6 +2,7 @@
 #include "Tasks/Scheduler.h"
 #include "Engine/Types.h"
 #include "Engine/World.h"
+#include "Engine/GameObject.h"
 #include "Editor.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include <libloaderapi.h>
@@ -27,11 +28,20 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 	YAML::Node objectYaml = YAML::Load(strYamlNode);
 	overrideData.Deserialize(objectYaml);
 
-	auto objPtr = m_world->GetObjectByInstanceId(instanceId);
+	auto objPtr = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
 
-	if (instanceId.ComponentId() != Sailor::InstanceId::Invalid)
+	if (instanceId.ComponentId() != Sailor::InstanceId::Invalid && objPtr.IsValid())
 	{
-		objPtr.DynamicCast<Component>()->ApplyReflection(overrideData);
+		auto go = objPtr.DynamicCast<GameObject>();
+		auto components = go->GetComponents();
+
+		for (auto el : components)
+		{
+			if (el->GetInstanceId().ComponentId() == instanceId.ComponentId())
+			{
+				el->ApplyReflection(overrideData);
+			}
+		}
 	}
 	else if (instanceId.GameObjectId() != Sailor::InstanceId::Invalid)
 	{

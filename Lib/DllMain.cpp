@@ -30,6 +30,7 @@ extern "C"
 
 	SAILOR_API void SetViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
 	{
+
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 
 		RECT rect{};
@@ -46,7 +47,7 @@ extern "C"
 	{
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 		uint32_t numMsg = std::min((uint32_t)editor->NumMessages(), num);
-		 
+
 		for (uint32_t i = 0; i < numMsg; i++)
 		{
 			std::string msg;

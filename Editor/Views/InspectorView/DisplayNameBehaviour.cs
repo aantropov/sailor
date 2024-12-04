@@ -14,6 +14,7 @@ public class DisplayNameBehavior : Behavior<Label>
         base.OnDetachingFrom(bindable);
         bindable.BindingContextChanged -= OnBindingContextChanged;
     }
+
     private void OnBindingContextChanged(object sender, EventArgs e)
     {
         var label = sender as Label;

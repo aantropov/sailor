@@ -47,7 +47,7 @@ namespace SailorEditor.Services
                     new Vec3YamlConverter(),
                     new Vec2YamlConverter(),
                     new ComponentTypeYamlConverter(),
-                    new ViewModels.ComponentConverter()
+                    new ViewModels.ComponentYamlConverter()
                 }))
             .IncludeNonPublicProperties()
             .Build();
@@ -71,7 +71,11 @@ namespace SailorEditor.Services
                         var component = prefab.Components[i];
                         componentsDict[component.InstanceId] = component;
                         component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
+
+                        component.Refresh();
                     }
+
+                    go.Refresh();
                 }
 
                 GameObjects.Add([.. prefab.GameObjects]);
