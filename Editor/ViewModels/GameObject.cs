@@ -24,6 +24,8 @@ public partial class GameObject : ObservableObject, ICloneable
         {
             if (args.PropertyName != nameof(IsDirty))
                 IsDirty = true;
+
+            CommitChanges();
         };
     }
 

@@ -183,6 +183,7 @@ public class ComponentYamlConverter : IYamlTypeConverter
         var rotationConverter = new RotationYamlConverter();
         var fileIdConverter = new FileIdYamlConverter();
         var instanceIdConverter = new InstanceIdYamlConverter();
+        var objPtrConverter = new ObjectPtrYamlConverter();
 
         foreach (var kvp in component.OverrideProperties)
         {
@@ -218,7 +219,7 @@ public class ComponentYamlConverter : IYamlTypeConverter
                     emitter.Emit(new Scalar(null, floatVal.Value.ToString()));
                     break;
                 case ObjectPtr objPtr:
-                    serializer.Serialize(emitter, objPtr);
+                    objPtrConverter.WriteYaml(emitter, objPtr, typeof(ObjectPtr));
                     break;
                 default:
                     throw new InvalidOperationException($"Unexpected property type: {kvp.Value.GetType().Name}");

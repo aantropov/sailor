@@ -18,8 +18,8 @@ using System.ComponentModel;
 
 namespace SailorEngine
 {
-    public class PropertyBase : INotifyPropertyChanged 
-    { 
+    public class PropertyBase : INotifyPropertyChanged
+    {
         public string Typename { get; set; }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -765,5 +765,50 @@ namespace SailorEditor
         public bool Accepts(Type type) => type == typeof(InstanceId);
         public object ReadYaml(IParser parser, Type type) => new InstanceId(parser.Consume<Scalar>().Value);
         public void WriteYaml(IEmitter emitter, object value, Type type) => emitter.Emit(new Scalar(((InstanceId)value).Value));
+    }
+
+    public class ObjectPtrYamlConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(ObjectPtr);
+
+        public object ReadYaml(IParser parser, Type type)
+        {
+            var objPtr = new ObjectPtr();
+
+            parser.Consume<MappingStart>();
+
+            while (parser.TryConsume<Scalar>(out var key))
+            {
+                switch (key.Value)
+                {
+                    case "fileId":
+                        objPtr.FileId = new FileId { Value = parser.Consume<Scalar>().Value };
+                        break;
+                    case "instanceId":
+                        objPtr.InstanceId = new InstanceId { Value = parser.Consume<Scalar>().Value };
+                        break;
+                    default:
+                        throw new YamlException($"Unexpected key: {key.Value}");
+                }
+            }
+
+            parser.Consume<MappingEnd>();
+            return objPtr;
+        }
+
+        public void WriteYaml(IEmitter emitter, object value, Type type)
+        {
+            var objPtr = (ObjectPtr)value;
+
+            emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+            emitter.Emit(new Scalar(null, "fileId"));
+            emitter.Emit(new Scalar(null, objPtr.FileId.Value.ToString()));
+
+            emitter.Emit(new Scalar(null, "instanceId"));
+            emitter.Emit(new Scalar(null, objPtr.InstanceId.Value.ToString()));
+
+            emitter.Emit(new MappingEnd());
+        }
     }
 };
