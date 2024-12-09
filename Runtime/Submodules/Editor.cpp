@@ -3,6 +3,7 @@
 #include "Engine/Types.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
+#include "ECS/TransformECS.h"
 #include "Editor.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include <libloaderapi.h>
@@ -53,7 +54,68 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 		}
 		else
 		{
-			//TODO: Handle delta, add/remove components and recreate the gameobject
+			auto go = objPtr.DynamicCast<GameObject>();
+
+			TVector<ReflectedData> components{};
+			TVector<Prefab::ReflectedGameObject> gameObjects{};
+			TMap<InstanceId, uint32_t> gameObjectMapping;
+			TVector<bool> bUpdated{};
+
+			YAML::Node inData = YAML::Load(strYamlNode);
+			DESERIALIZE_PROPERTY(inData, gameObjects);
+			DESERIALIZE_PROPERTY(inData, components);
+
+			for (uint32_t i = 0; i < gameObjects.Num(); i++)
+			{
+				bUpdated.Add(false);
+
+				gameObjectMapping[gameObjects[i].m_instanceId.GameObjectId()] = i;
+			}
+
+			TVector<GameObjectPtr> stack;
+			do
+			{
+				auto go = *stack.Last();
+				stack.RemoveLast();
+
+				auto goId = go->GetInstanceId().GameObjectId();
+
+				if (gameObjectMapping.ContainsKey(goId))
+				{
+					const auto& reflectedData = gameObjects[gameObjectMapping[goId]];
+
+					go->SetName(reflectedData.m_name);
+					go->SetMobilityType(reflectedData.m_mobilityType);
+
+					auto& transform = go->GetTransformComponent();
+					transform.SetPosition(reflectedData.m_position);
+					transform.SetRotation(reflectedData.m_rotation);
+					transform.SetScale(reflectedData.m_scale);
+
+					// TODO: Resolve parent index
+					// TODO: Resolve Components
+					for (uint32_t i = 0; i < go->GetComponents().Num(); i++)
+					{
+						go->GetComponent(i)->ApplyReflection(components[i]);
+					}
+
+					bUpdated[gameObjectMapping[goId]] = true;
+				}
+				else
+				{
+					// TODO: Remove GameObject
+				}
+
+				stack.AddRange(go->GetChildren());
+			} while (stack.Num() > 0);
+
+			for (uint32_t i = 0; i < gameObjects.Num(); i++)
+			{
+				if (bUpdated[i] != true)
+				{
+					//TODO: new GameObject which is not updated
+				}
+			}
 		}
 	}
 

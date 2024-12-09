@@ -34,7 +34,22 @@ public partial class GameObject : ObservableObject, ICloneable
         if (!IsDirty)
             return;
 
-        // TODO: Pass transform
+        string yamlComponent = string.Empty;
+
+        using (var writer = new StringWriter())
+        {
+            var serializer = new SerializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .WithTypeConverter(new InstanceIdYamlConverter())
+                .Build();
+
+            var yaml = serializer.Serialize(this);
+            writer.Write(yaml);
+
+            yamlComponent = writer.ToString();
+        }
+
+        //MauiProgram.GetService<EngineService>().CommitChanges(InstanceId, yamlComponent);
 
         IsDirty = false;
     }
@@ -51,12 +66,15 @@ public partial class GameObject : ObservableObject, ICloneable
         IsDirty = false;
     }
 
+    [YamlIgnore]
     public string DisplayName { get { return Name; } }
 
+    [YamlIgnore]
     public int PrefabIndex = -1;
 
     public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
 
+    [YamlIgnore]
     public List<Component> Components { get { return MauiProgram.GetService<WorldService>().GetComponents(this); } }
 
     [YamlMember(Alias = "components")]
@@ -74,7 +92,10 @@ public partial class GameObject : ObservableObject, ICloneable
         IsDirty = false
     };
 
+    [YamlIgnore]
     public ICommand AddNewComponent { get; }
+
+    [YamlIgnore]
     public ICommand ClearComponentsCommand { get; }
 
     void OnAddNewComponent() { }
@@ -98,6 +119,7 @@ public partial class GameObject : ObservableObject, ICloneable
     [ObservableProperty]
     InstanceId instanceId = InstanceId.NullInstanceId;
 
+    [YamlIgnore]
     [ObservableProperty]
     protected bool isDirty = false;
 
