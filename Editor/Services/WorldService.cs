@@ -4,6 +4,7 @@ using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using SailorEditor.Utility;
 using SailorEngine;
+using YamlDotNet.Core.Tokens;
 
 namespace SailorEditor.Services
 {
@@ -18,7 +19,7 @@ namespace SailorEditor.Services
 
         public WorldService()
         {
-            MauiProgram.GetService<EngineService>().OnUpdateCurrentWorldAction += ParseWorld;
+            MauiProgram.GetService<EngineService>().OnUpdateCurrentWorldAction += PopulateWorld;
         }
 
         public Component GetComponent(InstanceId instanceId) => componentsDict[instanceId];
@@ -35,7 +36,7 @@ namespace SailorEditor.Services
             return res;
         }
 
-        public async void ParseWorld(string yaml)
+        public async void PopulateWorld(string yaml)
         {
             var deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -52,33 +53,59 @@ namespace SailorEditor.Services
             .IncludeNonPublicProperties()
             .Build();
 
-            var newWorld = deserializer.Deserialize<World>(yaml);
-            Current = newWorld;
+            var world = deserializer.Deserialize<World>(yaml);
 
             GameObjects.Clear();
+            Current.Prefabs.Clear();
 
             int prefabIndex = 0;
-            foreach (var prefab in Current.Prefabs)
+            foreach (var prefab in world.Prefabs)
             {
+                var newPrefab = new Prefab();
                 foreach (var go in prefab.GameObjects)
                 {
-                    go.PrefabIndex = prefabIndex;
+                    GameObject gameObject = null;
 
-                    gameObjectsDict[go.InstanceId] = go;
+                    if (!gameObjectsDict.TryGetValue(go.InstanceId, out gameObject))
+                        gameObject = gameObjectsDict[go.InstanceId] = go;
 
+                    gameObject.PrefabIndex = prefabIndex;
                     foreach (var i in go.ComponentIndices)
                     {
-                        var component = prefab.Components[i];
-                        componentsDict[component.InstanceId] = component;
-                        component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
+                        Component component;
+
+                        if (!componentsDict.TryGetValue(prefab.Components[i].InstanceId, out component))
+                        {
+                            component = componentsDict[prefab.Components[i].InstanceId] = prefab.Components[i];
+                            component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
+                        }
+                        else
+                        {
+                            component.Typename = prefab.Components[i].Typename;
+
+                            foreach (var key in component.OverrideProperties.Keys)
+                                if (!prefab.Components[i].OverrideProperties.ContainsKey(key))
+                                    component.OverrideProperties.Remove(key);
+
+                            foreach (var prop in prefab.Components[i].OverrideProperties)
+                            {
+                                if (!component.OverrideProperties.ContainsKey(prop.Key))
+                                    component.OverrideProperties[prop.Key] = prop.Value;
+                                else
+                                    component.OverrideProperties[prop.Key].CopyPropertiesFrom(prop.Value);
+                            }
+                        }
 
                         component.Initialize();
+                        newPrefab.Components.Add(component);
                     }
 
-                    go.Initialize();
+                    gameObject.Initialize();
+                    newPrefab.GameObjects.Add(gameObject);
                 }
 
-                GameObjects.Add([.. prefab.GameObjects]);
+                Current.Prefabs.Add(newPrefab);
+                GameObjects.Add([.. newPrefab.GameObjects]);
 
                 prefabIndex++;
             }

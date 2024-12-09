@@ -1,9 +1,11 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Maui.Markup;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Controls;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using SailorEngine;
+using System.Collections.ObjectModel;
 
 namespace SailorEditor.Views
 {
@@ -71,7 +73,13 @@ namespace SailorEditor.Views
         private void PopulateHierarchyView(World world)
         {
             var gameObjectsModel = HierarchyTreeViewBuilder.PopulateWorld(service);
-            var rootNodes = Controls.TreeView.PopulateGroup(gameObjectsModel, new TreeViewPopulateArgs() { ItemImage = "blue_document_attribute_c.png", GroupImage = "blue_document.png" });
+            var rootNodes = Controls.TreeView.PopulateGroup(gameObjectsModel, new TreeViewPopulateArgs()
+            {
+                ItemImage = "blue_document_attribute_c.png",
+                GroupImage = "blue_document.png"
+            });
+
+            //HierarchyTree.StackLayout.Children.Clear();
             HierarchyTree.RootNodes = rootNodes;
         }
     }

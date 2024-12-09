@@ -20,6 +20,8 @@ namespace SailorEditor.Controls
             public object Model { get; set; }
         }
 
+        public StackLayout StackLayout { get => _StackLayout; }
+
         private readonly StackLayout _StackLayout = new() { Orientation = StackOrientation.Vertical };
 
         //TODO: This initializes the list, but there is nothing listening to INotifyCollectionChanged so no nodes will get rendered

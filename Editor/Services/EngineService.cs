@@ -117,11 +117,11 @@ namespace SailorEditor.Services
 
                 var cts = new CancellationTokenSource();
 
-                Task.Run(() =>
+                Task.Run(async () =>
                 {
                     EngineAppInterop.Initialize(args, args.Length);
 
-                    StartPeriodicTask(async () => EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height), 0, 100, cts.Token);
+                    StartPeriodicTask(async () => EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height), 1000, 100, cts.Token);
 
                     StartPeriodicTask(async () =>
                     {
@@ -136,17 +136,15 @@ namespace SailorEditor.Services
                     {
                         string serializedEngineTypes = SerializeEngineTypes();
                         EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
-
-                        string serializedWorld;
-                        do
-                        {
-                            serializedWorld = SerializeWorld();
-                            await Task.Delay(500, cts.Token);
-                        } while (serializedWorld == string.Empty && !cts.Token.IsCancellationRequested);
-
-                        MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
-
                     }, 1000, 0, cts.Token);
+
+                    StartPeriodicTask(async () =>
+                    {
+                        string serializedWorld = SerializeWorld();
+                        if (serializedWorld != string.Empty)
+                            MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+
+                    }, 1500, 0, cts.Token);
 
                     EngineAppInterop.Start();
                     EngineAppInterop.Stop();
@@ -155,7 +153,6 @@ namespace SailorEditor.Services
 
                     EngineAppInterop.Shutdown();
                 });
-
             }
             catch (Exception ex)
             {

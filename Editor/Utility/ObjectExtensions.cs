@@ -20,7 +20,11 @@ namespace SailorEditor.Utility
                 if (targetProp != null && targetProp.CanWrite)
                 {
                     var value = sourceProp.GetValue(source, null);
-                    targetProp.SetValue(target, value, null);
+
+                    if (value != targetProp.GetValue(target, null))
+                    {
+                        targetProp.SetValue(target, value, null);
+                    }
                 }
             }
         }

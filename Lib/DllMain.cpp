@@ -30,6 +30,7 @@ extern "C"
 
 	SAILOR_API void SetViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
 	{
+		SAILOR_PROFILE_FUNCTION();
 
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 
@@ -45,6 +46,8 @@ extern "C"
 
 	SAILOR_API uint32_t GetMessages(char** messages, uint32_t num)
 	{
+		SAILOR_PROFILE_FUNCTION();
+
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 		uint32_t numMsg = std::min((uint32_t)editor->NumMessages(), num);
 
@@ -74,6 +77,8 @@ extern "C"
 
 	SAILOR_API uint32_t SerializeCurrentWorld(char** yamlNode)
 	{
+		SAILOR_PROFILE_FUNCTION();
+
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 		auto node = editor->SerializeWorld();
 
@@ -97,6 +102,8 @@ extern "C"
 
 	SAILOR_API uint32_t SerializeEngineTypes(char** yamlNode)
 	{
+		SAILOR_PROFILE_FUNCTION();
+
 		auto node = Sailor::Reflection::ExportEngineTypes();
 
 		if (!node.IsNull())
@@ -119,6 +126,8 @@ extern "C"
 
 	SAILOR_API bool UpdateObject(char* strInstanceId, char* strYamlNode)
 	{
+		SAILOR_PROFILE_FUNCTION();
+
 		Sailor::InstanceId instanceId;
 		YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
 		instanceId.Deserialize(instanceIdYaml);
