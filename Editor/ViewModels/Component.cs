@@ -30,7 +30,7 @@ public partial class Component : ObservableObject, ICloneable
 
     void CommitChanges()
     {
-        if (!IsDirty)
+        if (!IsDirty || !isInited)
             return;
 
         string yamlComponent = string.Empty;
@@ -53,18 +53,22 @@ public partial class Component : ObservableObject, ICloneable
         IsDirty = false;
     }
 
-    public void Refresh()
+    public void Initialize()
     {
         OverrideProperties.CollectionChanged += (a, e) => OnPropertyChanged(nameof(OverrideProperties));
         OverrideProperties.PropertyChanged += (s, args) => OnPropertyChanged(nameof(OverrideProperties));
         OverrideProperties.ValueChanged += (s, args) => OnPropertyChanged(nameof(OverrideProperties));
 
         IsDirty = false;
+        isInited = true;
     }
 
     public object Clone() => new Component();
 
     public InstanceId InstanceId { get => OverrideProperties["instanceId"] as Observable<InstanceId>; }
+
+    [YamlIgnore]
+    protected bool isInited = false;
 
     [ObservableProperty]
     protected bool isDirty = false;

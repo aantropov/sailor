@@ -124,10 +124,7 @@ extern "C"
 		instanceId.Deserialize(instanceIdYaml);
 
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
-
-		editor->UpdateObject(instanceId, strYamlNode);
-
-		return true;
+		return editor->UpdateObject(instanceId, strYamlNode);
 	}
 }
 

@@ -31,7 +31,7 @@ public partial class GameObject : ObservableObject, ICloneable
 
     public void CommitChanges()
     {
-        if (!IsDirty)
+        if (!IsDirty || !isInited)
             return;
 
         string yamlComponent = string.Empty;
@@ -41,6 +41,8 @@ public partial class GameObject : ObservableObject, ICloneable
             var serializer = new SerializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .WithTypeConverter(new InstanceIdYamlConverter())
+                .WithTypeConverter(new RotationYamlConverter())
+                .WithTypeConverter(new Vec4YamlConverter())
                 .Build();
 
             var yaml = serializer.Serialize(this);
@@ -49,12 +51,12 @@ public partial class GameObject : ObservableObject, ICloneable
             yamlComponent = writer.ToString();
         }
 
-        //MauiProgram.GetService<EngineService>().CommitChanges(InstanceId, yamlComponent);
+        MauiProgram.GetService<EngineService>().CommitChanges(InstanceId, yamlComponent);
 
         IsDirty = false;
     }
 
-    public void Refresh()
+    public void Initialize()
     {
         Scale.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Scale));
         Position.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Position));
@@ -64,7 +66,11 @@ public partial class GameObject : ObservableObject, ICloneable
         //    component.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Components));
 
         IsDirty = false;
+        isInited = true;
     }
+
+    [YamlIgnore]
+    protected bool isInited = false;
 
     [YamlIgnore]
     public string DisplayName { get { return Name; } }
@@ -120,7 +126,12 @@ public partial class GameObject : ObservableObject, ICloneable
     InstanceId instanceId = InstanceId.NullInstanceId;
 
     [YamlIgnore]
-    [ObservableProperty]
-    protected bool isDirty = false;
+    protected bool IsDirty
+    {
+        get => isDirty;
+        set => SetProperty(ref isDirty, value);
+    }
 
+    [YamlIgnore]
+    protected bool isDirty = false;
 }

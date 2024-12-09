@@ -82,6 +82,12 @@ InstanceId InstanceId::GenerateNewComponentId(const InstanceId& gameObjectId)
 	return newComponentInstanceId;
 }
 
+bool InstanceId::IsGameObjectId() const
+{
+	std::string idString = m_instanceId.ToString();
+	return idString.length() == 20 && std::all_of(idString.begin(), idString.end(), ::isxdigit);
+}
+
 InstanceId InstanceId::GameObjectId() const
 {
 	std::string idString = m_instanceId.ToString();
@@ -94,6 +100,11 @@ InstanceId InstanceId::GameObjectId() const
 		id.m_instanceId = StringHash::Runtime(gameObjectIdString);
 		return id;
 	}
+	else if (IsGameObjectId())
+	{
+		return *this;
+	}
+
 	return InstanceId::Invalid;
 }
 

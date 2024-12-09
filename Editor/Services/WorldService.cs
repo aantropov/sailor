@@ -72,10 +72,10 @@ namespace SailorEditor.Services
                         componentsDict[component.InstanceId] = component;
                         component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
 
-                        component.Refresh();
+                        component.Initialize();
                     }
 
-                    go.Refresh();
+                    go.Initialize();
                 }
 
                 GameObjects.Add([.. prefab.GameObjects]);

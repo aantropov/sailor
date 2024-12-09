@@ -24,15 +24,14 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort) :
 
 bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYamlNode)
 {
-	ReflectedData overrideData;
-
-	YAML::Node objectYaml = YAML::Load(strYamlNode);
-	overrideData.Deserialize(objectYaml);
-
 	auto objPtr = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
 
 	if (instanceId.ComponentId() != Sailor::InstanceId::Invalid && objPtr.IsValid())
 	{
+		ReflectedData overrideData;
+		YAML::Node objectYaml = YAML::Load(strYamlNode);
+		overrideData.Deserialize(objectYaml);
+
 		auto go = objPtr.DynamicCast<GameObject>();
 		auto components = go->GetComponents();
 
@@ -41,85 +40,96 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 			if (el->GetInstanceId().ComponentId() == instanceId.ComponentId())
 			{
 				el->ApplyReflection(overrideData);
+				return true;
 			}
 		}
 	}
 	else if (instanceId.GameObjectId() != Sailor::InstanceId::Invalid)
 	{
-		auto objPtr = m_world->GetObjectByInstanceId(instanceId);
-
 		if (!objPtr.IsValid())
 		{
 			// TODO: Create new gameobject
 		}
-		else
+		else if (auto go = objPtr.DynamicCast<GameObject>())
 		{
-			auto go = objPtr.DynamicCast<GameObject>();
-
-			TVector<ReflectedData> components{};
-			TVector<Prefab::ReflectedGameObject> gameObjects{};
-			TMap<InstanceId, uint32_t> gameObjectMapping;
-			TVector<bool> bUpdated{};
-
+			Prefab::ReflectedGameObject reflected;
 			YAML::Node inData = YAML::Load(strYamlNode);
-			DESERIALIZE_PROPERTY(inData, gameObjects);
-			DESERIALIZE_PROPERTY(inData, components);
+			reflected.Deserialize(inData);
 
-			for (uint32_t i = 0; i < gameObjects.Num(); i++)
-			{
-				bUpdated.Add(false);
+			go->SetName(reflected.m_name);
+			//go->SetMobilityType(reflected.m_mobilityType);
 
-				gameObjectMapping[gameObjects[i].m_instanceId.GameObjectId()] = i;
-			}
+			auto& transform = go->GetTransformComponent();
+			transform.SetPosition(reflected.m_position);
+			transform.SetRotation(reflected.m_rotation);
+			transform.SetScale(reflected.m_scale);
 
-			TVector<GameObjectPtr> stack;
-			do
-			{
-				auto go = *stack.Last();
-				stack.RemoveLast();
+			return true;
 
-				auto goId = go->GetInstanceId().GameObjectId();
+			//TVector<ReflectedData> components{};
+			//TVector<Prefab::ReflectedGameObject> gameObjects{};
+			//TMap<InstanceId, uint32_t> gameObjectMapping;
+			//TVector<bool> bUpdated{};
 
-				if (gameObjectMapping.ContainsKey(goId))
-				{
-					const auto& reflectedData = gameObjects[gameObjectMapping[goId]];
+			//YAML::Node inData = YAML::Load(strYamlNode);
+			//DESERIALIZE_PROPERTY(inData, gameObjects);
+			//DESERIALIZE_PROPERTY(inData, components);
 
-					go->SetName(reflectedData.m_name);
-					go->SetMobilityType(reflectedData.m_mobilityType);
+			//for (uint32_t i = 0; i < gameObjects.Num(); i++)
+			//{
+			//	bUpdated.Add(false);
 
-					auto& transform = go->GetTransformComponent();
-					transform.SetPosition(reflectedData.m_position);
-					transform.SetRotation(reflectedData.m_rotation);
-					transform.SetScale(reflectedData.m_scale);
+			//	gameObjectMapping[gameObjects[i].m_instanceId.GameObjectId()] = i;
+			//}
 
-					// TODO: Resolve parent index
-					// TODO: Resolve Components
-					for (uint32_t i = 0; i < go->GetComponents().Num(); i++)
-					{
-						go->GetComponent(i)->ApplyReflection(components[i]);
-					}
+			//TVector<GameObjectPtr> stack;
+			//do
+			//{
+			//	auto go = *stack.Last();
+			//	stack.RemoveLast();
 
-					bUpdated[gameObjectMapping[goId]] = true;
-				}
-				else
-				{
-					// TODO: Remove GameObject
-				}
+			//	auto goId = go->GetInstanceId().GameObjectId();
 
-				stack.AddRange(go->GetChildren());
-			} while (stack.Num() > 0);
+			//	if (gameObjectMapping.ContainsKey(goId))
+			//	{
+			//		const auto& reflectedData = gameObjects[gameObjectMapping[goId]];
 
-			for (uint32_t i = 0; i < gameObjects.Num(); i++)
-			{
-				if (bUpdated[i] != true)
-				{
-					//TODO: new GameObject which is not updated
-				}
-			}
+			//		go->SetName(reflectedData.m_name);
+			//		go->SetMobilityType(reflectedData.m_mobilityType);
+
+			//		auto& transform = go->GetTransformComponent();
+			//		transform.SetPosition(reflectedData.m_position);
+			//		transform.SetRotation(reflectedData.m_rotation);
+			//		transform.SetScale(reflectedData.m_scale);
+
+			//		// TODO: Resolve parent index
+			//		// TODO: Resolve Components
+			//		for (uint32_t i = 0; i < go->GetComponents().Num(); i++)
+			//		{
+			//			go->GetComponent(i)->ApplyReflection(components[i]);
+			//		}
+
+			//		bUpdated[gameObjectMapping[goId]] = true;
+			//	}
+			//	else
+			//	{
+			//		// TODO: Remove GameObject
+			//	}
+
+			//	stack.AddRange(go->GetChildren());
+			//} while (stack.Num() > 0);
+
+			//for (uint32_t i = 0; i < gameObjects.Num(); i++)
+			//{
+			//	if (bUpdated[i] != true)
+			//	{
+			//		//TODO: new GameObject which is not updated
+			//	}
+			//}
 		}
 	}
 
-	return true;
+	return false;
 }
 
 void Editor::PushMessage(const std::string& msg)

@@ -39,6 +39,7 @@ namespace Sailor
 
 		SAILOR_API size_t GetHash() const { return m_instanceId.GetHash(); }
 
+		SAILOR_API bool IsGameObjectId() const;
 		SAILOR_API InstanceId GameObjectId() const;
 		SAILOR_API InstanceId ComponentId() const;
 
