@@ -19,6 +19,7 @@ namespace Sailor
 		SAILOR_API virtual void Initialize() override;
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void Tick(float deltaTime) override;
+		SAILOR_API virtual void EditorTick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API __forceinline CameraData& GetData();
 		SAILOR_API __forceinline const CameraData& GetData() const;
@@ -38,6 +39,8 @@ namespace Sailor
 		SAILOR_API static float CalculateAspect();
 
 	protected:
+
+		void UpdateProjectionMatrix();
 
 		size_t m_handle = (size_t)(-1);
 

@@ -20,10 +20,15 @@
     </ContentPage.MenuBarItems>
 
     <ContentPage.Content>
-        <VerticalStackLayout Spacing="0">
-            <views:ToolbarView/>
+        <Grid RowSpacing="0" ColumnSpacing="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-            <Grid RowSpacing="0" ColumnSpacing="0">
+            <views:ToolbarView Grid.Row="0"/>
+
+            <Grid Grid.Row="1" RowSpacing="0" ColumnSpacing="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="300"/>
                     <ColumnDefinition Width="Auto"/>
@@ -40,8 +45,8 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <views:ContentFolderView Grid.Row="0" Grid.Column="0" Grid.RowSpan="1"/>
-                <views:HierarchyView Grid.Row="0" Grid.Column="2" Grid.RowSpan="1"/>
+                <views:ContentFolderView Grid.Row="0" Grid.Column="0"/>
+                <views:HierarchyView Grid.Row="0" Grid.Column="2"/>
 
                 <controls:HorizontalGridSplitterControl Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"/>
 
@@ -53,9 +58,8 @@
                 <views:SceneView x:Name="SceneView" Grid.Column="4" Grid.RowSpan="3"/>
                 <views:ConsoleView Grid.Row="5" Grid.Column="4"/>
                 <controls:HorizontalGridSplitterControl Grid.Row="3" Grid.Column="4"/>
-
             </Grid>
-        </VerticalStackLayout>
+        </Grid>
     </ContentPage.Content>
 
 </ContentPage>

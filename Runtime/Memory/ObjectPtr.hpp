@@ -39,6 +39,8 @@ namespace Sailor
 
 		SAILOR_API bool IsValid() const noexcept;
 
+		SAILOR_API bool IsInited() const noexcept { return m_pRawPtr != nullptr || m_pControlBlock != nullptr; }
+
 		// Only if you know what you're doing
 		SAILOR_API void ForcelyDestroyObject();
 	};

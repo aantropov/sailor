@@ -74,6 +74,16 @@ const CameraData& CameraComponent::GetData() const
 
 void CameraComponent::Tick(float deltaTime)
 {
+	UpdateProjectionMatrix();
+}
+
+void CameraComponent::EditorTick(float deltaTime)
+{
+	UpdateProjectionMatrix();
+}
+
+void CameraComponent::UpdateProjectionMatrix()
+{
 	const float aspect = CalculateAspect();
 
 	if (GetAspect() != aspect)

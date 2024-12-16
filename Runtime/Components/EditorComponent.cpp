@@ -165,7 +165,7 @@ void EditorComponent::EditorTick(float deltaTime)
 		}
 		else
 		{
-			auto index = GetWorld()->GetGameObjects().FindIf([](const GameObjectPtr& el) mutable { return el->GetComponent<LightComponent>().IsValid(); });
+			auto index = GetWorld()->GetGameObjects().FindIf([](const GameObjectPtr& el) mutable { return el->GetComponent<LightComponent>().IsInited(); });
 
 			if (index != -1)
 			{
