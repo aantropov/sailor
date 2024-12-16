@@ -194,6 +194,9 @@ namespace SailorEngine
                         Name = component.Typename
                     };
 
+                    if (component.Properties == null)
+                        component.Properties = new();
+
                     foreach (var property in component.Properties)
                     {
                         var genericMatch = Regex.Match(property.Value, @"<(.+?)>");
