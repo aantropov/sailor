@@ -7,7 +7,7 @@
 
 using namespace Sailor;
 
-World::World(std::string name) : m_currentFrame(1), m_name(std::move(name)), m_frameInput(), m_bIsBeginPlayCalled(false)
+World::World(std::string name, EWorldBehaviourMask mask) : m_mask(mask), m_currentFrame(1), m_name(std::move(name)), m_frameInput(), m_bIsBeginPlayCalled(false)
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make(EAllocationPolicy::LocalMemory_SingleThread);
 
@@ -43,6 +43,11 @@ ObjectPtr World::GetObjectByInstanceId(const InstanceId& instanceId) const
 
 void World::Tick(FrameState& frameState)
 {
+	const bool bShouldCallBeginPlay = (m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay) != 0;
+	const bool bShouldTick = (m_mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0;
+	const bool bShouldEcsTick = (m_mask & (uint8_t)EWorldBehaviourBit::EcsTickable) != 0;
+	const bool bShouldEditorTick = (m_mask & (uint8_t)EWorldBehaviourBit::EditorTick) != 0;
+
 	m_currentFrame++;
 
 	if (!m_bIsBeginPlayCalled)
@@ -69,25 +74,36 @@ void World::Tick(FrameState& frameState)
 	for (uint32_t i = 0; i < m_objects.Num(); i++)
 	{
 		auto& el = m_objects[i];
-		if (!el->m_bBeginPlayCalled)
+		if (!el->m_bBeginPlayCalled && bShouldCallBeginPlay)
 		{
 			el->m_bBeginPlayCalled = true;
 			el->BeginPlay();
 		}
-		else
+		else if (bShouldTick)
 		{
 			el->Tick(deltaTime);
 		}
 	}
 
-	for (auto& ecs : m_sortedEcs)
+	if (bShouldEditorTick)
 	{
-		m_ecs[ecs]->Tick(deltaTime);
+		for (auto& el : m_objects)
+		{
+			el->EditorTick(deltaTime);
+		}
 	}
 
-	for (auto& ecs : m_sortedEcs)
+	if (bShouldEcsTick)
 	{
-		m_ecs[ecs]->PostTick();
+		for (auto& ecs : m_sortedEcs)
+		{
+			m_ecs[ecs]->Tick(deltaTime);
+		}
+
+		for (auto& ecs : m_sortedEcs)
+		{
+			m_ecs[ecs]->PostTick();
+		}
 	}
 
 	for (auto& el : m_pendingDestroyObjects)

@@ -22,6 +22,9 @@ namespace Sailor
 		uint32_t m_editorPort = 32800;
 		HWND m_editorHwnd{};
 		std::string m_workspace;
+
+		// TODO: Change the default scene to empty?
+		std::string m_world = "Editor.world";
 	};
 
 	class App

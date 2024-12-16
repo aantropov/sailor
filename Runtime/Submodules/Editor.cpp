@@ -24,6 +24,8 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort) :
 
 bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYamlNode)
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	auto objPtr = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
 
 	if (instanceId.ComponentId() != Sailor::InstanceId::Invalid && objPtr.IsValid())
@@ -166,6 +168,8 @@ bool Editor::PullMessage(std::string& msg)
 
 YAML::Node Editor::SerializeWorld() const
 {
+	SAILOR_PROFILE_FUNCTION();
+
 	if (m_world == nullptr)
 	{
 		return YAML::Node();

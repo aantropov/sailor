@@ -8,7 +8,7 @@
 #include "Engine/GameObject.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
-#include "Components/TestComponent.h"
+#include "Components/EditorComponent.h"
 #include "ECS/TransformECS.h"
 #include "Submodules/ImGuiApi.h"
 #include "RHI/Types.h"
@@ -16,20 +16,20 @@
 
 using namespace Sailor;
 
-TSharedPtr<World> EngineLoop::CreateWorld(std::string name)
+TSharedPtr<World> EngineLoop::CreateEmptyWorld(std::string name, EWorldBehaviourMask mask)
 {
-	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name)));
+	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name), mask));
 
 	auto gameObject = m_worlds[0]->Instantiate();
 	auto cameraComponent = gameObject->AddComponent<CameraComponent>();
-	auto testComponent = gameObject->AddComponent<TestComponent>();
+	auto testComponent = gameObject->AddComponent<EditorComponent>();
 
 	return m_worlds[m_worlds.Num() - 1];
 }
 
-TSharedPtr<World> EngineLoop::CreateWorld(WorldPrefabPtr worldPrefab)
+TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorldBehaviourMask mask)
 {
-	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(worldPrefab->GetName());
+	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(worldPrefab->GetName(), mask);
 
 	check(worldPrefab && worldPrefab->IsReady());
 

@@ -98,7 +98,7 @@ namespace SailorEditor.Services
 
             string commandArgs = $"--noconsole --hwnd {handle} --editor " + commandlineArgs;
             string workspace = (Path.GetFullPath(Path.Combine(EngineWorkingDirectory, "..")) + "\\").Replace("\\", "/");
-            var args = new string[] { bDebug ? PathToEngineExecDebug : PathToEngineExec, "--workspace", workspace }.Concat(commandArgs.Split(" ")).ToArray();
+            var args = new string[] { bDebug ? PathToEngineExecDebug : PathToEngineExec, "--workspace", workspace, "--world Editor.world"}.Concat(commandArgs.Split(" ")).ToArray();
 
             try
             {

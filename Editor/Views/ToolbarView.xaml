@@ -1,0 +1,17 @@
+﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Name="this"
+             x:Class="SailorEditor.Views.ToolbarView">
+
+    <Frame Padding="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Button ImageSource="arrow.png"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"/>
+        </Grid>
+    </Frame>
+</ContentView>

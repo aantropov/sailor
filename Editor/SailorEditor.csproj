@@ -102,6 +102,10 @@
 	  <Compile Update="Resources\Styles\LightThemeStyle.xaml.cs">
 	    <DependentUpon>LightThemeStyle.xaml</DependentUpon>
 	  </Compile>
+	  <Compile Update="Views\ToolbarView.xaml.cs">
+	    <SubType>Code</SubType>
+	    <DependentUpon>ToolbarView.xaml</DependentUpon>
+	  </Compile>
 	  <Compile Update="Views\HierarchyView.xaml.cs">
 	    <DependentUpon>HierarchyView.xaml</DependentUpon>
 	  </Compile>
@@ -154,6 +158,10 @@
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Resources\Styles\LightThemeStyle.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\ToolbarView.xaml">
+	    <SubType>Designer</SubType>
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\Elements\FileIdEditor.xaml">

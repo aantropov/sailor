@@ -69,6 +69,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		{
 			params.m_bRunConsole = false;
 		}
+		else if (arg == "--world")
+		{
+			params.m_world = Utils::GetArgValue(args, i, num);
+		}
 	}
 
 	return params;
@@ -174,6 +178,25 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	AssetRegistry::WriteTextFile(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml", Reflection::ExportEngineTypes());
 #endif
 
+	auto worldParams = params.m_bIsEditor ? EngineLoop::EditorWorldMask : EngineLoop::DefaultWorldMask;
+	TWeakPtr<World> pWorld;
+
+	if (!params.m_world.empty())
+	{
+		auto worldAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(params.m_world);
+		auto worldPrefab = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<WorldPrefab>(worldAssetInfo->GetFileId());
+		pWorld = GetSubmodule<EngineLoop>()->InstantiateWorld(worldPrefab, worldParams);
+	}
+	else
+	{
+		pWorld = GetSubmodule<EngineLoop>()->CreateEmptyWorld("New World", worldParams);
+	}
+
+	if (auto editor = App::GetSubmodule<Editor>())
+	{
+		editor->SetWorld(pWorld.Lock().GetRawPtr());
+	}
+
 	SAILOR_LOG("Sailor Engine initialized");
 }
 
@@ -201,17 +224,6 @@ void App::Start()
 	consoleVars["list.benchmark"] = &Sailor::RunListBenchmark;
 	consoleVars["octree.benchmark"] = &Sailor::RunOctreeBenchmark;
 	consoleVars["stats.memory"] = &Sailor::RHI::Renderer::MemoryStats;
-
-#ifdef SAILOR_EDITOR
-	auto worldAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Editor.world");
-	auto worldPrefab = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<WorldPrefab>(worldAssetInfo->GetFileId());
-	TWeakPtr<World> pWorld = GetSubmodule<EngineLoop>()->CreateWorld(worldPrefab);
-
-	if (auto editor = App::GetSubmodule<Editor>())
-	{
-		editor->SetWorld(pWorld.Lock().GetRawPtr());
-	}
-#endif
 
 	FrameInputState systemInputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
 
@@ -266,11 +278,18 @@ void App::Start()
 		}
 #endif
 
+		auto pEngineLoop = App::GetSubmodule<EngineLoop>();
+
 		if (bCanCreateNewFrame)
 		{
 			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-			currentFrame = FrameState(pWorld.Lock().GetRawPtr(), Utils::GetCurrentTimeMs(), inputState, pMainWindow->GetCenterPointClient(), bFirstFrame ? nullptr : &lastFrame);
-			App::GetSubmodule<EngineLoop>()->ProcessCpuFrame(currentFrame);
+			currentFrame = FrameState(pEngineLoop->GetWorld().GetRawPtr(),
+				Utils::GetCurrentTimeMs(),
+				inputState,
+				pMainWindow->GetCenterPointClient(),
+				bFirstFrame ? nullptr : &lastFrame);
+
+			pEngineLoop->ProcessCpuFrame(currentFrame);
 			bFirstFrame = false;
 		}
 
@@ -314,7 +333,7 @@ void App::Start()
 			CHAR Buff[256];
 			sprintf_s(Buff, "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u", frameCounter,
 				stats.m_gpuFps,
-				(uint32_t)App::GetSubmodule<EngineLoop>()->GetCpuFps(),
+				(uint32_t)pEngineLoop->GetCpuFps(),
 				(float)stats.m_gpuHeapUsage / (1024.0f * 1024.0f),
 				(float)stats.m_gpuHeapBudget / (1024.0f * 1024.0f),
 				stats.m_numSubmittedCommandBuffers

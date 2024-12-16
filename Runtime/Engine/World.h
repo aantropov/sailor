@@ -10,11 +10,21 @@
 
 namespace Sailor
 {
+	enum class EWorldBehaviourBit : uint8_t
+	{
+		Tickable = 1 << 0,
+		CallBeginPlay = 1 << 1,
+		EcsTickable = 1 << 2,
+		EditorTick = 1 << 3
+	};
+
+	typedef uint8_t EWorldBehaviourMask;
+
 	class World
 	{
 	public:
 
-		SAILOR_API World(std::string name);
+		SAILOR_API World(std::string name, EWorldBehaviourMask mask);
 
 		SAILOR_API virtual ~World() = default;
 
@@ -65,6 +75,8 @@ namespace Sailor
 
 		float m_time{};
 		float m_smoothDeltaTime = 0.016f;
+
+		EWorldBehaviourMask m_mask;
 
 		size_t m_currentFrame;
 		std::string m_name;

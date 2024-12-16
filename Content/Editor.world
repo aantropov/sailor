@@ -22,12 +22,13 @@ prefabs:
         components:
           - 0
           - 1
+          - 2
     components:
       - typename: Sailor::CameraComponent
         overrideProperties:
           fov: 90
-          zNear: 0.100000001
-          zFar: 50000
+          zNear: 1
+          zFar: 20000
           fileId: NullFileId
           instanceId: 70D60C2A2FF54D2BAE58E0B41C6BE43E_15011215773109224062
       - typename: Sailor::TestComponent
@@ -37,6 +38,10 @@ prefabs:
             instanceId: BAD35A5BC8EC4853849E3F6D535C4704_12501075873428063186
           fileId: NullFileId
           instanceId: 2BC0359C17504863A5C3010E0C451F7D_15011215773109224062
+      - typename: Sailor::EditorComponent
+        overrideProperties:
+          fileId: NullFileId
+          instanceId: 00000000000000000000000000000001_15011215773109224062
   - gameObjects:
       - name: Sponza
         position:
@@ -62,7 +67,7 @@ prefabs:
       - typename: Sailor::MeshRendererComponent
         overrideProperties:
           model:
-            fileId: "{12191642-EE18-4046-BD44-5A4E6004B846}"
+            fileId: "{B07E0332-E277-4AA2-B4C2-2FD958047A61}"
             instanceId: NullInstanceId
           fileId: NullFileId
           instanceId: BAD35A5BC8EC4853849E3F6D535C4704_12501075873428063186
@@ -91,7 +96,7 @@ prefabs:
       - typename: Sailor::MeshRendererComponent
         overrideProperties:
           model:
-            fileId: "{2387902B-538E-4191-93D6-53503B5571B2}"
+            fileId: "{14A75BF9-09AC-49EE-A0DF-2945F4B452A6}"
             instanceId: NullInstanceId
           fileId: NullFileId
           instanceId: F44C5E53CAAA40598DFB9D043DEADBE7_17189606890707967961

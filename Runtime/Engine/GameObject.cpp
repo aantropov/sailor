@@ -76,6 +76,18 @@ void GameObject::EndPlay()
 	m_pWorld->GetECS<TransformECS>()->UnregisterComponent(m_transformHandle);
 }
 
+void GameObject::EditorTick(float deltaTime)
+{
+	check(m_componentsToAdd <= m_components.Num());
+
+	for (uint32_t i = 0; i < m_components.Num() - m_componentsToAdd; i++)
+	{
+		auto& el = m_components[i];
+		el->EditorTick(deltaTime);
+		el->OnGizmo();
+	}
+}
+
 void GameObject::Tick(float deltaTime)
 {
 	check(m_componentsToAdd <= m_components.Num());
@@ -92,10 +104,6 @@ void GameObject::Tick(float deltaTime)
 			el->BeginPlay();
 			el->m_bBeginPlayCalled = true;
 		}
-
-#ifdef SAILOR_EDITOR
-		el->OnGizmo();
-#endif
 	}
 
 	m_componentsToAdd = 0;

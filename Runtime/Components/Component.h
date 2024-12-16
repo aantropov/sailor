@@ -22,6 +22,8 @@ namespace Sailor
 		SAILOR_API virtual void OnGizmo() {}
 		SAILOR_API virtual void Tick(float deltaTime) {}
 
+		SAILOR_API virtual void EditorTick(float deltaTime) {}
+
 		SAILOR_API GameObjectPtr GetOwner() const { return m_owner; }
 		SAILOR_API WorldPtr GetWorld() const;
 

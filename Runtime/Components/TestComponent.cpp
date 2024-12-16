@@ -126,15 +126,6 @@ void TestComponent::BeginPlay()
 
 	auto& transform = GetOwner()->GetTransformComponent();
 	transform.SetPosition(glm::vec4(0.0f, 150.0f, 0.0f, 0.0f));
-	//transform.SetRotation(quat(vec3(-45, 12.5f, 0)));
-
-	//redBox->SetParent(GetOwner());
-
-	auto prefab = Prefab::FromGameObject(GetOwner());
-	prefab->SaveToFile("test.serdeser");
-
-	auto worldPrefab = WorldPrefab::FromWorld(GetWorld());
-	worldPrefab->SaveToFile("test.world");
 }
 
 void TestComponent::EndPlay()
