@@ -4,14 +4,38 @@
              x:Class="SailorEditor.Views.ToolbarView">
 
     <Frame Padding="8">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-            <Button ImageSource="arrow.png"
+            <Button ImageSource="save.png"
+                HorizontalOptions="Start"
+                VerticalOptions="Center"
+                Clicked="OnSaveButtonClicked" 
+                Grid.Column="0"/>
+
+            <Grid Grid.Column="1" HorizontalOptions="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Button ImageSource="arrow.png"
                     HorizontalOptions="Center"
-                    VerticalOptions="Center"/>
+                    VerticalOptions="Center"
+                    Clicked="OnPlayButtonClicked"
+                    Grid.Column="0"/>
+
+                <Button ImageSource="bug__arrow.png"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Clicked="OnPlayDebugButtonClicked"
+                    Grid.Column="1"/>
+            </Grid>
         </Grid>
     </Frame>
+
 </ContentView>

@@ -6,6 +6,7 @@ using WinRT;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NodeTypeResolvers;
 using YamlDotNet.Core.Tokens;
+using System.Diagnostics;
 
 namespace SailorEngine
 {
@@ -98,7 +99,7 @@ namespace SailorEditor.Services
 
             string commandArgs = $"--noconsole --hwnd {handle} --editor " + commandlineArgs;
             string workspace = (Path.GetFullPath(Path.Combine(EngineWorkingDirectory, "..")) + "\\").Replace("\\", "/");
-            var args = new string[] { bDebug ? PathToEngineExecDebug : PathToEngineExec, "--workspace", workspace, "--world Editor.world"}.Concat(commandArgs.Split(" ")).ToArray();
+            var args = new string[] { bDebug ? PathToEngineExecDebug : PathToEngineExec, "--workspace", workspace, "--world Editor.world" }.Concat(commandArgs.Split(" ")).ToArray();
 
             try
             {
@@ -247,6 +248,30 @@ namespace SailorEditor.Services
         {
             var stringId = id.Value.ToString();
             return EngineAppInterop.UpdateObject(stringId, yamlChanges);
+        }
+
+        public void RunWorld(string world, bool bDebug)
+        {
+            try
+            {
+                string workspace = (Path.GetFullPath(Path.Combine(EngineWorkingDirectory, "..")) + "\\").Replace("\\", "/");
+                string arguments = $"--workspace {workspace} --world {world}";
+
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = bDebug ? PathToEngineExecDebug : PathToEngineExec,
+                    Arguments = arguments,
+                    WorkingDirectory = EngineWorkingDirectory,
+                    UseShellExecute = false
+                };
+
+                Process process = new Process { StartInfo = startInfo };
+                process.Start();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Cannot run SailorEngine process: {ex.Message}");
+            }
         }
     }
 }

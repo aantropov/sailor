@@ -70,7 +70,14 @@ public partial class Component : ObservableObject, ICloneable
     [YamlIgnore]
     protected bool isInited = false;
 
-    [ObservableProperty]
+    [YamlIgnore]
+    protected bool IsDirty
+    {
+        get => isDirty;
+        set => SetProperty(ref isDirty, value);
+    }
+
+    [YamlIgnore]
     protected bool isDirty = false;
 
     [ObservableProperty]

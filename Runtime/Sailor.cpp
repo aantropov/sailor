@@ -169,10 +169,10 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<PrefabImporter>::Make(prefabInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<WorldPrefabImporter>::Make(worldPrefabInfoHandler));
 
-	GetSubmodule<AssetRegistry>()->ScanContentFolder();
+	assetRegistry->ScanContentFolder();
 
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
-	s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
+	auto engineLoop = s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
 
 #ifdef SAILOR_EDITOR
 	AssetRegistry::WriteTextFile(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml", Reflection::ExportEngineTypes());
@@ -183,13 +183,13 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	if (!params.m_world.empty())
 	{
-		auto worldAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(params.m_world);
-		auto worldPrefab = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<WorldPrefab>(worldAssetInfo->GetFileId());
-		pWorld = GetSubmodule<EngineLoop>()->InstantiateWorld(worldPrefab, worldParams);
+		auto worldFileId = assetRegistry->GetOrLoadFile(params.m_world);
+		auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(worldFileId);
+		pWorld = engineLoop->InstantiateWorld(worldPrefab, worldParams);
 	}
 	else
 	{
-		pWorld = GetSubmodule<EngineLoop>()->CreateEmptyWorld("New World", worldParams);
+		pWorld = engineLoop->CreateEmptyWorld("New World", worldParams);
 	}
 
 	if (auto editor = App::GetSubmodule<Editor>())
@@ -320,7 +320,7 @@ void App::Start()
 				auto rect = editor->GetViewport();
 				pMainWindow->TrackParentWindowPosition(rect);
 			}
-#endif	
+#endif
 			trackEditor.Clear();
 		}
 

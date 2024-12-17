@@ -14,6 +14,13 @@ public partial class World : ObservableObject, ICloneable
     [ObservableProperty]
     ObservableList<Prefab> prefabs = [];
 
-    [ObservableProperty]
+    [YamlIgnore]
+    protected bool IsDirty
+    {
+        get => isDirty;
+        set => SetProperty(ref isDirty, value);
+    }
+
+    [YamlIgnore]
     protected bool isDirty = false;
 }

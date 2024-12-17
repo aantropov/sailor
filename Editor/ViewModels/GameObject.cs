@@ -83,9 +83,6 @@ public partial class GameObject : ObservableObject, ICloneable
     [YamlIgnore]
     public List<Component> Components { get { return MauiProgram.GetService<WorldService>().GetComponents(this); } }
 
-    [YamlMember(Alias = "components")]
-    public List<int> ComponentIndices { get; set; } = [];
-
     public object Clone() => new GameObject()
     {
         Name = Name + "(Clone)",
@@ -111,6 +108,12 @@ public partial class GameObject : ObservableObject, ICloneable
     string name = string.Empty;
 
     [ObservableProperty]
+    InstanceId instanceId = InstanceId.NullInstanceId;
+
+    [ObservableProperty]
+    uint parentIndex = uint.MaxValue;
+
+    [ObservableProperty]
     Vec4 position = new();
 
     [ObservableProperty]
@@ -119,11 +122,8 @@ public partial class GameObject : ObservableObject, ICloneable
     [ObservableProperty]
     Vec4 scale = new();
 
-    [ObservableProperty]
-    uint parentIndex = uint.MaxValue;
-
-    [ObservableProperty]
-    InstanceId instanceId = InstanceId.NullInstanceId;
+    [YamlMember(Alias = "components")]
+    public List<int> ComponentIndices { get; set; } = [];
 
     [YamlIgnore]
     protected bool IsDirty

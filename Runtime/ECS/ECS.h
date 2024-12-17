@@ -23,6 +23,8 @@ namespace Sailor::ECS
 
 		SAILOR_API virtual void MarkDirty() { m_bIsDirty = true; }
 
+		SAILOR_API void SetLastChange(size_t currentFrame) { m_frameLastChange = currentFrame; }
+
 		SAILOR_API __forceinline void SetOwner(const ObjectPtr& owner) { m_owner = owner; }
 		SAILOR_API __forceinline const ObjectPtr& GetOwner() const { return m_owner; }
 		SAILOR_API __forceinline const size_t& GetFrameLastChange() const { return m_frameLastChange; }

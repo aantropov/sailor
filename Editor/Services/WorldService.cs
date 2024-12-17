@@ -113,6 +113,45 @@ namespace SailorEditor.Services
             OnUpdateWorldAction?.Invoke(Current);
         }
 
+        public string SerializeCurrentWorld()
+        {
+            string yamlWorld = string.Empty;
+
+            using (var writer = new StringWriter())
+            {
+                var commonConverters = new List<IYamlTypeConverter> {
+                    new RotationYamlConverter(),
+                    new Vec4YamlConverter(),
+                    new Vec3YamlConverter(),
+                    new Vec2YamlConverter(),
+                    new InstanceIdYamlConverter(),
+                    new FileIdYamlConverter(),
+                    new ComponentTypeYamlConverter(),
+                    new ViewModels.ComponentYamlConverter()
+                    };
+
+                var serializerBuilder = new SerializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .WithTypeConverter(new ObservableListConverter<Prefab>(
+                    new IYamlTypeConverter[]{
+                        new ObservableListConverter<GameObject>(commonConverters.ToArray()),
+                        new ObservableListConverter<Component>(commonConverters.ToArray())
+                    }))
+                .IncludeNonPublicProperties();
+
+                commonConverters.ForEach((el) => serializerBuilder.WithTypeConverter(el));
+
+                var serializer = serializerBuilder.Build();
+
+                var yaml = serializer.Serialize(Current);
+                writer.Write(yaml);
+
+                yamlWorld = writer.ToString();
+            }
+
+            return yamlWorld;
+        }
+
         Dictionary<InstanceId, Component> componentsDict = new();
         Dictionary<InstanceId, GameObject> gameObjectsDict = new();
     }
