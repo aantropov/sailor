@@ -25,10 +25,19 @@ public partial class AssetFile : ObservableObject, ICloneable
         };
     }
 
+    [YamlIgnore]
     public FileInfo Asset { get; set; }
+
+    [YamlIgnore]
     public FileInfo AssetInfo { get; set; }
+
+    [YamlIgnore]
     public int Id { get; set; }
+
+    [YamlIgnore]
     public int FolderId { get; set; }
+
+    [YamlIgnore]
     public bool CanOpenAssetFile { get => !IsDirty; }
 
     public virtual async Task<bool> LoadDependentResources() => await Task.FromResult(true);
@@ -70,7 +79,14 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     public bool IsLoaded { get; set; }
 
-    [ObservableProperty]
+    [YamlIgnore]
+    public bool IsDirty
+    {
+        get => isDirty;
+        set => SetProperty(ref isDirty, value);
+    }
+
+    [YamlIgnore]
     protected bool isDirty = false;
 
     [ObservableProperty]

@@ -40,16 +40,7 @@ namespace SailorEditor.Services
         {
             var deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
-            .WithTypeConverter(new ObservableListConverter<Prefab>(
-                new IYamlTypeConverter[]
-                {
-                    new RotationYamlConverter(),
-                    new Vec4YamlConverter(),
-                    new Vec3YamlConverter(),
-                    new Vec2YamlConverter(),
-                    new ComponentTypeYamlConverter(),
-                    new ViewModels.ComponentYamlConverter()
-                }))
+            .WithTypeConverter(new WorldYamlConverter())
             .IncludeNonPublicProperties()
             .Build();
 
@@ -57,6 +48,8 @@ namespace SailorEditor.Services
 
             GameObjects.Clear();
             Current.Prefabs.Clear();
+
+            Current.Name = world.Name;
 
             int prefabIndex = 0;
             foreach (var prefab in world.Prefabs)
@@ -119,29 +112,10 @@ namespace SailorEditor.Services
 
             using (var writer = new StringWriter())
             {
-                var commonConverters = new List<IYamlTypeConverter> {
-                    new RotationYamlConverter(),
-                    new Vec4YamlConverter(),
-                    new Vec3YamlConverter(),
-                    new Vec2YamlConverter(),
-                    new InstanceIdYamlConverter(),
-                    new FileIdYamlConverter(),
-                    new ComponentTypeYamlConverter(),
-                    new ViewModels.ComponentYamlConverter()
-                    };
-
-                var serializerBuilder = new SerializerBuilder()
+                var serializer = new SerializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .WithTypeConverter(new ObservableListConverter<Prefab>(
-                    new IYamlTypeConverter[]{
-                        new ObservableListConverter<GameObject>(commonConverters.ToArray()),
-                        new ObservableListConverter<Component>(commonConverters.ToArray())
-                    }))
-                .IncludeNonPublicProperties();
-
-                commonConverters.ForEach((el) => serializerBuilder.WithTypeConverter(el));
-
-                var serializer = serializerBuilder.Build();
+                .WithTypeConverter(new WorldYamlConverter())
+                .IncludeNonPublicProperties().Build();
 
                 var yaml = serializer.Serialize(Current);
                 writer.Write(yaml);

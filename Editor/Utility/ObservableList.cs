@@ -6,6 +6,7 @@ using YamlDotNet.Core;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using YamlDotNet.RepresentationModel;
+using SailorEditor.Helpers;
 
 namespace SailorEditor.Utility
 {
@@ -126,7 +127,7 @@ namespace SailorEditor.Utility
             foreach (var item in list)
             {
                 string itemYaml = serializer.Serialize(item);
-                
+
                 var yaml = new YamlStream();
                 using (var sr = new StringReader(itemYaml))
                 {
@@ -134,37 +135,10 @@ namespace SailorEditor.Utility
                 }
 
                 var doc = yaml.Documents[0].RootNode;
-                EmitNode(emitter, doc);
+                YamlHelper.EmitNode(emitter, doc);
             }
 
             emitter.Emit(new SequenceEnd());
-        }
-
-        private void EmitNode(IEmitter emitter, YamlNode node)
-        {
-            switch (node)
-            {
-                case YamlScalarNode scalar:
-                    emitter.Emit(new Scalar(null, null, scalar.Value, ScalarStyle.Any, true, false));
-                    break;
-                case YamlMappingNode mapping:
-                    emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
-                    foreach (var kvp in mapping.Children)
-                    {
-                        EmitNode(emitter, kvp.Key);
-                        EmitNode(emitter, kvp.Value);
-                    }
-                    emitter.Emit(new MappingEnd());
-                    break;
-                case YamlSequenceNode sequence:
-                    emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-                    foreach (var child in sequence.Children)
-                    {
-                        EmitNode(emitter, child);
-                    }
-                    emitter.Emit(new SequenceEnd());
-                    break;
-            }
         }
 
         List<IYamlTypeConverter> valueConverters = [];
