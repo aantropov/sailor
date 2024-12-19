@@ -3,37 +3,53 @@
              x:Name="this"
              x:Class="SailorEditor.Views.ToolbarView">
 
-    <Frame Padding="8">
-        <Grid ColumnSpacing="10">
+    <Frame Padding="0" HasShadow="False" HeightRequest="24">
+        <Grid ColumnSpacing="5" RowSpacing="0" Margin="0" Padding="0"
+              HeightRequest="24" VerticalOptions="Center" HorizontalOptions="FillAndExpand">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Button ImageSource="save.png"
-                HorizontalOptions="Start"
-                VerticalOptions="Center"
-                Clicked="OnSaveButtonClicked" 
-                Grid.Column="0"/>
+            <ImageButton Source="disk_24.png"
+                         HeightRequest="24"
+                         WidthRequest="24"
+                         Aspect="AspectFit"
+                         Padding="0"
+                         Margin="0"
+                         HorizontalOptions="Start"
+                         VerticalOptions="Center"
+                         Clicked="OnSaveButtonClicked" 
+                         Grid.Column="0"/>
 
-            <Grid Grid.Column="1" HorizontalOptions="Center">
+            <Grid Grid.Column="1" HorizontalOptions="Center" VerticalOptions="Center" Margin="0" Padding="0" HeightRequest="24">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Button ImageSource="arrow.png"
-                    HorizontalOptions="Center"
-                    VerticalOptions="Center"
-                    Clicked="OnPlayButtonClicked"
-                    Grid.Column="0"/>
+                <ImageButton Source="arrow_24.png"
+                             HeightRequest="24"
+                             WidthRequest="24"
+                             Aspect="AspectFit"
+                             Padding="0"
+                             Margin="0"
+                             HorizontalOptions="Center"
+                             VerticalOptions="Center"
+                             Clicked="OnPlayButtonClicked"
+                             Grid.Column="0"/>
 
-                <Button ImageSource="bug__arrow.png"
-                    HorizontalOptions="Center"
-                    VerticalOptions="Center"
-                    Clicked="OnPlayDebugButtonClicked"
-                    Grid.Column="1"/>
+                <ImageButton Source="bug__arrow.png"
+                             HeightRequest="24"
+                             WidthRequest="24"
+                             Aspect="AspectFit"
+                             Padding="0"
+                             Margin="0"
+                             HorizontalOptions="Center"
+                             VerticalOptions="Center"
+                             Clicked="OnPlayDebugButtonClicked"
+                             Grid.Column="1"/>
             </Grid>
         </Grid>
     </Frame>
