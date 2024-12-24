@@ -117,10 +117,6 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		s_pInstance->s_workspace = params.m_workspace;
 	}
 
-	if (params.m_bIsEditor)
-	{
-		s_pInstance->AddSubmodule(TSubmodule<Editor>::Make(params.m_editorHwnd, params.m_editorPort));
-	}
 
 #if defined(SAILOR_BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
 	if (!params.m_bIsEditor)
@@ -144,6 +140,11 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance->m_pMainWindow->Create(className.c_str(), className.c_str(), 1024, 768, false, false, params.m_editorHwnd);
+
+	if (params.m_bIsEditor)
+	{
+		s_pInstance->AddSubmodule(TSubmodule<Editor>::Make(params.m_editorHwnd, params.m_editorPort, s_pInstance->m_pMainWindow.GetRawPtr()));
+	}
 
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
 	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_8, bEnableRenderValidationLayers));
@@ -312,7 +313,7 @@ void App::Start()
 		timer.Stop();
 		trackEditor.Stop();
 
-		if (trackEditor.ResultAccumulatedMs() > 1)
+		if (trackEditor.ResultAccumulatedMs() > 1 && pMainWindow->IsShown())
 		{
 #ifdef SAILOR_EDITOR
 			if (auto editor = App::GetSubmodule<Editor>())

@@ -8,7 +8,7 @@ namespace SailorEditor.Views
         public SceneView()
         {
             InitializeComponent();
-            MauiProgram.GetService<EngineService>().RunProcess(RunDebugConfigurationCheckBox.IsChecked, "");
+            MauiProgram.GetService<EngineService>().RunProcess(false, "");
 
             Loaded += (sender, args) =>
             {
@@ -39,8 +39,7 @@ namespace SailorEditor.Views
 
         private void OnRunSailorEngineClicked(object sender, EventArgs e)
         {
-            string commandLineArgs = WaitForDebuggerAttachedCheckBox.IsChecked ? "--waitfordebugger" : "";
-            MauiProgram.GetService<EngineService>().RunProcess(RunDebugConfigurationCheckBox.IsChecked, commandLineArgs);
+            MauiProgram.GetService<EngineService>().RunProcess(false, "");
         }
 
         bool isRunning = false;

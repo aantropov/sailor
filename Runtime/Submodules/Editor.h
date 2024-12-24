@@ -6,11 +6,16 @@
 
 namespace Sailor
 {
+	namespace Win32 
+	{
+		class Window;
+	}
+
 	class Editor : public TSubmodule<Editor>
 	{
 	public:
 
-		Editor(HWND editorHwnd, uint32_t editorPort);
+		Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
 
 		void SetWorld(class World* world) { m_world = world; }
 
@@ -20,6 +25,9 @@ namespace Sailor
 		__forceinline size_t NumMessages() const { return m_messagesQueue.unsafe_size(); }
 
 		YAML::Node SerializeWorld() const;
+
+
+		void ShowMainWindow(bool bShow);
 
 		void SetViewport(RECT window) { m_windowRect = window; }
 		RECT GetViewport() const { return m_windowRect; }
@@ -33,6 +41,8 @@ namespace Sailor
 		RECT m_windowRect{};
 		uint32_t m_editorPort;
 		HWND m_editorHwnd;
+
+		class Win32::Window* m_pMainWindow = nullptr;
 
 		class World* m_world;
 	};

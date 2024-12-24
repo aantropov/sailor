@@ -10,21 +10,13 @@
             Padding="30,0"
             VerticalOptions="Center">
 
-                <BoxView
-                x:Name="TestView"
-                HeightRequest="200"
-                WidthRequest="400"
-                MaximumHeightRequest="200"
-                MaximumWidthRequest="400"
-                />
-
-                <!-- CheckBox with Label on the same line -->
+                <!-- CheckBox with Label on the same line 
                 <HorizontalStackLayout HorizontalOptions="Center">
                     <CheckBox x:Name="WaitForDebuggerAttachedCheckBox" />
                     <Label Text="WaitForDebuggerAttached" VerticalOptions="Center"/>
                 </HorizontalStackLayout>
 
-                <!-- CheckBox with Label on the same line -->
+                 
                 <HorizontalStackLayout HorizontalOptions="Center">
                     <CheckBox x:Name="RunDebugConfigurationCheckBox" IsChecked="False" />
                     <Label Text="RunDebugConfiguration" VerticalOptions="Center"/>
@@ -35,6 +27,7 @@
                 Text="Run Sailor Engine Process"
                 Clicked="OnRunSailorEngineClicked"
                 HorizontalOptions="Center" />
+                -->
 
             </VerticalStackLayout>
         </ScrollView>

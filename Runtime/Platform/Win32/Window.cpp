@@ -32,6 +32,12 @@ void Window::SetWindowPos(const RECT& rect)
 		SWP_NOACTIVATE);
 }
 
+void Window::Show(bool bShowWindow)
+{
+	::ShowWindow(m_hWnd, bShowWindow ? SW_SHOW: SW_HIDE);
+	m_bIsShown = bShowWindow;
+}
+
 void Window::TrackParentWindowPosition(const RECT& viewport)
 {
 	if (!m_parentHwnd)

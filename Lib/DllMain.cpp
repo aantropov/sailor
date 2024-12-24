@@ -135,6 +135,12 @@ extern "C"
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 		return editor->UpdateObject(instanceId, strYamlNode);
 	}
+
+	SAILOR_API void ShowMainWindow(bool bShow)
+	{
+		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
+		editor->ShowMainWindow(bShow);
+	}
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule,

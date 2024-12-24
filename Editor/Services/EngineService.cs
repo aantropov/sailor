@@ -13,32 +13,35 @@ namespace SailorEngine
     public class EngineAppInterop
     {
 #if DEBUG
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Initialize(string[] commandLineArgs, int num);
 
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Start();
 
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Stop();
 
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Shutdown();
 
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern uint GetMessages(nint[] messages, uint num);
 
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern uint SerializeCurrentWorld(nint[] yamlNode);
 
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern uint SerializeEngineTypes(nint[] yamlNode);
 
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
 
-        [DllImport("../../../../../Sailor-Debug.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
+
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void ShowMainWindow(bool bShow);
 
 #else
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
@@ -67,6 +70,9 @@ namespace SailorEngine
 
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
+
+        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void ShowMainWindow(bool bShow);
 #endif
     }
 }
@@ -91,6 +97,8 @@ namespace SailorEditor.Services
         public event Action<string> OnUpdateCurrentWorldAction = delegate { };
 
         public EngineTypes EngineTypes { get; private set; } = new();
+
+        public static void ShowMainWindow(bool bShow) => EngineAppInterop.ShowMainWindow(bShow);
 
         public void RunProcess(bool bDebug, string commandlineArgs)
         {
@@ -122,7 +130,7 @@ namespace SailorEditor.Services
                 {
                     EngineAppInterop.Initialize(args, args.Length);
 
-                    StartPeriodicTask(async () => EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height), 1000, 100, cts.Token);
+                    StartPeriodicTask(async () => EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height), 500, 100, cts.Token);
 
                     StartPeriodicTask(async () =>
                     {

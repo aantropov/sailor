@@ -1,3 +1,5 @@
+using SailorEditor.Services;
+
 namespace SailorEditor.Controls;
 
 public partial class VerticalGridSplitterControl : ContentView
@@ -29,6 +31,8 @@ public partial class VerticalGridSplitterControl : ContentView
     {
         e.Data.Properties.Add("Source", Splitter);
         Splitter.IsVisible = false;
+
+        EngineService.ShowMainWindow(false);
     }
 
     private void OnDragOver(object sender, DragEventArgs e)
@@ -40,7 +44,12 @@ public partial class VerticalGridSplitterControl : ContentView
         }
     }
 
-    private void OnDragCompleted(object sender, DropCompletedEventArgs e) => Splitter.IsVisible = true;
+    private void OnDragCompleted(object sender, DropCompletedEventArgs e)
+    {
+        Splitter.IsVisible = true;
+
+        EngineService.ShowMainWindow(true);
+    }
 
     public void UpdateSplitterPosition(object sender, DragEventArgs e)
     {

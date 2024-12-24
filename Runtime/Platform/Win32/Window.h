@@ -22,6 +22,7 @@ namespace Sailor::Win32
 		std::atomic<int> m_height = 768;
 		std::string m_windowClassName;
 
+		std::atomic<bool> m_bIsShown = true;
 		std::atomic<bool> m_bIsFullscreen = false;
 		std::atomic<bool> m_bIsActive = false;
 		std::atomic<bool> m_bIsRunning = false;
@@ -36,6 +37,7 @@ namespace Sailor::Win32
 		SAILOR_API Window() = default;
 		SAILOR_API ~Window() = default;
 
+		SAILOR_API bool IsShown() const { return m_bIsShown; }
 		SAILOR_API bool IsResizing() const { return m_bIsResizing; }
 		SAILOR_API bool IsActive() const { return m_bIsActive; }
 		SAILOR_API bool IsRunning() const { return m_bIsRunning; }
@@ -63,6 +65,8 @@ namespace Sailor::Win32
 
 		SAILOR_API bool IsParentWindowValid() const;
 		SAILOR_API void TrackParentWindowPosition(const RECT& viewport);
+
+		SAILOR_API void Show(bool bShowWindow);
 
 		// Window size
 		SAILOR_API glm::ivec2 GetCenterPointScreen() const;

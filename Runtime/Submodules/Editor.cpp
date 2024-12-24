@@ -12,14 +12,21 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include "Platform/Win32/Window.h"
 
 using namespace Sailor;
 
-Editor::Editor(HWND editorHwnd, uint32_t editorPort) :
+Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMainWindow) :
 	m_editorPort(editorPort),
-	m_editorHwnd(editorHwnd)
+	m_editorHwnd(editorHwnd),
+	m_pMainWindow(pMainWindow)
 {
 
+}
+
+void Editor::ShowMainWindow(bool bShow)
+{
+	m_pMainWindow->Show(bShow);
 }
 
 bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYamlNode)
