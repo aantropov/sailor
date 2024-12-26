@@ -133,11 +133,13 @@ glslVertex: |
     gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
 
+    mat3 normalMatrix = transpose(inverse(mat3(data.instance[gl_InstanceIndex].model)));
+    vout.normal = normalize(normalMatrix * inNormal);
+    vout.tangentBasis = normalMatrix * mat3(inTangent, inBitangent, inNormal);
+
     vout.color = inColor;
-    vout.normal = normalize(worldNormal.xyz);
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[gl_InstanceIndex].materialInstance;
-    vout.tangentBasis = mat3(data.instance[gl_InstanceIndex].model) * mat3(inTangent, inBitangent, inNormal);
   }
 
 glslFragment: |
