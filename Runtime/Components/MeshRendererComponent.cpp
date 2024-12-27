@@ -50,6 +50,7 @@ void MeshRendererComponent::LoadModel(const std::string& path)
 void MeshRendererComponent::SetModel(const ModelPtr& model)
 {
 	GetData().SetModel(model);
+	GetData().MarkDirty();
 
 	if (model && model->GetFileId())
 	{

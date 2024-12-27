@@ -47,7 +47,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 						Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
 
 						// Should we update only when transform changed?
-						if ((data.m_frameLastChange == 0 || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) && adjustedBounds.IsValid())
+						if ((data.m_bIsDirty || data.m_frameLastChange == 0 || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) && adjustedBounds.IsValid())
 						{
 							RHI::RHIMeshProxy proxy;
 							proxy.m_staticMeshEcs = GetComponentIndex(&data);
@@ -63,6 +63,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 							{
 								UpdateGameObject(ownerGameObject, GetWorld()->GetCurrentFrame());
 							}
+
+							data.m_bIsDirty = false;
 						}
 					}
 				}
@@ -109,7 +111,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 					const auto& ownerTransform = ownerGameObject->GetTransformComponent();
 					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
 
-					if (ownerTransform.GetFrameLastChange() > data.m_frameLastChange && adjustedBounds.IsValid())
+					if ((data.m_bIsDirty || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) && adjustedBounds.IsValid())
 					{
 						RHI::RHISceneViewProxy proxy;
 						proxy.m_staticMeshEcs = GetComponentIndex(&data);
@@ -135,14 +137,16 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 						{
 							UpdateGameObject(ownerGameObject, GetWorld()->GetCurrentFrame());
 						}
+
+						data.m_bIsDirty = false;
 					}
 				}
 			}
 		}, EThreadType::RHI)->Run();
 
-		updateStaticTask->Wait();
+	updateStaticTask->Wait();
 
-		return nullptr;
+	return nullptr;
 }
 
 void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)

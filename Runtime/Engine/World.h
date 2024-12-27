@@ -69,6 +69,8 @@ namespace Sailor
 
 		SAILOR_API ObjectPtr GetObjectByInstanceId(const InstanceId& instanceId) const;
 
+		SAILOR_API const TMap<InstanceId, ObjectPtr>& GetObjects() const { return m_objectsMap; }
+
 	protected:
 
 		SAILOR_API GameObjectPtr NewGameObject(const std::string& name, const InstanceId& instanceId);

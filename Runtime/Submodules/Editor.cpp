@@ -49,6 +49,8 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 			if (el->GetInstanceId().ComponentId() == instanceId.ComponentId())
 			{
 				el->ApplyReflection(overrideData);
+				el->ResolveRefs(overrideData, m_world->GetObjects(), true);
+
 				return true;
 			}
 		}

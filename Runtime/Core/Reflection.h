@@ -273,7 +273,8 @@ namespace Sailor
 									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
 									if constexpr (Sailor::IsObjectPtr<PropertyType>)
 									{
-										if (!get_reader(member)(*ptr))
+										// Should we check the previous value?
+										//if (!get_reader(member)(*ptr))
 										{
 											auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
 											bResolved &= (bool)resolved;
