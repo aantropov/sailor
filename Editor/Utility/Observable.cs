@@ -38,24 +38,6 @@ public partial class Observable<T> : ObservableObject, ICloneable
     private T value;
 }
 
-
-// MAUI XAML doesn't work as intendent with compiled bindings along with generic types
-// TODO: MS should fix that in MAUI .net9
-public sealed class ObservableString : Observable<string>
-{
-    public ObservableString(string v) : base(v)
-    {
-    }
-}
-
-public sealed class ObservableFileId : Observable<FileId>
-{
-    public ObservableFileId(FileId v) : base(v)
-    {
-    }
-}
-
-
 public class ObservableObjectYamlConverter<T> : IYamlTypeConverter
     where T : IComparable<T>
 {

@@ -1,7 +1,5 @@
 ﻿using SailorEditor.Views;
 using Microsoft.Extensions.Logging;
-using Microsoft.Maui.Controls.Compatibility.Hosting;
-using Microsoft.Maui.Embedding;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
 using CommunityToolkit.Maui;
