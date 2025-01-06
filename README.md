@@ -3,6 +3,9 @@
 `Sailor` is a high-performance game engine prototype, designed with an emphasis on optimization and usability. It boasts a bindless graphics renderer built on `Vulkan 1.3` and uses multithreading effectively. Designed to be render agnostic, the engine doesn't rely on any specific rendering technology (some limitations notwithstanding). The code adheres to the C++ coding style and conforms to the `C++20` standard for the `x64` platform. Please note, the code has been tested only on Windows operating system with the `MSVC` compiler (`Microsoft Visual Studio`).
 
 ## Screenshots
+### Editor
+![Editor](https://github.com/user-attachments/assets/b388078b-8e26-413d-bbb0-d5c0274f4a01)
+
 ### Realtime (Vulkan)
 <p float="left">
   <img src="https://github.com/aantropov/sailor/assets/3637761/2135ae32-b95b-4bdb-bbbb-ec1e01b40946" width="400" />
