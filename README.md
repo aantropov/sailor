@@ -12,12 +12,12 @@
 ## Screenshots
 
 ### Editor
-<img src="https://github.com/user-attachments/assets/fdf66abd-8b83-40e3-b881-48b950734c34" width="830" />
+<img src="https://github.com/user-attachments/assets/fdf66abd-8b83-40e3-b881-48b950734c34" width="800" />
 
 ### Realtime (Vulkan) and Pathtracer (CPU, GLTF)
 <p float="left">
-  <img src="https://github.com/user-attachments/assets/4392c125-e8eb-4e7c-ae94-2fe88d80b0c2" width="430" />
-  <img src="https://github.com/aantropov/sailor/assets/3637761/086c1dc0-f7f4-47a4-bd0f-d2cef4e84fd8" width="400" />
+  <img src="https://github.com/user-attachments/assets/4392c125-e8eb-4e7c-ae94-2fe88d80b0c2" width="400" />
+  <img src="https://github.com/aantropov/sailor/assets/3637761/086c1dc0-f7f4-47a4-bd0f-d2cef4e84fd8" width="375" />
 </p>
 
 ## Get Started
