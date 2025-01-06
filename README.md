@@ -12,18 +12,12 @@
 ## Screenshots
 
 ### Editor
-![Editor](https://github.com/user-attachments/assets/b388078b-8e26-413d-bbb0-d5c0274f4a01)
+<img src="https://github.com/user-attachments/assets/b388078b-8e26-413d-bbb0-d5c0274f4a01" width="800" />
 
-### Realtime (Vulkan)
-<p float="left">
-  <img src="https://github.com/aantropov/sailor/assets/3637761/2135ae32-b95b-4bdb-bbbb-ec1e01b40946" width="400" />
-  <img src="https://github.com/aantropov/sailor/assets/3637761/2ca20784-5784-4e77-a824-8e3032919785" width="400" />
-</p>
-
-### Pathtracer (CPU, GLTF)
-<p float="left">
+### Realtime (Vulkan) and Pathtracer (CPU, GLTF)
+<p float="left">    
+  <img src="https://github.com/user-attachments/assets/9d69fcc4-bac0-453d-8a7c-9e6b6d63721e" width="400" />
   <img src="https://github.com/aantropov/sailor/assets/3637761/086c1dc0-f7f4-47a4-bd0f-d2cef4e84fd8" width="400" />
-  <img src="https://github.com/aantropov/sailor/assets/3637761/84e58446-65d2-4358-90ec-8d6a59a81076" width="400" />
 </p>
 
 ## Get Started
