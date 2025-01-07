@@ -22,10 +22,10 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 
 ## Features
 
-- **Rendering:** Bindless Renderer, HDR, Bloom, Forward+ Lighting, CPU-based Path Tracing.
-- **Optimization:** Multithreading, custom memory allocators.
+- **Rendering:** Bindless Renderer, Frame Graph, Forward+ Lighting, CPU-based Path Tracing.
+- **Core:** Multithreading, custom memory allocators.
 - **Editor:** Built with `.NET MAUI` using `C#` and `AppInterop`.
-- **Cross-Platform:** Built with `C++20` for Windows (`MSVC` and `clang`).
+- **Engine:** Built with `C++20` for Windows (`MSVC` and `clang`).
 
 ## Sponsorship and Contribution
 
