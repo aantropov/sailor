@@ -2,12 +2,12 @@
 
 **Sailor Engine** is a high-performance game engine prototype with a bindless graphics renderer based on `Vulkan 1.3` and efficient multithreading. It features task management, advanced memory allocators, and a data-driven design for modern game development.
 
-## Features
+## Get Started
 
-- **Rendering:** Bindless Renderer, HDR, Bloom, Forward+ Lighting, CPU-based Path Tracing.
-- **Optimization:** Multithreading, custom memory allocators.
-- **Editor:** Built with `.NET MAUI` using `C#` and `AppInterop`.
-- **Cross-Platform:** Built with `C++20` for Windows (`MSVC` and `clang`).
+The **Sailor** Wiki provides a centralized resource for all aspects of the engine [Build Instructions and Documentation](https://github.com/aantropov/sailor/wiki)
+Visit the Wiki to explore everything you need to get started, understand the engine's internals, and contribute to its development.
+
+**Set sail on your game development journey with Sailor Engine!**
 
 ## Screenshots
 
@@ -20,12 +20,12 @@
   <img src="https://github.com/aantropov/sailor/assets/3637761/086c1dc0-f7f4-47a4-bd0f-d2cef4e84fd8" width="375" />
 </p>
 
-## Get Started
+## Features
 
-The **Sailor** Wiki provides a centralized resource for all aspects of the engine [Build Instructions and Documentation](https://github.com/aantropov/sailor/wiki)
-Visit the Wiki to explore everything you need to get started, understand the engine's internals, and contribute to its development.
-
-**Set sail on your game development journey with Sailor Engine!**
+- **Rendering:** Bindless Renderer, HDR, Bloom, Forward+ Lighting, CPU-based Path Tracing.
+- **Optimization:** Multithreading, custom memory allocators.
+- **Editor:** Built with `.NET MAUI` using `C#` and `AppInterop`.
+- **Cross-Platform:** Built with `C++20` for Windows (`MSVC` and `clang`).
 
 ## Sponsorship and Contribution
 
