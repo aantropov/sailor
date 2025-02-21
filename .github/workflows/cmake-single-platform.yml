@@ -35,6 +35,7 @@ jobs:
           vcpkg-${{ runner.os }}-installed-
 
     - name: Run update_deps.bat
+      shell: cmd
       run: .\update_deps.bat
 
     - name: Install Vulkan SDK  
