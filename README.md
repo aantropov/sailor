@@ -34,8 +34,8 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 
 - **Rendering:** Bindless Renderer, Frame Graph, Forward+ Lighting, PBR, Raymarching, CPU-based Path Tracing.
 - **Core:** Multithreading, custom memory allocators.
-- **Editor:** Built with `.NET MAUI` using `C#`.
-- **Engine:** Built with `C++20` for Windows (`MSVC` and `clang`).
+- **Editor:** Built with `.NET MAUI`.
+- **Engine:** Built with `C++20` (`MSVC` and `clang`).
 
 ## Sponsorship and Contribution
 
