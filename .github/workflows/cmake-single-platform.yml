@@ -45,7 +45,7 @@ jobs:
         cache: true
 
     - name: Configure CMake
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
 
     - name: Build
       run: cmake --build build --config ${{ env.BUILD_TYPE }}
