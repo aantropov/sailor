@@ -1,5 +1,8 @@
 @echo off
-set VCPKG_ROOT=D:\Projects\vcpkg
+if not defined VCPKG_ROOT (
+    echo VCPKG_ROOT is not set. Please set the VCPKG_ROOT environment variable to your vcpkg installation path.
+    exit /b 1
+)
 
 pushd %VCPKG_ROOT%
 
@@ -9,7 +12,6 @@ if not exist vcpkg.exe (
 )
 
 vcpkg update
-
 vcpkg upgrade --no-dry-run
 
 vcpkg install glm:x64-windows
