@@ -1,9 +1,7 @@
 ﻿#include "MaterialUtils.h"
 #include "BVH.h"
 
-#include "stb/stb_image.h"
-
-#include "nlohmann_json/include/nlohmann/json.hpp"
+#include <stb_image.h>
 
 using namespace Sailor;
 using namespace Sailor::Math;

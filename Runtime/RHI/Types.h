@@ -2,8 +2,7 @@
 #include "Core/Defines.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/SharedPtr.hpp"
-#include <glm/glm/glm.hpp>
-#include <glm/glm/gtx/hash.hpp>
+#include "Math/Math.h"
 #include "Containers/Containers.h"
 #include "Containers/Hash.h"
 

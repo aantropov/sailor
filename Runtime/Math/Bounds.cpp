@@ -1,6 +1,6 @@
 ﻿#include "Core/Defines.h"
 #include "Math/Bounds.h"
-#include <glm/glm/gtx/intersect.hpp>
+#include <glm/gtx/intersect.hpp>
 
 using namespace Sailor;
 using namespace Sailor::Math;

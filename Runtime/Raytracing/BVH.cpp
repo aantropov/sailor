@@ -3,7 +3,6 @@
 #include "Containers/Vector.h"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
-#include "glm/glm/glm.hpp"
 #include "Math/Math.h"
 #include "Math/Bounds.h"
 #include "Core/StringHash.h"

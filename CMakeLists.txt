@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.10)
-
 project(Sailor VERSION 0.1)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -20,41 +19,12 @@ set(SAILOR_BINARIES_DIR "${PROJECT_SOURCE_DIR}/Binaries/")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${SAILOR_BINARIES_DIR}")
 
 if (NOT CMAKE_BUILD_TYPE)
-	SET(CMAKE_BUILD_TYPE Release)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
 set(BUILD_SHARED_LIBS OFF)
 
-set(YAML_CPP_BUILD_CONTRIB OFF)
-set(YAML_CPP_BUILD_TOOLS OFF)
-set(YAML_BUILD_SHARED_LIBS OFF)
-set(YAML_CPP_INSTALL OFF)
-set(YAML_CPP_BUILD_TESTS OFF)
-add_subdirectory(${SAILOR_EXTERNAL_DIR}/yaml-cpp)
-
-set(BUILD_TESTING OFF)
-set(BUILD_EXAMPLES OFF)
-set(BUILD_BENCHES OFF)
-add_subdirectory(${SAILOR_EXTERNAL_DIR}/refl-cpp)
-
-add_subdirectory(${SAILOR_EXTERNAL_DIR}/nlohmann_json)
-
-# tinygltf
-set(TINYGLTF_BUILD_LOADER_EXAMPLE OFF CACHE BOOL "Disable examples" FORCE)
-set(TINYGLTF_BUILD_EXAMPLES OFF CACHE BOOL "Disable examples" FORCE)
-set(TINYGLTF_INSTALL OFF CACHE BOOL "Disable install" FORCE)
-set(TINYGLTF_HEADER_ONLY ON CACHE INTERNAL "" FORCE)
-add_subdirectory(${SAILOR_EXTERNAL_DIR}/tinygltf)
-
-option( TRACY_ENABLE "" ON)
-option( TRACY_ON_DEMAND "" ON)
-
-if(SAILOR_BUILD_WITH_TRACY_PROFILER)
-    add_subdirectory(${SAILOR_EXTERNAL_DIR}/tracy TracyClient)
-    #add_library(tracy STATIC ${SAILOR_EXTERNAL_DIR}/tracy/public/TracyClient.cpp)
-endif(SAILOR_BUILD_WITH_TRACY_PROFILER)
-
-message ("cxx Flags:" ${CMAKE_CXX_FLAGS})
+message("cxx Flags:" ${CMAKE_CXX_FLAGS})
 
 add_subdirectory(Exec)
 add_subdirectory(Lib)

@@ -15,12 +15,9 @@
 #include "RHI/Renderer.h"
 #include "Memory/ObjectAllocator.hpp"
 
-#include "nlohmann_json/include/nlohmann/json.hpp"
-#include "glm/glm/gtc/type_ptr.hpp"
-
 #ifndef TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_IMPLEMENTATION
-#include "tinygltf/tiny_gltf.h"
+#include <tiny_gltf.h>
 #endif
 
 using namespace Sailor;

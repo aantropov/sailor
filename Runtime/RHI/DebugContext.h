@@ -2,9 +2,9 @@
 #include <functional>
 #include <atomic>
 #include <thread>
-#include <glm/glm/glm.hpp>
 
 #include "Core/Defines.h"
+#include "Math/Math.h"
 #include "Types.h"
 #include "Math/Bounds.h"
 #include "Memory/RefPtr.hpp"

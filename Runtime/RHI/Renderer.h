@@ -2,9 +2,9 @@
 #include <functional>
 #include <atomic>
 #include <thread>
-#include <glm/glm/glm.hpp>
 
 #include "Core/Defines.h"
+#include "Math/Math.h"
 #include "Engine/Types.h"
 #include "RHI/Types.h"
 #include "Containers/ConcurrentMap.h"

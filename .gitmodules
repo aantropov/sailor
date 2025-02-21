@@ -1,34 +1,3 @@
-[submodule "External/nlohmann_json"]
-	path = External/nlohmann_json
-	url = https://github.com/nlohmann/json.git
-[submodule "External/glm"]
-	path = External/glm
-	url = https://github.com/g-truc/glm.git
-[submodule "External/stb"]
-	path = External/stb
-	url = https://github.com/nothings/stb.git
-[submodule "External/spirv_reflect"]
-	path = External/spirv_reflect
-	url = https://github.com/KhronosGroup/SPIRV-Reflect.git
-[submodule "External/magic_enum"]
-	path = External/magic_enum
-	url = https://github.com/Neargye/magic_enum.git
 [submodule "External/renderdoc"]
 	path = External/renderdoc
 	url = https://github.com/baldurk/renderdoc.git
-[submodule "External/yaml-cpp"]
-	path = External/yaml-cpp
-	url = https://github.com/jbeder/yaml-cpp.git
-[submodule "External/imgui"]
-	path = External/imgui
-	url = https://github.com/ocornut/imgui.git
-[submodule "External/refl-cpp"]
-	path = External/refl-cpp
-	url = https://github.com/veselink1/refl-cpp.git
-[submodule "External/tracy"]
-	path = External/tracy
-	url = https://github.com/wolfpld/tracy.git
-
-[submodule "External/tinygltf"]
-	path = External/tinygltf
-	url = https://github.com/syoyo/tinygltf.git

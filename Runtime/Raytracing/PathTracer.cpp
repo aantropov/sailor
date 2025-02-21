@@ -2,19 +2,18 @@
 #include "Tasks/Scheduler.h"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
-#include "glm/glm/glm.hpp"
 #include "Math/Math.h"
 #include "Math/Bounds.h"
 #include "Core/StringHash.h"
-#include "glm/glm/gtc/random.hpp"
-#include "glm/glm/gtx/matrix_transform_2d.hpp"
+#include <glm/gtc/random.hpp>
+#include <glm/gtx/matrix_transform_2d.hpp>
 
-#include "stb/stb_image.h"
+#include <stb_image.h>
 
 #ifndef STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define __STDC_LIB_EXT1__
-#include "stb/stb_image_write.h"
+#include <stb_image_write.h>
 #endif 
 
 //#include "assimp/scene.h"

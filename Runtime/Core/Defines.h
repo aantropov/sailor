@@ -11,9 +11,10 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <cassert>
 
 #if defined(BUILD_WITH_TRACY_PROFILER)
-#include "tracy/public/tracy/Tracy.hpp"
+#include "tracy/Tracy.hpp"
 #endif
 
+#define GLM_FORCE_CXX17
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
@@ -58,7 +59,7 @@ typedef unsigned long DWORD;
 
 #define MAGIC_ENUM_RANGE_MIN 0
 #define MAGIC_ENUM_RANGE_MAX 256
-#include "magic_enum/include/magic_enum.hpp"
+#include <magic_enum/magic_enum.hpp>
 
 #define checkAtCompileTime(expr, msg) static_assert(expr, #msg);
 #define check(expr) assert(expr);

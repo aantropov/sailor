@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Submodule.h"
 #include "RHI/Types.h"
-#include "imgui/imgui.h"
+#include <imgui.h>
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include <wtypes.h>
 

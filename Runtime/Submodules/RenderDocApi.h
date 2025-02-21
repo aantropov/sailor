@@ -2,7 +2,7 @@
 #include "Core/Submodule.h"
 
 #ifdef SAILOR_BUILD_WITH_RENDER_DOC
-#include <renderdoc/renderdoc/api/app/renderdoc_app.h>
+#include "renderdoc/renderdoc/api/app/renderdoc_app.h"
 #endif
 
 namespace Sailor

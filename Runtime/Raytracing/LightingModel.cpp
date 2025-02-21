@@ -2,7 +2,7 @@
 #include "Containers/Vector.h"
 #include "Core/Utils.h"
 #include "Math/Math.h"
-#include "glm/glm/gtc/random.hpp"
+#include <glm/gtc/random.hpp>
 #include "MaterialUtils.h"
 
 using namespace glm;

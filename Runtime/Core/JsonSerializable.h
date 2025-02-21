@@ -1,5 +1,5 @@
 #pragma once
-#include <nlohmann_json/include/nlohmann/json.hpp>
+#include <nlohmann/json.hpp>
 #include "Core/Defines.h"
 #include "Math/Math.h"
 #include "Containers/Containers.h"

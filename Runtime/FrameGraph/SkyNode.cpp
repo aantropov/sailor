@@ -11,10 +11,10 @@
 #include "Engine/GameObject.h"
 #include "Math/Math.h"
 #include "Math/Noise.h"
-#include "glm/glm/gtx/quaternion.hpp"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "EnvironmentNode.h"
+#include <glm/gtx/quaternion.hpp>
 
 using namespace Sailor;
 using namespace Sailor::RHI;

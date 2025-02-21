@@ -4,7 +4,7 @@
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 
-#include "yaml-cpp/include/yaml-cpp/yaml.h"
+#include <yaml-cpp/yaml.h>
 
 #define SERIALIZE_PROPERTY(yamlNode, variable) { char const* name = #variable; Sailor::Serialize(yamlNode, name + 2, variable); }
 #define DESERIALIZE_PROPERTY(yamlNode, variable) { char const* name = #variable; Sailor::Deserialize(yamlNode, name + 2, variable); }

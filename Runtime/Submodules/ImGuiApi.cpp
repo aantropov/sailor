@@ -1,8 +1,8 @@
 #include "ImGuiApi.h"
 
 #include <stdio.h>
-#include "imgui.h"
-#include "backends/imgui_impl_win32.h"
+#include <imgui.h>
+#include <imgui_impl_win32.h>
 #include "Core/LogMacros.h"
 #include "Tasks/Scheduler.h"
 #include "AssetRegistry/AssetRegistry.h"

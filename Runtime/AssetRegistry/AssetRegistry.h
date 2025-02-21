@@ -8,7 +8,6 @@
 #include "AssetRegistry/AssetInfo.h"
 #include "Core/Singleton.hpp"
 #include "Engine/Object.h"
-#include "nlohmann_json/include/nlohmann/json.hpp"
 #include "AssetRegistry/AssetCache.h"
 
 namespace Sailor

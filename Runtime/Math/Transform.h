@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Core/Defines.h"
-#include <glm/glm/glm.hpp>
-#include <glm/glm/vec4.hpp>
-#include <glm/glm/gtc/quaternion.hpp>
-#include <glm/glm/common.hpp>
-#include <glm/glm/gtc/matrix_transform.hpp>
+#include <glm/glm.hpp>
+#include <glm/vec4.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/common.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 using namespace glm;
 

@@ -1,6 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
-#include "glm/glm/glm.hpp"
+#include <glm/glm.hpp>
 
 using namespace Sailor;
 using namespace glm;

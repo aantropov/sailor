@@ -1,6 +1,6 @@
 #include "Math.h"
 #include "Transform.h"
-#include <glm/glm/gtx/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 using namespace Sailor;
 using namespace Sailor::Math;

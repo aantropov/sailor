@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <iostream>
 
-#include "nlohmann_json/include/nlohmann/json.hpp"
 #include "RHI/Renderer.h"
 #include "RHI/Material.h"
 #include "RHI/VertexDescription.h"

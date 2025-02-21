@@ -10,7 +10,7 @@
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "ECS/TransformECS.h"
-#include "glm/glm/gtc/random.hpp"
+#include <glm/gtc/random.hpp>
 #include "imgui.h"
 #include "Core/Reflection.h"
 
@@ -132,8 +132,8 @@ void TestComponent::EndPlay()
 {
 }
 
-#include "stb/stb_image.h"
-#include "stb/stb_image_write.h"
+#include <stb_image.h>
+#include <stb_image_write.h>
 
 void TestComponent::Tick(float deltaTime)
 {
@@ -206,6 +206,12 @@ void TestComponent::Tick(float deltaTime)
 		glm::quat vRotation = glm::angleAxis(glm::radians(m_pitch), glm::vec3(1, 0, 0));
 
 		transform.SetRotation(hRotation * vRotation);
+	}
+
+	if (GetWorld()->GetInput().IsKeyPressed('T'))
+	{
+		glm::quat rotation = glm::angleAxis(glm::radians(-45.0f), glm::vec3(0, 0, 1));
+		transform.SetRotation(rotation);
 	}
 
 	if (GetWorld()->GetInput().IsKeyPressed('F'))

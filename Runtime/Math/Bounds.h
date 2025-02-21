@@ -1,6 +1,4 @@
 #pragma once
-#include <glm/glm/glm.hpp>
-#include <glm/glm/gtx/hash.hpp>
 #include "Memory/Memory.h"
 #include "Memory/LockFreeHeapAllocator.h"
 #include "Containers/Vector.h"

@@ -1,7 +1,7 @@
 #pragma once
 #include "Containers/Concepts.h"
 #include "Core/Defines.h"
-#include "refl-cpp/include/refl.hpp"
+#include <refl.hpp>
 #include "Engine/Types.h"
 #include "Memory/ObjectPtr.hpp"
 #include "YamlSerializable.h"

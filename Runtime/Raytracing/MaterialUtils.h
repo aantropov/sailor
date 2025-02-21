@@ -6,7 +6,7 @@
 #include "Math/Math.h"
 #include "Math/Bounds.h"
 
-#include "stb/stb_image.h"
+#include <stb_image.h>
 
 #include <filesystem>
 

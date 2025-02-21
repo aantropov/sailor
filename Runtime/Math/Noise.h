@@ -1,9 +1,9 @@
 #pragma once
 
-#include <glm/glm/glm.hpp>
-#include <glm/glm/gtc/quaternion.hpp>
-#include <glm/glm/common.hpp>
-#include <glm/glm/gtc/matrix_transform.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/common.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 using namespace glm;
 

@@ -1,6 +1,6 @@
 #pragma once
 #include "Core/Submodule.h"
-#include "yaml-cpp/include/yaml-cpp/yaml.h"
+#include <yaml-cpp/yaml.h>
 #include <concurrent_queue.h>
 #include <wtypes.h>
 

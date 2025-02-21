@@ -7,22 +7,18 @@
 #include <fstream>
 #include <algorithm>
 #include <iostream>
-#include "nlohmann_json/include/nlohmann/json.hpp"
 #include "Tasks/Scheduler.h"
 #include "RHI/Texture.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 
-#include "nlohmann_json/include/nlohmann/json.hpp"
-#include "glm/glm/gtc/type_ptr.hpp"
-
-#include "tinygltf/tiny_gltf.h"
+#include <tiny_gltf.h>
 
 #ifndef STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb/stb_image.h"
+#include <stb_image.h>
 #endif
 
 using namespace Sailor;
