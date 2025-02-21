@@ -8,10 +8,11 @@ pushd %VCPKG_ROOT%
 
 if not exist vcpkg.exe (
     echo Bootstrap vcpkg...
-    bootstrap-vcpkg.bat
+    call bootstrap-vcpkg.bat
 )
 
 vcpkg update
+
 vcpkg upgrade --no-dry-run
 
 vcpkg install glm:x64-windows
