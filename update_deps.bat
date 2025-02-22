@@ -1,8 +1,6 @@
 @echo off
-if not defined VCPKG_ROOT (
-    echo VCPKG_ROOT is not set. Please set the VCPKG_ROOT environment variable to your vcpkg installation path.
-    exit /b 1
-)
+
+set VCPKG_ROOT=%~dp0External\vcpkg
 
 pushd %VCPKG_ROOT%
 

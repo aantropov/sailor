@@ -1,3 +1,6 @@
 [submodule "External/renderdoc"]
 	path = External/renderdoc
 	url = https://github.com/baldurk/renderdoc.git
+[submodule "External/vcpkg"]
+	path = External/vcpkg
+	url = https://github.com/microsoft/vcpkg.git
