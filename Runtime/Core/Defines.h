@@ -53,6 +53,8 @@ typedef unsigned long DWORD;
 #define SAILOR_PROFILE_END_BLOCK(HashMsg)
 #define SAILOR_PROFILE_END_FRAME()
 #define SAILOR_PROFILE_THREAD_NAME(ThreadName)
+#define SAILOR_PROFILE_ALLOC(ptr, size)
+#define SAILOR_PROFILE_FREE(ptr)
 #endif
 
 #define SAILOR_EDITOR
