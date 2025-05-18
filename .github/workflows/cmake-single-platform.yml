@@ -2,6 +2,7 @@ name: CMake on a single platform
 
 on:
   workflow_dispatch:
+  pull_request:
 
 env:
   BUILD_TYPE: Release
