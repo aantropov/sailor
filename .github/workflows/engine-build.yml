@@ -1,4 +1,4 @@
-name: CMake on a single platform
+name: Engine Build
 
 on:
   workflow_dispatch:
@@ -38,6 +38,7 @@ jobs:
       with:
         version: 1.3.275.0        
         cache: true
+
 
     - name: Configure CMake
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
