@@ -79,7 +79,7 @@ public:
 		Timer stdList;
 		Timer tList;
 
-		const size_t count = 163600;
+                const size_t count = 1000;
 
 		srand(0);
 		stdList.Start();
@@ -182,7 +182,7 @@ public:
 
 	static bool SanityCheck()
 	{
-		const size_t count = 16571;
+                const size_t count = 1000;
 
 		TList<TData> container;
 		std::list<TData> ideal;

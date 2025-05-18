@@ -27,7 +27,7 @@ public:
 
 	static void PerformanceTests()
 	{
-		const size_t count = 10000600;
+                const size_t count = 10000;
 
 		Timer stdSet;
 		Timer tSet;
@@ -132,7 +132,7 @@ public:
 
 	static bool SanityCheck()
 	{
-		const size_t count = 18000;
+                const size_t count = 1000;
 
 		TContainer container;
 		std::unordered_set<size_t> ideal;

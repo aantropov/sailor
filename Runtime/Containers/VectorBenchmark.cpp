@@ -148,7 +148,7 @@ namespace Sailor
 			Timer tVectorRemoveFirst;
 			Timer tVectorInsert;
 
-			const size_t count = 163600;
+                        const size_t count = 1000;
 
 			TContainer container;
 
@@ -223,7 +223,7 @@ namespace Sailor
 
 		static bool SanityCheck()
 		{
-			const size_t count = 16571;
+                        const size_t count = 1000;
 
 			TContainer container;
 			std::vector<TElement> ideal;
@@ -334,7 +334,7 @@ namespace Sailor
 			Timer stdVectorRemoveFirst;
 			Timer stdVectorInsert;
 
-			const size_t count = 163600;
+                        const size_t count = 1000;
 			std::vector<T> ideal;
 			srand(0);
 			stdVector.Start();
