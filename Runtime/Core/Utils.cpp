@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <format>
+#include <chrono>
 
 #include <windows.h>
 #include "Containers/Vector.h"
