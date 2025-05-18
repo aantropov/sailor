@@ -98,11 +98,22 @@ void LightComponent::SetBounds(const glm::vec3& value)
 
 void LightComponent::SetLightType(ELightType value)
 {
-	LightData& lightData = GetData();
+        LightData& lightData = GetData();
 
 	if (value != lightData.m_type)
 	{
-		lightData.m_type = value;
-		lightData.MarkDirty();
-	}
+                lightData.m_type = value;
+                lightData.MarkDirty();
+        }
+}
+
+void LightComponent::SetEvsmBlurScale(float value)
+{
+        LightData& lightData = GetData();
+
+        if (value != lightData.m_evsmBlurScale)
+        {
+                lightData.m_evsmBlurScale = value;
+                lightData.MarkDirty();
+        }
 }

@@ -222,13 +222,14 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 		{
 			const auto& ownerTransform = light.m_owner.StaticCast<GameObject>()->GetTransformComponent();
 
-			RHI::RHILightProxy lightProxy{};
+                        RHI::RHILightProxy lightProxy{};
 
 			lightProxy.m_lightMatrix = glm::inverse(ownerTransform.GetCachedWorldMatrix());
 			lightProxy.m_lightTransform = ownerTransform.GetTransform();
 			lightProxy.m_distanceToCamera = 0.0f;
 			lightProxy.m_index = (uint32_t)index;
-			lightProxy.m_shadowType = light.m_shadowType;
+                        lightProxy.m_shadowType = light.m_shadowType;
+                        lightProxy.m_evsmBlurScale = light.m_evsmBlurScale;
 
 			if (light.m_type != ELightType::Directional)
 			{
@@ -297,7 +298,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cascade.m_shadowMap = m_csmShadowMaps[k];
 			cascade.m_lightMatrix = lightMatrix;
 			cascade.m_lighMatrixIndex = k;
-			cascade.m_blurRadius = ShadowCascadeBlur[k];
+                        cascade.m_blurRadius = ShadowCascadeBlur[k] * directionalLight.m_evsmBlurScale;
 			
 			// For EVSM only 1st cascade is EVSM
 			cascade.m_shadowType = k > 0 ? RHI::EShadowType::PCF : directionalLight.m_shadowType;

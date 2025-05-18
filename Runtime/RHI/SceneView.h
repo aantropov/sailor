@@ -24,14 +24,15 @@ namespace Sailor::RHI
 		SAILOR_API bool operator==(const RHIMeshProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 	};
 
-	struct RHILightProxy
-	{
-		uint32_t m_index = 0;
-		float m_distanceToCamera{};
-		EShadowType m_shadowType = EShadowType::None;
-		glm::mat4 m_lightMatrix{};
-		Math::Transform m_cameraTransform{};
-		Math::Transform m_lightTransform{};
+        struct RHILightProxy
+        {
+                uint32_t m_index = 0;
+                float m_distanceToCamera{};
+                EShadowType m_shadowType = EShadowType::None;
+                float m_evsmBlurScale{ 1.0f };
+                glm::mat4 m_lightMatrix{};
+                Math::Transform m_cameraTransform{};
+                Math::Transform m_lightTransform{};
 
 		SAILOR_API bool operator<(const RHILightProxy& rhs) const { return m_distanceToCamera < rhs.m_distanceToCamera; }
 	};
