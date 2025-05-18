@@ -238,13 +238,13 @@ namespace Sailor
 				m_function = std::move(function);
 			}
 
-			template<typename TContinuationResult = void>
-			TaskPtr<TContinuationResult, TResult> Then(
-				typename TFunction<TContinuationResult, TResult>::type function,
-				std::string name = "ChainedTask",
-				EThreadType thread = EThreadType::Worker)
-			{
-				auto resultTask = Tasks::CreateTask<TContinuationResult, TResult>(std::move(name), std::move(function), thread);
+                        template<typename TContinuationResult = void>
+                        TaskPtr<TContinuationResult, TResult> Then(
+                                typename TFunction<TContinuationResult, TResult>::type function,
+                                std::string name,
+                                EThreadType thread)
+                        {
+                                auto resultTask = Tasks::CreateTask<TContinuationResult, TResult>(std::move(name), std::move(function), thread);
 				if constexpr (NotVoid<TResult>)
 				{
 					resultTask->SetArgs(ResultBase::m_result);
@@ -253,8 +253,16 @@ namespace Sailor
 				ChainTasks(resultTask);
 				RunTaskIfNeeded(resultTask);
 
-				return resultTask;
-			}
+                                return resultTask;
+                        }
+
+                        template<typename TContinuationResult = void>
+                        TaskPtr<TContinuationResult, TResult> Then(
+                                typename TFunction<TContinuationResult, TResult>::type function,
+                                std::string name = "ChainedTask")
+                        {
+                                return Then<TContinuationResult>(std::move(function), std::move(name), ITask::m_threadType);
+                        }
 
 			SAILOR_API TaskPtr<TResult, void> ToTaskWithResult()
 			{

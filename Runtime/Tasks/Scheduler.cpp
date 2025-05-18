@@ -81,16 +81,18 @@ void WorkerThread::ProcessTask(ITaskPtr& task)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (task)
-	{
-		SAILOR_PROFILE_SCOPE("Task Execution");
-		SAILOR_PROFILE_TEXT(task->GetName().c_str());
+        if (task)
+        {
+                SAILOR_PROFILE_SCOPE("Task Execution");
+                SAILOR_PROFILE_TEXT(task->GetName().c_str());
 
-		m_bIsBusy = true;
-		task->Execute();
-		task.Clear();
-		m_bIsBusy = false;
-	}
+                check(task->GetThreadType() == m_threadType);
+
+                m_bIsBusy = true;
+                task->Execute();
+                task.Clear();
+                m_bIsBusy = false;
+        }
 }
 
 void WorkerThread::SetExecFlag()
@@ -227,17 +229,19 @@ void Scheduler::ProcessTasksOnMainThread()
 {
 	SAILOR_PROFILE_FUNCTION();
 	ITaskPtr pCurrentTask;
-	while (TryFetchNextAvailiableTask(pCurrentTask, EThreadType::Main))
-	{
-		if (pCurrentTask)
-		{
-			SAILOR_PROFILE_SCOPE("Task Execution");
-			SAILOR_PROFILE_TEXT(pCurrentTask->GetName().c_str());
+        while (TryFetchNextAvailiableTask(pCurrentTask, EThreadType::Main))
+        {
+                if (pCurrentTask)
+                {
+                        SAILOR_PROFILE_SCOPE("Task Execution");
+                        SAILOR_PROFILE_TEXT(pCurrentTask->GetName().c_str());
 
-			pCurrentTask->Execute();
-			pCurrentTask.Clear();
-		}
-	}
+                        check(pCurrentTask->GetThreadType() == EThreadType::Main);
+
+                        pCurrentTask->Execute();
+                        pCurrentTask.Clear();
+                }
+        }
 }
 
 void Scheduler::RunChainedTasks_Internal(const ITaskPtr& pTask, const ITaskPtr& pTaskToIgnore)
