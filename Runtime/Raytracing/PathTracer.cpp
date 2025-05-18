@@ -20,7 +20,10 @@
 //#include "assimp/postprocess.h"
 //#include "assimp/Importer.hpp"
 //#include "assimp/DefaultLogger.hpp"
-//#include "assimp/LogStream.hpp"
+#ifndef TINYGLTF_IMPLEMENTATION
+#define TINYGLTF_IMPLEMENTATION
+#include <tiny_gltf.h>
+#endif
 
 using namespace Sailor;
 using namespace Sailor::Math;
@@ -73,313 +76,193 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 
 void PathTracer::Run(const PathTracer::Params& params)
 {
-	SAILOR_PROFILE_FUNCTION();
-	/*
-	Utils::Timer raytracingTimer;
-	raytracingTimer.Start();
+        SAILOR_PROFILE_FUNCTION();
 
-	const uint32_t GroupSize = 32;
+        Utils::Timer raytracingTimer;
+        raytracingTimer.Start();
 
-	Assimp::Importer importer;
+        const uint32_t GroupSize = 32;
 
-	const unsigned int DefaultImportFlags_Assimp =
-		aiProcess_FlipUVs |
-		aiProcess_GenNormals |
-		aiProcess_GenUVCoords |
-		0;
+        tinygltf::Model gltfModel;
+        tinygltf::TinyGLTF loader;
+        std::string err;
+        std::string warn;
 
-	const auto scene = importer.ReadFile(params.m_pathToModel.string().c_str(), DefaultImportFlags_Assimp);
+        const bool bIsGlb = Utils::GetFileExtension(params.m_pathToModel.string().c_str()) == "glb";
+        const bool bGltfParsed = bIsGlb ?
+                loader.LoadBinaryFromFile(&gltfModel, &err, &warn, params.m_pathToModel.string()) :
+                loader.LoadASCIIFromFile(&gltfModel, &err, &warn, params.m_pathToModel.string());
 
-	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-	{
-		SAILOR_LOG("%s", importer.GetErrorString());
-		return;
-	}
+        if (!err.empty())
+        {
+                SAILOR_LOG_ERROR("Parsing gltf %s error: %s", params.m_pathToModel.string().c_str(), err.c_str());
+        }
 
-	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
+        if (!warn.empty())
+        {
+                SAILOR_LOG("Parsing gltf %s warning: %s", params.m_pathToModel.string().c_str(), warn.c_str());
+        }
 
-	// Camera
-	auto cameraPos = vec3(0, 0.75f, 5.0f);
+        if (!bGltfParsed)
+        {
+                return;
+        }
 
-	auto cameraUp = normalize(vec3(0, 1, 0));
-	auto cameraForward = normalize(-cameraPos);
-
-	auto axis = normalize(cross(cameraForward, cameraUp));
-	cameraUp = normalize(cross(axis, cameraForward));
-
-	// View
-	int32_t cameraIndex = 0;
-	if (scene->HasCameras())
-	{
-		for (uint32_t i = 0; i < scene->mNumCameras; i++)
-		{
-			if (std::strcmp(params.m_camera.c_str(), scene->mCameras[i]->mName.C_Str()) == 0)
-			{
-				cameraIndex = i;
-				break;
-			}
-		}
-
-		const auto& aiCamera = scene->mCameras[cameraIndex];
-
-		mat4 matrix = GetWorldTransformMatrix(scene, scene->mCameras[cameraIndex]->mName.C_Str());
-		::memcpy(&cameraUp, &aiCamera->mUp, sizeof(float) * 3);
-		::memcpy(&cameraForward, &aiCamera->mLookAt, sizeof(float) * 3);
-		::memcpy(&cameraPos, &aiCamera->mPosition, sizeof(float) * 3);
-
-		const vec4 translation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) * matrix;
-		cameraPos = vec3(translation.xyz) / translation.w;
-		cameraUp = glm::normalize(glm::vec3(glm::vec4(cameraUp, 0.0f) * matrix));
-		cameraForward = glm::normalize(glm::vec3(glm::vec4(cameraForward, 0.0f) * matrix));
-	}
-
-	const float aspectRatio = (scene->HasCameras() && scene->mCameras[cameraIndex]->mAspect > 0.0f)
-		? scene->mCameras[cameraIndex]->mAspect
-		: (4.0f / 3.0f);
-
-	const uint32_t height = params.m_height;
-	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
-
-	const float hFov = (scene->HasCameras() && scene->mCameras[cameraIndex]->mHorizontalFOV > 0.0f)
-		? scene->mCameras[cameraIndex]->mHorizontalFOV
-		: glm::radians(60.0f);
-
-	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
-
-	const float zMin = scene->HasCameras() ? scene->mCameras[cameraIndex]->mClipPlaneNear : 0.01f;
-	const float zMax = scene->HasCameras() ? scene->mCameras[cameraIndex]->mClipPlaneFar : 1000.0f;
-
-	const auto cameraRight = normalize(cross(cameraForward, cameraUp));
-
-	uint32_t expectedNumFaces = 0;
-	for (uint32_t i = 0; i < scene->mNumMeshes; i++)
-	{
-		expectedNumFaces += scene->mMeshes[i]->mNumFaces;
-	}
-
-	m_triangles.Reserve(expectedNumFaces);
-	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene, glm::mat4(1.0f));
-
-	{
-		TVector<Tasks::ITaskPtr> loadTexturesTasks;
-		m_materials.Resize(scene->mNumMaterials);
-		m_textures.Resize(scene->mNumMaterials * 5);
-
-		uint32_t textureIndex = 0;
-		for (uint32_t i = 0; i < scene->mNumMaterials; i++)
-		{
-			auto& material = m_materials[i];
-			const auto& aiMaterial = scene->mMaterials[i];
-
-			aiString fileName;
-
-			//SAILOR_LOG("\n\n\n");
-
-			// Parse specific properties
-			for (uint32_t j = 0; j < aiMaterial->mNumProperties; j++)
-			{
-				const auto& prop = aiMaterial->mProperties[j];
-				//SAILOR_LOG("Prop: %s", prop->mKey.C_Str());
-				if (strcmp("$mat.gltf.alphaMode", prop->mKey.C_Str()) == 0)
-				{
-					check(prop->mType == aiPropertyTypeInfo::aiPTI_String);
-
-					material.m_blendMode = BlendMode::Opaque;
-
-					aiString s;
-					if (aiReturn::aiReturn_SUCCESS != aiGetMaterialString(aiMaterial, prop->mKey.data, prop->mSemantic, prop->mIndex, &s))
-					{
-						continue;
-					}
-
-					if (strcmp("BLEND", s.C_Str()) == 0)
-					{
-						material.m_blendMode = BlendMode::Blend;
-					}
-					else if (strcmp("MASK", s.C_Str()) == 0)
-					{
-						material.m_blendMode = BlendMode::Mask;
-					}
-				}
-				else if (strcmp("$mat.gltf.alphaCutoff", prop->mKey.C_Str()) == 0)
-				{
-					check(prop->mType == aiPropertyTypeInfo::aiPTI_Float);
-					memcpy(&material.m_alphaCutoff, prop->mData, 4);
-				}
-				else if (strcmp("$mat.refracti", prop->mKey.C_Str()) == 0)
-				{
-					check(prop->mType == aiPropertyTypeInfo::aiPTI_Float);
-					memcpy(&material.m_indexOfRefraction, prop->mData, 4);
-				}
-			}
-
-			aiTextureMapMode mapping[2] = { aiTextureMapMode::aiTextureMapMode_Wrap };
-
-			if ((aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS) ||
-				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) &&
-					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
-					m_textures[m_textureMapping[file]]->m_channels == 4)
-				{
-					material.m_baseColorIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec4>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], true));
-					m_textureMapping[file] = material.m_baseColorIndex = textureIndex++;
-				}
-			}
-
-			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
-
-			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) &&
-					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
-					m_textures[m_textureMapping[file]]->m_channels == 3)
-				{
-					material.m_normalIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], false, true));
-					m_textureMapping[file] = material.m_normalIndex = textureIndex++;
-				}
-			}
-
-			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
-
-			if ((aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS) ||
-				aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) &&
-					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
-					m_textures[m_textureMapping[file]]->m_channels == 3)
-				{
-					material.m_metallicRoughnessIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], false));
-					m_textureMapping[file] = material.m_metallicRoughnessIndex = textureIndex++;
-				}
-			}
-
-			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
-
-			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) &&
-					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
-					m_textures[m_textureMapping[file]]->m_channels == 3)
-				{
-					material.m_emissiveIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], true));
-					m_textureMapping[file] = material.m_emissiveIndex = textureIndex++;
-				}
-			}
-
-			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
-
-			if (aiMaterial->GetTexture(aiTextureType_TRANSMISSION, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				if (m_textureMapping.ContainsKey(file))
-				{
-					material.m_transmissionIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], false));
-					m_textureMapping[file] = material.m_transmissionIndex = textureIndex++;
-				}
-			}
-
-			aiColor3D color3D{};
-			aiColor4D color4D{};
-			float color1D = 0.0f;
-
-			if (aiMaterial->Get(AI_MATKEY_COLOR_EMISSIVE, color3D) == AI_SUCCESS)
-			{
-				material.m_emissiveFactor = vec3(color3D.r, color3D.g, color3D.b);
-			}
-
-			material.m_emissiveFactor *= aiMaterial->Get(AI_MATKEY_EMISSIVE_INTENSITY, color1D) == AI_SUCCESS ? color1D : 1.0f;
-			material.m_transmissionFactor = aiMaterial->Get(AI_MATKEY_TRANSMISSION_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
-			material.m_baseColorFactor = (aiMaterial->Get(AI_MATKEY_BASE_COLOR, color4D) == AI_SUCCESS) ? vec4(color4D.r, color4D.g, color4D.b, color4D.a) : glm::vec4(1.0f);
-			material.m_roughnessFactor = aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
-			material.m_metallicFactor = aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
-
-			material.m_thicknessFactor = aiMaterial->Get(AI_MATKEY_VOLUME_THICKNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
-			material.m_attenuationColor = (aiMaterial->Get(AI_MATKEY_VOLUME_ATTENUATION_COLOR, color3D) == AI_SUCCESS) ? vec3(color3D.r, color3D.g, color3D.b) : glm::vec3(1.0f);
-			material.m_attenuationDistance = aiMaterial->Get(AI_MATKEY_VOLUME_ATTENUATION_DISTANCE, color1D) == AI_SUCCESS ? color1D : std::numeric_limits<float>().max();
-
-			aiUVTransform uvTransform{};
-
-			if (aiMaterial->Get(AI_MATKEY_UVTRANSFORM_DIFFUSE(0), uvTransform) == AI_SUCCESS)
-			{
-				struct transform
-				{
-					float offsetX{}, offsetY{};
-					float scaleX{}, scaleY{};
-					float rotation{};
-				};
-
-				transform t;
-				memcpy(&t, &uvTransform, sizeof(float) * 5);
-
-				glm::mat3 scale = mat3(t.scaleX, 0, 0, 0, t.scaleY, 0, 0, 0, 1);
-				glm::mat3 translation = mat3(1, 0, 0, 0, 1, 0, t.offsetX, t.offsetY, 1);
-				glm::mat3 rotation = mat3(
-					cos(t.rotation), -sin(t.rotation), 0,
-					sin(t.rotation), cos(t.rotation), 0,
-					0, 0, 1
-				);
-
-				material.m_uvTransform = translation * rotation * scale;
-			}
-		}
-
-		for (auto& task : loadTexturesTasks)
-		{
-			task->Wait();
-		}
-	}
-
-	if (scene->HasLights())
-	{
-		aiNode* pRootNode = scene->mRootNode;
-
-		for (uint32_t i = 0; i < scene->mNumLights; i++)
-		{
-			const aiNode* pLightNode = pRootNode->FindNode(scene->mLights[i]->mName);
-			const mat4 matrix = GetWorldTransformMatrix(scene, scene->mLights[i]->mName.C_Str());
-
-			if (scene->mLights[i]->mType == aiLightSource_DIRECTIONAL)
-			{
-				m_directionalLights.Add(DirectionalLight());
-				memcpy(&m_directionalLights[i].m_direction, &scene->mLights[i]->mDirection, sizeof(float) * 3);
-				memcpy(&m_directionalLights[i].m_intensity, &scene->mLights[i]->mColorDiffuse, sizeof(float) * 3);
-
-				m_directionalLights[i].m_direction = glm::normalize(glm::vec3(glm::vec4(m_directionalLights[i].m_direction, 0.0f) * matrix));
-				m_directionalLights[i].m_intensity /= 683.0f;
-			}
-		}
-	}
 	
 
+        auto GetNodeMatrix = [](const tinygltf::Node& node)
+        {
+                glm::mat4 res(1.0f);
+                if (!node.matrix.empty())
+                {
+                        res = glm::make_mat4(node.matrix.data());
+                }
+                else
+                {
+                        if (!node.translation.empty())
+                        {
+                                res = glm::translate(res, glm::vec3(node.translation[0], node.translation[1], node.translation[2]));
+                        }
+                        if (!node.rotation.empty())
+                        {
+                                glm::quat q((float)node.rotation[3], (float)node.rotation[0], (float)node.rotation[1], (float)node.rotation[2]);
+                                res *= glm::mat4_cast(q);
+                        }
+                        if (!node.scale.empty())
+                        {
+                                res = glm::scale(res, glm::vec3(node.scale[0], node.scale[1], node.scale[2]));
+                        }
+                }
+                return res;
+        };
+
+        // Parse camera
+        auto cameraPos = vec3(0, 0.75f, 5.0f);
+        auto cameraUp = normalize(vec3(0, 1, 0));
+        auto cameraForward = normalize(-cameraPos);
+        float aspectRatio = 4.0f / 3.0f;
+        float hFov = glm::radians(60.0f);
+        float vFov = hFov;
+        if (!gltfModel.cameras.empty())
+        {
+                int camIndex = 0;
+                for (size_t i = 0; i < gltfModel.cameras.size(); ++i)
+                {
+                        if (!params.m_camera.empty() && params.m_camera == gltfModel.cameras[i].name)
+                        {
+                                camIndex = (int)i;
+                                break;
+                        }
+                }
+
+                const auto& cam = gltfModel.cameras[camIndex];
+                if (cam.type == "perspective")
+                {
+                        vFov = (float)cam.perspective.yfov;
+                        aspectRatio = cam.perspective.aspectRatio > 0 ? (float)cam.perspective.aspectRatio : aspectRatio;
+                        hFov = 2.0f * atan(tan(vFov * 0.5f) * aspectRatio);
+                }
+
+                for (size_t n = 0; n < gltfModel.nodes.size(); ++n)
+                {
+                        if (gltfModel.nodes[n].camera == camIndex)
+                        {
+                                glm::mat4 m = GetNodeMatrix(gltfModel.nodes[n]);
+                                glm::vec4 t = m * glm::vec4(0, 0, 0, 1);
+                                cameraPos = glm::vec3(t) / t.w;
+                                cameraForward = glm::normalize(glm::vec3(m * glm::vec4(0, 0, -1, 0)));
+                                cameraUp = glm::normalize(glm::vec3(m * glm::vec4(0, 1, 0, 0)));
+                                break;
+                        }
+                }
+
+        }
+        const uint32_t height = params.m_height;
+        const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
+
+
+        m_materials.Resize(gltfModel.materials.size());
+        for (size_t i = 0; i < gltfModel.materials.size(); ++i)
+        {
+                const auto& m = gltfModel.materials[i];
+                m_materials[i].m_baseColorFactor = m.pbrMetallicRoughness.baseColorFactor.size() == 4 ?
+                        glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::vec4(1.0f);
+                m_materials[i].m_metallicFactor = (float)m.pbrMetallicRoughness.metallicFactor;
+                m_materials[i].m_roughnessFactor = (float)m.pbrMetallicRoughness.roughnessFactor;
+                m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
+                        glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
+        }
+
+        m_triangles.Clear();
+        std::function<void(int, glm::mat4)> Visit = [&](int nodeId, glm::mat4 parent)
+        {
+                const auto& node = gltfModel.nodes[nodeId];
+                glm::mat4 m = parent * GetNodeMatrix(node);
+
+                if (node.mesh >= 0)
+                {
+                        const auto& mesh = gltfModel.meshes[node.mesh];
+                        for (const auto& prim : mesh.primitives)
+                        {
+                                const auto& posAcc = gltfModel.accessors[prim.attributes.find("POSITION")->second];
+                                const auto& posView = gltfModel.bufferViews[posAcc.bufferView];
+                                const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAcc.byteOffset]);
+
+                                const auto& normAcc = gltfModel.accessors[prim.attributes.find("NORMAL")->second];
+                                const auto& normView = gltfModel.bufferViews[normAcc.bufferView];
+                                const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAcc.byteOffset]);
+
+                                TVector<uint32_t> indices;
+                                if (prim.indices >= 0)
+                                {
+                                        const auto& indAcc = gltfModel.accessors[prim.indices];
+                                        const auto& indView = gltfModel.bufferViews[indAcc.bufferView];
+                                        if (indAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
+                                        {
+                                                const uint16_t* d = reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indView.buffer].data[indView.byteOffset + indAcc.byteOffset]);
+                                                for (size_t i = 0; i < indAcc.count; ++i) indices.Add((uint32_t)d[i]);
+                                        }
+                                        else
+                                        {
+                                                const uint32_t* d = reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indView.buffer].data[indView.byteOffset + indAcc.byteOffset]);
+                                                for (size_t i = 0; i < indAcc.count; ++i) indices.Add(d[i]);
+                                        }
+                                }
+                                else
+                                {
+                                        for (uint32_t i = 0; i < posAcc.count; ++i) indices.Add(i);
+                                }
+
+                                for (size_t i = 0; i + 2 < indices.Num(); i += 3)
+                                {
+                                        Triangle tri{};
+                                        for (int k = 0; k < 3; ++k)
+                                        {
+                                                uint32_t idx = indices[i + k];
+                                                glm::vec3 p = glm::make_vec3(posData + idx * 3);
+                                                glm::vec3 n = glm::make_vec3(normData + idx * 3);
+                                                glm::vec4 tp = m * glm::vec4(p, 1);
+                                                tri.m_vertices[k] = glm::vec3(tp) / tp.w;
+                                                tri.m_normals[k] = glm::normalize(glm::vec3(m * glm::vec4(n, 0)));
+                                                tri.m_uvs[k] = glm::vec2(0);
+                                        }
+                                        GenerateTangentBitangent(tri.m_tangent[0], tri.m_bitangent[0], tri.m_vertices, tri.m_uvs);
+                                        tri.m_tangent[1] = tri.m_tangent[0];
+                                        tri.m_tangent[2] = tri.m_tangent[0];
+                                        tri.m_bitangent[1] = tri.m_bitangent[0];
+                                        tri.m_bitangent[2] = tri.m_bitangent[0];
+                                        tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) / 3.0f;
+                                        tri.m_materialIndex = (u8)prim.material;
+                                        m_triangles.Add(tri);
+                                }
+                        }
+                }
+
+                for (int c : node.children) Visit(c, m);
+        };
+
+        int sceneIndex = gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0;
+        for (int n : gltfModel.scenes[sceneIndex].nodes) Visit(n, glm::mat4(1.0f));
 	BVH bvh((uint32_t)m_triangles.Num());
 	bvh.BuildBVH(m_triangles);
 
@@ -570,7 +453,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		MessageBoxA(0, msg, msg, 0);
 	}
 
-	::system(params.m_output.string().c_str());*/
+	::system(params.m_output.string().c_str());
 }
 
 vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const PathTracer::Params& params, float currentIor, uint32_t ignoreTriangle) const
