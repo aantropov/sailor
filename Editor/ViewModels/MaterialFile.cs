@@ -378,8 +378,6 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
     public object ReadYaml(IParser parser, Type type)
     {
         var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new FileIdYamlConverter())
-            .WithTypeConverter(new Vec4YamlConverter())
             .WithTypeConverter(new ObservableListConverter<Observable<FileId>>([new FileIdYamlConverter(), new ObservableObjectYamlConverter<FileId>()]))
             .WithTypeConverter(new ObservableListConverter<Uniform<FileId>>([new FileIdYamlConverter(), new UniformYamlConverter<FileId>()]))
             .WithTypeConverter(new ObservableListConverter<Uniform<Vec4>>([new Vec4YamlConverter(), new UniformYamlConverter<Vec4>()]))

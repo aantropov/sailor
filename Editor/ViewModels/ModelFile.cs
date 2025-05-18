@@ -90,11 +90,7 @@ public class ModelFileYamlConverter : IYamlTypeConverter
     public object ReadYaml(IParser parser, Type type)
     {
         var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new ObservableListConverter<Observable<FileId>>( 
-                 [
-                     new FileIdYamlConverter(),
-                     new ObservableObjectYamlConverter<FileId>(),
-                 ]))
+            .WithTypeConverter(new ObservableObjectYamlConverter<FileId>())
             .Build();
 
         var assetFile = new ModelFile();
