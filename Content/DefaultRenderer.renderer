@@ -154,6 +154,16 @@ frame:
 #  - EnvironmentMap: Textures/Environment.hdr
 ############################
 
+############################
+- name: VolumetricFog
+############################
+  float:
+  - stepSize: 0.1
+  vec4:
+  - fogColor: [0.7, 0.8, 1.0, 0]
+  renderTargets:
+  - target: Sky
+
 #############################
 #- name: PostProcess
 ############################
