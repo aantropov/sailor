@@ -5,7 +5,7 @@
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
 #include "Sailor.h"
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "VulkanDevice.h"
