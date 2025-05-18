@@ -13,7 +13,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 #include "Math/Math.h"
 #include "VulkanDevice.h"
 #include "VulkanApi.h"
@@ -34,7 +34,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanDescriptors.h"
 #include "VulkanPipileneStates.h"
 #include "Tasks/Scheduler.h"
-#include "Platform/Win32/Input.h"
+#include "Platform/Input.h"
 #include "Winuser.h"
 #include "Engine/EngineLoop.h"
 #include "Memory/MemoryBlockAllocator.hpp"
@@ -71,7 +71,7 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 	return VK_SAMPLE_COUNT_1_BIT;
 }
 
-VulkanDevice::VulkanDevice(Window* pViewport, RHI::EMsaaSamples requestMsaa)
+VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples requestMsaa)
 {
 	// Create Win32 surface
 	CreateWin32Surface(pViewport);
@@ -426,7 +426,7 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 	}
 }
 
-bool VulkanDevice::RecreateSwapchain(Window* pViewport)
+bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 {
 	if (pViewport->GetWidth() == 0 || pViewport->GetHeight() == 0)
 	{
@@ -646,7 +646,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	m_computeQueue = VulkanQueuePtr::Make(computeQueue, m_queueFamilies.m_computeFamily.value(), 0);
 }
 
-void VulkanDevice::CreateWin32Surface(const Window* viewport)
+void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)
 {
 	VkWin32SurfaceCreateInfoKHR createInfoWin32{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
 	createInfoWin32.hwnd = viewport->GetHWND();
@@ -657,7 +657,7 @@ void VulkanDevice::CreateWin32Surface(const Window* viewport)
 	m_surface = VulkanSurfacePtr::Make(surface, VulkanApi::GetVkInstance());
 }
 
-void VulkanDevice::CreateSwapchain(Window* pViewport)
+void VulkanDevice::CreateSwapchain(Platform::Window* pViewport)
 {
 	m_oldSwapchain = m_swapchain;
 
@@ -706,7 +706,7 @@ void VulkanDevice::WaitIdle()
 	vkDeviceWaitIdle(m_device);
 }
 
-bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
+bool VulkanDevice::ShouldFixLostDevice(const Platform::Window* pViewport)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -721,7 +721,7 @@ bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
 	return m_swapchain && (swapchainExtent.width != m_swapchain->GetExtent().width || swapchainExtent.height != m_swapchain->GetExtent().height);
 }
 
-void VulkanDevice::FixLostDevice(Win32::Window* pViewport)
+void VulkanDevice::FixLostDevice(Platform::Window* pViewport)
 {
 	RecreateSwapchain(pViewport);
 	m_bIsDeviceLost = false;

@@ -49,9 +49,9 @@ namespace Sailor
 	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 }
 
-namespace Sailor::Win32
+namespace Sailor::Platform
 {
-	class Window;
+       class Window;
 }
 
 namespace Sailor::RHI
@@ -60,7 +60,7 @@ namespace Sailor::RHI
 	{
 	public:
 
-		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
+               SAILOR_API virtual void Initialize(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) = 0;
 		SAILOR_API virtual ~IGraphicsDriver() = default;
 
 		SAILOR_API virtual void BeginConditionalDestroy() = 0;
@@ -70,8 +70,8 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual uint32_t GetNumSubmittedCommandBuffers() const = 0;
 
-		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport) = 0;
-		SAILOR_API virtual bool FixLostDevice(Win32::Window* pViewport) = 0;
+               SAILOR_API virtual bool ShouldFixLostDevice(const Platform::Window* pViewport) = 0;
+               SAILOR_API virtual bool FixLostDevice(Platform::Window* pViewport) = 0;
 
 		SAILOR_API virtual bool AcquireNextImage() = 0;
 		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,

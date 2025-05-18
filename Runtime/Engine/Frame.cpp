@@ -1,6 +1,6 @@
 #include "Frame.h"
 #include "Core/Defines.h"
-#include "Platform/Win32/Input.h"
+#include "Platform/Input.h"
 #include "Core/Utils.h"
 #include "RHI/Renderer.h"
 #include "RHI/Mesh.h"

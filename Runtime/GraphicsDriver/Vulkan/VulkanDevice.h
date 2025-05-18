@@ -10,13 +10,14 @@
 #include "VulkanMemory.h"
 #include "VulkanBufferMemory.h"
 #include "VulkanPipileneStates.h"
+#include "Platform/Window.h"
 
 using namespace Sailor;
 class FrameState;
 
-namespace Win32
+namespace Platform
 {
-	class Window;
+       class Window;
 }
 
 using namespace Sailor::Memory;
@@ -43,7 +44,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API operator VkDevice() const { return m_device; }
 
-		SAILOR_API VulkanDevice(Win32::Window* pViewport, RHI::EMsaaSamples requestMsaa);
+               SAILOR_API VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples requestMsaa);
 		SAILOR_API virtual ~VulkanDevice();
 
 		SAILOR_API void BeginConditionalDestroy();
@@ -74,8 +75,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 			TVector<VulkanSemaphorePtr> signalSemaphores = {},
 			TVector<VulkanSemaphorePtr> waitSemaphores = {});
 
-		SAILOR_API bool ShouldFixLostDevice(const Win32::Window* pViewport);
-		SAILOR_API void FixLostDevice(Win32::Window* pViewport);
+               SAILOR_API bool ShouldFixLostDevice(const Platform::Window* pViewport);
+               SAILOR_API void FixLostDevice(Platform::Window* pViewport);
 
 		SAILOR_API bool IsMultiDrawIndirectSupported() const { return m_bSupportsMultiDrawIndirect; };
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_physicalDeviceProperties.limits.maxSamplerAnisotropy; };
@@ -149,9 +150,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API TUniquePtr<ThreadContext> CreateThreadContext();
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
-		SAILOR_API void CreateWin32Surface(const Win32::Window* pViewport);
-		SAILOR_API void CreateSwapchain(Win32::Window* pViewport);
-		SAILOR_API bool RecreateSwapchain(Win32::Window* pViewport);
+               SAILOR_API void CreateWin32Surface(const Platform::Window* pViewport);
+               SAILOR_API void CreateSwapchain(Platform::Window* pViewport);
+               SAILOR_API bool RecreateSwapchain(Platform::Window* pViewport);
 		SAILOR_API void CreateDefaultRenderPass();
 		SAILOR_API void CreateFrameDependencies();
 		SAILOR_API void CreateFrameSyncSemaphores();

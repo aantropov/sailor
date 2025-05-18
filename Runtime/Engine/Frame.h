@@ -7,11 +7,11 @@
 #include "Memory/SharedPtr.hpp"
 #include "RHI/Renderer.h"
 #include "RHI/DebugContext.h"
-#include "Platform/Win32/Input.h"
+#include "Platform/Input.h"
 
 namespace Sailor
 {
-	using FrameInputState = Win32::InputState;
+       using FrameInputState = Platform::InputState;
 
 	class FrameState
 	{

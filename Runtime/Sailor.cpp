@@ -7,8 +7,8 @@
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
-#include "Platform/Win32/ConsoleWindow.h"
-#include "Platform/Win32/Input.h"
+#include "Platform/ConsoleWindow.h"
+#include "Platform/Input.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "Tasks/Scheduler.h"
 #include "RHI/Renderer.h"
@@ -105,12 +105,12 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	s_pInstance = new App();
 
-	Win32::ConsoleWindow::Initialize(false);
+       Platform::ConsoleWindow::Initialize(false);
 
-	if (params.m_bRunConsole)
-	{
-		Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
-	}
+       if (params.m_bRunConsole)
+       {
+               Platform::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
+       }
 
 	if (!params.m_workspace.empty())
 	{
@@ -131,7 +131,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	bEnableRenderValidationLayers = false;
 #endif
 
-	s_pInstance->m_pMainWindow = TUniquePtr<Win32::Window>::Make();
+       s_pInstance->m_pMainWindow = TUniquePtr<Platform::Window>::Make();
 
 	std::string className = "SailorEngine";
 	if (params.m_editorHwnd != 0)
@@ -236,10 +236,10 @@ void App::Start()
 		timer.Start();
 		trackEditor.Start();
 
-		Win32::ConsoleWindow::GetInstance()->Update();
+               Platform::ConsoleWindow::GetInstance()->Update();
 
 		char line[256];
-		if (Win32::ConsoleWindow::GetInstance()->Read(line, 256) != 0)
+               if (Platform::ConsoleWindow::GetInstance()->Read(line, 256) != 0)
 		{
 			std::string cmd = std::string(line);
 			Utils::Trim(cmd);
@@ -251,7 +251,7 @@ void App::Start()
 			}
 		}
 
-		Win32::Window::ProcessWin32Msgs();
+               Platform::Window::ProcessWin32Msgs();
 		renderer->FixLostDevice();
 
 		scheduler->ProcessTasksOnMainThread();
@@ -405,7 +405,7 @@ void App::Shutdown()
 	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<Tasks::Scheduler>();
 
-	Win32::ConsoleWindow::Shutdown();
+       Platform::ConsoleWindow::Shutdown();
 
 	// Remove all left submodules
 	for (auto& pSubmodule : s_pInstance->m_submodules)
@@ -420,7 +420,7 @@ void App::Shutdown()
 	s_pInstance = nullptr;
 }
 
-TUniquePtr<Sailor::Win32::Window>& App::GetMainWindow()
+TUniquePtr<Sailor::Platform::Window>& App::GetMainWindow()
 {
 	return s_pInstance->m_pMainWindow;
 }
