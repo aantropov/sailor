@@ -49,10 +49,8 @@ public partial class AssetFile : ObservableObject, ICloneable
         try
         {
             var yaml = File.ReadAllText(AssetInfo.FullName);
-            var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new AssetFileYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
             var intermediateObject = deserializer.Deserialize<AssetFile>(yaml);
@@ -103,8 +101,7 @@ public partial class AssetFile : ObservableObject, ICloneable
         using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
         using (var writer = new StreamWriter(yamlAssetInfo))
         {
-            var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var serializer = SerializationUtils.CreateSerializerBuilder()
                 .WithTypeConverter(converter)
                 .Build();
 
@@ -122,10 +119,8 @@ public class AssetFileYamlConverter : IYamlTypeConverter
 
     public object ReadYaml(IParser parser, Type type)
     {
-        var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new FileIdYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
         var assetFile = new AssetFile();
