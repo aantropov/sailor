@@ -83,8 +83,7 @@ public class UniformYamlConverter<T> : IYamlTypeConverter where T : IComparable<
 
     public object ReadYaml(IParser parser, Type type)
     {
-        var deserializerBuilder = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance);
+        var deserializerBuilder = SerializationUtils.CreateDeserializerBuilder();
 
         foreach (var valueConverter in valueConverters)
         {
@@ -103,8 +102,7 @@ public class UniformYamlConverter<T> : IYamlTypeConverter where T : IComparable<
     public void WriteYaml(IEmitter emitter, object value, Type type)
     {
         var uniform = (Uniform<T>)value;
-        var serializerBuilder = new SerializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance);
+        var serializerBuilder = SerializationUtils.CreateSerializerBuilder();
 
         foreach (var valueConverter in valueConverters)
         {
@@ -237,8 +235,7 @@ public partial class MaterialFile : AssetFile
         using (var yamlAsset = new FileStream(Asset.FullName, FileMode.Create))
         using (var writer = new StreamWriter(yamlAsset))
         {
-            var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var serializer = SerializationUtils.CreateSerializerBuilder()
                 .WithTypeConverter(new MaterialFileYamlConverter())
                 .Build();
 
@@ -256,10 +253,8 @@ public partial class MaterialFile : AssetFile
             // Asset Info
             var yamlAssetInfo = File.ReadAllText(AssetInfo.FullName);
 
-            var deserializerAssetInfo = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var deserializerAssetInfo = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new AssetFileYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
             var intermediateObjectAssetInfo = deserializerAssetInfo.Deserialize<AssetFile>(yamlAssetInfo);
@@ -269,10 +264,8 @@ public partial class MaterialFile : AssetFile
             // Asset
             var yamlAsset = File.ReadAllText(Asset.FullName);
 
-            var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new MaterialFileYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
             var intermediateObject = deserializer.Deserialize<MaterialFile>(yamlAsset);
@@ -384,8 +377,7 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
 
     public object ReadYaml(IParser parser, Type type)
     {
-        var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new FileIdYamlConverter())
             .WithTypeConverter(new Vec4YamlConverter())
             .WithTypeConverter(new ObservableListConverter<Observable<FileId>>([new FileIdYamlConverter(), new ObservableObjectYamlConverter<FileId>()]))
@@ -393,7 +385,6 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
             .WithTypeConverter(new ObservableListConverter<Uniform<Vec4>>([new Vec4YamlConverter(), new UniformYamlConverter<Vec4>()]))
             .WithTypeConverter(new ObservableListConverter<Uniform<float>>([new UniformYamlConverter<float>()]))
             .WithTypeConverter(new ObservableListConverter<Observable<string>>([new ObservableObjectYamlConverter<string>()]))
-            .IgnoreUnmatchedProperties()
             .Build();
 
         var assetFile = new MaterialFile();

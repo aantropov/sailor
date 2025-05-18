@@ -38,8 +38,7 @@ public partial class GameObject : ObservableObject, ICloneable
 
         using (var writer = new StringWriter())
         {
-            var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var serializer = SerializationUtils.CreateSerializerBuilder()
                 .WithTypeConverter(new InstanceIdYamlConverter())
                 .WithTypeConverter(new RotationYamlConverter())
                 .WithTypeConverter(new Vec4YamlConverter())

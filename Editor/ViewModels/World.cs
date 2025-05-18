@@ -27,10 +27,8 @@ public partial class World : AssetFile
         try
         {
             var yaml = File.ReadAllText(AssetInfo.FullName);
-            var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new WorldYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
             var intermediateObject = deserializer.Deserialize<World>(yaml);
@@ -71,10 +69,7 @@ public class WorldYamlConverter : IYamlTypeConverter
                 new ViewModels.ComponentYamlConverter()
             };
 
-        var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
-            .IgnoreUnmatchedProperties()
-            .IncludeNonPublicProperties()
+        var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new ObservableListConverter<Prefab>(
                 new IYamlTypeConverter[]{
                         new ObservableListConverter<GameObject>(commonConverters.ToArray()),
@@ -114,9 +109,7 @@ public class WorldYamlConverter : IYamlTypeConverter
                 new ViewModels.ComponentYamlConverter()
             };
 
-        var serializerBuilder = new SerializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
-            .IncludeNonPublicProperties()
+        var serializerBuilder = SerializationUtils.CreateSerializerBuilder()
             .WithTypeConverter(new ObservableListConverter<Prefab>(
                 new IYamlTypeConverter[]{
                         new ObservableListConverter<GameObject>(commonConverters.ToArray()),

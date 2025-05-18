@@ -176,10 +176,7 @@ namespace SailorEngine
 
         public static EngineTypes FromYaml(string yamlContent)
         {
-            var deserializer = new DeserializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .IgnoreUnmatchedProperties()
-                .Build();
+            var deserializer = SerializationUtils.CreateDeserializerBuilder().Build();
 
             var res = new EngineTypes();
 
@@ -577,27 +574,14 @@ namespace SailorEditor
 
         public object ReadYaml(IParser parser, Type type)
         {
-            var list = new List<float>();
-            parser.Consume<SequenceStart>();
-            while (parser.Current is SequenceEnd == false)
-            {
-                if (parser.Current is Scalar scalar)
-                {
-                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
-                }
-                parser.MoveNext();
-            }
-            parser.Consume<SequenceEnd>();
+            var list = YamlHelper.ParseFloatSequence(parser);
             return new Vec2 { X = list[0], Y = list[1] };
         }
 
         public void WriteYaml(IEmitter emitter, object value, Type type)
         {
             var vec = (Vec2)value;
-            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, vec.X.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.Y.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new SequenceEnd());
+            YamlHelper.EmitFloatSequence(emitter, new[] { vec.X, vec.Y });
         }
     }
 
@@ -607,28 +591,14 @@ namespace SailorEditor
 
         public object ReadYaml(IParser parser, Type type)
         {
-            var list = new List<float>();
-            parser.Consume<SequenceStart>();
-            while (parser.Current is SequenceEnd == false)
-            {
-                if (parser.Current is Scalar scalar)
-                {
-                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
-                }
-                parser.MoveNext();
-            }
-            parser.Consume<SequenceEnd>();
+            var list = YamlHelper.ParseFloatSequence(parser);
             return new Vec3 { X = list[0], Y = list[1], Z = list[2] };
         }
 
         public void WriteYaml(IEmitter emitter, object value, Type type)
         {
             var vec = (Vec3)value;
-            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, vec.X.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.Y.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.Z.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new SequenceEnd());
+            YamlHelper.EmitFloatSequence(emitter, new[] { vec.X, vec.Y, vec.Z });
         }
     }
 
@@ -638,30 +608,14 @@ namespace SailorEditor
 
         public object ReadYaml(IParser parser, Type type)
         {
-            var list = new List<float>();
-            parser.Consume<SequenceStart>();
-            while (parser.Current is SequenceEnd == false)
-            {
-                if (parser.Current is Scalar scalar)
-                {
-                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
-                }
-                parser.MoveNext();
-            }
-            parser.Consume<SequenceEnd>();
-
+            var list = YamlHelper.ParseFloatSequence(parser);
             return new Vec4 { X = list[0], Y = list[1], Z = list[2], W = list[3] };
         }
 
         public void WriteYaml(IEmitter emitter, object value, Type type)
         {
             var vec = (Vec4)value;
-            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, vec.X.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.Y.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.Z.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.W.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new SequenceEnd());
+            YamlHelper.EmitFloatSequence(emitter, new[] { vec.X, vec.Y, vec.Z, vec.W });
         }
     }
 
@@ -671,30 +625,14 @@ namespace SailorEditor
 
         public object ReadYaml(IParser parser, Type type)
         {
-            var list = new List<float>();
-            parser.Consume<SequenceStart>();
-            while (parser.Current is SequenceEnd == false)
-            {
-                if (parser.Current is Scalar scalar)
-                {
-                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
-                }
-                parser.MoveNext();
-            }
-            parser.Consume<SequenceEnd>();
-
+            var list = YamlHelper.ParseFloatSequence(parser);
             return new Quat { X = list[0], Y = list[1], Z = list[2], W = list[3] };
         }
 
         public void WriteYaml(IEmitter emitter, object value, Type type)
         {
             var vec = (Quat)value;
-            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, vec.X.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.Y.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.Z.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, vec.W.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new SequenceEnd());
+            YamlHelper.EmitFloatSequence(emitter, new[] { vec.X, vec.Y, vec.Z, vec.W });
         }
     }
 
@@ -704,30 +642,14 @@ namespace SailorEditor
 
         public object ReadYaml(IParser parser, Type type)
         {
-            var list = new List<float>();
-            parser.Consume<SequenceStart>();
-            while (parser.Current is SequenceEnd == false)
-            {
-                if (parser.Current is Scalar scalar)
-                {
-                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
-                }
-                parser.MoveNext();
-            }
-            parser.Consume<SequenceEnd>();
-
+            var list = YamlHelper.ParseFloatSequence(parser);
             return new Rotation(new Quat { X = list[0], Y = list[1], Z = list[2], W = list[3] });
         }
 
         public void WriteYaml(IEmitter emitter, object value, Type type)
         {
             var quat = ((Rotation)value).Quat;
-            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
-            emitter.Emit(new Scalar(null, quat.X.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, quat.Y.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, quat.Z.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new Scalar(null, quat.W.ToString(CultureInfo.InvariantCulture)));
-            emitter.Emit(new SequenceEnd());
+            YamlHelper.EmitFloatSequence(emitter, new[] { quat.X, quat.Y, quat.Z, quat.W });
         }
     }
 

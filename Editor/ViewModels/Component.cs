@@ -37,8 +37,7 @@ public partial class Component : ObservableObject, ICloneable
 
         using (var writer = new StringWriter())
         {
-            var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var serializer = SerializationUtils.CreateSerializerBuilder()
                 .WithTypeConverter(new ComponentYamlConverter())
                 .Build();
 
@@ -96,8 +95,7 @@ public class ComponentYamlConverter : IYamlTypeConverter
 
     public object ReadYaml(IParser parser, Type type)
     {
-        var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
             .WithTypeConverter(new ComponentTypeYamlConverter())
             .WithTypeConverter(new FileIdYamlConverter())
@@ -169,8 +167,7 @@ public class ComponentYamlConverter : IYamlTypeConverter
 
     public void WriteYaml(IEmitter emitter, object value, Type type)
     {
-        var serializer = new SerializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        var serializer = SerializationUtils.CreateSerializerBuilder()
             .WithTypeConverter(new Vec3YamlConverter())
             .WithTypeConverter(new Vec4YamlConverter())
             .WithTypeConverter(new FileIdYamlConverter())

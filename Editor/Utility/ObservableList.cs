@@ -81,10 +81,7 @@ namespace SailorEditor.Utility
 
         public object ReadYaml(IParser parser, Type type)
         {
-            var deserializerBuilder = new DeserializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .IgnoreUnmatchedProperties()
-                .IncludeNonPublicProperties();
+            var deserializerBuilder = SerializationUtils.CreateDeserializerBuilder();
 
             foreach (var valueConverter in valueConverters)
             {
@@ -115,8 +112,7 @@ namespace SailorEditor.Utility
         public void WriteYaml(IEmitter emitter, object value, Type type)
         {
             var list = (ObservableList<T>)value;
-            var serializerBuilder = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance);
+            var serializerBuilder = SerializationUtils.CreateSerializerBuilder();
 
             valueConverters.ForEach((el) => serializerBuilder.WithTypeConverter(el));
 

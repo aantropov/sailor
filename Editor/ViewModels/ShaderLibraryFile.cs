@@ -4,6 +4,7 @@ using YamlDotNet.Core.Events;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
+using SailorEditor.Utility;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SailorEditor.ViewModels;
@@ -30,10 +31,8 @@ public class ShaderLibraryFileYamlConverter : IYamlTypeConverter
 
     public object ReadYaml(IParser parser, Type type)
     {
-        var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new FileIdYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
         var assetFile = new ShaderLibraryFile();

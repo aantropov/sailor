@@ -38,10 +38,8 @@ namespace SailorEditor.Services
 
         public async void PopulateWorld(string yaml)
         {
-            var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new WorldYamlConverter())
-            .IncludeNonPublicProperties()
             .Build();
 
             var world = deserializer.Deserialize<World>(yaml);
@@ -112,10 +110,9 @@ namespace SailorEditor.Services
 
             using (var writer = new StringWriter())
             {
-                var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                var serializer = SerializationUtils.CreateSerializerBuilder()
                 .WithTypeConverter(new WorldYamlConverter())
-                .IncludeNonPublicProperties().Build();
+                .Build();
 
                 var yaml = serializer.Serialize(Current);
                 writer.Write(yaml);

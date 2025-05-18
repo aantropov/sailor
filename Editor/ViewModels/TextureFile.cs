@@ -78,10 +78,8 @@ public partial class TextureFile : AssetFile
         try
         {
             var yaml = File.ReadAllText(AssetInfo.FullName);
-            var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new TextureFileYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
             var intermediateObject = deserializer.Deserialize<TextureFile>(yaml);
@@ -114,10 +112,8 @@ public class TextureFileYamlConverter : IYamlTypeConverter
 
     public object ReadYaml(IParser parser, Type type)
     {
-        var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new FileIdYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
         var textureFile = new TextureFile();

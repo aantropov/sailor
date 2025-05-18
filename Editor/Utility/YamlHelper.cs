@@ -2,6 +2,8 @@
 using YamlDotNet.Core.Events;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
+using System.Collections.Generic;
+using System.Globalization;
 using Window = Microsoft.Maui.Controls.Window;
 
 namespace SailorEditor.Helpers
@@ -33,6 +35,32 @@ namespace SailorEditor.Helpers
                     emitter.Emit(new SequenceEnd());
                     break;
             }
+        }
+
+        public static List<float> ParseFloatSequence(IParser parser)
+        {
+            var list = new List<float>();
+            parser.Consume<SequenceStart>();
+            while (parser.Current is not SequenceEnd)
+            {
+                if (parser.Current is Scalar scalar)
+                {
+                    list.Add(float.Parse(scalar.Value, CultureInfo.InvariantCulture.NumberFormat));
+                }
+                parser.MoveNext();
+            }
+            parser.Consume<SequenceEnd>();
+            return list;
+        }
+
+        public static void EmitFloatSequence(IEmitter emitter, IEnumerable<float> values)
+        {
+            emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+            foreach (var v in values)
+            {
+                emitter.Emit(new Scalar(null, v.ToString(CultureInfo.InvariantCulture)));
+            }
+            emitter.Emit(new SequenceEnd());
         }
     };
 }

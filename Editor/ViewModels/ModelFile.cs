@@ -54,10 +54,8 @@ public partial class ModelFile : AssetFile
         try
         {
             var yaml = File.ReadAllText(AssetInfo.FullName);
-            var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new ModelFileYamlConverter())
-            .IgnoreUnmatchedProperties()
             .Build();
 
             var intermediateObject = deserializer.Deserialize<ModelFile>(yaml);
@@ -91,14 +89,12 @@ public class ModelFileYamlConverter : IYamlTypeConverter
 
     public object ReadYaml(IParser parser, Type type)
     {
-        var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
-            .WithTypeConverter(new ObservableListConverter<Observable<FileId>>(
+        var deserializer = SerializationUtils.CreateDeserializerBuilder()
+            .WithTypeConverter(new ObservableListConverter<Observable<FileId>>( 
                  [
                      new FileIdYamlConverter(),
                      new ObservableObjectYamlConverter<FileId>(),
                  ]))
-            .IgnoreUnmatchedProperties()
             .Build();
 
         var assetFile = new ModelFile();
