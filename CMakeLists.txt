@@ -29,5 +29,12 @@ message("cxx Flags:" ${CMAKE_CXX_FLAGS})
 add_subdirectory(Exec)
 add_subdirectory(Lib)
 
+# Build the .NET MAUI editor
+add_custom_target(SailorEditor ALL
+    COMMAND dotnet build ${PROJECT_SOURCE_DIR}/Editor/SailorEditor.csproj -c ${CMAKE_BUILD_TYPE}
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/Editor
+    COMMENT "Building Sailor Editor")
+set_property(TARGET SailorEditor PROPERTY FOLDER "Editor")
+
 enable_testing()
 add_subdirectory(Tests)
