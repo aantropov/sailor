@@ -332,6 +332,22 @@ frame:
   - color: Main
   - depthSampler: DepthBuffer
   - colorSampler: Secondary
+
+############################
+- name: PostProcess
+############################
+  string:
+  - shader: Shaders/SSR.shader
+  - defines: ~
+  float:
+  - data.stepSize: 0.2
+  - data.maxSteps: 64
+  - data.thickness: 0.1
+  - data.intensity: 0.9
+  renderTargets:
+  - color: Main
+  - depthSampler: DepthBuffer
+  - colorSampler: Main
   
 #############################
 #- name: Blit

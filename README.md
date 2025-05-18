@@ -32,7 +32,7 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 
 ## Features
 
-- **Rendering:** Bindless Renderer, Frame Graph, Forward+ Lighting, PBR, Raymarching, CPU-based Path Tracing.
+- **Rendering:** Bindless Renderer, Frame Graph, Forward+ Lighting, PBR, Raymarching, Screen-space reflections, CPU-based Path Tracing.
 - **Core:** Multithreading, custom memory allocators.
 - **Editor:** Built with `.NET MAUI`.
 - **Engine:** Built with `C++20` (`MSVC` and `clang`).
