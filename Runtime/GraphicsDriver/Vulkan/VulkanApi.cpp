@@ -5,7 +5,7 @@
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
 #include "Sailor.h"
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "VulkanDevice.h"
@@ -28,7 +28,6 @@
 #include "VulkanDescriptors.h"
 
 using namespace Sailor;
-using namespace Sailor::Win32;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 

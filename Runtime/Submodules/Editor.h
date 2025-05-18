@@ -3,19 +3,16 @@
 #include <yaml-cpp/yaml.h>
 #include <concurrent_queue.h>
 #include <wtypes.h>
+#include "Platform/Window.h"
 
 namespace Sailor
 {
-	namespace Win32 
-	{
-		class Window;
-	}
 
 	class Editor : public TSubmodule<Editor>
 	{
 	public:
 
-		Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
+               Editor(HWND editorHwnd, uint32_t editorPort, Platform::Window* pMainWindow);
 
 		void SetWorld(class World* world) { m_world = world; }
 
@@ -42,7 +39,7 @@ namespace Sailor
 		uint32_t m_editorPort;
 		HWND m_editorHwnd;
 
-		class Win32::Window* m_pMainWindow = nullptr;
+               class Platform::Window* m_pMainWindow = nullptr;
 
 		class World* m_world;
 	};

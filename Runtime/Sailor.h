@@ -6,7 +6,7 @@
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
 #include "Memory/UniquePtr.hpp"
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 #include "Containers/Containers.h"
 #include "Math/Math.h"
 
@@ -74,13 +74,13 @@ namespace Sailor
 			s_pInstance->m_submodules[TSubmodule<T>::GetTypeId()].Clear();
 		}
 
-		static TUniquePtr<Win32::Window>& GetMainWindow();
+               static TUniquePtr<Platform::Window>& GetMainWindow();
 		static const char* GetApplicationName() { return "SailorEngine"; }
 		static const char* GetEngineName() { return "SailorEngine"; }
 
 	protected:
 
-		TUniquePtr<Win32::Window> m_pMainWindow;
+               TUniquePtr<Platform::Window> m_pMainWindow;
 
 	private:
 

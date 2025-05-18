@@ -16,10 +16,10 @@
 
 namespace Sailor
 {
-	namespace Win32
-	{
-		class Window;
-	}
+        namespace Platform
+        {
+                class Window;
+        }
 
 	class FrameState;
 	namespace Memory
@@ -28,7 +28,6 @@ namespace Sailor
 	}
 }
 
-using namespace Sailor::Win32;
 using namespace Sailor;
 using namespace Sailor::Memory;
 

@@ -12,11 +12,11 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
-#include "Platform/Win32/Window.h"
+#include "Platform/Window.h"
 
 using namespace Sailor;
 
-Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMainWindow) :
+Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Platform::Window* pMainWindow) :
 	m_editorPort(editorPort),
 	m_editorHwnd(editorHwnd),
 	m_pMainWindow(pMainWindow)

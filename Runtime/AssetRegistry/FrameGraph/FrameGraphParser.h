@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include <string>
+#include <algorithm>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
 #include "RHI/Types.h"

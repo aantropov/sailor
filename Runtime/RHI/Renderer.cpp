@@ -12,6 +12,7 @@
 #include "Tasks/Scheduler.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
+#include "Platform/Window.h"
 #include "Components/TestComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Engine/World.h"
@@ -52,7 +53,7 @@ bool IDelayedInitialization::IsReady() const
 	return m_dependencies.Num() == 0;
 }
 
-Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
+Renderer::Renderer(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
 	m_pViewport = pViewport;
 	m_msaaSamples = msaaSamples;

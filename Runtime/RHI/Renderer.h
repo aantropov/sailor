@@ -16,6 +16,7 @@
 #include "Tasks/Scheduler.h"
 #include "GraphicsDriver.h"
 #include "SceneView.h"
+#include "Platform/Window.h"
 
 namespace Sailor
 {
@@ -33,7 +34,7 @@ namespace Sailor::RHI
 
 		static constexpr uint32_t MaxFramesInQueue = 2;
 
-		SAILOR_API Renderer(class Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+               SAILOR_API Renderer(class Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API ~Renderer() override;
 
 		SAILOR_API RHI::EMsaaSamples GetMsaaSamples() const { return m_msaaSamples; }
@@ -67,7 +68,7 @@ namespace Sailor::RHI
 
 		RHI::Stats m_stats{};
 
-		class Win32::Window* m_pViewport;
+               class Platform::Window* m_pViewport;
 
 		FrameGraphPtr m_frameGraph{};
 		TConcurrentMap<WorldPtr, TList<TPair<RHISceneViewPtr,bool>>, 4, ERehashPolicy::Never> m_cachedSceneViews{};
