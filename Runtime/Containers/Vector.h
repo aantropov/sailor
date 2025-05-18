@@ -419,7 +419,7 @@ namespace Sailor
 			m_arrayNum += count;
 		}
 
-		__forceinline bool IsValidIndex(size_t index) const { return 0 < index && index < m_arrayNum; }
+               __forceinline bool IsValidIndex(size_t index) const { return index < m_arrayNum; }
 
 		__forceinline size_t Num() const { return m_arrayNum; }
 		__forceinline size_t Capacity() const { return m_capacity; }
