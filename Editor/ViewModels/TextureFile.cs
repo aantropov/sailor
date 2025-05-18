@@ -113,7 +113,6 @@ public class TextureFileYamlConverter : IYamlTypeConverter
     public object ReadYaml(IParser parser, Type type)
     {
         var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new FileIdYamlConverter())
             .Build();
 
         var textureFile = new TextureFile();
