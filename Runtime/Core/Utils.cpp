@@ -9,8 +9,8 @@
 #include <ntverp.h>
 #endif
 
-#include <algorithm> 
-#include <functional> 
+#include <algorithm>
+#include <functional>
 #include <cctype>
 
 #include <sstream>

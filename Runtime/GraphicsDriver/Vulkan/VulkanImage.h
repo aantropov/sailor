@@ -32,18 +32,18 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkSharingMode m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		TVector<uint32_t> m_queueFamilyIndices;
 		VkImageLayout m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-               VkImageLayout m_defaultLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			VkImageLayout m_defaultLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-               // External memory support
-               bool m_useExternalMemory = false;
-               VkExternalMemoryHandleTypeFlagBits m_externalHandleType = (VkExternalMemoryHandleTypeFlagBits)0;
+			// External memory support
+			bool m_useExternalMemory = false;
+			VkExternalMemoryHandleTypeFlagBits m_externalHandleType = (VkExternalMemoryHandleTypeFlagBits)0;
 
-               SAILOR_API void EnableExternalMemory(VkExternalMemoryHandleTypeFlagBits handleType)
-               {
-                       m_useExternalMemory = true;
-                       m_externalHandleType = handleType;
-               }
-               SAILOR_API bool IsExternalMemoryEnabled() const { return m_useExternalMemory; }
+			SAILOR_API void EnableExternalMemory(VkExternalMemoryHandleTypeFlagBits handleType)
+			{
+			m_useExternalMemory = true;
+			m_externalHandleType = handleType;
+			}
+			SAILOR_API bool IsExternalMemoryEnabled() const { return m_useExternalMemory; }
 
 		SAILOR_API operator VkImage() const { return m_image; }
 

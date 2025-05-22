@@ -71,19 +71,19 @@ void VulkanImage::Compile()
 		return;
 	}
 
-       VkImageCreateInfo info = {};
-       info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-       VkExternalMemoryImageCreateInfo externalInfo{};
-       if (m_useExternalMemory)
-       {
-               externalInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-               externalInfo.handleTypes = m_externalHandleType;
-               info.pNext = &externalInfo;
-       }
-       else
-       {
-               info.pNext = nullptr;
-       }
+	VkImageCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	VkExternalMemoryImageCreateInfo externalInfo{};
+	if (m_useExternalMemory)
+	{
+			externalInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+			externalInfo.handleTypes = m_externalHandleType;
+			info.pNext = &externalInfo;
+	}
+	else
+	{
+			info.pNext = nullptr;
+	}
 	info.flags = m_flags;
 	info.imageType = m_imageType;
 	info.extent = m_extent;

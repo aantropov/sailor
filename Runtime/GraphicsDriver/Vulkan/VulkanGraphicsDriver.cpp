@@ -53,7 +53,7 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_SHARING_MODE_EXCLUSIVE,
-               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	auto defaultCubemap = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1,
 		VK_IMAGE_TYPE_2D,
@@ -61,7 +61,7 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_SHARING_MODE_EXCLUSIVE,
-               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
 		6);
 
@@ -490,10 +490,10 @@ void VulkanGraphicsDriver::EndDebugRegion(RHI::RHICommandListPtr cmdList)
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
-        const void* pData,
-        size_t size,
-        glm::ivec3 extent,
-        uint32_t mipLevels,
+		const void* pData,
+		size_t size,
+		glm::ivec3 extent,
+		uint32_t mipLevels,
 	RHI::ETextureType type,
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
@@ -535,41 +535,41 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 		arrayLayers);
 
 	res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, res->m_vulkan.m_image);
-        res->m_vulkan.m_imageView->Compile();
+		res->m_vulkan.m_imageView->Compile();
 
-        return res;
+		return res;
 }
 
 void* VulkanGraphicsDriver::ExportImage(RHI::RHITexturePtr image)
 {
-        if (!image || !image->m_vulkan.m_image)
-        {
-                return nullptr;
-        }
+		if (!image || !image->m_vulkan.m_image)
+		{
+			return nullptr;
+		}
 
-        auto device = m_vkInstance->GetMainDevice();
-        return VulkanApi::ExportImage(device, image->m_vulkan.m_image);
+		auto device = m_vkInstance->GetMainDevice();
+		return VulkanApi::ExportImage(device, image->m_vulkan.m_image);
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::ImportImage(void* handle,
-        glm::ivec3 extent,
-        RHI::ETextureFormat format,
-        RHI::ETextureUsageFlags usage,
-        RHI::EImageLayout layout)
+		glm::ivec3 extent,
+		RHI::ETextureFormat format,
+		RHI::ETextureUsageFlags usage,
+		RHI::EImageLayout layout)
 {
-        auto device = m_vkInstance->GetMainDevice();
+		auto device = m_vkInstance->GetMainDevice();
 
-        VkExtent3D vkExtent{ (uint32_t)extent.x, (uint32_t)extent.y, (uint32_t)extent.z };
-        auto vkImage = VulkanApi::ImportImage(device, handle, vkExtent, (VkFormat)format,
-                (VkImageUsageFlags)usage, (VkImageLayout)layout);
+		VkExtent3D vkExtent{ (uint32_t)extent.x, (uint32_t)extent.y, (uint32_t)extent.z };
+		auto vkImage = VulkanApi::ImportImage(device, handle, vkExtent, (VkFormat)format,
+			(VkImageUsageFlags)usage, (VkImageLayout)layout);
 
-        RHI::RHITexturePtr result = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear,
-                RHI::ETextureClamping::Clamp, false, layout);
-        result->m_vulkan.m_image = vkImage;
-        result->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, vkImage);
-        result->m_vulkan.m_imageView->Compile();
+		RHI::RHITexturePtr result = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear,
+			RHI::ETextureClamping::Clamp, false, layout);
+		result->m_vulkan.m_image = vkImage;
+		result->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, vkImage);
+		result->m_vulkan.m_imageView->Compile();
 
-        return result;
+		return result;
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
@@ -1008,7 +1008,7 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 	VkDescriptorSet handleSet = *bindings->m_vulkan.m_descriptorSet;
 	static uint32_t s_debugIterator = 0;
 	m_vkInstance->GetMainDevice()->SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_SET, (uint64_t)handleSet, std::format("ShaderBinding's Descriptor Set {}", s_debugIterator++));
-#endif 
+#endif
 }
 
 RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader)
@@ -1219,7 +1219,7 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetMaterialSsboAllocato
 {
 	if (!m_materialSsboAllocator)
 	{
-		// 8 mb should be enough to store all material data, 
+		// 8 mb should be enough to store all material data,
 		// pessimistically ~256b per material instance, ~32000 materials per world
 		const size_t StorageBufferBlockSize = 8 * 1024 * 1024u;
 
@@ -2461,7 +2461,7 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 							return lhs.binding == layout.m_binding && (layout.IsImage() == bIsImage); })
 						)
 					{
-						// We don't add extra bindings 
+						// We don't add extra bindings
 						continue;
 					}
 

@@ -192,25 +192,25 @@ namespace Sailor::RHI
 		SAILOR_API virtual void CopyBuffer_Immediate(RHIBufferPtr src, RHIBufferPtr dst, size_t size) = 0;
 		SAILOR_API virtual void SubmitCommandList_Immediate(RHICommandListPtr commandList);
 
-                SAILOR_API virtual RHITexturePtr CreateImage_Immediate(
-                        const void* pData,
-                        size_t size,
-                        glm::ivec3 extent,
-                        uint32_t mipLevels = 1,
-                        ETextureType type = ETextureType::Texture2D,
-                        ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
-                        ETextureFiltration filtration = ETextureFiltration::Linear,
-                        ETextureClamping clamping = ETextureClamping::Clamp,
-                        ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
+			SAILOR_API virtual RHITexturePtr CreateImage_Immediate(
+			const void* pData,
+			size_t size,
+			glm::ivec3 extent,
+			uint32_t mipLevels = 1,
+			ETextureType type = ETextureType::Texture2D,
+			ETextureFormat format = ETextureFormat::R8G8B8A8_SRGB,
+			ETextureFiltration filtration = ETextureFiltration::Linear,
+			ETextureClamping clamping = ETextureClamping::Clamp,
+			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 
-                // External memory support
-                SAILOR_API virtual void* ExportImage(RHITexturePtr image) = 0;
-                SAILOR_API virtual RHITexturePtr ImportImage(void* handle,
-                        glm::ivec3 extent,
-                        ETextureFormat format,
-                        ETextureUsageFlags usage,
-                        EImageLayout layout = EImageLayout::ShaderReadOnlyOptimal) = 0;
-                //Immediate context
+			// External memory support
+			SAILOR_API virtual void* ExportImage(RHITexturePtr image) = 0;
+			SAILOR_API virtual RHITexturePtr ImportImage(void* handle,
+			glm::ivec3 extent,
+			ETextureFormat format,
+			ETextureUsageFlags usage,
+			EImageLayout layout = EImageLayout::ShaderReadOnlyOptimal) = 0;
+			//Immediate context
 
 		SAILOR_API virtual void CollectGarbage_RenderThread() = 0;
 		SAILOR_API void TrackResources_ThreadSafe();
@@ -337,7 +337,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual void CopyBufferToImage(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr src, RHI::RHITexturePtr dst) = 0;
 		SAILOR_API virtual void CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHIBufferPtr dst) = 0;
 
-		// Used for variables inside uniform buffer 
+		// Used for variables inside uniform buffer
 		// 'customData.color' would be parsed as 'customData' buffer with 'color' variable
 		template<typename TDataType>
 		void SetMaterialParameter(RHICommandListPtr cmd, RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, const TDataType& value)

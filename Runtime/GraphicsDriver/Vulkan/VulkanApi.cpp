@@ -320,13 +320,13 @@ VulkanQueueFamilyIndices VulkanApi::FindQueueFamilies(VkPhysicalDevice device, V
 			indices.m_computeFamily = i;
 		}
 
-		// Get queue that is shared 
+		// Get queue that is shared
 		if (!indices.m_computeFamily.has_value() && (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT))
 		{
 			indices.m_computeFamily = i;
 		}
 
-		// Get queue that is shared 
+		// Get queue that is shared
 		if (!indices.m_transferFamily.has_value() && (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT))
 		{
 			indices.m_transferFamily = i;
@@ -1025,10 +1025,10 @@ VulkanImagePtr VulkanApi::CreateImage(
 }
 
 VulkanImagePtr VulkanApi::CreateImage_Immediate(
-        VulkanDevicePtr device,
-        const void* pData,
-        VkDeviceSize size,
-        VkExtent3D extent,
+		VulkanDevicePtr device,
+		const void* pData,
+		VkDeviceSize size,
+		VkExtent3D extent,
 	uint32_t mipLevels,
 	VkImageType type,
 	VkFormat format,
@@ -1048,85 +1048,85 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 
 	auto fence = VulkanFencePtr::Make(device);
 	device->SubmitCommandBuffer(cmdBuffer, fence);
-        fence->Wait();
+		fence->Wait();
 
-        return res;
+		return res;
 }
 
 #ifdef _WIN32
 void* VulkanApi::ExportImage(VulkanDevicePtr device, VulkanImagePtr image, VkExternalMemoryHandleTypeFlagBits handleType)
 {
-        auto vkGetMemoryWin32HandleKHR = (PFN_vkGetMemoryWin32HandleKHR)vkGetDeviceProcAddr(*device, "vkGetMemoryWin32HandleKHR");
-        if (!vkGetMemoryWin32HandleKHR)
-        {
-                return nullptr;
-        }
+		auto vkGetMemoryWin32HandleKHR = (PFN_vkGetMemoryWin32HandleKHR)vkGetDeviceProcAddr(*device, "vkGetMemoryWin32HandleKHR");
+		if (!vkGetMemoryWin32HandleKHR)
+		{
+			return nullptr;
+		}
 
-        VkMemoryGetWin32HandleInfoKHR handleInfo{};
-        handleInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
-        handleInfo.handleType = handleType;
-        handleInfo.memory = *image->GetMemoryDevice();
+		VkMemoryGetWin32HandleInfoKHR handleInfo{};
+		handleInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
+		handleInfo.handleType = handleType;
+		handleInfo.memory = *image->GetMemoryDevice();
 
-        HANDLE handle = nullptr;
-        if (vkGetMemoryWin32HandleKHR(*device, &handleInfo, &handle) != VK_SUCCESS)
-        {
-                return nullptr;
-        }
-        return handle;
+		HANDLE handle = nullptr;
+		if (vkGetMemoryWin32HandleKHR(*device, &handleInfo, &handle) != VK_SUCCESS)
+		{
+			return nullptr;
+		}
+		return handle;
 }
 #else
 void* VulkanApi::ExportImage(VulkanDevicePtr /*device*/, VulkanImagePtr /*image*/, VkExternalMemoryHandleTypeFlagBits /*handleType*/)
 {
-    return nullptr;
+	return nullptr;
 }
 #endif
 
 #ifdef _WIN32
 VulkanImagePtr VulkanApi::ImportImage(VulkanDevicePtr device,
-        void* handle,
-        VkExtent3D extent,
-        VkFormat format,
-        VkImageUsageFlags usage,
-        VkImageLayout defaultLayout,
-        VkImageCreateFlags flags,
-        uint32_t arrayLayers,
-        VkSampleCountFlagBits sampleCount)
+		void* handle,
+		VkExtent3D extent,
+		VkFormat format,
+		VkImageUsageFlags usage,
+		VkImageLayout defaultLayout,
+		VkImageCreateFlags flags,
+		uint32_t arrayLayers,
+		VkSampleCountFlagBits sampleCount)
 {
-        VulkanImagePtr outImage = new VulkanImage(device);
-        outImage->EnableExternalMemory(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
-        outImage->m_extent = extent;
-        outImage->m_imageType = VK_IMAGE_TYPE_2D;
-        outImage->m_format = format;
-        outImage->m_tiling = VK_IMAGE_TILING_OPTIMAL;
-        outImage->m_usage = usage;
-        outImage->m_mipLevels = 1;
-        outImage->m_samples = sampleCount;
-        outImage->m_arrayLayers = arrayLayers;
-        outImage->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        outImage->m_defaultLayout = defaultLayout;
-        outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        outImage->m_flags = flags;
+		VulkanImagePtr outImage = new VulkanImage(device);
+		outImage->EnableExternalMemory(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
+		outImage->m_extent = extent;
+		outImage->m_imageType = VK_IMAGE_TYPE_2D;
+		outImage->m_format = format;
+		outImage->m_tiling = VK_IMAGE_TILING_OPTIMAL;
+		outImage->m_usage = usage;
+		outImage->m_mipLevels = 1;
+		outImage->m_samples = sampleCount;
+		outImage->m_arrayLayers = arrayLayers;
+		outImage->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		outImage->m_defaultLayout = defaultLayout;
+		outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		outImage->m_flags = flags;
 
-        outImage->Compile();
+		outImage->Compile();
 
-        VkMemoryRequirements requirements = outImage->GetMemoryRequirements();
+		VkMemoryRequirements requirements = outImage->GetMemoryRequirements();
 
-        VkImportMemoryWin32HandleInfoKHR importInfo{};
-        importInfo.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
-        importInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
-        importInfo.handle = (HANDLE)handle;
+		VkImportMemoryWin32HandleInfoKHR importInfo{};
+		importInfo.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
+		importInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+		importInfo.handle = (HANDLE)handle;
 
-        auto memory = VulkanDeviceMemoryPtr::Make(device, requirements,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &importInfo);
+		auto memory = VulkanDeviceMemoryPtr::Make(device, requirements,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &importInfo);
 
-        outImage->Bind(memory, 0);
+		outImage->Bind(memory, 0);
 
-        return outImage;
+		return outImage;
 }
 #else
 VulkanImagePtr VulkanApi::ImportImage(VulkanDevicePtr /*device*/, void* /*handle*/, VkExtent3D /*extent*/, VkFormat /*format*/, VkImageUsageFlags /*usage*/, VkImageLayout /*defaultLayout*/, VkImageCreateFlags /*flags*/, uint32_t /*arrayLayers*/, VkSampleCountFlagBits /*sampleCount*/)
 {
-        return nullptr;
+		return nullptr;
 }
 #endif
 
