@@ -7,3 +7,5 @@ Dependencies are managed through vcpkg. Whenever you update the repository (for 
 The editor application is written in C# using .NET MAUI. Its source code lives in the `Editor` directory.
 
 For C++ code use tabs. For C# code use spaces.
+
+Use branch names only in English.
