@@ -9,6 +9,7 @@
 
     <ContentPage.MenuBarItems>
         <MenuBarItem Text = "File">
+            <MenuFlyoutItem Text="Create Game Project" Clicked="OnCreateGameProjectClicked" />
             <MenuFlyoutItem Text ="Save" ></MenuFlyoutItem>
             <MenuFlyoutSeparator/>
             <MenuFlyoutItem Text ="Exit"></MenuFlyoutItem>

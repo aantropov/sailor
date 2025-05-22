@@ -15,6 +15,11 @@ namespace SailorEditor
             InitializeComponent();
         }
 
+        private async void OnCreateGameProjectClicked(object sender, EventArgs e)
+        {
+            await Navigation.PushModalAsync(new Views.CreateGameProjectPage());
+        }
+
         private void ChangeTheme(string theme)
         {
             var mergedDictionaries = Application.Current.Resources.MergedDictionaries;

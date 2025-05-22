@@ -138,10 +138,13 @@
 	  <Compile Update="Views\InspectorView\TextureFileTemplate.xaml.cs">
 	    <DependentUpon>TextureFileTemplate.xaml</DependentUpon>
 	  </Compile>
-	  <Compile Update="Views\SceneView.xaml.cs">
-	    <DependentUpon>SceneView.xaml</DependentUpon>
-	  </Compile>
-	</ItemGroup>
+        <Compile Update="Views\SceneView.xaml.cs">
+            <DependentUpon>SceneView.xaml</DependentUpon>
+        </Compile>
+        <Compile Update="Views\CreateGameProjectPage.xaml.cs">
+          <DependentUpon>CreateGameProjectPage.xaml</DependentUpon>
+        </Compile>
+      </ItemGroup>
 
 	<ItemGroup>
 	  <MauiXaml Update="Controls\HorizontalGridSplitterControl.xaml">
@@ -202,10 +205,13 @@
 	  <MauiXaml Update="Views\InspectorView\AssetFileTemplate.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
-	  <MauiXaml Update="Views\SceneView.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </MauiXaml>
-	</ItemGroup>
+        <MauiXaml Update="Views\SceneView.xaml">
+            <Generator>MSBuild:Compile</Generator>
+        </MauiXaml>
+        <MauiXaml Update="Views\CreateGameProjectPage.xaml">
+            <Generator>MSBuild:Compile</Generator>
+        </MauiXaml>
+      </ItemGroup>
 
 	<ItemGroup>
 	  <PackageReference Update="Microsoft.Maui.Controls.Compatibility" Version="8.0.7" />
