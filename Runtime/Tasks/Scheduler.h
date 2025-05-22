@@ -134,6 +134,7 @@ namespace Sailor
 
 			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; }
 			SAILOR_API DWORD GetRendererThreadId() const { return m_renderingThreadId; }
+			SAILOR_API DWORD GetWorkerThreadId(uint32_t index) const;
 			SAILOR_API EThreadType GetCurrentThreadType() const;
 
 			SAILOR_API Scheduler();
@@ -143,6 +144,7 @@ namespace Sailor
 			SAILOR_API TaskSyncBlock& GetTaskSyncBlock(const ITask& task);
 			SAILOR_API uint16_t AcquireTaskSyncBlock();
 			SAILOR_API void ReleaseTaskSyncBlock(const ITask& task);
+			SAILOR_API void ReleaseTaskSyncBlock(uint16_t handle);
 
 		protected:
 

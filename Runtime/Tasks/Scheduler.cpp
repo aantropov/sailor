@@ -518,5 +518,19 @@ TaskSyncBlock& Scheduler::GetTaskSyncBlock(const ITask& task)
 
 void Scheduler::ReleaseTaskSyncBlock(const ITask& task)
 {
-	m_freeList.push(task.m_taskSyncBlockHandle);
+        m_freeList.push(task.m_taskSyncBlockHandle);
+}
+
+void Scheduler::ReleaseTaskSyncBlock(uint16_t handle)
+{
+        m_freeList.push(handle);
+}
+
+DWORD Scheduler::GetWorkerThreadId(uint32_t index) const
+{
+        if (index < m_workerThreads.Num())
+        {
+                return m_workerThreads[index]->GetThreadId();
+        }
+        return (DWORD)-1;
 }
