@@ -10,12 +10,6 @@
 
 #include <stb_image.h>
 
-#ifndef STB_IMAGE_WRITE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#define __STDC_LIB_EXT1__
-#include <stb_image_write.h>
-#endif 
-
 //#include "assimp/scene.h"
 //#include "assimp/postprocess.h"
 //#include "assimp/Importer.hpp"
