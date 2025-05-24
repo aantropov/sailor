@@ -8,10 +8,8 @@
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/matrix_transform_2d.hpp>
 
-#ifndef TINYGLTF_IMPLEMENTATION
-#define TINYGLTF_IMPLEMENTATION
 #include <tiny_gltf.h>
-#endif
+#include <stb_image_write.h>
 
 using namespace Sailor;
 using namespace Sailor::Math;
