@@ -1,5 +1,5 @@
 ﻿#include "PathTracer.h"
-#include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
 #include "Math/Math.h"
@@ -8,18 +8,6 @@
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/matrix_transform_2d.hpp>
 
-#include <stb_image.h>
-
-#ifndef STB_IMAGE_WRITE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#define __STDC_LIB_EXT1__
-#include <stb_image_write.h>
-#endif 
-
-//#include "assimp/scene.h"
-//#include "assimp/postprocess.h"
-//#include "assimp/Importer.hpp"
-//#include "assimp/DefaultLogger.hpp"
 #ifndef TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_IMPLEMENTATION
 #include <tiny_gltf.h>
@@ -76,193 +64,191 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 
 void PathTracer::Run(const PathTracer::Params& params)
 {
-        SAILOR_PROFILE_FUNCTION();
+	SAILOR_PROFILE_FUNCTION();
 
-        Utils::Timer raytracingTimer;
-        raytracingTimer.Start();
+	Utils::Timer raytracingTimer;
+	raytracingTimer.Start();
 
-        const uint32_t GroupSize = 32;
+	const uint32_t GroupSize = 32;
 
-        tinygltf::Model gltfModel;
-        tinygltf::TinyGLTF loader;
-        std::string err;
-        std::string warn;
+	tinygltf::Model gltfModel;
+	tinygltf::TinyGLTF loader;
+	std::string err;
+	std::string warn;
 
-        const bool bIsGlb = Utils::GetFileExtension(params.m_pathToModel.string().c_str()) == "glb";
-        const bool bGltfParsed = bIsGlb ?
-                loader.LoadBinaryFromFile(&gltfModel, &err, &warn, params.m_pathToModel.string()) :
-                loader.LoadASCIIFromFile(&gltfModel, &err, &warn, params.m_pathToModel.string());
+	const bool bIsGlb = Utils::GetFileExtension(params.m_pathToModel.string().c_str()) == "glb";
+	const bool bGltfParsed = bIsGlb ?
+		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, params.m_pathToModel.string()) :
+		loader.LoadASCIIFromFile(&gltfModel, &err, &warn, params.m_pathToModel.string());
 
-        if (!err.empty())
-        {
-                SAILOR_LOG_ERROR("Parsing gltf %s error: %s", params.m_pathToModel.string().c_str(), err.c_str());
-        }
+	if (!err.empty())
+	{
+		SAILOR_LOG_ERROR("Parsing gltf %s error: %s", params.m_pathToModel.string().c_str(), err.c_str());
+	}
 
-        if (!warn.empty())
-        {
-                SAILOR_LOG("Parsing gltf %s warning: %s", params.m_pathToModel.string().c_str(), warn.c_str());
-        }
+	if (!warn.empty())
+	{
+		SAILOR_LOG("Parsing gltf %s warning: %s", params.m_pathToModel.string().c_str(), warn.c_str());
+	}
 
-        if (!bGltfParsed)
-        {
-                return;
-        }
+	if (!bGltfParsed)
+	{
+		return;
+	}
 
+	auto GetNodeMatrix = [](const tinygltf::Node& node)
+		{
+			glm::mat4 res(1.0f);
+			if (!node.matrix.empty())
+			{
+				res = glm::make_mat4(node.matrix.data());
+			}
+			else
+			{
+				if (!node.translation.empty())
+				{
+					res = glm::translate(res, glm::vec3(node.translation[0], node.translation[1], node.translation[2]));
+				}
+				if (!node.rotation.empty())
+				{
+					glm::quat q((float)node.rotation[3], (float)node.rotation[0], (float)node.rotation[1], (float)node.rotation[2]);
+					res *= glm::mat4_cast(q);
+				}
+				if (!node.scale.empty())
+				{
+					res = glm::scale(res, glm::vec3(node.scale[0], node.scale[1], node.scale[2]));
+				}
+			}
+			return res;
+		};
+
+	// Parse camera
+	auto cameraPos = vec3(0, 0.75f, 5.0f);
+	auto cameraUp = normalize(vec3(0, 1, 0));
+	auto cameraForward = normalize(-cameraPos);
+	float aspectRatio = 4.0f / 3.0f;
+	float hFov = glm::radians(60.0f);
+	float vFov = hFov;
+	if (!gltfModel.cameras.empty())
+	{
+		int camIndex = 0;
+		for (size_t i = 0; i < gltfModel.cameras.size(); ++i)
+		{
+			if (!params.m_camera.empty() && params.m_camera == gltfModel.cameras[i].name)
+			{
+				camIndex = (int)i;
+				break;
+			}
+		}
+
+		const auto& cam = gltfModel.cameras[camIndex];
+		if (cam.type == "perspective")
+		{
+			vFov = (float)cam.perspective.yfov;
+			aspectRatio = cam.perspective.aspectRatio > 0 ? (float)cam.perspective.aspectRatio : aspectRatio;
+			hFov = 2.0f * atan(tan(vFov * 0.5f) * aspectRatio);
+		}
+
+		for (size_t n = 0; n < gltfModel.nodes.size(); ++n)
+		{
+			if (gltfModel.nodes[n].camera == camIndex)
+			{
+				glm::mat4 m = GetNodeMatrix(gltfModel.nodes[n]);
+				glm::vec4 t = m * glm::vec4(0, 0, 0, 1);
+				cameraPos = glm::vec3(t) / t.w;
+				cameraForward = glm::normalize(glm::vec3(m * glm::vec4(0, 0, -1, 0)));
+				cameraUp = glm::normalize(glm::vec3(m * glm::vec4(0, 1, 0, 0)));
+				break;
+			}
+		}
+
+	}
 	
+	const uint32_t height = params.m_height;
+	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
 
-        auto GetNodeMatrix = [](const tinygltf::Node& node)
-        {
-                glm::mat4 res(1.0f);
-                if (!node.matrix.empty())
-                {
-                        res = glm::make_mat4(node.matrix.data());
-                }
-                else
-                {
-                        if (!node.translation.empty())
-                        {
-                                res = glm::translate(res, glm::vec3(node.translation[0], node.translation[1], node.translation[2]));
-                        }
-                        if (!node.rotation.empty())
-                        {
-                                glm::quat q((float)node.rotation[3], (float)node.rotation[0], (float)node.rotation[1], (float)node.rotation[2]);
-                                res *= glm::mat4_cast(q);
-                        }
-                        if (!node.scale.empty())
-                        {
-                                res = glm::scale(res, glm::vec3(node.scale[0], node.scale[1], node.scale[2]));
-                        }
-                }
-                return res;
-        };
+	m_materials.Resize(gltfModel.materials.size());
+	for (size_t i = 0; i < gltfModel.materials.size(); ++i)
+	{
+		const auto& m = gltfModel.materials[i];
+		m_materials[i].m_baseColorFactor = m.pbrMetallicRoughness.baseColorFactor.size() == 4 ?
+			glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::dvec4(1.0f);
+		m_materials[i].m_metallicFactor = (float)m.pbrMetallicRoughness.metallicFactor;
+		m_materials[i].m_roughnessFactor = (float)m.pbrMetallicRoughness.roughnessFactor;
+		m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
+			glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
+	}
 
-        // Parse camera
-        auto cameraPos = vec3(0, 0.75f, 5.0f);
-        auto cameraUp = normalize(vec3(0, 1, 0));
-        auto cameraForward = normalize(-cameraPos);
-        float aspectRatio = 4.0f / 3.0f;
-        float hFov = glm::radians(60.0f);
-        float vFov = hFov;
-        if (!gltfModel.cameras.empty())
-        {
-                int camIndex = 0;
-                for (size_t i = 0; i < gltfModel.cameras.size(); ++i)
-                {
-                        if (!params.m_camera.empty() && params.m_camera == gltfModel.cameras[i].name)
-                        {
-                                camIndex = (int)i;
-                                break;
-                        }
-                }
+	m_triangles.Clear();
+	std::function<void(int, glm::mat4)> Visit = [&](int nodeId, glm::mat4 parent)
+		{
+			const auto& node = gltfModel.nodes[nodeId];
+			glm::mat4 m = parent * GetNodeMatrix(node);
 
-                const auto& cam = gltfModel.cameras[camIndex];
-                if (cam.type == "perspective")
-                {
-                        vFov = (float)cam.perspective.yfov;
-                        aspectRatio = cam.perspective.aspectRatio > 0 ? (float)cam.perspective.aspectRatio : aspectRatio;
-                        hFov = 2.0f * atan(tan(vFov * 0.5f) * aspectRatio);
-                }
+			if (node.mesh >= 0)
+			{
+				const auto& mesh = gltfModel.meshes[node.mesh];
+				for (const auto& prim : mesh.primitives)
+				{
+					const auto& posAcc = gltfModel.accessors[prim.attributes.find("POSITION")->second];
+					const auto& posView = gltfModel.bufferViews[posAcc.bufferView];
+					const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAcc.byteOffset]);
 
-                for (size_t n = 0; n < gltfModel.nodes.size(); ++n)
-                {
-                        if (gltfModel.nodes[n].camera == camIndex)
-                        {
-                                glm::mat4 m = GetNodeMatrix(gltfModel.nodes[n]);
-                                glm::vec4 t = m * glm::vec4(0, 0, 0, 1);
-                                cameraPos = glm::vec3(t) / t.w;
-                                cameraForward = glm::normalize(glm::vec3(m * glm::vec4(0, 0, -1, 0)));
-                                cameraUp = glm::normalize(glm::vec3(m * glm::vec4(0, 1, 0, 0)));
-                                break;
-                        }
-                }
+					const auto& normAcc = gltfModel.accessors[prim.attributes.find("NORMAL")->second];
+					const auto& normView = gltfModel.bufferViews[normAcc.bufferView];
+					const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAcc.byteOffset]);
 
-        }
-        const uint32_t height = params.m_height;
-        const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
+					TVector<uint32_t> indices;
+					if (prim.indices >= 0)
+					{
+						const auto& indAcc = gltfModel.accessors[prim.indices];
+						const auto& indView = gltfModel.bufferViews[indAcc.bufferView];
+						if (indAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
+						{
+							const uint16_t* d = reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indView.buffer].data[indView.byteOffset + indAcc.byteOffset]);
+							for (size_t i = 0; i < indAcc.count; ++i) indices.Add((uint32_t)d[i]);
+						}
+						else
+						{
+							const uint32_t* d = reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indView.buffer].data[indView.byteOffset + indAcc.byteOffset]);
+							for (size_t i = 0; i < indAcc.count; ++i) indices.Add(d[i]);
+						}
+					}
+					else
+					{
+						for (uint32_t i = 0; i < posAcc.count; ++i) indices.Add(i);
+					}
 
+					for (size_t i = 0; i + 2 < indices.Num(); i += 3)
+					{
+						Triangle tri{};
+						for (int k = 0; k < 3; ++k)
+						{
+							uint32_t idx = indices[i + k];
+							glm::vec3 p = glm::make_vec3(posData + idx * 3);
+							glm::vec3 n = glm::make_vec3(normData + idx * 3);
+							glm::vec4 tp = m * glm::vec4(p, 1);
+							tri.m_vertices[k] = glm::vec3(tp) / tp.w;
+							tri.m_normals[k] = glm::normalize(glm::vec3(m * glm::vec4(n, 0)));
+							tri.m_uvs[k] = glm::vec2(0);
+						}
+						GenerateTangentBitangent(tri.m_tangent[0], tri.m_bitangent[0], tri.m_vertices, tri.m_uvs);
+						tri.m_tangent[1] = tri.m_tangent[0];
+						tri.m_tangent[2] = tri.m_tangent[0];
+						tri.m_bitangent[1] = tri.m_bitangent[0];
+						tri.m_bitangent[2] = tri.m_bitangent[0];
+						tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) / 3.0f;
+						tri.m_materialIndex = (u8)prim.material;
+						m_triangles.Add(tri);
+					}
+				}
+			}
 
-        m_materials.Resize(gltfModel.materials.size());
-        for (size_t i = 0; i < gltfModel.materials.size(); ++i)
-        {
-                const auto& m = gltfModel.materials[i];
-                m_materials[i].m_baseColorFactor = m.pbrMetallicRoughness.baseColorFactor.size() == 4 ?
-                        glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::vec4(1.0f);
-                m_materials[i].m_metallicFactor = (float)m.pbrMetallicRoughness.metallicFactor;
-                m_materials[i].m_roughnessFactor = (float)m.pbrMetallicRoughness.roughnessFactor;
-                m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
-                        glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
-        }
+			for (int c : node.children) Visit(c, m);
+		};
 
-        m_triangles.Clear();
-        std::function<void(int, glm::mat4)> Visit = [&](int nodeId, glm::mat4 parent)
-        {
-                const auto& node = gltfModel.nodes[nodeId];
-                glm::mat4 m = parent * GetNodeMatrix(node);
-
-                if (node.mesh >= 0)
-                {
-                        const auto& mesh = gltfModel.meshes[node.mesh];
-                        for (const auto& prim : mesh.primitives)
-                        {
-                                const auto& posAcc = gltfModel.accessors[prim.attributes.find("POSITION")->second];
-                                const auto& posView = gltfModel.bufferViews[posAcc.bufferView];
-                                const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAcc.byteOffset]);
-
-                                const auto& normAcc = gltfModel.accessors[prim.attributes.find("NORMAL")->second];
-                                const auto& normView = gltfModel.bufferViews[normAcc.bufferView];
-                                const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAcc.byteOffset]);
-
-                                TVector<uint32_t> indices;
-                                if (prim.indices >= 0)
-                                {
-                                        const auto& indAcc = gltfModel.accessors[prim.indices];
-                                        const auto& indView = gltfModel.bufferViews[indAcc.bufferView];
-                                        if (indAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
-                                        {
-                                                const uint16_t* d = reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indView.buffer].data[indView.byteOffset + indAcc.byteOffset]);
-                                                for (size_t i = 0; i < indAcc.count; ++i) indices.Add((uint32_t)d[i]);
-                                        }
-                                        else
-                                        {
-                                                const uint32_t* d = reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indView.buffer].data[indView.byteOffset + indAcc.byteOffset]);
-                                                for (size_t i = 0; i < indAcc.count; ++i) indices.Add(d[i]);
-                                        }
-                                }
-                                else
-                                {
-                                        for (uint32_t i = 0; i < posAcc.count; ++i) indices.Add(i);
-                                }
-
-                                for (size_t i = 0; i + 2 < indices.Num(); i += 3)
-                                {
-                                        Triangle tri{};
-                                        for (int k = 0; k < 3; ++k)
-                                        {
-                                                uint32_t idx = indices[i + k];
-                                                glm::vec3 p = glm::make_vec3(posData + idx * 3);
-                                                glm::vec3 n = glm::make_vec3(normData + idx * 3);
-                                                glm::vec4 tp = m * glm::vec4(p, 1);
-                                                tri.m_vertices[k] = glm::vec3(tp) / tp.w;
-                                                tri.m_normals[k] = glm::normalize(glm::vec3(m * glm::vec4(n, 0)));
-                                                tri.m_uvs[k] = glm::vec2(0);
-                                        }
-                                        GenerateTangentBitangent(tri.m_tangent[0], tri.m_bitangent[0], tri.m_vertices, tri.m_uvs);
-                                        tri.m_tangent[1] = tri.m_tangent[0];
-                                        tri.m_tangent[2] = tri.m_tangent[0];
-                                        tri.m_bitangent[1] = tri.m_bitangent[0];
-                                        tri.m_bitangent[2] = tri.m_bitangent[0];
-                                        tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) / 3.0f;
-                                        tri.m_materialIndex = (u8)prim.material;
-                                        m_triangles.Add(tri);
-                                }
-                        }
-                }
-
-                for (int c : node.children) Visit(c, m);
-        };
-
-        int sceneIndex = gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0;
-        for (int n : gltfModel.scenes[sceneIndex].nodes) Visit(n, glm::mat4(1.0f));
+	int sceneIndex = gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0;
+	for (int n : gltfModel.scenes[sceneIndex].nodes) Visit(n, glm::mat4(1.0f));
 	BVH bvh((uint32_t)m_triangles.Num());
 	bvh.BuildBVH(m_triangles);
 
@@ -272,7 +258,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 	float h = tan(vFov / 2);
 	const float ViewportHeight = 2.0f * h;
 	const float ViewportWidth = aspectRatio * ViewportHeight;
-	
+
 	vec3 _u = normalize(cross(cameraUp, -cameraForward));
 	vec3 _v = cross(-cameraForward, _u);
 
@@ -301,7 +287,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		{
 			for (uint32_t x = 0; x < width; x += GroupSize)
 			{
-				auto task = Tasks::CreateTask("Calculate raytracing",
+				auto task = Sailor::Tasks::CreateTask("Calculate raytracing",
 					[=,
 					&finishedTasks,
 					&outputTex,
@@ -349,8 +335,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 								vec3 res = accumulator / (float)params.m_msaa;
 								outputTex.SetPixel(x + u, height - (y + v) - 1, res);
-								}
 							}
+						}
 
 						finishedTasks++;
 

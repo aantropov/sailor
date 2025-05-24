@@ -12,12 +12,16 @@
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 
+#ifndef TINYGLTF_IMPLEMENTATION
+#define TINYGLTF_IMPLEMENTATION
 #include <tiny_gltf.h>
+#endif
 
 #ifndef STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#define __STDC_LIB_EXT1__
 #include <stb_image.h>
 #endif
 
