@@ -132,9 +132,6 @@ void TestComponent::EndPlay()
 {
 }
 
-#include <stb_image.h>
-#include <stb_image_write.h>
-
 void TestComponent::Tick(float deltaTime)
 {
 	auto commands = App::GetSubmodule<Sailor::RHI::Renderer>()->GetDriverCommands();
@@ -362,11 +359,11 @@ void TestComponent::Tick(float deltaTime)
 				}
 
 				const uint32_t Channels = 3;
-				if (!stbi_write_png(bSave ? "screenshot.png" : "mask.png",
+				/*if (!stbi_write_png(bSave ? "screenshot.png" : "mask.png",
 					texture->GetExtent().x, texture->GetExtent().y, Channels, outSrgb.GetData(), texture->GetExtent().x * Channels))
 				{
 					SAILOR_LOG_ERROR("Cannot write screenshot");
-				}
+				}*/
 			}
 		}
 
