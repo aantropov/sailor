@@ -6,6 +6,9 @@
 #include <cassert>
 #include <iostream>
 #include <cstdint>
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 #include <vulkan/vulkan_core.h>
 #include "Sailor.h"
 #include "RHI/Types.h"

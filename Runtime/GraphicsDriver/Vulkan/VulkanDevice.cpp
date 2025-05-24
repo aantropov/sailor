@@ -6,6 +6,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "Containers/Vector.h"
 #include <optional>
 #include <wtypes.h>
+#include "VulkanApi.h"
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
 #include "AssetRegistry/AssetRegistry.h"
@@ -16,7 +17,6 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "Platform/Win32/Window.h"
 #include "Math/Math.h"
 #include "VulkanDevice.h"
-#include "VulkanApi.h"
 #include "VulkanRenderPass.h"
 #include "VulkanSwapchain.h"
 #include "VulkanCommandBuffer.h"
