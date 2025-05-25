@@ -75,8 +75,6 @@ namespace Sailor::Raytracing
 		template<typename T>
 		const T Sample(const vec2& uv) const
 		{
-			SAILOR_PROFILE_FUNCTION();
-
 			vec2 wrappedUV{};
 
 			switch (m_clamping)

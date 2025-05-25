@@ -128,8 +128,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 	float aspectRatio = 4.0f / 3.0f;
 	float hFov = glm::radians(60.0f);
 	float vFov = hFov;
-        if (!gltfModel.cameras.empty())
-        {
+	if (!gltfModel.cameras.empty())
+	{
 		int camIndex = 0;
 		for (size_t i = 0; i < gltfModel.cameras.size(); ++i)
 		{
@@ -161,122 +161,122 @@ void PathTracer::Run(const PathTracer::Params& params)
 			}
 		}
 
-        }
+	}
 
-        // Prepare texture usage flags
-        m_textures.Clear();
-        m_textures.Resize(gltfModel.textures.size());
-        TVector<bool> convertToLinear(gltfModel.textures.size(), false);
-        TVector<bool> isNormalMap(gltfModel.textures.size(), false);
+	// Prepare texture usage flags
+	m_textures.Clear();
+	m_textures.Resize(gltfModel.textures.size());
+	TVector<bool> convertToLinear(gltfModel.textures.size(), false);
+	TVector<bool> isNormalMap(gltfModel.textures.size(), false);
 
-        for (const auto& mat : gltfModel.materials)
-        {
-                if (mat.pbrMetallicRoughness.baseColorTexture.index >= 0)
-                        convertToLinear[mat.pbrMetallicRoughness.baseColorTexture.index] = true;
+	for (const auto& mat : gltfModel.materials)
+	{
+		if (mat.pbrMetallicRoughness.baseColorTexture.index >= 0)
+			convertToLinear[mat.pbrMetallicRoughness.baseColorTexture.index] = true;
 
-                if (mat.emissiveTexture.index >= 0)
-                        convertToLinear[mat.emissiveTexture.index] = true;
+		if (mat.emissiveTexture.index >= 0)
+			convertToLinear[mat.emissiveTexture.index] = true;
 
-                if (mat.normalTexture.index >= 0)
-                        isNormalMap[mat.normalTexture.index] = true;
-        }
+		if (mat.normalTexture.index >= 0)
+			isNormalMap[mat.normalTexture.index] = true;
+	}
 
-        std::filesystem::path sceneDir = params.m_pathToModel.parent_path();
+	std::filesystem::path sceneDir = params.m_pathToModel.parent_path();
 
-        for (size_t texId = 0; texId < gltfModel.textures.size(); ++texId)
-        {
-                const auto& gltfTex = gltfModel.textures[texId];
-                const auto& image = gltfModel.images[gltfTex.source];
+	for (size_t texId = 0; texId < gltfModel.textures.size(); ++texId)
+	{
+		const auto& gltfTex = gltfModel.textures[texId];
+		const auto& image = gltfModel.images[gltfTex.source];
 
-                auto texture = m_textures[texId] = TSharedPtr<CombinedSampler2D>::Make();
+		auto texture = m_textures[texId] = TSharedPtr<CombinedSampler2D>::Make();
 
-                SamplerClamping clamping = SamplerClamping::Clamp;
-                if (gltfTex.sampler >= 0)
-                {
-                        const auto& sampler = gltfModel.samplers[gltfTex.sampler];
-                        if (sampler.wrapS == TINYGLTF_TEXTURE_WRAP_REPEAT || sampler.wrapT == TINYGLTF_TEXTURE_WRAP_REPEAT)
-                        {
-                                clamping = SamplerClamping::Repeat;
-                        }
-                }
-                texture->m_clamping = clamping;
+		SamplerClamping clamping = SamplerClamping::Clamp;
+		if (gltfTex.sampler >= 0)
+		{
+			const auto& sampler = gltfModel.samplers[gltfTex.sampler];
+			if (sampler.wrapS == TINYGLTF_TEXTURE_WRAP_REPEAT || sampler.wrapT == TINYGLTF_TEXTURE_WRAP_REPEAT)
+			{
+				clamping = SamplerClamping::Repeat;
+			}
+		}
+		texture->m_clamping = clamping;
 
-                int width = 0;
-                int height = 0;
-                int channels = 0;
+		int32_t width = 0;
+		int32_t height = 0;
+		int32_t channels = 0;
 
-                bool hdr = false;
-                stbi_uc* pixelsU8 = nullptr;
-                float* pixelsF = nullptr;
+		bool hdr = false;
+		stbi_uc* pixelsU8 = nullptr;
+		float* pixelsF = nullptr;
 
-                if (!image.uri.empty())
-                {
-                        std::filesystem::path imgPath = sceneDir / image.uri;
-                        hdr = stbi_is_hdr(imgPath.string().c_str());
-                        if (hdr)
-                                pixelsF = stbi_loadf(imgPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
-                        else
-                                pixelsU8 = stbi_load(imgPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
-                }
-                else if (image.bufferView >= 0)
-                {
-                        const auto& view = gltfModel.bufferViews[image.bufferView];
-                        const auto& buffer = gltfModel.buffers[view.buffer];
-                        const unsigned char* data = buffer.data.data() + view.byteOffset;
-                        int length = view.byteLength;
-                        hdr = stbi_is_hdr_from_memory(data, length);
-                        if (hdr)
-                                pixelsF = stbi_loadf_from_memory(data, length, &width, &height, &channels, STBI_rgb_alpha);
-                        else
-                                pixelsU8 = stbi_load_from_memory(data, length, &width, &height, &channels, STBI_rgb_alpha);
-                }
+		if (!image.uri.empty())
+		{
+			std::filesystem::path imgPath = sceneDir / image.uri;
+			hdr = stbi_is_hdr(imgPath.string().c_str());
+			if (hdr)
+				pixelsF = stbi_loadf(imgPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+			else
+				pixelsU8 = stbi_load(imgPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+		}
+		else if (image.bufferView >= 0)
+		{
+			const auto& view = gltfModel.bufferViews[image.bufferView];
+			const auto& buffer = gltfModel.buffers[view.buffer];
+			const unsigned char* data = buffer.data.data() + view.byteOffset;
+			int32_t length = (int32_t)view.byteLength;
+			hdr = stbi_is_hdr_from_memory(data, length);
+			if (hdr)
+				pixelsF = stbi_loadf_from_memory(data, length, &width, &height, &channels, STBI_rgb_alpha);
+			else
+				pixelsU8 = stbi_load_from_memory(data, length, &width, &height, &channels, STBI_rgb_alpha);
+		}
 
-                texture->m_width = width;
-                texture->m_height = height;
-                texture->m_channels = 4;
+		texture->m_width = width;
+		texture->m_height = height;
+		texture->m_channels = 4;
 
-                if (hdr && pixelsF)
-                {
-                        texture->Initialize<vec4, vec4>((vec4*)pixelsF, convertToLinear[texId], isNormalMap[texId]);
-                        stbi_image_free(pixelsF);
-                }
-                else if (pixelsU8)
-                {
-                        texture->Initialize<vec4, u8vec4>((u8vec4*)pixelsU8, convertToLinear[texId], isNormalMap[texId]);
-                        stbi_image_free(pixelsU8);
-                }
-        }
+		if (hdr && pixelsF)
+		{
+			texture->Initialize<vec4, vec4>((vec4*)pixelsF, convertToLinear[texId], isNormalMap[texId]);
+			stbi_image_free(pixelsF);
+		}
+		else if (pixelsU8)
+		{
+			texture->Initialize<vec4, u8vec4>((u8vec4*)pixelsU8, convertToLinear[texId], isNormalMap[texId]);
+			stbi_image_free(pixelsU8);
+		}
+	}
 
-        const uint32_t height = params.m_height;
+	const uint32_t height = params.m_height;
 	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
 
-        m_materials.Resize(gltfModel.materials.size());
-        for (size_t i = 0; i < gltfModel.materials.size(); ++i)
-        {
-                const auto& m = gltfModel.materials[i];
+	m_materials.Resize(gltfModel.materials.size());
+	for (size_t i = 0; i < gltfModel.materials.size(); ++i)
+	{
+		const auto& m = gltfModel.materials[i];
 
-                m_materials[i].m_baseColorFactor = m.pbrMetallicRoughness.baseColorFactor.size() == 4 ?
-                        glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::dvec4(1.0f);
-                m_materials[i].m_metallicFactor = (float)m.pbrMetallicRoughness.metallicFactor;
-                m_materials[i].m_roughnessFactor = (float)m.pbrMetallicRoughness.roughnessFactor;
-                m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
-                        glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
+		m_materials[i].m_baseColorFactor = m.pbrMetallicRoughness.baseColorFactor.size() == 4 ?
+			glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::dvec4(1.0f);
+		m_materials[i].m_metallicFactor = (float)m.pbrMetallicRoughness.metallicFactor;
+		m_materials[i].m_roughnessFactor = (float)m.pbrMetallicRoughness.roughnessFactor;
+		m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
+			glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
 
-                m_materials[i].m_baseColorIndex = (u8)m.pbrMetallicRoughness.baseColorTexture.index;
-                m_materials[i].m_metallicRoughnessIndex = (u8)m.pbrMetallicRoughness.metallicRoughnessTexture.index;
-                m_materials[i].m_normalIndex = (u8)m.normalTexture.index;
-                m_materials[i].m_emissiveIndex = (u8)m.emissiveTexture.index;
-                m_materials[i].m_occlusionIndex = (u8)m.occlusionTexture.index;
+		m_materials[i].m_baseColorIndex = (u8)m.pbrMetallicRoughness.baseColorTexture.index;
+		m_materials[i].m_metallicRoughnessIndex = (u8)m.pbrMetallicRoughness.metallicRoughnessTexture.index;
+		m_materials[i].m_normalIndex = (u8)m.normalTexture.index;
+		m_materials[i].m_emissiveIndex = (u8)m.emissiveTexture.index;
+		m_materials[i].m_occlusionIndex = (u8)m.occlusionTexture.index;
 
-                if (m.alphaMode == "BLEND")
-                        m_materials[i].m_blendMode = BlendMode::Blend;
-                else if (m.alphaMode == "MASK")
-                        m_materials[i].m_blendMode = BlendMode::Mask;
-                else
-                        m_materials[i].m_blendMode = BlendMode::Opaque;
+		if (m.alphaMode == "BLEND")
+			m_materials[i].m_blendMode = BlendMode::Blend;
+		else if (m.alphaMode == "MASK")
+			m_materials[i].m_blendMode = BlendMode::Mask;
+		else
+			m_materials[i].m_blendMode = BlendMode::Opaque;
 
-                m_materials[i].m_alphaCutoff = (float)m.alphaCutoff;
-        }
+		m_materials[i].m_alphaCutoff = (float)m.alphaCutoff;
+	}
 
 	m_triangles.Clear();
 	std::function<void(int, glm::mat4)> Visit = [&](int nodeId, glm::mat4 parent)
@@ -347,7 +347,11 @@ void PathTracer::Run(const PathTracer::Params& params)
 		};
 
 	int sceneIndex = gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0;
-	for (int n : gltfModel.scenes[sceneIndex].nodes) Visit(n, glm::mat4(1.0f));
+	for (int n : gltfModel.scenes[sceneIndex].nodes)
+	{
+		Visit(n, glm::mat4(1.0f));
+	}
+
 	BVH bvh((uint32_t)m_triangles.Num());
 	bvh.BuildBVH(m_triangles);
 

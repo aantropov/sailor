@@ -508,8 +508,6 @@ float Math::Triangle::Area() const
 
 bool Math::IntersectRayTriangle(const Ray& ray, const Triangle& tri, RaycastHit& outRaycastHit, float maxRayLength)
 {
-	SAILOR_PROFILE_FUNCTION();
-
 	outRaycastHit = RaycastHit();
 	outRaycastHit.m_rayLenght = maxRayLength;
 
@@ -581,8 +579,6 @@ void IntersectRayTriangle(Ray& ray, const Triangle& tri)
 
 float Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::vec3& bmax, float maxRayLength)
 {
-	SAILOR_PROFILE_FUNCTION();
-
 	__m128 _bmin = _mm_setr_ps(bmin.x, bmin.y, bmin.z, 0.f);
 	__m128 _bmax = _mm_setr_ps(bmax.x, bmax.y, bmax.z, 0.f);
 	__m128 t1 = _mm_mul_ps(_mm_sub_ps(_bmin, ray.GetOrigin4()), ray.GetReciprocalDirection4());
