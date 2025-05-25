@@ -188,11 +188,11 @@ namespace Sailor::Raytracing
 
 	template<typename T>
 	void LoadTexture(const tinygltf::Model& model,
-		const std::filesystem::path& sceneDir,
-		TVector<TSharedPtr<CombinedSampler2D>>& textures,
-		uint32_t textureIndex,
-		bool bConvertToLinear,
-		bool bNormalMap = false)
+	        const std::filesystem::path& sceneDir,
+	        TVector<TSharedPtr<CombinedSampler2D>>& textures,
+	        uint32_t textureIndex,
+	        bool bConvertToLinear,
+	        bool bNormalMap = false)
 	{
 		auto ptr = textures[textureIndex] = TSharedPtr<CombinedSampler2D>::Make();
 
@@ -261,6 +261,21 @@ namespace Sailor::Raytracing
 		{
 			ptr->Initialize<T, u8vec4>((u8vec4*)pixelsU8, bConvertToLinear, bNormalMap);
 			stbi_image_free(pixelsU8);
-		}
+	        }
 	}
+
+	   template<typename T>
+	   Tasks::ITaskPtr LoadTexture_Task(const tinygltf::Model& model,
+	       const std::filesystem::path& sceneDir,
+	       TVector<TSharedPtr<CombinedSampler2D>>& textures,
+	       uint32_t textureIndex,
+	       bool bConvertToLinear,
+	       bool bNormalMap = false)
+	   {
+	       return Tasks::CreateTask("Load Texture",
+	               [&model, &sceneDir, &textures, textureIndex, bConvertToLinear, bNormalMap]()
+	               {
+	                       LoadTexture<T>(model, sceneDir, textures, textureIndex, bConvertToLinear, bNormalMap);
+	               });
+	   }
 }

@@ -67,15 +67,15 @@ void PathTracer::Run(const PathTracer::Params& params)
 	Utils::Timer raytracingTimer;
 	raytracingTimer.Start();
 
-	const uint32_t GroupSize = 32;
+		const uint32_t GroupSize = 32;
 
 	tinygltf::Model gltfModel;
 	tinygltf::TinyGLTF loader;
 	std::string err;
 	std::string warn;
 
-	const bool bIsGlb = Utils::GetFileExtension(params.m_pathToModel.string().c_str()) == "glb";
-	const bool bGltfParsed = bIsGlb ?
+		const bool bIsGlb = Utils::GetFileExtension(params.m_pathToModel.string().c_str()) == "glb";
+		const bool bGltfParsed = bIsGlb ?
 		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, params.m_pathToModel.string()) :
 		loader.LoadASCIIFromFile(&gltfModel, &err, &warn, params.m_pathToModel.string());
 
@@ -161,30 +161,51 @@ void PathTracer::Run(const PathTracer::Params& params)
 		}
 	}
 
-	// Prepare texture usage flags
-	m_textures.Clear();
-	m_textures.Resize(gltfModel.textures.size());
-	TVector<bool> convertToLinear(gltfModel.textures.size(), false);
-	TVector<bool> isNormalMap(gltfModel.textures.size(), false);
+	   m_textures.Clear();
+	   m_textureMapping.Clear();
+	   TVector<Tasks::ITaskPtr> loadTextureTasks;
+	   std::filesystem::path sceneDir = params.m_pathToModel.parent_path();
 
-	for (const auto& mat : gltfModel.materials)
-	{
-		if (mat.pbrMetallicRoughness.baseColorTexture.index >= 0)
-			convertToLinear[mat.pbrMetallicRoughness.baseColorTexture.index] = true;
+	   auto AddTexture = [&](const tinygltf::TextureInfo& info,
+	       bool bConvertToLinear, bool bNormalMap, uint8_t channels, uint8_t& outIndex)
+	   {
+	       if (info.index < 0)
+	               return;
 
-		if (mat.emissiveTexture.index >= 0)
-			convertToLinear[mat.emissiveTexture.index] = true;
+	       SamplerClamping clamping = SamplerClamping::Clamp;
+	       const auto& gltfTex = gltfModel.textures[info.index];
+	       if (gltfTex.sampler >= 0)
+	       {
+	               const auto& sampler = gltfModel.samplers[gltfTex.sampler];
+	               if (sampler.wrapS == TINYGLTF_TEXTURE_WRAP_REPEAT || sampler.wrapT == TINYGLTF_TEXTURE_WRAP_REPEAT)
+	               {
+	                       clamping = SamplerClamping::Repeat;
+	               }
+	       }
 
-		if (mat.normalTexture.index >= 0)
-			isNormalMap[mat.normalTexture.index] = true;
-	}
+	       TextureKey key{};
+	       key.m_textureIndex = info.index;
+	       key.m_clamping = clamping;
+	       key.m_convertToLinear = bConvertToLinear;
+	       key.m_normalMap = bNormalMap;
+	       key.m_channels = channels;
 
-	std::filesystem::path sceneDir = params.m_pathToModel.parent_path();
+	       if (m_textureMapping.ContainsKey(key))
+	       {
+	               outIndex = (u8)m_textureMapping[key];
+	               return;
+	       }
 
-	for (size_t texId = 0; texId < gltfModel.textures.size(); ++texId)
-	{
-		LoadTexture<vec4>(gltfModel, sceneDir, m_textures, (uint32_t)texId, convertToLinear[texId], isNormalMap[texId]);
-	}
+	       uint32_t newIndex = (uint32_t)m_textures.Num();
+	       m_textures.Add(nullptr);
+	       outIndex = (u8)newIndex;
+	       m_textureMapping[key] = newIndex;
+
+	       if (channels == 4)
+	               loadTextureTasks.Add(LoadTexture_Task<vec4>(gltfModel, sceneDir, m_textures, newIndex, bConvertToLinear, bNormalMap));
+	       else
+	               loadTextureTasks.Add(LoadTexture_Task<vec3>(gltfModel, sceneDir, m_textures, newIndex, bConvertToLinear, bNormalMap));
+	   };
 
 	int sceneIndex = gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0;
 
@@ -223,35 +244,85 @@ void PathTracer::Run(const PathTracer::Params& params)
 		}
 	}
 
-	const uint32_t height = params.m_height;
-	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
+		const uint32_t height = params.m_height;
+		const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
 
 	m_materials.Resize(gltfModel.materials.size());
 	for (size_t i = 0; i < gltfModel.materials.size(); ++i)
 	{
 		const auto& m = gltfModel.materials[i];
-
+		
 		m_materials[i].m_baseColorFactor = m.pbrMetallicRoughness.baseColorFactor.size() == 4 ?
-			glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::dvec4(1.0f);
+		glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::dvec4(1.0f);
 		m_materials[i].m_metallicFactor = (float)m.pbrMetallicRoughness.metallicFactor;
 		m_materials[i].m_roughnessFactor = (float)m.pbrMetallicRoughness.roughnessFactor;
 		m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
-			glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
-
-		m_materials[i].m_baseColorIndex = (u8)m.pbrMetallicRoughness.baseColorTexture.index;
-		m_materials[i].m_metallicRoughnessIndex = (u8)m.pbrMetallicRoughness.metallicRoughnessTexture.index;
-		m_materials[i].m_normalIndex = (u8)m.normalTexture.index;
-		m_materials[i].m_emissiveIndex = (u8)m.emissiveTexture.index;
-		m_materials[i].m_occlusionIndex = (u8)m.occlusionTexture.index;
-
-		if (m.alphaMode == "BLEND")
+		glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
+		
+		AddTexture(m.pbrMetallicRoughness.baseColorTexture, true, false, 4, m_materials[i].m_baseColorIndex);
+		AddTexture(m.normalTexture, false, true, 3, m_materials[i].m_normalIndex);
+		AddTexture(m.emissiveTexture, true, false, 3, m_materials[i].m_emissiveIndex);
+		AddTexture(m.pbrMetallicRoughness.metallicRoughnessTexture, false, false, 3, m_materials[i].m_metallicRoughnessIndex);
+		AddTexture(m.occlusionTexture, false, false, 3, m_materials[i].m_occlusionIndex);
+	
+		const auto extTrans = m.extensions.find("KHR_materials_transmission");
+	if (extTrans != m.extensions.end())
+	{
+		const auto& ext = extTrans->second;
+	if (ext.Has("transmissionFactor"))
+	m_materials[i].m_transmissionFactor = (float)ext.Get("transmissionFactor").Get<double>();
+	if (ext.Has("transmissionTexture"))
+	{
+		const auto& tex = ext.Get("transmissionTexture");
+	tinygltf::TextureInfo ti{};
+	ti.index = tex.Get("index").Get<int>();
+	if (tex.Has("texCoord"))
+	ti.texCoord = tex.Get("texCoord").Get<int>();
+		AddTexture(ti, false, false, 3, m_materials[i].m_transmissionIndex);
+	}
+	}
+	
+		const auto extVol = m.extensions.find("KHR_materials_volume");
+	if (extVol != m.extensions.end())
+	{
+		const auto& ext = extVol->second;
+	if (ext.Has("thicknessFactor"))
+	m_materials[i].m_thicknessFactor = (float)ext.Get("thicknessFactor").Get<double>();
+	if (ext.Has("attenuationColor"))
+	{
+		const auto& arr = ext.Get("attenuationColor").Get<tinygltf::Value::Array>();
+	if (arr.size() == 3)
+	m_materials[i].m_attenuationColor = glm::vec3((float)arr[0].Get<double>(), (float)arr[1].Get<double>(), (float)arr[2].Get<double>());
+	}
+	if (ext.Has("attenuationDistance"))
+	m_materials[i].m_attenuationDistance = (float)ext.Get("attenuationDistance").Get<double>();
+	}
+	
+		const auto extIor = m.extensions.find("KHR_materials_ior");
+	if (extIor != m.extensions.end())
+	{
+		const auto& ext = extIor->second;
+	if (ext.Has("ior"))
+	m_materials[i].m_indexOfRefraction = (float)ext.Get("ior").Get<double>();
+	}
+			
+			if (m.alphaMode == "BLEND")
 			m_materials[i].m_blendMode = BlendMode::Blend;
-		else if (m.alphaMode == "MASK")
+			else if (m.alphaMode == "MASK")
 			m_materials[i].m_blendMode = BlendMode::Mask;
-		else
+			else
 			m_materials[i].m_blendMode = BlendMode::Opaque;
-
-		m_materials[i].m_alphaCutoff = (float)m.alphaCutoff;
+			
+			m_materials[i].m_alphaCutoff = (float)m.alphaCutoff;
+		}
+	
+		for (auto& task : loadTextureTasks)
+			{
+		task->Run();
+			}
+		for (auto& task : loadTextureTasks)
+			{
+		task->Wait();
 	}
 
 	m_triangles.Clear();
@@ -269,9 +340,31 @@ void PathTracer::Run(const PathTracer::Params& params)
 					const auto& posView = gltfModel.bufferViews[posAcc.bufferView];
 					const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAcc.byteOffset]);
 
-					const auto& normAcc = gltfModel.accessors[prim.attributes.find("NORMAL")->second];
-					const auto& normView = gltfModel.bufferViews[normAcc.bufferView];
-					const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAcc.byteOffset]);
+	                               const auto& normAcc = gltfModel.accessors[prim.attributes.find("NORMAL")->second];
+	                               const auto& normView = gltfModel.bufferViews[normAcc.bufferView];
+	                               const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAcc.byteOffset]);
+
+	                               const tinygltf::Accessor* tex0Acc = nullptr;
+	                               const tinygltf::BufferView* tex0View = nullptr;
+	                               const float* tex0Data = nullptr;
+
+	                               const tinygltf::Accessor* tex1Acc = nullptr;
+	                               const tinygltf::BufferView* tex1View = nullptr;
+	                               const float* tex1Data = nullptr;
+
+	                               if (auto it = prim.attributes.find("TEXCOORD_0"); it != prim.attributes.end())
+	                               {
+	                                       tex0Acc = &gltfModel.accessors[it->second];
+	                                       tex0View = &gltfModel.bufferViews[tex0Acc->bufferView];
+	                                       tex0Data = reinterpret_cast<const float*>(&gltfModel.buffers[tex0View->buffer].data[tex0View->byteOffset + tex0Acc->byteOffset]);
+	                               }
+
+	                               if (auto it = prim.attributes.find("TEXCOORD_1"); it != prim.attributes.end())
+	                               {
+	                                       tex1Acc = &gltfModel.accessors[it->second];
+	                                       tex1View = &gltfModel.bufferViews[tex1Acc->bufferView];
+	                                       tex1Data = reinterpret_cast<const float*>(&gltfModel.buffers[tex1View->buffer].data[tex1View->byteOffset + tex1Acc->byteOffset]);
+	                               }
 
 					TVector<uint32_t> indices;
 					if (prim.indices >= 0)
@@ -303,19 +396,23 @@ void PathTracer::Run(const PathTracer::Params& params)
 						}
 					}
 
-					for (size_t i = 0; i + 2 < indices.Num(); i += 3)
-					{
-						Triangle tri{};
-						for (int k = 0; k < 3; ++k)
-						{
-							uint32_t idx = indices[i + k];
-							glm::vec3 p = glm::make_vec3(posData + idx * 3);
-							glm::vec3 n = glm::make_vec3(normData + idx * 3);
-							glm::vec4 tp = m * glm::vec4(p, 1);
-							tri.m_vertices[k] = glm::vec3(tp) / tp.w;
-							tri.m_normals[k] = glm::normalize(glm::vec3(m * glm::vec4(n, 0)));
-							//tri.m_uvs[k] = glm::make_vec2(texData + idx * 2);
-						}
+	                               for (size_t i = 0; i + 2 < indices.Num(); i += 3)
+	                               {
+	                                       Triangle tri{};
+	                                       for (int k = 0; k < 3; ++k)
+	                                       {
+	                                               uint32_t idx = indices[i + k];
+	                                               glm::vec3 p = glm::make_vec3(posData + idx * 3);
+	                                               glm::vec3 n = glm::make_vec3(normData + idx * 3);
+	                                               glm::vec4 tp = m * glm::vec4(p, 1);
+	                                               tri.m_vertices[k] = glm::vec3(tp) / tp.w;
+	                                               tri.m_normals[k] = glm::normalize(glm::vec3(m * glm::vec4(n, 0)));
+
+	                                               if (tex0Data)
+	                                                       tri.m_uvs[k] = glm::make_vec2(tex0Data + idx * 2);
+	                                               if (tex1Data)
+	                                                       tri.m_uvs2[k] = glm::make_vec2(tex1Data + idx * 2);
+	                                       }
 						GenerateTangentBitangent(tri.m_tangent[0], tri.m_bitangent[0], tri.m_vertices, tri.m_uvs);
 						tri.m_tangent[1] = tri.m_tangent[0];
 						tri.m_tangent[2] = tri.m_tangent[0];
@@ -346,19 +443,19 @@ void PathTracer::Run(const PathTracer::Params& params)
 	outputTex.Initialize<vec3>(width, height);
 
 	float h = tan(vFov / 2);
-	const float ViewportHeight = 2.0f * h;
-	const float ViewportWidth = aspectRatio * ViewportHeight;
+		const float ViewportHeight = 2.0f * h;
+		const float ViewportWidth = aspectRatio * ViewportHeight;
 
 	vec3 _u = normalize(cross(cameraUp, -cameraForward));
 	vec3 _v = cross(-cameraForward, _u);
 
-	const vec3 ViewportU = ViewportWidth * _u;
-	const vec3 ViewportV = ViewportHeight * _v;
-	const vec3 ViewportPivot = cameraPos - (ViewportU + ViewportV) * 0.5f + cameraForward;
+		const vec3 ViewportU = ViewportWidth * _u;
+		const vec3 ViewportV = ViewportHeight * _v;
+		const vec3 ViewportPivot = cameraPos - (ViewportU + ViewportV) * 0.5f + cameraForward;
 
-	const vec3 _pixelDeltaU = ViewportU / (float)width;
-	const vec3 _pixelDeltaV = ViewportV / (float)height;
-	const vec3 _pixel00Dir = ViewportPivot + 0.5f * (_pixelDeltaU + _pixelDeltaV) - cameraPos;
+		const vec3 _pixelDeltaU = ViewportU / (float)width;
+		const vec3 _pixelDeltaV = ViewportV / (float)height;
+		const vec3 _pixel00Dir = ViewportPivot + 0.5f * (_pixelDeltaU + _pixelDeltaV) - cameraPos;
 
 	// Raytracing
 	{
@@ -838,7 +935,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialIndex, glm::vec2 uv) const
 {
-	const auto& material = m_materials[materialIndex];
+		const auto& material = m_materials[materialIndex];
 
 	LightingModel::SampledData res{};
 	res.m_baseColor = material.m_baseColorFactor;
