@@ -166,14 +166,14 @@ void PathTracer::Run(const PathTracer::Params& params)
 	TVector<Tasks::ITaskPtr> loadTextureTasks;
 	std::filesystem::path sceneDir = params.m_pathToModel.parent_path();
 
-	auto AddTexture = [&](int gltfTexIndex,
+	auto AddTexture = [&](int index,
 		bool bConvertToLinear, bool bNormalMap, uint8_t channels, uint8_t& outIndex)
 		{
-			if (gltfTexIndex < 0)
+			if (index < 0)
 				return;
 
 			SamplerClamping clamping = SamplerClamping::Clamp;
-			const auto& gltfTex = gltfModel.textures[gltfTexIndex];
+			const auto& gltfTex = gltfModel.textures[index];
 			if (gltfTex.sampler >= 0)
 			{
 				const auto& sampler = gltfModel.samplers[gltfTex.sampler];
@@ -183,8 +183,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 			}
 
-			Raytracing::TextureKey key{};
-			key.m_textureIndex = gltfTexIndex;
+			TextureKey key{};
+			key.m_textureIndex = index;
 			key.m_clamping = clamping;
 			key.m_convertToLinear = bConvertToLinear;
 			key.m_normalMap = bNormalMap;
@@ -264,6 +264,47 @@ void PathTracer::Run(const PathTracer::Params& params)
 		AddTexture(m.emissiveTexture.index, true, false, 3, m_materials[i].m_emissiveIndex);
 		AddTexture(m.pbrMetallicRoughness.metallicRoughnessTexture.index, false, false, 3, m_materials[i].m_metallicRoughnessIndex);
 		AddTexture(m.occlusionTexture.index, false, false, 3, m_materials[i].m_occlusionIndex);
+
+		const auto extTrans = m.extensions.find("KHR_materials_transmission");
+		if (extTrans != m.extensions.end())
+		{
+			const auto& ext = extTrans->second;
+			if (ext.Has("transmissionFactor"))
+				m_materials[i].m_transmissionFactor = (float)ext.Get("transmissionFactor").Get<double>();
+			if (ext.Has("transmissionTexture"))
+			{
+				const auto& tex = ext.Get("transmissionTexture");
+				tinygltf::TextureInfo ti{};
+				ti.index = tex.Get("index").Get<int>();
+				if (tex.Has("texCoord"))
+					ti.texCoord = tex.Get("texCoord").Get<int>();
+				AddTexture(ti.index, false, false, 3, m_materials[i].m_transmissionIndex);
+			}
+		}
+
+		const auto extVol = m.extensions.find("KHR_materials_volume");
+		if (extVol != m.extensions.end())
+		{
+			const auto& ext = extVol->second;
+			if (ext.Has("thicknessFactor"))
+				m_materials[i].m_thicknessFactor = (float)ext.Get("thicknessFactor").Get<double>();
+			if (ext.Has("attenuationColor"))
+			{
+				const auto& arr = ext.Get("attenuationColor").Get<tinygltf::Value::Array>();
+				if (arr.size() == 3)
+					m_materials[i].m_attenuationColor = glm::vec3((float)arr[0].Get<double>(), (float)arr[1].Get<double>(), (float)arr[2].Get<double>());
+			}
+			if (ext.Has("attenuationDistance"))
+				m_materials[i].m_attenuationDistance = (float)ext.Get("attenuationDistance").Get<double>();
+		}
+
+		const auto extIor = m.extensions.find("KHR_materials_ior");
+		if (extIor != m.extensions.end())
+		{
+			const auto& ext = extIor->second;
+			if (ext.Has("ior"))
+				m_materials[i].m_indexOfRefraction = (float)ext.Get("ior").Get<double>();
+		}
 
 		if (m.alphaMode == "BLEND")
 			m_materials[i].m_blendMode = BlendMode::Blend;

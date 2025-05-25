@@ -276,6 +276,6 @@ namespace Sailor::Raytracing
 			[&model, &sceneDir, &textures, textureIndex, bConvertToLinear, bNormalMap]()
 			{
 				LoadTexture<T>(model, sceneDir, textures, textureIndex, bConvertToLinear, bNormalMap);
-			}, EThreadType::Worker);
+			});
 	}
 }
