@@ -121,6 +121,15 @@ namespace Sailor
 			AddDefault(countDefaultElements);
 		}
 
+		TVector(size_t countDefaultElements, const TElementType& defaultElement)
+		{
+			Reserve(countDefaultElements);
+			for (uint32_t i = 0; i < countDefaultElements; i++)
+			{
+				Add(defaultElement);
+			}
+		}
+
 		~TVector() { Clear(true); }
 
 		TVector(std::initializer_list<TElementType> initList) : TVector(initList.begin(), initList.size()) {}
