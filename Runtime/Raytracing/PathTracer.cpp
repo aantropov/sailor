@@ -259,11 +259,44 @@ void PathTracer::Run(const PathTracer::Params& params)
 		m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
 			glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
 
-		AddTexture(m.pbrMetallicRoughness.baseColorTexture.index, true, false, 4, m_materials[i].m_baseColorIndex);
-		AddTexture(m.normalTexture.index, false, true, 3, m_materials[i].m_normalIndex);
-		AddTexture(m.emissiveTexture.index, true, false, 3, m_materials[i].m_emissiveIndex);
-		AddTexture(m.pbrMetallicRoughness.metallicRoughnessTexture.index, false, false, 3, m_materials[i].m_metallicRoughnessIndex);
-		AddTexture(m.occlusionTexture.index, false, false, 3, m_materials[i].m_occlusionIndex);
+                AddTexture(m.pbrMetallicRoughness.baseColorTexture.index, true, false, 4, m_materials[i].m_baseColorIndex);
+               if(auto extUV = m.pbrMetallicRoughness.baseColorTexture.extensions.find("KHR_texture_transform"); extUV != m.pbrMetallicRoughness.baseColorTexture.extensions.end())
+               {
+                       const auto& ext = extUV->second;
+                       vec2 offset(0.0f);
+                       vec2 scale(1.0f);
+                       float rotation = 0.0f;
+
+                       if(ext.Has("offset"))
+                       {
+                               const auto& arr = ext.Get("offset").Get<tinygltf::Value::Array>();
+                               if(arr.size() >= 2)
+                                       offset = vec2((float)arr[0].Get<double>(), (float)arr[1].Get<double>());
+                       }
+
+                       if(ext.Has("scale"))
+                       {
+                               const auto& arr = ext.Get("scale").Get<tinygltf::Value::Array>();
+                               if(arr.size() >= 2)
+                                       scale = vec2((float)arr[0].Get<double>(), (float)arr[1].Get<double>());
+                       }
+
+                       if(ext.Has("rotation"))
+                       {
+                               rotation = (float)ext.Get("rotation").Get<double>();
+                       }
+
+                       glm::mat3 transform(1.0f);
+                       transform = glm::translate(transform, offset);
+                       transform = glm::rotate(transform, rotation);
+                       transform = glm::scale(transform, scale);
+
+                       m_materials[i].m_uvTransform = transform;
+               }
+                AddTexture(m.normalTexture.index, false, true, 3, m_materials[i].m_normalIndex);
+                AddTexture(m.emissiveTexture.index, true, false, 3, m_materials[i].m_emissiveIndex);
+                AddTexture(m.pbrMetallicRoughness.metallicRoughnessTexture.index, false, false, 3, m_materials[i].m_metallicRoughnessIndex);
+                AddTexture(m.occlusionTexture.index, false, false, 3, m_materials[i].m_occlusionIndex);
 
 		const auto extTrans = m.extensions.find("KHR_materials_transmission");
 		if (extTrans != m.extensions.end())
@@ -282,10 +315,10 @@ void PathTracer::Run(const PathTracer::Params& params)
 			}
 		}
 
-		const auto extVol = m.extensions.find("KHR_materials_volume");
-		if (extVol != m.extensions.end())
-		{
-			const auto& ext = extVol->second;
+                const auto extVol = m.extensions.find("KHR_materials_volume");
+                if (extVol != m.extensions.end())
+                {
+                        const auto& ext = extVol->second;
 			if (ext.Has("thicknessFactor"))
 				m_materials[i].m_thicknessFactor = (float)ext.Get("thicknessFactor").Get<double>();
 			if (ext.Has("attenuationColor"))
@@ -294,9 +327,49 @@ void PathTracer::Run(const PathTracer::Params& params)
 				if (arr.size() == 3)
 					m_materials[i].m_attenuationColor = glm::vec3((float)arr[0].Get<double>(), (float)arr[1].Get<double>(), (float)arr[2].Get<double>());
 			}
-			if (ext.Has("attenuationDistance"))
-				m_materials[i].m_attenuationDistance = (float)ext.Get("attenuationDistance").Get<double>();
-		}
+                        if (ext.Has("attenuationDistance"))
+                                m_materials[i].m_attenuationDistance = (float)ext.Get("attenuationDistance").Get<double>();
+                }
+
+               const auto extSpecular = m.extensions.find("KHR_materials_specular");
+               if (extSpecular != m.extensions.end())
+               {
+                       const auto& ext = extSpecular->second;
+                       if (ext.Has("specularFactor"))
+                               m_materials[i].m_specularFactor = (float)ext.Get("specularFactor").Get<double>();
+                       if (ext.Has("specularColorFactor"))
+                       {
+                               const auto& arr = ext.Get("specularColorFactor").Get<tinygltf::Value::Array>();
+                               if (arr.size() == 3)
+                                       m_materials[i].m_specularColorFactor = glm::vec3((float)arr[0].Get<double>(), (float)arr[1].Get<double>(), (float)arr[2].Get<double>());
+                       }
+                       if (ext.Has("specularTexture"))
+                       {
+                               const auto& tex = ext.Get("specularTexture");
+                               tinygltf::TextureInfo ti{};
+                               ti.index = tex.Get("index").Get<int>();
+                               if (tex.Has("texCoord"))
+                                       ti.texCoord = tex.Get("texCoord").Get<int>();
+                               AddTexture(ti.index, false, false, 3, m_materials[i].m_specularIndex);
+                       }
+                       if (ext.Has("specularColorTexture"))
+                       {
+                               const auto& tex = ext.Get("specularColorTexture");
+                               tinygltf::TextureInfo ti{};
+                               ti.index = tex.Get("index").Get<int>();
+                               if (tex.Has("texCoord"))
+                                       ti.texCoord = tex.Get("texCoord").Get<int>();
+                               AddTexture(ti.index, true, false, 3, m_materials[i].m_specularColorIndex);
+                       }
+               }
+
+               const auto extEmissiveStrength = m.extensions.find("KHR_materials_emissive_strength");
+               if (extEmissiveStrength != m.extensions.end())
+               {
+                       const auto& ext = extEmissiveStrength->second;
+                       if (ext.Has("emissiveStrength"))
+                               m_materials[i].m_emissiveFactor *= (float)ext.Get("emissiveStrength").Get<double>();
+               }
 
 		const auto extIor = m.extensions.find("KHR_materials_ior");
 		if (extIor != m.extensions.end())
