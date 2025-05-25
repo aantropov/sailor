@@ -29,9 +29,8 @@ jobs:
         restore-keys: |
           vcpkg-${{ runner.os }}-installed-
 
-    - name: Run update_deps.bat
-      shell: cmd
-      run: .\update_deps.bat
+    - name: Install dependencies
+      run: python update_deps.py
 
     - name: Install Vulkan SDK
       uses: humbletim/install-vulkan-sdk@v1.2

@@ -37,6 +37,10 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 - **Editor:** Built with `.NET MAUI`.
 - **Engine:** Built with `C++20` (`MSVC` and `clang`).
 
+## Dependencies
+
+This project uses [vcpkg](https://github.com/microsoft/vcpkg) to manage C++ dependencies. Run `python update_deps.py` to install the required packages on either Windows or Linux.
+
 ## Sponsorship and Contribution
 
 **Support Sailor Engine's Development**  
