@@ -9,7 +9,6 @@
 #include <glm/gtx/matrix_transform_2d.hpp>
 
 #include <tiny_gltf.h>
-#include <stb_image.h>
 #include <stb_image_write.h>
 
 using namespace Sailor;
@@ -160,7 +159,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 				break;
 			}
 		}
-
 	}
 
 	// Prepare texture usage flags
@@ -185,65 +183,43 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	for (size_t texId = 0; texId < gltfModel.textures.size(); ++texId)
 	{
-		const auto& gltfTex = gltfModel.textures[texId];
-		const auto& image = gltfModel.images[gltfTex.source];
+		LoadTexture<vec4>(gltfModel, sceneDir, m_textures, (uint32_t)texId, convertToLinear[texId], isNormalMap[texId]);
+	}
 
-		auto texture = m_textures[texId] = TSharedPtr<CombinedSampler2D>::Make();
+	int sceneIndex = gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0;
 
-		SamplerClamping clamping = SamplerClamping::Clamp;
-		if (gltfTex.sampler >= 0)
+	TVector<glm::mat4> nodeWorld(gltfModel.nodes.size(), glm::mat4(1.0f));
+	std::function<void(int, glm::mat4)> GatherTransforms = [&](int nodeId, glm::mat4 parent)
 		{
-			const auto& sampler = gltfModel.samplers[gltfTex.sampler];
-			if (sampler.wrapS == TINYGLTF_TEXTURE_WRAP_REPEAT || sampler.wrapT == TINYGLTF_TEXTURE_WRAP_REPEAT)
+			glm::mat4 m = parent * GetNodeMatrix(gltfModel.nodes[nodeId]);
+			nodeWorld[nodeId] = m;
+			for (int c : gltfModel.nodes[nodeId].children) GatherTransforms(c, m);
+		};
+	for (int n : gltfModel.scenes[sceneIndex].nodes) GatherTransforms(n, glm::mat4(1.0f));
+
+	m_directionalLights.Clear();
+	for (size_t nodeId = 0; nodeId < gltfModel.nodes.size(); ++nodeId)
+	{
+		const auto extIt = gltfModel.nodes[nodeId].extensions.find("KHR_lights_punctual");
+		if (extIt != gltfModel.nodes[nodeId].extensions.end())
+		{
+			const auto& ext = extIt->second;
+			if (ext.Has("light"))
 			{
-				clamping = SamplerClamping::Repeat;
+				int lightIndex = ext.Get("light").Get<int>();
+				if (lightIndex >= 0 && lightIndex < (int)gltfModel.lights.size())
+				{
+					const auto& light = gltfModel.lights[lightIndex];
+					if (light.type == "directional")
+					{
+						m_directionalLights.Add(DirectionalLight());
+						auto& l = *m_directionalLights.end();
+						glm::vec3 color = light.color.size() == 3 ? glm::vec3((float)light.color[0], (float)light.color[1], (float)light.color[2]) : glm::vec3(1.0f);
+						l.m_intensity = color * (float)light.intensity / 683.0f;
+						l.m_direction = glm::normalize(glm::vec3(nodeWorld[nodeId] * glm::vec4(0, 0, -1, 0)));
+					}
+				}
 			}
-		}
-		texture->m_clamping = clamping;
-
-		int32_t width = 0;
-		int32_t height = 0;
-		int32_t channels = 0;
-
-		bool hdr = false;
-		stbi_uc* pixelsU8 = nullptr;
-		float* pixelsF = nullptr;
-
-		if (!image.uri.empty())
-		{
-			std::filesystem::path imgPath = sceneDir / image.uri;
-			hdr = stbi_is_hdr(imgPath.string().c_str());
-			if (hdr)
-				pixelsF = stbi_loadf(imgPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
-			else
-				pixelsU8 = stbi_load(imgPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
-		}
-		else if (image.bufferView >= 0)
-		{
-			const auto& view = gltfModel.bufferViews[image.bufferView];
-			const auto& buffer = gltfModel.buffers[view.buffer];
-			const unsigned char* data = buffer.data.data() + view.byteOffset;
-			int32_t length = (int32_t)view.byteLength;
-			hdr = stbi_is_hdr_from_memory(data, length);
-			if (hdr)
-				pixelsF = stbi_loadf_from_memory(data, length, &width, &height, &channels, STBI_rgb_alpha);
-			else
-				pixelsU8 = stbi_load_from_memory(data, length, &width, &height, &channels, STBI_rgb_alpha);
-		}
-
-		texture->m_width = width;
-		texture->m_height = height;
-		texture->m_channels = 4;
-
-		if (hdr && pixelsF)
-		{
-			texture->Initialize<vec4, vec4>((vec4*)pixelsF, convertToLinear[texId], isNormalMap[texId]);
-			stbi_image_free(pixelsF);
-		}
-		else if (pixelsU8)
-		{
-			texture->Initialize<vec4, u8vec4>((u8vec4*)pixelsU8, convertToLinear[texId], isNormalMap[texId]);
-			stbi_image_free(pixelsU8);
 		}
 	}
 
@@ -279,10 +255,10 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 
 	m_triangles.Clear();
-	std::function<void(int, glm::mat4)> Visit = [&](int nodeId, glm::mat4 parent)
+	std::function<void(int)> Visit = [&](int nodeId)
 		{
 			const auto& node = gltfModel.nodes[nodeId];
-			glm::mat4 m = parent * GetNodeMatrix(node);
+			glm::mat4 m = nodeWorld[nodeId];
 
 			if (node.mesh >= 0)
 			{
@@ -305,17 +281,26 @@ void PathTracer::Run(const PathTracer::Params& params)
 						if (indAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
 						{
 							const uint16_t* d = reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indView.buffer].data[indView.byteOffset + indAcc.byteOffset]);
-							for (size_t i = 0; i < indAcc.count; ++i) indices.Add((uint32_t)d[i]);
+							for (size_t i = 0; i < indAcc.count; ++i)
+							{
+								indices.Add((uint32_t)d[i]);
+							}
 						}
 						else
 						{
 							const uint32_t* d = reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indView.buffer].data[indView.byteOffset + indAcc.byteOffset]);
-							for (size_t i = 0; i < indAcc.count; ++i) indices.Add(d[i]);
+							for (size_t i = 0; i < indAcc.count; ++i)
+							{
+								indices.Add(d[i]);
+							}
 						}
 					}
 					else
 					{
-						for (uint32_t i = 0; i < posAcc.count; ++i) indices.Add(i);
+						for (uint32_t i = 0; i < posAcc.count; ++i)
+						{
+							indices.Add(i);
+						}
 					}
 
 					for (size_t i = 0; i + 2 < indices.Num(); i += 3)
@@ -329,7 +314,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 							glm::vec4 tp = m * glm::vec4(p, 1);
 							tri.m_vertices[k] = glm::vec3(tp) / tp.w;
 							tri.m_normals[k] = glm::normalize(glm::vec3(m * glm::vec4(n, 0)));
-							tri.m_uvs[k] = glm::vec2(0);
+							//tri.m_uvs[k] = glm::make_vec2(texData + idx * 2);
 						}
 						GenerateTangentBitangent(tri.m_tangent[0], tri.m_bitangent[0], tri.m_vertices, tri.m_uvs);
 						tri.m_tangent[1] = tri.m_tangent[0];
@@ -343,13 +328,15 @@ void PathTracer::Run(const PathTracer::Params& params)
 				}
 			}
 
-			for (int c : node.children) Visit(c, m);
+			for (int c : node.children)
+			{
+				Visit(c);
+			}
 		};
 
-	int sceneIndex = gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0;
 	for (int n : gltfModel.scenes[sceneIndex].nodes)
 	{
-		Visit(n, glm::mat4(1.0f));
+		Visit(n);
 	}
 
 	BVH bvh((uint32_t)m_triangles.Num());
