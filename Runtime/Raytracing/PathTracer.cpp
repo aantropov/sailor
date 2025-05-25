@@ -161,51 +161,51 @@ void PathTracer::Run(const PathTracer::Params& params)
 		}
 	}
 
-       m_textures.Clear();
-       m_textureMapping.Clear();
-       TVector<Tasks::ITaskPtr> loadTextureTasks;
-       std::filesystem::path sceneDir = params.m_pathToModel.parent_path();
+	m_textures.Clear();
+	m_textureMapping.Clear();
+	TVector<Tasks::ITaskPtr> loadTextureTasks;
+	std::filesystem::path sceneDir = params.m_pathToModel.parent_path();
 
-       auto AddTexture = [&](const tinygltf::TextureInfo& info,
-               bool bConvertToLinear, bool bNormalMap, uint8_t channels, uint8_t& outIndex)
-       {
-               if (info.index < 0)
-                       return;
+	auto AddTexture = [&](int gltfTexIndex,
+		bool bConvertToLinear, bool bNormalMap, uint8_t channels, uint8_t& outIndex)
+		{
+			if (gltfTexIndex < 0)
+				return;
 
-               SamplerClamping clamping = SamplerClamping::Clamp;
-               const auto& gltfTex = gltfModel.textures[info.index];
-               if (gltfTex.sampler >= 0)
-               {
-                       const auto& sampler = gltfModel.samplers[gltfTex.sampler];
-                       if (sampler.wrapS == TINYGLTF_TEXTURE_WRAP_REPEAT || sampler.wrapT == TINYGLTF_TEXTURE_WRAP_REPEAT)
-                       {
-                               clamping = SamplerClamping::Repeat;
-                       }
-               }
+			SamplerClamping clamping = SamplerClamping::Clamp;
+			const auto& gltfTex = gltfModel.textures[gltfTexIndex];
+			if (gltfTex.sampler >= 0)
+			{
+				const auto& sampler = gltfModel.samplers[gltfTex.sampler];
+				if (sampler.wrapS == TINYGLTF_TEXTURE_WRAP_REPEAT || sampler.wrapT == TINYGLTF_TEXTURE_WRAP_REPEAT)
+				{
+					clamping = SamplerClamping::Repeat;
+				}
+			}
 
-               TextureKey key{};
-               key.m_textureIndex = info.index;
-               key.m_clamping = clamping;
-               key.m_convertToLinear = bConvertToLinear;
-               key.m_normalMap = bNormalMap;
-               key.m_channels = channels;
+			Raytracing::TextureKey key{};
+			key.m_textureIndex = gltfTexIndex;
+			key.m_clamping = clamping;
+			key.m_convertToLinear = bConvertToLinear;
+			key.m_normalMap = bNormalMap;
+			key.m_channels = channels;
 
-               if (m_textureMapping.ContainsKey(key))
-               {
-                       outIndex = (u8)m_textureMapping[key];
-                       return;
-               }
+			if (m_textureMapping.ContainsKey(key))
+			{
+				outIndex = (u8)m_textureMapping[key];
+				return;
+			}
 
-               uint32_t newIndex = (uint32_t)m_textures.Num();
-               m_textures.Add(nullptr);
-               outIndex = (u8)newIndex;
-               m_textureMapping[key] = newIndex;
+			uint32_t newIndex = (uint32_t)m_textures.Num();
+			m_textures.Add(nullptr);
+			outIndex = (u8)newIndex;
+			m_textureMapping[key] = newIndex;
 
-               if (channels == 4)
-                       loadTextureTasks.Add(LoadTexture_Task<vec4>(gltfModel, sceneDir, m_textures, newIndex, bConvertToLinear, bNormalMap));
-               else
-                       loadTextureTasks.Add(LoadTexture_Task<vec3>(gltfModel, sceneDir, m_textures, newIndex, bConvertToLinear, bNormalMap));
-       };
+			if (channels == 4)
+				loadTextureTasks.Add(LoadTexture_Task<vec4>(gltfModel, sceneDir, m_textures, newIndex, bConvertToLinear, bNormalMap));
+			else
+				loadTextureTasks.Add(LoadTexture_Task<vec3>(gltfModel, sceneDir, m_textures, newIndex, bConvertToLinear, bNormalMap));
+		};
 
 	int sceneIndex = gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0;
 
@@ -247,23 +247,23 @@ void PathTracer::Run(const PathTracer::Params& params)
 	const uint32_t height = params.m_height;
 	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
 
-       m_materials.Resize(gltfModel.materials.size());
-       for (size_t i = 0; i < gltfModel.materials.size(); ++i)
-       {
-               const auto& m = gltfModel.materials[i];
+	m_materials.Resize(gltfModel.materials.size());
+	for (size_t i = 0; i < gltfModel.materials.size(); ++i)
+	{
+		const auto& m = gltfModel.materials[i];
 
-               m_materials[i].m_baseColorFactor = m.pbrMetallicRoughness.baseColorFactor.size() == 4 ?
-                       glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::dvec4(1.0f);
-               m_materials[i].m_metallicFactor = (float)m.pbrMetallicRoughness.metallicFactor;
-               m_materials[i].m_roughnessFactor = (float)m.pbrMetallicRoughness.roughnessFactor;
-               m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
-                       glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
+		m_materials[i].m_baseColorFactor = m.pbrMetallicRoughness.baseColorFactor.size() == 4 ?
+			glm::make_vec4(m.pbrMetallicRoughness.baseColorFactor.data()) : glm::dvec4(1.0f);
+		m_materials[i].m_metallicFactor = (float)m.pbrMetallicRoughness.metallicFactor;
+		m_materials[i].m_roughnessFactor = (float)m.pbrMetallicRoughness.roughnessFactor;
+		m_materials[i].m_emissiveFactor = m.emissiveFactor.size() == 3 ?
+			glm::vec3(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]) : glm::vec3(0);
 
-               AddTexture(m.pbrMetallicRoughness.baseColorTexture, true, false, 4, m_materials[i].m_baseColorIndex);
-               AddTexture(m.normalTexture, false, true, 3, m_materials[i].m_normalIndex);
-               AddTexture(m.emissiveTexture, true, false, 3, m_materials[i].m_emissiveIndex);
-               AddTexture(m.pbrMetallicRoughness.metallicRoughnessTexture, false, false, 3, m_materials[i].m_metallicRoughnessIndex);
-               AddTexture(m.occlusionTexture, false, false, 3, m_materials[i].m_occlusionIndex);
+		AddTexture(m.pbrMetallicRoughness.baseColorTexture.index, true, false, 4, m_materials[i].m_baseColorIndex);
+		AddTexture(m.normalTexture.index, false, true, 3, m_materials[i].m_normalIndex);
+		AddTexture(m.emissiveTexture.index, true, false, 3, m_materials[i].m_emissiveIndex);
+		AddTexture(m.pbrMetallicRoughness.metallicRoughnessTexture.index, false, false, 3, m_materials[i].m_metallicRoughnessIndex);
+		AddTexture(m.occlusionTexture.index, false, false, 3, m_materials[i].m_occlusionIndex);
 
 		if (m.alphaMode == "BLEND")
 			m_materials[i].m_blendMode = BlendMode::Blend;
@@ -272,17 +272,17 @@ void PathTracer::Run(const PathTracer::Params& params)
 		else
 			m_materials[i].m_blendMode = BlendMode::Opaque;
 
-               m_materials[i].m_alphaCutoff = (float)m.alphaCutoff;
-       }
+		m_materials[i].m_alphaCutoff = (float)m.alphaCutoff;
+	}
 
-       for (auto& task : loadTextureTasks)
-       {
-               task->Run();
-       }
-       for (auto& task : loadTextureTasks)
-       {
-               task->Wait();
-       }
+	for (auto& task : loadTextureTasks)
+	{
+		task->Run();
+	}
+	for (auto& task : loadTextureTasks)
+	{
+		task->Wait();
+	}
 
 	m_triangles.Clear();
 	std::function<void(int)> Visit = [&](int nodeId)
@@ -299,31 +299,31 @@ void PathTracer::Run(const PathTracer::Params& params)
 					const auto& posView = gltfModel.bufferViews[posAcc.bufferView];
 					const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAcc.byteOffset]);
 
-                                       const auto& normAcc = gltfModel.accessors[prim.attributes.find("NORMAL")->second];
-                                       const auto& normView = gltfModel.bufferViews[normAcc.bufferView];
-                                       const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAcc.byteOffset]);
+					const auto& normAcc = gltfModel.accessors[prim.attributes.find("NORMAL")->second];
+					const auto& normView = gltfModel.bufferViews[normAcc.bufferView];
+					const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAcc.byteOffset]);
 
-                                       const tinygltf::Accessor* tex0Acc = nullptr;
-                                       const tinygltf::BufferView* tex0View = nullptr;
-                                       const float* tex0Data = nullptr;
+					const tinygltf::Accessor* tex0Acc = nullptr;
+					const tinygltf::BufferView* tex0View = nullptr;
+					const float* tex0Data = nullptr;
 
-                                       const tinygltf::Accessor* tex1Acc = nullptr;
-                                       const tinygltf::BufferView* tex1View = nullptr;
-                                       const float* tex1Data = nullptr;
+					const tinygltf::Accessor* tex1Acc = nullptr;
+					const tinygltf::BufferView* tex1View = nullptr;
+					const float* tex1Data = nullptr;
 
-                                       if (auto it = prim.attributes.find("TEXCOORD_0"); it != prim.attributes.end())
-                                       {
-                                               tex0Acc = &gltfModel.accessors[it->second];
-                                               tex0View = &gltfModel.bufferViews[tex0Acc->bufferView];
-                                               tex0Data = reinterpret_cast<const float*>(&gltfModel.buffers[tex0View->buffer].data[tex0View->byteOffset + tex0Acc->byteOffset]);
-                                       }
+					if (auto it = prim.attributes.find("TEXCOORD_0"); it != prim.attributes.end())
+					{
+						tex0Acc = &gltfModel.accessors[it->second];
+						tex0View = &gltfModel.bufferViews[tex0Acc->bufferView];
+						tex0Data = reinterpret_cast<const float*>(&gltfModel.buffers[tex0View->buffer].data[tex0View->byteOffset + tex0Acc->byteOffset]);
+					}
 
-                                       if (auto it = prim.attributes.find("TEXCOORD_1"); it != prim.attributes.end())
-                                       {
-                                               tex1Acc = &gltfModel.accessors[it->second];
-                                               tex1View = &gltfModel.bufferViews[tex1Acc->bufferView];
-                                               tex1Data = reinterpret_cast<const float*>(&gltfModel.buffers[tex1View->buffer].data[tex1View->byteOffset + tex1Acc->byteOffset]);
-                                       }
+					if (auto it = prim.attributes.find("TEXCOORD_1"); it != prim.attributes.end())
+					{
+						tex1Acc = &gltfModel.accessors[it->second];
+						tex1View = &gltfModel.bufferViews[tex1Acc->bufferView];
+						tex1Data = reinterpret_cast<const float*>(&gltfModel.buffers[tex1View->buffer].data[tex1View->byteOffset + tex1Acc->byteOffset]);
+					}
 
 					TVector<uint32_t> indices;
 					if (prim.indices >= 0)
@@ -355,23 +355,23 @@ void PathTracer::Run(const PathTracer::Params& params)
 						}
 					}
 
-                                       for (size_t i = 0; i + 2 < indices.Num(); i += 3)
-                                       {
-                                               Triangle tri{};
-                                               for (int k = 0; k < 3; ++k)
-                                               {
-                                                       uint32_t idx = indices[i + k];
-                                                       glm::vec3 p = glm::make_vec3(posData + idx * 3);
-                                                       glm::vec3 n = glm::make_vec3(normData + idx * 3);
-                                                       glm::vec4 tp = m * glm::vec4(p, 1);
-                                                       tri.m_vertices[k] = glm::vec3(tp) / tp.w;
-                                                       tri.m_normals[k] = glm::normalize(glm::vec3(m * glm::vec4(n, 0)));
+					for (size_t i = 0; i + 2 < indices.Num(); i += 3)
+					{
+						Triangle tri{};
+						for (int k = 0; k < 3; ++k)
+						{
+							uint32_t idx = indices[i + k];
+							glm::vec3 p = glm::make_vec3(posData + idx * 3);
+							glm::vec3 n = glm::make_vec3(normData + idx * 3);
+							glm::vec4 tp = m * glm::vec4(p, 1);
+							tri.m_vertices[k] = glm::vec3(tp) / tp.w;
+							tri.m_normals[k] = glm::normalize(glm::vec3(m * glm::vec4(n, 0)));
 
-                                                       if (tex0Data)
-                                                               tri.m_uvs[k] = glm::make_vec2(tex0Data + idx * 2);
-                                                       if (tex1Data)
-                                                               tri.m_uvs2[k] = glm::make_vec2(tex1Data + idx * 2);
-                                               }
+							if (tex0Data)
+								tri.m_uvs[k] = glm::make_vec2(tex0Data + idx * 2);
+							if (tex1Data)
+								tri.m_uvs2[k] = glm::make_vec2(tex1Data + idx * 2);
+						}
 						GenerateTangentBitangent(tri.m_tangent[0], tri.m_bitangent[0], tri.m_vertices, tri.m_uvs);
 						tri.m_tangent[1] = tri.m_tangent[0];
 						tri.m_tangent[2] = tri.m_tangent[0];

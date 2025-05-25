@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Defines.h"
 #include "Containers/Vector.h"
-#include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 
 #include "Math/Math.h"
 #include "Math/Bounds.h"
@@ -186,13 +186,13 @@ namespace Sailor::Raytracing
 	SAILOR_API void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv);
 
 
-        template<typename T>
-        void LoadTexture(const tinygltf::Model& model,
-                const std::filesystem::path& sceneDir,
-                TVector<TSharedPtr<CombinedSampler2D>>& textures,
-                uint32_t textureIndex,
-                bool bConvertToLinear,
-                bool bNormalMap = false)
+	template<typename T>
+	void LoadTexture(const tinygltf::Model& model,
+		const std::filesystem::path& sceneDir,
+		TVector<TSharedPtr<CombinedSampler2D>>& textures,
+		uint32_t textureIndex,
+		bool bConvertToLinear,
+		bool bNormalMap = false)
 	{
 		auto ptr = textures[textureIndex] = TSharedPtr<CombinedSampler2D>::Make();
 
@@ -261,21 +261,21 @@ namespace Sailor::Raytracing
 		{
 			ptr->Initialize<T, u8vec4>((u8vec4*)pixelsU8, bConvertToLinear, bNormalMap);
 			stbi_image_free(pixelsU8);
-                }
-        }
+		}
+	}
 
-       template<typename T>
-       Tasks::ITaskPtr LoadTexture_Task(const tinygltf::Model& model,
-               const std::filesystem::path& sceneDir,
-               TVector<TSharedPtr<CombinedSampler2D>>& textures,
-               uint32_t textureIndex,
-               bool bConvertToLinear,
-               bool bNormalMap = false)
-       {
-               return Tasks::CreateTask("Load Texture",
-                       [&model, &sceneDir, &textures, textureIndex, bConvertToLinear, bNormalMap]()
-                       {
-                               LoadTexture<T>(model, sceneDir, textures, textureIndex, bConvertToLinear, bNormalMap);
-                       });
-       }
+	template<typename T>
+	Tasks::ITaskPtr LoadTexture_Task(const tinygltf::Model& model,
+		const std::filesystem::path& sceneDir,
+		TVector<TSharedPtr<CombinedSampler2D>>& textures,
+		uint32_t textureIndex,
+		bool bConvertToLinear,
+		bool bNormalMap = false)
+	{
+		return Tasks::CreateTask("Load Texture",
+			[&model, &sceneDir, &textures, textureIndex, bConvertToLinear, bNormalMap]()
+			{
+				LoadTexture<T>(model, sceneDir, textures, textureIndex, bConvertToLinear, bNormalMap);
+			}, EThreadType::Worker);
+	}
 }

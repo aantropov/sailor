@@ -15,32 +15,32 @@ using namespace Sailor;
 
 namespace Sailor::Raytracing
 {
-       struct TextureKey
-       {
-               int32_t m_textureIndex{};
-               SamplerClamping m_clamping = SamplerClamping::Clamp;
-               bool m_convertToLinear = false;
-               bool m_normalMap = false;
-               uint8_t m_channels = 4;
+	struct TextureKey
+	{
+		int32_t m_textureIndex{};
+		SamplerClamping m_clamping = SamplerClamping::Clamp;
+		bool m_convertToLinear = false;
+		bool m_normalMap = false;
+		uint8_t m_channels = 4;
 
-               bool operator==(const TextureKey& rhs) const
-               {
-                       return m_textureIndex == rhs.m_textureIndex &&
-                               m_clamping == rhs.m_clamping &&
-                               m_convertToLinear == rhs.m_convertToLinear &&
-                               m_normalMap == rhs.m_normalMap &&
-                               m_channels == rhs.m_channels;
-               }
+		bool operator==(const TextureKey& rhs) const
+		{
+			return m_textureIndex == rhs.m_textureIndex &&
+				m_clamping == rhs.m_clamping &&
+				m_convertToLinear == rhs.m_convertToLinear &&
+				m_normalMap == rhs.m_normalMap &&
+				m_channels == rhs.m_channels;
+		}
 
-               size_t GetHash() const
-               {
-                       size_t hash = 0;
-                       HashCombine(hash, m_textureIndex, (int)m_clamping, m_convertToLinear, m_normalMap, m_channels);
-                       return hash;
-               }
-       };
+		size_t GetHash() const
+		{
+			size_t hash = 0;
+			HashCombine(hash, m_textureIndex, (int)m_clamping, m_convertToLinear, m_normalMap, m_channels);
+			return hash;
+		}
+	};
 
-       class PathTracer
+	class PathTracer
 	{
 	public:
 
@@ -76,7 +76,7 @@ namespace Sailor::Raytracing
 		TVector<DirectionalLight> m_directionalLights{};
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};
-               TVector<TSharedPtr<CombinedSampler2D>> m_textures{};
-               TMap<TextureKey, uint32_t> m_textureMapping{};
-       };
+		TVector<TSharedPtr<CombinedSampler2D>> m_textures{};
+		TMap<TextureKey, uint32_t> m_textureMapping{};
+	};
 }
