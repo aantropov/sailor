@@ -7,6 +7,7 @@
 #include "Math/Bounds.h"
 
 #include <stb_image.h>
+#include <tiny_gltf.h>
 
 #include <filesystem>
 
@@ -184,85 +185,82 @@ namespace Sailor::Raytracing
 
 	SAILOR_API void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv);
 
-	/*template<typename T>
-	Tasks::ITaskPtr LoadTexture_Task(TVector<TSharedPtr<CombinedSampler2D>>& m_textures,
-		const std::filesystem::path& sceneFile,
-		const aiScene* scene,
-		uint32_t textureIndex,
-		const std::string& filename,
-		aiTextureMapMode clamping,
-		bool bConvertToLinear,
-		bool bNormalMap = false)
-	{
-		auto ptr = m_textures[textureIndex] = TSharedPtr<CombinedSampler2D>::Make();
-		ptr->m_clamping = clamping == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 
-		if constexpr (IsSame<vec4, T>)
-		{
-			ptr->m_channels = 4;
-		}
-		else if constexpr (IsSame<vec3, T>)
-		{
-			ptr->m_channels = 3;
-		}
+       template<typename T>
+       void LoadTexture(const tinygltf::Model& model,
+               const std::filesystem::path& sceneDir,
+               TVector<TSharedPtr<CombinedSampler2D>>& textures,
+               uint32_t textureIndex,
+               bool bConvertToLinear,
+               bool bNormalMap = false)
+       {
+               auto ptr = textures[textureIndex] = TSharedPtr<CombinedSampler2D>::Make();
 
-		Tasks::ITaskPtr task = Tasks::CreateTask("Load Texture",
-			[scene = scene,
-			pTexture = ptr,
-			sceneFile = sceneFile,
-			fileName = filename,
-			bConvertToLinear = bConvertToLinear,
-			bNormalMap = bNormalMap
-			]() mutable
-			{
-				int32_t texChannels = 0;
-				void* pixels = nullptr;
+               SamplerClamping clamping = SamplerClamping::Clamp;
+               const auto& gltfTex = model.textures[textureIndex];
+               if (gltfTex.sampler >= 0)
+               {
+                       const auto& sampler = model.samplers[gltfTex.sampler];
+                       if (sampler.wrapS == TINYGLTF_TEXTURE_WRAP_REPEAT || sampler.wrapT == TINYGLTF_TEXTURE_WRAP_REPEAT)
+                       {
+                               clamping = SamplerClamping::Repeat;
+                       }
+               }
+               ptr->m_clamping = clamping;
 
-				auto LoadTextureData = [&](const stbi_uc* data, int length) -> bool
-					{
-						if (stbi_is_hdr_from_memory(data, length))
-						{
-							pixels = (void*)stbi_loadf_from_memory(data, length, &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
-							return true;
-						}
-						else
-						{
-							pixels = (void*)stbi_load_from_memory(data, length, &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
-							return false;
-						}
-					};
+               if constexpr (IsSame<vec4, T>)
+               {
+                       ptr->m_channels = 4;
+               }
+               else if constexpr (IsSame<vec3, T>)
+               {
+                       ptr->m_channels = 3;
+               }
 
-				bool bIsHDR = false;
-				if (fileName[0] == '*')
-				{
-					const uint32 texIndex = atoi(&fileName[1]);
-					aiTexture* pAITexture = scene->mTextures[texIndex];
-					bIsHDR = LoadTextureData((stbi_uc*)pAITexture->pcData, pAITexture->mWidth);
-				}
-				else
-				{
-					sceneFile.replace_filename(fileName);
-					bIsHDR = stbi_is_hdr(sceneFile.string().c_str());
-					pixels = bIsHDR
-						? (void*)stbi_loadf(sceneFile.string().c_str(), &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha)
-						: (void*)stbi_load(sceneFile.string().c_str(), &pTexture->m_width, &pTexture->m_height, &texChannels, STBI_rgb_alpha);
-				}
+               int32_t width = 0;
+               int32_t height = 0;
+               int32_t channels = 0;
 
-				if (bIsHDR)
-				{
-					pTexture->Initialize<T, vec4>((vec4*)pixels, bConvertToLinear, bNormalMap);
-				}
-				else
-				{
-					pTexture->Initialize<T, u8vec4>((u8vec4*)pixels, bConvertToLinear, bNormalMap);
-				}
+               bool hdr = false;
+               stbi_uc* pixelsU8 = nullptr;
+               float* pixelsF = nullptr;
 
-				if (pixels)
-				{
-					stbi_image_free(pixels);
-				}
-			})->Run();
+               const auto& image = model.images[gltfTex.source];
 
-			return task;
-	};*/
+               if (!image.uri.empty())
+               {
+                       std::filesystem::path imgPath = sceneDir / image.uri;
+                       hdr = stbi_is_hdr(imgPath.string().c_str());
+                       if (hdr)
+                               pixelsF = stbi_loadf(imgPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+                       else
+                               pixelsU8 = stbi_load(imgPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+               }
+               else if (image.bufferView >= 0)
+               {
+                       const auto& view = model.bufferViews[image.bufferView];
+                       const auto& buffer = model.buffers[view.buffer];
+                       const unsigned char* data = buffer.data.data() + view.byteOffset;
+                       int length = (int)view.byteLength;
+                       hdr = stbi_is_hdr_from_memory(data, length);
+                       if (hdr)
+                               pixelsF = stbi_loadf_from_memory(data, length, &width, &height, &channels, STBI_rgb_alpha);
+                       else
+                               pixelsU8 = stbi_load_from_memory(data, length, &width, &height, &channels, STBI_rgb_alpha);
+               }
+
+               ptr->m_width = width;
+               ptr->m_height = height;
+
+               if (hdr && pixelsF)
+               {
+                       ptr->Initialize<T, vec4>((vec4*)pixelsF, bConvertToLinear, bNormalMap);
+                       stbi_image_free(pixelsF);
+               }
+               else if (pixelsU8)
+               {
+                       ptr->Initialize<T, u8vec4>((u8vec4*)pixelsU8, bConvertToLinear, bNormalMap);
+                       stbi_image_free(pixelsU8);
+               }
+       }
 }
