@@ -5,3 +5,6 @@ The project is a game engine written in C++ and built with CMake. It targets Win
 Dependencies are managed through vcpkg. Whenever you update the repository (for example, pull new commits or fetch submodule changes) run `update_deps.bat` from the repository root to update and install the required packages.
 
 The editor application is written in C# using .NET MAUI. Its source code lives in the `Editor` directory.
+
+Only English language for branch-names, comments, and everything.
+For C# code use spaces, and for C++ only tabs.
