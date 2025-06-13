@@ -16,6 +16,10 @@ endif()
 #find_package(tinygltf CONFIG REQUIRED)  
 #find_package(refl-cpp CONFIG REQUIRED)
 
+# Ensure tinygltf implementation is always included
+list(APPEND SAILOR_RUNTIME_SOURCES
+    "${SAILOR_RUNTIME_DIR}/Submodules/ExternalDeps.cpp")
+
 # Project files and Engine library
 file(GLOB_RECURSE SAILOR_RUNTIME_SOURCES
   "${SAILOR_RUNTIME_DIR}/*.h"
