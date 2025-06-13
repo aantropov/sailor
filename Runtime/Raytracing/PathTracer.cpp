@@ -121,7 +121,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 		};
 
 	// Parse camera
-	auto cameraPos = vec3(0, 0.75f, 5.0f);
+	auto cameraPos = vec3(0, 0.0f, 2.0f);
 	auto cameraUp = normalize(vec3(0, 1, 0));
 	auto cameraForward = normalize(-cameraPos);
 	float aspectRatio = 4.0f / 3.0f;
