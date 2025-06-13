@@ -38,7 +38,9 @@ glslVertex: |
       mat4 model;
       vec4 sphereBounds;
       uint materialInstance;
+      uint skeletonOffset;
       uint isCulled;
+      uint padding;
   };
   
   layout(std430, set = 1, binding = 0) readonly buffer PerInstanceDataSSBO

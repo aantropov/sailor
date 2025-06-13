@@ -19,6 +19,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "ECS/CameraECS.h"
 #include "ECS/LightingECS.h"
+#include "ECS/AnimationECS.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -88,7 +89,18 @@ Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool
 	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultTexcoordBinding, 0, RHI::EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_texcoord));
 	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultColorBinding, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_color));
 	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultTangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_tangent));
-	vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultBitangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_bitangent));
+       vertexP3N3T3B3UV2C4->AddAttribute(RHI::RHIVertexDescription::DefaultBitangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4::m_bitangent));
+
+auto& vertexSkinned = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
+vertexSkinned->SetVertexStride(sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
+vertexSkinned->AddAttribute(RHI::RHIVertexDescription::DefaultPositionBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4I4W4::m_position));
+vertexSkinned->AddAttribute(RHI::RHIVertexDescription::DefaultNormalBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4I4W4::m_normal));
+vertexSkinned->AddAttribute(RHI::RHIVertexDescription::DefaultTexcoordBinding, 0, RHI::EFormat::R32G32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4I4W4::m_texcoord));
+vertexSkinned->AddAttribute(RHI::RHIVertexDescription::DefaultColorBinding, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4I4W4::m_color));
+vertexSkinned->AddAttribute(RHI::RHIVertexDescription::DefaultTangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4I4W4::m_tangent));
+vertexSkinned->AddAttribute(RHI::RHIVertexDescription::DefaultBitangentBinding, 0, RHI::EFormat::R32G32B32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4I4W4::m_bitangent));
+vertexSkinned->AddAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding, 0, RHI::EFormat::R32G32B32A32_UINT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4I4W4::m_boneIds));
+vertexSkinned->AddAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding, 0, RHI::EFormat::R32G32B32A32_SFLOAT, (uint32_t)Sailor::OffsetOf(&RHI::VertexP3N3T3B3UV2C4I4W4::m_boneWeights));
 }
 
 Renderer::~Renderer()
@@ -243,6 +255,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
 		world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 		world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
+		world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
 
 		rhiSceneView->m_deltaTime = frame.GetDeltaTime();
 		rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();

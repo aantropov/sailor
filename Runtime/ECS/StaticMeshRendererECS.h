@@ -25,12 +25,13 @@ namespace Sailor
 
 		SAILOR_API __forceinline bool ShouldCastShadow() const { return true; }
 
-	protected:
+protected:
 
-		ModelPtr m_model;
-		TVector<MaterialPtr> m_materials;
+                ModelPtr m_model;
+                TVector<MaterialPtr> m_materials;
+               uint32_t m_skeletonOffset = 0;
 
-		friend class StaticMeshRendererECS;
+                friend class StaticMeshRendererECS;
 	};
 
 	class StaticMeshRendererECS : public ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>

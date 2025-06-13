@@ -99,10 +99,11 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						continue;
 					}
 
-					DepthPrepassNode::PerInstanceData data;
-					data.model = proxy.m_worldMatrix;
-					data.bIsCulled = 0;
-					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
+                                       DepthPrepassNode::PerInstanceData data;
+                                       data.model = proxy.m_worldMatrix;
+                                       data.skeletonOffset = proxy.m_skeletonOffset;
+                                       data.bIsCulled = 0;
+                                       data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 
 					if (bRequiredCustomDepth)
 					{
@@ -243,16 +244,21 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	}
 
 	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
-		{
-			TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
+auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
+{
+TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
 
-			if (material->GetRenderState().IsRequiredCustomDepthShader())
-			{
-				sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData , material->GetBindings(), textureSamplers });
-			}
-			return sets;
-		};
+if (material->GetRenderState().IsRequiredCustomDepthShader())
+{
+sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData , material->GetBindings(), textureSamplers });
+}
+
+if (sceneView.m_boneMatrices)
+{
+sets.Add(sceneView.m_boneMatrices);
+}
+return sets;
+};
 
 	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 	

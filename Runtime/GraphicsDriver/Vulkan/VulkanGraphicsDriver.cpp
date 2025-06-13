@@ -76,9 +76,9 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 
 VulkanGraphicsDriver::~VulkanGraphicsDriver()
 {
-	m_materialSsboAllocator.Clear();
-	m_generalSsboAllocator.Clear();
-	m_meshSsboAllocator.Clear();
+        m_materialSsboAllocator.Clear();
+        m_generalSsboAllocator.Clear();
+        m_meshSsboAllocator.Clear();
 
 	m_vkInstance->GetMainDevice()->Shutdown();
 
@@ -1197,8 +1197,9 @@ TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetMeshSsboAllocator()
 		m_meshSsboAllocator->GetGlobalAllocator().SetMemoryProperties(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	}
-	return m_meshSsboAllocator;
+        return m_meshSsboAllocator;
 }
+
 
 TSharedPtr<VulkanBufferAllocator>& VulkanGraphicsDriver::GetGeneralSsboAllocator()
 {

@@ -28,11 +28,18 @@ namespace Sailor
 		Dynamic = 2
 	};
 
-	enum class ELightType : uint8_t
-	{
-		Directional = 0,
-		Point,
-		Spot,
-		Area
-	};
+        enum class ELightType : uint8_t
+        {
+                Directional = 0,
+                Point,
+                Spot,
+                Area
+        };
+
+       enum class EAnimationPlayMode : uint8_t
+       {
+               Repeat = 0,
+               Once,
+               PingPong
+       };
 }

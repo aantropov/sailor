@@ -254,8 +254,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
-		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
-		SAILOR_API const TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
+               SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
+               SAILOR_API const TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
 
 	protected:
 
@@ -293,8 +293,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Storage buffers to store everything
 		TSharedPtr<VulkanBufferAllocator> m_materialSsboAllocator;
-		TSharedPtr<VulkanBufferAllocator> m_generalSsboAllocator;
-		TSharedPtr<VulkanBufferAllocator> m_meshSsboAllocator;
+               TSharedPtr<VulkanBufferAllocator> m_generalSsboAllocator;
+               TSharedPtr<VulkanBufferAllocator> m_meshSsboAllocator;
 
 		// Cached MSAA render targets to support MSAA for rendering to framebuffer
 		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};

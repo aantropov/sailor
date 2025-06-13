@@ -16,12 +16,14 @@ namespace Sailor::RHI
 			uint32_t m_offset;
 		};
 
-		static constexpr uint32_t DefaultPositionBinding = 0;
-		static constexpr uint32_t DefaultNormalBinding = 1;
-		static constexpr uint32_t DefaultTexcoordBinding = 2;
-		static constexpr uint32_t DefaultColorBinding = 3;
-		static constexpr uint32_t DefaultTangentBinding = 4;
-		static constexpr uint32_t DefaultBitangentBinding = 5;
+static constexpr uint32_t DefaultPositionBinding = 0;
+static constexpr uint32_t DefaultNormalBinding = 1;
+static constexpr uint32_t DefaultTexcoordBinding = 2;
+static constexpr uint32_t DefaultColorBinding = 3;
+static constexpr uint32_t DefaultTangentBinding = 4;
+static constexpr uint32_t DefaultBitangentBinding = 5;
+static constexpr uint32_t DefaultBoneIdsBinding = 6;
+static constexpr uint32_t DefaultBoneWeightsBinding = 7;
 
 		RHIVertexDescription() = default;
 

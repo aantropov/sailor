@@ -36,14 +36,15 @@ namespace Sailor::RHI
 		SAILOR_API bool operator<(const RHILightProxy& rhs) const { return m_distanceToCamera < rhs.m_distanceToCamera; }
 	};
 
-	struct RHISceneViewProxy
-	{
+struct RHISceneViewProxy
+{
 		size_t m_staticMeshEcs{};
 		glm::mat4 m_worldMatrix;
 		Math::AABB m_worldAabb{};
 		
-		bool m_bCastShadows{};
-		size_t m_frame{};
+               bool m_bCastShadows{};
+               uint32_t m_skeletonOffset = 0;
+               size_t m_frame{};
 
 		TVector<RHIMeshPtr> m_meshes;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
@@ -75,8 +76,9 @@ namespace Sailor::RHI
 		uint32_t m_totalNumLights = 0;
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
 
-		RHIShaderBindingSetPtr m_frameBindings{};
-		RHIShaderBindingSetPtr m_rhiLightsData{};
+RHIShaderBindingSetPtr m_frameBindings{};
+RHIShaderBindingSetPtr m_rhiLightsData{};
+RHIShaderBindingSetPtr m_boneMatrices{};
 
 		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
 		Tasks::TaskPtr<RHICommandListPtr, void> m_drawImGui{};
@@ -91,8 +93,9 @@ namespace Sailor::RHI
 		TOctree<RHIMeshProxy> m_stationaryOctree{ glm::ivec3(0,0,0), 16536 * 16, 4 };
 		TOctree<RHISceneViewProxy> m_staticOctree{ glm::ivec3(0,0,0), 16536 * 16, 4 };
 
-		uint32_t m_totalNumLights = 0;
-		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
+uint32_t m_totalNumLights = 0;
+RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
+RHI::RHIShaderBindingSetPtr m_boneMatrices{};
 
 		// For each camera
 		TVector<TVector<RHIUpdateShadowMapCommand>> m_shadowMapsToUpdate;

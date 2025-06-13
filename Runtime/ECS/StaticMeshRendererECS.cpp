@@ -5,6 +5,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "RHI/Material.h"
 #include "RHI/Fence.h"
+#include "Components/AnimatorComponent.h"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -113,10 +114,15 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 					if ((data.m_bIsDirty || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) && adjustedBounds.IsValid())
 					{
-						RHI::RHISceneViewProxy proxy;
-						proxy.m_staticMeshEcs = GetComponentIndex(&data);
-						proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
-						proxy.m_meshes = data.GetModel()->GetMeshes();
+                                               RHI::RHISceneViewProxy proxy;
+                                               proxy.m_staticMeshEcs = GetComponentIndex(&data);
+                                               proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
+                                               if (auto animator = ownerGameObject->GetComponent<AnimatorComponent>())
+                                               {
+                                                       data.m_skeletonOffset = animator->GetSkeletonOffset();
+                                               }
+                                               proxy.m_skeletonOffset = data.m_skeletonOffset;
+                                               proxy.m_meshes = data.GetModel()->GetMeshes();
 						proxy.m_worldAabb = data.GetModel()->GetBoundsAABB();
 						proxy.m_worldAabb.Apply(proxy.m_worldMatrix);
 						proxy.m_bCastShadows = data.ShouldCastShadow();

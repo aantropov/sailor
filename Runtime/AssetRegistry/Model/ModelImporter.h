@@ -92,9 +92,10 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
+SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
 
-		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;

@@ -6,6 +6,7 @@ includes:
 
 defines:
 - ALPHA_CUTOUT
+- SKINNING
 
 glslCommon: |
   #version 460
@@ -18,6 +19,10 @@ glslVertex: |
   layout(location=DefaultColorBinding) in vec4 inColor;
   layout(location=DefaultTangentBinding) in vec3 inTangent;
   layout(location=DefaultBitangentBinding) in vec3 inBitangent;
+#ifdef SKINNING
+  layout(location=DefaultBoneIdsBinding) in uvec4 inBoneIds;
+  layout(location=DefaultBoneWeightsBinding) in vec4 inBoneWeights;
+#endif
 
   layout(location=0)
   flat out uint materialInstance;
@@ -36,7 +41,9 @@ glslVertex: |
       mat4 model;
       vec4 sphereBounds;
       uint materialInstance;
+      uint skeletonOffset;
       uint isCulled;
+      uint padding;
   };
   
   struct MaterialData
@@ -124,18 +131,40 @@ glslVertex: |
   } material;
   
   layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
-  
-  void main() 
+
+#ifdef SKINNING
+  layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
   {
-    vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+      mat4 instance[];
+  } bones;
+#endif
+  
+  void main()
+  {
+#ifdef SKINNING
+    uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
+    mat4 skinMatrix = bones.instance[offset + inBoneIds.x] * inBoneWeights.x +
+                      bones.instance[offset + inBoneIds.y] * inBoneWeights.y +
+                      bones.instance[offset + inBoneIds.z] * inBoneWeights.z +
+                      bones.instance[offset + inBoneIds.w] * inBoneWeights.w;
+
+    mat4 modelMatrix = data.instance[gl_InstanceIndex].model * skinMatrix;
+#else
+    mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+#endif
+
+    vec4 vertexPosition = modelMatrix * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
-    gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
-    vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
+    gl_Position = frame.projection * (frame.view * vertexPosition);
 
-    mat3 normalMatrix = transpose(inverse(mat3(data.instance[gl_InstanceIndex].model)));
-    vout.normal = normalize(normalMatrix * inNormal);
-    vout.tangentBasis = normalMatrix * mat3(inTangent, inBitangent, inNormal);
+    vec3 normal = (modelMatrix * vec4(inNormal, 0.0)).xyz;
+    vec3 tangent = (modelMatrix * vec4(inTangent, 0.0)).xyz;
+    vec3 bitangent = (modelMatrix * vec4(inBitangent, 0.0)).xyz;
+
+    mat3 normalMatrix = transpose(inverse(mat3(modelMatrix)));
+    vout.normal = normalize(normalMatrix * normal);
+    vout.tangentBasis = normalMatrix * mat3(tangent, bitangent, normal);
 
     vout.color = inColor;
     vout.texcoord = inTexcoord;

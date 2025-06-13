@@ -42,7 +42,8 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 
 void RHISceneView::Clear()
 {
-	m_rhiLightsData.Clear();
+m_rhiLightsData.Clear();
+m_boneMatrices.Clear();
 
 	m_cameras.Clear();
 	m_cameraTransforms.Clear();
@@ -89,9 +90,10 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 
 					RHISceneViewProxy viewProxy;
 					viewProxy.m_staticMeshEcs = meshProxy.m_staticMeshEcs;
-					viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
-					viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
-					viewProxy.m_overrideMaterials.Clear();
+                                       viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
+                                       viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
+                                       viewProxy.m_skeletonOffset = ecsData.m_skeletonOffset;
+                                       viewProxy.m_overrideMaterials.Clear();
 					viewProxy.m_frame = ecsData.GetFrameLastChange();
 					viewProxy.m_bCastShadows = ecsData.ShouldCastShadow();
 					viewProxy.m_worldAabb = ecsData.GetModel()->GetBoundsAABB();
@@ -163,8 +165,9 @@ void RHISceneView::PrepareSnapshots()
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;
 
-		res.m_totalNumLights = m_totalNumLights;
-		res.m_rhiLightsData = m_rhiLightsData;
+res.m_totalNumLights = m_totalNumLights;
+res.m_rhiLightsData = m_rhiLightsData;
+res.m_boneMatrices = m_boneMatrices;
 		res.m_drawImGui = m_drawImGui;
 		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);
 		res.m_proxies = TraceScene(frustum, false);

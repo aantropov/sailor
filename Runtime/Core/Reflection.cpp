@@ -172,8 +172,9 @@ YAML::Node Reflection::ExportEngineTypes()
 	yamlTypes["cdos"] = nodes;
 
 	nodes.Clear();
-	nodes.Add(ReflectEnumValues<EMobilityType>());
-	nodes.Add(ReflectEnumValues<ELightType>());
+       nodes.Add(ReflectEnumValues<EMobilityType>());
+       nodes.Add(ReflectEnumValues<ELightType>());
+       nodes.Add(ReflectEnumValues<EAnimationPlayMode>());
 	nodes.Add(ReflectEnumValues<RHI::EFormat>());
 	nodes.Add(ReflectEnumValues<RHI::ETextureFiltration>());
 	nodes.Add(ReflectEnumValues<RHI::ETextureClamping>());

@@ -81,9 +81,10 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							shaderBinding = material->GetBindings()->GetShaderBindings()["material"];
 						}
 
-						RenderSceneNode::PerInstanceData data;
-						data.model = proxy.m_worldMatrix;
-						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
+                                               RenderSceneNode::PerInstanceData data;
+                                               data.model = proxy.m_worldMatrix;
+                                               data.skeletonOffset = proxy.m_skeletonOffset;
+                                               data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 						data.bIsCulled = 0;
 						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 
@@ -178,11 +179,15 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		const auto scissor = glm::uvec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y);
 
 		auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-		auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
-			{
-				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), textureSamplers });
-				return sets;
-			};
+auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
+{
+TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), textureSamplers });
+if (sceneView.m_boneMatrices)
+{
+sets.Add(sceneView.m_boneMatrices);
+}
+return sets;
+};
 
 		const size_t numThreads = scheduler->GetNumRHIThreads() + 1;
 		const size_t materialsPerThread = (m_batches.Num()) / numThreads;
