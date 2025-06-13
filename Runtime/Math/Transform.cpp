@@ -76,3 +76,21 @@ vec3 Transform::GetRight() const { return glm::rotate(m_rotation, Math::vec3_Rig
 vec3 Transform::GetUp() const { return glm::rotate(m_rotation, Math::vec3_Up); }
 
 const Transform Transform::Identity;
+
+Transform FromMatrix(const glm::mat4& m)
+{
+       glm::vec3 translation = glm::vec3(m[3]);
+
+       glm::vec3 scale;
+       scale.x = glm::length(glm::vec3(m[0]));
+       scale.y = glm::length(glm::vec3(m[1]));
+       scale.z = glm::length(glm::vec3(m[2]));
+
+       glm::mat3 rotMat;
+       rotMat[0] = scale.x != 0.0f ? glm::vec3(m[0]) / scale.x : glm::vec3(m[0]);
+       rotMat[1] = scale.y != 0.0f ? glm::vec3(m[1]) / scale.y : glm::vec3(m[1]);
+       rotMat[2] = scale.z != 0.0f ? glm::vec3(m[2]) / scale.z : glm::vec3(m[2]);
+       glm::quat rotation = glm::quat_cast(rotMat);
+
+       return Transform(glm::vec4(translation, 1.0f), rotation, glm::vec4(scale, 1.0f));
+}

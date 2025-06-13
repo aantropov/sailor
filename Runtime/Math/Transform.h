@@ -45,5 +45,6 @@ namespace Sailor::Math
 		static const Transform Identity;
 	};
 
-	Transform SAILOR_API Lerp(const Transform& a, const Transform& b, float t);
+       Transform SAILOR_API Lerp(const Transform& a, const Transform& b, float t);
+       Transform SAILOR_API FromMatrix(const glm::mat4& m);
 }

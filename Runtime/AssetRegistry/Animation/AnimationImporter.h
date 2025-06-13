@@ -5,6 +5,7 @@
 #include "AssetRegistry/AssetFactory.h"
 #include "AnimationAssetInfo.h"
 #include "Engine/Object.h"
+#include "Math/Transform.h"
 #include <glm/mat4x4.hpp>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
@@ -19,7 +20,7 @@ namespace Sailor
 	public:
 		SAILOR_API Animation(FileId uid) : Object(uid) {}
 
-		TVector<glm::mat4> m_frames;
+		TVector<Math::Transform> m_frames;
 		uint32_t m_numFrames = 0;
 		uint32_t m_numBones = 0;
 		float m_fps = 30.0f;
