@@ -89,13 +89,13 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 			m_nextBoneOffset = (std::min)(m_nextBoneOffset, BonesMaxNum);
 		}
 
-               uint32_t nextFrame = (data.m_frameIndex + 1) % anim.m_numFrames;
-               for (uint32_t i = 0; i < anim.m_numBones; i++)
-               {
-                       const Math::Transform& a = anim.m_frames[data.m_frameIndex * anim.m_numBones + i];
-                       const Math::Transform& b = anim.m_frames[nextFrame * anim.m_numBones + i];
-                       data.m_currentSkeleton[i] = Math::Lerp(a, b, data.m_lerp);
-               }
+		uint32_t nextFrame = (data.m_frameIndex + 1) % anim.m_numFrames;
+		for (uint32_t i = 0; i < anim.m_numBones; i++)
+		{
+			const Math::Transform& a = anim.m_frames[data.m_frameIndex * anim.m_numBones + i];
+			const Math::Transform& b = anim.m_frames[nextFrame * anim.m_numBones + i];
+			data.m_currentSkeleton[i] = Math::Lerp(a, b, data.m_lerp);
+		}
 
 		ModelPtr model;
 		if (auto owner = data.m_owner.StaticCast<GameObject>())
@@ -110,14 +110,14 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 		for (uint32_t i = 0; i < data.m_currentSkeleton.Num(); ++i)
 		{
 			const glm::mat4 bind = model && model->GetInverseBind().Num() > i ? model->GetInverseBind()[i] : glm::mat4(1.0f);
-		matrices[i] = data.m_currentSkeleton[i].Matrix() * bind;
-}
+			matrices[i] = data.m_currentSkeleton[i].Matrix() * bind;
+		}
 
-               auto binding = m_bonesBinding->GetOrAddShaderBinding("bones");
-               commands->UpdateShaderBinding(cmdList, binding,
-                       matrices.GetData(),
-                       sizeof(glm::mat4) * matrices.Num(),
-                       binding->GetBufferOffset() + sizeof(glm::mat4) * data.m_gpuOffset);
+		auto binding = m_bonesBinding->GetOrAddShaderBinding("bones");
+		commands->UpdateShaderBinding(cmdList, binding,
+			matrices.GetData(),
+			sizeof(glm::mat4) * matrices.Num(),
+			binding->GetBufferOffset() + sizeof(glm::mat4) * data.m_gpuOffset);
 	}
 
 	commands->EndDebugRegion(cmdList);

@@ -24,7 +24,7 @@ namespace Sailor
 		uint32_t m_frameIndex = 0;
 		float m_lerp = 0.0f;
 		uint32_t m_gpuOffset = std::numeric_limits<uint32_t>::max();
-               TVector<Math::Transform> m_currentSkeleton;
+		TVector<Math::Transform> m_currentSkeleton;
 
 		bool m_bIsPlaying = false;
 		float m_playSpeed = 1.0f;
@@ -33,7 +33,7 @@ namespace Sailor
 		float m_currentFrame = 0.0f;
 
 	protected:
-		
+
 		TObjectPtr<Animation> m_animation;
 		uint32_t m_bonesCount = 0;
 

@@ -31,9 +31,9 @@ namespace Sailor
 {
 	using ModelPtr = TObjectPtr<class Model>;
 
-class Model : public Object, public IYamlSerializable
-{
-public:
+	class Model : public Object, public IYamlSerializable
+	{
+	public:
 
 		SAILOR_API Model(FileId uid, TVector<RHI::RHIMeshPtr> meshes = {}) :
 			Object(std::move(uid)),
@@ -57,7 +57,7 @@ public:
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
-protected:
+	protected:
 
 		TVector<RHI::RHIMeshPtr> m_meshes;
 		std::atomic<bool> m_bIsReady{};
@@ -97,7 +97,7 @@ protected:
 
 	protected:
 
-SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
+		SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);

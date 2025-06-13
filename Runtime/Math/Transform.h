@@ -40,11 +40,12 @@ namespace Sailor::Math
 
 		SAILOR_API Transform(vec4 pos = vec4(0.0f, 0.0f, 0.0f, 0.0f),
 			quat rot = quat(1.0, 0.0, 0.0, 0.0),
-			vec4 scale = vec4(1.0f, 1.0f, 1.0f, 1.0f)) : m_position(pos), m_rotation(rot), m_scale(scale) {}
+			vec4 scale = vec4(1.0f, 1.0f, 1.0f, 1.0f)) : m_position(pos), m_rotation(rot), m_scale(scale) {
+		}
 
 		static const Transform Identity;
 	};
 
-       Transform SAILOR_API Lerp(const Transform& a, const Transform& b, float t);
-       Transform SAILOR_API FromMatrix(const glm::mat4& m);
+	Transform SAILOR_API Lerp(const Transform& a, const Transform& b, float t);
+	Transform SAILOR_API FromMatrix(const glm::mat4& m);
 }
