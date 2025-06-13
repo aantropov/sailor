@@ -8,6 +8,8 @@
 #define DefaultColorBinding 3
 #define DefaultTangentBinding 4
 #define DefaultBitangentBinding 5
+#define DefaultBoneIdsBinding 6
+#define DefaultBoneWeightsBinding 7
 
 // Tile Lighting
 #define LIGHTS_CULLING_TILE_SIZE 16

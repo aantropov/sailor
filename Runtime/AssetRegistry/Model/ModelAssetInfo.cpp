@@ -18,6 +18,7 @@ YAML::Node ModelAssetInfo::Serialize() const
 	SERIALIZE_PROPERTY(outData, m_bShouldBatchByMaterial);
 	SERIALIZE_PROPERTY(outData, m_unitScale);
 	SERIALIZE_PROPERTY(outData, m_materials);
+	SERIALIZE_PROPERTY(outData, m_animations);
 
 	return outData;
 }
@@ -30,6 +31,7 @@ void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 	DESERIALIZE_PROPERTY(outData, m_bShouldBatchByMaterial);
 	DESERIALIZE_PROPERTY(outData, m_unitScale);
 	DESERIALIZE_PROPERTY(outData, m_materials);
+	DESERIALIZE_PROPERTY(outData, m_animations);
 }
 
 ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)
@@ -51,7 +53,7 @@ AssetInfoPtr ModelAssetInfoHandler::CreateAssetInfo() const
 	return new ModelAssetInfo();
 }
 
-IAssetFactory* ModelAssetInfoHandler::GetFactory() 
+IAssetFactory* ModelAssetInfoHandler::GetFactory()
 {
-	return App::GetSubmodule<ModelImporter>(); 
+	return App::GetSubmodule<ModelImporter>();
 }

@@ -7,7 +7,10 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <optional>
 #include <wtypes.h>
 #include <vulkan/vulkan.h>
+#ifdef WIN32
+#include <windows.h>
 #include <vulkan/vulkan_win32.h>
+#endif
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"

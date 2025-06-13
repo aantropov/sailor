@@ -24,11 +24,13 @@ namespace Sailor
 		SAILOR_API __forceinline void SetModel(const ModelPtr& model) { m_model = model; }
 
 		SAILOR_API __forceinline bool ShouldCastShadow() const { return true; }
+		SAILOR_API __forceinline uint32_t GetSkeletonOffset() const { return m_skeletonOffset; }
 
 	protected:
 
 		ModelPtr m_model;
 		TVector<MaterialPtr> m_materials;
+		uint32_t m_skeletonOffset = 0;
 
 		friend class StaticMeshRendererECS;
 	};

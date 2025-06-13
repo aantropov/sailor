@@ -1,8 +1,8 @@
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include <vulkan/vulkan.h>
 #ifdef _WIN32
-#include <vulkan/vulkan_win32.h>
 #include <windows.h>
+#include <vulkan/vulkan_win32.h>
 #endif
 #include "Containers/Map.h"
 #include "Core/LogMacros.h"
@@ -1068,10 +1068,11 @@ void* VulkanApi::ExportImage(VulkanDevicePtr device, VulkanImagePtr image, VkExt
         handleInfo.memory = *image->GetMemoryDevice();
 
         HANDLE handle = nullptr;
-        if (vkGetMemoryWin32HandleKHR(*device, &handleInfo, &handle) != VK_SUCCESS)
-        {
-                return nullptr;
-        }
+        //if (vkGetMemoryWin32HandleKHR(*device, &handleInfo, &handle) != VK_SUCCESS)
+        //{
+        //        return nullptr;
+        //}
+
         return handle;
 }
 #else
@@ -1111,7 +1112,7 @@ VulkanImagePtr VulkanApi::ImportImage(VulkanDevicePtr device,
 
         VkMemoryRequirements requirements = outImage->GetMemoryRequirements();
 
-        VkImportMemoryWin32HandleInfoKHR importInfo{};
+		VkImportMemoryWin32HandleInfoKHR importInfo{};
         importInfo.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
         importInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
         importInfo.handle = (HANDLE)handle;

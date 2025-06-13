@@ -22,7 +22,9 @@ glslCompute: |
       mat4 model;
       vec4 sphereBounds;
       uint materialInstance;
+      uint skeletonOffset;
       uint isCulled;
+      uint padding;
   };
   
   struct DrawIndexedIndirectData

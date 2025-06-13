@@ -86,6 +86,12 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			GenerateMaterialAssets(modelAssetInfo);
 			assetInfo->SaveMetaFile();
 		}
+
+		if (modelAssetInfo->GetAnimations().Num() == 0)
+		{
+			GenerateAnimationAssets(modelAssetInfo);
+			assetInfo->SaveMetaFile();
+		}
 	}
 }
 
@@ -117,6 +123,56 @@ FileId CreateTextureAsset(const std::string& filepath,
 	assetFile.close();
 
 	return newFileId;
+}
+
+FileId CreateAnimationAsset(const std::string& filepath,
+	const std::string& glbFilename,
+	uint32_t animationIndex,
+	uint32_t skinIndex)
+{
+	FileId newFileId = FileId::CreateNewFileId();
+
+	YAML::Node newAnimation;
+	newAnimation["fileId"] = newFileId;
+	newAnimation["filename"] = glbFilename;
+	newAnimation["animationIndex"] = animationIndex;
+	newAnimation["skinIndex"] = skinIndex;
+
+	std::ofstream assetFile(filepath);
+	assetFile << newAnimation;
+	assetFile.close();
+
+	return newFileId;
+}
+
+void ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	tinygltf::Model gltfModel;
+	tinygltf::TinyGLTF loader;
+	std::string err, warn;
+
+	const bool bIsGlb = Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb";
+	const bool bGltfParsed = bIsGlb ?
+		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str()) :
+		loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
+
+	if (!bGltfParsed || gltfModel.animations.empty())
+	{
+		return;
+	}
+
+	const std::string animationsFolder = AssetRegistry::GetContentFolder() + Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
+
+	for (size_t i = 0; i < gltfModel.animations.size(); ++i)
+	{
+		const auto& anim = gltfModel.animations[i];
+		std::string name = !anim.name.empty() ? anim.name : ("animation" + std::to_string(i));
+		FileId id = CreateAnimationAsset(animationsFolder + assetInfo->GetAssetFilename() + "_" + name + ".anim.asset",
+			assetInfo->GetAssetFilename(), (uint32_t)i, 0);
+		assetInfo->GetAnimations().Add(id);
+	}
 }
 
 void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)

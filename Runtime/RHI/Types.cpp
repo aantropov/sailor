@@ -109,3 +109,17 @@ VertexAttributeBits VertexP3N3T3B3UV2C4::GetVertexAttributeBits()
 	SetAttributeFormat(bits, RHIVertexDescription::DefaultBitangentBinding, EFormat::R32G32B32_SFLOAT);
 	return  bits;
 }
+
+VertexAttributeBits VertexP3N3T3B3UV2C4I4W4::GetVertexAttributeBits()
+{
+	VertexAttributeBits bits = 0;
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultPositionBinding, EFormat::R32G32B32_SFLOAT);
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultNormalBinding, EFormat::R32G32B32_SFLOAT);
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultTexcoordBinding, EFormat::R32G32_SFLOAT);
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultColorBinding, EFormat::R32G32B32A32_SFLOAT);
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultTangentBinding, EFormat::R32G32B32_SFLOAT);
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultBitangentBinding, EFormat::R32G32B32_SFLOAT);
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultBoneIdsBinding, EFormat::R32G32B32A32_UINT);
+	SetAttributeFormat(bits, RHIVertexDescription::DefaultBoneWeightsBinding, EFormat::R32G32B32A32_SFLOAT);
+	return bits;
+}

@@ -101,6 +101,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 					DepthPrepassNode::PerInstanceData data;
 					data.model = proxy.m_worldMatrix;
+					data.skeletonOffset = proxy.m_skeletonOffset;
 					data.bIsCulled = 0;
 					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 
@@ -200,7 +201,7 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 
 	{
 		SAILOR_PROFILE_SCOPE("Calculate SSBO offsets");
-		size_t ssboIndex = 0;		
+		size_t ssboIndex = 0;
 		for (uint32_t j = 0; j < vecBatches.Num(); j++)
 		{
 			bool bIsInited = false;
@@ -251,11 +252,16 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			{
 				sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData , material->GetBindings(), textureSamplers });
 			}
+
+			if (sceneView.m_boneMatrices)
+			{
+				sets.Add(sceneView.m_boneMatrices);
+			}
 			return sets;
 		};
 
 	commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
-	
+
 	const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
