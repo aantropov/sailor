@@ -83,6 +83,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 
 						RenderSceneNode::PerInstanceData data;
 						data.model = proxy.m_worldMatrix;
+						data.skeletonOffset = proxy.m_skeletonOffset;
 						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 						data.bIsCulled = 0;
 						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
@@ -181,6 +182,10 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
 			{
 				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), textureSamplers });
+				if (sceneView.m_boneMatrices)
+				{
+					sets.Add(sceneView.m_boneMatrices);
+				}
 				return sets;
 			};
 

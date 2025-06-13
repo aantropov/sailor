@@ -41,8 +41,9 @@ namespace Sailor::RHI
 		size_t m_staticMeshEcs{};
 		glm::mat4 m_worldMatrix;
 		Math::AABB m_worldAabb{};
-		
+
 		bool m_bCastShadows{};
+		uint32_t m_skeletonOffset = 0;
 		size_t m_frame{};
 
 		TVector<RHIMeshPtr> m_meshes;
@@ -77,6 +78,7 @@ namespace Sailor::RHI
 
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHIShaderBindingSetPtr m_rhiLightsData{};
+		RHIShaderBindingSetPtr m_boneMatrices{};
 
 		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
 		Tasks::TaskPtr<RHICommandListPtr, void> m_drawImGui{};
@@ -93,6 +95,7 @@ namespace Sailor::RHI
 
 		uint32_t m_totalNumLights = 0;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};
+		RHI::RHIShaderBindingSetPtr m_boneMatrices{};
 
 		// For each camera
 		TVector<TVector<RHIUpdateShadowMapCommand>> m_shadowMapsToUpdate;

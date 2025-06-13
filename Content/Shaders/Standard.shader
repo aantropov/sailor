@@ -36,7 +36,9 @@ glslVertex: |
       mat4 model;
       vec4 sphereBounds;
       uint materialInstance;
+      uint skeletonOffset;
       uint isCulled;
+      uint padding;
   };
   
   struct MaterialData
@@ -158,7 +160,9 @@ glslFragment: |
       mat4 model;
       vec4 sphereBounds;
       uint materialInstance;
+      uint skeletonOffset;
       uint isCulled;
+      uint padding;
   };
   
   struct MaterialData

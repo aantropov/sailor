@@ -36,7 +36,8 @@ namespace Sailor
 
 		SAILOR_API Model(FileId uid, TVector<RHI::RHIMeshPtr> meshes = {}) :
 			Object(std::move(uid)),
-			m_meshes(std::move(meshes)) {}
+			m_meshes(std::move(meshes)) {
+		}
 
 		SAILOR_API const TVector<RHI::RHIMeshPtr>& GetMeshes() const { return m_meshes; }
 		SAILOR_API TVector<RHI::RHIMeshPtr>& GetMeshes() { return m_meshes; }
@@ -95,6 +96,7 @@ namespace Sailor
 		SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;

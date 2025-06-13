@@ -22,6 +22,8 @@ namespace Sailor::RHI
 		static constexpr uint32_t DefaultColorBinding = 3;
 		static constexpr uint32_t DefaultTangentBinding = 4;
 		static constexpr uint32_t DefaultBitangentBinding = 5;
+		static constexpr uint32_t DefaultBoneIdsBinding = 6;
+		static constexpr uint32_t DefaultBoneWeightsBinding = 7;
 
 		RHIVertexDescription() = default;
 

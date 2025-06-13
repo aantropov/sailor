@@ -8,7 +8,8 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <wtypes.h>
 #include "VulkanApi.h"
 #include <vulkan/vulkan.h>
-#ifdef _WIN32
+#ifdef WIN32
+#include <windows.h>
 #include <vulkan/vulkan_win32.h>
 #endif
 #include "AssetRegistry/AssetRegistry.h"

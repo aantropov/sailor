@@ -11,8 +11,8 @@
 #endif
 #include <vulkan/vulkan_core.h>
 #ifdef _WIN32
-#include <vulkan/vulkan_win32.h>
 #include <windows.h>
+#include <vulkan/vulkan_win32.h>
 #endif
 #include "Sailor.h"
 #include "RHI/Types.h"

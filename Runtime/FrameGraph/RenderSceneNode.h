@@ -20,8 +20,9 @@ namespace Sailor::Framegraph
 			glm::mat4 model;
 			vec4 sphereBounds;
 			uint32_t materialInstance = 0;
+			uint32_t skeletonOffset = 0;
 			uint32_t bIsCulled = 0;
-			uint64_t padding;
+			uint32_t padding = 0;
 
 			bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
 

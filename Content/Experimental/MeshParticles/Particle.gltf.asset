@@ -5,3 +5,4 @@ bShouldBatchByMaterial: true
 unitScale: 1
 materials:
   - "{607948CB-4F49-4EF8-8B49-57E350DB38B5}"
+animations: ~

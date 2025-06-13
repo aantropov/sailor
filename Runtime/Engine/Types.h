@@ -35,4 +35,11 @@ namespace Sailor
 		Spot,
 		Area
 	};
+
+	enum class EAnimationPlayMode : uint8_t
+	{
+		Repeat = 0,
+		Once,
+		PingPong
+	};
 }
