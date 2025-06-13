@@ -6,9 +6,16 @@ using namespace Sailor;
 using namespace Sailor::Math;
 using namespace glm;
 
-Transform Lerp(const Transform& a, const Transform& b, float t)
+namespace Sailor::Math
 {
-	return Transform(Lerp(a.m_position, b.m_position, t), glm::lerp(a.m_rotation, b.m_rotation, t), Lerp(a.m_scale, b.m_scale, t));
+	template<>
+	SAILOR_API Transform Lerp<Transform>(const Transform& a, const Transform& b, float t)
+	{
+		return Transform(
+			Lerp(a.m_position, b.m_position, t),
+			glm::slerp(a.m_rotation, b.m_rotation, t),
+			Lerp(a.m_scale, b.m_scale, t));
+	}
 }
 
 vec3 Transform::GetReciprocalScale() const
@@ -77,7 +84,7 @@ vec3 Transform::GetUp() const { return glm::rotate(m_rotation, Math::vec3_Up); }
 
 const Transform Transform::Identity;
 
-Transform FromMatrix(const glm::mat4& m)
+Transform Transform::FromMatrix(const glm::mat4& m)
 {
 	glm::vec3 translation = glm::vec3(m[3]);
 
