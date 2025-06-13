@@ -10,6 +10,10 @@
 #include <Windows.h>
 #endif
 #include <vulkan/vulkan_core.h>
+#ifdef _WIN32
+#include <vulkan/vulkan_win32.h>
+#include <windows.h>
+#endif
 #include "Sailor.h"
 #include "RHI/Types.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
@@ -219,11 +223,11 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VulkanBufferPtr CreateBuffer_Immediate(VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 		SAILOR_API static void CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryPtr  src, VulkanBufferMemoryPtr dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
 
-		SAILOR_API static VulkanImagePtr CreateImage_Immediate(
-			VulkanDevicePtr device,
-			const void* pData,
-			VkDeviceSize size,
-			VkExtent3D extent,
+                SAILOR_API static VulkanImagePtr CreateImage_Immediate(
+                        VulkanDevicePtr device,
+                        const void* pData,
+                        VkDeviceSize size,
+                        VkExtent3D extent,
 			uint32_t mipLevels = 1,
 			VkImageType type = VK_IMAGE_TYPE_2D,
 			VkFormat format = VK_FORMAT_R8G8B8A8_SRGB,
@@ -231,8 +235,26 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
 			VkImageLayout defaultLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			VkImageCreateFlags flags = 0,
-			uint32_t arrayLayer = 1);
+                        VkImageCreateFlags flags = 0,
+                        uint32_t arrayLayer = 1);
+
+#ifdef _WIN32
+                SAILOR_API static void* ExportImage(VulkanDevicePtr device, VulkanImagePtr image,
+                        VkExternalMemoryHandleTypeFlagBits handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
+#else
+                SAILOR_API static void* ExportImage(VulkanDevicePtr device, VulkanImagePtr image,
+                        VkExternalMemoryHandleTypeFlagBits handleType = (VkExternalMemoryHandleTypeFlagBits)0);
+#endif
+
+                SAILOR_API static VulkanImagePtr ImportImage(VulkanDevicePtr device,
+                        void* handle,
+                        VkExtent3D extent,
+                        VkFormat format,
+                        VkImageUsageFlags usage,
+                        VkImageLayout defaultLayout,
+                        VkImageCreateFlags flags = 0,
+                        uint32_t arrayLayers = 1,
+                        VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT);
 
 		//Immediate context
 

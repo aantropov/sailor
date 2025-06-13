@@ -53,7 +53,7 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_SHARING_MODE_EXCLUSIVE,
-		VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	auto defaultCubemap = VulkanApi::CreateImage_Immediate(m_vkInstance->GetMainDevice(), &invalidColor, sizeof(DWORD), VkExtent3D{ 1,1,1 }, 1,
 		VK_IMAGE_TYPE_2D,
@@ -61,7 +61,7 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_SHARING_MODE_EXCLUSIVE,
-		VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
 		6);
 
@@ -490,10 +490,10 @@ void VulkanGraphicsDriver::EndDebugRegion(RHI::RHICommandListPtr cmdList)
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
-	const void* pData,
-	size_t size,
-	glm::ivec3 extent,
-	uint32_t mipLevels,
+        const void* pData,
+        size_t size,
+        glm::ivec3 extent,
+        uint32_t mipLevels,
 	RHI::ETextureType type,
 	RHI::ETextureFormat format,
 	RHI::ETextureFiltration filtration,
@@ -535,9 +535,41 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 		arrayLayers);
 
 	res->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, res->m_vulkan.m_image);
-	res->m_vulkan.m_imageView->Compile();
+        res->m_vulkan.m_imageView->Compile();
 
-	return res;
+        return res;
+}
+
+void* VulkanGraphicsDriver::ExportImage(RHI::RHITexturePtr image)
+{
+        if (!image || !image->m_vulkan.m_image)
+        {
+                return nullptr;
+        }
+
+        auto device = m_vkInstance->GetMainDevice();
+        return VulkanApi::ExportImage(device, image->m_vulkan.m_image);
+}
+
+RHI::RHITexturePtr VulkanGraphicsDriver::ImportImage(void* handle,
+        glm::ivec3 extent,
+        RHI::ETextureFormat format,
+        RHI::ETextureUsageFlags usage,
+        RHI::EImageLayout layout)
+{
+        auto device = m_vkInstance->GetMainDevice();
+
+        VkExtent3D vkExtent{ (uint32_t)extent.x, (uint32_t)extent.y, (uint32_t)extent.z };
+        auto vkImage = VulkanApi::ImportImage(device, handle, vkExtent, (VkFormat)format,
+                (VkImageUsageFlags)usage, (VkImageLayout)layout);
+
+        RHI::RHITexturePtr result = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear,
+                RHI::ETextureClamping::Clamp, false, layout);
+        result->m_vulkan.m_image = vkImage;
+        result->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, vkImage);
+        result->m_vulkan.m_imageView->Compile();
+
+        return result;
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(

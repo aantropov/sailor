@@ -14,6 +14,9 @@
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
 
+#include <thread>
+#include <chrono>
+
 using namespace Sailor;
 
 TSharedPtr<World> EngineLoop::CreateEmptyWorld(std::string name, EWorldBehaviourMask mask)
