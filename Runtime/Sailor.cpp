@@ -203,6 +203,24 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	SAILOR_LOG("Sailor Engine initialized");
+
+	/* {
+		Raytracing::PathTracer::Params params{};
+		params.m_output = "output.png";
+		params.m_height = 768;
+		params.m_msaa = 4;
+		params.m_numSamples = 32;
+		params.m_numAmbientSamples = 2;
+		params.m_maxBounces = 3;
+		params.m_ambient = vec4(1, 1, 1, 1);
+		params.m_pathToModel = "d:/Projects/Examples/glTF-Sample-Models/2.0/TransmissionRoughnessTest/glTF-Binary/TransmissionRoughnessTest.glb";
+
+		Raytracing::PathTracer::ParseCommandLineArgs(params, commandLineArgs, num);
+		Raytracing::PathTracer r;
+
+		r.Run(params);
+		return;
+	}*/
 }
 
 void App::Start()
