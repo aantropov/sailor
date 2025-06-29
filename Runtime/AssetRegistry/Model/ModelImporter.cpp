@@ -348,6 +348,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		struct Data
 		{
 			TVector<MeshContext> m_parsedMeshes;
+			TVector<glm::mat4> m_inverseBind;
 			bool m_bIsImported = false;
 		};
 
@@ -355,7 +356,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			[model, assetInfo, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
-				res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere);
+				res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere, res->m_inverseBind);
 				return res;
 			})->Then<ModelPtr>([model](TSharedPtr<Data> data) mutable
 				{
@@ -373,6 +374,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 							model->m_meshes.Emplace(ptr);
 						}
 
+						model->m_inverseBind = std::move(data->m_inverseBind);
 						model->Flush();
 					}
 					return model;
@@ -430,7 +432,7 @@ void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* 
 	outTangent = normalize(outTangent);
 }
 
-bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere)
+bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind)
 {
 	tinygltf::Model gltfModel;
 	tinygltf::TinyGLTF loader;
@@ -460,6 +462,29 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 
 	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
 	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
+
+	outInverseBind.Clear();
+	if (!gltfModel.skins.empty())
+	{
+		const auto& gltfSkin = gltfModel.skins[0];
+		size_t numBones = gltfSkin.joints.size();
+		outInverseBind.Resize(numBones);
+
+		if (gltfSkin.inverseBindMatrices >= 0)
+		{
+			const auto& accessor = gltfModel.accessors[gltfSkin.inverseBindMatrices];
+			const auto& view = gltfModel.bufferViews[accessor.bufferView];
+			const float* data = reinterpret_cast<const float*>(&gltfModel.buffers[view.buffer].data[view.byteOffset + accessor.byteOffset]);
+			for (size_t i = 0; i < numBones; ++i)
+			{
+				outInverseBind[i] = glm::make_mat4(data + i * 16);
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < numBones; ++i) outInverseBind[i] = glm::mat4(1.0f);
+		}
+	}
 
 	TVector<MeshContext> batchedMeshContexts(gltfModel.materials.size());
 

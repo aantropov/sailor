@@ -3,8 +3,10 @@
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 #include "AssetRegistry/Animation/AnimationImporter.h"
+#include "Components/MeshRendererComponent.h"
 #include <cmath>
 #include <limits>
+#include "Math/Transform.h"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -90,16 +92,31 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 		uint32_t nextFrame = (data.m_frameIndex + 1) % anim.m_numFrames;
 		for (uint32_t i = 0; i < anim.m_numBones; i++)
 		{
-			const glm::mat4& a = anim.m_frames[data.m_frameIndex * anim.m_numBones + i];
-			const glm::mat4& b = anim.m_frames[nextFrame * anim.m_numBones + i];
-			// TODO: Lerp
-			//data.m_currentSkeleton[i] = glm::mix(a, b, data.m_lerp);
+			const Math::Transform& a = anim.m_frames[data.m_frameIndex * anim.m_numBones + i];
+			const Math::Transform& b = anim.m_frames[nextFrame * anim.m_numBones + i];
+			data.m_currentSkeleton[i] = Math::Lerp(a, b, data.m_lerp);
+		}
+
+		ModelPtr model;
+		if (auto owner = data.m_owner.StaticCast<GameObject>())
+		{
+			if (auto mesh = owner->GetComponent<MeshRendererComponent>())
+			{
+				model = mesh->GetModel();
+			}
+		}
+
+		TVector<glm::mat4> matrices(data.m_currentSkeleton.Num());
+		for (uint32_t i = 0; i < data.m_currentSkeleton.Num(); ++i)
+		{
+			const glm::mat4 bind = model && model->GetInverseBind().Num() > i ? model->GetInverseBind()[i] : glm::mat4(1.0f);
+			matrices[i] = data.m_currentSkeleton[i].Matrix() * bind;
 		}
 
 		auto binding = m_bonesBinding->GetOrAddShaderBinding("bones");
 		commands->UpdateShaderBinding(cmdList, binding,
-			data.m_currentSkeleton.GetData(),
-			sizeof(glm::mat4) * data.m_currentSkeleton.Num(),
+			matrices.GetData(),
+			sizeof(glm::mat4) * matrices.Num(),
 			binding->GetBufferOffset() + sizeof(glm::mat4) * data.m_gpuOffset);
 	}
 

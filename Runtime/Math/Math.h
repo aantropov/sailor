@@ -57,6 +57,9 @@ namespace Sailor::Math
 	template<typename T>
 	T Lerp(const T& a, const T& b, float t) { return a + (b - a) * t; }
 
+	template<>
+	SAILOR_API Transform Lerp<Transform>(const Transform& a, const Transform& b, float t);
+
 	SAILOR_API __forceinline glm::mat4 PerspectiveInfiniteRH(float fovRadians, float aspectWbyH, float zNear);
 	SAILOR_API __forceinline glm::mat4 PerspectiveRH(float fovRadians, float aspectWbyH, float zNear, float zFar);
 }

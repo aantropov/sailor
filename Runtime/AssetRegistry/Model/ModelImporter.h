@@ -18,6 +18,7 @@
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
 #include "Math/Bounds.h"
+#include <glm/mat4x4.hpp>
 #include "Core/YamlSerializable.h"
 #include "Core/Reflection.h"
 
@@ -50,6 +51,8 @@ namespace Sailor
 
 		SAILOR_API const Math::AABB& GetBoundsAABB() const { return m_boundsAabb; }
 		SAILOR_API const Math::Sphere& GetBoundsSphere() const { return m_boundsSphere; }
+		SAILOR_API const TVector<glm::mat4>& GetInverseBind() const { return m_inverseBind; }
+		SAILOR_API TVector<glm::mat4>& GetInverseBind() { return m_inverseBind; }
 
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -58,6 +61,7 @@ namespace Sailor
 
 		TVector<RHI::RHIMeshPtr> m_meshes;
 		std::atomic<bool> m_bIsReady{};
+		TVector<glm::mat4> m_inverseBind;
 
 		Math::AABB m_boundsAabb;
 		Math::Sphere m_boundsSphere;
@@ -93,7 +97,7 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere);
+		SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
 
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);

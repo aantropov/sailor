@@ -4,6 +4,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include "Math/Transform.h"
 
 using namespace Sailor;
 
@@ -89,7 +90,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 		bool parsed = (Utils::GetFileExtension(info->GetAssetFilepath()) == "glb") ?
 			loader.LoadBinaryFromFile(&gltfModel, &err, &warn, info->GetAssetFilepath().c_str()) :
 			loader.LoadASCIIFromFile(&gltfModel, &err, &warn, info->GetAssetFilepath().c_str());
-
+			
 		if (!parsed)
 		{
 			return false;
@@ -116,7 +117,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 			anim->m_numFrames = (uint32_t)numFrames;
 			anim->m_fps = 30.0f;
 
-			TVector<glm::mat4> framesData;
+			TVector<Math::Transform> framesData;
 			framesData.Resize(numFrames * numBones);
 
 			TVector<int> parents(gltfModel.nodes.size(), -1);
@@ -129,40 +130,24 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				}
 			}
 
-			TVector<glm::mat4> inverseBind(numBones);
-			if (gltfSkin.inverseBindMatrices >= 0)
-			{
-				const auto& accessor = gltfModel.accessors[gltfSkin.inverseBindMatrices];
-				const auto& view = gltfModel.bufferViews[accessor.bufferView];
-				const float* data = reinterpret_cast<const float*>(&gltfModel.buffers[view.buffer].data[view.byteOffset + accessor.byteOffset]);
-				for (size_t i = 0; i < numBones; ++i)
-				{
-					inverseBind[i] = glm::make_mat4(data + i * 16);
-				}
-			}
-			else
-			{
-				for (size_t i = 0; i < numBones; ++i) inverseBind[i] = glm::mat4(1.0f);
-			}
 
-			struct TRS { glm::vec3 t{ 0 }; glm::quat r{ 1,0,0,0 }; glm::vec3 s{ 1 }; };
-			TVector<TRS> base(gltfModel.nodes.size());
+			TVector<Math::Transform> base(gltfModel.nodes.size());
 			for (size_t i = 0; i < gltfModel.nodes.size(); ++i)
 			{
 				const auto& n = gltfModel.nodes[i];
-				if (n.translation.size() == 3) base[i].t = glm::vec3(n.translation[0], n.translation[1], n.translation[2]);
-				if (n.rotation.size() == 4) base[i].r = glm::quat((float)n.rotation[3], (float)n.rotation[0], (float)n.rotation[1], (float)n.rotation[2]);
-				if (n.scale.size() == 3) base[i].s = glm::vec3(n.scale[0], n.scale[1], n.scale[2]);
+				if (n.translation.size() == 3) base[i].m_position = glm::vec4(n.translation[0], n.translation[1], n.translation[2], 1.0f);
+				if (n.rotation.size() == 4) base[i].m_rotation = glm::quat((float)n.rotation[3], (float)n.rotation[0], (float)n.rotation[1], (float)n.rotation[2]);
+				if (n.scale.size() == 3) base[i].m_scale = glm::vec4(n.scale[0], n.scale[1], n.scale[2], 1.0f);
 			}
 
-			TVector<TVector<TRS>> transforms(numFrames, base);
+			TVector<TVector<Math::Transform>> transforms(numFrames, base);
 
 			for (const auto& channel : gltfAnim.channels)
 			{
 				const auto& sampler = gltfAnim.samplers[channel.sampler];
-				const auto& inAcc = gltfModel.accessors[sampler.input];
-				const auto& inView = gltfModel.bufferViews[inAcc.bufferView];
-				const float* inData = reinterpret_cast<const float*>(&gltfModel.buffers[inView.buffer].data[inView.byteOffset + inAcc.byteOffset]);
+				//const auto& inAcc = gltfModel.accessors[sampler.input];
+				//const auto& inView = gltfModel.bufferViews[inAcc.bufferView];
+				//const float* inData = reinterpret_cast<const float*>(&gltfModel.buffers[inView.buffer].data[inView.byteOffset + inAcc.byteOffset]);
 
 				const auto& outAcc = gltfModel.accessors[sampler.output];
 				const auto& outView = gltfModel.bufferViews[outAcc.bufferView];
@@ -175,35 +160,36 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 
 					if (channel.target_path == "translation")
 					{
-						nodeTrs.t = glm::make_vec3(outData + offset);
+						nodeTrs.m_position = glm::vec4(glm::make_vec3(outData + offset), 1.0f);
 					}
 					else if (channel.target_path == "rotation")
 					{
-						nodeTrs.r = glm::quat(outData[offset + 3], outData[offset], outData[offset + 1], outData[offset + 2]);
+						nodeTrs.m_rotation = glm::quat(outData[offset + 3], outData[offset], outData[offset + 1], outData[offset + 2]);
 					}
 					else if (channel.target_path == "scale")
 					{
-						nodeTrs.s = glm::make_vec3(outData + offset);
+						nodeTrs.m_scale = glm::vec4(glm::make_vec3(outData + offset), 1.0f);
 					}
 				}
 			}
 
-			auto compose = [&](uint32_t nodeIndex, const TVector<TRS>& local, TVector<glm::mat4>& global)
+			auto compose = [&](uint32_t nodeIndex, const TVector<Math::Transform>& local, TVector<Math::Transform>& global)
 				{
-					glm::mat4 localMat = glm::translate(glm::mat4(1.0f), local[nodeIndex].t) * glm::mat4_cast(local[nodeIndex].r) * glm::scale(glm::mat4(1.0f), local[nodeIndex].s);
+					global[nodeIndex] = local[nodeIndex];
 					if (parents[nodeIndex] >= 0)
 					{
-						global[nodeIndex] = global[parents[nodeIndex]] * localMat;
-					}
-					else
-					{
-						global[nodeIndex] = localMat;
+						const Math::Transform& parent = global[parents[nodeIndex]];
+						global[nodeIndex].m_position = parent.TransformPosition(global[nodeIndex].m_position);
+						global[nodeIndex].m_rotation = parent.m_rotation * global[nodeIndex].m_rotation;
+						global[nodeIndex].m_scale.x *= parent.m_scale.x;
+						global[nodeIndex].m_scale.y *= parent.m_scale.y;
+						global[nodeIndex].m_scale.z *= parent.m_scale.z;
 					}
 				};
 
 			for (size_t f = 0; f < numFrames; ++f)
 			{
-				TVector<glm::mat4> global(gltfModel.nodes.size());
+				TVector<Math::Transform> global(gltfModel.nodes.size());
 				for (size_t i = 0; i < gltfModel.nodes.size(); ++i)
 				{
 					compose((uint32_t)i, transforms[f], global);
@@ -212,7 +198,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				for (size_t j = 0; j < numBones; ++j)
 				{
 					uint32_t nodeIndex = gltfSkin.joints[j];
-					framesData[f * numBones + j] = global[nodeIndex] * inverseBind[j];
+					framesData[f * numBones + j] = global[nodeIndex];
 				}
 			}
 
