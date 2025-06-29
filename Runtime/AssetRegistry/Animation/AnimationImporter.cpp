@@ -145,8 +145,8 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 			for (const auto& channel : gltfAnim.channels)
 			{
 				const auto& sampler = gltfAnim.samplers[channel.sampler];
-				const auto& inAcc = gltfModel.accessors[sampler.input];
-				const auto& inView = gltfModel.bufferViews[inAcc.bufferView];
+				//const auto& inAcc = gltfModel.accessors[sampler.input];
+				//const auto& inView = gltfModel.bufferViews[inAcc.bufferView];
 				//const float* inData = reinterpret_cast<const float*>(&gltfModel.buffers[inView.buffer].data[inView.byteOffset + inAcc.byteOffset]);
 
 				const auto& outAcc = gltfModel.accessors[sampler.output];
