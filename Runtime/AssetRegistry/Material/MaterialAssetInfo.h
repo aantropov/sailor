@@ -11,7 +11,7 @@ namespace Sailor
 	{
 	public:
 		virtual SAILOR_API ~MaterialAssetInfo() = default;
-
+		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 	private:
 
 	};

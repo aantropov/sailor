@@ -42,3 +42,8 @@ IAssetFactory* WorldPrefabAssetInfoHandler::GetFactory()
 {
 	return App::GetSubmodule<WorldPrefabImporter>();
 }
+
+IAssetInfoHandler* WorldPrefabAssetInfo::GetHandler()
+{
+	return App::GetSubmodule<WorldPrefabAssetInfoHandler>();
+}

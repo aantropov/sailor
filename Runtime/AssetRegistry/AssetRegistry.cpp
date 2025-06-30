@@ -8,6 +8,7 @@
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/Model/ModelAssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
+#include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "Core/Utils.h"
 #include "Tasks/Tasks.h"
 #include "Tasks/Scheduler.h"
@@ -23,7 +24,6 @@ AssetRegistry::AssetRegistry()
 void AssetRegistry::CacheAssetTime(const FileId& id, const time_t& assetTimestamp)
 {
 	m_assetCache.Update(id, assetTimestamp);
-	m_assetCache.SaveCache();
 }
 
 bool AssetRegistry::GetAssetCachedTime(const FileId& id, time_t& outAssetTimestamp) const
@@ -65,6 +65,7 @@ void AssetRegistry::ScanContentFolder()
 	SAILOR_PROFILE_FUNCTION();
 
 	ScanFolder(GetContentFolder());
+	m_assetCache.SaveCache();
 }
 
 bool AssetRegistry::RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions, IAssetInfoHandler* assetInfoHandler)
@@ -164,7 +165,7 @@ const FileId& AssetRegistry::LoadFile(const std::string& assetFilepath)
 		if (bAssetFilenameDiffers)
 		{
 			auto defaultAssetInfoHandler = App::GetSubmodule<DefaultAssetInfoHandler>();
-			auto defaultAssetInfo = defaultAssetInfoHandler->LoadAssetInfo(filepath);;
+			auto defaultAssetInfo = defaultAssetInfoHandler->LoadAssetInfo(filepath);
 
 			const bool bMissingAssetFile = !std::filesystem::exists(defaultAssetInfo->GetAssetFilepath());
 			const bool bAlreadyLoadedSomehow = m_loadedAssetInfo.ContainsKey(defaultAssetInfo->GetFileId());
@@ -172,9 +173,24 @@ const FileId& AssetRegistry::LoadFile(const std::string& assetFilepath)
 			if (!bMissingAssetFile && !bAlreadyLoadedSomehow)
 			{
 				// One assetfile could be bound to many of asset infos (glb container)
-				// Now that is used only for textures and glb
-				auto assetInfoHandler = App::GetSubmodule<TextureAssetInfoHandler>();
-				auto assetInfo = assetInfoHandler->LoadAssetInfo(filepath);;
+				// Now that is used only for textures, animations and glb container
+
+				const std::string path = Utils::RemoveFileExtension(filepath);
+				const std::string extension = Utils::GetFileExtension(path);
+				const bool bIsAnimation = extension == "anim";
+
+				IAssetInfoHandler* assetInfoHandler = nullptr;
+				
+				if (bIsAnimation)
+				{
+					assetInfoHandler = App::GetSubmodule<AnimationAssetInfoHandler>();
+				}
+				else
+				{
+					assetInfoHandler = App::GetSubmodule<TextureAssetInfoHandler>();
+				}
+
+				auto assetInfo = assetInfoHandler->LoadAssetInfo(filepath);
 
 				m_loadedAssetInfo[assetInfo->GetFileId()] = assetInfo;
 			}

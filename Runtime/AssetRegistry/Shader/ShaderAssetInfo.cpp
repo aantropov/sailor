@@ -22,6 +22,11 @@ void ShaderAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 	outDefaultYaml = defaultObject.Serialize();
 }
 
+IAssetInfoHandler* ShaderAssetInfo::GetHandler()
+{
+	return App::GetSubmodule<ShaderAssetInfoHandler>();
+}
+
 AssetInfoPtr ShaderAssetInfoHandler::CreateAssetInfo() const
 {
 	return new ShaderAssetInfo();

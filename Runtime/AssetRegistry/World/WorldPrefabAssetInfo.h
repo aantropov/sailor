@@ -15,6 +15,8 @@ namespace Sailor
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
+		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
+
 	private:
 	};
 

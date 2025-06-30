@@ -136,14 +136,7 @@ namespace Sailor
 			TObjectPtr<Object> out;
 			if (const auto& info = GetAssetInfoPtr(id))
 			{
-				const std::string extension = Utils::GetFileExtension(info->GetAssetFilepath());
-
-				auto assetInfoHandlerIt = m_assetInfoHandlers.Find(extension);
-				if (assetInfoHandlerIt != m_assetInfoHandlers.end())
-				{
-					auto assetInfoHandler = *(*assetInfoHandlerIt).m_second;
-					out = LoadAsset(assetInfoHandler, id, bImmediate);
-				}
+				out = LoadAsset(info->GetHandler(), id, bImmediate);
 			}
 
 			return out.DynamicCast<T>();

@@ -25,6 +25,8 @@ namespace Sailor
 		SAILOR_API const TVector<FileId>& GetAnimations() const { return m_animations; }
 		SAILOR_API TVector<FileId>& GetAnimations() { return m_animations; }
 
+		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
+
 	private:
 
 		TVector<FileId> m_materials;

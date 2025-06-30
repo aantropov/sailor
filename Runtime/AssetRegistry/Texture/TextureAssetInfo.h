@@ -24,6 +24,8 @@ namespace Sailor
 		SAILOR_API bool StoredInGlb() const { return m_glbTextureIndex != -1; }
 		SAILOR_API int32_t GetGlbTextureIndex() const { return m_glbTextureIndex; }
 
+		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
+
 	private:
 
 		RHI::ETextureFiltration m_filtration = RHI::ETextureFiltration::Linear;

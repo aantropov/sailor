@@ -24,3 +24,8 @@ AssetInfoPtr FrameGraphAssetInfoHandler::CreateAssetInfo() const
 {
 	return new FrameGraphAssetInfo();
 }
+
+IAssetInfoHandler* FrameGraphAssetInfo::GetHandler()
+{
+	return App::GetSubmodule<FrameGraphAssetInfoHandler>();
+}

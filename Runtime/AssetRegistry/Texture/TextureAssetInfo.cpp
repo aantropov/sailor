@@ -53,6 +53,11 @@ TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)
 	assetRegistry->RegisterAssetInfoHandler(m_supportedExtensions, this);
 }
 
+IAssetInfoHandler* TextureAssetInfo::GetHandler()
+{
+	return App::GetSubmodule<TextureAssetInfoHandler>();
+}
+
 void TextureAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 {
 	TextureAssetInfo defaultObject;

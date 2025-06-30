@@ -11,6 +11,7 @@ namespace Sailor
 	{
 	public:
 		SAILOR_API virtual ~FrameGraphAssetInfo() = default;
+		IAssetInfoHandler* GetHandler() override;
 	};
 
 	using FrameGraphAssetInfoPtr = FrameGraphAssetInfo*;

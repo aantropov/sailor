@@ -21,6 +21,11 @@ void PrefabAssetInfo::Deserialize(const YAML::Node& outData)
 	AssetInfo::Deserialize(outData);
 }
 
+IAssetInfoHandler* PrefabAssetInfo::GetHandler()
+{
+	return App::GetSubmodule<PrefabAssetInfoHandler>();
+}
+
 PrefabAssetInfoHandler::PrefabAssetInfoHandler(AssetRegistry* assetRegistry)
 {
 	m_supportedExtensions.Emplace("prefab");

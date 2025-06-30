@@ -48,6 +48,11 @@ void ModelAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 	outDefaultYaml = defaultObject.Serialize();
 }
 
+IAssetInfoHandler* ModelAssetInfo::GetHandler()
+{
+	return App::GetSubmodule<ModelAssetInfoHandler>();
+}
+
 AssetInfoPtr ModelAssetInfoHandler::CreateAssetInfo() const
 {
 	return new ModelAssetInfo();

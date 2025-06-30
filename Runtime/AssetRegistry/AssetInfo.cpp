@@ -100,6 +100,11 @@ std::string AssetInfo::GetRelativeMetaFilepath() const
 	return res;
 }
 
+IAssetInfoHandler* AssetInfo::GetHandler()
+{
+	return App::GetSubmodule<DefaultAssetInfoHandler>();
+}
+
 AssetInfoPtr IAssetInfoHandler::ImportAsset(const std::string& assetFilepath) const
 {
 	const std::string assetInfoFilename = AssetRegistry::GetMetaFilePath(assetFilepath);

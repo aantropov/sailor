@@ -9,6 +9,7 @@
 namespace Sailor
 {
 	class IAssetFactory;
+	class IAssetInfoHandler;
 
 	class AssetInfo : IYamlSerializable
 	{
@@ -42,6 +43,7 @@ namespace Sailor
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
 
 		SAILOR_API virtual void SaveMetaFile();
+		SAILOR_API virtual IAssetInfoHandler* GetHandler();
 
 	protected:
 

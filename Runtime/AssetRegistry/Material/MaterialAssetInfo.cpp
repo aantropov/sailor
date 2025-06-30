@@ -21,6 +21,11 @@ void MaterialAssetInfoHandler::GetDefaultMeta(YAML::Node& outDefaultYaml) const
 	outDefaultYaml = defaultObject.Serialize();
 }
 
+IAssetInfoHandler* MaterialAssetInfo::GetHandler()
+{
+	return App::GetSubmodule<MaterialAssetInfoHandler>();
+}
+
 AssetInfoPtr MaterialAssetInfoHandler::CreateAssetInfo() const
 {
 	return new MaterialAssetInfo();

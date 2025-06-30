@@ -10,6 +10,8 @@ namespace Sailor
 	{
 	public:
 		SAILOR_API virtual ~ShaderAssetInfo() = default;
+
+		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 	};
 
 	using ShaderAssetInfoPtr = ShaderAssetInfo*;

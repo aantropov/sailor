@@ -87,7 +87,7 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			assetInfo->SaveMetaFile();
 		}
 
-		if (modelAssetInfo->GetAnimations().Num() == 0)
+		if (bWasExpired && modelAssetInfo->GetAnimations().Num() == 0)
 		{
 			GenerateAnimationAssets(modelAssetInfo);
 			assetInfo->SaveMetaFile();
@@ -510,9 +510,17 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			const tinygltf::BufferView& posView = gltfModel.bufferViews[std::max(0, posAccessor.bufferView)];
 			const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAccessor.byteOffset]);
 
-			const tinygltf::Accessor& normAccessor = gltfModel.accessors[primitive.attributes.find("NORMAL")->second];
-			const tinygltf::BufferView& normView = gltfModel.bufferViews[std::max(0, normAccessor.bufferView)];
-			const float* normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView.buffer].data[normView.byteOffset + normAccessor.byteOffset]);
+
+			const tinygltf::Accessor* normAccessor = nullptr;
+			const tinygltf::BufferView* normView = nullptr;
+			const float* normData = nullptr;
+
+			if (primitive.attributes.find("NORMAL") != primitive.attributes.end())
+			{
+				normAccessor = &gltfModel.accessors[primitive.attributes.find("NORMAL")->second];
+				normView = &gltfModel.bufferViews[(std::max)(0, normAccessor->bufferView)];
+				normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView->buffer].data[normView->byteOffset + normAccessor->byteOffset]);
+			}
 
 			const tinygltf::Accessor* texAccessor = nullptr;
 			const tinygltf::BufferView* texView = nullptr;
@@ -553,7 +561,16 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			{
 				Sailor::RHI::VertexP3N3T3B3UV2C4 vertex{};
 				vertex.m_position = glm::make_vec3(posData + i * 3) * unitScale;
-				vertex.m_normal = glm::make_vec3(normData + i * 3);
+
+				if (normData)
+				{
+					vertex.m_normal = glm::make_vec3(normData + i * 3);
+				}
+				else
+				{
+					// TODO: Generate normals from tri
+					vertex.m_normal = glm::vec3(0, 0, 1.0f);
+				}
 
 				if (colData)
 				{

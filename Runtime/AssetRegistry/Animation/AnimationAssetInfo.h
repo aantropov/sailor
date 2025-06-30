@@ -4,6 +4,8 @@
 
 namespace Sailor
 {
+	class AnimationAssetInfoHandler;
+
 	class AnimationAssetInfo final : public AssetInfo
 	{
 	public:
@@ -14,6 +16,8 @@ namespace Sailor
 
 		SAILOR_API int32_t GetAnimationIndex() const { return m_animationIndex; }
 		SAILOR_API int32_t GetSkinIndex() const { return m_skinIndex; }
+
+		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 
 	private:
 		int32_t m_animationIndex = 0;

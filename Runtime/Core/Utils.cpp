@@ -197,7 +197,7 @@ std::string Utils::RemoveFileExtension(const std::string& filename)
 	lastdot++;
 	if (lastdot == std::string::npos)
 		return filename;
-	return filename.substr(0, lastdot);
+	return filename.substr(0, lastdot - 1);
 }
 
 std::string Utils::GetFileFolder(const std::string& filepath)

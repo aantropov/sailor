@@ -43,7 +43,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			m_particlesHeader.Deserialize(yamlNode);
 		}
 
-		dataPath = Utils::RemoveFileExtension(dataPath) + "dat";
+		dataPath = Utils::RemoveFileExtension(dataPath) + ".dat";
 
 		if (assetRegistry->ReadBinaryFile(dataPath, m_particlesDataBinary))
 		{
