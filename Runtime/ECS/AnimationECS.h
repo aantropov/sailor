@@ -26,7 +26,7 @@ namespace Sailor
 		uint32_t m_gpuOffset = std::numeric_limits<uint32_t>::max();
 		TVector<Math::Transform> m_currentSkeleton;
 
-		bool m_bIsPlaying = false;
+		bool m_bIsPlaying = true;
 		float m_playSpeed = 1.0f;
 		EAnimationPlayMode m_playMode = EAnimationPlayMode::Repeat;
 		bool m_bForward = true;

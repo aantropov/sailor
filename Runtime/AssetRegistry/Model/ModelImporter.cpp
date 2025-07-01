@@ -362,14 +362,14 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 				{
 					if (data->m_bIsImported)
 					{
-	                                        for (const auto& mesh : data->m_parsedMeshes)
-	                                        {
-	                                                RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
-	                                                ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
-	                                                ptr->m_bounds = mesh.bounds;
-	                                                RHI::Renderer::GetDriver()->UpdateMesh(ptr,
-	                                                        mesh.outVertices.GetData(), sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * mesh.outVertices.Num(),
-	                                                        mesh.outIndices.GetData(), sizeof(uint32_t)* mesh.outIndices.Num());
+						for (const auto& mesh : data->m_parsedMeshes)
+						{
+							RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
+							ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
+							ptr->m_bounds = mesh.bounds;
+							RHI::Renderer::GetDriver()->UpdateMesh(ptr,
+								mesh.outVertices.GetData(), sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * mesh.outVertices.Num(),
+								mesh.outIndices.GetData(), sizeof(uint32_t) * mesh.outIndices.Num());
 
 							model->m_meshes.Emplace(ptr);
 						}
@@ -433,68 +433,68 @@ void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* 
 }
 static glm::vec3 CalculateNormal(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
 {
-        return glm::normalize(glm::cross(v1 - v0, v2 - v0));
+	return glm::normalize(glm::cross(v1 - v0, v2 - v0));
 }
 
 static void GenerateTangents(ModelImporter::MeshContext& meshContext,
-        uint32_t vertexOffset,
-        uint32_t vertexCount,
-        uint32_t indexOffset,
-        uint32_t indexCount)
+	uint32_t vertexOffset,
+	uint32_t vertexCount,
+	uint32_t indexOffset,
+	uint32_t indexCount)
 {
-        TVector<glm::vec3> tangents(vertexCount, glm::vec3(0.0f));
-        TVector<glm::vec3> bitangents(vertexCount, glm::vec3(0.0f));
+	TVector<glm::vec3> tangents(vertexCount, glm::vec3(0.0f));
+	TVector<glm::vec3> bitangents(vertexCount, glm::vec3(0.0f));
 
-        auto processTriangle = [&](uint32_t idx0, uint32_t idx1, uint32_t idx2)
-        {
-                glm::vec3 verts[3] = {
-                        meshContext.outVertices[idx0].m_position,
-                        meshContext.outVertices[idx1].m_position,
-                        meshContext.outVertices[idx2].m_position };
+	auto processTriangle = [&](uint32_t idx0, uint32_t idx1, uint32_t idx2)
+		{
+			glm::vec3 verts[3] = {
+					meshContext.outVertices[idx0].m_position,
+					meshContext.outVertices[idx1].m_position,
+					meshContext.outVertices[idx2].m_position };
 
-                glm::vec2 uvs[3] = {
-                        meshContext.outVertices[idx0].m_texcoord,
-                        meshContext.outVertices[idx1].m_texcoord,
-                        meshContext.outVertices[idx2].m_texcoord };
+			glm::vec2 uvs[3] = {
+					meshContext.outVertices[idx0].m_texcoord,
+					meshContext.outVertices[idx1].m_texcoord,
+					meshContext.outVertices[idx2].m_texcoord };
 
-                glm::vec3 t, b;
-                GenerateTangentBitangent(t, b, verts, uvs);
+			glm::vec3 t, b;
+			GenerateTangentBitangent(t, b, verts, uvs);
 
-                tangents[idx0 - vertexOffset] += t;
-                tangents[idx1 - vertexOffset] += t;
-                tangents[idx2 - vertexOffset] += t;
+			tangents[idx0 - vertexOffset] += t;
+			tangents[idx1 - vertexOffset] += t;
+			tangents[idx2 - vertexOffset] += t;
 
-                bitangents[idx0 - vertexOffset] += b;
-                bitangents[idx1 - vertexOffset] += b;
-                bitangents[idx2 - vertexOffset] += b;
-        };
+			bitangents[idx0 - vertexOffset] += b;
+			bitangents[idx1 - vertexOffset] += b;
+			bitangents[idx2 - vertexOffset] += b;
+		};
 
-        if (indexCount > 0 && meshContext.outIndices.Num() > 0)
-        {
-                for (uint32_t i = 0; i + 2 < indexCount; i += 3)
-                {
-                        uint32_t idx0 = meshContext.outIndices[indexOffset + i];
-                        uint32_t idx1 = meshContext.outIndices[indexOffset + i + 1];
-                        uint32_t idx2 = meshContext.outIndices[indexOffset + i + 2];
-                        processTriangle(idx0, idx1, idx2);
-                }
-        }
-        else
-        {
-                for (uint32_t i = 0; i + 2 < vertexCount; i += 3)
-                {
-                        uint32_t idx0 = vertexOffset + i;
-                        uint32_t idx1 = vertexOffset + i + 1;
-                        uint32_t idx2 = vertexOffset + i + 2;
-                        processTriangle(idx0, idx1, idx2);
-                }
-        }
+	if (indexCount > 0 && meshContext.outIndices.Num() > 0)
+	{
+		for (uint32_t i = 0; i + 2 < indexCount; i += 3)
+		{
+			uint32_t idx0 = meshContext.outIndices[indexOffset + i];
+			uint32_t idx1 = meshContext.outIndices[indexOffset + i + 1];
+			uint32_t idx2 = meshContext.outIndices[indexOffset + i + 2];
+			processTriangle(idx0, idx1, idx2);
+		}
+	}
+	else
+	{
+		for (uint32_t i = 0; i + 2 < vertexCount; i += 3)
+		{
+			uint32_t idx0 = vertexOffset + i;
+			uint32_t idx1 = vertexOffset + i + 1;
+			uint32_t idx2 = vertexOffset + i + 2;
+			processTriangle(idx0, idx1, idx2);
+		}
+	}
 
-        for (uint32_t i = 0; i < vertexCount; ++i)
-        {
-                meshContext.outVertices[vertexOffset + i].m_tangent = glm::normalize(tangents[i]);
-                meshContext.outVertices[vertexOffset + i].m_bitangent = glm::normalize(bitangents[i]);
-        }
+	for (uint32_t i = 0; i < vertexCount; ++i)
+	{
+		meshContext.outVertices[vertexOffset + i].m_tangent = glm::normalize(tangents[i]);
+		meshContext.outVertices[vertexOffset + i].m_bitangent = glm::normalize(bitangents[i]);
+	}
 }
 
 
@@ -649,87 +649,87 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				texData = reinterpret_cast<const float*>(&gltfModel.buffers[texView->buffer].data[texView->byteOffset + texAccessor->byteOffset]);
 			}
 
-                        const tinygltf::Accessor* tanAccessor = nullptr;
-                        const tinygltf::BufferView* tanView = nullptr;
-                        const float* tanData = nullptr;
+			const tinygltf::Accessor* tanAccessor = nullptr;
+			const tinygltf::BufferView* tanView = nullptr;
+			const float* tanData = nullptr;
 
-                        if (primitive.attributes.find("TANGENT") != primitive.attributes.end())
-                        {
-                                tanAccessor = &gltfModel.accessors[primitive.attributes.find("TANGENT")->second];
-                                tanView = &gltfModel.bufferViews[std::max(0, tanAccessor->bufferView)];
-                                tanData = reinterpret_cast<const float*>(&gltfModel.buffers[tanView->buffer].data[tanView->byteOffset + tanAccessor->byteOffset]);
-                        }
+			if (primitive.attributes.find("TANGENT") != primitive.attributes.end())
+			{
+				tanAccessor = &gltfModel.accessors[primitive.attributes.find("TANGENT")->second];
+				tanView = &gltfModel.bufferViews[std::max(0, tanAccessor->bufferView)];
+				tanData = reinterpret_cast<const float*>(&gltfModel.buffers[tanView->buffer].data[tanView->byteOffset + tanAccessor->byteOffset]);
+			}
 
-                        const bool bGenerateTangents = tanData == nullptr;
+			const bool bGenerateTangents = tanData == nullptr;
 
-	                const tinygltf::Accessor* colAccessor = nullptr;
-	                const tinygltf::BufferView* colView = nullptr;
-	                const float* colData = nullptr;
+			const tinygltf::Accessor* colAccessor = nullptr;
+			const tinygltf::BufferView* colView = nullptr;
+			const float* colData = nullptr;
 
-	                const tinygltf::Accessor* jointsAccessor = nullptr;
-	                const tinygltf::BufferView* jointsView = nullptr;
-	                const unsigned char* jointsData8 = nullptr;
-	                const unsigned short* jointsData16 = nullptr;
-	                const unsigned int* jointsData32 = nullptr;
+			const tinygltf::Accessor* jointsAccessor = nullptr;
+			const tinygltf::BufferView* jointsView = nullptr;
+			const unsigned char* jointsData8 = nullptr;
+			const unsigned short* jointsData16 = nullptr;
+			const unsigned int* jointsData32 = nullptr;
 
-	                const tinygltf::Accessor* weightsAccessor = nullptr;
-	                const tinygltf::BufferView* weightsView = nullptr;
-	                const float* weightsDataF = nullptr;
-	                const unsigned char* weightsData8 = nullptr;
-	                const unsigned short* weightsData16 = nullptr;
+			const tinygltf::Accessor* weightsAccessor = nullptr;
+			const tinygltf::BufferView* weightsView = nullptr;
+			const float* weightsDataF = nullptr;
+			const unsigned char* weightsData8 = nullptr;
+			const unsigned short* weightsData16 = nullptr;
 
-	                if (primitive.attributes.find("COLOR_0") != primitive.attributes.end())
-	                {
-	                        colAccessor = &gltfModel.accessors[primitive.attributes.find("COLOR_0")->second];
-	                        colView = &gltfModel.bufferViews[std::max(0, colAccessor->bufferView)];
-	                        colData = reinterpret_cast<const float*>(&gltfModel.buffers[colView->buffer].data[colView->byteOffset + colAccessor->byteOffset]);
-	                }
+			if (primitive.attributes.find("COLOR_0") != primitive.attributes.end())
+			{
+				colAccessor = &gltfModel.accessors[primitive.attributes.find("COLOR_0")->second];
+				colView = &gltfModel.bufferViews[std::max(0, colAccessor->bufferView)];
+				colData = reinterpret_cast<const float*>(&gltfModel.buffers[colView->buffer].data[colView->byteOffset + colAccessor->byteOffset]);
+			}
 
-	                if (primitive.attributes.find("JOINTS_0") != primitive.attributes.end())
-	                {
-	                        jointsAccessor = &gltfModel.accessors[primitive.attributes.find("JOINTS_0")->second];
-	                        jointsView = &gltfModel.bufferViews[std::max(0, jointsAccessor->bufferView)];
-	                        const unsigned char* ptr = reinterpret_cast<const unsigned char*>(&gltfModel.buffers[jointsView->buffer].data[jointsView->byteOffset + jointsAccessor->byteOffset]);
-	                        if (jointsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
-	                        {
-	                                jointsData8 = ptr;
-	                        }
-	                        else if (jointsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
-	                        {
-	                                jointsData16 = reinterpret_cast<const unsigned short*>(ptr);
-	                        }
-	                        else
-	                        {
-	                                jointsData32 = reinterpret_cast<const unsigned int*>(ptr);
-	                        }
-	                }
+			if (primitive.attributes.find("JOINTS_0") != primitive.attributes.end())
+			{
+				jointsAccessor = &gltfModel.accessors[primitive.attributes.find("JOINTS_0")->second];
+				jointsView = &gltfModel.bufferViews[std::max(0, jointsAccessor->bufferView)];
+				const unsigned char* ptr = reinterpret_cast<const unsigned char*>(&gltfModel.buffers[jointsView->buffer].data[jointsView->byteOffset + jointsAccessor->byteOffset]);
+				if (jointsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
+				{
+					jointsData8 = ptr;
+				}
+				else if (jointsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
+				{
+					jointsData16 = reinterpret_cast<const unsigned short*>(ptr);
+				}
+				else
+				{
+					jointsData32 = reinterpret_cast<const unsigned int*>(ptr);
+				}
+			}
 
-	                if (primitive.attributes.find("WEIGHTS_0") != primitive.attributes.end())
-	                {
-	                        weightsAccessor = &gltfModel.accessors[primitive.attributes.find("WEIGHTS_0")->second];
-	                        weightsView = &gltfModel.bufferViews[std::max(0, weightsAccessor->bufferView)];
-	                        const unsigned char* ptr = reinterpret_cast<const unsigned char*>(&gltfModel.buffers[weightsView->buffer].data[weightsView->byteOffset + weightsAccessor->byteOffset]);
-	                        if (weightsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-	                        {
-	                                weightsDataF = reinterpret_cast<const float*>(ptr);
-	                        }
-	                        else if (weightsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
-	                        {
-	                                weightsData8 = ptr;
-	                        }
-	                        else if (weightsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
-	                        {
-	                                weightsData16 = reinterpret_cast<const unsigned short*>(ptr);
-	                        }
-	                }
+			if (primitive.attributes.find("WEIGHTS_0") != primitive.attributes.end())
+			{
+				weightsAccessor = &gltfModel.accessors[primitive.attributes.find("WEIGHTS_0")->second];
+				weightsView = &gltfModel.bufferViews[std::max(0, weightsAccessor->bufferView)];
+				const unsigned char* ptr = reinterpret_cast<const unsigned char*>(&gltfModel.buffers[weightsView->buffer].data[weightsView->byteOffset + weightsAccessor->byteOffset]);
+				if (weightsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_FLOAT)
+				{
+					weightsDataF = reinterpret_cast<const float*>(ptr);
+				}
+				else if (weightsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
+				{
+					weightsData8 = ptr;
+				}
+				else if (weightsAccessor->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
+				{
+					weightsData16 = reinterpret_cast<const unsigned short*>(ptr);
+				}
+			}
 
 			const uint32_t colSize = (colAccessor && colAccessor->type == TINYGLTF_PARAMETER_TYPE_FLOAT_VEC3) ? 3 : 4;
 
-	                for (size_t i = 0; i < posAccessor.count; ++i)
-	                {
-	                        Sailor::RHI::VertexP3N3T3B3UV2C4I4W4 vertex{};
-	                        vertex.m_boneIds = glm::ivec4(0);
-	                        vertex.m_boneWeights = glm::vec4(0.0f);
+			for (size_t i = 0; i < posAccessor.count; ++i)
+			{
+				Sailor::RHI::VertexP3N3T3B3UV2C4I4W4 vertex{};
+				vertex.m_boneIds = glm::ivec4(0);
+				vertex.m_boneWeights = glm::vec4(0.0f);
 				vertex.m_position = glm::make_vec3(posData + i * 3) * unitScale;
 
 				if (normData)
@@ -753,58 +753,58 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 					vertex.m_color = glm::vec4(1.0f);
 				}
 
-	                       if (texData)
-	                       {
-	                               vertex.m_texcoord = glm::make_vec2(texData + i * 2);
-	                       }
+				if (texData)
+				{
+					vertex.m_texcoord = glm::make_vec2(texData + i * 2);
+				}
 
-                               if (tanData)
-                               {
-                                       vertex.m_tangent = glm::make_vec3(tanData + i * 3);
-                               }
-                               else
-                               {
-                                       vertex.m_tangent = glm::vec3(0.0f);
-                               }
+				if (tanData)
+				{
+					vertex.m_tangent = glm::make_vec3(tanData + i * 3);
+				}
+				else
+				{
+					vertex.m_tangent = glm::vec3(0.0f);
+				}
 
-                               vertex.m_bitangent = glm::vec3(0.0f);
+				vertex.m_bitangent = glm::vec3(0.0f);
 
-	                        if (jointsAccessor)
-	                        {
-	                                if (jointsData8)
-	                                {
-	                                        const unsigned char* d = jointsData8 + i * 4;
-	                                        vertex.m_boneIds = glm::ivec4(d[0], d[1], d[2], d[3]);
-	                                }
-	                                else if (jointsData16)
-	                                {
-	                                        const unsigned short* d = jointsData16 + i * 4;
-	                                        vertex.m_boneIds = glm::ivec4(d[0], d[1], d[2], d[3]);
-	                                }
-	                                else if (jointsData32)
-	                                {
-	                                        const unsigned int* d = jointsData32 + i * 4;
-	                                        vertex.m_boneIds = glm::ivec4(d[0], d[1], d[2], d[3]);
-	                                }
-	                        }
+				if (jointsAccessor)
+				{
+					if (jointsData8)
+					{
+						const unsigned char* d = jointsData8 + i * 4;
+						vertex.m_boneIds = glm::ivec4(d[0], d[1], d[2], d[3]);
+					}
+					else if (jointsData16)
+					{
+						const unsigned short* d = jointsData16 + i * 4;
+						vertex.m_boneIds = glm::ivec4(d[0], d[1], d[2], d[3]);
+					}
+					else if (jointsData32)
+					{
+						const unsigned int* d = jointsData32 + i * 4;
+						vertex.m_boneIds = glm::ivec4(d[0], d[1], d[2], d[3]);
+					}
+				}
 
-	                        if (weightsAccessor)
-	                        {
-	                                if (weightsDataF)
-	                                {
-	                                        vertex.m_boneWeights = glm::make_vec4(weightsDataF + i * 4);
-	                                }
-	                                else if (weightsData8)
-	                                {
-	                                        const unsigned char* d = weightsData8 + i * 4;
-	                                        vertex.m_boneWeights = glm::vec4(d[0], d[1], d[2], d[3]) / 255.0f;
-	                                }
-	                                else if (weightsData16)
-	                                {
-	                                        const unsigned short* d = weightsData16 + i * 4;
-	                                        vertex.m_boneWeights = glm::vec4(d[0], d[1], d[2], d[3]) / 65535.0f;
-	                                }
-	                        }
+				if (weightsAccessor)
+				{
+					if (weightsDataF)
+					{
+						vertex.m_boneWeights = glm::make_vec4(weightsDataF + i * 4);
+					}
+					else if (weightsData8)
+					{
+						const unsigned char* d = weightsData8 + i * 4;
+						vertex.m_boneWeights = glm::vec4(d[0], d[1], d[2], d[3]) / 255.0f;
+					}
+					else if (weightsData16)
+					{
+						const unsigned short* d = weightsData16 + i * 4;
+						vertex.m_boneWeights = glm::vec4(d[0], d[1], d[2], d[3]) / 65535.0f;
+					}
+				}
 
 				pMeshContext->outVertices.Add(vertex);
 				outBoundsAabb.Extend(vertex.m_position);
@@ -838,25 +838,25 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				indexCount = (uint32_t)posAccessor.count;
 			}
 
-                        if (bGenerateNormals)
-                        {
-                                GenerateNormals(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
-                        }
+			if (bGenerateNormals)
+			{
+				GenerateNormals(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
+			}
 
-                        if (bGenerateTangents || bGenerateNormals)
-                        {
-                                GenerateTangents(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
-                        }
-                        else
-                        {
-                                for (size_t i = 0; i < posAccessor.count; ++i)
-                                {
-                                        auto& v = pMeshContext->outVertices[startIndex + i];
-                                        v.m_bitangent = glm::cross(v.m_normal, v.m_tangent);
-                                }
-                        }
-                }
-        }
+			if (bGenerateTangents || bGenerateNormals)
+			{
+				GenerateTangents(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
+			}
+			else
+			{
+				for (size_t i = 0; i < posAccessor.count; ++i)
+				{
+					auto& v = pMeshContext->outVertices[startIndex + i];
+					v.m_bitangent = glm::cross(v.m_normal, v.m_tangent);
+				}
+			}
+		}
+	}
 
 	if (assetInfo->ShouldBatchByMaterial())
 	{

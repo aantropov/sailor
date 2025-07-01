@@ -73,13 +73,13 @@ namespace Sailor
 	{
 	public:
 
-               struct MeshContext
-               {
-                       std::unordered_map<RHI::VertexP3N3T3B3UV2C4I4W4, uint32_t> uniqueVertices;
-                       TVector<RHI::VertexP3N3T3B3UV2C4I4W4> outVertices;
-                       TVector<uint32_t> outIndices;
-                       Math::AABB bounds{};
-               };
+		struct MeshContext
+		{
+			std::unordered_map<RHI::VertexP3N3T3B3UV2C4I4W4, uint32_t> uniqueVertices;
+			TVector<RHI::VertexP3N3T3B3UV2C4I4W4> outVertices;
+			TVector<uint32_t> outIndices;
+			Math::AABB bounds{};
+		};
 
 		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);
 		SAILOR_API virtual ~ModelImporter() override;
