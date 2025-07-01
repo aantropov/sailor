@@ -39,46 +39,46 @@ bool AnimationImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImm
 }
 
 Tasks::TaskPtr<AnimationPtr> AnimationImporter::LoadAnimation(FileId uid, AnimationPtr& outAnimation)
-	{
+{
 	SAILOR_PROFILE_FUNCTION();
-	
+
 	auto& promise = m_promises.At_Lock(uid, nullptr);
 	auto& loadedAnimation = m_loadedAnimations.At_Lock(uid, AnimationPtr());
-	
+
 	if (loadedAnimation)
 	{
 		outAnimation = loadedAnimation;
 		auto res = promise ? promise : Tasks::TaskPtr<AnimationPtr>::Make(outAnimation);
-		
+
 		m_loadedAnimations.Unlock(uid);
 		m_promises.Unlock(uid);
-		
+
 		return res;
 	}
-	
+
 	if (!promise)
 	{
 		AnimationPtr anim = AnimationPtr::Make(m_allocator, uid);
-		
+
 		promise = Tasks::CreateTaskWithResult<AnimationPtr>("Load Animation",
 			[this, uid, anim]() mutable
 			{
-			ImportAnimation(uid, anim);
-			return anim;
-		}, EThreadType::Worker);
-		
+				ImportAnimation(uid, anim);
+				return anim;
+			}, EThreadType::Worker);
+
 		outAnimation = loadedAnimation = anim;
-		
+
 		promise->Run();
 	}
 	else
 	{
 		outAnimation = loadedAnimation;
 	}
-	
+
 	m_loadedAnimations.Unlock(uid);
 	m_promises.Unlock(uid);
-	
+
 	return promise;
 }
 
@@ -94,7 +94,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 	AnimationPtr anim = outAnimation;
 	if (!anim)
 	{
-	anim = AnimationPtr::Make(m_allocator, uid);
+		anim = AnimationPtr::Make(m_allocator, uid);
 	}
 
 	if (auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AnimationAssetInfoPtr>(uid))
@@ -106,7 +106,7 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 		bool parsed = (Utils::GetFileExtension(info->GetAssetFilepath()) == "glb") ?
 			loader.LoadBinaryFromFile(&gltfModel, &err, &warn, info->GetAssetFilepath().c_str()) :
 			loader.LoadASCIIFromFile(&gltfModel, &err, &warn, info->GetAssetFilepath().c_str());
-			
+
 		if (!parsed)
 		{
 			return false;
@@ -146,7 +146,6 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				}
 			}
 
-
 			TVector<Math::Transform> base(gltfModel.nodes.size());
 			for (size_t i = 0; i < gltfModel.nodes.size(); ++i)
 			{
@@ -156,7 +155,11 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				if (n.scale.size() == 3) base[i].m_scale = glm::vec4(n.scale[0], n.scale[1], n.scale[2], 1.0f);
 			}
 
-			TVector<TVector<Math::Transform>> transforms(numFrames, base);
+			TVector<TVector<Math::Transform>> transforms(numFrames);
+			for (uint32_t i = 0; i < numFrames; i++)
+			{
+				transforms[i].AddRange(base);
+			}
 
 			for (const auto& channel : gltfAnim.channels)
 			{
@@ -236,19 +239,19 @@ void AnimationImporter::CollectGarbage()
 
 	for (const auto& id : ids)
 	{
-	auto promise = m_promises.At_Lock(id);
+		auto promise = m_promises.At_Lock(id);
 
-	if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
-	{
-	FileId uid = id;
-	uidsToRemove.Emplace(uid);
-	}
+		if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
+		{
+			FileId uid = id;
+			uidsToRemove.Emplace(uid);
+		}
 
-	m_promises.Unlock(id);
+		m_promises.Unlock(id);
 	}
 
 	for (auto& uid : uidsToRemove)
 	{
-	m_promises.Remove(uid);
+		m_promises.Remove(uid);
 	}
 }

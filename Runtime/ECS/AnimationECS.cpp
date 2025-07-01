@@ -34,7 +34,7 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 
 	for (auto& data : m_components)
 	{
-		if (!data.GetAnimation())
+		if (!data.GetAnimation() || data.GetAnimation()->m_numFrames ==0)
 		{
 			continue;
 		}

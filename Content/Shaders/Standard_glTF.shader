@@ -64,6 +64,11 @@ glslVertex: |
     uint emissiveSampler;
   };
 
+  struct BoneData
+  {
+    mat4 matrix;
+  };
+  
   layout(set = 0, binding = 0) uniform FrameData
   {
     mat4 view;
@@ -135,7 +140,7 @@ glslVertex: |
   #ifdef SKINNING
   layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
   {
-      mat4 instance[];
+      BoneData instance[];
   } bones;
   #endif
   
@@ -143,10 +148,10 @@ glslVertex: |
   {
   #ifdef SKINNING
     uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
-    mat4 skinMatrix = bones.instance[offset + inBoneIds.x] * inBoneWeights.x +
-                      bones.instance[offset + inBoneIds.y] * inBoneWeights.y +
-                      bones.instance[offset + inBoneIds.z] * inBoneWeights.z +
-                      bones.instance[offset + inBoneIds.w] * inBoneWeights.w;
+    mat4 skinMatrix = bones.instance[offset + inBoneIds.x].matrix * inBoneWeights.x +
+                      bones.instance[offset + inBoneIds.y].matrix * inBoneWeights.y +
+                      bones.instance[offset + inBoneIds.z].matrix * inBoneWeights.z +
+                      bones.instance[offset + inBoneIds.w].matrix * inBoneWeights.w;
 
     mat4 modelMatrix = data.instance[gl_InstanceIndex].model * skinMatrix;
   #else

@@ -368,8 +368,8 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 							ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
 							ptr->m_bounds = mesh.bounds;
 							RHI::Renderer::GetDriver()->UpdateMesh(ptr,
-								&mesh.outVertices[0], sizeof(RHI::VertexP3N3T3B3UV2C4) * mesh.outVertices.Num(),
-								&mesh.outIndices[0], sizeof(uint32_t) * mesh.outIndices.Num());
+								mesh.outVertices.GetData(), sizeof(RHI::VertexP3N3T3B3UV2C4) * mesh.outVertices.Num(),
+								mesh.outIndices.GetData(), sizeof(uint32_t)* mesh.outIndices.Num());
 
 							model->m_meshes.Emplace(ptr);
 						}
@@ -437,50 +437,50 @@ static glm::vec3 CalculateNormal(const glm::vec3& v0, const glm::vec3& v1, const
 }
 
 
-	static void GenerateNormals(ModelImporter::MeshContext& meshContext,
+static void GenerateNormals(ModelImporter::MeshContext& meshContext,
 	uint32_t vertexOffset,
 	uint32_t vertexCount,
 	uint32_t indexOffset,
 	uint32_t indexCount)
-	{
+{
 	TVector<glm::vec3> normals(vertexCount, glm::vec3(0.0f));
-	
-	if (indexCount > 0)
+
+	if (indexCount > 0 && meshContext.outIndices.Num() > 0)
 	{
-	for (uint32_t i = 0; i + 2 < indexCount; i += 3)
-	{
-	uint32_t idx0 = meshContext.outIndices[indexOffset + i];
-	uint32_t idx1 = meshContext.outIndices[indexOffset + i + 1];
-	uint32_t idx2 = meshContext.outIndices[indexOffset + i + 2];
-	
-	glm::vec3 normal = CalculateNormal(meshContext.outVertices[idx0].m_position, meshContext.outVertices[idx1].m_position, meshContext.outVertices[idx2].m_position);
-	
-	normals[idx0 - vertexOffset] += normal;
-	normals[idx1 - vertexOffset] += normal;
-	normals[idx2 - vertexOffset] += normal;
-	}
+		for (uint32_t i = 0; i + 2 < indexCount; i += 3)
+		{
+			uint32_t idx0 = meshContext.outIndices[indexOffset + i];
+			uint32_t idx1 = meshContext.outIndices[indexOffset + i + 1];
+			uint32_t idx2 = meshContext.outIndices[indexOffset + i + 2];
+
+			glm::vec3 normal = CalculateNormal(meshContext.outVertices[idx0].m_position, meshContext.outVertices[idx1].m_position, meshContext.outVertices[idx2].m_position);
+
+			normals[idx0 - vertexOffset] += normal;
+			normals[idx1 - vertexOffset] += normal;
+			normals[idx2 - vertexOffset] += normal;
+		}
 	}
 	else
 	{
-	for (uint32_t i = 0; i + 2 < vertexCount; i += 3)
-	{
-	uint32_t idx0 = vertexOffset + i;
-	uint32_t idx1 = vertexOffset + i + 1;
-	uint32_t idx2 = vertexOffset + i + 2;
-	
-	glm::vec3 normal = CalculateNormal(meshContext.outVertices[idx0].m_position, meshContext.outVertices[idx1].m_position, meshContext.outVertices[idx2].m_position);
-	
-	normals[i] += normal;
-	normals[i + 1] += normal;
-	normals[i + 2] += normal;
+		for (uint32_t i = 0; i + 2 < vertexCount; i += 3)
+		{
+			uint32_t idx0 = vertexOffset + i;
+			uint32_t idx1 = vertexOffset + i + 1;
+			uint32_t idx2 = vertexOffset + i + 2;
+
+			glm::vec3 normal = CalculateNormal(meshContext.outVertices[idx0].m_position, meshContext.outVertices[idx1].m_position, meshContext.outVertices[idx2].m_position);
+
+			normals[i] += normal;
+			normals[i + 1] += normal;
+			normals[i + 2] += normal;
+		}
 	}
-	}
-	
+
 	for (uint32_t i = 0; i < vertexCount; ++i)
 	{
-	meshContext.outVertices[vertexOffset + i].m_normal = glm::normalize(normals[i]);
+		meshContext.outVertices[vertexOffset + i].m_normal = glm::normalize(normals[i]);
 	}
-	}
+}
 
 bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind)
 {
@@ -543,20 +543,20 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		for (const auto& primitive : mesh.primitives)
 		{
 			MeshContext* pMeshContext = nullptr;
-uint32_t startIndex = 0;
-uint32_t indicesStart = 0;
+			uint32_t startIndex = 0;
+			uint32_t indicesStart = 0;
 
 			if (assetInfo->ShouldBatchByMaterial())
 			{
-pMeshContext = &batchedMeshContexts[primitive.material];
-startIndex = (uint32_t)pMeshContext->outVertices.Num();
-indicesStart = (uint32_t)pMeshContext->outIndices.Num();
+				pMeshContext = &batchedMeshContexts[primitive.material];
+				startIndex = (uint32_t)pMeshContext->outVertices.Num();
+				indicesStart = (uint32_t)pMeshContext->outIndices.Num();
 			}
 			else
 			{
-		                        outParsedMeshes.Add(MeshContext());
-		                        pMeshContext = &(*outParsedMeshes.Last());
-		                        indicesStart = (uint32_t)pMeshContext->outIndices.Num();
+				outParsedMeshes.Add(MeshContext());
+				pMeshContext = &(*outParsedMeshes.Last());
+				indicesStart = (uint32_t)pMeshContext->outIndices.Num();
 			}
 
 			const tinygltf::Accessor& posAccessor = gltfModel.accessors[primitive.attributes.find("POSITION")->second];
@@ -564,19 +564,18 @@ indicesStart = (uint32_t)pMeshContext->outIndices.Num();
 			const float* posData = reinterpret_cast<const float*>(&gltfModel.buffers[posView.buffer].data[posView.byteOffset + posAccessor.byteOffset]);
 
 
-		                const tinygltf::Accessor* normAccessor = nullptr;
-		                const tinygltf::BufferView* normView = nullptr;
-		                const float* normData = nullptr;
-		                bool bGenerateNormals = false;
+			const tinygltf::Accessor* normAccessor = nullptr;
+			const tinygltf::BufferView* normView = nullptr;
+			const float* normData = nullptr;
 
 			if (primitive.attributes.find("NORMAL") != primitive.attributes.end())
 			{
-		                        normAccessor = &gltfModel.accessors[primitive.attributes.find("NORMAL")->second];
-		                        normView = &gltfModel.bufferViews[(std::max)(0, normAccessor->bufferView)];
-		                        normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView->buffer].data[normView->byteOffset + normAccessor->byteOffset]);
-		                }
+				normAccessor = &gltfModel.accessors[primitive.attributes.find("NORMAL")->second];
+				normView = &gltfModel.bufferViews[(std::max)(0, normAccessor->bufferView)];
+				normData = reinterpret_cast<const float*>(&gltfModel.buffers[normView->buffer].data[normView->byteOffset + normAccessor->byteOffset]);
+			}
 
-		                bGenerateNormals = normData == nullptr;
+			const bool bGenerateNormals = normData == nullptr;
 
 			const tinygltf::Accessor* texAccessor = nullptr;
 			const tinygltf::BufferView* texView = nullptr;
@@ -615,17 +614,17 @@ indicesStart = (uint32_t)pMeshContext->outIndices.Num();
 
 			for (size_t i = 0; i < posAccessor.count; ++i)
 			{
-		                        Sailor::RHI::VertexP3N3T3B3UV2C4 vertex{};
-		                        vertex.m_position = glm::make_vec3(posData + i * 3) * unitScale;
+				Sailor::RHI::VertexP3N3T3B3UV2C4 vertex{};
+				vertex.m_position = glm::make_vec3(posData + i * 3) * unitScale;
 
-		                        if (normData)
-		                        {
-		                                vertex.m_normal = glm::make_vec3(normData + i * 3);
-		                        }
-		                        else
-		                        {
-		                                vertex.m_normal = glm::vec3(0.0f);
-		                        }
+				if (normData)
+				{
+					vertex.m_normal = glm::make_vec3(normData + i * 3);
+				}
+				else
+				{
+					vertex.m_normal = glm::vec3(0.0f);
+				}
 
 				if (colData)
 				{
@@ -659,31 +658,37 @@ indicesStart = (uint32_t)pMeshContext->outIndices.Num();
 				pMeshContext->bounds.Extend(vertex.m_position);
 			}
 
-		                uint32_t indexCount = 0;
-		                if (primitive.indices >= 0)
-		                {
-		                        const tinygltf::Accessor& indexAccessor = gltfModel.accessors[primitive.indices];
-		                        const tinygltf::BufferView& indexView = gltfModel.bufferViews[std::max(0, indexAccessor.bufferView)];
+			uint32_t indexCount = 0;
+			if (primitive.indices >= 0)
+			{
+				const tinygltf::Accessor& indexAccessor = gltfModel.accessors[primitive.indices];
+				const tinygltf::BufferView& indexView = gltfModel.bufferViews[std::max(0, indexAccessor.bufferView)];
 
-		                        for (size_t i = 0; i < indexAccessor.count; ++i)
-		                        {
-		                                uint32_t index = indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT ?
-		                                        (uint32_t)(reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset])[i])
-		                                        : reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset])[i];
+				for (size_t i = 0; i < indexAccessor.count; ++i)
+				{
+					uint32_t index = indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT ?
+						(uint32_t)(reinterpret_cast<const uint16_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset])[i])
+						: reinterpret_cast<const uint32_t*>(&gltfModel.buffers[indexView.buffer].data[indexView.byteOffset + indexAccessor.byteOffset])[i];
 
-		                                pMeshContext->outIndices.Add(index + startIndex);
-		                        }
-		                        indexCount = (uint32_t)indexAccessor.count;
-		                }
-		                else
-		                {
-		                        indexCount = (uint32_t)pMeshContext->outVertices.Num() - startIndex;
-		                }
+					pMeshContext->outIndices.Add(index + startIndex);
+				}
+				indexCount = (uint32_t)indexAccessor.count;
+			}
+			else
+			{
+				// Always generate the index buffer
+				// Assume TRIANGLES mode
+				for (uint32_t i = 0; i < posAccessor.count; ++i)
+				{
+					pMeshContext->outIndices.Add(startIndex + i);
+				}
+				indexCount = (uint32_t)posAccessor.count;
+			}
 
-		                if (bGenerateNormals)
-		                {
-		                        GenerateNormals(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
-		                }
+			if (bGenerateNormals)
+			{
+				GenerateNormals(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
+			}
 		}
 	}
 

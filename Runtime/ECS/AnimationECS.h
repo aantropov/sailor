@@ -53,6 +53,8 @@ namespace Sailor
 
 		void FillAnimationData(RHI::RHISceneViewPtr& sceneView);
 
+		virtual uint32_t GetOrder() const override { return 200; }
+
 		RHI::RHIShaderBindingSetPtr GetBonesBinding() const { return m_bonesBinding; }
 
 	protected:
