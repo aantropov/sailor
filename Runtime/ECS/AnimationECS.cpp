@@ -113,11 +113,10 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 			matrices[i] = data.m_currentSkeleton[i].Matrix() * bind;
 		}
 
-		auto binding = m_bonesBinding->GetOrAddShaderBinding("bones");
-		commands->UpdateShaderBinding(cmdList, binding,
+		commands->UpdateShaderBinding(cmdList, m_bonesBuffer,
 			matrices.GetData(),
 			sizeof(glm::mat4) * matrices.Num(),
-			binding->GetBufferOffset() + sizeof(glm::mat4) * data.m_gpuOffset);
+			m_bonesBuffer->GetBufferOffset() + sizeof(glm::mat4) * data.m_gpuOffset);
 	}
 
 	commands->EndDebugRegion(cmdList);
