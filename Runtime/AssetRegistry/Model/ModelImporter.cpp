@@ -405,7 +405,7 @@ bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 	return task->GetResult().IsValid();
 }
 
-void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv)
+void CalculateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv)
 {
 	vec3 edge1 = vert[1] - vert[0];
 	vec3 edge2 = vert[2] - vert[0];
@@ -458,7 +458,7 @@ static void GenerateTangents(ModelImporter::MeshContext& meshContext,
 					meshContext.outVertices[idx2].m_texcoord };
 
 			glm::vec3 t, b;
-			GenerateTangentBitangent(t, b, verts, uvs);
+			CalculateTangentBitangent(t, b, verts, uvs);
 
 			tangents[idx0 - vertexOffset] += t;
 			tangents[idx1 - vertexOffset] += t;
@@ -496,7 +496,6 @@ static void GenerateTangents(ModelImporter::MeshContext& meshContext,
 		meshContext.outVertices[vertexOffset + i].m_bitangent = glm::normalize(bitangents[i]);
 	}
 }
-
 
 static void GenerateNormals(ModelImporter::MeshContext& meshContext,
 	uint32_t vertexOffset,
