@@ -41,7 +41,7 @@ namespace Sailor
 		SAILOR_API Tasks::TaskPtr<AnimationPtr> LoadAnimation(FileId uid, AnimationPtr& outAnimation);
 		SAILOR_API bool LoadAnimation_Immediate(FileId uid, AnimationPtr& outAnimation);
 
-		SAILOR_API virtual void CollectGarbage() override {}
+SAILOR_API virtual void CollectGarbage() override;
 
 	protected:
 		TConcurrentMap<FileId, Tasks::TaskPtr<AnimationPtr>> m_promises{};

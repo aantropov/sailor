@@ -39,35 +39,47 @@ bool AnimationImporter::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImm
 }
 
 Tasks::TaskPtr<AnimationPtr> AnimationImporter::LoadAnimation(FileId uid, AnimationPtr& outAnimation)
-{
-	if (auto loaded = m_loadedAnimations.At_Lock(uid))
 	{
-		outAnimation = loaded;
-		m_loadedAnimations.Unlock(uid);
-		return Tasks::TaskPtr<AnimationPtr>::Make(outAnimation);
-	}
-
+	SAILOR_PROFILE_FUNCTION();
+	
 	auto& promise = m_promises.At_Lock(uid, nullptr);
-
-	if (promise.IsValid())
+	auto& loadedAnimation = m_loadedAnimations.At_Lock(uid, AnimationPtr());
+	
+	if (loadedAnimation)
 	{
+		outAnimation = loadedAnimation;
+		auto res = promise ? promise : Tasks::TaskPtr<AnimationPtr>::Make(outAnimation);
+		
+		m_loadedAnimations.Unlock(uid);
 		m_promises.Unlock(uid);
-		return promise;
+		
+		return res;
 	}
-
-	auto task = Tasks::CreateTask<AnimationPtr>("Load Animation", [this, uid]()
-		{
-			AnimationPtr anim;
+	
+	if (!promise)
+	{
+		AnimationPtr anim = AnimationPtr::Make(m_allocator, uid);
+		
+		promise = Tasks::CreateTaskWithResult<AnimationPtr>("Load Animation",
+			[this, uid, anim]() mutable
+			{
 			ImportAnimation(uid, anim);
 			return anim;
 		}, EThreadType::Worker);
-
-	task->Run();
-	promise = task;
-
+		
+		outAnimation = loadedAnimation = anim;
+		
+		promise->Run();
+	}
+	else
+	{
+		outAnimation = loadedAnimation;
+	}
+	
+	m_loadedAnimations.Unlock(uid);
 	m_promises.Unlock(uid);
-
-	return task;
+	
+	return promise;
 }
 
 bool AnimationImporter::LoadAnimation_Immediate(FileId uid, AnimationPtr& outAnimation)
@@ -79,7 +91,11 @@ bool AnimationImporter::LoadAnimation_Immediate(FileId uid, AnimationPtr& outAni
 
 bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 {
-	AnimationPtr anim = AnimationPtr::Make(m_allocator, uid);
+	AnimationPtr anim = outAnimation;
+	if (!anim)
+	{
+	anim = AnimationPtr::Make(m_allocator, uid);
+	}
 
 	if (auto info = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AnimationAssetInfoPtr>(uid))
 	{
@@ -207,9 +223,32 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 	}
 
 	outAnimation = anim;
-	auto& newAnim = m_loadedAnimations.At_Lock(uid);
-	newAnim = anim;
-	m_loadedAnimations.Unlock(uid);
-
 	return true;
+}
+
+void AnimationImporter::CollectGarbage()
+{
+	TVector<FileId> uidsToRemove;
+
+	m_promises.LockAll();
+	auto ids = m_promises.GetKeys();
+	m_promises.UnlockAll();
+
+	for (const auto& id : ids)
+	{
+	auto promise = m_promises.At_Lock(id);
+
+	if (!promise.IsValid() || (promise.IsValid() && promise->IsFinished()))
+	{
+	FileId uid = id;
+	uidsToRemove.Emplace(uid);
+	}
+
+	m_promises.Unlock(id);
+	}
+
+	for (auto& uid : uidsToRemove)
+	{
+	m_promises.Remove(uid);
+	}
 }
