@@ -433,7 +433,68 @@ void GenerateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* 
 }
 static glm::vec3 CalculateNormal(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
 {
-	return glm::normalize(glm::cross(v1 - v0, v2 - v0));
+        return glm::normalize(glm::cross(v1 - v0, v2 - v0));
+}
+
+static void GenerateTangents(ModelImporter::MeshContext& meshContext,
+        uint32_t vertexOffset,
+        uint32_t vertexCount,
+        uint32_t indexOffset,
+        uint32_t indexCount)
+{
+        TVector<glm::vec3> tangents(vertexCount, glm::vec3(0.0f));
+        TVector<glm::vec3> bitangents(vertexCount, glm::vec3(0.0f));
+
+        auto processTriangle = [&](uint32_t idx0, uint32_t idx1, uint32_t idx2)
+        {
+                glm::vec3 verts[3] = {
+                        meshContext.outVertices[idx0].m_position,
+                        meshContext.outVertices[idx1].m_position,
+                        meshContext.outVertices[idx2].m_position };
+
+                glm::vec2 uvs[3] = {
+                        meshContext.outVertices[idx0].m_texcoord,
+                        meshContext.outVertices[idx1].m_texcoord,
+                        meshContext.outVertices[idx2].m_texcoord };
+
+                glm::vec3 t, b;
+                GenerateTangentBitangent(t, b, verts, uvs);
+
+                tangents[idx0 - vertexOffset] += t;
+                tangents[idx1 - vertexOffset] += t;
+                tangents[idx2 - vertexOffset] += t;
+
+                bitangents[idx0 - vertexOffset] += b;
+                bitangents[idx1 - vertexOffset] += b;
+                bitangents[idx2 - vertexOffset] += b;
+        };
+
+        if (indexCount > 0 && meshContext.outIndices.Num() > 0)
+        {
+                for (uint32_t i = 0; i + 2 < indexCount; i += 3)
+                {
+                        uint32_t idx0 = meshContext.outIndices[indexOffset + i];
+                        uint32_t idx1 = meshContext.outIndices[indexOffset + i + 1];
+                        uint32_t idx2 = meshContext.outIndices[indexOffset + i + 2];
+                        processTriangle(idx0, idx1, idx2);
+                }
+        }
+        else
+        {
+                for (uint32_t i = 0; i + 2 < vertexCount; i += 3)
+                {
+                        uint32_t idx0 = vertexOffset + i;
+                        uint32_t idx1 = vertexOffset + i + 1;
+                        uint32_t idx2 = vertexOffset + i + 2;
+                        processTriangle(idx0, idx1, idx2);
+                }
+        }
+
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
+                meshContext.outVertices[vertexOffset + i].m_tangent = glm::normalize(tangents[i]);
+                meshContext.outVertices[vertexOffset + i].m_bitangent = glm::normalize(bitangents[i]);
+        }
 }
 
 
@@ -588,16 +649,18 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				texData = reinterpret_cast<const float*>(&gltfModel.buffers[texView->buffer].data[texView->byteOffset + texAccessor->byteOffset]);
 			}
 
-			const tinygltf::Accessor* tanAccessor = nullptr;
-			const tinygltf::BufferView* tanView = nullptr;
-			const float* tanData = nullptr;
+                        const tinygltf::Accessor* tanAccessor = nullptr;
+                        const tinygltf::BufferView* tanView = nullptr;
+                        const float* tanData = nullptr;
 
-			if (primitive.attributes.find("TANGENT") != primitive.attributes.end())
-			{
-				tanAccessor = &gltfModel.accessors[primitive.attributes.find("TANGENT")->second];
-				tanView = &gltfModel.bufferViews[std::max(0, tanAccessor->bufferView)];
-				tanData = reinterpret_cast<const float*>(&gltfModel.buffers[tanView->buffer].data[tanView->byteOffset + tanAccessor->byteOffset]);
-			}
+                        if (primitive.attributes.find("TANGENT") != primitive.attributes.end())
+                        {
+                                tanAccessor = &gltfModel.accessors[primitive.attributes.find("TANGENT")->second];
+                                tanView = &gltfModel.bufferViews[std::max(0, tanAccessor->bufferView)];
+                                tanData = reinterpret_cast<const float*>(&gltfModel.buffers[tanView->buffer].data[tanView->byteOffset + tanAccessor->byteOffset]);
+                        }
+
+                        const bool bGenerateTangents = tanData == nullptr;
 
 	                const tinygltf::Accessor* colAccessor = nullptr;
 	                const tinygltf::BufferView* colView = nullptr;
@@ -695,15 +758,16 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 	                               vertex.m_texcoord = glm::make_vec2(texData + i * 2);
 	                       }
 
-	                       if (tanData)
-	                       {
-	                               vertex.m_tangent = glm::make_vec3(tanData + i * 3);
-	                               vertex.m_bitangent = glm::cross(vertex.m_normal, vertex.m_tangent);
-	                       }
-	                       else
-	                       {
-	                               GenerateTangentBitangent(vertex.m_tangent, vertex.m_bitangent, &vertex.m_position, &vertex.m_texcoord);
-	                       }
+                               if (tanData)
+                               {
+                                       vertex.m_tangent = glm::make_vec3(tanData + i * 3);
+                               }
+                               else
+                               {
+                                       vertex.m_tangent = glm::vec3(0.0f);
+                               }
+
+                               vertex.m_bitangent = glm::vec3(0.0f);
 
 	                        if (jointsAccessor)
 	                        {
@@ -774,12 +838,25 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				indexCount = (uint32_t)posAccessor.count;
 			}
 
-			if (bGenerateNormals)
-			{
-				GenerateNormals(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
-			}
-		}
-	}
+                        if (bGenerateNormals)
+                        {
+                                GenerateNormals(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
+                        }
+
+                        if (bGenerateTangents || bGenerateNormals)
+                        {
+                                GenerateTangents(*pMeshContext, startIndex, (uint32_t)posAccessor.count, indicesStart, indexCount);
+                        }
+                        else
+                        {
+                                for (size_t i = 0; i < posAccessor.count; ++i)
+                                {
+                                        auto& v = pMeshContext->outVertices[startIndex + i];
+                                        v.m_bitangent = glm::cross(v.m_normal, v.m_tangent);
+                                }
+                        }
+                }
+        }
 
 	if (assetInfo->ShouldBatchByMaterial())
 	{
