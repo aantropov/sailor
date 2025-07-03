@@ -266,6 +266,19 @@ namespace Sailor
 			return Emplace(std::move(item));
 		}
 
+		size_t AddUnique(TElementType item)
+		{
+			for (size_t i = 0; i < m_arrayNum; i++)
+			{
+				if (m_pRawPtr[i] == item)
+				{
+					return i;
+				}
+			}
+
+			return Emplace(std::move(item));
+		}
+
 		void MoveRange(TElementType* first, size_t count) requires IsMoveConstructible<TElementType>
 		{
 			if (count == 0)

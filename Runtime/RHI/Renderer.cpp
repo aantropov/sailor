@@ -326,7 +326,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 							auto newWaitSemaphore = GetDriver()->CreateWaitSemaphore();
 							GetDriver()->SetDebugName(newWaitSemaphore, std::format("rhiFrameGraph TransferCommandList {}", i++));
 
-							waitFrameUpdate.Add(newWaitSemaphore);
+							waitFrameUpdate.AddUnique(newWaitSemaphore);
 							GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1), chainSemaphore);
 						}
 					}
