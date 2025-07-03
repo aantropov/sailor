@@ -95,6 +95,7 @@ TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHIScene
 void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 	TVector<RHI::RHICommandListPtr>& outCommandLists,
+	RHISemaphorePtr inSignalSemaphore,
 	RHISemaphorePtr& outWaitSemaphore)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -190,7 +191,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		}
 		driverCommands->EndDebugRegion(transferCmdList);
 
-		RHI::RHISemaphorePtr chainSemaphore{};
+		RHI::RHISemaphorePtr chainSemaphore = inSignalSemaphore;
 
 		TVector<Tasks::ITaskPtr> tasks;
 		tasks.Reserve(2);
