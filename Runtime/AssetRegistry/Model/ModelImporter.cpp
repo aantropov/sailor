@@ -81,7 +81,7 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		if (modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
+		if (bWasExpired && modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
 		{
 			GenerateMaterialAssets(modelAssetInfo);
 			assetInfo->SaveMetaFile();
@@ -97,6 +97,7 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
+	OnUpdateAssetInfo(assetInfo, true);
 }
 
 FileId CreateTextureAsset(const std::string& filepath,
@@ -596,7 +597,8 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		}
 	}
 
-	TVector<MeshContext> batchedMeshContexts(gltfModel.materials.size());
+	// At least one batch
+	TVector<MeshContext> batchedMeshContexts(std::max(1ull, gltfModel.materials.size()));
 
 	for (const auto& mesh : gltfModel.meshes)
 	{
@@ -608,7 +610,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 
 			if (assetInfo->ShouldBatchByMaterial())
 			{
-				pMeshContext = &batchedMeshContexts[primitive.material];
+				pMeshContext = &batchedMeshContexts[std::max(primitive.material, 0)];
 				startIndex = (uint32_t)pMeshContext->outVertices.Num();
 				indicesStart = (uint32_t)pMeshContext->outIndices.Num();
 			}
