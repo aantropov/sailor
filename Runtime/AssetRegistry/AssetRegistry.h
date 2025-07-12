@@ -9,6 +9,7 @@
 #include "Core/Singleton.hpp"
 #include "Engine/Object.h"
 #include "AssetRegistry/AssetCache.h"
+#include "Containers/ConcurrentMap.h"
 
 namespace Sailor
 {
@@ -151,10 +152,10 @@ namespace Sailor
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
 
-		TMap<FileId, AssetInfoPtr> m_loadedAssetInfo;
-		TMap<std::string, FileId> m_fileIds;
-		TMap<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
+		TConcurrentMap<FileId, AssetInfoPtr> m_loadedAssetInfo;
+		TConcurrentMap<std::string, FileId> m_fileIds;
+		TConcurrentMap<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
 
 		AssetCache m_assetCache;
-	};
+};
 }

@@ -154,8 +154,13 @@ const FileId& AssetRegistry::LoadFile(const std::string& assetFilepath)
 			assetInfo = assetInfoHandler->ImportAsset(filepath);
 		}
 
-		m_loadedAssetInfo[assetInfo->GetFileId()] = assetInfo;
-		m_fileIds[filepath] = assetInfo->GetFileId();
+		auto& infoRef = m_loadedAssetInfo.At_Lock(assetInfo->GetFileId(), nullptr);
+		infoRef = assetInfo;
+		m_loadedAssetInfo.Unlock(assetInfo->GetFileId());
+
+		auto& idRef = m_fileIds.At_Lock(filepath, FileId::Invalid);
+		idRef = assetInfo->GetFileId();
+		m_fileIds.Unlock(filepath);
 
 		return assetInfo->GetFileId();
 	}
@@ -192,7 +197,9 @@ const FileId& AssetRegistry::LoadFile(const std::string& assetFilepath)
 
 				auto assetInfo = assetInfoHandler->LoadAssetInfo(filepath);
 
-				m_loadedAssetInfo[assetInfo->GetFileId()] = assetInfo;
+				auto& infoRef2 = m_loadedAssetInfo.At_Lock(assetInfo->GetFileId(), nullptr);
+				infoRef2 = assetInfo;
+				m_loadedAssetInfo.Unlock(assetInfo->GetFileId());
 			}
 			else if (bMissingAssetFile)
 			{
@@ -207,17 +214,32 @@ const FileId& AssetRegistry::LoadFile(const std::string& assetFilepath)
 void AssetRegistry::ScanFolder(const std::string& folderPath)
 {
 	SAILOR_PROFILE_FUNCTION();
-
+	
+	TVector<Tasks::ITaskPtr> tasks;
+	
 	for (const auto& entry : std::filesystem::directory_iterator(folderPath))
 	{
-		if (entry.is_directory())
-		{
-			ScanFolder(entry.path().string());
-		}
-		else if (entry.is_regular_file())
-		{
-			GetOrLoadFile(entry.path().string());
-		}
+	if (entry.is_directory())
+	{
+	auto task = Tasks::CreateTask("ScanFolder", [=, this]()
+	{
+	ScanFolder(entry.path().string());
+	});
+	tasks.Add(task->Run());
+	}
+	else if (entry.is_regular_file())
+	{
+	auto task = Tasks::CreateTask("LoadFile", [=, this]()
+	{
+	GetOrLoadFile(entry.path().string());
+	});
+	tasks.Add(task->Run());
+	}
+	}
+	
+	for (auto& task : tasks)
+	{
+	task->Wait();
 	}
 }
 
@@ -231,32 +253,33 @@ TObjectPtr<Object> AssetRegistry::LoadAsset(IAssetInfoHandler* assetInfoHandler,
 AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(FileId uid) const
 {
 	SAILOR_PROFILE_FUNCTION();
-
+	
 	auto it = m_loadedAssetInfo.Find(uid);
 	if (it != m_loadedAssetInfo.end())
 	{
-		return it.Value();
+	return it.Value();
 	}
 	return nullptr;
-}
-
-AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFilepath) const
+	}
+	
+	AssetInfoPtr AssetRegistry::GetAssetInfoPtr_Internal(const std::string& assetFilepath) const
 {
 	auto it = m_fileIds.Find(GetContentFolder() + assetFilepath);
 	if (it != m_fileIds.end())
 	{
-		return GetAssetInfoPtr_Internal(it.Value());
+	return GetAssetInfoPtr_Internal(it.Value());
 	}
-
+	
 	return nullptr;
-}
-
-AssetRegistry::~AssetRegistry()
-{
+	}
+	
+	AssetRegistry::~AssetRegistry()
+	{
 	m_assetCache.Shutdown();
+
 
 	for (const auto& assetIt : m_loadedAssetInfo)
 	{
-		delete* assetIt.m_second;
+	delete* assetIt.m_second;
 	}
-}
+	}
