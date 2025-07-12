@@ -407,8 +407,9 @@ glslFragment: |
     // Total specular IBL contribution.
     vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
     
-    // Total ambient lighting contribution.  
-    return material.occlusionStrength * (diffuseIBL + specularIBL);
+    // Total ambient lighting contribution. Occlusion affects only the diffuse
+    // portion as per glTF 2.0 specification.
+    return diffuseIBL * material.occlusionStrength + specularIBL;
   }
   
   // Constant normal incidence Fresnel factor for all dielectrics.
@@ -433,11 +434,14 @@ glslFragment: |
       material.roughnessFactor = material.roughnessFactor * orm.g;
     }
 
-    material.occlusionStrength = texture(g_aoSampler, viewportUv).r;
+    float occlusion = texture(g_aoSampler, viewportUv).r;
     if(material.occlusionSampler != 0)
     {
-      material.occlusionStrength = min(material.occlusionStrength, texture(textureSamplers[material.occlusionSampler], vin.texcoord).r);
+      float occlusionTex = texture(textureSamplers[material.occlusionSampler], vin.texcoord).r;
+      float mixed = mix(1.0, occlusionTex, material.occlusionStrength);
+      occlusion = min(occlusion, mixed);
     }
+    material.occlusionStrength = occlusion;
 
     if(material.emissiveSampler != 0)
     {

@@ -371,8 +371,9 @@ glslFragment: |
     // Total specular IBL contribution.
     vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
     
-    // Total ambient lighting contribution.  
-    return material.ao * (diffuseIBL + specularIBL);
+    // Total ambient lighting contribution. Screen-space AO only affects the
+    // diffuse portion similar to the glTF occlusion workflow.
+    return diffuseIBL * material.ao + specularIBL;
   }
   
   // Constant normal incidence Fresnel factor for all dielectrics.
