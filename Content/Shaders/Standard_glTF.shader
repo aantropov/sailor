@@ -420,14 +420,40 @@ glslFragment: |
     const vec2 viewportUv = gl_FragCoord.xy * rcp(frame.viewportSize);
     
     MaterialData material = GetMaterialData();
-    material.baseColorFactor = material.baseColorFactor * texture(textureSamplers[material.baseColorSampler], vin.texcoord) * vin.color;
-    material.metallicFactor = material.metallicFactor * texture(textureSamplers[material.ormSampler], vin.texcoord).b;
-    material.roughnessFactor = material.roughnessFactor * texture(textureSamplers[material.ormSampler], vin.texcoord).g;
-    material.occlusionStrength = min(texture(g_aoSampler, viewportUv).r, texture(textureSamplers[material.occlusionSampler], vin.texcoord).r);
-    material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[material.emissiveSampler], vin.texcoord);
-    
-    vec3 normal = normalize(2.0 * texture(textureSamplers[material.normalSampler], vin.texcoord).rgb - 1.0) * material.normalScale;
-    normal = normalize(vin.tangentBasis * normal);
+    if(material.baseColorSampler != 0)
+    {
+      material.baseColorFactor = material.baseColorFactor * texture(textureSamplers[material.baseColorSampler], vin.texcoord);
+    }
+    material.baseColorFactor *= vin.color;
+
+    if(material.ormSampler != 0)
+    {
+      vec4 orm = texture(textureSamplers[material.ormSampler], vin.texcoord);
+      material.metallicFactor = material.metallicFactor * orm.b;
+      material.roughnessFactor = material.roughnessFactor * orm.g;
+    }
+
+    material.occlusionStrength = texture(g_aoSampler, viewportUv).r;
+    if(material.occlusionSampler != 0)
+    {
+      material.occlusionStrength = min(material.occlusionStrength, texture(textureSamplers[material.occlusionSampler], vin.texcoord).r);
+    }
+
+    if(material.emissiveSampler != 0)
+    {
+      material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[material.emissiveSampler], vin.texcoord);
+    }
+
+    vec3 normal;
+    if(material.normalSampler != 0)
+    {
+      normal = normalize(2.0 * texture(textureSamplers[material.normalSampler], vin.texcoord).rgb - 1.0) * material.normalScale;
+      normal = normalize(vin.tangentBasis * normal);
+    }
+    else
+    {
+      normal = normalize(vin.normal);
+    }
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
     outColor.xyz = vec3(material.emissiveFactor.xyz);
