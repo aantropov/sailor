@@ -290,6 +290,13 @@ glslFragment: |
   
   layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
   
+  #ifdef SKINNING
+  layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
+  {
+      BoneData instance[];
+  } bones;
+  #endif 
+  
   MaterialData GetMaterialData()
   {
       return material.instance[materialInstance];
