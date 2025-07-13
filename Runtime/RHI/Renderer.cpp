@@ -307,14 +307,22 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				if (m_driverInstance->AcquireNextImage())
 				{
 					RHISemaphorePtr chainSemaphore{};
-					
+
 					updateFrameRHI();
 
 					if (!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 					{
 						rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
 						rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
-						rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, waitFrameUpdate.Num() > 0 ? *(waitFrameUpdate.end() - 1) : nullptr, chainSemaphore);
+
+						RHISemaphorePtr signalSemaphore{};
+
+						if (waitFrameUpdate.Num() > 0)
+						{
+							signalSemaphore = *(waitFrameUpdate.end() - 1);
+							waitFrameUpdate.RemoveLast();
+						}
+						rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, signalSemaphore, chainSemaphore);
 					}
 
 					{
