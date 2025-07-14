@@ -5,8 +5,10 @@ includes:
 - Shaders/Lighting.glsl
 
 defines:
-- ALPHA_CUTOUT
-- SKINNING
+ - ALPHA_CUTOUT
+ - SKINNING
+ - CLEAR_COAT
+ - SHEEN
 
 glslCommon: |
   #version 460
@@ -62,6 +64,19 @@ glslVertex: |
     uint ormSampler;
     uint occlusionSampler;
     uint emissiveSampler;
+
+    float clearcoatFactor;
+    float clearcoatRoughnessFactor;
+    float clearcoatNormalScale;
+
+    vec3 sheenColorFactor;
+    float sheenRoughnessFactor;
+
+    uint clearcoatSampler;
+    uint clearcoatRoughnessSampler;
+    uint clearcoatNormalSampler;
+    uint sheenColorSampler;
+    uint sheenRoughnessSampler;
   };
 
   struct BoneData
@@ -215,6 +230,19 @@ glslFragment: |
     uint ormSampler;
     uint occlusionSampler;
     uint emissiveSampler;
+
+    float clearcoatFactor;
+    float clearcoatRoughnessFactor;
+    float clearcoatNormalScale;
+
+    vec3 sheenColorFactor;
+    float sheenRoughnessFactor;
+
+    uint clearcoatSampler;
+    uint clearcoatRoughnessSampler;
+    uint clearcoatNormalSampler;
+    uint sheenColorSampler;
+    uint sheenRoughnessSampler;
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -418,6 +446,88 @@ glslFragment: |
     // portion as per glTF 2.0 specification.
     return diffuseIBL * material.occlusionStrength + specularIBL;
   }
+
+#ifdef CLEAR_COAT
+  vec3 ClearCoatLighting(LightData light, float roughness, vec3 F0, vec3 Lo, float cosLo, vec3 normal, vec3 worldPos)
+  {
+    float falloff = 1.0f;
+    float shadow = 1.0f;
+    if(light.type == 0)
+    {
+        const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
+        shadow = ShadowCalculation_Pcf(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), 0.000075, cascadeLayer);
+    }
+    else if(light.type == 1 || light.type == 2)
+    {
+        const float distance = length(light.worldPosition - worldPos);
+        float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
+        falloff = attenuation;
+    }
+
+    vec3 Li = -light.direction;
+    vec3 Lradiance = light.intensity;
+
+    vec3 Lh = normalize(Li + Lo);
+    float cosLi = max(0.0, dot(normal, Li));
+    float cosLh = max(0.0, dot(normal, Lh));
+
+    vec3 F  = FresnelSchlick(F0, max(0.0, dot(Lh, Lo)));
+    float D = NdfGGX(cosLh, roughness);
+    float G = GeometrySchlickGGX(cosLi, cosLo, roughness);
+
+    vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
+    return shadow * (specularBRDF * Lradiance * cosLi) * falloff;
+  }
+
+  vec3 ClearCoatAmbientLighting(float roughness, vec3 F0, vec3 Lr, vec3 normal, float cosLo)
+  {
+    int specularTextureLevels = textureQueryLevels(g_envCubemap);
+    vec3 specularIrradiance = textureLod(g_envCubemap, Lr, roughness * specularTextureLevels).rgb;
+    vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, roughness)).rg;
+    return (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
+  }
+#endif
+
+#ifdef SHEEN
+  vec3 SheenLighting(LightData light, float roughness, vec3 color, vec3 Lo, float cosLo, vec3 normal, vec3 worldPos)
+  {
+    float falloff = 1.0f;
+    float shadow = 1.0f;
+    if(light.type == 0)
+    {
+        const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
+        shadow = ShadowCalculation_Pcf(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), 0.000075, cascadeLayer);
+    }
+    else if(light.type == 1 || light.type == 2)
+    {
+        const float distance = length(light.worldPosition - worldPos);
+        float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
+        falloff = attenuation;
+    }
+
+    vec3 Li = -light.direction;
+    vec3 Lradiance = light.intensity;
+
+    vec3 Lh = normalize(Li + Lo);
+    float cosLi = max(0.0, dot(normal, Li));
+    float cosLh = max(0.0, dot(normal, Lh));
+
+    vec3 F  = FresnelSchlick(color, max(0.0, dot(Lh, Lo)));
+    float D = NdfGGX(cosLh, roughness);
+    float G = GeometrySchlickGGX(cosLi, cosLo, roughness);
+
+    vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
+    return shadow * (specularBRDF * Lradiance * cosLi) * falloff;
+  }
+
+  vec3 SheenAmbientLighting(float roughness, vec3 color, vec3 Lr, vec3 normal, float cosLo)
+  {
+    int specularTextureLevels = textureQueryLevels(g_envCubemap);
+    vec3 specularIrradiance = textureLod(g_envCubemap, Lr, roughness * specularTextureLevels).rgb;
+    vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, roughness)).rg;
+    return (color * specularBRDF.x + specularBRDF.y) * specularIrradiance;
+  }
+#endif
   
   // Constant normal incidence Fresnel factor for all dielectrics.
   const vec3 Fdielectric = vec3(0.04);
@@ -455,6 +565,27 @@ glslFragment: |
       material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[material.emissiveSampler], vin.texcoord);
     }
 
+#ifdef CLEAR_COAT
+    if(material.clearcoatSampler != 0)
+    {
+      material.clearcoatFactor = material.clearcoatFactor * texture(textureSamplers[material.clearcoatSampler], vin.texcoord).r;
+    }
+    if(material.clearcoatRoughnessSampler != 0)
+    {
+      material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[material.clearcoatRoughnessSampler], vin.texcoord).g;
+    }
+#endif
+#ifdef SHEEN
+    if(material.sheenColorSampler != 0)
+    {
+      material.sheenColorFactor = material.sheenColorFactor * texture(textureSamplers[material.sheenColorSampler], vin.texcoord).rgb;
+    }
+    if(material.sheenRoughnessSampler != 0)
+    {
+      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[material.sheenRoughnessSampler], vin.texcoord).g;
+    }
+#endif
+
     vec3 normal;
     if(material.normalSampler != 0)
     {
@@ -465,6 +596,17 @@ glslFragment: |
     {
       normal = normalize(vin.normal);
     }
+
+#ifdef CLEAR_COAT
+    vec3 clearcoatNormal = normal;
+    if(material.clearcoatNormalSampler != 0)
+    {
+      clearcoatNormal = normalize(2.0 * texture(textureSamplers[material.clearcoatNormalSampler], vin.texcoord).rgb - 1.0) * material.clearcoatNormalScale;
+      clearcoatNormal = normalize(vin.tangentBasis * clearcoatNormal);
+    }
+    float cosLoCC = max(0.0, dot(clearcoatNormal, -viewDirection));
+    vec3 LrCC = 2.0 * cosLoCC * clearcoatNormal + viewDirection;
+#endif
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
     outColor.xyz = vec3(material.emissiveFactor.xyz);
@@ -501,6 +643,12 @@ glslFragment: |
     const uint numLights = lightsGrid.instance[tileIndex].num;
     
     outColor.xyz += AmbientLighting(material, F0, Lr, normal, cosLo);
+#ifdef CLEAR_COAT
+    outColor.xyz += material.clearcoatFactor * ClearCoatAmbientLighting(material.clearcoatRoughnessFactor, Fdielectric, LrCC, clearcoatNormal, cosLoCC);
+#endif
+#ifdef SHEEN
+    outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor, Lr, normal, cosLo);
+#endif
     
     for(int i = 0; i < numLights; i++)
     {
@@ -511,6 +659,12 @@ glslFragment: |
         }
     
         outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
+#ifdef CLEAR_COAT
+        outColor.xyz += material.clearcoatFactor * ClearCoatLighting(light.instance[index], material.clearcoatRoughnessFactor, Fdielectric, -viewDirection, cosLoCC, clearcoatNormal, vin.worldPosition);
+#endif
+#ifdef SHEEN
+        outColor.xyz += SheenLighting(light.instance[index], material.sheenRoughnessFactor, material.sheenColorFactor, -viewDirection, cosLo, normal, vin.worldPosition);
+#endif
     }
 
     outColor.a = material.baseColorFactor.a;    

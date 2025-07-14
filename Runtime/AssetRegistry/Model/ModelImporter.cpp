@@ -242,11 +242,129 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				CreateTextureAsset(materialName + "_ormTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index));
 		}
 
-		if (material.occlusionTexture.index != -1)
-		{
-			data.m_samplers.Add("occlusionSampler",
-				CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index));
-		}
+                if (material.occlusionTexture.index != -1)
+                {
+                        data.m_samplers.Add("occlusionSampler",
+                                CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index));
+                }
+
+auto ccIt = material.extensions.find("KHR_materials_clearcoat");
+if (ccIt != material.extensions.end())
+{
+                        const tinygltf::Value& cc = ccIt->second;
+
+                        double ccFactor = 0.0;
+                        if (cc.Has("clearcoatFactor"))
+                                ccFactor = cc.Get("clearcoatFactor").GetNumberAsDouble();
+
+                        double ccRoughness = 0.0;
+                        if (cc.Has("clearcoatRoughnessFactor"))
+                                ccRoughness = cc.Get("clearcoatRoughnessFactor").GetNumberAsDouble();
+
+                        data.m_uniformsFloat.Add("material.clearcoatFactor", (float)ccFactor);
+                        data.m_uniformsFloat.Add("material.clearcoatRoughnessFactor", (float)ccRoughness);
+
+                        if (cc.Has("clearcoatTexture"))
+                        {
+                                const tinygltf::Value& tex = cc.Get("clearcoatTexture");
+                                if (tex.Has("index"))
+                                {
+                                        int idx = tex.Get("index").Get<int>();
+                                        if (idx != -1)
+                                        {
+                                                data.m_samplers.Add("clearcoatSampler",
+                                                        CreateTextureAsset(materialName + "_clearcoatTexture.png.asset", assetInfo->GetAssetFilename(), idx));
+                                        }
+                                }
+                        }
+
+                        if (cc.Has("clearcoatRoughnessTexture"))
+                        {
+                                const tinygltf::Value& tex = cc.Get("clearcoatRoughnessTexture");
+                                if (tex.Has("index"))
+                                {
+                                        int idx = tex.Get("index").Get<int>();
+                                        if (idx != -1)
+                                        {
+                                                data.m_samplers.Add("clearcoatRoughnessSampler",
+                                                        CreateTextureAsset(materialName + "_clearcoatRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx));
+                                        }
+                                }
+                        }
+
+                        if (cc.Has("clearcoatNormalTexture"))
+                        {
+                                const tinygltf::Value& tex = cc.Get("clearcoatNormalTexture");
+                                double scale = 1.0;
+                                if (tex.Has("scale"))
+                                        scale = tex.Get("scale").GetNumberAsDouble();
+
+                                if (tex.Has("index"))
+                                {
+                                        int idx = tex.Get("index").Get<int>();
+                                        if (idx != -1)
+                                        {
+                                                data.m_samplers.Add("clearcoatNormalSampler",
+                                                        CreateTextureAsset(materialName + "_clearcoatNormalTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_UNORM));
+                                        }
+                                }
+                                data.m_uniformsFloat.Add("material.clearcoatNormalScale", (float)scale);
+                        }
+
+			data.m_shaderDefines.Add("CLEAR_COAT");
+}
+
+	auto sheenIt = material.extensions.find("KHR_materials_sheen");
+	if (sheenIt != material.extensions.end())
+	{
+	const tinygltf::Value& sheen = sheenIt->second;
+	
+	glm::vec3 color = glm::vec3(0.0f);
+	if (sheen.Has("sheenColorFactor"))
+	{
+	auto arr = sheen.Get("sheenColorFactor").Get<tinygltf::Value::Array>();
+	color = glm::vec3((float)arr[0].GetNumberAsDouble(), (float)arr[1].GetNumberAsDouble(), (float)arr[2].GetNumberAsDouble());
+	}
+	
+	double roughness = 0.0;
+	if (sheen.Has("sheenRoughnessFactor"))
+	{
+	roughness = sheen.Get("sheenRoughnessFactor").GetNumberAsDouble();
+	}
+	
+	data.m_uniformsVec4.Add("material.sheenColorFactor", glm::vec4(color, 0.0f));
+	data.m_uniformsFloat.Add("material.sheenRoughnessFactor", (float)roughness);
+	
+	if (sheen.Has("sheenColorTexture"))
+	{
+	const tinygltf::Value& tex = sheen.Get("sheenColorTexture");
+	if (tex.Has("index"))
+	{
+	int idx = tex.Get("index").Get<int>();
+	if (idx != -1)
+	{
+	data.m_samplers.Add("sheenColorSampler",
+	CreateTextureAsset(materialName + "_sheenColorTexture.png.asset", assetInfo->GetAssetFilename(), idx));
+	}
+	}
+	}
+	
+	if (sheen.Has("sheenRoughnessTexture"))
+	{
+	const tinygltf::Value& tex = sheen.Get("sheenRoughnessTexture");
+	if (tex.Has("index"))
+	{
+	int idx = tex.Get("index").Get<int>();
+	if (idx != -1)
+	{
+	data.m_samplers.Add("sheenRoughnessSampler",
+	CreateTextureAsset(materialName + "_sheenRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx));
+	}
+	}
+	}
+	
+	data.m_shaderDefines.Add("SHEEN");
+	}
 
 		const vec4 baseColor = vec4((float)material.pbrMetallicRoughness.baseColorFactor[0],
 			(float)material.pbrMetallicRoughness.baseColorFactor[1],
