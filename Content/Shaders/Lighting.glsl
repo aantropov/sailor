@@ -61,6 +61,22 @@ float GeometrySchlickGGX(float cosLi, float cosLo, float roughness)
   return GeometrySchlickG1(cosLi, k) * GeometrySchlickG1(cosLo, k);
 }
 
+// Charlie microfacet normal distribution function used for cloth-like sheen.
+float NdfCharlie(float cosLh, float roughness)
+{
+  float alpha = max(roughness, 0.001);
+  float invAlpha = 1.0 / alpha;
+  float cos2h = cosLh * cosLh;
+  float sin2h = max(1.0 - cos2h, 0.0078125);
+  return (2.0 + invAlpha) * pow(sin2h, 0.5 * invAlpha) / (2.0 * PI);
+}
+
+// Neubelt visibility term for cloth-like sheen.
+float GeometryNeubelt(float cosLi, float cosLo)
+{
+  return 1.0 / (4.0 * (cosLi + cosLo - cosLi * cosLo));
+}
+
 // Schlick-GGX approximation of geometric attenuation function using Smith's method (IBL version).
 float GeometrySchlickGGX_IBL(float cosLi, float cosLo, float roughness)
 {

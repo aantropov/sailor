@@ -512,11 +512,12 @@ glslFragment: |
     float cosLi = max(0.0, dot(normal, Li));
     float cosLh = max(0.0, dot(normal, Lh));
 
-    vec3 F  = FresnelSchlick(color, max(0.0, dot(Lh, Lo)));
-    float D = NdfGGX(cosLh, roughness);
-    float G = GeometrySchlickGGX(cosLi, cosLo, roughness);
+    // Cloth like sheen has a constant Fresnel term defined by the color factor.
+    vec3 F  = color;
+    float D = NdfCharlie(cosLh, roughness);
+    float V = GeometryNeubelt(cosLi, cosLo);
 
-    vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
+    vec3 specularBRDF = F * D * V;
     return shadow * (specularBRDF * Lradiance * cosLi) * falloff;
   }
 
