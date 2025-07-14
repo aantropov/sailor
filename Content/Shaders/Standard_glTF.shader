@@ -69,8 +69,8 @@ glslVertex: |
     float clearcoatRoughnessFactor;
     float clearcoatNormalScale;
 
-    vec3 sheenColorFactor;
     float sheenRoughnessFactor;
+    vec4 sheenColorFactor;
 
     uint clearcoatSampler;
     uint clearcoatRoughnessSampler;
@@ -235,8 +235,8 @@ glslFragment: |
     float clearcoatRoughnessFactor;
     float clearcoatNormalScale;
 
-    vec3 sheenColorFactor;
     float sheenRoughnessFactor;
+    vec4 sheenColorFactor;
 
     uint clearcoatSampler;
     uint clearcoatRoughnessSampler;
@@ -447,7 +447,7 @@ glslFragment: |
     return diffuseIBL * material.occlusionStrength + specularIBL;
   }
 
-#ifdef CLEAR_COAT
+  #ifdef CLEAR_COAT
   vec3 ClearCoatLighting(LightData light, float roughness, vec3 F0, vec3 Lo, float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
@@ -486,9 +486,9 @@ glslFragment: |
     vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, roughness)).rg;
     return (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
   }
-#endif
+  #endif
 
-#ifdef SHEEN
+  #ifdef SHEEN
   vec3 SheenLighting(LightData light, float roughness, vec3 color, vec3 Lo, float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
@@ -527,7 +527,7 @@ glslFragment: |
     vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, roughness)).rg;
     return (color * specularBRDF.x + specularBRDF.y) * specularIrradiance;
   }
-#endif
+  #endif
   
   // Constant normal incidence Fresnel factor for all dielectrics.
   const vec3 Fdielectric = vec3(0.04);
@@ -565,7 +565,7 @@ glslFragment: |
       material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[material.emissiveSampler], vin.texcoord);
     }
 
-#ifdef CLEAR_COAT
+  #ifdef CLEAR_COAT
     if(material.clearcoatSampler != 0)
     {
       material.clearcoatFactor = material.clearcoatFactor * texture(textureSamplers[material.clearcoatSampler], vin.texcoord).r;
@@ -574,17 +574,17 @@ glslFragment: |
     {
       material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[material.clearcoatRoughnessSampler], vin.texcoord).g;
     }
-#endif
-#ifdef SHEEN
+  #endif
+  #ifdef SHEEN
     if(material.sheenColorSampler != 0)
     {
-      material.sheenColorFactor = material.sheenColorFactor * texture(textureSamplers[material.sheenColorSampler], vin.texcoord).rgb;
+      material.sheenColorFactor.rgb = material.sheenColorFactor.rgb * texture(textureSamplers[material.sheenColorSampler], vin.texcoord).rgb;
     }
     if(material.sheenRoughnessSampler != 0)
     {
       material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[material.sheenRoughnessSampler], vin.texcoord).g;
     }
-#endif
+  #endif
 
     vec3 normal;
     if(material.normalSampler != 0)
@@ -597,7 +597,7 @@ glslFragment: |
       normal = normalize(vin.normal);
     }
 
-#ifdef CLEAR_COAT
+  #ifdef CLEAR_COAT
     vec3 clearcoatNormal = normal;
     if(material.clearcoatNormalSampler != 0)
     {
@@ -606,7 +606,7 @@ glslFragment: |
     }
     float cosLoCC = max(0.0, dot(clearcoatNormal, -viewDirection));
     vec3 LrCC = 2.0 * cosLoCC * clearcoatNormal + viewDirection;
-#endif
+  #endif
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
     outColor.xyz = vec3(material.emissiveFactor.xyz);
@@ -643,12 +643,12 @@ glslFragment: |
     const uint numLights = lightsGrid.instance[tileIndex].num;
     
     outColor.xyz += AmbientLighting(material, F0, Lr, normal, cosLo);
-#ifdef CLEAR_COAT
+  #ifdef CLEAR_COAT
     outColor.xyz += material.clearcoatFactor * ClearCoatAmbientLighting(material.clearcoatRoughnessFactor, Fdielectric, LrCC, clearcoatNormal, cosLoCC);
-#endif
-#ifdef SHEEN
-    outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor, Lr, normal, cosLo);
-#endif
+  #endif
+  #ifdef SHEEN
+    outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor.rgb, Lr, normal, cosLo);
+  #endif
     
     for(int i = 0; i < numLights; i++)
     {
@@ -659,12 +659,12 @@ glslFragment: |
         }
     
         outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
-#ifdef CLEAR_COAT
+  #ifdef CLEAR_COAT
         outColor.xyz += material.clearcoatFactor * ClearCoatLighting(light.instance[index], material.clearcoatRoughnessFactor, Fdielectric, -viewDirection, cosLoCC, clearcoatNormal, vin.worldPosition);
-#endif
-#ifdef SHEEN
-        outColor.xyz += SheenLighting(light.instance[index], material.sheenRoughnessFactor, material.sheenColorFactor, -viewDirection, cosLo, normal, vin.worldPosition);
-#endif
+  #endif
+  #ifdef SHEEN
+        outColor.xyz += SheenLighting(light.instance[index], material.sheenRoughnessFactor, material.sheenColorFactor.rgb, -viewDirection, cosLo, normal, vin.worldPosition);
+  #endif
     }
 
     outColor.a = material.baseColorFactor.a;    
