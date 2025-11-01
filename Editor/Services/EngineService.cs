@@ -1,8 +1,6 @@
-﻿using SailorEngine;
+using SailorEngine;
 using SailorEditor.ViewModels;
-using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
-using WinRT;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NodeTypeResolvers;
 using YamlDotNet.Core.Tokens;
@@ -10,6 +8,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+#if WINDOWS
+using Microsoft.Maui.Platform;
+using WinRT;
+#endif
 
 namespace SailorEngine
 {

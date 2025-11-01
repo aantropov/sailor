@@ -1,4 +1,3 @@
-﻿using Microsoft.UI.Windowing;
 using YamlDotNet.Core.Events;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;

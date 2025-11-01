@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
 using System.Xml.Linq;
 using YamlDotNet.Core.Events;
@@ -9,7 +9,6 @@ using System.Runtime.CompilerServices;
 using SailorEditor.Services;
 using System.Windows.Input;
 using SailorEngine;
-using Windows.ApplicationModel.VoiceCommands;
 
 namespace SailorEditor.ViewModels;
 

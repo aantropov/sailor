@@ -1,8 +1,9 @@
-﻿using SailorEditor.ViewModels;
+using SailorEditor.ViewModels;
 using CheckBox = Microsoft.Maui.Controls.CheckBox;
 using Grid = Microsoft.Maui.Controls.Grid;
 using SkiaSharp;
 using Entry = Microsoft.Maui.Controls.Entry;
+using EditorControl = Microsoft.Maui.Controls.Editor;
 using DataTemplate = Microsoft.Maui.Controls.DataTemplate;
 using Button = Microsoft.Maui.Controls.Button;
 using System.Collections.ObjectModel;
@@ -25,9 +26,9 @@ static class Templates
 {
     public const int ThumbnailSize = 128;
 
-    public static Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
+    public static EditorControl ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
     {
-        var editor = new Editor
+        var editor = new EditorControl
         {
             FontSize = 12,
             IsReadOnly = true,

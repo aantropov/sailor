@@ -1,10 +1,13 @@
-﻿using Microsoft.UI.Windowing;
 using Window = Microsoft.Maui.Controls.Window;
+#if WINDOWS
+using Microsoft.UI.Windowing;
+#endif
 
 namespace SailorEditor.Helpers
 {
     static class Win32Helper
     {
+#if WINDOWS
         public static OverlappedPresenter GetWindowPresenter(this Window mauiWindow)
         {
             var window = mauiWindow.Handler.PlatformView;
@@ -17,6 +20,7 @@ namespace SailorEditor.Helpers
             return presenter;
         }
 
+#endif
         public static Rect GetAbsolutePositionWin(this VisualElement visualElement)
         {
 #if WINDOWS
