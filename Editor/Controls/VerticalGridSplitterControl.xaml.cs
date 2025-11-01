@@ -69,11 +69,13 @@ public partial class VerticalGridSplitterControl : ContentView
 
             var newWidth = newPosition - offset;
 
+#if WINDOWS
             if (DeviceInfo.Platform == DevicePlatform.WinUI)
             {
                 e.PlatformArgs.DragEventArgs.DragUIOverride!.IsCaptionVisible = false;
                 e.PlatformArgs.DragEventArgs.DragUIOverride!.IsGlyphVisible = false;
             }
+#endif
 
             Splitter.IsVisible = true;
 

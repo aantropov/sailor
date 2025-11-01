@@ -35,7 +35,7 @@ static class Templates
             AutoSize = EditorAutoSizeOption.TextChanges
         };
 
-        editor.Bind(Editor.TextProperty, getter: prop);
+        editor.Bind(EditorControl.TextProperty, getter: prop);
         return editor;
     }
 

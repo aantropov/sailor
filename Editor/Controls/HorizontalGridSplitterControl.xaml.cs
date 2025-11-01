@@ -69,11 +69,13 @@ public partial class HorizontalGridSplitterControl : ContentView
 
             var newHeight = newPosition - offset;
 
+#if WINDOWS
             if (DeviceInfo.Platform == DevicePlatform.WinUI)
             {
                 e.PlatformArgs.DragEventArgs.DragUIOverride!.IsCaptionVisible = false;
                 e.PlatformArgs.DragEventArgs.DragUIOverride!.IsGlyphVisible = false;
             }
+#endif
 
             Splitter.IsVisible = true;
 

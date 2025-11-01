@@ -1,6 +1,6 @@
 ﻿using Foundation;
 
-namespace Editor
+namespace SailorEditor
 {
     [Register("AppDelegate")]
     public class AppDelegate : MauiUIApplicationDelegate
