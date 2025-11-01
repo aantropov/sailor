@@ -25,8 +25,8 @@
                 HorizontalOptions="StartAndExpand"
                 BindableLayout.ItemsSource="{Binding MessageQueue}">
                     <BindableLayout.ItemTemplate>
-                        <DataTemplate>
-                            <Label Text="{Binding .}" 
+                        <DataTemplate x:DataType="x:String">
+                            <Label Text="{Binding .}"
                                VerticalOptions="Start"
                                HorizontalOptions="StartAndExpand">
                                 <Label.GestureRecognizers>
