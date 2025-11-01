@@ -164,7 +164,7 @@ static class Templates
     public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter, Type supportedType = null)
     {
         var clearButton = new Button { Text = "Clear" };
-        clearButton.Clicked += async (sender, e) => setter((TBindingContext)bindingContext, new FileId());
+        clearButton.Clicked += (sender, e) => setter((TBindingContext)bindingContext, new FileId());
 
         var valueEntry = new Label
         {

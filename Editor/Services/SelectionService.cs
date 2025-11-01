@@ -11,7 +11,7 @@ namespace SailorEditor.Services
         public event Action<InstanceId> OnSelectInstanceAction = delegate { };
         public event Action<ObservableObject> OnSelectAssetAction = delegate { };
 
-        public async void SelectInstance(InstanceId instanceId)
+        public void SelectInstance(InstanceId instanceId)
         {
             if (!instanceId.IsEmpty())
             {

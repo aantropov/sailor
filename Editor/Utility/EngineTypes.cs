@@ -20,7 +20,20 @@ namespace SailorEngine
 {
     public class PropertyBase : INotifyPropertyChanged
     {
-        public string Typename { get; set; }
+        string typename;
+
+        public string Typename
+        {
+            get => typename;
+            set
+            {
+                if (typename != value)
+                {
+                    typename = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Typename)));
+                }
+            }
+        }
 
         public event PropertyChangedEventHandler PropertyChanged;
     }

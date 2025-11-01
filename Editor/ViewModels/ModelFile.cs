@@ -41,15 +41,24 @@ public partial class ModelFile : AssetFile
     public ICommand ClearMaterialsCommand { get; }
     public IAsyncRelayCommand ClearMaterialCommand { get; }
 
-    private async Task OnAddMaterial() => Materials.Add(new Observable<FileId>(default));
-    private async Task OnClearMaterial(Observable<FileId> observable) => observable.Value = FileId.NullFileId;
+    private Task OnAddMaterial()
+    {
+        Materials.Add(new Observable<FileId>(default));
+        return Task.CompletedTask;
+    }
+
+    private Task OnClearMaterial(Observable<FileId> observable)
+    {
+        observable.Value = FileId.NullFileId;
+        return Task.CompletedTask;
+    }
 
     private void OnRemoveMaterial(Observable<FileId> material) => Materials.Remove(material);
     private void OnClearMaterials() => Materials.Clear();
 
-    public override async Task Save() => await Save(new ModelFileYamlConverter());
+    public override Task Save() => Save(new ModelFileYamlConverter());
 
-    public override async Task Revert()
+    public override Task Revert()
     {
         try
         {
@@ -80,6 +89,8 @@ public partial class ModelFile : AssetFile
         }
 
         IsDirty = false;
+
+        return Task.CompletedTask;
     }
 }
 

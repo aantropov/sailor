@@ -39,9 +39,9 @@ public partial class TextureFile : AssetFile
 
     public ImageSource Texture { get; private set; } = null;
 
-    public override async Task Save() => await Save(new TextureFileYamlConverter());
+    public override Task Save() => Save(new TextureFileYamlConverter());
 
-    public override async Task<bool> LoadDependentResources()
+    public override Task<bool> LoadDependentResources()
     {
         if (!IsLoaded)
         {
@@ -70,10 +70,10 @@ public partial class TextureFile : AssetFile
             IsLoaded = Texture != null && !Texture.IsEmpty;
         }
 
-        return true;
+        return Task.FromResult(true);
     }
 
-    public override async Task Revert()
+    public override Task Revert()
     {
         try
         {
@@ -103,6 +103,8 @@ public partial class TextureFile : AssetFile
         }
 
         IsDirty = false;
+
+        return Task.CompletedTask;
     }
 }
 

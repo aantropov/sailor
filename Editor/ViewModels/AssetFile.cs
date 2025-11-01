@@ -40,11 +40,11 @@ public partial class AssetFile : ObservableObject, ICloneable
     [YamlIgnore]
     public bool CanOpenAssetFile { get => !IsDirty; }
 
-    public virtual async Task<bool> LoadDependentResources() => await Task.FromResult(true);
+    public virtual Task<bool> LoadDependentResources() => Task.FromResult(true);
 
-    public virtual async Task Save() => await Save(new AssetFileYamlConverter());
+    public virtual Task Save() => Save(new AssetFileYamlConverter());
 
-    public virtual async Task Revert()
+    public virtual Task Revert()
     {
         try
         {
@@ -67,6 +67,8 @@ public partial class AssetFile : ObservableObject, ICloneable
         {
             DisplayName = ex.Message;
         }
+
+        return Task.CompletedTask;
     }
 
     public void Open() => Process.Start(new ProcessStartInfo(Asset.FullName) { UseShellExecute = true });
@@ -96,7 +98,7 @@ public partial class AssetFile : ObservableObject, ICloneable
     [ObservableProperty]
     FileId filename;
 
-    protected async Task Save(IYamlTypeConverter converter)
+    protected Task Save(IYamlTypeConverter converter)
     {
         using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
         using (var writer = new StreamWriter(yamlAssetInfo))
@@ -110,6 +112,8 @@ public partial class AssetFile : ObservableObject, ICloneable
         }
 
         IsDirty = false;
+
+        return Task.CompletedTask;
     }
 }
 

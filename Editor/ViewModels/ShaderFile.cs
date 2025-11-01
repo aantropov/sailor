@@ -22,10 +22,10 @@ public class ShaderFile : AssetFile
 
     public string GlslComputeShader { get; set; }
 
-    public override async Task<bool> LoadDependentResources()
+    public override Task<bool> LoadDependentResources()
     {
         if (IsLoaded)
-            return true;
+            return Task.FromResult(true);
 
         try
         {
@@ -66,12 +66,12 @@ public class ShaderFile : AssetFile
         catch (Exception e)
         {
             DisplayName = e.ToString();
-            return false;
+            return Task.FromResult(false);
         }
 
         IsLoaded = true;
 
-        return true;
+        return Task.FromResult(true);
     }
 }
 

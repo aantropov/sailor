@@ -126,33 +126,40 @@ namespace SailorEditor.Services
 
                 var cts = new CancellationTokenSource();
 
-                Task.Run(async () =>
+                Task.Run(() =>
                 {
                     EngineAppInterop.Initialize(args, args.Length);
 
-                    StartPeriodicTask(async () => EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height), 500, 100, cts.Token);
+                    StartPeriodicTask(() =>
+                    {
+                        EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height);
+                        return Task.CompletedTask;
+                    }, 500, 100, cts.Token);
 
-                    StartPeriodicTask(async () =>
+                    StartPeriodicTask(() =>
                     {
                         var messages = PullMessages();
                         if (messages != null)
                         {
                             MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
                         }
+                        return Task.CompletedTask;
                     }, 300, 500, cts.Token);
 
-                    StartPeriodicTask(async () =>
+                    StartPeriodicTask(() =>
                     {
                         string serializedEngineTypes = SerializeEngineTypes();
                         EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
+                        return Task.CompletedTask;
                     }, 1000, 0, cts.Token);
 
-                    StartPeriodicTask(async () =>
+                    StartPeriodicTask(() =>
                     {
                         string serializedWorld = SerializeWorld();
                         if (serializedWorld != string.Empty)
                             MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
 
+                        return Task.CompletedTask;
                     }, 1500, 0, cts.Token);
 
                     EngineAppInterop.Start();

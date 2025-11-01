@@ -36,7 +36,7 @@ namespace SailorEditor.Services
             return res;
         }
 
-        public async void PopulateWorld(string yaml)
+        public void PopulateWorld(string yaml)
         {
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new WorldYamlConverter())

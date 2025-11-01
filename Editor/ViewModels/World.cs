@@ -20,9 +20,9 @@ public partial class World : AssetFile
     [ObservableProperty]
     ObservableList<Prefab> prefabs = [];
 
-    public override async Task Save() => await Save(new WorldYamlConverter());
+    public override Task Save() => Save(new WorldYamlConverter());
 
-    public override async Task Revert()
+    public override Task Revert()
     {
         try
         {
@@ -49,6 +49,8 @@ public partial class World : AssetFile
         }
 
         IsDirty = false;
+
+        return Task.CompletedTask;
     }
 }
 
