@@ -11,6 +11,8 @@ using Microsoft.Maui.Controls.Compatibility;
 using SailorEditor.Services;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
@@ -41,28 +43,28 @@ public partial class ModelFile : AssetFile
     public ICommand ClearMaterialsCommand { get; }
     public IAsyncRelayCommand ClearMaterialCommand { get; }
 
-    private Task OnAddMaterial()
+    private async Task OnAddMaterial()
     {
         Materials.Add(new Observable<FileId>(default));
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 
-    private Task OnClearMaterial(Observable<FileId> observable)
+    private async Task OnClearMaterial(Observable<FileId> observable)
     {
         observable.Value = FileId.NullFileId;
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 
     private void OnRemoveMaterial(Observable<FileId> material) => Materials.Remove(material);
     private void OnClearMaterials() => Materials.Clear();
 
-    public override Task Save() => Save(new ModelFileYamlConverter());
+    public override async Task Save() => await Save(new ModelFileYamlConverter());
 
-    public override Task Revert()
+    public override async Task Revert()
     {
         try
         {
-            var yaml = File.ReadAllText(AssetInfo.FullName);
+            var yaml = await File.ReadAllTextAsync(AssetInfo.FullName);
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new ModelFileYamlConverter())
             .Build();
@@ -89,8 +91,6 @@ public partial class ModelFile : AssetFile
         }
 
         IsDirty = false;
-
-        return Task.CompletedTask;
     }
 }
 

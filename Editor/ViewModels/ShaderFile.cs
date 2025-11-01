@@ -5,6 +5,8 @@ using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using SailorEditor.Utility;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
@@ -22,17 +24,18 @@ public class ShaderFile : AssetFile
 
     public string GlslComputeShader { get; set; }
 
-    public override Task<bool> LoadDependentResources()
+    public override async Task<bool> LoadDependentResources()
     {
         if (IsLoaded)
-            return Task.FromResult(true);
+            return true;
 
         try
         {
-            using var yamlAssetInfo = new FileStream(Asset.FullName, FileMode.Open);
+            await using var yamlAssetInfo = new FileStream(Asset.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
             using var reader = new StreamReader(yamlAssetInfo);
+            var fileContent = await reader.ReadToEndAsync();
             var yaml = new YamlStream();
-            yaml.Load(reader);
+            yaml.Load(new StringReader(fileContent));
 
             var root = (YamlMappingNode)yaml.Documents[0].RootNode;
 
@@ -61,17 +64,17 @@ public class ShaderFile : AssetFile
                 }
             }
 
-            yamlAssetInfo.Close();
+            await Task.CompletedTask;
         }
         catch (Exception e)
         {
             DisplayName = e.ToString();
-            return Task.FromResult(false);
+            return false;
         }
 
         IsLoaded = true;
 
-        return Task.FromResult(true);
+        return true;
     }
 }
 

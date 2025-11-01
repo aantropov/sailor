@@ -15,6 +15,8 @@ using Scalar = YamlDotNet.Core.Events.Scalar;
 using System;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
@@ -230,9 +232,9 @@ public partial class MaterialFile : AssetFile
         return true;
     }
 
-    public override Task Save()
+    public override async Task Save()
     {
-        using (var yamlAsset = new FileStream(Asset.FullName, FileMode.Create))
+        await using (var yamlAsset = new FileStream(Asset.FullName, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
         using (var writer = new StreamWriter(yamlAsset))
         {
             var serializer = SerializationUtils.CreateSerializerBuilder()
@@ -240,20 +242,19 @@ public partial class MaterialFile : AssetFile
                 .Build();
 
             var yaml = serializer.Serialize(this);
-            writer.Write(yaml);
+            await writer.WriteAsync(yaml);
+            await writer.FlushAsync();
         }
 
         IsDirty = false;
-
-        return Task.CompletedTask;
     }
 
-    public override Task Revert()
+    public override async Task Revert()
     {
         try
         {
             // Asset Info
-            var yamlAssetInfo = File.ReadAllText(AssetInfo.FullName);
+            var yamlAssetInfo = await File.ReadAllTextAsync(AssetInfo.FullName);
 
             var deserializerAssetInfo = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new AssetFileYamlConverter())
@@ -264,7 +265,7 @@ public partial class MaterialFile : AssetFile
             Filename = intermediateObjectAssetInfo.Filename;
 
             // Asset
-            var yamlAsset = File.ReadAllText(Asset.FullName);
+            var yamlAsset = await File.ReadAllTextAsync(Asset.FullName);
 
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new MaterialFileYamlConverter())
@@ -309,8 +310,6 @@ public partial class MaterialFile : AssetFile
         }
 
         IsDirty = false;
-
-        return Task.CompletedTask;
     }
 
     public ICommand AddSamplerCommand { get; }
@@ -360,7 +359,7 @@ public partial class MaterialFile : AssetFile
         }
     }
 
-    private Task OnClearSampler(string key)
+    private async Task OnClearSampler(string key)
     {
         foreach (var uniform in Samplers)
         {
@@ -371,13 +370,13 @@ public partial class MaterialFile : AssetFile
             }
         }
 
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 
-    private Task OnClearShader()
+    private async Task OnClearShader()
     {
         Shader = FileId.NullFileId;
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 }
 

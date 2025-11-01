@@ -7,6 +7,9 @@ using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NodeTypeResolvers;
 using YamlDotNet.Core.Tokens;
 using System.Diagnostics;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SailorEngine
 {
@@ -126,40 +129,41 @@ namespace SailorEditor.Services
 
                 var cts = new CancellationTokenSource();
 
-                Task.Run(() =>
+                Task.Run(async () =>
                 {
                     EngineAppInterop.Initialize(args, args.Length);
 
-                    StartPeriodicTask(() =>
+                    StartPeriodicTask(async () =>
                     {
                         EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height);
-                        return Task.CompletedTask;
+                        await Task.CompletedTask;
                     }, 500, 100, cts.Token);
 
-                    StartPeriodicTask(() =>
+                    StartPeriodicTask(async () =>
                     {
                         var messages = PullMessages();
                         if (messages != null)
                         {
                             MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
                         }
-                        return Task.CompletedTask;
+
+                        await Task.CompletedTask;
                     }, 300, 500, cts.Token);
 
-                    StartPeriodicTask(() =>
+                    StartPeriodicTask(async () =>
                     {
                         string serializedEngineTypes = SerializeEngineTypes();
                         EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
-                        return Task.CompletedTask;
+                        await Task.CompletedTask;
                     }, 1000, 0, cts.Token);
 
-                    StartPeriodicTask(() =>
+                    StartPeriodicTask(async () =>
                     {
                         string serializedWorld = SerializeWorld();
                         if (serializedWorld != string.Empty)
                             MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
 
-                        return Task.CompletedTask;
+                        await Task.CompletedTask;
                     }, 1500, 0, cts.Token);
 
                     EngineAppInterop.Start();
@@ -168,6 +172,8 @@ namespace SailorEditor.Services
                     cts.Cancel();
 
                     EngineAppInterop.Shutdown();
+
+                    await Task.CompletedTask;
                 });
             }
             catch (Exception ex)

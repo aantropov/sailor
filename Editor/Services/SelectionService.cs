@@ -3,6 +3,7 @@ using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
 using System.ComponentModel;
+using System.Threading.Tasks;
 
 namespace SailorEditor.Services
 {
@@ -11,12 +12,14 @@ namespace SailorEditor.Services
         public event Action<InstanceId> OnSelectInstanceAction = delegate { };
         public event Action<ObservableObject> OnSelectAssetAction = delegate { };
 
-        public void SelectInstance(InstanceId instanceId)
+        public async void SelectInstance(InstanceId instanceId)
         {
             if (!instanceId.IsEmpty())
             {
                 OnSelectInstanceAction?.Invoke(instanceId);
             }
+
+            await Task.CompletedTask;
         }
 
         public async void SelectObject(ObservableObject obj)

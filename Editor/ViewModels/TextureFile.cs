@@ -8,6 +8,8 @@ using YamlDotNet.Serialization.NamingConventions;
 using SailorEditor.Services;
 using YamlDotNet.Core.Tokens;
 using Scalar = YamlDotNet.Core.Events.Scalar;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
@@ -39,9 +41,9 @@ public partial class TextureFile : AssetFile
 
     public ImageSource Texture { get; private set; } = null;
 
-    public override Task Save() => Save(new TextureFileYamlConverter());
+    public override async Task Save() => await Save(new TextureFileYamlConverter());
 
-    public override Task<bool> LoadDependentResources()
+    public override async Task<bool> LoadDependentResources()
     {
         if (!IsLoaded)
         {
@@ -60,7 +62,11 @@ public partial class TextureFile : AssetFile
                     Texture = ImageSource.FromStream(() => textureStream);
                 }
                 else
+                {
                     Texture = ImageSource.FromFile(Asset.FullName);
+                }
+
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -70,14 +76,14 @@ public partial class TextureFile : AssetFile
             IsLoaded = Texture != null && !Texture.IsEmpty;
         }
 
-        return Task.FromResult(true);
+        return true;
     }
 
-    public override Task Revert()
+    public override async Task Revert()
     {
         try
         {
-            var yaml = File.ReadAllText(AssetInfo.FullName);
+            var yaml = await File.ReadAllTextAsync(AssetInfo.FullName);
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new TextureFileYamlConverter())
             .Build();
@@ -103,8 +109,6 @@ public partial class TextureFile : AssetFile
         }
 
         IsDirty = false;
-
-        return Task.CompletedTask;
     }
 }
 

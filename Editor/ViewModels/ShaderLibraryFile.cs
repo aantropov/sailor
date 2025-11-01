@@ -6,20 +6,22 @@ using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using SailorEditor.Utility;
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
 public partial class ShaderLibraryFile : AssetFile
 {
-    public override Task<bool> LoadDependentResources()
+    public override async Task<bool> LoadDependentResources()
     {
         if (IsLoaded)
-            return Task.FromResult(true);
+            return true;
 
-        Code = File.ReadAllText(Asset.FullName);
+        Code = await File.ReadAllTextAsync(Asset.FullName);
 
         IsLoaded = true;
-        return Task.FromResult(true);
+        return true;
     }
 
     public string Code { get; set; }
