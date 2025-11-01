@@ -3,6 +3,7 @@ using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
 using System.ComponentModel;
+using System.Threading.Tasks;
 
 namespace SailorEditor.Services
 {
@@ -17,6 +18,8 @@ namespace SailorEditor.Services
             {
                 OnSelectInstanceAction?.Invoke(instanceId);
             }
+
+            await Task.CompletedTask;
         }
 
         public async void SelectObject(ObservableObject obj)

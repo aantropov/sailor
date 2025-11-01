@@ -15,6 +15,8 @@ using Scalar = YamlDotNet.Core.Events.Scalar;
 using System;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
@@ -210,7 +212,7 @@ public partial class MaterialFile : AssetFile
                         var file = AssetService.Files.Find((el) => el.FileId == tex.Value.Value);
                         if (file != null)
                         {
-                            _ = file.LoadDependentResources();
+                            await file.LoadDependentResources();
                         }
                     });
 
@@ -232,7 +234,7 @@ public partial class MaterialFile : AssetFile
 
     public override async Task Save()
     {
-        using (var yamlAsset = new FileStream(Asset.FullName, FileMode.Create))
+        await using (var yamlAsset = new FileStream(Asset.FullName, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
         using (var writer = new StreamWriter(yamlAsset))
         {
             var serializer = SerializationUtils.CreateSerializerBuilder()
@@ -240,7 +242,8 @@ public partial class MaterialFile : AssetFile
                 .Build();
 
             var yaml = serializer.Serialize(this);
-            writer.Write(yaml);
+            await writer.WriteAsync(yaml);
+            await writer.FlushAsync();
         }
 
         IsDirty = false;
@@ -251,7 +254,7 @@ public partial class MaterialFile : AssetFile
         try
         {
             // Asset Info
-            var yamlAssetInfo = File.ReadAllText(AssetInfo.FullName);
+            var yamlAssetInfo = await File.ReadAllTextAsync(AssetInfo.FullName);
 
             var deserializerAssetInfo = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new AssetFileYamlConverter())
@@ -262,7 +265,7 @@ public partial class MaterialFile : AssetFile
             Filename = intermediateObjectAssetInfo.Filename;
 
             // Asset
-            var yamlAsset = File.ReadAllText(Asset.FullName);
+            var yamlAsset = await File.ReadAllTextAsync(Asset.FullName);
 
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new MaterialFileYamlConverter())
@@ -366,9 +369,15 @@ public partial class MaterialFile : AssetFile
                 break;
             }
         }
+
+        await Task.CompletedTask;
     }
 
-    private async Task OnClearShader() => Shader = FileId.NullFileId;
+    private async Task OnClearShader()
+    {
+        Shader = FileId.NullFileId;
+        await Task.CompletedTask;
+    }
 }
 
 public class MaterialFileYamlConverter : IYamlTypeConverter

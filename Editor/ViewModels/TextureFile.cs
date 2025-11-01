@@ -8,6 +8,8 @@ using YamlDotNet.Serialization.NamingConventions;
 using SailorEditor.Services;
 using YamlDotNet.Core.Tokens;
 using Scalar = YamlDotNet.Core.Events.Scalar;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
@@ -60,7 +62,11 @@ public partial class TextureFile : AssetFile
                     Texture = ImageSource.FromStream(() => textureStream);
                 }
                 else
+                {
                     Texture = ImageSource.FromFile(Asset.FullName);
+                }
+
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -77,7 +83,7 @@ public partial class TextureFile : AssetFile
     {
         try
         {
-            var yaml = File.ReadAllText(AssetInfo.FullName);
+            var yaml = await File.ReadAllTextAsync(AssetInfo.FullName);
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new TextureFileYamlConverter())
             .Build();

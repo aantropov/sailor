@@ -1,8 +1,9 @@
-﻿using SailorEditor.ViewModels;
+using SailorEditor.ViewModels;
 using CheckBox = Microsoft.Maui.Controls.CheckBox;
 using Grid = Microsoft.Maui.Controls.Grid;
 using SkiaSharp;
 using Entry = Microsoft.Maui.Controls.Entry;
+using EditorControl = Microsoft.Maui.Controls.Editor;
 using DataTemplate = Microsoft.Maui.Controls.DataTemplate;
 using Button = Microsoft.Maui.Controls.Button;
 using System.Collections.ObjectModel;
@@ -18,15 +19,16 @@ using Component = SailorEditor.ViewModels.Component;
 using SailorEditor.Views;
 using SailorEditor.Controls;
 using System;
+using System.Threading.Tasks;
 
 namespace SailorEditor.Helpers;
 static class Templates
 {
     public const int ThumbnailSize = 128;
 
-    public static Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
+    public static EditorControl ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
     {
-        var editor = new Editor
+        var editor = new EditorControl
         {
             FontSize = 12,
             IsReadOnly = true,
@@ -164,7 +166,11 @@ static class Templates
     public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter, Type supportedType = null)
     {
         var clearButton = new Button { Text = "Clear" };
-        clearButton.Clicked += async (sender, e) => setter((TBindingContext)bindingContext, new FileId());
+        clearButton.Clicked += async (sender, e) =>
+        {
+            setter((TBindingContext)bindingContext, new FileId());
+            await Task.CompletedTask;
+        };
 
         var valueEntry = new Label
         {

@@ -5,6 +5,7 @@ using YamlDotNet.Serialization;
 using SailorEditor.Utility;
 using SailorEngine;
 using YamlDotNet.Core.Tokens;
+using System.Threading.Tasks;
 
 namespace SailorEditor.Services
 {
@@ -102,6 +103,8 @@ namespace SailorEditor.Services
             }
 
             OnUpdateWorldAction?.Invoke(Current);
+
+            await Task.CompletedTask;
         }
 
         public string SerializeCurrentWorld()

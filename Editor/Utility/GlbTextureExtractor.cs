@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using Newtonsoft.Json.Linq;
 
@@ -19,7 +19,7 @@ public class GlbExtractor
             }
 
             var header = new byte[12];
-            file.Read(header, 0, 12);
+            file.ReadExactly(header, 0, 12);
 
             uint magic = BitConverter.ToUInt32(header, 0);
             if (magic != 0x46546C67)
@@ -29,7 +29,7 @@ public class GlbExtractor
             }
 
             var jsonChunkHeader = new byte[8];
-            file.Read(jsonChunkHeader, 0, 8);
+            file.ReadExactly(jsonChunkHeader, 0, 8);
 
             uint jsonChunkType = BitConverter.ToUInt32(jsonChunkHeader, 4);
             if (jsonChunkType != 0x4E4F534A)
@@ -40,7 +40,7 @@ public class GlbExtractor
 
             uint jsonChunkLength = BitConverter.ToUInt32(jsonChunkHeader, 0);
             var jsonChunk = new byte[jsonChunkLength];
-            file.Read(jsonChunk, 0, (int)jsonChunkLength);
+            file.ReadExactly(jsonChunk, 0, (int)jsonChunkLength);
 
             var gltfJson = JObject.Parse(System.Text.Encoding.UTF8.GetString(jsonChunk));
 
@@ -59,7 +59,7 @@ public class GlbExtractor
             file.Seek(12 + 8 + jsonChunkLength, SeekOrigin.Begin);
 
             var binChunkHeader = new byte[8];
-            file.Read(binChunkHeader, 0, 8);
+            file.ReadExactly(binChunkHeader, 0, 8);
 
             uint binChunkType = BitConverter.ToUInt32(binChunkHeader, 4);
             if (binChunkType != 0x004E4942)
@@ -77,7 +77,7 @@ public class GlbExtractor
 
             file.Seek(byteOffset, SeekOrigin.Current);
             var buffer = new byte[byteLength];
-            file.Read(buffer, 0, byteLength);
+            file.ReadExactly(buffer, 0, byteLength);
 
             outTextureStream = new MemoryStream(buffer);
 

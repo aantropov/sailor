@@ -1,12 +1,17 @@
-﻿using SailorEngine;
+using SailorEngine;
 using SailorEditor.ViewModels;
-using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
-using WinRT;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NodeTypeResolvers;
 using YamlDotNet.Core.Tokens;
 using System.Diagnostics;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+#if WINDOWS
+using Microsoft.Maui.Platform;
+using WinRT;
+#endif
 
 namespace SailorEngine
 {
@@ -130,7 +135,11 @@ namespace SailorEditor.Services
                 {
                     EngineAppInterop.Initialize(args, args.Length);
 
-                    StartPeriodicTask(async () => EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height), 500, 100, cts.Token);
+                    StartPeriodicTask(async () =>
+                    {
+                        EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height);
+                        await Task.CompletedTask;
+                    }, 500, 100, cts.Token);
 
                     StartPeriodicTask(async () =>
                     {
@@ -139,12 +148,15 @@ namespace SailorEditor.Services
                         {
                             MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
                         }
+
+                        await Task.CompletedTask;
                     }, 300, 500, cts.Token);
 
                     StartPeriodicTask(async () =>
                     {
                         string serializedEngineTypes = SerializeEngineTypes();
                         EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
+                        await Task.CompletedTask;
                     }, 1000, 0, cts.Token);
 
                     StartPeriodicTask(async () =>
@@ -153,6 +165,7 @@ namespace SailorEditor.Services
                         if (serializedWorld != string.Empty)
                             MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
 
+                        await Task.CompletedTask;
                     }, 1500, 0, cts.Token);
 
                     EngineAppInterop.Start();
@@ -161,6 +174,8 @@ namespace SailorEditor.Services
                     cts.Cancel();
 
                     EngineAppInterop.Shutdown();
+
+                    await Task.CompletedTask;
                 });
             }
             catch (Exception ex)

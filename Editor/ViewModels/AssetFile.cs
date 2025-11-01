@@ -9,6 +9,8 @@ using SailorEngine;
 using SailorEditor.Utility;
 using System.Reflection;
 using Microsoft.Maui.Storage;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
@@ -48,7 +50,7 @@ public partial class AssetFile : ObservableObject, ICloneable
     {
         try
         {
-            var yaml = File.ReadAllText(AssetInfo.FullName);
+            var yaml = await File.ReadAllTextAsync(AssetInfo.FullName);
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new AssetFileYamlConverter())
             .Build();
@@ -98,7 +100,7 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     protected async Task Save(IYamlTypeConverter converter)
     {
-        using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
+        await using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
         using (var writer = new StreamWriter(yamlAssetInfo))
         {
             var serializer = SerializationUtils.CreateSerializerBuilder()
@@ -106,7 +108,8 @@ public partial class AssetFile : ObservableObject, ICloneable
                 .Build();
 
             var yaml = serializer.Serialize(this);
-            writer.Write(yaml);
+            await writer.WriteAsync(yaml);
+            await writer.FlushAsync();
         }
 
         IsDirty = false;

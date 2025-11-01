@@ -9,6 +9,8 @@ using YamlDotNet.Serialization.NamingConventions;
 using System.Collections.Generic;
 using YamlDotNet.RepresentationModel;
 using SailorEditor.Helpers;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SailorEditor.ViewModels;
 
@@ -26,7 +28,7 @@ public partial class World : AssetFile
     {
         try
         {
-            var yaml = File.ReadAllText(AssetInfo.FullName);
+            var yaml = await File.ReadAllTextAsync(AssetInfo.FullName);
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new WorldYamlConverter())
             .Build();
