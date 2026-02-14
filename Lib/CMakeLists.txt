@@ -1,15 +1,75 @@
-# External dependencies
-find_package(yaml-cpp CONFIG REQUIRED)
-find_package(tracy CONFIG REQUIRED)
-find_package(imgui CONFIG REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
-find_package(magic_enum CONFIG REQUIRED)
-find_package(glm CONFIG REQUIRED)
-find_package(unofficial-spirv-reflect CONFIG REQUIRED)
-find_package(Stb REQUIRED)
+if(NOT DEFINED SAILOR_ALLOW_MISSING_DEPS)
+	if(WIN32)
+		set(SAILOR_ALLOW_MISSING_DEPS OFF CACHE BOOL "Allow CMake configure without installed dependencies")
+	else()
+		set(SAILOR_ALLOW_MISSING_DEPS ON CACHE BOOL "Allow CMake configure without installed dependencies")
+	endif()
+endif()
 
-if(SAILOR_BUILD_WITH_TRACY_PROFILER)
-  find_package(tracy CONFIG REQUIRED)
+function(sailor_create_stub_target target_name)
+	if(NOT TARGET ${target_name})
+		add_library(${target_name} INTERFACE IMPORTED)
+	endif()
+endfunction()
+
+set(SAILOR_MISSING_DEPS "")
+
+# External dependencies
+find_package(yaml-cpp CONFIG QUIET)
+if(NOT yaml-cpp_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "yaml-cpp")
+	sailor_create_stub_target(yaml-cpp::yaml-cpp)
+endif()
+
+find_package(tracy CONFIG QUIET)
+if(NOT tracy_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "tracy")
+	sailor_create_stub_target(Tracy::TracyClient)
+endif()
+
+find_package(imgui CONFIG QUIET)
+if(NOT imgui_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "imgui")
+	sailor_create_stub_target(imgui::imgui)
+endif()
+
+find_package(nlohmann_json CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "nlohmann_json")
+	sailor_create_stub_target(nlohmann_json::nlohmann_json)
+endif()
+
+find_package(magic_enum CONFIG QUIET)
+if(NOT magic_enum_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "magic_enum")
+	sailor_create_stub_target(magic_enum::magic_enum)
+endif()
+
+find_package(glm CONFIG QUIET)
+if(NOT glm_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "glm")
+	sailor_create_stub_target(glm::glm)
+endif()
+
+find_package(unofficial-spirv-reflect CONFIG QUIET)
+if(NOT unofficial-spirv-reflect_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "unofficial-spirv-reflect")
+	sailor_create_stub_target(unofficial::spirv-reflect)
+endif()
+
+find_package(Stb QUIET)
+if(NOT Stb_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "Stb")
+	set(Stb_INCLUDE_DIR "")
+endif()
+
+if(SAILOR_MISSING_DEPS)
+	list(JOIN SAILOR_MISSING_DEPS ", " SAILOR_MISSING_DEPS_MSG)
+	if(SAILOR_ALLOW_MISSING_DEPS)
+		message(WARNING "Missing dependencies: ${SAILOR_MISSING_DEPS_MSG}. CMake configure will continue with stub targets, but build may fail until dependencies are installed.")
+	else()
+		message(FATAL_ERROR "Missing dependencies: ${SAILOR_MISSING_DEPS_MSG}. Run 'python update_deps.py' after initializing submodules, or configure with -DSAILOR_ALLOW_MISSING_DEPS=ON.")
+	endif()
 endif()
 
 # Header only dependencies
@@ -51,6 +111,22 @@ target_link_libraries(SailorLib PUBLIC
 
 find_path(REFL_CPP_INCLUDE_DIRS "refl.hpp")
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
+
+if(REFL_CPP_INCLUDE_DIRS MATCHES "NOTFOUND")
+  if(SAILOR_ALLOW_MISSING_DEPS)
+    set(REFL_CPP_INCLUDE_DIRS "")
+  else()
+    message(FATAL_ERROR "Missing refl-cpp headers. Install dependencies (python update_deps.py) or use -DSAILOR_ALLOW_MISSING_DEPS=ON.")
+  endif()
+endif()
+
+if(TINYGLTF_INCLUDE_DIRS MATCHES "NOTFOUND")
+  if(SAILOR_ALLOW_MISSING_DEPS)
+    set(TINYGLTF_INCLUDE_DIRS "")
+  else()
+    message(FATAL_ERROR "Missing tinygltf headers. Install dependencies (python update_deps.py) or use -DSAILOR_ALLOW_MISSING_DEPS=ON.")
+  endif()
+endif()
 
 target_include_directories(SailorLib PUBLIC 
     ${SAILOR_RUNTIME_DIR}
@@ -107,9 +183,16 @@ if(SAILOR_BUILD_WITH_TRACY_PROFILER)
 endif()
 
 if(SAILOR_BUILD_WITH_VULKAN)
-  target_compile_definitions(SailorLib PUBLIC SAILOR_BUILD_WITH_VULKAN)
-  find_package(Vulkan 1.3 COMPONENTS shaderc_combined REQUIRED)
-  target_link_libraries(SailorLib PUBLIC Vulkan::Vulkan Vulkan::shaderc_combined)
+  find_package(Vulkan 1.3 COMPONENTS shaderc_combined QUIET)
+
+  if(Vulkan_FOUND)
+    target_compile_definitions(SailorLib PUBLIC SAILOR_BUILD_WITH_VULKAN)
+    target_link_libraries(SailorLib PUBLIC Vulkan::Vulkan Vulkan::shaderc_combined)
+  elseif(SAILOR_ALLOW_MISSING_DEPS)
+    message(WARNING "Vulkan SDK 1.3+ with shaderc_combined not found. Vulkan integration is disabled for this configuration.")
+  else()
+    message(FATAL_ERROR "Vulkan SDK 1.3+ with shaderc_combined is required. Install dependencies (python update_deps.py) or use -DSAILOR_ALLOW_MISSING_DEPS=ON.")
+  endif()
 endif()
 
 if(SAILOR_VULKAN_SHARE_DEVICE_MEMORY_FOR_STAGING_BUFFERS)
