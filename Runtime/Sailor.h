@@ -18,6 +18,7 @@ namespace Sailor
 		bool m_bRunConsole = true;
 		bool m_bIsEditor = false;
 		bool m_bEnableRenderValidationLayers = true;
+		bool m_bRunPathTracer = false;
 
 		uint32_t m_editorPort = 32800;
 		HWND m_editorHwnd{};
@@ -92,6 +93,7 @@ namespace Sailor
 	protected:
 
 		TUniquePtr<Win32::Window> m_pMainWindow;
+		bool m_bSkipMainLoop = false;
 
 	private:
 

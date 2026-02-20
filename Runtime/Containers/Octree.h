@@ -246,7 +246,51 @@ namespace Sailor
 			}
 		}
 
+		__forceinline void TraceRay(const Math::Ray& ray, TVector<TElementType>& outElements, float maxRayLength = FLT_MAX) const
+		{
+			outElements.Clear(false);
+			if (!m_root)
+			{
+				return;
+			}
+
+			const Math::AABB rootAabb(m_root->m_center, (float)m_root->m_size * glm::vec3(0.5f, 0.5f, 0.5f));
+			if (Math::IntersectRayAABB(ray, rootAabb.m_min, rootAabb.m_max, maxRayLength) == FLT_MAX)
+			{
+				return;
+			}
+
+			TraceRay_Internal(*m_root, ray, outElements, maxRayLength);
+		}
+
 	protected:
+
+		void TraceRay_Internal(const TNode& node, const Math::Ray& ray, TVector<TElementType>& outElements, float maxRayLength) const
+		{
+			if (node.m_elements.Num())
+			{
+				for (const auto& el : node.m_elements)
+				{
+					const Math::AABB aabb(el.m_second->m_position, glm::vec3(el.m_second->m_extents));
+					if (Math::IntersectRayAABB(ray, aabb.m_min, aabb.m_max, maxRayLength) != FLT_MAX)
+					{
+						outElements.Add(el.m_first);
+					}
+				}
+			}
+
+			if (!node.IsLeaf())
+			{
+				for (uint32_t i = 0; i < 8; i++)
+				{
+					const Math::AABB childAabb(node.m_internal[i].m_center, (float)node.m_internal[i].m_size * glm::vec3(0.5f, 0.5f, 0.5f));
+					if (Math::IntersectRayAABB(ray, childAabb.m_min, childAabb.m_max, maxRayLength) != FLT_MAX)
+					{
+						TraceRay_Internal(node.m_internal[i], ray, outElements, maxRayLength);
+					}
+				}
+			}
+		}
 
 		void Trace_Internal(const TNode& node, const Math::Frustum& frustum, TVector<TElementType>& outElements) const
 		{

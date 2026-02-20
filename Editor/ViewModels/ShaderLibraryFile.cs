@@ -11,15 +11,15 @@ namespace SailorEditor.ViewModels;
 
 public partial class ShaderLibraryFile : AssetFile
 {
-    public override async Task<bool> LoadDependentResources()
+    public override Task<bool> LoadDependentResources()
     {
         if (IsLoaded)
-            return true;
+            return Task.FromResult(true);
 
         Code = File.ReadAllText(Asset.FullName);
 
         IsLoaded = true;
-        return true;
+        return Task.FromResult(true);
     }
 
     public string Code { get; set; }

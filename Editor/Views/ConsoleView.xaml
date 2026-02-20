@@ -1,7 +1,9 @@
-﻿<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:SailorEditor.Views"
              x:Name="this"
-             x:Class="SailorEditor.Views.ConsoleView">
+             x:Class="SailorEditor.Views.ConsoleView"
+             x:DataType="local:ConsoleView">
 
     <Frame>
         <Grid>
@@ -25,7 +27,7 @@
                 HorizontalOptions="StartAndExpand"
                 BindableLayout.ItemsSource="{Binding MessageQueue}">
                     <BindableLayout.ItemTemplate>
-                        <DataTemplate>
+                        <DataTemplate x:DataType="x:Object">
                             <Label Text="{Binding .}" 
                                VerticalOptions="Start"
                                HorizontalOptions="StartAndExpand">

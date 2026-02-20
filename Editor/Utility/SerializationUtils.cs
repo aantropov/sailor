@@ -15,7 +15,7 @@ static class SerializationUtils
         new Vec3YamlConverter(),
         new Vec4YamlConverter(),
         new QuatYamlConverter(),
-        new RotationYamlConverter(),
+        new RotationYamlConverter()
     };
 
     public static SerializerBuilder CreateSerializerBuilder()

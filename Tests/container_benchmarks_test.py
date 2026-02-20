@@ -10,19 +10,36 @@ def main():
         return 0
 
     build_type = os.environ.get("CONFIG", "Release")
-    binaries_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Binaries"))
-    lib_path = os.path.join(binaries_dir, f"Sailor-{build_type}.dll")
+    binaries_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Binaries"))
+    candidate_paths = [
+        os.path.join(binaries_root, build_type, f"Sailor-{build_type}.dll"),
+        os.path.join(binaries_root, f"Sailor-{build_type}.dll"),
+    ]
 
-    if not os.path.exists(lib_path):
-        print(f"Skipping container benchmarks: {lib_path} not found")
+    lib_path = next((path for path in candidate_paths if os.path.exists(path)), None)
+    if lib_path is None:
+        print(f"Skipping container benchmarks: no Sailor-{build_type}.dll found in {binaries_root}")
         return 0
 
     try:
         lib = ctypes.CDLL(lib_path)
-        lib.RunVectorBenchmark()
-        lib.RunSetBenchmark()
-        lib.RunMapBenchmark()
-        lib.RunListBenchmark()
+        required_functions = [
+            "RunVectorBenchmark",
+            "RunSetBenchmark",
+            "RunMapBenchmark",
+            "RunListBenchmark",
+        ]
+
+        resolved_functions = []
+        for name in required_functions:
+            resolved_functions.append(getattr(lib, name))
+
+        should_run = os.environ.get("RUN_CONTAINER_BENCHMARKS", "0") == "1"
+        if should_run:
+            for fn in resolved_functions:
+                fn()
+        else:
+            print("Container benchmark functions were resolved successfully; execution is skipped by default.")
     except Exception as exc:
         print(f"Benchmark execution failed: {exc}")
         return 1

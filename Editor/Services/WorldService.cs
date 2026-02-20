@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.ViewModels;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
@@ -10,6 +10,12 @@ namespace SailorEditor.Services
 {
     public partial class WorldService : ObservableObject
     {
+        class WorldCache
+        {
+            public Dictionary<InstanceId, Component> Components { get; } = new();
+            public Dictionary<InstanceId, GameObject> GameObjects { get; } = new();
+        }
+
         public World Current { get; private set; } = new World();
 
         [ObservableProperty]
@@ -21,6 +27,8 @@ namespace SailorEditor.Services
         {
             MauiProgram.GetService<EngineService>().OnUpdateCurrentWorldAction += PopulateWorld;
         }
+
+        static string GetWorldKey(World world) => string.IsNullOrEmpty(world?.Name) ? "__default_world__" : world.Name;
 
         public Component GetComponent(InstanceId instanceId) => componentsDict[instanceId];
         public GameObject GetGameObject(InstanceId instanceId) => gameObjectsDict[instanceId];
@@ -36,18 +44,32 @@ namespace SailorEditor.Services
             return res;
         }
 
-        public async void PopulateWorld(string yaml)
+        public void PopulateWorld(string yaml)
         {
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new WorldYamlConverter())
             .Build();
 
             var world = deserializer.Deserialize<World>(yaml);
+            if (world == null)
+                return;
 
             GameObjects.Clear();
             Current.Prefabs.Clear();
 
             Current.Name = world.Name;
+
+            var worldKey = GetWorldKey(world);
+            if (!worldCaches.TryGetValue(worldKey, out var cache))
+            {
+                cache = new WorldCache();
+                worldCaches[worldKey] = cache;
+            }
+
+            // Rebuild only this world's lookup caches.
+            cache.Components.Clear();
+            cache.GameObjects.Clear();
+            currentCache = cache;
 
             int prefabIndex = 0;
             foreach (var prefab in world.Prefabs)
@@ -55,37 +77,15 @@ namespace SailorEditor.Services
                 var newPrefab = new Prefab();
                 foreach (var go in prefab.GameObjects)
                 {
-                    GameObject gameObject = null;
-
-                    if (!gameObjectsDict.TryGetValue(go.InstanceId, out gameObject))
-                        gameObject = gameObjectsDict[go.InstanceId] = go;
+                    var gameObject = go;
+                    gameObjectsDict[go.InstanceId] = gameObject;
 
                     gameObject.PrefabIndex = prefabIndex;
                     foreach (var i in go.ComponentIndices)
                     {
-                        Component component;
-
-                        if (!componentsDict.TryGetValue(prefab.Components[i].InstanceId, out component))
-                        {
-                            component = componentsDict[prefab.Components[i].InstanceId] = prefab.Components[i];
-                            component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
-                        }
-                        else
-                        {
-                            component.Typename = prefab.Components[i].Typename;
-
-                            foreach (var key in component.OverrideProperties.Keys)
-                                if (!prefab.Components[i].OverrideProperties.ContainsKey(key))
-                                    component.OverrideProperties.Remove(key);
-
-                            foreach (var prop in prefab.Components[i].OverrideProperties)
-                            {
-                                if (!component.OverrideProperties.ContainsKey(prop.Key))
-                                    component.OverrideProperties[prop.Key] = prop.Value;
-                                else
-                                    component.OverrideProperties[prop.Key].CopyPropertiesFrom(prop.Value);
-                            }
-                        }
+                        var component = prefab.Components[i];
+                        componentsDict[component.InstanceId] = component;
+                        component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
 
                         component.Initialize();
                         newPrefab.Components.Add(component);
@@ -123,7 +123,10 @@ namespace SailorEditor.Services
             return yamlWorld;
         }
 
-        Dictionary<InstanceId, Component> componentsDict = new();
-        Dictionary<InstanceId, GameObject> gameObjectsDict = new();
+        readonly Dictionary<string, WorldCache> worldCaches = new();
+        WorldCache currentCache = new();
+
+        Dictionary<InstanceId, Component> componentsDict => currentCache.Components;
+        Dictionary<InstanceId, GameObject> gameObjectsDict => currentCache.GameObjects;
     }
 }

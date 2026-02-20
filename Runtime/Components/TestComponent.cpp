@@ -5,6 +5,7 @@
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
 #include "Components/LightComponent.h"
+#include "Components/PathTracerProxyComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
@@ -16,6 +17,9 @@
 
 #include "RHI/Texture.h"
 #include "FrameGraph/CopyTextureToRamNode.h"
+#include "ECS/PathTracerECS.h"
+#include "Raytracing/PathTracer.h"
+#include <cstring>
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -373,6 +377,7 @@ void TestComponent::Tick(float deltaTime)
 		ImGui::End();
 
 		ImGui::Begin("Sky Settings");
+
 		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds density", &skyParams.m_cloudsDensity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds coverage", &skyParams.m_cloudsCoverage, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
@@ -419,4 +424,66 @@ void TestComponent::Tick(float deltaTime)
 			}
 		}
 	}
+
+	ImGui::Begin("Path Tracer");
+	ImGui::InputScalar("Height", ImGuiDataType_U32, &m_pathTraceHeight);
+	ImGui::InputScalar("Samples Per Pixel", ImGuiDataType_U32, &m_pathTraceSamplesPerPixel);
+	ImGui::InputScalar("Max Bounces", ImGuiDataType_U32, &m_pathTraceMaxBounces);
+
+	char outputPath[512];
+	memset(outputPath, 0, sizeof(outputPath));
+	strcpy_s(outputPath, sizeof(outputPath), m_pathTraceOutputPath.c_str());
+	if (ImGui::InputText("Output", outputPath, IM_ARRAYSIZE(outputPath)))
+	{
+		m_pathTraceOutputPath = outputPath;
+	}
+
+	if (ImGui::Button("Path Trace"))
+	{
+		size_t numAdded = 0;
+		for (auto& gameObject : GetWorld()->GetGameObjects())
+		{
+			if (!gameObject)
+			{
+				continue;
+			}
+
+			if (!gameObject->GetComponent<PathTracerProxyComponent>())
+			{
+				auto proxy = gameObject->AddComponent<PathTracerProxyComponent>();
+				if (proxy)
+				{
+					proxy->SetEnabled(true);
+					numAdded++;
+				}
+			}
+		}
+
+		bool bRendered = false;
+		if (auto* pPathTracerEcs = GetWorld()->GetECS<PathTracerECS>())
+		{
+			Raytracing::PathTracer::Params params{};
+			params.m_output = m_pathTraceOutputPath;
+			params.m_height = m_pathTraceHeight;
+			params.m_maxBounces = m_pathTraceMaxBounces;
+
+			if (m_pathTraceSamplesPerPixel > 0)
+			{
+				params.m_msaa = m_pathTraceSamplesPerPixel <= 32 ? std::min(4u, m_pathTraceSamplesPerPixel) : 8u;
+				params.m_numSamples = std::max(1u, (uint32_t)std::lround(m_pathTraceSamplesPerPixel / (float)params.m_msaa));
+			}
+
+			bRendered = pPathTracerEcs->RenderScene(params);
+		}
+
+		m_pathTraceStatus = bRendered ?
+			("Saved: " + m_pathTraceOutputPath + " (added proxies: " + std::to_string(numAdded) + ")") :
+			("Path trace failed (added proxies: " + std::to_string(numAdded) + ")");
+	}
+
+	if (!m_pathTraceStatus.empty())
+	{
+		ImGui::Text("%s", m_pathTraceStatus.c_str());
+	}
+	ImGui::End();
 }

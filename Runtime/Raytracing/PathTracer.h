@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "Core/Defines.h"
 #include "Math/Bounds.h"
 #include "Containers/Vector.h"
@@ -29,9 +29,21 @@ namespace Sailor::Raytracing
 			uint32_t m_maxBounces;
 			uint32_t m_msaa;
 			vec3 m_ambient;
+
+			bool m_bUseRuntimeCamera = false;
+			vec3 m_runtimeCameraPos = vec3(0.0f, 0.75f, 5.0f);
+			vec3 m_runtimeCameraForward = vec3(0.0f, 0.0f, -1.0f);
+			vec3 m_runtimeCameraUp = vec3(0.0f, 1.0f, 0.0f);
+			float m_runtimeAspectRatio = 0.0f;
+			float m_runtimeHFov = 0.0f;
 		};
 
 		static void ParseCommandLineArgs(Params& params, const char** args, int32_t num);
+
+		bool InitializeScene(const TVector<Math::Triangle>& triangles,
+			const TVector<MaterialPtr>& materials,
+			const TVector<LightProxy>& lightProxies);
+		bool RenderPreparedScene(const Params& params);
 
 		void Run(const Params& params);
 
@@ -48,9 +60,13 @@ namespace Sailor::Raytracing
 
 
 		TVector<DirectionalLight> m_directionalLights{};
+		TVector<LightProxy> m_lightProxies{};
 		TVector<Math::Triangle> m_triangles{};
 		TVector<Material> m_materials{};
 		TVector<TSharedPtr<CombinedSampler2D>> m_textures{};
 		TMap<std::string, uint32_t> m_textureMapping{};
+		size_t m_cachedMaterialsSignature = 0;
+		uint32_t m_cachedMaterialsCount = 0;
+		bool m_bMaterialsFullyResolved = false;
 	};
 }

@@ -159,19 +159,23 @@ namespace Sailor::Raytracing
 		bool HasAmbientTexture() const { return m_ambientIndex != u8(-1); }
 		bool HasNormalTexture() const { return m_normalIndex != u8(-1); }
 		bool HasMetallicRoughnessTexture() const { return m_metallicRoughnessIndex != u8(-1); }
+		bool HasRoughnessTexture() const { return m_roughnessIndex != u8(-1); }
+		bool HasMetallicTexture() const { return m_metallicIndex != u8(-1); }
 		bool HasSpecularTexture() const { return m_specularColorIndex != u8(-1); }
 		bool HasOcclusionTexture() const { return m_occlusionIndex != u8(-1); }
 		bool HasTransmissionTexture() const { return m_transmissionIndex != u8(-1); }
 
-		u8 m_baseColorIndex = -1;
-		u8 m_ambientIndex = -1;
-		u8 m_specularIndex = -1;
-		u8 m_emissiveIndex = -1;
-		u8 m_normalIndex = -1;
-		u8 m_metallicRoughnessIndex = -1; // already in linear
-		u8 m_occlusionIndex = -1;
-		u8 m_transmissionIndex = -1;
-		u8 m_specularColorIndex = -1;
+		u8 m_baseColorIndex = u8(-1);
+		u8 m_ambientIndex = u8(-1);
+		u8 m_specularIndex = u8(-1);
+		u8 m_emissiveIndex = u8(-1);
+		u8 m_normalIndex = u8(-1);
+		u8 m_metallicRoughnessIndex = u8(-1); // already in linear
+		u8 m_roughnessIndex = u8(-1);
+		u8 m_metallicIndex = u8(-1);
+		u8 m_occlusionIndex = u8(-1);
+		u8 m_transmissionIndex = u8(-1);
+		u8 m_specularColorIndex = u8(-1);
 
 		BlendMode m_blendMode = BlendMode::Opaque;
 	};

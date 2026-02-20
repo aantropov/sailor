@@ -19,6 +19,8 @@ namespace Sailor
 		SAILOR_API float GetUnitScale() const { return m_unitScale; }
 		SAILOR_API bool ShouldGenerateMaterials() const { return m_bShouldGenerateMaterials; }
 		SAILOR_API bool ShouldBatchByMaterial() const { return m_bShouldBatchByMaterial; }
+		SAILOR_API bool ShouldKeepCpuBuffers() const { return m_bShouldKeepCpuBuffers; }
+		SAILOR_API bool ShouldGenerateBLAS() const { return m_bGenerateBLAS; }
 
 		SAILOR_API const TVector<FileId>& GetDefaultMaterials() const { return m_materials; }
 		SAILOR_API TVector<FileId>& GetDefaultMaterials() { return m_materials; }
@@ -34,6 +36,8 @@ namespace Sailor
 		float m_unitScale = 1.0f;
 		bool m_bShouldGenerateMaterials = true;
 		bool m_bShouldBatchByMaterial = true;
+		bool m_bShouldKeepCpuBuffers = false;
+		bool m_bGenerateBLAS = true;
 	};
 
 	using ModelAssetInfoPtr = ModelAssetInfo*;

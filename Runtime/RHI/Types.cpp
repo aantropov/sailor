@@ -18,6 +18,34 @@ bool RHI::IsDepthStencilFormat(ETextureFormat textureFormat)
 		textureFormat == RHI::EFormat::D24_UNORM_S8_UINT;
 }
 
+bool RHI::IsFloatFormat(ETextureFormat textureFormat)
+{
+	switch (textureFormat)
+	{
+	case RHI::ETextureFormat::R16_SFLOAT:
+	case RHI::ETextureFormat::R16G16_SFLOAT:
+	case RHI::ETextureFormat::R16G16B16_SFLOAT:
+	case RHI::ETextureFormat::R16G16B16A16_SFLOAT:
+	case RHI::ETextureFormat::R32_SFLOAT:
+	case RHI::ETextureFormat::R32G32_SFLOAT:
+	case RHI::ETextureFormat::R32G32B32_SFLOAT:
+	case RHI::ETextureFormat::R32G32B32A32_SFLOAT:
+	case RHI::ETextureFormat::R64_SFLOAT:
+	case RHI::ETextureFormat::R64G64_SFLOAT:
+	case RHI::ETextureFormat::R64G64B64_SFLOAT:
+	case RHI::ETextureFormat::R64G64B64A64_SFLOAT:
+	case RHI::ETextureFormat::D32_SFLOAT:
+	case RHI::ETextureFormat::D32_SFLOAT_S8_UINT:
+	case RHI::ETextureFormat::B10G11R11_UFLOAT_PACK32:
+	case RHI::ETextureFormat::E5B9G9R9_UFLOAT_PACK32:
+	case RHI::ETextureFormat::BC6H_SFLOAT_BLOCK:
+	case RHI::ETextureFormat::BC6H_UFLOAT_BLOCK:
+		return true;
+	default:
+		return false;
+	}
+}
+
 uint64_t PackVertexAttributeFormat(EFormat format)
 {
 	switch (format)

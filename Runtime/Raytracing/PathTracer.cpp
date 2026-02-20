@@ -1,14 +1,25 @@
-﻿#include "PathTracer.h"
+#include "PathTracer.h"
 #include "Tasks/Scheduler.h"
 #include "Core/LogMacros.h"
 #include "Core/Utils.h"
 #include "Math/Math.h"
 #include "Math/Bounds.h"
 #include "Core/StringHash.h"
+#include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Model/ModelImporter.h"
+#include "AssetRegistry/Model/ModelAssetInfo.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "AssetRegistry/Texture/TextureAssetInfo.h"
+#include "RHI/Texture.h"
 #include <glm/gtc/random.hpp>
 #include <glm/gtx/matrix_transform_2d.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <algorithm>
+#include <functional>
 
 #include <stb_image.h>
+#include <tiny_gltf.h>
 
 #ifndef STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -26,8 +37,464 @@ using namespace Sailor;
 using namespace Sailor::Math;
 using namespace Sailor::Raytracing;
 
+namespace
+{
+	constexpr uint32_t DefaultGroupSize = 32;
+	constexpr float DefaultAspectRatio = 4.0f / 3.0f;
+	constexpr float DefaultHfov = glm::radians(60.0f);
+
+	struct PathTracerView
+	{
+		vec3 m_cameraPos = vec3(0, 0.75f, 5.0f);
+		vec3 m_cameraForward = vec3(0, 0, -1.0f);
+		vec3 m_cameraUp = vec3(0, 1.0f, 0);
+		float m_aspectRatio = DefaultAspectRatio;
+		float m_hFov = DefaultHfov;
+	};
+
+	glm::mat4 ComposeNodeMatrix(const tinygltf::Node& node)
+	{
+		if (node.matrix.size() == 16)
+		{
+			glm::mat4 m(1.0f);
+			for (int32_t col = 0; col < 4; col++)
+			{
+				for (int32_t row = 0; row < 4; row++)
+				{
+					m[col][row] = static_cast<float>(node.matrix[col * 4 + row]);
+				}
+			}
+			return m;
+		}
+
+		glm::vec3 translation(0.0f);
+		glm::vec3 scale(1.0f);
+		glm::quat rotation(1.0f, 0.0f, 0.0f, 0.0f);
+
+		if (node.translation.size() == 3)
+		{
+			translation = glm::vec3(
+				static_cast<float>(node.translation[0]),
+				static_cast<float>(node.translation[1]),
+				static_cast<float>(node.translation[2]));
+		}
+
+		if (node.scale.size() == 3)
+		{
+			scale = glm::vec3(
+				static_cast<float>(node.scale[0]),
+				static_cast<float>(node.scale[1]),
+				static_cast<float>(node.scale[2]));
+		}
+
+		if (node.rotation.size() == 4)
+		{
+			rotation = glm::quat(
+				static_cast<float>(node.rotation[3]),
+				static_cast<float>(node.rotation[0]),
+				static_cast<float>(node.rotation[1]),
+				static_cast<float>(node.rotation[2]));
+		}
+
+		return glm::translate(glm::mat4(1.0f), translation) * glm::mat4_cast(rotation) * glm::scale(glm::mat4(1.0f), scale);
+	}
+
+	void ResolveViewAndDirectionalLights(const tinygltf::Model& gltfModel, const PathTracer::Params& params, const Math::Sphere& sceneBounds, PathTracerView& outView, TVector<DirectionalLight>& outLights)
+	{
+		const vec3 sceneCenter = sceneBounds.m_center;
+		const float sceneRadius = std::max(sceneBounds.m_radius, 0.1f);
+
+		outView.m_cameraPos = sceneCenter + vec3(0.0f, sceneRadius * 0.6f, sceneRadius * 2.5f);
+		outView.m_cameraForward = glm::normalize(sceneCenter - outView.m_cameraPos);
+		outView.m_cameraUp = vec3(0.0f, 1.0f, 0.0f);
+		outView.m_aspectRatio = DefaultAspectRatio;
+		outView.m_hFov = DefaultHfov;
+
+		const int32_t defaultSceneIndex = gltfModel.defaultScene >= 0 ? gltfModel.defaultScene : 0;
+		if (gltfModel.scenes.empty() || defaultSceneIndex < 0 || defaultSceneIndex >= (int32_t)gltfModel.scenes.size())
+		{
+			return;
+		}
+
+		const tinygltf::Scene& scene = gltfModel.scenes[defaultSceneIndex];
+		bool bFoundNamedCamera = false;
+		bool bFallbackCameraSet = false;
+
+		std::function<void(int32_t, const glm::mat4&)> traverseNode = [&](int32_t nodeIndex, const glm::mat4& parentMatrix)
+		{
+			if (nodeIndex < 0 || nodeIndex >= (int32_t)gltfModel.nodes.size())
+			{
+				return;
+			}
+
+			const tinygltf::Node& node = gltfModel.nodes[nodeIndex];
+			const glm::mat4 world = parentMatrix * ComposeNodeMatrix(node);
+
+			if (node.camera >= 0 && node.camera < (int32_t)gltfModel.cameras.size())
+			{
+				const tinygltf::Camera& camera = gltfModel.cameras[node.camera];
+				const bool bNameMatch = !params.m_camera.empty() && ((camera.name == params.m_camera) || (node.name == params.m_camera));
+				const bool bUseCamera = bNameMatch || (params.m_camera.empty() && !bFallbackCameraSet);
+
+				if (bUseCamera && camera.type == "perspective")
+				{
+					outView.m_cameraPos = vec3(world[3]);
+					outView.m_cameraForward = glm::normalize(vec3(world * vec4(0, 0, -1, 0)));
+					outView.m_cameraUp = glm::normalize(vec3(world * vec4(0, 1, 0, 0)));
+
+					const float aspect = camera.perspective.aspectRatio > 0.0 ? (float)camera.perspective.aspectRatio : DefaultAspectRatio;
+					const float yFov = camera.perspective.yfov > 0.0 ? (float)camera.perspective.yfov : glm::radians(45.0f);
+
+					outView.m_aspectRatio = aspect;
+					outView.m_hFov = 2.0f * atan(tan(yFov * 0.5f) * aspect);
+
+					bFallbackCameraSet = true;
+					if (bNameMatch)
+					{
+						bFoundNamedCamera = true;
+					}
+				}
+			}
+
+			auto extIt = node.extensions.find("KHR_lights_punctual");
+			if (extIt != node.extensions.end() && extIt->second.IsObject())
+			{
+				const tinygltf::Value& lightNode = extIt->second;
+				if (lightNode.Has("light"))
+				{
+					const int32_t lightIndex = lightNode.Get("light").Get<int>();
+					if (lightIndex >= 0 && lightIndex < (int32_t)gltfModel.lights.size())
+					{
+						const auto& light = gltfModel.lights[lightIndex];
+						if (light.type == "directional")
+						{
+							DirectionalLight dir{};
+							dir.m_direction = glm::normalize(vec3(world * vec4(0, 0, -1, 0)));
+							dir.m_intensity = vec3(
+								static_cast<float>(light.color[0]),
+								static_cast<float>(light.color[1]),
+								static_cast<float>(light.color[2])) * static_cast<float>(light.intensity / 683.0);
+							outLights.Add(dir);
+						}
+					}
+				}
+			}
+
+			if (bFoundNamedCamera)
+			{
+				return;
+			}
+
+			for (int32_t child : node.children)
+			{
+				traverseNode(child, world);
+			}
+		};
+
+		for (int32_t root : scene.nodes)
+		{
+			traverseNode(root, glm::mat4(1.0f));
+			if (bFoundNamedCamera)
+			{
+				break;
+			}
+		}
+	}
+
+	LightProxy MakeDirectionalLightProxy(const DirectionalLight& directional)
+	{
+		LightProxy lightProxy{};
+		lightProxy.m_type = ELightType::Directional;
+		lightProxy.m_direction = glm::normalize(directional.m_direction);
+		lightProxy.m_intensity = directional.m_intensity;
+		return lightProxy;
+	}
+
+	bool EvaluateDirectLight(const LightProxy& light,
+		const glm::vec3& worldPoint,
+		glm::vec3& outDirectionToLight,
+		glm::vec3& outRadiance,
+		float& outMaxDistance)
+	{
+		outDirectionToLight = glm::vec3(0.0f);
+		outRadiance = glm::vec3(0.0f);
+		outMaxDistance = std::numeric_limits<float>::max();
+
+		if (light.m_type == ELightType::Directional)
+		{
+			outDirectionToLight = -glm::normalize(light.m_direction);
+			outRadiance = light.m_intensity;
+			return glm::dot(outDirectionToLight, outDirectionToLight) > 0.0f;
+		}
+
+		const glm::vec3 toLight = light.m_worldPosition - worldPoint;
+		const float distance = glm::length(toLight);
+		if (distance <= 1e-4f)
+		{
+			return false;
+		}
+
+		const glm::vec3 directionToLight = toLight / distance;
+		const float maxLightRange = std::max(light.m_bounds.x, std::max(light.m_bounds.y, light.m_bounds.z));
+		if (maxLightRange > 0.0f && distance > maxLightRange)
+		{
+			return false;
+		}
+
+		if (light.m_type == ELightType::Spot)
+		{
+			const float cosTheta = glm::dot(glm::normalize(light.m_direction), -directionToLight);
+			const float outerCos = light.m_cutOff.y;
+			const float innerCos = light.m_cutOff.x;
+
+			if (cosTheta < outerCos)
+			{
+				return false;
+			}
+
+			const float cone = innerCos > outerCos ?
+				glm::clamp((cosTheta - outerCos) / (innerCos - outerCos), 0.0f, 1.0f) :
+				1.0f;
+			outRadiance = light.m_intensity * cone;
+		}
+		else
+		{
+			outRadiance = light.m_intensity;
+		}
+
+		const float attenuation = 1.0f / std::max(1e-4f,
+			light.m_attenuation.x + light.m_attenuation.y * distance + light.m_attenuation.z * distance * distance);
+
+		outDirectionToLight = directionToLight;
+		outRadiance *= attenuation;
+		outMaxDistance = distance;
+		return true;
+	}
+
+	template<typename TUniforms, typename TValue>
+	bool ReadUniformValue(const TUniforms& uniforms, const std::string& name, TValue& outValue)
+	{
+		const TValue* pValue = nullptr;
+		if (uniforms.Find(name, pValue) && pValue != nullptr)
+		{
+			outValue = *pValue;
+			return true;
+		}
+
+		return false;
+	}
+
+	bool BuildRaytracingMaterialsFromRuntimeMaterials(
+		const TVector<MaterialPtr>& runtimeMaterials,
+		TVector<Raytracing::Material>& outMaterials,
+		TVector<TSharedPtr<CombinedSampler2D>>& outTextures,
+		TMap<std::string, uint32_t>& outTextureMapping)
+	{
+		bool bAllTexturesResolved = true;
+
+		outMaterials.Resize(runtimeMaterials.Num());
+		outTextures.Clear();
+		outTextureMapping.Clear();
+
+		auto addTexture = [&](const TexturePtr& pTexture, bool bLinear, bool bNormalMap, uint8_t channels, uint8_t& outTextureIndex) -> bool
+		{
+			if (!pTexture || !pTexture->HasCpuData() || pTexture->GetWidth() <= 0 || pTexture->GetHeight() <= 0)
+			{
+				return false;
+			}
+
+			const RHI::ETextureClamping clamping = pTexture->GetRHI() ? pTexture->GetRHI()->GetClamping() : RHI::ETextureClamping::Repeat;
+			const char* clampingKey = clamping == RHI::ETextureClamping::Repeat ? "r" : "c";
+			const std::string key = pTexture->GetFileId().ToString() + "_" + std::to_string(channels) + "_" + std::to_string((int)bLinear) + "_" + std::to_string((int)bNormalMap) + "_" + clampingKey;
+
+			if (outTextureMapping.ContainsKey(key))
+			{
+				outTextureIndex = static_cast<uint8_t>(outTextureMapping[key]);
+				return true;
+			}
+
+			TSharedPtr<CombinedSampler2D> sampler = TSharedPtr<CombinedSampler2D>::Make();
+			sampler->m_width = pTexture->GetWidth();
+			sampler->m_height = pTexture->GetHeight();
+			sampler->m_channels = channels;
+			sampler->m_clamping = clamping == RHI::ETextureClamping::Repeat ? SamplerClamping::Repeat : SamplerClamping::Clamp;
+
+			const bool bIsFloatTexture = pTexture->GetRHI() && RHI::IsFloatFormat(pTexture->GetRHI()->GetFormat());
+			if (bIsFloatTexture)
+			{
+				if (channels == 4)
+				{
+					sampler->Initialize<vec4, vec4>((vec4*)pTexture->GetDecodedData().GetData(), bLinear, bNormalMap);
+				}
+				else
+				{
+					sampler->Initialize<vec3, vec4>((vec4*)pTexture->GetDecodedData().GetData(), bLinear, bNormalMap);
+				}
+			}
+			else
+			{
+				if (channels == 4)
+				{
+					sampler->Initialize<vec4, u8vec4>((u8vec4*)pTexture->GetDecodedData().GetData(), bLinear, bNormalMap);
+				}
+				else
+				{
+					sampler->Initialize<vec3, u8vec4>((u8vec4*)pTexture->GetDecodedData().GetData(), bLinear, bNormalMap);
+				}
+			}
+
+			const uint32_t index = (uint32_t)outTextures.Num();
+			outTextures.Add(sampler);
+			outTextureMapping[key] = index;
+			outTextureIndex = static_cast<uint8_t>(index);
+			return true;
+		};
+
+		for (size_t i = 0; i < runtimeMaterials.Num(); i++)
+		{
+			Raytracing::Material outMaterial{};
+			const MaterialPtr pMaterial = runtimeMaterials[i];
+
+			if (!pMaterial)
+			{
+				outMaterials[i] = outMaterial;
+				continue;
+			}
+
+			glm::vec4 baseColorFactor(1.0f);
+			glm::vec4 emissiveFactor(0.0f);
+			float roughness = 1.0f;
+			float metallic = 1.0f;
+			float alphaCutoff = 0.5f;
+			float normalScale = 1.0f;
+
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.baseColorFactor", baseColorFactor);
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.albedo", baseColorFactor);
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissiveFactor", emissiveFactor);
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissive", emissiveFactor);
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emission", emissiveFactor);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughnessFactor", roughness);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughness", roughness);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallicFactor", metallic);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallic", metallic);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.normalScale", normalScale);
+
+			outMaterial.m_baseColorFactor = baseColorFactor;
+			outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
+			outMaterial.m_roughnessFactor = roughness;
+			outMaterial.m_metallicFactor = metallic;
+			outMaterial.m_alphaCutoff = alphaCutoff;
+
+			const size_t renderQueueTag = pMaterial->GetRenderState().GetTag();
+			const size_t transparentTag = GetHash(std::string("Transparent"));
+			const size_t maskedTag = GetHash(std::string("Masked"));
+			if (renderQueueTag == transparentTag)
+			{
+				outMaterial.m_blendMode = BlendMode::Blend;
+			}
+			else if (renderQueueTag == maskedTag)
+			{
+				outMaterial.m_blendMode = BlendMode::Mask;
+			}
+			else
+			{
+				outMaterial.m_blendMode = BlendMode::Opaque;
+			}
+
+			for (const auto& sampler : pMaterial->GetSamplers())
+			{
+				const std::string& samplerName = sampler.m_first;
+				const TexturePtr pTexture = sampler.m_second;
+
+				if (samplerName == "baseColorSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_baseColorIndex);
+				}
+				else if (samplerName == "albedoSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_baseColorIndex);
+				}
+				else if (samplerName == "normalSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, false, true, 3, outMaterial.m_normalIndex);
+				}
+				else if (samplerName == "ormSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_metallicRoughnessIndex);
+				}
+				else if (samplerName == "emissiveSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, true, false, 3, outMaterial.m_emissiveIndex);
+				}
+				else if (samplerName == "occlusionSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_occlusionIndex);
+				}
+				else if (samplerName == "roughnessSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_roughnessIndex);
+				}
+				else if (samplerName == "metalnessSampler" || samplerName == "metallicSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_metallicIndex);
+				}
+				else if (samplerName == "transmissionSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_transmissionIndex);
+				}
+			}
+
+			outMaterials[i] = outMaterial;
+		}
+
+		return bAllTexturesResolved;
+	}
+
+	size_t ComputeMaterialsSignature(const TVector<MaterialPtr>& materials)
+	{
+		size_t hash = 1469598103934665603ull;
+		for (const auto& material : materials)
+		{
+			const size_t value = material ? material.GetHash() : 0;
+			hash ^= value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+		}
+		return hash;
+	}
+}
+
 void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args, int32_t num)
 {
+	if (res.m_height == 0)
+	{
+		res.m_height = 720;
+	}
+
+	if (res.m_msaa == 0)
+	{
+		res.m_msaa = 1;
+	}
+
+	if (res.m_numSamples == 0)
+	{
+		res.m_numSamples = 16;
+	}
+
+	if (res.m_numAmbientSamples == 0)
+	{
+		res.m_numAmbientSamples = 16;
+	}
+
+	if (res.m_maxBounces == 0)
+	{
+		res.m_maxBounces = 4;
+	}
+
+	if (res.m_ambient == vec3(0.0f))
+	{
+		res.m_ambient = vec3(0.03f);
+	}
+
 	for (int32_t i = 1; i < num; i++)
 	{
 		std::string arg = args[i];
@@ -55,6 +522,10 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 		{
 			res.m_maxBounces = atoi(Utils::GetArgValue(args, i, num).c_str());
 		}
+		else if (arg == "--ambientSamples")
+		{
+			res.m_numAmbientSamples = std::max(1, atoi(Utils::GetArgValue(args, i, num).c_str()));
+		}
 		else if (arg == "--camera")
 		{
 			res.m_camera = Utils::GetArgValue(args, i, num);
@@ -71,314 +542,422 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 	}
 }
 
-void PathTracer::Run(const PathTracer::Params& params)
+bool PathTracer::InitializeScene(const TVector<Math::Triangle>& triangles,
+	const TVector<MaterialPtr>& materials,
+	const TVector<LightProxy>& lightProxies)
 {
-	SAILOR_PROFILE_FUNCTION();
-	/*
-	Utils::Timer raytracingTimer;
-	raytracingTimer.Start();
+	m_triangles = triangles;
+	m_lightProxies = lightProxies;
 
-	const uint32_t GroupSize = 32;
+	const size_t materialsSignature = ComputeMaterialsSignature(materials);
+	const bool bNeedRebuildMaterials = m_materials.Num() == 0 ||
+		m_cachedMaterialsCount != (uint32_t)materials.Num() ||
+		m_cachedMaterialsSignature != materialsSignature ||
+		!m_bMaterialsFullyResolved;
 
-	Assimp::Importer importer;
-
-	const unsigned int DefaultImportFlags_Assimp =
-		aiProcess_FlipUVs |
-		aiProcess_GenNormals |
-		aiProcess_GenUVCoords |
-		0;
-
-	const auto scene = importer.ReadFile(params.m_pathToModel.string().c_str(), DefaultImportFlags_Assimp);
-
-	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+	if (bNeedRebuildMaterials)
 	{
-		SAILOR_LOG("%s", importer.GetErrorString());
-		return;
+		m_materials.Clear();
+		m_textures.Clear();
+		m_textureMapping.Clear();
+		m_bMaterialsFullyResolved = BuildRaytracingMaterialsFromRuntimeMaterials(materials, m_materials, m_textures, m_textureMapping);
+		m_cachedMaterialsSignature = materialsSignature;
+		m_cachedMaterialsCount = (uint32_t)materials.Num();
 	}
 
-	ensure(scene->HasCameras(), "Scene %s has no Cameras!", params.m_pathToModel.string().c_str());
-
-	// Camera
-	auto cameraPos = vec3(0, 0.75f, 5.0f);
-
-	auto cameraUp = normalize(vec3(0, 1, 0));
-	auto cameraForward = normalize(-cameraPos);
-
-	auto axis = normalize(cross(cameraForward, cameraUp));
-	cameraUp = normalize(cross(axis, cameraForward));
-
-	// View
-	int32_t cameraIndex = 0;
-	if (scene->HasCameras())
+	if (m_lightProxies.Num() == 0)
 	{
-		for (uint32_t i = 0; i < scene->mNumCameras; i++)
+		DirectionalLight sun{};
+		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
+		sun.m_intensity = vec3(1.0f);
+		m_lightProxies.Add(MakeDirectionalLightProxy(sun));
+	}
+
+	return m_triangles.Num() > 0;
+}
+
+bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
+{
+	if (m_triangles.Num() == 0)
+	{
+		SAILOR_LOG_ERROR("PathTracer scene has no triangles.");
+		return false;
+	}
+
+	Math::AABB bounds{};
+	for (const auto& tri : m_triangles)
+	{
+		bounds.Extend(tri.m_vertices[0]);
+		bounds.Extend(tri.m_vertices[1]);
+		bounds.Extend(tri.m_vertices[2]);
+	}
+
+	const vec3 sceneCenter = 0.5f * (bounds.m_min + bounds.m_max);
+	const float sceneRadius = glm::distance(bounds.m_max, sceneCenter);
+
+	vec3 cameraPos = sceneCenter + vec3(0.0f, std::max(sceneRadius, 0.1f) * 0.6f, std::max(sceneRadius, 0.1f) * 2.5f);
+	vec3 cameraForward = glm::normalize(sceneCenter - cameraPos);
+	vec3 cameraUp = vec3(0, 1, 0);
+	float aspectRatio = std::max(DefaultAspectRatio, 0.1f);
+	float hFov = std::max(DefaultHfov, glm::radians(10.0f));
+
+	if (params.m_bUseRuntimeCamera)
+	{
+		cameraPos = params.m_runtimeCameraPos;
+
+		if (glm::length(params.m_runtimeCameraForward) > 0.001f)
 		{
-			if (std::strcmp(params.m_camera.c_str(), scene->mCameras[i]->mName.C_Str()) == 0)
-			{
-				cameraIndex = i;
-				break;
-			}
+			cameraForward = glm::normalize(params.m_runtimeCameraForward);
 		}
 
-		const auto& aiCamera = scene->mCameras[cameraIndex];
+		if (glm::length(params.m_runtimeCameraUp) > 0.001f)
+		{
+			cameraUp = glm::normalize(params.m_runtimeCameraUp);
+		}
 
-		mat4 matrix = GetWorldTransformMatrix(scene, scene->mCameras[cameraIndex]->mName.C_Str());
-		::memcpy(&cameraUp, &aiCamera->mUp, sizeof(float) * 3);
-		::memcpy(&cameraForward, &aiCamera->mLookAt, sizeof(float) * 3);
-		::memcpy(&cameraPos, &aiCamera->mPosition, sizeof(float) * 3);
+		if (params.m_runtimeAspectRatio > 0.1f)
+		{
+			aspectRatio = params.m_runtimeAspectRatio;
+		}
 
-		const vec4 translation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) * matrix;
-		cameraPos = vec3(translation.xyz) / translation.w;
-		cameraUp = glm::normalize(glm::vec3(glm::vec4(cameraUp, 0.0f) * matrix));
-		cameraForward = glm::normalize(glm::vec3(glm::vec4(cameraForward, 0.0f) * matrix));
+		if (params.m_runtimeHFov > 0.0f)
+		{
+			hFov = std::max(params.m_runtimeHFov, glm::radians(10.0f));
+		}
 	}
 
-	const float aspectRatio = (scene->HasCameras() && scene->mCameras[cameraIndex]->mAspect > 0.0f)
-		? scene->mCameras[cameraIndex]->mAspect
-		: (4.0f / 3.0f);
+	if (abs(dot(cameraForward, cameraUp)) > 0.99f || length(cameraForward) < 0.001f)
+	{
+		cameraUp = vec3(0.0f, 0.0f, 1.0f);
+		cameraForward = glm::normalize(vec3(0, 0, -1.0f));
+	}
 
 	const uint32_t height = params.m_height;
 	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
-
-	const float hFov = (scene->HasCameras() && scene->mCameras[cameraIndex]->mHorizontalFOV > 0.0f)
-		? scene->mCameras[cameraIndex]->mHorizontalFOV
-		: glm::radians(60.0f);
-
 	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
 
-	const float zMin = scene->HasCameras() ? scene->mCameras[cameraIndex]->mClipPlaneNear : 0.01f;
-	const float zMax = scene->HasCameras() ? scene->mCameras[cameraIndex]->mClipPlaneFar : 1000.0f;
-
-	const auto cameraRight = normalize(cross(cameraForward, cameraUp));
-
-	uint32_t expectedNumFaces = 0;
-	for (uint32_t i = 0; i < scene->mNumMeshes; i++)
+	if (m_lightProxies.Num() == 0)
 	{
-		expectedNumFaces += scene->mMeshes[i]->mNumFaces;
+		DirectionalLight sun{};
+		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
+		sun.m_intensity = vec3(1.0f);
+		m_lightProxies.Add(MakeDirectionalLightProxy(sun));
 	}
 
-	m_triangles.Reserve(expectedNumFaces);
-	ProcessNode_Assimp(m_triangles, scene->mRootNode, scene, glm::mat4(1.0f));
+	BVH bvh((uint32_t)m_triangles.Num());
+	bvh.BuildBVH(m_triangles);
+
+	CombinedSampler2D outputTex;
+	outputTex.Initialize<vec3>(width, height);
+
+	float h = tan(vFov / 2);
+	const float ViewportHeight = 2.0f * h;
+	const float ViewportWidth = aspectRatio * ViewportHeight;
+
+	vec3 _u = normalize(cross(cameraUp, -cameraForward));
+	vec3 _v = cross(-cameraForward, _u);
+
+	const vec3 ViewportU = ViewportWidth * _u;
+	const vec3 ViewportV = ViewportHeight * _v;
+	const vec3 ViewportPivot = cameraPos - (ViewportU + ViewportV) * 0.5f + cameraForward;
+
+	const vec3 _pixelDeltaU = ViewportU / (float)width;
+	const vec3 _pixelDeltaV = ViewportV / (float)height;
+	const vec3 _pixel00Dir = ViewportPivot + 0.5f * (_pixelDeltaU + _pixelDeltaV) - cameraPos;
 
 	{
-		TVector<Tasks::ITaskPtr> loadTexturesTasks;
-		m_materials.Resize(scene->mNumMaterials);
-		m_textures.Resize(scene->mNumMaterials * 5);
+		TVector<Tasks::ITaskPtr> tasks;
+		TVector<Tasks::ITaskPtr> tasksThisThread;
 
-		uint32_t textureIndex = 0;
-		for (uint32_t i = 0; i < scene->mNumMaterials; i++)
+		std::atomic<uint32_t> finishedTasks = 0;
+		const uint32_t numTasksX = (width + DefaultGroupSize - 1) / DefaultGroupSize;
+		const uint32_t numTasksY = (height + DefaultGroupSize - 1) / DefaultGroupSize;
+		const uint32_t numTasks = std::max(1u, numTasksX * numTasksY);
+
+		tasks.Reserve(numTasks);
+		tasksThisThread.Reserve(numTasks / 32);
+
+		for (uint32_t y = 0; y < height; y += DefaultGroupSize)
 		{
-			auto& material = m_materials[i];
-			const auto& aiMaterial = scene->mMaterials[i];
-
-			aiString fileName;
-
-			//SAILOR_LOG("\n\n\n");
-
-			// Parse specific properties
-			for (uint32_t j = 0; j < aiMaterial->mNumProperties; j++)
+			for (uint32_t x = 0; x < width; x += DefaultGroupSize)
 			{
-				const auto& prop = aiMaterial->mProperties[j];
-				//SAILOR_LOG("Prop: %s", prop->mKey.C_Str());
-				if (strcmp("$mat.gltf.alphaMode", prop->mKey.C_Str()) == 0)
-				{
-					check(prop->mType == aiPropertyTypeInfo::aiPTI_String);
-
-					material.m_blendMode = BlendMode::Opaque;
-
-					aiString s;
-					if (aiReturn::aiReturn_SUCCESS != aiGetMaterialString(aiMaterial, prop->mKey.data, prop->mSemantic, prop->mIndex, &s))
+				auto task = Tasks::CreateTask("Calculate raytracing",
+					[=, &finishedTasks, &outputTex, &bvh, this]() mutable
 					{
-						continue;
-					}
+						Ray ray;
+						ray.SetOrigin(cameraPos);
 
-					if (strcmp("BLEND", s.C_Str()) == 0)
-					{
-						material.m_blendMode = BlendMode::Blend;
-					}
-					else if (strcmp("MASK", s.C_Str()) == 0)
-					{
-						material.m_blendMode = BlendMode::Mask;
-					}
-				}
-				else if (strcmp("$mat.gltf.alphaCutoff", prop->mKey.C_Str()) == 0)
-				{
-					check(prop->mType == aiPropertyTypeInfo::aiPTI_Float);
-					memcpy(&material.m_alphaCutoff, prop->mData, 4);
-				}
-				else if (strcmp("$mat.refracti", prop->mKey.C_Str()) == 0)
-				{
-					check(prop->mType == aiPropertyTypeInfo::aiPTI_Float);
-					memcpy(&material.m_indexOfRefraction, prop->mData, 4);
-				}
-			}
+						for (uint32_t v = 0; (v < DefaultGroupSize) && (y + v) < height; v++)
+						{
+							for (uint32_t u = 0; u < DefaultGroupSize && (u + x) < width; u++)
+							{
+								vec3 accumulator = vec3(0);
+								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
+								{
+									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f, 1.0f));
+									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
+									ray.SetDirection(glm::normalize(pixelDir));
+									accumulator += Raytrace(ray, bvh, params.m_maxBounces, (uint32_t)(-1), params, 1.0f, 1.0f);
+								}
 
-			aiTextureMapMode mapping[2] = { aiTextureMapMode::aiTextureMapMode_Wrap };
+								vec3 res = accumulator / (float)params.m_msaa;
+								outputTex.SetPixel(x + u, height - (y + v) - 1, res);
+							}
+						}
 
-			if ((aiMaterial->GetTexture(AI_MATKEY_BASE_COLOR_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS) ||
-				aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) &&
-					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
-					m_textures[m_textureMapping[file]]->m_channels == 4)
+						finishedTasks++;
+					}, EThreadType::Worker);
+
+				if (((x + y) / DefaultGroupSize) % 32 == 0)
 				{
-					material.m_baseColorIndex = m_textureMapping[file];
+					tasksThisThread.Emplace(task);
 				}
 				else
 				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec4>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], true));
-					m_textureMapping[file] = material.m_baseColorIndex = textureIndex++;
+					task->Run();
+					tasks.Emplace(std::move(task));
 				}
-			}
-
-			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
-
-			if (aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) &&
-					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
-					m_textures[m_textureMapping[file]]->m_channels == 3)
-				{
-					material.m_normalIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], false, true));
-					m_textureMapping[file] = material.m_normalIndex = textureIndex++;
-				}
-			}
-
-			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
-
-			if ((aiMaterial->GetTexture(AI_MATKEY_METALLIC_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS) ||
-				aiMaterial->GetTexture(AI_MATKEY_ROUGHNESS_TEXTURE, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) &&
-					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
-					m_textures[m_textureMapping[file]]->m_channels == 3)
-				{
-					material.m_metallicRoughnessIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], false));
-					m_textureMapping[file] = material.m_metallicRoughnessIndex = textureIndex++;
-				}
-			}
-
-			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
-
-			if (aiMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				auto clamping = mapping[0] == aiTextureMapMode::aiTextureMapMode_Wrap ? SamplerClamping::Repeat : SamplerClamping::Clamp;
-				if (m_textureMapping.ContainsKey(file) &&
-					m_textures[m_textureMapping[file]]->m_clamping == clamping &&
-					m_textures[m_textureMapping[file]]->m_channels == 3)
-				{
-					material.m_emissiveIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], true));
-					m_textureMapping[file] = material.m_emissiveIndex = textureIndex++;
-				}
-			}
-
-			mapping[0] = mapping[1] = aiTextureMapMode::aiTextureMapMode_Wrap;
-
-			if (aiMaterial->GetTexture(aiTextureType_TRANSMISSION, 0, &fileName, nullptr, nullptr, nullptr, nullptr, mapping) == AI_SUCCESS)
-			{
-				const std::string file(fileName.C_Str());
-				if (m_textureMapping.ContainsKey(file))
-				{
-					material.m_transmissionIndex = m_textureMapping[file];
-				}
-				else
-				{
-					loadTexturesTasks.Emplace(LoadTexture_Task<vec3>(m_textures, params.m_pathToModel, scene, textureIndex, file, mapping[0], false));
-					m_textureMapping[file] = material.m_transmissionIndex = textureIndex++;
-				}
-			}
-
-			aiColor3D color3D{};
-			aiColor4D color4D{};
-			float color1D = 0.0f;
-
-			if (aiMaterial->Get(AI_MATKEY_COLOR_EMISSIVE, color3D) == AI_SUCCESS)
-			{
-				material.m_emissiveFactor = vec3(color3D.r, color3D.g, color3D.b);
-			}
-
-			material.m_emissiveFactor *= aiMaterial->Get(AI_MATKEY_EMISSIVE_INTENSITY, color1D) == AI_SUCCESS ? color1D : 1.0f;
-			material.m_transmissionFactor = aiMaterial->Get(AI_MATKEY_TRANSMISSION_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
-			material.m_baseColorFactor = (aiMaterial->Get(AI_MATKEY_BASE_COLOR, color4D) == AI_SUCCESS) ? vec4(color4D.r, color4D.g, color4D.b, color4D.a) : glm::vec4(1.0f);
-			material.m_roughnessFactor = aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
-			material.m_metallicFactor = aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, color1D) == AI_SUCCESS ? color1D : 1.0f;
-
-			material.m_thicknessFactor = aiMaterial->Get(AI_MATKEY_VOLUME_THICKNESS_FACTOR, color1D) == AI_SUCCESS ? color1D : 0.0f;
-			material.m_attenuationColor = (aiMaterial->Get(AI_MATKEY_VOLUME_ATTENUATION_COLOR, color3D) == AI_SUCCESS) ? vec3(color3D.r, color3D.g, color3D.b) : glm::vec3(1.0f);
-			material.m_attenuationDistance = aiMaterial->Get(AI_MATKEY_VOLUME_ATTENUATION_DISTANCE, color1D) == AI_SUCCESS ? color1D : std::numeric_limits<float>().max();
-
-			aiUVTransform uvTransform{};
-
-			if (aiMaterial->Get(AI_MATKEY_UVTRANSFORM_DIFFUSE(0), uvTransform) == AI_SUCCESS)
-			{
-				struct transform
-				{
-					float offsetX{}, offsetY{};
-					float scaleX{}, scaleY{};
-					float rotation{};
-				};
-
-				transform t;
-				memcpy(&t, &uvTransform, sizeof(float) * 5);
-
-				glm::mat3 scale = mat3(t.scaleX, 0, 0, 0, t.scaleY, 0, 0, 0, 1);
-				glm::mat3 translation = mat3(1, 0, 0, 0, 1, 0, t.offsetX, t.offsetY, 1);
-				glm::mat3 rotation = mat3(
-					cos(t.rotation), -sin(t.rotation), 0,
-					sin(t.rotation), cos(t.rotation), 0,
-					0, 0, 1
-				);
-
-				material.m_uvTransform = translation * rotation * scale;
 			}
 		}
 
-		for (auto& task : loadTexturesTasks)
+		for (auto& task : tasksThisThread)
 		{
-			task->Wait();
+			task->Execute();
 		}
-	}
 
-	if (scene->HasLights())
-	{
-		aiNode* pRootNode = scene->mRootNode;
-
-		for (uint32_t i = 0; i < scene->mNumLights; i++)
+		for (auto& task : tasks)
 		{
-			const aiNode* pLightNode = pRootNode->FindNode(scene->mLights[i]->mName);
-			const mat4 matrix = GetWorldTransformMatrix(scene, scene->mLights[i]->mName.C_Str());
-
-			if (scene->mLights[i]->mType == aiLightSource_DIRECTIONAL)
+			if (!task->IsFinished())
 			{
-				m_directionalLights.Add(DirectionalLight());
-				memcpy(&m_directionalLights[i].m_direction, &scene->mLights[i]->mDirection, sizeof(float) * 3);
-				memcpy(&m_directionalLights[i].m_intensity, &scene->mLights[i]->mColorDiffuse, sizeof(float) * 3);
-
-				m_directionalLights[i].m_direction = glm::normalize(glm::vec3(glm::vec4(m_directionalLights[i].m_direction, 0.0f) * matrix));
-				m_directionalLights[i].m_intensity /= 683.0f;
+				task->Wait();
 			}
 		}
 	}
-	
+
+	TVector<u8vec3> outSrgb(width * height);
+	const float aberrationAmount = (0.5f / width);
+
+	for (uint32_t y = 0; y < height; y++)
+	{
+		for (uint32_t x = 0; x < width; x++)
+		{
+			vec2 uv = vec2((float)x / width, (float)y / height);
+			vec3 greenColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, 0));
+			vec3 blueColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, aberrationAmount));
+			vec3 redColor = outputTex.Sample<vec3>(uv + vec2(-aberrationAmount, -aberrationAmount));
+			vec3 chromaAberratedColor = vec3(redColor.r, greenColor.g, blueColor.b);
+			outSrgb[x + y * width] = glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f);
+		}
+	}
+
+	const uint32_t Channels = 3;
+	if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
+	{
+		SAILOR_LOG_ERROR("Raytracing WriteImage error");
+		return false;
+	}
+
+	return true;
+}
+
+void PathTracer::Run(const PathTracer::Params& params)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	auto* pAssetRegistry = App::GetSubmodule<AssetRegistry>();
+	auto* pModelImporter = App::GetSubmodule<ModelImporter>();
+	auto* pMaterialImporter = App::GetSubmodule<MaterialImporter>();
+
+	if (!pAssetRegistry || !pModelImporter || !pMaterialImporter)
+	{
+		SAILOR_LOG_ERROR("PathTracer requires initialized AssetRegistry/ModelImporter/MaterialImporter.");
+		return;
+	}
+
+	ModelAssetInfoPtr pModelAssetInfo = pAssetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(params.m_pathToModel.string());
+
+	if (!pModelAssetInfo && std::filesystem::exists(params.m_pathToModel))
+	{
+		const FileId& modelFileId = pAssetRegistry->GetOrLoadFile(params.m_pathToModel.string());
+		pModelAssetInfo = pAssetRegistry->GetAssetInfoPtr<ModelAssetInfoPtr>(modelFileId);
+	}
+
+	if (!pModelAssetInfo)
+	{
+		SAILOR_LOG_ERROR("Cannot resolve model asset: %s", params.m_pathToModel.string().c_str());
+		return;
+	}
+
+	if (pModelAssetInfo->ShouldGenerateMaterials() && pModelAssetInfo->GetDefaultMaterials().Num() == 0)
+	{
+		pModelImporter->OnImportAsset(pModelAssetInfo);
+	}
+
+	m_directionalLights.Clear();
+	m_lightProxies.Clear();
+	m_triangles.Clear();
+	m_materials.Clear();
+	m_textures.Clear();
+	m_textureMapping.Clear();
+
+	if (!pModelAssetInfo->ShouldKeepCpuBuffers())
+	{
+		SAILOR_LOG_ERROR("Path tracer requires bShouldKeepCpuBuffers=true in model asset info: %s", params.m_pathToModel.string().c_str());
+		return;
+	}
+
+	ModelPtr pModel;
+	Tasks::TaskPtr<ModelPtr> pLoadModelTask = pModelImporter->LoadModel(pModelAssetInfo->GetFileId(), pModel);
+	if (!pLoadModelTask.IsValid())
+	{
+		SAILOR_LOG_ERROR("Cannot start model loading for path tracing: %s", params.m_pathToModel.string().c_str());
+		return;
+	}
+
+	pLoadModelTask->Wait();
+	pModel = pLoadModelTask->GetResult();
+	if (!pModel || !pModel->IsReady() || !pModel->HasCpuMeshes())
+	{
+		SAILOR_LOG_ERROR("Path tracer requires CPU model buffers. Enable bShouldKeepCpuBuffers for model: %s", params.m_pathToModel.string().c_str());
+		return;
+	}
+
+	const auto& cpuMeshes = pModel->GetCpuMeshes();
+	const Math::Sphere boundsSphere = pModel->GetBoundsSphere();
+
+	size_t expectedNumTriangles = 0;
+	for (const auto& mesh : cpuMeshes)
+	{
+		expectedNumTriangles += mesh.m_indices.Num() / 3;
+	}
+	m_triangles.Reserve(expectedNumTriangles);
+
+	auto defaultMaterials = pModelAssetInfo->GetDefaultMaterials();
+	m_materials.Resize(defaultMaterials.Num());
+
+	for (const auto& mesh : cpuMeshes)
+	{
+		if (mesh.m_indices.Num() < 3)
+		{
+			continue;
+		}
+
+		const int32_t safeMaterialIndexInt = m_materials.Num() > 0 ? std::max(0, std::min(mesh.m_materialIndex, (int32_t)m_materials.Num() - 1)) : 0;
+		const uint8_t materialIndex = static_cast<uint8_t>(std::max(0, std::min(safeMaterialIndexInt, 255)));
+		for (size_t i = 0; i + 2 < mesh.m_indices.Num(); i += 3)
+		{
+			const uint32_t i0 = mesh.m_indices[i + 0];
+			const uint32_t i1 = mesh.m_indices[i + 1];
+			const uint32_t i2 = mesh.m_indices[i + 2];
+
+			const auto& v0 = mesh.m_vertices[i0];
+			const auto& v1 = mesh.m_vertices[i1];
+			const auto& v2 = mesh.m_vertices[i2];
+
+			Math::Triangle tri{};
+			tri.m_vertices[0] = v0.m_position;
+			tri.m_vertices[1] = v1.m_position;
+			tri.m_vertices[2] = v2.m_position;
+
+			tri.m_normals[0] = glm::normalize(v0.m_normal);
+			tri.m_normals[1] = glm::normalize(v1.m_normal);
+			tri.m_normals[2] = glm::normalize(v2.m_normal);
+
+			tri.m_tangent[0] = glm::normalize(v0.m_tangent);
+			tri.m_tangent[1] = glm::normalize(v1.m_tangent);
+			tri.m_tangent[2] = glm::normalize(v2.m_tangent);
+
+			tri.m_bitangent[0] = glm::normalize(v0.m_bitangent);
+			tri.m_bitangent[1] = glm::normalize(v1.m_bitangent);
+			tri.m_bitangent[2] = glm::normalize(v2.m_bitangent);
+
+			tri.m_uvs[0] = v0.m_texcoord;
+			tri.m_uvs[1] = v1.m_texcoord;
+			tri.m_uvs[2] = v2.m_texcoord;
+			tri.m_uvs2[0] = tri.m_uvs[0];
+			tri.m_uvs2[1] = tri.m_uvs[1];
+			tri.m_uvs2[2] = tri.m_uvs[2];
+
+			tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) / 3.0f;
+			tri.m_materialIndex = materialIndex;
+
+			m_triangles.Add(tri);
+		}
+	}
+
+	TVector<MaterialPtr> runtimeMaterials(defaultMaterials.Num());
+	for (size_t i = 0; i < defaultMaterials.Num(); i++)
+	{
+		const FileId materialFileId = defaultMaterials[i];
+		if (!materialFileId)
+		{
+			continue;
+		}
+
+		MaterialPtr pMaterial;
+		if (pMaterialImporter->LoadMaterial_Immediate(materialFileId, pMaterial) && pMaterial)
+		{
+			runtimeMaterials[i] = pMaterial;
+		}
+	}
+
+	BuildRaytracingMaterialsFromRuntimeMaterials(runtimeMaterials, m_materials, m_textures, m_textureMapping);
+
+	if (m_triangles.Num() == 0)
+	{
+		SAILOR_LOG_ERROR("PathTracer scene has no triangles.");
+		return;
+	}
+
+	PathTracerView view{};
+	tinygltf::Model gltfModel;
+	{
+		tinygltf::TinyGLTF loader;
+		std::string err;
+		std::string warn;
+		const bool bIsGlb = Utils::GetFileExtension(pModelAssetInfo->GetAssetFilepath().c_str()) == "glb";
+		const bool bParsed = bIsGlb ?
+			loader.LoadBinaryFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str()) :
+			loader.LoadASCIIFromFile(&gltfModel, &err, &warn, pModelAssetInfo->GetAssetFilepath().c_str());
+
+		if (bParsed)
+		{
+			ResolveViewAndDirectionalLights(gltfModel, params, boundsSphere, view, m_directionalLights);
+		}
+	}
+
+	Utils::Timer raytracingTimer;
+	raytracingTimer.Start();
+
+	const vec3 cameraPos = view.m_cameraPos;
+	vec3 cameraForward = view.m_cameraForward;
+	vec3 cameraUp = view.m_cameraUp;
+	if (abs(dot(cameraForward, cameraUp)) > 0.99f || length(cameraForward) < 0.001f)
+	{
+		cameraUp = vec3(0.0f, 0.0f, 1.0f);
+		cameraForward = glm::normalize(vec3(0, 0, -1.0f));
+	}
+
+	const float aspectRatio = std::max(view.m_aspectRatio, 0.1f);
+	const uint32_t height = params.m_height;
+	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
+
+	const float hFov = std::max(view.m_hFov, glm::radians(10.0f));
+
+	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
+	if (m_directionalLights.Num() == 0)
+	{
+		DirectionalLight sun{};
+		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
+		sun.m_intensity = vec3(1.0f);
+		m_directionalLights.Add(sun);
+	}
+
+	m_lightProxies.Reserve(m_directionalLights.Num());
+	for (const auto& directional : m_directionalLights)
+	{
+		m_lightProxies.Add(MakeDirectionalLightProxy(directional));
+	}
 
 	BVH bvh((uint32_t)m_triangles.Num());
 	bvh.BuildBVH(m_triangles);
@@ -409,14 +988,16 @@ void PathTracer::Run(const PathTracer::Params& params)
 		TVector<Tasks::ITaskPtr> tasksThisThread;
 
 		std::atomic<uint32_t> finishedTasks = 0;
-		const uint32_t numTasks = (height * width) / (GroupSize * GroupSize);
+		const uint32_t numTasksX = (width + DefaultGroupSize - 1) / DefaultGroupSize;
+		const uint32_t numTasksY = (height + DefaultGroupSize - 1) / DefaultGroupSize;
+		const uint32_t numTasks = std::max(1u, numTasksX * numTasksY);
 
 		tasks.Reserve(numTasks);
 		tasksThisThread.Reserve(numTasks / 32);
 
-		for (uint32_t y = 0; y < height; y += GroupSize)
+		for (uint32_t y = 0; y < height; y += DefaultGroupSize)
 		{
-			for (uint32_t x = 0; x < width; x += GroupSize)
+			for (uint32_t x = 0; x < width; x += DefaultGroupSize)
 			{
 				auto task = Tasks::CreateTask("Calculate raytracing",
 					[=,
@@ -428,31 +1009,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 						Ray ray;
 						ray.SetOrigin(cameraPos);
 
-#ifdef _DEBUG
-						uint32_t debugX = 975u;
-						uint32_t debugY = height - 355u - 1;
-
-						if (!(x < debugX && (x + GroupSize) > debugX &&
-							y < debugY && (y + GroupSize) > debugY))
+						for (uint32_t v = 0; (v < DefaultGroupSize) && (y + v) < height; v++)
 						{
-							return;
-						}
-#endif
-						for (uint32_t v = 0; (v < GroupSize) && (y + v) < height; v++)
-						{
-							const float tv = (y + v) / (float)height;
-							for (uint32_t u = 0; u < GroupSize && (u + x) < width; u++)
+							for (uint32_t u = 0; u < DefaultGroupSize && (u + x) < width; u++)
 							{
 								SAILOR_PROFILE_SCOPE("Raycasting");
 
-								const uint32_t index = (height - (y + v) - 1) * width + (x + u);
-								const float tu = (x + u) / (float)width;
-#ifdef _DEBUG
-								if (((x + u) == debugX) && ((y + v) == debugY))
-								{
-									volatile uint8_t a = 0;
-								}
-#endif
 								vec3 accumulator = vec3(0);
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
@@ -473,7 +1035,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 					}, EThreadType::Worker);
 
-				if (((x + y) / GroupSize) % 32 == 0)
+				if (((x + y) / DefaultGroupSize) % 32 == 0)
 				{
 					tasksThisThread.Emplace(task);
 				}
@@ -529,7 +1091,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 
 	raytracingTimer.Stop();
-	//profiler::dumpBlocksToFile("test_profile.prof"_h);
 
 	{
 		SAILOR_PROFILE_SCOPE("Write Image");
@@ -562,15 +1123,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 			SAILOR_LOG("Raytracing WriteImage error");
 		}
 	}
-
-	char msg[2048];
-	if (raytracingTimer.ResultMs() > 10000.0f)
-	{
-		sprintf_s(msg, "Time in sec: %.2f", (float)raytracingTimer.ResultMs() * 0.001f);
-		MessageBoxA(0, msg, msg, 0);
-	}
-
-	::system(params.m_output.string().c_str());*/
 }
 
 vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const PathTracer::Params& params, float currentIor, uint32_t ignoreTriangle) const
@@ -691,14 +1243,22 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			SAILOR_PROFILE_SCOPE("Direct lighting");
 
 			RaycastHit hitLight{};
-			for (uint32_t i = 0; i < m_directionalLights.Num(); i++)
+			for (uint32_t i = 0; i < m_lightProxies.Num(); i++)
 			{
-				const vec3 toLight = -m_directionalLights[i].m_direction;
-				Ray rayToLight(hit.m_point + offset, toLight);
-				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+				vec3 toLight{};
+				vec3 radiance{};
+				float maxDistanceToLight = std::numeric_limits<float>::max();
+
+				if (!EvaluateDirectLight(m_lightProxies[i], hit.m_point, toLight, radiance, maxDistanceToLight))
 				{
-					const float angle = max(0.0f, glm::dot(toLight, worldNormal));
-					res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * m_directionalLights[i].m_intensity * angle;
+					continue;
+				}
+
+				Ray rayToLight(hit.m_point + offset, toLight);
+				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, maxDistanceToLight, hit.m_triangleIndex))
+				{
+					const float angle = glm::max(0.0f, glm::dot(toLight, worldNormal));
+					res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * radiance * angle;
 				}
 			}
 		}
@@ -727,7 +1287,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					vec3 att = TraceSky(hit.m_point + offset, toLight, bvh, params, environmentIor, hit.m_triangleIndex);
 					if (att != vec3(0, 0, 0))
 					{
-						const float angle = max(0.0f, glm::dot(toLight, worldNormal));
+						const float angle = glm::max(0.0f, glm::dot(toLight, worldNormal));
 						att *= LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample);
 						ambient1 += glm::clamp((att * params.m_ambient * angle) / pdfHemisphere,
 							vec3(0, 0, 0), vec3(10, 10, 10));
@@ -906,6 +1466,20 @@ LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialInd
 		const vec3 ormSample = m_textures[material.m_metallicRoughnessIndex]->Sample<vec3>(uv);
 		res.m_orm = vec3(ormSample.r, res.m_orm.g * ormSample.g, res.m_orm.b * ormSample.b);
 	}
+	else
+	{
+		if (material.HasRoughnessTexture())
+		{
+			const float roughness = m_textures[material.m_roughnessIndex]->Sample<vec3>(uv).r;
+			res.m_orm.y *= roughness;
+		}
+
+		if (material.HasMetallicTexture())
+		{
+			const float metallic = m_textures[material.m_metallicIndex]->Sample<vec3>(uv).r;
+			res.m_orm.z *= metallic;
+		}
+	}
 
 	if (material.HasNormalTexture())
 	{
@@ -1074,3 +1648,5 @@ vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
 
 	return res;
 }
+
+

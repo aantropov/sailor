@@ -17,15 +17,11 @@
 #include "Memory/ObjectAllocator.hpp"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
+#include "RHI/VertexDescription.h"
 #include "Math/Bounds.h"
 #include <glm/mat4x4.hpp>
 #include "Core/YamlSerializable.h"
 #include "Core/Reflection.h"
-
-namespace Sailor::RHI
-{
-	class VertexP3N3T3B3UV2C4;
-}
 
 namespace Sailor
 {
@@ -34,6 +30,13 @@ namespace Sailor
 	class Model : public Object, public IYamlSerializable
 	{
 	public:
+		struct MeshCpuData
+		{
+			TVector<RHI::VertexP3N3T3B3UV2C4I4W4> m_vertices;
+			TVector<uint32_t> m_indices;
+			Math::AABB m_bounds{};
+			int32_t m_materialIndex = -1;
+		};
 
 		SAILOR_API Model(FileId uid, TVector<RHI::RHIMeshPtr> meshes = {}) :
 			Object(std::move(uid)),
@@ -53,6 +56,9 @@ namespace Sailor
 		SAILOR_API const Math::Sphere& GetBoundsSphere() const { return m_boundsSphere; }
 		SAILOR_API const TVector<glm::mat4>& GetInverseBind() const { return m_inverseBind; }
 		SAILOR_API TVector<glm::mat4>& GetInverseBind() { return m_inverseBind; }
+		SAILOR_API const TVector<MeshCpuData>& GetCpuMeshes() const { return m_cpuMeshes; }
+		SAILOR_API TVector<MeshCpuData>& GetCpuMeshes() { return m_cpuMeshes; }
+		SAILOR_API bool HasCpuMeshes() const { return m_cpuMeshes.Num() > 0; }
 
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -62,6 +68,7 @@ namespace Sailor
 		TVector<RHI::RHIMeshPtr> m_meshes;
 		std::atomic<bool> m_bIsReady{};
 		TVector<glm::mat4> m_inverseBind;
+		TVector<MeshCpuData> m_cpuMeshes;
 
 		Math::AABB m_boundsAabb;
 		Math::Sphere m_boundsSphere;
@@ -79,6 +86,7 @@ namespace Sailor
 			TVector<RHI::VertexP3N3T3B3UV2C4I4W4> outVertices;
 			TVector<uint32_t> outIndices;
 			Math::AABB bounds{};
+			int32_t materialIndex = -1;
 		};
 
 		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);
@@ -97,10 +105,9 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
-
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
+		static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;

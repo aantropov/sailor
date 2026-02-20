@@ -188,6 +188,17 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 							assetInfo->GetClamping(),
 							assetInfo->ShouldSupportStorageBinding() ? TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit : TextureImporter::DefaultTextureUsage,
 							assetInfo->GetSamplerReduction());
+						pTexture->m_width = width;
+						pTexture->m_height = height;
+						pTexture->m_mipLevels = mipLevels;
+						if (assetInfo->ShouldKeepCpuBuffers())
+						{
+							pTexture->m_decodedData = std::move(decodedData);
+						}
+						else
+						{
+							pTexture->m_decodedData.Clear();
+						}
 
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
 
@@ -220,6 +231,8 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 
 	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
 	{
+		const bool bDecodeAsFloat = RHI::IsFloatFormat(assetInfo->GetFormat());
+
 		if (assetInfo->StoredInGlb())
 		{
 			const bool bIsGlb = Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb";
@@ -237,27 +250,27 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 				int32_t texChannels = 0;
 				const std::string filepath = assetInfo->GetAssetFilepath();
 
-				if (stbi_is_hdr_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num()))
+				if (bDecodeAsFloat)
 				{
-					if (float* pixels = stbi_loadf_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
+					if (float* pPixels = stbi_loadf_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
 					{
 						const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
 						decodedData.Resize(imageSize);
-						memcpy(decodedData.GetData(), pixels, imageSize);
+						memcpy(decodedData.GetData(), pPixels, imageSize);
 
 						mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-						stbi_image_free(pixels);
+						stbi_image_free(pPixels);
 						return true;
 					}
 				}
-				else if (stbi_uc* pixels = stbi_load_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
+				else if (stbi_uc* pPixels = stbi_load_from_memory(&rawBuffer[0], (uint32_t)rawBuffer.Num(), &width, &height, &texChannels, STBI_rgb_alpha))
 				{
 					const uint32_t imageSize = (uint32_t)width * height * 4;
 					decodedData.Resize(imageSize);
-					memcpy(decodedData.GetData(), pixels, imageSize);
+					memcpy(decodedData.GetData(), pPixels, imageSize);
 
 					mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-					stbi_image_free(pixels);
+					stbi_image_free(pPixels);
 					return true;
 				}
 			}
@@ -274,27 +287,27 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 			int32_t texChannels = 0;
 			const std::string filepath = assetInfo->GetAssetFilepath();
 
-			if (stbi_is_hdr(filepath.c_str()))
+			if (bDecodeAsFloat)
 			{
-				if (float* pixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+				if (float* pPixels = stbi_loadf(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
 				{
 					const uint32_t imageSize = (uint32_t)width * height * sizeof(float) * 4;
 					decodedData.Resize(imageSize);
-					memcpy(decodedData.GetData(), pixels, imageSize);
+					memcpy(decodedData.GetData(), pPixels, imageSize);
 
 					mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-					stbi_image_free(pixels);
+					stbi_image_free(pPixels);
 					return true;
 				}
 			}
-			else if (stbi_uc* pixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
+			else if (stbi_uc* pPixels = stbi_load(filepath.c_str(), &width, &height, &texChannels, STBI_rgb_alpha))
 			{
 				const uint32_t imageSize = (uint32_t)width * height * 4;
 				decodedData.Resize(imageSize);
-				memcpy(decodedData.GetData(), pixels, imageSize);
+				memcpy(decodedData.GetData(), pPixels, imageSize);
 
 				mipLevels = assetInfo->ShouldGenerateMips() ? static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1 : 1;
-				stbi_image_free(pixels);
+				stbi_image_free(pPixels);
 				return true;
 			}
 		}
@@ -313,6 +326,7 @@ bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
 Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& outTexture)
 {
 	SAILOR_PROFILE_FUNCTION();
+	TextureAssetInfoPtr pAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
 
 	// Check promises first
 	auto& promise = m_promises.At_Lock(uid, nullptr);
@@ -321,18 +335,26 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 	// Check loaded textures
 	if (loadedTexture)
 	{
-		outTexture = loadedTexture;
-		auto res = promise ? promise : Tasks::TaskPtr<TexturePtr>::Make(outTexture);
+		const bool bNeedCpuBuffers = pAssetInfo && pAssetInfo->ShouldKeepCpuBuffers() && !loadedTexture->HasCpuData();
+		if (bNeedCpuBuffers && !promise)
+		{
+			loadedTexture = nullptr;
+		}
+		else
+		{
+			outTexture = loadedTexture;
+			auto res = promise ? promise : Tasks::TaskPtr<TexturePtr>::Make(outTexture);
 
-		m_loadedTextures.Unlock(uid);
-		m_promises.Unlock(uid);
+			m_loadedTextures.Unlock(uid);
+			m_promises.Unlock(uid);
 
-		return res;
+			return res;
+		}
 	}
 
-	if (TextureAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<TextureAssetInfoPtr>(uid))
+	if (pAssetInfo)
 	{
-		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(pAssetInfo->GetAssetFilepath().c_str());
 
 		TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
 
@@ -343,36 +365,49 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 			int32_t height;
 			uint32_t mipLevels;
 			bool bIsImported;
+			bool bShouldKeepCpuBuffers;
 		};
 
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load Texture",
-			[pTexture, assetInfo]() mutable
+			[pAssetInfo]() mutable
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
-				pData->bIsImported = ImportTexture(assetInfo->GetFileId(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
+				pData->bIsImported = ImportTexture(pAssetInfo->GetFileId(), pData->decodedData, pData->width, pData->height, pData->mipLevels);
+				pData->bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
 
 				if (!pData->bIsImported)
 				{
-					SAILOR_LOG("Cannot Load texture: %s, with uid: %s", assetInfo->GetAssetFilepath().c_str(), assetInfo->GetFileId().ToString().c_str());
+					SAILOR_LOG("Cannot Load texture: %s, with uid: %s", pAssetInfo->GetAssetFilepath().c_str(), pAssetInfo->GetFileId().ToString().c_str());
 				}
 
 				return pData;
-			})->Then<TexturePtr>([pTexture, assetInfo, this](TSharedPtr<Data> data) mutable
+			})->Then<TexturePtr>([pTexture, pAssetInfo, this](TSharedPtr<Data> pData) mutable
 				{
-					if (data->bIsImported && data->decodedData.Num() > 0)
+					if (pData->bIsImported && pData->decodedData.Num() > 0)
 					{
-						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&data->decodedData[0], data->decodedData.Num(), glm::vec3(data->width, data->height, 1.0f),
-							data->mipLevels, RHI::ETextureType::Texture2D, assetInfo->GetFormat(), assetInfo->GetFiltration(),
-							assetInfo->GetClamping(),
-							assetInfo->ShouldSupportStorageBinding() ? (TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) : TextureImporter::DefaultTextureUsage,
-							assetInfo->GetSamplerReduction());
+						pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&pData->decodedData[0], pData->decodedData.Num(), glm::vec3(pData->width, pData->height, 1.0f),
+							pData->mipLevels, RHI::ETextureType::Texture2D, pAssetInfo->GetFormat(), pAssetInfo->GetFiltration(),
+							pAssetInfo->GetClamping(),
+							pAssetInfo->ShouldSupportStorageBinding() ? (TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) : TextureImporter::DefaultTextureUsage,
+							pAssetInfo->GetSamplerReduction());
+						pTexture->m_width = pData->width;
+						pTexture->m_height = pData->height;
+						pTexture->m_mipLevels = pData->mipLevels;
+						if (pData->bShouldKeepCpuBuffers)
+						{
+							pTexture->m_decodedData = std::move(pData->decodedData);
+						}
+						else
+						{
+							pTexture->m_decodedData.Clear();
+						}
 
-						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, assetInfo->GetAssetFilepath());
+						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, pAssetInfo->GetAssetFilepath());
 
 						size_t index = m_textureSamplersCurrentIndex++;
 
-						m_textureSamplersIndices.At_Lock(assetInfo->GetFileId()) = index;
-						m_textureSamplersIndices.Unlock(assetInfo->GetFileId());
+						m_textureSamplersIndices.At_Lock(pAssetInfo->GetFileId()) = index;
+						m_textureSamplersIndices.Unlock(pAssetInfo->GetFileId());
 
 						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
 					}
@@ -395,6 +430,58 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 
 	SAILOR_LOG("Cannot find texture with uid: %s", uid.ToString().c_str());
 	return Tasks::TaskPtr<TexturePtr>();
+}
+
+TexturePtr TextureImporter::Create(const ByteCode& decodedData,
+	int32_t width,
+	int32_t height,
+	uint32_t mipLevels,
+	RHI::ETextureFormat format,
+	RHI::ETextureFiltration filtration,
+	RHI::ETextureClamping clamping,
+	RHI::ESamplerReductionMode samplerReduction,
+	bool bSupportStorageBinding,
+	bool bKeepCpuBuffers)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (decodedData.Num() == 0 || width <= 0 || height <= 0)
+	{
+		return TexturePtr();
+	}
+
+	const FileId uid = FileId::CreateNewFileId();
+	TexturePtr pTexture = TexturePtr::Make(m_allocator, uid);
+
+	const RHI::ETextureUsageFlags usage = bSupportStorageBinding ?
+		(TextureImporter::DefaultTextureUsage | RHI::ETextureUsageBit::Storage_Bit) :
+		TextureImporter::DefaultTextureUsage;
+
+	pTexture->m_rhiTexture = RHI::Renderer::GetDriver()->CreateTexture(&decodedData[0], decodedData.Num(), glm::vec3(width, height, 1.0f),
+		mipLevels, RHI::ETextureType::Texture2D, format, filtration, clamping, usage, samplerReduction);
+	pTexture->m_width = width;
+	pTexture->m_height = height;
+	pTexture->m_mipLevels = mipLevels;
+
+	if (bKeepCpuBuffers)
+	{
+		pTexture->m_decodedData = decodedData;
+	}
+	else
+	{
+		pTexture->m_decodedData.Clear();
+	}
+
+	size_t index = m_textureSamplersCurrentIndex++;
+
+	m_textureSamplersIndices.At_Lock(uid) = index;
+	m_textureSamplersIndices.Unlock(uid);
+
+	m_loadedTextures.At_Lock(uid) = pTexture;
+	m_loadedTextures.Unlock(uid);
+
+	RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
+	return pTexture;
 }
 
 size_t TextureImporter::GetTextureIndex(FileId uid)
@@ -447,3 +534,5 @@ void TextureImporter::CollectGarbage()
 		m_promises.Remove(uid);
 	}
 }
+
+

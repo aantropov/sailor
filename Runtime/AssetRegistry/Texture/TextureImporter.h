@@ -28,10 +28,19 @@ namespace Sailor
 
 		SAILOR_API const RHI::RHITexturePtr& GetRHI() const { return m_rhiTexture; }
 		SAILOR_API RHI::RHITexturePtr& GetRHI() { return m_rhiTexture; }
+		SAILOR_API const TVector<uint8_t>& GetDecodedData() const { return m_decodedData; }
+		SAILOR_API int32_t GetWidth() const { return m_width; }
+		SAILOR_API int32_t GetHeight() const { return m_height; }
+		SAILOR_API uint32_t GetMipLevels() const { return m_mipLevels; }
+		SAILOR_API bool HasCpuData() const { return m_decodedData.Num() > 0; }
 
 	protected:
 
 		RHI::RHITexturePtr m_rhiTexture;
+		TVector<uint8_t> m_decodedData;
+		int32_t m_width = 0;
+		int32_t m_height = 0;
+		uint32_t m_mipLevels = 1;
 
 		friend class TextureImporter;
 	};
@@ -62,6 +71,16 @@ namespace Sailor
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadTexture_Immediate(FileId uid, TexturePtr& outTexture);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> LoadTexture(FileId uid, TexturePtr& outTexture);
+		SAILOR_API TexturePtr Create(const ByteCode& decodedData,
+			int32_t width,
+			int32_t height,
+			uint32_t mipLevels = 1,
+			RHI::ETextureFormat format = RHI::ETextureFormat::R8G8B8A8_SRGB,
+			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
+			RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
+			RHI::ESamplerReductionMode samplerReduction = RHI::ESamplerReductionMode::Average,
+			bool bSupportStorageBinding = false,
+			bool bKeepCpuBuffers = false);
 
 		SAILOR_API TexturePtr GetLoadedTexture(FileId uid);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> GetLoadPromise(FileId uid);

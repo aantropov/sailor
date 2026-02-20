@@ -1,11 +1,5 @@
-﻿using SailorEngine;
-using SailorEditor.ViewModels;
-using System.Reflection.Metadata;
+using SailorEngine;
 using System.Runtime.InteropServices;
-using WinRT;
-using YamlDotNet.RepresentationModel;
-using YamlDotNet.Serialization.NodeTypeResolvers;
-using YamlDotNet.Core.Tokens;
 using System.Diagnostics;
 
 namespace SailorEngine
@@ -43,6 +37,9 @@ namespace SailorEngine
         [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void ShowMainWindow(bool bShow);
 
+        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
+
 #else
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void Initialize(string[] commandLineArgs, int num);
@@ -73,6 +70,9 @@ namespace SailorEngine
 
         [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
         public static extern void ShowMainWindow(bool bShow);
+
+        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
 #endif
     }
 }
@@ -81,6 +81,10 @@ namespace SailorEditor.Services
 {
     internal class EngineService
     {
+        readonly object interopLock = new();
+        readonly object runLock = new();
+        bool isRunning = false;
+
         public string EngineContentDirectory { get { return Path.Combine(EngineWorkingDirectory, "..", "Content"); } }
 
         public string EngineCacheDirectory { get { return Path.Combine(EngineWorkingDirectory, "..", "Cache"); } }
@@ -103,7 +107,41 @@ namespace SailorEditor.Services
         public void RunProcess(bool bDebug, string commandlineArgs)
         {
 #if WINDOWS
-            nint handle = ((MauiWinUIWindow)Application.Current.Windows[0].Handler.PlatformView).WindowHandle;
+            lock (runLock)
+            {
+                if (isRunning)
+                    return;
+
+                isRunning = true;
+            }
+
+            nint handle = 0;
+            try
+            {
+                var window = Application.Current?.Windows?.FirstOrDefault();
+                if (window?.Handler?.PlatformView is MauiWinUIWindow mauiWindow)
+                {
+                    handle = mauiWindow.WindowHandle;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Cannot resolve engine host window handle: {ex.Message}");
+                lock (runLock)
+                {
+                    isRunning = false;
+                }
+                return;
+            }
+
+            if (handle == 0)
+            {
+                lock (runLock)
+                {
+                    isRunning = false;
+                }
+                return;
+            }
 
             string commandArgs = $"--noconsole --hwnd {handle} --editor " + commandlineArgs;
             string workspace = (Path.GetFullPath(Path.Combine(EngineWorkingDirectory, "..")) + "\\").Replace("\\", "/");
@@ -128,9 +166,40 @@ namespace SailorEditor.Services
 
                 Task.Run(async () =>
                 {
-                    EngineAppInterop.Initialize(args, args.Length);
+                    try
+                    {
+                        lock (interopLock)
+                        {
+                            EngineAppInterop.Initialize(args, args.Length);
+                        }
 
-                    StartPeriodicTask(async () => EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height), 500, 100, cts.Token);
+                    // Required startup order:
+                    // 1) engine types, 2) world, 3) initial messages
+                    string serializedEngineTypes = SerializeEngineTypes();
+                    if (!string.IsNullOrEmpty(serializedEngineTypes))
+                    {
+                        EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
+                    }
+
+                    string serializedWorld = SerializeWorld();
+                    if (!string.IsNullOrEmpty(serializedWorld))
+                    {
+                        MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+                    }
+
+                    var bootstrapMessages = PullMessages();
+                    if (bootstrapMessages != null)
+                    {
+                        MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(bootstrapMessages));
+                    }
+
+                    StartPeriodicTask(async () =>
+                    {
+                        lock (interopLock)
+                        {
+                            EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height);
+                        }
+                    }, 500, 100, cts.Token);
 
                     StartPeriodicTask(async () =>
                     {
@@ -141,31 +210,40 @@ namespace SailorEditor.Services
                         }
                     }, 300, 500, cts.Token);
 
-                    StartPeriodicTask(async () =>
+                        StartPeriodicTask(async () =>
+                        {
+                            string serializedWorld = SerializeWorld();
+                            if (serializedWorld != string.Empty)
+                                MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+
+                        }, 1500, 0, cts.Token);
+
+                        EngineAppInterop.Start();
+                        EngineAppInterop.Stop();
+
+                        cts.Cancel();
+
+                        lock (interopLock)
+                        {
+                            EngineAppInterop.Shutdown();
+                        }
+                    }
+                    finally
                     {
-                        string serializedEngineTypes = SerializeEngineTypes();
-                        EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
-                    }, 1000, 0, cts.Token);
-
-                    StartPeriodicTask(async () =>
-                    {
-                        string serializedWorld = SerializeWorld();
-                        if (serializedWorld != string.Empty)
-                            MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
-
-                    }, 1500, 0, cts.Token);
-
-                    EngineAppInterop.Start();
-                    EngineAppInterop.Stop();
-
-                    cts.Cancel();
-
-                    EngineAppInterop.Shutdown();
+                        lock (runLock)
+                        {
+                            isRunning = false;
+                        }
+                    }
                 });
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Cannot run SailorEngine process: {ex.Message}");
+                lock (runLock)
+                {
+                    isRunning = false;
+                }
             }
 #endif
         }
@@ -209,7 +287,11 @@ namespace SailorEditor.Services
             uint numMessages = 64;
             nint[] messagesPtrs = new nint[numMessages];
 
-            uint actualNumMessages = EngineAppInterop.GetMessages(messagesPtrs, numMessages);
+            uint actualNumMessages;
+            lock (interopLock)
+            {
+                actualNumMessages = EngineAppInterop.GetMessages(messagesPtrs, numMessages);
+            }
 
             if (actualNumMessages == 0)
                 return null;
@@ -224,10 +306,14 @@ namespace SailorEditor.Services
             return messages;
         }
 
-        static string SerializeWorld()
+        string SerializeWorld()
         {
             nint[] yamlNodeChar = new nint[1];
-            uint numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
+            uint numChars;
+            lock (interopLock)
+            {
+                numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
+            }
 
             if (numChars == 0)
                 return string.Empty;
@@ -238,10 +324,14 @@ namespace SailorEditor.Services
             return yamlNode;
         }
 
-        static string SerializeEngineTypes()
+        string SerializeEngineTypes()
         {
             nint[] yamlNodeChar = new nint[1];
-            uint numChars = EngineAppInterop.SerializeEngineTypes(yamlNodeChar);
+            uint numChars;
+            lock (interopLock)
+            {
+                numChars = EngineAppInterop.SerializeEngineTypes(yamlNodeChar);
+            }
 
             if (numChars == 0)
                 return string.Empty;
@@ -255,7 +345,19 @@ namespace SailorEditor.Services
         public bool CommitChanges(InstanceId id, string yamlChanges)
         {
             var stringId = id.Value.ToString();
-            return EngineAppInterop.UpdateObject(stringId, yamlChanges);
+            lock (interopLock)
+            {
+                return EngineAppInterop.UpdateObject(stringId, yamlChanges);
+            }
+        }
+
+        public bool ExportPathTracedImage(string outputPath, InstanceId targetInstance = null, uint height = 720, uint samplesPerPixel = 64, uint maxBounces = 4)
+        {
+            string strInstanceId = targetInstance?.Value ?? string.Empty;
+            lock (interopLock)
+            {
+                return EngineAppInterop.RenderPathTracedImage(outputPath, strInstanceId, height, samplesPerPixel, maxBounces);
+            }
         }
 
         public void RunWorld(string world, bool bDebug)

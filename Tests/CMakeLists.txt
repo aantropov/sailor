@@ -10,3 +10,18 @@ add_test(
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/container_benchmarks_test.py
 )
 
+add_test(
+    NAME PathTracingSmoke
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/path_tracing_smoke_test.py
+)
+
+add_test(
+    NAME PathTracingSourceContract
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/path_tracing_source_contract_test.py
+)
+
+add_test(
+    NAME PathTracingDllContract
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/path_tracing_dll_contract_test.py
+)
+
