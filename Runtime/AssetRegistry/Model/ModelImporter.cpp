@@ -15,10 +15,7 @@
 #include "RHI/Renderer.h"
 #include "Memory/ObjectAllocator.hpp"
 
-#ifndef TINYGLTF_IMPLEMENTATION
-#define TINYGLTF_IMPLEMENTATION
 #include <tiny_gltf.h>
-#endif
 
 using namespace Sailor;
 
