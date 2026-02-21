@@ -3,6 +3,8 @@
 #include "Math/Bounds.h"
 #include "Containers/Vector.h"
 #include "Containers/Map.h"
+#include "Containers/Octree.h"
+#include "Engine/Types.h"
 
 #include "BVH.h"
 #include "MaterialUtils.h"
@@ -17,6 +19,15 @@ namespace Sailor::Raytracing
 	class PathTracer
 	{
 	public:
+
+		struct SceneInstance
+		{
+			ModelPtr m_model{};
+			Math::AABB m_worldBounds{};
+			glm::mat4 m_worldMatrix{ 1.0f };
+			glm::mat4 m_inverseWorldMatrix{ 1.0f };
+			int32_t m_materialBaseOffset = 0;
+		};
 
 		struct Params
 		{
@@ -43,6 +54,9 @@ namespace Sailor::Raytracing
 		bool InitializeScene(const TVector<Math::Triangle>& triangles,
 			const TVector<MaterialPtr>& materials,
 			const TVector<LightProxy>& lightProxies);
+		bool InitializeScene(const TVector<SceneInstance>& instances,
+			const TVector<MaterialPtr>& materials,
+			const TVector<LightProxy>& lightProxies);
 		bool RenderPreparedScene(const Params& params);
 
 		void Run(const Params& params);
@@ -54,14 +68,32 @@ namespace Sailor::Raytracing
 
 		__forceinline LightingModel::SampledData GetMaterialData(const size_t& materialIndex, glm::vec2 uv) const;
 
+		struct SceneHit
+		{
+			Math::RaycastHit m_hit{};
+			uint32_t m_instanceIndex = (uint32_t)-1;
+			uint32_t m_triangleIndex = (uint32_t)-1;
+			uint32_t m_materialIndex = 0;
+		};
 
-		vec3 TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const PathTracer::Params& params, float currentIor, uint32_t ignoreTriangle) const;
-		vec3 Raytrace(const Math::Ray& r, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const Params& params, float inAcc, float environmentIor = 1.0f) const;
+		bool IntersectScene(const Math::Ray& worldRay, SceneHit& outHit, float maxRayLength = FLT_MAX,
+			uint32_t ignoreInstance = (uint32_t)-1, uint32_t ignoreTriangle = (uint32_t)-1) const;
+		const Math::Triangle& GetTriangle(const SceneHit& hit) const;
+		void GetShadingBasis(const SceneHit& hit, vec3& outNormal, vec3& outTangent, vec3& outBitangent) const;
+		uint32_t ResolveMaterialIndex(const SceneHit& hit) const;
+
+		vec3 TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor,
+			uint32_t ignoreInstance, uint32_t ignoreTriangle) const;
+		vec3 Raytrace(const Math::Ray& r, uint32_t bounceLimit, uint32_t ignoreInstance, uint32_t ignoreTriangle,
+			const Params& params, float inAcc, float environmentIor = 1.0f) const;
 
 
 		TVector<DirectionalLight> m_directionalLights{};
 		TVector<LightProxy> m_lightProxies{};
 		TVector<Math::Triangle> m_triangles{};
+		TSharedPtr<BVH> m_sceneBvh{};
+		TVector<SceneInstance> m_instances{};
+		TOctree<size_t> m_instanceOctree{ glm::ivec3(0, 0, 0), 16536 * 16, 4 };
 		TVector<Material> m_materials{};
 		TVector<TSharedPtr<CombinedSampler2D>> m_textures{};
 		TMap<std::string, uint32_t> m_textureMapping{};

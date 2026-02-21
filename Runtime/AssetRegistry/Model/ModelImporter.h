@@ -19,6 +19,7 @@
 #include "RHI/Material.h"
 #include "RHI/VertexDescription.h"
 #include "Math/Bounds.h"
+#include "Raytracing/BVH.h"
 #include <glm/mat4x4.hpp>
 #include "Core/YamlSerializable.h"
 #include "Core/Reflection.h"
@@ -59,6 +60,10 @@ namespace Sailor
 		SAILOR_API const TVector<MeshCpuData>& GetCpuMeshes() const { return m_cpuMeshes; }
 		SAILOR_API TVector<MeshCpuData>& GetCpuMeshes() { return m_cpuMeshes; }
 		SAILOR_API bool HasCpuMeshes() const { return m_cpuMeshes.Num() > 0; }
+		SAILOR_API bool BuildBLAS();
+		SAILOR_API bool HasBLAS() const { return m_blas.IsValid() && m_blasTriangles.Num() > 0; }
+		SAILOR_API const TSharedPtr<Raytracing::BVH>& GetBLAS() const { return m_blas; }
+		SAILOR_API const TVector<Math::Triangle>& GetBLASTriangles() const { return m_blasTriangles; }
 
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -69,6 +74,8 @@ namespace Sailor
 		std::atomic<bool> m_bIsReady{};
 		TVector<glm::mat4> m_inverseBind;
 		TVector<MeshCpuData> m_cpuMeshes;
+		TSharedPtr<Raytracing::BVH> m_blas{};
+		TVector<Math::Triangle> m_blasTriangles{};
 
 		Math::AABB m_boundsAabb;
 		Math::Sphere m_boundsSphere;

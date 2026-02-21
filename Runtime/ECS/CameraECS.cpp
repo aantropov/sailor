@@ -54,3 +54,26 @@ void CameraECS::CopyCameraData(RHI::RHISceneViewPtr& outCameras)
 	outCameras->m_cameras = std::move(m_rhiCameras);
 	outCameras->m_cameraTransforms = std::move(m_rhiCameraTransforms);
 }
+
+bool CameraECS::TryGetActiveCamera(Math::Transform& outCameraTransform, CameraData& outCameraData)
+{
+	for (auto& data : m_components)
+	{
+		if (!data.m_bIsActive)
+		{
+			continue;
+		}
+
+		GameObjectPtr pOwner = data.m_owner.StaticCast<GameObject>();
+		if (!pOwner)
+		{
+			continue;
+		}
+
+		outCameraTransform = pOwner->GetTransformComponent().GetTransform();
+		outCameraData = data;
+		return true;
+	}
+
+	return false;
+}

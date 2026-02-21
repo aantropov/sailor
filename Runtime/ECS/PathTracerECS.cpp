@@ -53,18 +53,22 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 		}
 
 		auto pMeshRenderer = pOwnerGameObject->GetComponent<MeshRendererComponent>();
-		const ModelPtr pModel = pMeshRenderer ? pMeshRenderer->GetModel() : ModelPtr();
-		const TVector<MaterialPtr>* pLiveMaterials = pMeshRenderer ? &pMeshRenderer->GetMaterials() : nullptr;
+		ModelPtr pModel = pMeshRenderer ? pMeshRenderer->GetModel() : ModelPtr();
+		const FileId modelFileId = pModel ? pModel->GetFileId() : FileId();
+		if (modelFileId != data.m_modelFileId)
+		{
+			data.m_bNeedsRebuild = true;
+		}
 
 		const auto& ownerTransform = pOwnerGameObject->GetTransformComponent();
-		const bool bNeedRebuildBLAS = data.m_bNeedsRebuild ||
+		const bool bNeedRebuild = data.m_bNeedsRebuild ||
 			data.m_bIsDirty ||
 			data.m_options.m_bRebuildEveryFrame;
 
 		const bool bTransformChanged = data.m_frameLastChange == 0 ||
 			ownerTransform.GetFrameLastChange() > data.m_frameLastChange;
 
-		if (!bNeedRebuildBLAS && !bTransformChanged)
+		if (!bNeedRebuild && !bTransformChanged)
 		{
 			continue;
 		}
@@ -82,12 +86,18 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 					bShouldGenerateBLAS = pModelAssetInfo->ShouldGenerateBLAS();
 				}
 			}
+
+			if (bShouldGenerateBLAS && !pModel->HasBLAS() && pModel->HasCpuMeshes())
+			{
+				pModel->BuildBLAS();
+			}
 		}
 
-		if (!pModel || !bShouldGenerateBLAS || !pModel->IsReady() || !pModel->HasCpuMeshes())
+		if (!pModel || !bShouldGenerateBLAS || !pModel->IsReady() || !pModel->HasBLAS())
 		{
-			// Model loading is async; keep rebuild pending until CPU data is ready.
+			// Model loading is async; keep rebuild pending until BLAS is available.
 			data.m_bNeedsRebuild = true;
+			data.m_modelFileId = modelFileId;
 			if (m_proxyOctree.Contains(componentHandle))
 			{
 				m_proxyOctree.Remove(componentHandle);
@@ -95,82 +105,8 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 			continue;
 		}
 
-		if (bNeedRebuildBLAS)
-		{
-			data.m_worldBounds = Math::AABB();
-			data.m_triangles.Clear();
-			data.m_bvh.Clear();
-
-			const auto& cpuMeshes = pModel->GetCpuMeshes();
-			size_t expectedNumTriangles = 0;
-			for (const auto& mesh : cpuMeshes)
-			{
-				expectedNumTriangles += mesh.m_indices.Num() / 3;
-			}
-			data.m_triangles.Reserve(expectedNumTriangles);
-
-			for (const auto& mesh : cpuMeshes)
-			{
-				const int32_t maxMaterialIndex = (pLiveMaterials && pLiveMaterials->Num() > 0) ? ((int32_t)pLiveMaterials->Num() - 1) : 0;
-				for (size_t i = 0; i + 2 < mesh.m_indices.Num(); i += 3)
-				{
-					const uint32_t i0 = mesh.m_indices[i + 0];
-					const uint32_t i1 = mesh.m_indices[i + 1];
-					const uint32_t i2 = mesh.m_indices[i + 2];
-
-					const auto& v0 = mesh.m_vertices[i0];
-					const auto& v1 = mesh.m_vertices[i1];
-					const auto& v2 = mesh.m_vertices[i2];
-
-					Math::Triangle tri{};
-					tri.m_vertices[0] = v0.m_position;
-					tri.m_vertices[1] = v1.m_position;
-					tri.m_vertices[2] = v2.m_position;
-
-					tri.m_normals[0] = glm::normalize(v0.m_normal);
-					tri.m_normals[1] = glm::normalize(v1.m_normal);
-					tri.m_normals[2] = glm::normalize(v2.m_normal);
-
-					tri.m_tangent[0] = glm::normalize(v0.m_tangent);
-					tri.m_tangent[1] = glm::normalize(v1.m_tangent);
-					tri.m_tangent[2] = glm::normalize(v2.m_tangent);
-
-					tri.m_bitangent[0] = glm::normalize(v0.m_bitangent);
-					tri.m_bitangent[1] = glm::normalize(v1.m_bitangent);
-					tri.m_bitangent[2] = glm::normalize(v2.m_bitangent);
-
-					tri.m_uvs[0] = v0.m_texcoord;
-					tri.m_uvs[1] = v1.m_texcoord;
-					tri.m_uvs[2] = v2.m_texcoord;
-					tri.m_uvs2[0] = tri.m_uvs[0];
-					tri.m_uvs2[1] = tri.m_uvs[1];
-					tri.m_uvs2[2] = tri.m_uvs[2];
-
-					const int32_t safeMaterialIndex = (std::max)(0, (std::min)(mesh.m_materialIndex, maxMaterialIndex));
-					tri.m_materialIndex = static_cast<uint8_t>((std::max)(0, (std::min)(safeMaterialIndex, 255)));
-					tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) / 3.0f;
-
-					data.m_triangles.Add(tri);
-				}
-			}
-
-			if (data.m_triangles.Num() > 0)
-			{
-				data.m_bvh = TSharedPtr<Raytracing::BVH>::Make((uint32_t)data.m_triangles.Num());
-				data.m_bvh->BuildBVH(data.m_triangles);
-			}
-		}
-
-		data.m_worldBounds = Math::AABB();
-		for (const auto& tri : data.m_triangles)
-		{
-			const glm::vec3 v0 = glm::vec3(data.m_worldMatrix * glm::vec4(tri.m_vertices[0], 1.0f));
-			const glm::vec3 v1 = glm::vec3(data.m_worldMatrix * glm::vec4(tri.m_vertices[1], 1.0f));
-			const glm::vec3 v2 = glm::vec3(data.m_worldMatrix * glm::vec4(tri.m_vertices[2], 1.0f));
-			data.m_worldBounds.Extend(v0);
-			data.m_worldBounds.Extend(v1);
-			data.m_worldBounds.Extend(v2);
-		}
+		data.m_worldBounds = pModel->GetBoundsAABB();
+		data.m_worldBounds.Apply(data.m_worldMatrix);
 
 		if (data.m_worldBounds.IsValid())
 		{
@@ -184,6 +120,7 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 		UpdateGameObject(pOwnerGameObject, GetWorld()->GetCurrentFrame());
 		data.m_bNeedsRebuild = false;
 		data.m_bIsDirty = false;
+		data.m_modelFileId = modelFileId;
 		data.m_frameLastChange = ownerTransform.GetFrameLastChange();
 	}
 
@@ -193,7 +130,7 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 bool PathTracerECS::InitializePathTracer(Raytracing::PathTracer& outPathTracer, size_t componentHandle)
 {
 	auto appendFromData = [&](PathTracerProxyData& data,
-		TVector<Math::Triangle>& inOutWorldTriangles,
+		TVector<Raytracing::PathTracer::SceneInstance>& inOutInstances,
 		TVector<MaterialPtr>& inOutMaterials,
 		int32_t& inOutMaterialOffset) -> bool
 	{
@@ -202,13 +139,14 @@ bool PathTracerECS::InitializePathTracer(Raytracing::PathTracer& outPathTracer, 
 			return false;
 		}
 
-		if (!data.m_bvh || data.m_triangles.Num() == 0)
+		GameObjectPtr pOwnerGameObject = data.m_owner.StaticCast<GameObject>();
+		auto pMeshRenderer = pOwnerGameObject ? pOwnerGameObject->GetComponent<MeshRendererComponent>() : MeshRendererComponentPtr();
+		ModelPtr pModel = pMeshRenderer ? pMeshRenderer->GetModel() : ModelPtr();
+		if (!pModel || !pModel->HasBLAS() || pModel->GetBLASTriangles().Num() == 0)
 		{
 			return false;
 		}
 
-		GameObjectPtr pOwnerGameObject = data.m_owner.StaticCast<GameObject>();
-		auto pMeshRenderer = pOwnerGameObject ? pOwnerGameObject->GetComponent<MeshRendererComponent>() : MeshRendererComponentPtr();
 		const TVector<MaterialPtr>* pMaterials = pMeshRenderer ? &pMeshRenderer->GetMaterials() : nullptr;
 
 		const int32_t materialBaseOffset = inOutMaterialOffset;
@@ -227,26 +165,13 @@ bool PathTracerECS::InitializePathTracer(Raytracing::PathTracer& outPathTracer, 
 			inOutMaterialOffset += (int32_t)pMaterials->Num();
 		}
 
-		const glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(data.m_worldMatrix)));
-		for (const auto& localTri : data.m_triangles)
-		{
-			Math::Triangle tri = localTri;
-			tri.m_vertices[0] = glm::vec3(data.m_worldMatrix * glm::vec4(localTri.m_vertices[0], 1.0f));
-			tri.m_vertices[1] = glm::vec3(data.m_worldMatrix * glm::vec4(localTri.m_vertices[1], 1.0f));
-			tri.m_vertices[2] = glm::vec3(data.m_worldMatrix * glm::vec4(localTri.m_vertices[2], 1.0f));
-			tri.m_normals[0] = glm::normalize(normalMatrix * localTri.m_normals[0]);
-			tri.m_normals[1] = glm::normalize(normalMatrix * localTri.m_normals[1]);
-			tri.m_normals[2] = glm::normalize(normalMatrix * localTri.m_normals[2]);
-			tri.m_tangent[0] = glm::normalize(normalMatrix * localTri.m_tangent[0]);
-			tri.m_tangent[1] = glm::normalize(normalMatrix * localTri.m_tangent[1]);
-			tri.m_tangent[2] = glm::normalize(normalMatrix * localTri.m_tangent[2]);
-			tri.m_bitangent[0] = glm::normalize(normalMatrix * localTri.m_bitangent[0]);
-			tri.m_bitangent[1] = glm::normalize(normalMatrix * localTri.m_bitangent[1]);
-			tri.m_bitangent[2] = glm::normalize(normalMatrix * localTri.m_bitangent[2]);
-			tri.m_materialIndex = static_cast<uint8_t>((std::max)(0, (std::min)(materialBaseOffset + (int32_t)localTri.m_materialIndex, 255)));
-			tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) / 3.0f;
-			inOutWorldTriangles.Add(tri);
-		}
+		Raytracing::PathTracer::SceneInstance instance{};
+		instance.m_model = pModel;
+		instance.m_worldBounds = data.m_worldBounds;
+		instance.m_worldMatrix = data.m_worldMatrix;
+		instance.m_inverseWorldMatrix = data.m_inverseWorldMatrix;
+		instance.m_materialBaseOffset = materialBaseOffset;
+		inOutInstances.Add(std::move(instance));
 
 		return true;
 	};
@@ -259,26 +184,26 @@ bool PathTracerECS::InitializePathTracer(Raytracing::PathTracer& outPathTracer, 
 
 	if (componentHandle != (size_t)-1 && componentHandle < m_components.Num())
 	{
-		TVector<Math::Triangle> worldTriangles;
+		TVector<Raytracing::PathTracer::SceneInstance> instances;
 		TVector<MaterialPtr> materials;
 		int32_t materialOffset = 0;
-		if (!appendFromData(m_components[componentHandle], worldTriangles, materials, materialOffset))
+		if (!appendFromData(m_components[componentHandle], instances, materials, materialOffset))
 		{
 			return false;
 		}
-		return outPathTracer.InitializeScene(worldTriangles, materials, lights);
+		return outPathTracer.InitializeScene(instances, materials, lights);
 	}
 
-	TVector<Math::Triangle> worldTriangles;
+	TVector<Raytracing::PathTracer::SceneInstance> instances;
 	TVector<MaterialPtr> materials;
 	int32_t materialOffset = 0;
 	bool bHasAny = false;
 	for (auto& data : m_components)
 	{
-		bHasAny |= appendFromData(data, worldTriangles, materials, materialOffset);
+		bHasAny |= appendFromData(data, instances, materials, materialOffset);
 	}
 
-	return bHasAny && outPathTracer.InitializeScene(worldTriangles, materials, lights);
+	return bHasAny && outPathTracer.InitializeScene(instances, materials, lights);
 }
 
 bool PathTracerECS::RenderScene(const Raytracing::PathTracer::Params& params, size_t componentHandle)
@@ -364,7 +289,7 @@ bool PathTracerECS::IntersectProxyRay(size_t componentHandle, const Math::Ray& w
 	}
 
 	const auto& data = m_components[componentHandle];
-	if (!data.m_bIsActive || !data.m_options.m_bEnabled || !data.m_bvh || !data.m_worldBounds.IsValid())
+	if (!data.m_bIsActive || !data.m_options.m_bEnabled || !data.m_worldBounds.IsValid())
 	{
 		return false;
 	}
@@ -379,7 +304,15 @@ bool PathTracerECS::IntersectProxyRay(size_t componentHandle, const Math::Ray& w
 
 	Math::Ray localRay(localOrigin, localDirection);
 	Math::RaycastHit localHit{};
-	if (!data.m_bvh->IntersectBVH(localRay, localHit, 0, maxRayLength))
+	auto pOwnerGameObject = data.m_owner.DynamicCast<GameObject>();
+	auto pMeshRenderer = pOwnerGameObject ? pOwnerGameObject->GetComponent<MeshRendererComponent>() : TObjectPtr<const MeshRendererComponent>();
+	const ModelPtr pModel = pMeshRenderer ? pMeshRenderer->GetModel() : ModelPtr();
+	if (!pModel || !pModel->HasBLAS())
+	{
+		return false;
+	}
+
+	if (!pModel->GetBLAS()->IntersectBVH(localRay, localHit, 0, maxRayLength))
 	{
 		return false;
 	}

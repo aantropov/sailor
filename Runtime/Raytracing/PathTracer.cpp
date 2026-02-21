@@ -547,7 +547,10 @@ bool PathTracer::InitializeScene(const TVector<Math::Triangle>& triangles,
 	const TVector<LightProxy>& lightProxies)
 {
 	m_triangles = triangles;
+	m_instances.Clear();
+	m_instanceOctree.Clear();
 	m_lightProxies = lightProxies;
+	m_sceneBvh = nullptr;
 
 	const size_t materialsSignature = ComputeMaterialsSignature(materials);
 	const bool bNeedRebuildMaterials = m_materials.Num() == 0 ||
@@ -573,23 +576,95 @@ bool PathTracer::InitializeScene(const TVector<Math::Triangle>& triangles,
 		m_lightProxies.Add(MakeDirectionalLightProxy(sun));
 	}
 
+	if (m_materials.Num() == 0)
+	{
+		m_materials.Add(Material{});
+	}
+
 	return m_triangles.Num() > 0;
+}
+
+bool PathTracer::InitializeScene(const TVector<SceneInstance>& instances,
+	const TVector<MaterialPtr>& materials,
+	const TVector<LightProxy>& lightProxies)
+{
+	m_instances = instances;
+	m_triangles.Clear();
+	m_sceneBvh = nullptr;
+	m_lightProxies = lightProxies;
+	m_instanceOctree.Clear();
+
+	for (size_t i = 0; i < m_instances.Num(); i++)
+	{
+		const auto& instance = m_instances[i];
+		if (!instance.m_worldBounds.IsValid())
+		{
+			continue;
+		}
+
+		m_instanceOctree.Update(instance.m_worldBounds.GetCenter(), instance.m_worldBounds.GetExtents(), i);
+	}
+
+	const size_t materialsSignature = ComputeMaterialsSignature(materials);
+	const bool bNeedRebuildMaterials = m_materials.Num() == 0 ||
+		m_cachedMaterialsCount != (uint32_t)materials.Num() ||
+		m_cachedMaterialsSignature != materialsSignature ||
+		!m_bMaterialsFullyResolved;
+
+	if (bNeedRebuildMaterials)
+	{
+		m_materials.Clear();
+		m_textures.Clear();
+		m_textureMapping.Clear();
+		m_bMaterialsFullyResolved = BuildRaytracingMaterialsFromRuntimeMaterials(materials, m_materials, m_textures, m_textureMapping);
+		m_cachedMaterialsSignature = materialsSignature;
+		m_cachedMaterialsCount = (uint32_t)materials.Num();
+	}
+
+	if (m_lightProxies.Num() == 0)
+	{
+		DirectionalLight sun{};
+		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
+		sun.m_intensity = vec3(1.0f);
+		m_lightProxies.Add(MakeDirectionalLightProxy(sun));
+	}
+
+	if (m_materials.Num() == 0)
+	{
+		m_materials.Add(Material{});
+	}
+
+	return m_instances.Num() > 0;
 }
 
 bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 {
-	if (m_triangles.Num() == 0)
+	const bool bUseInstances = m_instances.Num() > 0;
+	if (!bUseInstances && m_triangles.Num() == 0)
 	{
 		SAILOR_LOG_ERROR("PathTracer scene has no triangles.");
 		return false;
 	}
 
 	Math::AABB bounds{};
-	for (const auto& tri : m_triangles)
+	if (bUseInstances)
 	{
-		bounds.Extend(tri.m_vertices[0]);
-		bounds.Extend(tri.m_vertices[1]);
-		bounds.Extend(tri.m_vertices[2]);
+		for (const auto& instance : m_instances)
+		{
+			if (instance.m_worldBounds.IsValid())
+			{
+				bounds.Extend(instance.m_worldBounds);
+			}
+		}
+	}
+	else
+	{
+		for (const auto& tri : m_triangles)
+		{
+			bounds.Extend(tri.m_vertices[0]);
+			bounds.Extend(tri.m_vertices[1]);
+			bounds.Extend(tri.m_vertices[2]);
+		}
 	}
 
 	const vec3 sceneCenter = 0.5f * (bounds.m_min + bounds.m_max);
@@ -644,8 +719,11 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 		m_lightProxies.Add(MakeDirectionalLightProxy(sun));
 	}
 
-	BVH bvh((uint32_t)m_triangles.Num());
-	bvh.BuildBVH(m_triangles);
+	if (!bUseInstances)
+	{
+		m_sceneBvh = TSharedPtr<BVH>::Make((uint32_t)m_triangles.Num());
+		m_sceneBvh->BuildBVH(m_triangles);
+	}
 
 	CombinedSampler2D outputTex;
 	outputTex.Initialize<vec3>(width, height);
@@ -682,7 +760,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			for (uint32_t x = 0; x < width; x += DefaultGroupSize)
 			{
 				auto task = Tasks::CreateTask("Calculate raytracing",
-					[=, &finishedTasks, &outputTex, &bvh, this]() mutable
+					[=, &finishedTasks, &outputTex, this]() mutable
 					{
 						Ray ray;
 						ray.SetOrigin(cameraPos);
@@ -697,7 +775,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f, 1.0f));
 									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
 									ray.SetDirection(glm::normalize(pixelDir));
-									accumulator += Raytrace(ray, bvh, params.m_maxBounces, (uint32_t)(-1), params, 1.0f, 1.0f);
+									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), params, 1.0f, 1.0f);
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
@@ -796,6 +874,9 @@ void PathTracer::Run(const PathTracer::Params& params)
 	m_directionalLights.Clear();
 	m_lightProxies.Clear();
 	m_triangles.Clear();
+	m_instances.Clear();
+	m_instanceOctree.Clear();
+	m_sceneBvh = nullptr;
 	m_materials.Clear();
 	m_textures.Clear();
 	m_textureMapping.Clear();
@@ -902,6 +983,10 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 
 	BuildRaytracingMaterialsFromRuntimeMaterials(runtimeMaterials, m_materials, m_textures, m_textureMapping);
+	if (m_materials.Num() == 0)
+	{
+		m_materials.Add(Material{});
+	}
 
 	if (m_triangles.Num() == 0)
 	{
@@ -959,8 +1044,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 		m_lightProxies.Add(MakeDirectionalLightProxy(directional));
 	}
 
-	BVH bvh((uint32_t)m_triangles.Num());
-	bvh.BuildBVH(m_triangles);
+	m_sceneBvh = TSharedPtr<BVH>::Make((uint32_t)m_triangles.Num());
+	m_sceneBvh->BuildBVH(m_triangles);
 
 	CombinedSampler2D outputTex;
 	outputTex.Initialize<vec3>(width, height);
@@ -1003,7 +1088,6 @@ void PathTracer::Run(const PathTracer::Params& params)
 					[=,
 					&finishedTasks,
 					&outputTex,
-					&bvh,
 					this]() mutable
 					{
 						Ray ray;
@@ -1023,7 +1107,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 									ray.SetDirection(glm::normalize(pixelDir));
 
-									accumulator += Raytrace(ray, bvh, params.m_maxBounces, (uint32_t)(-1), params, 1.0f, 1.0f);
+									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), params, 1.0f, 1.0f);
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
@@ -1125,23 +1209,182 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 }
 
-vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const PathTracer::Params& params, float currentIor, uint32_t ignoreTriangle) const
+bool PathTracer::IntersectScene(const Math::Ray& worldRay, SceneHit& outHit, float maxRayLength, uint32_t ignoreInstance, uint32_t ignoreTriangle) const
+{
+	outHit = SceneHit{};
+
+	if (m_instances.Num() > 0)
+	{
+		TVector<size_t> candidates;
+		m_instanceOctree.TraceRay(worldRay, candidates, maxRayLength);
+
+		SceneHit bestHit{};
+		float bestDistance = maxRayLength;
+
+		for (const size_t idx : candidates)
+		{
+			if (idx >= m_instances.Num())
+			{
+				continue;
+			}
+
+			const auto& instance = m_instances[idx];
+			if (!instance.m_model || !instance.m_model->HasBLAS() || !instance.m_worldBounds.IsValid())
+			{
+				continue;
+			}
+
+			if (Math::IntersectRayAABB(worldRay, instance.m_worldBounds.m_min, instance.m_worldBounds.m_max, bestDistance) == FLT_MAX)
+			{
+				continue;
+			}
+
+			const vec3 localOrigin = vec3(instance.m_inverseWorldMatrix * vec4(worldRay.GetOrigin(), 1.0f));
+			const vec3 localDirRaw = vec3(instance.m_inverseWorldMatrix * vec4(worldRay.GetDirection(), 0.0f));
+			if (glm::length(localDirRaw) <= 1e-8f)
+			{
+				continue;
+			}
+
+			Math::Ray localRay(localOrigin, glm::normalize(localDirRaw));
+			Math::RaycastHit localHit{};
+			if (!instance.m_model->GetBLAS()->IntersectBVH(localRay, localHit, 0, FLT_MAX))
+			{
+				continue;
+			}
+
+			if (idx == ignoreInstance && localHit.m_triangleIndex == ignoreTriangle)
+			{
+				continue;
+			}
+
+			const vec3 worldPoint = vec3(instance.m_worldMatrix * vec4(localHit.m_point, 1.0f));
+			const float worldDistance = glm::length(worldPoint - worldRay.GetOrigin());
+			if (worldDistance >= bestDistance || worldDistance > maxRayLength)
+			{
+				continue;
+			}
+
+			const auto& localTri = instance.m_model->GetBLASTriangles()[localHit.m_triangleIndex];
+			const glm::mat3 normalMatrix = glm::mat3(glm::transpose(instance.m_inverseWorldMatrix));
+			const vec3 localNormal = localHit.m_barycentricCoordinate.x * localTri.m_normals[0] +
+				localHit.m_barycentricCoordinate.y * localTri.m_normals[1] +
+				localHit.m_barycentricCoordinate.z * localTri.m_normals[2];
+
+			bestHit.m_hit = localHit;
+			bestHit.m_hit.m_point = worldPoint;
+			bestHit.m_hit.m_normal = glm::normalize(normalMatrix * localNormal);
+			bestHit.m_hit.m_rayLenght = worldDistance;
+			bestHit.m_instanceIndex = (uint32_t)idx;
+			bestHit.m_triangleIndex = localHit.m_triangleIndex;
+			bestHit.m_materialIndex = ResolveMaterialIndex(bestHit);
+			bestDistance = worldDistance;
+		}
+
+		if (bestHit.m_triangleIndex != (uint32_t)-1)
+		{
+			outHit = bestHit;
+			return true;
+		}
+
+		return false;
+	}
+
+	if (!m_sceneBvh.IsValid())
+	{
+		return false;
+	}
+
+	Math::RaycastHit hit{};
+	if (!m_sceneBvh->IntersectBVH(worldRay, hit, 0, maxRayLength, ignoreTriangle))
+	{
+		return false;
+	}
+
+	outHit.m_hit = hit;
+	outHit.m_triangleIndex = hit.m_triangleIndex;
+	outHit.m_materialIndex = ResolveMaterialIndex(outHit);
+	return true;
+}
+
+const Math::Triangle& PathTracer::GetTriangle(const SceneHit& hit) const
+{
+	if (hit.m_instanceIndex != (uint32_t)-1)
+	{
+		const auto& instance = m_instances[hit.m_instanceIndex];
+		return instance.m_model->GetBLASTriangles()[hit.m_triangleIndex];
+	}
+
+	return m_triangles[hit.m_triangleIndex];
+}
+
+void PathTracer::GetShadingBasis(const SceneHit& hit, vec3& outNormal, vec3& outTangent, vec3& outBitangent) const
+{
+	const auto& tri = GetTriangle(hit);
+
+	const vec3 localNormal = hit.m_hit.m_barycentricCoordinate.x * tri.m_normals[0] +
+		hit.m_hit.m_barycentricCoordinate.y * tri.m_normals[1] +
+		hit.m_hit.m_barycentricCoordinate.z * tri.m_normals[2];
+	const vec3 localTangent = hit.m_hit.m_barycentricCoordinate.x * tri.m_tangent[0] +
+		hit.m_hit.m_barycentricCoordinate.y * tri.m_tangent[1] +
+		hit.m_hit.m_barycentricCoordinate.z * tri.m_tangent[2];
+	const vec3 localBitangent = hit.m_hit.m_barycentricCoordinate.x * tri.m_bitangent[0] +
+		hit.m_hit.m_barycentricCoordinate.y * tri.m_bitangent[1] +
+		hit.m_hit.m_barycentricCoordinate.z * tri.m_bitangent[2];
+
+	if (hit.m_instanceIndex != (uint32_t)-1)
+	{
+		const auto& instance = m_instances[hit.m_instanceIndex];
+		const glm::mat3 normalMatrix = glm::mat3(glm::transpose(instance.m_inverseWorldMatrix));
+		outNormal = glm::normalize(normalMatrix * localNormal);
+		outTangent = glm::normalize(normalMatrix * localTangent);
+		outBitangent = glm::normalize(normalMatrix * localBitangent);
+		return;
+	}
+
+	outNormal = localNormal;
+	outTangent = localTangent;
+	outBitangent = localBitangent;
+}
+
+uint32_t PathTracer::ResolveMaterialIndex(const SceneHit& hit) const
+{
+	if (m_materials.Num() == 0)
+	{
+		return 0;
+	}
+
+	if (hit.m_instanceIndex != (uint32_t)-1)
+	{
+		const auto& instance = m_instances[hit.m_instanceIndex];
+		const auto& tri = instance.m_model->GetBLASTriangles()[hit.m_triangleIndex];
+		const int32_t idx = instance.m_materialBaseOffset + (int32_t)tri.m_materialIndex;
+		return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_materials.Num() - 1));
+	}
+
+	return (uint32_t)(std::min)((size_t)m_triangles[hit.m_triangleIndex].m_materialIndex, m_materials.Num() - 1);
+}
+
+vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor, uint32_t ignoreInstance, uint32_t ignoreTriangle) const
 {
 	vec3 att = vec3(1, 1, 1);
 	vec3 prevHitPoint = startPoint;
 	for (uint32_t j = 0; j < params.m_maxBounces; j++)
 	{
-		RaycastHit hitLight{};
+		SceneHit hitLight{};
 		Ray rayToLight(startPoint, toLight);
 
-		if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), ignoreTriangle))
+		if (!IntersectScene(rayToLight, hitLight, std::numeric_limits<float>().max(), ignoreInstance, ignoreTriangle))
 		{
-			return att;
+			return vec3(0, 0, 0);
 		}
 
-		const auto& material = m_materials[m_triangles[hitLight.m_triangleIndex].m_materialIndex];
+		const uint32_t materialIndex = ResolveMaterialIndex(hitLight);
+		const auto& material = m_materials[materialIndex];
+		vec3 shadingNormal{}, shadingTangent{}, shadingBitangent{};
+		GetShadingBasis(hitLight, shadingNormal, shadingTangent, shadingBitangent);
 
-		const bool bHitOpposite = dot(toLight, hitLight.m_normal) < 0.0f;
+		const bool bHitOpposite = dot(toLight, shadingNormal) < 0.0f;
 		const bool bHitThickVolume = material.m_transmissionFactor > 0.0f && material.m_thicknessFactor > 0.0f;
 
 		if (!bHitThickVolume)
@@ -1149,10 +1392,10 @@ vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const P
 			return vec3(0, 0, 0);
 		}
 
-		const float distance = length(hitLight.m_point - prevHitPoint);
-		prevHitPoint = hitLight.m_point;
+		const float distance = length(hitLight.m_hit.m_point - prevHitPoint);
+		prevHitPoint = hitLight.m_hit.m_point;
 
-		vec3 hitWorldNormal = bHitOpposite ? hitLight.m_normal : -hitLight.m_normal;
+		vec3 hitWorldNormal = bHitOpposite ? shadingNormal : -shadingNormal;
 
 		toLight = LightingModel::CalculateRefraction(toLight, hitWorldNormal, currentIor, bHitOpposite ? material.m_indexOfRefraction : 1.0f);
 		currentIor = bHitOpposite ? material.m_indexOfRefraction : 1.0f;
@@ -1163,14 +1406,15 @@ vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const BVH& bvh, const P
 			att *= glm::exp(-c * distance);
 		}
 
-		startPoint = hitLight.m_point;
+		startPoint = hitLight.m_hit.m_point;
+		ignoreInstance = hitLight.m_instanceIndex;
 		ignoreTriangle = hitLight.m_triangleIndex;
 	}
 
 	return vec3(0, 0, 0);
 }
 
-vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceLimit, uint32_t ignoreTriangle, const PathTracer::Params& params, float inAcc, float environmentIor) const
+vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t ignoreInstance, uint32_t ignoreTriangle, const PathTracer::Params& params, float inAcc, float environmentIor) const
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -1178,19 +1422,16 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 	uint32_t randSeedY = glm::linearRand(0, 680);
 
 	vec3 res = vec3(0);
-	RaycastHit hit;
-
-	if (bvh.IntersectBVH(ray, hit, 0, std::numeric_limits<float>().max(), ignoreTriangle))
+	SceneHit hit{};
+	if (IntersectScene(ray, hit, std::numeric_limits<float>().max(), ignoreInstance, ignoreTriangle))
 	{
 		SAILOR_PROFILE_SCOPE("Sampling");
 
 		const bool bIsFirstIntersection = bounceLimit == params.m_maxBounces;
 
-		const Math::Triangle& tri = m_triangles[hit.m_triangleIndex];
-
-		vec3 faceNormal = vec3(hit.m_barycentricCoordinate.x * tri.m_normals[0] + hit.m_barycentricCoordinate.y * tri.m_normals[1] + hit.m_barycentricCoordinate.z * tri.m_normals[2]);
-		const vec3 tangent = vec3(hit.m_barycentricCoordinate.x * tri.m_tangent[0] + hit.m_barycentricCoordinate.y * tri.m_tangent[1] + hit.m_barycentricCoordinate.z * tri.m_tangent[2]);
-		const vec3 bitangent = vec3(hit.m_barycentricCoordinate.x * tri.m_bitangent[0] + hit.m_barycentricCoordinate.y * tri.m_bitangent[1] + hit.m_barycentricCoordinate.z * tri.m_bitangent[2]);
+		const Math::Triangle& tri = GetTriangle(hit);
+		vec3 faceNormal{}, tangent{}, bitangent{};
+		GetShadingBasis(hit, faceNormal, tangent, bitangent);
 
 		const bool bIsOppositeRay = dot(faceNormal, ray.GetDirection()) < 0.0f;
 		if (!bIsOppositeRay)
@@ -1200,14 +1441,15 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 
-		const vec2 uv = hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
-			hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
-			hit.m_barycentricCoordinate.z * tri.m_uvs[2];
+		const vec2 uv = hit.m_hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
+			hit.m_hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
+			hit.m_hit.m_barycentricCoordinate.z * tri.m_uvs[2];
 
-		const auto material = m_materials[tri.m_materialIndex];
+		const uint32_t materialIndex = ResolveMaterialIndex(hit);
+		const auto material = m_materials[materialIndex];
 		const vec2 uvTransformed = (material.m_uvTransform * vec3(uv, 1));
 
-		const LightingModel::SampledData sample = GetMaterialData(tri.m_materialIndex, uvTransformed);
+		const LightingModel::SampledData sample = GetMaterialData(materialIndex, uvTransformed);
 		const vec3 viewDirection = -normalize(ray.GetDirection());
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
 
@@ -1230,32 +1472,32 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 				return vec3(0, 0, 0);
 			}
 
-			Ray rayToLight(hit.m_point, newDirection - offset);
+			Ray rayToLight(hit.m_hit.m_point, newDirection - offset);
 
 			//const float angle = abs(glm::dot(newDirection, worldNormal));
 			//vec3 term = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, newDirection, sample, environmentIor) * angle;
 
-			return Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params, inAcc, 1.0f);
+			return Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, params, inAcc, 1.0f);
 		}
 
 		// Direct lighting
 		{
 			SAILOR_PROFILE_SCOPE("Direct lighting");
 
-			RaycastHit hitLight{};
 			for (uint32_t i = 0; i < m_lightProxies.Num(); i++)
 			{
 				vec3 toLight{};
 				vec3 radiance{};
 				float maxDistanceToLight = std::numeric_limits<float>::max();
 
-				if (!EvaluateDirectLight(m_lightProxies[i], hit.m_point, toLight, radiance, maxDistanceToLight))
+				if (!EvaluateDirectLight(m_lightProxies[i], hit.m_hit.m_point, toLight, radiance, maxDistanceToLight))
 				{
 					continue;
 				}
 
-				Ray rayToLight(hit.m_point + offset, toLight);
-				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, maxDistanceToLight, hit.m_triangleIndex))
+				Ray rayToLight(hit.m_hit.m_point + offset, toLight);
+				SceneHit occluder{};
+				if (!IntersectScene(rayToLight, occluder, maxDistanceToLight, hit.m_instanceIndex, hit.m_triangleIndex))
 				{
 					const float angle = glm::max(0.0f, glm::dot(toLight, worldNormal));
 					res += LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * radiance * angle;
@@ -1284,7 +1526,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
 					vec3 toLight = bThickVolume ? glm::sphericalRand(1.0f) : (2.0f * dot(viewDirection, H) * H - viewDirection);
 
-					vec3 att = TraceSky(hit.m_point + offset, toLight, bvh, params, environmentIor, hit.m_triangleIndex);
+					vec3 att = TraceSky(hit.m_hit.m_point + offset, toLight, params, environmentIor, hit.m_instanceIndex, hit.m_triangleIndex);
 					if (att != vec3(0, 0, 0))
 					{
 						const float angle = glm::max(0.0f, glm::dot(toLight, worldNormal));
@@ -1336,13 +1578,13 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					newEnvironmentIor = 1.0f;
 				}
 
-				RaycastHit hitLight{};
-				Ray rayToLight(hit.m_point + (bTransmissionRay ? -offset : offset), direction);
+				Ray rayToLight(hit.m_hit.m_point + (bTransmissionRay ? -offset : offset), direction);
 
 				//vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), bvh, params, environmentIor, hit.m_triangleIndex);
 				//const bool bSkyTraced = length(att) > 0.0f;
 
-				if (!bvh.IntersectBVH(rayToLight, hitLight, 0, std::numeric_limits<float>().max(), hit.m_triangleIndex))
+				SceneHit hitLight{};
+				if (!IntersectScene(rayToLight, hitLight, std::numeric_limits<float>().max(), hit.m_instanceIndex, hit.m_triangleIndex))
 				{
 					vec3 value = glm::clamp(term * params.m_ambient, vec3(0, 0, 0), vec3(10, 10, 10));
 
@@ -1359,7 +1601,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					vec3 lightAttenuation = vec3(1, 1, 1);
 					if (bIsOppositeRay && bTransmissionRay && bThickVolume)
 					{
-						const float distance = glm::length(hitLight.m_point - hit.m_point);
+						const float distance = glm::length(hitLight.m_hit.m_point - hit.m_hit.m_point);
 						const vec3 c = -log(material.m_attenuationColor) / material.m_attenuationDistance;
 
 						lightAttenuation = glm::exp(-c * distance);
@@ -1369,7 +1611,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					const float newAcc = inAcc * length(term * lightAttenuation) * sample.m_baseColor.a;
 					if (newAcc > 0.01f)
 					{
-						raytraced = Raytrace(rayToLight, bvh, bounceLimit - 1, hit.m_triangleIndex, params, newAcc, newEnvironmentIor);
+						raytraced = Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, params, newAcc, newEnvironmentIor);
 					}
 
 					vec3 value = glm::clamp(term * lightAttenuation * raytraced, vec3(0, 0, 0), vec3(10, 10, 10));
@@ -1378,10 +1620,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 					indirect += value;
 
 					// Ambient 2, Sky is reachable
-					const auto& hitMaterial = m_materials[m_triangles[hitLight.m_triangleIndex].m_materialIndex];
+					const auto& hitMaterial = m_materials[ResolveMaterialIndex(hitLight)];
 					if (!bThickVolume && hitMaterial.m_transmissionFactor > 0.0f && hitMaterial.m_thicknessFactor > 0.0f)
 					{
-						vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), bvh, params, environmentIor, hitLight.m_triangleIndex);
+						vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), params, environmentIor, hitLight.m_instanceIndex, hitLight.m_triangleIndex);
 
 						if (att != vec3(0, 0, 0))
 						{
@@ -1418,7 +1660,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 		{
 			Math::Ray newRay{};
 			newRay.SetDirection(ray.GetDirection());
-			newRay.SetOrigin(hit.m_point + ray.GetDirection() * 0.0001f);
+			newRay.SetOrigin(hit.m_hit.m_point + ray.GetDirection() * 0.0001f);
 
 			PathTracer::Params p = params;
 			p.m_maxBounces = std::max(0u, params.m_maxBounces - 1);
@@ -1426,7 +1668,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, const BVH& bvh, uint32_t bounceL
 			p.m_numAmbientSamples = std::max(1u, params.m_numAmbientSamples - numAmbientSamples);
 
 			res = res * sample.m_baseColor.a +
-				Raytrace(newRay, bvh, bounceLimit - 1, hit.m_triangleIndex, p, inAcc * (1.0f - sample.m_baseColor.a), environmentIor) * (1.0f - sample.m_baseColor.a);
+				Raytrace(newRay, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, p, inAcc * (1.0f - sample.m_baseColor.a), environmentIor) * (1.0f - sample.m_baseColor.a);
 		}
 	}
 	else
@@ -1648,5 +1890,6 @@ vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
 
 	return res;
 }
+
 
 

@@ -36,6 +36,9 @@ void Model::Deserialize(const YAML::Node& inData)
 
 void Model::Flush()
 {
+	m_blas.Clear();
+	m_blasTriangles.Clear();
+
 	if (m_meshes.Num() == 0)
 	{
 		m_bIsReady = false;
@@ -52,6 +55,82 @@ void Model::Flush()
 	}
 
 	m_bIsReady = true;
+}
+
+bool Model::BuildBLAS()
+{
+	m_blas.Clear();
+	m_blasTriangles.Clear();
+
+	if (m_cpuMeshes.Num() == 0)
+	{
+		return false;
+	}
+
+	size_t expectedNumTriangles = 0;
+	for (const auto& mesh : m_cpuMeshes)
+	{
+		expectedNumTriangles += mesh.m_indices.Num() / 3;
+	}
+
+	if (expectedNumTriangles == 0)
+	{
+		return false;
+	}
+
+	m_blasTriangles.Reserve(expectedNumTriangles);
+
+	for (const auto& mesh : m_cpuMeshes)
+	{
+		for (size_t i = 0; i + 2 < mesh.m_indices.Num(); i += 3)
+		{
+			const uint32_t i0 = mesh.m_indices[i + 0];
+			const uint32_t i1 = mesh.m_indices[i + 1];
+			const uint32_t i2 = mesh.m_indices[i + 2];
+
+			const auto& v0 = mesh.m_vertices[i0];
+			const auto& v1 = mesh.m_vertices[i1];
+			const auto& v2 = mesh.m_vertices[i2];
+
+			Math::Triangle tri{};
+			tri.m_vertices[0] = v0.m_position;
+			tri.m_vertices[1] = v1.m_position;
+			tri.m_vertices[2] = v2.m_position;
+
+			tri.m_normals[0] = glm::normalize(v0.m_normal);
+			tri.m_normals[1] = glm::normalize(v1.m_normal);
+			tri.m_normals[2] = glm::normalize(v2.m_normal);
+
+			tri.m_tangent[0] = glm::normalize(v0.m_tangent);
+			tri.m_tangent[1] = glm::normalize(v1.m_tangent);
+			tri.m_tangent[2] = glm::normalize(v2.m_tangent);
+
+			tri.m_bitangent[0] = glm::normalize(v0.m_bitangent);
+			tri.m_bitangent[1] = glm::normalize(v1.m_bitangent);
+			tri.m_bitangent[2] = glm::normalize(v2.m_bitangent);
+
+			tri.m_uvs[0] = v0.m_texcoord;
+			tri.m_uvs[1] = v1.m_texcoord;
+			tri.m_uvs[2] = v2.m_texcoord;
+			tri.m_uvs2[0] = tri.m_uvs[0];
+			tri.m_uvs2[1] = tri.m_uvs[1];
+			tri.m_uvs2[2] = tri.m_uvs[2];
+
+			tri.m_materialIndex = static_cast<uint8_t>((std::max)(0, (std::min)(mesh.m_materialIndex, 255)));
+			tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) / 3.0f;
+
+			m_blasTriangles.Add(tri);
+		}
+	}
+
+	if (m_blasTriangles.Num() == 0)
+	{
+		return false;
+	}
+
+	m_blas = TSharedPtr<Raytracing::BVH>::Make((uint32_t)m_blasTriangles.Num());
+	m_blas->BuildBVH(m_blasTriangles);
+	return true;
 }
 
 bool Model::IsReady() const
@@ -490,7 +569,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 				pData->m_bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
 				pData->m_bIsImported = ImportModel(pAssetInfo, pData->m_parsedMeshes, boundsAabb, boundsSphere, pData->m_inverseBind);
 				return pData;
-			})->Then<ModelPtr>([pModel](TSharedPtr<Data> pData) mutable
+			})->Then<ModelPtr>([pModel, pAssetInfo](TSharedPtr<Data> pData) mutable
 				{
 					if (pData->m_bIsImported)
 					{
@@ -526,6 +605,11 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 						pModel->m_inverseBind = std::move(pData->m_inverseBind);
 						pModel->Flush();
+
+						if (pAssetInfo && pAssetInfo->ShouldGenerateBLAS())
+						{
+							pModel->BuildBLAS();
+						}
 					}
 					return pModel;
 				}, "Update RHI Meshes", EThreadType::RHI)->ToTaskWithResult();

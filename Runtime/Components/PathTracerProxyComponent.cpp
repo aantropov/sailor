@@ -42,6 +42,28 @@ ModelPtr PathTracerProxyComponent::GetModel() const
 	return ModelPtr();
 }
 
+const TSharedPtr<Raytracing::BVH>& PathTracerProxyComponent::GetBVH() const
+{
+	static const TSharedPtr<Raytracing::BVH> s_empty{};
+	if (auto pModel = GetModel())
+	{
+		return pModel->GetBLAS();
+	}
+
+	return s_empty;
+}
+
+const TVector<Math::Triangle>& PathTracerProxyComponent::GetTriangles() const
+{
+	static const TVector<Math::Triangle> s_empty{};
+	if (auto pModel = GetModel())
+	{
+		return pModel->GetBLASTriangles();
+	}
+
+	return s_empty;
+}
+
 void PathTracerProxyComponent::SetModel(const ModelPtr& pModel)
 {
 	auto& data = GetData();

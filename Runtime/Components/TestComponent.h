@@ -10,6 +10,7 @@
 #include "FrameGraph/SkyNode.h"
 #include "Math/Math.h"
 #include "Components/MeshRendererComponent.h"
+#include <string>
 
 namespace Sailor
 {
@@ -53,6 +54,12 @@ namespace Sailor
 		float m_sunAngleRad = glm::radians(60.0f);
 
 		size_t m_skyHash = 0;
+
+		uint32_t m_pathTraceHeight = 720;
+		uint32_t m_pathTraceSamplesPerPixel = 4;
+		uint32_t m_pathTraceMaxBounces = 1;
+		std::string m_pathTraceOutputPath = "pathtrace.png";
+		std::string m_pathTraceStatus;
 	};
 }
 

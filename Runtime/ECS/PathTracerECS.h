@@ -7,6 +7,7 @@
 #include "Raytracing/PathTracer.h"
 #include "Math/Bounds.h"
 #include "Containers/Octree.h"
+#include "AssetRegistry/FileId.h"
 
 namespace Sailor
 {
@@ -41,8 +42,6 @@ namespace Sailor
 		SAILOR_API const TVector<Raytracing::LightProxy>& GetLightProxies() const { return m_lightProxies; }
 		SAILOR_API void SetLightProxies(const TVector<Raytracing::LightProxy>& lightProxies) { m_lightProxies = lightProxies; }
 
-		SAILOR_API const TSharedPtr<Raytracing::BVH>& GetBVH() const { return m_bvh; }
-		SAILOR_API const TVector<Math::Triangle>& GetTriangles() const { return m_triangles; }
 		SAILOR_API const Math::AABB& GetWorldBounds() const { return m_worldBounds; }
 		SAILOR_API const glm::mat4& GetWorldMatrix() const { return m_worldMatrix; }
 		SAILOR_API const glm::mat4& GetInverseWorldMatrix() const { return m_inverseWorldMatrix; }
@@ -54,11 +53,10 @@ namespace Sailor
 			m_textureBindings.Clear();
 			m_lightProxies.Clear();
 			m_options = Options();
-			m_bvh.Clear();
-			m_triangles.Clear();
 			m_worldBounds = Math::AABB();
 			m_worldMatrix = glm::mat4(1.0f);
 			m_inverseWorldMatrix = glm::mat4(1.0f);
+			m_modelFileId = FileId();
 			m_bNeedsRebuild = true;
 			m_frameLastChange = 0;
 			m_bIsDirty = false;
@@ -71,11 +69,10 @@ namespace Sailor
 		TVector<Raytracing::LightProxy> m_lightProxies{};
 		Options m_options{};
 
-		TSharedPtr<Raytracing::BVH> m_bvh{};
-		TVector<Math::Triangle> m_triangles{}; // local-space BLAS triangles
 		Math::AABB m_worldBounds{};
 		glm::mat4 m_worldMatrix{ 1.0f };
 		glm::mat4 m_inverseWorldMatrix{ 1.0f };
+		FileId m_modelFileId{};
 		bool m_bNeedsRebuild = true;
 
 		friend class PathTracerECS;
