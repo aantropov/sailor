@@ -560,6 +560,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			TVector<glm::mat4> m_inverseBind;
 			bool m_bIsImported = false;
 			bool m_bShouldKeepCpuBuffers = false;
+			bool m_bShouldGenerateBLAS = false;
 		};
 
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
@@ -567,16 +568,17 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
 				pData->m_bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
+				pData->m_bShouldGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
 				pData->m_bIsImported = ImportModel(pAssetInfo, pData->m_parsedMeshes, boundsAabb, boundsSphere, pData->m_inverseBind);
 				return pData;
-			})->Then<ModelPtr>([pModel, pAssetInfo](TSharedPtr<Data> pData) mutable
+			})->Then<ModelPtr>([pModel](TSharedPtr<Data> pData) mutable
 				{
 					if (pData->m_bIsImported)
 					{
 						pModel->m_meshes.Clear();
 						pModel->m_cpuMeshes.Clear();
 						pModel->m_meshes.Reserve(pData->m_parsedMeshes.Num());
-						if (pData->m_bShouldKeepCpuBuffers)
+						if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
 						{
 							pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
 						}
@@ -592,7 +594,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 
 							pModel->m_meshes.Emplace(pMesh);
 
-							if (pData->m_bShouldKeepCpuBuffers)
+							if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
 							{
 								Model::MeshCpuData cpuMesh{};
 								cpuMesh.m_vertices = std::move(mesh.outVertices);
@@ -606,9 +608,14 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 						pModel->m_inverseBind = std::move(pData->m_inverseBind);
 						pModel->Flush();
 
-						if (pAssetInfo && pAssetInfo->ShouldGenerateBLAS())
+						if (pData->m_bShouldGenerateBLAS)
 						{
 							pModel->BuildBLAS();
+
+							if (!pData->m_bShouldKeepCpuBuffers)
+							{
+								pModel->m_cpuMeshes.Clear();
+							}
 						}
 					}
 					return pModel;

@@ -43,6 +43,19 @@ namespace
 	constexpr float DefaultAspectRatio = 4.0f / 3.0f;
 	constexpr float DefaultHfov = glm::radians(60.0f);
 
+	__forceinline vec3 ComputeRayOriginBias(const vec3& worldPoint, const vec3& geometricNormal, float biasBase, float biasScale)
+	{
+		// Scale epsilon by world-space position to keep it stable across differently scaled scenes.
+		const float pointScale = (std::max)(1.0f, (std::max)(glm::abs(worldPoint.x), (std::max)(glm::abs(worldPoint.y), glm::abs(worldPoint.z))));
+		return geometricNormal * ((biasBase + biasScale * pointScale));
+	}
+
+	__forceinline vec3 OffsetRayOrigin(const vec3& worldPoint, const vec3& geometricNormal, const vec3& rayDirection, float biasBase, float biasScale)
+	{
+		const vec3 bias = ComputeRayOriginBias(worldPoint, geometricNormal, biasBase, biasScale);
+		return worldPoint + (glm::dot(rayDirection, geometricNormal) >= 0.0f ? bias : -bias);
+	}
+
 	struct PathTracerView
 	{
 		vec3 m_cameraPos = vec3(0, 0.75f, 5.0f);
@@ -495,6 +508,16 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 		res.m_ambient = vec3(0.03f);
 	}
 
+	if (res.m_rayBiasBase <= 0.0f)
+	{
+		res.m_rayBiasBase = 0.0f;
+	}
+
+	if (res.m_rayBiasScale <= 0.0f)
+	{
+		res.m_rayBiasScale = 3e-4f;
+	}
+
 	for (int32_t i = 1; i < num; i++)
 	{
 		std::string arg = args[i];
@@ -538,6 +561,14 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 			const int32_t b = std::stoi(hexStr.substr(4, 2), nullptr, 16);
 
 			res.m_ambient = glm::vec3(r / 255.0f, g / 255.0f, b / 255.0f);
+		}
+		else if (arg == "--rayBiasBase")
+		{
+			res.m_rayBiasBase = (std::max)(0.0f, (float)atof(Utils::GetArgValue(args, i, num).c_str()));
+		}
+		else if (arg == "--rayBiasScale")
+		{
+			res.m_rayBiasScale = (std::max)(0.0f, (float)atof(Utils::GetArgValue(args, i, num).c_str()));
 		}
 	}
 }
@@ -639,6 +670,8 @@ bool PathTracer::InitializeScene(const TVector<SceneInstance>& instances,
 
 bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 {
+	m_lastRaytraceTimeMs = 0.0;
+
 	const bool bUseInstances = m_instances.Num() > 0;
 	if (!bUseInstances && m_triangles.Num() == 0)
 	{
@@ -708,7 +741,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	}
 
 	const uint32_t height = params.m_height;
-	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
+	const uint32_t width = (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
 	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
 
 	if (m_lightProxies.Num() == 0)
@@ -727,6 +760,8 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 
 	CombinedSampler2D outputTex;
 	outputTex.Initialize<vec3>(width, height);
+	CombinedSampler2D alphaTex;
+	alphaTex.Initialize<float>(width, height);
 
 	float h = tan(vFov / 2);
 	const float ViewportHeight = 2.0f * h;
@@ -742,6 +777,9 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	const vec3 _pixelDeltaU = ViewportU / (float)width;
 	const vec3 _pixelDeltaV = ViewportV / (float)height;
 	const vec3 _pixel00Dir = ViewportPivot + 0.5f * (_pixelDeltaU + _pixelDeltaV) - cameraPos;
+
+	Utils::Timer raytracingTimer;
+	raytracingTimer.Start();
 
 	{
 		TVector<Tasks::ITaskPtr> tasks;
@@ -760,7 +798,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			for (uint32_t x = 0; x < width; x += DefaultGroupSize)
 			{
 				auto task = Tasks::CreateTask("Calculate raytracing",
-					[=, &finishedTasks, &outputTex, this]() mutable
+					[=, &finishedTasks, &outputTex, &alphaTex, this]() mutable
 					{
 						Ray ray;
 						ray.SetOrigin(cameraPos);
@@ -770,16 +808,20 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 							for (uint32_t u = 0; u < DefaultGroupSize && (u + x) < width; u++)
 							{
 								vec3 accumulator = vec3(0);
+								float alphaCoverage = 0.0f;
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
 									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f, 1.0f));
 									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
 									ray.SetDirection(glm::normalize(pixelDir));
+									SceneHit primaryHit{};
+									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
 									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), params, 1.0f, 1.0f);
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
 								outputTex.SetPixel(x + u, height - (y + v) - 1, res);
+								alphaTex.SetPixel(x + u, height - (y + v) - 1, alphaCoverage / (float)params.m_msaa);
 							}
 						}
 
@@ -812,7 +854,10 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 		}
 	}
 
-	TVector<u8vec3> outSrgb(width * height);
+	raytracingTimer.Stop();
+	m_lastRaytraceTimeMs = static_cast<double>(raytracingTimer.ResultAccumulatedMs());
+
+	TVector<u8vec4> outSrgb(width * height);
 	const float aberrationAmount = (0.5f / width);
 
 	for (uint32_t y = 0; y < height; y++)
@@ -824,11 +869,15 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 			vec3 blueColor = outputTex.Sample<vec3>(uv + vec2(aberrationAmount, aberrationAmount));
 			vec3 redColor = outputTex.Sample<vec3>(uv + vec2(-aberrationAmount, -aberrationAmount));
 			vec3 chromaAberratedColor = vec3(redColor.r, greenColor.g, blueColor.b);
-			outSrgb[x + y * width] = glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f);
+			const float alpha = glm::clamp(alphaTex.Sample<float>(uv), 0.0f, 1.0f);
+			const u8vec3 rgb = alpha > 0.0f ?
+				u8vec3(glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f)) :
+				u8vec3(0, 0, 0);
+			outSrgb[x + y * width] = u8vec4(rgb, (uint8_t)glm::round(alpha * 255.0f));
 		}
 	}
 
-	const uint32_t Channels = 3;
+	const uint32_t Channels = 4;
 	if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
 	{
 		SAILOR_LOG_ERROR("Raytracing WriteImage error");
@@ -841,6 +890,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 void PathTracer::Run(const PathTracer::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_lastRaytraceTimeMs = 0.0;
 
 	auto* pAssetRegistry = App::GetSubmodule<AssetRegistry>();
 	auto* pModelImporter = App::GetSubmodule<ModelImporter>();
@@ -1025,7 +1075,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	const float aspectRatio = std::max(view.m_aspectRatio, 0.1f);
 	const uint32_t height = params.m_height;
-	const uint32_t width = static_cast<uint32_t>(height * aspectRatio);
+	const uint32_t width = (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
 
 	const float hFov = std::max(view.m_hFov, glm::radians(10.0f));
 
@@ -1049,6 +1099,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 	CombinedSampler2D outputTex;
 	outputTex.Initialize<vec3>(width, height);
+	CombinedSampler2D alphaTex;
+	alphaTex.Initialize<float>(width, height);
 
 	float h = tan(vFov / 2);
 	const float ViewportHeight = 2.0f * h;
@@ -1088,6 +1140,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 					[=,
 					&finishedTasks,
 					&outputTex,
+					&alphaTex,
 					this]() mutable
 					{
 						Ray ray;
@@ -1100,18 +1153,22 @@ void PathTracer::Run(const PathTracer::Params& params)
 								SAILOR_PROFILE_SCOPE("Raycasting");
 
 								vec3 accumulator = vec3(0);
+								float alphaCoverage = 0.0f;
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
 									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f, 1.0f));
 									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
 
 									ray.SetDirection(glm::normalize(pixelDir));
+									SceneHit primaryHit{};
+									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
 
 									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), params, 1.0f, 1.0f);
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
 								outputTex.SetPixel(x + u, height - (y + v) - 1, res);
+								alphaTex.SetPixel(x + u, height - (y + v) - 1, alphaCoverage / (float)params.m_msaa);
 								}
 							}
 
@@ -1175,11 +1232,12 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 
 	raytracingTimer.Stop();
+	m_lastRaytraceTimeMs = static_cast<double>(raytracingTimer.ResultAccumulatedMs());
 
 	{
 		SAILOR_PROFILE_SCOPE("Write Image");
 
-		TVector<u8vec3> outSrgb(width * height);
+		TVector<u8vec4> outSrgb(width * height);
 		const float aberrationAmount = (0.5f / width);
 
 		for (uint32_t y = 0; y < height; y++)
@@ -1195,13 +1253,17 @@ void PathTracer::Run(const PathTracer::Params& params)
 
 				// Combine the shifted channels
 				vec3 chromaAberratedColor = vec3(redColor.r, greenColor.g, blueColor.b);
+				const float alpha = glm::clamp(alphaTex.Sample<float>(uv), 0.0f, 1.0f);
+				const u8vec3 rgb = alpha > 0.0f ?
+					u8vec3(glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f)) :
+					u8vec3(0, 0, 0);
 
 				// Write the result back to the output array
-				outSrgb[x + y * width] = glm::clamp(Utils::LinearToSRGB(chromaAberratedColor) * 255.0f, 0.0f, 255.0f);
+				outSrgb[x + y * width] = u8vec4(rgb, (uint8_t)glm::round(alpha * 255.0f));
 			}
 		}
 
-		const uint32_t Channels = 3;
+		const uint32_t Channels = 4;
 		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
 		{
 			SAILOR_LOG("Raytracing WriteImage error");
@@ -1227,7 +1289,6 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, SceneHit& outHit, flo
 			{
 				continue;
 			}
-
 			const auto& instance = m_instances[idx];
 			if (!instance.m_model || !instance.m_model->HasBLAS() || !instance.m_worldBounds.IsValid())
 			{
@@ -1457,8 +1518,6 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 		const uint32_t numSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numSamples)) : params.m_numSamples;
 		const uint32_t numAmbientSamples = bHasAlphaBlending ? std::max(1u, (uint32_t)round(sample.m_baseColor.a * (float)params.m_numAmbientSamples)) : params.m_numAmbientSamples;
 
-		const vec3 offset = 0.000001f * faceNormal;
-
 		const bool bFullMetallic = sample.m_orm.z == 1.0f;
 		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
 		const bool bThickVolume = bHasTransmission && material.m_thicknessFactor > 0.0f;
@@ -1472,7 +1531,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 				return vec3(0, 0, 0);
 			}
 
-			Ray rayToLight(hit.m_hit.m_point, newDirection - offset);
+			Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, newDirection, params.m_rayBiasBase, params.m_rayBiasScale), newDirection);
 
 			//const float angle = abs(glm::dot(newDirection, worldNormal));
 			//vec3 term = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, newDirection, sample, environmentIor) * angle;
@@ -1495,7 +1554,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					continue;
 				}
 
-				Ray rayToLight(hit.m_hit.m_point + offset, toLight);
+				Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, toLight, params.m_rayBiasBase, params.m_rayBiasScale), toLight);
 				SceneHit occluder{};
 				if (!IntersectScene(rayToLight, occluder, maxDistanceToLight, hit.m_instanceIndex, hit.m_triangleIndex))
 				{
@@ -1526,7 +1585,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
 					vec3 toLight = bThickVolume ? glm::sphericalRand(1.0f) : (2.0f * dot(viewDirection, H) * H - viewDirection);
 
-					vec3 att = TraceSky(hit.m_hit.m_point + offset, toLight, params, environmentIor, hit.m_instanceIndex, hit.m_triangleIndex);
+					vec3 att = TraceSky(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, toLight, params.m_rayBiasBase, params.m_rayBiasScale), toLight, params, environmentIor, hit.m_instanceIndex, hit.m_triangleIndex);
 					if (att != vec3(0, 0, 0))
 					{
 						const float angle = glm::max(0.0f, glm::dot(toLight, worldNormal));
@@ -1578,7 +1637,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					newEnvironmentIor = 1.0f;
 				}
 
-				Ray rayToLight(hit.m_hit.m_point + (bTransmissionRay ? -offset : offset), direction);
+				Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, direction, params.m_rayBiasBase, params.m_rayBiasScale), direction);
 
 				//vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), bvh, params, environmentIor, hit.m_triangleIndex);
 				//const bool bSkyTraced = length(att) > 0.0f;
@@ -1816,7 +1875,7 @@ vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
    vec2(-0.210004, 0.519896)
 	};*/
 
-	float BlueNoiseData[] = { 0.1025390625, 0.4072265625, 0.6240234375, 0.2763671875, 0.7021484375, 0.3701171875, 0.7666015625, 0.9755859375, 0.4619140625, 0.8173828125, 0.5048828125, 0.3427734375,
+	static const float BlueNoiseData[] = { 0.1025390625, 0.4072265625, 0.6240234375, 0.2763671875, 0.7021484375, 0.3701171875, 0.7666015625, 0.9755859375, 0.4619140625, 0.8173828125, 0.5048828125, 0.3427734375,
 		0.9677734375, 0.7431640625, 0.4287109375, 0.6875, 0.5458984375, 0.19140625, 0.47265625, 0.109375, 0.2578125, 0.509765625, 0.01171875, 0.3232421875, 0.158203125, 0.6904296875, 0.2236328125,
 		0.9375, 0.1396484375, 0.8095703125, 0.4375, 0.568359375, 0.318359375, 0.787109375, 0.8837890625, 0.5234375, 0.14453125, 0.6064453125, 0.2109375, 0.11328125, 0.6865234375, 0.1708984375, 0.8984375,
 		0.0341796875, 0.537109375, 0.1455078125, 0.2802734375, 0.919921875, 0.001953125, 0.3017578125, 0.9736328125, 0.58203125, 0.6943359375, 0.9306640625, 0.767578125, 0.65234375, 0.9091796875, 0.3916015625,

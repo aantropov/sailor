@@ -208,6 +208,8 @@ bool PathTracerECS::InitializePathTracer(Raytracing::PathTracer& outPathTracer, 
 
 bool PathTracerECS::RenderScene(const Raytracing::PathTracer::Params& params, size_t componentHandle)
 {
+	m_lastPathTraceTimeMs = 0.0;
+
 	Raytracing::PathTracer::Params runtimeParams = params;
 
 	if (runtimeParams.m_msaa == 0)
@@ -233,6 +235,16 @@ bool PathTracerECS::RenderScene(const Raytracing::PathTracer::Params& params, si
 	if (runtimeParams.m_maxBounces == 0)
 	{
 		runtimeParams.m_maxBounces = 4;
+	}
+
+	if (runtimeParams.m_rayBiasBase < 0.0f)
+	{
+		runtimeParams.m_rayBiasBase = 0.0f;
+	}
+
+	if (runtimeParams.m_rayBiasScale <= 0.0f)
+	{
+		runtimeParams.m_rayBiasScale = 3e-4f;
 	}
 
 	if (componentHandle != (size_t)-1 && componentHandle < m_components.Num())
@@ -262,7 +274,9 @@ bool PathTracerECS::RenderScene(const Raytracing::PathTracer::Params& params, si
 			runtimeParams.m_runtimeCameraForward = glm::normalize(cameraTransform.GetForward());
 			runtimeParams.m_runtimeCameraUp = glm::normalize(cameraTransform.GetUp());
 			runtimeParams.m_runtimeAspectRatio = cameraData.GetAspect();
-			runtimeParams.m_runtimeHFov = glm::radians(cameraData.GetFov());
+			const float verticalFov = glm::radians(cameraData.GetFov());
+			const float aspect = (std::max)(cameraData.GetAspect(), 0.1f);
+			runtimeParams.m_runtimeHFov = 2.0f * atan(tan(verticalFov * 0.5f) * aspect);
 		}
 	}
 
@@ -276,7 +290,9 @@ bool PathTracerECS::RenderScene(const Raytracing::PathTracer::Params& params, si
 		return false;
 	}
 
-	return m_pathTracer.RenderPreparedScene(runtimeParams);
+	const bool bRes = m_pathTracer.RenderPreparedScene(runtimeParams);
+	m_lastPathTraceTimeMs = m_pathTracer.GetLastRaytraceTimeMs();
+	return bRes;
 }
 
 bool PathTracerECS::IntersectProxyRay(size_t componentHandle, const Math::Ray& worldRay, Math::RaycastHit& outHit, float maxRayLength) const

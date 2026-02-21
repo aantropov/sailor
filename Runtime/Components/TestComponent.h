@@ -58,8 +58,11 @@ namespace Sailor
 		uint32_t m_pathTraceHeight = 720;
 		uint32_t m_pathTraceSamplesPerPixel = 4;
 		uint32_t m_pathTraceMaxBounces = 1;
+		float m_pathTraceRayBiasBase = 0.0f;
+		float m_pathTraceRayBiasScale = 3e-4f;
 		std::string m_pathTraceOutputPath = "pathtrace.png";
 		std::string m_pathTraceStatus;
+		double m_pathTraceLastExecutionMs = 0.0;
 	};
 }
 

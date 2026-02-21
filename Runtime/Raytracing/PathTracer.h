@@ -40,6 +40,8 @@ namespace Sailor::Raytracing
 			uint32_t m_maxBounces;
 			uint32_t m_msaa;
 			vec3 m_ambient;
+			float m_rayBiasBase = 0.0f;
+			float m_rayBiasScale = 0.0f;
 
 			bool m_bUseRuntimeCamera = false;
 			vec3 m_runtimeCameraPos = vec3(0.0f, 0.75f, 5.0f);
@@ -58,6 +60,7 @@ namespace Sailor::Raytracing
 			const TVector<MaterialPtr>& materials,
 			const TVector<LightProxy>& lightProxies);
 		bool RenderPreparedScene(const Params& params);
+		double GetLastRaytraceTimeMs() const { return m_lastRaytraceTimeMs; }
 
 		void Run(const Params& params);
 
@@ -100,5 +103,6 @@ namespace Sailor::Raytracing
 		size_t m_cachedMaterialsSignature = 0;
 		uint32_t m_cachedMaterialsCount = 0;
 		bool m_bMaterialsFullyResolved = false;
+		double m_lastRaytraceTimeMs = 0.0;
 	};
 }

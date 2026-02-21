@@ -19,6 +19,7 @@
 #include "FrameGraph/CopyTextureToRamNode.h"
 #include "ECS/PathTracerECS.h"
 #include "Raytracing/PathTracer.h"
+#include "Core/LogMacros.h"
 #include <cstring>
 
 using namespace Sailor;
@@ -426,9 +427,36 @@ void TestComponent::Tick(float deltaTime)
 	}
 
 	ImGui::Begin("Path Tracer");
-	ImGui::InputScalar("Height", ImGuiDataType_U32, &m_pathTraceHeight);
-	ImGui::InputScalar("Samples Per Pixel", ImGuiDataType_U32, &m_pathTraceSamplesPerPixel);
-	ImGui::InputScalar("Max Bounces", ImGuiDataType_U32, &m_pathTraceMaxBounces);
+	int32_t pathTraceHeight = (int32_t)m_pathTraceHeight;
+	int32_t pathTraceSamplesPerPixel = (int32_t)m_pathTraceSamplesPerPixel;
+	int32_t pathTraceMaxBounces = (int32_t)m_pathTraceMaxBounces;
+	float pathTraceRayBiasBase = m_pathTraceRayBiasBase;
+	float pathTraceRayBiasScale = m_pathTraceRayBiasScale;
+
+	if (ImGui::SliderInt("Height", &pathTraceHeight, 64, 4320))
+	{
+		m_pathTraceHeight = (uint32_t)(std::max)(1, pathTraceHeight);
+	}
+
+	if (ImGui::SliderInt("Samples Per Pixel", &pathTraceSamplesPerPixel, 1, 1024))
+	{
+		m_pathTraceSamplesPerPixel = (uint32_t)(std::max)(1, pathTraceSamplesPerPixel);
+	}
+
+	if (ImGui::SliderInt("Max Bounces", &pathTraceMaxBounces, 0, 32))
+	{
+		m_pathTraceMaxBounces = (uint32_t)(std::max)(0, pathTraceMaxBounces);
+	}
+
+	if (ImGui::SliderFloat("Ray Bias Base", &pathTraceRayBiasBase, 0.0f, 0.01f, "%.6f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat))
+	{
+		m_pathTraceRayBiasBase = (std::max)(0.0f, pathTraceRayBiasBase);
+	}
+
+	if (ImGui::SliderFloat("Ray Bias Scale", &pathTraceRayBiasScale, 0.00001f, 0.01f, "%.6f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat))
+	{
+		m_pathTraceRayBiasScale = (std::max)(0.0f, pathTraceRayBiasScale);
+	}
 
 	char outputPath[512];
 	memset(outputPath, 0, sizeof(outputPath));
@@ -466,6 +494,8 @@ void TestComponent::Tick(float deltaTime)
 			params.m_output = m_pathTraceOutputPath;
 			params.m_height = m_pathTraceHeight;
 			params.m_maxBounces = m_pathTraceMaxBounces;
+			params.m_rayBiasBase = m_pathTraceRayBiasBase;
+			params.m_rayBiasScale = m_pathTraceRayBiasScale;
 
 			if (m_pathTraceSamplesPerPixel > 0)
 			{
@@ -474,16 +504,20 @@ void TestComponent::Tick(float deltaTime)
 			}
 
 			bRendered = pPathTracerEcs->RenderScene(params);
+			m_pathTraceLastExecutionMs = pPathTracerEcs->GetLastPathTraceTimeMs();
 		}
 
 		m_pathTraceStatus = bRendered ?
-			("Saved: " + m_pathTraceOutputPath + " (added proxies: " + std::to_string(numAdded) + ")") :
-			("Path trace failed (added proxies: " + std::to_string(numAdded) + ")");
+			("Saved: " + m_pathTraceOutputPath + " (added proxies: " + std::to_string(numAdded) + ", time: " + std::to_string(m_pathTraceLastExecutionMs) + " ms)") :
+			("Path trace failed (added proxies: " + std::to_string(numAdded) + ", time: " + std::to_string(m_pathTraceLastExecutionMs) + " ms)");
+
+		SAILOR_LOG("Path trace %s in %.3f ms (output: %s)", bRendered ? "succeeded" : "failed", m_pathTraceLastExecutionMs, m_pathTraceOutputPath.c_str());
 	}
 
 	if (!m_pathTraceStatus.empty())
 	{
 		ImGui::Text("%s", m_pathTraceStatus.c_str());
 	}
+	ImGui::Text("Last path trace time: %.2f ms (%.2f s)", m_pathTraceLastExecutionMs, m_pathTraceLastExecutionMs * 0.001);
 	ImGui::End();
 }
